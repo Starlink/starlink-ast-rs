@@ -76,13 +76,13 @@ fn outputs_equivalent(a: &PointSet, b: &PointSet, tol: f64) -> bool {
 /// `cmpmap.c:4657`), so a trial CmpMap holds the very Mappings the live tree
 /// holds. Simplifying it recurses into `MapMerge`, which stamps whatever
 /// `astSimplify` returns (`cmpmap.c:1443`) — and when the probe is thrown away the
-/// stamp stays on the shared sub-Mapping. The neighbouring parallel-in-series
+/// stamp stays on the shared sub-Mapping. The neighboring parallel-in-series
 /// probe guards against exactly this with `SeparateMappings`
 /// (`cmpmap.c:1650-1651`); this one does not.
 ///
 /// Owned values give each tree its own children, so no probe in the port can
 /// leave a mark on the tree that outlives it. Mirroring the card would mean
-/// modelling C's reference counting, which is why this is licensed rather than
+/// modeling C's reference counting, which is why this is licensed rather than
 /// ported. See `docs/issues/c-library-quirks.md`.
 ///
 /// The comparison drops exactly one reference-only `IsSimp = 1` line, at a
@@ -192,11 +192,11 @@ const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
 /// - **A geodesic round trip.** `cap_pointlist_01`'s `X5` and `X6` are the sky
 ///   half of the merged uncertainty Box's corner, which `astSetUnc` regenerates
 ///   by re-centring the Box and re-offsetting the corner through a
-///   `CmpFrame(TimeFrame, SkyFrame)` (region.c:10871-10876, box.c RegCentre).
+///   `CmpFrame(TimeFrame, SkyFrame)` (region.c:10871-10876, box.c Regcenter).
 ///   The `atan2`/`asin` pair in that round trip is where the two platforms'
 ///   libm parts company, twelve significant figures in.
 ///
-/// The bound is what keeps the licence from spreading: `rigby` has a second
+/// The bound is what keeps the license from spreading: `rigby` has a second
 /// `IM5` card, holding an exact zero, that the same card name would otherwise
 /// also have covered, and the bound is far tighter than the gap between the two.
 ///
@@ -205,7 +205,7 @@ const INVAB_ALIASING_LICENSED: &[(&str, &str)] = &[
 /// the port's is whatever the host's libm gives: the corpus was captured on
 /// arm64 macOS, so a build there reproduces the reference exactly while an
 /// x86-64 build lands the recorded distance away. Pinning the port's side to
-/// one host's digits would make the licence fire on that host alone.
+/// one host's digits would make the license fire on that host alone.
 ///
 /// `(fixture, card name, value in the reference, value an x86-64 Linux build
 /// produces, bound on the difference between the reference and the port)`.
@@ -254,7 +254,7 @@ fn card_value<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
 /// it. The port's line is dropped only when its card name matches and its value
 /// sits within the entry's bound of the reference's, since which digits the port
 /// produces is the host's libm's business. Exactly one line must be dropped from
-/// each side; any other count is returned as a failure, so the licence cannot
+/// each side; any other count is returned as a failure, so the license cannot
 /// widen to cover a card that grew, moved or multiplied.
 fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, Vec<String>) {
     let mut problems = Vec::new();
@@ -265,7 +265,7 @@ fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, 
         if *fixture != name {
             continue;
         }
-        // The licence covers a difference, so it lapses the moment the two
+        // The license covers a difference, so it lapses the moment the two
         // named values are further apart than the entry admits.
         let spread = match (ref_value.parse::<f64>(), local_value.parse::<f64>()) {
             (Ok(r), Ok(l)) => (r - l).abs(),
@@ -319,7 +319,7 @@ fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, 
     (got, want, problems)
 }
 
-/// The licence must hold on any host, including the arm64 one the corpus was
+/// The license must hold on any host, including the arm64 one the corpus was
 /// captured on, where the port reproduces the reference to the last digit.
 ///
 /// `rigby`'s second `IM5` card, an exact zero, stands in for what the bound has
@@ -349,12 +349,12 @@ fn drift_licence_lapses_outside_the_bound() {
     );
 }
 
-/// Consume the lines the two aliasing licences allow, walking both dumps in step.
+/// Consume the lines the two aliasing licenses allow, walking both dumps in step.
 ///
-/// Each licence is spent positionally, not by searching for a card name: a
+/// Each license is spent positionally, not by searching for a card name: a
 /// reference-only line counts only where the port's line is the reference's *next*
 /// line, and a substituted pair counts only where both halves sit at the same
-/// position. That is what stops a licence naming a common card from absorbing a
+/// position. That is what stops a license naming a common card from absorbing a
 /// divergence somewhere else in the tree.
 ///
 /// Lines are matched with the same 4-ulp token comparison the verdict uses, so a
@@ -362,7 +362,7 @@ fn drift_licence_lapses_outside_the_bound() {
 /// walk. A genuine divergence is kept on both sides and the walk carries on
 /// aligned, so the verdict reports it and the diagnostic prints it.
 ///
-/// Returns the trimmed pair and one problem per licence entry left unspent —
+/// Returns the trimmed pair and one problem per license entry left unspent —
 /// which is how a row that has started matching C becomes visible.
 fn drop_aliasing_lines(name: &str, got: &str, want: &str) -> (String, String, Vec<String>) {
     // (reference card, port card or none, reason, spent)
@@ -479,7 +479,7 @@ fn reread(m: &dyn Mapping) -> Option<Box<dyn Mapping>> {
         .into_mapping()
 }
 
-/// How a manifest row asks for the serialised dump to be compared -- the
+/// How a manifest row asks for the serialized dump to be compared -- the
 /// fourth column of `fixtures/simplify/cases.txt`, shared verbatim with the
 /// upstream C harness (`ast_tester/CMakeLists.txt`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -524,10 +524,10 @@ impl Compare {
 /// the port ever starts matching -- whether because upstream fixed the defect or
 /// because the port acquired it. `cheby_linear_lone_reduce` was the one entry,
 /// and that gate is what reported the fix: upstream folded the ChebyMap
-/// normalisation into the reduction, the port ported it, and the row is compared
+/// normalization into the reduction, the port ported it, and the row is compared
 /// in full like any other.
 ///
-/// The table survives empty so a newly diagnosed C-side artefact has a home.
+/// The table survives empty so a newly diagnosed C-side artifact has a home.
 const C_DEFECT_EXCLUDED: &[(&str, &str)] = &[];
 
 /// Manifest rows whose fixture the Rust reader cannot load yet, each with the
@@ -755,7 +755,7 @@ fn simplify_regression() {
         // which this harness runs inline (`ignore_is_simp_line`), so such a row
         // is still compared. A row with a distinct reference opts out unless a
         // `NUMERIC_PLATFORM_DRIFT` entry names the drifting card: upstream has
-        // no card-level licence and so gives up the whole dump, while this
+        // no card-level license and so gives up the whole dump, while this
         // harness can license the one value and keep comparing the rest.
         let licensed_per_card = NUMERIC_PLATFORM_DRIFT.iter().any(|(f, ..)| *f == name);
         if compare != Compare::None || ignore_is_simp_line || licensed_per_card {
@@ -889,21 +889,21 @@ fn simplify_regression() {
     // Every check is a hard failure. `equal()` mismatches mean the simplified
     // tree is not the one C produces; serialization mismatches mean the dumped
     // form diverges from the `.simp` reference. A fixture whose serialization
-    // difference has been diagnosed as a C-side artefact (see
+    // difference has been diagnosed as a C-side artifact (see
     // `docs/issues/c-library-quirks.md`) opts out per-fixture via the manifest's
     // `skip_string_compare` flag, with the reason recorded there.
     //
-    // Serialisation failures the byte comparison is allowed to carry, each
+    // Serialization failures the byte comparison is allowed to carry, each
     // diagnosed against the pinned C oracle and named with its cause. The set is
     // asserted exactly, so a row cannot be added without a diagnosis and cannot
     // survive being fixed.
     //
     // The table is empty: every fixture whose simplified form is dumped is
-    // byte-compared, and any difference fails. Card-level licences that cover a
+    // byte-compared, and any difference fails. Card-level licenses that cover a
     // single value rather than a whole fixture live in
     // `NUMERIC_PLATFORM_DRIFT`, `INVAB_ALIASING_LICENSED` and
     // `ABANDONED_PROBE_STAMP_LICENSED` instead, which is where a newly diagnosed
-    // C-side artefact belongs unless it defeats the comparison entirely.
+    // C-side artifact belongs unless it defeats the comparison entirely.
     const SERIAL_UNGATED: &[(&str, &str)] = &[];
     let ungated: Vec<&str> = SERIAL_UNGATED.iter().map(|(n, _)| *n).collect();
     let (licensed, unlicensed): (Vec<String>, Vec<String>) = serial_failures

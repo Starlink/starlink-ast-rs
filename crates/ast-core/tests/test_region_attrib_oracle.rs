@@ -27,7 +27,7 @@ use ast_core::regions::{
     Region,
 };
 
-/// The unit square in a Frame with axes in metres and ActiveUnit set.
+/// The unit square in a Frame with axes in meters and ActiveUnit set.
 fn metre_box() -> DynRegion {
     let mut frame = BasicFrameBuilder::new(2).build().unwrap();
     frame.set_unit(1, "m").unwrap();

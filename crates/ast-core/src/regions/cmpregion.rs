@@ -1122,7 +1122,7 @@ impl Region for CmpRegion {
         // Compute the mesh.
         let mesh = self.reg_base_mesh()?;
         if mesh.is_empty() {
-            // Return a single BAD point (matching C behaviour for empty meshes).
+            // Return a single BAD point (matching C behavior for empty meshes).
             let naxes = self.data.frameset.base().naxes();
             let bad_point = vec![BAD_VALUE; naxes];
             return Ok(PointSet::from_rows(std::iter::once(bad_point.as_slice())));
@@ -1427,7 +1427,7 @@ impl Mapping for CmpRegion {
 
     fn invert_orientation(&mut self) {
         // A Region's forward and inverse transforms are identical (membership
-        // is direction-independent), so inverting has no effect on behaviour.
+        // is direction-independent), so inverting has no effect on behavior.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {

@@ -8,19 +8,19 @@ Extension points: classified
 
 Uncited C steps:
 - ratemap.c:678 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
-- ratemap.c:700 (fn MapMerge) — initialisation to silence a compiler warning; the Rust locals are initialised where they are declared
+- ratemap.c:700 (fn MapMerge) — initialization to silence a compiler warning; the Rust locals are initialized where they are declared
 
 C's body runs `ratemap.c:678-817 (fn MapMerge)`. Rows cover its executable
 comment-delimited steps; the declaration blocks at 678-693 and 700-701 are not
 steps.
 
 `RateMap::map_merge` (`ratemap.rs:322-332 (fn map_merge)`) holds the reduction of the
-encapsulated Mapping, as C's body does, and hands the neighbour cancellation to
+encapsulated Mapping, as C's body does, and hands the neighbor cancellation to
 `RateMap::try_merge` through `self_reduce_map_merge`.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned index to -1 | ratemap.c:694-695 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned index to -1 | ratemap.c:694-695 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the inherited status and bail out | ratemap.c:697-698 (fn MapMerge) | -- | architecture | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a pointer to this RateMap | ratemap.c:703-704 (fn MapMerge) | -- | ceremony | n/a: the Rust method already has `&self`; C is downcasting from `AstMapping *` |
 | 4 | Temporarily set the RateMap's Invert flag to the value the list requests | ratemap.c:706-708 (fn MapMerge) | -- | architecture | n/a: the requested orientation is a separate value in `MergeCtx`, so the object is never mutated to carry it |
@@ -28,12 +28,12 @@ encapsulated Mapping, as C's body does, and hands the neighbour cancellation to
 | 6 | First try to simplify the RateMap by simplifying its encapsulated Mapping | ratemap.c:717-719 (fn MapMerge) | ratemap.rs:172-181 (fn reduced_child) | architecture | ported |
 | 7 | If that simplified anything, build a new RateMap around the simplified Mapping and report a change | ratemap.c:721-727 (fn MapMerge) | ratemap.rs:183-193 (fn reduced_child) | architecture | ported |
 | 8 | Otherwise, in series only, try to cancel this RateMap with its own inverse | ratemap.c:728-730 (fn MapMerge) | ratemap.rs:341-344 (fn try_merge) | architecture | ported |
-| 9 | Start with nothing to cancel against | ratemap.c:732-733 (fn MapMerge) | -- | architecture | n/a: the port's pairwise hook is asked about one neighbour at a time, so there is no candidate index to initialise |
-| 10 | Consider the lower neighbour, if it is a RateMap | ratemap.c:735-737 (fn MapMerge) | ratemap.rs:347 (fn try_merge) | architecture | ported |
+| 9 | Start with nothing to cancel against | ratemap.c:732-733 (fn MapMerge) | -- | architecture | n/a: the port's pairwise hook is asked about one neighbor at a time, so there is no candidate index to initialize |
+| 10 | Consider the lower neighbor, if it is a RateMap | ratemap.c:735-737 (fn MapMerge) | ratemap.rs:347 (fn try_merge) | architecture | ported |
 | 11 | Require the two Invert flags to be opposite | ratemap.c:738-741 (fn MapMerge) | ratemap.rs:349-352 (fn try_merge) | architecture | ported |
 | 12 | Require the input and output axis indices to be equal | ratemap.c:743-745 (fn MapMerge) | ratemap.rs:354-357 (fn try_merge) | architecture | ported |
 | 13 | Require the encapsulated Mappings to be equal, comparing them at their construction orientations | ratemap.c:747-762 (fn MapMerge) | ratemap.rs:359-363 (fn try_merge) | architecture | ported |
-| 14 | Likewise consider the upper neighbour | ratemap.c:765-789 (fn MapMerge) | ratemap.rs:347 (fn try_merge) | architecture | ported |
+| 14 | Likewise consider the upper neighbor | ratemap.c:765-789 (fn MapMerge) | ratemap.rs:347 (fn try_merge) | architecture | ported |
 | 15 | On a cancel, replace both list entries with a UnitMap and report the lower index | ratemap.c:791-802 (fn MapMerge) | ratemap.rs:423-425 (fn try_merge) | architecture | ported |
 | 16 | Free resources | ratemap.c:803-805 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 17 | Re-instate the encapsulated Mapping's original Invert attribute | ratemap.c:806-808 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
@@ -61,7 +61,7 @@ encapsulated CmpMap dumps `Invert = 1` and C enters `astSimplify` on it with
 ## Row 15 — the same cancellation, a different result shape
 
 C rewrites two list slots, putting a `UnitMap(nax)` in each, and picks `nax`
-from `astGetNout` of the nominated RateMap for the lower neighbour and
+from `astGetNout` of the nominated RateMap for the lower neighbor and
 `astGetNin` for the upper. The port's `try_merge` returns one Mapping that
 replaces the pair, and derives its width from the merge direction instead. Both
 reduce to the same Mapping once the surrounding CmpMap drops UnitMaps, but no

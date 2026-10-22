@@ -283,7 +283,7 @@ pub(crate) fn tab_mapping(
 
                 // An extension to the published algorithm: PVi_4 (translated
                 // from QVi_4) is zero for linear and otherwise nearest
-                // neighbour interpolation.
+                // neighbor interpolation.
                 let interp = store.pv[iaxis]
                     .get(4)
                     .copied()

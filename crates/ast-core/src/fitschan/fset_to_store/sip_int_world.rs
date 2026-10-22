@@ -158,7 +158,7 @@ pub(crate) fn sip_int_world(
 
     // Step 4: assemble pre-PolyMap chain into map_lower (UnitMap if empty)
     // and post-PolyMap chain into map_upper (UnitMap if empty). Each
-    // sub-chain may itself need its inv flag honoured.
+    // sub-chain may itself need its inv flag honored.
     let mut map_lower: Option<DynMapping> = None;
     for (m, inv, _) in chain.iter().take(imap_pm) {
         let mut piece = m.clone_box();
@@ -265,7 +265,7 @@ pub(crate) fn sip_int_world(
     // and the PolyMap come first — so the box over which it must be linear
     // is not the grid box Step 5 used. Derive it by pushing a 3x3 grid
     // spanning the image through both. Two further positions, one pixel
-    // from the image centre along each grid axis, travel with them and
+    // from the image center along each grid axis, travel with them and
     // express the supplied tolerance, which is in pixels, in map_upper's
     // output space.
     let mut samples = [[0.0_f64; 2]; 11];
@@ -304,7 +304,7 @@ pub(crate) fn sip_int_world(
     }
 
     // Displacement in map_upper's output space produced by a one pixel
-    // step in grid coordinates at the centre of the image, used to convert
+    // step in grid coordinates at the center of the image, used to convert
     // the tolerance into that space: `linear_approx` expects a
     // displacement in the output space of the Mapping it is testing,
     // whereas FitsTol is expressed in pixels.
@@ -452,7 +452,7 @@ fn append_sip_suffix(slot: &mut Option<String>) {
         // C overwrites index 8 with '\0' first, then strcpy "-SIP" —
         // i.e. CTYPE[..8] stays as-is even if shorter than 8 (with
         // trailing zero padding the buffer in C). We match the
-        // observable behaviour: keep the prefix exactly, regardless of
+        // observable behavior: keep the prefix exactly, regardless of
         // length, then append "-SIP".
         buf.push_str("-SIP");
         *orig = buf;
@@ -536,7 +536,7 @@ fn emit_one_direction(
         }
     }
 
-    // Initialise the storage tables with BAD_VALUE for every (i, jm)
+    // Initialize the storage tables with BAD_VALUE for every (i, jm)
     // ≤ (imax, jmmax), then overwrite with real values.
     let a_size = a_imax + 1;
     let a_jsize = a_jmmax + 1;

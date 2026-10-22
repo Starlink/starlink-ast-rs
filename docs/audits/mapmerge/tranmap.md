@@ -10,17 +10,17 @@ Uncited C steps:
 - tranmap.c:793 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
 C's body runs `tranmap.c:818-1018 (fn MapMerge)`. It simplifies the TranMap on its own — an
-either/or between normalising an inverted TranMap and simplifying its two
+either/or between normalizing an inverted TranMap and simplifying its two
 component Mappings, with a third case that collapses a TranMap whose components
-are inverses of each other — and then, failing that, merges with a neighbouring
+are inverses of each other — and then, failing that, merges with a neighboring
 TranMap by composing the two forward components and the two inverse components.
 
-All of that is `TranMap::map_merge` (`tranmap.rs:381-458 (fn map_merge)`); the neighbour
+All of that is `TranMap::map_merge` (`tranmap.rs:381-458 (fn map_merge)`); the neighbor
 merge's own rule is `TranMap::try_merge` (`tranmap.rs:460-529 (fn try_merge)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1 | tranmap.c:818-819 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result to -1 | tranmap.c:818-819 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the inherited status and bail out | tranmap.c:821-822 (fn MapMerge) | -- | architecture | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a typed pointer to this TranMap | tranmap.c:824-826 (fn MapMerge) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 4 | Take the two component Mappings, temporarily restoring their construction Invert values | tranmap.c:827-837 (fn MapMerge) | -- | architecture | n/a: the components are stored with the Invert flags they had at construction (`tranmap.rs:125-126 (fn new)`) and the merge never mutates them, so there is nothing to set or put back |
@@ -33,10 +33,10 @@ merge's own rule is `TranMap::try_merge` (`tranmap.rs:460-529 (fn try_merge)`).
 | 11 | Form a series CmpMap of the two components with the second inverted | tranmap.c:872-877 (fn MapMerge) | tranmap.rs:435-437 (fn map_merge) | architecture | ported |
 | 12 | If that CmpMap simplifies to a UnitMap the components are equal, so replace the whole TranMap with one of them | tranmap.c:878-891 (fn MapMerge) | tranmap.rs:438-452 (fn map_merge) | architecture | ported |
 | 13 | Release resources | tranmap.c:892-901 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 14 | Merge with a neighbouring TranMap, in series only and only if nothing changed above | tranmap.c:902-907 (fn MapMerge) | tranmap.rs:455-457 (fn map_merge) | architecture | ported |
-| 15 | Require the higher neighbour to be a TranMap | tranmap.c:908-911 (fn MapMerge) | tranmap.rs:468-473 (fn try_merge) | architecture | ported |
+| 14 | Merge with a neighboring TranMap, in series only and only if nothing changed above | tranmap.c:902-907 (fn MapMerge) | tranmap.rs:455-457 (fn map_merge) | architecture | ported |
+| 15 | Require the higher neighbor to be a TranMap | tranmap.c:908-911 (fn MapMerge) | tranmap.rs:468-473 (fn try_merge) | architecture | ported |
 | 16 | Take the higher TranMap's components, restoring their construction Invert values | tranmap.c:912-925 (fn MapMerge) | tranmap.rs:496 (fn try_merge) | architecture | ported |
-| 17 | Resolve which component gives the forward and which the inverse transformation of the lower TranMap, honouring its applied direction | tranmap.c:926-939 (fn MapMerge) | tranmap.rs:477-486 (fn try_merge) | architecture | ported |
+| 17 | Resolve which component gives the forward and which the inverse transformation of the lower TranMap, honoring its applied direction | tranmap.c:926-939 (fn MapMerge) | tranmap.rs:477-486 (fn try_merge) | architecture | ported |
 | 18 | Do the same for the higher TranMap | tranmap.c:940-951 (fn MapMerge) | tranmap.rs:489-497 (fn try_merge) | architecture | ported |
 | 19 | Compose the two forward Mappings into a series CmpMap and simplify it | tranmap.c:952-956 (fn MapMerge) | tranmap.rs:505-507 (fn try_merge) | architecture | ported |
 | 20 | Do the same for the two inverse Mappings | tranmap.c:957-960 (fn MapMerge) | tranmap.rs:509-511 (fn try_merge) | architecture | ported |
@@ -53,7 +53,7 @@ merge's own rule is `TranMap::try_merge` (`tranmap.rs:460-529 (fn try_merge)`).
 ## Rows 6 and 10 to 12 — all three self-simplification cases are one either/or
 
 C's three cases are mutually exclusive and ordered: an inverted TranMap is
-normalised and nothing else is tried; otherwise the components are simplified;
+normalized and nothing else is tried; otherwise the components are simplified;
 otherwise, and only when both are defined in both directions, the
 equal-components collapse is attempted. `map_merge` keeps that order and the
 early returns that make it exclusive (`tranmap.rs:396-453 (fn map_merge)`), so a nominated

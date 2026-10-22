@@ -61,7 +61,7 @@ pub(crate) struct TabAxis {
     /// The one-based index of the column holding the index vector, when
     /// the grid coordinates of the table entries are not 1, 2, 3, ...
     pub icolindex: Option<usize>,
-    /// The LutMap interpolation method: 0 linear, 1 nearest neighbour.
+    /// The LutMap interpolation method: 0 linear, 1 nearest neighbor.
     pub interp: i32,
 }
 

@@ -164,7 +164,7 @@ fn velocity_to_beta() {
 /// override in `reference/starlink-ast/src/specmap.c:2717`. The base-class
 /// finite-difference estimator drifts from this by ~5e-10 relative, so the
 /// override is required for FITS-WCS paper III non-linear spectral
-/// linearisation to match C bit-for-bit.
+/// linearization to match C bit-for-bit.
 #[test]
 fn rate_wvtofr_is_analytic() {
     let mut spec = SpecMap::new();
@@ -560,7 +560,7 @@ fn multistep_chain() {
     );
 }
 
-/// Serialisation round-trip.
+/// Serialization round-trip.
 #[test]
 fn serialisation_roundtrip() {
     use ast_core::{AnyObject, from_native_string};

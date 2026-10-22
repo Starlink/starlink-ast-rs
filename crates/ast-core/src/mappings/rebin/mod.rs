@@ -446,7 +446,7 @@ pub fn rebin_seq<T: RebinValue>(
     }
 
     // C counts the output pixels before checking the bounds; a count below
-    // one sets nothing to zero and normalises nothing.
+    // one sets nothing to zero and normalizes nothing.
     let npix_out = output
         .lbnd
         .iter()
@@ -720,7 +720,7 @@ pub fn rebin_seq<T: RebinValue>(
 /// `gen_var`, that number is the weight over the mean weight per input
 /// pixel, which C estimates from the weights by iterated 3-sigma clipping.
 /// Returns false if no input pixel contributed. C then reads an
-/// uninitialised effective number of pixels; the port takes it as zero,
+/// uninitialized effective number of pixels; the port takes it as zero,
 /// setting every output pixel bad, which is what C produces.
 #[allow(clippy::too_many_arguments)]
 fn normalise<T: RebinValue>(
@@ -1132,7 +1132,7 @@ impl<T: RebinValue> Rebinner<'_, '_, T> {
         };
         let mut linear_fit: Option<Vec<f64>> = None;
         if need_fit {
-            // Fit over the pixel edges rather than the centres, so an axis
+            // Fit over the pixel edges rather than the centers, so an axis
             // spanned by one pixel still has distinct bounds.
             let flbnd: Vec<f64> = lbnd.iter().map(|&l| l as f64 - 0.5).collect();
             let fubnd: Vec<f64> = ubnd.iter().map(|&u| u as f64 + 0.5).collect();

@@ -44,7 +44,7 @@ Guiding rules (repo conventions, reaffirmed by the user this session):
 
 In the C library there are **no per-class `convert` overrides**.
 `astConvertX` (frame.c:3028) is the single generic driver for *all*
-frame alignment; every class-specific behaviour (SkyFrame system
+frame alignment; every class-specific behavior (SkyFrame system
 conversion, SpecFrame SOR chains, CmpFrame partitioning) lives entirely
 in that class's `Match` / `SubFrame`. The public `astConvert` is just a
 wrapper that swaps its first two args and calls `astConvertX` so the
@@ -93,7 +93,7 @@ Ports `astConvertX` (frame.c:3028-3258) verbatim:
 
 1. Copy the domain list; loop each comma-separated field until a match
    is found (`match` flag). Clean each field: uppercase, strip
-   whitespace (reuse the canonicalisation already in
+   whitespace (reuse the canonicalization already in
    `default_find_frame`).
 2. `best_score = -1`. For `icom in 0..=1` (quit early on `perfect`):
    - `common0 = copy(if icom { from } else { to })`; set
@@ -176,7 +176,7 @@ Frame
 ```
 
 Implementations (each cites the cast direction it serves):
-- **Specialised leaf frames** (SkyFrame, SpecFrame, TimeFrame,
+- **Specialized leaf frames** (SkyFrame, SpecFrame, TimeFrame,
   FluxFrame): `cast(other)` returns `Some(BasicFrame snapshot)` when
   `other` is a plain `BasicFrame` (the only ancestor in Rust's model),
   carrying the same axis count + overlaid Frame/axis attributes (Domain,
@@ -205,7 +205,7 @@ of `template.match_template` directly. Body:
    - If `Some(super_this)`: when `target.test_domain()` and the
      template's domain is non-empty, set `super_this`'s Domain to the
      template's domain; then `m = default_match(&*super_this, target,
-     match_sub)` — the **base** Frame Match, not the (specialised)
+     match_sub)` — the **base** Frame Match, not the (specialized)
      `super_this.match_template` (in C the cast result's vtab *is* the
      parent class, so its Match is the base Match; a BasicFrame's
      `match_template` already routes to `default_match`, so calling
@@ -232,7 +232,7 @@ Add to `BasicFrame` (and trait getters with defaults):
   `if (!digits_set) astSetAxisDigits(ax, astGetDigits(this))`).
   Direction default 1 (used by Plot; stored + round-tripped now,
   consumed later).
-- Native serialisation round-trip for Digits (frame-level + per-axis)
+- Native serialization round-trip for Digits (frame-level + per-axis)
   and Direction, matching the C dump tokens.
 
 ### 5.2 axis_format module
@@ -275,7 +275,7 @@ the formatting half of `AxisFormat` (axis.c:626):
     error** (current Rust raises `Unfer` — change it). The contract is
     "zero chars read, no coordinate" for callers like multi-field
     parsing.
-  - recognise `"<bad>"` case-insensitive with embedded/leading/trailing
+  - recognize `"<bad>"` case-insensitive with embedded/leading/trailing
     whitespace ⇒ `BAD_VALUE`, nread = matched length.
 
 The Rust trait signature is `unformat(&self, axis, text) ->
@@ -322,11 +322,11 @@ also use 1-based — a documented C quirk we mirror).
   Max/MinAxes temporarily widened per C); store the 1-based frm1 axis
   index or 0. Implemented via `match_axes_x` with the arg-swap wrapper
   mirroring the C trick.
-- `is_unit_frame() -> bool` (frame.c:6417): base = true. (Specialised
+- `is_unit_frame() -> bool` (frame.c:6417): base = true. (Specialized
   frames return false; wire those overrides as needed when simplify
   consumes it — tracked, low priority per gaps doc.)
 
-`NormalPoints` / `NormPoints` PointSet-batch normalisation is **deferred**
+`NormalPoints` / `NormPoints` PointSet-batch normalization is **deferred**
 (thin per-point `Norm` loops, no current core consumer) and recorded in
 the gaps doc.
 
@@ -353,7 +353,7 @@ the codebase).
   `celestial_axes.rs:341`, pointing them at the trait method.
 - Regression guard: the existing fitschan/wcsconv tests must stay green
   through this swap (the workarounds and the trait method must be
-  behaviourally identical — verify, don't assume).
+  behaviorally identical — verify, don't assume).
 
 ## 8. ActiveUnit unit adaptation
 
@@ -410,13 +410,13 @@ Each commit builds + tests + fmt + clippy clean before the next:
   Format; `NormalPoints`/`NormPoints`; `testframe.c` (`NormUnit(1)` via
   the capi string layer — orthogonal to item 7); `IsUnitFrame` per-class
   overrides beyond the base; full conversion-based `Frame::equal` (its
-  own gaps-doc item, still blocked behaviours noted there).
+  own gaps-doc item, still blocked behaviors noted there).
 
 ### 9.3 Verification strategy
 - Tier-1 Rust tests per commit, ported from `ast_tester/` where it
   covers the area; `test_convert.rs` from `testconvert.c` is the
   acceptance gate for the whole item.
-- For load-bearing numeric/structural behaviour (ConvertX scoring and
+- For load-bearing numeric/structural behavior (ConvertX scoring and
   result map class, matchsub alignments, `resolve_points` signed-2D,
   printf `%G` output, Format/Unformat round-trips), build the reference
   `libast.a` and a small C probe binary and diff Rust output against C

@@ -4,7 +4,7 @@
 
 **Goal:** Realign the Rust port with the fixed C oracle at `50c2b21b` — remove the workarounds that mirror now-fixed C bugs, update regenerated goldens, mark resolved quirks, and import the 164 new `astSimplify` fixtures.
 
-**Architecture:** Two logical commit groups on the current branch `tickets/DM-54793`. Group A un-mirrors each fixed quirk (behaviour + golden + doc + test, each quirk self-contained). Group B imports the new simplify corpus, tags unported-class fixtures, and fixes all supported-class failures.
+**Architecture:** Two logical commit groups on the current branch `tickets/DM-54793`. Group A un-mirrors each fixed quirk (behavior + golden + doc + test, each quirk self-contained). Group B imports the new simplify corpus, tags unported-class fixtures, and fixes all supported-class failures.
 
 **Tech Stack:** Rust 2024, `cargo test -p ast-core`, reference C `libast` built with cmake for oracle verification.
 
@@ -31,7 +31,7 @@
 
 ## Commit-ordering rule (Group A)
 
-Each Group-A behaviour change and its regenerated golden(s) land in the **same commit**, so tier-2 regression never breaks mid-sequence. Where a behaviour change flips an existing Rust unit test that locked the old (quirk) value, that test edit is in the same commit too.
+Each Group-A behavior change and its regenerated golden(s) land in the **same commit**, so tier-2 regression never breaks mid-sequence. Where a behavior change flips an existing Rust unit test that locked the old (quirk) value, that test edit is in the same commit too.
 
 ---
 
@@ -197,7 +197,7 @@ EOF
 
 **Upstream fix:** `ad04291c`. **Quirk doc:** "VELOSYS drift via lossy RefRA/RefDec round-trip".
 
-**Background:** C now bumps the SkyFrame `Digits` to 20 before the `astFormat`/`astSetC` round-trip, making the string conversion effectively lossless. The Rust mirror deliberately reproduced the *lossy* default-precision round-trip. Match fixed C by using the full-precision `reflon`/`reflat` values directly (still normalised to AST's canonical ranges), which is what the Digits=20 round-trip yields.
+**Background:** C now bumps the SkyFrame `Digits` to 20 before the `astFormat`/`astSetC` round-trip, making the string conversion effectively lossless. The Rust mirror deliberately reproduced the *lossy* default-precision round-trip. Match fixed C by using the full-precision `reflon`/`reflat` values directly (still normalized to AST's canonical ranges), which is what the Digits=20 round-trip yields.
 
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/fset_to_store/mod.rs:482-538`
@@ -206,7 +206,7 @@ EOF
 
 **Interfaces:**
 - Consumes: `reflon: f64`, `reflat: f64` (from the earlier `fid` binding at line 477); `normalise_ra`, `normalise_dec` from `crate::frames::skyaxis`.
-- Produces: no signature change; `spec.set_ref_ra` / `spec.set_ref_dec` now receive full-precision normalised values.
+- Produces: no signature change; `spec.set_ref_ra` / `spec.set_ref_dec` now receive full-precision normalized values.
 
 - [ ] **Step 1: Confirm the failing golden before the change**
 
@@ -217,7 +217,7 @@ diff crates/ast-core/tests/fixtures/wcsconv/expected/longslit.fits-wcs reference
 ```
 Expected: `VELOSYS` differs (`-20038.807` ours vs `-20038.808` upstream).
 
-- [ ] **Step 2: Replace the lossy format/unformat block with full-precision normalise**
+- [ ] **Step 2: Replace the lossy format/unformat block with full-precision normalize**
 
 In `crates/ast-core/src/fitschan/fset_to_store/mod.rs`, replace the block from the `// C uses \`astSetC(tfs, "RefRA"...` comment through the `let (reflon_quant, reflat_quant) = { ... };` binding (lines ~488-530) with:
 
@@ -287,7 +287,7 @@ EOF
 - Modify (test): `crates/ast-core/tests/test_frame_geometry.rs:63-79` (`ax_angle_cartesian`)
 
 **Interfaces:**
-- Produces: `ax_angle(&self, a: &[f64], b: &[f64], axis: usize) -> AstResult<f64>` — signature unchanged; behaviour corrected for the `a[axis-1]==0 && b[axis-1]!=0` case.
+- Produces: `ax_angle(&self, a: &[f64], b: &[f64], axis: usize) -> AstResult<f64>` — signature unchanged; behavior corrected for the `a[axis-1]==0 && b[axis-1]!=0` case.
 
 - [ ] **Step 1: Update the existing test to the corrected (fixed-C) expectations**
 
@@ -909,10 +909,10 @@ regenerated). The historical discussion below is retained for context.
 <existing body unchanged>
 ```
 
-- [ ] **Step 2: Mark each Bucket-2 entry resolved (behaviour already correct in Rust)**
+- [ ] **Step 2: Mark each Bucket-2 entry resolved (behavior already correct in Rust)**
 
-For these, add a `RESOLVED` note stating the Rust port already had the correct behaviour and the C side is now fixed too:
-- "MatrixMap MapSplit: uninitialised pmat advance on BAD entries" → `c9ce955a`
+For these, add a `RESOLVED` note stating the Rust port already had the correct behavior and the C side is now fixed too:
+- "MatrixMap MapSplit: uninitialized pmat advance on BAD entries" → `c9ce955a`
 - "ScalePolyInputs: stale pointer in inverse-coefficient branch" → `f4c019d4`
 - "SIPIntWorld reads nout from astGetNin (typo bug)" → `232643bc`
 - "CLASSFromStore: spectral CDELT multiplied by specfactor twice" → `17416d33`

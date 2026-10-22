@@ -16,11 +16,11 @@ with a 2-D UnitMap when, in the orientations the merge list gives them, they
 are equal and opposite.
 
 `XphMap::map_merge` (`xphmap.rs:365-395 (fn map_merge)`) is the whole of it;
-no neighbour's `try_merge` is involved.
+no neighbor's `try_merge` is involved.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result | xphmap.c:513-514 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result | xphmap.c:513-514 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status | xphmap.c:516-517 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Handle the case where the Mappings are connected in series | xphmap.c:523-526 (fn MapMerge) | xphmap.rs:371-373 (fn map_merge) | architecture | ported |
 | 4 | Look for an adjacent XphMap, the previous Mapping first | xphmap.c:528-546 (fn MapMerge) | xphmap.rs:374-381 (fn map_merge) | architecture | ported |

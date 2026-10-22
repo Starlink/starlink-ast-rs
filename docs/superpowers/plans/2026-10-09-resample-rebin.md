@@ -11,7 +11,7 @@ No subclass overrides them; `region.c` `Mask<X>` calls `astResample<X>`.
 | Adaptive subdivision, linear fit | `ResampleAdaptively` | 14471 |
 | Blocks of at most `mxpix` output pixels | `ResampleWithBlocking` | 15992 |
 | Positions of one block, dispatch by scheme and type | `ResampleSection` | 14920 |
-| Nearest neighbour | `InterpolateNearest<X>` | 4933 |
+| Nearest neighbor | `InterpolateNearest<X>` | 4933 |
 | Linear | `InterpolateLinear<X>` | 3991 |
 | Separable kernels, user kernel (`AST__UKERN1`) | `InterpolateKernel1<X>` | 2841 |
 | Kernels | `Sinc`, `SincCos`, `SincGauss`, `SincSinc`, `Somb`, `SombCos`, `Gauss` | 16473 on |
@@ -21,7 +21,7 @@ No subclass overrides them; `region.c` `Mask<X>` calls `astResample<X>`.
 | Rebin drivers | `RebinAdaptively`, `RebinWithBlocking`, `RebinSection` | 10249, 12746, 10712 |
 | Spreading | `SpreadNearest<X>`, `SpreadLinear<X>`, `SpreadKernel1<X>` | 19646, 18804, 17574 |
 
-## Per-type behaviour that must carry over
+## Per-type behavior that must carry over
 
 - Resample covers D, F, L, UL, K, UK, I, UI, S, US, B, UB; L and K are both
   `i64` on LP64 platforms, so the port has ten types. Rebin and RebinSeq cover

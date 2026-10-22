@@ -56,7 +56,7 @@ pub struct PcdMap {
     /// Whether `Disco` holds a supplied value — C's `TestDisco`
     /// (`pcdmap.c:2587`), which the dump writes as the card's set flag.
     disc_set: bool,
-    /// The distortion centre as C's getter reports it, 0.0 per axis in place of
+    /// The distortion center as C's getter reports it, 0.0 per axis in place of
     /// the `AST__BAD` unset sentinel (`pcdmap.c:2638-2639`).
     pcdcen: [f64; 2],
     /// Whether each `PcdCen` axis holds a supplied value — C's `TestPcdCen`
@@ -162,7 +162,7 @@ impl PcdMap {
     pub fn set_disc(&mut self, disc: f64) {
         // A zero coefficient is what PcdMap's own MapMerge tests for when it
         // replaces the PcdMap with a UnitMap, in the section C marks "without
-        // reference to the neighbouring Mappings in the list"
+        // reference to the neighboring Mappings in the list"
         // (pcdmap.c:1418-1422), so a conclusion an earlier simplification
         // reached no longer holds. Both simplified records are discarded
         // (pcdmap.c:2586, the convention at mapping.h:449-472).
@@ -288,7 +288,7 @@ impl PcdMap {
         self.disc
     }
 
-    /// Get the effective centre, accounting for inversion state.
+    /// Get the effective center, accounting for inversion state.
     fn effective_pcdcen(&self) -> [f64; 2] {
         self.pcdcen
     }
@@ -494,7 +494,7 @@ impl Mapping for PcdMap {
 
         // Case 1: PcdMap + PcdMap (inverse cancellation)
         if let Some(other_pcd) = other.as_any().downcast_ref::<PcdMap>() {
-            // They cancel if they have the same disc and centre but opposite
+            // They cancel if they have the same disc and center but opposite
             // effective inversion states.
             if ast_equal(self.disc, other_pcd.disc)
                 && ast_equal(self.pcdcen[0], other_pcd.pcdcen[0])

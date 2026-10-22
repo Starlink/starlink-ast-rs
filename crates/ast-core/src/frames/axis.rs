@@ -364,7 +364,7 @@ impl FrameAxis {
     /// Overlay the attributes set on the template Axis object. Mirrors
     /// `astAxisOverlay`, dispatched on the template's class: axis.c:1226 for
     /// the Axis attributes, then, for a SkyAxis onto a SkyAxis,
-    /// skyaxis.c:1370 for its Format, AsTime, IsLatitude and CentreZero.
+    /// skyaxis.c:1370 for its Format, AsTime, IsLatitude and Centerzero.
     pub(crate) fn overlay_from(&mut self, template: &FrameAxis) {
         self.axis_mut().overlay_from(template.axis());
         if let (FrameAxis::Sky(r), FrameAxis::Sky(t)) = (self, template) {

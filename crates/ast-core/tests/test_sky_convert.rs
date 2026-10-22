@@ -21,7 +21,7 @@ use ast_core::frames::{Frame, FrameRef, SkyFrame, SkySystem};
 /// takes `sin` and `cos` of the same angles. Apple clang merges each pair into
 /// one `__sincos_stret` call when it builds the C library, and that call can
 /// round differently from separate `sin` and `cos`. A release build of this
-/// crate makes the same merge and reproduces C exactly; an unoptimised test
+/// crate makes the same merge and reproduces C exactly; an unoptimized test
 /// build does not. The steps before E2H agree bit for bit. One unit in the
 /// last place of an intermediate becomes up to five in the elevation, which
 /// `atan2` takes from a small `z`; each case records the bound measured for it.
@@ -139,9 +139,9 @@ fn convert_matches_the_c_library() {
     );
 }
 
-/// Each licensed case still needs its licence in an unoptimised build, and
-/// matches C exactly in an optimised one; a case that stops differing in the
-/// unoptimised build must be removed from `SINCOS_MERGE_LICENSED`.
+/// Each licensed case still needs its license in an unoptimized build, and
+/// matches C exactly in an optimized one; a case that stops differing in the
+/// unoptimized build must be removed from `SINCOS_MERGE_LICENSED`.
 #[test]
 fn sincos_licences_are_still_needed() {
     for &(config, from_sys, to_sys, align, _, reason) in SINCOS_MERGE_LICENSED {

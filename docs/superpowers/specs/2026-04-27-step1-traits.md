@@ -371,5 +371,5 @@ ndarray = "0.16"
 - No concrete Frame implementations (Step 3: BasicFrame, CmpFrame)
 - No FrameSet (Step 4)
 - No Region implementations or PointList's Region impl (Step 3+)
-- No serialisation
+- No serialization
 - No `convert()` method on Frame (it returns FrameSet, which is Step 4)

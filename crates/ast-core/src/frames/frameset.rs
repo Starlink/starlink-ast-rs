@@ -180,7 +180,7 @@ pub struct FrameSet {
     current_idx: usize,
     /// Whether the Base attribute has been explicitly set (mirrors C's
     /// `base != -INT_MAX`, frameset.c:12554). Controls whether `Base` is
-    /// serialised as an active value or a commented-out default: a FrameSet
+    /// serialized as an active value or a commented-out default: a FrameSet
     /// assembled from a FITS header has Base explicitly set (C `astSetBase`,
     /// fitschan.c:12084), whereas one built by `astAddFrame` leaves it
     /// defaulted. When `false`, `base_idx` still holds the effective base,
@@ -203,7 +203,7 @@ pub struct FrameSet {
     /// share no base struct and the variant API only ever acts on a FrameSet's
     /// current frame. A bare `Frame` carrying variants outside a FrameSet is
     /// therefore unsupported (a documented divergence — not in the C public
-    /// test surface). Serialisation still matches C exactly (the `Vrnts` object
+    /// test surface). Serialization still matches C exactly (the `Vrnts` object
     /// is written into / read from each member Frame's node; see `to_node`).
     frame_variants: Vec<Option<FrameSet>>,
     /// Per-frame variant-mirror index (0-based frame → 1-based mirror target,
@@ -1291,8 +1291,8 @@ impl FrameSet {
     ) -> AstResult<Option<FrameSet>> {
         // Synthesize the comma-separated string domainlist from the
         // slice form. An empty slice → "" (allows any). Any empty
-        // entry appears in the synthesised string as adjacent commas
-        // (which the canonicaliser reads as "blank field").
+        // entry appears in the synthesized string as adjacent commas
+        // (which the canonicalizer reads as "blank field").
         let joined = if domains.is_empty() {
             String::new()
         } else {
@@ -2113,7 +2113,7 @@ impl Frame for FrameSet {
         self.current().norm_unit(axis)
     }
 
-    /// The current Frame normalises the points.
+    /// The current Frame normalizes the points.
     // C: frameset.c `NormalPoints`.
     fn normal_points(
         &self,
@@ -2362,7 +2362,7 @@ fn convert_current_to(from: &dyn Frame, to: &dyn Frame) -> AstResult<DynMapping>
 /// treats it. For each `(from_member, to_member)` pair the per-pair alignment
 /// is found via [`convert_frames`], the `from`-current→member Mapping is
 /// prefixed, the `to`-member→current Mapping is appended, the result is
-/// simplified, and a score favouring both-direction Mappings
+/// simplified, and a score favoring both-direction Mappings
 /// (forward+inverse=3, forward=2, inverse=1) selects the best route. The
 /// returned 2-frame FrameSet maps `from`'s current Frame to `to`'s current
 /// Frame.
@@ -2737,7 +2737,7 @@ impl Mapping for FrameSet {
 }
 
 // ====================================================================== //
-// Serialisation                                                          //
+// Serialization                                                          //
 // ====================================================================== //
 
 impl Serializable for FrameSet {

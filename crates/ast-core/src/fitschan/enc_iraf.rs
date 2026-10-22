@@ -23,7 +23,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 /// - Legacy projection codes NCP and GLS are translated to SIN and SFL
 /// - The 3-digit CD format (`CD001001`) is also checked
 ///
-/// Now that `spec_trans` normalises FITS-IRAF keywords, the live
+/// Now that `spec_trans` normalizes FITS-IRAF keywords, the live
 /// read path no longer calls this function. Kept for tests.
 #[allow(dead_code)]
 pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {

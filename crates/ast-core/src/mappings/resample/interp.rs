@@ -614,7 +614,7 @@ pub(super) fn block_average<T: PixelValue>(
     let mut result = 0;
 
     // C's `bad_var` is set at the start, then only where a block's sums
-    // are initialised.
+    // are initialized.
     let mut bad_var = false;
     let add = |s: &mut Sums<T::Sum>, bad_var: &mut bool, off_in: i64| {
         let v = a.input[off_in as usize];

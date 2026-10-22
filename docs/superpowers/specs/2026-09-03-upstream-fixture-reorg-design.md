@@ -150,7 +150,7 @@ The cause is one layer down, in the justification at `mapping.h:455`:
 > Discarding anyway is safe — the records can only ever suppress a
 > simplification, never make one wrong — so err towards it when in doubt.
 
-That holds while `IsSimple` is an internal optimisation hint.
+That holds while `IsSimple` is an internal optimization hint.
 It stops holding once the flag is serialized as an `IsSimp` card and compared
 byte-for-byte, because over-clearing then changes observable output.
 
@@ -274,7 +274,7 @@ committed program here builds them either.
 prose but not its constructor calls or numeric parameters.
 
 Copying the bytes alone would leave 25 fixtures that a corpus regeneration
-either orphans or deletes, and that no future C behaviour change could
+either orphans or deletes, and that no future C behavior change could
 re-baseline.
 So U3 adds a constructor function per stem to `gen_simplify_fixtures.c`, each
 calling the existing `write_fixture` or `write_negative_fixture` helper so both
@@ -353,7 +353,7 @@ If they do not, that is a real MapMerge gap in `ChebyMap` and belongs in
   `head2ast.c`; `check_corpus_fresh.*` and `check_simplify_fresh.*` are
   repointed and switched to the shared `cases.txt`.
 
-**R4. Three behavioural ports.**
+**R4. Three behavioral ports.**
 
 - *The one-ULP WCS boundary clamp* (`460efce3`, `src/wcsmap.c`).
   A WinMap used by a FITS CAR mapping evaluates an expression such as
@@ -387,7 +387,7 @@ If they do not, that is a real MapMerge gap in `ChebyMap` and belongs in
   `testprotectedcmpequal` and `testprotectedcmpequalstable`.
 - *Un-mirror the `IsSimp` loader loss* and retire its `c-library-quirks.md`
   entry.
-  This is a deletion rather than a behaviour change.
+  This is a deletion rather than a behavior change.
   The port already builds a complete `Node` tree and constructs the object in
   one shot with the right values, so it would not have the defect; each
   `from_node` then *adds* a redundant re-application through a setter, purely to

@@ -10,7 +10,7 @@ Uncited C steps:
 - stc.c:2640 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
 - stc.c:937 (fn GetDefUnc) — `Local Variables:` is the local-variable declaration block, not a step
 
-stc.c has no `MapMerge`; an Stc reaches a neighbour only through the Region it
+stc.c has no `MapMerge`; an Stc reaches a neighbor only through the Region it
 encapsulates. `Simplify` (`stc.c:2653-2802 (fn Simplify)`) simplifies the Region
 part, moves any negation onto the encapsulated Region, re-defines that Region in
 the current Frame, and does the same for each Region in the AstroCoords
@@ -46,7 +46,7 @@ Region's own uncertainty.
 | 22 | Free the Mapping and Frame | stc.c:2794-2796 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 23 | Annul the result if an error occurred | stc.c:2798-2799 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 24 | Return the result | stc.c:2801-2802 (fn Simplify) | stc.rs:1359-1363 (fn simplified) | architecture | ported |
-| 25 | `GetDefUnc`: initialise | stc.c:941-942 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no sentinel to initialise |
+| 25 | `GetDefUnc`: initialize | stc.c:941-942 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no sentinel to initialize |
 | 26 | Check the global error status | stc.c:944-945 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 27 | Get a pointer to the Stc | stc.c:947-948 (fn GetDefUnc) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 28 | Use the encapsulated Region's own uncertainty, in its current Frame, which is the Stc's base Frame | stc.c:950-955 (fn GetDefUnc) | stc.rs:1084-1085 (fn get_def_unc) | architecture | ported |

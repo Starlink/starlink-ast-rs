@@ -594,7 +594,7 @@ fn c_definition_name(lines: &[&str], i: usize) -> Option<CDefinition> {
 #[cfg(test)]
 mod tests {
     /// A class whose trait method delegates its algorithm to a free function in
-    /// a neighbouring module, which is how the port holds `MapMerge` bodies.
+    /// a neighboring module, which is how the port holds `MapMerge` bodies.
     const CLASS_SRC: &str = r#"
 impl SphMap {
     fn helper(&self) -> u32 {

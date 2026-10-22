@@ -1,4 +1,4 @@
-//! Tests for NormMap — coordinate normalisation mapping.
+//! Tests for NormMap — coordinate normalization mapping.
 //!
 //! Ported from reference/starlink-ast/ast_tester/testnormmap.c
 //! where applicable.
@@ -45,7 +45,7 @@ fn normmap_skyframe_normalisation() {
     let result = nm.transform(&pts, true).unwrap();
     let out = result.point(0);
 
-    // After normalisation, longitude should be in [0, 2*PI].
+    // After normalization, longitude should be in [0, 2*PI].
     assert!(out[0] >= 0.0 && out[0] <= 2.0 * PI, "lon = {}", out[0]);
     // Check that 3*PI wraps to PI.
     assert!((out[0] - PI).abs() < 1e-10, "expected PI, got {}", out[0]);
@@ -59,7 +59,7 @@ fn normmap_skyframe_normalisation() {
 
 #[test]
 fn normmap_forward_equals_inverse() {
-    // Both forward and inverse perform the same normalisation.
+    // Both forward and inverse perform the same normalization.
     let sky = SkyFrame::new(SkySystem::Icrs);
     let nm = NormMap::new(Box::new(sky));
 
@@ -229,7 +229,7 @@ fn normmap_inverted_transform() {
     let fwd = nm.transform(&pts, true).unwrap();
     let inv = nm.transform(&pts, false).unwrap();
 
-    // Both should normalise.
+    // Both should normalize.
     assert!((fwd.point(0)[0] - PI).abs() < 1e-10);
     assert!((inv.point(0)[0] - PI).abs() < 1e-10);
 }
@@ -248,10 +248,10 @@ fn normmap_multiple_points() {
 
     let result = nm.transform(&pts, true).unwrap();
 
-    // Point 0: already normalised.
+    // Point 0: already normalized.
     assert!((result.point(0)[0]).abs() < 1e-10);
 
-    // Point 1: PI is already normalised.
+    // Point 1: PI is already normalized.
     assert!((result.point(1)[0] - PI).abs() < 1e-10);
 
     // Point 2: 2*PI+0.1 should wrap to 0.1.
@@ -282,7 +282,7 @@ fn permuted_cmpframe_normmap() -> NormMap {
 }
 
 /// testnormmap.c Errors 1-9: dimensions, both directions defined,
-/// cancellation against the inverse, normalisation of a latitude past the
+/// cancellation against the inverse, normalization of a latitude past the
 /// pole across the permuted axes, and four copies in series reducing to one.
 #[test]
 fn normmap_on_a_permuted_cmpframe() {

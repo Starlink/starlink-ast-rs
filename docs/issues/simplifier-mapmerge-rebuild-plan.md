@@ -26,7 +26,7 @@ In progress.
   pairwise merge (C MapMerge step 2) as the inherited `map_merge` body.
   The legacy global swap helpers remain as a temporary stall-handler
   fallback (retired into per-class `map_merge` in Phases 2-5), guarded by a
-  `MAX_STALL_ROUNDS` bound that is removed in Phase 5. Behaviour-neutral by
+  `MAX_STALL_ROUNDS` bound that is removed in Phase 5. Behavior-neutral by
   construction and verified byte-for-byte: the full ast-core suite stays
   green and instrumentation confirms neither the `pattern_check` freeze nor
   the stall cap ever fires on the corpus.
@@ -36,7 +36,7 @@ In progress.
 ## Why this exists
 
 The Rust simplifier (`crates/ast-core/src/mappings/simplify.rs`) was grown
-opportunistically: individual C simplification behaviours were reimplemented as
+opportunistically: individual C simplification behaviors were reimplemented as
 standalone helper functions (`try_swap_winmap_past_matrixmap`,
 `try_swap_wcsmap_past_permmap`, `try_distribute_winmap_into_parallel`, …) as
 fixtures demanded them, without reproducing C's overall control structure.
@@ -67,7 +67,7 @@ simplifying a compound mapping is:
    already being simplified higher up the stack.
 2. Decomposes the tree with `astMapList` into a flat `map_list` plus a parallel
    `invert_list`, and captures the returned `simpler` flag.
-3. Honours `RESTRICTED_SIMPLIFY` / `ALLOW_SIMPLIFY` (we can ignore this — we
+3. Honors `RESTRICTED_SIMPLIFY` / `ALLOW_SIMPLIFY` (we can ignore this — we
    never set those flags).
 4. `SeparateMappings` — deep-copies so components are independent (a class's
    `MapMerge` may temporarily mutate a component).
@@ -97,7 +97,7 @@ while improved:
 
 `astMapMerge` dispatches to the **nominated mapping's class** `MapMerge`. That
 method owns *all* the logic for how that class merges with, swaps past, or
-rewrites its neighbours. Its contract (`cmpmap.c` MapMerge prologue, and the
+rewrites its neighbors. Its contract (`cmpmap.c` MapMerge prologue, and the
 WinMap prologue at `winmap.c:884`):
 
 - `this` is the nominated mapping; `where` is its index in `map_list`.
@@ -124,14 +124,14 @@ The ones that carry real series/parallel rewrite logic for our fixtures:
   1. *Replace-with-simpler*: if all shifts are zero, become a diagonal
      `MatrixMap` (faster). The WinMap→ShiftMap conversion is deferred to the
      end and `Frozen` to avoid an infinite ShiftMap↔WinMap loop.
-  2. *Direct merge* with a mergeable neighbour (another WinMap / ZoomMap /
+  2. *Direct merge* with a mergeable neighbor (another WinMap / ZoomMap /
      ShiftMap / UnitMap / **diagonal** MatrixMap): `WinWin`, `WinZoom`, …
   3. *Swap toward the nearest mergeable target*: compute `nstep1`/`nstep2`
      (distance to the nearest mergeable map on each side, passing only over
      MatrixMap / WcsMap / PermMap); swap that direction via `WinMat` /
      `WinPerm` / `WinWcs`; then immediately `astMapMerge` at the new adjacency.
-  4. *Speculative swap*: even with no target, swap with a neighbour if the
-     result is "simpler" — kept iff the two neighbours can now merge **or**
+  4. *Speculative swap*: even with no target, swap with a neighbor if the
+     result is "simpler" — kept iff the two neighbors can now merge **or**
      either swapped map `astSimplify`s to something different
      (`winmap.c:1660-1670`). A unit-scale WinMap simplifies to a ShiftMap, so
      absorbing a non-unit scale into an adjacent matrix is "simpler" and kept.
@@ -187,7 +187,7 @@ The ones that carry real series/parallel rewrite logic for our fixtures:
    hand-tuned heuristic; C chooses direction by `nstep` distance to the nearest
    mergeable map. Different choices → different (but equivalent) structures.
 3. **No `CanSwap` keep-if-simpler gate.** Rust gates each swap with bespoke,
-   local conditions; C gates uniformly with "do the neighbours now merge, or
+   local conditions; C gates uniformly with "do the neighbors now merge, or
    does a swapped map simplify". This is exactly the gate `rigby` needs and the
    one that, when crudely approximated, breaks `neg_win_swap_no_simplify`.
 
@@ -235,7 +235,7 @@ as the "direct merge" step).
 
 ### Phase 0 — Scaffolding and safety net
 
-- Freeze the current behaviour as the baseline: the 437 `.map`/`.simp` +
+- Freeze the current behavior as the baseline: the 437 `.map`/`.simp` +
   139 `.ast` + 24 generated round-trip fixtures, the `simplify_tests.txt`
   regression (correctness via `equal()` + transform), and the full `ast-core`
   suite must stay green at every step.
@@ -255,7 +255,7 @@ as the "direct merge" step).
   flag in `MergeCtx`, not on the mapping object).
 - Keep the existing direct-merge `try_merge` as the first thing each class's
   `map_merge` tries (so nothing regresses while swaps are still TODO).
-- At this point behaviour should equal today's (helpers still invoked from a
+- At this point behavior should equal today's (helpers still invoked from a
   generic fallback `map_merge`). Verify byte-for-byte against the baseline.
 
 ### Phase 2 — WinMap `MapMerge` (the big one; unblocks `rigby`)
@@ -264,16 +264,16 @@ Port `winmap.c::MapMerge` faithfully into `WinMap::map_merge`:
 
 - Step 1 replace-with-simpler (shifts zero → diagonal MatrixMap; deferred,
   frozen WinMap→ShiftMap at end).
-- Step 2 direct merge with mergeable neighbour (reuse `try_merge`; add
+- Step 2 direct merge with mergeable neighbor (reuse `try_merge`; add
   `WinZoom`).
 - Step 3 `nstep1`/`nstep2` seek + `WinMat`/`WinPerm`/`WinWcs` swap + follow-on
   merge. `WinMat` must set the result WinMap scale to exactly `1.0` (the
   absorption), matching `winmap.c:2936`.
-- Step 4 speculative swap kept iff neighbours merge or a swapped map simplifies
+- Step 4 speculative swap kept iff neighbors merge or a swapped map simplifies
   (`winmap.c:1660-1670`).
 - Retire `try_swap_winmap_past_matrixmap`, `try_swap_winmap_past_permmap`,
   `try_swap_winmap_wcsmap`, and the `try_distribute_winmap_into_parallel`
-  WinMap-specific bits in favour of this method.
+  WinMap-specific bits in favor of this method.
 - Re-enable `rigby` (drop its `skip_string_compare`) and confirm byte-exact.
 
 ### Phase 3 — MatrixMap, PermMap, ZoomMap, ShiftMap, UnitMap `MapMerge`
@@ -315,7 +315,7 @@ Port `winmap.c::MapMerge` faithfully into `WinMap::map_merge`:
 
 ## Invariants to preserve (do not regress)
 
-- Native serialisation stays byte-exact with C (CLAUDE.md contract).
+- Native serialization stays byte-exact with C (CLAUDE.md contract).
 - `reconstruct`'s orientation handling (component stored in its original
   orientation, effective direction in `InvA`/`InvB`) — already correct.
 - The `WinWin` equal-and-opposite cancellation + 1e-15 snaps — already ported

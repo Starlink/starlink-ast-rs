@@ -2254,7 +2254,7 @@ Expected: clean
 5. AIPS CROTA → PC matrix conversion is correct
 6. AIPS spectral CTYPE translation (VELO-LSR→VRAD+LSRK) works
 7. CLASS offset frequency (CRVAL + RESTFREQ) correction works
-8. DSS plate centre H/M/S conversion is correct
+8. DSS plate center H/M/S conversion is correct
 9. IRAF NCP→SIN and GLS→SFL translations work
 10. PC 3-digit format (PC001001) parsing works
 11. All existing Phase 2/3 tests still pass

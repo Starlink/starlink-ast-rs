@@ -80,7 +80,7 @@ unsafe extern "C" {
     fn astPalAmpqk(ra: f64, da: f64, amprms: *const f64, rm: *mut f64, dm: *mut f64);
     fn astPalMapqkz(rm: f64, dm: f64, amprms: *const f64, ra: *mut f64, da: *mut f64);
 
-    // -- Angular normalisation --
+    // -- Angular normalization --
     fn astPalDrange(angle: f64) -> f64;
     fn astPalDranrm(angle: f64) -> f64;
     fn astPalDsep(al: f64, ap: f64, bl: f64, bp: f64) -> f64;
@@ -164,7 +164,7 @@ pub(crate) fn dcs2c(a: f64, b: f64) -> [f64; 3] {
 
 /// Direction-cosine 3-vector to spherical coordinates (longitude, latitude).
 ///
-/// The components are canonicalised so a negative zero becomes a positive
+/// The components are canonicalized so a negative zero becomes a positive
 /// zero before `eraC2s`'s `atan2(y, x)`. A point on the −x meridian arrives
 /// from the rotation pipeline with `y == ∓0.0` depending only on the
 /// summation order of the matrix product; C's compressed-matrix arithmetic
@@ -454,7 +454,7 @@ pub(crate) fn mapqkz(rm: f64, dm: f64, amprms: &[f64; 21]) -> (f64, f64) {
 }
 
 // ---------------------------------------------------------------------------
-// Group 8: Angular normalisation
+// Group 8: Angular normalization
 // ---------------------------------------------------------------------------
 
 /// Normalize an angle to the range [-pi, pi].
@@ -508,9 +508,9 @@ pub(crate) fn evp(date: f64, deqx: f64) -> ([f64; 3], [f64; 3], [f64; 3], [f64; 
 /// distance from equatorial plane.
 ///
 /// - `p`: geodetic latitude (radians)
-/// - `h`: height above reference spheroid (metres)
+/// - `h`: height above reference spheroid (meters)
 ///
-/// Returns `(r, z)` in metres.
+/// Returns `(r, z)` in meters.
 pub(crate) fn geoc(p: f64, h: f64) -> (f64, f64) {
     let mut r = 0.0;
     let mut z = 0.0;
@@ -655,10 +655,10 @@ pub(crate) enum TdbConvScale {
     Tdb,
 }
 
-/// Difference TDB − TT in seconds at the geocentre.
+/// Difference TDB − TT in seconds at the geocenter.
 ///
 /// Wraps ERFA `eraDtdb`, the full Fairhead & Bretagnon (1990) series
-/// (≤±3 ns absolute accuracy 1950-2050). At the geocentre the
+/// (≤±3 ns absolute accuracy 1950-2050). At the geocenter the
 /// observer-position arguments (`elong`, `u`, `v`) are zero; UT1 is
 /// only required to ~1-day precision so the UTC fractional day is a
 /// safe approximation. Mirrors the way AST's `Rcc` is invoked from
@@ -678,15 +678,15 @@ pub(crate) fn dtdb_geocentre(tdb_mjd: f64) -> f64 {
 // ---------------------------------------------------------------------------
 
 /// Convert geodetic position (longitude, latitude, altitude) to a
-/// geocentric Cartesian XYZ position vector in metres. Mirrors
+/// geocentric Cartesian XYZ position vector in meters. Mirrors
 /// `eraGd2gc(1, ...)` (WGS84 reference ellipsoid).
 ///
 /// - `lon`: geodetic longitude (radians, east-positive)
 /// - `lat`: geodetic latitude (radians)
-/// - `height`: altitude above reference ellipsoid (metres)
+/// - `height`: altitude above reference ellipsoid (meters)
 ///
-/// Returns the 3-vector `[x, y, z]` in metres, or `None` if the ERFA
-/// routine signalled an error (e.g. latitude out of range).
+/// Returns the 3-vector `[x, y, z]` in meters, or `None` if the ERFA
+/// routine signaled an error (e.g. latitude out of range).
 pub(crate) fn gd2gc(lon: f64, lat: f64, height: f64) -> Option<[f64; 3]> {
     let mut xyz = [0.0_f64; 3];
     let status = counted!(astEraGd2gc(1, lon, lat, height, xyz.as_mut_ptr()));
@@ -719,7 +719,7 @@ pub(crate) fn gc2gd(xyz: [f64; 3]) -> Option<(f64, f64, f64)> {
 /// Observer position and velocity as a 6-vector.
 ///
 /// - `lat`: geodetic latitude (radians)
-/// - `alt`: altitude above reference spheroid (metres)
+/// - `alt`: altitude above reference spheroid (meters)
 /// - `lst`: local apparent sidereal time (radians)
 ///
 /// Returns a 6-element array: [x, y, z, xdot, ydot, zdot] in AU and AU/s.
@@ -956,7 +956,7 @@ mod tests {
 
     #[test]
     fn test_galeq_center() {
-        // Galactic centre (l=0, b=0) should be near RA~266.4 deg, Dec~-28.9 deg
+        // Galactic center (l=0, b=0) should be near RA~266.4 deg, Dec~-28.9 deg
         let (dr, dd) = galeq(0.0, 0.0);
         let ra_deg = dr.to_degrees();
         let dec_deg = dd.to_degrees();
@@ -1093,7 +1093,7 @@ mod tests {
         assert_close(dm2, dm, 1.0e-9);
     }
 
-    // -- Angular normalisation --
+    // -- Angular normalization --
 
     #[test]
     fn test_drange_4pi() {
@@ -1154,7 +1154,7 @@ mod tests {
 
     #[test]
     fn test_geoc_equator() {
-        // At equator and sea level, r should be ~Earth radius in metres-ish
+        // At equator and sea level, r should be ~Earth radius in meters-ish
         // (actually geoc returns values in units of Earth radii, and z should be ~0).
         let (r, z) = geoc(0.0, 0.0);
         assert!(r > 0.0, "r should be positive at equator");

@@ -4,9 +4,9 @@
 
 **Goal:** Drive `cargo test -p ast-core --test test_simplify_regression` to **0 failures, 0 skipped** by closing the 11 unique failing fixtures and removing the IntraMap-blocked entry. Each fix lands as its own commit so bisect stays useful.
 
-**Architecture:** Three independent groups of fixes — (C) per-class normalisations in `MatrixMap`, `GrismMap`, and the simplify reconstruct path; (A) CmpMap structural rewrites in `simplify.rs` (inverse cancellation, inversion distribution, PermMap-parallel constant-component replacement); (B) per-class `try_merge` impls on `BoxRegion` / `Interval` plus an Interval→Box reclassification in `Interval::simplified`. No new modules, no public API changes, no ABI changes.
+**Architecture:** Three independent groups of fixes — (C) per-class normalizations in `MatrixMap`, `GrismMap`, and the simplify reconstruct path; (A) CmpMap structural rewrites in `simplify.rs` (inverse cancellation, inversion distribution, PermMap-parallel constant-component replacement); (B) per-class `try_merge` impls on `BoxRegion` / `Interval` plus an Interval→Box reclassification in `Interval::simplified`. No new modules, no public API changes, no ABI changes.
 
-**Tech Stack:** Rust 2024, `ast-core`, `ndarray`, native AST serialisation. C reference: `reference/starlink-ast/src/{cmpmap,box,interval,matrixmap,grismmap}.c`.
+**Tech Stack:** Rust 2024, `ast-core`, `ndarray`, native AST serialization. C reference: `reference/starlink-ast/src/{cmpmap,box,interval,matrixmap,grismmap}.c`.
 
 **Spec:** [`docs/superpower/specs/2026-05-20-simplify-residual-fixes-design.md`](../specs/2026-05-20-simplify-residual-fixes-design.md).
 
@@ -21,9 +21,9 @@
 
 ---
 
-## Group C — Per-class normalisations (3 tasks)
+## Group C — Per-class normalizations (3 tasks)
 
-These are localised, small, isolated. Land them first.
+These are localized, small, isolated. Land them first.
 
 ### Task C1: `MatrixMap` Full→Diagonal storage form switch
 
@@ -31,7 +31,7 @@ These are localised, small, isolated. Land them first.
 - Modify: `crates/ast-core/src/mappings/matrix.rs:333` (`MatrixMap::simplified`)
 - Test: `crates/ast-core/tests/test_matrixmap.rs` (append a new `#[test]` fn)
 
-**Symptom:** Fixture `matrix_full_to_diagonal` parses a MatrixMap with `Form="Full"` whose off-diagonals are zero. C reference simplifies it to the same numeric matrix re-stored as `Form="Diagonal"`. Our `simplified()` only collapses to `UnitMap` / `ZoomMap`; it leaves the form as `Full`, so serialisation diverges.
+**Symptom:** Fixture `matrix_full_to_diagonal` parses a MatrixMap with `Form="Full"` whose off-diagonals are zero. C reference simplifies it to the same numeric matrix re-stored as `Form="Diagonal"`. Our `simplified()` only collapses to `UnitMap` / `ZoomMap`; it leaves the form as `Full`, so serialization diverges.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -121,7 +121,7 @@ Expected: PASS.
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "matrix_full_to_diagonal|Simplify regression:"
 ```
 
-Expected: `matrix_full_to_diagonal` no longer appears in the serialisation-failure list. The summary line should show one fewer failure than before.
+Expected: `matrix_full_to_diagonal` no longer appears in the serialization-failure list. The summary line should show one fewer failure than before.
 
 - [ ] **Step 6: Lints + commit**
 
@@ -156,7 +156,7 @@ EOF
 - Modify: `crates/ast-core/src/mappings/grismmap.rs:233` (`merge_with_zoom`)
 - Test: `crates/ast-core/tests/test_grismmap.rs` (append a new `#[test]` fn)
 
-**Symptom:** Fixture `grism_zoom_inv_merge` already produces the right numeric result (`GrmWR = 5000 × 0.5 = 2500`) — all transforms agree. The serialisation fails because `merge_with_zoom` constructs the result via `GrismMap::new`, which marks all eight attributes explicit. The C reference only marks the three the merge math touched (`GrmNRP`, `GrmWR`, `GrmG`) explicit; the rest preserve the source's explicit/default state.
+**Symptom:** Fixture `grism_zoom_inv_merge` already produces the right numeric result (`GrmWR = 5000 × 0.5 = 2500`) — all transforms agree. The serialization fails because `merge_with_zoom` constructs the result via `GrismMap::new`, which marks all eight attributes explicit. The C reference only marks the three the merge math touched (`GrmNRP`, `GrmWR`, `GrmG`) explicit; the rest preserve the source's explicit/default state.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -209,7 +209,7 @@ Expected: PASS (baseline — current code marks all flags explicit). The real fa
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep grism_zoom_inv_merge
 ```
 
-Expected: `grism_zoom_inv_merge` appears in the serialisation-failure list.
+Expected: `grism_zoom_inv_merge` appears in the serialization-failure list.
 
 - [ ] **Step 4: Implement the fix in `merge_with_zoom`**
 
@@ -254,7 +254,7 @@ pub(crate) fn merge_with_zoom(
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "grism_zoom_inv_merge|Simplify regression:"
 ```
 
-Expected: `grism_zoom_inv_merge` no longer in any failure list; summary shows one fewer serialisation failure.
+Expected: `grism_zoom_inv_merge` no longer in any failure list; summary shows one fewer serialization failure.
 
 - [ ] **Step 6: Verify no GrismMap unit test regressed**
 
@@ -297,7 +297,7 @@ EOF
 
 **Symptom:** Fixture `unit_parallel_invert_clear`. Source: parallel CmpMap with `InvB=1` and a `UnitMap` with `Invert=1` as MapB. Our `flatten` strips the inner `Invert=1` and bubbles to `effective_inv=true` on the (UnitMap, true) entry. `reconstruct` then re-emits the parallel CmpMap with `InvB=1`. The C reference output drops the `InvB` and instead leaves the inner UnitMap with `Invert=1`.
 
-A `UnitMap` with `Invert=1` and a `UnitMap` with no flag are observationally identical and serialise differently. The reference normalisation: when an entry in a parallel reconstruct has `effective_inv = true` and the entry is a `UnitMap`, push the inversion back onto the leaf and clear the external flag.
+A `UnitMap` with `Invert=1` and a `UnitMap` with no flag are observationally identical and serialize differently. The reference normalization: when an entry in a parallel reconstruct has `effective_inv = true` and the entry is a `UnitMap`, push the inversion back onto the leaf and clear the external flag.
 
 - [ ] **Step 1: Confirm the failing fixture before the change**
 
@@ -305,15 +305,15 @@ A `UnitMap` with `Invert=1` and a `UnitMap` with no flag are observationally ide
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep unit_parallel_invert_clear
 ```
 
-Expected: appears in both equal-failure and serialisation-failure lists.
+Expected: appears in both equal-failure and serialization-failure lists.
 
 - [ ] **Step 2: Read the current `reconstruct` body**
 
 Skim `crates/ast-core/src/mappings/simplify.rs:2381` to understand the existing parallel-list reconstruction (it walks the list pairwise and folds into a parallel `CmpMap` chain, applying `effective_inv` via per-entry inversion or via the parent's `InvA`/`InvB` flags). Identify the spot where the per-entry inv flag is consumed.
 
-- [ ] **Step 3: Add the UnitMap normalisation pass before reconstruct returns**
+- [ ] **Step 3: Add the UnitMap normalization pass before reconstruct returns**
 
-Immediately before `reconstruct` builds the parallel-CmpMap chain, add a normalisation pass over `list`:
+Immediately before `reconstruct` builds the parallel-CmpMap chain, add a normalization pass over `list`:
 
 ```rust
 // Parallel-only normalisation: a UnitMap leaf carrying effective_inv=true
@@ -338,7 +338,7 @@ if !series {
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "unit_parallel_invert_clear|Simplify regression:"
 ```
 
-Expected: `unit_parallel_invert_clear` no longer in any failure list; summary shows one fewer equal failure and one fewer serialisation failure.
+Expected: `unit_parallel_invert_clear` no longer in any failure list; summary shows one fewer equal failure and one fewer serialization failure.
 
 - [ ] **Step 5: Run the full simplify suite to confirm no other regression**
 
@@ -385,7 +385,7 @@ After Group C lands, 8 fixtures remain failing. Group A targets the 5 CmpMap str
 - Modify: `crates/ast-core/src/mappings/simplify.rs:268-310` (the `merged = …` expression inside `merge_loop`)
 - Test: extend a focused unit test in `crates/ast-core/tests/test_cmpmap.rs`
 
-**Symptom:** Fixtures `cmpmap_nested_inverse_cancel` and `cmpmap_parallel_in_series_merge`. After `flatten`, the series list contains adjacent `(X, false)` then `(X, true)` (and analogously for the parallel-in-series case). Each `try_merge` is called with `(self_inv, other_inv) = (false, true)`. For MatrixMap the existing `try_merge` body computes `b·a` correctly; for MathMap and similar, `try_merge` does *not* recognise the inverse-cancellation case, so the pair survives.
+**Symptom:** Fixtures `cmpmap_nested_inverse_cancel` and `cmpmap_parallel_in_series_merge`. After `flatten`, the series list contains adjacent `(X, false)` then `(X, true)` (and analogously for the parallel-in-series case). Each `try_merge` is called with `(self_inv, other_inv) = (false, true)`. For MatrixMap the existing `try_merge` body computes `b·a` correctly; for MathMap and similar, `try_merge` does *not* recognize the inverse-cancellation case, so the pair survives.
 
 The fix is to add a generic equality-based cancellation as a fallback **before** the existing per-class `try_merge` dispatch in merge_loop: if `(m1, inv1)` and `(m2, inv2)` satisfy `inv1 != inv2` and `m1.equal(m2.as_ref())`, replace the pair with `UnitMap::new(m1_nin_eff)` regardless of class.
 
@@ -502,7 +502,7 @@ Expected: PASS.
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "cmpmap_nested_inverse_cancel|cmpmap_parallel_in_series_merge|Simplify regression:"
 ```
 
-Expected: both fixtures gone from the equal-failure and serialisation-failure lists; summary line shows two fewer equal failures and two fewer serial failures.
+Expected: both fixtures gone from the equal-failure and serialization-failure lists; summary line shows two fewer equal failures and two fewer serial failures.
 
 - [ ] **Step 6: Run the wider simplify suite to catch regressions**
 
@@ -552,7 +552,7 @@ Our reconstruct currently emits the outer `InvA=1` because `flatten` cannot recu
 
 - [ ] **Step 1: Write the failing test**
 
-`CmpMap`'s `inv_a` / `inv_b` / `first` / `second` accessors are `pub(crate)` (see `crates/ast-core/src/mappings/cmpmap.rs:101`), so integration tests cannot inspect the structure directly. Instead, drive the test through the data-driven simplify-regression harness using a one-line addition to `simplify_tests.txt` plus the existing `cmpmap_series_in_parallel_inverted.{map,simp}` fixture, OR assert on the native-string serialisation. The latter is more focused — append to `crates/ast-core/tests/test_cmpmap.rs`:
+`CmpMap`'s `inv_a` / `inv_b` / `first` / `second` accessors are `pub(crate)` (see `crates/ast-core/src/mappings/cmpmap.rs:101`), so integration tests cannot inspect the structure directly. Instead, drive the test through the data-driven simplify-regression harness using a one-line addition to `simplify_tests.txt` plus the existing `cmpmap_series_in_parallel_inverted.{map,simp}` fixture, OR assert on the native-string serialization. The latter is more focused — append to `crates/ast-core/tests/test_cmpmap.rs`:
 
 ```rust
 #[test]
@@ -602,7 +602,7 @@ as the "failing test" indicator. Proceed directly to Step 3 (the implementation)
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep cmpmap_series_in_parallel_inverted
 ```
 
-Expected: appears in equal-failure and serialisation-failure lists.
+Expected: appears in equal-failure and serialization-failure lists.
 
 - [ ] **Step 3: Implement the inversion-push in `reconstruct`**
 
@@ -685,7 +685,7 @@ Our `try_swap_permmap_parallel_at` already transforms the constant 99 through Ma
 cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep cmpmap_perm_swap_aconstants
 ```
 
-Expected: appears in equal-failure and serialisation-failure lists.
+Expected: appears in equal-failure and serialization-failure lists.
 
 (Like Task A2, the structural assertion needs `pub(crate)` accessors that integration tests can't reach. The regression fixture is itself the failing test; we drive the implementation against it.)
 

@@ -89,7 +89,7 @@ fn construct_mismatched_naxes_fails() {
 
 #[test]
 fn and_circle_and_box() {
-    // Circle of radius 5 centred at origin, AND box [-3,3] x [-3,3].
+    // Circle of radius 5 centerd at origin, AND box [-3,3] x [-3,3].
     // The intersection is the area inside both.
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let circle = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])
@@ -127,7 +127,7 @@ fn and_circle_and_box() {
 
 #[test]
 fn or_two_separated_circles() {
-    // Two circles: centred at (-5,0) and (5,0), both radius 2.
+    // Two circles: centerd at (-5,0) and (5,0), both radius 2.
     // They don't overlap.
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let c1 = CircleBuilder::new(frame.clone(), vec![-5.0, 0.0])
@@ -352,7 +352,7 @@ fn null_region_is_bounded() {
 fn and_unbounded_if_both_unbounded() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
 
-    // Two negated circles centred far apart: both exteriors are unbounded
+    // Two negated circles centerd far apart: both exteriors are unbounded
     // and their overlap is Partial (C overlap code 4). C cmpregion.c
     // GetBounded: when neither AND component is bounded, the result is
     // unbounded for overlap codes 1/4/6.
@@ -421,13 +421,13 @@ fn or_bounded_only_if_both_bounded() {
 fn and_bounding_box_is_intersection() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
 
-    // Circle centred at (0,0) with radius 5: box is [-5,5] x [-5,5].
+    // Circle centerd at (0,0) with radius 5: box is [-5,5] x [-5,5].
     let circle = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])
         .unwrap()
         .radius(5.0)
         .build()
         .unwrap();
-    // Box [-3,3] x [-3,3] (centre (0,0), corner (3,3)).
+    // Box [-3,3] x [-3,3] (center (0,0), corner (3,3)).
     let bx = BoxRegionBuilder::new(frame, vec![0.0, 0.0], vec![3.0, 3.0])
         .unwrap()
         .build()
@@ -545,7 +545,7 @@ fn nested_cmpregion() {
     // Also outside circle2 -> outside outer.
     assert!(!outer.point_in_region(&[2.5, 0.0]).unwrap());
 
-    // (10.0, 10.0): centre of circle2 -> inside circle2 -> inside outer.
+    // (10.0, 10.0): center of circle2 -> inside circle2 -> inside outer.
     assert!(outer.point_in_region(&[10.0, 10.0]).unwrap());
 
     // (20, 20): outside everything -> outside.
@@ -689,7 +689,7 @@ fn or_mesh_is_nonempty_and_on_boundary() {
 
 #[test]
 fn and_mesh_overlapping_circles() {
-    // Two overlapping circles: both centred on the y-axis, overlapping in
+    // Two overlapping circles: both centerd on the y-axis, overlapping in
     // the middle. The AND mesh should only have points in the overlap zone.
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let c1 = CircleBuilder::new(frame.clone(), vec![0.0, -1.0])

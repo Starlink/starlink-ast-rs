@@ -10,7 +10,7 @@ Uncited C steps:
 - slamap.c:2672 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
 C's body runs `slamap.c:2701-3197 (fn MapMerge)`, the same architecture as SpecMap and
-TimeMap: gather the conversion steps of a run of adjacent SlaMaps, normalise
+TimeMap: gather the conversion steps of a run of adjacent SlaMaps, normalize
 each for its applied direction, simplify the accumulated list until nothing more
 goes, and rebuild one SlaMap or a UnitMap.
 
@@ -22,10 +22,10 @@ goes, and rebuild one SlaMap or a UnitMap.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1 | slamap.c:2701-2703 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result to -1 | slamap.c:2701-2703 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | slamap.c:2704-2706 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | SlaMaps merge only in series, or when only one Mapping is present | slamap.c:2707-2711 (fn MapMerge) | slamap.rs:736-738 (fn sla_map_merge) | architecture | ported |
-| 4 | Initialise the step count to the number in the nominated SlaMap | slamap.c:2712-2715 (fn MapMerge) | slamap.rs:753 (fn sla_map_merge),758 (fn sla_map_merge) | architecture | ported |
+| 4 | Initialize the step count to the number in the nominated SlaMap | slamap.c:2712-2715 (fn MapMerge) | slamap.rs:753 (fn sla_map_merge),758 (fn sla_map_merge) | architecture | ported |
 | 5 | Search adjacent lower-numbered Mappings until one is not an SlaMap, accumulating step counts | slamap.c:2716-2726 (fn MapMerge) | slamap.rs:743-746 (fn sla_map_merge) | architecture | ported |
 | 6 | Search adjacent higher-numbered Mappings the same way | slamap.c:2727-2735 (fn MapMerge) | slamap.rs:747-750 (fn sla_map_merge) | architecture | ported |
 | 7 | Remember the initial number of transformation steps | slamap.c:2736-2738 (fn MapMerge) | slamap.rs:753 (fn sla_map_merge),758 (fn sla_map_merge) | architecture | ported |

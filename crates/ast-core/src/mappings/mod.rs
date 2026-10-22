@@ -1024,9 +1024,9 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
         // C's idiom for tagging a Mapping the caller is holding at the wrong
         // orientation — set `Invert`, set the flag, set `Invert` back — which
         // works only because setting `Invert` no longer discards the record
-        // (mapping.c:23272). The engine needs it because it normalises a
+        // (mapping.c:23272). The engine needs it because it normalizes a
         // simplified component to the forward orientation while the tree
-        // still serialises that component inverted.
+        // still serializes that component inverted.
         let restore = self.is_inverted();
         if restore != inverted {
             self.invert();

@@ -10,7 +10,7 @@
 //! # `C-ARTIFACT` marker
 //!
 //! Items in this module tagged **`C-ARTIFACT`** exist only to reproduce a
-//! serialised value that C emits as a side effect of its memory model, not
+//! serialized value that C emits as a side effect of its memory model, not
 //! because the Mapping requires it. They are candidates for deletion once
 //! upstream stops emitting the value; the transform is unaffected either way.
 //! `grep -rn C-ARTIFACT` enumerates the set.
@@ -369,7 +369,7 @@ impl CmpMap {
     /// **`C-ARTIFACT`** (dump-only; measured, and load-bearing).
     ///
     /// Disabling the flip in this and its sibling costs 12 further simplify
-    /// serialisation failures and **5 `wcsconv` byte comparisons** —
+    /// serialization failures and **5 `wcsconv` byte comparisons** —
     /// `grism`, `skyref`, `skyref-alt`, `tidy-offsets` and `tidy-pole`, all
     /// native. Among the simplify fixtures are `parcomp_inverted_reemitted` and
     /// `parcomp_inverted_nested_reemitted`, which exist to demand C's
@@ -381,7 +381,7 @@ impl CmpMap {
     /// leaving `inv_a` untouched. The CmpMap's transform is unchanged: the
     /// child's effective direction is `inv_a != first.is_inverted()`, and the
     /// child's own Invert otherwise cancels (its `nin`/`nout` swap with the
-    /// flag, offsetting the change). This only affects serialisation — the
+    /// flag, offsetting the change). This only affects serialization — the
     /// child then dumps in the `orig` orientation while `InvA` carries the
     /// effective direction, exactly as C `cmpmap.c` Simplify does (it captures
     /// `invert1` from the component, then restores the component's own Invert
@@ -418,7 +418,7 @@ impl CmpMap {
     ///
     /// This and [`Self::second_dir`] are the only two places that decode the
     /// `InvA`/`InvB` encoding, and every transform, arity and split path goes
-    /// through them. The child is stored in its serialised orientation
+    /// through them. The child is stored in its serialized orientation
     /// (`child.is_inverted()`) while `inv_a` records the effective direction,
     /// so recovering the direction to call the child in needs both:
     /// `fwd XOR (inv_a XOR stored)`. Applying the child in that direction

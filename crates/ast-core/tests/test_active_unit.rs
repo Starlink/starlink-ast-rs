@@ -4,9 +4,9 @@ use ast_core::frames::{BasicFrameBuilder, Frame};
 
 #[test]
 fn active_unit_inserts_scale_for_km_to_m() {
-    // Template in metres, target in km, both ActiveUnit -> the match
+    // Template in meters, target in km, both ActiveUnit -> the match
     // mapping (target -> result) scales km values into the result's
-    // metres. astUnitMapper("km","m") transforms km into m, so the
+    // meters. astUnitMapper("km","m") transforms km into m, so the
     // forward (target -> result) maps 2 km to 2000 m.
     let mut target = BasicFrameBuilder::new(1).unit(1, "km").build().unwrap();
     target.set_active_unit(true);

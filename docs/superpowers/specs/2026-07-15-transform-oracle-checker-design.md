@@ -297,7 +297,7 @@ Outputs:
     `load-fail`;
   - headline counts.
 
-## Assertion behaviour
+## Assertion behavior
 
 In this investigative phase the test body does **not** assert on
 divergences: it runs to completion over all 1606 sections and always

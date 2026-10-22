@@ -1,8 +1,8 @@
-//! The Node tree -- intermediate representation for serialisation.
+//! The Node tree -- intermediate representation for serialization.
 
 use std::fmt;
 
-/// A single typed value in a serialised AST object.
+/// A single typed value in a serialized AST object.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum NodeValue {
     /// Integer attribute.
@@ -28,7 +28,7 @@ pub(crate) struct NodeItem {
     /// Comment text (after `#` on the same line).
     pub comment: Option<String>,
     /// Whether a loader has read this item, which a Channel reports as
-    /// unrecognised if not (see [`ReadFlag`]).
+    /// unrecognized if not (see [`ReadFlag`]).
     pub read: ReadFlag,
     /// For an `Unset` value, whether C calls it helpful: one a Channel
     /// writes, as a comment, unless its Full is negative. A value that is
@@ -60,7 +60,7 @@ impl PartialEq for ReadFlag {
     }
 }
 
-/// A serialised AST object as a tree of named attributes.
+/// A serialized AST object as a tree of named attributes.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Node {
     /// AST class name (e.g. "ZoomMap", "FrameSet").
@@ -410,7 +410,7 @@ impl Node {
 
     /// Record that the loader has read the items called `key`, which C's
     /// loader reads but whose values the port takes from elsewhere, so that
-    /// a Channel does not report them as unrecognised.
+    /// a Channel does not report them as unrecognized.
     pub fn mark_read(&self, key: &str) {
         self.accessed.set();
         for item in &self.items {

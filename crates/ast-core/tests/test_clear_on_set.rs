@@ -4,14 +4,14 @@
 //! `mapping.h:449-460` states the rule and the reason. A record says that this
 //! Mapping has already been through `astSimplify` in the orientation it is now
 //! in, and `Mapping::simplify` returns such a Mapping unchanged. Nothing else
-//! reads the records — a Mapping is offered to its neighbours' `MapMerge`
+//! reads the records — a Mapping is offered to its neighbors' `MapMerge`
 //! whatever it holds — and a record can only ever suppress a simplification,
 //! never make one wrong, so C errs towards discarding.
 //!
 //! No fixture can express this. The simplify corpus dumps, simplifies and dumps
 //! again; there is no "set an attribute after simplifying" step in the format,
 //! and adding one would change every consumer. So the gate is a case per setter
-//! here, with the C behaviour confirmed by the probe recorded in
+//! here, with the C behavior confirmed by the probe recorded in
 //! `docs/issues/c-oracle-probe-recipe.md` ("Worked probe — the clear-on-set
 //! convention").
 //!
@@ -344,7 +344,7 @@ fn grism_setters_recompute_the_constants() {
 /// `astSetGrismNR( map, AST__BAD )` restores the default and makes
 /// `astTestGrismNR` false (`grismmap.c:1733-1737`). The port stores what the
 /// getter would report and carries the sentinel test as the flag the dump reads,
-/// so the sentinel has to be recognised in the setter. The dump is where the
+/// so the sentinel has to be recognized in the setter. The dump is where the
 /// test half is observable: an untested attribute is written commented out.
 #[test]
 fn grism_sentinel_restores_the_default_and_untests_the_attribute() {
@@ -450,7 +450,7 @@ fn setting_an_unset_seed_to_its_own_default_discards_the_record() {
 ///
 /// The other half of the guard: once `Seed` is set, a set to the same value is
 /// the no-op the loader relies on, which is what `load_preserves` covers for the
-/// serialised case.
+/// serialized case.
 #[test]
 fn re_setting_an_explicit_seed_to_the_same_value_keeps_the_record() {
     let mut m = math_map();
@@ -464,7 +464,7 @@ fn re_setting_an_explicit_seed_to_the_same_value_keeps_the_record() {
 }
 
 /// The control: a class with no clear-on-set attribute routes nothing through a
-/// setter, so its loader must honour the card.
+/// setter, so its loader must honor the card.
 #[test]
 fn load_keeps_the_record_for_a_class_that_routes_nothing() {
     let mut m = ShiftMap::new([1.0, 2.0]);

@@ -25,7 +25,7 @@ use crate::frames::FrameRef;
 
 /// The LAST values computed for one observer position, DUT1 and DTAI
 /// (skyframe.c `AstSkyLastTable`). `epoch` increases monotonically, and
-/// each `last` is continuous with its neighbours rather than wrapped.
+/// each `last` is continuous with its neighbors rather than wrapped.
 struct LastTable {
     obslat: f64,
     obslon: f64,
@@ -193,7 +193,7 @@ fn cache_last(last: f64, epoch: f64, obslon: f64, obslat: f64, obsalt: f64, dut1
         // The new entry goes after every entry with an epoch no later than
         // its own. It is made continuous with the entry before it, or with
         // the entry after it when it is the earliest, so that interpolation
-        // between neighbours is meaningful.
+        // between neighbors is meaningful.
         let at = table
             .epoch
             .iter()

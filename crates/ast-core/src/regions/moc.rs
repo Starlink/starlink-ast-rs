@@ -4,7 +4,7 @@
 //! A Moc holds a sorted list of disjoint ranges of HEALPix nested indices at
 //! one order, its MaxOrder, in ICRS. Cells added at a lower order are stored
 //! as the range of their descendants at MaxOrder, so a Moc's resolution is
-//! fixed by MaxOrder. The normalised form, the list of NUNIQ values the MOC
+//! fixed by MaxOrder. The normalized form, the list of NUNIQ values the MOC
 //! recommendation describes, is derived from the ranges when it is needed.
 //!
 //! Like any Region, a Moc may be given another celestial coordinate system
@@ -202,7 +202,7 @@ fn hpx12_grid_to_icrs(order: i32) -> AstResult<CmpMap> {
 /// (moc.c `ClearCache`).
 #[derive(Debug, Default)]
 struct MocCache {
-    /// The normalised form (moc.c `inorm` or `knorm`) and whether it uses 4
+    /// The normalized form (moc.c `inorm` or `knorm`) and whether it uses 4
     /// byte values.
     norm: Option<(Vec<i64>, bool)>,
     /// The boundary mesh in ICRS.
@@ -652,7 +652,7 @@ impl Moc {
         })
     }
 
-    /// Run `f` on the normalised form, making it first if needed (moc.c
+    /// Run `f` on the normalized form, making it first if needed (moc.c
     /// `GetNorm`): the NUNIQ value of every cell of the MOC, the cells at
     /// each order being those whole cells the ranges hold that a lower order
     /// did not take. The values are 4 byte ones below order 14.
@@ -1438,7 +1438,7 @@ impl Mesh<'_> {
 }
 
 impl Moc {
-    /// moc.c `RegBaseMesh`: a point at every corner of a normalised cell
+    /// moc.c `RegBaseMesh`: a point at every corner of a normalized cell
     /// that lies on the boundary, in ICRS, sorted by Dec then RA, all RA in
     /// [0, 2PI[. An empty Moc, or one of the whole sky, has no boundary and
     /// gives one bad point. MeshSize is not used.
@@ -1797,10 +1797,10 @@ impl Moc {
     }
 
     /// moc.c `astAddMocText`: append to the Moc's ranges the cells of a MOC
-    /// in the string or JSON serialisation, read from the successive
+    /// in the string or JSON serialization, read from the successive
     /// `chunks` of its text, returning whether it was JSON. The ranges are
     /// at MaxOrder, which, if not set, becomes `maxorder` or, if that is
-    /// negative, the highest order in the text. They are not normalised.
+    /// negative, the highest order in the text. They are not normalized.
     pub(crate) fn add_moc_text(
         &mut self,
         maxorder: i32,
@@ -2394,8 +2394,8 @@ fn find_sky_axes_frameset(wcs: &FrameSet, method: &str) -> AstResult<FrameSet> {
 }
 
 /// moc.c `GetPixelArea`: the area, in square arc-seconds, of the pixel at
-/// the centre of an array of `dims` pixels, from the distances to its
-/// neighbours along each grid axis; bad if either distance is.
+/// the center of an array of `dims` pixels, from the distances to its
+/// neighbors along each grid axis; bad if either distance is.
 fn get_pixel_area(wcs: &FrameSet, dims: [usize; 2]) -> AstResult<f64> {
     let x0 = 0.5 * (dims[0] as f64 + 1.0);
     let y0 = 0.5 * (dims[1] as f64 + 1.0);
@@ -3016,7 +3016,7 @@ fn hpx12_frameset(order: i32) -> AstResult<FrameSet> {
     Ok(fs)
 }
 
-/// moc.c `PutCell`: test each cell at order `order` (at its centre at
+/// moc.c `PutCell`: test each cell at order `order` (at its center at
 /// MaxOrder, otherwise at nine points over it), unless `inorout` says it is
 /// wholly in (negative) or out (positive); keep a cell wholly in, and below
 /// MaxOrder divide one partly in into its four children, each marked in or

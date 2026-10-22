@@ -63,7 +63,7 @@ impl MathMapRng {
 
     /// Produce a uniformly distributed pseudo-random number in [0, 1].
     pub fn rand(&mut self) -> f64 {
-        // If not yet initialised, do so now.
+        // If not yet initialized, do so now.
         if !self.active {
             self.initialise();
         }
@@ -113,7 +113,7 @@ impl MathMapRng {
 
     /// Produce a standard Gaussian (mean=0, sd=1) sample using Box-Muller.
     pub fn gauss(&mut self) -> f64 {
-        // If context was just reinitialised, discard saved value
+        // If context was just reinitialized, discard saved value
         if !self.active {
             self.gauss_saved = None;
         }
@@ -204,7 +204,7 @@ impl MathMapRng {
         }
     }
 
-    /// Reset the seed, marking the generator as needing reinitialisation.
+    /// Reset the seed, marking the generator as needing reinitialization.
     pub fn set_seed(&mut self, seed: i32) {
         self.seed = seed;
         self.seed_set = true;

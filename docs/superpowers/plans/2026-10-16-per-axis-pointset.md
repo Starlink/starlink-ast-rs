@@ -1877,7 +1877,7 @@ Expected: all green; bits match; `cmpmap_parallel` and `cmpmap_series` faster, n
 
 - [ ] **Step 3: Amend the port design (rev 7).** In `2026-04-20-rust-port-design.md`: add a revision-history entry; change the `PointSet` sketch to `(ncoord, npoint)`, one contiguous array per axis; replace "`Array2<f64>` owns its data as a contiguous row-major `Vec<f64>` which `ast-capi` can hand to C without copy" with the statement that `transform_into` takes `Points` and `PointsMut`, which the C shim builds over the caller's per-axis arrays without copying, as C's `TranN` does with `astSetPoints`; and change the transform signature sketch.
 
-- [ ] **Step 4: CLAUDE.md.** In "Bulk-transform optimisation", replace the description of "the default per-point loop pattern" with: kernels loop down whole axes of a `Points` view into a `PointsMut` view, testing `is_bad` per value; a per-point loop through `point(i)` and `set_point` is for code that is not a bulk kernel.
+- [ ] **Step 4: CLAUDE.md.** In "Bulk-transform optimization", replace the description of "the default per-point loop pattern" with: kernels loop down whole axes of a `Points` view into a `PointsMut` view, testing `is_bad` per value; a per-point loop through `point(i)` and `set_point` is for code that is not a bulk kernel.
 Add `ast-bench bits --base <ref>` to the performance-gate paragraph as the check for changes that must not alter results.
 
 - [ ] **Step 5: Spec status.** Set the per-axis spec's status to `implemented (stages 1-4); SpecMap, MathMap, SplineMap and LutMap kernels are a follow-up plan`.

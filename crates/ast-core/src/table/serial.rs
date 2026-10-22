@@ -1,4 +1,4 @@
-//! Native-format serialisation for `Table`.
+//! Native-format serialization for `Table`.
 //!
 //! Ported from `Dump` and `astLoadTable` in
 //! `reference/starlink-ast/src/table.c`.

@@ -425,7 +425,7 @@ fn perm_split_constant_outperm_silently_dropped() {
     // skips). The split succeeds with the constant output excluded.
     //
     // Plan said "return None"; the C source is authoritative and the
-    // actual behaviour is "drop". The implementation mirrors C.
+    // actual behavior is "drop". The implementation mirrors C.
     let pm = PermMap::new(&[1], &[1, -1], &[42.0]).unwrap();
     let (outs, sub) = pm
         .map_split_zero_based(&[0])
@@ -608,7 +608,7 @@ fn wcs_split_3axis_passthrough_only_yields_unitmap() {
     assert_eq!(outs, vec![2]);
     assert_eq!(sub.nin(), 1);
     assert_eq!(sub.nout(), 1);
-    // Identity behaviour.
+    // Identity behavior.
     assert_eq!(fwd_point(sub.as_ref(), &[42.5]), vec![42.5]);
 }
 

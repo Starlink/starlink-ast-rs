@@ -25,7 +25,7 @@ pub(crate) struct SkyAxis {
     /// The IsLatitude attribute, when set. A SkyFrame never sets it on its
     /// own axes; SubFrame sets it on an axis it picks out (skyframe.c:10282).
     pub is_latitude: Option<bool>,
-    /// The CentreZero attribute, when set: normalise to [-pi,pi] (true) or
+    /// The Centerzero attribute, when set: normalize to [-pi,pi] (true) or
     /// [0,2pi] (false).
     pub centre_zero: Option<bool>,
 }
@@ -54,8 +54,8 @@ impl SkyAxis {
         self.is_latitude.unwrap_or(false)
     }
 
-    /// A value normalised as skyaxis.c `AxisNorm` does: into -pi..pi when
-    /// the range is centred on zero, else 0..2pi; a bad value is unchanged.
+    /// A value normalized as skyaxis.c `AxisNorm` does: into -pi..pi when
+    /// the range is centerd on zero, else 0..2pi; a bad value is unchanged.
     pub(crate) fn axis_norm(&self, value: f64) -> f64 {
         if value == crate::constants::BAD_VALUE {
             value
@@ -66,7 +66,7 @@ impl SkyAxis {
         }
     }
 
-    /// CentreZero, set or default (IsLatitude; skyaxis.c:4641).
+    /// Centerzero, set or default (IsLatitude; skyaxis.c:4641).
     pub fn centre_zero_value(&self) -> bool {
         self.centre_zero.unwrap_or(self.is_latitude_value())
     }
@@ -117,7 +117,7 @@ impl SkyAxis {
     /// The NormUnit.
     /// Mirrors `GetAxisNormUnit`: a description of the axis values is
     /// returned unchanged when the Unit is the default or has been set to
-    /// that description; anything else is a units expression, normalised as
+    /// that description; anything else is a units expression, normalized as
     /// the Axis class does.
     // C: skyaxis.c:3101.
     pub fn norm_unit_value(&self, frame_digits: i32) -> String {
@@ -628,7 +628,7 @@ pub(crate) fn dhms_format(fmt: &str, digs: i32, value: f64) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 impl SkyAxis {
@@ -757,13 +757,13 @@ pub(crate) fn sky_format(fmt: &str, digits: i32, value: f64) -> AstResult<String
     }
 }
 
-/// Normalise a right-ascension (or any 2π-cyclic angle) into `[0, 2π)`.
+/// Normalize a right-ascension (or any 2π-cyclic angle) into `[0, 2π)`.
 ///
 /// Mirrors `eraAnp` (SOFA "Angle, Normalize, Positive"): the canonical
 /// range used by SLALIB / palGaleq for celestial RA values stored in
 /// `SkyFrame` and `SpecFrame::ref_ra`. Values that come out of an
 /// `atan2`-based pipeline (e.g. our SlaMap's Cartesian round-trip)
-/// land in `(-π, π]`; without this normalisation they don't match
+/// land in `(-π, π]`; without this normalization they don't match
 /// the C library's f64 storage bit-for-bit even when the angle is
 /// physically identical.
 pub(crate) fn normalise_ra(angle: f64) -> f64 {
@@ -774,7 +774,7 @@ pub(crate) fn normalise_ra(angle: f64) -> f64 {
     if r >= two_pi { 0.0 } else { r }
 }
 
-/// Normalise a declination-style angle into `(-π, π]`.
+/// Normalize a declination-style angle into `(-π, π]`.
 ///
 /// Mirrors `eraAnpm` (SOFA "Angle, Normalize, Plus/Minus pi"). Used by
 /// `SpecFrame::set_ref_pos` for `RefDec` so the stored value matches C
@@ -1244,7 +1244,7 @@ mod tests {
     #[test]
     fn defaults_follow_is_latitude() {
         // skyaxis.c:4619-4642: with nothing set, an axis is neither a
-        // latitude nor formatted as a time, and is not centred on zero.
+        // latitude nor formatted as a time, and is not centerd on zero.
         let axis = SkyAxis::new();
         assert!(!axis.as_time_value());
         assert!(!axis.centre_zero_value());

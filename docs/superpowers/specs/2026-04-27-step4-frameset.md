@@ -347,5 +347,5 @@ Tests equivalent to `testframeset.c`:
 
 - SkyFrame (Step 5+) — so integrity produces trivial UnitMap deltas
 - FrameRef::Name (needs Ident attribute)
-- Serialisation
+- Serialization
 - The full convert() logic for SkyFrame coordinate system conversion

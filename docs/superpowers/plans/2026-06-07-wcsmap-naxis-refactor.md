@@ -45,7 +45,7 @@ If a step drops the count below 181, **stop**, diagnose, and either fix in place
 | `crates/ast-core/src/fitschan/wcs_celestial.rs` | Celestial decoder: `build_celestial_with_def_b1950` returns `CelestialResult { mapping, frame, lon_axis, lat_axis }`. `build_iwc_to_sky_mapping` builds the celestial 2-axis chain (Zoom → WcsMap_inv → rotation). | A, B, D |
 | `crates/ast-core/src/fitschan/wcs_spectral.rs` | Spectral decoder: `build_spectral` returns `SpectralResult { mapping, frame, axis }` with a 1-axis mapping. | B, D |
 | `crates/ast-core/src/fitschan/wcs_read.rs` | Composer: `build_iwc_to_world` and the helper `build_general_iwc_to_world` assemble the per-class mappings into the full IWC→world mapping. | C |
-| `crates/ast-core/src/fitschan/fset_to_store/celestial_axes.rs` | Writer-side: `find_wcsmap`, `split_around_wcsmap`, `split_map2*` walk the FrameSet's pixel→WCS mapping looking for a WcsMap. **No code change expected** — the helpers already handle WcsMap at any depth — but Phase C verifies behaviour. | C (audit only, in-task verification) |
+| `crates/ast-core/src/fitschan/fset_to_store/celestial_axes.rs` | Writer-side: `find_wcsmap`, `split_around_wcsmap`, `split_map2*` walk the FrameSet's pixel→WCS mapping looking for a WcsMap. **No code change expected** — the helpers already handle WcsMap at any depth — but Phase C verifies behavior. | C (audit only, in-task verification) |
 
 The refactor stays inside `fitschan/`. No new public API surface, no new modules, no changes to `mappings/` (`WcsMap::new` already supports any `ncoord >= 2`; this is the lever the refactor exploits).
 
@@ -381,7 +381,7 @@ git commit -m "fitschan/wcs_celestial: build N-axis WcsMap with FITS-axis lon/la
 **Files:**
 - Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs`
 
-**Why:** Spec Step 2 — instead of `ZoomMap(2, deg2rad)`, build a `MatrixMap` whose diagonal has `deg2rad` on `lon_axis` and `lat_axis` and `1.0` elsewhere. This mirrors C `fitschan.c:35949-35957`. `MatrixMap` recognises this as `MatrixForm::Diagonal` (see `mappings/matrix.rs:33-34, 143`), so it's still O(N) per point.
+**Why:** Spec Step 2 — instead of `ZoomMap(2, deg2rad)`, build a `MatrixMap` whose diagonal has `deg2rad` on `lon_axis` and `lat_axis` and `1.0` elsewhere. This mirrors C `fitschan.c:35949-35957`. `MatrixMap` recognizes this as `MatrixForm::Diagonal` (see `mappings/matrix.rs:33-34, 143`), so it's still O(N) per point.
 
 - [ ] **Step 1: Write failing test for the N-axis Zoom (round-trip identity on pass-through axes)**
 
@@ -766,7 +766,7 @@ git commit -m "fitschan/wcs_spectral: lift spectral mapping to N-axis with ident
 
 ## Phase C — Series composition + writer-side audit (spec Steps 4-5)
 
-**Goal:** Replace the parallel composer in `build_iwc_to_world` / `build_general_iwc_to_world` with a series composer. Each per-class N-axis mapping (now full-rank from Phase B) gets composed in series — the others-pass-through invariant means series is correct. Drop the trailing output PermMap (no longer needed; per-class mappings are already in FITS axis order on both ends). Also audit the writer-side helpers (`find_wcsmap`, `split_around_wcsmap`, `split_map2*`) — should not need code changes, but verify behaviour with the new shape.
+**Goal:** Replace the parallel composer in `build_iwc_to_world` / `build_general_iwc_to_world` with a series composer. Each per-class N-axis mapping (now full-rank from Phase B) gets composed in series — the others-pass-through invariant means series is correct. Drop the trailing output PermMap (no longer needed; per-class mappings are already in FITS axis order on both ends). Also audit the writer-side helpers (`find_wcsmap`, `split_around_wcsmap`, `split_map2*`) — should not need code changes, but verify behavior with the new shape.
 
 ### Task C1: Series composition in `build_general_iwc_to_world`
 
@@ -1155,7 +1155,7 @@ No final commit needed — Task D2 is verification-only.
 - "After Step 2, the `build_iwc_to_sky_mapping` test should still pass with the same numerical outputs." → Phase B Task B1 Step 6 (`reference_pixel_maps_to_crval`).
 - "After Step 4, run `cargo test --workspace` — the FrameSet round-trip and encoder fixture tests should all stay green." → Phase C Task C2 Step 2 + Phase D Task D2 Step 1.
 
-**Out-of-scope items respected:** DSS, offset_sky, jan_fits_class_*, class_write_fits_class, degen1_fits_wcs are never touched. Verified by file scope: this plan only modifies `wcs_celestial.rs`, `wcs_spectral.rs`, `wcs_read.rs`, and (conditionally) `fset_to_store/celestial_axes.rs`. None of the out-of-scope fixtures are exercised by these files in a way that would change their behaviour.
+**Out-of-scope items respected:** DSS, offset_sky, jan_fits_class_*, class_write_fits_class, degen1_fits_wcs are never touched. Verified by file scope: this plan only modifies `wcs_celestial.rs`, `wcs_spectral.rs`, `wcs_read.rs`, and (conditionally) `fset_to_store/celestial_axes.rs`. None of the out-of-scope fixtures are exercised by these files in a way that would change their behavior.
 
 **Type / signature consistency:**
 - `WcsMap::new(ncoord, proj, lonax, latax)` — 1-based lon/lat, used consistently as `lon_axis + 1` / `lat_axis + 1` everywhere.

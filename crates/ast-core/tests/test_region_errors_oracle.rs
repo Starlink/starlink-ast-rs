@@ -1,5 +1,5 @@
 //! The errors C's Region constructors and setters report, and the values its
-//! loader repairs: `astSetUnc` given a Region that cannot be re-centred or
+//! loader repairs: `astSetUnc` given a Region that cannot be re-centerd or
 //! whose Frame cannot be converted (region.c `SetUnc`), `astSetFillFactor`
 //! outside 0 to 1, a dump with an out-of-range `Fill` or a `MeshSz` below 5
 //! (region.c `Load`), and BAD coordinates given to `astBox` (box.c

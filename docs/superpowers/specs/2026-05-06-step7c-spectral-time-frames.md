@@ -101,7 +101,7 @@ Each conversion carries arguments (up to 7):
 - Barycentric (25-26): 3 args (epoch, RA, Dec)
 - LSRK/LSRD/LG/Galactic (27-34): 2 args (RA, Dec)
 
-### Serialisation
+### Serialization
 
 Class: `"SpecMap"`. Attributes: `Nspec` (count), `Spec1`..`SpecN`
 (type string), `Spec1A`..`SpecNA` (arguments with A/B/C suffixes).
@@ -148,7 +148,7 @@ Follows the same SlaMap/SpecMap pattern.
 Variable (0-7 args): MJD offset, observer position, DTAI, DUT1,
 LT offset, etc.
 
-### Serialisation
+### Serialization
 
 Class: `"TimeMap"`. Attributes: `Ntime` (count), `Time1`..`TimeN`
 (type string), `Time1A`..`TimeNA` (arguments).
@@ -191,7 +191,7 @@ Galactic, LocalGroup, Source.
 - `distance()`: absolute difference (1D Euclidean)
 - `format()`/`unformat()`: numeric with units
 
-### Serialisation
+### Serialization
 
 Class: `"SpecFrame"`. Attributes: StdORst, RestFrq, RefRA, RefDec,
 SrcVel, SrcVRF, SrcSys, SpecOrigin, AlnStd, AlnSOff.
@@ -225,7 +225,7 @@ Tai, Utc, Ut1, Gmst, Last, Lmst, Tt, Tdb, Tcb, Tcg, Lt.
 - `distance()`: absolute difference
 - `format()`: ISO date or decimal MJD depending on format string
 
-### Serialisation
+### Serialization
 
 Class: `"TimeFrame"`. Attributes: TmScl, TmOrg, AlTmSc, LTOff.
 
@@ -250,7 +250,7 @@ FluxDen, FluxDenW, SBright, SBrightW.
   wavelength (Fλ = Fν * c/λ²)
 - Simple 1D Euclidean distance
 
-### Serialisation
+### Serialization
 
 Class: `"FluxFrame"`. Attributes: SpcVl, plus embedded SpecFrame
 if present.
@@ -273,7 +273,7 @@ Implements Frame by delegating to a CmpFrame-style compound.
 Special: setting "StdOfRest" on the SpecFluxFrame forwards to
 the SpecFrame component.
 
-### Serialisation
+### Serialization
 
 Class: `"SpecFluxFrame"`. Contains embedded SpecFrame and FluxFrame
 as child objects.
@@ -311,7 +311,7 @@ pub(crate) fn eqeqx(mjd: f64) -> f64;      // equation of equinoxes
 - TimeMap: all 28 conversions, leap second table validation
 - Round-trip: freq → wavelength → freq = identity
 - Round-trip: MJD → JD → MJD = identity
-- Serialisation round-trip for all types
+- Serialization round-trip for all types
 - Simplification regression: `spec_*` and `time_*` tests should
   start passing
 
@@ -320,4 +320,4 @@ pub(crate) fn eqeqx(mjd: f64) -> f64;      // equation of equinoxes
 - MathMap (expression evaluator) — separate step
 - Channel/FitsChan — Step 8
 - Regions — Step 9
-- DSS/Grism/PCD specialised mappings
+- DSS/Grism/PCD specialized mappings

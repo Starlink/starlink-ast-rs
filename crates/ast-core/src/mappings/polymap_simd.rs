@@ -154,7 +154,7 @@ impl PolyMap {
     /// Same SIMD pipeline as [`forward_simd_2d_into`], but assumes the
     /// caller is inside the NaN-as-bad protocol (i.e. invocations come
     /// from `transform_into_nan`). Therefore:
-    ///   - input substitution `BAD_VALUE → NaN` is kept (cheap defence
+    ///   - input substitution `BAD_VALUE → NaN` is kept (cheap defense
     ///     against accidental BAD slipping in; no-op for the canonical
     ///     NaN inputs the protocol promises);
     ///   - output substitution `NaN → BAD_VALUE` is **dropped**, because

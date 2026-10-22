@@ -203,7 +203,7 @@ impl Grid<'_> {
         } else if toobig {
             true
         } else {
-            // Fit over the cell edges rather than the centres, so an axis
+            // Fit over the cell edges rather than the centers, so an axis
             // spanned by one cell still has distinct bounds.
             let flbnd: Vec<f64> = lbnd.iter().map(|&l| l as f64 - 0.5).collect();
             let fubnd: Vec<f64> = ubnd.iter().map(|&u| u as f64 + 0.5).collect();

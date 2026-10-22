@@ -34,7 +34,7 @@ fn mask_outside_circle_2d() {
     // 25 - 13 = 12 outside
     assert_eq!(count, 12);
 
-    // Centre should be untouched.
+    // Center should be untouched.
     let idx = |x: usize, y: usize| (y - 1) * 5 + (x - 1);
     assert_eq!(data[idx(3, 3)], 1.0);
 
@@ -66,11 +66,11 @@ fn mask_integer_data() {
     )
     .unwrap();
 
-    // Circle at (2,2) radius 1: only the centre pixel; the four at distance 1
+    // Circle at (2,2) radius 1: only the center pixel; the four at distance 1
     // lie on the boundary, which astMask treats as neither inside nor outside
     // (tests/test_region_mask_oracle.rs has C's results for such cases).
     assert_eq!(count, 1);
-    // Centre: idx = (2-1)*3 + (2-1) = 4
+    // Center: idx = (2-1)*3 + (2-1) = 4
     assert_eq!(data[4], -999);
     // Corner (1,1): dist=sqrt2 > 1 -> not masked
     assert_eq!(data[0], 0);
@@ -84,7 +84,7 @@ fn mask_with_zoom_mapping() {
     // ZoomMap factor 0.5 maps pixel -> region frame coords (divide by 2).
     // Circle at (2.5, 2.5) radius 1.5 in region frame.
     // So in pixel space, pixels (x,y) where (x/2 - 2.5)^2 + (y/2 - 2.5)^2 <= 1.5^2 = 2.25
-    // i.e., pixels at centre (5,5) with effective radius 3 in pixel space.
+    // i.e., pixels at center (5,5) with effective radius 3 in pixel space.
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let circle = CircleBuilder::new(frame, vec![2.5, 2.5])
         .unwrap()
@@ -105,7 +105,7 @@ fn mask_with_zoom_mapping() {
     )
     .unwrap();
 
-    // Verify centre pixel is masked.
+    // Verify center pixel is masked.
     let idx = |x: usize, y: usize| (y - 1) * 10 + (x - 1);
     assert_eq!(data[idx(5, 5)], -1.0);
 

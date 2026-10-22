@@ -12,7 +12,7 @@ Uncited C steps:
 - box.c:3620 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
 
 Three C bodies. `MapMerge` (`box.c:1536-1625 (fn MapMerge)`) first tries to replace the
-Box with a simpler Region on its own, then merges it with a neighbouring Region
+Box with a simpler Region on its own, then merges it with a neighboring Region
 in parallel. `MergeBox` (`box.c:1709-2074 (fn MergeBox)`) is the cross-type merge that
 second half calls: Box + Box, Box + Interval, Box + NullRegion and
 Box + PointList, each built on a CmpFrame of the two base Frames and mapped into
@@ -33,17 +33,17 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | `MapMerge`: initialise the result and the merged-pair index | box.c:1536-1539 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | `MapMerge`: initialize the result and the merged-pair index | box.c:1536-1539 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | box.c:1540-1542 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a pointer to the Box | box.c:1543-1545 (fn MapMerge) | -- | ceremony | n/a: the Rust function already has `this: &dyn Region` |
-| 4 | Banner: first see whether the Box reduces on its own, without reference to its neighbours | box.c:1546-1549 (fn MapMerge) | -- | ceremony | n/a: a section banner, not a step |
+| 4 | Banner: first see whether the Box reduces on its own, without reference to its neighbors | box.c:1546-1549 (fn MapMerge) | -- | ceremony | n/a: a section banner, not a step |
 | 5 | Simplify the Box, assuming a changed pointer means something happened | box.c:1550-1553 (fn MapMerge) | mappings/simplify.rs:1632 (fn region_map_merge) | architecture | ported |
 | 6 | Annul the Box pointer in the list, replace it with the new Region, and mark it forward | box.c:1554-1560 (fn MapMerge) | mappings/simplify.rs:1633 (fn region_map_merge) | architecture | ported |
 | 7 | Return the index of the first modified element | box.c:1561-1564 (fn MapMerge) | mappings/simplify.rs:1634 (fn region_map_merge) | architecture | ported |
 | 8 | Failing that, merge with the Regions on either side — which is possible in parallel only | box.c:1565-1569 (fn MapMerge) | mappings/simplify.rs:1639 (fn region_map_merge) | architecture | ported |
 | 9 | Annul the unwanted simplified pointer | box.c:1570-1571 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 10 | Attempt to merge the Box with its lower neighbour, if that neighbour is a Region | box.c:1572-1580 (fn MapMerge) | mappings/simplify.rs:1641-1649 (fn region_map_merge) | architecture | ported |
-| 11 | Failing that, attempt the upper neighbour the same way | box.c:1581-1591 (fn MapMerge) | mappings/simplify.rs:1653-1662 (fn region_map_merge) | architecture | ported |
+| 10 | Attempt to merge the Box with its lower neighbor, if that neighbor is a Region | box.c:1572-1580 (fn MapMerge) | mappings/simplify.rs:1641-1649 (fn region_map_merge) | architecture | ported |
+| 11 | Failing that, attempt the upper neighbor the same way | box.c:1581-1591 (fn MapMerge) | mappings/simplify.rs:1653-1662 (fn region_map_merge) | architecture | ported |
 | 12 | Act only if one of the two produced a merged Region | box.c:1592-1594 (fn MapMerge) | mappings/simplify.rs:1646 (fn region_map_merge),1655 (fn region_map_merge) | architecture | ported |
 | 13 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | box.c:1595-1600 (fn MapMerge) | mappings/simplify.rs:660 (fn replace_pair_with) | architecture | ported |
 | 14 | Annul the second and shuffle the rest of the list down to fill the gap | box.c:1601-1608 (fn MapMerge) | mappings/simplify.rs:660 (fn replace_pair_with) | architecture | ported |
@@ -51,7 +51,7 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 16 | Decrement the Mapping count and return the index of the first modified element | box.c:1613-1618 (fn MapMerge) | mappings/simplify.rs:1648 (fn region_map_merge),1657 (fn region_map_merge) | architecture | ported |
 | 17 | In series, annul the simplified pointer and do nothing | box.c:1619-1622 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and the series case falls through to `None` |
 | 18 | Return the result | box.c:1623-1625 (fn MapMerge) | mappings/simplify.rs:1665 (fn region_map_merge) | architecture | ported |
-| 19 | `MergeBox`: initialise the returned pointer and the working arrays | box.c:1709-1711 (fn MergeBox) | -- | ceremony | n/a: the Rust returns `Option<DynMapping>`, so "no merge" is `None` |
+| 19 | `MergeBox`: initialize the returned pointer and the working arrays | box.c:1709-1711 (fn MergeBox) | -- | ceremony | n/a: the Rust returns `Option<DynMapping>`, so "no merge" is `None` |
 | 20 | Check the local error status and bail out | box.c:1712-1714 (fn MergeBox) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 21 | Both Regions must agree on Closed, and either both or neither must have a defined uncertainty | box.c:1715-1721 (fn MergeBox) | box_region.rs:1553-1557 (fn region_merge) | architecture | ported |
 | 22 | Get the Negated attributes of the two Regions | box.c:1722-1725 (fn MergeBox) | box_region.rs:1559 (fn region_merge) | architecture | ported |
@@ -62,35 +62,35 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 27 | Annul the two base Frame pointers | box.c:1745-1747 (fn MergeBox) | -- | ceremony | n/a: owned values are dropped |
 | 28 | Indicate we do not yet have a merged Region | box.c:1748-1750 (fn MergeBox) | -- | ceremony | n/a: the Rust builds an `Option<MergedRegion>`, so "no merge yet" is the `None` any arm can return |
 | 29 | First attempt to merge with another Box, giving a Box, which needs both Boxes un-negated | box.c:1751-1754 (fn MergeBox) | box_region.rs:1577-1579 (fn region_merge) | architecture | ported |
-| 30 | Allocate memory to store the centre and corner of the returned Box | box.c:1755-1758 (fn MergeBox) | -- | ceremony | n/a: a `Vec` grows as the values are appended |
-| 31 | Copy the centres and corners from the two supplied Boxes into those arrays, in the requested order | box.c:1759-1768 (fn MergeBox) | box_region.rs:1582-1583 (fn region_merge),1568-1579 (fn region_merge) | architecture | ported |
+| 30 | Allocate memory to store the center and corner of the returned Box | box.c:1755-1758 (fn MergeBox) | -- | ceremony | n/a: a `Vec` grows as the values are appended |
+| 31 | Copy the centers and corners from the two supplied Boxes into those arrays, in the requested order | box.c:1759-1768 (fn MergeBox) | box_region.rs:1582-1583 (fn region_merge),1568-1579 (fn region_merge) | architecture | ported |
 | 32 | Create the new Box, initially with no uncertainty | box.c:1769-1772 (fn MergeBox) | merge_util.rs:165-169 (fn finish_region_merge) | architecture | ported |
-| 33 | Free the centre and corner arrays | box.c:1773-1776 (fn MergeBox) | -- | ceremony | n/a: owned values are dropped |
+| 33 | Free the center and corner arrays | box.c:1773-1776 (fn MergeBox) | -- | ceremony | n/a: owned values are dropped |
 | 34 | Now attempt to merge with an Interval, giving an Interval, which needs both Regions un-negated | box.c:1777-1780 (fn MergeBox) | box_region.rs:1586-1588 (fn region_merge) | architecture | ported |
 | 35 | Allocate memory to store the bounds of the returned Interval | box.c:1781-1784 (fn MergeBox) | -- | ceremony | n/a: a `Vec` grows as the bounds are appended |
-| 36 | Copy the centre and corner from the supplied Box into its part of those arrays | box.c:1785-1795 (fn MergeBox) | box_region.rs:1591 (fn region_merge) | architecture | ported |
-| 37 | Convert those centre and corner positions into upper and lower bounds, swapping any pair the conversion inverts | box.c:1796-1807 (fn MergeBox) | box_region.rs:653-673 (fn bounds) | architecture | ported |
+| 36 | Copy the center and corner from the supplied Box into its part of those arrays | box.c:1785-1795 (fn MergeBox) | box_region.rs:1591 (fn region_merge) | architecture | ported |
+| 37 | Convert those center and corner positions into upper and lower bounds, swapping any pair the conversion inverts | box.c:1796-1807 (fn MergeBox) | box_region.rs:653-673 (fn bounds) | architecture | ported |
 | 38 | Get the bounds from the Interval and add them into those arrays | box.c:1808-1814 (fn MergeBox) | box_region.rs:1592-1593 (fn region_merge) | architecture | ported |
 | 39 | Create the new Interval, initially with no uncertainty | box.c:1815-1818 (fn MergeBox) | merge_util.rs:160-164 (fn finish_region_merge) | architecture | ported |
 | 40 | Free the bounds arrays | box.c:1819-1822 (fn MergeBox) | -- | ceremony | n/a: owned values are dropped |
 | 41 | Now attempt to merge with a NullRegion, giving an Interval; the NullRegion must be negated and the Box must not | box.c:1823-1826 (fn MergeBox) | box_region.rs:1596-1599 (fn region_merge) | architecture | ported |
 | 42 | Allocate memory to store the bounds of the returned Interval | box.c:1827-1830 (fn MergeBox) | -- | ceremony | n/a: a `Vec` grows as the bounds are appended |
-| 43 | Copy the centre and corner from the supplied Box into its part of those arrays | box.c:1831-1841 (fn MergeBox) | box_region.rs:1602 (fn region_merge) | architecture | ported |
-| 44 | Convert those centre and corner positions into upper and lower bounds | box.c:1842-1852 (fn MergeBox) | box_region.rs:653-673 (fn bounds) | architecture | ported |
+| 43 | Copy the center and corner from the supplied Box into its part of those arrays | box.c:1831-1841 (fn MergeBox) | box_region.rs:1602 (fn region_merge) | architecture | ported |
+| 44 | Convert those center and corner positions into upper and lower bounds | box.c:1842-1852 (fn MergeBox) | box_region.rs:653-673 (fn bounds) | architecture | ported |
 | 45 | Fill the NullRegion's axes with bad values to mark them unbounded | box.c:1853-1865 (fn MergeBox) | box_region.rs:1603-1605 (fn region_merge) | architecture | ported |
 | 46 | Create the new Interval, initially with no uncertainty | box.c:1866-1870 (fn MergeBox) | merge_util.rs:160-164 (fn finish_region_merge) | architecture | ported |
 | 47 | Free the bounds arrays | box.c:1871-1874 (fn MergeBox) | -- | ceremony | n/a: owned values are dropped |
 | 48 | Now attempt to merge with a PointList, giving a PointList, which needs both Regions un-negated | box.c:1875-1878 (fn MergeBox) | box_region.rs:1608-1612 (fn region_merge) | architecture | ported |
-| 49 | The Box must have zero width on every axis; get its centre and corner | box.c:1879-1884 (fn MergeBox) | box_region.rs:1615 (fn region_merge) | architecture | ported |
+| 49 | The Box must have zero width on every axis; get its center and corner | box.c:1879-1884 (fn MergeBox) | box_region.rs:1615 (fn region_merge) | architecture | ported |
 | 50 | Get the size of the Box's base-Frame uncertainty region | box.c:1885-1890 (fn MergeBox) | merge_util.rs:243-263 (fn region_is_point) | architecture | ported |
 | 51 | Refuse the merge unless every axis width is below a quarter of the uncertainty on that axis | box.c:1891-1903 (fn MergeBox) | merge_util.rs:265-269 (fn region_is_point) | architecture | ported |
 | 52 | Go on to create a new PointList only if the Box is a point | box.c:1904-1906 (fn MergeBox) | box_region.rs:1616-1618 (fn region_merge) | architecture | ported |
 | 53 | Get a PointSet holding the supplied PointList's axis values, its point count and pointers to its arrays | box.c:1907-1913 (fn MergeBox) | box_region.rs:1604-1607 (fn region_merge) | architecture | ported |
 | 54 | Create a new PointSet with room for the same points but the extra axes, and get pointers to its arrays | box.c:1914-1918 (fn MergeBox) | -- | ceremony | n/a: the merged points are a `Vec<Vec<f64>>` built one point at a time, so there is no PointSet to size in advance |
 | 55 | Copy the PointList axis values into the new PointSet, in the requested order | box.c:1919-1928 (fn MergeBox) | box_region.rs:1623 (fn region_merge),1568-1579 (fn region_merge) | architecture | ported |
-| 56 | Add the axis values the Box centre defines to every point | box.c:1929-1934 (fn MergeBox) | box_region.rs:1562 (fn region_merge),1627 (fn region_merge) | architecture | ported |
+| 56 | Add the axis values the Box center defines to every point | box.c:1929-1934 (fn MergeBox) | box_region.rs:1562 (fn region_merge),1627 (fn region_merge) | architecture | ported |
 | 57 | Create the new PointList, initially with no uncertainty | box.c:1935-1939 (fn MergeBox) | merge_util.rs:170-174 (fn finish_region_merge) | architecture | ported |
-| 58 | Free the two PointSets, the centre, corner and bounds arrays and the uncertainty | box.c:1940-1952 (fn MergeBox) | -- | ceremony | n/a: owned values are dropped |
+| 58 | Free the two PointSets, the center, corner and bounds arrays and the uncertainty | box.c:1940-1952 (fn MergeBox) | -- | ceremony | n/a: owned values are dropped |
 | 59 | If a new Region was created above, propagate the supplied Region's remaining attributes to it | box.c:1953-1957 (fn MergeBox) | merge_util.rs:148-157 (fn finish_region_merge) | architecture | ported |
 | 60 | Ensure the Negated attribute the constructors set is not the one the overlay left | box.c:1958-1962 (fn MergeBox) | merge_util.rs:155 (fn finish_region_merge) | architecture | ported |
 | 61 | Assign the new Region an uncertainty only when both supplied Regions have one | box.c:1963-1966 (fn MergeBox) | merge_util.rs:298 (fn combine_uncertainties) | architecture | ported |
@@ -111,7 +111,7 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 76 | Free the Frame, Mapping and intermediate-Region resources | box.c:2057-2068 (fn MergeBox) | -- | ceremony | n/a: owned values are dropped |
 | 77 | Annul the returned pointer if an error occurred | box.c:2069-2071 (fn MergeBox) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
 | 78 | Return the result | box.c:2072-2074 (fn MergeBox) | merge_util.rs:187 (fn finish_region_merge) | architecture | ported |
-| 79 | `Simplify`: initialise the returned pointer and the working pointers | box.c:3664-3666 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so "no change" is the `false` flag |
+| 79 | `Simplify`: initialize the returned pointer and the working pointers | box.c:3664-3666 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so "no change" is the `false` flag |
 | 80 | Check the global error status and bail out | box.c:3667-3669 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 81 | Obtain a pointer to the Region structure | box.c:3670-3672 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 82 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | box.c:3673-3676 (fn Simplify) | box_region.rs:1908 (fn simplified) | architecture | ported |
@@ -121,7 +121,7 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 86 | If the Mapping is a PermMap, swap the Box axes explicitly rather than fitting through a mesh | box.c:3689-3693 (fn Simplify) | box_region.rs:1932 (fn simplified) | architecture | ported |
 | 87 | See whether the new Box is Negated and Closed | box.c:3694-3697 (fn Simplify) | box_region.rs:539-540 (fn simplify_over_permmap) | architecture | ported |
 | 88 | Get a pointer to the Box structure | box.c:3698-3700 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 89 | Ensure the cached centre and extent are up to date | box.c:3701-3703 (fn Simplify) | box_region.rs:541 (fn simplify_over_permmap) | ceremony | ported |
+| 89 | Ensure the cached center and extent are up to date | box.c:3701-3703 (fn Simplify) | box_region.rs:541 (fn simplify_over_permmap) | ceremony | ported |
 | 90 | Get the input and output permutation arrays and the constants from the PermMap | box.c:3704-3709 (fn Simplify) | box_region.rs:545-547 (fn simplify_over_permmap) | architecture | ported |
 | 91 | Allocate memory to hold the current-Frame axis bounds, unset | box.c:3710-3714 (fn Simplify) | box_region.rs:549-550 (fn simplify_over_permmap) | architecture | ported |
 | 92 | Check the pointers can be used safely | box.c:3715-3717 (fn Simplify) | -- | ceremony | n/a: `Vec` allocation either succeeds or aborts, so there is no pointer to test |
@@ -158,17 +158,17 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 | 123 | Free the fitted Box's mesh | box.c:3888-3890 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 124 | Otherwise, for a 2-D Box, see whether a Polygon represents it accurately | box.c:3891-3895 (fn Simplify) | box_region.rs:1977 (fn simplified) | architecture | ported |
 | 125 | Create a PointSet holding the base-Frame axis values at the four corners of the Box | box.c:3896-3900 (fn Simplify) | -- | ceremony | n/a: the four corners are a fixed-size array rebuilt per winding at box_region.rs:469-483 (fn convert_to_polygon), so there is no PointSet to allocate up front |
-| 126 | Get the Box structure and refresh its cached centre and extent | box.c:3901-3903 (fn Simplify) | box_region.rs:435-438 (fn convert_to_polygon) | architecture | ported |
-| 127 | For a SkyFrame, transform the Box centre into the current Frame to test the winding against | box.c:3904-3912 (fn Simplify) | box_region.rs:432 (fn convert_to_polygon),450-456 (fn convert_to_polygon) | architecture | ported |
+| 126 | Get the Box structure and refresh its cached center and extent | box.c:3901-3903 (fn Simplify) | box_region.rs:435-438 (fn convert_to_polygon) | architecture | ported |
+| 127 | For a SkyFrame, transform the Box center into the current Frame to test the winding against | box.c:3904-3912 (fn Simplify) | box_region.rs:432 (fn convert_to_polygon),450-456 (fn convert_to_polygon) | architecture | ported |
 | 128 | The vertex order decides whether the polygon's inside is its interior; try clockwise first and anti-clockwise second | box.c:3913-3920 (fn Simplify) | box_region.rs:467 (fn convert_to_polygon) | architecture | ported |
 | 129 | Store the four base-Frame corners in clockwise order | box.c:3921-3933 (fn Simplify) | box_region.rs:469-475 (fn convert_to_polygon) | architecture | ported |
 | 130 | Store them in anti-clockwise order instead | box.c:3934-3947 (fn Simplify) | box_region.rs:476-483 (fn convert_to_polygon) | architecture | ported |
 | 131 | Transform the Box corners into the current Frame | box.c:3948-3952 (fn Simplify) | box_region.rs:486-488 (fn convert_to_polygon) | architecture | ported |
 | 132 | Create a Polygon from those points | box.c:3953-3959 (fn Simplify) | box_region.rs:490-494 (fn convert_to_polygon) | architecture | ported |
-| 133 | Decide whether the inside is the interior: for a SkyFrame by transforming the centre through the Polygon, otherwise by its bounded flag | box.c:3960-3968 (fn Simplify) | box_region.rs:499-503 (fn convert_to_polygon) | architecture | ported |
+| 133 | Decide whether the inside is the interior: for a SkyFrame by transforming the center through the Polygon, otherwise by its bounded flag | box.c:3960-3968 (fn Simplify) | box_region.rs:499-503 (fn convert_to_polygon) | architecture | ported |
 | 134 | Break out of the winding loop as soon as one is right way round | box.c:3969-3974 (fn Simplify) | box_region.rs:505-508 (fn convert_to_polygon) | architecture | ported |
 | 135 | Free the rejected Polygon and its transformed corners | box.c:3975-3978 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 136 | Free the SkyFrame centre-probe PointSets | box.c:3979-3984 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
+| 136 | Free the SkyFrame center-probe PointSets | box.c:3979-3984 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 137 | See whether every point of the Box mesh falls on the Polygon's boundary, to within the uncertainty | box.c:3985-3988 (fn Simplify) | box_region.rs:518 (fn convert_to_polygon) | architecture | ported |
 | 138 | If so, use the new Polygon in place of the original Box | box.c:3989-3994 (fn Simplify) | box_region.rs:519-522 (fn convert_to_polygon),1980-1983 (fn simplified) | architecture | ported |
 | 139 | Free the Polygon and the corner PointSet | box.c:3995-4001 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
@@ -185,16 +185,16 @@ merge helpers shared with `Interval`, `NullRegion` and `PointList` live in
 `box.c::MapMerge` and `interval.c::MapMerge` are the same function at a constant
 offset: `diff` over `box.c:1536-1625 (fn MapMerge)` and
 `interval.c:1144-1233 (fn MapMerge)` shows one substantive difference, which is
-that the Box initialises `i1 = 0` (`box.c:1538 (fn MapMerge)`) where the Interval
-initialises `i1 = -1` (`interval.c:1146 (fn MapMerge)`). Neither value is ever read
+that the Box initializes `i1 = 0` (`box.c:1538 (fn MapMerge)`) where the Interval
+initializes `i1 = -1` (`interval.c:1146 (fn MapMerge)`). Neither value is ever read
 before it is assigned by a successful merge attempt, so the difference is
-invisible: both bodies test `i1 > -1` only after the lower-neighbour and
-upper-neighbour attempts have run, and both attempts set `i1` when they succeed.
+invisible: both bodies test `i1 > -1` only after the lower-neighbor and
+upper-neighbor attempts have run, and both attempts set `i1` when they succeed.
 The port returns `Option<usize>` and so carries no sentinel at all.
 
 ## Row 8 — parallel only
 
-C wraps the whole neighbour-merge half of `MapMerge` in a parallel test, because
+C wraps the whole neighbor-merge half of `MapMerge` in a parallel test, because
 two Regions in series are not a Region: the first Region's output feeds the
 second's input, which is a constraint on a transformed position rather than a
 region of a combined Frame. `region_map_merge`
@@ -289,7 +289,7 @@ says (`box_region.rs:1989 (fn simplified)`).
 A Polygon's vertices decide which side of its boundary is its inside, so C builds
 the four corners twice, clockwise and anti-clockwise, and keeps the winding whose
 inside is the Box's interior (`box.c:3913-3974 (fn Simplify)`). For a SkyFrame it
-decides by transforming the Box centre through the candidate Polygon; otherwise it
+decides by transforming the Box center through the candidate Polygon; otherwise it
 asks whether the Polygon is bounded, since the complement of a polygon is not.
 
 Where neither winding satisfies that test, C annuls the candidate on each
@@ -297,7 +297,7 @@ iteration (`box.c:3975-3978 (fn Simplify)`) and reaches `astRegPins` with a null
 Polygon pointer (`box.c:3985-3988 (fn Simplify)`), while
 `convert_to_polygon` returns `Ok(None)` (`box_region.rs:511-513 (fn convert_to_polygon)`).
 The two orders are exhaustive — exactly one of them is bounded, and for a SkyFrame
-the transformed centre lies inside exactly one — so neither path is reachable and
+the transformed center lies inside exactly one — so neither path is reachable and
 the difference is in the unreachable branch only.
 
 ## Rows 140 and 141 — where the Prism attempt sits

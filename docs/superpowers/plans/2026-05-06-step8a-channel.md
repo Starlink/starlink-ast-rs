@@ -361,7 +361,7 @@ Keep existing `render_native` as a wrapper with default options.
 
 - [ ] **Step 2: Verify existing tests still pass**
 
-All serialisation tests should pass unchanged since
+All serialization tests should pass unchanged since
 `render_native` still uses defaults.
 
 - [ ] **Step 3: Commit**
@@ -475,5 +475,5 @@ Run: `cargo test -p ast-core`
 8. FileSource/FileSink work for file I/O
 9. Config attributes affect output (comment, full, indent)
 10. to_native_string/from_native_string still work (backward compatible)
-11. All existing serialisation tests pass unchanged
+11. All existing serialization tests pass unchanged
 12. `git status` — clean

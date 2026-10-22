@@ -48,7 +48,7 @@ fn construct_with_edge_point() {
     assert!((radius - 5.0).abs() < 1e-10);
 }
 
-/// C stores a Circle built from a radius as centre plus a circumference point
+/// C stores a Circle built from a radius as center plus a circumference point
 /// (`CircumPoint`, `circle.c:570`, called at `:2655`), and `CalcPars` then
 /// defines the radius it reports as the geodesic distance back to that point.
 /// `CircumPoint` offsets along the first axis *by the radius*, not by an
@@ -76,7 +76,7 @@ fn radius_round_trips_exactly_on_a_sky_frame() {
         "stored radius must round-trip bit-exactly, got {reported:.17e}"
     );
 
-    // The pole is 0.30000000000000004441 from the centre, which is one ulp
+    // The pole is 0.30000000000000004441 from the center, which is one ulp
     // above the requested radius, so it lies strictly outside the circle — as
     // the C oracle reports.
     assert!(
@@ -110,7 +110,7 @@ fn point_inside() {
         .build()
         .unwrap();
 
-    // Origin is at the centre — definitely inside.
+    // Origin is at the center — definitely inside.
     assert!(circle.point_in_region(&[0.0, 0.0]).unwrap());
 
     // Point at distance 3 — inside.
@@ -200,7 +200,7 @@ fn negation_flips_membership() {
         .build()
         .unwrap();
 
-    // Before negation: centre is inside, far point is outside.
+    // Before negation: center is inside, far point is outside.
     assert!(circle.point_in_region(&[0.0, 0.0]).unwrap());
     assert!(!circle.point_in_region(&[10.0, 0.0]).unwrap());
 
@@ -208,7 +208,7 @@ fn negation_flips_membership() {
     circle.negate();
     assert!(circle.is_negated());
 
-    // After negation: centre is outside, far point is inside.
+    // After negation: center is outside, far point is inside.
     assert!(!circle.point_in_region(&[0.0, 0.0]).unwrap());
     assert!(circle.point_in_region(&[10.0, 0.0]).unwrap());
 }
@@ -228,7 +228,7 @@ fn negated_copy() {
 
     // Original still works.
     assert!(circle.point_in_region(&[0.0, 0.0]).unwrap());
-    // Negated copy: centre is outside.
+    // Negated copy: center is outside.
     assert!(!neg.point_in_region(&[0.0, 0.0]).unwrap());
 }
 
@@ -295,7 +295,7 @@ fn transform_mixed() {
     assert_eq!(result.point(1)[0], BAD_VALUE);
     assert_eq!(result.point(1)[1], BAD_VALUE);
 
-    // Point 2: centre — inside.
+    // Point 2: center — inside.
     assert!((result.point(2)[0]).abs() < 1e-10);
     assert!((result.point(2)[1]).abs() < 1e-10);
 }
@@ -373,11 +373,11 @@ fn bounding_box_2d() {
     assert_eq!(lower.len(), 2);
     assert_eq!(upper.len(), 2);
 
-    // Lower bound: centre - radius.
+    // Lower bound: center - radius.
     assert!((lower[0] - (-2.0)).abs() < 1e-10);
     assert!((lower[1] - (-1.0)).abs() < 1e-10);
 
-    // Upper bound: centre + radius.
+    // Upper bound: center + radius.
     assert!((upper[0] - 4.0).abs() < 1e-10);
     assert!((upper[1] - 5.0).abs() < 1e-10);
 }
@@ -421,7 +421,7 @@ fn mesh_2d_points_on_boundary() {
     assert_eq!(mesh.npoint(), 100);
     assert_eq!(mesh.ncoord(), 2);
 
-    // Every mesh point should be at distance ~5 from the centre.
+    // Every mesh point should be at distance ~5 from the center.
     for i in 0..mesh.npoint() {
         let p = mesh.point(i);
         let dist = (p[0] * p[0] + p[1] * p[1]).sqrt();
@@ -455,7 +455,7 @@ fn mesh_1d() {
     assert!((hi - 13.0).abs() < 1e-10);
 }
 
-// ---- Off-centre circle ----
+// ---- Off-center circle ----
 
 #[test]
 fn off_centre_point_in_region() {
@@ -466,13 +466,13 @@ fn off_centre_point_in_region() {
         .build()
         .unwrap();
 
-    // Centre is inside.
+    // Center is inside.
     assert!(circle.point_in_region(&[10.0, 20.0]).unwrap());
 
-    // Point at distance 2 from centre.
+    // Point at distance 2 from center.
     assert!(circle.point_in_region(&[12.0, 20.0]).unwrap());
 
-    // Point at distance 4 from centre — outside.
+    // Point at distance 4 from center — outside.
     assert!(!circle.point_in_region(&[14.0, 20.0]).unwrap());
 }
 
@@ -745,7 +745,7 @@ fn with_integrity_error_propagates() {
 
 #[test]
 fn reg_pins_circle_edge_on_boundary() {
-    // Circle centred at origin, radius 5; default uncertainty band is tiny.
+    // Circle centerd at origin, radius 5; default uncertainty band is tiny.
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let c = CircleBuilder::new(frame, vec![0.0, 0.0])
         .unwrap()
@@ -767,7 +767,7 @@ fn reg_pins_circle_interior_and_exterior_off_boundary() {
         .build()
         .unwrap();
 
-    // The centre is interior, a far point is exterior; neither is on-boundary.
+    // The center is interior, a far point is exterior; neither is on-boundary.
     let interior = PointSet::from_rows([[0.0_f64, 0.0]]);
     assert!(!c.reg_pins(&interior, None).unwrap());
     let exterior = PointSet::from_rows([[20.0_f64, 0.0]]);

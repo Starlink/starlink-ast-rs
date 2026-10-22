@@ -160,7 +160,7 @@ fn cvt_inverse_pairs() {
 }
 
 // ===========================================================================
-// 1. Galactic -> FK5: galactic centre known position
+// 1. Galactic -> FK5: galactic center known position
 // ===========================================================================
 
 #[test]
@@ -168,7 +168,7 @@ fn galactic_to_fk5() {
     let mut sla = SlaMap::new();
     sla.add(SlaCvtType::Galeq, &[]).unwrap();
 
-    // Galactic centre: l=0, b=0
+    // Galactic center: l=0, b=0
     let pts = PointSet::from_rows([[0.0_f64, 0.0_f64]]);
     let out = sla.transform(&pts, true).unwrap();
     // Normalize RA to [0, 360) since dcc2s can return [-pi, pi]
@@ -354,7 +354,7 @@ fn bad_value_propagation() {
 }
 
 // ===========================================================================
-// 8. Serialisation round-trip
+// 8. Serialization round-trip
 // ===========================================================================
 
 #[test]
@@ -568,7 +568,7 @@ fn multiple_points() {
 }
 
 // ===========================================================================
-// Serialisation of inverted mapping
+// Serialization of inverted mapping
 // ===========================================================================
 
 #[test]
@@ -859,7 +859,7 @@ fn simplify_inverted_map_step_swaps_date_and_equinox() {
     );
 }
 
-/// slamap.c CvtCode recognises only the documented names, matched as
+/// slamap.c CvtCode recognizes only the documented names, matched as
 /// astChrMatch matches: case-insensitive, ignoring trailing white space.
 #[test]
 fn cvt_codes_match_as_c_matches_them() {

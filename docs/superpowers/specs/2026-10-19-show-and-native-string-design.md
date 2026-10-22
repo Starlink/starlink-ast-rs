@@ -20,7 +20,7 @@ All three are in `object.c` and apply to every Object.
 - **`astShow`** writes the Object through a Channel created with no attributes set, to standard output (`object.c` `Show`).
   The output is the Native dump with the Channel defaults: comments on, `Full` 0, the default indentation.
 - **`astToString`** writes the Object through a Channel created with `"Comment=0,Full=-1,Indent=0"`, to a sink that appends each line and a `\n` to a growing buffer (`astToString_`, `ToStringSink`).
-  It is documented as "a minimal textual serialisation" that `astFromString` can read back.
+  It is documented as "a minimal textual serialization" that `astFromString` can read back.
 - **`astFromString`** reads one Object from such a string through a Channel and returns it as an `AstObject *` (`astFromString_`); the caller does not know the class in advance.
 
 C's class checks report a pointer of the wrong class with `AST__OBJIN`, "Pointer to <class> required, but pointer to <class> given." (`object.h.in`, `astMAKE_CHECK`).

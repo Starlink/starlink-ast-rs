@@ -68,7 +68,7 @@ fn point_inside_bounded() {
         .build()
         .unwrap();
 
-    // Centre point.
+    // Center point.
     assert!(interval.point_in_region(&[3.0, 5.0]).unwrap());
 
     // Corner point (closed boundary includes it).
@@ -344,7 +344,7 @@ fn bounds_of_unbounded_interval() {
     assert_eq!(upper[1], f64::MAX);
 }
 
-// ---- Centre ----
+// ---- Center ----
 
 #[test]
 fn centre_of_bounded_interval() {
@@ -486,7 +486,7 @@ fn batch_10k_points() {
 // the two tests below pin agreement with the C encoding (so a
 // round-trip C → us → C is byte-equivalent).
 
-/// Builder-built Interval with asymmetric 2-D bounds serialises to a
+/// Builder-built Interval with asymmetric 2-D bounds serializes to a
 /// native string whose X-key sequence matches C's iteration order.
 #[test]
 fn builder_serialised_pointset_uses_c_layout() {
@@ -725,7 +725,7 @@ fn point_interval_merges_into_a_pointlist() {
 
 /// Ported from testregions.c `checkIntervalCentreFrame`: an Interval mapped
 /// through a ZoomMap of 2 without simplification keeps its base Frame limits
-/// of 1 and 3, so its centre is 2 in the base Frame and 4 in the current
+/// of 1 and 3, so its center is 2 in the base Frame and 4 in the current
 /// Frame (interval.c `RegCentre`).
 #[test]
 fn interval_centre_is_given_in_the_frame_asked_for() {

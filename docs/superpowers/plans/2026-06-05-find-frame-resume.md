@@ -40,7 +40,7 @@ Tasks 8 (CmpFrame), 9 (FluxFrame), 9b (SpecFluxFrame), 9c (TimeFrame), 10 (Frame
 | 12b | Diurnal aberration in AzEl SLA chain | `600c39f` | skyframe.c:3735 (GetDiurab) + 6181/6292 |
 | 12c | Mirror C float-cast in SpecMap LSRK helpers | `3d93d28` | specmap.c:1764, 1768, 1980, 2030, 2080 |
 | 12d | Walk primary frames in AddEncodingFrame; CLASS spatial-CRVAL adjust; SSYSOBS/OBSGEO preservation | `5be33c4` | fitschan.c:2509-2517, 6465-6496, 10571 |
-| 12e | FrToVl operator grouping + RefRA/Dec normalisation + CLASS write-helper preconditioning | `8891171` | specmap.c:3143; SOFA eraAnp/eraAnpm |
+| 12e | FrToVl operator grouping + RefRA/Dec normalization + CLASS write-helper preconditioning | `8891171` | specmap.c:3143; SOFA eraAnp/eraAnpm |
 | 12f | CLASS AzEl radec template System left unset (was forced FK5) | `3e78716` | fitschan.c:6995 |
 
 Each commit is a focused, self-contained port. Tests added per class.
@@ -120,7 +120,7 @@ Each commit is a focused, self-contained port. Tests added per class.
 
 ### Task 9b — SpecFluxFrame::Match + SubFrame + Overlay
 
-**C source:** `reference/starlink-ast/src/specfluxframe.c`. SpecFluxFrame is a 2-axis specialised CmpFrame (1 spectral + 1 flux). Defers most work to the underlying SpecFrame and FluxFrame.
+**C source:** `reference/starlink-ast/src/specfluxframe.c`. SpecFluxFrame is a 2-axis specialized CmpFrame (1 spectral + 1 flux). Defers most work to the underlying SpecFrame and FluxFrame.
 
 ### Task 9c — TimeFrame::Match + SubFrame + Overlay
 
@@ -197,7 +197,7 @@ This is what unblocks the 10 CLASS-bucket fixtures in the wcsconv suite.
 
 ### Task 14 — Audit existing find_frame consumers
 
-`grep -rn "find_frame" crates/` — list every current consumer; verify the new behaviour matches C; add regression tests covering the wcsconv fixtures that exercise virtual-system matching (e.g. AzEl).
+`grep -rn "find_frame" crates/` — list every current consumer; verify the new behavior matches C; add regression tests covering the wcsconv fixtures that exercise virtual-system matching (e.g. AzEl).
 
 ## Concrete starting commands for Task 8
 

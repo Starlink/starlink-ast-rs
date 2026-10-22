@@ -213,7 +213,7 @@ impl Mapping for ShiftMap {
         // swap/merge logic), then revert to a ShiftMap if the WinMap merge
         // did nothing or merely turned the WinMap back into this ShiftMap.
         //
-        // Every neighbour class a ShiftMap could pair with is reached through
+        // Every neighbor class a ShiftMap could pair with is reached through
         // that conversion, including another ShiftMap (C `WinShift`) and a
         // UnitNormMap — C notes at unitnormmap.c:359 that its own
         // ShiftMap+UnitNormMap branch never runs precisely because the
@@ -333,7 +333,7 @@ impl Mapping for ShiftMap {
         }
         // C converts a nominated ShiftMap to a WinMap and delegates to the
         // WinMap MapMerge, which reaches WinWin (with its rounding snaps)
-        // only when the neighbour is itself a WinMap.
+        // only when the neighbor is itself a WinMap.
         compose_linear(
             &s1,
             &c1,

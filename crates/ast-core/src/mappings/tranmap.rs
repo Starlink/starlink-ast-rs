@@ -452,7 +452,7 @@ impl Mapping for TranMap {
             }
         }
 
-        // Nothing changed above, so look for a neighbouring TranMap to merge
+        // Nothing changed above, so look for a neighboring TranMap to merge
         // with, in series only (`tranmap.c:898-903`).
         super::simplify::default_map_merge(ctx, where_, series)
     }

@@ -3,7 +3,7 @@
 ## Summary
 
 Implement SkyFrame — the celestial coordinate frame — and SkyAxis
-(its specialised axis type). SkyFrame is the most complex class in
+(its specialized axis type). SkyFrame is the most complex class in
 the AST library: it handles 12 coordinate systems, builds SlaMap
 conversion pipelines, provides spherical geometry, sexagesimal
 formatting, offset coordinate support, and powers the FrameSet
@@ -20,7 +20,7 @@ Dtai, Dut1) to the Frame trait.
 4. `SkyRefIs` enum (offset coordinate modes).
 5. `make_sky_mapping` — the SlaMap pipeline builder.
 6. Spherical geometry: great-circle distance, bearing, geodesic
-   offset, coordinate normalisation.
+   offset, coordinate normalization.
 7. Sexagesimal formatting (HMS/DMS) and parsing.
 8. Offset coordinate rotation mappings.
 9. Observer attributes on the Frame trait.
@@ -197,7 +197,7 @@ latitude (but overridden by SkyFrame's `neglon` attribute).
 - `as_time=false`: Convert radians to degrees (value * 180/π),
   format as `±DD:MM:SS.ss`.
 - Negative values: prefix with `-` for latitude/DMS; for HMS,
-  normalise to [0, 24h).
+  normalize to [0, 24h).
 
 `unformat(text: &str, as_time: bool) -> AstResult<(f64, usize)>`
 
@@ -205,7 +205,7 @@ latitude (but overridden by SkyFrame's `neglon` attribute).
 - Also accept `HH MM SS.ss`, `DDdMMmSS.ss`, decimal degrees/hours.
 - Return (value_in_radians, characters_consumed).
 
-### Serialisation
+### Serialization
 
 Class: `"SkyAxis"`. Attributes:
 - `IsLat` (if set)
@@ -258,7 +258,7 @@ Each step is an SlaMap with the appropriate conversion chain.
 
 The FK5-to-system direction reverses the chain.
 
-### Optimisations
+### Optimizations
 
 - If `from.system == to.system` and `from.epoch == to.epoch` and
   `from.equinox == to.equinox`: return UnitMap.
@@ -348,7 +348,7 @@ pub trait Frame: AsAny + Send + fmt::Debug {
 FrameSet delegates to current frame. BasicFrame and CmpFrame return
 None (defaults).
 
-## Serialisation
+## Serialization
 
 ### SkyFrame
 
@@ -380,12 +380,12 @@ Class: `"SkyAxis"` (vs plain `"Axis"` for BasicFrame).
 | Key | Condition | Comment |
 |-----|-----------|---------|
 | `IsLat` | if set | "Latitude axis?" |
-| `CnZer` | if set | "Centre zero?" |
+| `CnZer` | if set | "Center zero?" |
 | `AsTime` | if set | "Format as time?" |
 
-## Frame Trait Additions for Serialisation
+## Frame Trait Additions for Serialization
 
-The Frame serialisation needs to know the System attribute. Add to
+The Frame serialization needs to know the System attribute. Add to
 the Frame trait:
 
 ```rust
@@ -406,7 +406,7 @@ CmpFrame return None.
 - Observer attributes
 
 ### Coordinate System Conversion (12 systems)
-- FK5→Galactic: galactic centre known coordinates
+- FK5→Galactic: galactic center known coordinates
 - FK5→ICRS: near-identity for modern data
 - FK4→FK5: known star with epoch
 - Ecliptic→FK5
@@ -437,7 +437,7 @@ CmpFrame return None.
 - SkyRefIs::Pole with known pole
 - Round-trip through offset system
 
-### Serialisation
+### Serialization
 - to_native_string → from_native_string round-trip
 - Verify System, Equinox, SkyRef preserved
 - Parse reference .ast files containing SkyFrame

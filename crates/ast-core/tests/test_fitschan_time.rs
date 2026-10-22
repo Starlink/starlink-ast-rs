@@ -2,7 +2,7 @@
 //!
 //! Covers the `WcsMapFrm` DUT1/DTAI stamping (fitschan.c:38012-38021) onto
 //! the top-level world Frame, and the TELESCOP gate on reading DTAI at all
-//! (fitschan.c:36700-36712): DTAI is only honoured when a TELESCOP card is
+//! (fitschan.c:36700-36712): DTAI is only honored when a TELESCOP card is
 //! present and names JCMT or UKIRT.
 //!
 //! The header mixes a spectral (FREQ) axis with the celestial (RA/Dec) pair
@@ -15,7 +15,7 @@ use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::fitschan::{Encoding, FitsChan};
 
-/// 3-axis (FREQ, RA, Dec) header, parameterised by an optional TELESCOP
+/// 3-axis (FREQ, RA, Dec) header, parameterized by an optional TELESCOP
 /// card and a DTAI value.
 fn header_with_telescop(telescop: Option<&str>, dtai: Option<f64>) -> String {
     let mut text = String::from(

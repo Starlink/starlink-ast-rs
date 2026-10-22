@@ -61,7 +61,7 @@ pub struct SpecFluxFrame {
 }
 
 impl SpecFluxFrame {
-    /// `"<flux label> versus <spec label>"`, capitalised (specfluxframe.c
+    /// `"<flux label> versus <spec label>"`, capitalized (specfluxframe.c
     /// `GetTitle`), for the `frame_attrs_title` macro.
     fn frame_default_title(&self) -> AstResult<String> {
         let t = format!(
@@ -195,7 +195,7 @@ impl SpecFluxFrame {
         Ok(())
     }
 
-    /// A standardised copy of the embedded FluxFrame: System set explicitly
+    /// A standardized copy of the embedded FluxFrame: System set explicitly
     /// (to the possibly-unit-derived `system()`) and Unit cleared so it
     /// represents the default units for that System. Mirrors C `GetFluxFrame`
     /// with `std=1` (specfluxframe.c:240).
@@ -206,7 +206,7 @@ impl SpecFluxFrame {
         Ok(ff)
     }
 
-    /// A standardised copy of the embedded SpecFrame: System and Unit set to
+    /// A standardized copy of the embedded SpecFrame: System and Unit set to
     /// the spectral system and unit used by the FluxFrame's flux density
     /// system (wavelength/Angstrom or frequency/Hz). Mirrors C `GetSpecFrame`
     /// with `std=1` (specfluxframe.c:307).
@@ -556,8 +556,8 @@ impl Frame for SpecFluxFrame {
 use crate::mappings::{CmpMap, Composition, Mapping, MathMap, PermMap, RateMap, TranMap};
 
 /// The forward half of the flux-scaling TranMap (specfluxframe.c::MakeMapF,
-/// 754). A 2-in/2-out Mapping whose forward transform takes standardised
-/// `(v1, x1)` to standardised `(v2, x2)`, dividing the flux value by the
+/// 754). A 2-in/2-out Mapping whose forward transform takes standardized
+/// `(v1, x1)` to standardized `(v2, x2)`, dividing the flux value by the
 /// absolute rate of change of `x2` with respect to `x1`.
 fn make_map_f(x1: &SpecFrame, x2: &SpecFrame) -> AstResult<DynMapping> {
     // m: x1 -> x2 spectral mapping.
@@ -646,10 +646,10 @@ fn make_map2(sff: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
 
 /// The third Mapping of MakeSFMapping (specfluxframe.c::MakeMap3, 631): a
 /// 3-in/3-out parallel CmpMap. The first two axes are a `TranMap` between
-/// standardised `(v1,x1)` and `(v2,x2)` (the flux scaling); the third axis is
+/// standardized `(v1,x1)` and `(v2,x2)` (the flux scaling); the third axis is
 /// the unmodified `x1 -> x2` spectral mapping.
 fn make_map3(target: &SpecFluxFrame, result: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
-    // Standardised SpecFrames for the flux-scaling TranMap.
+    // Standardized SpecFrames for the flux-scaling TranMap.
     let sf1 = target.std_spec_frame()?;
     let sf2 = result.std_spec_frame()?;
     let fmap = make_map_f(&sf1, &sf2)?;
@@ -685,7 +685,7 @@ fn make_sf_mapping(
     // FluxFrame/SpecFrame each correctly report equal). That looks like a C
     // bug (a frame should equal its own copy); we treat genuinely-identical
     // SpecFluxFrames as equal here. Logged in docs/issues/c-library-quirks.md;
-    // revisit if upstream confirms the C behaviour is intentional.
+    // revisit if upstream confirms the C behavior is intentional.
     if Frame::equal(&target.spec_frame, &result.spec_frame)
         && Frame::equal(&target.flux_frame, &result.flux_frame)
     {
@@ -814,7 +814,7 @@ fn specfluxframe_sub_frame(
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 impl Serializable for SpecFluxFrame {

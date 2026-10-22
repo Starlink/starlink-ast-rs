@@ -172,7 +172,7 @@
   (`f64`, `f32`, `i32`, `i8`, `u8`). `astRebinSeq<X>` is
   `mappings::rebin_seq`, which takes the weights and count of used pixels
   carried between calls as borrowed `Option`s, as C takes pointers, and an
-  `Option` input for the call that only normalises.
+  `Option` input for the call that only normalizes.
 - **2026-10-09 (rev 12)**: Channels are objects.
   `AnyObject` gains `NativeChannel` (C's `Channel`) and `MocChan`, so a
   Channel can be written to another and read back, as C's Channel `Dump` and
@@ -278,7 +278,7 @@
   `FrameSet` owns its own `Ident` rather than forwarding to its current Frame,
   matching C's 30-OCT-2009 change (`frameset.c:2759`, `:4841`, `:10830` all pass
   `this`).
-  Serialisation follows C's Object dump: the card is written only when
+  Serialization follows C's Object dump: the card is written only when
   `test_ident` and the value is non-empty (`object.c:1697`), before the
   `IsA Object` marker, so an unset `Ident` changes no existing dump.
 
@@ -362,7 +362,7 @@
     history. The new repo takes ownership of the vendored C
     dependencies (`pal`, `erfa`, `wcslib`) by copying them in-tree at
     `vendor/`, so the everyday build (`cargo build`, `cargo test`)
-    works on a fresh clone with no submodule initialisation. A
+    works on a fresh clone with no submodule initialization. A
     submodule at `reference/starlink-ast/` brings in the upstream C
     library and is needed *only* by the optional oracle test tier
     (Rust-vs-C comparison) and the FFI parity tier (existing C
@@ -372,7 +372,7 @@
     proposed 0-based with CFFI translation; per @timj that produces a
     silent footgun (users reading AST docs see `Label(1)` and would
     reach for `set_label(1, …)` and quietly target the wrong axis) and
-    requires unwanted translation at the Native-serialisation layer
+    requires unwanted translation at the Native-serialization layer
     (`Lbl1`/`Lbl2` tokens). 1-based for axis attributes and for
     `FrameRef::Index` matches AST docs, the Native format, and the C
     API throughout.
@@ -387,7 +387,7 @@
     - generics-over-`Frame` is dropped (not appropriate for this port's
       goals, per @TallJimbo).
     - enum-based Mapping dispatch is dropped from the spec; may be
-      introduced later as a pure internal optimisation.
+      introduced later as a pure internal optimization.
     - Rust-backed Python binding is out of scope and removed from the
       open-questions list.
   - `test_attr(name)` and `clear_attr(name)` by string are removed from
@@ -401,7 +401,7 @@
   - `wcslib` promoted from "non-goal, revisit later" to **planned for
     a Rust port** later in the implementation. Motivation: the vendored
     snapshot is ~20 years old; upstream has since diverged
-    significantly and gained vectorised APIs that `WcsMap` could use if
+    significantly and gained vectorized APIs that `WcsMap` could use if
     we control the implementation. `pal` / `erfa` remain vendored C
     (simple enough to port later if a perf win motivates it).
   - Added a "Known inherited limitations" section noting the A&C-paper
@@ -447,14 +447,14 @@ utilities. It is consumed widely in the Starlink application suite, by
 `pyast`, and by numerous third-party astronomical codes. The current
 implementation is a hand-rolled object system with ~50 `Mapping` subclasses,
 a `Frame` / `FrameSet` hierarchy built on top of `Mapping`, `Channel`-based
-serialisation (Native / XML / YAML / FITS / STC-S / MOC), and `Plot` /
+serialization (Native / XML / YAML / FITS / STC-S / MOC), and `Plot` /
 `Plot3D` graphics driven through a link-time plugin system.
 
 This document is the design spec for a full native Rust port of the AST
 library, exposing an idiomatic Rust API and a thin CFFI shim that preserves
 full binary ABI compatibility with the existing `ast.h`. It is deliberately
 a **patterns-only** spec: it commits to the overarching trait shape,
-ownership model, error conventions, serialisation architecture, plugin
+ownership model, error conventions, serialization architecture, plugin
 traits, and FFI strategy, with worked examples for representative classes.
 Per-class method-level design is deferred to the implementation plan.
 
@@ -466,7 +466,7 @@ Per-class method-level design is deferred to the implementation plan.
 2. A `cdylib` shim (`ast-capi`) that preserves full binary ABI
    compatibility with today's `libast.{so,dylib,a}`: existing applications
    link without recompile, without relink, without header changes.
-3. Byte-for-byte round-trip compatibility with every existing AST-serialised
+3. Byte-for-byte round-trip compatibility with every existing AST-serialized
    document (Native, XML, YAML, FITS-WCS, FITS-Native-encoded, STC-S, MOC).
 4. **Full migration of `ast_tester/` to native Rust.** Every C test
    program (~53 `.c` files) becomes an idiomatic Rust integration test
@@ -483,7 +483,7 @@ Per-class method-level design is deferred to the implementation plan.
 5. All 107+ existing CMake ctests (107 default + 20 PLplot-conditional
    + 1 stress) pass against the Rust-built `libast` via the CFFI shim.
 6. Performance parity (within 10%) against the current C library on
-   representative transform, simplification, and serialisation workloads.
+   representative transform, simplification, and serialization workloads.
    **Hot-path constraint**: attribute mutation (notably `Epoch` and
    `SkyRefIs` on `SkyFrame`) must be O(1) with no allocation and no
    locking, to preserve SCUBA-2-style per-time-slice call patterns.
@@ -500,7 +500,7 @@ old and has diverged from upstream too far for the upstream to be
 adopted directly. A Rust port of the vendored fork is **planned** as
 one of the later implementation steps (step 6a in the delivery order),
 both to remove the Rust↔C boundary crossing on the transform hot path
-and to expose upstream's later-added vectorised APIs to `WcsMap`.
+and to expose upstream's later-added vectorized APIs to `WcsMap`.
 - Exposing the internal `AstObject` struct layout to external C callers.
   `AstObject*` remains opaque, as it is today.
 - Supporting a locking-based multi-threaded mutation story through the
@@ -548,7 +548,7 @@ Two key principles:
 
 1. **The everyday build does not need the submodule.** A fresh
    `git clone` + `cargo build` + `cargo test -p ast-core` works
-   without any submodule initialisation. The vendored C sources in
+   without any submodule initialization. The vendored C sources in
    `vendor/` are committed in-tree, owned by this repo. This matters
    for packaging (`cargo publish`, distribution tarballs) and for
    contributors who don't care about the C parity tests.
@@ -572,7 +572,7 @@ Notes:
   symbol-renaming conventions `palwrap.c` / `pal2ast.h` / `erfa2ast.h`
   use today.
 - `ast-oracle-tests` and `ast-ffi-tests` add the submodule path to
-  their build dependencies. If the submodule is not initialised,
+  their build dependencies. If the submodule is not initialized,
   those crates are skipped (with a warning) rather than failing the
   workspace build.
 - After step 6a (`wcslib` port), `vendor/wcslib/` is deleted from the
@@ -600,14 +600,14 @@ well-tested, and stable.
 years old and upstream has diverged too far to re-adopt; @timj's
 conclusion on the PR was that once we are reimplementing AST we should
 also take on the `wcslib` port to remove the FFI crossing and to
-expose upstream's newer **vectorised transform API** to `WcsMap`. That
+expose upstream's newer **vectorized transform API** to `WcsMap`. That
 port is sequenced as **step 6a** of the indicative delivery order,
 immediately before `WcsMap` itself. Until then, `vendor/wcslib/`
 continues to be built as C by `ast-core`'s `build.rs` and called
 through a small private FFI. After step 6a it is removed from the
 repo entirely.
 
-`cminpack` is **not** copied across — it is retired in favour of the
+`cminpack` is **not** copied across — it is retired in favor of the
 `levenberg-marquardt` crate (already validated in the prototype port
 at lsst-dm/starlink-astrs). Before retirement, fixture-level validation
 confirms Rust-LM output matches cminpack output to within fitting
@@ -738,7 +738,7 @@ Two corollaries, both learned the expensive way:
 
 - **Match C's construction shape, not just its arithmetic.** A chain that is
   mathematically equivalent but structurally different diverges in whatever
-  *consumes* the structure — the simplifier, the serialiser, `MapSplit` — and
+  *consumes* the structure — the simplifier, the serializer, `MapSplit` — and
   it surfaces far from the change.
 - **Write down how a C mutable-state convention maps onto owned values**
   (`Invert`, `Frozen`, reference-counted sharing) before the first call site
@@ -885,7 +885,7 @@ mutation replaces them. If a user wants a modified copy, they
 
 All concrete classes are `Send` — they can be moved between threads.
 None are `Sync` — they cannot be shared across threads without external
-synchronisation, because mutation is via `&mut self` and is deliberately
+synchronization, because mutation is via `&mut self` and is deliberately
 lock-free. This matches the performance constraint from the review: no
 mutex in the hot paths.
 
@@ -1042,7 +1042,7 @@ impl Region for PointList { .. }
 
 Generics-over-`Frame` for compile-time coordinate-system checking was
 discussed on the PR and dropped: the interaction with AST's dynamic
-class structure (needed for serialisation and the C ABI) makes the
+class structure (needed for serialization and the C ABI) makes the
 payoff marginal for this port.
 
 ## Attribute access
@@ -1068,7 +1068,7 @@ impl SkyFrame {
 ```
 
 Each getter returns the AST-documented default when the attribute is
-unset, matching C behaviour. `test_*` distinguishes set from default-used.
+unset, matching C behavior. `test_*` distinguishes set from default-used.
 
 ### Axis-indexed attributes
 
@@ -1097,7 +1097,7 @@ impl BasicFrame {
 Rules:
 
 - **`axis` is 1-based in the Rust API** to match AST's documentation,
-  the C API, and the Native serialisation tokens (`Lbl1`, `Lbl2`, …).
+  the C API, and the Native serialization tokens (`Lbl1`, `Lbl2`, …).
   This deliberately violates the usual Rust 0-based convention — the
   alternative would silently retarget the wrong axis when users
   translate code or examples from the AST documentation. Documented
@@ -1338,7 +1338,7 @@ Channel registry **and** by one or more `IntraMap` instances read from
 that channel. Shared ownership is the simplest expression of that
 lifetime.
 
-## Serialisation
+## Serialization
 
 Unchanged from rev 1: the node-tree intermediate, multiple renderers
 (Native, JSON with schema, XML, YAML, FITS-Native), FITS double
@@ -1396,9 +1396,9 @@ struct Registry {
 - `astSet` etc. take `&mut` on the inner object via `RefCell::borrow_mut`.
   No lock (the RefCell is borrow-checked at runtime but not threaded).
 - **Thread safety**: `Arc<RefCell<T>>` is `Send` but not `Sync`. C
-  callers who want to share a handle across threads must synchronise
+  callers who want to share a handle across threads must synchronize
   themselves, exactly matching the current C library's documented
-  behaviour.
+  behavior.
 - The registry's outer `RwLock` is acquired only for slot
   insert/remove/lookup, not for any actual operation on the object.
 - `astBegin` / `astEnd` / `astExempt` are implemented on a per-thread
@@ -1427,7 +1427,7 @@ does not affect the shim — it implements the parser internally.
 ### Generic resample / rebin
 
 Each `astResampleD` / `astResampleF` / `astResampleI` / … is its own
-`#[no_mangle] extern "C" fn` monomorphising the Rust generic.
+`#[no_mangle] extern "C" fn` monomorphizing the Rust generic.
 
 ### Plugin re-exports
 
@@ -1497,7 +1497,7 @@ Five tiers, each answering a distinct question.
      buildable: simple-Mappings step ports `testzoommap` /
      `testpermmap` / `testcmpmap` / etc.; the `BasicFrame` step ports
      `testframe` / `testaxis`; the `FrameSet` step ports
-     `testframeset` / `testconvert`; the serialisation step ports
+     `testframeset` / `testconvert`; the serialization step ports
      `testchannel` / `testxmlchan` / the `ast_astequal` regression
      harness; and so on. Step 11 of the delivery order is the
      **completion gate** that confirms every program and fixture has
@@ -1513,7 +1513,7 @@ Five tiers, each answering a distinct question.
 3. **`ast-capi` C test harness** — all CMake tests from
    `reference/starlink-ast/ast_tester/` link against the Rust-built
    `libast` and must pass unchanged. Skipped (with a notice) when the
-   submodule is not initialised. This tier proves the CFFI layer
+   submodule is not initialized. This tier proves the CFFI layer
    preserves the C ABI; tier 1 already proves the Rust API itself
    covers the same surface.
 4. **Oracle correctness tests** (`ast-oracle-tests`) — matched inputs
@@ -1522,7 +1522,7 @@ Five tiers, each answering a distinct question.
    commit; bumping the pin is an explicit, reviewable action. Bit-exact
    for integer/classification outputs; bounded ULP tolerance for
    floating-point; property-based for random pipelines. Skipped (with
-   a notice) when the submodule is not initialised.
+   a notice) when the submodule is not initialized.
 5. **Benchmarks** (`ast-bench`) — transform timings on 1 / 10 / 100 /
    100k / 1M points from the transform oracles, Rust always and C
    optionally. Rust/C ratios are recorded per platform; the regression
@@ -1539,7 +1539,7 @@ progress the same way it tracks today's Fortran → C migrations.
 
 ## Indicative delivery order
 
-0. **Project bootstrap.** Initialise the new `starlink-astrs` repo,
+0. **Project bootstrap.** Initialize the new `starlink-astrs` repo,
    copy `pal` / `erfa` / `wcslib` from the current C tree into
    `vendor/` with a `vendor/README.md` recording provenance, and add
    `reference/starlink-ast/` as a submodule pinned to a known-good
@@ -1555,13 +1555,13 @@ progress the same way it tracks today's Fortran → C migrations.
    `PermMap`, `CmpMap`.
 3. `BasicFrame`, `CmpFrame`. Run `testframe` / `testcmpframe` in Rust.
 4. `FrameSet` including the integrity mechanism. Run `testframeset`.
-5. Serialisation: node tree, Native renderer + parser, JSON renderer +
+5. Serialization: node tree, Native renderer + parser, JSON renderer +
    schema. Native round-trip regression tests go green.
 6. Harder Mappings: `PolyMap` (+ `levenberg-marquardt`), `LutMap`,
    `MathMap`.
 6a. **Rust port of vendored `wcslib`**, with `WcsMap` as its first
     consumer. Delivers the FFI-free hot path for projections and
-    exposes upstream's vectorised transform API to `WcsMap`. `pal` and
+    exposes upstream's vectorized transform API to `WcsMap`. `pal` and
     `erfa` remain vendored C. Oracle tests validate bit-compatibility
     against the old C `wcslib` implementation; once green,
     `vendor/wcslib/` is deleted from the repo and the `cc`-driven

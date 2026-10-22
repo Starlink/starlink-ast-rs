@@ -128,7 +128,7 @@ fn class_store_ok(store: &FitsStore, cards: &CardList) -> bool {
 
 /// Write a [`FitsStore`] as CLASS-style WCS keywords into a [`CardList`].
 ///
-/// Key behaviours:
+/// Key behaviors:
 /// - Writes NAXIS
 /// - Translates standard projection codes SFL and AIT back to GLS and ATF
 /// - Subtracts RESTFREQ from the spectral axis CRVAL (absolute → offset)
@@ -430,7 +430,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
 /// FITS-CLASS AZIMUTH / ELEVATIO emission. Mirrors fitschan.c:6988-7031.
 ///
 /// Takes the spatial reference point's (RA, Dec) in radians, converts
-/// it to (Az, El) in radians, normalises, and emits AZIMUTH / ELEVATIO
+/// it to (Az, El) in radians, normalizes, and emits AZIMUTH / ELEVATIO
 /// in degrees.
 ///
 /// The conversion goes through two find_frame calls:
@@ -556,7 +556,7 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
     let out = map_radec_to_azel.transform(&pts, true)?;
     let mut out_pair = [out.point(0)[0], out.point(0)[1]];
 
-    // Normalise via the matched AzEl SkyFrame (C:6929) and read the
+    // Normalize via the matched AzEl SkyFrame (C:6929) and read the
     // azimuth / elevation back from the SkyFrame's external axes
     // (perm-aware: a lat-first AzEl frame returns El at slot 0 and
     // Az at slot 1).

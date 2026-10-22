@@ -8,7 +8,7 @@
 //! - The table of Unit / NormUnit pairs below is not in `testframe.c`. It
 //!   was captured from the C library at the submodule pin with a probe
 //!   that sets `Unit(1)` on a one-axis Frame and reads `NormUnit(1)`, so
-//!   it pins the normaliser itself rather than only the Frame plumbing.
+//!   it pins the normalizer itself rather than only the Frame plumbing.
 //!   It includes the cases upstream's `testunitnorm.c` checks through the
 //!   protected `astUnitNormaliser`.
 
@@ -68,7 +68,7 @@ fn norm_unit_follows_a_permutation() {
 
 /// A SkyFrame axis whose Unit describes its values ("hh:mm:ss.s") reports
 /// that description unchanged; one whose Unit names a unit ("degrees") has
-/// it normalised. Values captured from the C library.
+/// it normalized. Values captured from the C library.
 #[test]
 fn sky_frame_norm_unit() {
     let cases = [
@@ -182,7 +182,7 @@ fn cmp_frame_norm_unit_comes_from_the_component() {
 /// constant is folded into a multiplier prefix only when one is closer
 /// (`"10/m"` is `"1/dm"`, `"2/m"` stays as it is). `nano m` becomes `N*m`
 /// and `hh mm ss` becomes `hh*mm*s` because the parser reads the spaces as
-/// multiplication; the SkyFrame avoids the latter by not normalising a
+/// multiplication; the SkyFrame avoids the latter by not normalizing a
 /// Unit that describes its axis values.
 const C_ORACLE: &[(&str, &str)] = &[
     ("", ""),

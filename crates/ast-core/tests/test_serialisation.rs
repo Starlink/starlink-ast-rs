@@ -1,9 +1,9 @@
-//! Serialisation round-trip tests for all concrete AST types.
+//! Serialization round-trip tests for all concrete AST types.
 //!
 //! Tests the public API: `from_native_string` and `AnyObject`, writing through a
 //! default Channel (`native_dump`).
-//! Each concrete type is serialised to Native text, checked for structural markers,
-//! then deserialised and verified for both attribute fidelity and functional equivalence.
+//! Each concrete type is serialized to Native text, checked for structural markers,
+//! then deserialized and verified for both attribute fidelity and functional equivalence.
 
 use crate::common::from_native_string;
 use crate::common::native_dump;
@@ -50,7 +50,7 @@ fn round_trip_unit_map() {
     assert!(text.contains("End UnitMap"), "missing End UnitMap");
     assert!(text.contains("Nin"), "missing Nin attribute");
 
-    // Deserialise and verify.
+    // Deserialize and verify.
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
     assert_eq!(mapping.nin(), 3);
@@ -589,7 +589,7 @@ fn any_object_frameset_is_both() {
 }
 
 // ===========================================================================
-// 11. Double round-trip (serialise -> deserialise -> serialise)
+// 11. Double round-trip (serialize -> deserialize -> serialize)
 // ===========================================================================
 
 #[test]
@@ -1089,9 +1089,9 @@ fn round_trip_frameset_with_skyframe() {
 
 #[test]
 fn round_trip_skyframe_fk4_besselian_equinox() {
-    // FK4 with B1950 equinox -- should use Besselian epoch serialisation.
+    // FK4 with B1950 equinox -- should use Besselian epoch serialization.
     let mut original = SkyFrame::new(SkySystem::Fk4);
-    // B1950.0 is the default, but set it explicitly to force serialisation.
+    // B1950.0 is the default, but set it explicitly to force serialization.
     let b1950_mjd = 33281.92346; // approximate B1950 MJD
     original.set_equinox_mjd(b1950_mjd);
 
@@ -1137,7 +1137,7 @@ fn within_ulps(a: f64, b: f64, max_ulps: u64) -> bool {
     diff <= max_ulps
 }
 
-/// Tokenise on whitespace and compare token-by-token. Tokens that are
+/// Tokenize on whitespace and compare token-by-token. Tokens that are
 /// not byte-equal are treated as equal if both parse as f64 and are
 /// within `NUMERIC_TOLERANCE_ULPS`.
 fn lines_numerically_equivalent(got: &str, want: &str) -> bool {
@@ -1202,7 +1202,7 @@ const ROUND_TRIP_EXCLUDED: &[(&str, &str)] = &[
 /// A fixture may carry a hand-written header saying what it is for -- see
 /// `wcsconv/inputs/degen1.ast` -- and that header is documentation for a
 /// reader, not part of the object, so a dump cannot reproduce it. Nothing else
-/// is normalised: whatever a comparator normalises stops being testable, and
+/// is normalized: whatever a comparator normalizes stops being testable, and
 /// every line from the first `Begin` onwards must match.
 fn strip_leading_comments(text: &str) -> String {
     let rest = text
@@ -1221,7 +1221,7 @@ fn strip_leading_comments(text: &str) -> String {
 /// and verify the output reproduces the input.
 ///
 /// Reading a dump and writing it straight back is the identity, so any
-/// difference is a serialisation defect. This is the only comparison in the
+/// difference is a serialization defect. This is the only comparison in the
 /// suite that can see one: every other harness calls `simplify` after reading,
 /// and `astSimplify` re-stamps `IsSimp` on each node it visits, hiding a record
 /// a loader dropped.
@@ -1465,7 +1465,7 @@ fn native_byte_exact_round_trip_serialisation_fixtures() {
     }
     // Every fixture is compared and every failure is fatal. Reading a dump and
     // writing it back is the identity whatever the fixture holds, so a
-    // difference is a serialisation defect and not a class-support question.
+    // difference is a serialization defect and not a class-support question.
     assert!(
         failed.is_empty(),
         "{} round-trip failures (see the list above)",
@@ -1511,7 +1511,7 @@ fn round_trip_exclusions_still_fail() {
 }
 
 // ===========================================================================
-// Region serialisation round-trip tests
+// Region serialization round-trip tests
 // ===========================================================================
 
 #[test]
@@ -1530,14 +1530,14 @@ fn round_trip_circle() {
     assert!(text.contains("End Circle"), "missing End Circle");
     assert!(text.contains("Points"), "missing Points");
 
-    // Deserialise and verify.
+    // Deserialize and verify.
     let restored = from_native_string(&text).unwrap();
     let region = restored.as_region().unwrap();
     assert_eq!(region.naxes(), 2);
 
-    // Verify the restored region contains the centre.
+    // Verify the restored region contains the center.
     assert!(region.point_in_region(&[10.0, 20.0]).unwrap());
-    // Point far from centre should be outside.
+    // Point far from center should be outside.
     assert!(!region.point_in_region(&[100.0, 100.0]).unwrap());
 }
 
@@ -1558,9 +1558,9 @@ fn round_trip_box_region() {
     let region = restored.as_region().unwrap();
     assert_eq!(region.naxes(), 2);
 
-    // Centre point inside.
+    // Center point inside.
     assert!(region.point_in_region(&[5.0, 5.0]).unwrap());
-    // Point inside the box (centre=5,5 corner=3,4 means box spans [3,7]x[4,6]).
+    // Point inside the box (center=5,5 corner=3,4 means box spans [3,7]x[4,6]).
     assert!(region.point_in_region(&[6.0, 5.5]).unwrap());
     // Far outside.
     assert!(!region.point_in_region(&[50.0, 50.0]).unwrap());
@@ -1659,7 +1659,7 @@ fn round_trip_ellipse() {
     let region = restored.as_region().unwrap();
     assert_eq!(region.naxes(), 2);
 
-    // Centre inside.
+    // Center inside.
     assert!(region.point_in_region(&[5.0, 5.0]).unwrap());
     // Far outside.
     assert!(!region.point_in_region(&[50.0, 50.0]).unwrap());
@@ -1782,7 +1782,7 @@ fn round_trip_negated_circle() {
     let restored = from_native_string(&text).unwrap();
     let region = restored.as_region().unwrap();
 
-    // Negated: centre is now OUTSIDE.
+    // Negated: center is now OUTSIDE.
     assert!(!region.point_in_region(&[0.0, 0.0]).unwrap());
     // Far point is now INSIDE.
     assert!(region.point_in_region(&[100.0, 100.0]).unwrap());
@@ -1839,7 +1839,7 @@ fn keymap_round_trips_through_native_text() {
     };
     assert_eq!(zm.rate(&[0.0, 0.0], 1, 1).unwrap(), 3.0);
 
-    // Re-serialising the reloaded object gives identical text.
+    // Re-serializing the reloaded object gives identical text.
     assert_eq!(native_dump(&AnyObject::KeyMap(back)).unwrap(), text);
 }
 

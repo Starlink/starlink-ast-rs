@@ -3,10 +3,10 @@
 //! An `XphMap` maps between grid coordinates within different types of
 //! HEALPix projection:
 //!
-//! - `Hpx0`: an HPX projection centred on RA=0h.
-//! - `Hpx12`: an HPX projection centred on RA=12h.
-//! - `Xphn`: an XPH ("butterfly") projection centred on the north pole.
-//! - `Xphs`: an XPH projection centred on the south pole.
+//! - `Hpx0`: an HPX projection centerd on RA=0h.
+//! - `Hpx12`: an HPX projection centerd on RA=12h.
+//! - `Xphn`: an XPH ("butterfly") projection centerd on the north pole.
+//! - `Xphs`: an XPH projection centerd on the south pole.
 //!
 //! The forward transformation goes from grid coordinates within the
 //! nominated projection to grid coordinates within an HPX12 projection; a
@@ -31,13 +31,13 @@ use crate::mappings::SimplifiedRecord;
 // C: xphmap.h `AST__HPX0` and the rest, in the same order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum XphProjection {
-    /// An HPX projection centred on RA=0h.
+    /// An HPX projection centerd on RA=0h.
     Hpx0,
-    /// An HPX projection centred on RA=12h.
+    /// An HPX projection centerd on RA=12h.
     Hpx12,
-    /// An XPH ("butterfly") projection centred on the north pole.
+    /// An XPH ("butterfly") projection centerd on the north pole.
     Xphn,
-    /// An XPH ("butterfly") projection centred on the south pole.
+    /// An XPH ("butterfly") projection centerd on the south pole.
     Xphs,
 }
 
@@ -140,7 +140,7 @@ impl XphMap {
         let f = |n: i64| n as f64;
 
         // The cell holding a position, with the low RA edges in the cell
-        // and the high RA edges in the neighbouring one, and its facet;
+        // and the high RA edges in the neighboring one, and its facet;
         // `None` when the facet is not one of the HPX layout's.
         let hpx_cell = || -> Option<i64> {
             let ix = (x - 1.5).ceil() as i64;

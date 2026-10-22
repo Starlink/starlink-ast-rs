@@ -23,7 +23,7 @@ pub(crate) fn year_to_mjd_iau1984(year: f64) -> f64 {
 
 /// Parse a date/time string and return the Modified Julian Date.
 ///
-/// Mirrors `astReadDateTime` (frame.c:8892). The recognised formats, tried
+/// Mirrors `astReadDateTime` (frame.c:8892). The recognized formats, tried
 /// in priority order, are:
 ///
 /// 1. Besselian epoch, e.g. `"B1950.0"` → `palEpb2d`.

@@ -1,6 +1,6 @@
 //! Tests for PermMap.
 //!
-//! Ancestor: behaviour derived from the C AST PermMap documentation.
+//! Ancestor: behavior derived from the C AST PermMap documentation.
 
 use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
@@ -267,7 +267,7 @@ fn perm_c_dump_with_negative_entry_no_nconst_roundtrips() {
     // A C PermMap built with NULL constants and negative perm entries dumps
     // as `Out1 = -1` / `In1 = -1` with NO `Nconst` line. Rust must be able
     // to read this native form and transform it to BAD, matching C's reread
-    // behaviour (oracle probe: reread forward == AST__BAD).
+    // behavior (oracle probe: reread forward == AST__BAD).
     use ast_core::{AnyObject, from_native_string};
     let pm = PermMap::new(&[-1], &[-1], &[]).unwrap();
     let text = native_dump(&AnyObject::PermMap(pm)).unwrap();

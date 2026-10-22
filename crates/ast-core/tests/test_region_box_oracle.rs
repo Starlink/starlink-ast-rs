@@ -1,6 +1,6 @@
 //! Box membership against the C library (box.c `Cache` and `Transform`): a
 //! Box in an ICRS SkyFrame whose corner wraps through RA 0, which C sizes by
-//! the axis distance from centre to corner, and a Box of zero width on one
+//! the axis distance from center to corner, and a Box of zero width on one
 //! axis, which C widens to the width of its uncertainty when Negated and
 //! Closed differ. Also the sky Box's bounding box, and the boundary meshes
 //! (box.c `RegBaseMesh`) of a flat Box, one whose axes have different

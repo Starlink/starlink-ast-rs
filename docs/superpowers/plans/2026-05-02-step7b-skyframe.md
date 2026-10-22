@@ -311,7 +311,7 @@ Add `pub(crate) mod sky_convert;` and re-export:
 
 Tests in `#[cfg(test)]` module of sky_convert.rs:
 
-- FK5→Galactic: galactic centre coords
+- FK5→Galactic: galactic center coords
 - FK5→FK5 same equinox: UnitMap-like result
 - FK5→FK5 different equinox: precession
 - FK4→FK5: known star
@@ -426,7 +426,7 @@ git commit -m "Add SkyFrame struct with Frame trait implementation"
 
 ---
 
-### Task 5: SkyFrame Serialisation and Dispatch
+### Task 5: SkyFrame Serialization and Dispatch
 
 **Files:**
 - Modify: `crates/ast-core/src/frames/skyframe.rs`
@@ -461,7 +461,7 @@ In `serial/mod.rs`:
 - Add `SkyFrame(SkyFrame)` to `AnyObject` enum
 - Add `"SkyFrame"` to `any_object_from_node`
 - Update `to_native_string`, `as_frame`, `into_frame`
-- Update `"SkyAxis"` handling in frame serialisation (when reading
+- Update `"SkyAxis"` handling in frame serialization (when reading
   Axis children, check class name and create SkyAxis or plain Axis)
 
 - [ ] **Step 4: Verify and commit**
@@ -505,7 +505,7 @@ For `SkyRefIs::Ignored`: return None.
 
 The rotation is computed from:
 1. Unit vectors for sky_ref and sky_ref_p (via `pal::dcs2c`)
-2. Cross products and normalisation to build the rotation matrix
+2. Cross products and normalization to build the rotation matrix
 3. Wrap in MatrixMap
 
 - [ ] **Step 2: Integrate offsets into make_sky_mapping**
@@ -543,7 +543,7 @@ Comprehensive tests covering:
 - Set/get equinox, epoch, sky_ref, observer attrs
 
 **Coordinate system conversion:**
-- FK5→Galactic via convert(): galactic centre ≈ (266.4°, -28.9°)
+- FK5→Galactic via convert(): galactic center ≈ (266.4°, -28.9°)
 - FK5→ICRS: near-identity for modern data
 - FK4→FK5: known star with epoch
 - Ecliptic→FK5
@@ -572,7 +572,7 @@ Comprehensive tests covering:
 - SkyRefIs::Origin, verify shifted origin
 - SkyRefIs::Ignored, verify no effect
 
-**Serialisation:**
+**Serialization:**
 - to_native_string → from_native_string round-trip
 - Verify System, Equinox, SkyRef preserved
 - Verify SkyAxis children have class "SkyAxis"
@@ -627,6 +627,6 @@ Verify SkyFrame appears in all dispatch points.
 8. HMS/DMS formatting and parsing
 9. FrameSet integrity: epoch change updates mapping
 10. Offset coordinates: Origin and Pole modes
-11. Serialisation round-trip preserves all attributes
+11. Serialization round-trip preserves all attributes
 12. Observer attributes on Frame trait
 13. `git status` — clean

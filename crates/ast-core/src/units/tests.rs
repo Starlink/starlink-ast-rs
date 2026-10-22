@@ -134,7 +134,7 @@ fn angstrom_to_metre() {
 
 #[test]
 fn nm_prefix_unit() {
-    // nano-metre: 1 nm = 1e-9 m.
+    // nano-meter: 1 nm = 1e-9 m.
     let map = unit_mapper("nm", "m").expect("nm → m");
     assert_zoom_factor(&*map, 1.0e-9);
 }

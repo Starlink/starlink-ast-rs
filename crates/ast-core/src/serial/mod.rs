@@ -1,4 +1,4 @@
-//! Serialisation: Node tree, Serializable trait, and Native format.
+//! Serialization: Node tree, Serializable trait, and Native format.
 
 pub(crate) mod native_read;
 pub(crate) mod native_stream;
@@ -28,12 +28,12 @@ use crate::regions::{
     StcResourceProfile, StcSearchLocation,
 };
 
-/// Internal trait for serialising AST objects to/from Node trees.
+/// Internal trait for serializing AST objects to/from Node trees.
 pub(crate) trait Serializable {
     /// The AST class name for Begin/End markers.
     fn class_name(&self) -> &'static str;
 
-    /// Serialise this object to a Node tree.
+    /// Serialize this object to a Node tree.
     fn to_node(&self) -> AstResult<Node>;
 
     /// Reconstruct from a Node tree.
@@ -422,7 +422,7 @@ fn mapping_from_node_inner(node: &Node) -> AstResult<DynMapping> {
 /// `Self: Sized` which prevents object safety). This trait uses `AsAny`
 /// to downcast to known concrete types at runtime.
 pub(crate) trait MappingToNode {
-    /// Serialise this mapping to a Node tree.
+    /// Serialize this mapping to a Node tree.
     fn to_node(&self) -> AstResult<Node>;
 }
 
@@ -571,7 +571,7 @@ impl MappingToNode for dyn Mapping {
 
 /// Extension trait enabling `to_node()` on `dyn Frame`.
 pub(crate) trait FrameToNode {
-    /// Serialise this frame to a Node tree.
+    /// Serialize this frame to a Node tree.
     fn to_node(&self) -> AstResult<Node>;
 }
 
@@ -689,10 +689,10 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
 }
 
 // ---------------------------------------------------------------------------
-// PointSet serialisation helpers
+// PointSet serialization helpers
 // ---------------------------------------------------------------------------
 
-/// Write a PointSet as a serialised "PointSet" object node.
+/// Write a PointSet as a serialized "PointSet" object node.
 ///
 /// Iteration order matches C `pointset.c::Dump`: outer loop over
 /// points, inner loop over coords. So for `npoint=2 ncoord=2` the
@@ -766,7 +766,7 @@ fn write_pointset_node(points: &[Vec<f64>]) -> Node {
     node
 }
 
-/// Read a PointSet from a serialised "PointSet" node.
+/// Read a PointSet from a serialized "PointSet" node.
 ///
 /// Returns `Vec<Vec<f64>>` where `result[i]` is point `i` (length
 /// `ncoord`). Iteration matches C `pointset.c::Dump` (point-outer,
@@ -1076,7 +1076,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     // explicitly set (rare), so most dumps have either `Frm` or `FrmSet`
     // and no `RegFS` line. A nested region (an uncertainty sub-region, or
     // a component of a Prism/CmpRegion/SelectorMap) is dumped with neither
-    // — it inherits its container's frame. In that case C synthesises a
+    // — it inherits its container's frame. In that case C synthesizes a
     // dummy FrameSet with RegionFS=0 (`region.c:13593-13601`) that the
     // parent later replaces via `astSetRegFS`; we mirror that with the
     // `dummy_fs` flag.
@@ -1189,7 +1189,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
 
 /// Extension trait enabling `to_node()` on `dyn Region`.
 pub(crate) trait RegionToNode {
-    /// Serialise this region to a Node tree.
+    /// Serialize this region to a Node tree.
     fn to_node(&self) -> AstResult<Node>;
 }
 
@@ -1272,7 +1272,7 @@ pub(crate) fn region_from_node(node: &Node) -> AstResult<DynRegion> {
 // Serializable implementations for Region classes
 // ---------------------------------------------------------------------------
 
-/// Build the standard Region serialisation skeleton: class header, the
+/// Build the standard Region serialization skeleton: class header, the
 /// inherited Frame attributes (Title / Naxes / ... commented), the
 /// `IsA Frame` marker, the Region instance variables, and the
 /// `IsA Region` marker. Used by every leaf Region class except `CmpRegion`,
@@ -1853,7 +1853,7 @@ impl Serializable for Prism {
 }
 
 // ---------------------------------------------------------------------------
-// AnyObject — type-erased AST object for serialisation round-trips
+// AnyObject — type-erased AST object for serialization round-trips
 // ---------------------------------------------------------------------------
 
 /// Any AST object, with one variant per class.
@@ -1953,7 +1953,7 @@ pub enum AnyObject {
     SplineMap(SplineMap),
     /// A [`DssMap`] (DSS plate fit mapping).
     DssMap(DssMap),
-    /// A [`NormMap`] (coordinate normalisation mapping).
+    /// A [`NormMap`] (coordinate normalization mapping).
     NormMap(NormMap),
     /// A [`SelectorMap`] (region-membership classifier mapping).
     SelectorMap(SelectorMap),
@@ -2001,7 +2001,7 @@ pub enum AnyObject {
     StcResourceProfile(StcResourceProfile),
     /// A [`StcSearchLocation`] (STC search location).
     StcSearchLocation(StcSearchLocation),
-    /// A [`StcCatalogEntryLocation`] (STC catalogue entry location).
+    /// A [`StcCatalogEntryLocation`] (STC catalog entry location).
     StcCatalogEntryLocation(StcCatalogEntryLocation),
     /// A [`StcObsDataLocation`] (STC observation location).
     StcObsDataLocation(StcObsDataLocation),
@@ -2037,7 +2037,7 @@ impl AnyObject {
     /// [`as_mapping`](AnyObject::as_mapping).
     ///
     /// `None` means the concrete class has no variant here. Callers that
-    /// serialise arbitrary Mappings must treat that as a failure rather than
+    /// serialize arbitrary Mappings must treat that as a failure rather than
     /// skip the object: a test that renders through this and ignores `None`
     /// stops checking whole classes without saying so.
     ///
@@ -2721,7 +2721,7 @@ pub fn from_native_string(s: &str) -> AstResult<AnyObject> {
     from_native_string_with(s, &IntraRegistry::new())
 }
 
-/// Deserialise an AST object from Native text format, giving any IntraMap in
+/// Deserialize an AST object from Native text format, giving any IntraMap in
 /// it, however deeply nested, its transformation from `registry`.
 ///
 /// This is [`from_native_string`] reading through a

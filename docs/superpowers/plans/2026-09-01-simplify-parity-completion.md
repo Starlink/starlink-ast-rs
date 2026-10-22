@@ -957,7 +957,7 @@ Extension points: classified
 **Interfaces:**
 - Consumes: `audit_tools::{parse_citation, enclosing_rust_item}`; the `REPAIRED` marker from Task 3.
 - Produces:
-  - `pub fn enclosing_rust_impl(src: &str, line: usize) -> Option<String>` — the `impl` header enclosing `line`, normalised to `"Trait for Type"` or `"Type"`, whichever the header is.
+  - `pub fn enclosing_rust_impl(src: &str, line: usize) -> Option<String>` — the `impl` header enclosing `line`, normalized to `"Trait for Type"` or `"Type"`, whichever the header is.
   - the marker `Extension points: classified`, which cluster 7 adds to every remaining checklist in Tasks 27-29; Phase 0 adds it to the two it repairs here.
 
 - [x] **Step 1: Write the failing test for `enclosing_rust_impl`**
@@ -1620,7 +1620,7 @@ pointer, so rule 2 is the only missing piece on the port side.
 
 **Files:**
 - Modify: `crates/ast-core/src/mappings/mod.rs:564-582` (record the Frame rule on the two trait defaults)
-- Modify: `crates/ast-core/tests/test_simplify_regression.rs:400-410` (replace the file-wide card requirement), `:545-547` (delete `NO_ISSIMP_CARD_UNGATED`), `:565-577` (delete its licence assertion)
+- Modify: `crates/ast-core/tests/test_simplify_regression.rs:400-410` (replace the file-wide card requirement), `:545-547` (delete `NO_ISSIMP_CARD_UNGATED`), `:565-577` (delete its license assertion)
 - Modify: `PLAN.md:349` (delete the ledger row)
 
 **Interfaces:**
@@ -1725,7 +1725,7 @@ with
                 }
 ```
 
-- [x] **Step 5: Delete the licence and its assertion**
+- [x] **Step 5: Delete the license and its assertion**
 
 Delete these three lines (`test_simplify_regression.rs:545-547`):
 
@@ -1776,7 +1776,7 @@ that is a real finding to fix before continuing, not a row to license.
 - [x] **Step 7: Record the rule where the port relies on it**
 
 In `crates/ast-core/src/mappings/mod.rs`, extend the doc comment on
-`has_been_simplified` (currently ending "Serialised as the `IsSimp` token.")
+`has_been_simplified` (currently ending "Serialized as the `IsSimp` token.")
 with the paragraph that makes the default deliberate rather than incidental:
 
 ```rust
@@ -1921,7 +1921,7 @@ Replace the body of `from_node` in `crates/ast-core/src/mappings/zoom.rs`:
 The `set_has_been_simplified` call stays, and stays *before* the setter: it
 stands for `astLoadMapping` running in the parent, and removing it would make
 the port agree with C on this corpus for the wrong reason — a class whose
-loader routes nothing must still honour the card.
+loader routes nothing must still honor the card.
 
 - [x] **Step 4: Route `MathMap::from_node` through its three setters**
 
@@ -1979,7 +1979,7 @@ export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -40
 ```
 
-Expected: the licence assertions now fail, because the two `cefit_*` cases pass
+Expected: the license assertions now fail, because the two `cefit_*` cases pass
 and the lists still name them. That is the signal to delete the rows, and the
 reason the deletions are a separate step from the code.
 
@@ -2031,7 +2031,7 @@ lands, not in the clear; do not weaken the clear to recover them.
 
 C writes an `IsSimp` card that its own loader then discards for twelve classes,
 so a dump/load cycle is not idempotent in that flag. The standing rule is that a
-mirrored C artefact is logged rather than reasoned about at each site. Append to
+mirrored C artifact is logged rather than reasoned about at each site. Append to
 `docs/issues/c-library-quirks.md`:
 
 ````markdown
@@ -2387,7 +2387,7 @@ with
 ```
 
 `Node::get` matches case-insensitively (`node.rs:137`), so the mixed-case key
-finds the card the serialiser writes.
+finds the card the serializer writes.
 
 - [x] **Step 9: Run the gate, then the whole suite**
 
@@ -2599,7 +2599,7 @@ MSG
 
 ---
 
-**Cluster 1 closes three fixtures and one licence.**
+**Cluster 1 closes three fixtures and one license.**
 `cefit_circle_conformal` and `cefit_circle_nonconformal_keep` leave both
 `SERIAL_UNGATED` and `ISSIMP_DISAGREEMENTS`; `NO_ISSIMP_CARD_UNGATED` is deleted
 rather than emptied, because the assertion it licensed was the wrong one.
@@ -2645,7 +2645,7 @@ the counted `ISSIMP_PLACEMENT_LICENSED` row.
 The spec's §2.2 attributes them to five separate defects — CmpMap flatten,
 `recombine_distributed_branches`, `CmpMap::map_merge`, `WinMap::map_merge` and
 the `MatrixMap` inverse. Re-baselining all four against the pinned C reduces
-that to **one** port defect, **one** licensed C artefact and **two** stale
+that to **one** port defect, **one** licensed C artifact and **two** stale
 references, and none of the four needs any arithmetic work.
 
 The re-baseline is what Tasks 10 and 11 make repeatable, because the reason the
@@ -2653,7 +2653,7 @@ misattribution survived is structural: **the simplify corpus has no freshness
 checker.** `tools/oracle_fixtures/check_corpus_fresh.sh` covers only the wcsconv
 corpus. The reference pin moved from `f6762005` — the commit `simplify_tests.txt`
 names as `rigby.simp`'s capture point — to the current `3e60abaa`, twenty-two
-commits, one of which changes simplify behaviour
+commits, one of which changes simplify behavior
 (`4f2fc0ed`, "cmpmap: test for simplification before annulling the pointer under
 test", whose own message records that the bug it fixes "dropped the IsSimp
 markers from two nested components"). `PLAN.md` §8 tracks that sync as pending.
@@ -2679,7 +2679,7 @@ instead: that is the `InvA`/`InvB` aliasing line this plan excludes. So the whol
 residue is one defect — the port does not stamp inner CmpMaps that C stamps —
 plus the one excluded line.
 
-That also refutes the existing licence's stated reason.
+That also refutes the existing license's stated reason.
 `ISSIMP_PLACEMENT_LICENSED` says C tags a CmpMap "which the port never forms (the
 WinMap under-merge of PLAN.md §10.3)". The port does form it: the
 `CmpMap(SpecMap, ZoomMap)` at `cap_specmap_02.simp:97-122` is byte-identical to
@@ -3188,7 +3188,7 @@ MSG
 `Sft2 = -1.0061396160665481e-16` line its reference carries, and the port's output
 is otherwise byte-identical to a fresh capture. Regenerating it closes the
 fixture and retires its `skip_string_compare` row, along with the manifest comment
-that diagnosed the residue as C's "sub-ulp rounding artefact" — the pinned C does
+that diagnosed the residue as C's "sub-ulp rounding artifact" — the pinned C does
 not produce it at all.
 
 `rigby` is numerically drifted, and its values stay. Four residues differ from a
@@ -3208,13 +3208,13 @@ their own magnitude, which is what cancellation residue looks like — the eleme
 is a matrix entry that should be zero. Regenerating the file would replace a
 cross-platform reference with this machine's libm, which is exactly what the
 corpus-freshness rule forbids. So the byte comparison gets a per-case, per-card,
-magnitude-bounded licence instead, named in source and counted in `PLAN.md` §6.
+magnitude-bounded license instead, named in source and counted in `PLAN.md` §6.
 
 That reasoning holds only if the drift really is the platform. A reference whose
 values the *previous pin* reproduces exactly is not platform-drifted at all — it is
 simply old, and the fix is the same regeneration `cap_winmap_03` gets. Step 0
 separates the two before anything is licensed, for all six numerically drifted rows
-at once, and the licence in Steps 5 to 8 is written only for the rows that survive
+at once, and the license in Steps 5 to 8 is written only for the rows that survive
 it.
 
 The manifest's own note on `rigby` has the two `IM5` values attributed the wrong
@@ -3241,7 +3241,7 @@ here.
   fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, Vec<String>);
   ```
   Task 15 removes the `skip_string_compare` rows that this task's regeneration and
-  licence make removable.
+  license make removable.
 
 - [x] **Step 0: Separate pin-move drift from platform drift**
 
@@ -3250,10 +3250,10 @@ reference's values differ from a local recapture. Two very different things prod
 that, and they call for opposite actions:
 
 - The **pin moved the value**. Then the reference is simply old, exactly as a
-  card-drifted one is, and the fix is to regenerate — no licence.
+  card-drifted one is, and the fix is to regenerate — no license.
 - The **reference was captured on another platform's libm**. Then its values are
   the cross-platform evidence the freshness rule exists to protect, and
-  regenerating would destroy it. That is the case a licence covers.
+  regenerating would destroy it. That is the case a license covers.
 
 They are told apart by building the oracle at the commit the reference was captured
 from and capturing again. Do this once, for all six numerically drifted rows:
@@ -3294,9 +3294,9 @@ row's manifest line carries `render_options`, pass the matching trailing integer
 (`comment` then `indent`) as Task 10's driver expects.
 
 Record the verdict for each of the six. Every `PIN-MOVE` row is regenerated in
-Step 1 alongside `cap_winmap_03` and needs no licence; only `PLATFORM` rows reach
+Step 1 alongside `cap_winmap_03` and needs no license; only `PLATFORM` rows reach
 Step 5. If `rigby` comes back `PIN-MOVE`, skip Steps 5 to 8 entirely, regenerate it,
-and drop the `NUMERIC_PLATFORM_DRIFT` row from Step 11's ledger edit — the licence
+and drop the `NUMERIC_PLATFORM_DRIFT` row from Step 11's ledger edit — the license
 count is then 0 and the constant is not added at all.
 
 Clean up when the six verdicts are recorded:
@@ -3354,7 +3354,7 @@ to
 rigby | rigby.map | rigby.simp | |
 ```
 
-- [x] **Step 4: Run it to see the residue the licence has to cover**
+- [x] **Step 4: Run it to see the residue the license has to cover**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -3364,7 +3364,7 @@ SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 | gr
 Expected: two differing lines — the `IM5` card, and one missing `IsSimp` card.
 The `IsSimp` line is Task 14's; only `IM5` is this task's.
 
-- [x] **Step 5: Add the licence and its comparator**
+- [x] **Step 5: Add the license and its comparator**
 
 In `crates/ast-core/tests/test_simplify_regression.rs`, immediately after the
 `ISSIMP_PLACEMENT_LICENSED` declaration, add:
@@ -3434,7 +3434,7 @@ fn drop_licensed_residue(name: &str, got: &str, want: &str) -> (String, String, 
 
 - [x] **Step 6: Wire it into the byte comparison**
 
-In the Check 3 block, after the `(got, want)` binding and before the licence's
+In the Check 3 block, after the `(got, want)` binding and before the license's
 card-count assertion, insert:
 
 ```rust
@@ -3454,7 +3454,7 @@ SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 | gr
 Expected: the `IM5` line is gone from the diff and only the `IsSimp` line remains.
 `rigby` still fails, which is correct — Task 14 closes it.
 
-- [x] **Step 8: Prove the licence is falsifiable**
+- [x] **Step 8: Prove the license is falsifiable**
 
 Temporarily widen the bound to `1e-10` and check that the comparator now reports
 a count problem rather than silently dropping more:
@@ -3468,7 +3468,7 @@ sed -i 's/    1e-10,/    1e-15,/' crates/ast-core/tests/test_simplify_regression
 
 Expected: at least one `dropped N from the … side` line at `1e-10`, and none at
 `1e-15`. If `1e-10` also drops exactly one from each side, the bound is not
-discriminating anything and the licence should be tightened until it is.
+discriminating anything and the license should be tightened until it is.
 
 - [x] **Step 9: Retire `cap_winmap_03`'s skip and its refuted note**
 
@@ -3549,7 +3549,7 @@ cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
 
 Expected: `cap_winmap_03` passes; `rigby` fails on one `IsSimp` line;
 `cap_cmpmap_01` and `cap_cmpmap_04` still skip; `cap_specmap_02` still runs under
-its licence. Also run the second consumer of these fixtures — the auto-discovering
+its license. Also run the second consumer of these fixtures — the auto-discovering
 round-trip test — because a regenerated reference is an input to it too:
 
 ```bash
@@ -3883,7 +3883,7 @@ immediately.
 The tag is per orientation. `CmpMap::simplified` is a two-slot record and
 `dump_is_simple` reads the slot for the object's *current* `Invert`
 (`cmpmap.rs:903-909`), because that is the orientation the dump is about to
-serialise. Two writers in `simplify.rs` set it, and only one of them accounts for
+serialize. Two writers in `simplify.rs` set it, and only one of them accounts for
 that:
 
 - `simplify.rs:724`, on the path where the self-simplify *did* reduce something,
@@ -3893,7 +3893,7 @@ that:
 - `simplify.rs:560-565`, `set_component_simple_tag`, on C's `!simpler` path,
   writes `cm.set_dump_simplified_in(cm.is_inverted(), true)`. A list entry is held
   in its forward orientation by [`flatten`]'s contract, so this always writes the
-  forward slot — while the entry's serialised orientation is the third member of
+  forward slot — while the entry's serialized orientation is the third member of
   its tuple, `orig_inv`, which `reconstruct` re-applies to the child. When
   `orig_inv` is true the tag is written to one slot and read from the other.
 
@@ -4078,9 +4078,9 @@ done
 
 Expected: no `IsSimp` differences on any of the four. `cap_cmpmap_01` and
 `cap_cmpmap_04` each keep exactly two `Invert`/`IsSimp` lines that are the
-excluded `InvA`/`InvB` aliasing artefact — one line the port emits where C emits
+excluded `InvA`/`InvB` aliasing artifact — one line the port emits where C emits
 `Invert = 1`, and one C emits that the port does not. Those are out of scope
-(see **Out of scope**), and Task 15 writes the narrow licence for them.
+(see **Out of scope**), and Task 15 writes the narrow license for them.
 
 If any `IsSimp` difference remains, it is a *second* loss point rather than a
 failure of the fix — return to Step 1 with the fixture that still differs and run
@@ -4099,7 +4099,7 @@ cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
 Expected: `rigby` and `cap_cmpmap_nested_tag` pass; the only remaining simplify
 failures are `cap_cmpmap_01` and `cap_cmpmap_04`, which are still skipped, and
 `cap_specmap_02`, which still fails its licensed card count — Task 15 retires the
-licence.
+license.
 
 A newly-failing fixture elsewhere in the corpus means the tag now appears where C
 does not put it. That is the negative-control signal: the corpus's 139 negative
@@ -4150,14 +4150,14 @@ Co-Authored-By: SLAC AI
 MSG
 ```
 
-### Task 15: Retire the cluster's licences and correct what they claimed
+### Task 15: Retire the cluster's licenses and correct what they claimed
 
 Four `skip_string_compare` rows, one `ISSIMP_PLACEMENT_LICENSED` entry and three
 `ISSIMP_DISAGREEMENTS` rows exist because of this cluster. Tasks 12 and 14 make
 all of them removable except the `InvA`/`InvB` aliasing line, which stays and
-needs a licence narrow enough to cover only itself.
+needs a license narrow enough to cover only itself.
 
-Several of the comments those licences carry are now known to be wrong, and each
+Several of the comments those licenses carry are now known to be wrong, and each
 wrong one is a reason someone would stop looking. They are corrected here rather
 than deleted, because the corrected reason is what keeps the next reader from
 re-deriving it:
@@ -4175,7 +4175,7 @@ re-deriving it:
   turned out to be exactly that.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_simplify_regression.rs:64-98` (the licence and its doc comment), `:578-607` (`ISSIMP_DISAGREEMENTS`)
+- Modify: `crates/ast-core/tests/test_simplify_regression.rs:64-98` (the license and its doc comment), `:578-607` (`ISSIMP_DISAGREEMENTS`)
 - Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt:405-427` (the three-fixture block), `:431`, `:434`
 - Modify: `crates/ast-core/tests/test_verification_ledger.rs`
 - Modify: `PLAN.md` §6, §8, §10.3
@@ -4185,7 +4185,7 @@ re-deriving it:
 - Consumes: `NUMERIC_PLATFORM_DRIFT` and `drop_licensed_residue` (Task 12);
   the tag fix (Task 14).
 - Produces: `ISSIMP_PLACEMENT_LICENSED` reduced to zero rows and the constant
-  deleted, with the aliasing artefact moved to a new
+  deleted, with the aliasing artifact moved to a new
   `INVAB_ALIASING_LICENSED: &[(&str, &str)]` — `(fixture, reason)` — consumed only
   by the Check 3 block.
 
@@ -4203,12 +4203,12 @@ done
 ```
 
 Expected, per fixture: exactly two lines — a `> … IsSimp = 1` the port emits and a
-`< … Invert = 1` C emits at the same position. That pair is the aliasing artefact:
+`< … Invert = 1` C emits at the same position. That pair is the aliasing artifact:
 C recorded the shared child's `Invert` on the parent, so the port's node has an
 `IsSimp` card where C's has an `Invert` card. Anything else in the diff means Task
 14 is incomplete; go back to its Step 8.
 
-- [x] **Step 2: Replace the placement licence with the aliasing licence**
+- [x] **Step 2: Replace the placement license with the aliasing license**
 
 In `crates/ast-core/tests/test_simplify_regression.rs`, delete
 `ISSIMP_PLACEMENT_LICENSED` and its doc comment in full (`:64-98`) and put this in
@@ -4377,7 +4377,7 @@ Task 14's fix changed which card that node carries — re-read Step 1's diff. A
 failure naming a count mismatch in `ISSIMP_DISAGREEMENTS` means one of the three
 deleted rows still disagrees.
 
-- [x] **Step 8: Prove the aliasing licence is falsifiable**
+- [x] **Step 8: Prove the aliasing license is falsifiable**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
@@ -4394,8 +4394,8 @@ git checkout crates/ast-core/tests/test_simplify_regression.rs
 ```
 
 Expected: a `but found 0` problem for `cap_cmpmap_02`, which passes byte-exact and
-so has neither line to drop. A licence that stayed silent there would be dropping
-lines opportunistically rather than covering a named artefact.
+so has neither line to drop. A license that stayed silent there would be dropping
+lines opportunistically rather than covering a named artifact.
 
 - [x] **Step 9: Update the ledger, in both copies**
 
@@ -4520,7 +4520,7 @@ Co-Authored-By: SLAC AI
 MSG
 ```
 
-**Cluster 2 closes five fixtures, four skips and a licence, and replaces the
+**Cluster 2 closes five fixtures, four skips and a license, and replaces the
 assumption that the simplify corpus was fresh with a check that says so.**
 
 - [x] **Cluster 2 exit check: revert, then measure the transform paths**
@@ -4573,7 +4573,7 @@ C funnels every uncertainty through `SetUnc` (`region.c:10754`, body
 3. calls `astSetRegionFS( this->unc, 0 )` when the uncertainty's own
    base→current Mapping simplifies to a UnitMap — which is what omits the
    `FrmSet` block from its dump;
-4. re-centres it at the parent Region's first defining point.
+4. re-centers it at the parent Region's first defining point.
 
 Three paths reach it in C. The constructor routes a construction-time
 uncertainty through it (`region.c:13372`, `SetUnc( new, unc, status )`), so
@@ -4590,7 +4590,7 @@ The port has a faithful `astSetUnc` in `Region::set_uncertainty`
 uncertainty gets none of the four steps. That is `cap_interval_01`'s `X7` (a
 time uncertainty left in seconds where C converts it to days) and
 `cap_pointlist_01`'s `X5`/`X6` (values passed through unchanged where C remaps
-and re-centres them). The fourth fixture, `nullregion_unc_fillfactor_merge`, is
+and re-centers them). The fourth fixture, `nullregion_unc_fillfactor_merge`, is
 a self-confessed shortcut in `NullRegion::region_merge`; and `cap_zoommap_04`'s
 59 inserted lines are step 3 not happening, which is also the last row of
 `ISSIMP_DISAGREEMENTS`.
@@ -4894,7 +4894,7 @@ C's `astInitRegion` ends with `SetUnc( new, unc, status )` (`region.c:13372`),
 so every C Region constructed with an uncertainty — `astBox( frm, 1, lbnd,
 ubnd, unc, "" )`, `astInterval(…)`, `astPrism(…)` — gets the uncertainty
 remapped into its own base Frame, negated if unbounded, tagged to omit its
-FrameSet when the base→current Mapping is a UnitMap, and re-centred on the new
+FrameSet when the base→current Mapping is a UnitMap, and re-centerd on the new
 Region's first defining point. The port's builders write the supplied Region
 into `data.uncertainty` unchanged, so none of that happens.
 
@@ -4906,7 +4906,7 @@ base Frame is a TimeFrame in seconds and its current Frame is in days, joined
 by a ZoomMap, and it is `astSetUnc`'s `astMapRegion` that carries the value
 across. `cap_pointlist_01`'s `X5` and `X6` are the input `.map`'s own
 `X3`/`X4` reproduced digit for digit — the port passes the supplied uncertainty
-through untouched where C remaps and re-centres it.
+through untouched where C remaps and re-centers it.
 
 The loader is deliberately *not* changed: `region.c:13559` stores what the
 Channel read verbatim, so reading a `.map` must stay an identity.
@@ -5026,7 +5026,7 @@ with
         Ok(region)
 ```
 
-- [x] **Step 4: NullRegion, whose re-centre step is a no-op**
+- [x] **Step 4: NullRegion, whose re-center step is a no-op**
 
 In `crates/ast-core/src/regions/nullregion.rs`, replace
 
@@ -5056,8 +5056,8 @@ with
 
 C reaches `SetUnc` inside `astInitRegion`, which `astInitPolygon` calls *before*
 it runs `EnsureInside` (`polygon.c:7160`). `EnsureInside` can reverse the vertex
-order, which changes which vertex is first, and `SetUnc` re-centres on the first
-vertex — so the uncertainty is centred on the vertex that was first *before* the
+order, which changes which vertex is first, and `SetUnc` re-centers on the first
+vertex — so the uncertainty is centerd on the vertex that was first *before* the
 reversal. In `crates/ast-core/src/regions/polygon.rs`, replace
 
 ```rust
@@ -5557,7 +5557,7 @@ with
 
 **If the probe named `reg_centre_set`** (`interval.rs:1103-1110`): that Box is
 C's local `astBox` inside `RegCentre` (`interval.c:2535-2557`), used only to
-move the centre and then discarded — its bounds are read back into the
+move the center and then discarded — its bounds are read back into the
 Interval's own defining points and the Box never escapes. A Closed card
 reaching the dump from there means the Box *is* escaping; find the escape rather
 than changing the flag, because C's local Box is genuinely closed.
@@ -5630,7 +5630,7 @@ mesh to exist —
 
 — and then reads the four numbers `RegBaseMesh` cached while generating it. The
 bounds are therefore the bounds *of the mesh points*, accumulated with
-`astAxDistance` as offsets from the ellipse centre, and passed through
+`astAxDistance` as offsets from the ellipse center, and passed through
 `astNormBox` before being cached (`ellipse.c:1180-1198`).
 
 The port computes a closed-form Cartesian extent instead:
@@ -5640,7 +5640,7 @@ The port computes a closed-form Cartesian extent instead:
 ```
 
 That is right for a plain 2-d Frame and wrong for a SkyFrame, where the mesh is
-a geodesic ellipse, the extents are not symmetric about the centre, and a box
+a geodesic ellipse, the extents are not symmetric about the center, and a box
 containing a pole must be widened to the full longitude range. `Circle` already
 does it C's way (`circle.rs:340-377`); this task brings `Ellipse` into line.
 
@@ -5653,7 +5653,7 @@ Two C details the port must keep:
   correctly there, and log it in the quirks doc.
 - The accumulation is `if dist < lb { lb = dist } else if dist > ub { ub = dist }`
   — an `else if`, so a point that would extend both ends only extends the lower
-  one. With `lb` initialised to `DBL_MAX` and `ub` to `-DBL_MAX`, the first point
+  one. With `lb` initialized to `DBL_MAX` and `ub` to `-DBL_MAX`, the first point
   sets only `lb`. Mirror the asymmetry.
 
 - [x] **Step 1: Write the failing test**
@@ -5708,7 +5708,7 @@ cargo test -p ast-core --test test_region ellipse_sky_pole_bounds 2>&1 | tail -2
 ```
 
 Expected: FAIL. The closed-form extent gives a longitude range of roughly
-±0.3 radians around the centre and a latitude bound short of `PI/2`.
+±0.3 radians around the center and a latitude bound short of `PI/2`.
 
 - [x] **Step 3: Replace the closed form with C's mesh accumulation**
 
@@ -6384,7 +6384,7 @@ The convention is `mapping.h:449-460`: a setter for an attribute that feeds the
 first part of that class's own `astMapMerge` discards **both** simplified
 records.
 C's comment there states the reason and the latitude — nothing else reads the
-records, since a Mapping is offered to `astMapMerge` by its neighbours whatever
+records, since a Mapping is offered to `astMapMerge` by its neighbors whatever
 it holds, and a record can only ever suppress a simplification and never make
 one wrong, so C errs towards discarding.
 
@@ -7586,7 +7586,7 @@ That third component is the tell. `unitnormmap.c:886-1085` computes `max_relin`
 as the largest `|in - centre|` over the axes and, when it is exactly zero
 (`:1024`), writes `AST__BAD` to the first `ncoord_out-1` outputs and `0` to the
 last. `3.4e-16` is not zero and not a physically meaningful residue: it is what
-`fma(u, d, 5.0)` and `fma(u, d, 6.0)` produce for this fixture's centre, and
+`fma(u, d, 5.0)` and `fma(u, d, 6.0)` produce for this fixture's center, and
 substituting those two fused multiply-adds reproduces the recorded norm and both
 unit components bit-exactly, while the unfused arithmetic gives an exact zero.
 The generator host was arm64 macOS, where the compiler contracts
@@ -8149,7 +8149,7 @@ Both tasks diverged from the written steps in ways worth recording:
 **Cluster 6 is closed when:** `transform_oracle_overrides.txt` declares no
 overrides and a test enforces that; every one of the 1752 sections has its
 forward golden, inverse golden, round-trip and equivalence checks enabled; and
-the two per-row licences that replace them — 25 reference-gap rows and 2
+the two per-row licenses that replace them — 25 reference-gap rows and 2
 substituted rows — are each asserted as an exact set against the corpus, counted
 in the ledger, and named in `PLAN.md` §6.
 
@@ -8596,7 +8596,7 @@ Run it over the twelve files, then read the diff row by row.
 The script decides from the anchored C function name and the step's own wording; the rows it gets wrong are the ones to fix by hand, and there are two recurring kinds:
 
 - A row whose C site is a helper the seam calls (`MatMat`, `WinWin`, `PermGet`) rather than the seam itself. The helper is reached only from the class's own seam body, never dispatched through the vtab, so the step is still part of the architecture the driver relies on: mark it `architecture` and leave the citation on the helper.
-- The last row of `zoom.md`, `matrix.md`, `perm.md` and others is the clear-on-set rule, whose C site is in `SetAttrib` / `ClearAttrib`. `CLAUDE.md` names attribute string dispatch as ceremony, and cluster 5's fixtures are what hold that behaviour, so these rows are `ceremony`.
+- The last row of `zoom.md`, `matrix.md`, `perm.md` and others is the clear-on-set rule, whose C site is in `SetAttrib` / `ClearAttrib`. `CLAUDE.md` names attribute string dispatch as ceremony, and cluster 5's fixtures are what hold that behavior, so these rows are `ceremony`.
 
 ```bash
 cargo run -p audit-tools --bin anchor-citations -- \
@@ -9217,7 +9217,7 @@ cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -6
 ```
 
 Expected: each of the three fails the test with its own message, and the restore returns it to `468 passed, 0 skipped (file absent), 0 skipped (parse …)`.
-If case 3 produces a *parse* count of zero and a failure instead, the reader classifies a malformed header as a read failure rather than a parse skip — that is a stricter behaviour than the assertion demands, so record it in the comment and keep the assertion, which still holds for the paths that do set `parse_skipped`.
+If case 3 produces a *parse* count of zero and a failure instead, the reader classifies a malformed header as a read failure rather than a parse skip — that is a stricter behavior than the assertion demands, so record it in the comment and keep the assertion, which still holds for the paths that do set `parse_skipped`.
 
 The two remaining named exclusions in this harness, `SERIAL_UNGATED` (6 rows) and `NO_ISSIMP_CARD_UNGATED` (1), stay as they are: they are named, per-case, and counted in the ledger, which is the shape the rules ask for.
 
@@ -9312,12 +9312,12 @@ Expected: the first prints only `README.md`; the second prints nothing; the thir
 
 ## Cluster 4 — a bare Frame where a Mapping is expected
 
-This cluster is gated deliberately and delivers no behaviour change.
+This cluster is gated deliberately and delivers no behavior change.
 
 Two nestings are settled and stay settled: a Region inside a `CmpFrame` (15 corpus fixtures) and a Region inside a `CmpMap` (35).
 Both are read, written and byte-compared today, because a Region is a Frame *and* a Mapping in this port, which is what the port design spec's sibling-trait separation already provides.
 
-The one construct C accepts and this port refuses is a **bare Frame in a Mapping slot** — equivalently, a `Map<n>` slot of a serialised FrameSet holding `Begin Frame` or `Begin CmpFrame`.
+The one construct C accepts and this port refuses is a **bare Frame in a Mapping slot** — equivalently, a `Map<n>` slot of a serialized FrameSet holding `Begin Frame` or `Begin CmpFrame`.
 It works in C because `Frame::Transform` (`frame.c:11739`) is a UnitMap transform, so every Frame is trivially a Mapping there.
 
 The narrow question is about C's intent, not about this port: **is a bare Frame in a Mapping slot a side effect of C having made Frame a Mapping in order to support Region, or is there a real use case for it?**
@@ -10084,7 +10084,7 @@ grep -n '^### 9\.\|^### 10\.' PLAN.md
 
 For each §9 section this plan closed, replace the body with its resolution and the gate that holds it, in the form §9.5 took in cluster 7.
 §9.6 was rewritten in Task 30 and stays open.
-§10.2 (ChebyMap) and §10.3 stay open and now say what they wait on: the pin move, and upstream's fixture reorganisation.
+§10.2 (ChebyMap) and §10.3 stay open and now say what they wait on: the pin move, and upstream's fixture reorganization.
 
 Then update §6's totals row if it has one, and confirm the table still adds up:
 

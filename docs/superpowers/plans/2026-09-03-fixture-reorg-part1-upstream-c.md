@@ -84,7 +84,7 @@ The committed corpus loses cards in only four classes (44 on ZoomMap, 2 each on 
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: a library in which `astGetI( obj, "IsSimple" )` is preserved across `astToString` / `astFromString` for all 10 affected classes, and in which no no-op set clears the flag. Task 2 depends on this behaviour; Tasks 6, 8 and 11 depend on Task 2's regenerated corpus.
+- Produces: a library in which `astGetI( obj, "IsSimple" )` is preserved across `astToString` / `astFromString` for all 10 affected classes, and in which no no-op set clears the flag. Task 2 depends on this behavior; Tasks 6, 8 and 11 depend on Task 2's regenerated corpus.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -402,7 +402,7 @@ to be byte-identical to the input, and one ctest is registered per fixture —
 both halves of every simplify pair, plus a glob over `programs/**/*.ast` and
 `serialisation/**/*.ast`. No reference file and no skip flag: the assertion does
 not depend on what the fixture contains, so a fixture that cannot round-trip is
-a serialisation defect. The four IntraMap functions `simplify.c` registers are
+a serialization defect. The four IntraMap functions `simplify.c` registers are
 registered here too, so those fixtures are readable rather than excluded.
 `wcsconv/` is excluded: its references are FITS-encoded, so reading one back
 needs a FitsChan and the encoding it was written with.
@@ -425,10 +425,10 @@ and re-round-tripped to confirm it is now a fixed point:
 | `rigby` | fewer significant digits, plus a redundant `Invert = 0` |
 | `series_parallel_absorb`, `reconstruct_right_assoc` | the only two files in the corpus ending in a blank line |
 | `intra_invfwd_cancel_tail` | recorded the IntraMap `Purp` / `Auth` of whatever registration created it |
-| `cap_timemap_02` | a KeyMap re-dumped with two entries transposed — the fixture predated upstream's KeyMap ordering fix, and the normalised form is a fixed point, which is the evidence that fix holds |
+| `cap_timemap_02` | a KeyMap re-dumped with two entries transposed — the fixture predated upstream's KeyMap ordering fix, and the normalized form is a fixed point, which is the evidence that fix holds |
 | the five `programs/**/*.ast` | 15-significant-digit values where the library now writes 17 (the same doubles, fully specified), dropped redundant `Invert = 0`, and five missing `MemCnt` cards |
 
-Normalising a `.map` changes only how the input is written, never the object
+Normalizing a `.map` changes only how the input is written, never the object
 read from it, so no `.simp` reference moved.
 
 **Two later tasks change as a result.** U2's "`gen_roundtrip_refs.sh` and
@@ -632,14 +632,14 @@ verified by deleting them and rebuilding from nothing.
 Four things differed from the plan's steps:
 
 - `splittest1.ast` turned out to be byte-identical to
-  `programs/testcmpmap/splittest1.ast` *after* Task 2b normalised that file — the
+  `programs/testcmpmap/splittest1.ast` *after* Task 2b normalized that file — the
   Rust-side copy had been in the modern 17-digit form all along. Dropped as a
   duplicate, along with `specflux.ast`. So `serialisation/` holds 27 files, not 29.
 - `degen1.ast`, `lsst.ast` and `timj.ast` are exactly
   `roundtrip(wcsconv/inputs/<name>.ast)`, so they need no generator code. Their
   value is that they *are* fixed points where the wcsconv inputs are not.
 - `jan-dsb.ast` lacked five commented default cards the library now writes, so it
-  was normalised like the Task 2b fixtures.
+  was normalized like the Task 2b fixtures.
 - Two constructors needed correcting on the first byte-identity run: the SkyFrame
   in `frameset_3frame` has `Equinox` set, and the SpecFrame in
   `frameset_skyspec` has `Unit=GHz` set. The gate caught both, which is what it
@@ -650,7 +650,7 @@ header (see Task 2b) is not enough: `degen1.ast` still differs by 40 lines —
 seven redundant `Invert = 0` cards, thirteen `IM0`–`IM8` inverse-matrix values,
 `M1`–`M8` precision, added `PlrLg` defaults, a changed commented `Domain`
 default, and a dropped `ActUnt = 0`. Those are library changes since the fixture
-was captured, so including them would mean normalising the wcsconv inputs, which
+was captured, so including them would mean normalizing the wcsconv inputs, which
 is a larger change than this branch needs.
 
 ---
@@ -748,7 +748,7 @@ should not.** 39 of the 139 differ, because those copies were generated
 | files | difference | cause |
 |---|---|---|
 | 37 | `IsSimp` cards on different nodes | `e40e71b4` (2026-08-15) records the simplified state per orientation, which changed which nodes carry the card |
-| 4 | redundant `Invert` cards dropped | same class of change seen when normalising the older fixtures in Task 2b |
+| 4 | redundant `Invert` cards dropped | same class of change seen when normalizing the older fixtures in Task 2b |
 | 1 | `Epoch` 2017.5519807923772 → 2017.5519807675655 | `254d4c99` (2026-06-19), whose message names `azel.head`'s exact `DATE-OBS` and the 0.783 s error: `%d` dropped the leading zero in `.087`, reconstructing 0.87 s |
 | 2 | `DSBCen`, `IF` | `ad04291c` (2026-06-20) stopped losing precision when setting RefRA/RefDec, which the standard-of-rest correction depends on |
 | 1 | `Sft1`, `Scl1` (`vrad-v2f`) | the `astRate` fixes `e782c220` and `c1a88658` (2026-06-19); `project_vradv2f_astrate_dependency` already records that this fixture is astRate-driven |
@@ -875,7 +875,7 @@ sed -n '/cefit_circle_to_ellipse/,+12p' docs/audits/region-phase5-parity-spec.md
 
 - [ ] **Step 3: Add one `gen_*` function per group**
 
-In `ast_tester/gen_simplify_fixtures.c`, add six functions grouping the 25 stems by the behaviour they exercise, and call each from `main` alongside the existing `gen_*` calls. Following the existing file's shape:
+In `ast_tester/gen_simplify_fixtures.c`, add six functions grouping the 25 stems by the behavior they exercise, and call each from `main` alongside the existing `gen_*` calls. Following the existing file's shape:
 
 ```c
 /* ===== Circle/Ellipse Simplify re-fit fixtures ===== */
@@ -902,7 +902,7 @@ static void gen_cefit_fixtures(const char *dir) {
 }
 ```
 
-Substitute the actual centre, radius, matrix and Frame attributes read from each committed dump — the code above shows the *shape*, and Step 4 is what proves the numbers. Add the analogous `gen_defunc_fixtures`, `gen_regbasepick_fixtures`, `gen_setunc_fixtures`, `gen_simpstab_fixtures` and `gen_merge_extra_fixtures`; put `cap_cmpmap_nested_tag` in `gen_cmpmap_fixtures` and the four `neg_*` stems in `gen_negative_fixtures`, beside their existing relatives.
+Substitute the actual center, radius, matrix and Frame attributes read from each committed dump — the code above shows the *shape*, and Step 4 is what proves the numbers. Add the analogous `gen_defunc_fixtures`, `gen_regbasepick_fixtures`, `gen_setunc_fixtures`, `gen_simpstab_fixtures` and `gen_merge_extra_fixtures`; put `cap_cmpmap_nested_tag` in `gen_cmpmap_fixtures` and the four `neg_*` stems in `gen_negative_fixtures`, beside their existing relatives.
 
 - [ ] **Step 4: Regenerate and require an empty diff**
 
@@ -973,7 +973,7 @@ change anywhere in the 800-file corpus.
 
 Seven converged byte-exactly anyway, and the byte gate earned its keep while it
 applied — it caught an Interval upper bound that had to be `AST__BAD`, an
-`astBox` form argument (0 is two corners, 1 is centre-and-corner), and a guessed
+`astBox` form argument (0 is two corners, 1 is center-and-corner), and a guessed
 `FillFactor` of 0.25 that had to be 0.8 to give the recorded product of 0.4.
 
 **Two findings worth keeping.**
@@ -1389,7 +1389,7 @@ That left four non-negative rows, each needing its own answer:
 | row | finding |
 |---|---|
 | `cap_winmap_03` | the reference carries `Sft2 = -1.0061396160665481e-16` where the library now produces exactly zero and omits the card. Stale, not tolerant — regenerated, flag cleared |
-| `cap_timemap_02` | its `.simp` still had the pre-normalisation KeyMap order, so entries were compared against the wrong keys and values differed by 1000×. Regenerated from its normalised `.map`, flag cleared. It was the only one of the eight fixtures normalised in Task 2b whose `.simp` needed following — the other seven were formatting-only changes that leave the object identical |
+| `cap_timemap_02` | its `.simp` still had the pre-normalization KeyMap order, so entries were compared against the wrong keys and values differed by 1000×. Regenerated from its normalized `.map`, flag cleared. It was the only one of the eight fixtures normalized in Task 2b whose `.simp` needed following — the other seven were formatting-only changes that leave the object identical |
 | `cap_interval_01` | uncertainty coordinates differ by 1.9e-12 relative — some four thousand ULP, deterministic here, reference from another platform. Flag kept, with the magnitude recorded above the row and a note that regenerating would re-anchor it to this host |
 | `cap_pointlist_01` | the same at 1.2e-12. Flag kept, same reasoning |
 
@@ -1605,7 +1605,7 @@ the sampling domain: a `.head` fixture is sampled over its NAXIS grid, while an
 square. A SIP inverse is iterative and need not converge that far outside the
 image it was fitted over. The same mappings round-trip cleanly through their
 headers, and comparing the header-read object against its own dump at the same
-points gives *zero* differing rows, so serialisation was never in question. The
+points gives *zero* differing rows, so serialization was never in question. The
 generator now recovers a frameset's originating header from its name and takes its
 grid. 126 mismatches → 2.
 
@@ -1620,7 +1620,7 @@ Regenerating changed four values in
 `neg_unitnormmap_inv_fwd_diffcentre.map` from a real direction to `BAD`, and it is
 worth being precise about which of those is the answer we want.
 
-The fixture's inverse chain reconstructs a centre as `B + |A-B| * (A-B)/|A-B|`.
+The fixture's inverse chain reconstructs a center as `B + |A-B| * (A-B)/|A-B|`.
 Whether that lands on `A` exactly — residual zero, so C's guard fires and the
 output is `BAD` — or about 1e-16 away, so the guard misses and the output is a
 unit-vector direction made of rounding noise, depends on whether the compiler

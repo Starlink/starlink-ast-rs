@@ -1067,7 +1067,7 @@ impl Mapping for SplineMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        // C `splinemap.c::MapMerge` (1757) has one step and it is a neighbour
+        // C `splinemap.c::MapMerge` (1757) has one step and it is a neighbor
         // cancellation: a SplineMap adjacent to an equal SplineMap used in the
         // opposite direction becomes UnitMaps. There is no replace-with-simpler
         // step, so a nominated SplineMap goes straight to the pairwise merge,

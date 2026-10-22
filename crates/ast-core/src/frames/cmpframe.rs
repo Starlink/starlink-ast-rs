@@ -442,7 +442,7 @@ impl Frame for CmpFrame {
     fn clear_domain(&mut self) -> AstResult<()> {
         self.attrs.domain = None;
         // The default is derived from the component domains, so drop the
-        // memoised value along with the explicit one.
+        // memoized value along with the explicit one.
         self.domain_default = std::cell::OnceCell::new();
         Ok(())
     }
@@ -850,7 +850,7 @@ impl Frame for CmpFrame {
     }
 
     /// The points are put back in the internal axis order, split between the
-    /// two component Frames, normalised by each, and permuted back.
+    /// two component Frames, normalized by each, and permuted back.
     // C: cmpframe.c `NormalPoints`.
     fn normal_points(
         &self,
@@ -1313,7 +1313,7 @@ impl Serializable for CmpFrame {
 /// strictly-increasing order; on exit the indices are advanced to the
 /// lexicographically-next selection of the same size from `0..naxes`.
 ///
-/// Initialise with `axes = [0, 1, …, nselect-1]`. Repeated invocation
+/// Initialize with `axes = [0, 1, …, nselect-1]`. Repeated invocation
 /// then enumerates every `nselect`-choose-`naxes` subset.
 ///
 /// Returns `true` if the array now holds a valid successor selection,
@@ -1356,7 +1356,7 @@ pub(crate) fn gen_axis_selection(naxes: usize, nselect: usize, axes: &mut [i32])
 }
 
 /// Replace `-1` slots in `axes[i1..=i2]` with new indices that locate
-/// the missing axes relative to neighbouring valid ones. Mirrors C
+/// the missing axes relative to neighboring valid ones. Mirrors C
 /// `AddExtraAxes` (cmpframe.c:929).
 ///
 /// `following` chooses the side: `false` associates each new index
@@ -1549,7 +1549,7 @@ pub(crate) fn part_match(
     let frame2_template = prepare_child(template.frame2())?;
 
     // Each child Match goes through the matchsub cast-retry wrapper
-    // (C `astMatch`, frame.c:15473), so a specialised component can
+    // (C `astMatch`, frame.c:15473), so a specialized component can
     // align with a plainer partitioned target sharing its Domain.
     let m1 = crate::frames::find_frame::match_with_subclass(
         frame1_template.as_ref(),
@@ -1647,7 +1647,7 @@ pub(crate) fn part_match(
         template_assoc.clone()
     };
 
-    // Replace -1 entries with synthesised positions (cmpframe.c:458-461).
+    // Replace -1 entries with synthesized positions (cmpframe.c:458-461).
     add_extra_axes(
         &mut result_order,
         0,
@@ -1805,7 +1805,7 @@ pub(crate) fn part_match(
 /// `-1` entries producing default axes. Mirrors `astPickAxes` in the
 /// PartMatch flow at cmpframe.c:519. Used only for the result-frame
 /// shrink/expand step; we delegate to [`pick_axes`] for the natural
-/// case and synthesise a wider Frame manually when `picks` selects
+/// case and synthesize a wider Frame manually when `picks` selects
 /// extra unused axes.
 fn pick_result_axes(frame: &dyn Frame, picks: &[i32]) -> AstResult<DynFrame> {
     // The current Rust `pick_axes` helper only handles the strict
@@ -1835,7 +1835,7 @@ fn pick_result_axes(frame: &dyn Frame, picks: &[i32]) -> AstResult<DynFrame> {
 /// trampoline, which lands here for a CmpFrame template against a
 /// non-CmpFrame target).
 ///
-/// PreserveAxes is honoured per the C contract: when set on the
+/// PreserveAxes is honored per the C contract: when set on the
 /// template, the result Frame shape matches the target; when not,
 /// the result has a CmpFrame shape that mirrors the *template*
 /// CmpFrame, with the matched component's axes filled and the other
@@ -1866,7 +1866,7 @@ pub(crate) fn component_match(
 
     // Run the inner Match on the component template against the
     // target via the matchsub cast-retry wrapper (C `astMatch`,
-    // frame.c:15473), so a specialised component (e.g. a SkyFrame)
+    // frame.c:15473), so a specialized component (e.g. a SkyFrame)
     // can align with a plainer target sharing its Domain. The
     // returned m.template_axes / m.target_axes refer to the component
     // Frame; we rewire them to refer to the full template CmpFrame
@@ -2103,7 +2103,7 @@ fn cmpframe_match(
             'outer: for naxes1 in (naxes_min..=naxes_max).rev() {
                 let naxes2 = naxes - naxes1;
 
-                // Initialise axes1 = [0, 1, …, naxes1-1].
+                // Initialize axes1 = [0, 1, …, naxes1-1].
                 let mut axes1: Vec<i32> = (0..naxes1 as i32).collect();
                 let mut axes2: Vec<i32> = vec![0; naxes2];
 
@@ -2216,7 +2216,7 @@ fn partition_selection(
         }
     }
 
-    // Default for extras with no real neighbour at all
+    // Default for extras with no real neighbor at all
     // (cmpframe.c:6552-6554).
     let mut ifr: u8 = if following { 2 } else { 1 };
 
@@ -2268,7 +2268,7 @@ fn partition_selection(
 ///
 /// `target_axes` entries of `-1` produce "extra" result axes with no
 /// target derivation; they are assigned to whichever component the
-/// closest neighbouring real axis came from (per `MatchEnd` on the
+/// closest neighboring real axis came from (per `MatchEnd` on the
 /// target).
 fn cmpframe_sub_frame(
     target: &CmpFrame,

@@ -1,6 +1,6 @@
 //! `Polygon::convex` against the C library's `astConvex8<X>` (polygon.c
 //! `MAKE_CONVEX`, `ConvexHull`, `FindBoxEdge` and `PartHull`): every
-//! comparison, pixel centres at integer and at half-integer (`starpix`) PIXEL
+//! comparison, pixel centers at integer and at half-integer (`starpix`) PIXEL
 //! coordinates, a float and an int array, a single selected pixel, and none.
 //!
 //! The values come from `tools/oracle_fixtures/region_convex_probe.c`.

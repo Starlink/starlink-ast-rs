@@ -313,7 +313,7 @@ impl LutMap {
     /// Whether the lookup table is linear, as C's `GetLinear`
     /// (`lutmap.c:578-627`) decides it.
     ///
-    /// A nearest-neighbour table is never linear, whatever its values, because
+    /// A nearest-neighbor table is never linear, whatever its values, because
     /// of the discontinuities at the first and last entries (`lutmap.c:578`).
     ///
     /// Otherwise the tolerance is scaled by the `LutEpsilon` attribute — the
@@ -425,7 +425,7 @@ impl LutMap {
     /// Forward transform for a single input value.
     fn forward_one(&self, value_in: f64) -> f64 {
         // lutmap.c Transform, forward branch, transcribed: the scale is
-        // `1/inc` applied as a product, nearest-neighbour takes
+        // `1/inc` applied as a product, nearest-neighbor takes
         // `floor(x + 0.5)`, and linear interpolation extrapolates from the
         // last two entries at and above the last node. The constructor
         // refuses a table of fewer than two entries, as C's does.
@@ -742,7 +742,7 @@ impl Mapping for LutMap {
 
         // C `lutmap.c:1177-1236`: in series, a LutMap adjacent to an equal
         // LutMap applied in the opposite direction collapses to a UnitMap. C
-        // looks at the higher neighbour first, then the lower, and replaces the
+        // looks at the higher neighbor first, then the lower, and replaces the
         // *lower* of the two.
         if series {
             let neighbour =
@@ -760,7 +760,7 @@ impl Mapping for LutMap {
                     .as_any()
                     .downcast_ref::<LutMap>()
                     .expect("checked immediately above");
-                // C sets the neighbour's Invert to its list value and then
+                // C sets the neighbor's Invert to its list value and then
                 // inverts it before comparing, so the two are equal-but-opposite
                 // exactly when the applied directions differ and the tables
                 // agree. Owned values make that a comparison, not a mutation.

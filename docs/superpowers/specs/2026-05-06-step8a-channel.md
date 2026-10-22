@@ -183,7 +183,7 @@ pub fn from_native_string(s: &str) -> AstResult<AnyObject> {
 ```
 
 Note: `to_native_string` uses comment=false, full=-1 to match
-the C `astToString` behaviour (minimal output). Users who want
+the C `astToString` behavior (minimal output). Users who want
 verbose output use NativeChannel directly with different config.
 
 ## Config Effect on Native Output

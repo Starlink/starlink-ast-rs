@@ -49,7 +49,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 - **ChebyMap's PolyTran was not ported, and a ChebyMap kept an inverse box C drops.**
   `ChebyMap::poly_tran` now ports `chebymap.c` `PolyTran` through C's `FitPoly1DInit` / `FitPoly2DInit` seams, and a box is kept only for a transformation with coefficients, as `chebymap.c:2124-2158` does, which Errors 25-28 exposed (CH-4 and CH-7 in `docs/audits/mapping-c-parity.md`).
 - **`testunitnormmap.c` Error 6b was a missing test, not a behavior gap.**
-  Transforming the centre gives BAD unit components and a zero norm, and C requires the inverse to give the centre back (`testunitnormmap.c:186-187`); the port's zero-norm branch takes precedence as C's does.
+  Transforming the center gives BAD unit components and a zero norm, and C requires the inverse to give the center back (`testunitnormmap.c:186-187`); the port's zero-norm branch takes precedence as C's does.
   `test_unitnormmap.rs::not_linear_and_round_trips_including_the_centre` now pins it with Errors 5 and 6.
 - **`testselfsimplifyafterset` was recorded as unconstructible after its setters existed.**
   It is now `test_mapping.rs::a_simplified_mapping_set_to_unit_simplifies_again`.

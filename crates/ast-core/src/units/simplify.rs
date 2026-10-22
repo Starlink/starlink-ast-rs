@@ -6,7 +6,7 @@
 //! Commit 1 only ports the "minimum subset" of `SimplifyTree` needed
 //! to detect `UnitMap` / `ZoomMap` shapes — constant folding, the
 //! commute-constant-left rule on `OP_MULT`, and the trivial
-//! `*1` / `*0` / `/1` rewrites. The full standardisation rules
+//! `*1` / `*0` / `/1` rewrites. The full standardization rules
 //! (`ln(x^k) → k*ln(x)`, `sqrt(x) → x^0.5`, `(x*y)^k → x^k * y^k`,
 //! the `FindFactors` / `CombineFactors` standard form) land in commit
 //! 2 alongside the MathMap path.
@@ -24,11 +24,11 @@ use super::tree::{Oper, UnitNode};
 // Cached parsed definitions ("head" trees) for derived KnownUnits.
 //
 // In the C library, `KnownUnit::head` is built once during the
-// `GetKnownUnits` initialisation pass (see `MakeKnownUnit` at
+// `GetKnownUnits` initialization pass (see `MakeKnownUnit` at
 // `unit.c`:3201). The Rust `KnownUnit` struct doesn't carry the head
 // directly because the table is a `&'static [KnownUnit]` populated
-// before parsing is available. We mirror the C behaviour with a
-// global, lazily-initialised cache populated in declaration order so
+// before parsing is available. We mirror the C behavior with a
+// global, lazily-initialized cache populated in declaration order so
 // that derived-unit definitions (e.g. `J = "N m"`) see the heads of
 // their dependencies (e.g. `N = "kg m/s**2"`) already cached.
 // ---------------------------------------------------------------------
@@ -44,7 +44,7 @@ fn definition_heads() -> &'static HashMap<&'static str, Box<UnitNode>> {
         // Because `create_tree` itself consults this cache during
         // RemakeTree, we use a side-channel `LOOKUP` thread-local
         // pointer that points at the partially-built map during
-        // initialisation. After the OnceLock observation completes,
+        // initialization. After the OnceLock observation completes,
         // `create_tree` reads from the published cache directly.
         let mut map: HashMap<&'static str, Box<UnitNode>> = HashMap::new();
         for unit in iter_known_units() {
@@ -73,13 +73,13 @@ thread_local! {
 /// canonical symbol. Returns `None` for basic units (no definition)
 /// or while the cache for that unit is still being built.
 fn lookup_head(sym: &str) -> Option<&'static UnitNode> {
-    // During `definition_heads` initialisation, we may be probing
+    // During `definition_heads` initialization, we may be probing
     // for an entry that is in the process of being built. The
     // thread-local override exposes the *partial* map during that
     // window so that `create_tree` can resolve already-built deps.
     if let Some(ptr) = LOOKUP_OVERRIDE.with(|cell| cell.get()) {
         // SAFETY: the pointer is valid for the duration of the
-        // initialisation closure that set it.
+        // initialization closure that set it.
         let partial = unsafe { &*ptr };
         // Look up; the partial map is the same type as the final
         // map. The reference returned outlives the call because the
@@ -251,7 +251,7 @@ pub(crate) fn fix_constants(node: &mut Box<UnitNode>, unity: bool) {
 
 /// Take the reciprocal of literal multiplicative constants, so that
 /// `"0.01 m"` is interpreted as "value in units of 0.01 m" (i.e.
-/// divide the metres value by 0.01) rather than "multiply by 0.01".
+/// divide the meters value by 0.01) rather than "multiply by 0.01".
 /// Returns `None` if a zero divisor is encountered (the C version
 /// would set status to AST__BADUN).
 pub(crate) fn invert_constants(node: &mut Box<UnitNode>) -> Option<()> {
@@ -318,7 +318,7 @@ fn ast_equal(a: f64, b: f64) -> bool {
 
 /// Bottom-up algebraic simplification. Mirrors C `SimplifyTree`
 /// (`unit.c`:4653). When `std=true`, applies the canonical-form
-/// standardisations needed to compare two trees for equivalence
+/// standardizations needed to compare two trees for equivalence
 /// (FindFactors / CombineFactors and the ln/log/sqrt rewrites).
 /// When `std=false`, only genuine simplifications run.
 pub(crate) fn simplify_tree(node: &mut Box<UnitNode>, std: bool) -> bool {
@@ -460,7 +460,7 @@ pub(crate) fn simplify_tree(node: &mut Box<UnitNode>, std: bool) -> bool {
             } else if ast_equal(node.arg[0].con, 1.0) {
                 newnode = Some(Box::new((*node.arg[1]).clone()));
             } else if std {
-                // FindFactors + CombineFactors canonicalisation.
+                // FindFactors + CombineFactors canonicalization.
                 let (factors, powers, coeff) = find_factors(node);
                 newnode = combine_factors(&factors, &powers, coeff);
             }

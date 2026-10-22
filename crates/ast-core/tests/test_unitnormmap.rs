@@ -1,7 +1,7 @@
 //! Tests for UnitNormMap — port of reference/starlink-ast/ast_tester/testunitnormmap.c logic.
 //!
 //! UnitNormMap decomposes a vector into a unit vector and its norm,
-//! relative to a specified centre.
+//! relative to a specified center.
 
 use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
@@ -18,7 +18,7 @@ fn is_bad(v: f64) -> bool {
 
 #[test]
 fn forward_basic_origin() {
-    // centre = [0, 0], input = [3, 4] → norm = 5, unit = [0.6, 0.8]
+    // center = [0, 0], input = [3, 4] → norm = 5, unit = [0.6, 0.8]
     let unm = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     assert_eq!(unm.nin(), 2);
     assert_eq!(unm.nout(), 3);
@@ -35,7 +35,7 @@ fn forward_basic_origin() {
 
 #[test]
 fn forward_with_centre() {
-    // centre = [1, -1], input = [5, 2] → v = [4, 3], norm = 5
+    // center = [1, -1], input = [5, 2] → v = [4, 3], norm = 5
     // unit = [0.8, 0.6], output = [0.8, 0.6, 5.0]
     let unm = UnitNormMap::new(vec![1.0, -1.0]).unwrap();
     let pts = PointSet::from_rows([[5.0, 2.0]]);
@@ -49,7 +49,7 @@ fn forward_with_centre() {
 
 #[test]
 fn forward_zero_vector() {
-    // Input equals centre → norm = 0, unit vector = BAD
+    // Input equals center → norm = 0, unit vector = BAD
     let unm = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
     let pts = PointSet::from_rows([[1.0, 2.0]]);
     let out = unm.transform(&pts, true).unwrap();
@@ -102,7 +102,7 @@ fn forward_multiple_points() {
 
 #[test]
 fn inverse_basic() {
-    // Inverse: unit = [0.6, 0.8], norm = 5, centre = [0, 0] → [3, 4]
+    // Inverse: unit = [0.6, 0.8], norm = 5, center = [0, 0] → [3, 4]
     let unm = UnitNormMap::new(vec![0.0, 0.0]).unwrap();
     let pts = PointSet::from_rows([[0.6, 0.8, 5.0]]);
     let out = unm.transform(&pts, false).unwrap();
@@ -114,7 +114,7 @@ fn inverse_basic() {
 
 #[test]
 fn inverse_with_centre() {
-    // unit = [0.8, 0.6], norm = 5, centre = [1, -1] → [5, 2]
+    // unit = [0.8, 0.6], norm = 5, center = [1, -1] → [5, 2]
     let unm = UnitNormMap::new(vec![1.0, -1.0]).unwrap();
     let pts = PointSet::from_rows([[0.8, 0.6, 5.0]]);
     let out = unm.transform(&pts, false).unwrap();
@@ -126,7 +126,7 @@ fn inverse_with_centre() {
 
 #[test]
 fn inverse_zero_norm() {
-    // Norm = 0 → output is the centre, regardless of unit vector
+    // Norm = 0 → output is the center, regardless of unit vector
     let unm = UnitNormMap::new(vec![3.0, 7.0]).unwrap();
     let pts = PointSet::from_rows([[999.0, -42.0, 0.0]]);
     let out = unm.transform(&pts, false).unwrap();
@@ -316,7 +316,7 @@ fn serialization_inverted_roundtrip() {
 
 #[test]
 fn merge_inverse_cancel_same_centre() {
-    // UnitNormMap(fwd) + UnitNormMap(inv) with same centre → UnitMap
+    // UnitNormMap(fwd) + UnitNormMap(inv) with same center → UnitMap
     // In the simplify engine, mappings are stored in forward state,
     // with effective inversion carried by the bool flags.
     use ast_core::mappings::UnitMap;
@@ -356,7 +356,7 @@ fn merge_different_centre_to_shift() {
 
 #[test]
 fn merge_unitnormmap_inv_plus_shift() {
-    // UnitNormMap(inv) + ShiftMap → UnitNormMap(inv) with adjusted centre
+    // UnitNormMap(inv) + ShiftMap → UnitNormMap(inv) with adjusted center
     // In the simplify engine, self has inverted=false, self_inv=true
     let unm = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
     let shift = ShiftMap::new(vec![3.0, -1.0]);
@@ -369,14 +369,14 @@ fn merge_unitnormmap_inv_plus_shift() {
 
     let merged = result.as_any().downcast_ref::<UnitNormMap>().unwrap();
     assert!(merged.is_inverted());
-    // New centre = old centre + shift = [4.0, 1.0]
+    // New center = old center + shift = [4.0, 1.0]
     assert!((merged.centre()[0] - 4.0).abs() < 1e-14);
     assert!((merged.centre()[1] - 1.0).abs() < 1e-14);
 }
 
 #[test]
 fn merge_shift_plus_unitnormmap_fwd() {
-    // ShiftMap + UnitNormMap(fwd) → UnitNormMap(fwd) with adjusted centre
+    // ShiftMap + UnitNormMap(fwd) → UnitNormMap(fwd) with adjusted center
     let shift = ShiftMap::new(vec![3.0, -1.0]);
     let unm = UnitNormMap::new(vec![5.0, 10.0]).unwrap();
 
@@ -387,15 +387,15 @@ fn merge_shift_plus_unitnormmap_fwd() {
 
     let merged = result.as_any().downcast_ref::<UnitNormMap>().unwrap();
     assert!(!merged.is_inverted());
-    // New centre = old centre - shift = [2.0, 11.0]
+    // New center = old center - shift = [2.0, 11.0]
     assert!((merged.centre()[0] - 2.0).abs() < 1e-14);
     assert!((merged.centre()[1] - 11.0).abs() < 1e-14);
 }
 
 #[test]
 fn merge_winmap_unit_scale_plus_unitnormmap_fwd() {
-    // WinMap(unit scale, shift=[2,3]) + UnitNormMap(fwd, centre=[5,10])
-    // → UnitNormMap(fwd, centre=[5-2, 10-3]=[3, 7])
+    // WinMap(unit scale, shift=[2,3]) + UnitNormMap(fwd, center=[5,10])
+    // → UnitNormMap(fwd, center=[5-2, 10-3]=[3, 7])
     let win = WinMap::new(&[2.0, 3.0], &[1.0, 1.0]).unwrap();
     let unm = UnitNormMap::new(vec![5.0, 10.0]).unwrap();
 
@@ -421,8 +421,8 @@ fn no_merge_winmap_non_unit_scale() {
 
 #[test]
 fn merge_unitnormmap_inv_plus_winmap_unit_scale() {
-    // UnitNormMap(inv, centre=[1,2]) + WinMap(unit scale, shift=[3,-1])
-    // → UnitNormMap(inv, centre=[4,1])
+    // UnitNormMap(inv, center=[1,2]) + WinMap(unit scale, shift=[3,-1])
+    // → UnitNormMap(inv, center=[4,1])
     // Stored in forward state, effective inv via self_inv=true
     let unm = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
     let win = WinMap::new(&[3.0, -1.0], &[1.0, 1.0]).unwrap();
@@ -452,7 +452,7 @@ fn no_merge_parallel() {
 
 #[test]
 fn one_dimensional() {
-    // 1D: centre = [2], input = [5] → v = [3], norm = 3, unit = [1]
+    // 1D: center = [2], input = [5] → v = [3], norm = 3, unit = [1]
     let unm = UnitNormMap::new(vec![2.0]).unwrap();
     assert_eq!(unm.nin(), 1);
     assert_eq!(unm.nout(), 2);
@@ -515,8 +515,8 @@ fn round_trips(map: &UnitNormMap, pos: &[f64]) -> bool {
 }
 
 /// Errors 5, 6 and 6b of testunitnormmap.c for one to three axes. At the
-/// centre the forward transform gives BAD unit components and a zero norm,
-/// and the inverse gives the centre back because a zero norm takes precedence
+/// center the forward transform gives BAD unit components and a zero norm,
+/// and the inverse gives the center back because a zero norm takes precedence
 /// over BAD components (unitnormmap.c inverse branch).
 #[test]
 fn not_linear_and_round_trips_including_the_centre() {

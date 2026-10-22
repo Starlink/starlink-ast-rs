@@ -151,7 +151,7 @@ impl SpecSystem {
         Self::ALL.iter().position(|s| s == self).unwrap()
     }
 
-    /// Native serialisation attribute key for the unit preference (e.g. "UFreq").
+    /// Native serialization attribute key for the unit preference (e.g. "UFreq").
     pub(crate) fn unit_attr_key(&self) -> &'static str {
         match self {
             Self::Freq => "UFreq",
@@ -208,17 +208,17 @@ impl SpecSystem {
 pub enum StdOfRest {
     /// Topocentric (observer on Earth surface).
     Topocentric,
-    /// Geocentric (Earth centre).
+    /// Geocentric (Earth center).
     Geocentric,
-    /// Barycentric (Solar system barycentre).
+    /// Barycentric (Solar system barycenter).
     Barycentric,
-    /// Heliocentric (Sun centre).
+    /// Heliocentric (Sun center).
     Heliocentric,
     /// Local Standard of Rest (kinematic).
     Lsrk,
     /// Local Standard of Rest (dynamical).
     Lsrd,
-    /// Galactic centre.
+    /// Galactic center.
     Galactic,
     /// Local Group.
     LocalGroup,
@@ -1084,7 +1084,7 @@ impl SpecFrame {
             (yout, xout)
         };
         // RefRA must lie in [0, 2π); RefDec must lie in (-π, π]. AST
-        // (and SLALIB / palGaleq, via eraAnp / eraAnpm) normalises to
+        // (and SLALIB / palGaleq, via eraAnp / eraAnpm) normalizes to
         // those ranges; our SlaMap goes through Cartesian and ends up
         // in (-π, π] for the longitude. Re-apply the standard ranges
         // so RefRA matches C's f64 representation bit-for-bit —
@@ -1400,7 +1400,7 @@ impl SpecFrame {
     ///
     /// Format: "{label} ({sor})" — e.g. "Frequency (Heliocentric)".
     fn default_title(&self) -> String {
-        // Mirrors C `SpecFrame::GetTitle` (specframe.c:2022): the capitalised
+        // Mirrors C `SpecFrame::GetTitle` (specframe.c:2022): the capitalized
         // system label, the standard of rest in parentheses only when
         // explicitly set, and (for non-absolute systems) the rest frequency
         // in GHz when set or when defaults are usable (UseDefs defaults true).
@@ -1444,7 +1444,7 @@ impl SpecFrame {
         self.attrs.obs_lon = Some(lon);
     }
 
-    /// Set the observer altitude (metres).
+    /// Set the observer altitude (meters).
     pub fn set_obs_alt(&mut self, alt: f64) {
         self.attrs.obs_alt = Some(alt);
     }
@@ -1992,7 +1992,7 @@ impl SpecFrame {
             // attributes in. C unconditionally calls astSetEpoch /
             // astSetRefRA / etc, so we mirror that by always populating
             // these fields (using each side's effective default if
-            // unset, mirroring the GET behaviour of the corresponding
+            // unset, mirroring the GET behavior of the corresponding
             // astGet*).
             let mut at = align_frm.clone();
             at.attrs.epoch = Some(target.epoch_mjd());
@@ -2025,7 +2025,7 @@ impl SpecFrame {
             SpecSystem::Vrel
         };
 
-        // C lines 2738-2743: initialise all steps to "needed".
+        // C lines 2738-2743: initialize all steps to "needed".
         let mut step2 = true;
         let mut step3 = true;
         let mut step4 = true;
@@ -2372,7 +2372,7 @@ impl Frame for SpecFrame {
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         super::assert_points_len("norm", self.naxes(), &[&*coords]);
-        // Spectral coordinates are unbounded — no normalisation needed.
+        // Spectral coordinates are unbounded — no normalization needed.
         Ok(())
     }
 
@@ -2443,7 +2443,7 @@ impl Frame for SpecFrame {
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // A specialised leaf frame can only be cast down to a plain
+        // A specialized leaf frame can only be cast down to a plain
         // Frame (BasicFrame). Same-class is handled by the direct Match
         // (no cast needed), so only the BasicFrame target matters here.
         if other
@@ -2755,7 +2755,7 @@ fn specframe_sub_frame(
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 impl Serializable for SpecFrame {
@@ -2928,7 +2928,7 @@ impl Serializable for SpecFrame {
         let system_present = read.is_some();
 
         let mut sf = SpecFrame::new(system);
-        // SpecFrame::new flags System as set; honour the serialised
+        // SpecFrame::new flags System as set; honor the serialized
         // set-ness instead (a commented `System=` line means unset).
         sf.system_set = system_present;
 

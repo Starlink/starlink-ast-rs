@@ -973,7 +973,7 @@ fn map_copy_entry_locked_destination_error_keeps_trailing_spaces() {
 // its own order: its two static helper functions first, then `main`.
 // ---------------------------------------------------------------------------
 
-/// Serialise, read back, and compare entry by entry. Ported from
+/// Serialize, read back, and compare entry by entry. Ported from
 /// `checkdump` (`testkeymap.c:64`), which compares sizes, then per key the
 /// type and either the Object class name or the string rendering.
 fn check_dump(km: &KeyMap) {

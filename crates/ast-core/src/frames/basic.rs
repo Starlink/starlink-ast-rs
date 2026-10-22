@@ -95,7 +95,7 @@ pub struct BasicFrame {
     /// C's Frame holds them. C's `SubFrame` attaches the target's own Axis
     /// objects to the result (frame.c:11023), so a plain Frame built by
     /// picking axes out of a SkyFrame carries SkyAxis objects, which keep
-    /// formatting, normalising and dumping as a SkyAxis does.
+    /// formatting, normalizing and dumping as a SkyAxis does.
     axes: Vec<FrameAxis>,
     /// The axis permutation, `perm[external] = internal` (0-based), as C's
     /// `perm` array.
@@ -583,7 +583,7 @@ impl BasicFrame {
         "the observer's geodetic longitude (radians)"
     );
 
-    /// The observer's geodetic altitude in metres, set or default.
+    /// The observer's geodetic altitude in meters, set or default.
     ///
     /// See [`Frame::obs_alt`] for the attribute.
     /// The default is 0.
@@ -748,7 +748,7 @@ pub(crate) fn axis_unformat(text: &str) -> (f64, usize) {
         return (v, end + trailing_ws);
     }
 
-    // Recognise "<bad>" via the C scanf format
+    // Recognize "<bad>" via the C scanf format
     // `" < %*1[Bb] %*1[Aa] %*1[Dd] > %n"` (axis.c:1357). Each space in that
     // format skips optional whitespace, so the tokens `<`, `b`, `a`, `d`, `>`
     // may be separated by whitespace. The trailing space before `%n` skips
@@ -959,7 +959,7 @@ impl Frame for BasicFrame {
         Ok(super::cartesian_offset(&from[..n], &to[..n], dist))
     }
 
-    /// Each axis value is normalised by its own Axis object, so a SkyAxis
+    /// Each axis value is normalized by its own Axis object, so a SkyAxis
     /// picked out of a SkyFrame wraps its angle and a plain Axis leaves its
     /// value alone.
     // C: frame.c `Norm`.

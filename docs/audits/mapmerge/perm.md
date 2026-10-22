@@ -8,7 +8,7 @@ Extension points: classified
 
 Uncited C steps:
 - permmap.c:882 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
-- permmap.c:926 (fn MapMerge) — clears C's own sentinels, a null replacement Mapping and empty permutation and constant arrays; the Rust locals are initialised where they are declared
+- permmap.c:926 (fn MapMerge) — clears C's own sentinels, a null replacement Mapping and empty permutation and constant arrays; the Rust locals are initialized where they are declared
 
 C's body runs `permmap.c:920-1460 (fn MapMerge)`. It brackets a whole run of adjacent PermMaps
 and UnitMaps, composes their permutations and constants into one replacement, and
@@ -22,7 +22,7 @@ was actually simplified.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1 | permmap.c:920-921 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result to -1 | permmap.c:920-921 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | permmap.c:923-924 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | In series, search adjacent lower-numbered Mappings until one is neither a PermMap nor a UnitMap | permmap.c:932-948 (fn MapMerge) | mappings/simplify.rs:1524-1533 (fn default_map_merge) | architecture | ported |
 | 4 | Search adjacent higher-numbered Mappings the same way | permmap.c:949-959 (fn MapMerge) | mappings/simplify.rs:1511-1520 (fn default_map_merge) | architecture | ported |
@@ -43,7 +43,7 @@ was actually simplified.
 | 19 | Append an unseen constant to the constants list | permmap.c:1088-1096 (fn MapMerge) | perm.rs:518-526 (fn add_constant) | architecture | ported |
 | 20 | Store a negative reference to that constant in the accumulated array | permmap.c:1097-1112 (fn MapMerge) | perm.rs:569-573 (fn compose_perms) | architecture | ported |
 | 21 | In parallel, take the nominated PermMap and how its Invert attribute is applied | permmap.c:1113-1122 (fn MapMerge) | mappings/simplify.rs:1147-1148 (fn perm_map_merge) | architecture | ported |
-| 22 | Initialise the replacement's coordinate counts from it | permmap.c:1123-1133 (fn MapMerge) | perm.rs:925-926 (fn try_merge) | architecture | ported |
+| 22 | Initialize the replacement's coordinate counts from it | permmap.c:1123-1133 (fn MapMerge) | perm.rs:925-926 (fn try_merge) | architecture | ported |
 | 23 | Search both directions for adjacent PermMaps and UnitMaps, accumulating their effective coordinate counts | permmap.c:1134-1180 (fn MapMerge) | mappings/simplify.rs:1511-1533 (fn default_map_merge) | architecture | ported |
 | 24 | Allocate the replacement arrays and constants list, then build both directions as in series | permmap.c:1181-1307 (fn MapMerge) | perm.rs:928-978 (fn try_merge) | architecture | ported |
 | 25 | Accumulate each Mapping's input and output coordinate offsets across the run | permmap.c:1298-1307 (fn MapMerge) | perm.rs:945 (fn try_merge),956 (fn try_merge) | architecture | ported |
@@ -76,11 +76,11 @@ replacement in as many passes as it has elements. The rows about bracketing are
 
 ## Rows 26 to 34 — the canonical form is a simplification in its own right
 
-C reports a simplification even when no neighbour merged, if the nominated
+C reports a simplification even when no neighbor merged, if the nominated
 PermMap's stored form is not canonical: a redundant stored permutation array is
 dropped, a set Invert flag is cleared, or the whole thing collapses to a UnitMap.
 `canonical_null_form` (`perm.rs:236-318 (fn canonical_null_form)`) is that rebuild, and
-`perm_map_merge` applies it after the neighbour attempt so the surrounding tree
+`perm_map_merge` applies it after the neighbor attempt so the surrounding tree
 is reconstructed with the canonical leaf rather than the stored form.
 
 The direction it rebuilds from is the list's, `(*invert_list)[where]`, passed in

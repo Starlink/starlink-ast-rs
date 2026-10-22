@@ -1,4 +1,4 @@
-//! Native-format serialisation for `FitsTable`.
+//! Native-format serialization for `FitsTable`.
 //!
 //! Ported from `Dump` and `astLoadFitsTable` in
 //! `reference/starlink-ast/src/fitstable.c`.

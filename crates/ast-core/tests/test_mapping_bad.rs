@@ -1,5 +1,5 @@
 //! NormMaps, ShiftMaps and MatrixMaps treat bad values as C does: a NormMap
-//! normalises every point, so a SkyFrame wraps the longitude of a point whose
+//! normalizes every point, so a SkyFrame wraps the longitude of a point whose
 //! latitude is bad (normmap.c `Transform`); a bad shift makes its axis bad
 //! (shiftmap.c `Transform`); and a MatrixMap ignores a bad input where a full
 //! matrix's element is zero, but not a diagonal one's, and a bad element makes

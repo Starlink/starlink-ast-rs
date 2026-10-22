@@ -10,7 +10,7 @@
 //!    a DIAGONAL `MatrixMap` (C matrixmap.c:1857-1929). This is the only
 //!    reduction a lone MatrixMap can undergo; C gives MatrixMap no `Simplify`
 //!    vtab slot, so a MatrixMap nominated on its own arrives here too.
-//! 2. **Direct merge** with a mergeable neighbour: another MatrixMap
+//! 2. **Direct merge** with a mergeable neighbor: another MatrixMap
 //!    (`MatMat`), a ZoomMap (`MatZoom`), an invertible PermMap (`MatPerm`), a
 //!    UnitMap, or — when the MatrixMap is diagonal — a WinMap (`MatWin2`).
 //! 3. **Swap toward the nearest mergeable target** — compute the distance to
@@ -18,7 +18,7 @@
 //!    PermMap), swap that direction via [`win_mat`](super::winmap_merge::win_mat)
 //!    (matrix↔WinMap) or [`mat_perm_swap`] (matrix↔PermMap), then merge at the
 //!    new adjacency.
-//! 4. **Speculative swap** — even with no target, swap with a neighbour if
+//! 4. **Speculative swap** — even with no target, swap with a neighbor if
 //!    either swapped map then simplifies to a different class.
 
 use ndarray::Array2;
@@ -56,22 +56,22 @@ pub(crate) fn matrix_map_merge(
         (mm.nin(), mm.nout())
     };
 
-    // ---- Step 1: replace-with-simpler (no reference to neighbours).
+    // ---- Step 1: replace-with-simpler (no reference to neighbors).
     if let Some(new) = replace_with_simpler(mm, eff_inv, nin, nout) {
         ctx.set_pair_single(where_, (new, false, false));
         return Some(where_);
     }
 
-    // The neighbour-merge and swap steps only apply in series (C wraps the
+    // The neighbor-merge and swap steps only apply in series (C wraps the
     // whole block in `if( series )`). In parallel, C's MatrixMap MapMerge does
     // nothing beyond Part A. We still fall through to `default_map_merge`,
-    // which is a no-op for a MatrixMap with no mergeable right neighbour and
-    // preserves the parallel behaviour the rest of the engine relies on.
+    // which is a no-op for a MatrixMap with no mergeable right neighbor and
+    // preserves the parallel behavior the rest of the engine relies on.
     if !series {
         return default_map_merge(ctx, where_, series);
     }
 
-    // ---- Step 2 (series): direct merge with a mergeable neighbour.
+    // ---- Step 2 (series): direct merge with a mergeable neighbor.
     if let Some(result) = try_direct_merge(mm, ctx, where_) {
         return Some(result);
     }
@@ -82,20 +82,20 @@ pub(crate) fn matrix_map_merge(
         return Some(result);
     }
 
-    // C's merge only ever considers a neighbour of a class it names:
+    // C's merge only ever considers a neighbor of a class it names:
     // MatrixMap, ZoomMap, UnitMap, an invertable PermMap, or — when this
     // MatrixMap is diagonal — a WinMap (matrixmap.c:1622-1660). Anything else
     // takes the `else` branch at matrixmap.c:1709, which keeps the MatrixMap
     // and its invert flag untouched and merges nothing.
     //
-    // That is load-bearing rather than an optimisation. A `ShiftMap` neighbour
+    // That is load-bearing rather than an optimization. A `ShiftMap` neighbor
     // is not on the list: C waits for the ShiftMap's own merge to turn it into
     // a WinMap first. Folding the pair here instead composes through the
-    // MatrixMap's *effective* direction and materialises the inverse into the
-    // stored values, so the Mapping serialises with the inverse matrix stored
+    // MatrixMap's *effective* direction and materializes the inverse into the
+    // stored values, so the Mapping serializes with the inverse matrix stored
     // forward where C stores the matrix and records `InvB` on the parent.
     //
-    // The fallback stays for a neighbour C would accept, covering the swap
+    // The fallback stays for a neighbor C would accept, covering the swap
     // cases not yet ported.
     let mm_diagonal = matrix_is_diagonal(mm, eff_inv);
     let mergeable = |idx: usize| is_mergeable(ctx.entry(idx).0.as_ref(), mm_diagonal);
@@ -107,7 +107,7 @@ pub(crate) fn matrix_map_merge(
     default_map_merge(ctx, where_, series)
 }
 
-/// Effective forward matrix of a MatrixMap entry, honouring the applied
+/// Effective forward matrix of a MatrixMap entry, honoring the applied
 /// direction: the stored inverse when `inv`, else the stored forward matrix.
 /// Returns `None` when an inverse is required but not defined.
 fn eff_matrix(mm: &MatrixMap, inv: bool) -> Option<Array2<f64>> {
@@ -135,7 +135,7 @@ fn is_mergeable(m: &dyn Mapping, mm_diagonal: bool) -> bool {
     false
 }
 
-/// Whether the MatrixMap's effective forward matrix (honouring `inv`) is
+/// Whether the MatrixMap's effective forward matrix (honoring `inv`) is
 /// diagonal.
 fn matrix_is_diagonal(mm: &MatrixMap, inv: bool) -> bool {
     match eff_matrix(mm, inv) {
@@ -145,7 +145,7 @@ fn matrix_is_diagonal(mm: &MatrixMap, inv: bool) -> bool {
 }
 
 /// Step 2: try a direct merge of the nominated MatrixMap with whichever
-/// neighbour is mergeable. C prefers the lower neighbour (class1) then the
+/// neighbor is mergeable. C prefers the lower neighbor (class1) then the
 /// upper (class2). Returns the modified index on success.
 fn try_direct_merge(mm: &MatrixMap, ctx: &mut MergeCtx, where_: usize) -> Option<usize> {
     let n = ctx.len();
@@ -153,7 +153,7 @@ fn try_direct_merge(mm: &MatrixMap, ctx: &mut MergeCtx, where_: usize) -> Option
     let mm_diagonal = matrix_is_diagonal(mm, eff_inv);
 
     // C first checks the merge classes (MatrixMap/ZoomMap/PermMap/UnitMap) on
-    // either side, preferring the lower neighbour; only if neither side is one
+    // either side, preferring the lower neighbor; only if neither side is one
     // of those and the MatrixMap is diagonal does it consider a WinMap.
     let mergeable = |idx: usize| -> bool { is_mergeable(ctx.entry(idx).0.as_ref(), mm_diagonal) };
     let lower_ok = where_ > 0 && mergeable(where_ - 1);
@@ -171,12 +171,12 @@ fn try_direct_merge(mm: &MatrixMap, ctx: &mut MergeCtx, where_: usize) -> Option
     // (i1 == where_): the matrix is applied first.
     let mm_first = i1 == where_;
 
-    // A UnitMap neighbour reaches C's final `else` (matrixmap.c:2029-2032),
+    // A UnitMap neighbor reaches C's final `else` (matrixmap.c:2029-2032),
     // which has no merge builder: it clones the nominated MatrixMap *keeping
     // its Invert flag* — unlike the MatMat / MatZoom / MatPerm / MatWin2
     // branches, which all force `invert = 0` — writes it to `i1` and drops the
     // other element. Removing the UnitMap leaves the MatrixMap at `i1` with its
-    // flags untouched, which is the same outcome for either neighbour side.
+    // flags untouched, which is the same outcome for either neighbor side.
     let neighbour = if mm_first { i2 } else { i1 };
     if ctx.entry(neighbour).0.as_any().is::<UnitMap>() {
         ctx.remove_at(neighbour);
@@ -192,7 +192,7 @@ fn try_direct_merge(mm: &MatrixMap, ctx: &mut MergeCtx, where_: usize) -> Option
 
 /// Merge an adjacent (map1, map2) pair, one of which is the nominated
 /// MatrixMap, in series. `mm_first` records whether the MatrixMap is `map1`.
-/// Dispatches to the C merge builder for the neighbour class.
+/// Dispatches to the C merge builder for the neighbor class.
 fn merge_matrix_pair(
     map1: &dyn Mapping,
     inv1: bool,
@@ -200,7 +200,7 @@ fn merge_matrix_pair(
     inv2: bool,
     mm_first: bool,
 ) -> Option<DynMapping> {
-    // Identify the MatrixMap and the neighbour.
+    // Identify the MatrixMap and the neighbor.
     let (mm, mm_inv, other, other_inv) = if mm_first {
         (map1.as_any().downcast_ref::<MatrixMap>()?, inv1, map2, inv2)
     } else {
@@ -421,7 +421,7 @@ fn can_swap_at(ctx: &MergeCtx, i1: usize) -> (bool, bool) {
     )
 }
 
-/// C `matrixmap.c::CanSwap` (331): can the MatrixMap and its neighbour swap,
+/// C `matrixmap.c::CanSwap` (331): can the MatrixMap and its neighbor swap,
 /// and would the swap make either intrinsically simpler (`simpler`)? One of
 /// the pair is the MatrixMap. Returns `(can_swap, simpler)`.
 ///
@@ -429,7 +429,7 @@ fn can_swap_at(ctx: &MergeCtx, i1: usize) -> (bool, bool) {
 /// it is bi-directional (PermOK) with a square, invertible MatrixMap, and any
 /// constants it feeds into/out of the MatrixMap map through "scaling" rows and
 /// columns (a diagonal-only interaction). `simpler` iff the swap moves the
-/// MatrixMap to the side where the PermMap changes dimension favourably.
+/// MatrixMap to the side where the PermMap changes dimension favorably.
 fn can_swap(map1: &dyn Mapping, inv1: bool, map2: &dyn Mapping, inv2: bool) -> (bool, bool) {
     // Identify the MatrixMap and the non-MatrixMap partner.
     let (mat, mat_inv, nomat, nomat_inv, nomat_is_map1) = if map1.as_any().is::<MatrixMap>() {
@@ -639,7 +639,7 @@ fn try_swap_strategy(
     let n = ctx.len();
     let _ = mm;
 
-    // swaphi/do2 (upper neighbour), swaplo/do1 (lower neighbour).
+    // swaphi/do2 (upper neighbor), swaplo/do1 (lower neighbor).
     let (swaphi, do2) = if where_ + 1 < n {
         can_swap_at(ctx, where_)
     } else {
@@ -693,7 +693,7 @@ fn try_swap_strategy(
         return try_speculative_swap(ctx, where_, swaphi, swaplo);
     };
 
-    // The neighbour class for the chosen direction.
+    // The neighbor class for the chosen direction.
     let neigh_idx = if swap_lower { where_ - 1 } else { where_ + 1 };
     let nclass = swap_class_of(ctx.entry(neigh_idx).0.as_ref())?;
 
@@ -713,7 +713,7 @@ fn try_swap_strategy(
     Some(i1)
 }
 
-/// Whether a neighbour is a *merge target* for the nstep seek: MatrixMap,
+/// Whether a neighbor is a *merge target* for the nstep seek: MatrixMap,
 /// ZoomMap, UnitMap, or an invertible PermMap (matrixmap.c:2091-2094 /
 /// 2128-2131). WinMap is only swapped over, never a target.
 fn is_seek_target(m: &dyn Mapping, _inv: bool) -> bool {
@@ -743,7 +743,7 @@ fn swap_class_of(m: &dyn Mapping) -> Option<SwapClass> {
     }
 }
 
-/// Swap the MatrixMap (at index `imm` within the pair) against its neighbour.
+/// Swap the MatrixMap (at index `imm` within the pair) against its neighbor.
 /// Returns the swapped pair, or `None` if the swap is not yet supported.
 fn swap_pair(
     nclass: SwapClass,
@@ -898,7 +898,7 @@ fn mat_perm_swap(
     Some([out[0].take().unwrap(), out[1].take().unwrap()])
 }
 
-/// Step 4: speculative swap with a neighbour, kept iff a swapped map then
+/// Step 4: speculative swap with a neighbor, kept iff a swapped map then
 /// simplifies to a different class (matrixmap.c:2201-2272).
 fn try_speculative_swap(
     ctx: &mut MergeCtx,
@@ -952,7 +952,7 @@ fn clone_pair(ctx: &MergeCtx, i1: usize) -> [(DynMapping, bool, bool); 2] {
 }
 
 /// Step 1: C matrixmap.c:1857-1929 — try to replace the MatrixMap with a
-/// simpler Mapping without reference to its neighbours. Returns the
+/// simpler Mapping without reference to its neighbors. Returns the
 /// replacement (in forward state) or `None`.
 fn replace_with_simpler(
     mm: &MatrixMap,
@@ -960,7 +960,7 @@ fn replace_with_simpler(
     nin: usize,
     nout: usize,
 ) -> Option<DynMapping> {
-    // The effective forward matrix (honouring the applied direction) and the
+    // The effective forward matrix (honoring the applied direction) and the
     // stored forward matrix. C reads `mm->f_matrix` for the structural tests
     // (uniformity / off-diagonal-zero) and picks the zoom factor from
     // `f_matrix`/`i_matrix` per `invert_list[where]`.

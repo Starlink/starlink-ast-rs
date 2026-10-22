@@ -1,8 +1,8 @@
-# Step 5: Serialisation — Design Spec
+# Step 5: Serialization — Design Spec
 
 ## Summary
 
-Implement the serialisation infrastructure: a `Node` tree intermediate
+Implement the serialization infrastructure: a `Node` tree intermediate
 representation, the `Serializable` trait, and the plain-text Native
 format parser and renderer. Implement `to_node` / `from_node` for the
 9 types already built in Rust. Byte-exact round-trip regression tests
@@ -96,7 +96,7 @@ pub(crate) struct Node {
 - **Unset variant**: The C library writes commented-out lines for
   informational attributes (e.g. `# Title = "..."`, `# Lbl1 = "..."`).
   These carry the current default value but are not read back on
-  deserialisation. Preserving them in the Node tree is necessary for
+  deserialization. Preserving them in the Node tree is necessary for
   byte-exact round-trip.
 
 - **IsA markers**: In the Native text format, `IsA Mapping` separates
@@ -111,7 +111,7 @@ pub(crate) struct Node {
 
 The Rust equivalents of C's `astToString` / `astFromString`. Since
 there is no unified `Object` trait, a closed `AnyObject` enum
-provides the return type for deserialisation (this is the same enum
+provides the return type for deserialization (this is the same enum
 the design spec prescribes for `Channel::read` and the CFFI handle
 registry, pulled forward):
 
@@ -246,7 +246,7 @@ where `AST__DBL_DIG` is typically 17 (IEEE 754 `DBL_DECIMAL_DIG`).
 
 The Rust renderer must produce identical output. This means using
 `format!("{:.prec$e}", value)` will NOT work — we need to replicate
-C's `%g` behaviour (which switches between `%f` and `%e` based on
+C's `%g` behavior (which switches between `%f` and `%e` based on
 the exponent, and trims trailing zeros).
 
 A helper function `format_double_g(value: f64, precision: usize)`
@@ -290,7 +290,7 @@ Walks the Node tree, emitting:
 
 Indentation is 3 spaces per nesting level, matching C output.
 
-## Per-Class Serialisation Details
+## Per-Class Serialization Details
 
 ### Common: Mapping Base Attributes
 
@@ -383,7 +383,7 @@ Then: `IsA Frame`.
 
 Note: Several Frame attributes (System, AlSys, ObsLat, ObsLon,
 ObsAlt, Dtai, Dut1, etc.) exist in the C library but are not yet
-on BasicFrame. They will be serialised as `Unset` for now and added
+on BasicFrame. They will be serialized as `Unset` for now and added
 to the Rust type in later steps.
 
 ### BasicFrame
@@ -416,7 +416,7 @@ No class-specific attributes beyond the Frame base.
 
 ### Axis Object
 
-The C library serialises Axis objects as children of Frame (`Ax1`,
+The C library serializes Axis objects as children of Frame (`Ax1`,
 `Ax2`, etc.). An `Axis` Node has class name `Axis` and attributes:
 
 | Key | Condition | Comment |
@@ -477,7 +477,7 @@ as each class gains its `from_node` implementation.
 - Test: parse fixture → `Node` → render back to text → diff against
   original. Must be byte-exact.
 - Test: parse fixture → `Node` → `from_node` → reconstruct Rust
-  object → verify attributes and transform behaviour.
+  object → verify attributes and transform behavior.
 
 ### Tier C: Parse-Only on Reference Fixtures
 

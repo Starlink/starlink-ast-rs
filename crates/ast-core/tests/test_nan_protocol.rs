@@ -147,7 +147,7 @@ fn nan_protocol_slamap_matches_transform() {
 /// and via the standard `transform`, and assert "invalid-equivalence"
 /// per axis. A scalar path may legitimately leak NaN through
 /// (CLAUDE.md says outputs should use `BAD_VALUE` but not every
-/// mapping converts at exit) while the NaN-protocol path canonicalises
+/// mapping converts at exit) while the NaN-protocol path canonicalizes
 /// to `BAD_VALUE` at the boundary. Both signal "invalid" — we treat
 /// NaN-or-BAD as the same outcome for the parity check.
 fn assert_nan_protocol_matches_transform(

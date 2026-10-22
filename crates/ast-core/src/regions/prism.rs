@@ -851,7 +851,7 @@ impl Region for Prism {
         // Compute the mesh.
         let mesh = self.reg_base_mesh()?;
         if mesh.is_empty() {
-            // Return a single BAD point (matching C behaviour for empty meshes).
+            // Return a single BAD point (matching C behavior for empty meshes).
             let naxes = self.naxes1() + self.naxes2();
             let bad_point = vec![BAD_VALUE; naxes];
             return Ok(PointSet::from_rows(std::iter::once(bad_point.as_slice())));
@@ -932,10 +932,10 @@ impl Region for Prism {
     }
 
     fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
-        // Port of prism.c::RegCentre query path (prism.c:2551-2580). The two
+        // Port of prism.c::Regcenter query path (prism.c:2551-2580). The two
         // component Regions' current Frames together form the parent's base
-        // Frame. Both components must be re-centreable; if either returns None,
-        // the Prism has no centre.
+        // Frame. Both components must be re-centerable; if either returns None,
+        // the Prism has no center.
         let cen1 = self.region1.reg_centre_query(FrameRef::Current)?;
         let cen2 = self.region2.reg_centre_query(FrameRef::Current)?;
         let (Some(cen1), Some(cen2)) = (cen1, cen2) else {
@@ -954,8 +954,8 @@ impl Region for Prism {
     }
 
     fn reg_centre_set(&mut self, cen: &[f64], ifrm: FrameRef) -> AstResult<()> {
-        // Port of prism.c::RegCentre set path (prism.c:2582-2617). Transform the
-        // supplied centre into the parent base Frame (the component current
+        // Port of prism.c::Regcenter set path (prism.c:2582-2617). Transform the
+        // supplied center into the parent base Frame (the component current
         // Frames) when supplied in the current Frame, then hand each component
         // its slice.
         let bc = match ifrm {
@@ -1223,7 +1223,7 @@ impl Mapping for Prism {
 
     fn invert_orientation(&mut self) {
         // A Region's forward and inverse transforms are identical (membership
-        // is direction-independent), so inverting has no effect on behaviour.
+        // is direction-independent), so inverting has no effect on behavior.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {

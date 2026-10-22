@@ -15,7 +15,7 @@ ShiftMap participates in lives in `winmap.c`'s `MapMerge` and is audited in
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned index to -1 | shiftmap.c:665-666 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned index to -1 | shiftmap.c:665-666 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | shiftmap.c:668-669 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | A ShiftMap is equivalent to a WinMap with unit scaling; create a WinMap with undefined corners | shiftmap.c:671-678 (fn MapMerge) | shift.rs:221-236 (fn map_merge) | architecture | ported |
 | 4 | Store unit scale terms and the shift terms, negating them when the ShiftMap is applied inverted | shiftmap.c:680-694 (fn MapMerge) | shift.rs:227-232 (fn map_merge) | architecture | ported |

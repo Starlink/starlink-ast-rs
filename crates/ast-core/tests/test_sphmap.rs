@@ -2,7 +2,7 @@
 //!
 //! Tests the Cartesian ↔ spherical coordinate mapping, including
 //! forward/inverse transforms, BAD propagation, attribute access,
-//! inversion, and serialisation round-trips.
+//! inversion, and serialization round-trips.
 
 use crate::common::native_dump;
 use std::f64::consts::{FRAC_PI_2, PI};
@@ -311,7 +311,7 @@ fn sphmap_cancellation_requires_matching_polar_long() {
 }
 
 // -----------------------------------------------------------------------
-// Serialisation round-trip
+// Serialization round-trip
 // -----------------------------------------------------------------------
 
 #[test]

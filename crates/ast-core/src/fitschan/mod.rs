@@ -370,7 +370,7 @@ impl Encoding {
 /// Matches C `AST__DBL_DIG` (the default of the `FitsDigits` attribute,
 /// fitschan.c:43079), which is 17 when AST is built in C11 mode — enough to
 /// round-trip an IEEE double exactly. Callers that want the FITS-standard
-/// 20-column limit honoured set a smaller value explicitly (the wcsconv
+/// 20-column limit honored set a smaller value explicitly (the wcsconv
 /// fixtures use `FitsDigits=8` for the FITS encodings).
 const DEFAULT_FITS_DIGITS: i32 = 17;
 
@@ -3366,7 +3366,7 @@ impl Channel for FitsChan {
                     Ok(Some(obj))
                 }
                 Encoding::FitsWcs => {
-                    // Run SpecTrans first to normalise non-standard
+                    // Run SpecTrans first to normalize non-standard
                     // keywords. Although FITS-WCS is the canonical form,
                     // SpecTrans translations 7-10, 17-22, 24 still apply
                     // (EPOCH/EQUINOX, AIPS spectral CTYPE, RESTFREQ, CUNIT
@@ -3414,7 +3414,7 @@ impl Channel for FitsChan {
                     )
                 }
                 Encoding::FitsPc => {
-                    // Run SpecTrans first to normalise non-standard
+                    // Run SpecTrans first to normalize non-standard
                     // keywords (Cnxxx alt-axis form, CDjjjiii, CROTA,
                     // PROJP, etc.) into their canonical equivalents.
                     // After SpecTrans, alt-axis cards are in the *A..*Z

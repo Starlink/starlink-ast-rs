@@ -17,14 +17,14 @@ One entry is not here because part of it is still open, and it stays in
 
 The row as it stood when it was opened:
 
-| `NormUnit` — the one unported Frame attribute | its own spec, not yet written | OPEN — no `norm_unit` anywhere in `ast-core`, while all 15 Frame-level attributes and 9 of the 10 per-axis attributes are ported, so this is a bounded gap rather than an audit. C derives it from the Unit the Frame reports (`frame.c:13125 (fn GetNormUnit)`), with the normalise-or-return-unchanged policy in the internal `astNormUnit` (`unit.c:5936`) shared by `axis.c` and `frame.c`, and SkyAxis returning a sexagesimal description unchanged (`skyaxis.c:3095 (fn GetAxisNormUnit)`) because it describes axis values rather than being a unit expression. Upstream reworked all three in `89bf58e2`, `d4a55144` and `51ab0542`. **What would expose it**: a test asserting the documented relationship — `NormUnit` equals `Unit` when no simplification is possible and a simplification of it otherwise — across a default `Frame`, both `SkyFrame` axes, a `SpecFrame` and a `TimeFrame`. Asserting the individual strings instead is how the C defect survived eleven years, because the strings recorded what the library returned rather than what the attribute documents. Nothing fails on account of the gap today, which is why it is written down |
+| `NormUnit` — the one unported Frame attribute | its own spec, not yet written | OPEN — no `norm_unit` anywhere in `ast-core`, while all 15 Frame-level attributes and 9 of the 10 per-axis attributes are ported, so this is a bounded gap rather than an audit. C derives it from the Unit the Frame reports (`frame.c:13125 (fn GetNormUnit)`), with the normalize-or-return-unchanged policy in the internal `astNormUnit` (`unit.c:5936`) shared by `axis.c` and `frame.c`, and SkyAxis returning a sexagesimal description unchanged (`skyaxis.c:3095 (fn GetAxisNormUnit)`) because it describes axis values rather than being a unit expression. Upstream reworked all three in `89bf58e2`, `d4a55144` and `51ab0542`. **What would expose it**: a test asserting the documented relationship — `NormUnit` equals `Unit` when no simplification is possible and a simplification of it otherwise — across a default `Frame`, both `SkyFrame` axes, a `SpecFrame` and a `TimeFrame`. Asserting the individual strings instead is how the C defect survived eleven years, because the strings recorded what the library returned rather than what the attribute documents. Nothing fails on account of the gap today, which is why it is written down |
 
 Closed by `Frame::norm_unit` (`crates/ast-core/src/frames/mod.rs`), which
-normalises the Unit the Frame reports, as `astGetNormUnit` (`frame.c:13149`)
+normalizes the Unit the Frame reports, as `astGetNormUnit` (`frame.c:13149`)
 does since upstream `d4a55144`, and `SkyFrame::norm_unit`, which returns a Unit
 that describes the axis values unchanged, as `SkyAxis::GetAxisNormUnit`
 (`skyaxis.c:3095`) does since `51ab0542`.
-The normaliser itself was not in the port: `astUnitNormaliser`, the
+The normalizer itself was not in the port: `astUnitNormaliser`, the
 `mathmap = 2` style of `MakeExp` and `ModifyPrefix` are in `crates/ast-core/src/units/`.
 
 The test the row asked for is in `crates/ast-core/tests/test_frame.rs`: the
@@ -35,7 +35,7 @@ The table found three `unit.c` defects, fixed upstream on `u/timj/norm-unit`
 and in the port, and recorded under "Resolved upstream" in
 `docs/issues/c-library-quirks.md`: a constant numerator was not inverted, so
 `2/m` converted as `0.5/m` (`965b7587`); a result that merely started with a
-number was blanked, so `2*m` normalised to `""` (`25bd4924`); and
+number was blanked, so `2*m` normalized to `""` (`25bd4924`); and
 `ModifyPrefix` recursed without end on `2/m` and similar (`8c734154`).
 What the port cannot yet test is the SkyFrame `Format` block of `testframe.c`,
 because the Rust SkyFrame has no `Format` attribute; that is its own row in
@@ -57,8 +57,8 @@ copied across byte-identical.
 
 | C change | What the port did |
 |---|---|
-| `IsSimp` placement becomes deterministic (`e40e71b4`) | Ported: per-class `has_been_simplified` became a two-orientation `SimplifiedRecord`, and all six tag-clearing routines that emulated the old behaviour were deleted. `ALIASING_TAG_LICENSED` retired |
-| `WcsNative` no longer inverts the encapsulated PermMap (`f54ff1b7`) | No code change — the port's shape was already the corrected one. `serpens_native` is now byte-exact and the `Invert` half of the old licence is gone |
+| `IsSimp` placement becomes deterministic (`e40e71b4`) | Ported: per-class `has_been_simplified` became a two-orientation `SimplifiedRecord`, and all six tag-clearing routines that emulated the old behavior were deleted. `ALIASING_TAG_LICENSED` retired |
+| `WcsNative` no longer inverts the encapsulated PermMap (`f54ff1b7`) | No code change — the port's shape was already the corrected one. `serpens_native` is now byte-exact and the `Invert` half of the old license is gone |
 | `EncodeFloat` justification fixed (`68bcb7db`) | Mirror removed |
 | Duplicate-keyword consumption (`6301311f`) | Mirror removed; the write-side sweep gained the matching rule so the newly-surviving MJD-OBS reaches the output |
 | `CDjjjiii` consumption (`fd92f9d2`) | Mirror removed |
@@ -93,7 +93,7 @@ throw away: `CmpMap::MapMerge`'s series-in-parallel probe assembles its trial
 CmpMaps by cloning (`cmpmap.c:626-627`, `cmpmap.c:4650`, `cmpmap.c:4657`), so a
 trial holds the very sub-Mappings the live tree holds, the recursive
 `astSimplify` stamps one of them (`cmpmap.c:1443`), and the stamp survives the
-probe's annulment (`cmpmap.c:1624-1628`). The neighbouring parallel-in-series
+probe's annulment (`cmpmap.c:1624-1628`). The neighboring parallel-in-series
 probe guards against exactly this by copying instead of cloning
 (`cmpmap.c:1650-1651`); this one does not. Owned values give each Rust tree its
 own children, so there is no route by which the port could reach that node.
@@ -157,7 +157,7 @@ is closed:
 | C | `nullregion_unc_fillfactor_merge` — CLOSED | emitted a `Prism` uncertainty where C emits a `Box`, because `NullRegion::region_merge` returned the other Region with its own uncertainty rather than building C's merged NullRegion. It now follows `MergeNullRegion` (`nullregion.c:571`): the result is a NullRegion built on a CmpFrame of the two base Frames, `astRegOverlay` carries the supplied Region's attributes across, the two base-Frame uncertainties combine as `astPrism` followed by `astSimplify` — which is what collapses the pair to a single Box — and `astMapRegion` then carries the whole thing into the combined current Frame. `box_unc_fillfactor_merge` was here, declined by the structural-hash recursion guard's one collision in the corpus, and is byte-exact now that the guard runs C's `astEqual` (§10.19) |
 | D | `cap_zoommap_04` — CLOSED | emitted 59 lines of `FrmSet` inside `Unc` that C omits, and `IsSimp = 3` where C writes 0. Both came from one test: C asks `sunc != unc` after simplifying the uncertainty, and the port asked `Mapping::equal`, which is conversion-based and cannot see a reduction that changes only structure. The uncertainty's own base→current Mapping collapses to a UnitMap here, which is exactly the condition under which `astSetUnc` clears its `RegionFS` and the dump drops the block (§10.23) |
 | E | `cap_interval_01` — CLOSED | the 4-d uncertainty Box's corner point: `X7` was 86400× the reference because the time uncertainty's base→current ZoomMap was not applied. `Interval::simplified` reclassified a bounded Interval to a Box by hand, labelling the base-Frame numbers with the current Frame; C hands the equivalent Box to `astSimplify` and lets the Box carry the FrameSet, which is what re-expresses seconds as days (§10.25). `X5`/`X6` remain, differing in the 12th significant figure, and are licensed under `NUMERIC_PLATFORM_DRIFT`: the port reproduces this machine's C capture on both to the last digit. The `Closed = 1` card C omits retired when `combine_uncertainties` began simplifying the combined uncertainty through the Prism, whose own `astRegOverlay` carries its unset Closed onto the result (§10.24). `cmpmap_parallel_series_dim_mismatch` was here — two `IsSimp` cards on the leaves where C has them on the intermediate CmpMaps — and is byte-exact now that the branch simplifies where C simplifies (§10.3) |
-| F | `cap_pointlist_01` — CLOSED | the sky half of the merged uncertainty Box's corner. `PointList::region_merge` assigned the combined uncertainty straight into the merged Region's fields, so C's `astSetUnc` never ran and the corner survived verbatim; C re-centres the uncertainty on the merged PointList's defining point (`region.c:10871-10876`) and `Box::RegCentre` regenerates the corner from the cached geodesic half-lengths, which is what moves the last digits (§10.26). The merge now goes through the same shared tail as `MergeBox` and `MergeInterval`. `X5` / `X6` remain, differing in the 12th significant figure, and are licensed under `NUMERIC_PLATFORM_DRIFT`: the port reproduces this machine's C capture on both to the last digit |
+| F | `cap_pointlist_01` — CLOSED | the sky half of the merged uncertainty Box's corner. `PointList::region_merge` assigned the combined uncertainty straight into the merged Region's fields, so C's `astSetUnc` never ran and the corner survived verbatim; C re-centers the uncertainty on the merged PointList's defining point (`region.c:10871-10876`) and `Box::RegCentre` regenerates the corner from the cached geodesic half-lengths, which is what moves the last digits (§10.26). The merge now goes through the same shared tail as `MergeBox` and `MergeInterval`. `X5` / `X6` remain, differing in the 12th significant figure, and are licensed under `NUMERIC_PLATFORM_DRIFT`: the port reproduces this machine's C capture on both to the last digit |
 | G | `parpair_one_side_reduces` — CLOSED | one or two extra `IsSimp` cards, and nothing else in the tree, on a leaf the port simplifies and C hands on as it stands. Diagnosed as `try_self_reduce` firing through the `simplified()` gate and predicted to close with §10.16; §10.16 landed and the counts did not move, so that diagnosis was wrong. The sources were two `.simplify()` calls with no C counterpart, both in CmpMap's parallel handling (§10.3): the first closed `cmpmap_perm_parallel_swap` and `cmpmap_perm_swap_{a,b}constants`, the second closed this fixture byte-exact. `cap_slamap_03`, `cap_wcsmap_01`, `cap_cmpmap_01` and `cap_cmpmap_04` did close with §10.16, when PermMap's rebuild moved into `map_merge`, and `lsst` closed the same way when PolyMap's coefficient consolidation and affine rebuild moved |
 
 `equal()` passed all eleven, but that is not an `equal()` defect. C's
@@ -182,7 +182,7 @@ the pinned C does not.
 
 The instrumentation had established that C dumps an object with `flags = 0`
 even though the input `.map` carries `IsSimp = 1` on that Mapping and
-`astLoadMapping` honours the card (`mapping.c:24137`), and concluded that the
+`astLoadMapping` honors the card (`mapping.c:24137`), and concluded that the
 object must have been freshly constructed. It was not. It is the same object,
 whose flag its own loader discarded: `astLoadZoomMap` re-applies the validated
 `Zoom` value through `SetZoom` (`zoommap.c:2237-2238`), and that setter calls
@@ -228,7 +228,7 @@ Upstream `e40e71b4` added the rule: a setter for an attribute that feeds the
 first part of that class's own `astMapMerge` discards both simplified records
 (`mapping.h:449-460`).
 C's own comment there gives the reason and the latitude — nothing else reads the
-records, since a Mapping is offered to `astMapMerge` by its neighbours whatever
+records, since a Mapping is offered to `astMapMerge` by its neighbors whatever
 it holds, and a record can only ever suppress a simplification and never make
 one wrong, so C errs towards discarding.
 It applies the rule in 11 classes:
@@ -276,7 +276,7 @@ port that never records anything, plus `load_discards_the_record_for_every_clear
 which dumps a stamped Mapping with the attribute set, reads it back and requires
 the record gone — with ShiftMap, which clears nothing, as the control that must
 keep it.
-C's behaviour is confirmed by the probe recorded in
+C's behavior is confirmed by the probe recorded in
 `docs/issues/c-oracle-probe-recipe.md` ("Worked probe — the clear-on-set
 convention"), which reads `IsSimple` through the public string interface across a
 set, a clear and the invert control.
@@ -398,7 +398,7 @@ and hand-check every row the tool cannot anchor.
 Do not remap mechanically by text similarity: that was tried, and it relocated 25
 rows confidently wrong, which is how the rot went unnoticed in the first place.
 `simplify.rs:1151-1246`, cited identically by those 25 rows for the shared
-neighbour-pair driver, was already wrong when written — at those revisions it
+neighbor-pair driver, was already wrong when written — at those revisions it
 lands inside `perm_map_merge`, while the driver the rows describe is
 `default_map_merge`.
 Update the pin in both marker lines in the same commit range, so a checklist
@@ -458,7 +458,7 @@ one `C_DEFECT_EXCLUDED` row.
 
 Upstream fixed it in `abe5baae`, and the port ported the fix at the 9.5.0 sync.
 Only `T0(z) = 1` and `T1(z) = z` have degree one or less, so a term the linearity
-test accepts is linear in the input as well as in the normalised `z`, and a term
+test accepts is linear in the input as well as in the normalized `z`, and a term
 `c*T1(z_j)` contributes `c*scale_j` to the matrix and `c*offset_j` to the
 constant term; both arrays accumulate rather than assign, because an output can
 collect a constant contribution from each of its linear terms as well as from its
@@ -473,7 +473,7 @@ fails when an excluded row starts matching its reference, so the row moved into
 the compared corpus rather than staying silently excluded, and
 `C_DEFECT_EXCLUDED` is now empty. Two tests in `test_chebymap.rs` pin the two
 parts of the fix separately — `a_linear_chebymap_reduces_with_its_normalisation_folded_in`
-fails when the normalisation is dropped, and
+fails when the normalization is dropped, and
 `a_linear_chebymap_accumulates_each_outputs_constant_contributions` fails when
 either array is assigned rather than accumulated.
 
@@ -485,7 +485,7 @@ either array is assigned rather than accumulated.
 rebuilding the RateMap around the result. The port had the logic in
 `simplified()` and no `map_merge`, so it never ran on a RateMap nominated from
 within a list. `RateMap::map_merge` now uses `self_reduce_map_merge`, which is
-C's order: reduce first, then cancel against an inverse neighbour in series.
+C's order: reduce first, then cancel against an inverse neighbor in series.
 
 `rate_inner_reduce_series` is the fixture — a RateMap over a series ZoomMap pair
 that fuses to one, inside a CmpMap so the RateMap is a list element. The pinned C
@@ -505,7 +505,7 @@ snapshot is 0, so C reduces the forward form and finds nothing, while the port
 reduced the inverted form and folded the inversion into the component order.
 `RateMap::reduced_child` — the step `map_merge` opens with — now orients to
 `invert_snapshot` first, the field the port already had for the `Inv` card and was
-using only for serialisation. That is the H3 hazard: two C names kept as two
+using only for serialization. That is the H3 hazard: two C names kept as two
 fields, with only one of them wired up.
 
 An earlier attempt reduced the *forward* form unconditionally. That is right only
@@ -545,7 +545,7 @@ Before the change the port tagged 14 CmpMaps in each and made both totals up to
 and a second UnitMap in `_04`. Dropping the per-member simplify removed those,
 which is C's shape, and `_04` lost one of its CmpMap tags with them.
 
-A positional diff against the reference is now short enough to itemise. `_01`
+A positional diff against the reference is now short enough to itemize. `_01`
 differs in three `IsSimp = 1` lines C emits on inner CmpMaps and the port does
 not, plus one object where the port emits `IsSimp = 1` and C emits `Invert = 1`
 — the open `InvA`/`InvB` dump quirk
@@ -701,7 +701,7 @@ resulting list length at that step.
 ### 10.4 The CmpMap/PermMap swap was hung off the wrong nominee — FIXED
 
 `cmpmap.c:1816-2119` swaps a parallel CmpMap in front of an adjacent PermMap. It
-runs when the **CmpMap** is nominated and the PermMap is its lower neighbour, as
+runs when the **CmpMap** is nominated and the PermMap is its lower neighbor, as
 the last block of `CmpMap::MapMerge`, reached only when nothing earlier
 simplified (`result == -1`). There is no counterpart on the PermMap side:
 `permmap.c` contains no reference to `CmpMap` at all, so a nominated PermMap
@@ -740,7 +740,7 @@ This entry replaces the plan's §10.4, which duplicated §9.2.
 
 Recorded as a gap on the strength of reading `UnitMap::map_merge` alone, which
 handles the lone-UnitMap case and the series case and otherwise falls through to
-`default_map_merge`, where a nominee with no UnitMap neighbour returns `None`.
+`default_map_merge`, where a nominee with no UnitMap neighbor returns `None`.
 Nothing there clears the flag, so `unitmap.c:579-587` looked unported.
 
 It is ported, elsewhere. C clears `invert_list[ where ]` — the *list's* applied
@@ -751,8 +751,8 @@ tree is rebuilt (`simplify.rs:3112-3114`, applied at `:3132-3134` and
 `:3142-3144`), reaching the same dump.
 
 Two fixtures prove it, on independent configurations: `unit_parallel_invert_clear`
-(a MathMap neighbour, 2 axes), which predates this audit, and
-`unit_parallel_invert_pcd` (a PcdMap neighbour, 3 axes), added to check the first
+(a MathMap neighbor, 2 axes), which predates this audit, and
+`unit_parallel_invert_pcd` (a PcdMap neighbor, 3 axes), added to check the first
 was not passing by accident. `neg_unit_parallel_forward` is the control. All
 three are byte-exact against the pinned C.
 
@@ -768,7 +768,7 @@ parent keeping its `InvB`. The fixtures passed, but not through the code this
 entry credited, and the residual difference above was the gap itself.
 `UnitMap::map_merge` now ports the whole parallel branch (`unitmap.c:539-624`):
 it brackets the run of adjacent UnitMaps, replaces it in one step, and with no
-neighbour clears the entry's applied direction while keeping the UnitMap's own
+neighbor clears the entry's applied direction while keeping the UnitMap's own
 `Invert`, reporting the change as C does.
 
 ---
@@ -776,7 +776,7 @@ neighbour clears the entry's applied direction while keeping the UnitMap's own
 ### 10.7 PcdMap's zero-distortion reduction is unreachable from the nominate loop — FIXED
 
 `pcdmap.c:1417-1433` opens `MapMerge` by replacing a PcdMap whose distortion
-coefficient is zero with a UnitMap, before any neighbour is considered. The port
+coefficient is zero with a UnitMap, before any neighbor is considered. The port
 had that logic in `PcdMap::simplified`, while `pcd_map_merge` tried the swap and
 then `default_map_merge` and consulted neither. A zero-distortion PcdMap
 nominated from inside a list therefore stayed a PcdMap.
@@ -793,8 +793,8 @@ discriminates.
 
 `pcd_map_merge` now performs C's opening move itself, before the swap
 (`simplify.rs:2656-2664`), and returns immediately: C makes the reduction the `if`
-of an if/else whose `else` holds the whole neighbour search, so a reduced PcdMap
-never looks at a neighbour in the same pass. `self_reduce_map_merge` cannot
+of an if/else whose `else` holds the whole neighbor search, so a reduced PcdMap
+never looks at a neighbor in the same pass. `self_reduce_map_merge` cannot
 express that ordering, which is why the reduction is inline rather than delegated.
 
 ---
@@ -875,7 +875,7 @@ the children were reduced — but that was not the cause.
 
 Giving `map_merge` C's either/or was implemented and reverted twice: once in the
 wrong order, which broke `switchmap_inverse_cancel` on both `equal()` and
-*transform* comparisons because C attempts the neighbour cancellation first
+*transform* comparisons because C attempts the neighbor cancellation first
 (`switchmap.c:992`) and gates the self-simplify half on "no change made above"
 (`:1054`); and once in the right order, which changed no fixture at all.
 
@@ -890,7 +890,7 @@ Both child paths now stamp what they get back, as `RateMap` and `TranMap` alread
 did. All four fixtures — `switchmap_invert_normalize`,
 `switchmap_internal_simplify`, `switchmap_fwdonly_simplify`,
 `switchmap_inv_invonly` — pass byte-exact, and cause (A) is retired from both
-pinned lists in `test_simplify_regression.rs`. Simplify serialisation failures
+pinned lists in `test_simplify_regression.rs`. Simplify serialization failures
 drop from 11 to 7.
 
 §10.16 then moved the whole self-simplification into `SwitchMap::map_merge`, where
@@ -898,17 +898,17 @@ C keeps it, and gave it C's either/or after all: the third revert had selected t
 arms on the SwitchMap's own `Invert` flag, but `flatten` resets every leaf to
 forward and carries the inversion in the merge list, so the selector is
 `ctx.entry(where_).1 != self.is_inverted()`. The corpus is unchanged by that move,
-and the top-level SwitchMap normalisation the public entry point used to perform
+and the top-level SwitchMap normalization the public entry point used to perform
 is now dead code and removed.
 
 ---
 
 ### 10.11 TranMap's `map_merge` reached one of C's self-simplification cases — FIXED
 
-`tranmap.c:834-897` gives a nominated TranMap four outcomes: normalise an
+`tranmap.c:834-897` gives a nominated TranMap four outcomes: normalize an
 inverted TranMap to the equal forward form and stop; simplify the two component
 Mappings; collapse a TranMap whose components are inverses of each other to one
-of them; or fall through to the neighbour merge.
+of them; or fall through to the neighbor merge.
 
 All four used to live in `TranMap::simplified`, and `TranMap::map_merge`
 implemented only the component simplification, inline. A TranMap nominated from
@@ -920,16 +920,16 @@ collapsed when its two components are inverses.
 selected on `ctx.entry(where_).1` — `flatten` resets every leaf to forward and
 carries the inversion in the merge list, so the requested orientation is the
 merge entry's flag rather than the object's own. Case 3 stores the surviving
-component normalised to forward with its intrinsic flag beside it, so the
+component normalized to forward with its intrinsic flag beside it, so the
 replacement takes part in further merging exactly as C's does.
 
 Two fixtures gate the cases the corpus could not reach before, because both need
 the TranMap to be nominated from inside a list rather than as the whole Mapping:
 `tranmap_invert_in_list` for `tranmap.c:837-850` and
 `tranmap_equal_components_in_list` for `tranmap.c:864-887`. Both come out of C as
-predicted — the first serialises a forward TranMap with the components swapped
+predicted — the first serializes a forward TranMap with the components swapped
 and inverted, the second collapses to a single `ZoomMap` with `Zoom = 10` once
-the exposed component merges with its neighbour — and both are byte-exact in the
+the exposed component merges with its neighbor — and both are byte-exact in the
 port.
 
 ---
@@ -1061,7 +1061,7 @@ this corpus, and not shipped.
 ### 10.15 The `C-ARTIFACT` set: three layers redundant, the rest load-bearing — RESOLVED
 
 `cmpmap.rs`'s module doc defined a `C-ARTIFACT` marker for items that "exist only
-to reproduce a serialised value that C emits as a side effect of its memory
+to reproduce a serialized value that C emits as a side effect of its memory
 model". Nine sites, all about `InvA`/`InvB`. Auditing them the way
 `dump_simplified` was audited — disable, measure — found **four** mechanisms
 pushing an inverted CmpMap's inversion into its structure, of which three were
@@ -1073,7 +1073,7 @@ Measured individually and then all together, against the full suite including al
 | layer | verdict |
 |---|---|
 | `apply_effective`'s structural branch in `reconstruct` | redundant |
-| the canonicalisation in `CmpMap`'s recorded-orientation fixup | redundant |
+| the canonicalization in `CmpMap`'s recorded-orientation fixup | redundant |
 | `canonicalize_inverted_cmpmaps`, the tree-wide pass | redundant |
 | `normalize_unitmap_children` | **load-bearing** |
 
@@ -1081,12 +1081,12 @@ All three redundant layers are deleted, along with `invert_into_structure` and
 `invert_parallel_child`, which had no other callers. `normalize_unitmap_children`
 survives and its doc now records what demands it: removing it costs four
 `equal()` failures — `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_wcsmap_01` and
-`parcomp_inverted_nested_reemitted` — plus two serialisation failures.
+`parcomp_inverted_nested_reemitted` — plus two serialization failures.
 
 **Two things are worth keeping from how this went.** The three deleted layers
 each carried a note saying they were dump-shaping and measured; the one that
 turned out to matter was the one marked "not independently measured". And the
-measurement only became meaningful once the corpus demanded the behaviour:
+measurement only became meaningful once the corpus demanded the behavior:
 `parcomp_inverted_reemitted` and `parcomp_inverted_nested_reemitted` were
 generated for it — an inverted parallel CmpMap that must be re-emitted while the
 tree is rebuilt around it, since the trailing ZoomMaps merge and the parallel
@@ -1095,9 +1095,9 @@ carries `Invert`, and the flags appear as `InvA` on the components.
 
 **The rest of the set, measured.** `set_first_orientation` and
 `set_second_orientation`, with their `winmap_merge.rs` caller, are strongly
-load-bearing: disabling the flip costs 12 further simplify serialisation failures
+load-bearing: disabling the flip costs 12 further simplify serialization failures
 *and 5 `wcsconv` byte comparisons* — `grism`, `skyref`, `skyref-alt`,
-`tidy-offsets` and `tidy-pole`, all native. Their note claimed "8 serialisation
+`tidy-offsets` and `tidy-pole`, all native. Their note claimed "8 serialization
 differences", which understated it and evidently never covered `wcsconv`, the
 strict gate. `equal()` and transform comparisons stay clean either way, so the
 "dump-only" label is accurate; "removable" was not.
@@ -1172,7 +1172,7 @@ Two things the entry above did not anticipate:
   express.
 - **The gate is now unconditional.** Every reduction passes through
   `simplify_entry`, so every one short-circuits on `IsSimple` and stamps its
-  result at `mapping.c:24763`'s equivalent. Serialisation failures in the simplify
+  result at `mapping.c:24763`'s equivalent. Serialization failures in the simplify
   harness went 12 to 9. It also brought `cap_cmpmap_01` and `cap_cmpmap_04` to
   C's card count of 18, which §10.3 has since shown was a coincidence of two
   errors in opposite directions.
@@ -1193,7 +1193,7 @@ removed (§10.3).
 encapsulated Frame, and if that returns a different object, replace the NormMap
 with a new one wrapping the simplified Frame and report a change. Only if the
 Frame did not simplify does C reach the basic-Frame test that turns the NormMap
-into a UnitMap (`:632-640`), and only after that does it consider neighbours.
+into a UnitMap (`:632-640`), and only after that does it consider neighbors.
 The class C reads for that second test is `astGetClass( smap )`, the class of
 the *simplified* Frame, so the two tests are one call apart rather than one
 pass.
@@ -1372,7 +1372,7 @@ coverage of the cap.
 
 Removing the cap trades a silently-declined simplification for a stack overflow
 on a genuine non-terminating recursion. That is C's exposure too, and a crash is
-findable; if one appears the bug is in whichever `equal` fails to recognise the
+findable; if one appears the bug is in whichever `equal` fails to recognize the
 repeat.
 
 **A UnitMap strip that duplicated `UnitMap::map_merge` — CLOSED.**
@@ -1451,7 +1451,7 @@ over the lock field.
 `YamlChan` remains the only producer of these flags in C (`yamlchan.c:10998` for
 `RestrictedSimplify`, `:9505`, `:9627` and `:10220` for the rad/deg ZoomMaps it
 flags with `AllowSimplify`); in the port they still arrive only by
-deserialisation (`cmpmap.rs:1034`, `serial/mod.rs:160`). Porting `YamlChan` would
+deserialization (`cmpmap.rs:1034`, `serial/mod.rs:160`). Porting `YamlChan` would
 exercise the mode as C's own callers do.
 
 ---
@@ -1485,7 +1485,7 @@ override.
 Storage is `Option<String>` rather than a `String` tested for emptiness because
 C's rule is `astTestIdent`, which is `this->ident != NULL` (`object.c:5229`) and
 so distinguishes an `Ident` set to `""` from one never set.
-Serialisation follows C's Object dump — the card is written when set and
+Serialization follows C's Object dump — the card is written when set and
 non-empty, before the `IsA Object` marker (`object.c:1697`) — and the reader
 applies it generically for every Mapping class.
 
@@ -1495,7 +1495,7 @@ which is what C has done since its 30-OCT-2009 change (`frameset.c:2759`,
 `:4841`, `:10830` all pass `this`); `test_frameset_repair.rs`'s
 `frameset_delegates_domain_but_owns_ident` pins both halves.
 And `CmpMap::equal` needed a termination guard: it uses `flatten` as a
-canonicaliser, so two `Ident`-bearing same-kind CmpMaps each flatten to a
+canonicalizer, so two `Ident`-bearing same-kind CmpMaps each flatten to a
 one-element list holding themselves, and the element-wise comparison
 (`cmpmap.c:399`) is then the comparison it started with.
 C has the same unbounded recursion; it is reachable only when *both* sides
@@ -1568,7 +1568,7 @@ as in the port. C's Prism overlay then wipes it; the port's CmpMap shortcut left
 it, and the card surfaced in the merged Interval's `Unc` block.
 
 `combine_uncertainties` now builds the Prism and simplifies it. The shortcut was
-not an optimisation of C's path — it was a different path that happened to agree
+not an optimization of C's path — it was a different path that happened to agree
 whenever neither component had an attribute worth clobbering.
 
 ---
@@ -1590,7 +1590,7 @@ in the current Frame's units.
 
 The port had three copies of `Cache`'s classification — in `get_def_unc`, in
 `reg_pins_mask`, and inline at the head of `simplified()` — and the third was
-not `Cache`. It built a Box from the base-Frame numbers, labelled it with the
+not `Cache`. It built a Box from the base-Frame numbers, labeled it with the
 **current** Frame, copied `Adaptive`, `MeshSize` and `FillFactor` across (C's
 `astBox` copies none of them), forced `Closed` on, and returned without
 simplifying. The base→current Mapping was dropped on the floor.
@@ -1635,9 +1635,9 @@ Region's first defining point (`region.c:10871-10876`):
 ```
 
 and `Box::RegCentre`'s set path does not merely translate the Box. It resolves
-the new centre, then rebuilds the corner from the cached geodesic half-lengths
+the new center, then rebuilds the corner from the cached geodesic half-lengths
 with `corner = GeoCorner( frm, ncb, bc, this->geolen, NULL, status )` and writes
-both points. Re-centring a Box on the point it is already centred on therefore
+both points. Re-centring a Box on the point it is already centerd on therefore
 still regenerates its corner, through whatever `astOffset` the base Frame
 provides.
 
@@ -1645,11 +1645,11 @@ provides.
 built the merged PointList on a CmpFrame of the two **current** Frames, applied
 Closed and Adaptive as conjunctions of the two Regions rather than as
 `astRegOverlay`'s copy from `this`, and assigned the combined uncertainty
-straight into the merged Region's fields — so the re-centre never ran.
+straight into the merged Region's fields — so the re-center never ran.
 
 `cap_pointlist_01` is where it showed. Its 3-d TIME-SKY Prism merges a TimeFrame
 PointList with an ICRS SkyFrame PointList, each carrying a Box uncertainty. C's
-`astSetUnc` re-centres the combined Box through a `CmpFrame(TimeFrame,
+`astSetUnc` re-centers the combined Box through a `CmpFrame(TimeFrame,
 SkyFrame)`, and the sky corner comes back from `palDcs2c`/`palDcc2s` moved in its
 last digits: `X6 = -0.20069734795284888` against the input's
 `-0.20069734797760203`. The port emitted the input corner verbatim.
@@ -1673,7 +1673,7 @@ one inside that geodesic round trip.
 ### 10.27 PcdMap's swap half was a sketch of C's — FIXED
 
 `pcdmap.c::MapMerge` spends two thirds of its body on the swap: when neither
-neighbour merges, it swaps the PcdMap past an adjacent ZoomMap or axis-swapping
+neighbor merges, it swaps the PcdMap past an adjacent ZoomMap or axis-swapping
 PermMap, either to bring it next to a Mapping it can merge with, or — with no
 such Mapping in reach — on the speculation that one of the two swapped Mappings
 then simplifies on its own.
@@ -1681,10 +1681,10 @@ then simplifies on its own.
 The port had the first half of that and none of the second. Five divergences,
 found by re-anchoring `docs/audits/mapmerge/pcdmap.md` against the code:
 
-- **Ordering.** C tries the direct merge with a neighbour first and reaches the
+- **Ordering.** C tries the direct merge with a neighbor first and reaches the
   swap only when it fails (`pcdmap.c:1446-1524`). `pcd_map_merge` tried the swap
   first and fell through to `default_map_merge`.
-- **Parallel.** C's whole neighbour search is inside `if( series )`, and
+- **Parallel.** C's whole neighbor search is inside `if( series )`, and
   `pcdmap.c:1729-1731` says a PcdMap combines in parallel with nothing. The port
   reached `default_map_merge` with `series == false`.
 - **The step walk.** C counts the Mappings between the PcdMap and its nearest
@@ -1709,11 +1709,11 @@ found by re-anchoring `docs/audits/mapmerge/pcdmap.md` against the code:
 retired.
 
 One arithmetic divergence surfaced with it and was mirrored at the time:
-C read the neighbour ZoomMap's stored `Zoom` and cleared the replacement's Invert
-flag, so an inverted neighbour came out of the swap scaling by its factor rather
+C read the neighbor ZoomMap's stored `Zoom` and cleared the replacement's Invert
+flag, so an inverted neighbor came out of the swap scaling by its factor rather
 than by the reciprocal. Upstream fixed that in `3a4a2a7b` at AST 9.5.0, and the
 mirror was inverted with the sync — `pcd_swap_pair` now takes the reciprocal when
-the neighbour's list flag is set, gated by
+the neighbor's list flag is set, gated by
 `pcdmap_swap_past_an_inverted_zoommap_preserves_the_transformation` in
 `crates/ast-core/tests/test_pcdmap.rs` and by the `pcd_inverted_zoom_swap`
 simplify fixture. `docs/issues/c-library-quirks.md` carries the history.
@@ -1725,7 +1725,7 @@ simplify fixture. `docs/issues/c-library-quirks.md` carries the history.
 Re-anchoring `docs/audits/mapmerge/lutmap.md` against the code found four
 divergences in a class whose checklist had reported every row ported.
 
-- **Nearest-neighbour tables.** `GetLinear` refuses a nearest-neighbour LutMap
+- **Nearest-neighbor tables.** `GetLinear` refuses a nearest-neighbor LutMap
   before it looks at a single value, because the transformation is a staircase
   and the discontinuities sit at the ends of the table (`lutmap.c:578`).
   `table_is_linear` had no such test, so an exactly linear table with
@@ -1740,7 +1740,7 @@ divergences in a class whose checklist had reported every row ported.
 - **The merge tail.** C's LutMap `MapMerge` has two branches and no third:
   nothing else in the library merges with a LutMap, and an adjacent UnitMap is
   removed when the UnitMap is itself nominated (`unitmap.c:519`). The port fell
-  through to `default_map_merge`, which offers the pair to the neighbour.
+  through to `default_map_merge`, which offers the pair to the neighbor.
 - **The second cancellation rule.** `LutMap::try_merge` implemented the same
   equal-but-opposite cancellation as the inline branch, by comparing fields
   rather than by folding both applied directions in, and was reachable only
@@ -1764,7 +1764,7 @@ divergences, one of them in the shared driver rather than in PolyMap.
   `Ident` is set (`mapping.c:24257`). Because the replace-with-simpler halves
   live *inside* the per-class method, that guard also stops a named Mapping
   self-reducing while nominated inside a list — not just merging with a
-  neighbour. The port called `map_merge` directly from four sites, so an
+  neighbor. The port called `map_merge` directly from four sites, so an
   `Ident`-set PolyMap nominated in a CmpMap consolidated its coefficients and
   lost the attribute the flag exists to preserve. `dispatch_map_merge`
   (`mappings/simplify.rs:1207`) is now the only way in, and
@@ -1774,7 +1774,7 @@ divergences, one of them in the shared driver rather than in PolyMap.
   live in `MergeCtx::may_nominate`.
 - **The linear half's guard had a term C does not have.** C asks only whether
   the forward coefficients exist and the coordinate counts match
-  (`polymap.c:3785`), and fills a zero-initialised matrix and offset vector from
+  (`polymap.c:3785`), and fills a zero-initialized matrix and offset vector from
   whatever terms remain. The port additionally required the consolidated term
   list to be non-empty, so a PolyMap whose coefficients all cancel stayed an
   empty PolyMap where C produces a diagonal MatrixMap of zeroes.
@@ -1782,7 +1782,7 @@ divergences, one of them in the shared driver rather than in PolyMap.
 - **The cancellation test was hand-rolled.** C forces both PolyMaps' `Invert`
   flags to the direction the list applies to the nominated one and calls
   `astEqual` (`polymap.c:3965-3967`). `PolyMap::try_merge` compared the
-  coordinate counts and the forward terms itself, so it cancelled a pair whose
+  coordinate counts and the forward terms itself, so it canceled a pair whose
   inverse transformations have different coefficient counts — a pair C leaves
   alone, because its `Equal` compares `ncoeff_i` and `mxpow_i`
   (`polymap.c:776-794`). It now mirrors C's forcing and calls `equal`.
@@ -1793,7 +1793,7 @@ divergences, one of them in the shared driver rather than in PolyMap.
 Closing the third one moved `PolyMap`'s `Equal` onto C's comparison exactly,
 which meant adopting a C bug: the block that should compare the inverse
 coefficients and powers compared the *forward* ones a second time, so two
-PolyMaps whose inverse coefficient values differ compared equal and cancelled.
+PolyMaps whose inverse coefficient values differ compared equal and canceled.
 Upstream `ec86cfaf` fixed it at AST 9.5.0 and the mirror was inverted at that
 sync; `polymap_equal_compares_the_inverse_coefficients` is now the gate, and
 `docs/issues/c-library-quirks.md` carries the history.
@@ -1803,12 +1803,12 @@ sync; `polymap_equal_compares_the_inverse_coefficients` is now the gate, and
 ### 10.30 ChebyMap's cancellation test was hand-rolled too — FIXED
 
 `chebymap.c` sets no `MapMerge` slot, so a ChebyMap's is PolyMap's whole body,
-and the neighbour half there calls `astEqual` (`polymap.c:3965-3967`) — which for
+and the neighbor half there calls `astEqual` (`polymap.c:3965-3967`) — which for
 a ChebyMap reaches `chebymap.c::Equal`: the comparison inherited from PolyMap
 plus the two bounding boxes (`chebymap.c:407-515`).
 
 `ChebyMap::try_merge` compared the two bounding boxes and the forward terms
-itself and never looked at the inverse ones, so it cancelled a pair whose inverse
+itself and never looked at the inverse ones, so it canceled a pair whose inverse
 transformations have different coefficient counts and maximum powers — the same
 divergence §10.29 closed in PolyMap, reached by a different route. The oracle
 leaves such a pair as a CmpMap of two ChebyMaps; the port returned a UnitMap.
@@ -1827,24 +1827,24 @@ gate.
 ### 10.31 WcsMap's swap driver was two attempts, not C's search — FIXED
 
 `wcsmap.c:3171-3348` is a search, not a pair of attempts. It asks `CanSwap`
-about each neighbour in turn, walks a run of PermMaps in both directions
+about each neighbor in turn, walks a run of PermMaps in both directions
 counting how many Mappings separate the WcsMap from one it could cancel against
 once swapped, moves it towards the nearer of the two, and — when neither
 direction reaches a target — swaps copies of the nearer pair and keeps the
 result only if simplifying either half changes its class.
 
-The port asked one fused primitive about the higher neighbour and then the lower
+The port asked one fused primitive about the higher neighbor and then the lower
 one, taking whichever answered first, and gated each on a narrower "is this
 worthwhile" test of its own: the swapped pair is simpler, or the Mapping
-immediately beyond the neighbour is a WcsMap. Three narrowings, all closed by
+immediately beyond the neighbor is a WcsMap. Three narrowings, all closed by
 porting C's driver into `wcs_map_merge`:
 
-- **Neighbour preference.** C prefers the lower neighbour when the swap with it
+- **Neighbor preference.** C prefers the lower neighbor when the swap with it
   is intrinsically simpler, or when its target is nearer (`wcsmap.c:3259-3272`).
   The port always tried the higher one first.
 - **Search depth.** C's `nstep1` / `nstep2` walks run the length of a PermMap
   run (`wcsmap.c:3196-3222`, `:3226-3255`). The port looked one entry beyond the
-  neighbour.
+  neighbor.
 - **The speculative swap.** C's `else if( swaphi || swaplo )` branch
   (`wcsmap.c:3283-3342`) has no analogue in the port, which simply declined.
 
@@ -1858,15 +1858,15 @@ C's three functions are now three: `can_merge_wcsmaps` for `CanMerge`
 The first is a WcsMap ahead of a PermMap whose axes are all constants — a swap
 C can perform, declines because it is not simpler, and does not rescue
 speculatively because the swapped halves keep their classes. The second puts a
-bidirectional axis-swapping PermMap on *both* sides, so both neighbours are
+bidirectional axis-swapping PermMap on *both* sides, so both neighbors are
 swappable and neither is preferred. Both pin a decision the driver makes and no
 other fixture reaches: loosening the target choice to "swap with whichever
-neighbour allows it" fails exactly these two and nothing else in the corpus.
+neighbor allows it" fails exactly these two and nothing else in the corpus.
 
 The step walks stay latent at depths above one, and so does the speculative
 branch: two adjacent PermMaps always compose, so a stable list never holds a run
 for the walk to step through, and the pair a swap leaves behind is a PermMap the
-nominate loop has already canonicalised beside a WcsMap or a UnitMap, none of
+nominate loop has already canonicalized beside a WcsMap or a UnitMap, none of
 which reduce further. Exposing either needs a Mapping the WcsMap can swap past
 that is not a PermMap — which C's `CanSwap` does not admit — so the fixtures
 that would pin them cannot be built against this pin.

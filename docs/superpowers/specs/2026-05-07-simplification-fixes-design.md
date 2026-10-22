@@ -153,7 +153,7 @@ WcsMap that simplifies to UnitMap.
    (e.g., `WcsProjection::Unknown` variant).
 2. In `WcsMap::simplified()`, if type is Unknown, return `UnitMap(nin)`.
 3. The transform for Unknown type should produce all BAD values (or pass
-   through as identity — match C behaviour).
+   through as identity — match C behavior).
 
 ### Issue 5: rigby MatrixMap Inverse Error
 

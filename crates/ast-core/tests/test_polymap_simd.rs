@@ -157,7 +157,7 @@ fn simd_inverse_propagates_bad_value() {
         assert_eq!(s[1], BAD_VALUE);
     }
 
-    // Neighbours in the same SIMD chunk as a BAD lane must produce the same
+    // Neighbors in the same SIMD chunk as a BAD lane must produce the same
     // result as the scalar inverse — i.e. NaN in one lane must not bleed
     // into adjacent lanes. (Whether the result is "the right pixel" depends
     // on the PolyMap input domain, which isn't pixel-range for the
@@ -214,7 +214,7 @@ fn simd_propagates_bad_value() {
         );
     }
 
-    // A neighbour (non-BAD) should be finite.
+    // A neighbor (non-BAD) should be finite.
     let p1 = out.point(1);
     assert!(
         p1[0].is_finite() && p1[1].is_finite(),

@@ -205,9 +205,9 @@ impl RegionGeometry for PointList {
         // (pointlist.c:2359). A supplied point is inside the (un-negated)
         // PointList iff it coincides — to within the positional uncertainty —
         // with at least one of the defining points. C negates the base-Frame
-        // uncertainty Region, recentres it at each defining point in turn, and
+        // uncertainty Region, recenters it at each defining point in turn, and
         // transforms the supplied points through it, accumulating a BAD mask
-        // wherever a point falls inside a recentred uncertainty. The net raw
+        // wherever a point falls inside a recenterd uncertainty. The net raw
         // membership is therefore the OR, over all defining points, of "the
         // supplied point lies inside the *negated* uncertainty's complement"
         // — that is, inside the uncertainty Region under the boundary rule a
@@ -221,8 +221,8 @@ impl RegionGeometry for PointList {
         let npoint = pts.npoint();
         let naxes = self.data.frameset.base().naxes();
 
-        // Base-Frame uncertainty Region (default: a tiny Box centred on the
-        // PointList's bounding-box centre). Mirrors astGetUncFrm(this,
+        // Base-Frame uncertainty Region (default: a tiny Box centerd on the
+        // PointList's bounding-box center). Mirrors astGetUncFrm(this,
         // AST__BASE); its current Frame is the PointList's base Frame, so the
         // supplied base-Frame points can be transformed through it directly.
         // C negates it before use (astSetNegated(unc, 1), pointlist.c:2495).
@@ -234,8 +234,8 @@ impl RegionGeometry for PointList {
                 continue;
             }
 
-            // Recentre the uncertainty Region at this defining point
-            // (astRegCentre(unc, NULL, ptr_base, point, AST__BASE)).
+            // Recenter the uncertainty Region at this defining point
+            // (astregcenter(unc, NULL, ptr_base, point, AST__BASE)).
             negated_unc.reg_centre_set(&def_point[..naxes], FrameRef::Base)?;
 
             // Transform the supplied points through the negated uncertainty:
@@ -928,7 +928,7 @@ impl Mapping for PointList {
 
     fn invert_orientation(&mut self) {
         // A Region's forward and inverse transforms are identical (membership
-        // is direction-independent), so inverting has no effect on behaviour.
+        // is direction-independent), so inverting has no effect on behavior.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -991,7 +991,7 @@ impl Mapping for PointList {
             .collect();
         // C hands the constructor the uncertainty in the *current* Frame
         // (pointlist.c:2254-2257), and the constructor's SetUnc maps it into the
-        // new PointList's base Frame and re-centres it on the first point. The
+        // new PointList's base Frame and re-centers it on the first point. The
         // `reg_overlay` below then clears it again when the supplied Region had
         // no uncertainty of its own.
         let unc = this.get_unc_frm(FrameRef::Current)?;
@@ -1024,7 +1024,7 @@ impl Mapping for PointList {
         // Parallel merge only (series of two Regions is not a Region). The
         // direct pairwise path always has `self` as the lower-index (left)
         // component, so this PointList's axes go first (`intfirst = 1`). The
-        // nominate loop reaches the lower-neighbour (`intfirst = 0`) case via
+        // nominate loop reaches the lower-neighbor (`intfirst = 0`) case via
         // `Region::region_merge`, not through `try_merge`.
         if series || self_inv || other_inv {
             return None;

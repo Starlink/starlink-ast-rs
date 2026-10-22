@@ -80,7 +80,7 @@ the order it does things.
 6. **Encoder card comments come from the input when possible.**
    `put_or_append` preserves an existing card's comment when
    overwriting — only newly-created cards use the encoder's
-   default comment. Matches C-library behaviour where an
+   default comment. Matches C-library behavior where an
    input header's hand-written comment ("Linear pixel axis",
    "SIN projection", …) survives a round-trip. Encoder
    defaults are now the canonical AST comments
@@ -91,7 +91,7 @@ the order it does things.
 
 7. **`Mapping::simplify` is shallower than C's `astSimplify`.**
    The C library deep-traverses nested `CmpMap` chains,
-   flattens them into a flat list, and recognises distant
+   flattens them into a flat list, and recognizes distant
    inverse-pairs as cancellable. Ours only merges adjacent
    siblings. This shows up in the IWC composition: the
    inverse-WcsNative pair sits inside a deeply-nested CmpMap
@@ -192,7 +192,7 @@ specific inputs.
 - **lsst_fits-wcs**: CRPIX got `5235.83`, expected `5247.71`
   — close but ~12 pixels off. Also has `RA---TAN-SIP`
   expected, we emit `RA---TAN`. SIP distortion probably not
-  being recognised in the input; the chain probably has a
+  being recognized in the input; the chain probably has a
   PolyMap that should drive a SIP read.
 - **longslit_fits-wcs**: CRPIX2 got `1.0`, expected `1024.5`.
   CRPIX extraction failure — probably the same pattern as
@@ -210,7 +210,7 @@ specific inputs.
 ### 6. SIP / TPV distortion handling (lsst, sip-3d cluster)
 
 CTYPE for SIP is `RA---TAN-SIP` etc. Our encoder doesn't
-recognise the PolyMap that follows the WcsMap as a SIP
+recognize the PolyMap that follows the WcsMap as a SIP
 distortion, so we emit `RA---TAN`. The C library's
 `SIPIntWorld` (`fitschan.c:31129-ish`) detects and serializes
 SIP coefficients as `A_p_q`, `B_p_q`, `AP_p_q`, `BP_p_q`

@@ -54,7 +54,7 @@ pub(crate) struct RegionData {
     ///
     /// Layout: `points[i]` is the i-th defining point (a Vec of length
     /// naxes). The meaning is region-specific (e.g., for Circle:
-    /// points[0] = centre, points[1] = edge point).
+    /// points[0] = center, points[1] = edge point).
     pub(crate) points: Vec<Vec<f64>>,
 
     /// Whether the region is negated (inside/outside sense flipped).
@@ -110,8 +110,8 @@ pub(crate) struct RegionData {
     /// The uncertainty region, if set.
     pub(crate) uncertainty: Option<DynRegion>,
 
-    /// Whether `frameset` is a *dummy* FrameSet synthesised at load time
-    /// because the serialised region carried neither `Frm` nor `FrmSet`
+    /// Whether `frameset` is a *dummy* FrameSet synthesized at load time
+    /// because the serialized region carried neither `Frm` nor `FrmSet`
     /// (a nested region that inherits its container's frame). Mirrors C's
     /// `DUMMY_FS` marker (`region.c:13593-13601`). A dummy FrameSet must be
     /// replaced by the real frame via [`RegionData::set_region_fs`] before
@@ -165,10 +165,10 @@ pub(crate) enum ClassCache {
         /// and Closed, which the base-Frame tests hand their work to.
         base_box: Option<Box<super::BoxRegion>>,
     },
-    /// box.c `Cache`: the limits on each base-Frame axis, the centre plus or
+    /// box.c `Cache`: the limits on each base-Frame axis, the center plus or
     /// minus the extent.
     Box { lbnd: Vec<f64>, ubnd: Vec<f64> },
-    /// circle.c `Cache`: the radius, measured from the centre to the
+    /// circle.c `Cache`: the radius, measured from the center to the
     /// circumference point in the base Frame.
     Circle { radius: f64 },
     /// ellipse.c `Cache`: the semi-major and semi-minor axis lengths and the
@@ -457,7 +457,7 @@ pub(crate) trait RegionGeometry {
     /// The negation flag is handled by the caller.
     ///
     /// This is the primary performance-critical method. Implementations
-    /// should process all points in a tight loop to allow vectorisation.
+    /// should process all points in a tight loop to allow vectorization.
     fn reg_base_inside(&self, pts: &PointSet) -> AstResult<Vec<bool>>;
 
     /// Test whether a single point (in the *base* frame) is inside the

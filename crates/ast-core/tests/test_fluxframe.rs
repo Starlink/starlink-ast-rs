@@ -209,7 +209,7 @@ fn test_fluxframe_make_flux_mapping_same_system_is_unit() {
 fn test_fluxframe_make_flux_mapping_without_specframe_returns_none() {
     // FLXDN (per Hz) → FLXDNW (per Angstrom) needs a consistent spectral
     // position. Without an encapsulated SpecFrame, SpecVal in FLXDN is Hz and
-    // in FLXDNW is Angstrom, so the standardised positions don't match and no
+    // in FLXDNW is Angstrom, so the standardized positions don't match and no
     // mapping is formed. Oracle: astConvert returns NULL in this case.
     let mut ff1 = FluxFrame::new(FluxSystem::FluxDen);
     ff1.set_spec_val(1.4e9);
@@ -384,7 +384,7 @@ fn test_fluxframe_unit_serialisation_round_trip() {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation round-trip
+// Serialization round-trip
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -591,7 +591,7 @@ fn test_specfluxframe_convert_different_spec_system_converts() {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation round-trip
+// Serialization round-trip
 // ---------------------------------------------------------------------------
 
 #[test]

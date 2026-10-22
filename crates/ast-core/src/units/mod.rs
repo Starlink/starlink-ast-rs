@@ -9,7 +9,7 @@
 //!    constants folded and inverted).
 //! 2. [`simplify::remake_tree`] — substitute derived units with
 //!    their basic-unit definitions.
-//! 3. [`simplify::simplify_tree`] — algebraic standardisation.
+//! 3. [`simplify::simplify_tree`] — algebraic standardization.
 //! 4. [`dim_anal::dim_anal`] (driven by [`mapper::unit_mapper`]) —
 //!    confirm input and output are dimensionally compatible.
 //! 5. [`mapper::unit_mapper`] — assemble a `Mapping` (UnitMap /
@@ -47,7 +47,7 @@ use crate::keymap::convert::scan_double;
 pub(crate) fn unit_normaliser(input: &str) -> Option<String> {
     let mut tree = parser::create_tree(input, false)?;
 
-    // C passes `std = 1`, so the standardising rewrites run too.
+    // C passes `std = 1`, so the standardizing rewrites run too.
     simplify::simplify_tree(&mut tree, true);
 
     // `create_tree` has already inverted the literal constants; C inverts
@@ -66,7 +66,7 @@ pub(crate) fn unit_normaliser(input: &str) -> Option<String> {
     Some(result)
 }
 
-/// Normalise a units string, returning it unchanged if it is not a units
+/// Normalize a units string, returning it unchanged if it is not a units
 /// expression: a blank Unit, or a description of axis values such as
 /// `"ddd:mm:ss"`. Mirrors C `astNormUnit_` (`unit.c`:5960), which recovers
 /// from `AST__BADUN` only; no other failure is possible here.

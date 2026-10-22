@@ -11,7 +11,7 @@
 //! written and the source now, so the baseline is per row rather than per file.
 //! A checklist holds rows from several commits at once: a fix that changes the C
 //! source re-anchors the rows it touches and leaves the rest, and one written
-//! after a pin move is already on the new source while its neighbours are not.
+//! after a pin move is already on the new source while its neighbors are not.
 //! `git blame` names the commit that wrote each line; for a Rust citation that
 //! commit's own tree is the baseline, and for a C citation it is the submodule
 //! pin that commit recorded. A cited line the diff carries through unchanged is
@@ -110,7 +110,7 @@ fn pin_at(root: &Path, rev: &str) -> Option<String> {
 /// line map.
 ///
 /// Built by trimming the common head and tail and running a longest common
-/// subsequence over what is left. A source file's edits are localised, so the
+/// subsequence over what is left. A source file's edits are localized, so the
 /// remainder is small even for the largest C file in the tree, while the full
 /// table over two 40,000-line files would not fit in memory.
 ///

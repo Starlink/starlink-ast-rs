@@ -83,7 +83,7 @@ pub(crate) fn encode_wcs(
     // `CelestialAxes`). When a CRVAL is in the input, the writer
     // prefers it over the central-pixel fallback so that any
     // half-pixel-bumped CRPIX/CRVAL handling (`NearestPix`) sees
-    // the user-supplied reference rather than a synthesised one.
+    // the user-supplied reference rather than a synthesized one.
 
     let tables = attrs.tables.clone();
     let planes = collect_plane_stores(frameset, dim, crate::fitschan::Encoding::FitsWcs, attrs)?;
@@ -323,7 +323,7 @@ fn store_from_frameset_to(
     // clone the FrameSet and bump its current pointer to the requested
     // frame before dispatching. The legacy path used a `target_idx`
     // parameter to thread this through every helper; the new path
-    // localises it here.
+    // localizes it here.
     let encoding = crate::fitschan::Encoding::FitsWcs;
     if target_idx == fs.current_idx() {
         return crate::fitschan::fset_to_store::fset_to_store(fs, dim, encoding, ' ', attrs);
@@ -712,7 +712,7 @@ fn write_cd_matrix(store: &FitsStore, cards: &mut CardList, s: char) {
 ///
 /// Mirrors `SIPIntWorld`'s store loops (fitschan.c:29050-29097) and
 /// the C writer at fitschan.c:37507-37542. The store table is
-/// initialised with `AST__BAD` for every (i, jm) pair `≤ (imax,
+/// initialized with `AST__BAD` for every (i, jm) pair `≤ (imax,
 /// jmmax)`, then real coefficients overwrite some slots. The C
 /// `WcsFromStore` writer iterates `p ∈ [0, pmax]` × `q ∈ [0, qmax]`
 /// and emits a card only when `GetItem` returns a non-`AST__BAD`

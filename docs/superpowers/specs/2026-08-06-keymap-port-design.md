@@ -12,12 +12,12 @@ It is the keyed typed-value container that AST uses wherever a variable set of n
 Nothing downstream of it can be ported until it exists.
 
 A prototype implementation exists at `../starlink-astrs-proto/src/keymap`.
-It is a useful reference for API shape but not a basis for the port: it hand-rolls its own text serialiser rather than using this repo's `Serializable`/`Node` tree, and it does not carry the type-conversion matrix.
+It is a useful reference for API shape but not a basis for the port: it hand-rolls its own text serializer rather than using this repo's `Serializable`/`Node` tree, and it does not carry the type-conversion matrix.
 
 ## Goals
 
 1. Port `keymap.c` to `crates/ast-core/src/keymap/` — entry storage, `ConvertValue`, all supported type codes, `SortBy`, and a `Serializable` round-trip that is byte-exact against the C reference for the fixtures we hold, `MapSz` excepted.
-2. Add `AnyObject::KeyMap` so KeyMaps deserialise from and serialise into `.ast` files.
+2. Add `AnyObject::KeyMap` so KeyMaps deserialize from and serialize into `.ast` files.
 3. Port `ast_tester/testkeymap.c` and `ast_tester/testobjectkeymap.c`.
 4. Shape the struct so `Table` and `FitsTable` can embed it later without redesign.
 
@@ -38,7 +38,7 @@ C's chained bucket table is **not** ported as a storage structure.
 
 The C table has no property we need that `HashMap` lacks:
 
-- **Key equivalence reduces to exact string equality.** `KeyCmp` (`keymap.c:3921`) ignores trailing spaces and `HashFun` (`keymap.c:3604`) ignores all spaces, which looks like it rules out a `String` key. It does not: C normalises the key at *insertion*, not at comparison. `ConvertKey` (`keymap.c:1573`) uppercases when `KeyCase=0`, and `MAKE_MAPPUT0` null-terminates away trailing spaces before hashing (`keymap.c:4706-4716`). Apply the same normalisation to the lookup key and `HashMap`'s `Eq` is the right predicate.
+- **Key equivalence reduces to exact string equality.** `KeyCmp` (`keymap.c:3921`) ignores trailing spaces and `HashFun` (`keymap.c:3604`) ignores all spaces, which looks like it rules out a `String` key. It does not: C normalizes the key at *insertion*, not at comparison. `ConvertKey` (`keymap.c:1573`) uppercases when `KeyCase=0`, and `MAKE_MAPPUT0` null-terminates away trailing spaces before hashing (`keymap.c:4706-4716`). Apply the same normalization to the lookup key and `HashMap`'s `Eq` is the right predicate.
 - **Lookup is at least as fast.** Both are O(1), and `HashMap` is the better-tuned constant factor.
 - **Observable order does not come from the table.** `SortBy` ordering is computed from `member` / `keymember` / `KeyCmp`, none of which involve bucket layout. C's `SORTBY_NONE` order *is* bucket order, and that is precisely Bug 1; see "Ordering".
 - **Nothing else reads `mapsize`.** `astMapSize` sums `nentry[itab]` (`keymap.c:7801`) — a count `HashMap` already has. `mapsize` reaches the outside world through exactly one path: the `MapSz` card.
@@ -49,10 +49,10 @@ The C table has no property we need that `HashMap` lacks:
 We do not have to assume that is negligible, because on both paths where a KeyMap is filled in bulk the eventual entry count is known before the first insert:
 
 - **`SizeGuess`.** This is precisely C's presizing hook — "an estimate of the number of entries that will be stored", settable only while the map is empty (`keymap.c:9463`) — and C spends it on `NewTable(sizeguess/MAX_ENTRIES_PER_TABLE_ENTRY)`. Rust spends the same number on `HashMap::with_capacity(sizeguess)`, which is a closer reading of the attribute's documented meaning than C's own use of it: C divides by 10 because ten entries share a bucket, whereas `with_capacity` wants the entry count itself. Note the attribute's prose claims a default of 300 while `GetSizeGuess` returns `MIN_TABLE_SIZE*MAX_ENTRIES_PER_TABLE_ENTRY`; `astGetI` on a fresh KeyMap returns 160, so the prose is stale and 160 is the value to port.
-- **`from_node`.** The whole `Node` is in hand before the first insert, so the entry count is exact — count the `Key%d` items and `reserve` that. No estimate is involved, and this is the path that matters for reading a large serialised KeyMap.
+- **`from_node`.** The whole `Node` is in hand before the first insert, so the entry count is exact — count the `Key%d` items and `reserve` that. No estimate is involved, and this is the path that matters for reading a large serialized KeyMap.
 
 `SizeGuess` still round-trips and still seeds the `MapSz` computation below; it now additionally does the job its documentation describes.
-Where neither applies — a caller putting entries one at a time with no `SizeGuess` — the map grows amortised O(1), which is the same bargain C makes with `DoubleTableSize` and needs no special handling.
+Where neither applies — a caller putting entries one at a time with no `SizeGuess` — the map grows amortized O(1), which is the same bargain C makes with `DoubleTableSize` and needs no special handling.
 
 ### `MapSz` is computed at dump time, exactly
 
@@ -78,7 +78,7 @@ It needs djb2 plus a scratch count array sized `mapsize`; no bucket table, no pe
 Verified against `reference/starlink-ast/build/libast.so`:
 
 - The loop reproduces C's own `MapSz` on 14/14 key sets — the four fixture keys, spreads up to 2000 keys, up to 300 deliberately all-colliding keys, and mixtures — and on 12/12 `SizeGuess` combinations.
-- Feeding hand-synthesised dumps (alphabetical keys, `MapSz` from the loop) to `astFromString`, C ends at **exactly** the written value in 10/10 scenarios, with zero doublings during the load.
+- Feeding hand-synthesized dumps (alphabetical keys, `MapSz` from the loop) to `astFromString`, C ends at **exactly** the written value in 10/10 scenarios, with zero doublings during the load.
 
 The second result holds because we dump in `KeyCmp` order and `LoadKeyMap` re-inserts in dump order, so C's insertion sequence is ours.
 That matters: the doubling loop is order-sensitive in general (105 of 4000 randomly generated adversarial key sets gave different `mapsize` under different insertion orders), and fixing the dump order is what makes the computed value the one C will arrive at.
@@ -151,7 +151,7 @@ C head-inserts (`keymap.c:675`: `entry->next = this->table[itab]; this->table[it
 That makes the observable order a function of insertion history, which is the root of Bug 1.
 
 Rust sorts by `KeyCmp` at read-out time in `map_key`, `map_iterate` and `to_node` when `SortBy` is `None`.
-`HashMap` iteration order is unspecified and randomised per process, so an ordered read-out is required rather than merely preferable — every path that exposes an order sorts, and none of them may iterate the map directly.
+`HashMap` iteration order is unspecified and randomized per process, so an ordered read-out is required rather than merely preferable — every path that exposes an order sorts, and none of them may iterate the map directly.
 
 Sorting happens at read-out, not on put.
 C's documented reason for `SORTBY_NONE` being the default is that it "avoids the need for a sorted list of keys to be maintained"; that property is preserved — puts stay O(1), and only the ordered-read paths pay.
@@ -182,9 +182,9 @@ All three were reproduced against `reference/starlink-ast/build/libast.so` with 
 
 Per the agreed scope, these are **specified only** this cycle.
 Each is written up in `docs/issues/c-library-quirks.md` with its location and proposed patch.
-Rust implements the correct behaviour and mirrors none of them.
+Rust implements the correct behavior and mirrors none of them.
 
-### Bug 1 — dump order reverses within a bucket, and never stabilises
+### Bug 1 — dump order reverses within a bucket, and never stabilizes
 
 `Dump` walks the table bucket by bucket, head-first within each bucket (`keymap.c:10516-10525`).
 `LoadKeyMap` re-`MapPut`s entries in dump order (`keymap.c:11035`), and every put head-inserts (`keymap.c:675`).
@@ -201,9 +201,9 @@ dump1 == dump2 ? NO      dump1 == dump3 ? NO (differs in MemCnt)
 The dump is not idempotent and does not converge.
 Real fixtures hit this: `reference/starlink-ast/ast_tester/stcschan-test1-doc3-props.ast` has `SIZE` and `FRAME` both in bucket 0, and `TIME` and `REFPOS` both in bucket 4.
 
-**Consequence.** A KeyMap's serialised form depends on how many times it has been written and read, which makes byte-exact comparison of any KeyMap-bearing file order-of-operations dependent.
+**Consequence.** A KeyMap's serialized form depends on how many times it has been written and read, which makes byte-exact comparison of any KeyMap-bearing file order-of-operations dependent.
 
-**Proposed C patch.** Make `Dump` emit entries in `KeyCmp` order rather than bucket order (it already ignores `SortBy` entirely, so this changes no documented behaviour). Alphabetical output is idempotent under any insertion order.
+**Proposed C patch.** Make `Dump` emit entries in `KeyCmp` order rather than bucket order (it already ignores `SortBy` entirely, so this changes no documented behavior). Alphabetical output is idempotent under any insertion order.
 
 ### Bug 2 — a spurious `KyCas = 1` appears on the first round trip
 
@@ -230,7 +230,7 @@ dump 1:  Begin KeyMap / MapSz = 16 / MemCnt = 2 / Key1 = "ONLY" ...
 dump 2:  Begin KeyMap / KyCas = 1 / MapSz = 16 / MemCnt = 2 / Key1 = "ONLY" ...
 ```
 
-It stabilises after one round (`KyCas` is then present and read normally), so unlike Bug 1 it is convergent — but it means no freshly-written KeyMap matches its own re-dump.
+It stabilizes after one round (`KyCas` is then present and read normally), so unlike Bug 1 it is convergent — but it means no freshly-written KeyMap matches its own re-dump.
 
 This is visible in this repository: `cap_timemap_02.simp:218` carries `KyCas = 1` while `cap_timemap_02.map` does not, for the same logical KeyMap.
 
@@ -394,7 +394,7 @@ Every code KeyMap needs is already generated from `ast_err.msg`: `Mpger`, `Mpker
 
 `KeyError` selects between returning `Ok(None)`-style absence and raising `Mpger`, as in C.
 
-## Section D: Serialisation
+## Section D: Serialization
 
 `KeyMap` implements the existing `pub(crate) trait Serializable` (`crates/ast-core/src/serial/mod.rs:28`), replacing the prototype's hand-rolled emitter.
 
@@ -468,7 +468,7 @@ So it is a per-subclass algorithm decision, not a container substitution.
 
 **`Channel::warnings` signature.**
 `crates/ast-core/src/channel/mod.rs:71` declares `fn warnings(&self) -> &[String]`, where `docs/superpower/specs/2026-04-20-rust-port-design.md:412` specifies `Option<&KeyMap>`.
-The Rust code is right and the spec is amended: C stores warnings internally as a string array and `astWarnings` (`channel.c:1690-1709`) only materialises a throwaway KeyMap at the API boundary:
+The Rust code is right and the spec is amended: C stores warnings internally as a string array and `astWarnings` (`channel.c:1690-1709`) only materializes a throwaway KeyMap at the API boundary:
 
 ```c
 if( this->nwarn && this->warnings ) {
@@ -494,7 +494,7 @@ Returning `&[String]` exposes the same information without the allocation.
 
 - `KeyMap` ported to `crates/ast-core/src/keymap/`, storing entries in a `HashMap`, with `ConvertValue`, all ten supported types, and `SortBy`.
 - `MapSz` computed at dump time and matching C's value on the probed key sets and `SizeGuess` combinations; the card excluded from oracle byte comparison with its reason recorded.
-- `AnyObject::KeyMap` wired into both serialisation dispatch functions.
+- `AnyObject::KeyMap` wired into both serialization dispatch functions.
 - `testkeymap.c` and `testobjectkeymap.c` ported and green.
 - The two KeyMap fixtures regenerated; both simplify-fixture consumers green.
 - Idempotence and insertion-order-independence property tests green.

@@ -65,7 +65,7 @@ carried through unchanged onto where it landed.
 A line the diff replaced or deleted it refuses and reports, because the content
 the row describes is no longer there: re-anchor that row against the code it now
 describes rather than remapping its number, and check whether the prose around it
-described a C behaviour the pin move changed.
+described a C behavior the pin move changed.
 Run it once against the tree the numbers belong to; against an already-relocated
 tree its baselines are the wrong side of the move.
 Re-state the pin in `REPAIRED` in `crates/ast-core/tests/test_audit_citations.rs`
@@ -79,7 +79,7 @@ a generic driver in another file dispatch to this through the vtab?
 
 - `ceremony` — the step exists only because of C's conventions and asks nothing
   of the port: an error-status check, a pointer annulled or freed, a result
-  sentinel initialised or cleared, an axis-major buffer marshalled for a C
+  sentinel initialized or cleared, an axis-major buffer marshalled for a C
   constructor, an accessor the `astMAKE_SET` family generates.
 - `architecture` — the step does work the port must also do, and so has to hang
   off the same per-class seam C reaches it through.

@@ -167,7 +167,7 @@ changes, rebuild the SwitchMap with the new children. This enables
 
 ### Simplification
 
-1. **Cancel adjacent inverse pairs:** In series, if neighbour is a
+1. **Cancel adjacent inverse pairs:** In series, if neighbor is a
    SwitchMap that is equal-but-inverted, replace both with UnitMap(nin)
 2. **Normalize inversion:** If the SwitchMap's own Invert flag is set,
    create an equivalent non-inverted SwitchMap by swapping selectors

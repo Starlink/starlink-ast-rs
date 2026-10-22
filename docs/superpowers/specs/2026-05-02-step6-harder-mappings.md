@@ -69,7 +69,7 @@ BAD_VALUE for axes where `scales[i] == 0.0`.
 
 BAD_VALUE propagation: if `in[i] == BAD_VALUE`, `out[i] = BAD_VALUE`.
 
-### Serialisation
+### Serialization
 
 Class: `"WinMap"`.
 
@@ -129,7 +129,7 @@ then linear interpolation to find the input value.
 If the table is not monotonic, inverse transform returns BAD_VALUE
 for all inputs.
 
-### Serialisation
+### Serialization
 
 Class: `"LutMap"`.
 
@@ -215,11 +215,11 @@ struct implementing this trait.
 
 Default parameters: `niter_inverse = 4`, `tol_inverse = 1e-6`.
 
-### Serialisation
+### Serialization
 
 Class: `"PolyMap"`.
 
-The C library's serialisation format stores coefficients in a
+The C library's serialization format stores coefficients in a
 specific grouped structure:
 
 | Key | Description |
@@ -276,7 +276,7 @@ Computes normalization:
 4. Chebyshev recurrence: `T_0(x) = 1`, `T_1(x) = x`,
    `T_{n+1}(x) = 2*x*T_n(x) - T_{n-1}(x)`.
 
-### Serialisation
+### Serialization
 
 Class: `"ChebyMap"`. Inherits PolyMap's coefficient attributes plus:
 
@@ -317,7 +317,7 @@ All four types need to be added to:
 - `from_corners` constructor
 - Zero-scale axis → BAD on inverse
 - BAD_VALUE propagation
-- Serialisation round-trip
+- Serialization round-trip
 
 ### LutMap Tests (from testlutmap.c)
 - Linear interpolation between entries
@@ -326,7 +326,7 @@ All four types need to be added to:
 - BAD_VALUE in table
 - Inverse via binary search (monotonic)
 - Non-monotonic → no inverse
-- Serialisation round-trip
+- Serialization round-trip
 
 ### PolyMap Tests (from testpolymap.c)
 - Simple 1D polynomial (y = 2x^2 + 3x + 1)
@@ -334,14 +334,14 @@ All four types need to be added to:
 - Explicit inverse
 - Iterative (LM) inverse
 - BAD_VALUE propagation
-- Serialisation round-trip
+- Serialization round-trip
 
 ### ChebyMap Tests (from testchebymap.c)
 - Chebyshev basis matches known T_n values
 - Domain normalization
 - Out-of-bounds → BAD
 - Forward/inverse with Chebyshev coefficients
-- Serialisation round-trip
+- Serialization round-trip
 
 ## What This Step Does NOT Include
 

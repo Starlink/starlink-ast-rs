@@ -1,6 +1,6 @@
 # `fitschan.c` C-vs-Rust Port Gaps
 
-**Superseded for the attributes, public functions and card behaviour by [`docs/audits/fitschan-c-parity.md`](../audits/fitschan-c-parity.md) (2026-10-10).**
+**Superseded for the attributes, public functions and card behavior by [`docs/audits/fitschan-c-parity.md`](../audits/fitschan-c-parity.md) (2026-10-10).**
 The "FitsChan attribute coverage" and "Public API gaps" sections below are out of date; this document remains the record of the encoding read and write paths.
 
 **Status: PARTIALLY DONE**, and the shape of what remains changed between this
@@ -12,7 +12,7 @@ Ported since the body was written: DSS (`enc_dss.rs`), SAO, DSBSetUp,
 SipReplace, the `-ZPX` distortion PolyMap, DTAI, AXREF and Warn-card emission.
 All 194 wcsconv cases are byte-compared with `NATIVE_READ_EXCLUDED` empty.
 `CarLin` is not "silently ignored" either: it is a struct field with
-`set_car_lin`, honoured by the harness at `test_wcsconv.rs:246`.
+`set_car_lin`, honored by the harness at `test_wcsconv.rs:246`.
 `FitsTol` and `SipOK` were plumbed but unreachable — fixed at
 `FITS_TOL_DEFAULT = 0.1` and hardcoded `true`; both became reachable in the
 9.5.0 sync, `FitsTol` through `set_fits_tol`/`fits_tol` and `SipOK` derived from
@@ -33,7 +33,7 @@ What remains is the **attribute surface**, not the read-path algorithms:
 store, and the algorithm (`AdaptLut`, `IsMapTab1D` / `2D`, `TabOK`,
 `ForceTab`), recorded in the `PLAN.md` §3 Table / FitsTable row.
 
-This document catalogues C `fitschan.c` logic that is not yet ported
+This document catalogs C `fitschan.c` logic that is not yet ported
 to the Rust `crates/ast-core/src/fitschan/` tree.
 Companion to the existing
 [`fset_to_store-port-gaps.md`](fset_to_store-port-gaps.md), which
@@ -60,14 +60,14 @@ port + entry deletion.
 Found 2026-10-14 porting `testfitschanerrors.c`; the case `error-bad-radesys` exposes it.
 
 C's `WcsToStore` (`fitschan.c:40234`) calls `WcsFcRead` twice, first on the header and then on the translations `SpecTrans` made.
-`WcsFcRead` walks every card in order and stores each recognised keyword with `SetItem`, which overwrites, so when two cards share a keyword the later one is what the FitsStore holds, and both are marked read.
+`WcsFcRead` walks every card in order and stores each recognized keyword with `SetItem`, which overwrites, so when two cards share a keyword the later one is what the FitsStore holds, and both are marked read.
 A translation overrides the header for the same reason.
 
 The port fills its `FitsStore` keyword by keyword (`wcs_keywords.rs`, `extract_wcs_keywords_with_alts`), asking the card list for each keyword it wants through `get_*_marked`, which return the first matching card.
 So with two cards for one keyword the port reads the first and C the last.
 A C probe against the pinned library confirms it: `RADESYS = 'FK4'` then `RADESYS = 'FK5'` reads as FK5 in C and FK4 here, and `'FK5'` then `'BADVAL'` fails with AST__BDFTS in C and reads as FK5 here.
 
-The faithful port is C's card-driven loop: walk the cards once, store each recognised keyword as it is met, then do the same over the translations.
+The faithful port is C's card-driven loop: walk the cards once, store each recognized keyword as it is met, then do the same over the translations.
 Making the lookups return the last match instead would reproduce this case, but not C's shape, and whether it reproduces the header-then-translations precedence depends on how the port's `trans` list orders the two, which has not been checked.
 What exposes it: `FITSCHAN_ERRORS_GAP_EXCLUDED` in `tests/test_fitschan_errors.rs`, whose `port_gap_cases_still_differ` fails when the gap closes.
 The wcsconv corpus has no header with a repeated WCS keyword, which is why 194 byte comparisons pass with the gap open.
@@ -147,7 +147,7 @@ when the input header carries `IMAGFREQ` (the marker for
 double-sideband data).
 C, when IMAGFREQ is present, builds a `DSBSpecFrame` and uses the
 RESTFREQ + IMAGFREQ pair to compute the local-oscillator frequency
-and configure DSBCentre / IF / SideBand.
+and configure Dsbcenter / IF / SideBand.
 
 The writer side reads IMAGFREQ from a DSBSpecFrame and re-emits it
 when present, so a FrameSet that *already* contains a
@@ -203,7 +203,7 @@ It is read in `wcs_keywords.rs` and written after `CUNIT{i}` in
 machinery.
 
 C emits an `ASTWARN` comment card to the FitsChan when something
-non-fatal needs the caller's attention (unrecognised distortion,
+non-fatal needs the caller's attention (unrecognized distortion,
 incomplete translation, ambiguous keyword, etc).
 The set of warnings to emit is governed by the `Warnings`
 attribute (a comma-separated list of warning categories).
@@ -262,11 +262,11 @@ Rust currently models 5.
 | `FitsAxisOrder` | yes | no | only "<auto>" mode reachable; documented in fset_to_store gap doc |
 | `FitsTol` | yes | no | linearity tolerance for FITS-WCS extraction; default 0.1 used |
 | `ForceTab` | yes | yes | force `-TAB` algorithm; `set_force_tab` |
-| `IgnoreBadAlt` | yes | no | controls behaviour on bad alt-plane |
+| `IgnoreBadAlt` | yes | no | controls behavior on bad alt-plane |
 | `Iwc` | yes | no | controls whether the IWC frame is added to the FrameSet |
 | `PolyTan` | yes | no | enables `-PV` polynomial TAN (silently ignored — fixture `tan-polytan_native` passes via astequal) |
 | `SipOK` | yes | **partial** | the harness reads `SipOK=1` from the manifest but ignores it; SIP path is on by default and SipOK off is unsupported |
-| `SipReplace` | yes | **partial** | same — silent-ignore; default behaviour assumes `sipreplace=1` |
+| `SipReplace` | yes | **partial** | same — silent-ignore; default behavior assumes `sipreplace=1` |
 | `TabOK` | yes | yes | controls `-TAB` enablement and the table EXTVER; `set_tab_ok` |
 | `Warnings` | yes | **partial** | warnings vec exists; no public attribute |
 | `AltAxes` | yes | no | controls alt-plane axis ordering |
@@ -320,7 +320,7 @@ fixture set, none of these are blockers.
 
 The audit's cross-reference scan flagged these C symbols with zero
 or near-zero matches in Rust source.
-Each is summarised here for completeness; the substantive ones
+Each is summarized here for completeness; the substantive ones
 have their own section above.
 
 | C function | Rust mentions | Status |
@@ -330,14 +330,14 @@ have their own section above.
 | `DSBSetUp` | 0 | gap (see [§DSBSpecFrame](#dsbspecframe-setup-from-fits-class)) |
 | `DSSFromStore` | 0 | partial (see [§DSS](#dss--non-linear-plate-solution)) |
 | `DSSToStore` | 0 | partial (see [§DSS](#dss--non-linear-plate-solution)) |
-| `HasAIPSSpecAxis` | 0 | ported by behaviour (`guess_encoding::has_aips_spectral_ctype`); just no name match |
-| `LooksLikeClass` | 0 | ported by behaviour (`guess_encoding::looks_like_class`); just no name match |
+| `HasAIPSSpecAxis` | 0 | ported by behavior (`guess_encoding::has_aips_spectral_ctype`); just no name match |
+| `LooksLikeClass` | 0 | ported by behavior (`guess_encoding::looks_like_class`); just no name match |
 | `PutTable` / `PutTables` | 1 | ported as `put_table` / `put_tables` |
 | `DateObs` | 1 | ported (`mjd_to_date_str` and the inverse in `wcs_keywords.rs::read_epoch_into_store`) — just a different name |
 | `WATCoeffs` | 1 | ported as `wat_coeffs` in `spec_trans.rs` |
 | `WcsFcRead` | 1 | ported as `wcs_keywords::extract_wcs_keywords`; verified keyword set covers TELESCOP/JCMT/UKIRT (gap noted in [§DTAI](#telescop-gated-dtai-keyword)) and AXREF (gap noted in [§AXREF](#axrefi-keyword-for--tab-axes)) but otherwise comparable scope |
 | `SAOTrans` | 1 | gap (see [§SAO](#sao-encoding-translator)) |
-| `IsAIPSSpectral` | 2 | ported by behaviour as `is_aips_spectral` |
+| `IsAIPSSpectral` | 2 | ported by behavior as `is_aips_spectral` |
 | `PCFromStore` | 2 | ported as `enc_pc::write_to_cards` |
 | `SplitMat` | 2 | ported as `wcs_decompose::split_cd` |
 | `WcsToStore` | 2 | ported as part of `enc_*::read_from_cards` |

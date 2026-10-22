@@ -321,7 +321,7 @@ Create `crates/ast-core/tests/test_winmap.rs` with tests for:
 - Zero scale → BAD on inverse
 - BAD_VALUE propagation
 - Rate computation
-- Serialisation round-trip via `to_native_string`/`from_native_string`
+- Serialization round-trip via `to_native_string`/`from_native_string`
 
 - [ ] **Step 7: Verify and commit**
 
@@ -342,7 +342,7 @@ git commit -m "Add WinMap (per-axis linear mapping)"
 - Modify: `crates/ast-core/src/mappings/mod.rs`
 - Create: `crates/ast-core/tests/test_lutmap.rs`
 
-LutMap is a 1D lookup table mapping with linear or nearest-neighbour
+LutMap is a 1D lookup table mapping with linear or nearest-neighbor
 interpolation. Always nin = nout = 1.
 
 - [ ] **Step 1: Create lutmap.rs with struct, LutInterp, and constructor**
@@ -395,12 +395,12 @@ Same pattern as WinMap — add module, re-export, update all dispatch points.
 Create `crates/ast-core/tests/test_lutmap.rs` (from `testlutmap.c`):
 - Linear interpolation between entries
 - Extrapolation at boundaries
-- Nearest-neighbour mode
+- Nearest-neighbor mode
 - BAD values in table
 - Inverse (monotonic table) via binary search
 - Non-monotonic → no inverse
 - Flat sections in table
-- Serialisation round-trip
+- Serialization round-trip
 
 - [ ] **Step 6: Verify and commit**
 
@@ -511,7 +511,7 @@ Create `crates/ast-core/tests/test_polymap.rs` (from `testpolymap.c`):
 - Iterative (LM) inverse and verify convergence
 - BAD_VALUE propagation
 - Zero-coefficient terms ignored
-- Serialisation round-trip
+- Serialization round-trip
 
 - [ ] **Step 8: Verify and commit**
 
@@ -601,7 +601,7 @@ Create `crates/ast-core/tests/test_chebymap.rs` (from `testchebymap.c`):
 - 2D with mixed powers
 - Out-of-bounds input → BAD
 - Forward/inverse round-trip accuracy
-- Serialisation round-trip
+- Serialization round-trip
 
 - [ ] **Step 7: Verify and commit**
 
@@ -666,6 +666,6 @@ After all tasks are complete:
 6. LutMap: interpolation correct, inverse via binary search works
 7. PolyMap: polynomial evaluation correct, LM inverse converges
 8. ChebyMap: Chebyshev basis evaluation correct, domain bounds enforced
-9. All 4 types serialise and deserialise correctly
+9. All 4 types serialize and deserialize correctly
 10. All 4 types in AnyObject dispatch
 11. `git status` — clean

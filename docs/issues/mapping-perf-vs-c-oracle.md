@@ -14,9 +14,9 @@ linking `reference/starlink-ast/build-ast/libast.dylib`.
 ## Scope
 
 This is the per-class Rust-vs-C transform benchmark sweep run after the
-recent native-serialisation byte-exact round-trip fixes (see commits
+recent native-serialization byte-exact round-trip fixes (see commits
 `8d5d908` through `1de5377`). Each variant builds a deliberately
-non-trivial mapping shape, serialises it to Native text, and times the
+non-trivial mapping shape, serializes it to Native text, and times the
 forward (and inverse where defined) `astTran` arms on both sides at
 N ∈ {16, 256, 10 000, 100 000}. The C side ingests the Rust-emitted
 serial form via `astFromString` so both engines bench the same logical
@@ -91,7 +91,7 @@ permmap_2d_swap              forward     0.07     1.00     5.97    42.29
 
 The whole `r16` column shows Rust winning on per-call overhead — C's
 `astTran*` dispatch path (status check, AST handle resolution, output
-PointSet alloc) dominates at small N. But two cases stay Rust-favoured
+PointSet alloc) dominates at small N. But two cases stay Rust-favored
 even at bulk-N:
 
 | variant | r100k | note |
@@ -121,11 +121,11 @@ output) before celebrating.
 | `wcsmap_tan/sin` inverse | 1.26 / 1.37 |
 | `splinemap_5x5_cubic` forward | 1.50 |
 
-No urgent action — these are the bulk of the catalogue. Re-visit any
+No urgent action — these are the bulk of the catalog. Re-visit any
 that the SCUBA-2 / LSST hot paths actually exercise (notably
 `polymap` and `matrixmap`).
 
-### Rust 1.7–4× slower (mid-tier optimisation candidates)
+### Rust 1.7–4× slower (mid-tier optimization candidates)
 
 | variant | r100k | notes |
 |---|---|---|
@@ -136,7 +136,7 @@ that the SCUBA-2 / LSST hot paths actually exercise (notably
 | `zoommap_2d_x2.5` (both) | 2.59 / 3.59 | cheap-mapping bulk-N tax |
 | `mathmap_2d_linear` (both) | 3.68 / 3.12 | parser-emitted bytecode evaluator; per-token dispatch per point |
 | `wcsmap_sin/tan` forward | 3.76 / 4.20 | sky projection; **largest absolute deficit** because the math body is heavy |
-| `slamap_eqgal` (both) | 3.77 / 3.94 | celestial conversion (pal); investigate vectorisation across step chain |
+| `slamap_eqgal` (both) | 3.77 / 3.94 | celestial conversion (pal); investigate vectorization across step chain |
 
 `wcsmap` forward is the biggest real-arithmetic regression — TAN+SIN
 forward go through Rust's `wcsmap` projection without the per-projection
@@ -158,7 +158,7 @@ unlock the bulk-N wins; not worth pursuing until users actually pin a
 workload on MathMap.
 
 `chebymap` is interesting because `polymap` runs at **0.68×** with the
-same 2D, ~12-coefficient shape but a SIMD-vectorised forward kernel,
+same 2D, ~12-coefficient shape but a SIMD-vectorized forward kernel,
 while `chebymap` lacks one and lands at **2.01×**. The factor of ~3 gap
 between the two classes is almost entirely the SIMD pipeline that
 `polymap` enjoys; porting it to `chebymap` is the obvious next step if
@@ -191,7 +191,7 @@ The remaining 5-8× cluster (`winmap`, `shiftmap`, `matrixmap_diagonal`,
 large-N tax" pattern from CLAUDE.md: C hits sub-0.3 ns/pt and Rust
 plateaus at 1.5-3 ns/pt. Some of this is `PointSet` indirection cost
 in `transform_into`; some is the lack of a fused per-mapping kernel
-specialisation. For SCUBA-2-style workloads the *absolute* difference
+specialization. For SCUBA-2-style workloads the *absolute* difference
 (2 ns/pt vs 0.3 ns/pt → 1.7 ns/pt × 100k points × 10k timeslices ≈
 1.7 s) is small but real.
 

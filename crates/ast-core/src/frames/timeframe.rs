@@ -1066,12 +1066,12 @@ impl TimeFrame {
         self.attrs.dtai = Some(dtai);
     }
 
-    // --- Serialisation helpers ---
+    // --- Serialization helpers ---
 
     /// Return the default title: "SystemLabel [TimeScale]".
     fn default_title(&self) -> String {
         // Mirrors C `GetTitle` (timeframe.c:3107). Start with the system
-        // label (already capitalised), append the timescale in brackets when
+        // label (already capitalized), append the timescale in brackets when
         // it is *set* (and the system is not BEPOCH, which is TT-only), and
         // append the origin as an absolute iso.0 date/time when a non-zero
         // TimeOrigin is set and the Format is not itself a date string.
@@ -1960,7 +1960,7 @@ impl Frame for TimeFrame {
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         super::assert_points_len("norm", self.naxes(), &[&*coords]);
-        // Time coordinates are unbounded — no normalisation needed.
+        // Time coordinates are unbounded — no normalization needed.
         Ok(())
     }
 
@@ -2025,7 +2025,7 @@ impl Frame for TimeFrame {
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // A specialised leaf frame can only be cast down to a plain
+        // A specialized leaf frame can only be cast down to a plain
         // Frame (BasicFrame). Same-class is handled by the direct Match
         // (no cast needed), so only the BasicFrame target matters here.
         if other
@@ -2202,7 +2202,7 @@ fn timeframe_sub_frame(
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 impl Serializable for TimeFrame {
@@ -2310,7 +2310,7 @@ impl Serializable for TimeFrame {
         let system_present = read.is_some();
 
         let mut tf = TimeFrame::new(system);
-        // TimeFrame::new flags System as set; honour the serialised
+        // TimeFrame::new flags System as set; honor the serialized
         // set-ness instead (a commented `System=` line means unset).
         tf.system_set = system_present;
 

@@ -22,7 +22,7 @@ Prefer, in order:
 1. **A test that fails.** Nothing to remember, nothing to read.
    Two exist and are the model: `test_deferred_fixtures.rs` fails if the deferred-fixture set changes without a matching `DEFERRED_CLASSES` row, and `native_read_excluded_entries_still_fail` fails when an excluded wcsconv case starts passing.
 2. **A check in `CLAUDE.md`.** Read every session; keep it to the imperative.
-3. **An entry here.** For hazards that cannot be mechanised — where the judgement is the whole content.
+3. **An entry here.** For hazards that cannot be mechanized — where the judgement is the whole content.
 
 Any entry below that can be moved up this list should be.
 When you convert one, say so in the entry rather than deleting it: the evidence is what makes the test worth keeping.
@@ -33,7 +33,7 @@ When you convert one, say so in the entry rather than deleting it: the evidence 
 
 ### H1 — Collapsing C's per-class extension points into one central function
 
-**Trigger.** You are about to implement, in one place, behaviour that C spreads across a per-class `vtab` method.
+**Trigger.** You are about to implement, in one place, behavior that C spreads across a per-class `vtab` method.
 
 **Hazard.** Some `vtab` entries are ceremony (`astGetAttrib` string dispatch, per-attribute dump/load, loader glue) and collapsing them is the point of the port.
 Others are the extension mechanism a generic driver in another file calls back into, and collapsing those makes the driver's control flow unportable.
@@ -52,7 +52,7 @@ The test for architecture is mechanical: **does a generic driver in another file
 Known architecture, not boilerplate: `MapMerge`, `Transform`, `Simplify`, `Equal`, `MapSplit`, `Match`, `SubFrame`, `Overlay`, `RegPins`, `RegBaseMesh`, `RegBaseBox`, `GetDefUnc`, `GetAxis`.
 
 `GetAxis` is the entry that shows how quiet this hazard can be.
-`AxDistance` / `AxOffset` / `AxNorm` are each assigned in `frameset.c` and `region.c` as pure forwarders, so they read as boilerplate; `CmpFrame` and `SkyFrame` override none of them and reach their per-axis behaviour entirely through `GetAxis`, whose only assignment is `frame.c:6071`.
+`AxDistance` / `AxOffset` / `AxNorm` are each assigned in `frameset.c` and `region.c` as pure forwarders, so they read as boilerplate; `CmpFrame` and `SkyFrame` override none of them and reach their per-axis behavior entirely through `GetAxis`, whose only assignment is `frame.c:6071`.
 The port collapsed it: a `SkyFrame`-wide `ax_distance` override, a display-only `SkyAxis`, and a frame-wide `has_sky_axis` boolean where C's `GetActiveUnit` (`frame.c:4669`) *derives* that answer from a per-axis `astGetAxis` loop.
 Nothing failed, because the two Frames a fixture reaches for — a SkyFrame, where every axis folds, and a plain Frame, where none does — cannot tell a per-axis rule from a frame-wide one.
 What exposed it was an upstream bug fix (`5613e44d`) whose regression test builds a Frame with one sky axis beside one plain axis: the fix was one character, and landing its gate needed the seam.
@@ -79,22 +79,22 @@ When a divergence appears downstream of a reshape, suspect the shape before the 
 **Hazard.** They diverge in exactly the cases you have no fixture for, and because the field is load-bearing in two subsystems, untangling it later touches both.
 
 **Evidence.** The serialized `IsSimp` token and the internal "already-simplified, do not re-merge" barrier were one field.
-Separating them took `ca743c1` ("port IsSimple semantics — rename flag, clear on invert"), `e9ac139` ("use Frozen (not IsSimple) as the component merge barrier"), `d923dee` ("decouple serialised IsSimp tag from merge-guard flag"), and a series of tag-placement fixes — 14 commits over three months.
+Separating them took `ca743c1` ("port IsSimple semantics — rename flag, clear on invert"), `e9ac139` ("use Frozen (not IsSimple) as the component merge barrier"), `d923dee` ("decouple serialized IsSimp tag from merge-guard flag"), and a series of tag-placement fixes — 14 commits over three months.
 Part of the residue then turned out to be a genuine C quirk rather than a Rust bug, so the port was chasing a moving target for part of that time.
 
 **Check.** If the C source has two names, keep two fields until a fixture proves they cannot diverge.
 Cheap to split early, expensive to split late.
 
-### H4 — Not modelling a C-wide mutable-state convention before relying on it
+### H4 — Not modeling a C-wide mutable-state convention before relying on it
 
 **Trigger.** You are about to depend on a C convention that has no natural equivalent in the owned-value design — `Invert`, `Frozen`, `RESTRICTED_SIMPLIFY`, reference-counted sharing.
 
 **Hazard.** With no model written down, each call site re-derives the convention locally, and they disagree.
 The disagreement is invisible until something composes them.
 
-**Evidence.** C's `Invert` is a mutable per-object bit with defined behaviour under encapsulation: the parent records the child's orientation at construction and forces it back before transforming.
+**Evidence.** C's `Invert` is a mutable per-object bit with defined behavior under encapsulation: the parent records the child's orientation at construction and forces it back before transforming.
 No Rust model of this was written.
-The result was most of July spent on orientation repair — `6866eb8` (push parallel inversion to deepest leaves), `ff319fd` (preserve leaf orientation across an invert-normalising `simplified()`), `7899e17` (materialise inverted PermMap leaves forward in flatten), `ff1a785` (restore leaf orientation in parallel reconstruct), `f24edc5` (store simplified elements at their returned orientation), `aa7242c`, `1cdb4d5`, `2804c6f`.
+The result was most of July spent on orientation repair — `6866eb8` (push parallel inversion to deepest leaves), `ff319fd` (preserve leaf orientation across an invert-normalizing `simplified()`), `7899e17` (materialize inverted PermMap leaves forward in flatten), `ff1a785` (restore leaf orientation in parallel reconstruct), `f24edc5` (store simplified elements at their returned orientation), `aa7242c`, `1cdb4d5`, `2804c6f`.
 27 commits mention invert/orientation, and they landed *after* the H1 rebuild, so the same ground was covered twice.
 
 **Check.** Write the mapping from the C convention to the Rust representation before the first call site — a paragraph in the module doc is enough.
@@ -200,16 +200,16 @@ Three in this repository could, and the one that survived longest hid a real def
 A case that cannot be compared yet goes in a named exclusion list with a per-case reason string, plus a test that fails when it starts passing.
 `NATIVE_READ_EXCLUDED` in `test_wcsconv.rs` is the pattern, and it is currently empty.
 
-### H11 — A comparator that normalises away a class of difference
+### H11 — A comparator that normalizes away a class of difference
 
-**Hazard.** Whatever the comparator normalises becomes unfalsifiable, and the corpus will not save you if it contains no instance of it either.
+**Hazard.** Whatever the comparator normalizes becomes unfalsifiable, and the corpus will not save you if it contains no instance of it either.
 
 **Evidence.** `native_round_trip_fixture` compares with `trim()` and `split_whitespace()`, so trailing whitespace is invisible.
 That is exactly the shape of the defect fixed in `86810ce`: C's `WriteObject` emits `" ="` for a comment-less nested object where Rust emitted `" = "`.
 The corpus could not have caught it either — `grep -rhcE " =$"` returns zero across every scanned fixture directory, and the four fixtures that do contain such a card sit outside all of them.
 **Still open**; both halves are recorded in `PLAN.md` §5.
 
-**Check.** If a comparator normalises anything, the corpus needs a fixture that exercises what was normalised.
+**Check.** If a comparator normalizes anything, the corpus needs a fixture that exercises what was normalized.
 Relaxations are per case, named in source, and justified in a comment — never a widened global tolerance.
 
 ### H12 — Declaring a gate that does not hold
@@ -231,7 +231,7 @@ If it does not exist, document its absence instead — that is what a reader nee
 
 **Trigger.** You are about to move the `reference/starlink-ast` pin.
 
-**Hazard.** The port deliberately mirrors some C behaviour that is wrong, to stay byte-exact.
+**Hazard.** The port deliberately mirrors some C behavior that is wrong, to stay byte-exact.
 Each such mirror is a scheduled future defect, and it fires silently — the fixtures still agree with each other, just not with the new C.
 
 **Evidence.** `bfacdfe` mirrors `EncodeFloat`'s length-preserving exponent-zero strip; `36f0863` licenses the `IsSimp` aliasing quirk as astequal-only.

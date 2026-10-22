@@ -115,7 +115,7 @@ fn capture_gappt_pre_simplify_mapping() {
 }
 ```
 
-If `mapping.clone_box()` doesn't exist, find the appropriate clone method on `dyn Mapping`. If `any_object_to_node` requires an `AnyObject` variant we don't have for raw mappings, build the FrameSet's full pixel→world mapping by other means — what matters is capturing some serialisable representation of the mapping handed to `simplify`. Check what's on `dyn Mapping`: `grep -n "pub fn" crates/ast-core/src/mappings/mod.rs | head -20`.
+If `mapping.clone_box()` doesn't exist, find the appropriate clone method on `dyn Mapping`. If `any_object_to_node` requires an `AnyObject` variant we don't have for raw mappings, build the FrameSet's full pixel→world mapping by other means — what matters is capturing some serializable representation of the mapping handed to `simplify`. Check what's on `dyn Mapping`: `grep -n "pub fn" crates/ast-core/src/mappings/mod.rs | head -20`.
 
 If you cannot dump a `dyn Mapping` directly, fall back to: dump the entire FrameSet via the existing `to_native_string` path, then in Task 2 hand-extract the pixel-to-world mapping from the FrameSet.
 

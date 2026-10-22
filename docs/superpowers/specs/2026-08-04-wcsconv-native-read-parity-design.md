@@ -437,7 +437,7 @@ now absorbs the aliasing quirk instead of excluding the fixtures.
 `PLAN.md` gains the deferred-fixture section and its FitsChan row is updated
 as units land.
 `docs/issues/fitschan-c-port-gaps.md` is the existing FitsChan gap
-catalogue and should be updated rather than duplicated by this spec.
+catalog and should be updated rather than duplicated by this spec.
 
 **Parallelism** — U2 and U3 are independent of everything.
 U1 must precede U7.

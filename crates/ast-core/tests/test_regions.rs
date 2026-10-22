@@ -66,7 +66,7 @@ fn general_interval_bounds() {
 
 #[test]
 fn general_circle_bounds_and_disc() {
-    // C: circle centred at (0,0) with edge point at (1,0) -> radius 1
+    // C: circle centerd at (0,0) with edge point at (1,0) -> radius 1
     let frm = BasicFrameBuilder::new(2).build().unwrap();
     let circle = CircleBuilder::new(frm, vec![0.0, 0.0])
         .unwrap()
@@ -322,7 +322,7 @@ fn general_negated_circle_and_prism_bounds() {
 
 #[test]
 fn sphere_3d_transform() {
-    // Create a 3D circle (sphere) centred at (1, 2, 3) with edge at (0, -1, -2).
+    // Create a 3D circle (sphere) centerd at (1, 2, 3) with edge at (0, -1, -2).
     // The radius = distance from (1,2,3) to (0,-1,-2) = sqrt(1 + 9 + 25) = sqrt(35).
     let frm = BasicFrameBuilder::new(3).build().unwrap();
     let circle = CircleBuilder::new(frm.clone(), vec![1.0, 2.0, 3.0])
@@ -367,7 +367,7 @@ fn sphere_3d_transform() {
 
 #[test]
 fn sphere_3d_transform_opposite_direction() {
-    // Test along direction from centre (1,2,3) towards (0,0,0).
+    // Test along direction from center (1,2,3) towards (0,0,0).
     let frm = BasicFrameBuilder::new(3).build().unwrap();
     let circle = CircleBuilder::new(frm, vec![1.0, 2.0, 3.0])
         .unwrap()
@@ -428,7 +428,7 @@ fn sphere_3d_overlap_same() {
 
 #[test]
 fn sphere_3d_overlap_first_inside() {
-    // Smaller sphere inside larger one at same centre.
+    // Smaller sphere inside larger one at same center.
     let frm = BasicFrameBuilder::new(3).build().unwrap();
     let big = CircleBuilder::new(frm.clone(), vec![1.0, 2.0, 3.0])
         .unwrap()
@@ -458,7 +458,7 @@ fn sphere_3d_overlap_first_inside() {
 
 #[test]
 fn sphere_3d_overlap_partial() {
-    // Overlapping spheres: same centre axis 1 and 3, offset on axis 2.
+    // Overlapping spheres: same center axis 1 and 3, offset on axis 2.
     let frm = BasicFrameBuilder::new(3).build().unwrap();
     let c1 = CircleBuilder::new(frm.clone(), vec![1.0, 2.0, 3.0])
         .unwrap()
@@ -694,7 +694,7 @@ fn interval_2d_overlap_same() {
 
 #[test]
 fn box_transform_membership() {
-    // Box from (1,2) to (5,8): centre (3,5), half-widths (2,3).
+    // Box from (1,2) to (5,8): center (3,5), half-widths (2,3).
     let frm = BasicFrameBuilder::new(2).build().unwrap();
     let bx = BoxRegionBuilder::from_bounds(frm, &[1.0, 2.0], &[5.0, 8.0])
         .unwrap()
@@ -784,8 +784,8 @@ fn cmpregion_basic_or_negated_and_box() {
     // Create:
     //   f1 = Frame(2)
     //   r1 = Box(f1, bounds [0,0] to [1,1])
-    //   r2 = Circle(f1, centre (-1,0), edge (0,0)) -> radius 1
-    //   r3 = Circle(f1, centre (1,0), edge (0,0)) -> radius 1 (touches r2 at origin)
+    //   r2 = Circle(f1, center (-1,0), edge (0,0)) -> radius 1
+    //   r3 = Circle(f1, center (1,0), edge (0,0)) -> radius 1 (touches r2 at origin)
     //   cr = CmpRegion(r2, r3, OR) -> union of two unit circles
     //   negate(cr)                  -> exterior of union
     //   cr2 = CmpRegion(cr, r1, AND) -> box minus the two circles
@@ -1338,7 +1338,7 @@ fn prism_with_cmpregion_bounds() {
 // (from checkCircle, lines 1675-1708 of testregions.c)
 //
 // A circle on the sky is a spherical cap. Points inside are those whose
-// great-circle distance from the centre is less than the radius.
+// great-circle distance from the center is less than the radius.
 // ============================================================================
 
 #[test]
@@ -1346,7 +1346,7 @@ fn sky_circle_basic_membership() {
     // Create a SkyFrame (default ICRS).
     let sky = SkyFrame::new(SkySystem::Icrs);
 
-    // Centre at RA=1.2217305 rad (~70 deg), Dec=1.3962634 rad (~80 deg).
+    // Center at RA=1.2217305 rad (~70 deg), Dec=1.3962634 rad (~80 deg).
     let centre = [1.2217305, 1.3962634];
     // Edge point at (0.8, 0.8).
     let edge = [0.8, 0.8];
@@ -1357,13 +1357,13 @@ fn sky_circle_basic_membership() {
         .build()
         .unwrap();
 
-    // Compute the radius as great-circle distance from centre to edge.
+    // Compute the radius as great-circle distance from center to edge.
     let rad = sky.distance(&centre, &edge).unwrap();
     assert!(rad > 0.0, "radius must be positive");
 
-    // Get a point just inside (99.9% of radius along centre→edge direction).
+    // Get a point just inside (99.9% of radius along center→edge direction).
     let p_inside = sky.offset(&centre, &edge, rad * 0.999).unwrap();
-    // Get a point just outside (100.1% of radius along centre→edge direction).
+    // Get a point just outside (100.1% of radius along center→edge direction).
     let p_outside = sky.offset(&centre, &edge, rad * 1.001).unwrap();
 
     // Transform through the circle: inside passes through, outside becomes BAD.
@@ -1397,7 +1397,7 @@ fn sky_circle_basic_membership() {
 
 #[test]
 fn sky_circle_membership_opposite_direction() {
-    // Test membership along a different direction from centre.
+    // Test membership along a different direction from center.
     let sky = SkyFrame::new(SkySystem::Icrs);
 
     let centre = [1.2217305, 1.3962634];
@@ -1446,7 +1446,7 @@ fn sky_circle_membership_opposite_direction() {
 
 #[test]
 fn sky_circle_centre_is_inside() {
-    // The centre of the circle is always inside.
+    // The center of the circle is always inside.
     let sky = SkyFrame::new(SkySystem::Icrs);
     let centre = [1.2217305, 1.3962634];
     let edge = [0.8, 0.8];
@@ -1495,14 +1495,14 @@ fn sky_circle_from_radius() {
         .build()
         .unwrap();
 
-    // Point at 0.05 rad from centre (inside).
+    // Point at 0.05 rad from center (inside).
     let p_in = sky.offset(&centre, &[0.1, 0.0], 0.05).unwrap();
     assert!(
         circle.point_in_region(&p_in).unwrap(),
         "Point at half radius should be inside"
     );
 
-    // Point at 0.15 rad from centre (outside).
+    // Point at 0.15 rad from center (outside).
     let p_out = sky.offset(&centre, &[0.1, 0.0], 0.15).unwrap();
     assert!(
         !circle.point_in_region(&p_out).unwrap(),
@@ -1542,7 +1542,7 @@ fn sky_circle_overlap_same() {
 
 #[test]
 fn sky_circle_overlap_first_inside() {
-    // Smaller circle at same centre is inside larger.
+    // Smaller circle at same center is inside larger.
     let sky = SkyFrame::new(SkySystem::Icrs);
     let centre = [1.0, 0.5];
 
@@ -1581,7 +1581,7 @@ fn sky_circle_overlap_partial() {
         .build()
         .unwrap();
 
-    // Shift centre in RA by less than sum of radii.
+    // Shift center in RA by less than sum of radii.
     let c2 = CircleBuilder::new(sky, vec![1.4, 0.5])
         .unwrap()
         .radius(0.3)
@@ -1640,7 +1640,7 @@ fn sky_circle_disc() {
 
     let (disc_centre, disc_radius) = circle.get_region_disc().unwrap();
 
-    // Disc centre should be near the circle's centre.
+    // Disc center should be near the circle's center.
     assert!(
         (disc_centre[0] - centre[0]).abs() < 1.0e-5,
         "SkyCircle disc: centre RA"
@@ -1673,7 +1673,7 @@ fn sky_circle_bounds_equator() {
     let (lbnd, ubnd) = circle.get_region_bounds().unwrap();
 
     // Bounds come from the great-circle mesh (circle.c::RegBaseMesh +
-    // skyframe.c::NormBox), not a planar centre ± radius box. At the equator
+    // skyframe.c::NormBox), not a planar center ± radius box. At the equator
     // the RA extent is ±radius (cos(dec)=1) and the Dec extent runs from
     // -radius to just under +radius: the mesh's northernmost sample sits a
     // hair inside the true top, so the upper Dec is ~0.09995 rather than 0.1.
@@ -1687,7 +1687,7 @@ fn sky_circle_bounds_equator() {
         "SkyCircle equator bounds: upper Dec, got {}",
         ubnd[1]
     );
-    // RA bounds — great-circle offset of radius due east/west of centre.
+    // RA bounds — great-circle offset of radius due east/west of center.
     assert!(
         (lbnd[0] - (centre[0] - radius)).abs() < 1.0e-4,
         "SkyCircle equator bounds: lower RA, got {}",
@@ -1702,9 +1702,9 @@ fn sky_circle_bounds_equator() {
 
 #[test]
 fn sky_circle_bounds_near_pole() {
-    // Circle centred near north pole: RA bounds should wrap to [0, 2*pi].
+    // Circle centerd near north pole: RA bounds should wrap to [0, 2*pi].
     // From checkCircle lines 1765-1771 of testregions.c.
-    // Centre at (0.8, pi/2) — the north celestial pole with RA=0.8.
+    // Center at (0.8, pi/2) — the north celestial pole with RA=0.8.
     // With radius 0.1, the circle extends from Dec = pi/2 - 0.1 to pi/2.
     // The RA bounds should be the full range [0, 2*pi] because the circle
     // straddles all longitudes near the pole.
@@ -1760,10 +1760,10 @@ fn sky_circle_negated_membership() {
         .build()
         .unwrap();
 
-    // Before negation: centre is inside.
+    // Before negation: center is inside.
     assert!(circle.point_in_region(&centre).unwrap());
 
-    // After negation: centre is outside.
+    // After negation: center is outside.
     circle.negate();
     assert!(!circle.point_in_region(&centre).unwrap());
 
@@ -1802,7 +1802,7 @@ fn sky_circle_open_boundary() {
         "Open circle excludes edge"
     );
 
-    // Centre is still inside for open circle.
+    // Center is still inside for open circle.
     assert!(
         circle.point_in_region(&centre).unwrap(),
         "Open circle includes centre"
@@ -1847,13 +1847,13 @@ fn sky_circle_fk5_membership() {
 // Box on SkyFrame — basic membership
 // (from checkBox, lines 1103+ of testregions.c)
 //
-// A Box on SkyFrame uses centre ± half-widths in angular coordinates.
+// A Box on SkyFrame uses center ± half-widths in angular coordinates.
 // The membership test uses the frame's distance metric indirectly.
 // ============================================================================
 
 #[test]
 fn sky_box_basic_membership() {
-    // Box on SkyFrame centred at (1.0, 0.5), half-widths (0.1, 0.1).
+    // Box on SkyFrame centerd at (1.0, 0.5), half-widths (0.1, 0.1).
     // This is a small patch away from the pole where the geometry is
     // approximately flat.
     let sky = SkyFrame::new(SkySystem::Icrs);
@@ -1865,7 +1865,7 @@ fn sky_box_basic_membership() {
         .build()
         .unwrap();
 
-    // Centre is inside.
+    // Center is inside.
     assert!(bx.point_in_region(&centre).unwrap(), "SkyBox: centre");
     // Corner is inside (closed).
     assert!(bx.point_in_region(&corner).unwrap(), "SkyBox: corner");
@@ -1900,10 +1900,10 @@ fn sky_box_bounds() {
 
     let (lbnd, ubnd) = bx.get_region_bounds().unwrap();
 
-    // Lower bound: centre - half-widths = (0.9, 0.4).
+    // Lower bound: center - half-widths = (0.9, 0.4).
     assert!((lbnd[0] - 0.9).abs() < 1.0e-10, "SkyBox bounds: lower RA");
     assert!((lbnd[1] - 0.4).abs() < 1.0e-10, "SkyBox bounds: lower Dec");
-    // Upper bound: centre + half-widths = (1.1, 0.6).
+    // Upper bound: center + half-widths = (1.1, 0.6).
     assert!((ubnd[0] - 1.1).abs() < 1.0e-10, "SkyBox bounds: upper RA");
     assert!((ubnd[1] - 0.6).abs() < 1.0e-10, "SkyBox bounds: upper Dec");
 }
@@ -1993,7 +1993,7 @@ fn sky_ellipse_basic_membership() {
         .build()
         .unwrap();
 
-    // Centre is inside.
+    // Center is inside.
     assert!(
         ellipse.point_in_region(&centre).unwrap(),
         "SkyEllipse: centre inside"
@@ -2037,7 +2037,7 @@ fn sky_ellipse_rotated_membership() {
         .build()
         .unwrap();
 
-    // Centre is inside.
+    // Center is inside.
     assert!(
         ellipse.point_in_region(&centre).unwrap(),
         "SkyEllipse rotated: centre inside"
@@ -2092,8 +2092,8 @@ fn polygon_sky_bounds_use_first_vertex_origin() {
 fn ellipse_sky_pole_bounds_span_all_longitudes() {
     let sky = SkyFrame::new(SkySystem::Icrs);
 
-    // Centre 0.2 radians short of the north pole, with the primary axis
-    // 0.5 radians long and pointing south along the centre's meridian, so the
+    // Center 0.2 radians short of the north pole, with the primary axis
+    // 0.5 radians long and pointing south along the center's meridian, so the
     // mesh runs over the pole.
     let centre = vec![0.0, FRAC_PI_2 - 0.2];
     let ellipse = EllipseBuilder::new(sky, centre, [0.5, 0.3], std::f64::consts::PI)
@@ -2146,7 +2146,7 @@ fn sky_polygon_basic_membership() {
 
     let polygon = PolygonBuilder::new(sky, vertices).unwrap().build().unwrap();
 
-    // Centre of polygon is inside.
+    // Center of polygon is inside.
     assert!(
         polygon.point_in_region(&[1.05, 0.55]).unwrap(),
         "SkyPolygon: centre inside"
@@ -2234,7 +2234,7 @@ fn sky_polygon_disc() {
 
     let (disc_centre, disc_radius) = polygon.get_region_disc().unwrap();
 
-    // The disc centre should be near the polygon centroid.
+    // The disc center should be near the polygon centroid.
     assert!(
         (disc_centre[0] - 1.05).abs() < 0.1,
         "SkyPolygon disc: centre RA"
@@ -2269,7 +2269,7 @@ fn sky_cmpregion_and_circle_box() {
         .build()
         .unwrap();
 
-    // Box centred at same location, half-widths 0.15 in each axis.
+    // Box centerd at same location, half-widths 0.15 in each axis.
     let bx = BoxRegionBuilder::new(sky, vec![1.0, 0.5], vec![1.15, 0.65])
         .unwrap()
         .build()
@@ -2280,14 +2280,14 @@ fn sky_cmpregion_and_circle_box() {
         .build()
         .unwrap();
 
-    // Centre: inside both.
+    // Center: inside both.
     assert!(
         cmp.point_in_region(&[1.0, 0.5]).unwrap(),
         "SkyCmpRegion AND: centre"
     );
 
     // Point inside box but outside circle (corner of box at distance
-    // sqrt(0.15^2 + 0.15^2) ~ 0.212 > 0.2 from centre).
+    // sqrt(0.15^2 + 0.15^2) ~ 0.212 > 0.2 from center).
     // Actually in angular distance on sky this is approximate.
     // Use a point clearly outside the circle's radius.
     let far_corner = [1.14, 0.64];
@@ -2305,7 +2305,7 @@ fn sky_cmpregion_and_circle_box() {
 
     // Point inside circle but outside box.
     // (0.85, 0.5): RA distance = 0.15 < radius 0.2, but outside box (box RA range is [0.85, 1.15]).
-    // Wait, box centre 1.0, corner 1.15 means half-width 0.15 so range [0.85, 1.15].
+    // Wait, box center 1.0, corner 1.15 means half-width 0.15 so range [0.85, 1.15].
     // So (0.84, 0.5) is outside box.
     assert!(
         !cmp.point_in_region(&[0.84, 0.5]).unwrap(),
@@ -2335,19 +2335,19 @@ fn sky_cmpregion_or_two_circles() {
         .build()
         .unwrap();
 
-    // Centre of c1 is inside OR.
+    // Center of c1 is inside OR.
     assert!(
         cmp.point_in_region(&[1.0, 0.5]).unwrap(),
         "SkyCmpRegion OR: centre of c1"
     );
 
-    // Centre of c2 is inside OR.
+    // Center of c2 is inside OR.
     assert!(
         cmp.point_in_region(&[1.5, 0.5]).unwrap(),
         "SkyCmpRegion OR: centre of c2"
     );
 
-    // Midpoint between the two centres — outside both circles (distance 0.25 > 0.1).
+    // Midpoint between the two centers — outside both circles (distance 0.25 > 0.1).
     assert!(
         !cmp.point_in_region(&[1.25, 0.5]).unwrap(),
         "SkyCmpRegion OR: midpoint outside both"
@@ -2373,7 +2373,7 @@ fn sky_circle_large_radius() {
         .build()
         .unwrap();
 
-    // Centre is inside.
+    // Center is inside.
     assert!(
         circle.point_in_region(&centre).unwrap(),
         "Large circle: centre"
@@ -2470,12 +2470,12 @@ fn sky_box_negated() {
         .build()
         .unwrap();
 
-    // Before negation: centre is inside.
+    // Before negation: center is inside.
     assert!(bx.point_in_region(&centre).unwrap());
     // Distant point is outside.
     assert!(!bx.point_in_region(&[3.0, 0.0]).unwrap());
 
-    // After negation: centre is outside.
+    // After negation: center is outside.
     bx.negate();
     assert!(!bx.point_in_region(&centre).unwrap());
     // Distant point is inside.
@@ -2536,7 +2536,7 @@ fn sky_circle_prism_with_interval() {
 // Circle on SkyFrame — verify that great-circle distance is used
 //
 // Key test: on a SkyFrame, the distance is the great-circle distance.
-// At high declination, a circle centred at Dec=80 deg should NOT use
+// At high declination, a circle centerd at Dec=80 deg should NOT use
 // Euclidean coordinate distance (which would give the wrong shape due
 // to RA coordinate compression near the pole).
 // ============================================================================
@@ -2561,7 +2561,7 @@ fn sky_circle_great_circle_distance_correctness() {
         gc_dist
     );
 
-    // Circle centred at p1 with radius = gc_dist should include p2.
+    // Circle centerd at p1 with radius = gc_dist should include p2.
     let circle = CircleBuilder::new(sky, vec![p1[0], p1[1]])
         .unwrap()
         .edge_point(vec![p2[0], p2[1]])
@@ -2614,7 +2614,7 @@ fn system_change_circle_membership() {
         })
         .unwrap();
 
-    // Convert the centre point from ICRS to Galactic.
+    // Convert the center point from ICRS to Galactic.
     let mut icrs_frame = SkyFrame::new(SkySystem::Icrs);
     let mut gal_frame = SkyFrame::new(SkySystem::Galactic);
     let conversion = icrs_frame.convert_to(&mut gal_frame, &[]).unwrap().unwrap();
@@ -2623,7 +2623,7 @@ fn system_change_circle_membership() {
     let centre_gal = conversion.transform(&centre_pts, true).unwrap();
     let gal_centre = centre_gal.point(0);
 
-    // The centre (in Galactic coords) should be inside the circle.
+    // The center (in Galactic coords) should be inside the circle.
     assert!(
         circle.point_in_region(&gal_centre).unwrap(),
         "Centre (converted to Galactic) should be inside the system-changed circle"
@@ -2655,7 +2655,7 @@ fn system_change_circle_simplify() {
         })
         .unwrap();
 
-    // Convert the centre point to Galactic.
+    // Convert the center point to Galactic.
     let mut icrs_frame = SkyFrame::new(SkySystem::Icrs);
     let mut gal_frame = SkyFrame::new(SkySystem::Galactic);
     let conversion = icrs_frame.convert_to(&mut gal_frame, &[]).unwrap().unwrap();
@@ -2667,7 +2667,7 @@ fn system_change_circle_simplify() {
     // Simplify the circle (as a Mapping).
     let simplified = <dyn Mapping>::simplify(&circle).unwrap();
 
-    // The simplified mapping should still pass the Galactic centre through
+    // The simplified mapping should still pass the Galactic center through
     // (it is inside the region).
     let test_pts = PointSet::from_rows([[gal_centre[0], gal_centre[1]]]);
     let result = simplified.transform(&test_pts, true).unwrap();
@@ -2735,14 +2735,14 @@ fn system_change_circle_overlap_native_galactic() {
 #[test]
 fn system_change_box_membership() {
     // Create a BoxRegion on SkyFrame(ICRS).
-    // Centre at (1.0, 0.5), corner at (1.005, 0.505) — a small box.
+    // Center at (1.0, 0.5), corner at (1.005, 0.505) — a small box.
     let sky = SkyFrame::new(SkySystem::Icrs);
     let mut bx = BoxRegionBuilder::new(sky.clone(), vec![1.0, 0.5], vec![1.005, 0.505])
         .unwrap()
         .build()
         .unwrap();
 
-    // Verify centre is inside before system change.
+    // Verify center is inside before system change.
     assert!(
         bx.point_in_region(&[1.0, 0.5]).unwrap(),
         "Centre should be inside the box (ICRS)"
@@ -2756,7 +2756,7 @@ fn system_change_box_membership() {
     })
     .unwrap();
 
-    // Convert the centre from ICRS to Galactic.
+    // Convert the center from ICRS to Galactic.
     let mut icrs_frame = SkyFrame::new(SkySystem::Icrs);
     let mut gal_frame = SkyFrame::new(SkySystem::Galactic);
     let conversion = icrs_frame.convert_to(&mut gal_frame, &[]).unwrap().unwrap();
@@ -2765,7 +2765,7 @@ fn system_change_box_membership() {
     let centre_gal = conversion.transform(&centre_pts, true).unwrap();
     let gal_centre = centre_gal.point(0);
 
-    // The centre (in Galactic coords) should be inside the box.
+    // The center (in Galactic coords) should be inside the box.
     assert!(
         bx.point_in_region(&gal_centre).unwrap(),
         "Centre (converted to Galactic) should be inside the system-changed box"
@@ -2803,7 +2803,7 @@ fn system_change_simplified_transform_consistent() {
     let mut gal_frame = SkyFrame::new(SkySystem::Galactic);
     let conversion = icrs_frame.convert_to(&mut gal_frame, &[]).unwrap().unwrap();
 
-    // Points: centre, slightly inside, slightly outside, far away.
+    // Points: center, slightly inside, slightly outside, far away.
     let test_icrs = PointSet::from_rows([
         [1.0, 0.5],   // centre
         [1.005, 0.5], // slightly offset in RA (should be inside r=0.02)
@@ -2868,7 +2868,7 @@ fn system_change_circle_serialization_roundtrip() {
         other => panic!("Expected Circle, got {:?}", other),
     };
 
-    // Convert centre to Galactic for testing.
+    // Convert center to Galactic for testing.
     let mut icrs_frame = SkyFrame::new(SkySystem::Icrs);
     let mut gal_frame = SkyFrame::new(SkySystem::Galactic);
     let conversion = icrs_frame.convert_to(&mut gal_frame, &[]).unwrap().unwrap();
@@ -2933,7 +2933,7 @@ CROTA2  =              0.00000
 #[test]
 fn fitschan_sky_circle_bounds() {
     // C testregions.c lines 1637-1648:
-    // Circle at centre (0.0, 1.0) with radius 0.01 rad on the SkyFrame
+    // Circle at center (0.0, 1.0) with radius 0.01 rad on the SkyFrame
     // from a TAN-projection WCS header.
     let fs = fitschan_tan_skyframe();
 
@@ -2970,7 +2970,7 @@ fn fitschan_sky_circle_bounds() {
         ubnd[1]
     );
 
-    // Verify get_region_disc returns the expected centre and radius.
+    // Verify get_region_disc returns the expected center and radius.
     let (disc_centre, disc_radius) = circle.get_region_disc().unwrap();
     assert!(
         disc_centre[0].abs() < 1.0e-5,
@@ -3009,7 +3009,7 @@ fn fitschan_sky_circle_membership() {
         .build()
         .unwrap();
 
-    // Point at 0.999 * radius along centre->edge direction: inside.
+    // Point at 0.999 * radius along center->edge direction: inside.
     let p_inside = fs.offset(&centre, &edge, rad * 0.999).unwrap();
     // Point at 1.001 * radius: outside.
     let p_outside = fs.offset(&centre, &edge, rad * 1.001).unwrap();
@@ -3072,7 +3072,7 @@ fn fitschan_sky_circle_near_pole_bounds() {
         2.0 * PI
     );
 
-    // Dec bounds: lower ~ centre - radius = 1.57 - 0.01 = 1.56
+    // Dec bounds: lower ~ center - radius = 1.57 - 0.01 = 1.56
     assert!(
         (lbnd[1] - 1.56).abs() < 1.0e-2,
         "near-pole circle lbnd[1]: got {}, expected ~1.56",
@@ -3253,7 +3253,7 @@ fn perm_axes_circle_preserves_membership() {
         .build()
         .unwrap();
 
-    // Point near centre is inside.
+    // Point near center is inside.
     assert!(circle.point_in_region(&[0.52, 0.31]).unwrap());
 
     // Permute.
@@ -3355,7 +3355,7 @@ fn remove_regions_from_frameset() {
     );
 
     // After remove_regions, the mapping should pass all points through
-    // (no clipping behaviour from regions).
+    // (no clipping behavior from regions).
     let clean_map = remove_regions(map.as_ref());
     let result4 = clean_map.transform(&pts_out, true).unwrap();
     assert!(
@@ -3440,7 +3440,7 @@ fn convex_hull_basic() {
 // No equal()-checking simplify fixture exercises this: Interval::equal ignores
 // the uncertainty Region, so the corpus cannot detect whether an explicit
 // uncertainty survives a Prism collapse. This standalone test pins the A1
-// carry-forward behaviour directly.
+// carry-forward behavior directly.
 //
 // A Prism of two bounded 1-D Intervals collapses (prism.c::Simplify → parallel
 // CmpMap → MergeInterval's Interval+Interval branch → reclassify to Box) to a
@@ -3517,7 +3517,7 @@ fn prism_simplify_carries_explicit_uncertainty() {
 // `astSetUnc`). These tests reconstruct the region and uncertainty from the
 // same primitives the C fixture generator uses, invoke `set_uncertainty`, and
 // compare the serialization byte-for-byte against the committed oracle `.map`,
-// pinning the validate/remap/negate/RegionFS/recentre body directly.
+// pinning the validate/remap/negate/RegionFS/recenter body directly.
 // ============================================================================
 
 fn setunc_fixture_map(name: &str) -> String {
@@ -3534,11 +3534,11 @@ fn set_uncertainty_unitmap_clears_region_fs() {
     // Oracle: setunc_unitmap_regionfs_omitted. Region and uncertainty share a
     // plain 2-D Frame, so the remap into the region's base Frame is a UnitMap.
     // C clears the uncertainty's RegionFS attribute (region.c:10869) so its
-    // FrameSet is omitted from the dump, and re-centres it at the box centre
+    // FrameSet is omitted from the dump, and re-centers it at the box center
     // (5, 5).
     let frm = BasicFrameBuilder::new(2).build().unwrap();
     // Upstream builds this with `astBox( f, 0, ... )`, whose two positions are
-    // a centre and a corner rather than two bounds (box.c:4810).
+    // a center and a corner rather than two bounds (box.c:4810).
     let mut region = BoxRegionBuilder::new(frm, vec![0.0, 0.0], vec![10.0, 10.0])
         .unwrap()
         .build()
@@ -3560,10 +3560,10 @@ fn set_uncertainty_unitmap_clears_region_fs() {
 fn set_uncertainty_negates_unbounded() {
     // Oracle: setunc_unbounded_negated. A negated (hence unbounded) uncertainty
     // Box is supplied; C negates it again (region.c:10856) to restore a bounded
-    // uncertainty before storing, then re-centres it at the box centre (5, 5).
+    // uncertainty before storing, then re-centers it at the box center (5, 5).
     let frm = BasicFrameBuilder::new(2).build().unwrap();
     // Upstream builds this with `astBox( f, 0, ... )`, whose two positions are
-    // a centre and a corner rather than two bounds (box.c:4810).
+    // a center and a corner rather than two bounds (box.c:4810).
     let mut region = BoxRegionBuilder::new(frm, vec![0.0, 0.0], vec![10.0, 10.0])
         .unwrap()
         .build()
@@ -3635,7 +3635,7 @@ fn get_def_unc_interval_unbounded() {
     // Oracle: defunc_interval_unbounded. A 2-D Interval with a bounded axis 1
     // ([5, 8]) and a half-open axis 2 (no upper limit) is not Box-equivalent,
     // so Interval::get_def_unc (interval.c:583) builds a Box covering 1.0E-6 of
-    // its own limits: axis 1 half-width 1.5E-6 about centre 6.5, axis 2
+    // its own limits: axis 1 half-width 1.5E-6 about center 6.5, axis 2
     // collapses to [0, 0].
     let frm = BasicFrameBuilder::new(2).build().unwrap();
     let interval = IntervalBuilder::new(frm, vec![5.0, 0.0], vec![8.0, BAD_VALUE])
@@ -3652,7 +3652,7 @@ fn get_def_unc_interval_unbounded() {
 #[test]
 fn get_def_unc_nullregion_is_zero_circle() {
     // Oracle: defunc_nullregion_2d. NullRegion::get_def_unc (nullregion.c:170)
-    // is a zero-radius Circle centred on the origin, not the base-class
+    // is a zero-radius Circle centerd on the origin, not the base-class
     // bounding-box Box.
     let frm = BasicFrameBuilder::new(2).build().unwrap();
     let null = ast_core::regions::NullRegionBuilder::new(frm)
@@ -3669,7 +3669,7 @@ fn get_def_unc_nullregion_is_zero_circle() {
 fn get_def_unc_prism_combines_components() {
     // Oracle: defunc_prism_box_interval. Prism::get_def_unc (prism.c:1207) is a
     // Prism of the two component default uncertainties (Box's and Interval's).
-    // Upstream builds the Box with `astBox( f, 0, ... )`: a centre and a
+    // Upstream builds the Box with `astBox( f, 0, ... )`: a center and a
     // corner, not two bounds (box.c:4810).
     let f2 = BasicFrameBuilder::new(2).build().unwrap();
     let boxr = BoxRegionBuilder::new(f2, vec![0.0, 0.0], vec![4.0, 6.0])
@@ -3693,11 +3693,11 @@ fn get_def_unc_prism_combines_components() {
 fn get_def_unc_cmpregion_uses_component_uncertainty() {
     // Oracle: defunc_cmpregion_component_unc. CmpRegion::get_def_unc
     // (cmpregion.c:1090) returns the first component's uncertainty when that
-    // component has an explicit (non-default) uncertainty, recentred by
-    // set_uncertainty on the component's centre.
+    // component has an explicit (non-default) uncertainty, recenterd by
+    // set_uncertainty on the component's center.
     //
     // Every Box here is built the way upstream builds it, with
-    // `astBox( f, 0, ... )`: a centre and a corner, not two bounds
+    // `astBox( f, 0, ... )`: a center and a corner, not two bounds
     // (box.c:4810).
     let f = BasicFrameBuilder::new(2).build().unwrap();
     let mut reg1 = BoxRegionBuilder::new(f, vec![0.0, 0.0], vec![10.0, 10.0])
@@ -3799,7 +3799,7 @@ fn pick_axes_cmpregion_subset_keeps_cmpregion() {
 // the Region, simplifies the encapsulated FrameSet, deletes a DEFAULT
 // uncertainty, and — for an EXPLICIT uncertainty — runs a stability check.
 // The check simplifies the uncertainty Region; if the simplified form differs,
-// it re-centres the simplified uncertainty at the lower and upper corners of a
+// it re-centers the simplified uncertainty at the lower and upper corners of a
 // test box (the base bounding box when bounded) and compares the resulting
 // widths per axis. When they agree to within 0.5% of their sum on every axis
 // the simplified uncertainty is stable and is installed on the result.
@@ -3867,7 +3867,7 @@ fn simplify_stability_box_linear_unc() {
 #[test]
 fn simplify_stability_box_nonlinear_unc() {
     // Oracle: simpstab_box_nonlinear_unc. The uncertainty is mapped through a
-    // per-axis monotonic MathMap (squaring). astSimplify locally linearises and
+    // per-axis monotonic MathMap (squaring). astSimplify locally linearizes and
     // collapses the uncertainty to a rigid UnitMap Box, so the stability widths
     // still agree and the collapsed uncertainty is installed.
     assert_eq!(
@@ -3880,7 +3880,7 @@ fn simplify_stability_box_nonlinear_unc() {
 fn simplify_stability_permmap_slice_unc() {
     // Oracle: simpstab_permmap_slice_unc. The Region is mapped through a PermMap
     // that drops an axis (2-D -> 1-D), so nin != nout and the stability check
-    // re-centres the uncertainty by transforming its current centre
+    // re-centers the uncertainty by transforming its current center
     // forward-then-back before simplifying.
     assert_eq!(
         simpstab_simplified_native("simpstab_permmap_slice_unc.map"),

@@ -1,4 +1,4 @@
-//! Integration tests: Channel serialisation, KeyMap and native-format round trips.
+//! Integration tests: Channel serialization, KeyMap and native-format round trips.
 //!
 //! Each module is one test file in the parent directory, built into this one
 //! test program so that a change to ast-core relinks a few programs rather than

@@ -724,7 +724,7 @@ impl KeyMap {
         self.insert_entry(key, EntryValue::Undef { nel: 0 }, comment, "astMapPutU")
     }
 
-    /// Normalise `key` and hand the value to [`KeyMap::insert_entry`].
+    /// Normalize `key` and hand the value to [`KeyMap::insert_entry`].
     fn put_scalar(
         &mut self,
         key: &str,
@@ -884,7 +884,7 @@ impl KeyMap {
     /// - As for [`map_copy`](Self::map_copy), when `merge` copies into a
     ///   held KeyMap.
     // keymap.c:4264. A key absent from `source` is ignored (keymap.c:4356,
-    // `if( in_entry )`). Each KeyMap's own KeyCase normalises the key it is
+    // `if( in_entry )`). Each KeyMap's own KeyCase normalizes the key it is
     // searched with, and the entry is stored under the destination's form:
     // KeyCase can only be changed while a KeyMap is empty, so every key a
     // KeyMap holds should be in that KeyMap's own casing (C
@@ -1133,7 +1133,7 @@ impl KeyMap {
         }
     }
 
-    /// Normalise `key` (trailing spaces only — the key has already been
+    /// Normalize `key` (trailing spaces only — the key has already been
     /// through [`table::convert_key`]'s case folding by the time it
     /// reaches here in every caller) and look it up.
     ///
@@ -1356,7 +1356,7 @@ impl KeyMap {
         )
     }
 
-    /// Normalise `key` and hand the vector value to [`KeyMap::insert_entry`].
+    /// Normalize `key` and hand the vector value to [`KeyMap::insert_entry`].
     ///
     /// A zero-length vector is refused — see [`entry::is_empty_vector`].
     fn put_vector(

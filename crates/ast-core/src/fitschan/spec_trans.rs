@@ -161,7 +161,7 @@ pub(crate) fn spec_trans_inplace(
     }
 
     // Translations 7, 8, 10 (fitschan.c:31709-31762): EPOCH /
-    // EQUINOX normalisation. Primary plane only; no encoding gate.
+    // EQUINOX normalization. Primary plane only; no encoding gate.
     translate_epoch_equinox(cards);
 
     // Translation 9 (fitschan.c:31763-31784): DATE-OBS → MJD-OBS
@@ -242,7 +242,7 @@ pub(crate) fn spec_trans_inplace(
     translate_aips_spectral_ctype(cards);
 
     // Translation 22 (fitschan.c:31778-31810): CUNIT case-insensitive
-    // canonicalisation: "Hz", "Angstrom", "km/s", "m/s" → canonical
+    // canonicalization: "Hz", "Angstrom", "km/s", "m/s" → canonical
     // case. Per-version letter, no encoding gate.
     translate_cunit_case(cards);
 
@@ -658,7 +658,7 @@ fn translate_qv_to_pv(cards: &mut CardList) {
 /// Every PV read here comes from `src`, the untranslated header: C's
 /// `astKeyFields` and `GetValue` calls (fitschan.c:14075, :14020) take `this`,
 /// not the `GetValue2( ret, this, … )` pair the surrounding translations use,
-/// so a PV card an earlier translation synthesised (e.g. `PROJPm` →
+/// so a PV card an earlier translation synthesized (e.g. `PROJPm` →
 /// `PV<axlat>_m`, fitschan.c:31624) is invisible to the decision. The
 /// deletions still target `cards`, matching C's `DeleteCard( this, … )` in a
 /// port where the translations rewrite the header in place.
@@ -980,7 +980,7 @@ pub(crate) fn wat_coeffs(watstr: &str, iaxis: usize) -> (Vec<(usize, f64)>, bool
         }
         match iword {
             // Surface type. Only type 2 (legendre) is rejected outright; C
-            // recognises type 1 as chebyshev and treats everything else as
+            // recognizes type 1 as chebyshev and treats everything else as
             // the simple-polynomial form (fitschan.c:35425-35430).
             0 => {
                 if dval == 1.0 {
@@ -1372,7 +1372,7 @@ fn translate_aips_spectral_ctype(cards: &mut CardList) {
     }
 }
 
-/// Translation #22 helper: case-insensitive CUNIT canonicalisation.
+/// Translation #22 helper: case-insensitive CUNIT canonicalization.
 ///
 /// Maps "Hz" / "ANGSTROM" / "Km/S" etc. variants to the canonical
 /// case. Mirrors fitschan.c:32178-32210. Per-version letter; no
@@ -1471,12 +1471,12 @@ fn translate_class(cards: &mut CardList, warnings: &mut Vec<Warning>) {
 
     // Reference-channel frequency, used below to derive the source velocity.
     //
-    // C declares `crval` without an initialiser (fitschan.c:7132) and assigns
+    // C declares `crval` without an initializer (fitschan.c:7132) and assigns
     // it only inside the spectral-CTYPE branch below. When that branch does not
     // run — no `CTYPE<axspec+1>` card, as for a 1-axis CLASS header whose only
-    // axis lands outside `axspec` — C reads the uninitialised stack slot at
-    // fitschan.c:7248. That is undefined behaviour in C, confirmed under
-    // valgrind ("uninitialised value ... created by a stack allocation in
+    // axis lands outside `axspec` — C reads the uninitialized stack slot at
+    // fitschan.c:7248. That is undefined behavior in C, confirmed under
+    // valgrind ("uninitialized value ... created by a stack allocation in
     // ClassTrans", flowing into SetValue for ZSOURCE). In the reference build
     // the slot reads as zero, which is the value the committed `class-spec` and
     // `class-hel` expectations encode, so zero is what this port uses. Unlike
@@ -1577,7 +1577,7 @@ fn translate_class(cards: &mut CardList, warnings: &mut Vec<Warning>) {
 
 /// Translation #24 helper: strip IRAF mini-WCS keywords (`WAT*`,
 /// `MWCS*`, `WSV*`, `LTM*`, `LTV*`). These are IRAF-specific
-/// equivalents of the AST native serialisation; carrying them
+/// equivalents of the AST native serialization; carrying them
 /// through the read pipeline causes encoding ambiguity.
 ///
 /// Mirrors fitschan.c:32213-32239. No encoding gate; runs once.
@@ -2025,7 +2025,7 @@ fn translate_pc_family(cards: &mut CardList, s: char, encoding: Encoding) {
         }
     }
 
-    // CDj_i (fitschan.c:31432-31479). Each row is normalised to a unit vector,
+    // CDj_i (fitschan.c:31432-31479). Each row is normalized to a unit vector,
     // its length becoming that row's CDELT so the pixel scale stays meaningful.
     if !gotpcij {
         let (nmatch, ubnd) = key_fields(cards, &versioned("CD%d_%d", s), 2);

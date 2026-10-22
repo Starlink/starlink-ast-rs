@@ -214,7 +214,7 @@ fn format_bad_value() {
 #[test]
 fn format_with_precision() {
     let mut frame = BasicFrameBuilder::new(1).build().unwrap();
-    // A printf-style precision specifier is honoured directly.
+    // A printf-style precision specifier is honored directly.
     frame.set_format_str(1, "%.3f").unwrap();
     let s = frame.format(1, 3.14159).unwrap();
     assert_eq!(s, "3.142");
@@ -263,7 +263,7 @@ fn unformat_with_leading_whitespace() {
 fn unformat_invalid() {
     let frame = BasicFrameBuilder::new(1).build().unwrap();
     // C `astUnformat` returns a character count of zero, without error,
-    // when the string is not a recognised coordinate value (axis.c:1366).
+    // when the string is not a recognized coordinate value (axis.c:1366).
     let (_val, consumed) = frame.unformat(1, "abc").unwrap();
     assert_eq!(consumed, 0);
 }

@@ -935,7 +935,7 @@ const RTRIP_REFERENCE_GAPS_LICENSED: &[(&str, &[usize])] = &[
 const FMA_SUBSTITUTIONS_LICENSED: &[(&str, bool, usize, &[f64])] = &[
     // Empty. It held two rows of
     // `simplify/neg_unitnormmap_inv_fwd_diffcentre.map`, whose inverse
-    // reconstructs a centre and so lands either exactly on it -- residual zero,
+    // reconstructs a center and so lands either exactly on it -- residual zero,
     // output BAD -- or about 1e-16 away, output a unit vector made of rounding
     // noise, depending on whether the compiler contracted a multiply and an add.
     // No value there is stable, so upstream disables that section's inverse
@@ -1750,7 +1750,7 @@ fn describe_outcome(o: &Outcome) -> String {
 /// naming the unported C read-path branch. The goal is to keep this list
 /// empty; it only ever shrinks. A section is identified by `(relpath,
 /// forward)`. These are FITS-read structural gaps (the decoded object has a
-/// different shape/attribute than C), never serialisation or simplifier
+/// different shape/attribute than C), never serialization or simplifier
 /// artifacts — the `.ast`/`.simp` corpus is already byte-exact.
 const HEAD_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
 

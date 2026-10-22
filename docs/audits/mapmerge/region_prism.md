@@ -23,7 +23,7 @@ Prism has no `MapMerge` of its own; it takes the Region base implementation.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | `Simplify`: initialise the returned pointer | prism.c:3292-3294 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no pointer to pre-set |
+| 1 | `Simplify`: initialize the returned pointer | prism.c:3292-3294 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no pointer to pre-set |
 | 2 | Check the global error status and bail out | prism.c:3295-3297 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a pointer to the Region structure | prism.c:3298-3300 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 4 | Get the two component Regions and the Prism's Negated flag | prism.c:3301-3303 (fn Simplify) | prism.rs:1252-1254 (fn simplified) | architecture | ported |
@@ -59,7 +59,7 @@ Prism has no `MapMerge` of its own; it takes the Region base implementation.
 | 34 | If anything simplified, copy the supplied Region's attributes onto the result and return it | prism.c:3518-3521 (fn Simplify) | prism.rs:1448-1451 (fn simplified) | architecture | ported |
 | 35 | Annul the returned Mapping if an error occurred | prism.c:3522-3524 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
 | 36 | Return the result | prism.c:3525-3527 (fn Simplify) | prism.rs:1453 (fn simplified) | architecture | ported |
-| 37 | `GetDefUnc`: initialise the returned pointer | prism.c:1256-1258 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no pointer to pre-set |
+| 37 | `GetDefUnc`: initialize the returned pointer | prism.c:1256-1258 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no pointer to pre-set |
 | 38 | Check the global error status and bail out | prism.c:1259-1261 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 39 | Get a pointer to the Prism structure | prism.c:1262-1264 (fn GetDefUnc) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 40 | Take the uncertainty Regions of the two components, whose current Frames are the components of the Prism's base Frame | prism.c:1265-1272 (fn GetDefUnc) | prism.rs:928-929 (fn get_def_unc) | architecture | ported |

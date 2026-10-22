@@ -151,7 +151,7 @@ prints in mapping.c `astSimplify_`, TRAN>/= prints in tranmap.c MapMerge):**
     streams for these fixtures FIRST (the Group 2 `NOM i/nmap [classes]`
     side-by-side methodology — it found the WcsMap-pair fix in minutes),
     porting C's modified-signal protocol (splice included) as engine
-    behaviour; only then layer the tag lifecycle on top. Tag placement is
+    behavior; only then layer the tag lifecycle on top. Tag placement is
     downstream of merge-order equality.
 
 **Root cause (fully diagnosed):** C's CmpMap stores each component at its OWN
@@ -231,7 +231,7 @@ and the cmpmap.c MapMerge head/nominate loop):**
    (astMAKE_SET expansion, mapping.c:23256). `astClearInvert` does NOT clear
    it (plain astMAKE_CLEAR).
 3. Probe side effects: matrixmap.c `CanSwap` (418-421 set, 580-581 restore)
-   `astSetInvert`s BOTH real list objects on every probe — any neighbour
+   `astSetInvert`s BOTH real list objects on every probe — any neighbor
    class, even when no swap results — wiping their tags. Equivalent patterns
    exist in winmap.c/wcsmap.c CanSwap and matrixmap.c PermGet. A wiped CmpMap
    element re-runs the full recursive Simplify at its next nomination (the
@@ -300,13 +300,13 @@ and the cmpmap.c MapMerge head/nominate loop):**
 ## GROUP 2 — cap_winmap_02: WinMap shift-fold ASSOCIATIVITY (>4 ULP => real divergence)
 
 **STATUS (2026-07-19): DONE — landed as `simplify: cancel WcsMap inverse
-pairs at either neighbour during WcsMap nomination`. The root cause was NOT
+pairs at either neighbor during WcsMap nomination`. The root cause was NOT
 WinMap arithmetic (`compose_linear` matches C's WinWin/WinShift/WinDiagMat
 per-pair formulas exactly); it was nominate-loop merge ORDER. C's
 `wcsmap.c::MapMerge` (3116-3161, via `CanMerge` 812) cancels a WcsMap
 inverse pair when EITHER member is nominated, checking the lower pair
 `(where-1, where)` first; our `wcs_map_merge` only reached the upper pair
-through `default_map_merge`, so the TAN pair cancelled one nomination later
+through `default_map_merge`, so the TAN pair canceled one nomination later
 than in C. That let the `(shift_a∘diag)` WinMap fold `shift_b` before the
 front WinMap arrived, associating `w + (a + b)` instead of C's
 `(w + a) + b`. Porting the lower/upper pair checks makes the nominate

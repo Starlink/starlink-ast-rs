@@ -26,7 +26,7 @@ const MIN_SAMPLE: Duration = Duration::from_millis(1);
 
 /// Time each of `ops` on `npoint` points, taking samples in rounds (every op
 /// once per round, in order) until `budget` has passed and every op has at
-/// least `min_samples` samples. Rounds keep drift from favouring one op.
+/// least `min_samples` samples. Rounds keep drift from favoring one op.
 pub fn measure(
     budget: Duration,
     min_samples: usize,

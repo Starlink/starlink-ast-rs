@@ -662,7 +662,7 @@ fn sla_simplify_steps(steps: &mut Vec<SlaConversion>) -> bool {
                 steps.remove(i);
                 changed_this_pass = true;
                 any_changed = true;
-                // Don't advance — new neighbours may cancel.
+                // Don't advance — new neighbors may cancel.
                 i = i.saturating_sub(1);
                 continue;
             }
@@ -790,7 +790,7 @@ pub(crate) fn sla_map_merge(
 // Constants
 // ---------------------------------------------------------------------------
 
-/// Astronomical unit in metres.
+/// Astronomical unit in meters.
 const AU: f64 = 1.49597870e11;
 
 /// Arcsecond to radians.
@@ -804,7 +804,7 @@ const D2R: f64 = std::f64::consts::PI / 180.0;
 // ---------------------------------------------------------------------------
 
 /// Return the position of the Earth in HAEC (Heliocentric Aries Ecliptic
-/// Cartesian) coordinates at the given MJD, in metres.
+/// Cartesian) coordinates at the given MJD, in meters.
 fn earth_haec(mjd: f64) -> [f64; 3] {
     // Get heliocentric position of the Earth in equatorial coords (AU)
     let (_dvb, _dpb, _dvh, dph) = pal::evp(mjd, 2000.0);
@@ -813,7 +813,7 @@ fn earth_haec(mjd: f64) -> [f64; 3] {
     let ecm = pal::ecmat(pal::epj2d(2000.0));
     let earth = pal::dmxv(&ecm, &dph);
 
-    // Convert from AU to metres
+    // Convert from AU to meters
     [earth[0] * AU, earth[1] * AU, earth[2] * AU]
 }
 
@@ -1367,7 +1367,7 @@ impl Mapping for SlaMap {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
 
-        // Initialise the output by copying the input (slamap.c:3630).
+        // Initialize the output by copying the input (slamap.c:3630).
         let npoint = pts.npoint();
         let Some([oa, od]) = out.first_axes_mut() else {
             unreachable!("a SlaMap has two outputs")
@@ -1454,7 +1454,7 @@ impl Mapping for SlaMap {
         steps.extend(other_steps);
 
         // Always merge (concatenate) even if no simplification occurs.
-        // This matches C slamap.c behaviour where all adjacent SlaMaps are
+        // This matches C slamap.c behavior where all adjacent SlaMaps are
         // combined, enabling further simplification in subsequent passes.
         sla_simplify_steps(&mut steps);
 
@@ -1532,7 +1532,7 @@ impl Mapping for SlaMap {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 /// Argument index to letter: 0 -> 'a', 1 -> 'b', etc.

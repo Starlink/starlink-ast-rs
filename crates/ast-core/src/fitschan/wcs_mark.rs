@@ -10,7 +10,7 @@
 //!
 //! Because the C function is a card *sweep* rather than a keyword *lookup*,
 //! every copy of a repeated keyword is marked. A header holding two HDUs' worth
-//! of `CRVAL1` loses both cards, not just the first. That is the behaviour this
+//! of `CRVAL1` loses both cards, not just the first. That is the behavior this
 //! module reproduces; value extraction into a [`FitsStore`] lives in
 //! [`super::wcs_keywords`], which reads through the first match only, as C's
 //! `GetValue` does.

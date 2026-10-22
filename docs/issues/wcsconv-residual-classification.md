@@ -149,7 +149,7 @@ Structural; DSS encoder/decoder still incomplete.
   `RA---TAN-SIP`/`DEC--TAN-SIP`; missing `CRPIX1/2/3` and `CD3_3`
   (3D spectral axis dropped); SIP suffix not added when SIP is present.
 - `sip-3d-swap_fits-wcs` — same as sip-3d but with axis-swap; the swap
-  is wrong (DEC value emitted under CRVAL1 still labelled RA).
+  is wrong (DEC value emitted under CRVAL1 still labeled RA).
 
 **Fix:** SIP write path — detect a residual PolyMap and emit `-SIP` CTYPE
 suffix plus `Ai_j`/`Bi_j` keys. Currently we strip the SIP and write

@@ -269,7 +269,7 @@ pub(crate) fn write_to_cards(
         }
     }
 
-    // Determine the spectral axis and its unit-canonicalisation factor.
+    // Determine the spectral axis and its unit-canonicalization factor.
     // Mirrors fitschan.c:3423-3449 (factor & canonical unit) +
     // :3526 (CRVAL *= specfactor) + :3560 (CDELT *= specfactor) +
     // :3570 (CUNIT replaced with canonical "HZ"/"m/s").
@@ -537,10 +537,10 @@ fn compute_crota_and_adjust_cdelt(
 /// returns 1. Matches the C library convention: CROTA is paired with the
 /// Canonical AIPS spectral unit + scale factor.
 ///
-/// Mirrors fitschan.c:3423-3449 / 3854-3880. The AIPS encoder normalises
+/// Mirrors fitschan.c:3423-3449 / 3854-3880. The AIPS encoder normalizes
 /// the spectral axis CUNIT to either "HZ" or "m/s", scaling CRVAL and
 /// CDELT by the matching factor. Returns `None` if the unit is not one
-/// of the recognised AIPS spectral units (which makes the encoding
+/// of the recognized AIPS spectral units (which makes the encoding
 /// invalid; the caller leaves the unit unchanged).
 fn aips_spectral_unit(unit: &str) -> Option<(&'static str, f64)> {
     match unit {
@@ -597,7 +597,7 @@ pub(crate) fn write_to_cards_pp(
         }
     }
 
-    // Spectral-axis unit canonicalisation (see write_to_cards above).
+    // Spectral-axis unit canonicalization (see write_to_cards above).
     let axspec = store.spectral_axis();
     let spec_remap = axspec
         .and_then(|i| store.cunit[i].as_deref())
@@ -1255,7 +1255,7 @@ CTYPE2  = 'DEC--TAN'           / Axis type
 CROTA1  =               45.0   / Rotation angle
 EPOCH   =             2000.0   / Epoch
 END";
-        // As with CROTA2, SpecTrans normalises CROTA1 into PC keywords before
+        // As with CROTA2, SpecTrans normalizes CROTA1 into PC keywords before
         // the AIPS reader runs. C reads CROTA on the latitude axis first, then
         // the longitude axis, so CROTA1 (on the longitude axis) is used when
         // CROTA2 is absent.

@@ -462,7 +462,7 @@ impl Mapping for IntraMap {
 
     // intramap.c `Transform`: the transformation applied in the direction
     // the Invert flag makes of `forward`, an error from it reported as one
-    // signalled by the named function.
+    // signaled by the named function.
     fn transform_into(
         &self,
         pts: Points<'_>,

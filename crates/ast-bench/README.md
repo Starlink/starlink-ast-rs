@@ -72,7 +72,7 @@ The hashes depend on the platform's libm, so they are only ever compared on one 
     ast-bench snapshot --set bench        # needs --features c-oracle
 
 times the set on both engines and writes `docs/perf/<date>-<os>-<arch>-<set>.tsv` with a header naming the commit, machine, compilers and C build.
-The records are kept so that each round of optimisation can be shown against the ones before it; `docs/perf/README.md` lists them.
+The records are kept so that each round of optimization can be shown against the ones before it; `docs/perf/README.md` lists them.
 `compare --set S --engine both` also prints a warning for each Rust/C ratio more than the slowdown threshold worse than in the newest record of `S` for this platform.
 The warning never sets the exit status, since the ratio moves with the machine as well as the code.
 

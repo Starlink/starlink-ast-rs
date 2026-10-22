@@ -2,7 +2,7 @@
 //!
 //! Each test here isolates one `WcsCelestial` / `WcsMapFrm` attribute
 //! decision that a wcsconv fixture exercises only indirectly, so a
-//! failure names the attribute rather than a serialised card.
+//! failure names the attribute rather than a serialized card.
 
 use ast_core::AnyObject;
 use ast_core::channel::Channel;
@@ -141,7 +141,7 @@ fn fits_read_sets_system_even_when_the_value_is_the_icrs_default() {
 }
 
 /// The FK5 companion. It pins the other side: the unconditional `set_system`
-/// must not change behaviour for the systems that were already correct.
+/// must not change behavior for the systems that were already correct.
 #[test]
 fn fits_read_sets_system_for_a_non_default_value_too() {
     let sky = read_sky_frame(&equatorial_header(
@@ -281,7 +281,7 @@ SPECSYS = 'TOPOCENT'
 IMAGFREQ=              2.40E11
 ";
 
-/// The DSBCentre of the DSBSpecFrame read from `header`, in Hz.
+/// The Dsbcenter of the DSBSpecFrame read from `header`, in Hz.
 fn dsb_centre_of(header: &str) -> f64 {
     let obj = FitsChan::from_header(header)
         .expect("header parses")
@@ -299,7 +299,7 @@ fn dsb_centre_of(header: &str) -> f64 {
         .unwrap()
 }
 
-/// C's `WcsSpectral` takes the observation centre from AXREF when the header
+/// C's `WcsSpectral` takes the observation center from AXREF when the header
 /// has one, and from CRVAL otherwise (fitschan.c:40121-40130). The values are
 /// those the C library reports for the same two headers.
 #[test]

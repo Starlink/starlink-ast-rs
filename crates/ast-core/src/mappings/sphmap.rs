@@ -39,7 +39,7 @@ pub struct SphMap {
     unit_radius: Option<bool>,
     polar_long: f64,
     /// Tracks whether `polar_long` was explicitly set by the user (or read
-    /// from a serialised representation with `set=1`). Mirrors the C
+    /// from a serialized representation with `set=1`). Mirrors the C
     /// library's `TestPolarLong` flag so byte-exact round-trip distinguishes
     /// "default value 0.0 (commented in dump)" from "explicitly set to 0.0
     /// (uncommented in dump)".

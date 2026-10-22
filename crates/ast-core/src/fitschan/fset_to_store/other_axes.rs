@@ -343,12 +343,12 @@ mod tests {
         assert_eq!(store.cname[0].as_deref(), Some("world x"));
 
         // CRVAL came from central-pixel WCS coords. With identity
-        // pixel→wcs and dim=(100,200), centre is (floor(50), floor(100)) =
+        // pixel→wcs and dim=(100,200), center is (floor(50), floor(100)) =
         // (50, 100), and identity transforms to (50, 100).
         assert_eq!(store.crval[0], Some(50.0));
         assert_eq!(store.crval[1], Some(100.0));
 
-        // Mapping shape: 2-in / 2-out, and applying it to the centre
+        // Mapping shape: 2-in / 2-out, and applying it to the center
         // returns (0, 0) (i.e. the IWC origin lies at CRVAL).
         assert_eq!(mapping.nin(), 2);
         assert_eq!(mapping.nout(), 2);
@@ -468,9 +468,9 @@ mod tests {
         })
         .unwrap();
 
-        // Axis 0: dim unknown → centre = 1.0 → CRVAL = 1.0.
+        // Axis 0: dim unknown → center = 1.0 → CRVAL = 1.0.
         assert_eq!(store.crval[0], Some(1.0));
-        // Axis 1: dim=200 → centre = floor(100) = 100.
+        // Axis 1: dim=200 → center = floor(100) = 100.
         assert_eq!(store.crval[1], Some(100.0));
     }
 

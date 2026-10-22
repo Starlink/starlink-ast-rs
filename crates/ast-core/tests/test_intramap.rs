@@ -290,7 +290,7 @@ fn intra_flag_set_test_clear() {
     assert!(!m.test_intra_flag());
 }
 
-/// An error from the transformation is reported as one signalled by the
+/// An error from the transformation is reported as one signaled by the
 /// named function, with the transformation's own error code.
 #[test]
 fn transformation_errors_name_the_function() {

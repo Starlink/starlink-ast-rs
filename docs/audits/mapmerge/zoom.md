@@ -8,7 +8,7 @@ Extension points: classified
 
 Uncited C steps:
 - zoommap.c:703 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
-- zoommap.c:735 (fn MapMerge) — clears C's own sentinels, a null replacement Mapping and the elimination count and simplified flag; the Rust locals are initialised where they are declared
+- zoommap.c:735 (fn MapMerge) — clears C's own sentinels, a null replacement Mapping and the elimination count and simplified flag; the Rust locals are initialized where they are declared
 - zoommap.c:986 (fn MapMerge) — the error path annuls the replacement C allocated; a Rust replacement is an owned value dropped on the error return
 
 C's body runs `zoommap.c:729-1167 (fn MapMerge)` in three parts: condense a run of ZoomMaps
@@ -25,7 +25,7 @@ must discard the simplified record.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1 | zoommap.c:729-730 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result to -1 | zoommap.c:729-730 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | zoommap.c:732-733 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | In series: obtain the effective zoom factor of the nominated Mapping | zoommap.c:740-749 (fn MapMerge) | mappings/simplify.rs:992-996 (fn zoom_map_merge) | architecture | ported |
 | 4 | Search adjacent lower-numbered Mappings, accumulating the zoom factors of ZoomMaps and treating UnitMaps as unity | zoommap.c:750-777 (fn MapMerge) | mappings/simplify.rs:998-1009 (fn zoom_map_merge) | architecture | ported |
@@ -50,7 +50,7 @@ must discard the simplified record.
 | 23 | Absorb into a following MatrixMap by scaling its elements | zoommap.c:1072-1085 (fn MapMerge) | matrix.rs:951-968 (fn try_merge) | architecture | ported |
 | 24 | Absorb into a following WinMap by scaling its coefficients | zoommap.c:1086-1101 (fn MapMerge) | zoom.rs:344-358 (fn try_merge) | architecture | ported |
 | 25 | Absorb into a following ShiftMap, producing a WinMap | zoommap.c:1102-1128 (fn MapMerge) | zoom.rs:344-358 (fn try_merge) | architecture | ported |
-| 26 | If anything absorbed, annul the neighbour and the ZoomMap, and store the new Mapping over the neighbour with its Invert flag | zoommap.c:1130-1143 (fn MapMerge) | mappings/simplify.rs:1585-1590 (fn default_map_merge) | architecture | ported |
+| 26 | If anything absorbed, annul the neighbor and the ZoomMap, and store the new Mapping over the neighbor with its Invert flag | zoommap.c:1130-1143 (fn MapMerge) | mappings/simplify.rs:1585-1590 (fn default_map_merge) | architecture | ported |
 | 27 | Shuffle the later Mappings down, clear the vacated element, decrement the count and return the lower of the two indices | zoommap.c:1145-1159 (fn MapMerge) | mappings/simplify.rs:1590-1591 (fn default_map_merge) | architecture | ported |
 | 28 | Clear the returned result if an error occurred | zoommap.c:1163-1164 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 29 | Return the result | zoommap.c:1166-1167 (fn MapMerge) | mappings/simplify.rs:1040-1044 (fn zoom_map_merge) | architecture | ported |
@@ -68,11 +68,11 @@ every leaf to forward.
 
 ## Rows 18 to 25 — the ordering is deliberate
 
-C tries the previous neighbour before the next one, and the port keeps that
+C tries the previous neighbor before the next one, and the port keeps that
 order at `mappings/simplify.rs:1036-1044 (fn zoom_map_merge)`. It is observable when only one side is eligible,
 for instance under a restricted simplify where the trailing Mapping is not
 flagged. The pairwise fusion itself goes through `default_map_merge`, which
-offers the pair to the neighbour first and to the ZoomMap second. That is why
+offers the pair to the neighbor first and to the ZoomMap second. That is why
 rows 19 and 23 land in `matrix.rs`: scaling a *general* matrix by the zoom factor
 is `MatrixMap::try_merge`'s MatZoom branch, which keeps an inverted MatrixMap
 inverted and scales its stored values. Rows 20, 21, 24 and 25 land in
@@ -80,9 +80,9 @@ inverted and scales its stored values. Rows 20, 21, 24 and 25 land in
 ShiftMap are both reduced to per-axis `(shift, scale)` terms and composed.
 
 C writes each of the three absorbing branches twice, once against the previous
-neighbour and once against the next, because it reaches into the neighbour's
+neighbor and once against the next, because it reaches into the neighbor's
 representation itself. The port reaches the same six cases through one pairwise
-`try_merge` per neighbour, so rows 19 to 21 and rows 23 to 25 land on the same
+`try_merge` per neighbor, so rows 19 to 21 and rows 23 to 25 land on the same
 Rust sites; the side is the argument `default_map_merge` is called with.
 
 ## Row 30 — the convention, not just this class

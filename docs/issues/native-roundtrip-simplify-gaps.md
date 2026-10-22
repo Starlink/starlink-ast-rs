@@ -27,12 +27,12 @@ bench oracle is blocked — see [Prerequisite](#prerequisite-for-the-per-class-b
 - **Supplementary**: `test_native_roundtrip_all`. Rust-side
   double-round-trip with deliberately non-default attribute values.
   Catches "silently drop non-default attribute" regressions the corpus
-  wouldn't see (e.g. UnitNormMap centre, PolyMap iter-inverse settings).
+  wouldn't see (e.g. UnitNormMap center, PolyMap iter-inverse settings).
 - **Per-class bench oracle** (downstream consumer):
   `examples/bench_per_class.rs` + `tests/bench_per_class_c.c`. Generates
   a `.ast` file per mapping class, hands it to the C library via
   `astFromString`, benches Rust vs C side by side. This was the
-  workstream that surfaced these gaps — when Rust's serialised output
+  workstream that surfaced these gaps — when Rust's serialized output
   diverged from what C expected, the C side either parsed it wrong
   or crashed.
 
@@ -58,7 +58,7 @@ semantics in comments rather than separate attributes.
 | Interval region | Same class-comment issue when interval simplifies to Box | `interval_parallel_merge.map:7`, `interval_parallel_merge.simp:1` |
 
 **Fix shape**: per-class table mapping argument index → C comment string.
-Mostly mechanical, no behaviour change. Where comments differ on
+Mostly mechanical, no behavior change. Where comments differ on
 direction (e.g. SlaMap `Sla1` "X to Y" vs "Y to X"), the comment must
 reflect the actual conversion direction stored in the term.
 
@@ -77,7 +77,7 @@ state, but byte-exact requires we match C's choice per attribute.
 | GrismMap | First post-`IsA Mapping` attribute differs — Rust drops `GrmNR = 1.5` line | `grism_inverse_cancel.map:7`, `grism_zoom_merge.map:6` |
 
 **Fix shape**: each attribute's "is this a default that I should emit"
-predicate needs to match the C library's behaviour exactly. The C library
+predicate needs to match the C library's behavior exactly. The C library
 distinguishes "default value, emit uncommented" from "default value, emit
 commented" from "default value, omit" per attribute. Rust currently makes
 a different choice on a handful of attributes.
@@ -90,13 +90,13 @@ Rust and C use different attribute *names* for the same state.
 |---|---|---|
 | MatrixMap | Rust emits per-element `M0 = 1` lines; C emits a single `Form = "Unit"` and skips the elements | `matrix_unit_to_unit.map:4` |
 | LutMap | Rust emits `#   Incr = 1` (commented); C emits `#   Start = 0` (different default attribute name in the same slot) | `lut_inverse_cancel.map:10`, `lut_linear_to_win.map:5` |
-| MatrixMap | Differing matrix values: `M1 = 3` vs C's `M1 = 0` — actually a *behaviour* bug, not cosmetic — element packing differs | `matrix_full_to_diagonal.map:5` |
+| MatrixMap | Differing matrix values: `M1 = 3` vs C's `M1 = 0` — actually a *behavior* bug, not cosmetic — element packing differs | `matrix_full_to_diagonal.map:5` |
 
 **Fix shape**: probably the most invasive category. MatrixMap's
 `Form` attribute encodes whether the matrix is `"Full"`, `"Diagonal"`,
 or `"Unit"` and is mutually exclusive with emitting the matrix
 elements. LutMap's `Start` vs `Incr` similarly encodes the table's
-parameterisation differently. Will need to read the C library's
+parameterization differently. Will need to read the C library's
 `PolyMap.c` / `LutMap.c` / `MatrixMap.c` to confirm the canonical
 form choice.
 
@@ -175,7 +175,7 @@ variants out of 26+ public mapping classes. The four omitted classes:
   section — C's `astFromString` crashes.
 - **UnitNormMap**: `centre` attribute elided when default (zero); C
   has no default and crashes.
-- **RateMap**: `ax1`/`ax2` axis selectors not serialised at all; C
+- **RateMap**: `ax1`/`ax2` axis selectors not serialized at all; C
   can't reconstruct which Jacobian element to compute.
 - **MathMap**: not in the `AnyObject` enum, so `to_native_string`
   can't reach it.
@@ -190,14 +190,14 @@ for them and produce a complete per-class report.
 1. **Category A (cosmetic comments)** — 22 failures, mechanical fixes.
    Look up the C library's comment table in `slamap.c`, `timemap.c`,
    `specmap.c`, `box.c`, `mathmap.c`, `wcsmap.c` and copy the strings
-   verbatim. No behaviour change.
+   verbatim. No behavior change.
 2. **Category B (default-emission)** — 9 failures. Per-attribute audit
    of "when is the default emitted commented vs uncommented vs
    omitted". This is the path of least resistance after (1).
 3. **Category D (attribute ordering)** — 2 failures, both RateMap.
    Reorder `to_node` push calls.
 4. **Category E (IsSimp)** — 1 failure. Check `GrismMap::to_node` for
-   why it doesn't honour `do_not_simplify`.
+   why it doesn't honor `do_not_simplify`.
 5. **Category F (NormMap Title)** — 7 failures but probably one root
    fix in SkyFrame's default-Title derivation.
 6. **Category C (Form / Start representation)** — 4 failures. Most
@@ -214,7 +214,7 @@ When you come back to this:
 - [ ] `cargo test -p ast-core --release --test test_serialisation native_byte_exact_round_trip_simplify_fixtures` — confirm baseline is still 41 failures (or recapture the punch list if other unrelated changes shifted it).
 - [ ] Pick a category from the list above, work through it. The eprintln list above the assert names every failing fixture + the first differing line, so the punch list is concrete.
 - [ ] After fixes: the test will print a smaller failure count or pass entirely. Each commit should reduce the count visibly.
-- [ ] Last thing: re-run `bench_per_class` and update its omitted-variants list as ChebyMap / UnitNormMap / RateMap / MathMap become serialisable.
+- [ ] Last thing: re-run `bench_per_class` and update its omitted-variants list as ChebyMap / UnitNormMap / RateMap / MathMap become serializable.
 
 ## Out of scope for this report
 

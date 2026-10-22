@@ -90,8 +90,8 @@ CmpMap boundaries to enable further merges).
 ### 5. Cross-type swap optimizations (3 cases)
 
 - `win_swap_past_wcsmap` — WinMap should swap past WcsMap (coordinate re-tagging)
-- `win_swap_simplifies` — After swapping, the new neighbours should merge
-- `win_swap_outer_merge` — Outer neighbours should merge after internal swap
+- `win_swap_simplifies` — After swapping, the new neighbors should merge
+- `win_swap_outer_merge` — Outer neighbors should merge after internal swap
 
 **Fix**: Implement the "swap" optimization where linear mappings
 (WinMap/MatrixMap) can commute past certain mappings (WcsMap,

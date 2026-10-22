@@ -125,7 +125,7 @@ it the one C's vtab gives it.
 | `crates/ast-core/tests/**`, `examples/**` | 90 call sites become `simplify()`. |
 | `crates/ast-core/src/mappings/<class>.rs` × 25 | `simplified()` deleted, body folded into that class's `map_merge`. |
 | `crates/ast-core/tests/test_simplify_seams.rs` | new. Holds the keeper list, derived from the C source. The single-caller rule needs no test — it is a compile error. |
-| `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c` | gains the characterisation fixtures Task 3 needs. Goes upstream. |
+| `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c` | gains the characterization fixtures Task 3 needs. Goes upstream. |
 
 ---
 
@@ -259,7 +259,7 @@ Each of the 36 `impl Mapping for X` blocks needs its signature updated:
 Nothing inside the bodies changes yet. Where a body recursively reduces a
 component — `CmpMap`, `RateMap`, `TranMap`, `SwitchMap`, `SelectorMap`,
 `NormMap`, and the Region classes — that inner call is now a compile error too,
-and it becomes `Mapping::simplify(child.as_ref())?`. **That is the behavioural
+and it becomes `Mapping::simplify(child.as_ref())?`. **That is the behavioral
 change this task exists for**, so expect the corpus to move at step 7.
 
 - [x] **Step 6: Fix the call sites**
@@ -507,7 +507,7 @@ Expected: `0` failures, one ignored.
 
 ---
 
-## Task 3: Characterisation fixtures for the reductions nothing demands
+## Task 3: Characterization fixtures for the reductions nothing demands
 
 Five classes keep a reduction in `simplified()` that no fixture reaches, because their `map_merge` never consults it. Moving such a reduction is unobservable, and an unobservable move can silently drop it.
 
@@ -552,7 +552,7 @@ returns a clone has no reduction: record it and skip steps 3 to 6 for it.
 
 **Outcome:** two pairs, not five.
 Step 2 found `mathmap`, `sphmap` and `unitnormmap` return an unchanged clone, so
-there was nothing to characterise; the ChebyMap pair was generated and then
+there was nothing to characterize; the ChebyMap pair was generated and then
 dropped at Task 4 step 7.
 `wcs_unknown_lone_reduce` and `neg_wcs_tan_no_reduce` are the pair that landed
 (`a7a1509`).
@@ -727,7 +727,7 @@ assertion is the part that matters.
 
 Run: `cargo test -p ast-core --lib linear_chebymap_reduces -- --nocapture`
 Expected: FAIL — still a `ChebyMap`, because it has no `map_merge` and takes the
-trait default, which only tries the neighbours.
+trait default, which only tries the neighbors.
 
 - [x] **Step 5: Add the delegation**
 
@@ -959,7 +959,7 @@ cargo clippy -p ast-core --all-targets -- -D warnings
 ```
 
 Expected: `0`, the same counts as before this part, `194 passed`. Every class
-still overrides `simplified()`, so the default is unreachable and behaviour must
+still overrides `simplified()`, so the default is unreachable and behavior must
 be unchanged. **A change means some class was already missing an override.** Find
 it before continuing.
 
@@ -1079,7 +1079,7 @@ Expected: identical to B2, and `194 passed`.
   Delete its `SERIAL_UNGATED` or `ISSIMP_DISAGREEMENTS` entry in this commit and
   say which gap it closes.
 - **A passing fixture now fails** — stop. Either the reduction landed in the wrong
-  position relative to the neighbour steps, or it lost its orientation handling.
+  position relative to the neighbor steps, or it lost its orientation handling.
   Diff the traces:
 
 ```bash

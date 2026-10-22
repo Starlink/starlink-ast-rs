@@ -1,7 +1,7 @@
 //! Tests for MatrixMap.
 //!
 //! Ancestor: (no direct C test — MatrixMap tests derived from the C AST
-//! MatrixMap documentation and reference behaviour.)
+//! MatrixMap documentation and reference behavior.)
 
 use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;

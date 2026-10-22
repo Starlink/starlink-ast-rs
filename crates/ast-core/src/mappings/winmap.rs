@@ -434,8 +434,8 @@ impl Mapping for WinMap {
             return None;
         }
 
-        // C routes a WinMap neighbour through WinWin (with its rounding
-        // snaps); ZoomMap/ShiftMap/UnitMap neighbours go through
+        // C routes a WinMap neighbor through WinWin (with its rounding
+        // snaps); ZoomMap/ShiftMap/UnitMap neighbors go through
         // WinZoom/WinShift/WinUnit, which do not snap.
         compose_linear(&s1, &c1, &s2, &c2, other.as_any().is::<WinMap>())
     }
@@ -596,7 +596,7 @@ pub(crate) fn extract_linear_params(
 /// absorption arithmetic all fold terms without snapping, so callers pass
 /// `snap` only for the WinMap+WinMap pair (including a nominated ShiftMap,
 /// which C converts to a WinMap before delegating, reaching `WinWin` when
-/// its neighbour is a WinMap).
+/// its neighbor is a WinMap).
 ///
 /// Returns a `UnitMap` if the result is the identity, otherwise a
 /// `WinMap`.

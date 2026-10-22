@@ -287,7 +287,7 @@ fn test2(ndim: usize, spread: Spread) -> Result<(), String> {
     Ok(())
 }
 
-/// A UnitMap on `i32` data in three unnormalised calls: every output pixel
+/// A UnitMap on `i32` data in three unnormalized calls: every output pixel
 /// is 3.
 fn test3(ndim: usize, spread: Spread) -> Result<(), String> {
     let inp = vec![1i32; NX * NY];
@@ -507,7 +507,7 @@ fn shrink_map(g: &Grid, ndim: usize, k: usize) -> WinMap {
     WinMap::from_corners(&ina[..ndim], &inb[..ndim], &outa[..ndim], &outb[..ndim]).expect("WinMap")
 }
 
-/// Three overlapping unnormalised passes of constant data through shifted
+/// Three overlapping unnormalized passes of constant data through shifted
 /// WinMaps: the total and the values where they overlap. C checks nothing
 /// in 3 dimensions.
 fn test5(ndim: usize, spread: Spread) -> Result<(), String> {
@@ -591,7 +591,7 @@ fn test5(ndim: usize, spread: Spread) -> Result<(), String> {
     Ok(())
 }
 
-/// The passes of test 5, normalised and conserving flux: the total and the
+/// The passes of test 5, normalized and conserving flux: the total and the
 /// largest and smallest values. C checks nothing in 3 dimensions.
 fn test6(ndim: usize, spread: Spread) -> Result<(), String> {
     const NK: usize = 3;
@@ -725,7 +725,7 @@ fn test7(ndim: usize, spread: Spread) -> Result<(), String> {
     Ok(())
 }
 
-/// A ZoomMap then a ShiftMap, unnormalised: the total is the number of
+/// A ZoomMap then a ShiftMap, unnormalized: the total is the number of
 /// input pixels.
 fn test8(ndim: usize, spread: Spread) -> Result<(), String> {
     let inp = vec![1.0f32; NX * NY];
@@ -877,7 +877,7 @@ fn noise_test(ndim: usize, spread: Spread, flags: RebinSeqFlags) -> Result<(), S
     Ok(())
 }
 
-/// Output variances from the input variances, unnormalised.
+/// Output variances from the input variances, unnormalized.
 fn test9(ndim: usize, spread: Spread) -> Result<(), String> {
     noise_test(
         ndim,

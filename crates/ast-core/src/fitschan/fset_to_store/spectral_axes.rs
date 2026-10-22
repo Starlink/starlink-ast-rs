@@ -84,7 +84,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // DSBSpecFrame, walk to the inner SpecFrame — the FITS-WCS
     // mapping treats both as "spectral axis" but the per-attribute
     // accessors live on SpecFrame. The DSB-specific fields
-    // (DSBCentre, IF, SideBand) are read separately later in the
+    // (Dsbcenter, IF, SideBand) are read separately later in the
     // pipeline (e.g. spectral_axes already calls
     // `astIsADSBSpecFrame(specfrm)` for IMAGFREQ).
     let (spec_holder, _) = wcsfrm.primary_frame(spec_iax);
@@ -242,7 +242,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     }
     if chosen.is_none() && args.tab.tab_ok > 0 {
         // -TAB, whose IWC are grid coordinates: the CRVAL found above, the
-        // observation centre, is kept as AXREF and CRVAL is zero.
+        // observation center, is kept as AXREF and CRVAL is zero.
         let (store, wperm, tab) = (&mut *args.store, &*args.wperm, args.tab);
         let tabbed = with_table(tab, |table| {
             let Some(axis) = is_map_tab_1d(
@@ -313,7 +313,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
             system,
             SpecSystem::Wavelen | SpecSystem::Voptical | SpecSystem::Redshift | SpecSystem::Airwave
         ) {
-            // Wavelength-domain → emit RESTWAV (in metres) instead.
+            // Wavelength-domain → emit RESTWAV (in meters) instead.
             args.store.restwav = Some(SPEED_OF_LIGHT / rf);
         } else {
             args.store.restfrq = Some(rf);

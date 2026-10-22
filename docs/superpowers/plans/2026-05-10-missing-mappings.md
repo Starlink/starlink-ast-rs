@@ -93,9 +93,9 @@ If `disc == 0.0` → return `UnitMap::new(2)`. Otherwise normalize inversion (st
 
 Port the full `MapMerge` logic from `pcdmap.c` lines 1238-2095. Key merge rules:
 
-1. **Series with inverse PcdMap:** If neighbour is PcdMap with same disc/centre and opposite inversion → cancel to UnitMap.
-2. **Series with PermMap (swap):** Call `PcdPerm` logic — PcdMap can commute past a 2D axis-swap PermMap by swapping its own centre coordinates. Study `CanSwap` and `PcdPerm` functions.
-3. **Series with ZoomMap:** Call `PcdZoom` logic — absorb zoom factor into disc (disc' = disc/zoom^2) and adjust centre. Study `PcdZoom` function at line 2290.
+1. **Series with inverse PcdMap:** If neighbor is PcdMap with same disc/center and opposite inversion → cancel to UnitMap.
+2. **Series with PermMap (swap):** Call `PcdPerm` logic — PcdMap can commute past a 2D axis-swap PermMap by swapping its own center coordinates. Study `CanSwap` and `PcdPerm` functions.
+3. **Series with ZoomMap:** Call `PcdZoom` logic — absorb zoom factor into disc (disc' = disc/zoom^2) and adjust center. Study `PcdZoom` function at line 2290.
 
 For parallel composition: return `None` (PcdMap is always 2D, parallel merge not meaningful).
 
@@ -103,8 +103,8 @@ For parallel composition: return `None` (PcdMap is always 2D, parallel merge not
 
 Study the `Dump`/`Load` functions in `pcdmap.c`. Tokens:
 - `Disco` — distortion coefficient (default 0.0)
-- `PcdCn1` — centre axis 1 (default 0.0)
-- `PcdCn2` — centre axis 2 (default 0.0)
+- `PcdCn1` — center axis 1 (default 0.0)
+- `PcdCn2` — center axis 2 (default 0.0)
 
 Use `node.push_double()` / `node.get_double()` matching exact token names from C.
 
@@ -275,25 +275,25 @@ When inverted: `nin = centre.len() + 1`, `nout = centre.len()`.
 
 - [ ] **Step 2: Implement transform**
 
-Forward (nin → nin+1): subtract centre, compute norm = sqrt(sum of squares), output unit vector components (divided by norm) then norm itself. If norm is 0, output BAD for unit components and 0 for norm.
+Forward (nin → nin+1): subtract center, compute norm = sqrt(sum of squares), output unit vector components (divided by norm) then norm itself. If norm is 0, output BAD for unit components and 0 for norm.
 
-Inverse (nin+1 → nin): last input is norm, first nin inputs are unit vector components. Multiply each component by norm, add centre.
+Inverse (nin+1 → nin): last input is norm, first nin inputs are unit vector components. Multiply each component by norm, add center.
 
 Study `Transform` in `unitnormmap.c` carefully for BAD_VALUE handling.
 
 - [ ] **Step 3: Implement equal()**
 
-Compare centres with `ast_equal()`. Handle inversion flags.
+Compare centers with `ast_equal()`. Handle inversion flags.
 
 - [ ] **Step 4: Implement try_merge()**
 
 Port `MapMerge` from `unitnormmap.c`. Key rules:
-1. **Inverse cancel:** Same centres → UnitMap
-2. **UnitNormMap + ShiftMap series:** Absorb shift into centre
-3. **UnitNormMap + WinMap series:** Absorb linear transform into centre
-4. **Two UnitNormMaps with different centres (fwd+inv):** Difference → ShiftMap
+1. **Inverse cancel:** Same centers → UnitMap
+2. **UnitNormMap + ShiftMap series:** Absorb shift into center
+3. **UnitNormMap + WinMap series:** Absorb linear transform into center
+4. **Two UnitNormMaps with different centers (fwd+inv):** Difference → ShiftMap
 
-Study the C `MapMerge` carefully — it has complex logic for merging with ShiftMap and WinMap that modifies the centre appropriately depending on forward/inverse direction.
+Study the C `MapMerge` carefully — it has complex logic for merging with ShiftMap and WinMap that modifies the center appropriately depending on forward/inverse direction.
 
 - [ ] **Step 5: Implement Serializable**
 
@@ -303,7 +303,7 @@ Tokens: `Centre(i)` for i=1..nin. Study `Dump`/`Load` in `unitnormmap.c`.
 
 - [ ] **Step 7: Write unit tests**
 
-- Forward: [3, 4] with centre [0,0] → unit vector [0.6, 0.8] + norm 5.0
+- Forward: [3, 4] with center [0,0] → unit vector [0.6, 0.8] + norm 5.0
 - Inverse roundtrip
 - Zero-vector → BAD components, 0 norm
 - Serialization roundtrip
@@ -588,7 +588,7 @@ No public constructor — DssMap is created from FITS keywords via `DssMap::from
 
 - [ ] **Step 2: Implement platepos (forward: pixel → RA,Dec)**
 
-Port the `platepos` function from `dssmap.c`. This is a polynomial plate solution converting (x,y) pixel offsets from plate centre to (RA, Dec) in radians. The algorithm involves plate constants PPO1-6 to compute standard coordinates, then AMDx/AMDy polynomial correction.
+Port the `platepos` function from `dssmap.c`. This is a polynomial plate solution converting (x,y) pixel offsets from plate center to (RA, Dec) in radians. The algorithm involves plate constants PPO1-6 to compute standard coordinates, then AMDx/AMDy polynomial correction.
 
 - [ ] **Step 3: Implement platepix (inverse: RA,Dec → pixel)**
 

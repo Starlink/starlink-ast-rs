@@ -1024,7 +1024,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
     /// [`set_uncertainty`](Region::set_uncertainty); it corresponds to the C
     /// `this->unc = ...` assignments plus `astResetCache`. Callers that want
     /// the full C `astSetUnc` semantics (class validation, remap into the base
-    /// Frame, negate-if-unbounded, RegionFS optimisation, re-centre) must use
+    /// Frame, negate-if-unbounded, RegionFS optimization, re-center) must use
     /// [`set_uncertainty`](Region::set_uncertainty).
     #[doc(hidden)]
     fn store_uncertainty(&mut self, unc: Option<DynRegion>);
@@ -1158,8 +1158,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
             self.store_uncertainty(None);
         }
 
-        // The supplied Region must be of a re-centreable (centro-symmetric)
-        // class. C tests this via astRegCentre(unc, NULL, NULL, 0, CURRENT)
+        // The supplied Region must be of a re-centerable (centro-symmetric)
+        // class. C tests this via astregcenter(unc, NULL, NULL, 0, CURRENT)
         // returning non-NULL (region.c:10836); its errors propagate.
         if unc.reg_centre_query(FrameRef::Current)?.is_none() {
             return Err(AstError::new(
@@ -1232,7 +1232,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
             new_unc.set_region_fs_flag(false);
         }
 
-        // Re-centre the uncertainty at this Region's first defining point
+        // Re-center the uncertainty at this Region's first defining point
         // (region.c:10871-10876). The point is expressed in this Region's
         // base Frame, which is the uncertainty's current Frame, so it is
         // supplied to the uncertainty's set-path with `ifrm = Current`.
@@ -1927,8 +1927,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
             let nout = map.nout();
 
             // A slicing Mapping (nin != nout, e.g. a PermMap) requires the
-            // uncertainty to be re-centred on the slice: transform its current
-            // centre forward then back through the base->current Mapping
+            // uncertainty to be re-centerd on the slice: transform its current
+            // center forward then back through the base->current Mapping
             // (region.c:11165-11188).
             if nin != nout
                 && let Ok(Some(cen)) = unc.reg_centre_query(FrameRef::Current)
@@ -1948,15 +1948,15 @@ pub trait Region: Frame + Mapping + AsDynRegion {
             // FrameSet to a UnitMap leaves the transform unchanged.
             let (sunc_map, unc_changed) = <dyn Mapping>::simplify_reporting_change(unc.as_ref())?;
             if unc_changed && let Some(mut sunc) = merge_util::mapping_into_region(sunc_map) {
-                // The stability check (region.c:11213-11306): re-centre the
+                // The stability check (region.c:11213-11306): re-center the
                 // simplified uncertainty at opposite corners of a test box and
                 // require its per-axis bounding-box widths to agree.
                 let orig_cen = sunc.reg_centre_query(FrameRef::Base)?;
                 let naxb = self.get_region_frameset().base().naxes();
 
                 // The test box: this Region's base bounding box if bounded,
-                // else a box 100× the uncertainty size centred on the
-                // uncertainty centre (region.c:11221-11236).
+                // else a box 100× the uncertainty size centerd on the
+                // uncertainty center (region.c:11221-11236).
                 let (lbnd, ubnd) = if self.is_bounded()? {
                     self.region_base_box()?
                 } else {
@@ -1972,12 +1972,12 @@ pub trait Region: Frame + Mapping + AsDynRegion {
                     (lb, ub)
                 };
 
-                // Re-centre at the lower corner and record the bounding-box
+                // Re-center at the lower corner and record the bounding-box
                 // widths (region.c:11238-11246).
                 sunc.reg_centre_set(&lbnd, FrameRef::Current)?;
                 let (s1_lbnd, s1_ubnd) = sunc.get_region_bounds()?;
 
-                // Re-centre at the upper corner and record the widths
+                // Re-center at the upper corner and record the widths
                 // (region.c:11248-11255).
                 sunc.reg_centre_set(&ubnd, FrameRef::Current)?;
                 let (s2_lbnd, s2_ubnd) = sunc.get_region_bounds()?;
@@ -1995,7 +1995,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
                     }
                 }
 
-                // Reinstate the original centre (region.c:11289).
+                // Reinstate the original center (region.c:11289).
                 if let Some(oc) = orig_cen {
                     sunc.reg_centre_set(&oc, FrameRef::Base)?;
                 }
@@ -2159,7 +2159,7 @@ where
     let cmesh = smap.transform(&bmesh, true)?;
 
     // The points may span a singularity such as the RA=0 line of a SkyFrame,
-    // so normalise each axis into the shortest possible range
+    // so normalize each axis into the shortest possible range
     // (region.c:9098-9110).
     let frm = fs.current();
     let ncur = frm.naxes();
@@ -2168,7 +2168,7 @@ where
         frm.ax_norm(i + 1, 1, col)?;
     }
 
-    // Bound the normalised points (astBndPoints, pointset.c:681): an axis with
+    // Bound the normalized points (astBndPoints, pointset.c:681): an axis with
     // no good value is returned bad.
     let mut lbnd = vec![BAD_VALUE; ncur];
     let mut ubnd = vec![BAD_VALUE; ncur];

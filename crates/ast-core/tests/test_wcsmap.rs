@@ -369,7 +369,7 @@ fn rate_numeric() {
 }
 
 // ===========================================================================
-// Serialisation round-trip
+// Serialization round-trip
 // ===========================================================================
 
 #[test]
@@ -383,7 +383,7 @@ fn serialisation_round_trip_tan() {
     assert!(text.contains("Type"), "missing Type attribute");
     assert!(text.contains("TAN"), "missing TAN projection code");
 
-    // Deserialise and verify.
+    // Deserialize and verify.
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
     assert_eq!(mapping.nin(), 2);
@@ -749,7 +749,7 @@ fn wcsmap_absorbs_adjacent_permmap() {
 /// lon/lat axes as a straight copy (wcsmap.c:4247), and its MapMerge replaces
 /// it with a UnitMap (wcsmap.c:3087). `NatLon`/`NatLat` are 0. The Rust port
 /// previously rebuilt a CAR projection as a placeholder; this confirms the
-/// observable behaviour is the C identity, not CAR's projection.
+/// observable behavior is the C identity, not CAR's projection.
 #[test]
 fn unknown_projection_is_identity() {
     let wm = WcsMap::new(2, WcsProjection::Unknown, 1, 2).unwrap();

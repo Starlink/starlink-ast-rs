@@ -88,7 +88,7 @@ fn point_inside_axis_aligned() {
         .build()
         .unwrap();
 
-    // Centre is inside.
+    // Center is inside.
     assert!(ellipse.point_in_region(&[0.0, 0.0]).unwrap());
 
     // Point along axis 1 within semi-major.
@@ -163,7 +163,7 @@ fn point_inside_rotated() {
         .build()
         .unwrap();
 
-    // Centre is inside.
+    // Center is inside.
     assert!(ellipse.point_in_region(&[0.0, 0.0]).unwrap());
 
     // Point along the semi-major axis direction (45 degrees).
@@ -230,7 +230,7 @@ fn negation() {
         .build()
         .unwrap();
 
-    // Centre is inside.
+    // Center is inside.
     assert!(ellipse.point_in_region(&[0.0, 0.0]).unwrap());
     // Outside point.
     assert!(!ellipse.point_in_region(&[6.0, 0.0]).unwrap());
@@ -239,7 +239,7 @@ fn negation() {
     ellipse.negate();
     assert!(ellipse.is_negated());
 
-    // Centre is now outside.
+    // Center is now outside.
     assert!(!ellipse.point_in_region(&[0.0, 0.0]).unwrap());
     // Previously-outside point is now inside.
     assert!(ellipse.point_in_region(&[6.0, 0.0]).unwrap());
@@ -283,7 +283,7 @@ fn bounding_box_axis_aligned() {
     assert!((lower[0] - (-4.0)).abs() < 1e-10); // 1 - 5
     assert!((lower[1] - (-1.0)).abs() < 1e-10); // 2 - 3
     // The primary axis tip took the lower end, so the upper end is the
-    // neighbouring mesh point: 1 + 5*cos(2*pi/200).
+    // neighboring mesh point: 1 + 5*cos(2*pi/200).
     assert!((upper[0] - 5.997_532_801_828_654).abs() < 1e-10);
     assert!((upper[1] - 5.0).abs() < 1e-10); // 2 + 3
 }
@@ -339,7 +339,7 @@ fn transform_forward_passes_interior() {
     assert_eq!(p1[0], BAD_VALUE);
     assert_eq!(p1[1], BAD_VALUE);
 
-    // Point 2: inside (centre).
+    // Point 2: inside (center).
     let p2 = result.point(2);
     assert!((p2[0] - 0.0).abs() < 1e-10);
     assert!((p2[1] - 0.0).abs() < 1e-10);
@@ -384,7 +384,7 @@ fn mesh_points_lie_on_boundary() {
     let npoints = mesh.npoint();
     assert!(npoints >= 100); // Default mesh_size is 200.
 
-    // Verify all mesh points satisfy the ellipse equation (normalised
+    // Verify all mesh points satisfy the ellipse equation (normalized
     // distance ~ 1.0).
     let centre = &[1.0, 2.0];
     let a = 5.0_f64;
@@ -461,7 +461,7 @@ fn reg_pins_ellipse_full_mesh_on_boundary() {
 /// `checkEllipseAxisRules`.
 ///
 /// `ax_distance` dispatches to the Axis on the named axis, so the index matters
-/// whenever a Frame's two axes normalise differently. A sky axis folds its
+/// whenever a Frame's two axes normalize differently. A sky axis folds its
 /// distances into +/- pi; a plain axis does not. Neither a SkyFrame (both axes
 /// fold) nor a plain Frame (neither does) can tell the two indices apart — it
 /// takes a Frame whose axes are of different classes.

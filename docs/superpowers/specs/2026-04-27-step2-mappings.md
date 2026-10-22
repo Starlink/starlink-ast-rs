@@ -242,6 +242,6 @@ For composition methods:
 ## What This Step Does NOT Include
 
 - Full simplification engine (cancelling inverse pairs, merging sequences)
-- Serialisation (to_node/from_node)
+- Serialization (to_node/from_node)
 - Decompose, map_box, map_split, linear_approx, quad_approx methods
 - Any other Mapping classes (WcsMap, PolyMap, etc.)

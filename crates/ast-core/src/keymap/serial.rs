@@ -1,4 +1,4 @@
-//! Native-format serialisation for `KeyMap`.
+//! Native-format serialization for `KeyMap`.
 //!
 //! Ported from `Dump`, `DumpEntry` and `astLoadKeyMap` in
 //! `reference/starlink-ast/src/keymap.c`.
@@ -130,8 +130,8 @@ impl Serializable for KeyMap {
         node.mark_read("MapSz");
 
         // Presize from the number of Key%d cards present. C has no presize
-        // step at all -- this is purely a Rust-side allocation optimisation
-        // -- so there is no C behaviour to mirror here, only the
+        // step at all -- this is purely a Rust-side allocation optimization
+        // -- so there is no C behavior to mirror here, only the
         // requirement that it never panics. A node key can contain
         // non-ASCII characters (the native reader's key-boundary predicate
         // is `char::is_alphanumeric`, which is Unicode-aware), so this must
@@ -603,7 +603,7 @@ mod tests {
         let mut node = Node::new("KeyMap");
         node.push_string("Kaéx1", "v", None);
 
-        // Must not panic; the malformed key is simply not recognised as
+        // Must not panic; the malformed key is simply not recognized as
         // a Key%d card; the fixture itself is not a legal KeyMap dump
         // (no Key1/Typ1/Val1), so from_node still errors, just not by
         // panicking.

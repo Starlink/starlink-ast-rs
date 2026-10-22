@@ -428,7 +428,7 @@ fn every_checklist_declares_both_markers() {
 ///
 /// A `gap:` verdict says the C step has no Rust counterpart. The verdicts that
 /// remain valid — `ported`, `n/a: <reason>` and
-/// `divergence: <quirks citation>` — each say the behaviour is accounted for.
+/// `divergence: <quirks citation>` — each say the behavior is accounted for.
 #[test]
 fn no_row_is_left_at_gap() {
     let mut gaps = Vec::new();

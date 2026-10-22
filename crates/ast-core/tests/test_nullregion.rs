@@ -1,7 +1,7 @@
 //! Tests for the NullRegion implementation.
 //!
 //! Covers: empty by default, universal when negated, Mapping::transform
-//! behaviour (forward sets all bad, inverse passes through), Frame delegation.
+//! behavior (forward sets all bad, inverse passes through), Frame delegation.
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;

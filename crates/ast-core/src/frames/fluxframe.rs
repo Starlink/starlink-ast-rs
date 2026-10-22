@@ -28,7 +28,7 @@ pub enum FluxSystem {
 }
 
 impl FluxSystem {
-    /// Return the canonical string representation (as used in serialisation).
+    /// Return the canonical string representation (as used in serialization).
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::FluxDen => "FLXDN",
@@ -232,7 +232,7 @@ impl FluxFrame {
     // Defaults of the Frame-class attributes, for the `frame_attrs_*`
     // macros.
 
-    /// The System label, capitalised, followed by the SpecVal when one is
+    /// The System label, capitalized, followed by the SpecVal when one is
     /// set (fluxframe.c `GetTitle`).
     fn frame_default_title(&self) -> AstResult<String> {
         let mut title = self.system()?.label().to_string();
@@ -650,7 +650,7 @@ impl FluxFrame {
             1.0
         } else {
             // Build the SpecFrames encapsulated in (or defaulted for) each
-            // FluxFrame (`sfin1`/`sfout1`), plus standardised copies in the
+            // FluxFrame (`sfin1`/`sfout1`), plus standardized copies in the
             // density systems (`sfin2`/`sfout2`). Mirrors fluxframe.c:2148-2157.
             let sfin1 = self.get_spec_frame()?;
             let mut sfin2 = sfin1.clone();
@@ -662,12 +662,12 @@ impl FluxFrame {
             sfout2.set_system(sys_out.density_spec_system())?;
             sfout2.set_unit(1, sys_out.density_unit())?;
 
-            // smap: standardised result system → standardised target system
+            // smap: standardized result system → standardized target system
             // (fluxframe.c:2163, astConvert(sfout2, sfin2)).
             let smap = sfout2.make_spec_mapping(&sfin2)?;
             let smap = smap.simplify()?;
 
-            // Standardise both SpecVals into the result density system and
+            // Standardize both SpecVals into the result density system and
             // require them equal (fluxframe.c:2172-2206).
             let specval_in_raw = self.spec_val();
             let specval_out_raw = result.spec_val();
@@ -675,14 +675,14 @@ impl FluxFrame {
                 return Ok(None);
             }
 
-            // smap_in: target's SpecFrame → standardised target system; then
-            // smap (inverse) maps the standardised target value back into the
-            // standardised result system.
+            // smap_in: target's SpecFrame → standardized target system; then
+            // smap (inverse) maps the standardized target value back into the
+            // standardized result system.
             let smap_in = sfin1.make_spec_mapping(&sfin2)?;
             let specval2 = transform1(smap_in.as_ref(), specval_in_raw, true)?;
             let specval_in = transform1(smap.as_ref(), specval2, false)?;
 
-            // smap_out: result's SpecFrame → standardised result system.
+            // smap_out: result's SpecFrame → standardized result system.
             let smap_out = sfout1.make_spec_mapping(&sfout2)?;
             let specval_out = transform1(smap_out.as_ref(), specval_out_raw, true)?;
 
@@ -965,7 +965,7 @@ impl Frame for FluxFrame {
 
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         super::assert_points_len("norm", self.naxes(), &[&*coords]);
-        // Flux coordinates are unbounded — no normalisation needed.
+        // Flux coordinates are unbounded — no normalization needed.
         Ok(())
     }
 
@@ -1032,7 +1032,7 @@ impl Frame for FluxFrame {
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // A specialised leaf frame can only be cast down to a plain
+        // A specialized leaf frame can only be cast down to a plain
         // Frame (BasicFrame). Same-class is handled by the direct Match
         // (no cast needed), so only the BasicFrame target matters here.
         if other
@@ -1209,7 +1209,7 @@ fn fluxframe_sub_frame(
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 impl Serializable for FluxFrame {

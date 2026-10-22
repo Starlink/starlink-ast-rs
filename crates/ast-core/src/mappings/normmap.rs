@@ -121,7 +121,7 @@ impl Mapping for NormMap {
     }
 
     /// normmap.c `RemoveRegions`: remove the Regions from the Frame whose
-    /// normalisation is applied.
+    /// normalization is applied.
     fn mapping_without_regions(&self) -> Option<DynMapping> {
         let frame = self.frame.frame_without_regions()?;
         let mut new = self.clone();
@@ -161,10 +161,10 @@ impl Mapping for NormMap {
         let pout = out.axis_list_mut();
         let mut point = vec![0.0; naxes];
         for ipoint in 0..pts.npoint() {
-            // C normalises every point, bad values included, and leaves each
+            // C normalizes every point, bad values included, and leaves each
             // Frame's Norm to decide what a bad value means (normmap.c
             // Transform): a SkyFrame still wraps the longitude of a point
-            // whose latitude is bad. Both directions normalise.
+            // whose latitude is bad. Both directions normalize.
             for (v, axis) in point.iter_mut().zip(pin) {
                 *v = axis[ipoint];
             }
@@ -208,9 +208,9 @@ impl Mapping for NormMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        // C's MapMerge tries two replacements before it looks at neighbours,
+        // C's MapMerge tries two replacements before it looks at neighbors,
         // in this order. Anything that neither replaces falls through to the
-        // neighbour steps, which `NormMap::try_merge` performs.
+        // neighbor steps, which `NormMap::try_merge` performs.
         //
         // The order is load-bearing: C reaches the second test with
         // `class = astGetClass( smap )`, the class of the *simplified* Frame,

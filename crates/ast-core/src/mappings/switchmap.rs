@@ -319,11 +319,11 @@ impl SwitchMap {
         })
     }
 
-    /// Normalise an inverted SwitchMap into an equivalent non-inverted
+    /// Normalize an inverted SwitchMap into an equivalent non-inverted
     /// SwitchMap, by swapping the forward/inverse selectors and inverting
     /// each route Mapping.
     ///
-    /// Returns `None` if `self` is not inverted (no normalisation needed).
+    /// Returns `None` if `self` is not inverted (no normalization needed).
     /// This is the inversion-fold path of C `switchmap.c::MapMerge`
     /// (`switchmap.c:1057-1076`), reached from [`SwitchMap::map_merge`] when the
     /// SwitchMap is applied in the inverse direction.
@@ -429,7 +429,7 @@ impl SwitchMap {
     ///
     /// The flag is what decides a rebuild, rather than a comparison of the two
     /// SwitchMaps, because C compares child pointers (`sfsmap != map->fsmap`)
-    /// and a rebuilt SwitchMap can be behaviourally equal to the original: an
+    /// and a rebuilt SwitchMap can be behaviorally equal to the original: an
     /// inverted child replaced by its forward equal transforms identically.
     ///
     /// When a child's simplification changes its `is_inverted()` flag (e.g.
@@ -816,10 +816,10 @@ impl Mapping for SwitchMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        // C cancels the SwitchMap against a neighbour first
+        // C cancels the SwitchMap against a neighbor first
         // (switchmap.c:992-1051) and attempts the self-reduction only when that
         // made no change (:1052-1056). The order matters: an effectively
-        // inverted SwitchMap normalised first would no longer carry the opposite
+        // inverted SwitchMap normalized first would no longer carry the opposite
         // invert flag its partner cancels against.
         if series && let Some(modified) = merge_with_neighbour(ctx, where_) {
             return Some(modified);
@@ -989,7 +989,7 @@ impl crate::serial::Serializable for SwitchMap {
     }
 }
 
-/// The neighbour half of C's SwitchMap `MapMerge` (switchmap.c:992-1051): the
+/// The neighbor half of C's SwitchMap `MapMerge` (switchmap.c:992-1051): the
 /// SwitchMap above the nominated one, or failing that the one below, is
 /// inverted and compared with the nominated SwitchMap by `astEqual`; if they
 /// are equal the pair is replaced by a UnitMap.

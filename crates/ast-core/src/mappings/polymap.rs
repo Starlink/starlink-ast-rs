@@ -972,7 +972,7 @@ impl PolyMap {
     ///
     /// `norm` is the per-input scale and offset applied to an input *before* the
     /// coefficients are used, or `None` where the coefficients apply to the
-    /// input itself. A PolyMap has no normalisation; a ChebyMap's coefficients
+    /// input itself. A PolyMap has no normalization; a ChebyMap's coefficients
     /// are those of a Chebyshev series in `z = scale*x + offset`, which maps its
     /// bounding box onto `[-1,1]` (`polymap.c:3778-3784`, `:3787-3793`).
     pub(crate) fn linear_replacement(
@@ -987,7 +987,7 @@ impl PolyMap {
         // `if( pmap0->ncoeff_f && nout == nin )`). An empty consolidated set is
         // therefore still linear: a forward transformation whose coefficients all
         // cancel is the zero matrix, which is what C builds from its
-        // zero-initialised workspace.
+        // zero-initialized workspace.
         let nin = self.nin;
         let nout = self.nout;
         let is_linear = self.forward_defined()
@@ -1000,10 +1000,10 @@ impl PolyMap {
             return None;
         }
 
-        // C accumulates into a zero-initialised offset vector and coefficient
+        // C accumulates into a zero-initialized offset vector and coefficient
         // matrix (`polymap.c:3858-3877`): a term with no input powers adds to an
         // offset, and a term with a single unit power adds to a matrix element.
-        // Under a normalisation a term `c*z_j` contributes `c*scale_j` to the
+        // Under a normalization a term `c*z_j` contributes `c*scale_j` to the
         // matrix and `c*offset_j` to the constant term, so an output can collect
         // a constant contribution from each of its linear terms as well as from
         // its own constant term — which is why both arrays accumulate.
@@ -1042,7 +1042,7 @@ impl PolyMap {
 
     /// The two "replace with simpler" steps C runs at the head of
     /// `polymap.c::MapMerge` (`polymap.c:3626-3918`), before it looks at any
-    /// neighbour: coefficients over the same combination of input powers are
+    /// neighbor: coefficients over the same combination of input powers are
     /// combined, and a PolyMap whose remaining terms are all constant or
     /// first-order is rebuilt out of a `MatrixMap` and a `ShiftMap`.
     ///
@@ -1782,7 +1782,7 @@ impl Mapping for PolyMap {
                 // is built. It handles its own preconditions (shape, npoint
                 // threshold) and returns `Fell` when ineligible, in which case
                 // we drop through to the scalar NR. The SIMD path computes the
-                // same NR fixed point with the same niter/tol, so behaviour is
+                // same NR fixed point with the same niter/tol, so behavior is
                 // identical when it runs — only timing differs.
                 #[cfg(feature = "simd-eval")]
                 {
@@ -1884,8 +1884,8 @@ impl Mapping for PolyMap {
         series: bool,
     ) -> Option<usize> {
         // C's two replace-with-simpler steps, "without reference to the
-        // neighbouring Mappings in the list" (`polymap.c:3626-3918`), taken
-        // before any neighbour is considered. See
+        // neighboring Mappings in the list" (`polymap.c:3626-3918`), taken
+        // before any neighbor is considered. See
         // [`PolyMap::replace_with_simpler`].
         //
         // C works from the transformation as *constructed*, before any
@@ -2273,7 +2273,7 @@ impl Serializable for PolyMap {
 
         // Build directly rather than using `new()` to avoid re-validation
         // of terms that may include BAD_VALUE sentinel coefficients from the
-        // serialised format. The Jacobian cache is needed whenever the
+        // serialized format. The Jacobian cache is needed whenever the
         // effective IterInverse (explicit or default) is on.
         let iter_effective = iter_inv.unwrap_or_else(|| {
             inverse

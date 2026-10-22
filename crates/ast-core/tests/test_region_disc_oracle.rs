@@ -1,7 +1,7 @@
 //! `get_region_disc` against the C library (region.c `GetRegionDisc`, which
 //! no Region class overrides): a disc in the current Frame enclosing the
 //! un-negated Region's boundary mesh, found in a local system on the sky,
-//! with a bad centre and radius for an unbounded Region and AST__INVAR for
+//! with a bad center and radius for an unbounded Region and AST__INVAR for
 //! one that is not 2-dimensional.
 //!
 //! The values come from `tools/oracle_fixtures/region_disc_probe.c`. The

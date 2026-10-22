@@ -34,7 +34,7 @@ with `--ignored`; every gate below runs by default.
 |---|---|---:|---|
 | `test_simplify_regression` | `astSimplify` output, byte-exact against the oracle's dump | 471 manifest cases, 30 tests | `SERIAL_UNGATED` 0, `ISSIMP_DISAGREEMENTS` 3, `ABANDONED_PROBE_STAMP_LICENSED` 5, `INVAB_ALIASING_LICENSED` 2, `NUMERIC_PLATFORM_DRIFT` 5, negative-fixture `IsSimp` strip 144 |
 | `test_transform_oracle` | forward and inverse transforms, and round trips | 1752 sections, 25 tests | all three `*_ORACLE_EXCLUDED` lists empty; `RTRIP_REFERENCE_GAPS_LICENSED` 2 entries (25 rows), `FMA_SUBSTITUTIONS_LICENSED` 2 rows |
-| `test_serialisation` | Native serialisation, byte-exact against C's own round trip | 794 simplify fixtures, 139 frameset fixtures, 24 generated; 77 tests | `FRAMESET_FIXTURE_EXCLUDED` 0 |
+| `test_serialisation` | Native serialization, byte-exact against C's own round trip | 794 simplify fixtures, 139 frameset fixtures, 24 generated; 77 tests | `FRAMESET_FIXTURE_EXCLUDED` 0 |
 | `test_wcsconv` | FITS read path against the oracle's FrameSet | 194 | `NATIVE_READ_EXCLUDED` 0, `ISSIMP_PLACEMENT_LICENSED` 3, manifest `astequal` compare mode 8 |
 | `test_mapmerge_audit` | every C `MapMerge` / `Simplify` seam has a named cover | 37 checklists, 5 tests | `undecided:` 1 (`cmpframe.c`) |
 | `test_audit_citations` | every checklist row's citations resolve, and every C step is covered | 37 checklists, 6 gates | none |
@@ -43,11 +43,11 @@ with `--ignored`; every gate below runs by default.
 `test_simplify_seams` (2 tests), `test_regions` (114), `test_deferred_fixtures`
 (1) and `test_frame_in_map_slot` (3) run alongside them; all pass.
 
-Every cluster that changed behaviour carries a revert-check: the fix backed out,
+Every cluster that changed behavior carries a revert-check: the fix backed out,
 the fixtures confirmed to fail, the fix restored.
-Clusters 6 and 7 discharge it differently — cluster 6's two licences each carry
+Clusters 6 and 7 discharge it differently — cluster 6's two licenses each carry
 a companion test that fails when the excuse would cover a case the reference does
-not also fail, and cluster 7 changed gates rather than behaviour, so each of its
+not also fail, and cluster 7 changed gates rather than behavior, so each of its
 three closed skip modes was made to fail by hand instead.
 
 Three properties make these gates rather than reports:
@@ -61,7 +61,7 @@ Three properties make these gates rather than reports:
 - **Every gate has a floor.**
   A gate that compared nothing would pass; each asserts a minimum case count, so
   a corpus that stops being read fails.
-- **Every licence has a falsifiability control.**
+- **Every license has a falsifiability control.**
   Each exclusion list has a companion test that fails when an excluded case
   starts passing, or when the excuse would cover a case it was not measured on.
 
@@ -126,7 +126,7 @@ which is the authority; the counts are asserted there.
 | `test_transform_oracle.rs` | `SIMPLIFY_ORACLE_EXCLUDED` | 0 | no simplify oracle section is excluded |
 | `test_transform_oracle.rs` | `RTRIP_REFERENCE_GAPS_LICENSED` | 2 | two fixtures, 25 rows, where C's own recorded inverse does not recover the pixel either: `tnx-cheb.head` (all 24 rows — a ChebyMap has no usable inverse) and `tsc.head` row 10 (a 360 deg alias). Asserted as an exact set, reached only after the live result has failed both the direct and the aliased comparison |
 | `test_transform_oracle.rs` | `FMA_SUBSTITUTIONS_LICENSED` | 2 | two rows of one UnitNormMap inverse section where the generator host's compiler fused the multiply-add at `unitnormmap.c:1079` and stepped past C's own zero-norm branch. The substituted expectation is the unfused value C's source prescribes, and a test fails if the recorded values ever stop differing from it |
-| `test_simplify_regression.rs` | `NUMERIC_PLATFORM_DRIFT` | 5 | one inverse-matrix element of `rigby`, the two sky half-widths of `cap_interval_01`'s uncertainty Box, and the two sky coordinates of `cap_pointlist_01`'s re-centred uncertainty corner, whose references were captured on arm64: an x86-64 build of the pinned C does not reproduce their values, the port reproduces its own host's capture to the last digit, and the corpus-freshness rule keeps a cross-platform reference rather than replacing it. Each entry names the reference's value exactly and bounds how far the port's own value may sit from it |
+| `test_simplify_regression.rs` | `NUMERIC_PLATFORM_DRIFT` | 5 | one inverse-matrix element of `rigby`, the two sky half-widths of `cap_interval_01`'s uncertainty Box, and the two sky coordinates of `cap_pointlist_01`'s re-centerd uncertainty corner, whose references were captured on arm64: an x86-64 build of the pinned C does not reproduce their values, the port reproduces its own host's capture to the last digit, and the corpus-freshness rule keeps a cross-platform reference rather than replacing it. Each entry names the reference's value exactly and bounds how far the port's own value may sit from it |
 | `test_simplify_regression.rs` | `SERIAL_UNGATED` | 0 | no fixture opts out of the byte comparison: every simplified dump is compared against C's `.simp` in full, and a difference fails |
 | `test_simplify_regression.rs` | `ISSIMP_DISAGREEMENTS` | 3 | fixtures whose `IsSimp` card count differs from C's, each by one card C wrote inside a merge probe it then abandoned. The byte comparison licenses all three through `ABANDONED_PROBE_STAMP_LICENSED`, so the count is their only gate — which is why the set is pinned on its own |
 | `test_frame_in_map_slot.rs` | `FRAME_IN_MAP_SLOT_UNDECIDED` | 1 | one C-written dump the reader refuses: a bare Frame in a `Map<n>` slot. Whether to support it is an open design question, stated with its artifact in `docs/issues/frame-in-a-mapping-slot.md` |
@@ -140,18 +140,18 @@ Four classes of exclusion, all narrow:
 1. **Deferred classes** — IntraMap, XphMap, StcResourceProfile.
    Not ported at all, counted in `DEFERRED_CLASSES`, and no fixture claims
    otherwise.
-2. **C behaviour that cannot be reproduced from owned values** — the `InvA` /
+2. **C behavior that cannot be reproduced from owned values** — the `InvA` /
    `InvB` aliasing dump line in `cap_cmpmap_01` and `cap_cmpmap_04`, and the
    abandoned-probe `IsSimp` stamp, both of which depend on two C pointers being
    the same object.
    Recorded in `docs/issues/c-library-quirks.md`, never worked around in Rust
    code.
-3. **C behaviour the port declines to reproduce** — ChebyMap's linear `MapMerge`
+3. **C behavior the port declines to reproduce** — ChebyMap's linear `MapMerge`
    reduction, which mirrors PolyMap's and loses the Chebyshev domain scaling.
    Marked in `ChebyMap::map_merge` and tracked at `PLAN.md` §10.2.
    The fix belongs upstream and is deferred until the pin moves, because upstream
-   has reorganised the fixtures.
-4. **Reader-order artefacts** — the three `ISSIMP_PLACEMENT_LICENSED` wcsconv
+   has reorganized the fixtures.
+4. **Reader-order artifacts** — the three `ISSIMP_PLACEMENT_LICENSED` wcsconv
    cases, where the card order depends on the order C's reader happened to
    construct objects in.
 

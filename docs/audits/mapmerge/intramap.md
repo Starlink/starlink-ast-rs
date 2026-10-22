@@ -21,9 +21,9 @@ the pair becomes a UnitMap.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result | intramap.c:1509-1510 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result | intramap.c:1509-1510 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status | intramap.c:1512-1513 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | Further initialisation | intramap.c:1518-1521 (fn MapMerge) | -- | ceremony | n/a: the Rust locals are initialised where they are declared |
+| 3 | Further initialization | intramap.c:1518-1521 (fn MapMerge) | -- | ceremony | n/a: the Rust locals are initialized where they are declared |
 | 4 | Only IntraMaps in series, merging the nominated IntraMap with the Mapping that follows it | intramap.c:1523-1526 (fn MapMerge) | intramap.rs:534-536 (fn map_merge) | architecture | ported |
 | 5 | Obtain the indices of the two potential IntraMaps and a pointer to the first | intramap.c:1528-1532 (fn MapMerge) | intramap.rs:537-539 (fn map_merge) | architecture | ported |
 | 6 | Determine if the second Mapping is an IntraMap and obtain a pointer to it | intramap.c:1534-1540 (fn MapMerge) | intramap.rs:540 (fn map_merge) | architecture | ported |

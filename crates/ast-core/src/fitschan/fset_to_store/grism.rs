@@ -102,7 +102,7 @@ pub(crate) fn extract_grism_map(
 
 /// Return a clone of the requested child (`first=true` for
 /// `cmp.first()`, false for `cmp.second()`) with its `inverted` flag
-/// normalised to the snapshot captured when the CmpMap was
+/// normalized to the snapshot captured when the CmpMap was
 /// constructed. CmpMap's runtime transform composes children using
 /// those snapshots, so a child that was independently inverted
 /// post-construction still walks in its captured direction. Walks

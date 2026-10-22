@@ -15,7 +15,7 @@ Performance work has two eras, and the infrastructure serves both:
 The C engine is therefore an optional plug-in to a Rust-only harness, not its core.
 
 This spec covers the measuring tools only.
-Optimisations are separate work, each judged with these tools (see "Follow-ups").
+Optimizations are separate work, each judged with these tools (see "Follow-ups").
 
 ## Scope
 
@@ -25,7 +25,7 @@ Optimisations are separate work, each judged with these tools (see "Follow-ups")
 - Point counts N ∈ {1, 10, 100, 100 000, 1 000 000}.
   Small N measures per-call overhead; large N measures the per-point loop.
 - No explicit SIMD on either side, so the comparison with C is direct.
-  Compiler auto-vectorisation is allowed on both sides.
+  Compiler auto-vectorization is allowed on both sides.
 
 ## Phase 0 — call-count parity
 
@@ -170,7 +170,7 @@ Recorded in the crate README and enforced by the build scripts:
 
 - Both engines at `-O3` (Rust: release profile).
 - C built with `-ffp-contract=off`, because Rust never fuses into FMA.
-- No explicit SIMD; auto-vectorisation allowed on both sides.
+- No explicit SIMD; auto-vectorization allowed on both sides.
 - Every timed case is covered by an asserting oracle gate.
 
 ## Phase 2 — the first full sweep
@@ -191,7 +191,7 @@ A case it flags joins a curated set with its reason.
 
 - Delete `examples/bench_per_class.rs` and `tests/bench_per_class_c.c` once the `bench` set covers their classes; keep `examples/bench_polymap_simd.rs` for the SIMD follow-up.
 - Point `docs/issues/mapping-perf-vs-c-oracle.md` at the first snapshot.
-- Update CLAUDE.md's "Hot-path constraint" paragraph, which says no performance gate exists, and the "Bulk-transform optimisation" section, which names `ast-oracle-bench`.
+- Update CLAUDE.md's "Hot-path constraint" paragraph, which says no performance gate exists, and the "Bulk-transform optimization" section, which names `ast-oracle-bench`.
 - Update the `PLAN.md` rows for per-class performance and tier 5.
 - Amend the port design spec (`2026-04-20-rust-port-design.md`) for the crate rename, with a revision-history entry.
 
@@ -204,9 +204,9 @@ A case it flags joins a curated set with its reason.
 ## Follow-ups (out of scope)
 
 - Moving the `bench` fixtures into `ast_tester/fixtures/bench/` with a C pull request, mirroring them, and folding `bench.oracle` into the main oracle gate.
-- Optimisations, each its own change: the prototype's faster PolyMap (`../starlink-astrs-proto`), the `PointSet` row-major layout hypothesis in `PLAN.md`, moving BAD checks out of inner loops by substituting NaN internally.
+- Optimizations, each its own change: the prototype's faster PolyMap (`../starlink-astrs-proto`), the `PointSet` row-major layout hypothesis in `PLAN.md`, moving BAD checks out of inner loops by substituting NaN internally.
 - Counting trig called directly in non-vendored code at a finer grain (per call site, via `tracing`), if Phase 0 shows a mismatch the per-function totals cannot place.
-- Modern wcslib's vectorised projection routines, compared with the 20-year-old vendored copy.
+- Modern wcslib's vectorized projection routines, compared with the 20-year-old vendored copy.
 - SIMD on both sides, once the C library's SIMD work (https://github.com/Starlink/ast/pull/51) lands: build a C engine from it and compare with `ast-bench run --engine both`; `examples/bench_polymap_simd.rs` and `ast-core`'s `simd-eval` feature are kept for this.
 - A `linux-x86_64` snapshot.
 - `compare --base` as a pull-request CI job, once Rust has reached parity; running both builds in one job makes it usable on noisy shared runners.

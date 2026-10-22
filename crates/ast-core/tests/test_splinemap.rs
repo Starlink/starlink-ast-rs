@@ -9,7 +9,7 @@ use ast_core::coords::PointSet;
 use ast_core::mappings::{Mapping, SplineMap};
 use ast_core::{AnyObject, from_native_string};
 
-/// Helper to build a simple order-1 (linear) SplineMap with known behaviour.
+/// Helper to build a simple order-1 (linear) SplineMap with known behavior.
 ///
 /// With kx=1, ky=1, nx=1, ny=1:
 /// - tx = [0, 1], ty = [0, 1] (domain [0,1] x [0,1])
@@ -409,7 +409,7 @@ fn test_edge_of_domain() {
     // Test that values at the lower edge and near the upper edge produce valid output.
     // Note: With minimal knots [0,0,1,1], the exact upper boundary (1.0, 1.0)
     // returns BAD due to the degenerate basis function arrangement — this matches
-    // the C library behaviour. Test points just inside the domain instead.
+    // the C library behavior. Test points just inside the domain instead.
     let m = make_identity_spline();
     let pts = PointSet::from_rows([[0.0, 0.0], [0.999, 0.999]]);
     let result = m.transform(&pts, true).unwrap();

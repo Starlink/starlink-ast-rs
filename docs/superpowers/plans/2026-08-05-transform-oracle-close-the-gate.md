@@ -104,7 +104,7 @@ Reading the four independent implementations:
 - `box.c:4200-4270` — un-negated uses `astAxIn(..., closed)`; negated uses `astAxIn(..., !closed)`.
 - `circle.c:2078-2092` — un-negated: `d <= radius` (closed) / `d < radius` (open); negated: `d >= radius` (closed) / `d > radius` (open).
 - `ellipse.c:2196-2210` — the same four-way split on `d` vs `1.0`.
-- `interval.c:3666-3890` — four separate labelled blocks: closed-unnegated, closed-negated, open-unnegated, open-negated.
+- `interval.c:3666-3890` — four separate labeled blocks: closed-unnegated, closed-negated, open-unnegated, open-negated.
 
 In all four the comparison used for the raw geometry is strict iff `closed == negated`, and inclusive iff `closed != negated`.
 
@@ -155,7 +155,7 @@ The Rust `SelectorMap::transform` already mirrors C faithfully (`selectormap.rs:
 - [x] Read `box.c:4200-4270`, `interval.c:3666-3890`, `circle.c:2078-2092`, `ellipse.c:2196-2210`, and `polygon.c:6390-6455` and confirm the rule in each before touching Rust.
       This is what showed the rule is *not* joint: boundary membership is plain `closed`, and the `closed != negated` expression is an artifact of `reg_base_inside` returning un-negated membership to a caller that inverts it.
 - [x] In `crates/ast-core/src/regions/box_region.rs::reg_base_inside`, derive the comparison from the effective flag rather than `self.data.closed`.
-- [x] Do the same in `interval.rs::reg_base_inside`, covering all four of C's labelled blocks including the excluded-interval (`lb > ub`) orientation.
+- [x] Do the same in `interval.rs::reg_base_inside`, covering all four of C's labeled blocks including the excluded-interval (`lb > ub`) orientation.
 - [x] Apply the identical rule in `circle.rs`, `ellipse.rs`, and `polygon.rs::reg_base_inside`.
       Polygon needed it too, contrary to the guess above.
       `circle.rs`'s `norm_box` probe is the one deliberate exception and keeps the raw flag, commented against `circle.c:1095-1097`.
@@ -243,7 +243,7 @@ takes the remaining mismatch to zero, with no other test in the crate affected.
       Left nested per point: a `PointSet` is row-major over points, so C's axis-outer order would stride the wrong way.
       The comment in the arm records why the nesting differs from C.
 - [x] Fix the Full arm too: `is_bad(coeff)` was missing alongside the zero-coefficient mask.
-- [x] Fix `test_matrixmap.rs::matrix_diagonal_bad_handling`, which asserted the invented zero-diagonal behaviour, and add `matrix_full_bad_coefficient_and_masking`.
+- [x] Fix `test_matrixmap.rs::matrix_diagonal_bad_handling`, which asserted the invented zero-diagonal behavior, and add `matrix_full_bad_coefficient_and_masking`.
 - [x] Re-measure. Expect mismatches `1 → 0` and a green whole-crate run.
 - [x] `cargo fmt --all`; clippy clean; commit.
 

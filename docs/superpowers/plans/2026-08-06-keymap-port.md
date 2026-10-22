@@ -2,15 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Port AST's `KeyMap` class to `crates/ast-core/src/keymap/`, with entry storage in a `std::collections::HashMap`, the full `ConvertValue` type-conversion matrix, all seven `SortBy` modes, a `Serializable` round trip that is byte-exact against C except for the `MapSz` card, and `AnyObject::KeyMap` wired into both serialisation dispatch functions.
+**Goal:** Port AST's `KeyMap` class to `crates/ast-core/src/keymap/`, with entry storage in a `std::collections::HashMap`, the full `ConvertValue` type-conversion matrix, all seven `SortBy` modes, a `Serializable` round trip that is byte-exact against C except for the `MapSz` card, and `AnyObject::KeyMap` wired into both serialization dispatch functions.
 
 **Architecture:** The design is fixed by `docs/superpowers/specs/2026-08-06-keymap-port-design.md`; read it before starting.
-Entries live in `HashMap<String, MapEntry>` keyed by the already-normalised key, and the only part of C's chained bucket table that survives is the arithmetic needed to compute the `MapSz` card at dump time.
+Entries live in `HashMap<String, MapEntry>` keyed by the already-normalized key, and the only part of C's chained bucket table that survives is the arithmetic needed to compute the `MapSz` card at dump time.
 Ordering is computed at read-out from `member` / `keymember` / `KeyCmp` rather than maintained in a sorted linked list, which is what makes the dump idempotent and independent of insertion order.
 The module is six files, following the multi-file layout `crates/ast-core/src/regions/` already uses.
 
 **Tech Stack:** Rust 2024 edition, `cargo test` / `cargo fmt` / `cargo clippy`.
-The authority for every behavioural question is `reference/starlink-ast/src/keymap.c` (11,484 lines).
+The authority for every behavioral question is `reference/starlink-ast/src/keymap.c` (11,484 lines).
 Where the C source does not settle a question, build a C oracle probe under `tools/oracle_fixtures/` following `docs/issues/c-oracle-probe-recipe.md`.
 
 ## Global Constraints
@@ -227,7 +227,7 @@ fn clone_is_a_deep_copy() {
 }
 ```
 
-If `SkyFrame::new()` is not the constructor in this tree, use the same construction the neighbouring `sky_basic_cmp()` helper in that test module uses.
+If `SkyFrame::new()` is not the constructor in this tree, use the same construction the neighboring `sky_basic_cmp()` helper in that test module uses.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -337,7 +337,7 @@ Rust folds `type` + `nel` + the payload into one enum: the variant is the type c
   - `pub enum AstType { Int = 1, Double = 2, String = 3, Object = 4, Float = 5, SInt = 7, Undef = 8, Byte = 9, KInt = 10 }` with `AstType::from_code(i64) -> Option<AstType>`, `AstType::code(self) -> i64`, `AstType::type_comment(self) -> &'static str`.
   - `pub(crate) enum Scalar1D<T> { Scalar(T), Vector(Vec<T>) }` with `len(&self) -> usize`, `nel(&self) -> usize`, `as_slice(&self) -> &[T]`, `as_mut_slice(&mut self) -> &mut [T]`.
   - `pub(crate) enum EntryValue { Int(Scalar1D<i32>), Double(Scalar1D<f64>), String(Scalar1D<String>), Object(Scalar1D<Option<Box<AnyObject>>>), Float(Scalar1D<f32>), SInt(Scalar1D<i16>), Byte(Scalar1D<u8>), KInt(Scalar1D<i64>), Undef { nel: usize } }` with `ast_type(&self) -> AstType`, `nel(&self) -> usize`, `len(&self) -> usize`, `defined(&self) -> bool`.
-  - **The `Option` on the Object payload is load-bearing, not defensive.** `MapPut0A` stores `(value?astClone(value):NULL)` (`keymap.c:4773`) and `MapPut1A` the same per element (`:5012`); `ConvertValue`'s Object-to-Object arm passes the null straight through as `aval ? astClone( aval ) : NULL` (`:2201`); `CopyMapEntry` propagates it (`:2404`); and `DumpEntry` omits a null Object's card entirely. `testkeymap.c` depends on all of it, storing `avec = { SkyFrame, NULL, SpecFrame, NULL }` and asserting that elements 1 and 3 read back null while 0 and 2 do not. Modelling this as a non-optional `Box<AnyObject>` would make that test unportable.
+  - **The `Option` on the Object payload is load-bearing, not defensive.** `MapPut0A` stores `(value?astClone(value):NULL)` (`keymap.c:4773`) and `MapPut1A` the same per element (`:5012`); `ConvertValue`'s Object-to-Object arm passes the null straight through as `aval ? astClone( aval ) : NULL` (`:2201`); `CopyMapEntry` propagates it (`:2404`); and `DumpEntry` omits a null Object's card entirely. `testkeymap.c` depends on all of it, storing `avec = { SkyFrame, NULL, SpecFrame, NULL }` and asserting that elements 1 and 3 read back null while 0 and 2 do not. Modeling this as a non-optional `Box<AnyObject>` would make that test unportable.
   - `pub(crate) struct MapEntry { comment: Option<String>, member: u64, keymember: u64, value: EntryValue }`.
 
 - [ ] **Step 1: Write the failing test**
@@ -693,7 +693,7 @@ EOF
 
 ---
 
-### Task 3: `table.rs` — hash, key comparison, key normalisation, `MapSz`
+### Task 3: `table.rs` — hash, key comparison, key normalization, `MapSz`
 
 Four C functions, none of which stores anything:
 
@@ -1838,7 +1838,7 @@ Expected: all twelve tests PASS; the regression check prints nothing.
 
 `double_to_string(0.1)` is the assertion most likely to reveal a `format_double_g` divergence.
 If it fails, print both `format_double_g(0.1, 14)` and `format_double_g(0.1, 17)` and compare against `printf "%.14g %.17g" 0.1` in the shell.
-`format_double_g` is used by every existing serialiser, so a bug there is a much larger finding; fix it there rather than working around it here.
+`format_double_g` is used by every existing serializer, so a bug there is a much larger finding; fix it there rather than working around it here.
 
 - [ ] **Step 5: Commit**
 
@@ -1883,7 +1883,7 @@ The four defaults, from the `astMAKE_GET` block at `keymap.c:10155`:
 The `SizeGuess` documentation in `keymap.c` says the default is 300; the code computes 160.
 **The code is authoritative** — port 160 and do not add a comment about the discrepancy in the Rust source, because the Rust source's reader does not care about C's prose.
 
-Setter behaviour differs per attribute, and each difference is load-bearing:
+Setter behavior differs per attribute, and each difference is load-bearing:
 
 - **`SizeGuess` and `KeyCase` cannot be changed once the map is non-empty.** C raises `AST__NOWRT`. `SetSizeGuess` checks unconditionally; `SetKeyCase` checks only when the value actually changes, so `set_key_case(current_value)` on a non-empty map is a permitted no-op.
 - **`ClearKeyCase` restores the old value before raising**, so a failed clear leaves the attribute untouched. `ClearSizeGuess` behaves the same way.
@@ -2359,7 +2359,7 @@ The `MAKE_MAPPUT0` and `MAKE_MAPGET0` macro families, nine expansions each (eigh
 
 `astMapPut0<X>` semantics, from `keymap.c:4690`:
 
-1. Normalise the key with `ConvertKey`.
+1. Normalize the key with `ConvertKey`.
 2. For the `A` variant, run `CheckCircle` first: putting a KeyMap into itself, directly or transitively, is `AST__KYCIR`.
 3. Build the entry with `nel = 0` and `defined = 1`.
 4. Strip trailing `' '` from the stored key — **only spaces**, unlike `astChrLen`.
@@ -2841,10 +2841,10 @@ The rules, each from C:
 - **`astMapGet1<X>` truncates rather than failing** when the caller's buffer is shorter than the entry: `if( nel > mxval ) nel = mxval;`, and `*nval` reports how many were written. A scalar entry reads as a length-1 vector (`if( nel == 0 ) nel = 1;`). Rust returns `Vec<T>` sized to the entry, so the `mxval` parameter is dropped — except on `get_1c`, where the C fixed-stride buffer is observable through `map_get_c`.
 - **`astMapPutElem<X>` on an absent or undefined key creates a length-1 vector** via `astMapPut1<X>( this, key, 1, &value, NULL )` — dropping any comment the entry had, because the entry is being created.
 - **`astMapPutElem<X>` on a scalar promotes it to a length-1 vector**, this time **preserving** the comment (`astMapPut1##X( this, key, 1, &scalarvalue, mapentry->comment )`).
-- **An out-of-range element index appends**: `new = ( elem >= nel || elem < 0 ); if( new ) { elem = nel++; … }`. A negative index appends too. Rust's `usize` cannot be negative, so only the high side is reachable, and appending is the documented behaviour rather than an error.
+- **An out-of-range element index appends**: `new = ( elem >= nel || elem < 0 ); if( new ) { elem = nel++; … }`. A negative index appends too. Rust's `usize` cannot be negative, so only the high side is reachable, and appending is the documented behavior rather than an error.
 - **`astMapGetElem<X>` does reject an out-of-range index**, with `AST__MPVIN` and the message naming the vector length. The asymmetry with put is C's.
 - **`astMapLenC` returns the longest element's length**, computed as `if( --l > result ) result = l;` where `l` is `ConvertValue`'s return (string length **including** the terminator). So the reported length excludes the terminator.
-- **`astMapGetC` joins a vector with `", "`** — but it reads the elements into a buffer of fixed `mxlen + 1` stride and walks that stride, so a short element is followed by the spaces padding its slot. For `["Hello", "", "Hello"]` with `mxlen` 5 this gives `"(Hello, ,  Hello)"`, length 17, which `testkeymap.c` asserts. This is C's behaviour, not a bug to fix.
+- **`astMapGetC` joins a vector with `", "`** — but it reads the elements into a buffer of fixed `mxlen + 1` stride and walks that stride, so a short element is followed by the spaces padding its slot. For `["Hello", "", "Hello"]` with `mxlen` 5 this gives `"(Hello, ,  Hello)"`, length 17, which `testkeymap.c` asserts. This is C's behavior, not a bug to fix.
 - `astMapGetC` on a length-0 entry returns failure; on a length-1 entry it delegates to `astMapGet0C` with no parentheses.
 
 **Files:**
@@ -3269,7 +3269,7 @@ pub fn map_get_c(&self, key: &str) -> AstResult<Option<String>> {
 Check the padding rule against `testkeymap.c`'s assertion before moving on: `["Hello", "", "Hello"]` with `mxlen` 5 must give exactly `"(Hello, ,  Hello)"`.
 If the naive `mxlen - part.len()` padding gives a different string, read `MapGetC` (`keymap.c:6520`) again and follow its `pb += mxlen + 1` walk literally rather than adjusting the pad width until the assertion passes.
 
-`lookup(&self, key: &str) -> Option<&MapEntry>` is the private normalise-then-`HashMap::get` helper every read shares; add it and use it in Task 7's readers too.
+`lookup(&self, key: &str) -> Option<&MapEntry>` is the private normalize-then-`HashMap::get` helper every read shares; add it and use it in Task 7's readers too.
 
 - [ ] **Step 4: Run the tests**
 
@@ -3318,10 +3318,10 @@ The rules, each from C:
 - **`astMapType` returns `AST__BADTYPE` for a missing key**, never an error, and never consults `KeyError`.
 - **`astMapHasKey` is true for an undefined entry; `astMapDefined` is not.** Neither consults `KeyError`.
 - **`astMapRemove` on a missing key is silent.** `RemoveTableEntry` returns NULL and `FreeMapEntry(NULL)` is a no-op.
-- **`astMapRename` is a no-op when the two normalised keys are equal** (`if( strcmp( oldkey, newkey ) )` guards the whole body), and silently does nothing when the old key is absent.
+- **`astMapRename` is a no-op when the two normalized keys are equal** (`if( strcmp( oldkey, newkey ) )` guards the whole body), and silently does nothing when the old key is absent.
 - **`astMapRename` inherits the destination's `keymember` when the destination already existed**, and allocates a fresh one otherwise — the same `keymember >= 0 ? reuse : allocate` rule `AddTableEntry` applies. So renaming onto an occupied key keeps that key's age, and renaming onto a free key makes the entry the newest key.
 - **`astMapRename` respects `MapLocked`**: renaming onto a key that does not already exist in a locked KeyMap raises `AST__BADKEY`. C's message names the *new* key twice.
-- **`astMapRename` re-normalises the new key**, stripping trailing `' '` in place exactly as the put macros do.
+- **`astMapRename` re-normalizes the new key**, stripping trailing `' '` in place exactly as the put macros do.
 - **`astMapKey` reports `AST__MPIND` for an out-of-range index** — `GetKey`'s tail, not a silent `None`.
 - **`astMapIterate`'s `reset` flag drives a stored cursor.** Rust holds the cursor as a `usize` index into the ordered key list, which is what makes Bug 3 unexpressible.
 
@@ -3638,7 +3638,7 @@ pub fn map_rename(&mut self, old_key: &str, new_key: &str) -> AstResult<()> {
 ```
 
 C does *not* restore the removed entry when the locked check fails — it leaves the KeyMap with the old key gone and the new key absent, losing the entry.
-That is a data-loss path rather than an observable behaviour any caller depends on, so Rust restores it and the divergence is recorded: add a fifth section to `docs/issues/c-library-quirks.md` titled `### astMapRename on a locked KeyMap loses the entry`, citing `keymap.c:7608`, stating that C's `RemoveTableEntry` has already unlinked the old entry when the `AST__BADKEY` error fires and nothing puts it back, and that Rust restores the entry so a failed rename leaves the KeyMap unchanged.
+That is a data-loss path rather than an observable behavior any caller depends on, so Rust restores it and the divergence is recorded: add a fifth section to `docs/issues/c-library-quirks.md` titled `### astMapRename on a locked KeyMap loses the entry`, citing `keymap.c:7608`, stating that C's `RemoveTableEntry` has already unlinked the old entry when the `AST__BADKEY` error fires and nothing puts it back, and that Rust restores the entry so a failed rename leaves the KeyMap unchanged.
 
 Then the ordered read-out pair:
 
@@ -3745,7 +3745,7 @@ The rules, each from C:
 - **`KeyUp` is `KeyCmp(first, second)`; `KeyDown` is `KeyCmp(second, first)`** — argument order, not negation. For `KeyCmp` these coincide, but write it C's way.
 - **`SORTBY_NONE` reaches `CompareEntries` with `result` still 0**, so under C every entry compares equal and `qsort` leaves them in whatever order the array was built in. Rust sorts by `key_cmp` instead; that is the intentional divergence already recorded in the quirks doc.
 - **`SortByInt` uses `astChrMatch`**, which folds case *and* tolerates trailing whitespace on either side. So `"keyup"`, `"KEYUP  "` and `"KeyUp"` all parse.
-- **An unrecognised string is `AST__INTER`**, not a user error: `"%s(KeyMap): Illegal SortBy value %s encountered."` — note the absence of the "(internal AST programming error)" tail that `SortByString`'s message has.
+- **An unrecognized string is `AST__INTER`**, not a user error: `"%s(KeyMap): Illegal SortBy value %s encountered."` — note the absence of the "(internal AST programming error)" tail that `SortByString`'s message has.
 - **`SortBy` is not applied at dump time.** `Dump` (`:10460`) walks the hash table directly and never consults `SortBy`, so Task 12's `to_node` must use `key_cmp` order unconditionally, *not* `sorted_keys()`.
 
 **Files:**
@@ -3758,7 +3758,7 @@ The rules, each from C:
   - `pub enum SortBy { None, AgeUp, AgeDown, KeyUp, KeyDown, KeyAgeUp, KeyAgeDown }` — moved out of Task 6's stub, now with a body.
   - `impl SortBy { pub fn code(self) -> i32; pub fn from_code(code: i32) -> Option<Self>; pub fn as_str(self) -> &'static str; pub fn parse(text: &str) -> AstResult<Self> }`
   - `pub(crate) fn compare_entries(sort_by: SortBy, a: (&str, &MapEntry), b: (&str, &MapEntry)) -> Ordering`
-  - `KeyMap::sorted_keys` now honours `SortBy`.
+  - `KeyMap::sorted_keys` now honors `SortBy`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -4142,7 +4142,7 @@ The rules, each from C:
 - **The one exception is nested KeyMaps: they merge rather than replace.** If both entries are `AST__OBJECTTYPE`, both have `nel == 0 || nel == 1`, and both objects are KeyMaps, C recurses `astMapCopy` into the destination's nested KeyMap instead of overwriting it. `astMapCopyEntry` does this only when its `merge` argument is non-zero; `astMapCopy` always does.
 - **`nel == 1` counts as scalar for the merge test.** A length-1 vector of KeyMaps merges through its element 0, not through replacement. Note that only element 0 participates: a length-1 vector is the only vector case, since `nel >= 2` fails the test.
 - **The recursion is into the destination's *existing* nested KeyMap object**, so its own `MapLocked`, `KeyCase` and other attributes govern the merge, not the outer destination's.
-- **`astMapCopyEntry` normalises the key using the *source*'s `KeyCase`** (`ConvertKey( that, skey, … )`), then uses that same string to look up the destination. If the two KeyMaps have different `KeyCase` settings, the destination lookup uses the wrong casing. Mirror this — it is C's behaviour, and a caller with mismatched `KeyCase` on two KeyMaps has already left well-defined territory. Record it as a sixth section in `docs/issues/c-library-quirks.md`: `### astMapCopyEntry normalises the key with the source KeyMap's KeyCase`, citing `keymap.c:4350`.
+- **`astMapCopyEntry` normalizes the key using the *source*'s `KeyCase`** (`ConvertKey( that, skey, … )`), then uses that same string to look up the destination. If the two KeyMaps have different `KeyCase` settings, the destination lookup uses the wrong casing. Mirror this — it is C's behavior, and a caller with mismatched `KeyCase` on two KeyMaps has already left well-defined territory. Record it as a sixth section in `docs/issues/c-library-quirks.md`: `### astMapCopyEntry normalises the key with the source KeyMap's KeyCase`, citing `keymap.c:4350`.
 - **A source key absent from the source is silently ignored** by `astMapCopyEntry` (`if( in_entry )` guards the body).
 - **C copies in source bucket order**, which sets the order in which fresh destination keys get their `member`/`keymember` counters. Rust copies in `key_cmp` order, so the counters differ from C's for keys added by the copy. This follows from the ordering decision already taken and needs no separate quirks entry; the existing `:1416` section covers it.
 
@@ -5155,7 +5155,7 @@ pub fn get_int_any_if_set(&self, key: &str) -> Option<i64> { … }
 pub fn get_string_if_set(&self, key: &str) -> Option<String> { … }
 ```
 
-Both are `self.get(key)` plus a type match — `get` already returns `None` for `Unset`, so they are thin. Check first whether an existing helper already does this; if `get_int_any`'s `Unset`-unwrapping variant is the only one, add these two rather than changing `get_int_any`, whose current behaviour other classes depend on.
+Both are `self.get(key)` plus a type match — `get` already returns `None` for `Unset`, so they are thin. Check first whether an existing helper already does this; if `get_int_any`'s `Unset`-unwrapping variant is the only one, add these two rather than changing `get_int_any`, whose current behavior other classes depend on.
 
 `push_int_attr` / `push_string_attr` wrap `push_int` / `push_unset` on the `set` flag:
 
@@ -6006,11 +6006,11 @@ Give the new blocks a section comment recording which part of `main` they come f
 
 Tasks 7-11 already cover much of this ground with targeted tests.
 That overlap is fine and expected — the C test is the acceptance gate, and duplicating an assertion costs nothing.
-Do **not** delete a Task 7-11 test because Task 16 covers the same behaviour: the earlier tests are the ones that pin a single C function, and they are what a future bisect will land on.
+Do **not** delete a Task 7-11 test because Task 16 covers the same behavior: the earlier tests are the ones that pin a single C function, and they are what a future bisect will land on.
 
 **Four porting decisions to make explicitly, and record in the file header:**
 
-1. **`astMapGet1C` and `astMapGetElemC` take a buffer width.** C pads each string to `l` bytes in a flat buffer, which is a C-string-handling artefact with no Rust analogue — `get_1c` returns `Vec<String>` and `get_elem_c` returns `String`, both unpadded. So the C checks on padding (`Error B8b`/`B8c`/`B8d`, and the header's note about the Fortran declared width) become checks on the unpadded values. `map_get_c` is different and must **not** be simplified: C's fixed `mxlen + 1` stride is visible in the *returned string*, which is why `["Hello", "", "  Hello"]` gives `"(Hello, ,  Hello)"` and not `"(Hello, ,   Hello)"`. Task 8 ports that faithfully; assert the exact 17-character string here.
+1. **`astMapGet1C` and `astMapGetElemC` take a buffer width.** C pads each string to `l` bytes in a flat buffer, which is a C-string-handling artifact with no Rust analogue — `get_1c` returns `Vec<String>` and `get_elem_c` returns `String`, both unpadded. So the C checks on padding (`Error B8b`/`B8c`/`B8d`, and the header's note about the Fortran declared width) become checks on the unpadded values. `map_get_c` is different and must **not** be simplified: C's fixed `mxlen + 1` stride is visible in the *returned string*, which is why `["Hello", "", "  Hello"]` gives `"(Hello, ,  Hello)"` and not `"(Hello, ,   Hello)"`. Task 8 ports that faithfully; assert the exact 17-character string here.
 2. **`astCopy` becomes `Clone`.** The C test uses `astCopy` to get an independent copy and then reads from it. `Clone` is the documented deep copy for this project (see CLAUDE.md), so `map2 = map.clone()`.
 3. **`avec[1] = NULL` is a real stored value.** `MapPut1A` stores `value[i] ? astClone(value[i]) : NULL` (`keymap.c:5012`), so the Object vector is `vec![Some(sky), None, Some(spec), None]` and `get_1a` returns the two `None`s. This is why Task 2's `EntryValue::Object` carries `Option`.
 4. **`astMapPutElemI( map, "Fredi", -1, -3 )` uses a negative index to mean "append".** Task 8's `put_elem_*` takes `elem: usize`, so the negative sentinel cannot be passed. Give `KeyMap` an explicit `append_elem_*` per type instead of widening the index to `isize` — the C sentinel exists because C had no other way to say it, and a named method is the faithful *intent*, not a shortcut. Note in the file header that C's `-1` maps to `append_elem_i`. Do the same for `astMapPutElemD( map, "HHH", -1, … )` in the `:1372` block, which appends five times to a key that does not exist yet, so `append_elem_d` must create a length-1 vector on the first call exactly as `put_elem` does.
@@ -6258,7 +6258,7 @@ Do not batch several blocks into one commit — the point of the block-by-block 
 
 Two blocks that need care when you reach them:
 
-**`five_hundred_entries`** (`main:896`). C puts 200 `int` keys then 299 `int64` keys then one `int64` of `INT_MAX * 100`, checks the size is 500, checks `Fred123` is `INTTYPE` and `Fred234` is `KINTTYPE`, reads `Fred489` as the string `"489"`, and calls `checkdump`. The 500-key size is what would have exercised C's `DoubleTableSize`; with a `HashMap` it exercises nothing, but keep it — it is also the largest `check_dump` in the suite, so it is the one that would catch a serialisation cost that scales badly.
+**`five_hundred_entries`** (`main:896`). C puts 200 `int` keys then 299 `int64` keys then one `int64` of `INT_MAX * 100`, checks the size is 500, checks `Fred123` is `INTTYPE` and `Fred234` is `KINTTYPE`, reads `Fred489` as the string `"489"`, and calls `checkdump`. The 500-key size is what would have exercised C's `DoubleTableSize`; with a `HashMap` it exercises nothing, but keep it — it is also the largest `check_dump` in the suite, so it is the one that would catch a serialization cost that scales badly.
 
 **`map_locked_rejects_new_keys`** (`main:1032`). This block is the one that pins `MapLocked`'s inheritance: `map` holds `km2` under `" BZY"`, `MapLocked` is set on `map`, and a put of a *new* key into `km2` fails with `AST__BADKEY` while a put of an *existing* key succeeds. Then the same shape for `KeyError` and `AST__MPKER`. Task 6 implements the recursion; this is its acceptance test.
 
@@ -6296,10 +6296,10 @@ EOF
 
 ### Task 17: round-trip tests, the C fixture subtree, and the `MapSz` exclusion
 
-Three separate jobs, in one file because they all test the serialiser:
+Three separate jobs, in one file because they all test the serializer:
 
 1. **Hand-built round trips.** One KeyMap per type code, scalar and vector, plus the attribute combinations. `dump → load → dump` must be byte-identical, and the reloaded values must equal the originals. This is the same shape as `test_native_roundtrip_all.rs`'s `assert_double_round_trip`, and for the same reason: the C fixture corpus only covers what some fixture happens to contain.
-2. **The C fixture subtree.** `cap_timemap_02.map` holds one real C-generated KeyMap. Lift it out, parse it, dump it, and compare against the C bytes. This is the only place in the plan where C's own serialiser output is the oracle.
+2. **The C fixture subtree.** `cap_timemap_02.map` holds one real C-generated KeyMap. Lift it out, parse it, dump it, and compare against the C bytes. This is the only place in the plan where C's own serializer output is the oracle.
 3. **The `MapSz` exclusion.** `MapSz` records C's collision history and has no `HashMap` counterpart (design; `docs/issues/c-library-quirks.md:1629`). It is excluded from the byte comparison by a named helper, and separately asserted against `tests/fixtures/keymap/mapsz_oracle.txt` — the committed output of Task 4's C probe — so the exclusion does not hide a wrong value.
 
 **Why the subtree has to be lifted rather than loaded whole.**
@@ -6309,16 +6309,16 @@ Locate the block by scanning for the markers, **not** by the line numbers 448-75
 
 **What the comparison must allow for, and what it must not.**
 
-Two differences are expected and are normalised away:
+Two differences are expected and are normalized away:
 
-- **Indentation.** The fixture's block sits at base indent 6 (nested one level inside the `StcResourceProfile`); a standalone dump writes at base 0. Normalise every line by stripping leading whitespace, and — for a commented-out unset attribute — the leading `#` and the whitespace after it, keeping a flag that the card was commented. This makes the comparison indentation-blind without discarding the set/unset distinction.
+- **Indentation.** The fixture's block sits at base indent 6 (nested one level inside the `StcResourceProfile`); a standalone dump writes at base 0. Normalize every line by stripping leading whitespace, and — for a commented-out unset attribute — the leading `#` and the whitespace after it, keeping a flag that the card was commented. This makes the comparison indentation-blind without discarding the set/unset distinction.
 - **Entry order.** C dumps entries in hash-bucket order (`Size`, `Name`, `Resolution`, `Error`); the port dumps in `KeyCmp` order (`Error`, `Name`, `Resolution`, `Size`), which is the whole point of the design's idempotence property. So the entry *blocks* are compared as a map keyed by the entry's key name, with the `%d` index in every card name replaced by `#`. Two entries whose cards match after renumbering are equal.
 
 Nothing else is allowed.
 In particular the `Typ%d` comment text, the `Nel%d` presence rule, the `V%d_%d` first-element-only comment, the quoting of strings, and every card inside the nested `Box` objects must match byte for byte.
 
 **Splitting the KeyMap's own cards from a nested object's.**
-Do this **before** normalising indentation, using the column.
+Do this **before** normalizing indentation, using the column.
 The `Begin KeyMap` line's leading-space count is `base`; the KeyMap's own cards sit at exactly `base + 4` (`native_write.rs:179`: `base_indent + indent + 1`, at the default `indent = 3`), and its commented-out unset attributes at `#` plus `base + 3` spaces.
 A `Key%d` card at any other column belongs to a nested KeyMap and must not start an entry block at this level.
 The fixture has no nested KeyMap, but the hand-built cases in job 1 do, and the same helper serves both.
@@ -6357,7 +6357,7 @@ pub fn is_map_sz_card(line: &str) -> bool {
 }
 ```
 
-- [ ] **Step 2: Write the file's normalisation and splitting helpers**
+- [ ] **Step 2: Write the file's normalization and splitting helpers**
 
 Create `crates/ast-core/tests/test_keymap_serial.rs`:
 
@@ -6616,7 +6616,7 @@ fn the_c_fixture_map_sz_matches() {
 ```
 
 `map_length` is Task 9's name for `astMapLength`; confirm it before writing.
-`map_sz_for_dump` stays `pub(crate)` — `dumped_map_sz` reads the card the serialiser actually wrote, which is the thing that has to be right, and it keeps the public API surface unchanged. Leave Task 12's "Produces" line as it stands.
+`map_sz_for_dump` stays `pub(crate)` — `dumped_map_sz` reads the card the serializer actually wrote, which is the thing that has to be right, and it keeps the public API surface unchanged. Leave Task 12's "Produces" line as it stands.
 
 - [ ] **Step 4: Write the oracle-table test**
 
@@ -7077,7 +7077,7 @@ grep -rn "PLAN.md" --include=*.md --include=*.rs . | grep -v "^./PLAN.md"
 grep -n "section [0-9]\|Section [0-9]\|## [0-9]" PLAN.md
 ```
 
-If anything outside `PLAN.md` cites a section number, do **not** renumber: add the Containers row to the existing section 4 ("Serialization / FITS / round-trip") instead, since that is where the `-TAB` blocker already lives, and say in the row that KeyMap is a container class rather than a serialisation one.
+If anything outside `PLAN.md` cites a section number, do **not** renumber: add the Containers row to the existing section 4 ("Serialization / FITS / round-trip") instead, since that is where the `-TAB` blocker already lives, and say in the row that KeyMap is a container class rather than a serialization one.
 Pick whichever of the two the grep licenses, and do not do both.
 
 - [ ] **Step 3: Record the deferred Channel-subclass decision**

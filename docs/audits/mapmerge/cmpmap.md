@@ -16,7 +16,7 @@ Uncited C steps:
 C's body runs `cmpmap.c:1614-2329 (fn MapMerge)` in five sections, named by its own banner
 comments: simplify the CmpMap on its own; decompose a series CmpMap into the
 list; merge adjacent CmpMaps; update the list for that merge; and swap a series
-CmpMap past a neighbouring PermMap.
+CmpMap past a neighboring PermMap.
 
 The Rust `CmpMap::map_merge` (`cmpmap.rs:976-983 (fn map_merge)`) delegates to
 `simplify::cmp_map_merge` (`mappings/simplify.rs:764-940 (fn cmp_map_merge)`), so Rust sites below are in
@@ -24,7 +24,7 @@ The Rust `CmpMap::map_merge` (`cmpmap.rs:976-983 (fn map_merge)`) delegates to
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned index to -1 | cmpmap.c:1614-1615 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned index to -1 | cmpmap.c:1614-1615 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the inherited status and bail out | cmpmap.c:1617-1618 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Simplify the CmpMap on its own: obtain a pointer to the nominated CmpMap | cmpmap.c:1620-1625 (fn MapMerge) | mappings/simplify.rs:775 (fn cmp_map_merge) | architecture | ported |
 | 4 | Note whether the Invert attribute is set, and its value | cmpmap.c:1626-1630 (fn MapMerge) | mappings/simplify.rs:774 (fn cmp_map_merge) | architecture | ported |
@@ -35,15 +35,15 @@ The Rust `CmpMap::map_merge` (`cmpmap.rs:976-983 (fn map_merge)`) delegates to
 | 9 | On success, replace the list entry with the new Mapping and its invert flag, and return | cmpmap.c:1662-1672 (fn MapMerge) | mappings/simplify.rs:821-822 (fn cmp_map_merge) | architecture | ported |
 | 10 | Otherwise annul the new Mapping pointer | cmpmap.c:1673-1675 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 11 | If a series CmpMap is being combined in series, replace it in the list with its two components | cmpmap.c:1677-1731 (fn MapMerge) | mappings/simplify.rs:881 (fn cmp_map_merge) | architecture | ported |
-| 12 | If no simplification was done, look for a neighbouring CmpMap to merge with | cmpmap.c:1732-1740 (fn MapMerge) | mappings/simplify.rs:899 (fn cmp_map_merge) | architecture | ported |
+| 12 | If no simplification was done, look for a neighboring CmpMap to merge with | cmpmap.c:1732-1740 (fn MapMerge) | mappings/simplify.rs:899 (fn cmp_map_merge) | architecture | ported |
 | 13 | Obtain the pair of indices to merge, taking (0,1) when the nominee is first | cmpmap.c:1741-1751 (fn MapMerge) | mappings/simplify.rs:900-901 (fn cmp_map_merge) | architecture | ported |
-| 14 | Require the neighbour to be a CmpMap, and obtain both pointers and their invert flags | cmpmap.c:1752-1780 (fn MapMerge) | mappings/simplify.rs:902-908 (fn cmp_map_merge) | architecture | ported |
+| 14 | Require the neighbor to be a CmpMap, and obtain both pointers and their invert flags | cmpmap.c:1752-1780 (fn MapMerge) | mappings/simplify.rs:902-908 (fn cmp_map_merge) | architecture | ported |
 | 15 | Series CmpMaps in parallel: re-arrange the sub-Mappings into two parallel CmpMaps and simplify each | cmpmap.c:1781-1827 (fn MapMerge) | mappings/simplify.rs:907 (fn cmp_map_merge) | architecture | ported |
 | 16 | Parallel CmpMaps in series: require both Mappings to be parallel CmpMaps | cmpmap.c:1828-1833 (fn MapMerge) | mappings/simplify.rs:2276-2289 (fn compute_merge_parallel_pair_in_series) | architecture | ported |
 | 17 | Expand each into its list of parallel components with `astMapList` | cmpmap.c:1835-1843 (fn MapMerge) | mappings/simplify.rs:2295-2300 (fn compute_merge_parallel_pair_in_series) | architecture | ported |
 | 18 | Ensure the two lists' Mappings are independent of one another | cmpmap.c:1845-1849 (fn MapMerge) | mappings/simplify.rs:398 (fn leaf_entry) | architecture | ported |
 | 19 | Assume at first that nothing will simplify | cmpmap.c:1851-1857 (fn MapMerge) | mappings/simplify.rs:2307 (fn compute_merge_parallel_pair_in_series) | architecture | ported |
-| 20 | Initialise the two list indices and the two empty sub-lists | cmpmap.c:1859-1866 (fn MapMerge) | mappings/simplify.rs:2385-2391 (fn dimension_match_parallel_lists) | architecture | ported |
+| 20 | Initialize the two list indices and the two empty sub-lists | cmpmap.c:1859-1866 (fn MapMerge) | mappings/simplify.rs:2385-2391 (fn dimension_match_parallel_lists) | architecture | ported |
 | 21 | Walk both lists, swapping Nin and Nout for a component applied inverted | cmpmap.c:1868-1889 (fn MapMerge) | mappings/simplify.rs:2398-2411 (fn dimension_match_parallel_lists) | architecture | ported |
 | 22 | Sub-list 1 has too few outputs: combine the next component into it, unsimplified | cmpmap.c:1891-1900 (fn MapMerge) | mappings/simplify.rs:2400-2403 (fn dimension_match_parallel_lists) | architecture | ported |
 | 23 | Sub-list 2 has too few inputs: combine the next component into it, unsimplified | cmpmap.c:1902-1911 (fn MapMerge) | mappings/simplify.rs:2404-2407 (fn dimension_match_parallel_lists) | architecture | ported |
@@ -62,7 +62,7 @@ The Rust `CmpMap::map_merge` (`cmpmap.rs:976-983 (fn map_merge)`) delegates to
 | 36 | Substitute a UnitMap for a component whose inputs are all constant | cmpmap.c:2155-2170 (fn MapMerge) | mappings/simplify.rs:2760-2777 (fn swap_permmap_parallel_at) | architecture | ported |
 | 37 | Build the replacement PermMap's permutation and constant arrays for both components | cmpmap.c:2171-2247 (fn MapMerge) | mappings/simplify.rs:2666-2745 (fn swap_permmap_parallel_at) | architecture | ported |
 | 38 | Create the new PermMap and the new CmpMap | cmpmap.c:2248-2272 (fn MapMerge) | mappings/simplify.rs:2779-2799 (fn swap_permmap_parallel_at) | architecture | ported |
-| 39 | Free the workspace, then re-instate the component and neighbour Invert attributes | cmpmap.c:2273-2299 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and nothing was mutated so nothing is restored |
+| 39 | Free the workspace, then re-instate the component and neighbor Invert attributes | cmpmap.c:2273-2299 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and nothing was mutated so nothing is restored |
 | 40 | On a successful swap, store the new CmpMap and PermMap in the two slots and return the first index | cmpmap.c:2300-2323 (fn MapMerge) | mappings/simplify.rs:2792-2804 (fn swap_permmap_parallel_at), mappings/simplify.rs:934-936 (fn cmp_map_merge) | architecture | ported |
 | 41 | Clear the result value if an error occurred | cmpmap.c:2324-2326 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 42 | Return the result | cmpmap.c:2327-2328 (fn MapMerge) | mappings/simplify.rs:939 (fn cmp_map_merge) | ceremony | ported |
@@ -82,7 +82,7 @@ C has this swap only on the CmpMap side: `permmap.c` contains no reference to
 `CmpMap`, so a nominated PermMap never attempts it. The port now matches, with
 the branch at the end of `cmp_map_merge` (`mappings/simplify.rs:925-937 (fn cmp_map_merge)`) behind C's four
 conditions — nothing simplified earlier, the nominee is not first in the list,
-the nominee is a *parallel* CmpMap, and its lower neighbour is a PermMap — and
+the nominee is a *parallel* CmpMap, and its lower neighbor is a PermMap — and
 reporting `where_ - 1`, the PermMap's old slot, as C's `result = imap1` does.
 Rows 32 to 38 point at `swap_permmap_parallel_at`, which holds the arithmetic;
 its transforms of the PermMap's constants (row 35) return their errors, which
@@ -156,17 +156,17 @@ C's `astGetIsSimple` short-circuit, which C performs one level up in
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 43 | Initialise the result, check the inherited status and bail out | cmpmap.c:3660-3664 (fn Simplify) | -- | ceremony | n/a: the Rust signature hands back an owned Mapping in an `AstResult`, so there is no result pointer to initialise and no ambient status to test on entry |
+| 43 | Initialize the result, check the inherited status and bail out | cmpmap.c:3660-3664 (fn Simplify) | -- | ceremony | n/a: the Rust signature hands back an owned Mapping in an `AstResult`, so there is no result pointer to initialize and no ambient status to test on entry |
 | 44 | Compare the supplied Mapping against every Mapping being simplified higher up the call stack, and return a clone on a match | cmpmap.c:3669-3689 (fn Simplify) | mappings/simplify.rs:60-63 (fn enter), mappings/simplify.rs:3775-3782 (fn simplify_cmpmap_into) | architecture | ported |
 | 45 | Increment the recursion depth and record the supplied Mapping for deeper invocations to compare against | cmpmap.c:3691-3697 (fn Simplify) | mappings/simplify.rs:64 (fn enter) | architecture | ported |
 | 46 | Obtain a pointer to the CmpMap structure | cmpmap.c:3699-3700 (fn Simplify) | cmpmap.rs:969-974 (fn simplified), mappings/simplify.rs:3764-3768 (fn simplify_cmpmap_into) | ceremony | ported |
-| 47 | Initialise the Mapping-pointer and Invert-flag arrays | cmpmap.c:3702-3706 (fn Simplify) | -- | ceremony | n/a: `flatten` returns an owned list of (Mapping, invert, orientation) triples, so there are no arrays to pre-initialise |
+| 47 | Initialize the Mapping-pointer and Invert-flag arrays | cmpmap.c:3702-3706 (fn Simplify) | -- | ceremony | n/a: `flatten` returns an owned list of (Mapping, invert, orientation) triples, so there are no arrays to pre-initialize |
 | 48 | Decompose the CmpMap into a series or parallel sequence with `astMapList`, setting `simpler` if any inverted CmpMap was found on the way | cmpmap.c:3708-3714 (fn Simplify) | mappings/simplify.rs:3791 (fn simplify_cmpmap_into), mappings/simplify.rs:3821 (fn simplify_cmpmap_into) | architecture | ported |
 | 49 | Read the RestrictedSimplify flag | cmpmap.c:3716-3722 (fn Simplify) | mappings/simplify.rs:3785 (fn simplify_cmpmap_into) | architecture | ported |
 | 50 | Under a restricted simplify, discard the `simpler` flag the decomposition set | cmpmap.c:3724-3728 (fn Simplify) | mappings/simplify.rs:3821 (fn simplify_cmpmap_into) | architecture | ported |
 | 51 | Make the list entries independent of one another, so modifying one does not modify another | cmpmap.c:3730-3733 (fn Simplify) | mappings/simplify.rs:398 (fn leaf_entry) | architecture | ported |
 | 52 | Clear the Frozen flag on every component | cmpmap.c:3735-3743 (fn Simplify) | mappings/simplify.rs:525 (fn new) | architecture | ported |
-| 53 | Initialise the modified-index and Mapping-count histories | cmpmap.c:3745-3749 (fn Simplify) | mappings/simplify.rs:1862-1863 (fn merge_loop_restricted) | architecture | ported |
+| 53 | Initialize the modified-index and Mapping-count histories | cmpmap.c:3745-3749 (fn Simplify) | mappings/simplify.rs:1862-1863 (fn merge_loop_restricted) | architecture | ported |
 | 54 | Loop until a complete pass produces no improvement | cmpmap.c:3751-3755 (fn Simplify) | mappings/simplify.rs:1757-1759 (fn run_nominate_loop) | architecture | ported |
 | 55 | Loop to nominate each Mapping in the sequence in turn | cmpmap.c:3757-3759 (fn Simplify) | mappings/simplify.rs:1760-1761 (fn run_nominate_loop) | architecture | ported |
 | 56 | Skip a frozen component, and under a restricted simplify one without AllowSimplify | cmpmap.c:3761-3771 (fn Simplify) | mappings/simplify.rs:1766-1769 (fn run_nominate_loop) | architecture | ported |
@@ -237,10 +237,10 @@ clearing it on the result whichever branch ran
 dump. The base driver's own gate for an ineligible Mapping
 (`mapping.c:16853-16855 (fn Simplify)`) is at `mappings/simplify.rs:1376-1378 (fn base_simplify)`.
 
-Three fixtures hold the mode, one per behaviour: `cap_restricted_no_eligible`
+Three fixtures hold the mode, one per behavior: `cap_restricted_no_eligible`
 (nothing eligible, so the inverted CmpMap comes back as supplied),
 `cap_restricted_inverted` (one eligible ZoomMap whose own merge reaches across
-its ineligible neighbours and collapses the chain), and
+its ineligible neighbors and collapses the chain), and
 `cap_restricted_component_flags` (a rebuild that keeps an eligible component,
 whose `AlSimp` card the fold clears).
 

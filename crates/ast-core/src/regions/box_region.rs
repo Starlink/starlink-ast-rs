@@ -1,10 +1,10 @@
-//! Box region: an axis-aligned box defined by a centre and a corner.
+//! Box region: an axis-aligned box defined by a center and a corner.
 //!
 //! A [`BoxRegion`] represents a rectangular area with sides parallel to
 //! the axes of a [`Frame`](crate::frames::Frame). It is defined by a
-//! centre point and one corner point; the box extends symmetrically
-//! around the centre so the opposite corner is the mirror of the
-//! specified corner through the centre.
+//! center point and one corner point; the box extends symmetrically
+//! around the center so the opposite corner is the mirror of the
+//! specified corner through the center.
 //!
 //! Named `BoxRegion` (rather than `Box`) to avoid collision with
 //! [`std::boxed::Box`]. In the C library this class is called "Box".
@@ -78,7 +78,7 @@ pub struct BoxRegionBuilder {
 }
 
 /// C `astInitBox`'s check that no supplied coordinate is BAD (box.c:4877),
-/// made on the two points as supplied: the centre and a corner, or the two
+/// made on the two points as supplied: the center and a corner, or the two
 /// corners. A NaN counts as BAD, as on every input.
 fn check_box_points(point1: &[f64], point2: &[f64]) -> AstResult<()> {
     for (i, (&p1, &p2)) in point1.iter().zip(point2).enumerate() {
@@ -222,7 +222,7 @@ impl BoxRegionBuilder {
     /// Passes on the error of [`Region::set_uncertainty`] for an
     /// uncertainty given to [`uncertainty`](Self::uncertainty).
     pub fn build(self) -> AstResult<BoxRegion> {
-        // Defining points: points[0] = centre, points[1] = corner.
+        // Defining points: points[0] = center, points[1] = corner.
         let points = vec![self.centre, self.corner];
         let data = RegionData::new(self.frame, points);
         let mut region = BoxRegion { data };
@@ -230,7 +230,7 @@ impl BoxRegionBuilder {
         // C's constructor routes a construction-time uncertainty through
         // astSetUnc (region.c:13372), which remaps it into this Region's base
         // Frame, negates it if it is unbounded, omits its FrameSet from the dump
-        // when its base->current Mapping is a UnitMap, and re-centres it on this
+        // when its base->current Mapping is a UnitMap, and re-centers it on this
         // Region's first defining point.
         if let Some(unc) = self.uncertainty {
             region.set_uncertainty(unc)?;
@@ -250,7 +250,7 @@ impl BoxRegion {
     ///
     /// Used internally where the base Frame is only available as a boxed trait
     /// object (e.g. constructing a default uncertainty Box from a Region's own
-    /// base Frame). The centre is the midpoint of the bounds and the corner is
+    /// base Frame). The center is the midpoint of the bounds and the corner is
     /// the upper bound, matching [`BoxRegionBuilder::from_bounds`].
     pub(crate) fn from_bounds_frame(
         frame: DynFrame,
@@ -267,8 +267,8 @@ impl BoxRegion {
         Self::from_corner_frame(frame, centre, corner)
     }
 
-    /// Build a `BoxRegion` directly from an owned `DynFrame`, a centre, and a
-    /// corner (the native Box parameterisation, `astBox` with `form=0`).
+    /// Build a `BoxRegion` directly from an owned `DynFrame`, a center, and a
+    /// corner (the native Box parameterization, `astBox` with `form=0`).
     pub(crate) fn from_corner_frame(
         frame: DynFrame,
         centre: Vec<f64>,
@@ -431,7 +431,7 @@ impl BoxRegion {
         let frm = self.data.frameset.current().snapshot();
         let is_sky = frm.as_any().is::<crate::frames::SkyFrame>();
 
-        // Box centre and per-axis extent in the base Frame.
+        // Box center and per-axis extent in the base Frame.
         let centre = &self.data.points[0];
         let corner = &self.data.points[1];
         let ext0 = (corner[0] - centre[0]).abs();
@@ -445,7 +445,7 @@ impl BoxRegion {
         let unc = Some(self.get_unc_frm(FrameRef::Current)?);
 
         // For a SkyFrame, the winding that makes the interior the inside is
-        // determined by transforming the Box centre into the current Frame and
+        // determined by transforming the Box center into the current Frame and
         // testing which vertex order encloses it.
         let sky_centre: Option<Vec<f64>> = if is_sky {
             let ps = PointSet::from_rows([[centre[0], centre[1]]].iter().map(|p| p.as_slice()));
@@ -494,7 +494,7 @@ impl BoxRegion {
             let newpoly = builder.build()?;
 
             // Is the inside of the Polygon its interior? For a SkyFrame, test
-            // whether the transformed Box centre falls inside; otherwise use
+            // whether the transformed Box center falls inside; otherwise use
             // the bounded flag.
             let right_way_round = if let Some(sc) = &sky_centre {
                 newpoly.point_in_region(sc)?
@@ -641,8 +641,8 @@ impl BoxRegion {
     }
 
     /// The Box's limits in its base Frame, as box.c `Cache` computes them:
-    /// on each axis the centre plus or minus the extent, which is the base
-    /// Frame's axis distance from the centre to the corner, so a sky axis
+    /// on each axis the center plus or minus the extent, which is the base
+    /// Frame's axis distance from the center to the corner, so a sky axis
     /// takes the short way round. Kept until the Box changes, as C keeps it
     /// under `stale`.
     fn bounds(&self) -> AstResult<(Vec<f64>, Vec<f64>)> {
@@ -703,7 +703,7 @@ fn constant_at(constants: &[f64], feed: i64) -> f64 {
 /// Half the geodesic distance along each edge of a box.
 ///
 /// Faithful port of C `GeoLengths` (box.c:975): for each axis, the geodesic
-/// distance from the centre to the corner along that axis alone (walking one
+/// distance from the center to the corner along that axis alone (walking one
 /// axis at a time so `distance` sees a single-axis displacement).
 fn geo_lengths(frm: &dyn Frame, nc: usize, centre: &[f64], corner: &[f64]) -> AstResult<Vec<f64>> {
     let mut geolen = vec![0.0; nc];
@@ -717,9 +717,9 @@ fn geo_lengths(frm: &dyn Frame, nc: usize, centre: &[f64], corner: &[f64]) -> As
     Ok(geolen)
 }
 
-/// The corner position implied by a centre and geodesic half-lengths.
+/// The corner position implied by a center and geodesic half-lengths.
 ///
-/// Faithful port of C `GeoCorner` (box.c:838): starting at the centre, offset
+/// Faithful port of C `GeoCorner` (box.c:838): starting at the center, offset
 /// away along each axis in turn by the geodesic distance `geolen[i]`, probing
 /// the axis direction with a small step. Unlike the C version, the array-swap
 /// dance (which only exists to land the result in the caller-supplied buffer)
@@ -1130,7 +1130,7 @@ impl RegionGeometry for BoxRegion {
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
-        // Transform the defining points (centre and corner) through the mapping.
+        // Transform the defining points (center and corner) through the mapping.
         let naxes = self.data.points[0].len();
         let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
         let transformed = mapping.transform(&pts, forward)?;
@@ -1208,7 +1208,7 @@ impl Region for BoxRegion {
             ));
         }
 
-        // Box centre and half-extent per axis (this->centre / this->extent).
+        // Box center and half-extent per axis (this->center / this->extent).
         let centre = &self.data.points[0];
         let extent: Vec<f64> = (0..naxes)
             .map(|i| 0.5 * (ubnd_box[i] - lbnd_box[i]))
@@ -1221,9 +1221,9 @@ impl Region for BoxRegion {
         // points' uncertainty. Re-centring `tunc`/`unc` on the region's safe
         // interior point (box.c:3078,3088) is omitted: it exists only to fix
         // bounds when an uncertainty straddles a discontinuity, and a Box's
-        // bound width — the only quantity used below — is centre-invariant.
-        // The reachable default uncertainty is a tiny box already centred at
-        // the region centre, so the re-centre is a proven no-op (tracked as
+        // bound width — the only quantity used below — is center-invariant.
+        // The reachable default uncertainty is a tiny box already centerd at
+        // the region center, so the re-center is a proven no-op (tracked as
         // the RCENT / R-UNC parity gaps).
         let tunc = self.get_unc_frm(FrameRef::Base)?;
         let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
@@ -1462,8 +1462,8 @@ impl Region for BoxRegion {
     }
 
     fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
-        // Box always has a centre (box.c:2872-2881). Return the base-Frame
-        // centre, or transform it into the current Frame when requested.
+        // Box always has a center (box.c:2872-2881). Return the base-Frame
+        // center, or transform it into the current Frame when requested.
         let centre = self.data.points[0].clone();
         match ifrm {
             FrameRef::Current => Ok(Some(self.reg_tran_point(&centre, true)?)),
@@ -1476,14 +1476,14 @@ impl Region for BoxRegion {
         let ncb = self.data.points[0].len();
 
         // Geodesic half-lengths of the current box (GeoLengths, box.c:975):
-        // distance along each axis from the centre to the corner.
+        // distance along each axis from the center to the corner.
         let centre = self.data.points[0].clone();
         let corner = self.data.points[1].clone();
         let geolen = geo_lengths(bfrm.as_ref(), ncb, &centre, &corner)?;
 
-        // Resolve the supplied centre into a base-Frame position (box.c:2893).
+        // Resolve the supplied center into a base-Frame position (box.c:2893).
         // When supplied in the current Frame, transform it to the base Frame
-        // and replace any BAD component with the existing centre value.
+        // and replace any BAD component with the existing center value.
         let mut bc = centre.clone();
         match ifrm {
             FrameRef::Current => {
@@ -1503,7 +1503,7 @@ impl Region for BoxRegion {
             }
         }
 
-        // Recompute the corner from the new centre and the geodesic
+        // Recompute the corner from the new center and the geodesic
         // half-lengths (GeoCorner, box.c:838).
         let new_corner = geo_corner(bfrm.as_ref(), ncb, &bc, &geolen)?;
 
@@ -1515,13 +1515,13 @@ impl Region for BoxRegion {
 
     fn reg_base_pick_axes(&self, axes: &[usize]) -> AstResult<Option<DynRegion>> {
         // Port of box.c::RegBasePick (box.c:2655): build a Box spanned by the
-        // selected base-Frame axes by slicing the centre/corner defining
+        // selected base-Frame axes by slicing the center/corner defining
         // points to those axes.
         let bfrm = self.data.frameset.base();
         let target: Vec<i32> = axes.iter().map(|&a| a as i32).collect();
         let frm = bfrm.pick_axes_snapshot(&target)?;
 
-        // Slice the centre (points[0]) and corner (points[1]) to the selected
+        // Slice the center (points[0]) and corner (points[1]) to the selected
         // base-Frame axes.
         let centre: Vec<f64> = axes.iter().map(|&a| self.data.points[0][a]).collect();
         let corner: Vec<f64> = axes.iter().map(|&a| self.data.points[1][a]).collect();
@@ -1884,7 +1884,7 @@ impl Mapping for BoxRegion {
 
     fn invert_orientation(&mut self) {
         // A Region's forward and inverse transforms are identical (membership
-        // is direction-independent), so inverting has no effect on behaviour.
+        // is direction-independent), so inverting has no effect on behavior.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -2026,7 +2026,7 @@ impl Mapping for BoxRegion {
         // Parallel merge only (series of two Regions is not a Region). The
         // direct pairwise path always has `self` as the lower-index (left)
         // component, so the Box axes go first (`intfirst = 1`). The nominate
-        // loop reaches the lower-neighbour (`intfirst = 0`) case via
+        // loop reaches the lower-neighbor (`intfirst = 0`) case via
         // `Region::region_merge`, not through `try_merge`.
         if series || self_inv || other_inv {
             return None;

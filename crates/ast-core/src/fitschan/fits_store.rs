@@ -126,11 +126,11 @@ pub(crate) struct FitsStore {
     /// `WCSNAMEa` from the SkyFrame's `Domain` attribute.
     pub wcsname: Option<String>,
     // -- OBSGEO-X/Y/Z (fitschan.c:30076-30086) --
-    /// Geocentric observer position X (metres).
+    /// Geocentric observer position X (meters).
     pub obsgeox: Option<f64>,
-    /// Geocentric observer position Y (metres).
+    /// Geocentric observer position Y (meters).
     pub obsgeoy: Option<f64>,
-    /// Geocentric observer position Z (metres).
+    /// Geocentric observer position Z (meters).
     pub obsgeoz: Option<f64>,
     // -- Spectral source-velocity AST extensions
     //    (fitschan.c::SpectralAxes ~30761-30797) --
@@ -156,7 +156,7 @@ const MAX_PV_PARAMS: usize = 40;
 impl FitsStore {
     /// Create a new FitsStore for the given number of axes.
     ///
-    /// All vectors are initialised to the appropriate size with `None`.
+    /// All vectors are initialized to the appropriate size with `None`.
     pub(crate) fn new(naxis: usize) -> Self {
         Self {
             naxis,
@@ -229,7 +229,7 @@ impl FitsStore {
     /// Find the pair of celestial (longitude, latitude) axes from CTYPE values.
     ///
     /// Returns `Some((lon_axis, lat_axis))` using 0-based indices, or `None`
-    /// if no recognisable celestial axis pair is found.
+    /// if no recognizable celestial axis pair is found.
     pub(crate) fn celestial_axes(&self) -> Option<(usize, usize)> {
         let mut lon_axis = None;
         let mut lat_axis = None;
@@ -284,7 +284,7 @@ impl FitsStore {
     /// The longitude, latitude and spectral axes among the first WCSAXES
     /// (or NAXIS) CTYPE values: C's `FindLonLatSpecAxes`
     /// (fitschan.c:10822). A spectral axis is one `IsSpectral` or
-    /// `IsAIPSSpectral` recognises; a celestial axis has `-` as its fifth
+    /// `IsAIPSSpectral` recognizes; a celestial axis has `-` as its fifth
     /// character, and is a longitude axis for `RA--`, `AZ--`, `xLON` and
     /// `xyLN`, and a latitude axis for `DEC-`, `EL--`, `xLAT` and `xyLT`.
     /// The last axis of each kind is the one given.
@@ -404,7 +404,7 @@ fn is_latitude_ctype(ctype: &str) -> bool {
 
 /// Check if a CTYPE value represents a spectral axis.
 ///
-/// Recognised patterns: "FREQ", "ENER", "WAVN", "VOPT", "ZOPT",
+/// Recognized patterns: "FREQ", "ENER", "WAVN", "VOPT", "ZOPT",
 /// "VELO", "VRAD", "WAVE", "AWAV", "BETA".
 pub(crate) fn is_spectral_ctype(ctype: &str) -> bool {
     let ct = ctype.trim().to_uppercase();

@@ -276,7 +276,7 @@ pub(crate) fn build_celestial_with_def_b1950(
         return Ok(None);
     };
 
-    // C keeps one local `carlin`, initialised from the attribute
+    // C keeps one local `carlin`, initialized from the attribute
     // (fitschan.c:35812) and forced on for a projectionless CTYPE. It never
     // writes the attribute back, so reading a header leaves `CarLin` alone.
     let car_lin = store.car_lin || forced_car_lin;
@@ -769,7 +769,7 @@ fn build_iwc_to_sky_mapping(
     let lonpole = store.lonpole.map(|v| v * deg2rad);
 
     // Step 1: Degrees to radians on the celestial axes only; identity
-    // elsewhere. Diagonal MatrixMap, recognised by MatrixMap::form()
+    // elsewhere. Diagonal MatrixMap, recognized by MatrixMap::form()
     // as MatrixForm::Diagonal — O(N) per point. Mirrors C
     // fitschan.c:35949-35957.
     use ndarray::Array2;
@@ -1027,7 +1027,7 @@ fn build_linear_car_mapping(
     for (axis, slot) in [(lon_axis, &mut ref_lon), (lat_axis, &mut ref_lat)] {
         match store.crval[axis] {
             Some(val) => {
-                // For a recognised projection the CRVAL value is required to
+                // For a recognized projection the CRVAL value is required to
                 // be in degrees, so convert to radians.
                 let rad = val * deg2rad;
                 *slot = Some(rad);
@@ -1356,7 +1356,7 @@ fn mtr_rot(mat: &mut [[f64; 3]; 3], theta: f64, axis: [f64; 3]) {
 /// sqrt(DBL_EPSILON)·max` of the largest magnitude in both its row and its
 /// column. This removes the ~1e-16 trig residue (e.g. `sin(pi)`) that would
 /// otherwise propagate through subsequent rotations and surface as non-zero
-/// matrix elements in the serialised dump.
+/// matrix elements in the serialized dump.
 ///
 /// C compresses these intermediate rotations in place inside `astMtrRot`
 /// (matrixmap.c:3903, 3973), where the resulting storage form is recorded on the

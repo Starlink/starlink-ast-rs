@@ -147,7 +147,7 @@ relationship:
 4. Transform defining points: map base→old-current (old mapping), apply
    delta (old→new), map new-current→base (inverse of new mapping).
    This is `remap_defining_points` — per-class because some classes
-   (Circle) remap centre and recompute radius, while others (Polygon)
+   (Circle) remap center and recompute radius, while others (Polygon)
    remap all vertices.
 5. Invalidate cached meshes.
 
@@ -172,7 +172,7 @@ The forward and inverse transforms are identical (the region predicate
 is frame-direction-independent for the masking use case). `nin` = `nout`
 = `naxes`.
 
-Performance: `reg_pins` operates on batches to allow vectorisation.
+Performance: `reg_pins` operates on batches to allow vectorization.
 No allocation in the inner loop beyond the output buffer. For simple
 frames, the coordinate test is direct arithmetic.
 
@@ -184,7 +184,7 @@ frames, the coordinate test is direct arithmetic.
 - **Defining points:** `[centre, edge_point]` in base frame
 - **Constructor:** `CircleBuilder::new(frame, centre, radius)` or `from_points(frame, centre, edge_point)`
 - **reg_pins:** `Frame::distance(centre, point) ≤ radius` (geodesic-aware on SkyFrame)
-- **reg_base_box:** centre ± radius per axis (flat); great-circle-aware for sky
+- **reg_base_box:** center ± radius per axis (flat); great-circle-aware for sky
 - **reg_base_mesh:** evenly-spaced points around circumference
 
 ### BoxRegion
@@ -193,7 +193,7 @@ frames, the coordinate test is direct arithmetic.
 - **Defining points:** `[centre, corner]` in base frame
 - **Constructor:** `BoxRegionBuilder::new(frame, centre, corner)` or `from_bounds(frame, lbnd, ubnd)`
 - **reg_pins:** per-axis `lbnd ≤ x ≤ ubnd` test
-- **reg_base_box:** directly from defining corner + mirror around centre
+- **reg_base_box:** directly from defining corner + mirror around center
 - **reg_base_mesh:** points along each edge
 - Note: on sky, edges are great circles of constant longitude/latitude
 
@@ -202,7 +202,7 @@ frames, the coordinate test is direct arithmetic.
 - **Fields:** `RegionData` only
 - **Defining points:** `[centre, point_on_semimajor, point_on_boundary]`
 - **Constructor:** `EllipseBuilder::new(frame, centre, semi_axes, angle)` or from 3 points
-- **reg_pins:** normalised-ellipse distance ≤ 1 (rotation + scaling to unit circle)
+- **reg_pins:** normalized-ellipse distance ≤ 1 (rotation + scaling to unit circle)
 - **reg_base_box:** from semi-axes + rotation angle
 - **reg_base_mesh:** parametric ellipse sweep
 
@@ -343,7 +343,7 @@ Native round-trip must be byte-exact with C library output.
   large point sets (measured in `ast-oracle-bench`).
 - `Mapping::transform` (masking path): same constraint.
 - No allocations in inner predicate loop (pre-allocate output buffer).
-- Batch processing enables auto-vectorisation of simple arithmetic tests.
+- Batch processing enables auto-vectorization of simple arithmetic tests.
 - `CmpRegion` short-circuits per point in the batch: for AND, if
   region1 says "out" for a point, skip region2 test for that point.
   For OR, if region1 says "in", skip region2. Implemented by testing

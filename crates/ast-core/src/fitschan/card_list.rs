@@ -318,7 +318,7 @@ impl CardList {
     }
 
     /// Apply the unconditional trailing-space strip that C's FITS-WCS
-    /// ingestion path (`WcsFcRead`) applies to every recognised string
+    /// ingestion path (`WcsFcRead`) applies to every recognized string
     /// keyword immediately before storing it into the `FitsStore`
     /// (fitschan.c:37035):
     ///
@@ -390,7 +390,7 @@ impl CardList {
 
     /// Mark the first non-`Used`, non-protected card matching `keyword` as
     /// `Provisional`, mirroring C `MarkCard` (fitschan.c:23098). A no-op when
-    /// no matching card exists — so SpecTrans-synthesised keywords (which have
+    /// no matching card exists — so SpecTrans-synthesized keywords (which have
     /// no card in this list) are silently ignored, while genuine originals are
     /// marked.
     pub(crate) fn mark_card(&mut self, keyword: &str) {
@@ -812,7 +812,7 @@ impl CardList {
     }
 
     /// The second part of C's `PurgeWCS`: give every card not consumed
-    /// whose keyword `FindWcs` recognises the flags `USED` alone, so it is
+    /// whose keyword `FindWcs` recognizes the flags `USED` alone, so it is
     /// hidden and no longer protected.
     pub(crate) fn consume_wcs_cards(&mut self) {
         for card in &mut self.cards {
@@ -953,10 +953,10 @@ impl CardList {
     /// Put the cursor where a write inserts the cards it adds: one past the
     /// last WCS card in the FitsChan.
     pub(crate) fn position_write_cursor(&mut self) {
-        // Initialise the insertion-point cursor to one past the
+        // Initialize the insertion-point cursor to one past the
         // last existing WCS card in the chan. New cards added by
         // `put_or_append` will land there, which mirrors the C
-        // library's effect of inserting freshly-synthesised
+        // library's effect of inserting freshly-synthesized
         // keywords (MJD-OBS, DATE-OBS, WCSAXES, ...) within the WCS
         // block rather than appending them to the end of the
         // header. Falls back to end-of-list when no WCS card is
@@ -1099,8 +1099,8 @@ impl Default for CardList {
 /// Cursor-anchor predicate mirroring C's `FindWcs` match list
 /// (fitschan.c:10904-10960). Used only by [`CardList::position_write_cursor`]
 /// to position the new-card insertion cursor: C inserts freshly
-/// synthesised WCS cards in front of "the card just past the last
-/// FindWcs-recognised keyword in the input". RESTFREQ, the AIPS
+/// synthesized WCS cards in front of "the card just past the last
+/// FindWcs-recognized keyword in the input". RESTFREQ, the AIPS
 /// spelling, is translated by SpecTrans but is not in C's FindWcs
 /// list, so C inserts new cards *before* a trailing RESTFREQ card
 /// rather than after it.

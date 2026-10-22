@@ -95,7 +95,7 @@ pub(crate) fn region_overlap_x(that: &dyn Region, this: &dyn Region) -> AstResul
 }
 
 /// The generic `OverlapX` as C writes it, returning C's code.
-// `result` is declared without an initialiser and assigned from four nested
+// `result` is declared without an initializer and assigned from four nested
 // branches that mirror C's control flow (`region.c:7204-7409`). That is
 // deliberate: it makes "every path assigns a result" a compile-time
 // requirement. Giving it a placeholder to satisfy the lint would let a path
@@ -265,7 +265,7 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
         // (map_reg1 inverse), then mask with reg1 as a Mapping. C uses
         // forward=0 for both transforms; for a Region the forward and inverse
         // transforms are identical (both mask by membership), so the masking
-        // forward direction reproduces C's behaviour (region.c:7236-7239).
+        // forward direction reproduces C's behavior (region.c:7236-7239).
         let ps3 = map_reg1.transform(&ps4, false)?;
         let ps5 = (reg1 as &dyn Mapping).transform(&ps3, true)?;
         let inside1 = !is_bad(ps5.point(0)[0]);

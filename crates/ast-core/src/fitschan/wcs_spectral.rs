@@ -191,7 +191,7 @@ fn build_spectral_axis(
 
     // Step 4: Build the IWC→S mapping, branching on the algorithm code as
     // C `WcsSpectral` does (fitschan.c:40138-40168). A code that is not
-    // recognised, or whose parameters cannot be used, is an error.
+    // recognized, or whose parameters cannot be used, is an error.
     let crval = store.crval[axis].unwrap_or(0.0);
     let mut warnings: Warnings = epoch_warnings;
     let mapping: Option<DynMapping> = if algcode.is_empty() {
@@ -220,7 +220,7 @@ fn build_spectral_axis(
 
     // C builds a DSBSpecFrame instead of a plain SpecFrame when the
     // FitsStore carries an IMAGFREQ value, and sets it up with `DSBSetUp`,
-    // using AXREF for the observation centre in preference to CRVAL.
+    // using AXREF for the observation center in preference to CRVAL.
     let dsb = match store.imagfreq {
         Some(imagfreq) => {
             let mut dsb = crate::frames::DSBSpecFrame::from_spec_frame(frame.clone());
@@ -259,7 +259,7 @@ fn is_nonlin_x2p(algcode: &str) -> bool {
 /// system `S`. The resulting mapping is `IWC → X (via WinMap or
 /// ZoomMap) → S (via SpecMap S↔X inverted)`.
 ///
-/// The mapping is `None` when the algorithm code's X system is unrecognised
+/// The mapping is `None` when the algorithm code's X system is unrecognized
 /// or when the X-to-S rate of change is zero/undefined at the reference point.
 /// The warnings are returned separately because C's `Warn` appends its cards
 /// to the FitsChan as it runs, so a warning raised before a later failure
@@ -390,7 +390,7 @@ fn grism_spec_wcs(
     };
 
     // Copy the supplied SpecFrame (to inherit std_of_rest, epoch, etc.),
-    // then set System to wavelength and Unit to metres. Mirrors C:14298-14300.
+    // then set System to wavelength and Unit to meters. Mirrors C:14298-14300.
     let mut wfrm = specfrm.clone();
     wfrm.set_system(wave_system)?;
     wfrm.set_unit(1, "m")?;
@@ -404,7 +404,7 @@ fn grism_spec_wcs(
     // CRVAL for the spectral axis (in S units), default 0. Mirrors C:14307-14308.
     let crv = store.crval[axis].unwrap_or(0.0);
 
-    // Convert CRVAL to the wavelength system (vacuum or air) in metres.
+    // Convert CRVAL to the wavelength system (vacuum or air) in meters.
     // Mirrors C:14311.
     let wcrv = {
         let out = smap.transform(&crate::coords::PointSet::from_rows([[crv]]), true)?;
@@ -486,12 +486,12 @@ pub(super) fn log_wcs(crval: f64) -> Option<DynMapping> {
         return None;
     }
     // C uses "%.*g" with AST__DBL_DIG (=17); format_double_g reproduces that
-    // exactly so the serialised MathMap expression is byte-identical.
+    // exactly so the serialized MathMap expression is byte-identical.
     let sr = crate::serial::native_write::format_double_g(crval, 17);
     let forexp = format!("s={sr}*exp(w/{sr})");
     let invexp = format!("w={sr}*log(s/{sr})");
     // C LogWcs sets SIMPFI=1 and SIMPIF=1 (fitschan.c:20852-20853), mirrored
-    // here so the serialised native output is byte-identical. These flags only
+    // here so the serialized native output is byte-identical. These flags only
     // affect the simplifier, not the transform itself.
     let mut map = crate::mappings::MathMap::new(1, 1, &[&forexp], &[&invexp]).ok()?;
     map.set_simp_fi(true);

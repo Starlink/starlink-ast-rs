@@ -46,7 +46,7 @@ Verified facts:
    ShiftMap.
 2. **The FrameSet integrity port is correct.**  Commit `8576be7`
    ports `astRemapFrame` + `TidyNodes`, which mirror C's
-   add-node-then-collapse behaviour for `astSetC` on a FrameSet
+   add-node-then-collapse behavior for `astSetC` on a FrameSet
    attribute.  After that change, `with_integrity` adds a new node
    carrying the delta and immediately runs `tidy_nodes`, which
    simplifies the combined edge mapping (matching C

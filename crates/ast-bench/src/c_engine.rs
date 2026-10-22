@@ -123,8 +123,8 @@ impl CEngine {
                 v.name()
             )
         };
-        // SAFETY: loading runs the library's initialisers; the library is the
-        // reference AST build, whose initialisers only set up static tables.
+        // SAFETY: loading runs the library's initializers; the library is the
+        // reference AST build, whose initializers only set up static tables.
         let lib = unsafe { Library::new(path) }.map_err(|e| fail(&e))?;
         // SAFETY: each symbol is declared in crates/ast-bench/c/bench_engine.h
         // with exactly the signature of the type it is read as.
@@ -145,7 +145,7 @@ impl CEngine {
                 .map_err(|e| fail(&format!("{}: {e}", info_path.display())))?;
             check_build_info(&info, v, &submodule_pin()?)?;
             // The bench build's counting entry points refuse; the count
-            // build's accept. Checked on the library itself, so a mislabelled
+            // build's accept. Checked on the library itself, so a mislabeled
             // build-info cannot time counting code.
             let counts = reset() == 0;
             if counts != (v == Variant::Count) {

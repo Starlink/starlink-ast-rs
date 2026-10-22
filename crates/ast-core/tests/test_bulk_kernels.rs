@@ -270,7 +270,7 @@ fn unit_norm(p: &[f64]) -> Vec<f64> {
 fn unitnormmap_kernel_keeps_each_points_state_across_blocks() {
     let m = UnitNormMap::new(CENTRE.to_vec()).unwrap();
     // Cycle through a good point, a bad first coordinate followed by a larger
-    // good one, a bad second coordinate, the centre itself and an infinity,
+    // good one, a bad second coordinate, the center itself and an infinity,
     // over enough points to cross the kernel's block boundaries.
     let n = 1030;
     let mut inp: Vec<Vec<f64>> = (0..2).map(|_| Vec::with_capacity(n)).collect();
@@ -294,7 +294,7 @@ fn unitnormmap_kernel_keeps_each_points_state_across_blocks() {
 fn unitnormmap_inverse_kernel_keeps_each_points_state() {
     let m = UnitNormMap::new(CENTRE.to_vec()).unwrap();
     // A good point, a bad norm, a zero norm, a bad component, and a bad
-    // component with a zero norm, which gives the centre.
+    // component with a zero norm, which gives the center.
     let n = 1030;
     let mut inp: Vec<Vec<f64>> = (0..3).map(|_| Vec::with_capacity(n)).collect();
     for i in 0..n {
@@ -387,7 +387,7 @@ fn full_matrixmap_kernel_matches_c_for_each_input_count() {
 }
 
 /// One point of UnitNormMap's forward transformation (unitnormmap.c) about
-/// any centre.
+/// any center.
 fn unit_norm_about(centre: &[f64], p: &[f64]) -> Vec<f64> {
     let n = centre.len();
     if p.iter().any(|v| !v.is_finite() || *v == BAD_VALUE) {
@@ -415,7 +415,7 @@ fn unit_norm_about(centre: &[f64], p: &[f64]) -> Vec<f64> {
 fn unitnormmap_forward_kernel_matches_c_for_each_axis_count() {
     // Each small axis count has its own kernel and larger ones a blocked
     // kernel; 1030 points cross its block boundary. Every seventh point is
-    // the centre, giving a zero norm.
+    // the center, giving a zero norm.
     let odd = [BAD_VALUE, f64::NAN, f64::INFINITY, -0.0];
     for ncoord in 1..=5 {
         let centre: Vec<f64> = (0..ncoord).map(|j| j as f64 * 1.5 - 2.0).collect();
@@ -476,7 +476,7 @@ fn transforms_that_fill_every_output_leave_surplus_axes_alone() {
     use ast_core::frames::BasicFrameBuilder;
     use ast_core::regions::NullRegionBuilder;
 
-    // A bad centre makes every UnitNormMap output bad.
+    // A bad center makes every UnitNormMap output bad.
     let unm = UnitNormMap::new(vec![BAD_VALUE, 0.0]).unwrap();
     assert_eq!(surplus_kept(&unm, true), 2);
 

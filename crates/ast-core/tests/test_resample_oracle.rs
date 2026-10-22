@@ -1,5 +1,5 @@
 //! `mappings::resample` against C's `astResample<X>` for every pixel type
-//! and every interpolation scheme: nearest neighbour, linear, the 1-d
+//! and every interpolation scheme: nearest neighbor, linear, the 1-d
 //! kernels, block averaging, a caller's kernel and a caller's interpolator,
 //! with and without flux conservation. The cases cover 1-D, 2-D and 3-D
 //! grids, linear and non-linear Mappings, linear fits, subdivision,

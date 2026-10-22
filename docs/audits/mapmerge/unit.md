@@ -15,7 +15,7 @@ parallel is coalesced with adjacent UnitMaps.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1 | unitmap.c:500-501 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result to -1 | unitmap.c:500-501 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | unitmap.c:503-504 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | If the sequence is a single UnitMap, clear its Invert flag if set | unitmap.c:506-511 (fn MapMerge) | unit.rs:150-161 (fn map_merge) | architecture | ported |
 | 4 | Note whether the sequence was modified | unitmap.c:512-515 (fn MapMerge) | unit.rs:158-160 (fn map_merge) | architecture | ported |
@@ -23,7 +23,7 @@ parallel is coalesced with adjacent UnitMaps.
 | 6 | Shuffle the following pointers and Invert flags down to fill the gap, clearing the vacated slot | unitmap.c:524-533 (fn MapMerge) | unit.rs:170 (fn map_merge) | architecture | ported |
 | 7 | Decrement the Mapping count and return the index of the first modified element | unitmap.c:534-538 (fn MapMerge) | unit.rs:170-171 (fn map_merge) | architecture | ported |
 | 8 | In parallel, a UnitMap can be merged with UnitMaps on either side | unitmap.c:539-544 (fn MapMerge) | unit.rs:174-177 (fn map_merge) | architecture | ported |
-| 9 | Initialise indices for the adjacent UnitMaps and the coordinate count of the replacement | unitmap.c:545-549 (fn MapMerge) | unit.rs:178-179 (fn map_merge) | architecture | ported |
+| 9 | Initialize indices for the adjacent UnitMaps and the coordinate count of the replacement | unitmap.c:545-549 (fn MapMerge) | unit.rs:178-179 (fn map_merge) | architecture | ported |
 | 10 | Inspect earlier Mappings, stopping at the first that is not a UnitMap | unitmap.c:550-556 (fn MapMerge) | unit.rs:180 (fn map_merge) | architecture | ported |
 | 11 | Extend the run's start index and accumulate its coordinate count | unitmap.c:557-562 (fn MapMerge) | unit.rs:181-182 (fn map_merge) | architecture | ported |
 | 12 | Repeat for later Mappings in the sequence | unitmap.c:563-571 (fn MapMerge) | unit.rs:184-187 (fn map_merge) | architecture | ported |
@@ -56,4 +56,4 @@ clearing it surfaces in the dump as the parent dropping its `InvA` or `InvB`,
 while the UnitMap keeps its own `Invert` card. The port clears the
 `effective_inv` of the `MergeCtx` entry and keeps `orig_inv`, which reaches the
 same dump: `unit_parallel_invert_clear` and `unit_parallel_invert_pcd` are
-byte-exact against the pinned C on two different neighbour classes.
+byte-exact against the pinned C on two different neighbor classes.

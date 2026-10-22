@@ -6,7 +6,7 @@
 //! attribute which has not been set is refused with AST__NOVAL: the StdOfRest
 //! of both SpecFrames, a RestFreq for a velocity system, the RefRA, RefDec,
 //! observer position or Epoch for a change of rest frame (specframe.c
-//! `MakeSpecMapping`, `SorConvert`, `VerifyAttrs`), the IF and DSBCentre for
+//! `MakeSpecMapping`, `SorConvert`, `VerifyAttrs`), the IF and Dsbcenter for
 //! a change of sideband (dsbspecframe.c `GetLO`), and the TimeScale and
 //! StdOfRest when picking axes (timeframe.c, specframe.c `SubFrame`). A
 //! SpecFrame Title leaves out a RestFreq that has not been set.

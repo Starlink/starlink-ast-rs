@@ -1,6 +1,6 @@
 //! Circle region: a circular (or spherical-cap) area within a Frame.
 //!
-//! A Circle is defined by a centre point and a radius (specified as a
+//! A Circle is defined by a center point and a radius (specified as a
 //! point on the circumference). In a [`SkyFrame`](crate::frames::SkyFrame),
 //! the "radius" is a great-circle distance; in a flat frame it is
 //! Euclidean distance.
@@ -36,8 +36,8 @@ fn circum_point(frm: &dyn Frame, centre: &[f64], radius: f64) -> AstResult<Vec<f
 /// Faithful port of C `astBestCircle` (circle.c:176). The `mesh` points and
 /// the supplied `centre` are in the Frame represented by `unc` (the current
 /// Frame of the Region being simplified). The radius is the RMS distance of
-/// the mesh points from the centre, `rad = sqrt(nc * s2r / n)`, where `s2r` is
-/// the sum of squared per-axis increments from the centre over all good mesh
+/// the mesh points from the center, `rad = sqrt(nc * s2r / n)`, where `s2r` is
+/// the sum of squared per-axis increments from the center over all good mesh
 /// points and `n` the count of good axis values. Returns `None` when no good
 /// value contributes. The returned Circle inherits `unc`'s Frame and carries
 /// `unc` as its uncertainty.
@@ -273,7 +273,7 @@ impl CircleBuilder {
             ));
         };
 
-        // C `astInitCircle` rejects a BAD centre or circumference value
+        // C `astInitCircle` rejects a BAD center or circumference value
         // (circle.c:2670), after a radius has become a circumference point. A
         // NaN counts as BAD, as on every input.
         let bad = |v: f64| v == BAD_VALUE || v.is_nan();
@@ -373,7 +373,7 @@ impl Circle {
 // ============================================================================
 
 impl Circle {
-    /// The radius of this Circle: the geodesic distance between the centre
+    /// The radius of this Circle: the geodesic distance between the center
     /// (points[0]) and the edge point (points[1]) in the base frame. Measured
     /// once and kept until the Circle changes, as circle.c `Cache` keeps it.
     fn radius(&self) -> AstResult<f64> {
@@ -410,7 +410,7 @@ impl Circle {
         } else if naxes == 2 {
             // Distribute points evenly around the circumference using the
             // Frame's geodesic offset, and accumulate the bounding box in terms
-            // of axis offsets from the centre so that a box crossing RA=0 or
+            // of axis offsets from the center so that a box crossing RA=0 or
             // RA=12h is handled (circle.c:962-1016).
             let delta = 2.0 * PI / np as f64;
 
@@ -455,7 +455,7 @@ impl Circle {
             // radially on to the sphere's surface (circle.c:1018-1089).
             //
             // The approximate bounding box is formed by walking the geodesic
-            // from the centre toward a point offset by `radius` along each axis
+            // from the center toward a point offset by `radius` along each axis
             // in turn, taking that axis's coordinate from the result.
             let mut approx_upper = vec![0.0; naxes];
             for (j, upper) in approx_upper.iter_mut().enumerate() {
@@ -472,7 +472,7 @@ impl Circle {
             let box_mesh = boxr.base_mesh()?;
 
             // Move each point of that mesh radially so that its distance from
-            // the centre equals this Circle's radius, tracking the bounds of
+            // the center equals this Circle's radius, tracking the bounds of
             // the result (circle.c:1060-1079).
             let mut mesh = Vec::with_capacity(box_mesh.npoint());
             let mut lower = vec![f64::MAX; naxes];
@@ -577,7 +577,7 @@ impl RegionGeometry for Circle {
         let centre = &self.data.points[0];
 
         // Mirrors C `Circle::RegBaseBox` (circle.c:757): a simple Frame is
-        // assumed flat, so the box is centre +/- radius on each axis
+        // assumed flat, so the box is center +/- radius on each axis
         // (circle.c:822-827). Only a genuine BasicFrame qualifies.
         if base_frame.as_any().is::<BasicFrame>() {
             let radius = self.radius()?;
@@ -606,7 +606,7 @@ impl RegionGeometry for Circle {
     }
 
     fn remap_defining_points(&mut self, mapping: &dyn Mapping, forward: bool) -> AstResult<()> {
-        // Transform the defining points (centre and edge) through the mapping.
+        // Transform the defining points (center and edge) through the mapping.
         let naxes = self.data.points[0].len();
         let pts = PointSet::from_rows(self.data.points.iter().map(|p| p.as_slice()));
         let transformed = mapping.transform(&pts, forward)?;
@@ -688,8 +688,8 @@ impl Region for Circle {
 
         // `tunc` is this Circle's own uncertainty in the base Frame; `l1` is
         // the geodesic length of its bounding-box diagonal. Re-centring is
-        // omitted (bound width is centre-invariant; the reachable default
-        // uncertainty is already centred — tracked as the RCENT / R-UNC gaps).
+        // omitted (bound width is center-invariant; the reachable default
+        // uncertainty is already centerd — tracked as the RCENT / R-UNC gaps).
         let tunc = self.get_unc_frm(FrameRef::Base)?;
         let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
         let l1 = bfrm.distance(&lbnd_tunc, &ubnd_tunc)?;
@@ -706,7 +706,7 @@ impl Region for Circle {
         let centre = &self.data.points[0];
         let edge = &self.data.points[1];
 
-        // Build the larger / smaller edge points by offsetting from the centre
+        // Build the larger / smaller edge points by offsetting from the center
         // toward the existing edge point by the adjusted radius.
         let large_r = radius + 0.5 * drad;
         let mut small_r = radius - 0.5 * drad;
@@ -913,8 +913,8 @@ impl Region for Circle {
     }
 
     fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
-        // Circle always has a centre (circle.c:1206-1211). Return the
-        // base-Frame centre, or transform it into the current Frame.
+        // Circle always has a center (circle.c:1206-1211). Return the
+        // base-Frame center, or transform it into the current Frame.
         let centre = self.data.points[0].clone();
         match ifrm {
             FrameRef::Current => Ok(Some(self.reg_tran_point(&centre, true)?)),
@@ -927,9 +927,9 @@ impl Region for Circle {
         let ncb = self.data.points[0].len();
         let radius = self.radius()?;
 
-        // Resolve the supplied centre into a base-Frame position
-        // (circle.c:1228-1267). A current-Frame centre is transformed to the
-        // base Frame; BAD components fall back to the existing centre value.
+        // Resolve the supplied center into a base-Frame position
+        // (circle.c:1228-1267). A current-Frame center is transformed to the
+        // base Frame; BAD components fall back to the existing center value.
         let mut bc = self.data.points[0].clone();
         match ifrm {
             FrameRef::Current => {
@@ -949,8 +949,8 @@ impl Region for Circle {
             }
         }
 
-        // Recompute the circumference point from the new centre and radius
-        // (CircumPoint, circle.c:570): offset from the centre along the first
+        // Recompute the circumference point from the new center and radius
+        // (CircumPoint, circle.c:570): offset from the center along the first
         // axis by the geodesic radius.
         let circum = circum_point(bfrm.as_ref(), &bc, radius)?;
 
@@ -1132,7 +1132,7 @@ impl Mapping for Circle {
 
     fn invert_orientation(&mut self) {
         // A Region's forward and inverse transforms are identical (membership
-        // is direction-independent), so inverting has no effect on behaviour.
+        // is direction-independent), so inverting has no effect on behavior.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -1193,7 +1193,7 @@ impl Mapping for Circle {
             // The uncertainty Region within the Circle in its current Frame.
             let unc = this.get_unc_frm(FrameRef::Current)?;
 
-            // Transform the circle centre (defining point 0) into the current
+            // Transform the circle center (defining point 0) into the current
             // Frame.
             let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
             let ps2 = map.transform(&pts, true)?;

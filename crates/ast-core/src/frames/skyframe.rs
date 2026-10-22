@@ -355,7 +355,7 @@ impl SkyFrame {
     /// Effective `AsTime` for the physical axis `phys` (0 = longitude,
     /// 1 = latitude), mirroring C `astGetAsTime` (skyframe.c:2547-2566).
     ///
-    /// If the axis has an explicit `AsTime` override it is honoured.
+    /// If the axis has an explicit `AsTime` override it is honored.
     /// Otherwise the longitude axis is formatted as a time only when the
     /// system is equatorial (involves the Earth's equator); the latitude
     /// axis and all non-equatorial longitudes default to angle (degrees).
@@ -602,7 +602,7 @@ impl SkyFrame {
 
     /// Re-express the SkyRef and SkyRefP of `old`, this SkyFrame before its
     /// System changed, in the current System. `restore_offsets` selects the
-    /// `SetSystem` behaviour, which aligns the two in absolute coordinates and
+    /// `SetSystem` behavior, which aligns the two in absolute coordinates and
     /// then restores AlignOffset and SkyRefIs; `ClearSystem` does neither
     /// (skyframe.c:9635, 1814).
     fn reexpress_sky_refs(&mut self, mut old: SkyFrame, restore_offsets: bool) {
@@ -913,7 +913,7 @@ impl SkyFrame {
     /// ```
     #[doc(alias = "NegLon")]
     pub fn neg_lon(&self) -> bool {
-        // skyframe.c:11592: offset coordinates centred on the origin
+        // skyframe.c:11592: offset coordinates centerd on the origin
         // default to negative longitudes.
         if self.neglon_set {
             self.neglon
@@ -1460,7 +1460,7 @@ impl SkyFrame {
         }
     }
 
-    /// Set the observer altitude in metres.
+    /// Set the observer altitude in meters.
     pub fn set_obs_alt(&mut self, alt: f64) {
         let orig = Frame::obs_alt(self);
         self.attrs.obs_alt = Some(alt);
@@ -1599,7 +1599,7 @@ impl SkyFrame {
         self.diurab.get()
     }
 
-    // --- Private helpers for serialisation defaults ---
+    // --- Private helpers for serialization defaults ---
 
     /// Default title for the current system and equinox.
     /// Is an offset coordinate system in use? Mirrors C `GetTitle`/`GetLabel`
@@ -2106,19 +2106,19 @@ impl Frame for SkyFrame {
     }
 
     /// A Unit that describes the axis values, such as `"hh:mm:ss.s"`, has no
-    /// normalised form and is returned unchanged, whether it is the default
+    /// normalized form and is returned unchanged, whether it is the default
     /// or has been set to that same description.
     /// This has to be decided here rather than by the units parser, which
     /// reads the spaces in a description such as `"hh mm ss"` as
     /// multiplication.
     /// Any other Unit, and every Unit of an axis with a `%`-style Format, is
-    /// normalised.
+    /// normalized.
     // C: `SkyFrame::GetNormUnit` (skyframe.c:4349), which asks the SkyAxis
     // (`SkyAxis::GetAxisNormUnit`, skyaxis.c:3095).
     fn norm_unit(&self, axis: usize) -> AstResult<String> {
         super::frame_attrs::validate_axis(axis, self.naxes())?;
         let phys = self.physical_axis(axis)?;
-        // A plain Axis normalises the Unit it reports (axis.c).
+        // A plain Axis normalizes the Unit it reports (axis.c).
         if let FrameAxis::Plain(_) = &self.axes[phys] {
             return Ok(crate::units::norm_unit(&self.phys_unit(phys)));
         }
@@ -2435,7 +2435,7 @@ impl Frame for SkyFrame {
     /// Longitude into 0..2pi (or -pi..pi with NegLon), latitude into
     /// -pi/2..pi/2, moving the longitude through the pole when the latitude
     /// passes it.
-    /// A value that is bad leaves the other to be normalised alone.
+    /// A value that is bad leaves the other to be normalized alone.
     // C: skyframe.c `Norm`.
     fn norm(&self, coords: &mut [f64]) -> AstResult<()> {
         use std::f64::consts::PI;
@@ -2477,7 +2477,7 @@ impl Frame for SkyFrame {
         Ok(())
     }
 
-    /// About `size` points on parallels through the centres of roughly square
+    /// About `size` points on parallels through the centers of roughly square
     /// cells of equal area, the longitude bounds taken into 0 to 2*pi and the
     /// upper one raised a turn if it is not above the lower.
     // C: skyframe.c `FrameGrid`.
@@ -2555,7 +2555,7 @@ impl Frame for SkyFrame {
         Ok(crate::coords::PointSet::from_rows(points))
     }
 
-    /// Normalise each point, then, when `contig` is set, move the longitudes
+    /// Normalize each point, then, when `contig` is set, move the longitudes
     /// by whole turns so that they lie within half a turn of the point
     /// opposite the widest gap between them, found from a histogram of
     /// one-degree bins.
@@ -2647,7 +2647,7 @@ impl Frame for SkyFrame {
 
     /// Offset along a great circle at a given bearing.
     /// Builds the reference vectors, offsets along the great circle,
-    /// normalises, and returns the bearing of the great circle at the end
+    /// normalizes, and returns the bearing of the great circle at the end
     /// point.
     // C: `SkyFrame::Offset2` (skyframe.c:7937), through `Shcal` and `Shapp`.
     fn offset2(&self, point1: &[f64], angle: f64, offset: f64) -> AstResult<(Vec<f64>, f64)> {
@@ -2677,7 +2677,7 @@ impl Frame for SkyFrame {
         // Shapp: the new position offset by `offset` along the great circle.
         let mut p2 = shapp(offset, &r0, &r3, p1[0]);
 
-        // Normalise the result. `p2` is in physical (lon, lat) order;
+        // Normalize the result. `p2` is in physical (lon, lat) order;
         // `norm` reads/writes lon at lon_pos and lat at lat_pos, so map
         // through the permutation and back.
         {
@@ -2854,7 +2854,7 @@ impl Frame for SkyFrame {
         // Quarter point: 90° along the great circle from the start.
         let dir = pal::dvxv(&sv, &q);
 
-        // Normalised external-order end points (mirrors C start_2d/end_2d).
+        // Normalized external-order end points (mirrors C start_2d/end_2d).
         let mut start_2d = [start[0], start[1]];
         let mut end_2d = [end[0], end[1]];
         self.norm(&mut start_2d)?;
@@ -3054,7 +3054,7 @@ impl Frame for SkyFrame {
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // A specialised leaf frame can only be cast down to a plain
+        // A specialized leaf frame can only be cast down to a plain
         // Frame (BasicFrame). Same-class is handled by the direct Match
         // (no cast needed), so only the BasicFrame target matters here.
         if other
@@ -3201,7 +3201,7 @@ impl Frame for SkyFrame {
         // objects. Mirrors skyframe.c SubFrame (skyframe.c:10230): on a copy
         // of the SkyFrame it sets Domain and Title, and on each axis the
         // AsTime, Format, Label, Symbol and Unit whose defaults the SkyFrame
-        // class supplies, then IsLatitude and CentreZero on the SkyAxis
+        // class supplies, then IsLatitude and Centerzero on the SkyAxis
         // (skyframe.c:10280), and clears System and AlignSystem. The Frame
         // class's SubFrame then attaches those Axis objects to a new Frame
         // and overlays the copy's Frame attributes onto it (frame.c:11023).
@@ -3668,7 +3668,7 @@ fn skyframe_sub_frame(
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 impl Serializable for SkyFrame {

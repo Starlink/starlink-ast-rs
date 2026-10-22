@@ -51,7 +51,7 @@ introduced by the `make_int_world` rewiring.
   (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS, DTAI, DUT1) once after every
   plane has been processed — last-plane-wins.
 - All five FITS-style encoders (FITS-WCS, FITS-PC, FITS-IRAF,
-  FITS-AIPS / FITS-AIPS++, FITS-CLASS) honour alt planes.
+  FITS-AIPS / FITS-AIPS++, FITS-CLASS) honor alt planes.
 - Bit-exact match against the C oracle's primary axis-indexed
   keywords for every fixture; bit-exact match for the alt-axis
   keywords on the FITS-WCS encoder. Per-fixture residual
@@ -60,7 +60,7 @@ introduced by the `make_int_world` rewiring.
 ## Non-goals
 
 - Read-side parsing of header text outside of `*A..*Z` axis keywords
-  (e.g. NCP normalisation per alt plane is out of scope; the existing
+  (e.g. NCP normalization per alt plane is out of scope; the existing
   `normalise_ncp_to_sin` call only needs to run once on the primary
   store as today).
 - Separate per-plane MJD-OBS storage in the FitsStore. The chosen
@@ -170,7 +170,7 @@ FITS-* encoding.
 Add public `set_ident(&mut self, ident: impl Into<String>)` methods on
 `BasicFrame`, `SkyFrame`, `SpecFrame`, `TimeFrame`, `CmpFrame`. These
 write to the existing `ident: Option<String>` field. The native
-serialiser already round-trips `Ident=`; no Channel-format changes
+serializer already round-trips `Ident=`; no Channel-format changes
 needed.
 
 #### 4. `fset_to_store::fset_to_store` (write)
@@ -220,7 +220,7 @@ Each FITS-style encoder is updated to:
    appended to each keyword name. `' '` means no suffix.
 3. After the loop, emit the *global* cards (see below) once,
    reading from `per_plane_stores.last().unwrap().store`. This
-   gives the last-plane-wins behaviour the C library produces by
+   gives the last-plane-wins behavior the C library produces by
    re-using a single `s=' '` slot.
 
 The five encoders affected are:
@@ -266,7 +266,7 @@ the storage. Group split:
 - **Group 5** (writer retrofit): treats every present global field
   identically — last-plane-wins emission. If `dtai`/`dut1` are not
   yet on `FitsStore`, the writer simply doesn't emit them, matching
-  current behaviour.
+  current behavior.
 - **Group 6** (validation, this design): adds `dtai`/`dut1` storage
   to `FitsStore` (and the Frame-side getters/setters so SkySys can
   populate them), wires reader and writer, then walks the wcsconv
@@ -314,7 +314,7 @@ For any header H processable by the C library:
   Existing fixtures stay green.
 - **Alt plane with axis-count mismatch.** C uses `WCSAXES{s}` to
   override the per-version axis count; if absent, defaults to
-  primary `WCSAXES`/`NAXIS`. The reader honours this exactly.
+  primary `WCSAXES`/`NAXIS`. The reader honors this exactly.
 - **Alt plane SkyFrame can't be built (no RADESYS/EQUINOX, no
   GALACTIC/ECLIPTIC system, no zenithal projection).** Reader
   emits the warning C does (`badcel`) and builds a generic
@@ -350,13 +350,13 @@ green tests; mid groups may flip a few currently-passing fixtures
 red until group 4 lands the writer side.
 
 1. **Frame Ident setters.** Public `set_ident` on every Frame variant.
-   No behavioural change. Pure plumbing.
+   No behavioral change. Pure plumbing.
 
 2. **Reader: multi-version FitsStore extraction.** `extract_wcs_keywords`
    gains `s: char`. New `extract_wcs_keywords_with_alts` discovers
    letters and runs the per-letter extraction with primary fallback.
    No FrameSet shape change yet — just `(FitsStore, Vec<(char, FitsStore)>)`
-   plumbing. Added unit tests for the discovery + fallback behaviour.
+   plumbing. Added unit tests for the discovery + fallback behavior.
 
 3. **Reader: alt-plane FrameSets.** `decode_wcs_with_alts`. Wires alt
    stores into alt frames added to the FrameSet via
@@ -369,7 +369,7 @@ red until group 4 lands the writer side.
 4. **Writer: thread `s` through fset_to_store.** Previously hardcoded
    `' '`; now a parameter. Add the `collect_plane_stores` helper
    that runs `fset_to_store` per detected version letter and
-   returns `Vec<PlaneStore>`. No encoder behaviour change yet;
+   returns `Vec<PlaneStore>`. No encoder behavior change yet;
    the helper is present and unit-tested but not yet called from
    the encoders.
 
@@ -431,6 +431,6 @@ red until group 4 lands the writer side.
   after via the existing `wcsconv_*_iwc_residue` simplifier
   fixtures. Group 3 adds fixtures for the alt-frame insertion
   path if simplification differs.
-- **Hidden Ident dependencies.** Some serialisation tests may
+- **Hidden Ident dependencies.** Some serialization tests may
   assert `Ident=""` for primary frames. Group 1 expands the
   test set when the setter lands.

@@ -1575,7 +1575,7 @@ Co-Authored-By: SLAC AI"
 
 Create a test that exercises the same operations as our Rust tests but compares results against the C library. Key operations to validate:
 
-1. Sideband flip: USB frequency → LSB frequency for given DSBCentre/IF
+1. Sideband flip: USB frequency → LSB frequency for given Dsbcenter/IF
 2. Alignment between two DSBSpecFrames with AlignSideBand=true
 3. ImagFreq computation
 4. Serialization round-trip through C (write in Rust, read in C, compare)

@@ -327,7 +327,7 @@ impl Mapping for RateMap {
     ) -> Option<usize> {
         // C opens its MapMerge by simplifying the encapsulated Mapping and
         // rebuilding the RateMap around the result (ratemap.c:717-727), then
-        // falls through to cancelling against an inverse neighbour in series.
+        // falls through to cancelling against an inverse neighbor in series.
         super::simplify::self_reduce_map_merge(self, self.reduced_child(), ctx, where_, series)
     }
 
@@ -637,7 +637,7 @@ impl Serializable for RateMap {
         let inv_snapshot = node.get_int("Inv", 0) != 0;
 
         // Read the encapsulated mapping. Keep it in the orientation it was
-        // serialised in — its own `Invert` flag is independent of the
+        // serialized in — its own `Invert` flag is independent of the
         // RateMap's `Inv` direction record (C `ratemap.c` stores `this->map`
         // as loaded and `this->invert` separately; the two are only
         // reconciled transiently inside Transform/Rate via astSetInvert, not

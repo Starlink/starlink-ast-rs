@@ -21,7 +21,7 @@ polygon and a wrong one.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the result and check the global error status | polygon.c:5357-5361 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 1 | Initialize the result and check the global error status | polygon.c:5357-5361 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 2 | Obtain a pointer to the supplied Region structure | polygon.c:5363-5364 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 3 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | polygon.c:5366-5368 (fn Simplify) | polygon.rs:2287-2300 (fn simplified) | architecture | ported |
 | 4 | Note that simplification took place if the parent returned a different pointer | polygon.c:5370-5373 (fn Simplify) | polygon.rs:2301 (fn simplified) | architecture | ported |
@@ -30,7 +30,7 @@ polygon and a wrong one.
 | 7 | Get the uncertainty Region in that Frame | polygon.c:5388-5389 (fn Simplify) | polygon.rs:2330 (fn simplified) | architecture | ported |
 | 8 | Transform the vertices into that Frame | polygon.c:5391-5393 (fn Simplify) | polygon.rs:2335-2340 (fn simplified) | architecture | ported |
 | 9 | Get the number of vertices | polygon.c:5395-5396 (fn Simplify) | polygon.rs:2342 (fn simplified) | architecture | ported |
-| 10 | Re-organise the vertex axis values into the order the Polygon constructor wants | polygon.c:5398-5411 (fn Simplify) | polygon.rs:2342-2352 (fn simplified) | ceremony | n/a: the Rust constructor takes a slice per vertex, so there is no axis-major buffer to build |
+| 10 | Re-organize the vertex axis values into the order the Polygon constructor wants | polygon.c:5398-5411 (fn Simplify) | polygon.rs:2342-2352 (fn simplified) | ceremony | n/a: the Rust constructor takes a slice per vertex, so there is no axis-major buffer to build |
 | 11 | Clear `ok` if any transformed vertex value is `AST__BAD` | polygon.c:5402-5411 (fn Simplify) | polygon.rs:2343-2352 (fn simplified) | architecture | ported |
 | 12 | Build the new Polygon from the transformed vertices, only if `ok` | polygon.c:5413-5415 (fn Simplify) | polygon.rs:2363-2366 (fn simplified) | architecture | ported |
 | 13 | When `SimpVertices` is zero, mesh the original Polygon and require every mesh point to lie on the new Polygon's boundary, annulling the new Polygon otherwise | polygon.c:5417-5434 (fn Simplify) | polygon.rs:2372-2379 (fn simplified) | architecture | ported |
@@ -59,7 +59,7 @@ one reads:
   carries each vertex correctly while bowing the line between them. With the
   attribute cleared, the original Polygon is meshed and the new one discarded
   unless `reg_pins` puts every mesh point on its boundary. The attribute is read
-  off the supplied Polygon, as C reads it (`polygon.c:5420 (fn Simplify)`), and serialises as
+  off the supplied Polygon, as C reads it (`polygon.c:5420 (fn Simplify)`), and serializes as
   the `SimpVT` card C writes at `polygon.c:6697 (fn Dump)` — written only when set, so an
   unset attribute leaves the round-trip untouched. `cap_poly_bent_edges` clears
   it over a quadratic MathMap and C keeps the original; `cap_poly_bend_allowed`
@@ -82,6 +82,6 @@ sentinel), so row 13's check is skipped unless a fixture clears it.
 `polygon.rs:2368 (fn simplified)` calls `ensure_inside` after building the new Polygon.
 That is not an addition: C's own constructor calls `EnsureInside` at
 `polygon.c:7165 (fn astInitPolygon_)`, inside `astInitPolygon_`, so every `astPolygon( … )` — including
-the one at `polygon.c:5415 (fn Simplify)` — already normalises the vertex order so the
+the one at `polygon.c:5415 (fn Simplify)` — already normalizes the vertex order so the
 un-negated Polygon bounds its inside. Remapping vertices can reverse that order,
 which is why the step matters here.

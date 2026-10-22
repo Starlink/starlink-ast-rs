@@ -336,7 +336,7 @@ fn iwc_axis_units(
 /// decoder resolved — CRVAL by default, overridden by `RFVAL<i>` and then by
 /// `AXREF<i>`. When `forced` is `false` (the CRVAL / RFVAL case) C only sets
 /// it when the SkyFrame's SkyRef has not already been set (`astTestSkyRef`,
-/// fitschan.c:36232), and skips offset SkyFrames; we honour the same gate.
+/// fitschan.c:36232), and skips offset SkyFrames; we honor the same gate.
 /// When `forced` is `true` (the AXREF case) C calls `astSetSkyRef`
 /// unconditionally (fitschan.c:36349-36350), outside that gate. Setting
 /// `SkyRefIs=Ignored` leaves absolute-coordinate semantics unchanged, so this
@@ -404,7 +404,7 @@ fn set_sky_ref_on_frame(frame: &mut dyn crate::frames::Frame, reflon: f64, refla
 }
 
 /// Locate the SkyFrame in `frame` and return its world (external) longitude
-/// and latitude axis offsets, honouring axis permutation. Returns `None` if
+/// and latitude axis offsets, honoring axis permutation. Returns `None` if
 /// no SkyFrame is present.
 fn locate_sky_axes(frame: &dyn crate::frames::Frame) -> Option<(usize, usize)> {
     use crate::frames::SkyFrame;

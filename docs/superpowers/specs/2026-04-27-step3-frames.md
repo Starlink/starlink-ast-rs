@@ -339,5 +339,5 @@ This step uses `UnitMap` from Step 2 (for `map_from`).
 - `convert()` — deferred to Step 4 (FrameSet)
 - Sexagesimal formatting — SkyFrame concern
 - Epoch/System-dependent `map_from` — SkyFrame concern
-- Serialisation (to_node/from_node)
+- Serialization (to_node/from_node)
 - FrameSet integrity mechanism — Step 4

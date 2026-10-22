@@ -1,6 +1,6 @@
 //! Native text format renderer: Node tree -> text.
 //!
-//! Converts a [`Node`] tree back to AST's plain-text "Native" serialisation
+//! Converts a [`Node`] tree back to AST's plain-text "Native" serialization
 //! format.  The output must be byte-exact with the C library's `astWrite`
 //! output for round-trip tests.
 
@@ -33,7 +33,7 @@ pub(crate) const DBL_DIG: usize = 17;
 /// - Scientific-notation exponent: `e+NN` or `e-NN` (at least 2 digits,
 ///   always signed).
 pub(crate) fn format_double_g(value: f64, precision: usize) -> String {
-    // WriteDouble normalises both +0 and -0 to "0".
+    // WriteDouble normalizes both +0 and -0 to "0".
     if value == 0.0 {
         return "0".to_string();
     }
@@ -168,7 +168,7 @@ pub(crate) fn render_native(node: &Node) -> AstResult<String> {
 /// Render a [`Node`] tree as AST's plain-text Native format, respecting
 /// the given [`RenderOptions`].
 ///
-/// Behaviour with non-default options:
+/// Behavior with non-default options:
 /// - `comment = false`: don't emit `\t# comment_text` — just key=value.
 /// - `full = -1`: skip items whose value is `Unset(...)` (commented defaults).
 /// - `full = 0`: write the `Unset` items C calls helpful.
@@ -601,7 +601,7 @@ mod tests {
     // ---------------------------------------------------------------
 
     /// Helper: read a reference file if available, returning None if the
-    /// submodule is not initialised.
+    /// submodule is not initialized.
     fn read_reference_file(relative: &str) -> Option<String> {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../reference/starlink-ast/ast_tester")

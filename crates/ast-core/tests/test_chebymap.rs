@@ -649,7 +649,7 @@ fn chebymap_higher_order_chebyshev() {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation round-trip
+// Serialization round-trip
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -769,7 +769,7 @@ fn chebymap_serialisation_forward_only() {
 }
 
 // ---------------------------------------------------------------------------
-// 2D serialisation round-trip
+// 2D serialization round-trip
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -818,7 +818,7 @@ fn chebymap_2d_serialisation_roundtrip() {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation preserves the ChebyMap class name (not PolyMap)
+// Serialization preserves the ChebyMap class name (not PolyMap)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1170,8 +1170,8 @@ fn chebymap_does_not_cancel_when_only_inverse_coefficient_values_differ() {
 
 /// A ChebyMap whose every term is linear in its Chebyshev basis reduces to a
 /// `MatrixMap` and a `ShiftMap` under `simplify`. The coefficients apply to the
-/// normalised input `z = scale*x + offset`, so the reduction has to fold that
-/// normalisation in: over `[0,10]` the map `2*T1(z)` is `0.4x - 2`, not `2x`.
+/// normalized input `z = scale*x + offset`, so the reduction has to fold that
+/// normalization in: over `[0,10]` the map `2*T1(z)` is `0.4x - 2`, not `2x`.
 /// The replacement must therefore agree with the ChebyMap in the forward
 /// direction, and its inverse must recover the input.
 ///
@@ -1221,7 +1221,7 @@ fn a_linear_chebymap_reduces_with_its_normalisation_folded_in() {
 
 /// The same reduction with two inputs whose bounds differ and whose outputs each
 /// combine a linear term and a constant term: `fx = 3*T1(x') + 0.5` and
-/// `fy = -T1(y') + 2`. Each linear term's normalisation offset adds to its
+/// `fy = -T1(y') + 2`. Each linear term's normalization offset adds to its
 /// output's constant term, so both the matrix and the offset vector have to
 /// accumulate rather than be assigned.
 ///

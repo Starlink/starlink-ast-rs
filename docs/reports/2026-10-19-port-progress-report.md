@@ -47,7 +47,7 @@ The thing the design exists for has still not started.
 | wcsconv round-trip cases | 194, 0 excluded | 194, 0 excluded, comparator now strict |
 | Simplify fixtures byte-compared | 427 | **515** |
 | Transform-oracle sections gated | 1,606 | **2,261** |
-| C quirks catalogued | 36 | **143** (101 resolved upstream) |
+| C quirks cataloged | 36 | **143** (101 resolved upstream) |
 | C-ABI symbols exported | 0 | 0 |
 
 Per-subsystem production code, against the C files each replaces:
@@ -140,7 +140,7 @@ That held.
 | `u/timj/norm-unit` (`origin/master..u/timj/norm-unit`) | 76: 63 source fixes and 10 new tests or fixtures | Not yet; the pin sits on this branch |
 | `u/timj/polymap-bad-input-test` (local) | 1 test | Not yet |
 
-In August, 13 catalogued defects were fixed upstream and about 19 were in flight.
+In August, 13 cataloged defects were fixed upstream and about 19 were in flight.
 Now 101 are fixed, on C master or on `norm-unit`.
 The `norm-unit` fixes, by file:
 

@@ -10,7 +10,7 @@
 //! consolidation (`polymap.c:3644-3765`), which combines terms over the same
 //! basis-function orders, and the linear replacement (`:3767-3918`), which
 //! rebuilds an all-linear transformation as a `MatrixMap` and a `ShiftMap` with
-//! the input normalisation folded in.
+//! the input normalization folded in.
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
@@ -63,7 +63,7 @@ use crate::mappings::SimplifiedRecord;
 /// transformation.
 #[derive(Debug, Clone)]
 pub struct ChebyMap {
-    /// Inner PolyMap that stores the term structure (used for serialisation).
+    /// Inner PolyMap that stores the term structure (used for serialization).
     poly: PolyMap,
     /// Lower bounds for forward input domain.
     lbnd_f: Vec<f64>,
@@ -263,7 +263,7 @@ impl ChebyMap {
                 (None, None, None, None)
             };
 
-        // Create the inner PolyMap for term storage and serialisation.
+        // Create the inner PolyMap for term storage and serialization.
         let mut poly = PolyMap::new(nin, nout, forward, inverse)?;
         // A ChebyMap never uses an iterative inverse: chebymap.c
         // `GetIterInverse` returns 0 whatever the attribute holds.
@@ -796,11 +796,11 @@ impl Mapping for ChebyMap {
         // combines terms over the same basis-function orders, and then the
         // linear replacement (`:3767-3918`) on the terms the first half leaves.
         //
-        // The coefficients are those of a Chebyshev series in the normalised
+        // The coefficients are those of a Chebyshev series in the normalized
         // input `z = scale*x + offset`, and `T0(z) = 1` and `T1(z) = z` are the
         // only Chebyshev polynomials of degree one or less, so a term the
         // linearity test accepts is linear in the input as well as in `z` — with
-        // the normalisation folded into the matrix and the offsets
+        // the normalization folded into the matrix and the offsets
         // (`polymap.c:3787-3793`).
         //
         // Like PolyMap, this works from the transformation as *constructed* and
@@ -813,7 +813,7 @@ impl Mapping for ChebyMap {
             None => self.poly.forward_terms(),
         };
 
-        // The normalisation is the one applied to the constructed forward
+        // The normalization is the one applied to the constructed forward
         // transformation's inputs, which is what those coefficients belong to.
         if let Some(linear) = self
             .poly
@@ -1240,7 +1240,7 @@ impl Serializable for ChebyMap {
             offset_f.push(o);
         }
 
-        // If no forward domain was serialised, this is an error for ChebyMap.
+        // If no forward domain was serialized, this is an error for ChebyMap.
         if !has_forward_domain {
             return Err(AstError::new(
                 ErrorCode::Objin,

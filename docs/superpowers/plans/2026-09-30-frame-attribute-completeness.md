@@ -65,7 +65,7 @@ Format, Digits(axis), Direction, Top and Bottom, each taking a 1-based axis
 and returning `AstResult`, and each class implements them where C's class
 does:
 
-- The base behaviour, for a class that stores `Axis` values, comes from a
+- The base behavior, for a class that stores `Axis` values, comes from a
   macro over the class's axis storage, with the class supplying the getters C
   over-rides.
 - SpecFrame, TimeFrame and FluxFrame gain an `Axis`, holding what they held
@@ -111,7 +111,7 @@ Gate: `tests/test_frame_axis_attrs.rs` against the tables from
 - A plain Frame holds `FrameAxis::Plain(Axis)` or `FrameAxis::Sky(SkyAxis)`.
   SkyFrame's SubFrame attaches the picked SkyAxis with the attributes
   skyframe.c:10230 sets on it, so the picked axis formats, unformats,
-  normalises and dumps as a SkyAxis.
+  normalizes and dumps as a SkyAxis.
 - `unformat_sky_axis` is a port of `SkyAxis::AxisUnformat`
   (skyaxis.c:4068); a SkyFrame reads with its own Format, set or default.
 - The C oracle must be built with `-ffp-contract=off` (see
@@ -125,7 +125,7 @@ Gates: `tests/test_skyframe_attrs.rs` (`skyframe_attrs_probe.c`) and
 
 - Getters give C's value, set or default, in the units the class stores;
   where C's attribute is expressed in the Frame's current units
-  (TimeOrigin, SpecOrigin, DSBCentre) or in km/s (SourceVel), a `*_cur`
+  (TimeOrigin, SpecOrigin, Dsbcenter) or in km/s (SourceVel), a `*_cur`
   pair gives that form, converting as C's `ToUnits` and `GetXxxCur` do.
 - Setters with side effects in C keep them: SourceVRF and SourceSys
   re-express SourceVel (`ConvertSourceVel`), StdOfRest re-expresses

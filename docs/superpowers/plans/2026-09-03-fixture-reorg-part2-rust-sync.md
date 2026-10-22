@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `crates/ast-core/tests/fixtures/` a byte-identical mirror of the upstream `ast_tester/fixtures/` tree, repoint every consumer at the shared paths and manifests, and land the three behavioural changes the regenerated oracle now expects.
+**Goal:** Make `crates/ast-core/tests/fixtures/` a byte-identical mirror of the upstream `ast_tester/fixtures/` tree, repoint every consumer at the shared paths and manifests, and land the three behavioral changes the regenerated oracle now expects.
 
-**Architecture:** The oracle section keys become full fixture-root-relative paths, which collapses a five-directory search with a basename fallback into one `join`. The two Rust-only manifests are deleted in favour of upstream's `cases.txt`. Two Rust-only expectations that cannot live in a shared tree — the fixtures the port cannot load, and the one dump the reader refuses — become named lists in Rust source instead of directory boundaries. Three behavioural gaps close: a one-ULP WCS boundary clamp, a `CmpMap::Equal` recursion guard, and un-mirroring a C loader defect that upstream has now fixed.
+**Architecture:** The oracle section keys become full fixture-root-relative paths, which collapses a five-directory search with a basename fallback into one `join`. The two Rust-only manifests are deleted in favor of upstream's `cases.txt`. Two Rust-only expectations that cannot live in a shared tree — the fixtures the port cannot load, and the one dump the reader refuses — become named lists in Rust source instead of directory boundaries. Three behavioral gaps close: a one-ULP WCS boundary clamp, a `CmpMap::Equal` recursion guard, and un-mirroring a C loader defect that upstream has now fixed.
 
 **Tech Stack:** Rust 2024, `cargo test` tiers 1–4, `cargo fmt` and `cargo clippy --workspace -- -D warnings` as gates.
 
@@ -189,7 +189,7 @@ Expected: exit 0, printing the pin's short hash.
 
 - [ ] **Step 4: Wire it into CI beside tiers 3 and 4**
 
-Add it to the nightly workflow that already runs `git submodule update --init reference/starlink-ast`, as a step before the tier-3 and tier-4 test invocations. It must not be added to the PR-time job, which does not initialise the submodule and would either skip (a mode this repo forbids in a harness) or fail spuriously.
+Add it to the nightly workflow that already runs `git submodule update --init reference/starlink-ast`, as a step before the tier-3 and tier-4 test invocations. It must not be added to the PR-time job, which does not initialize the submodule and would either skip (a mode this repo forbids in a harness) or fail spuriously.
 
 - [ ] **Step 5: Commit**
 
@@ -602,7 +602,7 @@ cargo test -p ast-core --test test_serialisation 2>&1 | tail -25
 cargo test -p ast-core --test test_frame_in_map_slot 2>&1 | tail -10
 ```
 
-Expected: `test_deferred_fixtures` passes. The simplify corpus sweep **fails on 43 fixtures** — with the override gone, the port still mirrors C's old loader behaviour and drops the `IsSimp` card. That is the expected intermediate failure named in the Global Constraints; Task 9 closes it. Do not restore the override or add an exclusion.
+Expected: `test_deferred_fixtures` passes. The simplify corpus sweep **fails on 43 fixtures** — with the override gone, the port still mirrors C's old loader behavior and drops the `IsSimp` card. That is the expected intermediate failure named in the Global Constraints; Task 9 closes it. Do not restore the override or add an exclusion.
 
 - [ ] **Step 5: Commit**
 
@@ -966,7 +966,7 @@ m.set_has_been_simplified(base.has_been_simplified);                       // in
 if raw != 0.0 { m.set_zoom(raw)?; }                                        // wipes it again
 ```
 
-That final `set_zoom(raw)` is a no-op in value terms — the object was constructed with `raw` three lines earlier — and its only effect is the clear. So the fix is a deletion, not a behaviour change, which makes it easy to verify: nothing about the constructed object changes except that the flag survives.
+That final `set_zoom(raw)` is a no-op in value terms — the object was constructed with `raw` three lines earlier — and its only effect is the clear. So the fix is a deletion, not a behavior change, which makes it easy to verify: nothing about the constructed object changes except that the flag survives.
 
 Part 1 fixed ten classes in C, so these mirrors are now bugs — the case `CLAUDE.md`'s sync protocol warns about, where a faithful mirror becomes a defect the moment upstream fixes the original. `docs/issues/c-library-quirks.md` names the ten `from_node` sites and the seven fixtures that pin them.
 
@@ -1080,11 +1080,11 @@ cargo test -p ast-core --test test_transform_oracle every_oracle_section_is_gate
 cargo test -p ast-core --test test_verification_ledger -- --nocapture 2>&1 | tail -25
 ```
 
-The three oracle exclusion lists must still be empty, `every_oracle_section_is_gated` must still prove the three predicates partition the corpus, and the ledger's totals must match what Task 4 recorded. A list that grew during this work is a licence someone took without arguing for it.
+The three oracle exclusion lists must still be empty, `every_oracle_section_is_gated` must still prove the three predicates partition the corpus, and the ledger's totals must match what Task 4 recorded. A list that grew during this work is a license someone took without arguing for it.
 
 - [ ] **Step 3: Update `PLAN.md`**
 
-Close §8 with what landed: the pin moved, the tree is mirrored and gated, the manifests are shared, and the three behavioural ports. Replace the sentence "The sync that resolves §9.4 and unblocks §10.2's linear half is still to be planned: upstream has reorganised `ast_tester`, so the pin move needs a plan of its own" with a pointer to the two plans and the spec. Update the C → Rust migration tracker rows for `check_transform_oracle` (new submodule hash, new section count), `gen_simplify_fixtures / check_simplify` (new case count), and `testmapping.c` (the two protected-CmpMap tests now ported). Add the two rules this sync produced, in the same form as the two already recorded there:
+Close §8 with what landed: the pin moved, the tree is mirrored and gated, the manifests are shared, and the three behavioral ports. Replace the sentence "The sync that resolves §9.4 and unblocks §10.2's linear half is still to be planned: upstream has reorganized `ast_tester`, so the pin move needs a plan of its own" with a pointer to the two plans and the spec. Update the C → Rust migration tracker rows for `check_transform_oracle` (new submodule hash, new section count), `gen_simplify_fixtures / check_simplify` (new case count), and `testmapping.c` (the two protected-CmpMap tests now ported). Add the two rules this sync produced, in the same form as the two already recorded there:
 
 - A fixture with no generator is a fixture that cannot be re-baselined. Landing reference bytes without the program that builds them defers work that gets much more expensive once the reference is being trusted.
 - A mirrored C quirk needs re-checking on every pin move, not only when a test fails. The 43 `.rt` overrides passed every test in this repo while blessing a defect upstream had the information to fix.

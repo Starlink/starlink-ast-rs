@@ -406,7 +406,7 @@ fn chain_utc_to_tt() {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation round-trip
+// Serialization round-trip
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -422,10 +422,10 @@ fn serialisation_round_trip() {
     .unwrap();
     tm.add(TimeCvtType::TaiToTt, &[51544.0]).unwrap();
 
-    // Serialise.
+    // Serialize.
     let text = native_dump(&AnyObject::TimeMap(tm.clone())).unwrap();
 
-    // Deserialise.
+    // Deserialize.
     let restored = from_native_string(&text).unwrap();
     let tm2 = match restored {
         AnyObject::TimeMap(t) => t,

@@ -50,7 +50,7 @@ the C oracle yet.
 **To do.**
 Run a parametric comparison of `epoch::tdb_conv(MJD, UTC, false)` and
 the C `TDBConv` for a grid of MJDs (around the leap-second
-boundaries 1972, 2017-01-01, …) and characterise the discrepancy.
+boundaries 1972, 2017-01-01, …) and characterize the discrepancy.
 Likely failure modes:
 - `TimeMap::TtToTai` and `TaiToTt` constants vs. C's leap-second
   table.
@@ -95,7 +95,7 @@ Risks:
   MJD).
 - Decide whether the `_year` setters are part of the public API
   (they have no C analogue) or should move to a private impl
-  invoked only by the deserialiser.
+  invoked only by the deserializer.
 
 Both items are bookmarked alongside the wcsconv fixture work but
 deserve a focused pass before the FITS-WCS path is declared

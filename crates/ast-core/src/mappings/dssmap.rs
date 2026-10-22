@@ -65,9 +65,9 @@ const TWOPI: f64 = std::f64::consts::TAU;
 // are.
 #[derive(Debug, Clone)]
 pub struct DssMap {
-    /// Right ascension of plate centre (radians).
+    /// Right ascension of plate center (radians).
     plate_ra: f64,
-    /// Declination of plate centre (radians).
+    /// Declination of plate center (radians).
     plate_dec: f64,
     /// Plate scale (arcsec/mm).
     plate_scale: f64,
@@ -100,7 +100,7 @@ impl DssMap {
     /// Create a new `DssMap` from explicit plate solution parameters.
     ///
     /// Crate-private, mirroring C's *protected* `astDssMap` constructor: a
-    /// `DssMap` is only ever built internally — by native deserialisation
+    /// `DssMap` is only ever built internally — by native deserialization
     /// (`from_node`) or by the simplifier's `WinMap`-absorption rebuild. All
     /// angular quantities are in radians except `plate_scale` (arcsec/mm).
     #[allow(clippy::too_many_arguments)]
@@ -397,7 +397,7 @@ impl DssMap {
             }
         }
 
-        // Convert mm from plate centre to plate pixels
+        // Convert mm from plate center to plate pixels
         let x = (self.ppo_coeff[2] - xmm * 1000.0) / self.x_pixel_size;
         let y = (self.ppo_coeff[5] + ymm * 1000.0) / self.y_pixel_size;
 
@@ -551,7 +551,7 @@ impl Mapping for DssMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        // C `dssmap.c::MapMerge` (1003) has one step and it is a neighbour
+        // C `dssmap.c::MapMerge` (1003) has one step and it is a neighbor
         // absorption: a WinMap mapping pixel coordinates ahead of an un-inverted
         // DssMap folds into the plate solution. There is no
         // replace-with-simpler step, so a nominated DssMap goes straight to the
@@ -662,7 +662,7 @@ impl Mapping for DssMap {
             }
 
             // C rebuilds the DssMap from the FITS cards `DssFits` writes, so
-            // the plate centre passes through its sexagesimal cards.
+            // the plate center passes through its sexagesimal cards.
             let mut result = self.clone();
             (result.plate_ra, result.plate_dec) =
                 plate_centre_through_fits(self.plate_ra, self.plate_dec);
@@ -724,7 +724,7 @@ fn nint(x: f64) -> f64 {
     (x + if x > 0.0 { 0.5 } else { -0.5 }).trunc()
 }
 
-/// The plate centre (radians) as it comes back from the FITS cards C's
+/// The plate center (radians) as it comes back from the FITS cards C's
 /// `DssFits` writes and the DssMap constructor reads (dssmap.c): the RA as
 /// whole hours and minutes, each rounded by `NINT`, and seconds, the Dec as
 /// a sign, whole degrees and minutes, likewise rounded, and seconds, each
@@ -918,7 +918,7 @@ impl Serializable for DssMap {
 //
 // DssMap's constructor is crate-private (mirroring C's protected astDssMap),
 // so the construction-based tests live here as in-crate unit tests rather
-// than in an external `tests/` crate. The deserialisation-driven coverage
+// than in an external `tests/` crate. The deserialization-driven coverage
 // (native round-trips, the C-generated `c_dssmap.ast` fixture, and the
 // dssmap-03/07/08 simplify-pathway fixtures) lives in
 // `tests/test_simplify_regression.rs` and `tests/fixtures/serialisation/`.
@@ -934,7 +934,7 @@ mod tests {
     /// Helper to create a realistic DssMap from a simplified DSS plate solution.
     /// These values approximate a real DSS plate (POSS-I E survey).
     fn make_test_dssmap() -> DssMap {
-        // Plate centre: RA = 10h 47m 57.3s, Dec = -60d 15m 52s
+        // Plate center: RA = 10h 47m 57.3s, Dec = -60d 15m 52s
         let plate_ra = 2.827_237_465_568_411; // radians
         let plate_dec = -1.051_812_254_050_266_8; // radians
         let plate_scale = 67.2; // arcsec/mm
@@ -1017,17 +1017,17 @@ mod tests {
 
     #[test]
     fn dssmap_forward_plate_centre() {
-        // The pixel that maps to the plate centre RA/Dec should be near
+        // The pixel that maps to the plate center RA/Dec should be near
         // pixel (1, 1) when cnpix offset is taken into account.
-        // Actually, the plate centre maps from the optical axis position.
+        // Actually, the plate center maps from the optical axis position.
         let dm = make_test_dssmap();
 
         // The optical axis in plate pixels is at PPO3/xpixsz, PPO6/ypixsz
         // In image pixels: (PPO3/xpixsz - cnpix + 1 - 0.5, ...)
         // PPO3 = 105990.5119, xpixsz = 25.263 => plate_pix_x = 4196.05
         // image_pix_x = 4196.05 - 4201 + 1 - 0.5 = -4.45 (off image, but valid)
-        // Actually let's just check that a pixel near the centre transforms to
-        // something close to the plate centre.
+        // Actually let's just check that a pixel near the center transforms to
+        // something close to the plate center.
 
         // For a pixel at (1, 1): check that it produces a valid RA/Dec.
         let pts = PointSet::from_rows([[1.0, 1.0]]);
@@ -1218,7 +1218,7 @@ mod tests {
     /// This is the principal real-world role of the DssMap class: the C
     /// `astDssMap` constructor is protected and the modern FITS path emits a
     /// TPN/WcsMap instead, so a DssMap reaches an application almost exclusively
-    /// by loading an older native serialisation. The fixture
+    /// by loading an older native serialization. The fixture
     /// `fixtures/serialisation/c_dssmap.ast` was produced by `astWrite` on the built
     /// reference libast; the expected transform value is the C `astTran2` output
     /// for the same object (oracle-verified).

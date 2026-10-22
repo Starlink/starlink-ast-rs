@@ -33,19 +33,19 @@ These have no dependencies on other unimplemented types.
 
 **Struct fields:**
 - `disc: f64` — distortion coefficient
-- `pcdcen: [f64; 2]` — distortion centre
+- `pcdcen: [f64; 2]` — distortion center
 
 **Transform:**
-- Forward: applies radial distortion `r' = r * (1 + disc * r^2)` relative to centre
+- Forward: applies radial distortion `r' = r * (1 + disc * r^2)` relative to center
 - Inverse: iterative Newton-Raphson to invert the cubic
 
 **Simplify rules (from C `MapMerge`):**
 - `disc == 0` → simplify to UnitMap
-- PcdMap + inverse PcdMap → cancel (same disc and centre)
+- PcdMap + inverse PcdMap → cancel (same disc and center)
 - PcdMap + PermMap → swap positions (PcdMap can commute past axis swaps)
-- PcdMap + ZoomMap series → absorb zoom into PcdMap (adjust disc by zoom^2, shift centre)
+- PcdMap + ZoomMap series → absorb zoom into PcdMap (adjust disc by zoom^2, shift center)
 
-**equal():** Compare disc within tolerance; compare centres within tolerance.
+**equal():** Compare disc within tolerance; compare centers within tolerance.
 Handle inverted state (inverted PcdMap with disc `d` equals non-inverted with modified parameters).
 
 **Serialization tokens:** `Disco`, `PcdCen(1)`, `PcdCen(2)`
@@ -89,21 +89,21 @@ so `equal()` must account for inversion flags explicitly.
 Decomposes vectors into unit vector + norm (and inverse).
 
 **Struct fields:**
-- `centre: Vec<f64>` — centre point (length = nin)
+- `centre: Vec<f64>` — center point (length = nin)
 
 **Transform:**
-- Forward (nin→nin+1): subtract centre, compute norm, output unit vector components then norm
-- Inverse (nin+1→nin): multiply unit vector by norm (last input), add centre
+- Forward (nin→nin+1): subtract center, compute norm, output unit vector components then norm
+- Inverse (nin+1→nin): multiply unit vector by norm (last input), add center
 
 **Simplify rules:**
-- Inverse-cancel (UnitNormMap + inverse UnitNormMap with same centre)
-- UnitNormMap(fwd) + ShiftMap → merge (absorb shift into centre)
+- Inverse-cancel (UnitNormMap + inverse UnitNormMap with same center)
+- UnitNormMap(fwd) + ShiftMap → merge (absorb shift into center)
 - UnitNormMap(inv) + ShiftMap → merge
 - UnitNormMap(fwd) + WinMap → merge
 - UnitNormMap(inv) + WinMap → merge
-- Difference in centres → simplify to ShiftMap (when centres differ by a constant)
+- Difference in centers → simplify to ShiftMap (when centers differ by a constant)
 
-**equal():** Compare centres within tolerance. Handle nin/nout asymmetry.
+**equal():** Compare centers within tolerance. Handle nin/nout asymmetry.
 
 **Serialization tokens:** `Centre(i)` for each axis
 
@@ -203,11 +203,11 @@ encapsulated mapping.
 
 #### 7. DssMap
 
-2D pixel ↔ equatorial sky via Digitised Sky Survey plate solution.
+2D pixel ↔ equatorial sky via Digitized Sky Survey plate solution.
 
 **Struct fields (plate constants):**
-- `plate_ra: f64` — plate centre RA (radians)
-- `plate_dec: f64` — plate centre Dec (radians)
+- `plate_ra: f64` — plate center RA (radians)
+- `plate_dec: f64` — plate center Dec (radians)
 - `plate_scale: f64` — plate scale (arcsec/mm)
 - `x_pixel_size: f64`, `y_pixel_size: f64` — pixel sizes (microns)
 - `ppo: [f64; 6]` — orientation coefficients (PPO1–PPO6)
@@ -241,7 +241,7 @@ be updated to construct/deconstruct DssMap objects.
 
 #### 8. NormMap
 
-Normalises coordinates using the `norm()` method of a stored Frame.
+Normalizes coordinates using the `norm()` method of a stored Frame.
 
 **Struct fields:**
 - `frame: DynFrame` — the frame whose `norm()` method is called

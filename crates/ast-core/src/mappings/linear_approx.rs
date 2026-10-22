@@ -97,13 +97,13 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
         return Ok(None);
     }
 
-    // Initialise fit array to BAD. fit layout: [zero[0..nout], grad[0..nin*nout]]
+    // Initialize fit array to BAD. fit layout: [zero[0..nout], grad[0..nin*nout]]
     let nc = (ndim_in + 1) * ndim_out;
     let mut fit = vec![BAD_VALUE; nc];
 
-    // Step 1: build initial sample points — the centre of each face of the box.
+    // Step 1: build initial sample points — the center of each face of the box.
     // C stores them column-major; we use PointSet rows here. There are
-    // 2*ndim_in face-centre points.
+    // 2*ndim_in face-center points.
     let nfaces = 2 * ndim_in;
     let mut pts_in_f = PointSet::zeros(nfaces, ndim_in);
     for face in 0..nfaces {
@@ -119,12 +119,12 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
         };
     }
 
-    // Forward-transform the face centres.
+    // Forward-transform the face centers.
     let pts_out_f = map.transform(&pts_in_f, true)?;
 
     // Step 2: extract per-output gradients and zero points from face pairs.
     // grad lives in fit[ndim_out..], zero lives in fit[..ndim_out].
-    // The first pass treats inputs as if centred on the box midpoint.
+    // The first pass treats inputs as if centerd on the box midpoint.
     {
         let (zero_slice, grad_slice) = fit.split_at_mut(ndim_out);
         for coord_out in 0..ndim_out {
@@ -160,7 +160,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
     }
 
     // Step 3: correct zero points (they were computed assuming origin =
-    // box centre). Subtract grad·centre to express the fit relative to
+    // box center). Subtract grad·center to express the fit relative to
     // the actual input coordinate system. Also detect the all-BAD case.
     let mut linear = false;
     {
@@ -184,7 +184,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
     }
 
     if !linear {
-        // All outputs were bad at every face centre. C fills `fit` with a
+        // All outputs were bad at every face center. C fills `fit` with a
         // unit transformation (BAD zero points) at mapping.c:6952-6966, but
         // then the trailing `if( !astOK || !linear )` at mapping.c:6972
         // overwrites the whole array with BAD and leaves result = 0. So the
@@ -209,7 +209,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
             pts_in_t.axis_mut(0)[point] = (1.0 - frac) * lbnd[0] + frac * ubnd[0];
         }
     } else {
-        // Centre point, slightly offset from exact centre.
+        // Center point, slightly offset from exact center.
         {
             let mut row = pts_in_t.point_mut(0);
             for coord_in in 0..ndim_in {
@@ -217,7 +217,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
             }
         }
 
-        // Half-way between centre and each face centre. The face axis is
+        // Half-way between center and each face center. The face axis is
         // pulled 0.51:0.49 toward the face boundary.
         let mut point = 1;
         for face in 0..(2 * ndim_in) {
@@ -240,10 +240,10 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
             point += 1;
         }
 
-        // Per vertex: vertex itself + halfway-from-centre to vertex.
+        // Per vertex: vertex itself + halfway-from-center to vertex.
         let mut vertex = vec![0_u8; ndim_in];
         loop {
-            // Snapshot point-0 values for the halfway-to-centre row
+            // Snapshot point-0 values for the halfway-to-center row
             // before mutably borrowing further rows.
             let mut centre_snapshot = vec![0.0_f64; ndim_in];
             for coord_in in 0..ndim_in {

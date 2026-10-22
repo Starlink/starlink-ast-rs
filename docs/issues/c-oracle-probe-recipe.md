@@ -1,6 +1,6 @@
 # Building and running a C-oracle probe
 
-When a Rust behaviour is questioned, the C library is the source of truth.
+When a Rust behavior is questioned, the C library is the source of truth.
 The fastest way to settle a question is a tiny standalone C program linked
 against the repo's own `libast`, calling the same functions the Rust port
 mirrors.
@@ -27,7 +27,7 @@ LD_LIBRARY_PATH= /tmp/probe                  # note the empty LD_LIBRARY_PATH
   as a **DT_RPATH** (not DT_RUNPATH), so it wins over `LD_LIBRARY_PATH`.
 - `LD_LIBRARY_PATH=` — clear it at run time as a belt-and-braces measure
   against the conda trap below.
-- `-lyaml -lm` — `libast` pulls in yaml (serialisation) and libm.
+- `-lyaml -lm` — `libast` pulls in yaml (serialization) and libm.
 - `-last_pal -last_cminpack` — separate shared libraries since AST 9.5.0, so
   the linker needs them named. Without them `libast.so` leaves `astPal*`,
   `astEra*` and the cminpack symbols undefined. They are AST's own forks, not
@@ -54,7 +54,7 @@ The `conda activate` for this project puts `$CONDA_PREFIX/lib` on
 A DT_RUNPATH baked into the binary (the default with modern binutils) is
 consulted **after** `LD_LIBRARY_PATH`, so the conda copy wins even when you
 `-L` the repo build.
-Two independent defences, use both:
+Two independent defenses, use both:
 
 1. `-Wl,-rpath,"$R" -Wl,--disable-new-dtags` forces a **DT_RPATH** entry,
    which the loader consults *before* `LD_LIBRARY_PATH`.
@@ -109,7 +109,7 @@ behind `reference/starlink-ast/src/`.
 A probe linked against the older one answers the question for whatever AST
 was current when that tree was last built, and says nothing about the pin.
 It fails silently and convincingly: the probe runs, `astOK` is 1, and the
-answer is simply the old behaviour.
+answer is simply the old behavior.
 Check before trusting a result:
 
 ```sh

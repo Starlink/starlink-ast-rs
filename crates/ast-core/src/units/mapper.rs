@@ -178,7 +178,7 @@ pub(crate) fn unit_mapper(in_unit: &str, out_unit: &str) -> Option<DynMapping> {
         return Some(Box::new(UnitMap::new(1)));
     }
 
-    // Equivalent normalised strings — also a UnitMap.
+    // Equivalent normalized strings — also a UnitMap.
     let cleaned_in = clean_exp(in_unit);
     let cleaned_out = clean_exp(out_unit);
     if cleaned_in == cleaned_out {

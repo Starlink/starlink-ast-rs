@@ -54,7 +54,7 @@ Everything verified so far is verified through the Rust API; no C program has ev
 | wcsconv round-trip cases | 194 compared, 0 excluded |
 | Simplify fixtures byte-exact | 427 |
 | Transform-oracle sections gated | 1,606 (259 headers + 20 framesets + 1,327 simplify) |
-| C defects and quirks catalogued | 36 (13 fixed upstream, ~19 in flight) |
+| C defects and quirks cataloged | 36 (13 fixed upstream, ~19 in flight) |
 | Workspace crates still stubs | 4 of 6 |
 | C-ABI symbols exported | 0 |
 
@@ -83,7 +83,7 @@ The spread within the band is informative.
 `keymap/` at 0.41× is the newest and most systematically ported subsystem, done from a written spec in three days.
 `units/` at 0.94× is the tightest, which fits: `unit.c` is itself a dense expression parser, and the Rust port adds a typed AST and enum layer over the same algorithm rather than replacing C ceremony with nothing.
 
-The comparison has a known upward bias in the port's favour: the C column counts whole files, several of which contain algorithms the port has not implemented — `astResample`, `astRebin` and `astRebinSeq` inside `mapping.c` (10,826 code lines for that file alone), and the `-TAB` family inside `fitschan.c`.
+The comparison has a known upward bias in the port's favor: the C column counts whole files, several of which contain algorithms the port has not implemented — `astResample`, `astRebin` and `astRebinSeq` inside `mapping.c` (10,826 code lines for that file alone), and the `-TAB` family inside `fitschan.c`.
 So 70% is an upper bound on coverage-by-volume within these subsystems, not a completion figure.
 
 ### Is Rust inherently spread over more lines?
@@ -173,7 +173,7 @@ C's transform-output oracle (PR #63, 3 July) was ported into Rust as `test_trans
 
 ### 3.3 Reading C closely enough to port it finds bugs that reading it casually does not
 
-The catalogued defects cluster exactly where the port went deepest.
+The cataloged defects cluster exactly where the port went deepest.
 KeyMap accounts for 17 entries, all found in three days of porting it; FitsChan and the simplifier's flag handling account for most of the rest.
 Several are undefined behavior that happens to work on glibc — out-of-range double-to-int casts in `ConvertValue`, numeric-string overflow into `%d`, an `Entry1X` read as an `Entry0X` for a zero-length vector.
 A faithful port is a line-by-line audit with a machine checking the reader's comprehension.
@@ -185,7 +185,7 @@ Which node in a simplified tree carries `IsSimp = 1` depends on which pointers h
 `WcsNative` dumps an `Invert` flag on a PermMap it shares between two stages, acquired *after* encapsulation.
 
 Mirroring either would mean encoding C's reference-counting history into Rust read paths.
-The port instead declined, documented both in the quirks catalogue with the C line numbers and the upstream suggestion, and licensed five wcsconv cases to drop those tag lines from the comparison.
+The port instead declined, documented both in the quirks catalog with the C line numbers and the upstream suggestion, and licensed five wcsconv cases to drop those tag lines from the comparison.
 C is now fixing both: deterministic `IsSimp` placement, and no inversion of the encapsulated PermMap.
 The judgement call was right, and it will let those five relaxations be retired.
 
@@ -221,7 +221,7 @@ In C, `Invert` is a mutable per-object bit with defined behavior when the object
 The parent records the child's orientation at construction and forces it back before transforming.
 The port's owned-value design has no equivalent, and no model of one was written.
 
-The consequence is a July spent almost entirely on orientation repair: pushing parallel-CmpMap inversion down to leaves, preserving leaf orientation across an invert-normalising `simplified()`, materialising inverted PermMap leaves forward during flatten, restoring child orientation in parallel reconstruct, storing simplified elements at their returned orientation.
+The consequence is a July spent almost entirely on orientation repair: pushing parallel-CmpMap inversion down to leaves, preserving leaf orientation across an invert-normalizing `simplified()`, materializing inverted PermMap leaves forward during flatten, restoring child orientation in parallel reconstruct, storing simplified elements at their returned orientation.
 
 **Cost.**
 27 commits, concentrated *after* the rebuild rather than before it, meaning the same ground was covered twice.
@@ -232,7 +232,7 @@ A short design note on how C's `Invert` maps onto owned values would have been c
 C has two related but distinct concepts: a flag serialized into the dump, and a barrier that stops an already-simplified component being re-merged.
 The port used a single field for both.
 
-Untangling it took *"use Frozen (not IsSimple) as the component merge barrier"*, *"decouple serialised IsSimp tag from merge-guard flag"*, *"port IsSimple semantics — rename flag, clear on invert"*, and a series of tag-placement fixes.
+Untangling it took *"use Frozen (not IsSimple) as the component merge barrier"*, *"decouple serialized IsSimp tag from merge-guard flag"*, *"port IsSimple semantics — rename flag, clear on invert"*, and a series of tag-placement fixes.
 
 **Cost.**
 14 commits across three months.
@@ -288,7 +288,7 @@ The prototype's lesson — an error that shrinks monotonically without reaching 
 Nine Region classes landed on 11 May in 31 commits: planar geometry, crossing-number polygon membership, placeholder simplification.
 That was enough to make the `testregions.c`-derived tests pass, and enough to look finished.
 
-The bill arrived on 1–2 August as a dedicated parity campaign: SkyFrame great-circle line geometry, winding-relative polygon membership, on-boundary `astRegPins`, SkyFrame `ResolvePoints`, geometric `OverlapX`, `astSetUnc` validate/remap/recentre, per-class `astGetDefUnc`, Circle and Ellipse simplify re-fit, great-circle bounds.
+The bill arrived on 1–2 August as a dedicated parity campaign: SkyFrame great-circle line geometry, winding-relative polygon membership, on-boundary `astRegPins`, SkyFrame `ResolvePoints`, geometric `OverlapX`, `astSetUnc` validate/remap/recenter, per-class `astGetDefUnc`, Circle and Ellipse simplify re-fit, great-circle bounds.
 Nine previously-ignored tests were finally enabled.
 
 One item from that sweep is still open.
@@ -315,7 +315,7 @@ The four fixtures that do contain such a card all sit outside them.
 
 **Cost of the open one.**
 Unknown, which is the point.
-A comparator that normalises away a class of difference, combined with a corpus containing no instance of it, is a gate with a hole in a known shape.
+A comparator that normalizes away a class of difference, combined with a corpus containing no instance of it, is a gate with a hole in a known shape.
 `PLAN.md` §5 records both halves of the fix required.
 
 ---
@@ -338,7 +338,7 @@ Two were not, and one strength was lost.
 | Declared quality gates | `#![deny(clippy::all)]` declared and red: 87 findings, ~49 genuine. A gate that does not hold. | `-D warnings` workspace-wide, clippy and fmt enforced in CI on both Linux and macOS, green. | **Answered** |
 | Test posture | 369 tests; a plain `cargo test` ran exactly one live-oracle comparison; simplify parity tests gated behind 16 minutes of C recompilation; one harness compared the Rust reader against the Rust writer and so could not falsify either. | 3,280 tests, all running by default, all reading frozen C output. No gated-because-slow tier. Every relaxation is a named entry in a source list with a recorded reason. | **Answered** |
 | The C ABI | 454 `astrs_*` entry points over `u64` handles. Not `ast.h`-compatible and no reference counting — the assessment called it "a test harness, not an ABI" — but it existed and worked. | `ast-capi/src/lib.rs` is one comment line. No exported symbols, no header, no `astClone`/`astAnnul`, no `catch_unwind` boundary. `ast-plugins`, `ast-ffi-tests` and `ast-oracle-tests` are likewise empty. | **Lost** |
-| Performance | The prototype's headline result and strongest argument: 15–20% faster than C on bulk transforms, 1.5× on a full 4096² inverse grid, 3–8.5× on single points, with no vectorisation at all. | The small-N win holds — all 24 benchmarked variants beat C at N=16. At N=100k the picture inverts for cheap mappings: PermMap forward 42× slower, WinMap 6.6–7.6×, ShiftMap 5.7–7.6×, diagonal MatrixMap 5.5×, SlaMap 3.9×, WcsMap TAN forward 4.2×. PolyMap — the LSST and SCUBA-2 workhorse — is still 1.5× *faster* than C. | **Regressed** |
+| Performance | The prototype's headline result and strongest argument: 15–20% faster than C on bulk transforms, 1.5× on a full 4096² inverse grid, 3–8.5× on single points, with no vectorization at all. | The small-N win holds — all 24 benchmarked variants beat C at N=16. At N=100k the picture inverts for cheap mappings: PermMap forward 42× slower, WinMap 6.6–7.6×, ShiftMap 5.7–7.6×, diagonal MatrixMap 5.5×, SlaMap 3.9×, WcsMap TAN forward 4.2×. PolyMap — the LSST and SCUBA-2 workhorse — is still 1.5× *faster* than C. | **Regressed** |
 
 ### Three things worth saying plainly about the performance row
 
@@ -349,11 +349,11 @@ The regressions are on mappings whose entire body is two arithmetic operations, 
 **But the gate that was supposed to catch this does not exist.**
 `CLAUDE.md` states that tier-5 oracle benches fail CI if Rust is more than 10% slower than C on these paths.
 `crates/ast-oracle-bench/benches/oracle.rs` is a six-line criterion placeholder, and CI runs `build`, `test -p ast-core`, `clippy` and `fmt` — no benchmark at all.
-The only performance data is a hand-run snapshot dated 2026-05-19, three months stale, and none of its optimisation targets has been actioned.
+The only performance data is a hand-run snapshot dated 2026-05-19, three months stale, and none of its optimization targets has been actioned.
 
-**One hypothesis worth testing before optimising class by class.**
+**One hypothesis worth testing before optimizing class by class.**
 `PointSet` is row-major `(npoint, ncoord)`, where C keeps one contiguous array per axis.
-For a mapping whose body is a scale and a shift, strided per-axis access and the resulting loss of vectorisation would plausibly explain the whole cheap-mapping cluster at once.
+For a mapping whose body is a scale and a shift, strided per-axis access and the resulting loss of vectorization would plausibly explain the whole cheap-mapping cluster at once.
 `docs/issues/mapping-perf-vs-c-oracle.md` does not consider layout — it attributes each case to per-class dispatch — so this is unverified, but it is one measurement away and it would change what the fix is.
 
 ---
@@ -497,8 +497,8 @@ The prototype's post-mortem documented the most expensive mistake in this projec
 and the port then repeated it with that document in the repository, so a narrative
 retrospective demonstrably does not transfer.
 Of the fourteen entries, three are candidates for conversion into tests (the
-comparator-normalisation hole, the perf gate, a script diffing an incoming
-upstream range for serialization changes), and two — the `Invert` modelling gap and
+comparator-normalization hole, the perf gate, a script diffing an incoming
+upstream range for serialization changes), and two — the `Invert` modeling gap and
 the `IsSimp` conflation — will only ever be narrative, which is what the file is
 for.
 
@@ -510,7 +510,7 @@ Six changes:
 | New section "Before porting a class — find C's extension points": classify each `vtab` entry as ceremony or architecture, with the mechanical test (*does a generic driver in another file dispatch to this?*) and the list of known-architecture methods. Plus the shape rule, the two-names-two-fields rule, and the mutable-state-convention rule | 1, 2, 3, 4 |
 | New section "Stop signals": three signals that mean stop patching and read the C source, plus the second-conversion corollary | 5, 6, and the prototype's DSB saga |
 | New subsection "Landing several classes in one pass" under the class-adding recipe: how to record sweep debt in the same commit range | 7 |
-| New subsection "Comparators and skip modes" under the test-porting recipe: no skip mode, hard-fail, per-case relaxations, and the normalisation rule | 8 |
+| New subsection "Comparators and skip modes" under the test-porting recipe: no skip mode, hard-fail, per-case relaxations, and the normalization rule | 8 |
 | Hot-path section amended to state that **no automated performance gate exists**, with the manual procedure and the caveat that the snapshot already records 5–42× regressions off the hot path | The false gate (§5) |
 | Four rows added to the "What NOT to do" table; upstream-sync protocol and a hazards-file pointer added to "Important pointers" | 1, 5, 6, 8 and risk 2 |
 

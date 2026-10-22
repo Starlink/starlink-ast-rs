@@ -35,7 +35,7 @@ const TTOFF: f64 = 32.184;
 /// 2*pi.
 const D2PI: f64 = 2.0 * std::f64::consts::PI;
 
-/// 1 AU in metres.
+/// 1 AU in meters.
 const AST_AU: f64 = 1.49597870e11;
 
 // ---------------------------------------------------------------------------
@@ -1307,7 +1307,7 @@ fn time_simplify_steps(steps: &mut Vec<TimeConversion>) -> bool {
                 steps.remove(i);
                 changed_this_pass = true;
                 any_changed = true;
-                // Don't advance — new neighbours may cancel.
+                // Don't advance — new neighbors may cancel.
                 i = i.saturating_sub(1);
                 continue;
             }
@@ -1536,7 +1536,7 @@ impl Mapping for TimeMap {
         steps.extend(other_steps);
 
         // Always merge (concatenate) even if no simplification occurs.
-        // This matches C timemap.c behaviour where all adjacent TimeMaps are
+        // This matches C timemap.c behavior where all adjacent TimeMaps are
         // combined, enabling further simplification in subsequent passes.
         time_simplify_steps(&mut steps);
 
@@ -1612,7 +1612,7 @@ impl Mapping for TimeMap {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 /// Argument index to letter: 0 -> 'a', 1 -> 'b', etc.

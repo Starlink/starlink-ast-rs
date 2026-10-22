@@ -4,7 +4,7 @@
 //! conversion, given an `int` or a `double`.
 //!
 //! `sprintf` is called with one argument, so a Format whose conversions do
-//! not consume exactly that argument has undefined behaviour in C: a second
+//! not consume exactly that argument has undefined behavior in C: a second
 //! conversion, a `*` width or precision, a length modifier that changes the
 //! argument type, a conversion of the wrong type (`%ld`, `%s`), or a
 //! trailing `%`. Each is an `AST__FMTER` error here. `%a`, `%A` and the
@@ -516,7 +516,7 @@ pub(crate) fn c_strtod(s: &[u8]) -> Option<(f64, usize)> {
         return Some((signed(f64::INFINITY), i + 3));
     }
     if starts_with_ci(b"nan") {
-        // "nan" may be followed by a parenthesised sequence of letters,
+        // "nan" may be followed by a parenthesized sequence of letters,
         // digits and underscores, taken only when it is closed.
         let mut end = i + 3;
         if s.get(end) == Some(&b'(') {

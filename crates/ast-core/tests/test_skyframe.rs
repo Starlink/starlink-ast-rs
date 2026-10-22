@@ -2,7 +2,7 @@
 //!
 //! Covers: construction, attributes, coordinate system conversion, spherical
 //! geometry (distance, angle, offset, norm), HMS/DMS formatting, FrameSet
-//! integrity, offset coordinates (SkyRefIs), serialisation round-trip, and
+//! integrity, offset coordinates (SkyRefIs), serialization round-trip, and
 //! BAD_VALUE handling.
 //!
 //! Rust equivalent of reference/starlink-ast/ast_tester/testskyframe.c
@@ -309,12 +309,12 @@ fn fk5_to_galactic_centre() {
     assert!(result.is_some(), "FK5->Galactic should succeed");
     let fs = result.unwrap();
 
-    // Transform galactic centre (l=0, b=0) back to FK5 (inverse = gal->fk5).
+    // Transform galactic center (l=0, b=0) back to FK5 (inverse = gal->fk5).
     let (ra, dec) = transform_inv(&fs, 0.0, 0.0);
     let ra_deg = ra.to_degrees().rem_euclid(360.0);
     let dec_deg = dec.to_degrees();
 
-    // Galactic centre in FK5 J2000: RA ~266.4 deg, Dec ~-28.9 deg
+    // Galactic center in FK5 J2000: RA ~266.4 deg, Dec ~-28.9 deg
     assert!(
         (ra_deg - 266.4).abs() < 0.5,
         "RA of galactic centre: {ra_deg}"
@@ -597,7 +597,7 @@ fn offset_normalises_the_longitude_it_returns() {
         "offset lon wrapped",
     );
 
-    // The coincident-points branch normalises too (skyframe.c:7718-7720). C
+    // The coincident-points branch normalizes too (skyframe.c:7718-7720). C
     // reaches it only when `sin(offset)` is exactly zero, which in double
     // precision means `offset == 0.0` — `sin(PI)` is 1.22e-16, so C returns
     // bad for a nominally antipodal offset.
@@ -944,7 +944,7 @@ fn convert_between_offset_frames() {
 }
 
 // ===========================================================================
-// 7. Serialisation Round-Trip
+// 7. Serialization Round-Trip
 // ===========================================================================
 
 #[test]
@@ -958,7 +958,7 @@ fn serialise_default_fk5() {
     assert!(text.contains("End SkyFrame"), "missing End SkyFrame");
     assert!(text.contains("FK5"), "missing system name");
 
-    // Deserialise and verify.
+    // Deserialize and verify.
     let restored = from_native_string(&text).unwrap();
     match restored {
         AnyObject::SkyFrame(ref sf) => {
@@ -1137,7 +1137,7 @@ fn serialise_skyframe_not_a_mapping() {
 
 #[test]
 fn serialise_frameset_with_skyframe() {
-    // SkyFrame inside a FrameSet survives serialisation.
+    // SkyFrame inside a FrameSet survives serialization.
     let base: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap());
     let current: Box<dyn Frame> = Box::new(SkyFrame::new(SkySystem::Fk5));
     let mut fs = FrameSet::new(base);

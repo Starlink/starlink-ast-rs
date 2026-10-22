@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Rust 2024 edition; MSRV pinned in `rust-toolchain.toml`.** Copy the style of neighbouring test files.
+- **Rust 2024 edition; MSRV pinned in `rust-toolchain.toml`.** Copy the style of neighboring test files.
 - **`cargo fmt` and `cargo clippy --workspace -- -D warnings` are CI gates.** Every commit must be fmt- and clippy-clean. `cargo`/`rustc` are in the `lsst-scipipe` conda bin — ensure it is on `PATH`.
 - **Public Rust API only in tests** (no private `ast-core` modules), per CLAUDE.md "Porting a test" rule.
 - **Fixtures must be committed and work with the submodule absent.** Never symlink to `reference/starlink-ast/`. Never read from `reference/` at test time.

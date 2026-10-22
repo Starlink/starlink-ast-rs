@@ -97,7 +97,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
     store.crpix[0] = Some((ppo3 / xpixelsz) - cnpix1 + 0.5);
     store.crpix[1] = Some((ppo6 / ypixelsz) - cnpix2 + 0.5);
 
-    // CRVAL from the plate-centre RA/DEC.
+    // CRVAL from the plate-center RA/DEC.
     store.crval[0] = Some(15.0 * (pltrah + pltram / 60.0 + pltras / 3600.0));
     store.crval[1] = Some(sign * (pltdecd + pltdecm / 60.0 + pltdecs / 3600.0));
 
@@ -303,7 +303,7 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     // The plate scale is the mean of the leading X and Y coefficients.
     let pltscl = 0.5 * (amdx[0] + amdy[0]);
 
-    // Arbitrary corner pixel of 1; derive the matching plate-centre offset.
+    // Arbitrary corner pixel of 1; derive the matching plate-center offset.
     let cnpix1 = 1.0;
     let cnpix2 = 1.0;
     let Some(crpix0) = store.crpix[0] else {
@@ -675,7 +675,7 @@ END";
 
     #[test]
     fn round_trip_preserves_coordinates() {
-        // Write a TPN store, read it back, verify the plate-centre coordinates.
+        // Write a TPN store, read it back, verify the plate-center coordinates.
         let mut original = tpn_store();
         original.crval[0] = Some(161.98875);
         original.crval[1] = Some(-60.264);

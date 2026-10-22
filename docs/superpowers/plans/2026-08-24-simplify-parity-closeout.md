@@ -130,7 +130,7 @@ Expected: `0`, the 453-fixture line with no failures, `194 passed`.
 
 Remove the `if public_guard.is_outermost() { … }` block from `simplify_entry.rs`. Then remove `PublicSimplifyGuard`, `PUBLIC_SIMPLIFY_DEPTH` and `narrow_unit_scale_winmap_children` if step 1 showed nothing else reads them.
 
-Leave `normalize_unitmap_children` alone. §10.15 measured it: four `equal()` failures and two serialisation failures without it.
+Leave `normalize_unitmap_children` alone. §10.15 measured it: four `equal()` failures and two serialization failures without it.
 
 - [ ] **Step 4: Add the check the call was written for**
 
@@ -369,7 +369,7 @@ cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
 
 Expected: `cap_specmap_02` at C's 8 cards, and the other four unchanged from step 2.
 
-**If `cap_specmap_02` reaches 8 but a control loses a card**, the identity test is not firing where C's fires. Do not add a compensating stamp — that is what the licence rows record and what seven measured-and-reverted attempts at `cap_cmpmap_03` were. Diff the traces:
+**If `cap_specmap_02` reaches 8 but a control loses a card**, the identity test is not firing where C's fires. Do not add a compensating stamp — that is what the license rows record and what seven measured-and-reverted attempts at `cap_cmpmap_03` were. Diff the traces:
 
 ```bash
 grep -E 'MAPMERGE |SIMPLIFY-ENTER' /tmp/c.txt | sed 's/^ *//' > /tmp/c.seq
@@ -385,7 +385,7 @@ The first divergence is where the two disagree about whether the restructure hap
 
 Run the measurement recipe. Expected direction: the port's 153 falls toward C's 87, since the deleted per-member `simplify()` was a nomination source and the deleted threshold was letting restructures through that C declines. Record the new pair of numbers whatever they are — if they do not move, this task did less than the spec predicted and §10.3's remaining cause is elsewhere.
 
-- [ ] **Step 8: Retire the licence**
+- [ ] **Step 8: Retire the license**
 
 Delete `cap_specmap_02` from `ISSIMP_PLACEMENT_LICENSED` in `test_simplify_regression.rs`, which empties the array. Delete it from `ISSIMP_DISAGREEMENTS` if it is there too. Then:
 
@@ -393,7 +393,7 @@ Delete `cap_specmap_02` from `ISSIMP_PLACEMENT_LICENSED` in `test_simplify_regre
 cargo test -p ast-core --test test_verification_ledger
 ```
 
-Set every count the failure names in `test_verification_ledger.rs` and `PLAN.md` §6 in the same edit. An empty `ISSIMP_PLACEMENT_LICENSED` should read `0` in the ledger, not be deleted — the array staying present with zero entries is what keeps the next licence visible.
+Set every count the failure names in `test_verification_ledger.rs` and `PLAN.md` §6 in the same edit. An empty `ISSIMP_PLACEMENT_LICENSED` should read `0` in the ledger, not be deleted — the array staying present with zero entries is what keeps the next license visible.
 
 - [ ] **Step 9: Full verification, re-verdict, commit**
 
@@ -536,7 +536,7 @@ impl Drop for SimplifyGuard {
 
 `RefCell::new(Vec::new())` is const-constructible, so the `const { }` block is fine and keeps the lazy-init cost out of the hot path.
 
-Removing the cap means a genuine non-terminating recursion becomes a stack overflow instead of a silently-declined simplification. That is C's exposure too, and it is the right trade: a crash is findable. If one appears, the bug is in whichever `equal` fails to recognise the repeat — fix that, do not restore the cap.
+Removing the cap means a genuine non-terminating recursion becomes a stack overflow instead of a silently-declined simplification. That is C's exposure too, and it is the right trade: a crash is findable. If one appears, the bug is in whichever `equal` fails to recognize the repeat — fix that, do not restore the cap.
 
 - [ ] **Step 5: Verify, both directions**
 
@@ -553,7 +553,7 @@ Expected: `cap_deep_nest_zoom` green, `194 passed`, `0` suites failing.
 
 - [ ] **Step 6: Cost check**
 
-`equal` on a large CmpMap tree is O(tree) where the hash was O(tree) too, but with no memoisation and a `clone_box` per push. The stack is at most the nesting depth, so this is not a hot-path structure — but confirm rather than assume:
+`equal` on a large CmpMap tree is O(tree) where the hash was O(tree) too, but with no memoization and a `clone_box` per push. The stack is at most the nesting depth, so this is not a hot-path structure — but confirm rather than assume:
 
 ```bash
 cargo run --release --example bench_per_class -p ast-core 2>&1 | tail -30
@@ -586,7 +586,7 @@ Closes PLAN.md §10.19's first entry."
 
 ## Task 5: Hang the CmpMap/PermMap swap off C's nominee
 
-The arithmetic is already C's; the trigger is the opposite element. C runs the swap when the **parallel CmpMap** is nominated and the PermMap is its **lower** neighbour (`cmpmap.c:1826-1841`); `permmap.c` never mentions `CmpMap`. The port runs it when the **PermMap** is nominated and looks at its upper neighbour (`simplify.rs:1136-1148`).
+The arithmetic is already C's; the trigger is the opposite element. C runs the swap when the **parallel CmpMap** is nominated and the PermMap is its **lower** neighbor (`cmpmap.c:1826-1841`); `permmap.c` never mentions `CmpMap`. The port runs it when the **PermMap** is nominated and looks at its upper neighbor (`simplify.rs:1136-1148`).
 
 **Files:**
 - Modify: `crates/ast-core/src/mappings/simplify.rs`
@@ -745,7 +745,7 @@ Extract the closure and the two `consolidate` calls (`polymap.rs:840-864`) into:
 
 `replace_with_simpler` then opens with `let (consolidated, consolidated_inv) = self.consolidated_terms().unzip_or_stored()`-equivalent code — spell it out rather than reaching for a combinator: it needs the consolidated terms when they changed and the stored ones when they did not, because the linear test runs on the deep copy either way. Everything from `// Check if all remaining terms are affine` (`polymap.rs:866`) down stays exactly where it is.
 
-Nothing about `PolyMap`'s behaviour may change here. Verify before touching ChebyMap:
+Nothing about `PolyMap`'s behavior may change here. Verify before touching ChebyMap:
 
 ```bash
 cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E "^Simplify regression"
@@ -1357,9 +1357,9 @@ rg -l 'simplified: SimplifiedRecord' crates/ast-core/src | cat
 
 Twenty-six classes hold the `IsSimple` record; `Ident` goes beside it in each, as `ident: String` (empty when unset, matching `Frame::ident`'s `&str` return and avoiding an `Option` the Frame side does not have). Add the two overrides per class in the same edit — a class with the field and no accessor is worse than neither, because `do_not_simplify` would then read the default and silently return `false`.
 
-Do it in one commit, not twenty-six: it is one mechanical change, and split across commits the intermediate states have some classes honouring `Ident` and others not, which is a state no test can pin down.
+Do it in one commit, not twenty-six: it is one mechanical change, and split across commits the intermediate states have some classes honoring `Ident` and others not, which is a state no test can pin down.
 
-- [ ] **Step 4: Serialisation**
+- [ ] **Step 4: Serialization**
 
 C writes `Ident` for every Object. Check what the port's Mapping writer does today:
 
@@ -1385,7 +1385,7 @@ cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep "test result
         }
 ```
 
-And `flatten`, the port of `astMapList`, which must decline to decompose such a CmpMap and instead append it as a single leaf — C's `cmpmap.c:1154` falls through to the base `MapList`, which appends the Mapping itself. Appending it is the whole behaviour; returning an error or an empty list is not the same thing.
+And `flatten`, the port of `astMapList`, which must decline to decompose such a CmpMap and instead append it as a single leaf — C's `cmpmap.c:1154` falls through to the base `MapList`, which appends the Mapping itself. Appending it is the whole behavior; returning an error or an empty list is not the same thing.
 
 - [ ] **Step 6: Two fixtures**
 
@@ -1415,7 +1415,7 @@ cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
 cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep "test result"
 ```
 
-The round-trip corpus is the one to watch: a new card written for every Mapping changes every dump that has an `Ident` set, and nothing in the corpus should have one. **If a `.simp` gains an `Ident` card, the writer is emitting it unset** — compare against C's `astDump` behaviour for an unset Object attribute, which writes nothing.
+The round-trip corpus is the one to watch: a new card written for every Mapping changes every dump that has an `Ident` set, and nothing in the corpus should have one. **If a `.simp` gains an `Ident` card, the writer is emitting it unset** — compare against C's `astDump` behavior for an unset Object attribute, which writes nothing.
 
 Add a revision to `2026-04-20-rust-port-design.md` recording that `Ident` is Mapping-level private bookkeeping with a `do_not_simplify` consumer, which is the private-`Object`-super-trait concern the spec anticipates at `:390-396` arriving as trait methods rather than a super-trait. Mark §10.21 FIXED, naming both fixtures.
 
@@ -1452,7 +1452,7 @@ Closes PLAN.md §10.21."
 - Modify: `PLAN.md` §10.18, `docs/audits/mapmerge/region_polygon.md`
 
 **Interfaces:**
-- Produces: `Polygon::simp_vertices()` / `set_simp_vertices()` (C default 1), serialised as `SimpVT`.
+- Produces: `Polygon::simp_vertices()` / `set_simp_vertices()` (C default 1), serialized as `SimpVT`.
 - Consumes: `Region::get_unc_frm` (`regions/mod.rs:500`), `reg_pins`, `reg_base_mesh`.
 
 - [ ] **Step 1: Read C's block once, in full**
@@ -1707,7 +1707,7 @@ cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
 cargo test -p ast-capi 2>&1 | grep "test result"
 ```
 
-The new trait method has a default, so nothing outside the overriding classes changes behaviour — but `CmpFrame::simplify_frame` is now reachable from any NormMap over a CmpFrame, and `wcsconv` has those.
+The new trait method has a default, so nothing outside the overriding classes changes behavior — but `CmpFrame::simplify_frame` is now reachable from any NormMap over a CmpFrame, and `wcsconv` has those.
 
 Re-verdict `normmap.md`'s Frame-simplify row to `ported` and correct the row that recorded both halves as ported on one downcast. Close `frame_frameset.md`'s remaining NormMap row (Task 8 closed 10/12/14). Mark §10.17 FIXED, naming the seam as well as the branch, and add a spec revision recording that `Frame` gained a simplify seam with `Mapping`'s `Option` convention.
 
@@ -1742,7 +1742,7 @@ Closes PLAN.md §10.17."
 
 Upstream `e40e71b4` added the rule that a setter whose value feeds the first part of that class's own `astMapMerge` discards both simplified records (`mapping.h:449-460`). The port has the mechanism — `SimplifiedRecord::clear` (`mappings/mod.rs:193`) — and applies it nowhere.
 
-C's comment is the specification and it is worth quoting in the commit: nothing else reads the records, a Mapping is offered to `astMapMerge` by its neighbours whatever it holds, and discarding when in doubt is safe because the records can only ever suppress a simplification, never make one wrong.
+C's comment is the specification and it is worth quoting in the commit: nothing else reads the records, a Mapping is offered to `astMapMerge` by its neighbors whatever it holds, and discarding when in doubt is safe because the records can only ever suppress a simplification, never make one wrong.
 
 **Files:**
 - Modify: `crates/ast-core/src/mappings/mathmap/mod.rs`, `polymap.rs`, `splinemap.rs`, `sphmap.rs`, `wcsmap.rs`, `perm.rs`, `lutmap.rs`
@@ -1965,7 +1965,7 @@ closeout added and drops the retired one, and brings the audit gap count, the
 
 **Where I departed from the spec.** Task 9 has three changes where the spec named two — C's `base_simplify` gate at `mapping.c:16853-16855` is a third restricted-mode step the port lacks, found while reading for this plan and not in the spec's inventory. Task 11 adds `SimpVertices` as an attribute, which the spec described as a prerequisite rather than as work; it is in the task because the bend check cannot be tested without it. Both are additions to the spec's scope, not substitutions, and the spec should gain a note in Task 14 if it is to stay accurate.
 
-**Risks, in the order I expect them to bite.** Task 8 changes a trait method's signature at twelve sites and is wave 2′ — early, deliberately, because Task 3 needs a changed-flag and every later task inherits the `Option` convention; if it slips, Tasks 9 and 12 need their `Ok(None)` returns rewritten. Task 10 adds a serialised card to 26 classes, which is the single largest corpus surface in the plan; the round-trip test is the check and it is listed. Task 4 replaces a depth cap with an `equal`-based cycle stack, so a class with a wrong `equal` turns a silent decline into a stack overflow — stated in the task, with the fix being the `equal`, not the cap.
+**Risks, in the order I expect them to bite.** Task 8 changes a trait method's signature at twelve sites and is wave 2′ — early, deliberately, because Task 3 needs a changed-flag and every later task inherits the `Option` convention; if it slips, Tasks 9 and 12 need their `Ok(None)` returns rewritten. Task 10 adds a serialized card to 26 classes, which is the single largest corpus surface in the plan; the round-trip test is the check and it is listed. Task 4 replaces a depth cap with an `equal`-based cycle stack, so a class with a wrong `equal` turns a silent decline into a stack overflow — stated in the task, with the fix being the `equal`, not the cap.
 
 **Fixtures that may not discriminate.** Three tasks depend on generating a fixture that reaches a branch, and §10.17's retired `normmap_frame_simplifies` is the precedent for getting that wrong invisibly. Tasks 9, 11 and 12 therefore each check the generated pair *before* any Rust is written, with a named expected diff and a stated response if it does not appear. Task 9's is the weakest: if C does not dump the `AlSimp` card at all, the fixture cannot show the clear and the task falls back to a unit test — I have written the fallback into the step rather than assuming the strong case.
 

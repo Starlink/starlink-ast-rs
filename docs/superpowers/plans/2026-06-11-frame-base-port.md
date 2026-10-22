@@ -17,7 +17,7 @@
 - `cargo build`, `cargo test -p ast-core`, `cargo fmt`, `cargo clippy --workspace -- -D warnings` all clean before moving on.
 - `#![warn(missing_docs)]` is active — every new public item needs a doc comment.
 - Mirror C control flow directly; cite the C source line in comments. No heuristics the C lacks; no compute-then-check shortcuts. If a faithful port is genuinely ambiguous, stop and ask.
-- **On any conflict between existing Rust behaviour/tests/fixtures and the C library, C wins.** When a Rust test or native-dump fixture disagrees with the C-faithful implementation, regenerate the expected value from the C oracle and fix toward C; never revert the C-faithful code or weaken a test below what C guarantees. (This otherwise bites us during oracle validation later — a Rust-only expectation that "passes" green is a latent divergence.)
+- **On any conflict between existing Rust behavior/tests/fixtures and the C library, C wins.** When a Rust test or native-dump fixture disagrees with the C-faithful implementation, regenerate the expected value from the C oracle and fix toward C; never revert the C-faithful code or weaken a test below what C guarantees. (This otherwise bites us during oracle validation later — a Rust-only expectation that "passes" green is a latent divergence.)
 - 1-based axis indices on the public API.
 - Comments describe the code as it is today; do not reference this plan or porting history.
 
@@ -395,7 +395,7 @@ In `crates/ast-core/src/frames/basic.rs`, add fields to both `struct BasicFrame`
     directions: Vec<Option<bool>>,
 ```
 
-In `BasicFrameBuilder::new`, initialise:
+In `BasicFrameBuilder::new`, initialize:
 
 ```rust
             digits: None,
@@ -708,7 +708,7 @@ Expected: PASS (all unformat + format tests).
 - [ ] **Step 5: Check no caller depended on the old `Unfer` error**
 
 Run: `grep -rn "Unfer\|unformat" crates/ast-core/src | grep -v "basic.rs"`
-Expected: review hits. If any caller treats an `Err` from `unformat` as "invalid", confirm it now handles `nread == 0` instead. Adjust those callers in this commit if needed (show the diff in the commit). If a caller genuinely needs the error, STOP and ask — do not silently keep both behaviours.
+Expected: review hits. If any caller treats an `Err` from `unformat` as "invalid", confirm it now handles `nread == 0` instead. Adjust those callers in this commit if needed (show the diff in the commit). If a caller genuinely needs the error, STOP and ask — do not silently keep both behaviors.
 
 - [ ] **Step 6: Commit**
 
@@ -917,7 +917,7 @@ pub(crate) fn primary_frame_walk(frame: &dyn Frame, axis: usize) -> (&dyn Frame,
 - [ ] **Step 5: Build + run existing frame tests**
 
 Run: `cargo build -p ast-core && cargo test -p ast-core --lib frames`
-Expected: PASS — behaviour is identical (the trait method reproduces the old walk exactly).
+Expected: PASS — behavior is identical (the trait method reproduces the old walk exactly).
 
 - [ ] **Step 6: Commit**
 
@@ -957,7 +957,7 @@ Expected: clean (the `crate::frames::specframe::primary_frame_walk` import in th
 - [ ] **Step 4: Run the fitschan + wcsconv tests**
 
 Run: `cargo test -p ast-core --test test_fitschan_wcs && cargo test -p ast-core --test '*-regression'`
-Expected: PASS — the trait method is behaviourally identical to the deleted copies. If anything differs, the copies were NOT identical; STOP and diff them against the trait method rather than papering over.
+Expected: PASS — the trait method is behaviorally identical to the deleted copies. If anything differs, the copies were NOT identical; STOP and diff them against the trait method rather than papering over.
 
 - [ ] **Step 5: Commit**
 
@@ -1680,7 +1680,7 @@ Generated with AI
 Co-Authored-By: SLAC AI"
 ```
 
-### Task 3.2: Add the `cast` trait method + BasicFrame/specialised impls
+### Task 3.2: Add the `cast` trait method + BasicFrame/specialized impls
 
 **Files:**
 - Modify: `crates/ast-core/src/frames/mod.rs` (trait method, default None)
@@ -1748,7 +1748,7 @@ path (Domain is the only attribute the retry re-fixes); verify against
 `testconvert.c` and, if axis metadata turns out to matter, pick axes
 one-by-one with `-1`-free indices to force the BasicFrame branch.
 
-- [ ] **Step 3: Implement `cast` on the leaf specialised frames**
+- [ ] **Step 3: Implement `cast` on the leaf specialized frames**
 
 For each of SkyFrame, SpecFrame, TimeFrame, FluxFrame, add to their `impl Frame for ...`:
 
@@ -1908,12 +1908,12 @@ with:
     };
 ```
 
-(`astFindFrame` calls `astMatch` with matchsub=0 in C — frame.c:3899 — so this preserves the existing FindFrame behaviour while making the wrapper the single match entry point. Confirm the matchsub flag: `grep -n "astMatch( template" reference/starlink-ast/src/frame.c` near FindFrame; if FindFrame uses matchsub=1, pass `true` here instead.)
+(`astFindFrame` calls `astMatch` with matchsub=0 in C — frame.c:3899 — so this preserves the existing FindFrame behavior while making the wrapper the single match entry point. Confirm the matchsub flag: `grep -n "astMatch( template" reference/starlink-ast/src/frame.c` near FindFrame; if FindFrame uses matchsub=1, pass `true` here instead.)
 
 - [ ] **Step 3: Build + run find_frame tests**
 
 Run: `cargo build -p ast-core && cargo test -p ast-core --test test_find_frame`
-Expected: PASS — existing behaviour preserved (matchsub=false means the retry is inert here).
+Expected: PASS — existing behavior preserved (matchsub=false means the retry is inert here).
 
 - [ ] **Step 4: Commit**
 
@@ -2042,7 +2042,7 @@ In `BasicFrame::from_node`, replace the read (lines ~903-907) — only store whe
 - [ ] **Step 5: Run the regression suite — this is the gate**
 
 Run: `cargo test -p ast-core --test '*-regression' && cargo test -p ast-core`
-Expected: PASS. If a native-dump regression now differs, inspect the fixture: C only emits `ActUnt` when set, so a frame that never set it should emit nothing. If a Rust fixture expected `ActUnt 0`/`ActUnt 1` by default, that fixture encoded the OLD Rust default — regenerate it from the C oracle (`astShow` of the same frame) rather than reverting the C-faithful behaviour. If the divergence is in SkyFrame's own dump (skyframe.rs has its own ActUnt block at ~1969), apply the same "only when set" rule there, but note SkyFrame forces 0 so it should generally not emit it.
+Expected: PASS. If a native-dump regression now differs, inspect the fixture: C only emits `ActUnt` when set, so a frame that never set it should emit nothing. If a Rust fixture expected `ActUnt 0`/`ActUnt 1` by default, that fixture encoded the OLD Rust default — regenerate it from the C oracle (`astShow` of the same frame) rather than reverting the C-faithful behavior. If the divergence is in SkyFrame's own dump (skyframe.rs has its own ActUnt block at ~1969), apply the same "only when set" rule there, but note SkyFrame forces 0 so it should generally not emit it.
 
 - [ ] **Step 6: Commit**
 
@@ -2203,7 +2203,7 @@ Expected: PASS.
 - [ ] **Step 5: Full core test + regression**
 
 Run: `cargo test -p ast-core && cargo test -p ast-core --test '*-regression'`
-Expected: PASS — confirm no existing match/subframe behaviour regressed (BasicFrames default ActiveUnit false, so the tail is inert unless a test opts in).
+Expected: PASS — confirm no existing match/subframe behavior regressed (BasicFrames default ActiveUnit false, so the tail is inert unless a test opts in).
 
 - [ ] **Step 6: Commit**
 
@@ -2309,7 +2309,7 @@ Rename `fn convert(` → `fn convert_to(` in each frame impl, and `.convert(` �
 - [ ] **Step 4: Build + full test**
 
 Run: `cargo build -p ast-core && cargo test -p ast-core`
-Expected: PASS — pure rename, no behaviour change.
+Expected: PASS — pure rename, no behavior change.
 
 - [ ] **Step 5: Commit**
 
@@ -2479,7 +2479,7 @@ In `crates/ast-core/src/frames/mod.rs`, change `convert_to` from a required meth
 In `crates/ast-core/src/frames/basic.rs`, delete the `fn convert_to` override (the old UnitMap stub). Build + test:
 
 Run: `cargo test -p ast-core --lib frames::basic`
-Expected: PASS — the generic driver produces the same UnitMap for equal-axis BasicFrames (verify via the existing basic tests; if a test checked the old stub's None-on-mismatch behaviour, the generic driver should also return None when Match fails — confirm).
+Expected: PASS — the generic driver produces the same UnitMap for equal-axis BasicFrames (verify via the existing basic tests; if a test checked the old stub's None-on-mismatch behavior, the generic driver should also return None when Match fails — confirm).
 
 - [ ] **Step 3: Remove the SkyFrame override**
 
@@ -2522,7 +2522,7 @@ Co-Authored-By: SLAC AI"
 Run: `cd reference/starlink-ast && ./configure >/dev/null 2>&1; make libast.a >/dev/null 2>&1; cd -` (or the project's documented libast build; if it fails, consult `crates/ast-ffi-tests` build setup). Then compile `ast_tester/testconvert.c` against it and run:
 
 Run: `cc reference/starlink-ast/ast_tester/testconvert.c -Ireference/starlink-ast/src -Lreference/starlink-ast -last -lm -o /tmp/testconvert && /tmp/testconvert`
-Expected: `All astConvert tests passed`. This confirms the reference behaviour (UnitMap vs PermMap per pairing) the Rust test will assert. If the build is involved, the `ast-ffi-tests` crate already links libast — reuse its discovered library path.
+Expected: `All astConvert tests passed`. This confirms the reference behavior (UnitMap vs PermMap per pairing) the Rust test will assert. If the build is involved, the `ast-ffi-tests` crate already links libast — reuse its discovered library path.
 
 - [ ] **Step 2: Write the Rust acceptance test**
 
@@ -2673,6 +2673,6 @@ Co-Authored-By: SLAC AI"
 ## Self-review checklist (run before declaring the plan done)
 
 1. **Spec coverage:** every spec section maps to a commit — §3 ConvertX→Commit 5; §4 cast/matchsub→Commit 3; §5 Format/Digits/Unformat→Commit 1; §6 geometry family→Commit 2; §7 PrimaryFrame→Commit 2; §8 ActiveUnit→Commit 4; testconvert.c→Task 5.4.
-2. **C-conflict rule:** wherever a Rust fixture/test conflicts with C (notably the ActiveUnit default and the SkyFrame FK5-vs-AlignSystem convert behaviour), the plan instructs regenerating the expectation from the C oracle and fixing toward C — never reverting the C-faithful code or weakening a test below what C guarantees.
+2. **C-conflict rule:** wherever a Rust fixture/test conflicts with C (notably the ActiveUnit default and the SkyFrame FK5-vs-AlignSystem convert behavior), the plan instructs regenerating the expectation from the C oracle and fixing toward C — never reverting the C-faithful code or weakening a test below what C guarantees.
 3. **No silent omission:** all deferrals (NormalPoints/NormPoints, SkyFrame spherical overrides, Plot log-escapes, NewUnit label-rewrite, capi shims, testframe.c) are written into the gaps/quirks docs by explicit steps.
-4. **Verification:** load-bearing numeric/structural behaviour is checked against a built `libast` oracle (Tasks 1.2, 2.4, 2.5, 2.6, 5.4), not guessed.
+4. **Verification:** load-bearing numeric/structural behavior is checked against a built `libast` oracle (Tasks 1.2, 2.4, 2.5, 2.6, 5.4), not guessed.

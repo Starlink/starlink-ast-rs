@@ -268,7 +268,7 @@ pub(crate) fn region_mask(
 /// two pixels) is on the same side of the Region, so those are set together
 /// when the side being masked is the side the box's outside is on. Within
 /// the box the data are resampled through the Region, negated when the
-/// inside is masked, with nearest-neighbour interpolation and `val` as the
+/// inside is masked, with nearest-neighbor interpolation and `val` as the
 /// bad value: a Region maps a position inside it to itself and any other to
 /// bad, so a pixel keeps its value or is set to `val`.
 fn region_mask_x<T: PixelValue>(
@@ -387,7 +387,7 @@ fn pointlist_mask_x<T: Copy>(
     let ndim = lbnd.len();
     let points = used.to_current_frame(used.base_points()?)?;
 
-    // The index in the vectorised array of each point's pixel, if inside.
+    // The index in the vectorized array of each point's pixel, if inside.
     let iv: Vec<Option<usize>> = (0..points.npoint())
         .map(|ip| {
             let mut ii = 0usize;

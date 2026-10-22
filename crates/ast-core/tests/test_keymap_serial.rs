@@ -1,4 +1,4 @@
-//! KeyMap serialisation: hand-built round trips, the one real C-generated
+//! KeyMap serialization: hand-built round trips, the one real C-generated
 //! KeyMap in the fixture corpus, and the `MapSz` C oracle.
 //!
 //! `MapSz` is excluded from the byte-exact comparison and asserted
@@ -443,7 +443,7 @@ fn map_sz_matches_c_oracle() {
     }
 }
 
-/// Serialise, load, serialise again, and require the two texts to be equal.
+/// Serialize, load, serialize again, and require the two texts to be equal.
 ///
 /// A dump that is not a fixed point means `to_node` and `from_node` disagree
 /// about some default, comment, or ordering.

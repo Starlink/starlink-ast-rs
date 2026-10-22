@@ -58,7 +58,7 @@ The file is committed so that the gates run without the submodule, as fixtures d
   - `not-ported`: the class or function has no Rust port yet (Plot, Plot3D, XmlChan, YamlChan, StcsChan and their attributes and functions).
   - `merged`: documented by another row's item; the row names that C name in its note.
 - **reviewed** — `yes` once the content has been moved as described below; `no` before.
-- **note** — free text: the target of a `merged` row, a documented C behaviour the port lacks (with its `PLAN.md` row), or why a See also was or was not added.
+- **note** — free text: the target of a `merged` row, a documented C behavior the port lacks (with its `PLAN.md` row), or why a See also was or was not added.
 
 ### Content rules
 
@@ -67,7 +67,7 @@ These are what reviewing a row means.
 **Class headers** become the struct's doc.
 Purpose becomes the summary line and Description the body.
 The attribute list becomes intra-doc links to the getters.
-Inheritance, "no new functions" lists, copyright, licence and history are dropped; rustdoc shows trait impls itself.
+Inheritance, "no new functions" lists, copyright, license and history are dropped; rustdoc shows trait impls itself.
 
 **Function headers** become the method's or function's doc.
 Purpose becomes the summary; Description and Notes are rewritten for Rust.
@@ -90,7 +90,7 @@ The setter, `test_` and `clear_` methods link to the getter instead of repeating
 - Every mapped item gets `#[doc(alias = "<C name>")]`, except a public top-level type or trait named exactly as the C name, which rustdoc does not allow to carry an alias of its own name.
 - A `# See also` section naming the public C function is added only where the correspondence is not obvious from the Rust name: `PermMap::new` needs none, `Frame::convert_to` names `astConvert`.
 - Documentation describes the Rust code as it is.
-  When a C header documents a default or behaviour the port lacks or does differently, the docs describe the port, the ledger note records the difference, and a `PLAN.md` row records the gap.
+  When a C header documents a default or behavior the port lacks or does differently, the docs describe the port, the ledger note records the difference, and a `PLAN.md` row records the gap.
 
 ### C citations leave the user-facing docs
 

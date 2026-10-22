@@ -12,7 +12,7 @@ Upstream C AST fixed most of the bugs we recorded in
 "RefPosPrecision"), and added a large batch of new `astSimplify`
 coverage fixtures. Our Rust port currently *mirrors* several of those
 now-fixed C bugs on purpose, so that C-generated fixtures round-trip.
-With the C behaviour corrected, those mirrors are now wrong: they make
+With the C behavior corrected, those mirrors are now wrong: they make
 Rust reproduce a bug the oracle no longer has. We also lag the upstream
 simplify corpus by 164 fixtures.
 
@@ -22,7 +22,7 @@ new corpus.
 ## Goals
 
 1. Remove every Rust workaround that mirrors a C bug the upstream fixed,
-   so Rust matches the now-correct C behaviour.
+   so Rust matches the now-correct C behavior.
 2. Update the tier-2 golden fixtures that upstream regenerated as a
    result of those fixes.
 3. Update `docs/issues/c-library-quirks.md` so each resolved entry is
@@ -44,8 +44,8 @@ new corpus.
 Single branch `tickets/DM-54793`; two logical commit groups, quirks
 first:
 
-- **Group A — un-mirror fixed quirks:** behaviour changes + regenerated
-  goldens + quirks-doc updates + new/ported tests. Each behaviour change
+- **Group A — un-mirror fixed quirks:** behavior changes + regenerated
+  goldens + quirks-doc updates + new/ported tests. Each behavior change
   and its golden update land in the **same commit** so tier-2 never
   breaks mid-sequence.
 - **Group B — import simplify corpus:** copy 164 fixtures, sync the
@@ -63,7 +63,7 @@ Both approaches, where practical (per the decision in brainstorming):
   prebuilt oracle (memory `reference_c_oracle_reproducer`).
 - **Ported C-test assertions** for discrete quirks: port the assertions
   the upstream commits added into `ast-core` tier-1 Rust tests, locking
-  the corrected behaviour.
+  the corrected behavior.
 
 Each Bucket 1 change is re-derived by reading the actual upstream
 `src/*.c` diff hunk — not the proposed patch text in the quirks doc —
@@ -74,12 +74,12 @@ conventions: no heuristics, no corner-cutting).
 
 ### Bucket 1 — mirror the C bug today; remove workaround to match fixed C
 
-Each requires a behaviour change plus verification.
+Each requires a behavior change plus verification.
 
 | Quirk | Rust site | Upstream fix | Change |
 |---|---|---|---|
 | SpecMap `f32` cast on RA/Dec | `mappings/specmap.rs` (`lsrk_vel`/`lsrd_vel`/`lg_vel`/`gal_vel`) | `409f1311` | Drop `as f32 as f64` truncation; pass f64 straight through |
-| VELOSYS lossy `RefRA`/`RefDec` round-trip | `fitschan/fset_to_store/spectral_axes.rs` | `ad04291c` | Remove the `format`→`unformat` quantisation; store full-precision double |
+| VELOSYS lossy `RefRA`/`RefDec` round-trip | `fitschan/fset_to_store/spectral_axes.rs` | `ad04291c` | Remove the `format`→`unformat` quantization; store full-precision double |
 | `AxAngle` stale loop index | `frames/mod.rs` (`ax_angle`, ~line 674) | `da9ddb39` | `b[naxes-1]` → `b[axis-1]` |
 | `astRate` returns BAD at `x0=0` | `mappings/rate.rs` (~line 44) | `e782c220` | Match fixed-C domain-aware seed |
 | `astRate` zero-range stale slot | `mappings/rate.rs` (~lines 99, 141) | `c1a88658` | Index range array by the store index, not the loop counter `iin` |
@@ -103,14 +103,14 @@ Notes on the two most delicate ones:
 
 ### Bucket 2 — Rust already correct; documentation + fixtures only
 
-No behaviour change. Update the quirks-doc entry to "resolved upstream at
+No behavior change. Update the quirks-doc entry to "resolved upstream at
 `<commit>`" and remove now-obsolete "mirrored"/"deliberate divergence"
 mirror comments in the code where they only exist to explain the
 divergence.
 
 | Quirk | Upstream fix |
 |---|---|
-| MatrixMap MapSplit uninitialised read | `c9ce955a` |
+| MatrixMap MapSplit uninitialized read | `c9ce955a` |
 | ScalePolyInputs stale pointer | `f4c019d4` |
 | SIPIntWorld `nout` typo | `232643bc` |
 | CLASSFromStore double `specfactor` | `17416d33` |

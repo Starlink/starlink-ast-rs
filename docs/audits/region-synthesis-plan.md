@@ -1,6 +1,6 @@
 # Region-handling audit — consolidated gap matrix & dependency-ordered plan
 
-Synthesises the four per-area audits in this directory:
+Synthesizes the four per-area audits in this directory:
 
 - `region-base.md` — base Region + shared infra (data/overlap/merge_util/masking)
 - `region-box-interval-pointlist.md` — sliceable-geometry classes
@@ -78,7 +78,7 @@ blocks (— = correctness/parity gap not on any of the 4 critical paths).
 | GBND-SKY | `GetBounded` lacks SkyFrame-always-bounded rule | MISSING-BRANCH | box_region.rs:579 (C region.c:3410) | 07-adj |
 | DEFUNC | No default-uncertainty Region (`GetDefUnc`) | ABSENT | (C region.c:3492) | parity |
 | SETUNC | `set_uncertainty` bare field store | STUB | box_region.rs:656 (C region.c:10761) | parity |
-| RCENT | `reg_centre` get-only (no re-centre) | MISSING-BRANCH | data.rs:215 (C region.c:8401) | R-PINS dep |
+| RCENT | `reg_centre` get-only (no re-center) | MISSING-BRANCH | data.rs:215 (C region.c:8401) | R-PINS dep |
 | SIMP-STAB | parent-Simplify uncertainty 0.1% stability check | ABSENT | (C region.c:11203) | parity |
 | MERGE-FF | merge helpers omit FillFactor/MeshSize scaling | MISSING-BRANCH | merge_util.rs:43 (C box.c:2016) | parity |
 | CE-FIT | Circle/Ellipse Simplify no re-fit/validate/degrade | STUB | circle.rs:603, ellipse.rs:565 | parity |
@@ -114,7 +114,7 @@ first and must gate whether we invest in I-CACHE/I-PLIST at all.
 ## 4. Dependency-ordered implementation plan
 
 Ordered so no task is blocked by a later one. Each is a separate commit with
-the full regression gate (simplify + serialisation + lib + wcsconv + frameset +
+the full regression gate (simplify + serialization + lib + wcsconv + frameset +
 regions + clippy + fmt) run before landing.
 
 ### Phase 0 — Re-verify the "maybe already fixed" fixtures (no code) — DONE
@@ -127,7 +127,7 @@ CmpRegion).
 
 ### Phase 1 — R-PINS: port on-boundary `astRegPins` (shared foundation)
 The keystone. Introduce a real on-boundary predicate with the `unc` argument
-and the `0.5*(l1+l2)` uncertainty band. Requires RCENT (re-centre) as a
+and the `0.5*(l1+l2)` uncertainty band. Requires RCENT (re-center) as a
 sub-dependency for uncertainty positioning. Port per class following C
 box.c:3082 / interval.c:2640 / pointlist.c:1985 / circle.c:1450 /
 ellipse.c:1538 / polygon.c:4737. Do NOT delete the existing interior
@@ -135,7 +135,7 @@ ellipse.c:1538 / polygon.c:4737. Do NOT delete the existing interior
 boundary test C uses in Simplify/Overlap.
 
 ### Phase 2 — cap_slamap_02 (Polygon path), depends on Phase 1
-1. P-ENSURE + P-ACW: port `EnsureInside` + `Cache` (vertex-order normalisation,
+1. P-ENSURE + P-ACW: port `EnsureInside` + `Cache` (vertex-order normalization,
    `acw` flag, safe interior point).
 2. P-BOUND: real `GetBounded` (`!negated` for ACW, `negated` for CW, SkyFrame
    always bounded).
@@ -170,7 +170,7 @@ The pre-refactor line numbers in §2 are stale; verdicts below supersede them.
   interval.rs:934, pointlist.rs:523, nullregion.rs:270), faithfully mirroring C
   `RegBasePick` (box.c:2698 etc.). Matches C `astMapRegion` (region.c:5708).
 - **PR-MAP** — C `Prism` has no `MapRegion` vtab override; the Rust shared
-  default is the faithful behaviour.
+  default is the faithful behavior.
 
 **OPEN — genuine gaps, each independently landable, re-run byte-exact corpus:**
 - **RB-PICK** (small) — base `reg_base_pick_axes` (mod.rs:614) always returns
@@ -186,8 +186,8 @@ The pre-refactor line numbers in §2 are stale; verdicts below supersede them.
 - **SETUNC** (medium) — bare field store in 9 classes (mod.rs:286 + per-class);
   C `SetUnc` (region.c:10761-10918) remaps the unc into the base Frame,
   validates centro-symmetry via `astRegCentre`, negates if unbounded, clears
-  `RegionFS` on UnitMap, re-centres at the first defining point, resets cache.
-  Interacts with DEFUNC/`get_unc_frm` (unnormalised uncs flow downstream).
+  `RegionFS` on UnitMap, re-centers at the first defining point, resets cache.
+  Interacts with DEFUNC/`get_unc_frm` (unnormalized uncs flow downstream).
 - **SIMP-STAB** (medium) — the 0.1%-tolerance uncertainty-stability check in C
   `Region::Simplify` (region.c:11152-11319, test at 11277-11284) is absent; no
   shared parent-Region simplify helper exists (each class re-implements the

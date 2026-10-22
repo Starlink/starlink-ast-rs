@@ -171,7 +171,7 @@ At `simplify.rs:483, 546, 550, 554, 557, 695` (and any analogous per-class guard
 
 - [ ] **Step 5: Re-derive the two unit tests from the oracle**
 
-Rewrite `has_been_simplified_prevents_merge` and `..second_mapping..` (test_simplify_regression.rs:380-427) to assert the *correct* oracle behaviour (a component's IsSimp does not block merging; only oscillation-driven Frozen does). Use the Step-2 oracle results.
+Rewrite `has_been_simplified_prevents_merge` and `..second_mapping..` (test_simplify_regression.rs:380-427) to assert the *correct* oracle behavior (a component's IsSimp does not block merging; only oscillation-driven Frozen does). Use the Step-2 oracle results.
 
 - [ ] **Step 6: Run affected fixtures + full suite**
 
@@ -187,7 +187,7 @@ Expected: timemap_05/07, slamap_05 clear; overall simplify pass-count rises. No 
 
 ## Task S2: Normalize a lone inverted Spec/Sla/Time component to forward
 
-**Root cause:** C `SpecMap::MapMerge` (specmap.c:2089, condition d at :2570) replaces an inverted SpecMap component with a forward one (steps reversed, codes swapped via `SWAP_CODES`), clearing the invert flag — even without a same-class neighbour. Rust's SpecMap has only `try_merge` (needs a SpecMap neighbour) + `simplified` (self), so a lone inverted component survives as `InvA=1` with un-flipped codes. Same for SlaMap/TimeMap.
+**Root cause:** C `SpecMap::MapMerge` (specmap.c:2089, condition d at :2570) replaces an inverted SpecMap component with a forward one (steps reversed, codes swapped via `SWAP_CODES`), clearing the invert flag — even without a same-class neighbor. Rust's SpecMap has only `try_merge` (needs a SpecMap neighbor) + `simplified` (self), so a lone inverted component survives as `InvA=1` with un-flipped codes. Same for SlaMap/TimeMap.
 
 **Files:**
 - Modify: `crates/ast-core/src/mappings/specmap.rs`, `slamap.rs`, `timemap.rs` — add a per-class `map_merge`

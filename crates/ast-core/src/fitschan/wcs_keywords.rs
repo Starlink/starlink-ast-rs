@@ -74,7 +74,7 @@ pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
     // being stored — mark only gates card consumption, not the strip. See
     // `CardList::strip_wcs_store_string` for the C citation.
     store.timesys = CardList::strip_wcs_store_string(cards.get_string("TIMESYS"));
-    // C only recognises the hyphenated FITS-WCS spellings (MJD-AVG /
+    // C only recognizes the hyphenated FITS-WCS spellings (MJD-AVG /
     // MJD-OBS / DATE-OBS / DATE-AVG). Non-standard underscored
     // variants like MJD_OBS or DATE_OBS (e.g. Spitzer headers) are
     // ignored — they're carried through as plain header cards but
@@ -266,7 +266,7 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> As
     // Handle SIP distortion: strip "-SIP" from CTYPE and extract coefficients.
     extract_sip(cards, &mut store, s);
 
-    // NCP → SIN normalisation (legacy alias). See [`normalise_ncp_to_sin`].
+    // NCP → SIN normalization (legacy alias). See [`normalise_ncp_to_sin`].
     normalise_ncp_to_sin(&mut store);
 
     Ok(store)
@@ -340,14 +340,14 @@ pub(crate) fn sin_should_emit_as_ncp(store: &FitsStore) -> bool {
     (p2 * crate::math::tan(crval_lat_deg.to_radians()) - 1.0).abs() < 0.01
 }
 
-/// Translate any `*-NCP` celestial CTYPE pair to `*-SIN` and synthesise
+/// Translate any `*-NCP` celestial CTYPE pair to `*-SIN` and synthesize
 /// the corresponding PV parameters: PV2_1 = 0, PV2_2 = cot(δ_ref).
 ///
 /// Mirrors fitschan.c::SpecialTrans (line 31682-31713). The legacy AIPS
 /// NCP projection is the special case of SIN where the projection
 /// reference position lies at the celestial pole. AST's internal
 /// representation only carries the standard projections, so we
-/// canonicalise NCP to SIN at read time.
+/// canonicalize NCP to SIN at read time.
 pub(crate) fn normalise_ncp_to_sin(store: &mut FitsStore) {
     let Some((lon_axis, lat_axis)) = store.celestial_axes() else {
         return;
@@ -638,7 +638,7 @@ END";
 
     #[test]
     fn cd_matrix_header_arrives_as_pc_and_cdelt() {
-        // A CD matrix never reaches the store as such: `SpecTrans` normalises
+        // A CD matrix never reaches the store as such: `SpecTrans` normalizes
         // each row to unit length, the row length becoming that row's CDELT.
         let header = "\
 NAXIS   =                    2 / Number of axes

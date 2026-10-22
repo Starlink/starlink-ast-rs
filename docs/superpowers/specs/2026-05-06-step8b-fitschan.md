@@ -8,7 +8,7 @@ the AST library (45K lines of C), decomposed into 5 implementation
 phases. FitsChan handles: FITS card storage and manipulation,
 multiple WCS encoding formats (FITS-WCS, FITS-AIPS, DSS, etc.),
 conversion between FITS keywords and AST FrameSets, and the
-specialised FITS double formatter.
+specialized FITS double formatter.
 
 ## Phased Delivery
 
@@ -119,7 +119,7 @@ Operations:
 
 ### FITS Double Formatter
 
-The specialised formatter for FITS header values:
+The specialized formatter for FITS header values:
 
 ```rust
 /// Format a double for a FITS card value field.

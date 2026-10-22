@@ -35,7 +35,7 @@ fn keywords(fc: &FitsChan) -> Vec<String> {
         .collect()
 }
 
-/// A 2-axis header with an unrecognised celestial system: the port already
+/// A 2-axis header with an unrecognized celestial system: the port already
 /// generates the `badcel` warning text (`wcs_celestial.rs`) for this, so it
 /// isolates card *position* from text generation. C parks its cursor on
 /// `NAXIS2` here, so the block lands between `NAXIS1` and `NAXIS2`.

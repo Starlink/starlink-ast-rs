@@ -18,11 +18,11 @@ list holds `(mapping, invert_flag)` tuples; `Vec::swap(i, i+1)` moves the whole
 tuple, so a positional reorder already carries each map's invert flag to its new
 position. The code then *also* swapped the two `.1` (invert) fields back, under
 the mistaken comment "Also swap their invert flags" — net effect: each mapping
-ended up wearing the *other* map's invert flag. When the WcsMap neighbour was
+ended up wearing the *other* map's invert flag. When the WcsMap neighbor was
 inverted (`InvB=1`), this flipped the passing-through linear map (the spectral
 `ShiftMap`/`WinMap`) to inverted, so its `+CRVAL` shift was applied as `-CRVAL`
 — the `2*CRVAL` (= forward − inverse) signature. Earlier fixtures masked it
-because their WcsMap neighbour was not inverted, making the double-swap a no-op.
+because their WcsMap neighbor was not inverted, making the double-swap a no-op.
 
 Fix: drop the manual flag swap; `Vec::swap` alone is correct. Each map keeps its
 own direction across a positional reorder. With the fix, Rust's simplified
@@ -191,19 +191,19 @@ adds the comment formatting. Steps:
 - The corruption happens while swapping/merging a `WinMap` past a trailing
   **inverted** mapping. Study the C side:
   - `winmap.c` `WinMerge` / `MapMerge` — how a WinMap combines with a
-    neighbour, and specifically how it treats a neighbour whose `Invert` flag
+    neighbor, and specifically how it treats a neighbor whose `Invert` flag
     is set.
   - `cmpmap.c` `CmpMapMerge` — how the series walk decides whether to bake a
     component's inversion in vs. preserve it as `InvA`/`InvB`.
 - Likely Rust path: the WinMap-swap logic (see `winmap`/`cmpmap` swap helpers
   exercised by the `winmap_swaps_past_*` tests in
   `test_simplify_regression.rs`) computes the swapped shift assuming the
-  neighbour is in forward direction, then the inversion gets applied a second
+  neighbor is in forward direction, then the inversion gets applied a second
   time. The `2*CRVAL` signature is consistent with applying the shift's
   forward and inverse forms in sequence.
 - Acceptance: feeding `spec_cel_invert.map` to Rust `simplify()` must yield a
   mapping whose forward transform matches the input on the spectral axis
-  (907505752, not −1933305752), and ideally serialises to the same
+  (907505752, not −1933305752), and ideally serializes to the same
   `CmpMap{ WinMap(Sft1=907405752), WcsMap }` + `InvB=1` shape as C's `.simp`.
 
 ## Blocked work: the map8-construction rewrite (RE-APPLIED 2026-06-25)
@@ -282,7 +282,7 @@ Drop the now-unused `PermMap` import.
 ### 3. `matrix.rs` — detect Unit form (all-1.0 diagonal)
 
 C `CompressMatrix` (matrixmap.c:661-676) compresses a DIAGONAL matrix whose
-diagonal is all `1.0` to UNIT form (serialises as `Form="Unit"` with no element
+diagonal is all `1.0` to UNIT form (serializes as `Form="Unit"` with no element
 values). Rust's `compute_form` only distinguished Diagonal vs Full, so it
 emitted `Form="Diagonal"` with explicit `M0=1…`, diverging from C. Fix:
 ```rust

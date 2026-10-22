@@ -48,7 +48,7 @@ fn config(c: usize, sys: &str, is_to: bool) -> SpecFrame {
     f
 }
 
-/// The probe's DSBSpecFrame: FREQ in GHz, RestFreq 230.5 GHz, DSBCentre
+/// The probe's DSBSpecFrame: FREQ in GHz, RestFreq 230.5 GHz, Dsbcenter
 /// 230 GHz and IF 4 GHz, set in that order as C's `astSet` applies them.
 fn dsb(sideband: SideBand, align_sideband: bool) -> DSBSpecFrame {
     let mut f = DSBSpecFrame::new(SpecSystem::Freq);

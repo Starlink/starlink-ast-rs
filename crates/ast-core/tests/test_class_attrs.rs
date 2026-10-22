@@ -122,7 +122,7 @@ fn make(class: &str, settings: &str) -> Obj {
             },
             Obj::Spec(f) => assert!(apply_spec(f, name, value), "unexpected setting {name}"),
             Obj::Dsb(f) => match name {
-                // C reads DSBCentre in the current units and IF in GHz.
+                // C reads Dsbcenter in the current units and IF in GHz.
                 "DSBCentre" => f.set_dsb_centre_cur(dbl()).unwrap(),
                 "IF" => f.set_if_ghz(dbl()),
                 "SideBand" => f.set_sideband(SideBand::parse(value).unwrap()),
@@ -343,8 +343,8 @@ fn spec_frame_domain_is_cleaned() {
     assert_eq!(Frame::domain(&sf), "MYSPEC");
 }
 
-/// A DSBCentre with no topocentric frequency, such as a redshift of -1, is
-/// rejected with AST__ATTIN and leaves the DSBCentre unchanged, as C's
+/// A Dsbcenter with no topocentric frequency, such as a redshift of -1, is
+/// rejected with AST__ATTIN and leaves the Dsbcenter unchanged, as C's
 /// `astSetC( dsb, "DSBCentre", "-1.0" )` does for System=ZOPT.
 #[test]
 fn dsb_centre_with_no_topocentric_frequency_is_rejected() {

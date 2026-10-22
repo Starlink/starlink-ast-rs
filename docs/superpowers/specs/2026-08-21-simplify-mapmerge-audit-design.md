@@ -222,7 +222,7 @@ the freshly generated output exactly.
 A step that cannot satisfy both assertions is not separable and falls back to a
 Linux capture.
 
-This removes the need for a Linux capture job, and these six carry no licence
+This removes the need for a Linux capture job, and these six carry no license
 row.
 
 ### W3.3 Document the nine platform-only cases
@@ -336,7 +336,7 @@ fixture.
 ## Definition of done
 
 - `SERIAL_UNGATED` is empty.
-- The simplify `IsSimp` licence — `ISSIMP_PLACEMENT_LICENSED` in
+- The simplify `IsSimp` license — `ISSIMP_PLACEMENT_LICENSED` in
   `test_simplify_regression.rs` — is empty, and `ISSIMP_DISAGREEMENTS` is
   empty.
 - `ISSIMP_PLACEMENT_LICENSED` in `test_wcsconv.rs` contains only FitsChan
@@ -381,5 +381,5 @@ fixture.
   the oracle for every `.native` reference.
   Pass the manifest's `attrs` field; omitting it produces false structural
   differences.
-- `AnyObject::from_mapping` — the single serialisation dispatch both harnesses
+- `AnyObject::from_mapping` — the single serialization dispatch both harnesses
   use.

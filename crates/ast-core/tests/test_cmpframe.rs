@@ -141,7 +141,7 @@ fn cmpframe_snapshot() {
 
 #[test]
 fn cmpframe_axis_permutation_round_trips() {
-    // A permuted CmpFrame must serialise its `Axp{n}` tokens and read
+    // A permuted CmpFrame must serialize its `Axp{n}` tokens and read
     // them back, preserving the external axis order. Mirrors C
     // `CmpFrame::Dump`/`astLoad` (cmpframe.c:10453/11020). Distinct
     // per-axis labels let us confirm each external axis still maps to

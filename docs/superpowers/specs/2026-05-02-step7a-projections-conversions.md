@@ -395,7 +395,7 @@ The string codes are the uppercase names from `SlaCvtType`.
 ### PAL wrapper tests
 - Epoch round-trips: `epj(epj2d(2000.0))` ≈ 2000.0
 - Spherical/Cartesian: `dcs2c(0, 0)` = [1, 0, 0], round-trip
-- Known star: Galactic centre ≈ (266.4°, -28.9°) in FK5
+- Known star: Galactic center ≈ (266.4°, -28.9°) in FK5
 
 ### wcslib wrapper tests
 - TAN forward/reverse round-trip at reference point
@@ -407,14 +407,14 @@ The string codes are the uppercase names from `SlaCvtType`.
 - Multi-axis passthrough
 - PV parameter setting
 - Different projection types (SIN, AIT, CAR)
-- Serialisation round-trip
+- Serialization round-trip
 
 ### SlaMap tests
 - Single-step FK5→Galactic for known star, verify result
 - Multi-step chain: FK4→FK5→Galactic round-trip
 - Precession between epochs
 - Inversion: chain then inverted chain is identity
-- Serialisation round-trip
+- Serialization round-trip
 
 ## What This Step Does NOT Include
 

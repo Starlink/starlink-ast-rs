@@ -1,6 +1,6 @@
 //! Native text format parser: text -> Node tree.
 //!
-//! Reads AST's plain-text "Native" serialisation format and produces a
+//! Reads AST's plain-text "Native" serialization format and produces a
 //! class-agnostic [`Node`] tree. The format is line-oriented:
 //!
 //! - `Begin ClassName # comment` starts an object block.
@@ -574,7 +574,7 @@ mod tests {
     // ---------------------------------------------------------------
 
     /// Helper: read a reference file if available, returning None if the
-    /// submodule is not initialised.
+    /// submodule is not initialized.
     fn read_reference_file(relative: &str) -> Option<String> {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../reference/starlink-ast/ast_tester")

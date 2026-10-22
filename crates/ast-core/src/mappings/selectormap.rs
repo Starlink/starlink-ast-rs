@@ -428,7 +428,7 @@ impl Mapping for SelectorMap {
     ) -> Option<usize> {
         // C opens its MapMerge by simplifying the encapsulated Regions and
         // rebuilding the SelectorMap around them (selectormap.c:693-714), and
-        // only considers a neighbour when that made no change (:725-727).
+        // only considers a neighbor when that made no change (:725-727).
         super::simplify::self_reduce_map_merge(self, self.reduced_children(), ctx, where_, series)
     }
 

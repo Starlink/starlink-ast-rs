@@ -37,7 +37,7 @@ The Roman benchmark's 2x2 diagonal MatrixMap (`ast-bench roman`), while the data
 
 C's compiled loop and the port's with C's test are the same instructions (`fcmeq`, `fmul`, `bsl` per pair of values); `is_bad` adds three vector operations per pair to a loop that is otherwise a multiply.
 At the full Roman array (4088 x 4088 points) memory bandwidth dominates and the port is at 0.9 of C.
-`matrix_diagonal_long_array_with_non_finite_inputs` in `tests/test_matrixmap.rs` pins the port's stricter behaviour.
+`matrix_diagonal_long_array_with_non_finite_inputs` in `tests/test_matrixmap.rs` pins the port's stricter behavior.
 
 ### The per-value test in real chains
 

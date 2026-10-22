@@ -202,7 +202,7 @@ pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
 fn format_native_float(x: f64) -> String {
     if x.is_nan() {
         // Native format does not have a NaN literal; the AST library uses
-        // the BAD_VALUE sentinel for missing data and never serialises NaN.
+        // the BAD_VALUE sentinel for missing data and never serializes NaN.
         // Emit a placeholder that downstream parsing will reject loudly.
         return "<bad>".to_string();
     }
@@ -368,7 +368,7 @@ fn format_value_with_continues(
 // Keyword-card NATIVE encoder (Node tree -> BEGAST/ENDAST/ISA/<NAME>_xx cards)
 // ===========================================================================
 //
-// This is the inverse of the decoder above: it walks a serialised [`Node`]
+// This is the inverse of the decoder above: it walks a serialized [`Node`]
 // tree and emits the keyword-card NATIVE representation used by the C library
 // as the default storage form (BEGAST_xx, <NAME>_xx, ISA_xx, ENDAST_xx).
 //
@@ -450,9 +450,9 @@ impl KeywordSequencer<'_> {
     }
 }
 
-/// Build a centred banner comment string, mirroring C `MakeBanner`
+/// Build a centerd banner comment string, mirroring C `MakeBanner`
 /// (fitschan.c:20887). The text is the concatenation of `prefix`, `middle`,
-/// and `suffix`, centred in the 72-column comment field (`FITSCARDLEN -
+/// and `suffix`, centerd in the 72-column comment field (`FITSCARDLEN -
 /// FITSNAMLEN`) and flanked by the `AST` token at each end.
 pub(crate) fn make_banner(prefix: &str, middle: &str, suffix: &str) -> String {
     const TOKEN: &str = "AST";
@@ -1307,7 +1307,7 @@ END
         assert!(text.contains("Begin CmpMap"));
         assert!(text.contains("Nin = 2"));
         assert!(text.contains("Zoom = 5.5"));
-        // The decoder capitalises-first the FITS-uppercase key (MAPA -> Mapa).
+        // The decoder capitalizes-first the FITS-uppercase key (MAPA -> Mapa).
         assert!(text.contains("Mapa ="));
         assert!(text.contains("Begin UnitMap"));
         assert!(text.contains("IsA Mapping"));
@@ -1317,7 +1317,7 @@ END
 
     #[test]
     fn pre_quote_empty_value_is_two_double_quotes() {
-        // C PreQuote initialises dquotes = 2 and the loop never runs
+        // C PreQuote initializes dquotes = 2 and the loop never runs
         // (fitschan.c:25168-25176), so a zero-length value is emitted as "".
         assert_eq!(pre_quote(""), "\"\"");
     }

@@ -17,7 +17,7 @@
 - Every row with a Rust item has `#[doc(alias = "<alias>")]` on that item; an alias with no row fails.
 - No C file or line references and no internal C names (an `ast<Name>` not in `c-headers.tsv`) in rendered HTML under `ast_core/` (source-view pages under `src/` are not rendered docs and are not scanned).
 - Content rules are the spec's "Content rules" section, verbatim; the review procedure below applies them.
-- Docs describe the Rust code as it is; a C behaviour the port lacks gets a ledger note and a `PLAN.md` row, never prose describing code that does not exist.
+- Docs describe the Rust code as it is; a C behavior the port lacks gets a ledger note and a `PLAN.md` row, never prose describing code that does not exist.
 - No skip modes: every gate fails hard; exclusions are named lists with reasons and companion tests.
 - One sentence per line in Markdown; American spelling; fmt and clippy clean with and without `c-oracle`.
 - The Bash tool runs zsh: use arrays or script files, not word-split variables.
@@ -42,7 +42,7 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
 3. **Write the docs** on the Rust item following the spec's content rules for that kind (class → struct doc; function → method doc with `# Errors`; attribute → getter doc with "Default: …", setter/test/clear linking to it).
 4. **Add the alias** `#[doc(alias = "<alias>")]` directly above the item (after its doc comment, before other attributes is fine), using the alias column of `c-headers.tsv`.
 5. **Add `# See also`** naming the public C function only when the correspondence is not obvious from the Rust name.
-6. **Record differences.** If the C header documents a default or behaviour the port lacks, write the docs for the port, put the difference in `note`, and add a `PLAN.md` row naming what would expose it.
+6. **Record differences.** If the C header documents a default or behavior the port lacks, write the docs for the port, put the difference in `note`, and add a `PLAN.md` row naming what would expose it.
 7. **Move citations.** In every public item and public module doc in the Rust files touched, move C file/line references and internal C function names into `//` comments next to the code they describe.
 8. **Mark the row** `reviewed = yes`, lower `UNREVIEWED_ROWS` in `test_c_docs_audit.rs` to the new count, and remove any module from `C_CITATIONS_UNCLEANED` that is now clean.
 9. **Run the gates and the doc build:** `cargo test -p ast-core --test meta test_c_docs_audit::` and `RUSTDOCFLAGS="-D warnings" cargo doc -p ast-core --no-deps`.

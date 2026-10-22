@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Port C `fitschan.c::SpecTrans` line-by-line so all FITS-* readers consume normalised cards via a single pre-pass, replacing the scattered, partial translations spread across `enc_pc.rs`, `enc_iraf.rs`, `enc_aips.rs`, and per-call-site fallbacks. The port unblocks the FITS-PC `Cnxxx` alt-axis fixtures and provides a single, auditable place for the 24 non-standard-WCS translations C performs.
+**Goal:** Port C `fitschan.c::SpecTrans` line-by-line so all FITS-* readers consume normalized cards via a single pre-pass, replacing the scattered, partial translations spread across `enc_pc.rs`, `enc_iraf.rs`, `enc_aips.rs`, and per-call-site fallbacks. The port unblocks the FITS-PC `Cnxxx` alt-axis fixtures and provides a single, auditable place for the 24 non-standard-WCS translations C performs.
 
 **Architecture:** A new `crates/ast-core/src/fitschan/spec_trans.rs` module holds the entry point `pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding)` that walks the card list, identifies non-standard keywords, and writes the standard equivalents into the same CardList (matching C's "create a returned FitsChan with translated cards while marking originals as used"). All FITS-encoding read paths call `spec_trans` once, before alt-axis detection or store extraction. Non-standard keywords are marked as "used" so they don't round-trip back into outputs. The module is one file with one private function per translation (24 total), keyed by section comments mirroring the C source line ranges.
 
@@ -44,7 +44,7 @@ The 24 SpecTrans translations from `fitschan.c:30972-31080`:
 | 16 | RESTFREQ | `RESTFREQ` → `RESTFRQ` | Task 17 |
 | 17 | early paper-III spectral | `xxx-WAV/-FRQ/-VEL` → `xxx-X2P` form | Task 18 |
 | 18 | AIPS spectral CTYPE | `VELO-LSR` etc → `VRAD-LSRK` etc | Task 19 |
-| 19 | OBSRA / OBSDEC | Synthesise RA/DEC celestial axes from `OBSRA`/`OBSDEC` | Task 20 |
+| 19 | OBSRA / OBSDEC | Synthesize RA/DEC celestial axes from `OBSRA`/`OBSDEC` | Task 20 |
 | 20 | CUNIT case-insensitive | "Hz", "Angstrom", "km/s", "M/S" → canonical form | Task 21 |
 | 21 | FITS-CLASS specific | Misc CLASS rewrites | Task 22 |
 | 22 | SAO TAN with COi_j | `xxx-TAN` + `COi_j` → `xxx-TPN` + `PVi_m` | Task 23 |
@@ -1158,8 +1158,8 @@ Each follows the same pattern as Task 12: a TDD cycle (test → fail → impleme
 - **Task 17:** RESTFREQ → RESTFRQ (fitschan.c:32394-32404). Single rename.
 - **Task 18:** Early paper-III spectral CTYPE (fitschan.c:31142-31219). `xxx-WAV/-FRQ/-VEL` → `xxx-X2P` form (the inverse of what `wcs_spectral.rs::nonlin_spec_wcs` already handles on the read side).
 - **Task 19:** AIPS spectral CTYPE (fitschan.c:32409-32519). Read pattern `[VRAD|FREQ|VOPT|FELO|VELO]-XXX` (XXX ∈ {LSR, LSD, HEL, GEO, OBS}), translate to modern form (FREQ/VRAD/VOPT-F2W) + emit SPECSYS.
-- **Task 20:** OBSRA / OBSDEC (fitschan.c:32529-32619). When the header lacks celestial axes but has `OBSRA`/`OBSDEC`, synthesise a CmYPE/CmVAL/CmPIX/CmELT pair on a free coordinate version to attach the celestial info.
-- **Task 21:** CUNIT case-insensitive normalisation (fitschan.c:32624-32639). "M/S" → "m/s", "Angstrom" → "Angstrom" (canonical case), etc.
+- **Task 20:** OBSRA / OBSDEC (fitschan.c:32529-32619). When the header lacks celestial axes but has `OBSRA`/`OBSDEC`, synthesize a CmYPE/CmVAL/CmPIX/CmELT pair on a free coordinate version to attach the celestial info.
+- **Task 21:** CUNIT case-insensitive normalization (fitschan.c:32624-32639). "M/S" → "m/s", "Angstrom" → "Angstrom" (canonical case), etc.
 - **Task 22:** FITS-CLASS specific rewrites (fitschan.c:32644-32674). Remove RESTFREQ, swap CRVAL3/RESTFRQ when needed.
 - **Task 23:** SAO COi_j → TPN (fitschan.c:32051-32109). When CTYPE is `xxx-TAN` *and* `COi_j` keys are present, convert to `xxx-TPN` with `PVi_m` from the polynomial coefficients.
 - **Task 24:** LAMBDA → WAVE (fitschan.c:32114-32121). Single CTYPE rename when CTYPE = "LAMBDA".

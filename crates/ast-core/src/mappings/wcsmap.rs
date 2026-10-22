@@ -281,7 +281,7 @@ impl WcsMap {
 
         let mut prj = PrjParams::new(underlying)?;
 
-        // Initialise empty parameter arrays for 2 axes (lat=0, lon=1).
+        // Initialize empty parameter arrays for 2 axes (lat=0, lon=1).
         let params = vec![Vec::new(), Vec::new()];
 
         // Assign default projection parameters (C astInitWcsMap_ → InitPrjPrm).
@@ -1473,7 +1473,7 @@ impl Mapping for WcsMap {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 /// Return the human-readable description for a projection type (for Native
@@ -1633,7 +1633,7 @@ impl Serializable for WcsMap {
         let base = read_mapping_base(whole);
 
         // Read projection type.
-        // If the type is blank or unrecognised, fall back to Unknown (which
+        // If the type is blank or unrecognized, fall back to Unknown (which
         // acts as identity and simplifies to UnitMap).
         let type_str = node.get_string("Type", "");
         let proj = WcsProjection::from_code(type_str.trim()).unwrap_or(WcsProjection::Unknown);

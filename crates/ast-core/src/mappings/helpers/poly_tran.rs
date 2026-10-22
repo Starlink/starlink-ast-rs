@@ -5,14 +5,14 @@
 //!
 //! The requested transformation is fitted by sampling the *other*
 //! transformation on a regular grid of `2*order` points per axis over
-//! the supplied rectangle, normalising every sampled column to unit
-//! RMS, and minimising the sum of squared residuals between the grid
+//! the supplied rectangle, normalizing every sampled column to unit
+//! RMS, and minimizing the sum of squared residuals between the grid
 //! coordinates and the polynomial applied to the transformed
 //! coordinates. The polynomial order increases from 2 until the
 //! target accuracy `acc` is met or `maxorder` is reached; the
 //! max-order fit is accepted if it is better than `maxacc`.
 //!
-//! The residuals are linear in the coefficients, so the minimisation
+//! The residuals are linear in the coefficients, so the minimization
 //! has a unique minimum; C reaches it with cminpack's `lmder1`
 //! (tolerance `sqrt(DBL_EPSILON)`) and this port with the
 //! `levenberg_marquardt` crate.
@@ -31,7 +31,7 @@ use crate::serial::Serializable;
 ///
 /// `forward` selects which (effective-orientation) transformation to
 /// replace. `map` is the copy that will receive the fit: its class's
-/// [`PolyFit`] initialisation may update it for each order tried. Returns
+/// [`PolyFit`] initialization may update it for each order tried. Returns
 /// the fitted terms in the map's effective orientation: the term `powers`
 /// index the replaced transformation's inputs. Returns `Ok(None)` if no fit
 /// achieves `maxacc` (mirrors C's NULL return without error).
@@ -141,7 +141,7 @@ pub(crate) fn replace_transformation<M: PolyFit + Serializable + ?Sized>(
 /// spaced 1-D positions over `[lbnd, ubnd]` (polymap.c SamplePoly1D).
 ///
 /// Returns `(table, scales)` where `table[0]` holds the transformed
-/// values and `table[1]` the grid positions, each normalised to unit
+/// values and `table[1]` the grid positions, each normalized to unit
 /// RMS, and `scales[i]` is the RMS that restores column `i`.
 fn sample_poly_1d<M: Mapping + ?Sized>(
     map: &M,
@@ -214,7 +214,7 @@ fn sample_poly_2d<M: Mapping + ?Sized>(
     Ok((table, scales))
 }
 
-/// Normalise each column to unit RMS, returning the original RMS values.
+/// Normalize each column to unit RMS, returning the original RMS values.
 fn normalise_columns(table: &mut [Vec<f64>]) -> Vec<f64> {
     table
         .iter_mut()
@@ -297,8 +297,8 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for FitProblem {
     }
 }
 
-/// Run the minimisation from the C initial guess (a unit transform in
-/// normalised coordinates) and return the fitted coefficients plus the
+/// Run the minimization from the C initial guess (a unit transform in
+/// normalized coordinates) and return the fitted coefficients plus the
 /// per-residual values at the solution.
 fn solve(problem: FitProblem) -> Option<(Vec<f64>, Vec<f64>)> {
     let (result, report) = LevenbergMarquardt::new()
@@ -318,7 +318,7 @@ fn solve(problem: FitProblem) -> Option<(Vec<f64>, Vec<f64>)> {
 /// Fit a 1-D polynomial of the given order (polymap.c FitPoly1D).
 ///
 /// Returns the fitted terms (in unscaled units) and the achieved RMS
-/// accuracy, or `None` if the minimisation failed.
+/// accuracy, or `None` if the minimization failed.
 fn fit_poly_1d(
     order: usize,
     acc: f64,
@@ -331,7 +331,7 @@ fn fit_poly_1d(
     // Basis: the values from the class's FitPoly1DInit, one row per sample.
     let basis: Vec<Vec<f64>> = xp1.chunks(order).map(|row| row.to_vec()).collect();
 
-    // Initial guess: unit transformation in normalised coordinates.
+    // Initial guess: unit transformation in normalized coordinates.
     let mut p0 = DVector::zeros(order);
     p0[1] = 1.0;
 
@@ -341,7 +341,7 @@ fn fit_poly_1d(
         targets: vec![table[1].clone()],
     })?;
 
-    // Achieved accuracy: scaled RMS of the normalised residuals.
+    // Achieved accuracy: scaled RMS of the normalized residuals.
     let tv: f64 = residuals.iter().map(|r| r * r).sum();
     let racc = scales[1] * crate::math::sqrt(tv / nsamp as f64);
 

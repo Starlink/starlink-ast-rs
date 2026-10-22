@@ -34,7 +34,7 @@ pub(crate) struct BasisVectors {
 }
 
 /// Probe the mapping at a candidate pixel `g0` and check that the
-/// transformed root and unit-step neighbours are all finite. Mirrors
+/// transformed root and unit-step neighbors are all finite. Mirrors
 /// `MakeBasisVectors` (fitschan.c:10393-10516). Returns `Some((w0,
 /// step_iwc))` where `step_iwc[i]` is the IWC vector at `g0 + e_i`,
 /// or `None` if any output is non-finite.
@@ -77,8 +77,8 @@ fn make_basis_vectors(
 }
 
 /// Pick a root pixel `g0` for which the mapping produces all-finite
-/// IWC coordinates at `g0` and at each unit-step neighbour. Mirrors
-/// `FindBasisVectors` (fitschan.c:10518-10663): try grid centre
+/// IWC coordinates at `g0` and at each unit-step neighbor. Mirrors
+/// `FindBasisVectors` (fitschan.c:10518-10663): try grid center
 /// `0.5*(1+dim)` first, then `(1, 1, …)`, then progressively further
 /// out along the diagonal and individual axes. Returns the chosen
 /// `g0` plus the tolerance derived from the local IWC step sizes.
@@ -93,7 +93,7 @@ pub(crate) fn find_basis_vectors(
     let mut g0: Vec<f64>;
     let mut probe: Option<(Vec<f64>, Vec<Vec<f64>>)> = None;
 
-    // Attempt 1: grid centre when all dims are known.
+    // Attempt 1: grid center when all dims are known.
     let centred: Option<Vec<f64>> = (0..nin)
         .map(|i| dim.get(i).copied().flatten())
         .collect::<Option<Vec<f64>>>();
@@ -121,7 +121,7 @@ pub(crate) fn find_basis_vectors(
         ddlim = 10240.0;
     }
     while probe.is_none() && dd <= ddlim {
-        // Diagonal across the centre, scaled by aspect ratio when
+        // Diagonal across the center, scaled by aspect ratio when
         // dims are known.
         for (i, slot) in g0.iter_mut().enumerate().take(nin) {
             *slot = match dim.get(i).copied().flatten() {
@@ -222,7 +222,7 @@ pub(crate) fn fit_line(
         None => 1.0,
     };
 
-    // Sample NP_USIZE points along input axis `axis`, centred at g0,
+    // Sample NP_USIZE points along input axis `axis`, centerd at g0,
     // spaced by `gap`.
     let mut rows: Vec<Vec<f64>> = Vec::with_capacity(NP_USIZE);
     for k in -NPO2..=NPO2 {
@@ -323,7 +323,7 @@ pub(crate) fn fit_line_cd(
 
 /// Split a CD matrix into CDELT (diagonal scale) and PC (rotation) components.
 ///
-/// `CD = diag(CDELT) * PC`, where each row of PC is normalised to unit
+/// `CD = diag(CDELT) * PC`, where each row of PC is normalized to unit
 /// length. The sign of CDELT[i] is chosen so the diagonal element of the
 /// resulting PC matrix is positive. PC entries with `|val| < 1e-7` are
 /// snapped to 0 to suppress floating-point residue from upstream linear

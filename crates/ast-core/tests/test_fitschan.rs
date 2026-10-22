@@ -376,7 +376,7 @@ fn native_round_trip_skyframe() {
 #[test]
 fn encoding_default_for_empty_chan_is_native() {
     // Mirrors C `astGetEncoding` (fitschan.c:12603): when none of the
-    // recognised WCS keywords are present, Native encoding is assumed.
+    // recognized WCS keywords are present, Native encoding is assumed.
     let mut fc = FitsChan::new().unwrap();
     assert_eq!(fc.encoding().unwrap(), Encoding::Native);
 }
@@ -443,7 +443,7 @@ fn fits_digits_default_and_set() {
 }
 
 // ===========================================================================
-// Additional: overwrite behaviour
+// Additional: overwrite behavior
 // ===========================================================================
 
 #[test]

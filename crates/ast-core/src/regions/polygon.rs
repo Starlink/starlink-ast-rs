@@ -220,7 +220,7 @@ impl<'a, T: PixelValue> PixelSelection<'a, T> {
 
     /// polygon.c `PartHull`: the vertices of the convex hull of the selected
     /// pixels on the far side of the line from GRID pixel (xs,ys) to (xe,ye),
-    /// as PIXEL coordinates. With `starpix` pixel centres are at half-integer
+    /// as PIXEL coordinates. With `starpix` pixel centers are at half-integer
     /// PIXEL coordinates, otherwise at integers.
     fn part_hull(
         &self,
@@ -444,7 +444,7 @@ impl<T: PixelValue> PixelSelection<'_, T> {
     }
 
     /// polygon.c `TraceEdge`: the outline, as PIXEL coordinates, of the
-    /// selected pixels round pixel (ix0,iy0), whose right neighbour is not
+    /// selected pixels round pixel (ix0,iy0), whose right neighbor is not
     /// selected, traced anti-clockwise from corner to pixel corner, each
     /// vertex moved [`TRACE_DELTA`] towards the inside. With `full` every
     /// corner is a vertex, otherwise only those where the outline turns.
@@ -590,7 +590,7 @@ impl<T: PixelValue> PixelSelection<'_, T> {
 }
 
 /// polygon.c `SmoothPoly`: replace each vertex by `strength` times the mean
-/// of the vertices in a box of `2*boxsize+1` vertices centred on it, plus
+/// of the vertices in a box of `2*boxsize+1` vertices centerd on it, plus
 /// `1-strength` times itself. The box wraps round the ends of the polygon,
 /// and is narrowed to leave room for two boxes round it.
 fn smooth_poly(x: &mut [f64], y: &mut [f64], boxsize: i32, strength: f64) {
@@ -608,7 +608,7 @@ fn smooth_poly(x: &mut [f64], y: &mut [f64], boxsize: i32, strength: f64) {
     let half_width = half_width as usize;
     let a = strength / (2 * half_width + 1) as f64;
 
-    // The sums over the box centred on the first vertex, which takes
+    // The sums over the box centerd on the first vertex, which takes
     // vertices from the end of the polygon.
     let (mut px, mut qx) = (1, nv);
     let (mut sx, mut sy) = (ox[0], oy[0]);
@@ -666,7 +666,7 @@ struct Segment {
 
 impl Segment {
     /// polygon.c `NewSegment` given no Segment to reuse. C leaves `error`
-    /// and `imax` uninitialised; they are set by `find_max` before use, but
+    /// and `imax` uninitialized; they are set by `find_max` before use, but
     /// for an edge whose original vertices all lie more than one unit to its
     /// left, a signed `find_max` leaves `imax` as it was, and this sets it to
     /// the start.
@@ -1109,7 +1109,7 @@ impl PolygonBuilder {
 
         // astSetUnc, as C's constructor calls it (region.c:13372). C reaches it
         // from astInitRegion, which astInitPolygon calls before EnsureInside, so
-        // the uncertainty is re-centred on the first vertex as supplied -- before
+        // the uncertainty is re-centerd on the first vertex as supplied -- before
         // any reversal below can change which vertex that is.
         if let Some(unc) = self.uncertainty {
             polygon.set_uncertainty(unc)?;
@@ -1538,7 +1538,7 @@ impl Polygon {
 
         // Find a point well inside the polygon: the mid-width point of the edge
         // with the greatest perpendicular width. `polcen` tracks the latest
-        // probe centre so that, if no positive width is found (a clockwise
+        // probe center so that, if no positive width is found (a clockwise
         // polygon), `inside` falls back to a point outside the polygonal hole.
         let mut maxwid = -1.0;
         let mut inside = [BAD_VALUE, BAD_VALUE];
@@ -1720,7 +1720,7 @@ impl RegionGeometry for Polygon {
 
     /// polygon.c `RegBaseMesh`: MeshSize points shared between the edges by
     /// their lengths as the base Frame measures distance, `1 + (int)(len*mp)`
-    /// to an edge; each edge starts at its normalised first vertex, and its
+    /// to an edge; each edge starts at its normalized first vertex, and its
     /// other points are placed along it with the Frame's `offset`, so on the
     /// sky they follow the great circle. An edge of undefined length is left
     /// out, and a boundary of no length is AST__BADIN.
@@ -1860,8 +1860,8 @@ impl Region for Polygon {
 
         // `tunc` is this Polygon's own uncertainty in the base Frame; `l1` is
         // the geodesic length of its bounding-box diagonal. Re-centring is
-        // omitted (bound width is centre-invariant; the reachable default
-        // uncertainty is already centred — tracked as the RCENT / R-UNC gaps).
+        // omitted (bound width is center-invariant; the reachable default
+        // uncertainty is already centerd — tracked as the RCENT / R-UNC gaps).
         let tunc = self.get_unc_frm(FrameRef::Base)?;
         let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
         let l1 = bfrm.distance(&lbnd_tunc, &ubnd_tunc)?;
@@ -2264,7 +2264,7 @@ impl Mapping for Polygon {
 
     fn invert_orientation(&mut self) {
         // A Region's forward and inverse transforms are identical (membership
-        // is direction-independent), so inverting has no effect on behaviour.
+        // is direction-independent), so inverting has no effect on behavior.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -2358,7 +2358,7 @@ impl Mapping for Polygon {
         // Assemble the replacement the way C's constructor does
         // (astInitPolygon, polygon.c:7120-7165): defining points first, then
         // the uncertainty through SetUnc, and only then the winding-order
-        // correction — SetUnc re-centres the uncertainty on the first defining
+        // correction — SetUnc re-centers the uncertainty on the first defining
         // point, so it must run before any reversal of the vertex order.
         let mut newpol = Polygon {
             data: RegionData::new(current_frame, new_points),

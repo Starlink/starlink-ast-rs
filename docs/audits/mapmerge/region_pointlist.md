@@ -12,9 +12,9 @@ Uncited C steps:
 - pointlist.c:2220 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
 
 Three C bodies. `MapMerge` (`pointlist.c:1128-1217 (fn MapMerge)`) is the Region shape:
-self-simplify first, and only failing that merge with a neighbour, in parallel
+self-simplify first, and only failing that merge with a neighbor, in parallel
 only. `MergePointList` (`pointlist.c:1294-1502 (fn MergePointList)`) is the merge it
-delegates a neighbouring Region to — two single-point PointLists become one
+delegates a neighboring Region to — two single-point PointLists become one
 PointList over the combined axes. `Simplify`
 (`pointlist.c:2232-2304 (fn Simplify)`) calls the parent and, unless the base-to-current
 Mapping is already a UnitMap, transforms the defining points into the current
@@ -31,17 +31,17 @@ rows from the constructor onwards cite `merge_util.rs`, where that tail lives on
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | `MapMerge`: initialise the result and the merged-pair index | pointlist.c:1128-1131 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | `MapMerge`: initialize the result and the merged-pair index | pointlist.c:1128-1131 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | pointlist.c:1132-1134 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a pointer to the PointList | pointlist.c:1135-1137 (fn MapMerge) | -- | ceremony | n/a: the Rust function already has `this: &dyn Region` |
-| 4 | Banner: first see whether the PointList reduces on its own, without reference to its neighbours | pointlist.c:1138-1141 (fn MapMerge) | -- | ceremony | n/a: a section banner, not a step |
+| 4 | Banner: first see whether the PointList reduces on its own, without reference to its neighbors | pointlist.c:1138-1141 (fn MapMerge) | -- | ceremony | n/a: a section banner, not a step |
 | 5 | Simplify the PointList, assuming a changed pointer means something happened | pointlist.c:1142-1145 (fn MapMerge) | mappings/simplify.rs:1632 (fn region_map_merge) | architecture | ported |
 | 6 | Annul the PointList pointer in the list, replace it with the new Region, and mark it forward | pointlist.c:1146-1152 (fn MapMerge) | mappings/simplify.rs:1633 (fn region_map_merge) | architecture | ported |
 | 7 | Return the index of the first modified element | pointlist.c:1153-1156 (fn MapMerge) | mappings/simplify.rs:1634 (fn region_map_merge) | architecture | ported |
 | 8 | Failing that, merge with the Regions on either side — which is possible in parallel only | pointlist.c:1157-1161 (fn MapMerge) | mappings/simplify.rs:1639 (fn region_map_merge) | architecture | ported |
 | 9 | Annul the unwanted simplified pointer | pointlist.c:1162-1163 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 10 | Attempt to merge the PointList with its lower neighbour, if that neighbour is a Region | pointlist.c:1164-1172 (fn MapMerge) | mappings/simplify.rs:1641-1649 (fn region_map_merge) | architecture | ported |
-| 11 | Failing that, attempt the upper neighbour the same way | pointlist.c:1173-1183 (fn MapMerge) | mappings/simplify.rs:1653-1662 (fn region_map_merge) | architecture | ported |
+| 10 | Attempt to merge the PointList with its lower neighbor, if that neighbor is a Region | pointlist.c:1164-1172 (fn MapMerge) | mappings/simplify.rs:1641-1649 (fn region_map_merge) | architecture | ported |
+| 11 | Failing that, attempt the upper neighbor the same way | pointlist.c:1173-1183 (fn MapMerge) | mappings/simplify.rs:1653-1662 (fn region_map_merge) | architecture | ported |
 | 12 | Act only if one of the two produced a merged Region | pointlist.c:1184-1186 (fn MapMerge) | mappings/simplify.rs:1646 (fn region_map_merge),1655 (fn region_map_merge) | architecture | ported |
 | 13 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | pointlist.c:1187-1192 (fn MapMerge) | mappings/simplify.rs:660 (fn replace_pair_with) | architecture | ported |
 | 14 | Annul the second and shuffle the rest of the list down to fill the gap | pointlist.c:1193-1200 (fn MapMerge) | mappings/simplify.rs:660 (fn replace_pair_with) | architecture | ported |
@@ -49,7 +49,7 @@ rows from the constructor onwards cite `merge_util.rs`, where that tail lives on
 | 16 | Decrement the Mapping count and return the index of the first modified element | pointlist.c:1205-1210 (fn MapMerge) | mappings/simplify.rs:1648 (fn region_map_merge),1657 (fn region_map_merge) | architecture | ported |
 | 17 | In series, annul the simplified pointer and do nothing | pointlist.c:1211-1214 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and the series case falls through to `None` |
 | 18 | Return the result | pointlist.c:1215-1217 (fn MapMerge) | mappings/simplify.rs:1665 (fn region_map_merge) | architecture | ported |
-| 19 | `MergePointList`: initialise the returned pointer | pointlist.c:1294-1296 (fn MergePointList) | -- | ceremony | n/a: the Rust returns `Option<DynMapping>`, so "no merge" is `None` |
+| 19 | `MergePointList`: initialize the returned pointer | pointlist.c:1294-1296 (fn MergePointList) | -- | ceremony | n/a: the Rust returns `Option<DynMapping>`, so "no merge" is `None` |
 | 20 | Check the local error status and bail out | pointlist.c:1297-1299 (fn MergePointList) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 21 | Both Regions must agree on Closed, and either both or neither must have a defined uncertainty | pointlist.c:1300-1306 (fn MergePointList) | regions/pointlist.rs:644-645 (fn region_merge) | architecture | ported |
 | 22 | Get the Negated attributes of the two Regions | pointlist.c:1307-1310 (fn MergePointList) | regions/pointlist.rs:646 (fn region_merge) | architecture | ported |
@@ -85,7 +85,7 @@ rows from the constructor onwards cite `merge_util.rs`, where that tail lives on
 | 52 | Free the combined base Frame and the PointSet | pointlist.c:1491-1495 (fn MergePointList) | -- | ceremony | n/a: owned values are dropped |
 | 53 | Annul the returned pointer if an error occurred | pointlist.c:1496-1499 (fn MergePointList) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
 | 54 | Return the result | pointlist.c:1500-1502 (fn MergePointList) | merge_util.rs:187 (fn finish_region_merge) | architecture | ported |
-| 55 | `Simplify`: initialise the returned pointer | pointlist.c:2232-2234 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialise |
+| 55 | `Simplify`: initialize the returned pointer | pointlist.c:2232-2234 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialize |
 | 56 | Check the global error status and bail out | pointlist.c:2235-2237 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 57 | Obtain a pointer to the Region structure | pointlist.c:2238-2240 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 58 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and uncertainty | pointlist.c:2241-2244 (fn Simplify) | regions/pointlist.rs:951 (fn simplified) | architecture | ported |
@@ -107,7 +107,7 @@ rows from the constructor onwards cite `merge_util.rs`, where that tail lives on
 
 C's comment gives the reason: rebuilding the PointList in the current Frame means
 the simplified Region needs only a UnitMap, which lets the rest of the simplifier
-treat it as already reduced and lets the serialiser record one Frame instead of a
+treat it as already reduced and lets the serializer record one Frame instead of a
 whole FrameSet. The port keeps the same short-circuit when the Mapping is already
 a UnitMap (`regions/pointlist.rs:971 (fn simplified)`), so the rebuild happens exactly when it
 buys something.
@@ -117,7 +117,7 @@ buys something.
 C reads the uncertainty with `astGetUncFrm( new, AST__CURRENT )` and hands it to
 `astPointList`, whose `astInitRegion` calls the private `SetUnc`
 (`region.c:10781 (fn SetUnc)`). That maps the supplied uncertainty into the new
-PointList's base Frame, ensures it is bounded, and re-centres it on the first
+PointList's base Frame, ensures it is bounded, and re-centers it on the first
 defining position (`region.c:10898-10903 (fn SetUnc)`). Reading in the current Frame is
 what makes the mapping meaningful: the rebuilt PointList's base Frame *is* the old
 current Frame. The port takes the same two steps —
@@ -142,7 +142,7 @@ non-UnitMap branch, where C has already set `simpler = 1` unconditionally, so it
 Everything from the constructor onwards is what `MergeBox` and `MergeInterval` do
 as well, in the same order, so it lives once in
 `merge_util.rs:139-188 (fn finish_region_merge)`. Row 40 is the one that matters. C installs
-the combined uncertainty with `astSetUnc`, and `astSetUnc` re-centres the
+the combined uncertainty with `astSetUnc`, and `astSetUnc` re-centers the
 uncertainty on the merged Region's first defining point
 (`region.c:10898-10903 (fn SetUnc)`); for a Box uncertainty, `Box`'s `RegCentre` rebuilds
 the corner as a geodesic offset in the combined base Frame

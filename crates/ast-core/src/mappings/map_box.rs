@@ -5,7 +5,7 @@
 //! `MapFunction`, `Random`) from
 //! `reference/starlink-ast/src/mapping.c`. The numerical sequence is
 //! intended to match the C reference exactly: same algorithm, same
-//! pseudo-random seed (1776655449), same convergence behaviour. The
+//! pseudo-random seed (1776655449), same convergence behavior. The
 //! intent is "C-first, idiomatic Rust later" — control flow mirrors C
 //! including its use of `f64::MAX` / `-f64::MAX` as sentinels.
 
@@ -41,12 +41,12 @@ pub struct MapBoxResult {
 // MapData equivalent
 // ---------------------------------------------------------------------------
 
-/// Description of the Mapping function being optimised.
+/// Description of the Mapping function being optimized.
 ///
 /// Mirrors C's `MapData` (mapping.c:518-531). The `forward` flag, the
 /// constrained input bounds, the output coordinate index and a `negate`
 /// flag are all bundled here so they can be threaded through the
-/// optimisation routines unchanged from the C structure.
+/// optimization routines unchanged from the C structure.
 struct MapData<'a> {
     mapping: &'a dyn Mapping,
     /// Lower constraints on the input coordinates, after the C-side swap
@@ -58,12 +58,12 @@ struct MapData<'a> {
     nin: usize,
     /// Effective number of output coordinates.
     nout: usize,
-    /// Index of the output coordinate to optimise (zero-based).
+    /// Index of the output coordinate to optimize (zero-based).
     coord: usize,
     /// Whether the forward (`true`) or inverse (`false`) transform is used.
     forward: bool,
     /// When true, `MapFunction` returns the negated value (C uses this
-    /// to find a local minimum by maximising the negated function).
+    /// to find a local minimum by maximizing the negated function).
     negate: bool,
 }
 
@@ -184,7 +184,7 @@ fn new_vertex(
 // UphillSimplex
 // ---------------------------------------------------------------------------
 
-/// Simplex-method local maximiser.
+/// Simplex-method local maximizer.
 ///
 /// Mirrors C `UphillSimplex` (mapping.c:22758-23066). Uses the
 /// modification described in the C source for handling forbidden
@@ -236,7 +236,7 @@ fn uphill_simplex(
 
     // Loop until convergence is reached.
     loop {
-        // Initialise lo / nextlo / hi.
+        // Initialize lo / nextlo / hi.
         let mut lo: usize = if f[0] < f[1] { 0 } else { 1 };
         let mut nextlo: usize = 1 - lo;
         let mut hi: usize = 0;
@@ -385,7 +385,7 @@ fn local_maximum(mapdata: &MapData, acc: f64, fract_in: f64, x: &mut [f64]) -> A
 // ---------------------------------------------------------------------------
 
 /// Initial estimate of the output bounds using a fixed set of "special
-/// points": every corner, the centre of every face, the centroid, the
+/// points": every corner, the center of every face, the centroid, the
 /// origin (if in bounds), plus a point slightly inside each corner.
 ///
 /// Mirrors C `SpecialBounds` (mapping.c:17028-17343). Returns `true`
@@ -408,7 +408,7 @@ fn special_bounds(
     // Plus a second point near each corner.
     let ncorner = npoint;
     npoint *= 2;
-    // Plus face centres and centroid.
+    // Plus face centers and centroid.
     npoint += 2 * ncoord + 1;
 
     // Determine if the origin is in bounds.
@@ -468,7 +468,7 @@ fn special_bounds(
         }
     }
 
-    // Centre of each face: 2 * ncoord points.
+    // Center of each face: 2 * ncoord points.
     for face in 0..(2 * ncoord) {
         {
             let mut row = pts_in.point_mut(point);

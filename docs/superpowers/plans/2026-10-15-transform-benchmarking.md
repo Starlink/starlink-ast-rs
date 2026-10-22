@@ -44,7 +44,7 @@ A new `ast-bench` crate (renamed from `ast-oracle-bench`) reads the committed tr
 **Files:**
 - Delete: `crates/ast-oracle-bench/` (Cargo.toml, `benches/oracle.rs`, `src/lib.rs`)
 - Create: `crates/ast-bench/Cargo.toml`, `crates/ast-bench/src/lib.rs`, `crates/ast-bench/src/main.rs`, `crates/ast-bench/README.md`
-- Modify: `CLAUDE.md` (repository layout block; "Build & test" tier-5 line; "Hot-path constraint"; "Bulk-transform optimisation"), `PLAN.md` (rows mentioning `ast-oracle-bench`), `docs/superpowers/specs/2026-04-20-rust-port-design.md` (crate name, plus a revision-history entry)
+- Modify: `CLAUDE.md` (repository layout block; "Build & test" tier-5 line; "Hot-path constraint"; "Bulk-transform optimization"), `PLAN.md` (rows mentioning `ast-oracle-bench`), `docs/superpowers/specs/2026-04-20-rust-port-design.md` (crate name, plus a revision-history entry)
 
 **Interfaces:**
 - Produces: crate `ast_bench` (lib) and binary `ast-bench`; feature `c-oracle` (enables optional dep `libloading`).
@@ -1477,7 +1477,7 @@ git commit -m "ast-bench: full sweep, committed ratio snapshots, advisory ratio 
 **Files:**
 - Delete: `crates/ast-core/examples/bench_per_class.rs`, `crates/ast-core/tests/bench_per_class_c.c`
 - Keep: `crates/ast-core/examples/bench_polymap_simd.rs` and the `simd-eval` feature, for the later SIMD investigation
-- Modify: `.github/workflows/ci.yml` (the `test` job also runs `cargo test -p ast-bench`, which needs no submodule and no C), `docs/issues/mapping-perf-vs-c-oracle.md` (top: a pointer to `docs/perf/macos-aarch64.tsv` and `ast-bench`), `PLAN.md` (the per-class performance row and the tier-5 row), `CLAUDE.md` ("Bulk-transform optimisation": prototype comparisons now use `ast-bench run --engine both`)
+- Modify: `.github/workflows/ci.yml` (the `test` job also runs `cargo test -p ast-bench`, which needs no submodule and no C), `docs/issues/mapping-perf-vs-c-oracle.md` (top: a pointer to `docs/perf/macos-aarch64.tsv` and `ast-bench`), `PLAN.md` (the per-class performance row and the tier-5 row), `CLAUDE.md` ("Bulk-transform optimization": prototype comparisons now use `ast-bench run --engine both`)
 
 - [ ] **Step 1: Confirm coverage before deleting**
 

@@ -1025,7 +1025,7 @@ fn binary_op_bad(
     }
 }
 
-// Safe arithmetic functions matching C library behaviour.
+// Safe arithmetic functions matching C library behavior.
 
 fn safe_add(x1: f64, x2: f64) -> f64 {
     if x1 >= 0.0 {

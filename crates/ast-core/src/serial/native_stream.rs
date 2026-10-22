@@ -7,7 +7,7 @@
 //! description: the items up to the next `IsA` (or the `End`). Those items
 //! are a "values list" from which the loader takes the ones it knows; when
 //! the next class asks, or the Object is finished, `ClearValues` reports
-//! each item left as not recognised, a warning or, with `Strict` set, an
+//! each item left as not recognized, a warning or, with `Strict` set, an
 //! error. A nested Object is read, in full, when its item is met.
 //!
 //! The port reads in two passes. The first is C's reading, line for line:

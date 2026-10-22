@@ -12,7 +12,7 @@ fixed C library instead of to the bugs it used to have.
 `ast_tester/`.
 Nineteen defect fixes.
 Six of them change serialized output, one changes read-side card consumption,
-and the rest are behavioural fixes whose Rust counterpart is a conformance test
+and the rest are behavioral fixes whose Rust counterpart is a conformance test
 rather than a code change.
 
 Every fix in the range corresponds to an entry in
@@ -28,11 +28,11 @@ thing and needs a test that pins the agreement.
 | `EncodeFloat` strips the exponent's leading zero by shifting right | `strip_exponent_leading_zero`, `fitschan/format.rs` | `68bcb7db` |
 | Duplicate-keyword consumption inconsistent between `WcsFcRead` and `SpecTrans` | `CardList::mark_card` first-match on the `GetValue` path | `6301311f` |
 | `CDjjjiii` cards consumed under encodings that discard their values | `spec_trans::translate_pc_family` | `fd92f9d2` |
-| `astMapCopyEntry` normalises the key with the source KeyMap's `KeyCase` | `keymap` copy path | `d8edc072` |
+| `astMapCopyEntry` normalizes the key with the source KeyMap's `KeyCase` | `keymap` copy path | `d8edc072` |
 
 A faithful mirror of a fixed bug is a bug.
 
-## The two licences to retire
+## The two licenses to retire
 
 Both are in the wcsconv gate and both exist because of C bugs now fixed:
 
@@ -67,7 +67,7 @@ gate is ambiguous.
 The `WcsNative` PermMap-invert fix (`f54ff1b7`) needs no code: the port's shape
 was already the corrected one.
 
-### 2. `IsSimple` per orientation + `.simp` corpus + both licences
+### 2. `IsSimple` per orientation + `.simp` corpus + both licenses
 
 The load-bearing change. C now keeps two records — `AST__ISSIMPLE_FLAG` and
 `AST__ISSIMPLEINV_FLAG` — and selects between them on the current `Invert`
@@ -102,7 +102,7 @@ Placement of the `IsSimp` card becomes a property of the Mapping tree alone.
 
 ### 4. KeyMap conformance
 
-Un-mirror the `astMapCopyEntry` KeyCase behaviour, then verify the rest of the
+Un-mirror the `astMapCopyEntry` KeyCase behavior, then verify the rest of the
 KeyMap fixes are already satisfied and pin each with a test: key-order dump
 stability, `KyCas` unset sentinel, `MapIterate` under `SortBy`, `ConvertValue`
 range and overflow, NaN conversion, negative-value rounding, zero-length vector
@@ -179,7 +179,7 @@ unreduced and simplifies once.
 That settled the disposition too. The card records C's division of labour inside
 its own reader, not anything about the Mapping — which is identical on both
 sides, structure, attributes and transforms alike. So it is logged as a quirk
-the port deliberately does not mirror rather than as work to do, and the licence
+the port deliberately does not mirror rather than as work to do, and the license
 that covers it pins both card counts and byte-compares everything else, so a
 shape difference could never hide behind it.
 

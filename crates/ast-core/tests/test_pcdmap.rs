@@ -35,7 +35,7 @@ fn pcdmap_zero_disc() {
 
 #[test]
 fn pcdmap_forward_at_centre() {
-    // At the distortion centre, output == input regardless of disc.
+    // At the distortion center, output == input regardless of disc.
     let pm = PcdMap::new(0.5, [10.0, 20.0]);
     let pts = PointSet::from_rows([[10.0, 20.0]]);
     let out = pm.transform(&pts, true).unwrap();
@@ -45,7 +45,7 @@ fn pcdmap_forward_at_centre() {
 
 #[test]
 fn pcdmap_forward_known_point() {
-    // disc = 0.001, centre at origin
+    // disc = 0.001, center at origin
     // input (10, 0): dx=10, dy=0, r^2=100, f=1+0.001*100=1.1
     // output: (10*1.1, 0*1.1) = (11, 0)
     let pm = PcdMap::new(0.001, [0.0, 0.0]);
@@ -57,7 +57,7 @@ fn pcdmap_forward_known_point() {
 
 #[test]
 fn pcdmap_forward_with_centre() {
-    // disc = 0.01, centre at (5, 5)
+    // disc = 0.01, center at (5, 5)
     // input (8, 5): dx=3, dy=0, r^2=9, f=1+0.01*9=1.09
     // output: (3*1.09 + 5, 0*1.09 + 5) = (8.27, 5.0)
     let pm = PcdMap::new(0.01, [5.0, 5.0]);
@@ -91,7 +91,7 @@ fn pcdmap_inverse_roundtrip() {
         let orig = pts.point(i);
         let recovered = inv.point(i);
         // The SLA_UNPCD approximation is not exact. For disc=0.001 and
-        // points up to r~12 from centre, errors can be O(1e-5).
+        // points up to r~12 from center, errors can be O(1e-5).
         // This is still negligible for astrometric purposes.
         let tol = 1e-4;
         assert!(
@@ -333,7 +333,7 @@ fn pcdmap_multiple_points() {
 // Swapping past a ZoomMap                                              //
 // ------------------------------------------------------------------ //
 
-/// Swapping a PcdMap past a neighbouring ZoomMap preserves the composition when
+/// Swapping a PcdMap past a neighboring ZoomMap preserves the composition when
 /// the ZoomMap is used in the inverse direction.
 ///
 /// Ancestor: `reference/starlink-ast/ast_tester/testmapping.c`,

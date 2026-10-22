@@ -4,7 +4,7 @@
 //! has no input. The cases cover nearest, linear and kernel spreading in
 //! 1-D, 2-D and 3-D, variances from the input variances and from the spread
 //! of input values, inverse-variance and constant weights, flux
-//! conservation, unnormalised sums with and without weights, and a weight
+//! conservation, unnormalized sums with and without weights, and a weight
 //! limit. Each case compares every call's status, the count of input pixels
 //! used, and every output value, variance and weight through a hash of
 //! their bit patterns, with a sample of values to show where a mismatch is.

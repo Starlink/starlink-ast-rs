@@ -53,7 +53,7 @@ Frame.
 Port per-class `RegBasePick` (returns `None` when a valid sub-region cannot be
 formed):
 - `Box` (box.c:2655): pick the selected axes from base Frame, slice the
-  centre/corner-defining points to those axes, build a new `BoxRegion`.
+  center/corner-defining points to those axes, build a new `BoxRegion`.
 - `Interval` (interval.c:2328): slice `lbnd`/`ubnd` to the selected axes.
 - `PointList` (pointlist.c:1738): slice each point's coordinates.
 - `NullRegion` (nullregion.c:1106): rebuild a `NullRegion` on the picked Frame.

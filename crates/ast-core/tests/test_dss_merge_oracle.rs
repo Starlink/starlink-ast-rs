@@ -1,7 +1,7 @@
-//! The plate centre of the DssMap a DssMap and a preceding WinMap merge
+//! The plate center of the DssMap a DssMap and a preceding WinMap merge
 //! into, bit for bit against C's. C rebuilds the merged DssMap from the FITS
-//! cards `astDssFits` writes (dssmap.c MapMerge), which hold the plate centre
-//! as sexagesimal hours or degrees, minutes and seconds, so the merged centre
+//! cards `astDssFits` writes (dssmap.c MapMerge), which hold the plate center
+//! as sexagesimal hours or degrees, minutes and seconds, so the merged center
 //! is the original after that round trip: a PltRA of 0.1 comes back as
 //! 0.09999999999999999.
 //!

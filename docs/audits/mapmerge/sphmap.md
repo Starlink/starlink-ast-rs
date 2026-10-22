@@ -20,9 +20,9 @@ a `SphMap(inverted), diagonal, SphMap(forward)` sandwich into
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 2 | Initialise the returned result to -1 | sphmap.c:732-733 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 2 | Initialize the returned result to -1 | sphmap.c:732-733 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 3 | Check the global error status and bail out | sphmap.c:735-736 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | Further initialisation | sphmap.c:738-741 (fn MapMerge) | -- | ceremony | n/a: the sentinels C clears here are C's own — a null replacement Mapping, a "simplified" flag and an axis count — and the Rust code has no state to clear before the search begins |
+| 3 | Further initialization | sphmap.c:738-741 (fn MapMerge) | -- | ceremony | n/a: the sentinels C clears here are C's own — a null replacement Mapping, a "simplified" flag and an axis count — and the Rust code has no state to clear before the search begins |
 | 4 | Handle series only, and only the nominated SphMap with the Mapping that follows it | sphmap.c:743-747 (fn MapMerge) | sphmap.rs:441-443 (fn try_merge) | architecture | ported |
 | 5 | Take the indices of the two potential SphMaps | sphmap.c:748-751 (fn MapMerge) | mappings/simplify.rs:1500-1573 (fn default_map_merge) | architecture | ported |
 | 6 | Require the second Mapping to be a SphMap | sphmap.c:752-756 (fn MapMerge) | sphmap.rs:448 (fn try_merge) | architecture | ported |
@@ -30,7 +30,7 @@ a `SphMap(inverted), diagonal, SphMap(forward)` sandwich into
 | 8 | A forward SphMap followed by an inverted one simplifies only under the extra condition C names | sphmap.c:765-774 (fn MapMerge) | sphmap.rs:479-488 (fn try_merge) | architecture | ported |
 | 9 | Create a UnitMap to replace the pair | sphmap.c:775-779 (fn MapMerge) | sphmap.rs:489 (fn try_merge) | architecture | ported |
 | 10 | Annul the two SphMap pointers | sphmap.c:780-784 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 11 | Insert the replacement and initialise its invert flag | sphmap.c:785-789 (fn MapMerge) | mappings/simplify.rs:1500-1573 (fn default_map_merge) | architecture | ported |
+| 11 | Insert the replacement and initialize its invert flag | sphmap.c:785-789 (fn MapMerge) | mappings/simplify.rs:1500-1573 (fn default_map_merge) | architecture | ported |
 | 12 | Close the gap, clear the vacated slots, and return the first modified index | sphmap.c:790-808 (fn MapMerge) | mappings/simplify.rs:1500-1573 (fn default_map_merge) | architecture | ported |
 | 13 | Otherwise look for an inverted SphMap followed by a ZoomMap or diagonal MatrixMap and then a SphMap | sphmap.c:809-823 (fn MapMerge) | mappings/simplify.rs:3215-3225 (fn try_sphmap_diagonal_pattern_at) | architecture | ported |
 | 14 | Require the third Mapping to be a non-inverted SphMap | sphmap.c:824-828 (fn MapMerge) | mappings/simplify.rs:3227-3231 (fn try_sphmap_diagonal_pattern_at) | architecture | ported |
@@ -72,7 +72,7 @@ C guards the second branch on `!simpler`. `sph_map_merge` reaches it only after
 
 ## A lone SphMap has no reduction of its own
 
-Both of C's branches need neighbours — a following SphMap, or a diagonal Mapping
+Both of C's branches need neighbors — a following SphMap, or a diagonal Mapping
 and a second SphMap. `sphmap.c` has no `Simplify` vtab slot, so a SphMap on its
 own is returned unchanged, and the base `Simplify` reaches this `MapMerge` by
 nominating it in a list of one (`mapping.c:16871-16883 (fn Simplify)`). The port matches that

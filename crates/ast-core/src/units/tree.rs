@@ -37,7 +37,7 @@ pub(crate) enum Oper {
 
 impl Oper {
     /// Number of arguments consumed by this operation. Mirrors the
-    /// `narg` initialisation in `NewNode` (`unit.c`:3743-3818).
+    /// `narg` initialization in `NewNode` (`unit.c`:3743-3818).
     pub(crate) fn narg(self) -> usize {
         match self {
             Oper::LdCon | Oper::LdVar | Oper::LdPi | Oper::LdE | Oper::Null => 0,
@@ -91,7 +91,7 @@ pub(crate) struct UnitNode {
     /// `con != AST__BAD` checks on the C side.
     pub con: f64,
     /// Pointer to the `KnownUnit` table entry for `LdVar` nodes.
-    /// Stored as `'static` because the table is initialised once and
+    /// Stored as `'static` because the table is initialized once and
     /// never freed.
     pub unit: Option<&'static KnownUnit>,
     /// Multiplier prefix for `LdVar` nodes (e.g. the `M` in `MHz`).

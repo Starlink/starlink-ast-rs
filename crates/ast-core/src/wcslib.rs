@@ -21,7 +21,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 
 /// FITS-WCS projection type.
 ///
-/// Each variant corresponds to a 3-letter FITS projection code recognised
+/// Each variant corresponds to a 3-letter FITS projection code recognized
 /// by the vendored wcslib.  `Ncp` and `Gls` are deprecated aliases for
 /// `Sin` and `Sfl` respectively — they are handled at the `WcsMap` level
 /// by setting appropriate projection parameters before delegating to the
@@ -78,7 +78,7 @@ pub enum WcsProjection {
     Tsc,
     /// COBE spherical cube
     Csc,
-    /// Quadrilateralised spherical cube
+    /// Quadrilateralized spherical cube
     Qsc,
     /// North celestial pole (deprecated; alias for SIN)
     Ncp,
@@ -230,7 +230,7 @@ impl WcsProjection {
 
     /// Parse a 3-letter FITS projection code (case-insensitive).
     ///
-    /// Returns `None` if the code is not recognised.
+    /// Returns `None` if the code is not recognized.
     pub fn from_code(s: &str) -> Option<Self> {
         // Fast path: check length first.
         if s.len() != 3 {
@@ -333,7 +333,7 @@ impl WcsProjection {
 
     /// Convert an integer type code to a projection variant.
     ///
-    /// Returns `None` if the code is not recognised.  Note that the
+    /// Returns `None` if the code is not recognized.  Note that the
     /// deprecated `Ncp` (105) and `Gls` (301) are not returned — the
     /// canonical `Sin` and `Sfl` are returned instead.
     #[allow(dead_code)] // Used by SlaMap (Step 7a Task 4)
@@ -633,7 +633,7 @@ impl PrjParams {
         })
     }
 
-    /// Initialise the projection parameter arrays from the values supplied
+    /// Initialize the projection parameter arrays from the values supplied
     /// on the owning `WcsMap`, assigning defaults for any parameter that was
     /// not supplied.
     ///
@@ -1124,7 +1124,7 @@ mod tests {
         // After init the projection functions are installed but the flag is
         // clear, as C's InitPrjPrm leaves it, so the first call sets up.
         assert_eq!(prj.inner.flag, 0);
-        // Re-initialising with parameters leaves the projection callable.
+        // Re-initializing with parameters leaves the projection callable.
         prj.init_prj_prm(&[vec![Some(1.0)], Vec::new()], true);
         assert_eq!(prj.inner.flag, 0);
         let result = prj.forward(0.0, 90.0);
@@ -1181,7 +1181,7 @@ mod tests {
 
     #[test]
     fn tpn_initialises() {
-        // TPN is handled by tpn.c, not proj.c.  Verify it initialises.
+        // TPN is handled by tpn.c, not proj.c.  Verify it initializes.
         let prj = PrjParams::new(WcsProjection::Tpn);
         assert!(prj.is_ok(), "TPN should initialise successfully");
     }

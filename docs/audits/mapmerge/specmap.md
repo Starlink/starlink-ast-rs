@@ -10,7 +10,7 @@ Uncited C steps:
 - specmap.c:2222 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
 C's body runs `specmap.c:2256-2637 (fn MapMerge)`, the same architecture as SlaMap and
-TimeMap: gather the conversion steps of a run of adjacent SpecMaps, normalise
+TimeMap: gather the conversion steps of a run of adjacent SpecMaps, normalize
 each for its applied direction, cancel adjacent inverse pairs until nothing more
 goes, and rebuild one SpecMap or a UnitMap.
 
@@ -23,11 +23,11 @@ goes, and rebuild one SpecMap or a UnitMap.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1 | specmap.c:2256-2258 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result to -1 | specmap.c:2256-2258 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | specmap.c:2259-2261 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | SpecMaps merge only in series, or when only one Mapping is present | specmap.c:2262-2266 (fn MapMerge) | specmap.rs:1448-1450 (fn spec_map_merge) | architecture | ported |
 | 4 | Save the nominated SpecMap's input count | specmap.c:2267-2269 (fn MapMerge) | specmap.rs:1454 (fn spec_map_merge) | architecture | ported |
-| 5 | Initialise the step count to the number in the nominated SpecMap | specmap.c:2270-2273 (fn MapMerge) | specmap.rs:1480 (fn spec_map_merge) | architecture | ported |
+| 5 | Initialize the step count to the number in the nominated SpecMap | specmap.c:2270-2273 (fn MapMerge) | specmap.rs:1480 (fn spec_map_merge) | architecture | ported |
 | 6 | Search adjacent lower-numbered Mappings for SpecMaps of the same axis count, accumulating step counts | specmap.c:2274-2285 (fn MapMerge) | specmap.rs:1460-1463 (fn spec_map_merge) | architecture | ported |
 | 7 | Search adjacent higher-numbered Mappings the same way | specmap.c:2286-2295 (fn MapMerge) | specmap.rs:1464-1467 (fn spec_map_merge) | architecture | ported |
 | 8 | Remember the initial number of transformation steps | specmap.c:2296-2298 (fn MapMerge) | specmap.rs:1472 (fn spec_map_merge),1479 (fn spec_map_merge) | architecture | ported |

@@ -1,6 +1,6 @@
 //! Tests for CmpMap (compound mapping) and composition methods.
 //!
-//! Ancestor: behaviour derived from the C AST CmpMap documentation and
+//! Ancestor: behavior derived from the C AST CmpMap documentation and
 //! reference implementation.
 
 use crate::common::native_dump;
@@ -181,12 +181,12 @@ fn series_inverse_pair_of_mathmaps_cancels_to_unitmap() {
 }
 
 /// A simplified parallel CmpMap that contains an inverted CmpMap child
-/// must serialise without redundant `Invert` flag on the inner CmpMap
+/// must serialize without redundant `Invert` flag on the inner CmpMap
 /// AND without `InvA` on the outer parallel — the inversion should be
 /// pushed into the inner's `inv_a`/`inv_b` (with children swapped for
 /// series). Mirrors the cmpmap_series_in_parallel_inverted fixture and
-/// the C cmpmap.c MapMerge canonicalisation. Numerically identical
-/// before and after canonicalisation.
+/// the C cmpmap.c MapMerge canonicalization. Numerically identical
+/// before and after canonicalization.
 #[test]
 fn parallel_with_inverted_cmpmap_child_canonicalises_for_serialisation() {
     use ast_core::AnyObject;
@@ -242,7 +242,7 @@ fn parallel_with_inverted_cmpmap_child_canonicalises_for_serialisation() {
         inner_inva >= 1 && inner_invb >= 1,
         "inner CmpMap must carry InvA=1 and InvB=1:\n{s}"
     );
-    // No Invert line on any CmpMap in the canonicalised output.
+    // No Invert line on any CmpMap in the canonicalized output.
     let invert_lines: Vec<&str> = s.lines().filter(|l| l.contains("Invert = 1")).collect();
     assert!(
         invert_lines.is_empty(),

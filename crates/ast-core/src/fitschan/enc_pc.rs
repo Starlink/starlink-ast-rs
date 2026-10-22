@@ -26,7 +26,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 /// - `RADECSYS` (misspelling) is checked before `RADESYS`
 /// - Legacy projection codes GLS and ATF are translated to SFL and AIT
 ///
-/// Now that `spec_trans` normalises FITS-PC keywords on the read side
+/// Now that `spec_trans` normalizes FITS-PC keywords on the read side
 /// of every encoder, this single-plane reader is only kept for
 /// historical / testing access; the live read path runs through
 /// `wcs_keywords::extract_wcs_keywords_with_alts`.

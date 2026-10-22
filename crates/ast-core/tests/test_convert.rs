@@ -197,8 +197,8 @@ fn find_frame_domain_mismatch_returns_none() {
 }
 
 /// A constant in a units string is a coefficient wherever it appears:
-/// `"2/m"` means "each unit is 2 per metre", the same as `"2*m**-1"`, so a
-/// value of 1 per metre is 0.5 in either (testconvert.c Errors 52-53).
+/// `"2/m"` means "each unit is 2 per meter", the same as `"2*m**-1"`, so a
+/// value of 1 per meter is 0.5 in either (testconvert.c Errors 52-53).
 #[test]
 fn convert_constant_numerator_units() {
     let cases = [
@@ -228,7 +228,7 @@ fn convert_constant_numerator_units() {
 
 /// Converting between two Regions gives a Mapping between their Frames that
 /// does not clip, as region.c's `Convert` and `ConvertX` replace each Region
-/// by its Frame: the centre of a Galactic Circle well outside an ICRS Circle
+/// by its Frame: the center of a Galactic Circle well outside an ICRS Circle
 /// still converts. The value is what the C library gives for the same pair.
 #[test]
 fn convert_between_regions_does_not_clip() {

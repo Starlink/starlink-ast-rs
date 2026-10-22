@@ -125,7 +125,7 @@ impl UnitNormMap {
         &self.centre
     }
 
-    /// The number of spatial axes (length of the centre array).
+    /// The number of spatial axes (length of the center array).
     fn ncoord(&self) -> usize {
         self.centre.len()
     }
@@ -237,7 +237,7 @@ impl Mapping for UnitNormMap {
     }
 
     /// NaN-as-bad fast path. UnitNormMap has several BAD-emit sites
-    /// (BAD centre, BAD per-axis input, zero-norm "indeterminate
+    /// (BAD center, BAD per-axis input, zero-norm "indeterminate
     /// direction" output, BAD norm on inverse, etc.). All of them
     /// should appear as NaN inside the NaN-as-bad pipeline so
     /// downstream stages handle them uniformly. The norm output for the
@@ -265,7 +265,7 @@ impl Mapping for UnitNormMap {
         let fwd = self.effective_forward(forward);
         let ncoord = self.ncoord();
 
-        // Check if any centre coordinate is bad — if so, all outputs are bad.
+        // Check if any center coordinate is bad — if so, all outputs are bad.
         for &c in &self.centre {
             if is_bad(c) {
                 let n = pts.npoint();
@@ -379,12 +379,12 @@ impl Mapping for UnitNormMap {
                         // Norm is bad: all outputs bad.
                         BAD_VALUE
                     } else if norm == 0.0 {
-                        // Norm is zero: output is the centre.
+                        // Norm is zero: output is the center.
                         c
                     } else if is_bad(v) {
                         BAD_VALUE
                     } else {
-                        // Multiply unit vector by norm and add centre.
+                        // Multiply unit vector by norm and add center.
                         v * norm + c
                     };
                 }
@@ -442,7 +442,7 @@ impl Mapping for UnitNormMap {
                 return None;
             }
 
-            // Check if centres are the same.
+            // Check if centers are the same.
             let centres_equal = self.ncoord() == other_unm.ncoord()
                 && self
                     .centre
@@ -451,7 +451,7 @@ impl Mapping for UnitNormMap {
                     .all(|(&a, &b)| ast_equal(a, b));
 
             if centres_equal {
-                // Identical centres cancel to UnitMap.
+                // Identical centers cancel to UnitMap.
                 // The UnitMap has nin of the forward map.
                 let n = if self_is_inverted {
                     self.ncoord() + 1
@@ -461,7 +461,7 @@ impl Mapping for UnitNormMap {
                 return Some(Box::new(UnitMap::new(n)));
             }
 
-            // Different centres: forward + inverse = ShiftMap
+            // Different centers: forward + inverse = ShiftMap
             if !self_is_inverted && other_effective_inv {
                 // UnitNormMap(forward) + UnitNormMap(inverse) → ShiftMap
                 let shift: Vec<f64> = self
@@ -483,7 +483,7 @@ impl Mapping for UnitNormMap {
         //   - other is a ShiftMap and self is inverted → UnitNormMap(inv) + ShiftMap
 
         if let Some(shift_map) = other.as_any().downcast_ref::<ShiftMap>() {
-            // UnitNormMap(inverted) + ShiftMap = UnitNormMap(inverted) with adjusted centre
+            // UnitNormMap(inverted) + ShiftMap = UnitNormMap(inverted) with adjusted center
             if !self_is_inverted {
                 return None; // UnitNormMap(forward) + ShiftMap not supported
             }
@@ -569,7 +569,7 @@ impl Mapping for UnitNormMap {
         // UnitNormMap is the second member of the pair (the
         // `<linear> ; UnitNormMap(forward)` absorptions) or the first (the
         // `UnitNormMap(inverted) ; <linear>` ones). Neither `default_map_merge`
-        // nor the neighbours' own MapMerge covers the lower pair: WinMap's
+        // nor the neighbors' own MapMerge covers the lower pair: WinMap's
         // routes every case through `merge_linear_pair`, which handles only
         // linear classes.
         let i1_start = where_.saturating_sub(1);
@@ -752,7 +752,7 @@ impl Serializable for UnitNormMap {
         node.class_comment = Some("Compute unit vector and norm relative to a centre".to_string());
         write_mapping_base(&mut node, self);
 
-        // Each centre value, set when not zero.
+        // Each center value, set when not zero.
         for (axis, &c) in self.centre.iter().enumerate() {
             node.write_double(
                 &format!("Ctr{}", axis + 1),
@@ -773,7 +773,7 @@ impl Serializable for UnitNormMap {
         let node = &whole.section("UnitNormMap");
         let base = read_mapping_base(whole);
 
-        // The centre length equals the number of spatial axes, which is
+        // The center length equals the number of spatial axes, which is
         // always min(nin, nout) in the forward direction. The serialized
         // Nin/Nout are always the forward (non-inverted) dimensions
         // regardless of the Invert flag, so ncoord = base.nin (which is

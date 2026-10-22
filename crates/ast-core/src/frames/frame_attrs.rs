@@ -22,7 +22,7 @@ pub(crate) struct FrameAttrs {
     pub obs_lat: Option<f64>,
     /// Observer's geodetic longitude, radians.
     pub obs_lon: Option<f64>,
-    /// Observer's geodetic altitude, metres.
+    /// Observer's geodetic altitude, meters.
     pub obs_alt: Option<f64>,
     /// TAI-UTC, seconds.
     pub dtai: Option<f64>,
@@ -1213,7 +1213,7 @@ macro_rules! region_frame_attrs {
             self.data.frameset.current().norm_unit(axis)
         }
         // region.c `NormalPoints` (6591): the current Frame of the Region's
-        // FrameSet normalises the points.
+        // FrameSet normalizes the points.
         fn normal_points(
             &self,
             points: &$crate::coords::PointSet,

@@ -3,10 +3,10 @@
 //! When a FITS header carries an `IMAGFREQ` keyword, the spectral axis is
 //! decoded as a dual-sideband [`DSBSpecFrame`] rather than a plain
 //! [`SpecFrame`], and `DSBSetUp` (a port of C `fitschan.c:9024`) computes its
-//! IF / DSBCentre / SideBand attributes. Mirrors C `WcsSpectral`
+//! IF / Dsbcenter / SideBand attributes. Mirrors C `WcsSpectral`
 //! (fitschan.c:39618-39723).
 //!
-//! The expected IF / DSBCentre / SideBand values below were dumped from the C
+//! The expected IF / Dsbcenter / SideBand values below were dumped from the C
 //! oracle (libast.so) reading the same fixture: a probe built against the
 //! reference library calls `astRead`, `astPickAxes`, then prints
 //! `astGetC(pick, "DSBCentre"/"IF"/"SideBand")`.
@@ -60,7 +60,7 @@ fn class_write_builds_dsbspecframe() {
     let dsb = read_dsb("class-write.head");
 
     // Oracle (libast.so): IF = -6.4599532127580268 GHz,
-    // DSBCentre(topo Hz) = 110201461951, SideBand = USB.
+    // Dsbcenter(topo Hz) = 110201461951, SideBand = USB.
     assert_eq!(dsb.sideband(), SideBand::USB, "SideBand");
 
     let if_ghz = dsb.if_ghz();
@@ -69,7 +69,7 @@ fn class_write_builds_dsbspecframe() {
         "IF GHz: got {if_ghz}, expected -6.4599532127580268"
     );
 
-    // dsb_centre_cur() mirrors C `astGetC(dsb,"DSBCentre")`: the DSBCentre
+    // dsb_centre_cur() mirrors C `astGetC(dsb,"DSBCentre")`: the Dsbcenter
     // expressed in the current spectral system/unit (source-rest FREQ Hz).
     // Oracle: 110201354300.00003 Hz.
     let centre = dsb.dsb_centre_cur().expect("dsb_centre_cur");
@@ -85,7 +85,7 @@ fn jan_builds_dsbspecframe() {
     let dsb = read_dsb("jan.fits-class");
 
     // Oracle (libast.so): IF = -3.9999795728960574 GHz,
-    // DSBCentre(topo Hz) = 220463127594, SideBand = USB.
+    // Dsbcenter(topo Hz) = 220463127594, SideBand = USB.
     assert_eq!(dsb.sideband(), SideBand::USB, "SideBand");
 
     let if_ghz = dsb.if_ghz();
@@ -94,7 +94,7 @@ fn jan_builds_dsbspecframe() {
         "IF GHz: got {if_ghz}, expected -3.9999795728960574"
     );
 
-    // Oracle astGetC(dsb,"DSBCentre") = 220398648224.8721 Hz (source FREQ).
+    // Oracle astGetC(dsb,"Dsbcenter") = 220398648224.8721 Hz (source FREQ).
     let centre = dsb.dsb_centre_cur().expect("dsb_centre_cur");
     assert!(
         (centre - 220_398_648_224.0).abs() < 10.0,

@@ -179,7 +179,7 @@ fn switchmap_simplify_internal_fixture() {
 
 #[test]
 fn switchmap_simplify_invert_normalize_fixture() {
-    // The fixture: an inverted SwitchMap. Simplification normalises the
+    // The fixture: an inverted SwitchMap. Simplification normalizes the
     // inversion into the children, leaving a non-inverted SwitchMap.
     let input =
         std::fs::read_to_string("tests/fixtures/simplify/switchmap_invert_normalize.map").unwrap();

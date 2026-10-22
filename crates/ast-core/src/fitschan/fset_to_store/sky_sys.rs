@@ -161,7 +161,7 @@ fn ctype_prefixes_for(
         CelestialKind::Super => ("SLON".to_string(), "SLAT".to_string()),
         CelestialKind::AzEl => ("AZ--".to_string(), "EL--".to_string()),
         CelestialKind::Nocel => {
-            // Inspect the SkyFrame axis symbols. FITS-WCS recognises
+            // Inspect the SkyFrame axis symbols. FITS-WCS recognizes
             // either xxLN/xxLT (4-char) or xLON/xLAT (4-char); if the
             // pair conforms, use them verbatim. Otherwise fall back
             // to UNLN/UNLT. Mirrors C:29844-29876.

@@ -181,7 +181,7 @@ Files modified, grouped by the unit that owns the change:
 | `crates/ast-core/src/frames/*.rs` | U10 | `Ident` emission and clearing on the frame classes that read `Ident` but never write it. |
 | `crates/ast-core/tests/fixtures/wcsconv/expected/azel.native` | U6 | The plan's only fixture regeneration: stale relative to the reference C's `DateObs` fractional-seconds fix. Justified in Task 8 sub-task B. |
 | `docs/issues/c-library-quirks.md` | U4 | Notes that the harness now absorbs the aliasing quirk. |
-| `docs/issues/fitschan-c-port-gaps.md` | U7, U8, U9 | Existing gap catalogue, updated as gaps close. |
+| `docs/issues/fitschan-c-port-gaps.md` | U7, U8, U9 | Existing gap catalog, updated as gaps close. |
 | `PLAN.md` | D3, final | Deferred-fixture section; FitsChan row updated. |
 | `docs/superpowers/specs/2026-08-04-wcsconv-native-read-parity-design.md` | Task 0 | Cause-3 mechanism and the two re-assigned cases corrected. |
 
@@ -1266,7 +1266,7 @@ Add to `mod tests` in `crates/ast-core/src/fitschan/enc_native.rs`:
 ```
 
 Check the attribute name the decoder emits for `TITLE_A` against the
-neighbouring tests before settling on `Title` — `cards_to_native_text`
+neighboring tests before settling on `Title` — `cards_to_native_text`
 lower-cases the keyword stem (`KeywordKind::Data`), so the expected token may
 be `title`.
 
@@ -1413,7 +1413,7 @@ The three divergences:
 
 | C | our `pre_quote` |
 |---|---|
-| A zero-length value yields `dquotes = 2` — the initialiser is never overwritten because the loop body never runs, so C emits `""`. | Returns `String::new()`, emitting nothing. |
+| A zero-length value yields `dquotes = 2` — the initializer is never overwritten because the loop body never runs, so C emits `""`. | Returns `String::new()`, emitting nothing. |
 | `dquotes` is the `dq` of the last accommodated character. | Reconstructed from `needs && (trailing_ws \|\| starts_dquote)` over the whole string. |
 | Truncates: a character is accepted only while `nc + 1 + dq + sq <= AST__FITSCHAN_FITSCARDLEN - FITSNAMLEN - 4` (= 80 − 8 − 4 = 68), counting single quotes because the FITS encoder doubles them. | No truncation, no single-quote accounting. |
 
@@ -1834,7 +1834,7 @@ The matching latitude card is `SREF2_A = 0.53232542185827048` (30.5°, from `RFV
 
 C's precedence in `WcsCelestial` runs in four steps:
 
-1. `*reflon`/`*reflat` initialised from CRVAL (fitschan.c:36141-36144).
+1. `*reflon`/`*reflat` initialized from CRVAL (fitschan.c:36141-36144).
 2. **RFVAL override** (fitschan.c:36220-36226) — replaces `*reflon`/`*reflat` and nothing else.
 3. The `astTestSkyRef` gate (fitschan.c:36227-36235) — stores `SkyRef` + `SkyRefIs=Ignored` only if the SkyFrame has no set reference position already.
 4. **AXREF override** (fitschan.c:36338-36352) — replaces `*reflon`/`*reflat` **and calls `astSetSkyRef` + `SkyRefIs=Ignored` unconditionally**, outside any gate.
@@ -1850,7 +1850,7 @@ C has `double ***axref` as a real `FitsStore` member (fitschan.c:1728) with `Mat
 Mirror that split rather than flattening both into the store.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/fits_store.rs:99-101` (add `axref` beside `skyref`/`skyrefp`), `:185-186` (initialise it in `new`)
+- Modify: `crates/ast-core/src/fitschan/fits_store.rs:99-101` (add `axref` beside `skyref`/`skyrefp`), `:185-186` (initialize it in `new`)
 - Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs:263-268` (read `AXREF<i>` in the SREF loop)
 - Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:718-733` (the `ref_pos` computation), and `:80-98` (`CelestialResult`)
 - Modify: `crates/ast-core/src/fitschan/wcs_read.rs:248-289` (`set_sky_ref_from_celestial`, to honor the ungated AXREF path)
@@ -7071,7 +7071,7 @@ longitude block (fitschan.c:35877-35885) and one inside the latitude block
 ```
 
 Three branches, in order: a CTYPE longer than 4 characters gets its real
-projection code (`AST__WCSBAD` if unrecognised — and note the error report
+projection code (`AST__WCSBAD` if unrecognized — and note the error report
 just below is gated on `ctlen > 4`, so a *short* CTYPE never errors); a short
 CTYPE in a `-TAB` header gets `AST__WCSBAD`; anything else gets CAR *with
 `carlin` forced on*, which is the "assume simple linear axes if no projection
@@ -7639,7 +7639,7 @@ Do not go looking for a numerical error.
    partner, where C computes a `simpler` flag."*
    C does exactly the same thing — winmap.c:361-363 is
    `if( !strcmp( nowin_class, "MatrixMap" ) ){ ret = 1;` with `*simpler` left
-   at its `0` initialisation.
+   at its `0` initialization.
    `winmap_merge.rs:119-121` is faithful.
 2. *"`win_map_merge` fails to freeze the `ShiftMap` it installs, so the
    `ShiftMap` class turns it back into a `WinMap` — see winmap.c:131's
@@ -7680,7 +7680,7 @@ A fix that flips a swap direction globally will regress `serpens` and
 `sao-tan`.
 
 **The Rust divergence to investigate first.**
-C has four distinct direct-merge helpers, dispatched by neighbour class
+C has four distinct direct-merge helpers, dispatched by neighbor class
 (winmap.c:1196-1240):
 
 ```c
@@ -7696,7 +7696,7 @@ The Rust side has **no `win_diag_mat` function at all** —
 returns three comment matches (`:23`, `:657`, `:674`) and no code.
 All four branches funnel through one generic helper,
 `merge_linear_pair` (`winmap_merge.rs:653-690`), whose only per-class
-behaviour is a `both_win` flag gating the `WinWin` rounding snaps:
+behavior is a `both_win` flag gating the `WinWin` rounding snaps:
 
 ```rust
     if series {
@@ -7798,7 +7798,7 @@ divergence point. Record it in the commit message.
 
 - [ ] **Step 2: Write the failing test**
 
-`WinMap` exposes no public shift/scale getters, so assert on the serialised
+`WinMap` exposes no public shift/scale getters, so assert on the serialized
 leaf sequence — the same pattern
 `test_winmap.rs::offdiagonal_cd_chain_fuses_deg2rad_into_the_matrixmap`
 (`test_winmap.rs:371-437`) already uses.
@@ -7857,7 +7857,7 @@ fn nonuniform_cd_chain_keeps_deg2rad_in_the_winmap() {
 ```
 
 Adjust the `WcsMap::new` / `CmpMap::new` calls to the signatures the
-neighbouring tests in the same file use — copy them verbatim from
+neighboring tests in the same file use — copy them verbatim from
 `test_winmap.rs:371-437` rather than guessing.
 
 - [ ] **Step 3: Run it to verify it fails**

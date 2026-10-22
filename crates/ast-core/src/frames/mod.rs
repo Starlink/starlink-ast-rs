@@ -98,7 +98,7 @@ impl AxisKind {
     /// The value reached by adding `dist` to `v1` along this axis.
     ///
     /// A plain axis gives `v1 + dist`.
-    /// A sky axis gives the same sum, then normalised.
+    /// A sky axis gives the same sum, then normalized.
     // C: `astAxisOffset`: `axis.c:1165` for a plain axis, `skyaxis.c:1300` for
     // a sky axis.
     pub fn offset(&self, v1: f64, dist: f64) -> f64 {
@@ -129,9 +129,9 @@ impl AxisKind {
         }
     }
 
-    /// Normalise `values` in the manner selected by `oper`.
+    /// Normalize `values` in the manner selected by `oper`.
     ///
-    /// `oper` 0 normalises each value exactly as [`norm`](Self::norm) does.
+    /// `oper` 0 normalizes each value exactly as [`norm`](Self::norm) does.
     /// `oper` 1 chooses, for a sky longitude axis, whichever of `[0,2*PI]` and
     /// `[-PI,PI]` leaves the list with the smaller range; a latitude axis is
     /// always wrapped into `[-PI,PI]`.
@@ -155,7 +155,7 @@ impl AxisKind {
             !crate::mappings::helpers::is_bad(v) && v.abs() < 1.0e6
         }
 
-        // Oper 0 mirrors AxisNorm, so it follows CentreZero.
+        // Oper 0 mirrors AxisNorm, so it follows Centerzero.
         if oper == 0 {
             for v in values.iter_mut() {
                 if val_ok(*v) {
@@ -169,7 +169,7 @@ impl AxisKind {
             return;
         }
 
-        // Latitude axes always normalise into [-PI,+PI].
+        // Latitude axes always normalize into [-PI,+PI].
         if is_latitude {
             for v in values.iter_mut() {
                 if val_ok(*v) {
@@ -181,7 +181,7 @@ impl AxisKind {
 
         // Longitude axes: bring every value into [-PI,2*PI] and find the
         // extremes within each of [-PI,0], [0,PI] and [PI,2PI], so the range
-        // each candidate normalisation would produce can be compared.
+        // each candidate normalization would produce can be compared.
         let two_pi = 2.0 * std::f64::consts::PI;
         let (mut mx1, mut mn1) = (-f64::MAX, f64::MAX);
         let (mut mx2, mut mn2) = (-f64::MAX, f64::MAX);
@@ -209,7 +209,7 @@ impl AxisKind {
             }
         }
 
-        // The range that normalising into [0,2.PI] would give.
+        // The range that normalizing into [0,2.PI] would give.
         let (hi, lo) = if mx1 != -f64::MAX {
             (
                 mx2.max((mx1 + two_pi).max(mx3)),
@@ -220,7 +220,7 @@ impl AxisKind {
         };
         let range1 = hi - lo;
 
-        // The range that normalising into [-PI,PI] would give. C tests
+        // The range that normalizing into [-PI,PI] would give. C tests
         // `mn3 != -DBL_MAX` (skyaxis.c:1266) where `mn3` starts at `+DBL_MAX`,
         // so the test always passes; it is kept because both branches agree —
         // the unset extremes saturate the max/min either way.
@@ -1128,7 +1128,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// - SkyFrame: Equinox, Epoch, ObsLon, ObsLat;
     /// - SpecFrame: RefRA, RefDec, ObsLon, ObsLat, ObsAlt, Epoch, RestFreq,
     ///   SourceVel, StdOfRest;
-    /// - DSBSpecFrame: as SpecFrame, and IF and DSBCentre to change sideband,
+    /// - DSBSpecFrame: as SpecFrame, and IF and Dsbcenter to change sideband,
     ///   which reading ImagFreq also needs;
     /// - TimeFrame: TimeScale.
     ///
@@ -1727,9 +1727,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Returns `Some(MatchResult)` if `target` can be reached from this
     /// template's coordinate system, `None` otherwise.
     ///
-    /// `match_sub`: when `true`, allow the target to be a more specialised
+    /// `match_sub`: when `true`, allow the target to be a more specialized
     /// class than the template (the target is cast down).
-    /// `false` requires the target to be the same class or more specialised.
+    /// `false` requires the target to be the same class or more specialized.
     ///
     /// The default implementation returns `Ok(None)`.
     /// Concrete classes override it with their own matching kernels.
@@ -1747,7 +1747,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Cast `self` down into the class of `other`, returning a copy of
     /// `self`'s ancestral component that matches `other`'s class, or `None`
     /// if `self` is not a subclass of `other`'s class.
-    /// Used by the `match_sub` retry so a specialised template can probe a
+    /// Used by the `match_sub` retry so a specialized template can probe a
     /// plainer target.
     /// The default is not castable.
     // C: object.c / cmpframe.c:1245; astCast.
@@ -2808,7 +2808,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
 /// plain Frame. Mirrors the "create a basic Frame with the same axes
 /// and attributes" path of C `Cast` (cmpframe.c:1326-1344, and the
 /// Object-level CastCopy reduction for leaf frames).
-/// A copy of a Frame of a specialised class cast into a plain Frame, as C's
+/// A copy of a Frame of a specialized class cast into a plain Frame, as C's
 /// `astCast` gives it for a class with no `Cast` override: `astCastCopy`
 /// (object.c) keeps the whole Frame-class part of the object, so every
 /// Frame-class attribute in `attrs` carries over, set or unset as it was.
@@ -2958,7 +2958,7 @@ fn class_name(frame: &dyn Frame) -> &'static str {
 }
 
 /// frame.c `NormalPoints`: check that `points` has one value per axis of
-/// `frame`, then normalise each point with [`Frame::norm`].
+/// `frame`, then normalize each point with [`Frame::norm`].
 pub(crate) fn norm_each_point(frame: &dyn Frame, points: &PointSet) -> AstResult<PointSet> {
     let naxes = frame.naxes();
     if points.ncoord() != naxes {

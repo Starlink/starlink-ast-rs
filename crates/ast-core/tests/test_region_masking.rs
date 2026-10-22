@@ -2,7 +2,7 @@
 //! pixel grid.
 //!
 //! Ancestor: `reference/starlink-ast/ast_tester/testregionmasking.c`
-//! (`checkCurvature`). The ground truth classifies each pixel centre by
+//! (`checkCurvature`). The ground truth classifies each pixel center by
 //! transforming it to the sky and asking the Polygon directly; the masks are
 //! compared with it. `mask` resamples through the Region, which simplifies
 //! it when the grid has more than 1024 pixels, and with the default
@@ -315,7 +315,7 @@ fn check_curvature(wcs: &str, want: Expected) {
     let lbnd = [lo[0].floor() as i64 - 3, lo[1].floor() as i64 - 3];
     let ubnd = [hi[0].ceil() as i64 + 3, hi[1].ceil() as i64 + 3];
 
-    // Ground truth: each pixel centre taken to the sky and tested.
+    // Ground truth: each pixel center taken to the sky and tested.
     let centres: Vec<[f64; 2]> = (lbnd[1]..=ubnd[1])
         .flat_map(|iy| (lbnd[0]..=ubnd[0]).map(move |ix| [ix as f64, iy as f64]))
         .collect();
@@ -353,7 +353,7 @@ fn check_curvature(wcs: &str, want: Expected) {
     assert_eq!(wrong(&msv0), want.sv0_wrong, "SimpVertices=0 mask");
 }
 
-/// CAR: the default mask linearises the curved edges; the
+/// CAR: the default mask linearizes the curved edges; the
 /// `SimpVertices`-false mask matches the ground truth.
 #[test]
 fn car_default_mask_linearises_curved_edges() {

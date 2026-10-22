@@ -9,10 +9,10 @@ Extension points: classified
 Uncited C steps:
 - grismmap.c:1191 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 - grismmap.c:466 (fn CanMerge) — `Local Variables:` is the local-variable declaration block, not a step
-- grismmap.c:423 (fn CanMerge) — the function prologue, not a step; a lone `*` line ahead of `Name:` distinguishes it from the prologue form the sweep recognises
+- grismmap.c:423 (fn CanMerge) — the function prologue, not a step; a lone `*` line ahead of `Name:` distinguishes it from the prologue form the sweep recognizes
 
 C's `MapMerge` body runs `grismmap.c:1191-1269 (fn MapMerge)` and is thin: it asks
-`CanMerge` about the lower neighbour, then the upper, and splices in whatever
+`CanMerge` about the lower neighbor, then the upper, and splices in whatever
 comes back. The rule itself lives in `CanMerge`
 (`grismmap.c:466-600 (fn CanMerge)`), so both are audited here.
 
@@ -23,23 +23,23 @@ whose per-pair body is
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1 | grismmap.c:1198-1199 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result to -1 | grismmap.c:1198-1199 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | grismmap.c:1201-1202 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | Initialise the pair indices to silence compiler warnings | grismmap.c:1204-1207 (fn MapMerge) | -- | ceremony | n/a: the Rust locals are initialised where they are declared |
+| 3 | Initialize the pair indices to silence compiler warnings | grismmap.c:1204-1207 (fn MapMerge) | -- | ceremony | n/a: the Rust locals are initialized where they are declared |
 | 4 | A GrismMap can only merge in series, so do nothing in parallel | grismmap.c:1209-1213 (fn MapMerge) | mappings/simplify.rs:2905 (fn grism_map_merge) | architecture | ported |
-| 5 | Note that no mergeable neighbour has been found yet | grismmap.c:1214-1217 (fn MapMerge) | -- | ceremony | n/a: the Rust flow returns on the first success instead of carrying a found-flag |
-| 6 | Ask `CanMerge` about the lower neighbour first | grismmap.c:1218-1225 (fn MapMerge) | mappings/simplify.rs:2906-2909 (fn grism_map_merge) | architecture | ported |
-| 7 | If that failed, ask about the upper neighbour | grismmap.c:1226-1234 (fn MapMerge) | mappings/simplify.rs:2910-2913 (fn grism_map_merge) | architecture | ported |
+| 5 | Note that no mergeable neighbor has been found yet | grismmap.c:1214-1217 (fn MapMerge) | -- | ceremony | n/a: the Rust flow returns on the first success instead of carrying a found-flag |
+| 6 | Ask `CanMerge` about the lower neighbor first | grismmap.c:1218-1225 (fn MapMerge) | mappings/simplify.rs:2906-2909 (fn grism_map_merge) | architecture | ported |
+| 7 | If that failed, ask about the upper neighbor | grismmap.c:1226-1234 (fn MapMerge) | mappings/simplify.rs:2910-2913 (fn grism_map_merge) | architecture | ported |
 | 8 | Replace the merged pair with the single Mapping `CanMerge` returned | grismmap.c:1235-1239 (fn MapMerge) | mappings/simplify.rs:2813-2873 (fn grism_zoom_merge_at) | architecture | ported |
 | 9 | Annul the two Mappings | grismmap.c:1240-1243 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 10 | Store the merged Mapping in place of the first of the pair | grismmap.c:1244-1248 (fn MapMerge) | mappings/simplify.rs:2887 (fn store_merged), via mappings/simplify.rs:2838 (fn grism_zoom_merge_at),2864 (fn grism_zoom_merge_at) | architecture | ported |
 | 11 | Shuffle the remaining Mappings down and clear the vacated slot | grismmap.c:1249-1259 (fn MapMerge) | mappings/simplify.rs:2888 (fn store_merged), via mappings/simplify.rs:2838 (fn grism_zoom_merge_at),2864 (fn grism_zoom_merge_at) | architecture | ported |
 | 12 | Decrement the Mapping count and return the index of the first modified element | grismmap.c:1260-1267 (fn MapMerge) | mappings/simplify.rs:2908 (fn grism_map_merge),2910 (fn grism_map_merge) | architecture | ported |
 | 13 | Return the result | grismmap.c:1268-1269 (fn MapMerge) | mappings/simplify.rs:2916 (fn grism_map_merge) | ceremony | ported |
-| 14 | `CanMerge`: initialise the returned Mapping to NULL | grismmap.c:476-478 (fn CanMerge) | -- | ceremony | n/a: "no merge" is `false` from `grism_zoom_merge_at`, not a null pointer |
+| 14 | `CanMerge`: initialize the returned Mapping to NULL | grismmap.c:476-478 (fn CanMerge) | -- | ceremony | n/a: "no merge" is `false` from `grism_zoom_merge_at`, not a null pointer |
 | 15 | Check the global error status and bail out | grismmap.c:479-480 (fn CanMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 16 | Initialise the GrismMap pointer and the invert flag to silence compiler warnings | grismmap.c:482-485 (fn CanMerge) | -- | ceremony | n/a: the Rust locals are initialised where they are declared |
-| 17 | Initialise the adjacent ZoomMap's factor to mean "none found" | grismmap.c:487-489 (fn CanMerge) | -- | ceremony | n/a: each pattern reads its own zoom factor inside the branch that matched, so there is no sentinel spanning the branches |
+| 16 | Initialize the GrismMap pointer and the invert flag to silence compiler warnings | grismmap.c:482-485 (fn CanMerge) | -- | ceremony | n/a: the Rust locals are initialized where they are declared |
+| 17 | Initialize the adjacent ZoomMap's factor to mean "none found" | grismmap.c:487-489 (fn CanMerge) | -- | ceremony | n/a: each pattern reads its own zoom factor inside the branch that matched, so there is no sentinel spanning the branches |
 | 18 | If the first Mapping is a GrismMap | grismmap.c:491-494 (fn CanMerge) | mappings/simplify.rs:2819 (fn grism_zoom_merge_at), grismmap.rs:882 (fn try_merge) | architecture | ported |
 | 19 | Two GrismMaps merge to a UnitMap when one is the inverse of the other | grismmap.c:495-499 (fn CanMerge) | grismmap.rs:882 (fn try_merge) | architecture | ported |
 | 20 | Require the two GrismMaps to have equal attribute values | grismmap.c:500-509 (fn CanMerge) | grismmap.rs:886-893 (fn try_merge) | architecture | ported |
@@ -59,7 +59,7 @@ whose per-pair body is
 
 ## A lone GrismMap has no reduction of its own
 
-Every rule above needs a neighbour: two GrismMaps that cancel, or a GrismMap and
+Every rule above needs a neighbor: two GrismMaps that cancel, or a GrismMap and
 a ZoomMap that fold together. `grismmap.c` has no `Simplify` vtab slot, so a
 GrismMap on its own is returned unchanged, and the base `Simplify` reaches this
 `MapMerge` by nominating it in a list of one
@@ -78,9 +78,9 @@ telling the callee which side of the pair it is. The comment at
 
 ## Rows 6 and 7 — the order is observable
 
-C asks about the lower neighbour first and only then the upper. The port keeps
+C asks about the lower neighbor first and only then the upper. The port keeps
 that order at `mappings/simplify.rs:2906-2913 (fn grism_map_merge)`, which
-matters when both neighbours are eligible: the pair chosen decides the index
+matters when both neighbors are eligible: the pair chosen decides the index
 reported and where the nominate loop resumes.
 
 ## Rows 22, 25 and 29 — which flag says "un-inverted"

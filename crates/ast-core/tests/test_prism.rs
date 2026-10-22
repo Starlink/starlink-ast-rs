@@ -11,7 +11,7 @@ use ast_core::regions::{CircleBuilder, IntervalBuilder, PrismBuilder, Region};
 
 // ---- Helpers ----
 
-/// Create a 2D circle centred at (0, 0) with radius 5.
+/// Create a 2D circle centerd at (0, 0) with radius 5.
 fn make_circle() -> ast_core::regions::Circle {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     CircleBuilder::new(frame, vec![0.0, 0.0])
@@ -392,10 +392,10 @@ fn mesh_points_are_on_prism_boundary() {
         // 1. On the circle boundary (dist ~ 5) AND inside the interval [2,8]
         // 2. Inside the circle (dist <= 5) AND on the interval boundary (z=2 or z=8)
         //
-        // Since our simplified mesh uses the centre as the interior
+        // Since our simplified mesh uses the center as the interior
         // representative, we expect:
-        // - Circle mesh points extended with interval centre (z=5)
-        // - Circle centre (0,0) extended with interval mesh points (z=2, z=8)
+        // - Circle mesh points extended with interval center (z=5)
+        // - Circle center (0,0) extended with interval mesh points (z=2, z=8)
 
         let on_circle_boundary = (dist_sq.sqrt() - 5.0).abs() < 1e-6;
         let inside_circle = dist_sq <= 25.0 + 1e-6;

@@ -190,7 +190,7 @@ impl SkyRefIs {
 ///          → align_sys(to_epoch) → FK5 J2000.0 → to_sys
 /// ```
 ///
-/// Steps that would be identities are optimised away. A port of
+/// Steps that would be identities are optimized away. A port of
 /// `MakeSkyMapping` (skyframe.c:5956) up to, but not including, the
 /// SkyTol unit test and the offset-system Mappings, which the callers add.
 ///
@@ -387,7 +387,7 @@ pub(crate) fn make_sky_mapping_verified(
     // this, downstream callers receive two separate SlaMap objects
     // when ICRS→FK5→ICRS appears across two SubFrame invocations,
     // and the cross-SlaMap cancellation has to fall to the
-    // simplifier — where the cart-sph normalisation side-effect of
+    // simplifier — where the cart-sph normalization side-effect of
     // each SlaMap can introduce semantic drift if the simplifier
     // collapses the pair to UnitMap.
     let result: DynMapping = if sla.is_empty() {
@@ -583,9 +583,9 @@ use ndarray::Array2;
 /// frame expressed in the standard (absolute) system:
 ///
 /// - **Origin** (`SkyRef` is the offset origin): row `vx` points at
-///   `SkyRef`, `vy = SkyRefP × vx` (normalised), `vz = vx × vy`.
+///   `SkyRef`, `vy = SkyRefP × vx` (normalized), `vz = vx × vy`.
 /// - **Pole** (`SkyRef` is the offset north pole): row `vz` points at
-///   `SkyRef`, `vy = vz × SkyRefP` (normalised), `vx = vy × vz`.
+///   `SkyRef`, `vy = vz × SkyRefP` (normalized), `vx = vy × vz`.
 ///
 /// Errors with [`ErrorCode::Badoc`] when `SkyRefP` is coincident with or
 /// antipodal to `SkyRef` (`vmod == 0.0`), mirroring C's `astError`.
@@ -722,9 +722,9 @@ pub(crate) fn sky_offset_map(
 /// conversion to a plain SkyFrame is the identity (skyframe.c:7722-7724).
 ///
 /// C `SkyOffsetMap` returns the *standard→offset* Mapping
-/// `CmpMap(SphMap⁻¹, CmpMap(MatrixMap, SphMap))`, built from serialisable
+/// `CmpMap(SphMap⁻¹, CmpMap(MatrixMap, SphMap))`, built from serializable
 /// primitives so it survives a Channel round-trip and lets the simplifier
-/// fuse it with the neighbouring WCS rotation. `MakeSkyMapping`
+/// fuse it with the neighboring WCS rotation. `MakeSkyMapping`
 /// (skyframe.c:6556) then inverts it to obtain offset→standard. This
 /// function returns that same offset→standard chain — i.e. C's structure
 /// already inverted — matching the direction its callers compose.
@@ -923,7 +923,7 @@ mod tests {
 
     #[test]
     fn fk5_to_galactic() {
-        // The galactic centre (l=0, b=0) is at approximately
+        // The galactic center (l=0, b=0) is at approximately
         // RA=266.4 deg, Dec=-28.9 deg in FK5 J2000.0.
         let map = make_sky_mapping(
             SkySystem::Galactic,
@@ -1227,7 +1227,7 @@ mod tests {
             .unwrap()
             .expect("conversion exists");
 
-            // Either the optimiser returns a UnitMap, or the forward
+            // Either the optimizer returns a UnitMap, or the forward
             // + inverse of the mapping should round-trip.
             let (out_lon, out_lat) = transform_fwd(&*map, test_lon, test_lat);
             let name = sys.as_str();
@@ -1466,9 +1466,9 @@ mod tests {
 
         // RA = LAST - HA
         // But the result goes through 3-vector conversion, so we need
-        // to normalise.  The key property: RA + HA = LAST.
+        // to normalize.  The key property: RA + HA = LAST.
         let sum = ra + ha;
-        // Normalise to [0, 2*pi).
+        // Normalize to [0, 2*pi).
         let sum_norm = sum.rem_euclid(2.0 * PI);
         let last_norm = last.rem_euclid(2.0 * PI);
         assert_close(sum_norm, last_norm, 1.0e-10);
@@ -1562,20 +1562,20 @@ mod tests {
 
     #[test]
     fn offset_origin_galactic_centre() {
-        // Place the offset origin at the galactic centre
+        // Place the offset origin at the galactic center
         // (approximately l=0, b=0 in galactic coords, but we use
         // FK5 J2000.0 values: RA ~266.405 deg, Dec ~-28.936 deg).
         let ra_gc = 266.405_f64.to_radians();
         let dec_gc = (-28.936_f64).to_radians();
         let sky_ref = [ra_gc, dec_gc];
-        // sky_ref_p: north of galactic centre.
+        // sky_ref_p: north of galactic center.
         let sky_ref_p = [ra_gc, dec_gc + 0.01];
 
         let map = make_offset_mapping(sky_ref, sky_ref_p, SkyRefIs::Origin, true)
             .unwrap()
             .unwrap();
 
-        // (0,0) in offset → galactic centre in standard.
+        // (0,0) in offset → galactic center in standard.
         let (lon, lat) = transform_fwd(&*map, 0.0, 0.0);
         // dcc2s may return longitude in [-pi, pi]; compare modulo 2*pi.
         let lon_diff = (lon - ra_gc).rem_euclid(2.0 * PI);

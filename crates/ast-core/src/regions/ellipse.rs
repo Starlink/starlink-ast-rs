@@ -1,6 +1,6 @@
 //! Ellipse region: a rotated elliptical area within a 2-D Frame.
 //!
-//! An [`Ellipse`] is defined by a centre point, the half-lengths of its
+//! An [`Ellipse`] is defined by a center point, the half-lengths of its
 //! primary and secondary axes, and the angle of its primary axis, measured
 //! from the second axis of the Frame towards the first, as C's `astEllipse`
 //! measures it.
@@ -30,12 +30,12 @@ const DPIBY2: f64 = PI / 2.0;
 ///
 /// The method (as the C source notes, not very accurate and assuming the mesh
 /// covers the whole ellipse uniformly): find the mesh point furthest from the
-/// centre — the end of the primary axis — via the radial distance and position
+/// center — the end of the primary axis — via the radial distance and position
 /// angle of every point; fit a quadratic through the (radius, angle) samples at
-/// that point and its two neighbours to locate the turning point; resolve every
+/// that point and its two neighbors to locate the turning point; resolve every
 /// mesh point into components parallel and perpendicular to the primary axis and
 /// derive the mean secondary-axis length weighted by the perpendicular
-/// component; then build the Ellipse from the centre, the primary-axis end, and
+/// component; then build the Ellipse from the center, the primary-axis end, and
 /// a point at the mean secondary-axis length.
 ///
 /// Returns `None` if no suitable primary axis or secondary-axis mean can be
@@ -53,7 +53,7 @@ pub(crate) fn best_ellipse(
     let mut ang = vec![BAD_VALUE; np];
 
     // Find the first mesh point which is at a non-zero distance from the
-    // centre.
+    // center.
     let mut ip = 0usize;
     while ip < np {
         let row = mesh.point(ip);
@@ -71,14 +71,14 @@ pub(crate) fn best_ellipse(
         return Ok(None);
     }
 
-    // Find a point which is this distance away from the centre along the second
+    // Find a point which is this distance away from the center along the second
     // axis. This point defines zero angle when calling astAngle below.
     let first_row = mesh.point(ip);
     let mut p = [first_row[0], first_row[1]];
     let (aa, _) = frm.offset2(centre, 0.0, dist[ip])?;
     ang[ip] = frm.angle(&aa, centre, &p)?;
 
-    // Get the distance from the centre to each of the remaining mesh points,
+    // Get the distance from the center to each of the remaining mesh points,
     // and the orientation of the radial line to each. Track the index of the
     // point with the largest radial distance.
     let mut maxat = ip;
@@ -96,7 +96,7 @@ pub(crate) fn best_ellipse(
         ip += 1;
     }
 
-    // Find the higher-index neighbouring point, wrapping back to the start of
+    // Find the higher-index neighboring point, wrapping back to the start of
     // the list when the end is reached. Note the radius and position angle
     // (relative to the max-radius angle a0).
     let t2 = 0.0_f64;
@@ -120,7 +120,7 @@ pub(crate) fn best_ellipse(
         }
     }
 
-    // Find the lower-index neighbouring point, wrapping back to the end of the
+    // Find the lower-index neighboring point, wrapping back to the end of the
     // list when the start is reached.
     let mut r1 = BAD_VALUE;
     let mut t1 = BAD_VALUE;
@@ -142,8 +142,8 @@ pub(crate) fn best_ellipse(
     }
 
     // Fit a quadratic through the three pairs of (radius, angle) values. The
-    // centre point (r2, t2) is the point which is furthest from the centre; the
-    // other two are the neighbouring points found above.
+    // center point (r2, t2) is the point which is furthest from the center; the
+    // other two are the neighboring points found above.
     let a = r2 - r1;
     let b = t2 - t1;
     let c = t2 * t2 - t1 * t1;
@@ -174,7 +174,7 @@ pub(crate) fn best_ellipse(
     let (pa, _) = frm.offset2(centre, at, mx)?;
 
     // Resolve all the supplied points into components parallel and
-    // perpendicular to the line joining the centre and "pa".
+    // perpendicular to the line joining the center and "pa".
     let ps2 = frm.resolve_points(centre, &pa, mesh)?;
 
     // For each mesh point, work out the length of the secondary axis which
@@ -439,7 +439,7 @@ impl Ellipse {
     /// Construct an Ellipse from three defining points in the given frame.
     ///
     /// Mirrors C `astEllipse` with `form = 0` (ellipse.c:2381): the region is
-    /// defined by the centre, the coordinates at the end of the primary axis
+    /// defined by the center, the coordinates at the end of the primary axis
     /// (`point1`), and the coordinates of any other point on the boundary
     /// (`point2`). The three points are stored directly as the defining
     /// points, exactly as C stores them, after C's checks for a 2-D Frame and
@@ -509,7 +509,7 @@ impl Ellipse {
 
     /// The half-lengths of the primary and secondary axes, as ellipse.c
     /// `CalcPars` finds them in the base Frame: the primary from the
-    /// Frame's distance between the centre and point 1, the secondary from
+    /// Frame's distance between the center and point 1, the secondary from
     /// point 2 resolved along and across the primary axis.
     fn calc_axes(&self) -> AstResult<(f64, f64)> {
         let (a, b, _) = self.cache()?;
@@ -713,10 +713,10 @@ impl RegionGeometry for Ellipse {
                 continue;
             }
 
-            // The box is accumulated as axis offsets from the centre, via
+            // The box is accumulated as axis offsets from the center, via
             // ax_distance, so that a cyclic axis wraps correctly
             // (ellipse.c:1143-1157). Each axis is measured by its own axis's
-            // rule, which matters when the two axes normalise differently. C's
+            // rule, which matters when the two axes normalize differently. C's
             // `else if` is mirrored: it stops one point extending both ends of
             // an axis.
             let dist = frm.ax_distance(1, centre[0], p2[0])?;
@@ -871,8 +871,8 @@ impl Region for Ellipse {
 
         // `tunc` is this Ellipse's own uncertainty in the base Frame; `l1` is
         // the geodesic length of its bounding-box diagonal. Re-centring is
-        // omitted (bound width is centre-invariant; the reachable default
-        // uncertainty is already centred — tracked as the RCENT / R-UNC gaps).
+        // omitted (bound width is center-invariant; the reachable default
+        // uncertainty is already centerd — tracked as the RCENT / R-UNC gaps).
         let tunc = self.get_unc_frm(FrameRef::Base)?;
         let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
         let l1 = bfrm.distance(&lbnd_tunc, &ubnd_tunc)?;
@@ -1086,8 +1086,8 @@ impl Region for Ellipse {
     }
 
     fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
-        // Ellipse always has a centre (ellipse.c:1305-1310). Return the
-        // base-Frame centre, or transform it into the current Frame.
+        // Ellipse always has a center (ellipse.c:1305-1310). Return the
+        // base-Frame center, or transform it into the current Frame.
         let centre = self.data.points[0].clone();
         match ifrm {
             FrameRef::Current => Ok(Some(self.reg_tran_point(&centre, true)?)),
@@ -1099,10 +1099,10 @@ impl Region for Ellipse {
         let bfrm = self.data.frameset.base().snapshot();
         let old_centre = self.data.points[0].clone();
 
-        // Resolve the supplied centre into a base-Frame position
+        // Resolve the supplied center into a base-Frame position
         // (ellipse.c:1324-1350). An ellipse always has 2 base-Frame axes; a
-        // current-Frame centre is transformed to the base Frame and BAD
-        // components fall back to the existing centre value.
+        // current-Frame center is transformed to the base Frame and BAD
+        // components fall back to the existing center value.
         let mut bc = old_centre.clone();
         match ifrm {
             FrameRef::Current => {
@@ -1123,7 +1123,7 @@ impl Region for Ellipse {
         }
 
         // Find the direction and length of the offset between the old and new
-        // centre, then shift all three defining points by that same offset
+        // center, then shift all three defining points by that same offset
         // (ellipse.c:1352-1366).
         let angle = bfrm.ax_angle(&old_centre, &bc, 2)?;
         let dist = bfrm.distance(&old_centre, &bc)?;
@@ -1308,7 +1308,7 @@ impl Mapping for Ellipse {
 
     fn invert_orientation(&mut self) {
         // A Region's forward and inverse transforms are identical (membership
-        // is direction-independent), so inverting has no effect on behaviour.
+        // is direction-independent), so inverting has no effect on behavior.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -1368,7 +1368,7 @@ impl Mapping for Ellipse {
         // The uncertainty Region within the Ellipse in its current Frame.
         let unc = this.get_unc_frm(FrameRef::Current)?;
 
-        // Transform the ellipse centre (defining point 0) into the current
+        // Transform the ellipse center (defining point 0) into the current
         // Frame.
         let pts = PointSet::from_rows(this.data.points.iter().map(|p| p.as_slice()));
         let ps2 = map.transform(&pts, true)?;

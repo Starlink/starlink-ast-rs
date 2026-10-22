@@ -11,7 +11,7 @@ that decides whether the mechanism can collapse after the next pin move.
 each child's effective transform direction as `fwd XOR (inv_a != child.is_inverted())`,
 through `first_invert_changed()` / `second_invert_changed()` at 15 call sites.
 This mirrors C, where `CombineMaps` snapshots `invert1`/`invert2` and `Transform`
-forces the child back to the recorded state before transforming — a defence
+forces the child back to the recorded state before transforming — a defense
 against another owner having inverted the shared child in the meantime.
 
 The natural question is whether the whole mechanism is vestigial in an
@@ -22,8 +22,8 @@ predicates and running the full suite with `--nocapture`:
 | Probe | Result |
 |---|---|
 | Drift observed at transform time | 190,831 (first child) + 621,383 (second) |
-| Test binaries exercising it | wcsconv 106,847; simplify regression 30,465; transform oracle 2,928; bench_lsst 2,852; serialisation 1,316; cmpmap 76 |
-| **Loads that create drift** | **539** — dumps whose `InvA`/`InvB` disagrees with the child's own serialised `Invert` |
+| Test binaries exercising it | wcsconv 106,847; simplify regression 30,465; transform oracle 2,928; bench_lsst 2,852; serialization 1,316; cmpmap 76 |
+| **Loads that create drift** | **539** — dumps whose `InvA`/`InvB` disagrees with the child's own serialized `Invert` |
 
 So the field is load-bearing, for a reason that survives the ownership change: a
 C dump records **two independent bits** — the parent's snapshot and the child's
@@ -51,7 +51,7 @@ fixtures:
 
 The harness checks structural equality against C's `.simp`, numerical transform
 equivalence, and byte-exact dump independently, so the merges produce the same
-mapping and only the serialised form drifts. Across the whole suite the damage
+mapping and only the serialized form drifts. Across the whole suite the damage
 is 7 tests of 3294, every one a dump comparison: 5 wcsconv native byte diffs
 (missing `INVERT_A= 1` cards), the simplify harness's 8 fixtures, and
 `test_cmpmap`'s `parallel_with_inverted_cmpmap_child_canonicalises_for_serialisation`.
@@ -65,7 +65,7 @@ list first and merging happens there. `set_*_orientation` runs during
 says otherwise. Forcing the simplifier's `apply_effective` to always take the
 cheap `m.invert()` flag toggle — never the structural rewrite — leaves the entire
 suite green: 3294 passed, 0 failed, including all 194 wcsconv byte comparisons,
-427 simplify fixtures at 0 serialisation failures, and 1,606 transform-oracle
+427 simplify fixtures at 0 serialization failures, and 1,606 transform-oracle
 sections. Instrumenting the branch instead shows it is reached **once** in the
 whole suite, from one simplify fixture, in the `kind=Series, series=false` case.
 Its `Parallel` arm — which the eleven-line comment above it is entirely about,
@@ -81,7 +81,7 @@ the fixture that justifies it.
 `canonicalize_inverted_cmpmaps` and `normalize_unitmap_children` were untested
 here; both have since been deleted (PLAN.md §10.15, §10.22). This is the
 `IsSimp` situation exactly (see H3 in `docs/porting-hazards.md`): one field
-serving both a semantic role and a serialisation role. `IsSimp` was split into
+serving both a semantic role and a serialization role. `IsSimp` was split into
 `is_simple_serial` and `has_been_simplified`; Invert has not been split.
 
 **A unification pathway (proposal).** The 30-odd touch points are a consequence
@@ -89,7 +89,7 @@ of *which* of two equivalent encodings the port chose, not of the format's
 complexity. The format carries two bits per child:
 
 - **E** — the effective direction, written as `InvA`/`InvB` on the parent.
-- **S** — the orientation the child is serialised in, written as the child's own
+- **S** — the orientation the child is serialized in, written as the child's own
   `Invert`.
 
 *Encoding A (current).* Store the child in orientation **S**; keep **E** in
@@ -123,12 +123,12 @@ makes the eventual collapse trivial — it does not depend on C changing.
 
 `63782ac` did the part that stands alone: the sixteen inline decodes across
 eleven functions are now two functions, `CmpMap::first_dir` / `second_dir`.
-Behaviour-preserving, verified against every byte-exact corpus with no fixture
+Behavior-preserving, verified against every byte-exact corpus with no fixture
 regeneration. That reduces the encoding change from a sixteen-site sweep to a
 two-function edit.
 
 **The blocker, found by attempting it.** Encoding B needs the child stored in
-its *effective* orientation, so load must flip a child whose serialised
+its *effective* orientation, so load must flip a child whose serialized
 orientation disagrees. The only way to flip is `Mapping::invert`, and every
 implementation deliberately clears the simplification tags:
 
@@ -140,7 +140,7 @@ fn invert(&mut self) {
 }
 ```
 
-So normalising at load would clear each child's `IsSimp` and change the dump —
+So normalizing at load would clear each child's `IsSimp` and change the dump —
 byte-exactness lost. Avoiding that needs a tag-preserving flag setter, which
 means a new method on `Mapping` implemented by **37 classes**, whose entire
 purpose is to bypass a clear that exists to mirror `astSetInvert`.
@@ -156,12 +156,12 @@ one's workaround is load-bearing for the other's.
 1. Resolve `IsSimp` first — if upstream's deterministic-placement fix removes the
    need for the dual-flag split, `invert()` no longer has a tag to clear, the
    37-class method is unnecessary, and encoding B becomes a local change; or
-2. Do both together, after the §8 pin move, as one behaviour-preserving refactor
+2. Do both together, after the §8 pin move, as one behavior-preserving refactor
    gated on the regenerated corpora.
 
 The remaining risks, unchanged and still to work through when it is attempted:
 
-- Patching the child's `Invert` in the emitted node must honour C's
+- Patching the child's `Invert` in the emitted node must honor C's
   write-when-set convention (`Dump` writes `InvA` only when non-zero), or
   byte-exactness breaks on the "flag absent" cases.
 - Nested CmpMaps: patching a child node's `Invert` must not disturb that
@@ -174,7 +174,7 @@ The remaining risks, unchanged and still to work through when it is attempted:
 - `TranMap` carries the same `inv_a`/`inv_b` pattern and would need the same
   treatment for the cleanup to be complete.
 
-**Sequencing.** Do it as a behaviour-preserving refactor with the byte-exact
+**Sequencing.** Do it as a behavior-preserving refactor with the byte-exact
 corpus as the gate — wcsconv 194, the 427 simplify fixtures and the 1,606
 oracle sections should all stay green with no fixture regeneration, because
 encoding B emits the same bytes. That makes it independently verifiable, unlike
@@ -187,7 +187,7 @@ effective direction, lets the constructor snapshot it into the CmpMap's own
 not find its Mapping altered. Because the child is shared, that restoration is
 visible through the parent: the CmpMap's snapshot holds the effective direction
 while the child's own flag holds the original. `Dump` writes both. The
-disagreement the port must honour is therefore a courtesy to a caller holding a
+disagreement the port must honor is therefore a courtesy to a caller holding a
 shared pointer — a requirement that cannot arise under exclusive ownership.
 Written up for upstream in `docs/issues/c-library-quirks.md`.
 

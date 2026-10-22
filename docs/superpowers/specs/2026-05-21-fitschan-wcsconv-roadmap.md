@@ -1,6 +1,6 @@
 # FitsChan WCS-conversion roadmap (2026-05-21)
 
-A campaign-level design that catalogues every failing case in
+A campaign-level design that catalogs every failing case in
 `cargo test -p ast-core --test test_wcsconv`, groups them by
 root cause, and orders the fixes so each tier unblocks the next.
 
@@ -39,7 +39,7 @@ C implementation calls for it.
 1. **Follow the C library.** When in doubt, read
    `reference/starlink-ast/src/fitschan.c` and mirror its
    structure. The C code encodes 30 years of policy that the
-   Rust port has to honour exactly to keep canonical output
+   Rust port has to honor exactly to keep canonical output
    bit-stable.
 2. **Card-position preservation is sacred.** The mark/sweep
    logic in `card_list.rs` (`mark_all_unused` / `sweep_unused_wcs`
@@ -53,7 +53,7 @@ C implementation calls for it.
    on the same fixture. Resolve the parser before chasing
    write-side residue.
 
-## Failure-mode catalogue (10 categories, ~88 tests)
+## Failure-mode catalog (10 categories, ~88 tests)
 
 Each row: identifier letter, name, test count, side (R = read,
 W = write), and one-line root cause.
@@ -80,7 +80,7 @@ gets deleted as part of K.
 
 ## Reconciliation with 2026-05-10 snapshot
 
-Items in the prior doc map to this catalogue as follows:
+Items in the prior doc map to this catalog as follows:
 
 | Prior item                                  | This roadmap |
 |---------------------------------------------|--------------|
@@ -104,7 +104,7 @@ OFLN suffix and AzEl items in J.
 
 ## Dependency-ordered tiers
 
-Each tier is internally parallelisable; tiers run sequentially
+Each tier is internally parallelizable; tiers run sequentially
 because earlier ones unblock later ones (or remove workarounds).
 
 ### Tier 1 — read-side blockers (~5 tests + unblocks others)
@@ -141,7 +141,7 @@ per-encoder diagnoses easier to read.
 
 ### Tier 3 — per-encoder content (parallel across encoder files)
 
-- **D1.** AIPS++ — emit CDELT+PC instead of CD when no shear. Reuse the AIPS-path factorisation already in `enc_aips`. Tests: `timj_fits-aips++`, `tan-cdmatrix_fits-aips++`, `sin-plain_fits-aips++`, `fk4-aips_fits-aips++`, `pixel-1d_fits-aips++`, `pixel-2d_fits-aips++`, `pixel-rotated_fits-aips++`, `galactic-tan_fits-aips++`. File: `enc_aips.rs::write_to_cards` (AIPS++ branch).
+- **D1.** AIPS++ — emit CDELT+PC instead of CD when no shear. Reuse the AIPS-path factorization already in `enc_aips`. Tests: `timj_fits-aips++`, `tan-cdmatrix_fits-aips++`, `sin-plain_fits-aips++`, `fk4-aips_fits-aips++`, `pixel-1d_fits-aips++`, `pixel-2d_fits-aips++`, `pixel-rotated_fits-aips++`, `galactic-tan_fits-aips++`. File: `enc_aips.rs::write_to_cards` (AIPS++ branch).
 - **D2.** AIPS — CROTA sign convention. Re-derive from C library `MakeBasicWcs`. Tests: `tan-rotated_fits-aips`, `pixel-rotated_fits-aips`, `fk4-aips_fits-aips`. File: `enc_aips.rs::factor_cd_to_cdelt_crota`.
 - **D3.** AIPS — NCP→SIN with PROJP terms. When `ctype.projection() == Ncp`, rewrite to `RA---SIN` and emit `PROJP2 = cot(δ₀)`. Tests: `ncp_fits-aips`, `ncp_fits-aips++`, `ncp_fits-iraf`. File: `enc_aips.rs::populate_celestial_aips` (and IRAF equivalent).
 - **D4.** AIPS — EPOCH format MJD vs Besselian. Emit MJD value (51544.5 for J2000) for FK5/ICRS rather than Julian year. Test: `ecliptic-tan_fits-aips`. File: `enc_aips.rs`.
@@ -173,7 +173,7 @@ snap as a workaround; we fix the simplifier the way C does so
 the residue never reaches the encoder.
 
 The C library's `astSimplify` deep-traverses nested CmpMap chains,
-flattens them into a flat list, and recognises distant inverse-pairs
+flattens them into a flat list, and recognizes distant inverse-pairs
 as cancellable. Ours only merges adjacent siblings. The gap is
 documented by the `cmpmap_nested_inverse_cancel` fixture (commit
 `768b6e9`).
@@ -208,7 +208,7 @@ mis-handling and turn it into a tier-2 simplify fixture:
      fixtures/simplify/<name>.map fixtures/simplify/<name>.simp
    ```
    The `.simp` file is the canonical post-simplification
-   serialisation. Commit both `.map` and `.simp` together with
+   serialization. Commit both `.map` and `.simp` together with
    a commit message naming the wcsconv case they came from.
 3. **Wire it into the manifest.** Add an entry to
    `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`:
@@ -320,7 +320,7 @@ produces a focused implementation plan. Per-plan scope:
   deletion piggybacks on K's PR or the next one. H1 is the
   largest piece because it touches every encoder. D-pre is
   small and lands alongside H1.
-- **Tier 3 plans:** parallelisable per encoder. Suggest one
+- **Tier 3 plans:** parallelizable per encoder. Suggest one
   plan covering D1–D5 (AIPS / AIPS++ family), one for B2
   (CLASS), one for I1 + I2 (DSS), one for J1 (cosmetic).
 - **Tier 4 plans:** C1 (spectral) and G1 (SIP) each get their

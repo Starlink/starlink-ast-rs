@@ -8,7 +8,7 @@
 //! at the lon and lat slots).
 //!
 //! A Mapping with only a forward transformation, which can be written only
-//! with the `-TAB` algorithm, is analysed by splitting off each input in
+//! with the `-TAB` algorithm, is analyzed by splitting off each input in
 //! turn, when TabOK is positive.
 
 #![allow(clippy::needless_range_loop)] // mirrors C
@@ -28,7 +28,7 @@ fn ast_equal(a: f64, b: f64) -> bool {
 }
 
 /// Returns `perm[i] = pixel-axis-index` for each WCS output axis `i`,
-/// or `None` if the mapping cannot be analysed (e.g. all outputs are
+/// or `None` if the mapping cannot be analyzed (e.g. all outputs are
 /// non-finite).
 ///
 /// `fitstol` is the linearity tolerance handed to
@@ -37,7 +37,7 @@ fn ast_equal(a: f64, b: f64) -> bool {
 ///
 /// Mirrors `fitschan.c::WorldAxes` (~39755). `tab_ok` is the FitsChan's
 /// TabOK attribute, which lets a Mapping with only a forward transformation
-/// be analysed.
+/// be analyzed.
 pub(crate) fn world_axes(
     map: &dyn Mapping,
     dim: &[Option<f64>],

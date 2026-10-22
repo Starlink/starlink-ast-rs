@@ -115,7 +115,7 @@ and what it was for:
 
 > Reduces serialization mismatches from 116 to 40.
 
-So the public entry point was added as a **serialisation fix**, layered on top of
+So the public entry point was added as a **serialization fix**, layered on top of
 an invented hook, and the author correctly identified it with `astSimplify` while
 leaving the invented hook in place underneath. Neither commit came from reading
 C's seam structure; the first predates any such reading and the second was
@@ -153,7 +153,7 @@ Six classes have a `simplified()` and no `map_merge` at all, so each is a latent
 Delete `simplified()`. Give every class one seam, `map_merge`, and give the driver
 C's base `Simplify`.
 
-### Step 1 — pin the current behaviour
+### Step 1 — pin the current behavior
 
 The corpus is the specification: 445 simplify fixtures, 194 `wcsconv` byte
 comparisons, the transform oracle. Nothing below may change any of them except

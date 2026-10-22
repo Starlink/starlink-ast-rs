@@ -681,7 +681,7 @@ If only some pass, capture which still fail:
 cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "car3|axes-swap|jan_fits"
 ```
 
-A still-failing case needs investigation — check the error message against the fix's intended behaviour.
+A still-failing case needs investigation — check the error message against the fix's intended behavior.
 
 - [ ] **Step 2: Full workspace tests**
 

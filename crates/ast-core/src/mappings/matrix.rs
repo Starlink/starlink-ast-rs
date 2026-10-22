@@ -69,7 +69,7 @@ enum MatrixForm {
     /// Diagonal matrix: O(N) per-axis multiply per point.
     Diagonal,
     /// Identity matrix: no elements stored in dump, mathematically a no-op.
-    /// Preserved across round-trip so byte-exact serialisation matches C.
+    /// Preserved across round-trip so byte-exact serialization matches C.
     Unit,
 }
 
@@ -310,7 +310,7 @@ impl MatrixMap {
         // stores nothing and a DIAGONAL one is inverted element-wise. Only the
         // FULL case keeps the caller's inverse, which is the case this
         // constructor exists for: re-deriving it would perturb the last ULP of
-        // the serialised `IMn` values.
+        // the serialized `IMn` values.
         let mut matrix = matrix;
         let mut form = MatrixForm::Full;
         compress_matrix(&mut matrix, &mut form);
@@ -343,7 +343,7 @@ impl MatrixMap {
     }
 
     /// Whether the matrix is stored in UNIT form (identity, no elements
-    /// serialised). Mirrors C `mm->form == UNIT`.
+    /// serialized). Mirrors C `mm->form == UNIT`.
     pub(crate) fn is_unit_form(&self) -> bool {
         matches!(self.form, MatrixForm::Unit)
     }
@@ -438,9 +438,9 @@ impl MatrixMap {
     /// copy the MatrixMap *preserving its orientation*, scale the current
     /// forward matrix by `zoom` and divide the current inverse by it. Keeping
     /// the orientation (rather than collapsing to a fresh forward matrix)
-    /// matches C's serialised form and avoids recomputing an inverse.
+    /// matches C's serialized form and avoids recomputing an inverse.
     ///
-    /// `zoom` is the effective forward zoom factor of the neighbouring
+    /// `zoom` is the effective forward zoom factor of the neighboring
     /// ZoomMap in the composition.
     pub(crate) fn mtr_zoom(&self, zoom: f64, inv: bool) -> MatrixMap {
         // Current forward / inverse matrices for the effective orientation.
@@ -453,7 +453,7 @@ impl MatrixMap {
         let new_fwd = cur_fwd.map(|m| &m * zoom);
         let new_inv = cur_inv.map(|m| &m / zoom);
 
-        // Re-assemble into stored (f_matrix, i_matrix) honouring orientation:
+        // Re-assemble into stored (f_matrix, i_matrix) honoring orientation:
         // when `inv`, the effective forward is the stored inverse.
         let (stored_fwd, stored_inv) = if inv {
             (new_inv, new_fwd)
@@ -588,7 +588,7 @@ impl MatrixMap {
         ))
     }
 
-    /// The effective forward matrix, honouring the current Invert flag: the
+    /// The effective forward matrix, honoring the current Invert flag: the
     /// stored forward matrix when not inverted, else the inverse matrix
     /// (falling back to the forward matrix when no inverse exists).
     fn effective_forward_matrix(&self) -> Array2<f64> {
@@ -940,7 +940,7 @@ impl Mapping for MatrixMap {
         // MatrixMap + ZoomMap → MatrixMap (scaled).
         // ZoomMap commutes with MatrixMap: f*(M*x) = M*(f*x) = (f*M)*x.
         //
-        // This is the merge a nominated ZoomMap makes with a neighbouring
+        // This is the merge a nominated ZoomMap makes with a neighboring
         // MatrixMap (zoommap.c MapMerge), so it scales through
         // [`MatrixMap::mtr_zoom`], C's astMtrZoom, which keeps an inverted
         // MatrixMap inverted with its stored values scaled rather than
@@ -961,7 +961,7 @@ impl Mapping for MatrixMap {
             let scaled = self.mtr_zoom(f, self_inv);
             // Collapse to a UnitMap only when the whole Mapping is the
             // identity: an inverted result has to survive so its orientation
-            // reaches serialisation.
+            // reaches serialization.
             if !scaled.is_inverted() && is_identity_matrix(scaled.forward_matrix()) {
                 return Some(Box::new(UnitMap::new(scaled.forward_matrix().nrows())));
             }
@@ -1516,7 +1516,7 @@ impl Serializable for MatrixMap {
 /// compressed form. The matrix itself is modified in place: off-diagonal
 /// elements insignificant to *both* their own row and their own column are set
 /// to exactly `0.0`, which is what turns the ~1e-16 trig residue of a
-/// spherical-rotation product into the structural zeros C serialises.
+/// spherical-rotation product into the structural zeros C serializes.
 ///
 /// Returns `true` when an off-diagonal element changed value, which is C's
 /// `new_inv` flag: the caller must then recompute the inverse from the
@@ -1624,7 +1624,7 @@ fn compress_matrix(m: &mut Array2<f64>, form: &mut MatrixForm) -> bool {
 ///
 /// This is a choice of C compatibility over speed, not a requirement of the
 /// mathematics. A library product such as ndarray's `dot`, which may block
-/// or vectorise the sum, gives the same values to within rounding and could
+/// or vectorize the sum, gives the same values to within rounding and could
 /// be faster for large matrices. Switching to one would move merged
 /// MatrixMaps by a few units in the last place, which the simplify corpus,
 /// the FITS-WCS write oracles and anything else compared with C would
@@ -1750,7 +1750,7 @@ fn diagonal_inverse(m: &Array2<f64>) -> Array2<f64> {
 ///
 /// C `matrixmap.c::InvertMatrix` (matrixmap.c:1436) inverts a full matrix
 /// with `palDmat`, and AST stores that result verbatim in a MatrixMap's
-/// `IMn` dump fields. Byte-exact serialisation therefore requires the
+/// `IMn` dump fields. Byte-exact serialization therefore requires the
 /// *same* arithmetic, so we call the same C routine rather than a
 /// Rust-side re-derivation (an independent Gauss-Jordan gives an inverse
 /// equal to ~1e-16 but rounds near-zero elements differently, which is

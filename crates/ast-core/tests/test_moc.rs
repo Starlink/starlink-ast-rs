@@ -14,7 +14,7 @@
 //! - The MOC text is passed as a `&str`, so the C test's text lengths (100
 //!   for a 5-character string in the `Error 42` loop) have no counterpart.
 
-// testmoc.c centres its circles at 3.1415927, which is not quite pi.
+// testmoc.c centers its circles at 3.1415927, which is not quite pi.
 #![allow(clippy::approx_constant)]
 
 use ast_core::constants::BAD_VALUE;
@@ -79,7 +79,7 @@ fn datacheck(moc: &Moc, text: &str) {
     assert!(equal(moc, &moc2), "{text} 2");
 }
 
-/// `makeimage`: a 100x100 image of the distance from its centre, and a
+/// `makeimage`: a 100x100 image of the distance from its center, and a
 /// FrameSet whose current Frame has a celestial and a velocity axis.
 fn makeimage() -> (Vec<f32>, [usize; 2], FrameSet) {
     let (nx, ny) = (100_usize, 100_usize);

@@ -291,7 +291,7 @@ pub enum ErrorCode {
 
 The generated enum has the per-code variants and is `#[non_exhaustive]`, but
 there is no `Unknown` variant.
-Unrecognised values are handled by `from_raw(value: u32) -> Option<Self>`
+Unrecognized values are handled by `from_raw(value: u32) -> Option<Self>`
 returning `None` instead.
 
 For `ast-core` this is arguably tidier.

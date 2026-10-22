@@ -6,7 +6,7 @@
 //! overlays the DSBSpecFrame onto a new SpecFrame, aligns it in the
 //! topocentric rest frame, and converts it to a copy set to topocentric
 //! frequency in Hz, so the SpecOrigin and the alignment settings take part
-//! in the conversion between DSBCentre and the current system.
+//! in the conversion between Dsbcenter and the current system.
 
 #[path = "dsb_topo_oracle/cases.rs"]
 mod cases;
@@ -14,7 +14,7 @@ mod cases;
 use ast_core::coords::PointSet;
 use ast_core::frames::{DSBSpecFrame, Frame, FrameRef, SideBand, SpecSystem, StdOfRest};
 
-/// The probe's DSBSpecFrame, with its per-case settings and DSBCentre=230.
+/// The probe's DSBSpecFrame, with its per-case settings and Dsbcenter=230.
 fn usb(name: &str) -> DSBSpecFrame {
     let mut f = DSBSpecFrame::new(SpecSystem::Freq);
     Frame::set_unit(&mut f, 1, "GHz").unwrap();

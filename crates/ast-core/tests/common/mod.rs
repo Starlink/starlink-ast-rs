@@ -6,7 +6,7 @@
 //! so the module is annotated to allow it.
 #![allow(dead_code)]
 
-/// Compare two native (`.ast`) serialisations: byte-equal, except that a
+/// Compare two native (`.ast`) serializations: byte-equal, except that a
 /// number may differ in value by up to `max_ulps` ULP. This absorbs the
 /// last-bit libm drift that differs between platforms (and between the Rust
 /// port and the C oracle); every other byte, whitespace included, must match
@@ -72,7 +72,7 @@ pub fn strip_is_simp(s: &str) -> String {
 ///
 /// Where the tag lands inside a compound Mapping became a property of the
 /// Mapping tree alone at upstream `e40e71b4`, so a difference here is a port
-/// gap and not a C artifact. Callers comparing a serialised object against a
+/// gap and not a C artifact. Callers comparing a serialized object against a
 /// C-generated reference use this to drop the tag cards from both sides while
 /// pinning how many each side carries.
 ///
@@ -298,7 +298,7 @@ pub fn c_text_eq(got: &str, want: &str) -> bool {
 /// from byte-exact comparisons against C-generated references because the
 /// agreement is arithmetic rather than structural.
 /// See `docs/issues/c-library-quirks.md`, under "KeyMap `MapSz` records
-/// collision history, so identical KeyMaps can serialise differently".
+/// collision history, so identical KeyMaps can serialize differently".
 pub fn is_map_sz_card(line: &str) -> bool {
     line.trim_start()
         .trim_start_matches('#')

@@ -275,7 +275,7 @@ let mut wcs_iwc: DynMapping = Box::new(UnitMap::new(naxis));
 
 ### C-oracle-derived fixture pattern
 
-For each function whose output depends on subtle numerical behaviour, follow this recipe:
+For each function whose output depends on subtle numerical behavior, follow this recipe:
 
 ```
 1. Write a small C program in tools/oracle_fixtures/<fn>.c that
@@ -305,9 +305,9 @@ Specific oracle fixtures to capture:
 |                    |   - SIP-shape (A/B coefficients, no shift, identity linear)      |
 |                    |   - PolyMap with constant terms → expect non-trivial shift       |
 |                    |   - PolyMap with non-unit linear → expect non-trivial matrix     |
-|                    |   - Non-analyseable polymap → expect None                        |
+|                    |   - Non-analyzable polymap → expect None                        |
 | `scale_poly_inputs`| 3-4 PolyMaps × 2-3 scale vectors → captured coefficient outputs  |
-| `find_basis_vectors`| Dim choices that exercise centre / (1,…,1) / diagonal-sweep paths |
+| `find_basis_vectors`| Dim choices that exercise center / (1,…,1) / diagonal-sweep paths |
 | `fit_line` / `fit_line_cd` | Several linear and non-linear chains; capture slope arrays |
 | `make_int_world`   | Half a dozen synthetic pixel→IWC mappings (linear-only, SIP, nout > nin) |
 | `sip_int_world`    | sip-3d, sip-3d-swap, plus a non-SIP mapping that returns None    |
@@ -322,7 +322,7 @@ For `celestial_axes` / `spectral_axes` / `other_axes`, the wcsconv suite is itse
 | `linear_approx`      | Oracle fixtures (above) + boundary cases.                                                            |
 | `analyse_poly`       | Oracle fixtures (above) + boundary cases.                                                            |
 | `scale_poly_inputs`  | Oracle fixtures + round-trip identity (`scale_by(1.0) == identity`).                                 |
-| `find_basis_vectors` | Oracle fixtures across the centre / origin / diagonal paths.                                         |
+| `find_basis_vectors` | Oracle fixtures across the center / origin / diagonal paths.                                         |
 | `fit_line` / `fit_line_cd` | Oracle fixtures + linearity-refusal case.                                                      |
 | `orth_vector_set`    | 2-of-3 known columns → third is unit-perpendicular. Degenerate input → `None`.                       |
 | `make_invertable`    | Already-invertable unchanged. Singular column on degenerate axis → patched. Non-degenerate → unchanged. |

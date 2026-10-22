@@ -64,7 +64,7 @@ fn generate_wcsconv_tests(manifest_dir: &Path) {
     fs::write(&out_path, out).expect("write wcsconv_generated.rs");
 }
 
-/// Sanitise a fixture name into a Rust identifier: replace any
+/// Sanitize a fixture name into a Rust identifier: replace any
 /// character that is not `[A-Za-z0-9_]` with `_`. Multiple replacements
 /// in a row are kept as-is so the result remains 1:1 with the input
 /// name (no collapsing).
@@ -92,11 +92,11 @@ fn compile_pal_erfa(vendor_dir: &Path) {
     // vectors is exactly zero only without a fused multiply-add, and
     // SkyFrame's Offset tests for exactly that (skyframe.c:7709).
     //
-    // The optimisation level is fixed, not taken from the cargo profile,
-    // because it changes results: an optimising compiler replaces a `sin`
+    // The optimization level is fixed, not taken from the cargo profile,
+    // because it changes results: an optimizing compiler replaces a `sin`
     // and `cos` of one angle by one `sincos` call, and `pow(10, x)` by
     // `exp10`, which on macOS can differ in the last bit. The C library the
-    // oracle fixtures come from is built optimised, so the vendored C must
+    // oracle fixtures come from is built optimized, so the vendored C must
     // be too, in debug builds as in release ones.
     cc::Build::new()
         .file(vendor_dir.join("palwrap.c"))
@@ -135,7 +135,7 @@ fn compile_wcslib(vendor_dir: &Path) {
         .file(wcslib_dir.join("wcstrig.c"))
         .file(wcslib_dir.join("ast_memory_stub.c"))
         .include(&wcslib_dir)
-        // A fixed optimisation level and no contraction, for the reasons
+        // A fixed optimization level and no contraction, for the reasons
         // given in `compile_pal_erfa`.
         .opt_level(3)
         .flag_if_supported("-ffp-contract=off")

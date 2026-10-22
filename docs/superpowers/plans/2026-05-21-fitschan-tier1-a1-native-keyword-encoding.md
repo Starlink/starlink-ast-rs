@@ -799,7 +799,7 @@ END
     }
 ```
 
-(The expected value `"first part    second part"` reflects the `&` getting dropped and the next segment's leading whitespace surviving the join — match the C library's exact behaviour: strip `&`, concatenate.)
+(The expected value `"first part    second part"` reflects the `&` getting dropped and the next segment's leading whitespace surviving the join — match the C library's exact behavior: strip `&`, concatenate.)
 
 - [ ] **Step 2: Run the test to confirm it fails**
 

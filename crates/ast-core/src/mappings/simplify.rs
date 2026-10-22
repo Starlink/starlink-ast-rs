@@ -122,7 +122,7 @@ pub(crate) mod trace {
     }
 
     /// Class name for a trace line, as `astGetClass` gives it, except that a
-    /// CmpMap also names its composition. Serialising is costly, but only
+    /// CmpMap also names its composition. Serializing is costly, but only
     /// runs when the event is enabled.
     #[cfg(feature = "tracing")]
     fn class_of(m: &dyn Mapping) -> String {
@@ -385,7 +385,7 @@ pub(crate) fn flatten(
     // C `cmpmap.c::MapList` decomposes structurally and does not simplify the
     // components it collects. Each leaf enters the nominate loop in its stored
     // form and its own `astMapMerge` reduces it there, in context, where it can
-    // see its neighbours — which is what lets `WinMat` fold a WinMap's residual
+    // see its neighbors — which is what lets `WinMat` fold a WinMap's residual
     // scale into an adjacent MatrixMap, and what makes "replace with simpler"
     // the *last* step of a class's merge rather than the first thing that
     // happens to it.
@@ -402,10 +402,10 @@ fn leaf_entry(mapping: &dyn Mapping, inv: bool) -> (DynMapping, bool, bool) {
     // the component pointer itself amounts to.
     // The leaf's own (intrinsic) Invert state, independent of any inversion
     // imposed by a parent CmpMap. Preserved as the element's `orig_inv` so
-    // `reconstruct` serialises the child in the orientation C does: C keeps each
+    // `reconstruct` serializes the child in the orientation C does: C keeps each
     // component's stored Invert and records the effective direction separately
     // in the parent's `InvA`/`InvB`. The clone is the leaf untouched, so its
-    // orientation *is* the stored one and there is nothing to un-normalise.
+    // orientation *is* the stored one and there is nothing to un-normalize.
     let orig_inv = cloned.is_inverted();
     let effective_inv = inv != orig_inv;
     // Reset the clone to forward state; the bool carries inversion.
@@ -454,7 +454,7 @@ pub(crate) fn flatten_children(
 /// (`result = invert || r1 || r2`, MapList:1191): true when decomposing
 /// `mapping` (in direction `inv`, for the given `series`/parallel kind)
 /// encounters any same-kind CmpMap in an inverted state. Such an inversion
-/// is normalised away by the flatten/reconstruct round-trip, so C treats it
+/// is normalized away by the flatten/reconstruct round-trip, so C treats it
 /// as a simplification even when no component pair merges. Opposite-kind
 /// CmpMaps and non-CmpMap leaves contribute nothing here; the change an
 /// opposite-kind component can report comes from the nominate loop instead.
@@ -643,13 +643,13 @@ impl MergeCtx {
 
     /// Replace the two adjacent entries at `i1`/`i1+1` with a single merged
     /// entry, closing the gap. Used by per-class `map_merge` after a direct
-    /// merge produces one mapping from a neighbouring pair (C annuls the two
+    /// merge produces one mapping from a neighboring pair (C annuls the two
     /// pointers, stores the merged one at `i1`, and shuffles the tail down).
     pub(crate) fn replace_pair_with(&mut self, i1: usize, mut merged: DynMapping, eff_inv: bool) {
-        // Normalise the entry to `(forward_map, effective_inv, orig_inv)`.
+        // Normalize the entry to `(forward_map, effective_inv, orig_inv)`.
         // A merge may return a mapping in its inverted orientation (e.g.
         // `MatrixMap::mtr_zoom` preserves an inverted MatrixMap so it
-        // serialises `Invert=1` like C). Record that intrinsic orientation as
+        // serializes `Invert=1` like C). Record that intrinsic orientation as
         // `orig_inv` and fold it into the effective direction, then store the
         // mapping forward — matching how `flatten` produces leaf entries.
         let orig_inv = merged.is_inverted();
@@ -726,7 +726,7 @@ impl MergeCtx {
 }
 
 /// Default `map_merge` implementation: a single direct pairwise merge of
-/// the nominated component with its immediate right neighbour.
+/// the nominated component with its immediate right neighbor.
 ///
 /// This is the Rust analogue of "step 2" (direct merge) shared by C's
 /// per-class `MapMerge` methods, and is the body inherited by every class
@@ -747,7 +747,7 @@ impl MergeCtx {
 /// `map_merge` for a nominated `CmpMap`, mirroring the "Simplify the CmpMap on
 /// its own" step at the head of C `cmpmap.c::MapMerge` (1436-1475).
 ///
-/// Before considering its neighbours, C recursively `astSimplify`s the
+/// Before considering its neighbors, C recursively `astSimplify`s the
 /// nominated CmpMap; if that produced a different Mapping it replaces the
 /// component in the list (with the new Invert flag) and returns the modified
 /// index. `astSimplify_` (mapping.c:24732) tags every result it returns with
@@ -759,7 +759,7 @@ impl MergeCtx {
 /// an equal CmpMap (only the flag is set). The `has_been_simplified`
 /// short-circuit in `CmpMap::simplified` plus the `SimplifyGuard` cycle check
 /// prevent re-entry, and on no structural change we fall through to
-/// `default_map_merge` so the neighbour-merge behaviour is unchanged.
+/// `default_map_merge` so the neighbor-merge behavior is unchanged.
 pub(crate) fn cmp_map_merge(
     cmp: &CmpMap,
     ctx: &mut MergeCtx,
@@ -807,14 +807,14 @@ pub(crate) fn cmp_map_merge(
                 }
                 // C `astSimplify_` (mapping.c:24763) tagged this nominated
                 // component's reduced result. The record is per orientation and
-                // `fwd` sits at the forward one after the normalising `invert()`
-                // above, while the tree serialises it at `new_inv`; record the
+                // `fwd` sits at the forward one after the normalizing `invert()`
+                // above, while the tree serializes it at `new_inv`; record the
                 // orientation the tag was earned in.
                 fwd.set_simplified_in(new_inv, true);
                 // C stores the result object at its own orientation and sets
                 // `invert_list[where] = astGetInvert(new)` (cmpmap.c:1463-1464),
                 // so effective == stored for the replaced element; the final
-                // fold's set/restore then serialises the child at that stored
+                // fold's set/restore then serializes the child at that stored
                 // orientation. Record it as `orig_inv` so `reconstruct` does
                 // the same.
                 ctx.set_pair_single(where_, (fwd, new_inv, new_inv));
@@ -886,7 +886,7 @@ pub(crate) fn cmp_map_merge(
     // Merge adjacent CmpMaps (C `cmpmap.c::MapMerge` 1528-1813).
     // ========================================================
     // The self-simplify head above did not fire (C `!simpler`); look for a
-    // neighbouring CmpMap with which the nominated one can merge. C uses the
+    // neighboring CmpMap with which the nominated one can merge. C uses the
     // pair (imap1, imap2) where imap2 is the nominated CmpMap — except when
     // the nominee is the first in the list, in which case the pair is (0, 1)
     // (`cmpmap.c:1540-1546`). It only restructures when both members are
@@ -917,8 +917,8 @@ pub(crate) fn cmp_map_merge(
     // ==================================================
     // Reached only when no earlier branch simplified anything (C's
     // `result == -1`), the nominated CmpMap is parallel, it is not first in the
-    // list, and its lower neighbour is a PermMap. The swap may let either of
-    // the two Mappings merge with its new neighbour. C reports the PermMap's
+    // list, and its lower neighbor is a PermMap. The swap may let either of
+    // the two Mappings merge with its new neighbor. C reports the PermMap's
     // old slot (`result = imap1`, `cmpmap.c:2119`), so the nominate loop
     // resumes there.
     if series
@@ -954,9 +954,9 @@ pub(crate) fn cmp_map_merge(
 /// by a forward ZoomMap holding the reciprocal factor — so the invert flag
 /// is folded into the stored factor rather than surfacing as an `InvA`/`InvB`
 /// on a parent CmpMap. This matches the C native dump (e.g. a degrees↔radians
-/// ZoomMap serialises as a forward `Zoom` value, never as an inverted one).
-/// Whether a ZoomMap can be absorbed into `m` as a neighbour (C
-/// zoommap.c::MapMerge handles MatrixMap, WinMap and ShiftMap neighbours).
+/// ZoomMap serializes as a forward `Zoom` value, never as an inverted one).
+/// Whether a ZoomMap can be absorbed into `m` as a neighbor (C
+/// zoommap.c::MapMerge handles MatrixMap, WinMap and ShiftMap neighbors).
 fn zoom_absorbable(m: &dyn Mapping) -> bool {
     let a = m.as_any();
     a.is::<super::MatrixMap>() || a.is::<super::WinMap>() || a.is::<ShiftMap>()
@@ -1025,8 +1025,8 @@ pub(crate) fn zoom_map_merge(
         let simpler = ngone > 0 || unit || where_inv;
         if !simpler {
             // No ZoomMap-run reduction: absorb the ZoomMap into a
-            // neighbouring MatrixMap/WinMap/ShiftMap. Mirroring C
-            // zoommap.c::MapMerge (994-1122), the *previous* neighbour is
+            // neighboring MatrixMap/WinMap/ShiftMap. Mirroring C
+            // zoommap.c::MapMerge (994-1122), the *previous* neighbor is
             // tried before the *next* one — this ordering is observable when
             // only one side is eligible (e.g. a restricted simplify where the
             // trailing Mapping is not AllowSimplify-flagged). The pairwise
@@ -1121,7 +1121,7 @@ pub(crate) fn zoom_map_merge(
 }
 
 /// `map_merge` for a nominated `PermMap`, mirroring C `permmap.c::MapMerge`
-/// (1362-1373): a direct merge with the upper neighbour, then the rebuild into
+/// (1362-1373): a direct merge with the upper neighbor, then the rebuild into
 /// the PermMap's canonical stored form.
 ///
 /// The CmpMap-past-PermMap swap is not here. C runs it from the nominated
@@ -1140,7 +1140,7 @@ pub(crate) fn perm_map_merge(
     // C `permmap.c::MapMerge` rebuilds a nominated PermMap into its canonical
     // stored form — dropping a now-redundant stored permutation array (→
     // `OutCpy`/`InCpy`), clearing a set Invert flag, or collapsing to a
-    // UnitMap — and reports this as a simplification even when no neighbour
+    // UnitMap — and reports this as a simplification even when no neighbor
     // merged (permmap.c:1362-1373). Mirror that here so the surrounding tree
     // is reconstructed with the canonical leaf rather than the stored form.
     let (m, eff_inv, _) = ctx.entry(where_);
@@ -1164,7 +1164,7 @@ pub(crate) fn perm_map_merge(
 /// (wcsmap.c:3124-3170). Doing the lower check at this nomination — rather
 /// than waiting for the lower WcsMap's own nomination — matters: the
 /// returned `modified` index cascades the nominate loop back through the
-/// cancelled pair, which determines the association order of later linear
+/// canceled pair, which determines the association order of later linear
 /// folds. When no direct merge is available, the WcsMap tries to swap past
 /// an adjacent PermMap — either to move it next to a cancelling WcsMap on
 /// the far side, or because the swap itself yields a simpler pair. On success
@@ -1175,11 +1175,11 @@ pub(crate) fn wcs_map_merge(
     where_: usize,
     series: bool,
 ) -> Option<usize> {
-    // Replace-with-simpler, "without reference to the neighbouring Mappings in
+    // Replace-with-simpler, "without reference to the neighboring Mappings in
     // the list": a WcsMap of type `AST__WCSBAD` is equivalent to a UnitMap
     // (wcsmap.c:3095-3107). C makes this the `if` of an if/else whose `else`
-    // holds the whole neighbour search, so a reduced WcsMap never looks at a
-    // neighbour in the same pass. The replacement carries a cleared Invert flag
+    // holds the whole neighbor search, so a reduced WcsMap never looks at a
+    // neighbor in the same pass. The replacement carries a cleared Invert flag
     // (wcsmap.c:3104).
     if wcs.projection() == crate::mappings::WcsProjection::Unknown {
         ctx.set_pair_single(where_, (Box::new(UnitMap::new(wcs.nin())), false, false));
@@ -1187,7 +1187,7 @@ pub(crate) fn wcs_map_merge(
     }
 
     if series && ctx.len() > 1 {
-        // Direct inverse-pair cancellation, lower neighbour first
+        // Direct inverse-pair cancellation, lower neighbor first
         // (C wcsmap.c:3116-3131). Both elements must be WcsMaps (CanMerge);
         // `WcsMap::try_merge` implements the same-projection/opposite-sense
         // equivalence and returns the replacement UnitMap.
@@ -1210,12 +1210,12 @@ pub(crate) fn wcs_map_merge(
             }
         }
 
-        // No direct merge, so consider swapping the WcsMap with a neighbour to
+        // No direct merge, so consider swapping the WcsMap with a neighbor to
         // bring it next to a WcsMap it can cancel against on the far side, or
         // because the swapped pair is itself simpler (C wcsmap.c:3171-3342).
         let wcs_inv = ctx.entry(where_).1;
 
-        // Can the WcsMap swap with its higher neighbour, and would that be
+        // Can the WcsMap swap with its higher neighbor, and would that be
         // intrinsically simpler? (C wcsmap.c:3181-3194.)
         let (swaphi, do2, newwcs_hi) = match (where_ + 1 < ctx.len())
             .then(|| can_swap_wcsmap_past_permmap(&ctx.list, where_))
@@ -1264,9 +1264,9 @@ pub(crate) fn wcs_map_merge(
             }
         }
 
-        // Choose the neighbour so the WcsMap moves towards the nearer target
+        // Choose the neighbor so the WcsMap moves towards the nearer target
         // (C wcsmap.c:3259-3272). Both arms imply the corresponding swap was
-        // found possible, so the neighbour index exists.
+        // found possible, so the neighbor index exists.
         let target = if do1 || (nstep1.is_some() && (nstep2.is_none() || nstep2 > nstep1)) {
             Some(where_ - 1)
         } else if do2 || nstep2.is_some() {
@@ -1284,7 +1284,7 @@ pub(crate) fn wcs_map_merge(
         // With no target, the swapped pair may still be simpler than the
         // original: swap copies, and keep the result only if simplifying
         // either half changes its class (C wcsmap.c:3283-3342). When both
-        // neighbours are suitable, swap with the lower.
+        // neighbors are suitable, swap with the lower.
         } else if swaphi || swaplo {
             let i1 = if swaplo { where_ - 1 } else { where_ };
             let mut copy = vec![
@@ -1314,8 +1314,8 @@ pub(crate) fn wcs_map_merge(
 
 /// The `MapMerge` shape shared by classes whose C counterpart opens with
 /// "see if this Mapping can be replaced by a simpler Mapping, without
-/// reference to the neighbouring Mappings in the list" and then falls through
-/// to the neighbour steps.
+/// reference to the neighboring Mappings in the list" and then falls through
+/// to the neighbor steps.
 ///
 /// `reduced` is the replacement the class arrived at, or `None` when it has
 /// none. The class computes it in its own `map_merge`, which is where C's body
@@ -1336,7 +1336,7 @@ pub(crate) fn self_reduce_map_merge(
 }
 
 /// The replace-with-simpler head on its own, for a class whose C body puts
-/// other steps between it and the plain neighbour merge.
+/// other steps between it and the plain neighbor merge.
 pub(crate) fn try_self_reduce(
     this: &dyn Mapping,
     reduced: Option<DynMapping>,
@@ -1523,8 +1523,8 @@ pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool)
             .or_else(|| {
                 if series {
                     // Skip reverse merge when m1 is UnitMap — let post-loop
-                    // strip handle it (matches C behaviour where UnitMap
-                    // removes itself before neighbours get a chance to merge).
+                    // strip handle it (matches C behavior where UnitMap
+                    // removes itself before neighbors get a chance to merge).
                     if m1.as_any().is::<UnitMap>() {
                         return None;
                     }
@@ -1575,11 +1575,11 @@ pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool)
         }
     }
 
-    // Normalise exactly as [`MergeCtx::replace_pair_with`] does: a merge may
+    // Normalize exactly as [`MergeCtx::replace_pair_with`] does: a merge may
     // return its result in the inverted orientation — `MatrixMap::mtr_zoom`
-    // keeps an inverted MatrixMap inverted so it serialises `Invert = 1` like C
+    // keeps an inverted MatrixMap inverted so it serializes `Invert = 1` like C
     // — and that intrinsic orientation is what `reconstruct` needs in
-    // `orig_inv`. Storing `(m, false, false)` threw it away, materialising the
+    // `orig_inv`. Storing `(m, false, false)` threw it away, materializing the
     // inversion into the stored values and dropping the card.
     let mut m = m;
     let orig_inv = m.is_inverted();
@@ -1600,11 +1600,11 @@ pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool)
 ///    the original Region, replace the nominated component with it and return
 ///    (this is how, e.g., a fully-bounded Interval reclassifies to a Box, or
 ///    a remapped Region collapses to a simpler class).
-/// 2. **Parallel-only neighbour merge.** With the head having made no change:
-///    - try the **lower** neighbour (`where-1`) via
-///      [`Region::region_merge`] with `intfirst = false` (the neighbour's axes
+/// 2. **Parallel-only neighbor merge.** With the head having made no change:
+///    - try the **lower** neighbor (`where-1`) via
+///      [`Region::region_merge`] with `intfirst = false` (the neighbor's axes
 ///      go first), storing the merged Region at `where-1`;
-///    - failing that, try the **upper** neighbour (`where+1`) with
+///    - failing that, try the **upper** neighbor (`where+1`) with
 ///      `intfirst = true` (this Region's axes go first), storing at `where`.
 ///
 ///    On success, C annuls both entries, stores the merged Region at `i1`, and
@@ -1612,9 +1612,9 @@ pub(crate) fn default_map_merge(ctx: &mut MergeCtx, where_: usize, series: bool)
 /// 3. In series, nothing (a series of two Regions is not a Region).
 ///
 /// The nominated Region's own [`try_merge`] only ever covers the direct
-/// pairwise (upper-neighbour, `intfirst = true`) case, so this method is what
-/// lets a Region absorb the neighbour that sits *before* it in the list — the
-/// case C reaches through the lower-neighbour branch and Rust cannot reach via
+/// pairwise (upper-neighbor, `intfirst = true`) case, so this method is what
+/// lets a Region absorb the neighbor that sits *before* it in the list — the
+/// case C reaches through the lower-neighbor branch and Rust cannot reach via
 /// `default_map_merge` (which merges the nominee only with `where+1`).
 pub(crate) fn region_map_merge(
     this: &dyn crate::regions::Region,
@@ -1634,9 +1634,9 @@ pub(crate) fn region_map_merge(
         return Some(where_);
     }
 
-    // ---- 2. Parallel-only neighbour merge ----
+    // ---- 2. Parallel-only neighbor merge ----
     if !series {
-        // Lower neighbour first (intfirst = 0: neighbour axes go first).
+        // Lower neighbor first (intfirst = 0: neighbor axes go first).
         if where_ > 0 {
             let merged = {
                 let (m, _, _) = ctx.entry(where_ - 1);
@@ -1648,7 +1648,7 @@ pub(crate) fn region_map_merge(
             }
         }
 
-        // Upper neighbour (intfirst = 1: this Region's axes go first).
+        // Upper neighbor (intfirst = 1: this Region's axes go first).
         if where_ + 1 < ctx.len() {
             let merged = {
                 let (m, _, _) = ctx.entry(where_ + 1);
@@ -1768,7 +1768,7 @@ fn run_nominate_loop(
             }
 
             // Clone the nominated mapping and attempt to merge it with its
-            // neighbours (C clones map_list[nominated] before astMapMerge).
+            // neighbors (C clones map_list[nominated] before astMapMerge).
             let nominee = ctx.list[nominated].0.clone_box();
             trace::merge_list(nominated, series, &ctx.list);
             let modified = {
@@ -1787,7 +1787,7 @@ fn run_nominate_loop(
             };
 
             // Append to the history and check for a repeating pattern. A
-            // pattern in `modified` is only honoured if `nmap` also repeats
+            // pattern in `modified` is only honored if `nmap` also repeats
             // with a wavelength related by an integer factor (cmpmap.c:3589).
             let wlen1 = pattern_check(modified as i64, 1, mlist);
             let wlen2 = pattern_check(ctx.len() as i64, wlen1, nlist);
@@ -2267,7 +2267,7 @@ fn effective_nin(m: &dyn Mapping, inv: bool) -> usize {
 /// simplifies (C `cmpmap.c::MapMerge` "Parallel CmpMaps in series",
 /// ~1629-1781), or `None` when no restructuring is warranted. This is the
 /// shared core driven both by the legacy whole-list helper above and by
-/// `cmp_map_merge`'s per-nomination neighbour restructure.
+/// `cmp_map_merge`'s per-nomination neighbor restructure.
 fn compute_merge_parallel_pair_in_series(
     list: &[(DynMapping, bool, bool)],
     i: usize,
@@ -2337,9 +2337,9 @@ fn compute_merge_parallel_pair_in_series(
 
         // C keeps each pair's `astSimplify` result at whatever orientation it
         // was returned in — the rebuilt parallel CmpMap's snapshot records
-        // `astGetInvert(smc)` and the object serialises at that stored
+        // `astGetInvert(smc)` and the object serializes at that stored
         // orientation (cmpmap.c:1629-1781 builds `astCmpMap(smc0, smc1, 0)`
-        // with no reorientation). Normalise to the list invariant
+        // with no reorientation). Normalize to the list invariant
         // (forward-stored + flags): effective == original == the result's
         // returned orientation.
         let mut simplified = simplified;
@@ -2349,7 +2349,7 @@ fn compute_merge_parallel_pair_in_series(
         // C `astSimplify_` (mapping.c:24763) tags every result but one whose
         // reduction failed. Each matched pair was combined in series and
         // `astSimplify`'d, so its reduced result carries the record — in the
-        // orientation it was earned in, which is the one the tree serialises
+        // orientation it was earned in, which is the one the tree serializes
         // the pair at.
         if !failed {
             simplified.set_simplified_in(new_inv, true);
@@ -2875,7 +2875,7 @@ fn grism_zoom_merge_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) -> bo
 /// as the element's direction. C `grismmap.c::MapMerge` (1240-1241) stores
 /// `astGetInvert( merged_map )` in the invert list rather than zero, which is
 /// what carries the inversion `CanMerge` applies to a ZoomMap-then-inverted-
-/// GrismMap pair; the list holds each leaf normalised forward, so the flag has
+/// GrismMap pair; the list holds each leaf normalized forward, so the flag has
 /// to be lifted out of the mapping here.
 fn store_merged(list: &mut Vec<(DynMapping, bool, bool)>, i: usize, merged: DynMapping) {
     let mut merged = merged;
@@ -2887,7 +2887,7 @@ fn store_merged(list: &mut Vec<(DynMapping, bool, bool)>, i: usize, merged: DynM
     list.remove(i + 1);
 }
 
-/// Per-class `map_merge` for a nominated `GrismMap`, mirroring the neighbour
+/// Per-class `map_merge` for a nominated `GrismMap`, mirroring the neighbor
 /// checks of C `grismmap.c::MapMerge` (1205-1259). A GrismMap merges only in
 /// series. C examines the lower pair `(where-1, where)` first, then the upper
 /// pair `(where, where+1)`, via `CanMerge`. The two ZoomMap-absorption cases of
@@ -2902,11 +2902,11 @@ pub(crate) fn grism_map_merge(
     series: bool,
 ) -> Option<usize> {
     if series {
-        // Lower neighbour first (C MapMerge 1212-1217): pair (where-1, where).
+        // Lower neighbor first (C MapMerge 1212-1217): pair (where-1, where).
         if where_ > 0 && grism_zoom_merge_at(&mut ctx.list, where_ - 1) {
             return Some(where_ - 1);
         }
-        // Upper neighbour (C MapMerge 1221-1226): pair (where, where+1).
+        // Upper neighbor (C MapMerge 1221-1226): pair (where, where+1).
         if where_ + 1 < ctx.len() && grism_zoom_merge_at(&mut ctx.list, where_) {
             return Some(where_);
         }
@@ -2919,7 +2919,7 @@ pub(crate) fn grism_map_merge(
 /// `pcdmap.c::MapMerge` (1406-1736).
 ///
 /// C's body has four parts, in this order: replace a zero-distortion PcdMap
-/// with a UnitMap without reference to its neighbours; merge directly with an
+/// with a UnitMap without reference to its neighbors; merge directly with an
 /// adjacent UnitMap or with the PcdMap's own inverse; swap past an adjacent
 /// ZoomMap or axis-swapping PermMap to move the PcdMap towards a distant
 /// Mapping it could merge with, then merge at the new adjacency; and, with no
@@ -2932,17 +2932,17 @@ pub(crate) fn pcd_map_merge(
     where_: usize,
     series: bool,
 ) -> Option<usize> {
-    // C's opening move, before any neighbour is considered: a PcdMap whose
+    // C's opening move, before any neighbor is considered: a PcdMap whose
     // distortion coefficient is zero is a UnitMap (pcdmap.c:1420-1432). The
     // replacement carries a cleared Invert flag (pcdmap.c:1429). C makes this
-    // the `if` of an if/else whose `else` holds the whole neighbour search, so
-    // a reduced PcdMap never looks at a neighbour in the same pass.
+    // the `if` of an if/else whose `else` holds the whole neighbor search, so
+    // a reduced PcdMap never looks at a neighbor in the same pass.
     if ast_equal(pcd.disc(), 0.0) {
         ctx.set_pair_single(where_, (Box::new(UnitMap::new(2)), false, false));
         return Some(where_);
     }
 
-    // The whole neighbour search sits inside C's `if( series )`: a PcdMap
+    // The whole neighbor search sits inside C's `if( series )`: a PcdMap
     // cannot combine in parallel with any other Mapping (pcdmap.c:1729-1731).
     if !series {
         return None;
@@ -2957,7 +2957,7 @@ pub(crate) fn pcd_map_merge(
         return Some(modified);
     }
 
-    // Only when neither neighbour merges does C consider swapping
+    // Only when neither neighbor merges does C consider swapping
     // (pcdmap.c:1515-1524).
     pcd_swap_strategy(ctx, where_, series)
 }
@@ -2967,7 +2967,7 @@ pub(crate) fn pcd_map_merge(
 /// Count the Mappings separating the PcdMap from the nearest Mapping it could
 /// merge with on each side, swap towards the nearer one and merge at the new
 /// adjacency; with no such Mapping in reach, swap speculatively with each
-/// eligible neighbour in turn. Returns the index of the first modified
+/// eligible neighbor in turn. Returns the index of the first modified
 /// element, or `None` when no swap is made.
 fn pcd_swap_strategy(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
     if !ctx.entry(where_).0.as_any().is::<PcdMap>() {
@@ -3067,7 +3067,7 @@ fn pcd_steps_to_merge_target(ctx: &MergeCtx, where_: usize, forward: bool) -> i6
     }
 }
 
-/// C's speculative swap (pcdmap.c:1654-1726): swap with the lower neighbour
+/// C's speculative swap (pcdmap.c:1654-1726): swap with the lower neighbor
 /// and then with the upper one, keeping the first swap after which one of the
 /// two Mappings simplifies to a different class. C works on copies so a
 /// rejected swap leaves the list untouched.
@@ -3131,10 +3131,10 @@ fn pcd_clone_pair(ctx: &MergeCtx, i1: usize) -> [(DynMapping, bool, bool); 2] {
     [(a.0.clone_box(), a.1, a.2), (b.0.clone_box(), b.1, b.2)]
 }
 
-/// Swap a PcdMap past its neighbour — C's `PcdZoom` (pcdmap.c:2302-2420) and
+/// Swap a PcdMap past its neighbor — C's `PcdZoom` (pcdmap.c:2302-2420) and
 /// `PcdPerm` (2422-2528). `ipc` is the index of the PcdMap within the supplied
 /// pair, and the returned pair holds the same two classes in the opposite
-/// order. `None` when the neighbour is neither a ZoomMap nor a PermMap.
+/// order. `None` when the neighbor is neither a ZoomMap nor a PermMap.
 ///
 /// The PcdMap C creates carries the distortion of the composition and the
 /// Invert flag of the supplied PcdMap; the ZoomMap C creates carries a cleared
@@ -3164,7 +3164,7 @@ fn pcd_swap_pair(
         let zoom = if other.1 { 1.0 / zm.zoom() } else { zm.zoom() };
 
         // The PcdMap applied first sees the un-zoomed coordinates, so after the
-        // swap its centre is zoomed and its coefficient divided by the square
+        // swap its center is zoomed and its coefficient divided by the square
         // of the zoom; applied second, the reverse (pcdmap.c:2399-2409).
         let (cen, disc) = if ipc == 0 {
             ([xcen * zoom, ycen * zoom], disco / (zoom * zoom))
@@ -3176,7 +3176,7 @@ fn pcd_swap_pair(
         (new_pcd, (new_zoom, false, false))
     } else if other.0.as_any().is::<PermMap>() {
         // The PermMap is passed through unchanged, with its own Invert flag,
-        // and the PcdMap's centre has its two axes exchanged
+        // and the PcdMap's center has its two axes exchanged
         // (pcdmap.c:2503-2523).
         let new_pcd = PcdMap::new(disco, [ycen, xcen]);
         (new_pcd, (other.0.clone_box(), other.1, other.2))
@@ -3367,7 +3367,7 @@ pub(crate) fn recombine_distributed_branches(
     // C `CombineMaps` sets the component's `Invert` to the effective direction
     // only for the duration of the `astCmpMap` call and restores the original
     // afterwards (cmpmap.c:625-662), so the enclosing CmpMap records the
-    // effective direction in `InvA`/`InvB` while the component still serialises
+    // effective direction in `InvA`/`InvB` while the component still serializes
     // in the orientation it was stored in.
     type SplitHalves = (DynMapping, bool, bool, DynMapping, bool, bool);
     let split = |entry: &(DynMapping, bool, bool)| -> Option<SplitHalves> {
@@ -3437,7 +3437,7 @@ pub(crate) fn recombine_distributed_branches(
 ///
 /// This mirrors C `cmpmap.c` Simplify, which for each component records the
 /// *effective* direction in the parent CmpMap's `InvA`/`InvB` while leaving
-/// the component serialised in its *original* orientation. So a CmpMap child
+/// the component serialized in its *original* orientation. So a CmpMap child
 /// gets `inv_a/inv_b = effective_inv` and a stored Invert of `orig_inv`;
 /// these are independent and, by construction, the child's stored Invert
 /// cancels out of the transform (see [`CmpMap::set_first_orientation`]).
@@ -3446,8 +3446,8 @@ pub(crate) fn recombine_distributed_branches(
 /// `CmpMap`), in its effective orientation — matching C's `nmap == 1` branch
 /// which sets the lone Mapping's Invert to the effective value.
 ///
-/// `orig_inv` is honoured only for series reconstruction. The parallel path
-/// keeps the existing `invert_into_structure` behaviour, which already emits
+/// `orig_inv` is honored only for series reconstruction. The parallel path
+/// keeps the existing `invert_into_structure` behavior, which already emits
 /// the canonical form C uses for parallel CmpMaps.
 ///
 /// Used both as C `Simplify`'s closing fold and as a plain tree builder by
@@ -3479,7 +3479,7 @@ fn reconstruct_inner(list: Vec<(DynMapping, bool, bool)>, series: bool) -> AstRe
     // the Mapping list *in reverse* and composing each map with the CmpMap
     // formed so far: `result = astCmpMap(map[i], result)`. This produces a
     // right-associated tree — `map[0] ∘ (map[1] ∘ (… ∘ map[n-1]))` — which is
-    // what the native serialiser then emits.
+    // what the native serializer then emits.
     let mut rest = list;
 
     let (mut acc, acc_eff, acc_orig) = rest.pop().expect("reconstruct called with empty list");
@@ -3502,7 +3502,7 @@ fn reconstruct_inner(list: Vec<(DynMapping, bool, bool)>, series: bool) -> AstRe
         }
         let mut cmp = CmpMap::new(m, acc, kind)?;
 
-        // Restore each child to the orientation it should serialise in (its
+        // Restore each child to the orientation it should serialize in (its
         // original tree orientation), leaving inv_a/inv_b carrying the
         // effective direction. C preserves each component's own stored Invert
         // (`astGetInvert(map1)`) and records the effective direction separately
@@ -3511,7 +3511,7 @@ fn reconstruct_inner(list: Vec<(DynMapping, bool, bool)>, series: bool) -> AstRe
         // inverted stays inverted. Our transform derives a child's math
         // direction as `fwd XOR inv_a` (the child's own Invert cancels), so
         // re-setting the stored orientation after `CmpMap::new` captured the
-        // effective flag is transform-neutral and only fixes the serialised
+        // effective flag is transform-neutral and only fixes the serialized
         // form.
         //
         // For a series reconstruct, or a leaf (non-CmpMap) child of a parallel
@@ -3519,7 +3519,7 @@ fn reconstruct_inner(list: Vec<(DynMapping, bool, bool)>, series: bool) -> AstRe
         // parallel reconstruct is excluded: `apply_effective` already rewrote it
         // to canonical forward form via `invert_into_structure` (which moves the
         // inversion into that child's own recorded structure), so re-inverting
-        // it would undo that canonicalisation.
+        // it would undo that canonicalization.
         if series {
             cmp.set_first_orientation(m_orig);
             if let Some(o) = seed_orig.take() {
@@ -3812,7 +3812,7 @@ fn simplify_cmpmap_into(
     // C's `simpler` (cmpmap.c:3634) decides between cloning the supplied CmpMap
     // and rebuilding it from the component list. `astMapList` sets it when the
     // decomposition met an inverted CmpMap (`result = invert || r1 || r2`,
-    // MapList:1191), whose normalisation is itself a simplification even if no
+    // MapList:1191), whose normalization is itself a simplification even if no
     // pair merges; the nominate loop sets it on every unfrozen modification.
     //
     // C discards the decomposition's flag under a restricted simplify: it cannot

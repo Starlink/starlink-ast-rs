@@ -505,7 +505,7 @@ merge_card_hunks.py asserts that separation rather than assuming it."
 
 ---
 
-## Task 4: Retire the stale licences and document the platform captures
+## Task 4: Retire the stale licenses and document the platform captures
 
 **Files:**
 - Modify: `crates/ast-core/tests/test_wcsconv.rs:105-130` (the `ISSIMP_PLACEMENT_LICENSED` table)
@@ -518,16 +518,16 @@ merge_card_hunks.py asserts that separation rather than assuming it."
 - Consumes: the regenerated corpus from Tasks 2 and 3.
 - Produces: an `ISSIMP_PLACEMENT_LICENSED` table containing only genuine FitsChan reader-order cases, and a ledger count matching it.
 
-- [ ] **Step 1: Find which licence rows are now unnecessary**
+- [ ] **Step 1: Find which license rows are now unnecessary**
 
 Run: `cargo test -p ast-core --test test_wcsconv 2>&1 | grep -E "IsSimp card count"`
 
-Every row whose reported `(got, want)` are now equal no longer needs a licence.
-Delete those rows outright. Do not adjust their numbers — a licence pinned against a reference we just replaced has no meaning.
+Every row whose reported `(got, want)` are now equal no longer needs a license.
+Delete those rows outright. Do not adjust their numbers — a license pinned against a reference we just replaced has no meaning.
 
 - [ ] **Step 2: Delete the retired rows and re-justify the survivors**
 
-Edit the table so each surviving row carries a comment naming the C behaviour that causes it. Replace the block comment above `ISSIMP_PLACEMENT_LICENSED` with:
+Edit the table so each surviving row carries a comment naming the C behavior that causes it. Replace the block comment above `ISSIMP_PLACEMENT_LICENSED` with:
 
 ```rust
 /// Cases where the port's `IsSimp` placement differs from C's in the FitsChan
@@ -974,7 +974,7 @@ For each of `dssmap`, `grismmap`, `lutmap`, `matrix`, `normmap`, `pcdmap`, `perm
 3. Locate each step's Rust counterpart.
 4. Write `docs/audits/mapmerge/<module>.md` in the Task 5 format.
 
-Two classes have known findings to confirm rather than rediscover: `matrix`'s final fallback is gated on a mergeable neighbour (`matrix_merge.rs`), and `wcsmap` gained C's first step (`AST__WCSBAD` to `UnitMap`) only recently.
+Two classes have known findings to confirm rather than rediscover: `matrix`'s final fallback is gated on a mergeable neighbor (`matrix_merge.rs`), and `wcsmap` gained C's first step (`AST__WCSBAD` to `UnitMap`) only recently.
 
 - [ ] **Step 2: Audit the Region modules**
 
@@ -1348,7 +1348,7 @@ cap_zoommap_04 kept a FrmSet where C collapses to bare Points."
 ## Task 12: Cause E — `Closed` is written when C omits it
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/mod.rs` (the Region serialiser)
+- Modify: `crates/ast-core/src/regions/mod.rs` (the Region serializer)
 - Modify: `crates/ast-core/tests/test_simplify_regression.rs`
 - Test: `crates/ast-core/tests/test_serialisation.rs`
 
@@ -1400,7 +1400,7 @@ Expected: FAIL, with the dump showing `Closed = 1`.
 
 - [ ] **Step 5: Implement the fix**
 
-Make the Region serialiser track whether `Closed` was explicitly set and omit the card when it was not, mirroring C's `set` argument.
+Make the Region serializer track whether `Closed` was explicitly set and omit the card when it was not, mirroring C's `set` argument.
 Comment it with the C file and line range.
 
 - [ ] **Step 6: Run it to verify it passes**

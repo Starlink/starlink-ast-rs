@@ -100,7 +100,7 @@ git status
 git submodule status reference/starlink-ast
 ```
 
-Expected: on `tickets/DM-54793` (or successor branch); submodule initialised.
+Expected: on `tickets/DM-54793` (or successor branch); submodule initialized.
 
 - [ ] **Step 2: Build reference libast.a if not already built**
 
@@ -1121,7 +1121,7 @@ Co-Authored-By: SLAC AI"
 
 The default impl (added in Task 1.1) succeeds only when `in_axes.len() == nin()`. PolyMap inherits this default — confirm it does the right thing. TranMap/RateMap/NormMap have their own logic in C; port them.
 
-- [ ] **Step 1: Add a test confirming PolyMap uses default behaviour**
+- [ ] **Step 1: Add a test confirming PolyMap uses default behavior**
 
 ```rust
 #[test]
@@ -1163,7 +1163,7 @@ Generated with AI
 Co-Authored-By: SLAC AI"
 ```
 
-### Task 1.8: Group-1 finalisation
+### Task 1.8: Group-1 finalization
 
 - [ ] **Step 1: Run full ast-core test suite**
 
@@ -1203,7 +1203,7 @@ Expected: still `152 passed, 40 failed`. Group 1 changes the trait but doesn't y
 - Test: inside `linear_approx.rs`
 
 **C reference:** `mapping.c::astLinearApprox` (search `LinearApprox(` in mapping.c). About 200 lines. Algorithm:
-1. Sample the mapping at the lower-bound corner, every `nin` corners adjacent along one axis, and the centre.
+1. Sample the mapping at the lower-bound corner, every `nin` corners adjacent along one axis, and the center.
 2. Solve for the affine fit `y = matrix·x + shift`.
 3. Verify the fit reproduces the corner samples within `tol` per output axis (RMS gate).
 
@@ -1505,7 +1505,7 @@ Output as Rust constants. Cover at minimum:
 1. SIP-shape (no shift, identity linear, only quadratic+).
 2. PolyMap with constant terms → expect non-zero shift.
 3. PolyMap with non-unit linear → expect non-identity matrix.
-4. Non-analyseable PolyMap → expect None.
+4. Non-analyzable PolyMap → expect None.
 
 (The oracle program structure mirrors `linear_approx.c`. Adapt the same pattern.)
 
@@ -1610,7 +1610,7 @@ Generated with AI
 Co-Authored-By: SLAC AI"
 ```
 
-### Task 2.4: Group-2 finalisation
+### Task 2.4: Group-2 finalization
 
 - [ ] **Step 1: Verify all helpers tests pass**
 
@@ -1882,7 +1882,7 @@ EOF
 )"
 ```
 
-### Task 3.3: Group-3 finalisation
+### Task 3.3: Group-3 finalization
 
 - [ ] **Step 1: Run full ast-core test suite**
 
@@ -1906,7 +1906,7 @@ Expected: `152 passed, 40 failed`.
 
 ## Group 4: `make_int_world` + supporting helpers
 
-**Goal:** Port the central CRPIX/CD extractor (without the SIP branch yet) plus its column-orthogonalisation and invertability helpers. Wire in `find_basis_vectors` / `fit_line_cd` (currently `#[allow(dead_code)]`).
+**Goal:** Port the central CRPIX/CD extractor (without the SIP branch yet) plus its column-orthogonalization and invertability helpers. Wire in `find_basis_vectors` / `fit_line_cd` (currently `#[allow(dead_code)]`).
 
 ### Task 4.1: `orth_vector` + `orth_vector_set`
 
@@ -2329,7 +2329,7 @@ EOF
 )"
 ```
 
-### Task 4.5: Group-4 finalisation
+### Task 4.5: Group-4 finalization
 
 - [ ] **Step 1: Full ast-core test run**
 
@@ -2552,7 +2552,7 @@ EOF
 )"
 ```
 
-### Task 5.5: Group-5 finalisation
+### Task 5.5: Group-5 finalization
 
 - [ ] **Step 1: Test suite + clippy + fmt + wcsconv baseline check**
 
@@ -2758,7 +2758,7 @@ EOF
 )"
 ```
 
-### Task 6.3: Group-6 finalisation
+### Task 6.3: Group-6 finalization
 
 Same final-block as previous groups. wcsconv baseline still `152 / 40` (no integration yet).
 
@@ -2967,7 +2967,7 @@ EOF
 )"
 ```
 
-### Task 7.3: Group-7 finalisation
+### Task 7.3: Group-7 finalization
 
 - [ ] **Step 1: Test suite + clippy + fmt**
 
@@ -3090,7 +3090,7 @@ Generated with AI
 Co-Authored-By: SLAC AI"
 ```
 
-### Task 8.5: Final group finalisation
+### Task 8.5: Final group finalization
 
 - [ ] **Step 1: Full test suite**
 
@@ -3139,7 +3139,7 @@ EOF
 
 This plan is large. Read the spec (`docs/superpower/specs/2026-05-25-makeintworld-port-design.md`) in full before starting. Treat the C source as the contract; treat any deviation as a bug regardless of whether it "looks reasonable" in Rust.
 
-Each commit group is reviewable on its own. If a commit group passes its finalisation checklist, the next group can start without further review. If it fails, fix it before moving on.
+Each commit group is reviewable on its own. If a commit group passes its finalization checklist, the next group can start without further review. If it fails, fix it before moving on.
 
 When in doubt, read the C source again. Don't invent rules.
 
@@ -3180,7 +3180,7 @@ fixtures all pass (Group 8), revisit this work for an
 - Reconsider `AnalysePolyResult.map3_matrix: Option<MatrixMap>`
   (where `None` encodes the UnitMap branch) as an explicit
   `enum { Identity, Matrix(MatrixMap) }` — the current shape is a
-  C-compat artefact.
+  C-compat artifact.
 - Audit which `pub` items in `helpers/` are still reachable from
   outside the crate after the integration work lands. Anything not
   needed externally should drop to `pub(crate)`.

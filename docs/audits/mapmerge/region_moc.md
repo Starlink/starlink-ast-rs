@@ -22,7 +22,7 @@ radius is the resolution at MaxOrder, made once and kept.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | `GetDefUnc`: initialise | moc.c:4389-4390 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no sentinel to initialise |
+| 1 | `GetDefUnc`: initialize | moc.c:4389-4390 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no sentinel to initialize |
 | 2 | Check the global error status | moc.c:4392-4393 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a pointer to the Moc | moc.c:4395-4396 (fn GetDefUnc) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 4 | If no default uncertainty is kept, make one | moc.c:4398-4400 (fn GetDefUnc) | moc.rs:3452-3454 (fn get_def_unc) | architecture | ported |

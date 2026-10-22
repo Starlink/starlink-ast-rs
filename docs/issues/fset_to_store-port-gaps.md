@@ -20,7 +20,7 @@ This document tracks every C branch in `fitschan.c` that is referenced
 by the `fset_to_store` pipeline but is **not yet ported** to the
 Rust side. Earlier commits in Groups 3–5 of the
 [MakeIntWorld port plan](../superpowers/plans/2026-05-25-makeintworld-port.md)
-labelled some of these as "deferred because the existing wcsconv
+labeled some of these as "deferred because the existing wcsconv
 fixtures don't exercise them" — that's the wrong rationale. **Lack
 of fixture coverage means the fixture set is insufficient, not that
 the C logic is optional.** Every entry below MUST be ported.
@@ -196,7 +196,7 @@ the relativistic Doppler formula, and emits ZSOURCE + SSYSSRC.
 
 ### RESTFRQ vs RESTWAV — DONE
 
-`spectral_axes` now picks RESTWAV (= `c / rest_freq`, in metres)
+`spectral_axes` now picks RESTWAV (= `c / rest_freq`, in meters)
 for wavelength-domain systems (`WAVE`, `AWAV`, `VOPT`, `ZOPT`)
 and RESTFRQ (Hz) for the rest. Mirrors C:30740-30751.
 

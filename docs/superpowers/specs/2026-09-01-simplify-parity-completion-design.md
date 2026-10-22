@@ -133,7 +133,7 @@ Three changes make the instrument load-bearing.
 ### 3.1 A citation that rots must fail a test
 
 Citations become `polygon.rs:1158 (fn simplified)`.
-A gate re-derives the enclosing `fn` at the cited line and compares it with the parenthesised name, so a citation that has drifted fails rather than misleading a reader.
+A gate re-derives the enclosing `fn` at the cited line and compares it with the parenthesized name, so a citation that has drifted fails rather than misleading a reader.
 
 The rewrite of 978 citations is script-driven, not hand-edited.
 The script that derives the enclosing `fn` from a file and a line is the same derivation the gate re-runs, so the tool and the gate cannot disagree.

@@ -17,8 +17,8 @@
 1. **Match C structure.** The reader produces a FrameSet with `Lnk{i}=1` for every alt frame (parent = base node). The writer's per-letter loop processes alt planes in alphabetical order. Last-plane-wins for global cards.
 2. **Primary-fallback on read.** Per-axis keys for an alt plane fall back to the matching primary key when absent. Mirrors C `GetItem(store, axis, m, s)` which returns the `s=' '` value when the requested `s` slot is empty.
 3. **Bit-exact emission required.** Every per-axis card in the alt plane must match C `wcsconverter` output byte-for-byte. The native intermediate (`to_native_string` → `parse_native`) round-trips losslessly.
-4. **No new placeholders.** Each commit group leaves the codebase compileable with `cargo fmt`, `cargo clippy --workspace -- -D warnings`, and `cargo test -p ast-core` (allowing for the documented temporary red fixtures inside groups 4–5; group 6 finalises).
-5. **Don't change the FrameSet integrity contract.** `add_frame(FrameRef::Base, ...)` stores the supplied mapping verbatim; the writer's `mapping(...)` call simplifies on retrieval. Both behaviours match today's primary-frame path; alt frames go through the same path.
+4. **No new placeholders.** Each commit group leaves the codebase compileable with `cargo fmt`, `cargo clippy --workspace -- -D warnings`, and `cargo test -p ast-core` (allowing for the documented temporary red fixtures inside groups 4–5; group 6 finalizes).
+5. **Don't change the FrameSet integrity contract.** `add_frame(FrameRef::Base, ...)` stores the supplied mapping verbatim; the writer's `mapping(...)` call simplifies on retrieval. Both behaviors match today's primary-frame path; alt frames go through the same path.
 
 ---
 
@@ -91,13 +91,13 @@ crates/ast-core/src/fitschan/wcs_write.rs
 | `GetItem` primary-fallback semantics | fitschan.c, search `GetItem` | look near `FitsStore *store` accesses |
 | `astChrMatch(astGetFitsAxisOrder(this), "<auto>")` | fitschan.c:5405 | gates the auto axis-swap |
 
-When in doubt about a specific keyword's per-version behaviour, search `fitschan.c` for `SetItem( &(store->`*name*`,` and look at the `s` parameter in the call.
+When in doubt about a specific keyword's per-version behavior, search `fitschan.c` for `SetItem( &(store->`*name*`,` and look at the `s` parameter in the call.
 
 ---
 
 ## Group 1: Frame `Ident` setters
 
-**Goal:** Add `set_ident(&mut self, ident: impl Into<String>)` on every Frame variant. Pure plumbing, no behavioural change.
+**Goal:** Add `set_ident(&mut self, ident: impl Into<String>)` on every Frame variant. Pure plumbing, no behavioral change.
 
 ### Task 1.1: BasicFrame::set_ident
 
@@ -317,7 +317,7 @@ EOF
 )"
 ```
 
-### Task 1.4: Group 1 finalisation
+### Task 1.4: Group 1 finalization
 
 - [ ] **Step 1: Format + clippy**
 
@@ -699,7 +699,7 @@ EOF
 )"
 ```
 
-### Task 2.4: Group 2 finalisation
+### Task 2.4: Group 2 finalization
 
 - [ ] **Step 1: fmt + clippy + full test suite**
 
@@ -1242,7 +1242,7 @@ EOF
 )"
 ```
 
-### Task 3.5: Group 3 finalisation
+### Task 3.5: Group 3 finalization
 
 - [ ] **Step 1: fmt + clippy + full tests**
 
@@ -1281,7 +1281,7 @@ EOF
 ---
 ## Group 4: Writer plumbing — `s: char` through `fset_to_store`, `collect_plane_stores`
 
-**Goal:** Add `s: char` as a parameter to `fset_to_store` (today hardcoded to `' '`), and propagate it through the helpers it calls. Add a `collect_plane_stores` helper that runs the per-plane pipeline and returns `Vec<PlaneStore>`. No encoder behaviour change yet.
+**Goal:** Add `s: char` as a parameter to `fset_to_store` (today hardcoded to `' '`), and propagate it through the helpers it calls. Add a `collect_plane_stores` helper that runs the per-plane pipeline and returns `Vec<PlaneStore>`. No encoder behavior change yet.
 
 ### Task 4.1: Thread `s` through `fset_to_store`
 
@@ -1352,7 +1352,7 @@ After:
     })?;
 ```
 
-Apply the same change to the `spectral_axes` and `other_axes` blocks. Step (b) of the post-processing section in `fset_to_store` (the `wcsname` write) also benefits from honouring `s`, but the `WCSNAME` keyword name itself isn't axis-indexed and there's only one slot in `FitsStore::wcsname`. Leave the `WCSNAME` storage alone — the per-letter suffix is applied at card emission time in Group 5.
+Apply the same change to the `spectral_axes` and `other_axes` blocks. Step (b) of the post-processing section in `fset_to_store` (the `wcsname` write) also benefits from honoring `s`, but the `WCSNAME` keyword name itself isn't axis-indexed and there's only one slot in `FitsStore::wcsname`. Leave the `WCSNAME` storage alone — the per-letter suffix is applied at card emission time in Group 5.
 
 - [ ] **Step 3: Update existing call sites**
 
@@ -1387,7 +1387,7 @@ Expected: clean.
 cargo test -p ast-core 2>&1 | grep -E "test result|FAILED" | tail -5
 ```
 
-Expected: all `ok`. (Behaviour is unchanged — every call site passes `' '`.)
+Expected: all `ok`. (Behavior is unchanged — every call site passes `' '`.)
 
 - [ ] **Step 7: Commit**
 
@@ -1593,7 +1593,7 @@ EOF
 )"
 ```
 
-### Task 4.3: Group 4 finalisation
+### Task 4.3: Group 4 finalization
 
 - [ ] **Step 1: fmt + clippy + full tests**
 
@@ -1779,7 +1779,7 @@ fn plane_domain_for_alt(fs: &FrameSet, letter: char) -> Option<String> {
 }
 ```
 
-Move the per-axis body of the existing `write_store_to_cards` into `write_store_per_axis_cards`. Keep the existing `write_store_to_cards` symbol available as a thin wrapper for any caller that still wants the old behaviour, or delete it if no caller remains.
+Move the per-axis body of the existing `write_store_to_cards` into `write_store_per_axis_cards`. Keep the existing `write_store_to_cards` symbol available as a thin wrapper for any caller that still wants the old behavior, or delete it if no caller remains.
 
 - [ ] **Step 4: Build**
 
@@ -2253,7 +2253,7 @@ EOF
 )"
 ```
 
-### Task 5.7: Group 5 finalisation
+### Task 5.7: Group 5 finalization
 
 - [ ] **Step 1: fmt + clippy + full tests**
 
@@ -2598,7 +2598,7 @@ EOF
 
 Repeat steps 1-7 for every bucket-A residual.
 
-### Task 6.6: Group 6 finalisation
+### Task 6.6: Group 6 finalization
 
 - [ ] **Step 1: Final fmt + clippy + full test suite**
 
@@ -2657,7 +2657,7 @@ EOF
 
 ## Closing notes
 
-The plan is large; treat each commit group as a reviewable unit. If a group's finalisation step shows regressions, fix them before moving to the next group.
+The plan is large; treat each commit group as a reviewable unit. If a group's finalization step shows regressions, fix them before moving to the next group.
 
 When in doubt about C semantics, read `fitschan.c` again. The C library has 26-letter-aware `FitsStore` matrices behind every per-axis lookup; our Rust port simulates that with a `Vec<(char, FitsStore)>` of separate stores plus a primary-fallback rule on read. The two are semantically equivalent for the keyword set we touch.
 

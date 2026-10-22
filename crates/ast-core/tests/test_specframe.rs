@@ -1,7 +1,7 @@
 //! Integration tests for SpecFrame.
 //!
 //! Covers: construction, attributes, system conversion (frequency to wavelength,
-//! velocity with rest frequency), standard-of-rest correction, serialisation
+//! velocity with rest frequency), standard-of-rest correction, serialization
 //! round-trip, and distance/format operations.
 //!
 //! Rust equivalent of reference/starlink-ast/ast_tester/testspecframe.c
@@ -421,7 +421,7 @@ fn test_not_equal_different_sor() {
 }
 
 // ===========================================================================
-// Serialisation round-trip
+// Serialization round-trip
 // ===========================================================================
 
 #[test]
@@ -710,7 +710,7 @@ fn set_system_rescales_spec_origin() {
 
 /// testspecframe.c Errors 11-12: SourceVel, in C's units (km/s for a
 /// velocity), is re-expressed when SourceVRF and SourceSys change. 1000 km/s relative to the LSRK, as an optical
-/// redshift relative to the barycentre, is 0.00334028336870307, and back.
+/// redshift relative to the barycenter, is 0.00334028336870307, and back.
 #[test]
 fn source_vel_follows_source_vrf_and_source_sys() {
     let mut sf = SpecFrame::new(SpecSystem::Freq);

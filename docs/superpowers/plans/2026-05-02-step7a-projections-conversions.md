@@ -117,7 +117,7 @@ pub(crate) fn addet(rm: f64, dm: f64, eq: f64) -> (f64, f64) { ... }
 Same pattern for: `palSubet`, `palMappa` (returns 21-element array),
 `palAmpqk`, `palMapqkz`.
 
-**Angular normalisation:**
+**Angular normalization:**
 ```rust
 extern "C" { fn palDrange(angle: f64) -> f64; }
 pub(crate) fn drange(angle: f64) -> f64 { unsafe { palDrange(angle) } }
@@ -608,7 +608,7 @@ pub struct SlaMap {
 Each cvt_type has a known number of args. Implement
 `SlaCvtType::nargs(&self) -> usize` and
 `SlaCvtType::code_string(&self) -> &'static str` (returns uppercase
-name for serialisation: "ADDET", "SUBET", etc.).
+name for serialization: "ADDET", "SUBET", etc.).
 
 `SlaCvtType::from_code(s: &str) -> Option<Self>` parses the string.
 
@@ -915,6 +915,6 @@ Verify WcsMap and SlaMap appear in all dispatch points:
 6. wcslib wrapper: TAN, SIN, AIT, CAR round-trip verified
 7. WcsMap: projection forward/inverse, multi-axis passthrough, PV params
 8. SlaMap: single-step, multi-step, precession, round-trip, inversion
-9. Both types serialise and deserialise correctly
+9. Both types serialize and deserialize correctly
 10. Both types in AnyObject dispatch
 11. `git status` — clean

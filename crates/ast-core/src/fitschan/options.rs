@@ -6,7 +6,7 @@
 //! keeps the value for every later one in that thread (it is held in the
 //! thread's FitsChan class table), then applies it with `astSet` before the
 //! constructor's own options.
-//! Only the settings of a FitsChan's attributes are recognised; the parser
+//! Only the settings of a FitsChan's attributes are recognized; the parser
 //! is private to the crate, since the Rust API sets attributes through
 //! their typed setters.
 

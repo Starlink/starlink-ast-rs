@@ -15,12 +15,12 @@ the WinMap's scale and shift into the DssMap's pixel origin and pixel size, and
 rebuilding the DssMap from the amended FITS cards.
 
 `DssMap::map_merge` (`dssmap.rs:548-560 (fn map_merge)`) calls `default_map_merge`
-(`mappings/simplify.rs:1500-1593 (fn default_map_merge)`), whose neighbour attempt reaches
+(`mappings/simplify.rs:1500-1593 (fn default_map_merge)`), whose neighbor attempt reaches
 `DssMap::try_merge` (`dssmap.rs:598-678 (fn try_merge)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1 | dssmap.c:997-998 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result to -1 | dssmap.c:997-998 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | dssmap.c:1000-1001 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | The only simplification available: a WinMap adjacent to a DssMap, in series | dssmap.c:1003-1017 (fn MapMerge) | dssmap.rs:605-619 (fn try_merge) | architecture | ported |
 | 4 | Temporarily set the WinMap's Invert attribute to the supplied value | dssmap.c:1018-1022 (fn MapMerge) | dssmap.rs:622 (fn try_merge) | ceremony | ported |
@@ -29,7 +29,7 @@ rebuilding the DssMap from the amended FITS cards.
 | 7 | Read the keywords defining the DssMap's pixel origin and scales | dssmap.c:1031-1040 (fn MapMerge) | dssmap.rs:636-639 (fn try_merge) | architecture | ported |
 | 8 | Compute new values that account for the WinMap | dssmap.c:1041-1054 (fn MapMerge) | dssmap.rs:643-655 (fn try_merge) | architecture | ported |
 | 9 | CNPIX1 and CNPIX2 are integer keywords, so accept only values integral to one hundredth of a pixel | dssmap.c:1055-1060 (fn MapMerge) | dssmap.rs:658-662 (fn try_merge) | architecture | ported |
-| 10 | Take a copy of the FitsChan holding the DssMap's defining cards | dssmap.c:1061-1066 (fn MapMerge) | -- | ceremony | n/a: the port stores the plate parameters as fields, so it amends those directly instead of round-tripping a FitsChan; the round trip's one numeric effect, the plate centre passing through its sexagesimal cards, is reproduced by `plate_centre_through_fits` (`tests/test_dss_merge_oracle.rs`) |
+| 10 | Take a copy of the FitsChan holding the DssMap's defining cards | dssmap.c:1061-1066 (fn MapMerge) | -- | ceremony | n/a: the port stores the plate parameters as fields, so it amends those directly instead of round-tripping a FitsChan; the round trip's one numeric effect, the plate center passing through its sexagesimal cards, is reproduced by `plate_centre_through_fits` (`tests/test_dss_merge_oracle.rs`) |
 | 11 | Update each changed keyword in that copy | dssmap.c:1067-1097 (fn MapMerge) | dssmap.rs:666-672 (fn try_merge) | architecture | ported |
 | 12 | If every keyword updated, build the new DssMap from the amended cards | dssmap.c:1098-1102 (fn MapMerge) | dssmap.rs:666-674 (fn try_merge) | architecture | ported |
 | 13 | Replace the DssMap in the list with the new one, leaving the invert flag alone | dssmap.c:1103-1107 (fn MapMerge) | mappings/simplify.rs:1585-1590 (fn default_map_merge) | architecture | ported |
@@ -65,9 +65,9 @@ nothing is mutated and nothing is restored.
 
 ## There is no self-reduction step, in C or here
 
-C's DssMap `MapMerge` is the neighbour absorption and nothing else: it has no
+C's DssMap `MapMerge` is the neighbor absorption and nothing else: it has no
 replace-with-simpler step, and DssMap does not override the `Simplify` vtab slot,
-so a nominated DssMap reduces only against a neighbour.
+so a nominated DssMap reduces only against a neighbor.
 `DssMap::map_merge` matches that, going straight to the pairwise merge. Row 19's
 Rust site is that call.
 

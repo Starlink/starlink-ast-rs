@@ -2,7 +2,7 @@
 
 ## Overview
 
-DSBSpecFrame is a specialisation of SpecFrame for dual-sideband (heterodyne)
+DSBSpecFrame is a specialization of SpecFrame for dual-sideband (heterodyne)
 instruments. Each observed spectral point contains contributions from two
 frequencies — one from the Lower Side Band (LSB) and one from the Upper Side
 Band (USB) — equidistant on either side of a fixed Local Oscillator (LO)
@@ -137,7 +137,7 @@ impl DSBSpecFrame {
 - **Unphysical LO** (`f_lo < |ifr|`): report error (C's `AST__BDFTS`).
 - **FrameSet integrity override**: when `map_from` is called for integrity
   restoration, `align_sideband` is forced true regardless of stored value
-  (matching C's `AST__INTFLAG` behaviour).
+  (matching C's `AST__INTFLAG` behavior).
 - **Match with plain SpecFrame**: DSBSpecFrame behaves as SpecFrame (no
   sideband conversion applied). This is by design.
 
@@ -180,9 +180,9 @@ impl Frame for DSBSpecFrame {
 
 ### "Observed" sideband determination
 
-The "observed" sideband is the one containing DSBCentre:
-- IF > 0 → LO is above DSBCentre → DSBCentre is in LSB → observed = LSB
-- IF ≤ 0 → LO is below DSBCentre → DSBCentre is in USB → observed = USB
+The "observed" sideband is the one containing Dsbcenter:
+- IF > 0 → LO is above Dsbcenter → Dsbcenter is in LSB → observed = LSB
+- IF ≤ 0 → LO is below Dsbcenter → Dsbcenter is in USB → observed = USB
 
 ## Serialization
 
@@ -243,7 +243,7 @@ fn default_label(&self) -> String {
 Standalone integration test:
 - Construction and attribute defaults
 - Sideband resolution from IF sign
-- DSBCentre/IF getter/setter round-trips
+- Dsbcenter/IF getter/setter round-trips
 - ImagFreq computation
 - Sideband conversion: transform frequency through USB→LSB, verify
   `f_lsb = 2*f_lo - f_usb`

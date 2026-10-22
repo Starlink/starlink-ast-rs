@@ -118,7 +118,7 @@ struct DistortionMaps {
 /// Port of C `DistortMaps` (fitschan.c:8801).
 ///
 /// Inspects the CTYPE values for a Paper IV distortion code and returns the
-/// Mappings that implement it. Every distortion code found — recognised or
+/// Mappings that implement it. Every distortion code found — recognized or
 /// not — is stripped from the CTYPE value in `store`, so later steps never
 /// have to allow for one being present.
 ///
@@ -609,7 +609,7 @@ mod tests {
 
     /// The store a rotated-and-skewed Spitzer-like `CDj_i` header produces once
     /// `SpecTrans` has split it into a unit-row `PCj_i` matrix and per-row
-    /// `CDELTj`. Derived here by the same row-normalisation `SpecTrans` applies,
+    /// `CDELTj`. Derived here by the same row-normalization `SpecTrans` applies,
     /// so `PC * CDELT` reproduces `CD` to the last bit and the transform
     /// assertions below are the CD matrix's own.
     fn cd_matrix_store() -> FitsStore {

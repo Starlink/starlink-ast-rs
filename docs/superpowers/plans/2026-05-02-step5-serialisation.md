@@ -1,10 +1,10 @@
-# Step 5: Serialisation Implementation Plan
+# Step 5: Serialization Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement Node tree, Serializable trait, Native text parser/renderer, and to_node/from_node for all 9 existing types. Public API via AnyObject enum.
 
-**Architecture:** Each concrete type implements `Serializable` in its own module (accessing its own private fields). The `serial` module provides the Node types, the trait, Native format parser/renderer, and `AnyObject` dispatch. The Node tree is the intermediate representation — classes serialise to/from Nodes, format backends read/write Nodes to text.
+**Architecture:** Each concrete type implements `Serializable` in its own module (accessing its own private fields). The `serial` module provides the Node types, the trait, Native format parser/renderer, and `AnyObject` dispatch. The Node tree is the intermediate representation — classes serialize to/from Nodes, format backends read/write Nodes to text.
 
 **Tech Stack:** Rust 2024 edition. No new dependencies (Node tree and Native format are hand-written; no serde needed).
 
@@ -737,7 +737,7 @@ git commit -m "Add Native text renderer (Node tree → text) with C-compatible f
 
 ---
 
-### Task 4: Mapping Serialisation (UnitMap, ZoomMap, ShiftMap, MatrixMap, PermMap, CmpMap)
+### Task 4: Mapping Serialization (UnitMap, ZoomMap, ShiftMap, MatrixMap, PermMap, CmpMap)
 
 **Files:**
 - Modify: `crates/ast-core/src/mappings/unit.rs`
@@ -756,7 +756,7 @@ Every mapping shares common Mapping base attributes (Nin, Nout,
 Invert, IsSimp, etc.) written before `IsA Mapping`. A helper
 module provides the shared logic.
 
-- [ ] **Step 1: Add mapping serialisation helpers to serial/mod.rs**
+- [ ] **Step 1: Add mapping serialization helpers to serial/mod.rs**
 
 Add to `crates/ast-core/src/serial/mod.rs`:
 
@@ -1159,7 +1159,7 @@ impl Serializable for CmpMap {
 Note: `CmpMap::to_node` calls `self.first.to_node()` — this requires
 `Serializable` to be callable on `dyn Mapping`. Since we can't add
 `Serializable` as a supertrait of `Mapping` (it's private and not all
-future Mappings will be serialisable immediately), we need a dispatch
+future Mappings will be serializable immediately), we need a dispatch
 approach. Add a helper to `serial/mod.rs`:
 
 ```rust
@@ -1255,14 +1255,14 @@ git commit -m "Add Serializable impls for all Mapping types"
 
 ---
 
-### Task 5: Frame Serialisation (BasicFrame, CmpFrame, Axis)
+### Task 5: Frame Serialization (BasicFrame, CmpFrame, Axis)
 
 **Files:**
 - Modify: `crates/ast-core/src/frames/basic.rs`
 - Modify: `crates/ast-core/src/frames/cmpframe.rs`
 - Modify: `crates/ast-core/src/serial/mod.rs`
 
-- [ ] **Step 1: Add frame serialisation helpers to serial/mod.rs**
+- [ ] **Step 1: Add frame serialization helpers to serial/mod.rs**
 
 ```rust
 use crate::frames::{DynFrame, Frame};
@@ -1497,12 +1497,12 @@ git commit -m "Add Serializable impls for BasicFrame and CmpFrame"
 
 ---
 
-### Task 6: FrameSet Serialisation
+### Task 6: FrameSet Serialization
 
 **Files:**
 - Modify: `crates/ast-core/src/frames/frameset.rs`
 
-FrameSet serialisation is the most complex: it must encode the graph
+FrameSet serialization is the most complex: it must encode the graph
 structure as frame objects, mapping objects, node-to-frame indices,
 and node links.
 
@@ -1787,7 +1787,7 @@ git commit -m "Add AnyObject enum and public to_native_string/from_native_string
 
 ---
 
-### Task 8: Serialisation Unit Tests (Tier A)
+### Task 8: Serialization Unit Tests (Tier A)
 
 **Files:**
 - Create: `crates/ast-core/tests/test_serialisation.rs`
@@ -1805,7 +1805,7 @@ for:
   `get_string`, `get_object` — basic Node API.
 - For each of the 9 types: create an object → `to_node` → `from_node`
   → verify key attributes match. Use the **public Rust API** to create
-  objects and verify their behaviour after round-trip (e.g. transform
+  objects and verify their behavior after round-trip (e.g. transform
   a point through a ZoomMap before and after round-trip, check results
   match).
 - Full `to_native_string` → `from_native_string` round-trip per type.
@@ -1840,7 +1840,7 @@ git commit -m "Add serialisation unit tests (Tier A): Node API and to_node/from_
 
 Create a C program (or Rust program that calls the C library via
 `ast-ffi-tests`) that creates representative instances of our 9
-types using the C AST library, serialises them with `astToString`,
+types using the C AST library, serializes them with `astToString`,
 and writes the output to fixture files. The exact implementation
 depends on the `ast-ffi-tests` build infrastructure.
 
@@ -1871,7 +1871,7 @@ that:
 - Read each fixture file → parse to Node → render back → diff
   against original (byte-exact).
 - Read each fixture → parse → `from_node` → verify object
-  attributes/behaviour.
+  attributes/behavior.
 
 - [ ] **Step 4: Run tests**
 

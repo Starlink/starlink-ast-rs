@@ -75,7 +75,7 @@ pub enum Inputs {
     Cartesian,
     /// The same points as (longitude, latitude) in radians.
     Spherical,
-    /// Random pixel coordinates (x, y) about the image centre.
+    /// Random pixel coordinates (x, y) about the image center.
     Pixel,
 }
 
@@ -423,7 +423,7 @@ pub fn summary(timings: &[Timing], markdown: bool) -> String {
 }
 
 /// The pull request's CSV: `transform,n_points,rep,time_s`, the transform
-/// labelled with the engine (`sphmap_fwd_rust`, `sphmap_fwd_c`).
+/// labeled with the engine (`sphmap_fwd_rust`, `sphmap_fwd_c`).
 pub fn csv(timings: &[Timing]) -> String {
     let mut s = String::from("transform,n_points,rep,time_s\n");
     for t in timings {

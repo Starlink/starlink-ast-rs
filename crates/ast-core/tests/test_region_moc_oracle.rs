@@ -1,7 +1,7 @@
 //! The Moc class core against the C library (moc.c): Mocs built cell by cell
 //! with `add_cell` (OR, XOR and AND, at several orders), one whose MaxOrder
 //! needs 8 byte values, and an empty one; for each, its dump and that dump
-//! read back, MocLength, MocType, MocArea and normalised cells, the
+//! read back, MocLength, MocType, MocArea and normalized cells, the
 //! membership of a grid of sky positions (plain, negated, and with System set
 //! to Galactic through the Moc), its boundary mesh and bounding box;
 //! `test_cell`; the overlap of a Moc with a Circle each way round; the mask

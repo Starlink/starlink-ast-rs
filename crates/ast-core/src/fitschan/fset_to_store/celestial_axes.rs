@@ -329,7 +329,7 @@ pub(crate) fn celestial_axes(mut args: CelestialAxesArgs<'_>) -> AstResult<DynMa
             None => return Ok(Box::new(UnitMap::new(nwcs))),
         };
 
-    // Normalise: replace BAD with 0, snap near-zero angles, then
+    // Normalize: replace BAD with 0, snap near-zero angles, then
     // call SkyFrame::norm to wrap each axis into its conventional
     // range. C:5134-5138.
     let mut skyfid = [skyfid_lon_rad, skyfid_lat_rad];
@@ -745,7 +745,7 @@ fn flatten_parallel(cmp: &CmpMap, out: &mut Vec<DynMapping>) {
 }
 
 /// Return a clone of the requested child (`first=true` for `cmp.first()`)
-/// with its `inverted` flag normalised to the value that was captured
+/// with its `inverted` flag normalized to the value that was captured
 /// when the CmpMap was constructed. The CmpMap's runtime transform
 /// composes the children using the captured `inv_a`/`inv_b` snapshots
 /// (so post-construction `child.invert()` doesn't change the

@@ -1,4 +1,4 @@
-//! Tests for FrameSet behaviours ported from frameset.c: RemoveFrame
+//! Tests for FrameSet behaviors ported from frameset.c: RemoveFrame
 //! node preservation, Base/Current reset defaults, current-frame
 //! delegation of Frame methods, Simplify returning a FrameSet, and
 //! transform-definedness via the base→current path.
@@ -222,7 +222,7 @@ fn frameset_definedness_follows_path() {
 /// `astConvert` from a FrameSet must try every member frame, not just the
 /// current one. Here the current frame (PIXEL) cannot align with a Galactic
 /// SkyFrame, but the non-current base member (FK5 SkyFrame) can. The old
-/// "forward to current frame" behaviour returned None; the ConvertX port
+/// "forward to current frame" behavior returned None; the ConvertX port
 /// aligns via the base member.
 ///
 /// Oracle-verified against the reference C library: `astConvert` of the same

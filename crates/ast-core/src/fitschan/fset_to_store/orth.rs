@@ -84,7 +84,7 @@ pub(crate) fn orth_vector(in_vectors: &[Vec<f64>], n: usize) -> Option<Vec<f64>>
 
     // Step 5: build the n-vector. Components at colperm[0..m] take the
     // solved values; colperm[m] is set to 1.0; colperm[m+1..n] are
-    // zeros. Then normalise to unit length, where the squared length
+    // zeros. Then normalize to unit length, where the squared length
     // is (Σ x_j² for j in 0..m) + 1.
     let mut ret = vec![0.0_f64; n];
     let mut squared_len = 0.0_f64;
@@ -95,7 +95,7 @@ pub(crate) fn orth_vector(in_vectors: &[Vec<f64>], n: usize) -> Option<Vec<f64>>
     }
     squared_len += 1.0;
     ret[colperm[m]] = 1.0;
-    // The remaining colperm[m+1..n] entries stay at 0.0 (already initialised).
+    // The remaining colperm[m+1..n] entries stay at 0.0 (already initialized).
 
     let inv_norm = 1.0 / crate::math::sqrt(squared_len);
     for v in &mut ret {

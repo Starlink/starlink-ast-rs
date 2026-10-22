@@ -2,7 +2,7 @@
 
 /// `(CmpFrame settings, first component settings, labels of the result
 /// axes and their values for the input (1, 2, 3, 4), or None)`. The
-/// target axes are labelled A to D.
+/// target axes are labeled A to D.
 pub type Case = (
     &'static str,
     &'static str,

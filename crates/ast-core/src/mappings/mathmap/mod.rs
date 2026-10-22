@@ -1000,7 +1000,7 @@ impl Serializable for MathMap {
 
         // The seed flag, then the seed: the one set, or the default chosen
         // when the MathMap was made.
-        // Safety: single-threaded access for serialisation
+        // Safety: single-threaded access for serialization
         let rng = unsafe { &*self.rng.get() };
         let set = rng.seed_set;
         node.write_int(

@@ -5,7 +5,7 @@
 **Goal:** Close the 29 remaining `.head` transform-oracle mismatches (17 fixtures) by porting the missing FITS-read structural logic from C `fitschan.c`/`wcsmap.c`/`matrixmap.c` faithfully, so each fixture's Rust-decoded object has the same shape and transform as C, and add a per-class oracle gate with a shrinking exclusion list so the fixed sections cannot silently regress.
 
 **Architecture:** These fixtures fail the transform oracle because the FITS *reader* builds a structurally different AST object than C — a plain `Frame` where C builds a `SkyFrame`, a `CmpMap(WinMap, WcsMap)` where C builds a bare `WinMap`, a linear `ShiftMap` where C builds a `MathMap`/`GrismMap`, or an attribute in the wrong units.
-Because the native-serialisation round-trip and the simplifier are already proven correct for this corpus (the `.ast`/`.map`/`.simp` oracle sections pass), a `.head` transform mismatch cannot be a serialisation or simplification artifact — it is a read-path structural gap upstream of both.
+Because the native-serialization round-trip and the simplifier are already proven correct for this corpus (the `.ast`/`.map`/`.simp` oracle sections pass), a `.head` transform mismatch cannot be a serialization or simplification artifact — it is a read-path structural gap upstream of both.
 The 29 mismatches collapse to **12 distinct root causes**, each a specific unported C branch.
 This plan ports each branch faithfully, one task per root cause, and each fix simultaneously clears the fixture's entry in the parallel `NATIVE_READ_EXCLUDED` FITS-read-fidelity list (`test_wcsconv.rs:72`) — the two exclusion lists shrink together, as the Phase 4 reconciliation established.
 
@@ -16,7 +16,7 @@ This plan ports each branch faithfully, one task per root cause, and each fix si
 - **C-fidelity is the rule.** Every fix mirrors C control flow directly. No compute-then-check tolerance heuristics without asking the human first. Where C uses a heuristic, replicate it and comment that it mirrors C. C logic beats existing diverged Rust — where a Rust comment justifies a divergence from C (e.g. `wcs_read.rs:594-604`), the divergence is the bug; discard it and match C after confirming with a probe.
 - **Port ALL C logic.** Lack of test coverage is never a reason to skip a C branch. A fixture that "only" needs one branch still gets the whole branch ported.
 - **`AST__BAD` = `BAD_VALUE` = `-f64::MAX`** (bit-identical to C). Inputs may be `f64::NAN`; outputs always use `BAD_VALUE`. A transform-oracle `got=-1.797693e308` means Rust produced BAD where C produced finite.
-- **Public Rust API only in tests.** No private modules from `ast-core` in `tests/`. Read-path behaviour is tested through `FitsChan::from_header(text)?.read()` (needs `use ast_core::Channel`).
+- **Public Rust API only in tests.** No private modules from `ast-core` in `tests/`. Read-path behavior is tested through `FitsChan::from_header(text)?.read()` (needs `use ast_core::Channel`).
 - **Fixtures must work with the submodule absent** — the oracle corpus and the `wcsconv/inputs/*.head` headers are already vendored. Never symlink from `reference/`.
 - **Comments describe the code as it is today** — no references to prior bugs, plans, "was previously", or the Phase number. State what C does and why, citing the C source location.
 - **C-oracle golden values and object shapes come from the repo's own `libast.so`** at `reference/starlink-ast/build-ast/libast.so` (recipe: `docs/issues/c-oracle-probe-recipe.md`; mind the conda-RPATH trap — the stale conda `libast.so` wins by default and must be overridden). Never invent a golden value or an "expected" object shape.
@@ -377,7 +377,7 @@ Generated with AI
 Co-Authored-By: SLAC AI"
 ```
 
-### Task 3: C2 — SREFIS/SREF/SREFP honour the alt-plane version letter
+### Task 3: C2 — SREFIS/SREF/SREFP honor the alt-plane version letter
 
 The keyword extractor reads `SREFIS`, `SREF{i}`, `SREFP{i}` with hard-coded primary-plane names, ignoring the version letter `s` that is already threaded into `extract_wcs_keywords(cards, s: char)`.
 An alternate WCS description (`s` = `A`..`Z`) therefore reads the primary SkyRef instead of the alt plane's `SREF1A` etc.
@@ -578,11 +578,11 @@ Co-Authored-By: SLAC AI"
 
 ### Task 5: A2 — generic celestial CTYPE recognition (xLON/xLAT/xyLN/xyLT) + System=Unknown
 
-C `GetSkyAxes` (`fitschan.c:10809-10825`) recognises a celestial axis when `strlen(ctype) > 4 && ctype[4] == '-'`, then classifies:
+C `GetSkyAxes` (`fitschan.c:10809-10825`) recognizes a celestial axis when `strlen(ctype) > 4 && ctype[4] == '-'`, then classifies:
 - longitude: `RA--`, `AZ--`, `ctype+1 == "LON"` (i.e. `xLON`), or `ctype+2 == "LN"` (i.e. `xyLN`);
 - latitude: `DEC-`, `EL--`, `ctype+1 == "LAT"` (i.e. `xLAT`), or `ctype+2 == "LT"` (i.e. `xyLT`).
 
-The Rust `is_longitude_ctype`/`is_latitude_ctype` (`fits_store.rs:273-298`) hard-list specific 4-char prefixes and miss the generic `xLON`/`xyLN`/`xLAT`/`xyLT` families, so `unknown-cel`/`unknown-cel2` (CTYPEs like `xLON`/`xLAT` for an unknown celestial system) are not recognised as celestial and decode to a plain `Frame` instead of a `SkyFrame` with `System=Unknown`.
+The Rust `is_longitude_ctype`/`is_latitude_ctype` (`fits_store.rs:273-298`) hard-list specific 4-char prefixes and miss the generic `xLON`/`xyLN`/`xLAT`/`xyLT` families, so `unknown-cel`/`unknown-cel2` (CTYPEs like `xLON`/`xLAT` for an unknown celestial system) are not recognized as celestial and decode to a plain `Frame` instead of a `SkyFrame` with `System=Unknown`.
 
 **Fixtures cleared:** unknown-cel, unknown-cel2 (fwd+inv each). **NATIVE_READ_EXCLUDED:** `unknown-cel_native`, `unknown-cel2_native`.
 
@@ -621,7 +621,7 @@ fn unknown_cel_builds_unknown_skyframe() {
 cargo test -p ast-core unknown_cel_builds_unknown_skyframe
 ```
 
-Expected: FAIL — the axis is not recognised as celestial, so no SkyFrame is built.
+Expected: FAIL — the axis is not recognized as celestial, so no SkyFrame is built.
 
 - [ ] **Step 3: Apply the recognition fix**
 
@@ -666,7 +666,7 @@ Note the `OFLN`/`OFLT`/`HLON`/`SLON`/... prefixes are subsumed by `xLON`/`xLAT`;
 
 - [ ] **Step 4: Apply the System=Unknown classification**
 
-In `wcs_celestial.rs`, where the SkyFrame's System is chosen from the CTYPE prefix, add the C branch that classifies an unrecognised celestial family as `System=Unknown` (find the existing match on RA/GLON/ELON... and add the fallthrough).
+In `wcs_celestial.rs`, where the SkyFrame's System is chosen from the CTYPE prefix, add the C branch that classifies an unrecognized celestial family as `System=Unknown` (find the existing match on RA/GLON/ELON... and add the fallthrough).
 Confirm the exact C system string with `grep -n "Unknown\|UNKNOWN\|astSetSystem" reference/starlink-ast/src/fitschan.c` around the SkyFrame construction, and that the Rust `SkyFrame` System enum has an `Unknown` variant (`grep -n "enum.*System\|Unknown" crates/ast-core/src/frames/skyframe.rs`); if it does not, this step also adds the variant faithfully.
 
 - [ ] **Step 5: Run the test to verify it passes**
@@ -1027,7 +1027,7 @@ Expected: FAIL — the plain-TAN projection ignores the PV distortion.
 
 - [ ] **Step 3: Port `GetUsedPolyTan` and fire the rename**
 
-Add the auto-detect helper mirroring `fitschan.c:14030-14169` (PolyTan default `-1` = auto; positive values are an explicit AST attribute we do not expose, so the auto path is the whole behaviour here). Then call it from `translate_tpv_and_polytan_to_tpn` for the TAN case:
+Add the auto-detect helper mirroring `fitschan.c:14030-14169` (PolyTan default `-1` = auto; positive values are an explicit AST attribute we do not expose, so the auto path is the whole behavior here). Then call it from `translate_tpv_and_polytan_to_tpn` for the TAN case:
 
 ```rust
 /// Resolve the auto (`PolyTan = -1`) decision from the PV cards, mirroring
@@ -1221,7 +1221,7 @@ fn build_car_linear_mapping(
 }
 ```
 
-Confirm the exact CmpMap/WinMap ordering against C (`map1` degrees→radians zoom, `map2` WcsMap, `map3` WinMap composed in series — read `fitschan.c:35949-36089` in full before finalizing the compose order; the snippet above is the CAR-linear core, but the surrounding degrees-to-radians `map1` and the `SkyFrame` assembly must match the recognised-projection path in `build_celestial_with_def_b1950`). The `is_cel` scaffolding is illustrative — mirror C's actual per-axis loop (all axes get ina=0,inb=1,outa=0,outb=1; only the celestial axes get CRVAL added).
+Confirm the exact CmpMap/WinMap ordering against C (`map1` degrees→radians zoom, `map2` WcsMap, `map3` WinMap composed in series — read `fitschan.c:35949-36089` in full before finalizing the compose order; the snippet above is the CAR-linear core, but the surrounding degrees-to-radians `map1` and the `SkyFrame` assembly must match the recognized-projection path in `build_celestial_with_def_b1950`). The `is_cel` scaffolding is illustrative — mirror C's actual per-axis loop (all axes get ina=0,inb=1,outa=0,outb=1; only the celestial axes get CRVAL added).
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -1267,7 +1267,7 @@ The wcsconv manifest supplies `carlin=1` for car4 (`wcsconv_tests.txt:35`), so i
 **Fixture cleared:** car4 (fwd+inv). **NATIVE_READ_EXCLUDED:** `car4_native` (and it must not regress `car1_native`/`car2_native`, which are already excluded for a *different* reason — `SREF1: CAR fiducial longitude` — and also carry `carlin=1`).
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs` — add `carlin: Option<bool>` field (mirroring `-1`→unset), a `set_carlin`/getter, initialise in `new()` and `from_header()`.
+- Modify: `crates/ast-core/src/fitschan/mod.rs` — add `carlin: Option<bool>` field (mirroring `-1`→unset), a `set_carlin`/getter, initialize in `new()` and `from_header()`.
 - Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs` — thread `carlin` into `build_celestial_with_def_b1950` and take the CAR-linear branch (reusing Task 9's `build_car_linear_mapping`) when `latprj == CAR && carlin`.
 - Modify: `crates/ast-core/src/fitschan/wcs_read.rs` — pass `carlin` through `decode_wcs_with_def_b1950` (mirror the `def_b1950` threading).
 - Modify (if the gate requires): `crates/ast-core/tests/test_transform_oracle.rs` — apply `CarLin=1` for car4 in `load_fixture`.
@@ -1320,7 +1320,7 @@ Expected: FAIL — outputs are the full spherical CAR projection, not linear.
 
 - [ ] **Step 4: Add the `carlin` field + setter and thread it**
 
-`mod.rs`: add `carlin: Option<bool>` to the struct, initialise `None` in `new()`/`from_header()`, add:
+`mod.rs`: add `carlin: Option<bool>` to the struct, initialize `None` in `new()`/`from_header()`, add:
 
 ```rust
 /// Set the CarLin attribute: treat a coded `-CAR` projection as a linear
@@ -1411,16 +1411,16 @@ Record the finding. Two outcomes:
 
 ---
 
-### Task 12: C5 — spectral `SFT1`/`SREF2` linearisation via `astRate` (freq-wav, wave-f2w)
+### Task 12: C5 — spectral `SFT1`/`SREF2` linearization via `astRate` (freq-wav, wave-f2w)
 
-freq-wav and wave-f2w are bucketed `SFT1`/`SREF2` in `test_wcsconv.rs` — the ShiftMap/scale the reader builds to linearise a non-linear spectral CTYPE (freq↔wavelength) differs from C. C `SpecTrans`/`WcsSpectral` linearises a non-linear spectral axis at the reference point using `astRate` (the analytic-where-possible, finite-difference-elsewhere derivative), then builds a `ZoomMap(rate) ∘ ShiftMap(crval)` around it — exactly the `nonlin_spec_wcs` template (`wcs_spectral.rs:257-320`). The `SFT1`/`SREF2` mismatch means the Rust linearisation point, rate, or shift diverges from C's.
+freq-wav and wave-f2w are bucketed `SFT1`/`SREF2` in `test_wcsconv.rs` — the ShiftMap/scale the reader builds to linearize a non-linear spectral CTYPE (freq↔wavelength) differs from C. C `SpecTrans`/`WcsSpectral` linearizes a non-linear spectral axis at the reference point using `astRate` (the analytic-where-possible, finite-difference-elsewhere derivative), then builds a `ZoomMap(rate) ∘ ShiftMap(crval)` around it — exactly the `nonlin_spec_wcs` template (`wcs_spectral.rs:257-320`). The `SFT1`/`SREF2` mismatch means the Rust linearization point, rate, or shift diverges from C's.
 
-**Investigation gate:** determine whether the divergence is (a) the `astRate` value (derivative computed at a different point, or Rust's `astRate` port drifting from C's finite-difference seed — cf. [[project_vradv2f_astrate_dependency]] where an astRate x0=0 seed fix was the real cause), or (b) the reference-point/shift value fed into the ZoomMap∘ShiftMap. Probe: read freq-wav.head and wave-f2w.head through the repo `libast.so`, dump the linearised spectral Mapping's scale+offset, and compare against the Rust reader's. Then, if the scale differs, call the repo `astRate` directly at the same `(map, coord, at)` and compare to the Rust `astRate` — isolating (a) vs (b).
+**Investigation gate:** determine whether the divergence is (a) the `astRate` value (derivative computed at a different point, or Rust's `astRate` port drifting from C's finite-difference seed — cf. [[project_vradv2f_astrate_dependency]] where an astRate x0=0 seed fix was the real cause), or (b) the reference-point/shift value fed into the ZoomMap∘ShiftMap. Probe: read freq-wav.head and wave-f2w.head through the repo `libast.so`, dump the linearized spectral Mapping's scale+offset, and compare against the Rust reader's. Then, if the scale differs, call the repo `astRate` directly at the same `(map, coord, at)` and compare to the Rust `astRate` — isolating (a) vs (b).
 
 **Fixtures cleared:** freq-wav, wave-f2w (fwd+inv). **NATIVE_READ_EXCLUDED:** `freq_wav_native` (`SFT1`), `wave_f2w_native` (`SREF2`).
 
 **Files:**
-- Modify (outcome-dependent): `crates/ast-core/src/fitschan/wcs_spectral.rs` — the `nonlin_spec_wcs` linearisation (rate/shift construction) around line 257-320, OR the `astRate` seed/step if the probe points at the derivative itself.
+- Modify (outcome-dependent): `crates/ast-core/src/fitschan/wcs_spectral.rs` — the `nonlin_spec_wcs` linearization (rate/shift construction) around line 257-320, OR the `astRate` seed/step if the probe points at the derivative itself.
 - Test: transform-oracle head gate + targeted spectral read-path test.
 
 **Interfaces:**
@@ -1430,7 +1430,7 @@ freq-wav and wave-f2w are bucketed `SFT1`/`SREF2` in `test_wcsconv.rs` — the S
 - [ ] **Step 1: C-oracle probe (gate above); isolate astRate value vs reference/shift. Record.**
 - [ ] **Step 2: Write the failing test** — read each head, transform the golden spectral inputs, assert against the golden. Fails on SFT1/SREF2 drift.
 - [ ] **Step 3: Run to verify it fails.**
-- [ ] **Step 4: Apply the faithful fix** at the probe-identified locus (match C's linearisation point/rate exactly; if astRate seed, mirror C's finite-difference initialisation per [[project_vradv2f_astrate_dependency]]).
+- [ ] **Step 4: Apply the faithful fix** at the probe-identified locus (match C's linearization point/rate exactly; if astRate seed, mirror C's finite-difference initialization per [[project_vradv2f_astrate_dependency]]).
 - [ ] **Step 5: Run to verify it passes**; confirm no regression to freq-log (Task 6), grism (Task 7), or other spectral fixtures.
 - [ ] **Step 6: Shrink both exclusion lists, run both gates.**
 - [ ] **Step 7: Format, clippy, commit** — `"fitschan: match C astRate linearisation for non-linear spectral (freq-wav, wave-f2w)"` (+ AI trailer).
@@ -1515,7 +1515,7 @@ For a *diagonal* CD, C itself collapses the whole block to a WinMap (`expected/s
 
 **Investigation gate (mandatory):** dump C's serpens pixel→IWC mapping chain via the repo `libast.so` (conda-RPATH trap: [[reference_oracle_conda_rpath_trap]]) and confirm the exact node order and fused matrix values (`ShiftMap` CRPIX, then `MatrixMap` == `CD · π/180`). Identify in the C simplifier (`matrixmap.c` map_merge and the wcslib→AST assembly in `fitschan.c`) the precise merge step that produces this order, and record it in the report before coding. Because this shape is general to off-diagonal CD, verify against `tan-rotated`/`tan-cdmatrix` too.
 
-**Note for the reviewer:** the investigation labelled `tan-rotated`/`tan-cdmatrix` as "byte-exact-passing" controls, but they exhibit the same MatrixMap+WinMap Rust shape — they are almost certainly transform-only fixtures not present in the `.native` corpus, which is why no native test currently fails for them. Confirm which fixtures are in the wcsconv native corpus and re-run the *full* `test_wcsconv` after the fix: the simplifier change touches every off-diagonal-CD celestial read, so it must not regress any currently-passing native fixture (diagonal-CD WinMap collapse, sao-tan, etc.).
+**Note for the reviewer:** the investigation labeled `tan-rotated`/`tan-cdmatrix` as "byte-exact-passing" controls, but they exhibit the same MatrixMap+WinMap Rust shape — they are almost certainly transform-only fixtures not present in the `.native` corpus, which is why no native test currently fails for them. Confirm which fixtures are in the wcsconv native corpus and re-run the *full* `test_wcsconv` after the fix: the simplifier change touches every off-diagonal-CD celestial read, so it must not regress any currently-passing native fixture (diagonal-CD WinMap collapse, sao-tan, etc.).
 
 **Fixture cleared:** `serpens_native` from `NATIVE_READ_EXCLUDED`.
 
@@ -1546,4 +1546,4 @@ When Tasks 1-15 are all committed and both gates are green with empty Phase-4-ow
 - [ ] Run the full head section gate: `cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle -- --ignored --nocapture` — passes with `checked >= HEAD_SECTION_FLOOR`.
 - [ ] Run the full native read-fidelity suite: `cargo test -p ast-core --test test_wcsconv` — green.
 - [ ] Update `PLAN.md` and the design spec's Phase 4 status to DONE.
-- [ ] Record a project memory summarising the 14 root causes fixed (C1 DUT1, C1x swapped-axis routing, C1y off-diagonal-CD deg2rad fusion, plus A1-A3/B1-B3/C2-C6) and the two-gate pattern, linking [[project_phase4_reconciliation]].
+- [ ] Record a project memory summarizing the 14 root causes fixed (C1 DUT1, C1x swapped-axis routing, C1y off-diagonal-CD deg2rad fusion, plus A1-A3/B1-B3/C2-C6) and the two-gate pattern, linking [[project_phase4_reconciliation]].

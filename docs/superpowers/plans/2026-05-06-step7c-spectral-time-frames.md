@@ -228,7 +228,7 @@ Class `"SpecFrame"`. Keywords: `SoR`, `AlSoR`, `RefRA`, `RefDec`,
 - Convert frequency to wavelength FrameSet
 - Standard-of-rest correction
 - Rest frequency handling
-- Serialisation round-trip
+- Serialization round-trip
 
 - [ ] **Step 6: Verify and commit**
 
@@ -265,7 +265,7 @@ Class `"TimeFrame"`. Keywords: `TmScl`, `ATmScl`, `TmOrg`, `LTOff`.
 
 - Convert between time scales
 - Epoch round-trips
-- Serialisation round-trip
+- Serialization round-trip
 
 - [ ] **Step 6: Verify and commit**
 
@@ -285,14 +285,14 @@ FluxSystem (4 types), FluxFrame struct. Simple 1-axis Frame.
 `convert()` produces scaling between per-frequency and
 per-wavelength flux densities.
 
-Serialisation class `"FluxFrame"`. Keywords: `Sys`, `SpecVal`, `DefSV`.
+Serialization class `"FluxFrame"`. Keywords: `Sys`, `SpecVal`, `DefSV`.
 
 - [ ] **Step 2: Create specfluxframe.rs**
 
 Compound SpecFrame + FluxFrame. Delegates to CmpFrame-style
-behaviour with attribute forwarding for SpecFrame attributes.
+behavior with attribute forwarding for SpecFrame attributes.
 
-Serialisation class `"SpecFluxFrame"`.
+Serialization class `"SpecFluxFrame"`.
 
 - [ ] **Step 3: Add all to dispatch**
 
@@ -300,7 +300,7 @@ Serialisation class `"SpecFluxFrame"`.
 
 - FluxFrame unit conversions
 - SpecFluxFrame compound construction
-- Serialisation round-trip
+- Serialization round-trip
 
 - [ ] **Step 5: Verify and commit**
 
@@ -343,5 +343,5 @@ to missing types).
 9. FluxFrame: unit scaling
 10. SpecFluxFrame: compound construction
 11. Simplification regression: spec_* and time_* tests pass
-12. All serialisation round-trips work
+12. All serialization round-trips work
 13. `git status` — clean

@@ -157,7 +157,7 @@ pub(crate) enum EntryValue {
     Byte(Scalar1D<u8>),
     KInt(Scalar1D<i64>),
     /// `AST__UNDEFTYPE`: the key exists but holds no value. C tracks
-    /// this with `Entry.defined == 0` and still honours `nel`.
+    /// this with `Entry.defined == 0` and still honors `nel`.
     Undef {
         nel: usize,
     },

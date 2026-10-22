@@ -1,4 +1,4 @@
-//! Inverse of `SimplifyTree`'s standardisation passes — used by
+//! Inverse of `SimplifyTree`'s standardization passes — used by
 //! `MakeExp` to make the formatted expression more natural for human
 //! readers (e.g. turning `(A**-1)*B` back into `B/A`). Mirrors C
 //! `ComplicateTree` (`unit.c`:827-1020).
@@ -120,7 +120,7 @@ pub(crate) fn complicate_tree(node: &mut Box<UnitNode>) -> bool {
     if let Some(nn) = newnode {
         *node = nn;
         result = true;
-        // Re-simplify (without standardisation) and re-complicate.
+        // Re-simplify (without standardization) and re-complicate.
         simplify_tree(node, false);
         complicate_tree(node);
     }

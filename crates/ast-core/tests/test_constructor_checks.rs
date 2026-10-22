@@ -128,7 +128,7 @@ fn a_splinemap_checks_its_arguments() {
     );
 }
 
-/// unitnormmap.c astInitUnitNormMap: the centre needs at least one axis.
+/// unitnormmap.c astInitUnitNormMap: the center needs at least one axis.
 #[test]
 fn a_unitnormmap_needs_a_centre() {
     assert_eq!(code(UnitNormMap::new(Vec::<f64>::new())), ErrorCode::Badsm);

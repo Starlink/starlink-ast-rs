@@ -950,7 +950,7 @@ fn car4_cd_matrix_wraps_crpix_for_car() {
 ///     `astGetTranInverse == 0`. The CD-fused pixel→IWC MatrixMap that C
 ///     builds for this header is near-singular (a degenerate wavelength axis
 ///     coupled with the rotation), so C marks the inverse undefined and
-///     serialises it with `INV_A=0` ("Inverse transformation not defined").
+///     serializes it with `INV_A=0` ("Inverse transformation not defined").
 #[test]
 #[allow(clippy::excessive_precision)] // oracle literals; extra digits are exact C reference output
 fn crota_3d_forward_matches_oracle_inverse_undefined() {

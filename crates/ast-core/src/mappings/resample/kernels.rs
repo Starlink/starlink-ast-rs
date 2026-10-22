@@ -36,7 +36,7 @@ impl Builtin {
 }
 
 /// The set-up `ResampleSection` and `RebinSection` share: the kernel
-/// function, the number of neighbouring pixels either side, and the
+/// function, the number of neighboring pixels either side, and the
 /// parameters the kernel is given, from the user's `params`.
 pub(crate) fn setup(kernel: Builtin, params: &[f64]) -> (KernelFn, i64, Vec<f64>) {
     // C's `MaxD`, `MaxI` and `MinI`.
@@ -44,13 +44,13 @@ pub(crate) fn setup(kernel: Builtin, params: &[f64]) -> (KernelFn, i64, Vec<f64>
     let max_i = |a: i32, b: i32| if a > b { a } else { b };
     let min_i = |a: i32, b: i32| if a < b { a } else { b };
     let nearest_int = |v: f64| (v + 0.5).floor() as i32;
-    // Sinc and Somb: two neighbours by default.
+    // Sinc and Somb: two neighbors by default.
     let default_two = || {
         let n = nearest_int(params[0]);
         if n <= 0 { 2 } else { max_i(1, n) }
     };
     // The kernels cut off at the first zero of a factor whose offset is
-    // params[1]: at most that many neighbours, and that many by default.
+    // params[1]: at most that many neighbors, and that many by default.
     let to_zero = || {
         let mut n = nearest_int(params[0]);
         if n <= 0 {

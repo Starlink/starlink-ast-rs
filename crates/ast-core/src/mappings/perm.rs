@@ -216,7 +216,7 @@ impl PermMap {
         &self.inperm
     }
 
-    /// Canonicalise a lone PermMap to the form C `MapMerge` produces
+    /// Canonicalize a lone PermMap to the form C `MapMerge` produces
     /// (permmap.c:741) and report whether that counts as a simplification.
     ///
     /// C rebuilds a nominated PermMap by re-deriving its forward/inverse
@@ -224,7 +224,7 @@ impl PermMap {
     /// that is the "null permutation", and clearing the Invert flag. It
     /// reports `simpler` (permmap.c:1362-1373) when the PermMap collapses to
     /// a UnitMap, its Invert flag was set, or an array that was previously
-    /// stored is now recognised as null (so it need no longer be stored).
+    /// stored is now recognized as null (so it need no longer be stored).
     ///
     /// Returns `Some(canonical)` when such a simplification is available, or
     /// `None` when the PermMap is already in its canonical stored form.
@@ -253,7 +253,7 @@ impl PermMap {
         // `store_x` (permmap.c:1300-1339): an array need not be stored when it
         // is the dimension-aware "null permutation" (copy the same-index
         // coordinate where it exists, "bad" otherwise). A dropped array is
-        // serialised as `OutCpy`/`InCpy`.
+        // serialized as `OutCpy`/`InCpy`.
         let out_is_copy = is_null_perm(&out_norm, nin);
         let in_is_copy = is_null_perm(&in_norm, nout);
 
@@ -462,7 +462,7 @@ impl PermMap {
     }
 }
 
-/// Materialise C's "null permutation" for a perm array of length `len`
+/// Materialize C's "null permutation" for a perm array of length `len`
 /// whose values index a coordinate space of size `max` (1-based, 0 = bad).
 ///
 /// Mirrors C `permmap.c::PERMVAL` (155): a NULL permutation array supplies
@@ -845,7 +845,7 @@ impl Mapping for PermMap {
                     inpm.push((pos as i64) + 1);
                 } else {
                     // Out-of-range positive: C transform treats this as BAD;
-                    // canonicalise to 0 so the new constructor accepts it.
+                    // canonicalize to 0 so the new constructor accepts it.
                     inpm.push(0);
                 }
             } else {
@@ -1298,7 +1298,7 @@ impl Mapping for PermMap {
         // equal — even when both reference the same constant index. C uses
         // an exact `!=` on the constants (not a tolerance); a missing
         // constant slot is treated as BAD (matching the forward
-        // transformation's NULL-constants behaviour).
+        // transformation's NULL-constants behavior).
         let entry_eq = |p1: i64, p2: i64| -> bool {
             if p1 >= 0 || p2 >= 0 {
                 return p1 == p2;

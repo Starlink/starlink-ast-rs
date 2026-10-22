@@ -410,7 +410,7 @@ fn reflect(
 /// mapping.c `SpreadKernel1<X>`: each input pixel is shared between the
 /// output pixels within `neighb` pixels of its position along each axis,
 /// weighted by the product of `kernel` evaluated at their offsets along
-/// each axis, normalised to sum to one over the kernel box. Weight falling
+/// each axis, normalized to sum to one over the kernel box. Weight falling
 /// off the grid is reflected back onto it. The kernel values are kept and
 /// reused while successive points have the same offsets.
 pub(super) fn kernel1<T: RebinValue>(

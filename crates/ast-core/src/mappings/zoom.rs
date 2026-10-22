@@ -207,7 +207,7 @@ impl Mapping for ZoomMap {
     /// `factor == 0.0` so the inverse direction's `1.0 / factor` is always
     /// well-defined; a BAD or non-finite `factor` produces garbage in both
     /// the scalar path (which only gates on `v`, not on `scale`) and this
-    /// kernel, so behaviour is unchanged on those inputs.
+    /// kernel, so behavior is unchanged on those inputs.
     fn transform_into_nan(
         &self,
         pts: Points<'_>,
@@ -353,7 +353,7 @@ impl Mapping for ZoomMap {
         if s1.len() != s2.len() {
             return None;
         }
-        // C's zoommap.c absorbs WinMap/ShiftMap neighbours by multiplying
+        // C's zoommap.c absorbs WinMap/ShiftMap neighbors by multiplying
         // their terms directly (zoommap.c:1013-1057) — no rounding snap.
         compose_linear(&s1, &c1, &s2, &c2, false)
     }

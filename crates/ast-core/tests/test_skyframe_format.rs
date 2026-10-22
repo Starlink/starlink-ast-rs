@@ -1,4 +1,4 @@
-//! SkyFrame axis formatting, Units and serialisation, checked against the C
+//! SkyFrame axis formatting, Units and serialization, checked against the C
 //! library.
 //!
 //! Every expected value comes from `skyframe_oracle/cases.rs`, which

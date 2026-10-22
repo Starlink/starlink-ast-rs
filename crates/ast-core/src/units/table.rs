@@ -23,7 +23,7 @@ pub(crate) struct Multiplier {
 /// definition tree for derived units — is built lazily by the
 /// parser the first time the unit is consulted in a substitution
 /// context (`RemakeTree`); this avoids ordering issues when
-/// initialising the registry.
+/// initializing the registry.
 #[derive(Debug)]
 pub(crate) struct KnownUnit {
     /// Symbol (e.g. `"Hz"`).

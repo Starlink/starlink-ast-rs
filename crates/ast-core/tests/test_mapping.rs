@@ -95,7 +95,7 @@ fn count_tags(text: &str) -> usize {
 }
 
 /// `equal` is documented as a comparison, so it must not change how either
-/// operand serialises. The CmpMap implementation decomposes both operands and
+/// operand serializes. The CmpMap implementation decomposes both operands and
 /// lines them up by orientation, which used to discard the record that a
 /// component had been simplified.
 #[test]

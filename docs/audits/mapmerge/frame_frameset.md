@@ -23,7 +23,7 @@ it.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the result to NULL | frameset.c:10187-10189 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no pointer to pre-clear |
+| 1 | Initialize the result to NULL | frameset.c:10187-10189 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no pointer to pre-clear |
 | 2 | Check the global error status and bail out | frameset.c:10190-10192 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Obtain a pointer to the FrameSet structure | frameset.c:10193-10195 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 4 | Make a copy of the FrameSet, since we may alter it -- a deep copy, which C calls a minor limitation of the current implementation | frameset.c:10196-10199 (fn Simplify) | frameset.rs:2648 (fn simplified) | architecture | ported |

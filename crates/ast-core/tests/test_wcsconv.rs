@@ -44,7 +44,7 @@ impl CompareMode {
     /// Parse the manifest's 6th column, which is upstream's
     /// `skip_string_compare` and takes three values.
     ///
-    /// Panics on anything else. Mapping an unrecognised value to a default —
+    /// Panics on anything else. Mapping an unrecognized value to a default —
     /// even the strict one — means a typo silently decides how a case is
     /// compared, and the manifest is shared with the upstream harness, which
     /// fails its configure on the same input.
@@ -113,9 +113,9 @@ const NATIVE_READ_EXCLUDED: &[(&str, &str)] = &[];
 ///
 /// Every other card, `Invert` included, is byte-compared, which is what makes
 /// this safe to leave: a difference in the Mapping's *shape* could not hide
-/// behind a licence that only drops tag lines and pins their count.
+/// behind a license that only drops tag lines and pins their count.
 ///
-/// Every row must name a C behaviour. A row may never cite a stale reference:
+/// Every row must name a C behavior. A row may never cite a stale reference:
 /// the corpus is checked against the pinned oracle by
 /// `tools/oracle_fixtures/check_corpus_fresh.sh`.
 ///

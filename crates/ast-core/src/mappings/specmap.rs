@@ -822,12 +822,12 @@ impl Default for SpecMap {
 /// Refractive index of dry air at STP for a given wavelength.
 ///
 /// Uses the formula from FITS-WCS Paper III (Greisen et al).
-/// `wavelen` is in metres (air wavelength).
+/// `wavelen` is in meters (air wavelength).
 fn refrac(wavelen: f64) -> f64 {
     if wavelen == 0.0 {
         return 1.0;
     }
-    // Squared wave number in (per micrometre)^2
+    // Squared wave number in (per micrometer)^2
     let w2 = 1.0e-12 / (wavelen * wavelen);
     1.0 + 1.0e-6 * (287.6155 + 1.62887 * w2 + 0.01360 * w2 * w2)
 }
@@ -865,7 +865,7 @@ pub(crate) fn lg_vel(ra: f64, dec: f64) -> f64 {
     -1000.0 * pal::rvlg(ra, dec)
 }
 
-/// Velocity of the galactic centre away from the source (m/s, heliocentric).
+/// Velocity of the galactic center away from the source (m/s, heliocentric).
 ///
 /// Mirrors `specmap.c` `GalVel`.
 pub(crate) fn gal_vel(ra: f64, dec: f64) -> f64 {
@@ -881,11 +881,11 @@ pub(crate) fn geo_vel(ra: f64, dec: f64, epoch: f64) -> f64 {
     -pal::dvdv(&v, &dvh) * AU_TO_MS
 }
 
-/// Velocity of the earth-sun barycentre away from the source (m/s, heliocentric).
+/// Velocity of the earth-sun barycenter away from the source (m/s, heliocentric).
 pub(crate) fn bary_vel(ra: f64, dec: f64, epoch: f64) -> f64 {
     let v = pal::dcs2c(ra, dec);
     let (dvb, _dpb, dvh, _dph) = pal::evp(epoch, 2000.0);
-    // Heliocentric velocity of the barycentre = dvh - dvb
+    // Heliocentric velocity of the barycenter = dvh - dvb
     let dvb_helio = [dvh[0] - dvb[0], dvh[1] - dvb[1], dvh[2] - dvb[2]];
     -pal::dvdv(&v, &dvb_helio) * AU_TO_MS
 }
@@ -908,7 +908,7 @@ pub(crate) fn topo_vel(
     // Local Apparent Sidereal Time
     let last = pal::gmst(epoch) + pal::eqeqx(epoch) + obslon;
 
-    // Observer velocity relative to Earth centre (using Rverot approach)
+    // Observer velocity relative to Earth center (using Rverot approach)
     let v_dir = pal::dcs2c(raa, deca);
     let pv = pal::pvobs(obslat, obsalt, last);
     // Component away from source, AU/s -> km/s
@@ -1418,7 +1418,7 @@ fn simplify_steps(steps: &mut Vec<SpecConversion>) -> bool {
                 steps.remove(i);
                 removed_this_pass = true;
                 any_removed = true;
-                // Don't advance i — new neighbours may cancel
+                // Don't advance i — new neighbors may cancel
             } else {
                 i += 1;
             }
@@ -1484,7 +1484,7 @@ pub(crate) fn spec_map_merge(
     let ngone = imap2 - imap1;
     simplify_steps(&mut steps);
     let unit = steps.is_empty();
-    // C condition (d): a lone inverted SpecMap is still normalised forward.
+    // C condition (d): a lone inverted SpecMap is still normalized forward.
     let simpler = ngone > 0 || steps.len() < nstep0 || unit || where_inv;
     if !simpler {
         return super::simplify::default_map_merge(ctx, where_, series);
@@ -1767,7 +1767,7 @@ impl Mapping for SpecMap {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 /// Argument index to letter: 0 -> 'a', 1 -> 'b', etc. (lowercase for SpecMap).

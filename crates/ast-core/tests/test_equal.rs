@@ -18,7 +18,7 @@ use ast_core::mappings::{
 };
 
 // =========================================================================
-// ast_equal tolerance behaviour (via ZoomMap as a vehicle)
+// ast_equal tolerance behavior (via ZoomMap as a vehicle)
 // =========================================================================
 
 #[test]
@@ -872,7 +872,7 @@ fn frameset_different_mapping() {
 }
 
 // =========================================================================
-// Serialisation round-trip preserves equality
+// Serialization round-trip preserves equality
 // =========================================================================
 
 #[test]

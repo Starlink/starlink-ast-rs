@@ -7,7 +7,7 @@
 //! 1. **Replace-with-simpler** — an all-zero-shift WinMap becomes a
 //!    diagonal MatrixMap; an all-unit-scale WinMap becomes a ShiftMap
 //!    (deferred to the end so the ShiftMap↔WinMap loop can't run forever).
-//! 2. **Direct merge** with a mergeable neighbour (WinMap / ZoomMap /
+//! 2. **Direct merge** with a mergeable neighbor (WinMap / ZoomMap /
 //!    ShiftMap / UnitMap / diagonal MatrixMap), or the parallel-CmpMap
 //!    distribution.
 //! 3. **Swap toward the nearest mergeable target** — compute the distance
@@ -16,8 +16,8 @@
 //!    [`win_mat`] / [`win_perm`] / [`win_wcs`], then merge at the new
 //!    adjacency. `win_mat` absorbs the WinMap's scale into the matrix,
 //!    leaving the WinMap scale exactly `1.0`.
-//! 4. **Speculative swap** — even with no target, swap with a neighbour if
-//!    the two neighbours can then merge, or either swapped map simplifies.
+//! 4. **Speculative swap** — even with no target, swap with a neighbor if
+//!    the two neighbors can then merge, or either swapped map simplifies.
 //!
 //! The merge arithmetic (WinWin / WinZoom / WinShift / WinUnit /
 //! WinDiagMat) is shared with `WinMap::try_merge` via
@@ -56,7 +56,7 @@ fn is_mergeable(m: &dyn Mapping, inv: bool) -> bool {
     false
 }
 
-/// Whether a MatrixMap's effective forward matrix (honouring `inv`) is
+/// Whether a MatrixMap's effective forward matrix (honoring `inv`) is
 /// diagonal. Mirrors `astIsDiagonal` applied to the supplied direction.
 fn matrix_is_diagonal(mm: &MatrixMap, inv: bool) -> bool {
     let mat = if inv {
@@ -86,7 +86,7 @@ fn can_swap_at(ctx: &MergeCtx, i1: usize) -> (bool, bool) {
     )
 }
 
-/// C `winmap.c::CanSwap` (258): can the WinMap and its neighbour swap, and
+/// C `winmap.c::CanSwap` (258): can the WinMap and its neighbor swap, and
 /// would the swap make either intrinsically simpler (`*simpler`)?
 ///
 /// One of the pair must be the WinMap. Returns `(can_swap, simpler)`.
@@ -94,7 +94,7 @@ fn can_swap_at(ctx: &MergeCtx, i1: usize) -> (bool, bool) {
 /// unit transform on the WcsMap's celestial axes. PermMap → swappable iff
 /// every connected axis link is bi-directional; `simpler` iff the swap
 /// moves the WinMap to the side where the PermMap changes dimension
-/// favourably.
+/// favorably.
 fn can_swap(map1: &dyn Mapping, inv1: bool, map2: &dyn Mapping, inv2: bool) -> (bool, bool) {
     // Identify the non-WinMap partner.
     let (win, win_inv, nowin, nowin_is_map1) = if map1.as_any().is::<WinMap>() {
@@ -328,7 +328,7 @@ fn win_wcs(pair: [(DynMapping, bool, bool); 2], _iwm: usize) -> [(DynMapping, bo
 }
 
 /// Dispatch the swap of the WinMap (at index `iwm` within the pair)
-/// against its neighbour of class `nclass`, returning the swapped pair.
+/// against its neighbor of class `nclass`, returning the swapped pair.
 fn swap_pair(
     nclass: SwapClass,
     pair: [(DynMapping, bool, bool); 2],
@@ -384,12 +384,12 @@ pub(crate) fn win_map_merge(
         }
     }
 
-    // ---- Step 2: direct merge with a mergeable neighbour.
+    // ---- Step 2: direct merge with a mergeable neighbor.
     if let Some(result) = try_direct_merge(ctx, where_, series, win_inv) {
         return Some(result);
     }
 
-    // ---- Step 2b (series): distribute the WinMap into a neighbouring
+    // ---- Step 2b (series): distribute the WinMap into a neighboring
     // parallel CmpMap (C winmap.c:1264-1416).
     if series {
         if let Some(result) = try_distribute_into_parallel(ctx, where_, win_inv) {
@@ -414,22 +414,22 @@ pub(crate) fn win_map_merge(
         return Some(where_);
     }
 
-    // ---- Scaffolding fallback (retired as neighbour classes gain their own
+    // ---- Scaffolding fallback (retired as neighbor classes gain their own
     // `map_merge` in later phases). C's WinMap::MapMerge declines here and
-    // relies on the *neighbour's* MapMerge to absorb this WinMap when the
-    // neighbour is later nominated (e.g. `dssmap.c::MapMerge` absorbing a
+    // relies on the *neighbor's* MapMerge to absorb this WinMap when the
+    // neighbor is later nominated (e.g. `dssmap.c::MapMerge` absorbing a
     // preceding WinMap). For classes that do not yet have their own
     // `map_merge`, that backward absorption is still provided by
     // `default_map_merge`'s reverse merge on the `(where_, where_+1)` pair.
     // Delegating to it here triggers that absorption at this WinMap's
-    // nomination instead of the neighbour's — the nominate loop runs to a
+    // nomination instead of the neighbor's — the nominate loop runs to a
     // fixpoint, so which nomination performs the merge does not change the
     // final result.
     super::simplify::default_map_merge(ctx, where_, series)
 }
 
 /// Step 2: try a direct merge of the nominated WinMap with whichever
-/// neighbour is mergeable. C prefers the lower neighbour (class1) then the
+/// neighbor is mergeable. C prefers the lower neighbor (class1) then the
 /// upper (class2). Returns the modified index on success.
 fn try_direct_merge(
     ctx: &mut MergeCtx,
@@ -438,7 +438,7 @@ fn try_direct_merge(
     win_inv: bool,
 ) -> Option<usize> {
     let n = ctx.len();
-    // Lower neighbour first (i1 = where-1), else upper (i2 = where+1).
+    // Lower neighbor first (i1 = where-1), else upper (i2 = where+1).
     let lower_ok =
         where_ > 0 && is_mergeable(ctx.entry(where_ - 1).0.as_ref(), ctx.entry(where_ - 1).1);
     let upper_ok =
@@ -460,7 +460,7 @@ fn try_direct_merge(
     Some(i1)
 }
 
-/// Step 2b (series): distribute the nominated WinMap into a neighbouring
+/// Step 2b (series): distribute the nominated WinMap into a neighboring
 /// parallel CmpMap. Faithful port of C `winmap.c::MapMerge` (1264-1416).
 ///
 /// When the WinMap precedes the parallel CmpMap (`cmlow == false`) it acts on
@@ -481,7 +481,7 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
 
     let n = ctx.len();
 
-    // Identify a parallel-CmpMap neighbour. C prefers the lower neighbour
+    // Identify a parallel-CmpMap neighbor. C prefers the lower neighbor
     // (class1, cmlow == 1) then the upper (class2, cmlow == 0).
     let is_parallel = |m: &dyn Mapping| -> bool {
         m.as_any()
@@ -525,7 +525,7 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
     // winmap.c:1379-1380) and, because the branch holds the same pointer, the
     // component inside the branch is restored with it — leaving the branch's
     // `InvA`/`InvB` carrying the effective direction and the component itself
-    // serialised in its original orientation. So carry that orientation
+    // serialized in its original orientation. So carry that orientation
     // alongside as the element's `orig_inv`.
     let cmp_inv = par_inv != cm.is_inverted();
     let child_a_inv = cmp_inv != cm.inv_a();
@@ -546,9 +546,9 @@ fn try_distribute_into_parallel(ctx: &mut MergeCtx, where_: usize, win_inv: bool
     ];
 
     // Split-dimension for each component: outputs when the CmpMap is the lower
-    // neighbour (WinMap acts on outputs), inputs otherwise.
+    // neighbor (WinMap acts on outputs), inputs otherwise.
     let split_dim = |m: &dyn Mapping, inv: bool| -> usize {
-        // Effective outputs (cmlow) or inputs, honouring the component's
+        // Effective outputs (cmlow) or inputs, honoring the component's
         // applied inversion.
         if cmlow {
             if inv { m.nin() } else { m.nout() }
@@ -640,7 +640,7 @@ fn merge_linear_pair(
         // Equal-and-opposite WinWin cancellation is handled inside
         // compose_linear via its rounding snaps; for the general case
         // out = s2 + c2*(s1 + c1*x). Only the WinMap+WinMap pair goes
-        // through C's WinWin and gets the snaps; the other neighbour
+        // through C's WinWin and gets the snaps; the other neighbor
         // classes (WinShift/WinZoom/WinUnit/WinDiagMat) do not snap.
         if s1.len() != s2.len() {
             return None;
@@ -662,7 +662,7 @@ fn merge_linear_pair(
 
 /// Steps 3 & 4 (series): seek the nearest mergeable target on each side,
 /// swap the WinMap toward it, and merge; failing that, do a speculative
-/// swap kept iff the neighbours then merge or a swapped map simplifies.
+/// swap kept iff the neighbors then merge or a swapped map simplifies.
 fn try_swap_strategy(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize> {
     let n = ctx.len();
 
@@ -718,7 +718,7 @@ fn try_swap_strategy(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<
         return try_speculative_swap(ctx, where_, series, swaphi, swaplo);
     };
 
-    // The neighbour class for the chosen direction.
+    // The neighbor class for the chosen direction.
     let neigh_idx = if swap_lower { where_ - 1 } else { where_ + 1 };
     let nclass = swap_class_of(ctx.entry(neigh_idx).0.as_ref())?;
 
@@ -744,7 +744,7 @@ fn try_swap_strategy(ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<
     Some(i1)
 }
 
-/// Step 4: speculative swap with a neighbour, kept iff the two neighbours
+/// Step 4: speculative swap with a neighbor, kept iff the two neighbors
 /// can then merge, or either swapped map simplifies (winmap.c:1565-1660).
 fn try_speculative_swap(
     ctx: &mut MergeCtx,
@@ -774,7 +774,7 @@ fn try_speculative_swap(
             continue;
         };
 
-        // Determine if the swap is worthwhile: do the two outer neighbours
+        // Determine if the swap is worthwhile: do the two outer neighbors
         // merge now, or does a swapped map simplify?
         let worthwhile = swap_is_worthwhile(ctx, where_, i1, swap_lower, &swapped, series);
 
@@ -786,7 +786,7 @@ fn try_speculative_swap(
     None
 }
 
-/// Whether a speculative swap should be kept: the two neighbours surrounding
+/// Whether a speculative swap should be kept: the two neighbors surrounding
 /// the swapped WinMap can merge, OR one of the swapped maps simplifies.
 fn swap_is_worthwhile(
     ctx: &mut MergeCtx,
@@ -800,7 +800,7 @@ fn swap_is_worthwhile(
     // pair of mappings that are now adjacent (excluding the moved WinMap).
     let n = ctx.len();
     let neighbours: Option<((DynMapping, bool), (DynMapping, bool))> = if swap_lower {
-        // Lower swap: swapped[1] (the moved-down neighbour) is now adjacent
+        // Lower swap: swapped[1] (the moved-down neighbor) is now adjacent
         // to list[where_+1].
         if where_ + 1 < n {
             Some((
@@ -823,7 +823,7 @@ fn swap_is_worthwhile(
     };
 
     if let Some(((ma, ia), (mb, ib))) = neighbours {
-        // Do the neighbours merge? Probe via a 2-element MergeCtx.
+        // Do the neighbors merge? Probe via a 2-element MergeCtx.
         let mut probe = MergeCtx::new(vec![(ma, ia, false), (mb, ib, false)]);
         let nominee = probe.entry(0).0.clone_box();
         let merged = super::simplify::dispatch_map_merge(nominee.as_ref(), &mut probe, 0, series);

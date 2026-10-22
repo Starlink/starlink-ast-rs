@@ -98,7 +98,7 @@ fn large_circle_contains_small() {
 #[test]
 fn overlapping_circles_partial() {
     let frame = frame2d();
-    // Two circles of radius 5, with centres 6 apart.
+    // Two circles of radius 5, with centers 6 apart.
     // They overlap but neither contains the other.
     let c1 = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])
         .unwrap()
@@ -261,7 +261,7 @@ fn circle_and_box_separated() {
         .radius(2.0)
         .build()
         .unwrap();
-    // Box far away: centre (100,100), corner (101,101) → spans (99,99) to (101,101).
+    // Box far away: center (100,100), corner (101,101) → spans (99,99) to (101,101).
     let bx = BoxRegionBuilder::new(frame, vec![100.0, 100.0], vec![101.0, 101.0])
         .unwrap()
         .build()
@@ -274,7 +274,7 @@ fn circle_and_box_separated() {
 #[test]
 fn circle_and_box_partial() {
     let frame = frame2d();
-    // Circle centred at origin, radius 5.
+    // Circle centerd at origin, radius 5.
     let circle = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])
         .unwrap()
         .radius(5.0)

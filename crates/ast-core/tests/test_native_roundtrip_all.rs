@@ -6,7 +6,7 @@
 //! asserts each survives `from_native_string → native_dump` byte-exact,
 //! alongside two more sweeps over the rest of the tree. This file
 //! is a supplement: it constructs Rust-side instances with specific
-//! non-default attribute values (e.g. non-zero `UnitNormMap` centre,
+//! non-default attribute values (e.g. non-zero `UnitNormMap` center,
 //! non-trivial `PolyMap` iter-inverse settings) and asserts the Rust↔Rust
 //! double-round-trip preserves them.
 //!
@@ -28,7 +28,7 @@ use ast_core::mappings::{
 };
 use ast_core::{AnyObject, from_native_string};
 
-/// Helper: serialise twice and check the two texts match. If they don't,
+/// Helper: serialize twice and check the two texts match. If they don't,
 /// produce a unified diff so the missing/changed lines are easy to spot.
 fn assert_double_round_trip(obj: AnyObject, name: &str) {
     let text1 = native_dump(&obj).unwrap_or_else(|e| {
@@ -141,7 +141,7 @@ fn round_trip_wcsmap_zpn() {
 
 #[test]
 fn round_trip_chebymap() {
-    // Non-default bounds so they participate in serialisation.
+    // Non-default bounds so they participate in serialization.
     let mut terms = Vec::new();
     for (px, py, coeff) in [(1, 0, 1.0), (0, 1, 0.05), (2, 0, 0.02)] {
         terms.push(PolyTerm {
@@ -178,9 +178,9 @@ fn round_trip_grismmap() {
 fn round_trip_unitnormmap() {
     let m = UnitNormMap::new(vec![0.5, -0.5]).unwrap();
     assert_double_round_trip(AnyObject::UnitNormMap(m.clone()), "UnitNormMap");
-    // Also assert the serialised text *mentions* the non-zero centre.
+    // Also assert the serialized text *mentions* the non-zero center.
     // (Double round-trip passes for both [0,0] and [0.5,-0.5] because
-    // Rust's parser defaults centre to [0,0] if absent — symmetric loss.
+    // Rust's parser defaults center to [0,0] if absent — symmetric loss.
     // The C library has no such default, so the bench harness crashes.)
     let text = native_dump(&AnyObject::UnitNormMap(m)).unwrap();
     let mentions_centre = text.contains("0.5") && text.contains("-0.5");

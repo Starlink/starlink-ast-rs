@@ -17,7 +17,7 @@ This documents the outcome of investigating the reported discrepancy in
 `astConvert` and astropy to full double precision, and `astFormat`/`astUnformat`
 round-trips. The value reported as "wrong" only appears when the TimeFrame's
 `TimeOrigin` has been silently shifted by an earlier attribute change, which is
-the actual (and intended) behaviour worth understanding.
+the actual (and intended) behavior worth understanding.
 
 ## What was reported
 
@@ -123,7 +123,7 @@ a pristine object.
   `TimeOrigin` was re-expressed by a prior timescale change. Building the frame
   with the intended `timescale` in place gives the astropy/`astConvert` answer.
 - The only thing arguably worth a documentation note upstream is making the
-  `TimeOrigin` re-expression behaviour (via `OriginScale`) more discoverable,
+  `TimeOrigin` re-expression behavior (via `OriginScale`) more discoverable,
   since it is easy to mistake for a conversion error. The numerics themselves
   are correct.
 

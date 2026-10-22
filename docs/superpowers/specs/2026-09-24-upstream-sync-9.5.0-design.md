@@ -5,23 +5,23 @@ Pin move `756d5ac` → `3b9dc63` (165 commits, upstream releases 9.4.1 and 9.5.0
 ## Why this sync is different
 
 The previous pin move (`docs/superpowers/specs/2026-09-03-upstream-fixture-reorg-design.md`)
-was about a fixture-tree reorganisation.
+was about a fixture-tree reorganization.
 This one is mostly upstream *fixing the defects this port reported*.
 
-Of the 165 commits, about twenty files carry behavioural change; the rest is
+Of the 165 commits, about twenty files carry behavioral change; the rest is
 build system (autotools and cmake reworked in parallel), CI, vendored LaTeX
 support and documentation.
-The behavioural set maps almost one-to-one onto entries in
+The behavioral set maps almost one-to-one onto entries in
 `docs/issues/c-library-quirks.md`.
 
-That makes the central rule of the sync protocol in `CLAUDE.md` the organising
+That makes the central rule of the sync protocol in `CLAUDE.md` the organizing
 principle here:
 
 > a quirk fixed upstream turns a faithful mirror into a bug
 
 Ten quirks that this port mirrors bug-for-bug have been fixed upstream.
 Each mirror is now a defect in the port, and each has to be inverted.
-Three further fixes are not mirrors at all but C behaviour the port never had
+Three further fixes are not mirrors at all but C behavior the port never had
 (item F), which is why each upstream fix is checked against the Rust code rather
 than classified from its commit message.
 The mirrors were deliberate and are marked as such in the source, so the work is
@@ -33,7 +33,7 @@ makes the inversions verifiable rather than asserted.
 ## Success criteria
 
 1. The port no longer reproduces any C defect fixed in this range, and has the
-   behaviour of the three FitsChan SIP fixes it never had.
+   behavior of the three FitsChan SIP fixes it never had.
 2. Every upstream regression test covering those fixes has a Rust counterpart,
    or a PLAN.md row naming what blocks it.
 3. `tools/fixtures/check_mirror.sh` passes.
@@ -69,11 +69,11 @@ Each row was confirmed by reading the upstream commit and the Rust site.
 | `9916e19e` | `MergeInterval`'s PointList branch passes the bounds arrays where the uncertainty arrays belong, so it measures the uncertainty and its width test compares a value with itself | `regions/interval.rs` (~1540) |
 | `d27cc981` | `Polygon::Simplify`'s bad-vertex guard tests axis 1 only | `regions/polygon.rs` (~1267) |
 | `ec86cfaf` | `PolyMap::Equal` compares the forward coefficients twice in place of the inverse ones, and indexes two arrays by the wrong axis count (a heap over-read) | `mappings/polymap.rs` (~1636) |
-| `3a4a2a7b` | `PcdZoom` reads a ZoomMap's stored factor rather than the one the merge list applies, so an inverted neighbour's direction is lost | `mappings/simplify.rs` (~2953) |
+| `3a4a2a7b` | `PcdZoom` reads a ZoomMap's stored factor rather than the one the merge list applies, so an inverted neighbor's direction is lost | `mappings/simplify.rs` (~2953) |
 | `d31f06f3` | `CmpFrame::NormBox` builds the second component's probe PermMap with the first component's arity and no output permutation | `frames/cmpframe.rs` (~630, ~684) |
 | `5613e44d` | `Ellipse::RegBaseMesh` measures the axis-2 mesh bounds by axis 1's rule | `regions/ellipse.rs:502` — `ax_distance(1, centre[1], p2[1])` |
 | `dc424b56` | `GetDefUnc` yields a zero-width uncertainty on an axis constant at zero, so a PointList reports its own points as outside | `regions/mod.rs` `default_bounding_box_unc`, and `regions/interval.rs`'s own copy |
-| `abe5baae` | PolyMap's linear `MapMerge` reduction drops a ChebyMap's normalisation | `mappings/chebymap.rs`'s `map_merge`, marked `UNPORTED`, and PLAN.md §10.2 |
+| `abe5baae` | PolyMap's linear `MapMerge` reduction drops a ChebyMap's normalization | `mappings/chebymap.rs`'s `map_merge`, marked `UNPORTED`, and PLAN.md §10.2 |
 
 `astEQUALS` is the one with reach beyond its own call site.
 A Frame axis has `Top`/`Bottom` of `±DBL_MAX` unless set, so bounds tests feed
@@ -137,10 +137,10 @@ Two of these have a structural consequence beyond the edit:
 stated premise that C's reduction is a defect with no ChebyMap guard and that
 the port should therefore leave a linear ChebyMap alone.
 
-`abe5baae` removes that premise: the reduction now folds the normalisation in,
+`abe5baae` removes that premise: the reduction now folds the normalization in,
 accumulating `c*scale_j` into the matrix and `c*offset_j` into the constant term
 rather than assigning the coefficient directly.
-The section is rewritten to describe the ported behaviour, and the deferral
+The section is rewritten to describe the ported behavior, and the deferral
 retired.
 
 ### C. Fixture mirror back to green
@@ -234,7 +234,7 @@ Three of these deserve note:
 
 - `checkEllipseAxisRules` is the *only* way the Ellipse defect is visible.
   Ellipse's `Dump` writes no class data of its own, so the cached bounding box
-  is never serialised and no fixture can carry the difference.
+  is never serialized and no fixture can carry the difference.
   It discriminates on a CmpFrame of one sky axis beside one plain axis, over
   both orderings, on the fact that a folded axis cannot report a limit beyond pi.
 - The PolyMap cases must keep a non-linear forward transformation.
@@ -260,7 +260,7 @@ on Darwin.
 
 ### F. Port the three FitsChan SIP fixes
 
-These are not mirror inversions — they are C behaviour the port never had.
+These are not mirror inversions — they are C behavior the port never had.
 Found by checking `lsst2`'s reference against the port rather than taking the
 first commit message at its word.
 
@@ -300,7 +300,7 @@ first commit message at its word.
   Give up if any of those positions will not transform, since the Mapping cannot
   then be checked where it is used.
   Nothing else catches a bad fit: `make_int_world` discards the CRPIX and CD it
-  derived itself in favour of these.
+  derived itself in favor of these.
 
 `5f317c16` itself needs nothing.
 It gates a `partmat` assignment on `ret` because a failed `FitLine` leaves those
@@ -340,7 +340,7 @@ Finding the open items means reading the resolved ones.
 After this sync about 11 more become resolved, leaving roughly 7 open — which is
 worth being able to see at a glance.
 
-Reorganise into three sections, open first:
+Reorganize into three sections, open first:
 
 1. **Open questions for upstream.**
 2. **Addressed here, will not be fixed upstream.** The `IsSimp` probe stamp
@@ -361,9 +361,9 @@ structure does not decay the way the flat list did.
 `NormUnit` is absent from the port: no `norm_unit` anywhere in `ast-core`.
 
 Upstream reworked it across three commits in this range — `89bf58e2` (Axis falls
-back to the unnormalised Unit when it cannot be normalised), `d4a55144` (Frame
+back to the unnormalized Unit when it cannot be normalized), `d4a55144` (Frame
 derives it from the Unit the Frame reports, not the Axis, and the
-normalise-or-return-unchanged policy moves into `astNormUnit` in `unit.c` so
+normalize-or-return-unchanged policy moves into `astNormUnit` in `unit.c` so
 `axis.c` and `frame.c` share one copy), and `51ab0542` (SkyAxis returns
 sexagesimal descriptions unchanged, because they describe axis values rather
 than being unit expressions).
@@ -405,7 +405,7 @@ record and address, not a reason to keep the defect.
 
 ### J. Reconcile the two FitsChan gap docs against the code
 
-`PLAN.md` §5 summarises the FITS port as "remaining: unported attr quartets,
+`PLAN.md` §5 summarizes the FITS port as "remaining: unported attr quartets,
 `-TAB` family, public-API helpers, Warn cards" and "only `-TAB` (IsMapTab1D/2D)
 remains".
 Neither row is accurate, and both referenced docs predate six weeks of work:
@@ -419,7 +419,7 @@ Overstated — listed as gaps, checked as substantially present: DSS
 (`enc_dss.rs`), `-ZPX` (34 references), DSBSetUp (48), DTAI (118), AXREF (29),
 Warn-card emission (67).
 `CarLin` is listed as "silently ignored" but is a struct field with
-`set_car_lin`, honoured by the harness at `test_wcsconv.rs:246`.
+`set_car_lin`, honored by the harness at `test_wcsconv.rs:246`.
 
 Understated — the attribute surface.
 `FitsChan`'s 34 public methods cover `Encoding`, `FitsDigits`, `FitsRounding`,
@@ -454,14 +454,14 @@ should defer to it rather than implying `-TAB` is the last step.
 The work is documentation only: correct both docs' statuses against the code,
 rewrite `PLAN.md` §5's two rows, and state the `-TAB` dependency once where §3
 already has it.
-No behaviour changes here, and nothing in this item gates anything else — it is
+No behavior changes here, and nothing in this item gates anything else — it is
 last because item F moves two of the facts it records.
 
 ## Order of work
 
 `astEQUALS` (A) first and alone, since it moves a comparison used everywhere.
 Then C, because several inversions are proved by fixtures it brings in, and the
-mirror gate should be green before behaviour is judged against it.
+mirror gate should be green before behavior is judged against it.
 Then the rest of A with its tests from E, paired so each inversion lands with
 its gate.
 F next, in upstream's own order — `0cd7f725`, `c384289f`, `121d12d2` — since
@@ -500,5 +500,5 @@ item F moves two of the facts it records.
 - Upstream's build-system, CI and documentation work — autotools/cmake
   reconciliation, vendored Starlink LaTeX support, test tiering and the TAP
   driver.
-  The port has its own build, and none of it changes library behaviour.
+  The port has its own build, and none of it changes library behavior.
 - `unit.c`'s allocation-failure fixes, which Rust makes unreachable.

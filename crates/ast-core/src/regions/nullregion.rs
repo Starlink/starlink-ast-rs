@@ -102,7 +102,7 @@ impl NullRegionBuilder {
         let mut region = NullRegion { data };
 
         // astSetUnc, as C's constructor calls it (region.c:13372). A NullRegion
-        // has no defining points, so C's re-centre step is skipped there too
+        // has no defining points, so C's re-center step is skipped there too
         // (`if( this->points )`, region.c:10871-10876); the remap, the
         // negate-if-unbounded and the RegionFS tag all still apply.
         if let Some(unc) = self.uncertainty {
@@ -340,7 +340,7 @@ impl Region for NullRegion {
 
     fn base_mesh(&self) -> AstResult<PointSet> {
         // NullRegion has no boundary mesh. Return a single-point PointSet
-        // with BAD_VALUE on all axes (matching C behaviour).
+        // with BAD_VALUE on all axes (matching C behavior).
         let naxes = self.data.frameset.base().naxes();
         let bad_point = vec![BAD_VALUE; naxes];
         Ok(PointSet::from_rows(std::iter::once(bad_point.as_slice())))
@@ -392,7 +392,7 @@ impl Region for NullRegion {
 
     fn get_def_unc(&self) -> AstResult<DynRegion> {
         // Port of nullregion.c::GetDefUnc (nullregion.c:170): the default
-        // uncertainty is a zero-radius Circle centred on the origin of the
+        // uncertainty is a zero-radius Circle centerd on the origin of the
         // base Frame, not the base-class bounding box.
         let bfrm = self.data.frameset.base().snapshot();
         let n = bfrm.naxes();
@@ -714,7 +714,7 @@ impl Mapping for NullRegion {
 
     fn invert_orientation(&mut self) {
         // A Region's forward and inverse transforms are identical (membership
-        // is direction-independent), so inverting has no effect on behaviour.
+        // is direction-independent), so inverting has no effect on behavior.
     }
 
     // nullregion.c `Transform`: the parent Transform, Frame's, copies the
@@ -836,7 +836,7 @@ impl Mapping for NullRegion {
         // Parallel merge only (series of two Regions is not a Region). The
         // direct pairwise path always has `self` as the lower-index (left)
         // component, so this NullRegion's axes go first (`intfirst = 1`). The
-        // nominate loop reaches the lower-neighbour (`intfirst = 0`) case via
+        // nominate loop reaches the lower-neighbor (`intfirst = 0`) case via
         // `Region::region_merge`, not through `try_merge`.
         if series || self_inv || other_inv {
             return None;

@@ -113,7 +113,7 @@ trait plumbing).
 
 ### RS-SPLIT — CmpRegion `RegSplit` unported *(reported)*
 
-- **Rust**: absent — no `reg_split`. The trivial base clone-self behaviour is
+- **Rust**: absent — no `reg_split`. The trivial base clone-self behavior is
   effectively available via `clone_region`.
 - **C**: base `region.c:8154` (clones self); CmpRegion override `cmpregion.c:2472`
   (walks the OR-tree into a disjoint-component list).
@@ -136,7 +136,7 @@ so these are gated behind that. Small each.
 
 Confirmed present and matching C during the sweep: RegBasePick (Circle/Ellipse/
 Polygon correctly inherit the default; Box/PointList/NullRegion/Interval/
-CmpRegion/Prism override), RegCentre, RegBaseBox, RegPins, Overlap/OverlapX,
+CmpRegion/Prism override), Regcenter, RegBaseBox, RegPins, Overlap/OverlapX,
 GetBounded, GetDefUnc, GetRegionBounds, MapRegion, RegSetAttrib/RegClearAttrib,
 Simplify, MapMerge, and Prism Decompose/MapList.
 

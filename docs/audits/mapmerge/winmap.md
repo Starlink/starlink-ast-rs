@@ -8,12 +8,12 @@ Extension points: classified
 
 Uncited C steps:
 - winmap.c:1029 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
-- winmap.c:1081 (fn MapMerge) — initialisation to silence a compiler warning; the Rust locals are initialised where they are declared
+- winmap.c:1081 (fn MapMerge) — initialization to silence a compiler warning; the Rust locals are initialized where they are declared
 
 C's body runs `winmap.c:1078-1895 (fn MapMerge)`, the longest `MapMerge` in the library. Six
 parts: replace a zero-shift WinMap with a diagonal MatrixMap; merge directly with
-a neighbour in series; distribute the WinMap into a neighbouring parallel CmpMap;
-swap toward the nearest mergeable Mapping; merge with a neighbour in parallel;
+a neighbor in series; distribute the WinMap into a neighboring parallel CmpMap;
+swap toward the nearest mergeable Mapping; merge with a neighbor in parallel;
 and, only if nothing else fired, convert an all-unit-scale WinMap to a ShiftMap.
 
 `WinMap::map_merge` (`winmap.rs:443-450 (fn map_merge)`) delegates to
@@ -22,20 +22,20 @@ and, only if nothing else fired, convert an all-unit-scale WinMap to a ShiftMap.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1, then check the global error status and bail out | winmap.c:1075-1079 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index, and errors travel in `AstResult` rather than an ambient status |
+| 1 | Initialize the returned result to -1, then check the global error status and bail out | winmap.c:1075-1079 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index, and errors travel in `AstResult` rather than an ambient status |
 | 2 | Get the WinMap's axis count and a typed pointer to it | winmap.c:1086-1091 (fn MapMerge) | winmap_merge.rs:372-373 (fn win_map_merge) | architecture | ported |
-| 3 | See if the WinMap can be replaced by something simpler, without reference to its neighbours | winmap.c:1092-1094 (fn MapMerge) | winmap_merge.rs:375-378 (fn win_map_merge) | architecture | ported |
+| 3 | See if the WinMap can be replaced by something simpler, without reference to its neighbors | winmap.c:1092-1094 (fn MapMerge) | winmap_merge.rs:375-378 (fn win_map_merge) | architecture | ported |
 | 4 | Test whether every shift term is zero, using the raw stored terms | winmap.c:1095-1106 (fn MapMerge) | winmap_merge.rs:379 (fn win_map_merge) | architecture | ported |
 | 5 | Temporarily set the WinMap's Invert attribute to the supplied value | winmap.c:1107-1114 (fn MapMerge) | winmap_merge.rs:373 (fn win_map_merge),378 (fn win_map_merge) | architecture | ported |
 | 6 | Take the effective scale terms and build a diagonal MatrixMap from them | winmap.c:1115-1120 (fn MapMerge) | winmap_merge.rs:381 (fn win_map_merge) | architecture | ported |
 | 7 | Restore the Invert attribute and free the scale terms | winmap.c:1121-1126 (fn MapMerge) | -- | ceremony | n/a: `extract_linear_params` reads the entry without mutating it, and owned values are dropped |
 | 8 | Replace the WinMap in the list with the MatrixMap, clear the invert flag, and return the index | winmap.c:1127-1136 (fn MapMerge) | winmap_merge.rs:382-383 (fn win_map_merge) | architecture | ported |
 | 9 | Note that the all-unit-scale to ShiftMap conversion is deferred to the end, to avoid a loop with `ShiftMap::MapMerge` | winmap.c:1137-1146 (fn MapMerge) | winmap_merge.rs:407-408 (fn win_map_merge) | architecture | ported |
-| 10 | Otherwise store the neighbouring Mappings' classes, and whether a MatrixMap neighbour is diagonal | winmap.c:1147-1166 (fn MapMerge) | winmap_merge.rs:45-74 (fn is_mergeable) | architecture | ported |
-| 11 | In series, look for a neighbour the WinMap can merge with, reducing the list by one | winmap.c:1167-1197 (fn MapMerge) | winmap_merge.rs:386-389 (fn win_map_merge) | architecture | ported |
+| 10 | Otherwise store the neighboring Mappings' classes, and whether a MatrixMap neighbor is diagonal | winmap.c:1147-1166 (fn MapMerge) | winmap_merge.rs:45-74 (fn is_mergeable) | architecture | ported |
+| 11 | In series, look for a neighbor the WinMap can merge with, reducing the list by one | winmap.c:1167-1197 (fn MapMerge) | winmap_merge.rs:386-389 (fn win_map_merge) | architecture | ported |
 | 12 | Create the merged Mapping | winmap.c:1198-1248 (fn MapMerge) | winmap_merge.rs:629-661 (fn merge_linear_pair) | architecture | ported |
 | 13 | Replace the first of the pair with it, annul the second, close the gap and return the first index | winmap.c:1249-1275 (fn MapMerge) | winmap_merge.rs:455-460 (fn try_direct_merge) | architecture | ported |
-| 14 | If a neighbour is a parallel CmpMap, convert the WinMap into an equivalent parallel CmpMap and merge that instead | winmap.c:1276-1304 (fn MapMerge) | winmap_merge.rs:391-396 (fn win_map_merge) | architecture | ported |
+| 14 | If a neighbor is a parallel CmpMap, convert the WinMap into an equivalent parallel CmpMap and merge that instead | winmap.c:1276-1304 (fn MapMerge) | winmap_merge.rs:391-396 (fn win_map_merge) | architecture | ported |
 | 15 | Take the nominated WinMap's effective scale and zero terms, and the CmpMap's two components | winmap.c:1305-1324 (fn MapMerge) | winmap_merge.rs:503-546 (fn try_distribute_into_parallel) | architecture | ported |
 | 16 | Build one new WinMap per component from the matching slice of scale and zero terms | winmap.c:1325-1356 (fn MapMerge) | winmap_merge.rs:548-572 (fn try_distribute_into_parallel) | architecture | ported |
 | 17 | Combine each component with its WinMap in series, and simplify both series CmpMaps | winmap.c:1357-1378 (fn MapMerge) | winmap_merge.rs:579-598 (fn try_distribute_into_parallel) | architecture | ported |
@@ -45,13 +45,13 @@ and, only if nothing else fired, convert an all-unit-scale WinMap to a ShiftMap.
 | 21 | If no direct merge, consider swapping the WinMap toward a Mapping it could merge with | winmap.c:1430-1453 (fn MapMerge) | winmap_merge.rs:399-404 (fn win_map_merge) | architecture | ported |
 | 22 | Walk forward counting steps to the nearest mergeable target | winmap.c:1454-1489 (fn MapMerge) | winmap_merge.rs:681-694 (fn try_swap_strategy) | architecture | ported |
 | 23 | Do the same walking backward | winmap.c:1490-1526 (fn MapMerge) | winmap_merge.rs:696-709 (fn try_swap_strategy) | architecture | ported |
-| 24 | Choose the neighbour so the WinMap moves toward the nearer target | winmap.c:1527-1541 (fn MapMerge) | winmap_merge.rs:711-719 (fn try_swap_strategy) | architecture | ported |
+| 24 | Choose the neighbor so the WinMap moves toward the nearer target | winmap.c:1527-1541 (fn MapMerge) | winmap_merge.rs:711-719 (fn try_swap_strategy) | architecture | ported |
 | 25 | Swap the pair, then merge them if possible | winmap.c:1542-1581 (fn MapMerge) | winmap_merge.rs:332-350 (fn swap_pair), winmap_merge.rs:725-742 (fn try_swap_strategy) | architecture | ported |
-| 26 | With no target, swap speculatively with each neighbour in turn | winmap.c:1582-1626 (fn MapMerge) | winmap_merge.rs:749-790 (fn try_speculative_swap) | architecture | ported |
-| 27 | After a speculative swap, check whether the two neighbours can now merge with each other | winmap.c:1627-1669 (fn MapMerge) | winmap_merge.rs:799-837 (fn swap_is_worthwhile) | architecture | ported |
+| 26 | With no target, swap speculatively with each neighbor in turn | winmap.c:1582-1626 (fn MapMerge) | winmap_merge.rs:749-790 (fn try_speculative_swap) | architecture | ported |
+| 27 | After a speculative swap, check whether the two neighbors can now merge with each other | winmap.c:1627-1669 (fn MapMerge) | winmap_merge.rs:799-837 (fn swap_is_worthwhile) | architecture | ported |
 | 28 | Failing that, check whether either swapped Mapping simplifies on its own | winmap.c:1670-1683 (fn MapMerge) | winmap_merge.rs:839-847 (fn swap_is_worthwhile) | architecture | ported |
 | 29 | Keep the swap only if it bought something, otherwise discard it | winmap.c:1684-1704 (fn MapMerge) | winmap_merge.rs:777-786 (fn try_speculative_swap) | architecture | ported |
-| 30 | In parallel, a WinMap merges with a neighbouring WinMap, ZoomMap or UnitMap | winmap.c:1705-1736 (fn MapMerge) | winmap_merge.rs:386-389 (fn win_map_merge) | architecture | ported |
+| 30 | In parallel, a WinMap merges with a neighboring WinMap, ZoomMap or UnitMap | winmap.c:1705-1736 (fn MapMerge) | winmap_merge.rs:386-389 (fn win_map_merge) | architecture | ported |
 | 31 | Create that merged Mapping | winmap.c:1737-1797 (fn MapMerge) | winmap_merge.rs:629-661 (fn merge_linear_pair) | architecture | ported |
 | 32 | Store it over the pair, close the gap and return the first index | winmap.c:1798-1822 (fn MapMerge) | winmap_merge.rs:455-460 (fn try_direct_merge) | architecture | ported |
 | 33 | If nothing simplified, test whether every scale term is 1.0 | winmap.c:1829-1842 (fn MapMerge) | winmap_merge.rs:409 (fn win_map_merge) | architecture | ported |

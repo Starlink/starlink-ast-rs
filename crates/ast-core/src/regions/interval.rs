@@ -322,7 +322,7 @@ impl Interval {
     /// Returns `Ok(None)` where C leaves `result` at zero, which is C's signal
     /// to fall back to the inherited implementation (interval.c:2179).
     fn interval_overlap(&self, that: &dyn Region) -> AstResult<Option<i32>> {
-        // C's specialised branch requires both operands to be Intervals
+        // C's specialized branch requires both operands to be Intervals
         // (interval.c:1888).
         let Some(that_iv) = that.as_any().downcast_ref::<Interval>() else {
             return Ok(None);
@@ -788,7 +788,7 @@ impl Interval {
 
         // 4. Build the base-Frame Box, map it into the current Frame, and
         //    simplify it (interval.c:3335-3346). Box stores its defining
-        //    points as [centre, corner].
+        //    points as [center, corner].
         let base_frame = self.data.frameset.base().snapshot();
         let centre: Vec<f64> = (0..nc).map(|i| 0.5 * (lbnd[i] + ubnd[i])).collect();
         let corner: Vec<f64> = ubnd.clone();
@@ -1174,8 +1174,8 @@ impl Region for Interval {
         // half-width per axis is half the total width of the two uncertainty
         // bounding boxes (interval.c:2707-2757). `tunc` is this Interval's own
         // uncertainty in the base Frame; re-centring is omitted for the same
-        // reason as the Box port (bound width is centre-invariant; the
-        // reachable default uncertainty is already centred).
+        // reason as the Box port (bound width is center-invariant; the
+        // reachable default uncertainty is already centerd).
         let bfrm = self.data.frameset.base();
         let tunc = self.get_unc_frm(FrameRef::Base)?;
         let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
@@ -1484,9 +1484,9 @@ impl Region for Interval {
     }
 
     fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
-        // An Interval can only be re-centred (or report a centre) when it is
+        // An Interval can only be re-centerd (or report a center) when it is
         // effectively a closed Box (interval.c:2534-2567). Otherwise there is
-        // no centre and the query returns None without error.
+        // no center and the query returns None without error.
         if !self.is_bounded_inner()? {
             return Ok(None);
         }
@@ -1499,7 +1499,7 @@ impl Region for Interval {
     }
 
     fn reg_centre_set(&mut self, cen: &[f64], ifrm: FrameRef) -> AstResult<()> {
-        // Only re-centreable when effectively a closed Box (interval.c:2569).
+        // Only re-centerable when effectively a closed Box (interval.c:2569).
         if !self.is_bounded_inner()? {
             return Err(AstError::new(
                 ErrorCode::Regcn,
@@ -1510,7 +1510,7 @@ impl Region for Interval {
 
         // Delegate to the equivalent Box (interval.c:2535-2557): build a Box
         // over the current bounds that shares this Interval's FrameSet, set
-        // its centre, then read back the new base-Frame bounds.
+        // its center, then read back the new base-Frame bounds.
         let (lbnd, ubnd) = self.effective_bounds();
         let mut box_data = RegionData::with_frameset(self.data.frameset.clone(), {
             let centre: Vec<f64> = lbnd.iter().zip(&ubnd).map(|(l, u)| 0.5 * (l + u)).collect();
@@ -1522,7 +1522,7 @@ impl Region for Interval {
 
         box_reg.reg_centre_set(cen, ifrm)?;
 
-        // Recover the new base-Frame bounds from the re-centred Box and store
+        // Recover the new base-Frame bounds from the re-centerd Box and store
         // them back in the Interval's defining points.
         let (nlbnd, nubnd) = box_reg.reg_base_box()?;
         let nax = self.data.points[0].len();
@@ -1916,7 +1916,7 @@ impl Mapping for Interval {
 
     fn invert_orientation(&mut self) {
         // A Region's forward and inverse transforms are identical (membership
-        // is direction-independent), so inverting has no effect on behaviour.
+        // is direction-independent), so inverting has no effect on behavior.
     }
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
@@ -2024,7 +2024,7 @@ impl Mapping for Interval {
         // Parallel merge only (series of two Regions is not a Region). The
         // direct pairwise path always has `self` as the lower-index (left)
         // component, so the Interval axes go first (`intfirst = 1`). The
-        // nominate loop reaches the lower-neighbour (`intfirst = 0`) case via
+        // nominate loop reaches the lower-neighbor (`intfirst = 0`) case via
         // `Region::region_merge`, not through `try_merge`.
         if series || self_inv || other_inv {
             return None;

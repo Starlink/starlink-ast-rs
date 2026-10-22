@@ -208,7 +208,7 @@ fn fset_to_store_impl(
     // (computed via the WcsMap), through the FrameSet integrity
     // machinery — which re-fuses the pixel→spec mapping. Without
     // this, the bounds returned by astMapBox over the spec axis
-    // can differ from C by O(1e-2 m/s) for typical millimetre-wave
+    // can differ from C by O(1e-2 m/s) for typical millimeter-wave
     // velocity systems.
     let mut owned_fs = make_fits_frameset(fs, encoding)?;
     let fs = &mut owned_fs;
@@ -498,7 +498,7 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     // which is fine when SpecFrame::map_from collapses to identity
     // for a no-op RefRA change, but produces a non-trivial SpecMap
     // once MakeSpecMapping mirrors the C non-trivial step3+step6
-    // behaviour (cf. specframe.c:2750-2754 + 2823+2847).
+    // behavior (cf. specframe.c:2750-2754 + 2823+2847).
     let has_ref_radec = peek_spec(owned.current())
         .map(|s| s.test_ref_ra() && s.test_ref_dec())
         .unwrap_or(false);
@@ -604,7 +604,7 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     // full-precision fiducial position, so we set the values directly
     // rather than replaying a lossy default-precision round-trip.
     //
-    // Normalise to AST's canonical ranges: RA in `[0, 2π)` (via `eraAnp`),
+    // Normalize to AST's canonical ranges: RA in `[0, 2π)` (via `eraAnp`),
     // Dec in `(-π, π]` (via `eraAnpm`). Without this, the SlaMap output's
     // `(-π, π]` RA representation gives a different f64 from C's `[0, 2π)`
     // one, perturbing the downstream VELOSYS for sources near RA≈0/2π.
@@ -794,7 +794,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     source_spec.set_unit(1, "Hz")?;
 
     // The spectral component of the canonical template: a DSBSpecFrame
-    // (preserving IF / DSBCentre / SideBand) when the matched frame was
+    // (preserving IF / Dsbcenter / SideBand) when the matched frame was
     // dual-sideband, else the plain SpecFrame. Mirrors C copying the
     // primary frame and forcing its System/StdOfRest/Unit while keeping
     // the original class (fitschan.c:2512-2532).
@@ -835,7 +835,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     // base→current Mapping carries any axis permutation needed to take
     // the current Frame's external (FITS) axis order into the template's
     // (spec, sky) component order, so the new current Frame and Mapping
-    // honour the original CmpFrame permutation — unlike a hand-built
+    // honor the original CmpFrame permutation — unlike a hand-built
     // per-component parallel CmpMap, which would assume the components
     // are already in physical order and silently drop the permutation.
     let Some(fsconv) = crate::frames::find_frame::convert(fs.current(), cmpfrm.as_ref(), &[])?
@@ -995,7 +995,7 @@ fn find_lon_lat_spec_axes(store: &FitsStore) -> (Option<usize>, Option<usize>, O
             None => continue,
         };
         // Spectral axes: handled by the spectral_axes writer; we
-        // recognise "FREQ", "VRAD" etc. via a 4-char check on common
+        // recognize "FREQ", "VRAD" etc. via a 4-char check on common
         // forms, plus AIPS-style "FELO-LSR" / "VELO-OBS". A simpler
         // pragmatic check matches the FITS-WCS Paper III spectral
         // CTYPE prefixes used by AST.
@@ -1046,7 +1046,7 @@ fn find_lon_lat_spec_axes(store: &FitsStore) -> (Option<usize>, Option<usize>, O
 /// spatial pixel axes span exactly one pixel (`dim[axlon] == 1.0 &&
 /// dim[axlat] == 1.0`), re-evaluate the WCS at pixel `(1, 1, 1)` and
 /// update `store.crval[axlon]`, `store.crval[axlat]`, and the two
-/// CRPIX values to put the reference at the centre of the one and
+/// CRPIX values to put the reference at the center of the one and
 /// only spatial pixel.
 fn class_adjust_spatial_crval(
     fs: &FrameSet,

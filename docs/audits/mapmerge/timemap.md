@@ -10,7 +10,7 @@ Uncited C steps:
 - timemap.c:2078 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
 C's body runs `timemap.c:2109-2470 (fn MapMerge)`, the same architecture as SlaMap and
-SpecMap: gather the conversion steps of a run of adjacent TimeMaps, normalise
+SpecMap: gather the conversion steps of a run of adjacent TimeMaps, normalize
 each for its applied direction, drop no-effect steps and cancel adjacent inverse
 pairs until nothing more goes, then rebuild one TimeMap or a UnitMap.
 
@@ -23,10 +23,10 @@ pairs until nothing more goes, then rebuild one TimeMap or a UnitMap.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned result to -1 | timemap.c:2109-2111 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 1 | Initialize the returned result to -1 | timemap.c:2109-2111 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | timemap.c:2112-2114 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | TimeMaps merge only in series, or when only one Mapping is present | timemap.c:2115-2119 (fn MapMerge) | timemap.rs:1349-1351 (fn time_map_merge) | architecture | ported |
-| 4 | Initialise the step count to the number in the nominated TimeMap | timemap.c:2120-2123 (fn MapMerge) | timemap.rs:1366 (fn time_map_merge),1372 (fn time_map_merge) | architecture | ported |
+| 4 | Initialize the step count to the number in the nominated TimeMap | timemap.c:2120-2123 (fn MapMerge) | timemap.rs:1366 (fn time_map_merge),1372 (fn time_map_merge) | architecture | ported |
 | 5 | Search adjacent lower-numbered Mappings for TimeMaps, accumulating their step counts | timemap.c:2124-2134 (fn MapMerge) | timemap.rs:1356-1359 (fn time_map_merge) | architecture | ported |
 | 6 | Search adjacent higher-numbered Mappings the same way | timemap.c:2135-2143 (fn MapMerge) | timemap.rs:1360-1363 (fn time_map_merge) | architecture | ported |
 | 7 | Remember the initial number of transformation steps | timemap.c:2144-2146 (fn MapMerge) | timemap.rs:1366 (fn time_map_merge),1372 (fn time_map_merge) | architecture | ported |

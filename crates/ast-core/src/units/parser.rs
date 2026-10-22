@@ -62,7 +62,7 @@ fn ustreq(a: &str, b: &str) -> bool {
     a.eq_ignore_ascii_case(b)
 }
 
-/// Normalise a unit expression: tokenise, rewrite a few non-standard
+/// Normalize a unit expression: tokenize, rewrite a few non-standard
 /// idioms in alphanumeric tokens, then collapse spaces and discard
 /// whitespace adjacent to operators or parentheses. Mirrors
 /// `CleanExp` (`unit.c`:282).
@@ -71,7 +71,7 @@ pub(crate) fn clean_exp(exp: &str) -> String {
         return String::new();
     }
 
-    // ----- Step 1: tokenise. Each contiguous block of word
+    // ----- Step 1: tokenize. Each contiguous block of word
     // characters or non-word characters is a token.
     let mut tokens: Vec<String> = Vec::new();
     let chars: Vec<char> = exp.chars().collect();
@@ -573,7 +573,7 @@ fn make_tree_n(exp: &[u8], nc: usize) -> Option<Box<UnitNode>> {
     // effect of preserving the dedicated `OP_LDPI` opcode in C is on
     // `CmpTree`'s opcode-based ordering between an LdPi node and a
     // pure LdCon, which never affects the FindFactors / CombineFactors
-    // canonicalisation of unit-mapper trees.
+    // canonicalization of unit-mapper trees.
     if nc == 2 && (head == "pi" || head == "PI") {
         return Some(UnitNode::ldcon(std::f64::consts::PI));
     }

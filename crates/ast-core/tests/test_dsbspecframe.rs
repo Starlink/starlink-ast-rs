@@ -545,7 +545,7 @@ fn alignment_dsb_to_dsb_different_lo() {
 }
 
 // ===========================================================================
-// Current-system / GHz unit conversions for the DSBCentre and IF attributes.
+// Current-system / GHz unit conversions for the Dsbcenter and IF attributes.
 // These mirror the C string-attribute layer (dsbspecframe.c:459-501,
 // 1355-1370), which the ast-capi shim will call for astGetC/astSetC parity.
 // Internal storage is topocentric Hz throughout.
@@ -614,7 +614,7 @@ fn dsb_centre_cur_differs_from_internal_for_nontopo_rest() {
 }
 
 /// The local oscillator frequency must be at least the size of the IF
-/// (dsbspecframe.c `GetLO`), so a negative IF larger than the DSBCentre is
+/// (dsbspecframe.c `GetLO`), so a negative IF larger than the Dsbcenter is
 /// an error rather than a frequency.
 #[test]
 fn lo_below_the_if_is_an_error() {

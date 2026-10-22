@@ -404,7 +404,7 @@ pub(crate) fn make_int_world(
         let cd = cdmat[[wperm[i], jax]];
         let crp = store.crpix[jax];
         if let (Some(crv), Some(crp)) = (crv, crp) {
-            // C also gates on `cd != AST__BAD`; cdmat is initialised to
+            // C also gates on `cd != AST__BAD`; cdmat is initialized to
             // 0 (not BAD) here, but the chunk above never writes it
             // along the SIP-replacement path so `cd` is always a real
             // number. The subsequent multiply-and-add still produces a
@@ -488,7 +488,7 @@ mod tests {
     #[test]
     fn identity_pixel_to_iwc() {
         // pixel == iwc, CRVAL = 0 → CRPIX should solve to g0 - w0.
-        // FindBasisVectors picks g0 = box centre = (0.5*(1+100),
+        // FindBasisVectors picks g0 = box center = (0.5*(1+100),
         // 0.5*(1+100)) = (50.5, 50.5). w0 = identity(50.5, 50.5) =
         // (50.5, 50.5). CRPIX = g0 - y = (50.5, 50.5) - (50.5, 50.5)
         // = (0, 0).
@@ -521,7 +521,7 @@ mod tests {
     fn winmap_2x2_recovers_crpix_and_cd() {
         // WinMap forward: out = shift + scale * in.
         // shift = (-128, -128), scale = (0.001, 0.001).
-        // At g0 (centre) ≈ (50.5, 50.5):
+        // At g0 (center) ≈ (50.5, 50.5):
         //   w0 = (-128 + 0.001*50.5, -128 + 0.001*50.5) ≈ (-127.9495, -127.9495)
         // CD column vectors (per FitLine over the box): scale
         // (0.001, 0.001) on diagonal.
@@ -651,7 +651,7 @@ mod tests {
     fn sip_chain_routes_through_sip_int_world() {
         // Build a 2-axis SIP-shaped pixel→IWC chain and a FrameSet
         // whose current frame is a SkyFrame, so make_int_world can
-        // recognise the celestial pair via primary_frame().
+        // recognize the celestial pair via primary_frame().
         //
         // The numbers come from the same fixture the sip_int_world
         // unit test consumes; the point of this test is the

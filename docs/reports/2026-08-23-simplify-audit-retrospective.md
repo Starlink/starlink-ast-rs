@@ -6,7 +6,7 @@ not the fixes.
 
 ## Summary
 
-The task was to close the simplify / `MapMerge` gaps catalogued by a per-class
+The task was to close the simplify / `MapMerge` gaps cataloged by a per-class
 audit. Five closed. Three of the audit's own conclusions turned out to be wrong,
 one of them three times over. The audit was reliable at pointing at *places to
 look* and unreliable at saying *what was wrong there*.
@@ -82,7 +82,7 @@ answer another way is what discriminates.
 with the C library". It is C's `map->invert`, and `MapMerge` reduces the
 encapsulated Mapping at *that* orientation (`ratemap.c:710-715`). The simplify
 path ignored a field it needed because the comment said the field was about
-serialisation. Three attempts at §10.1 failed on it.
+serialization. Three attempts at §10.1 failed on it.
 
 ### Dump-shaping code accumulates in strata
 
@@ -102,7 +102,7 @@ The structural finding, and the one with a plan:
 [`2026-08-23-simplify-seam-realignment.md`](../superpowers/specs/2026-08-23-simplify-seam-realignment.md).
 Three of the defects above are one defect. `simplified()` was introduced in the
 first commit that defined the `Mapping` trait, before C's seam structure had been
-read; `simplify()` was layered on 196 commits later as a serialisation fix.
+read; `simplify()` was layered on 196 commits later as a serialization fix.
 
 ## Where §10.3 stands
 
@@ -123,7 +123,7 @@ merges.
 
 32 fixtures added, all generated from the pinned C by
 `ast_tester/gen_simplify_fixtures.c` so the upstream copies are byte-identical.
-445 simplify fixtures pass; simplify serialisation failures went 13 → 7.
+445 simplify fixtures pass; simplify serialization failures went 13 → 7.
 
 Three gates earned their keep and should not be relaxed:
 
@@ -141,4 +141,4 @@ Three gates earned their keep and should not be relaxed:
 3. Treat the audit checklists as a map of where to look, not as findings. Nine
    of their conclusions were tested this session and three were wrong.
 4. When a fixture passes, ask whether it could pass for the wrong reason before
-   concluding the behaviour is ported.
+   concluding the behavior is ported.

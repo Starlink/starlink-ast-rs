@@ -151,7 +151,7 @@ fn lutmap_linear_with_nonzero_start_and_inc() {
 }
 
 // ---------------------------------------------------------------------------
-// Nearest-neighbour forward transform
+// Nearest-neighbor forward transform
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -386,7 +386,7 @@ fn lutmap_rate() {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation
+// Serialization
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -587,7 +587,7 @@ fn lutmap_linear_simplifies_to_winmap() {
 fn lutmap_nearest_linear_does_not_simplify() {
     use ast_core::mappings::WinMap;
 
-    // The table is exactly linear, but nearest-neighbour interpolation puts
+    // The table is exactly linear, but nearest-neighbor interpolation puts
     // discontinuities at the first and last entries, so C's GetLinear refuses
     // to call it linear (lutmap.c:578).
     let mut lm = LutMap::new(&[1.0, 3.0, 5.0, 7.0, 9.0], 0.0, 1.0).unwrap();

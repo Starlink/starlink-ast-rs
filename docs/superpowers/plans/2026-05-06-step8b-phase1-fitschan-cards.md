@@ -208,7 +208,7 @@ git commit -m "Add CardList: FITS header card collection with search/iteration"
 **Files:**
 - Create: `crates/ast-core/src/fitschan/format.rs`
 
-The specialised FITS double formatter with nine-run/zero-run
+The specialized FITS double formatter with nine-run/zero-run
 trimming. Study `RoundFString` in `fitschan.c` line 26266.
 
 - [ ] **Step 1: Implement format_fits_double**

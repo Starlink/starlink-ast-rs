@@ -25,7 +25,7 @@ found while writing this spec that no checklist covers because C keeps them in
 
 That is what makes a spec possible.
 Before the audit, "what is left in the simplifier" could only be answered by
-listing symptoms — fixtures whose `IsSimp` count differed, licence rows, harness
+listing symptoms — fixtures whose `IsSimp` count differed, license rows, harness
 opt-outs.
 Now it can be answered by naming C algorithms that are not ported, which is a
 different kind of list: it is closed, it is ordered by dependency, and each entry
@@ -75,7 +75,7 @@ A3 (a native fixture carrying `ReSimp` and `AlSimp`), A5 (Mapping-level `Ident`)
 B3's bent-edge guard (`SimpVertices` attribute plus the `SimpVT` card), A7 (a
 decision about what "a result is new" means in an owned-value port).
 These items are not harder to write than wave 2; they are harder to *falsify*,
-and shipping an unfalsifiable change is what §6's licence rows exist to prevent.
+and shipping an unfalsifiable change is what §6's license rows exist to prevent.
 
 **Wave 4 — architecture.**
 B4 alone.
@@ -126,7 +126,7 @@ seven measured-and-reverted attempts at `cap_cmpmap_03` were on the wrong side o
 it.
 
 **Gate.** `cap_specmap_02` reaches C's 8 cards and its
-`ISSIMP_PLACEMENT_LICENSED` row is deleted, taking the licence to zero; the three
+`ISSIMP_PLACEMENT_LICENSED` row is deleted, taking the license to zero; the three
 fixtures above stay byte-exact; `test_simplify_regression`,
 `test_native_roundtrip_all`, `test_wcsconv` and `test_simplify_seams` stay green.
 Re-measure the nomination counts with `build_simplify_trace.sh` and the `tracing`
@@ -194,7 +194,7 @@ It must assert three things: the tree is returned unrestructured, no `AlSimp` ca
 survives, and no `IsSimp` card is added (a restricted simplify does not stamp).
 That fixture is the only route into the mode today — C's producers are all in
 `yamlchan.c` (`:10998`, `:9505`, `:9627`, `:10220`), which is not ported, and the
-port's only producers are the two deserialisation sites (`cmpmap.rs:1034`,
+port's only producers are the two deserialization sites (`cmpmap.rs:1034`,
 `serial/mod.rs:160`).
 
 **Record.** `cmpmap.md` rows 50 and 70, and its "Rows 50 and 70" prose section.
@@ -202,7 +202,7 @@ port's only producers are the two deserialisation sites (`cmpmap.rs:1034`,
 ### A4 — hang the CmpMap/PermMap swap off C's nominee (§10.4)
 
 `cmpmap.c:1816-2119` runs when the **CmpMap** is nominated and the PermMap is its
-lower neighbour; `permmap.c` never mentions `CmpMap`, so a nominated PermMap does
+lower neighbor; `permmap.c` never mentions `CmpMap`, so a nominated PermMap does
 not attempt it in C.
 The port has it the other way round: `CmpMap::map_merge` has no swap branch, and
 the swap lives in `perm_map_merge` (`simplify.rs:1130`), firing when a **PermMap**
@@ -219,7 +219,7 @@ loop resumes, and the `IsSimp` cards that fall out of both.
 each merge with what the swap brings next to them, so the resume point decides
 which merge happens first, replayed through the oracle and compared on cards and
 tree shape.
-A nominated CmpMap whose PermMap neighbour the cursor has already passed is
+A nominated CmpMap whose PermMap neighbor the cursor has already passed is
 reached in C and not in the port today; that case belongs in the same fixture.
 
 **Record.** `cmpmap.md` rows 31 to 40.
@@ -249,7 +249,7 @@ A companion with `Ident` on a Frame inside a FrameSet proves the override still
 simplifies.
 
 **Record.** New; §10.21 was written for this spec.
-`Ident` also touches the serialisation reader (`serial/mod.rs:774` currently skips
+`Ident` also touches the serialization reader (`serial/mod.rs:774` currently skips
 the card), so the round-trip corpus is part of the gate.
 
 ### A6 — delete the entry-point rewrite nothing demands (§10.22)
@@ -353,7 +353,7 @@ or a result that is an `Interval` or `NullRegion` rather than a `Box` — so thi
 a class-of-result gap, not a precision gap.
 
 **Gate.** A 3-D Box sliced to 2-D by a PermMap with a constant third output,
-simplified and serialised; C writes an Interval or equal limits, the port writes
+simplified and serialized; C writes an Interval or equal limits, the port writes
 the mesh fit or declines.
 No corpus fixture builds a Box over a PermMap with constants today.
 
@@ -499,7 +499,7 @@ auto-discovering byte-exact round-trip — both run on every fixture landing.
 A1 and A4 both change *which* nomination performs a merge and where the loop
 resumes.
 The Mapping can be right while the tree, the reported index and the `IsSimp` cards
-move, and it surfaces far from the change — in the serialiser or `MapSplit`, not
+move, and it surfaces far from the change — in the serializer or `MapSplit`, not
 in `astEqual`.
 Every one of these lands with a full-corpus re-measure, not a target-fixture
 check.
@@ -508,7 +508,7 @@ check.
 A1's table already shows three fixtures losing cards when one divergence is
 removed alone.
 A change that moves the target fixture to C's count while another fixture leaves
-it has not closed anything; it has relocated the licence.
+it has not closed anything; it has relocated the license.
 
 **Negative controls.**
 Several of these gaps are guarded by fixtures asserting C does *not* simplify

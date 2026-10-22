@@ -26,13 +26,13 @@ The 11 failures cluster into three independent groups with different root
 causes. Each group is addressed by a separate, mostly self-contained patch
 series; PRs land in the order C → A → B (smallest, most isolated first).
 
-### Group C — Per-class normalisations (3 fixtures, serial-only)
+### Group C — Per-class normalizations (3 fixtures, serial-only)
 
 | Fixture | Why it fails | Fix |
 |---|---|---|
 | `matrix_full_to_diagonal` | `MatrixMap::simplified` collapses to `UnitMap` / `ZoomMap` but does not switch a `Form="Full"` matrix whose off-diagonals are zero to `Form="Diagonal"`. | Extend `MatrixMap::simplified` (`crates/ast-core/src/mappings/matrix.rs:333`) so that, when the stored form is `Full` and `is_diagonal(&self.matrix)` holds (and the inverse, if present, is also diagonal), it returns a clone of `self` with `form` and `inv_form` set to `MatrixForm::Diagonal`. The numeric content is unchanged; only the storage form switches. |
 | `grism_zoom_inv_merge` | The merge math is correct (`GrmWR = 5000 × 0.5 = 2500`), but `GrismMap::merge_with_zoom` constructs the result via `GrismMap::new`, which marks **all eight** attributes as explicit-set. The C reference only marks the **three attributes that the merge math touched** (`GrmNRP`, `GrmWR`, `GrmG`) as explicit; the others retain the default-flagged status from the source GrismMap. | Modify `merge_with_zoom` (`crates/ast-core/src/mappings/grismmap.rs:233`) to construct the result by `clone()`-ing `self` (which copies the existing `set_flags`) and then writing the three modified scalars while flipping only `set_flags.{nrp, wave_r, g}` to `true`. `GrmNR`, `GrmAlp`, `GrmM`, `GrmEps`, `GrmTh` keep their original explicit/default state. |
-| `unit_parallel_invert_clear` | A parallel CmpMap with `InvB=1` and a `UnitMap` with `Invert=1` in `MapB` is structurally a no-op double-inversion of a UnitMap. Our `flatten` strips the inner `Invert=1` and sets `effective_inv=true` instead; reconstruct then emits the parallel CmpMap with `InvB=1` flag, while the C reference output has no `InvB` and a UnitMap with `Invert=1`. Transform output is identical; only serialisation differs. | In `simplify::reconstruct` (parallel branch), when an entry's `effective_inv` is true *and* the entry is `is::<UnitMap>()` (UnitMap is self-inverse), restore the inversion onto the leaf by calling `entry.invert()` and emit it with no external inv. This produces a UnitMap with internal `Invert=1` and no parent `InvB=1` — byte-equal to the C reference. The same idea applies symmetrically for the `MapA` side. |
+| `unit_parallel_invert_clear` | A parallel CmpMap with `InvB=1` and a `UnitMap` with `Invert=1` in `MapB` is structurally a no-op double-inversion of a UnitMap. Our `flatten` strips the inner `Invert=1` and sets `effective_inv=true` instead; reconstruct then emits the parallel CmpMap with `InvB=1` flag, while the C reference output has no `InvB` and a UnitMap with `Invert=1`. Transform output is identical; only serialization differs. | In `simplify::reconstruct` (parallel branch), when an entry's `effective_inv` is true *and* the entry is `is::<UnitMap>()` (UnitMap is self-inverse), restore the inversion onto the leaf by calling `entry.invert()` and emit it with no external inv. This produces a UnitMap with internal `Invert=1` and no parent `InvB=1` — byte-equal to the C reference. The same idea applies symmetrically for the `MapA` side. |
 
 ### Group A — CmpMap structural simplifications (5 fixtures)
 
@@ -50,7 +50,7 @@ constant edge cases.
 
 | Fixture | Pattern | Required rule |
 |---|---|---|
-| `cmpmap_nested_inverse_cancel` | Series CmpMap with `InvB=1` over a series-CmpMap whose children are `(MatrixMap, UnitMap)` and `(UnitMap, MatrixMap)`. | When `flatten` encounters an inverted *child* CmpMap of the same composition kind as the parent, it already handles the case (XOR of `cmp.is_inverted()` and `inv`). What it doesn't handle: the resulting flat list contains `MatrixMap, UnitMap, UnitMap⁻¹, MatrixMap⁻¹` — but `MatrixMap⁻¹` has `effective_inv = true`, and `merge_loop` does not currently recognise "M then M⁻¹" as a cancellation pair when one carries the external inv. Fix in `merge_loop`: for adjacent `(a, inv_a)` and `(b, inv_b)` where `a.equal(b)` and `inv_a != inv_b`, replace the pair with `UnitMap(nin)`. |
+| `cmpmap_nested_inverse_cancel` | Series CmpMap with `InvB=1` over a series-CmpMap whose children are `(MatrixMap, UnitMap)` and `(UnitMap, MatrixMap)`. | When `flatten` encounters an inverted *child* CmpMap of the same composition kind as the parent, it already handles the case (XOR of `cmp.is_inverted()` and `inv`). What it doesn't handle: the resulting flat list contains `MatrixMap, UnitMap, UnitMap⁻¹, MatrixMap⁻¹` — but `MatrixMap⁻¹` has `effective_inv = true`, and `merge_loop` does not currently recognize "M then M⁻¹" as a cancellation pair when one carries the external inv. Fix in `merge_loop`: for adjacent `(a, inv_a)` and `(b, inv_b)` where `a.equal(b)` and `inv_a != inv_b`, replace the pair with `UnitMap(nin)`. |
 | `cmpmap_parallel_in_series_merge` | Series of two parallel-CmpMaps; second has `InvA=1, InvB=1`. After flatten, both halves of the second parallel CmpMap come out inverted; the resulting series list is `(MathMap_2x, MathMap_3x) ‖ (MathMap_2x⁻¹, MathMap_3x⁻¹)`. | Same cancellation rule as above, applied parallel-wise inside the merge loop: detect the case "parallel-list adjacent to its inverse" and collapse to UnitMap. The flattened structure already exposes the cancellation; merge_loop needs to look one step ahead. |
 | `cmpmap_series_in_parallel_inverted` | Top-level parallel CmpMap with outer `InvA=1`; MapA is a series-CmpMap of `(MathMap_2x, MathMap_2x)`. Output pushes outer InvA inside, producing inner CmpMap with `InvA=InvB=1` and clearing the top-level `InvA`. | This is `flatten`'s job: when `cmp_inv != cmp.is_inverted()` and the child is a *different-kind* CmpMap (here parallel-over-series), flatten cannot recurse and instead returns the single child with the accumulated inv. The reconstructed parallel CmpMap then has the inv flag set on MapA externally — but the C reference *interns* the inversion: it inverts each grandchild explicitly (so the inner series CmpMap stores `InvA=InvB=1`) rather than carrying an external InvA on the outer CmpMap. Fix in `reconstruct`: when emitting a parallel list whose entry carries `effective_inv = true`, push the inversion **into** that entry by calling `entry.invert()` (and, if the entry is itself a CmpMap, distribute the invert into the child flags via `cmpmap.invert()`'s existing semantics) rather than emitting an outer `InvA` / `InvB` flag. |
 | `cmpmap_perm_swap_aconstants` | Series of `PermMap[Out=(-1, 1), Con=99]` then parallel `(MathMap_2x, MathMap_3x)`. C swaps the PermMap to the right of the parallel: the new constant set becomes `{99, 198}` because `99 → MathMap_2x → 198`. | `try_swap_permmap_parallel` (`simplify.rs:1563`) currently rebuilds the swapped PermMap but does not apply the parallel branches' transform to the constants vector. Add: for each PermMap output that references a constant, **transform the constant through the corresponding parallel branch** before placing it in the swapped PermMap's constants array. Use the branch's `transform()` method on a 1-row PointSet; on success, replace the constant with the result; on failure (branch isn't axiom-evaluable), refuse the swap. |
@@ -73,10 +73,10 @@ C reference produces a single 2-D Box on a `CmpFrame`.
 |---|---|
 | `interval_self_simplify` | A 2-D `Interval` with all bounds finite and `lbnd[i] <= ubnd[i]` is exactly a `Box`. Extend `Interval::simplified` (`crates/ast-core/src/regions/interval.rs:610`): when `effective_bounds` returns no `BAD_VALUE` entries, build a `BoxRegion` from the same bounds on the same frame, copy region attributes (`negated`, `closed=true`, `adaptive`, `mesh_size`, `fill_factor`, uncertainty, `IsSimp=true`), and return that. Otherwise return self unchanged. |
 | `box_parallel_merge` (correctness) | Implement `BoxRegion::try_merge` for the parallel case. Given two `BoxRegion`s `A` (1-D) and `B` (1-D) under a parallel CmpMap: build a `CmpFrame` from the two frames, concatenate the defining points (`A` has `npoint × naxes_A`, `B` has `npoint × naxes_B` — the C library uses `npoint=2` by convention; concatenate the columns), and return a new `BoxRegion` on that CmpFrame with the combined points. Domain becomes `"CMP"` (from `CmpFrame` defaults). The series case returns `None`. |
-| `interval_parallel_merge` (correctness) | Implement `Interval::try_merge` for the parallel case. The C reference's behaviour: when both intervals have all bounds finite, the merged region is reclassified to `BoxRegion` (matching the `interval_self_simplify` rule applied to the merged region). When any bound is infinite, the merged region must remain an `Interval`; if both are intervals, build a 2-D Interval on a CmpFrame. |
+| `interval_parallel_merge` (correctness) | Implement `Interval::try_merge` for the parallel case. The C reference's behavior: when both intervals have all bounds finite, the merged region is reclassified to `BoxRegion` (matching the `interval_self_simplify` rule applied to the merged region). When any bound is infinite, the merged region must remain an `Interval`; if both are intervals, build a 2-D Interval on a CmpFrame. |
 
 The defining-points layout for a `BoxRegion`/`Interval` is `npoint=2,
-ncoord=naxes`: row 1 = corner-min (or centre, depending on subclass), row 2 =
+ncoord=naxes`: row 1 = corner-min (or center, depending on subclass), row 2 =
 corner-max. Concatenation is column-wise: `(a_row1, b_row1)`, `(a_row2,
 b_row2)`. The output Closed/Negated/Adapt flags are the per-component AND/OR
 that C uses; check `box.c:MapMerge` (`reference/starlink-ast/src/box.c`) and
@@ -101,7 +101,7 @@ No new modules, no public API changes, no ABI change in `ast-capi`.
 
 Mirrors the existing pattern (MatrixMap, ZoomMap, ShiftMap, GrismMap, etc.
 all live in their own files and implement `try_merge` for class-specific
-fusions). Centralising region merges in `simplify.rs` would force `simplify`
+fusions). Centralizing region merges in `simplify.rs` would force `simplify`
 to import region-specific types, breaking the layering of regions on top of
 mappings (regions implement `Mapping` but `simplify` is mapping-focused).
 
@@ -121,7 +121,7 @@ flatten/merge-loop infrastructure absorb the rest.
 ### Hot-path impact
 
 None. All changes are in `simplified()` / `try_merge` / merge-loop paths,
-which run during canonicalisation, not during the per-point transform path
+which run during canonicalization, not during the per-point transform path
 that SCUBA-2 hits.
 
 ## Out of scope

@@ -49,7 +49,7 @@ pub(crate) type FindFrameResult = FrameSet;
 /// direct per-class match first; on failure (when `match_sub` is set),
 /// casts the template down into the target's class, re-fixes its
 /// Domain, and retries via the base Match. This is what lets a
-/// specialised template (SkyFrame, CmpFrame, ...) align with a plainer
+/// specialized template (SkyFrame, CmpFrame, ...) align with a plainer
 /// target sharing its Domain.
 pub(crate) fn match_with_subclass(
     template: &dyn Frame,
@@ -385,7 +385,7 @@ pub(crate) fn default_find_frame(
     // Gate on domain. Mirrors frame.c:4136-4154. The result Frame's
     // domain (already overlaid with the template's domain when the
     // template had one explicitly set) must appear in the
-    // canonicalised domain list.
+    // canonicalized domain list.
     let mut domain_canonical = String::with_capacity(m.result.domain().len() + 2);
     domain_canonical.push(',');
     for c in m.result.domain().chars() {
@@ -796,7 +796,7 @@ fn is_unit_map(m: &dyn crate::mappings::Mapping) -> bool {
 ///
 /// Mirrors `astGetClass`: the string is the concrete AST class
 /// (`"Frame"` for `BasicFrame`, `"SkyFrame"`, …). Returns `"Frame"` for
-/// any unrecognised type so a future class still gates conservatively
+/// any unrecognized type so a future class still gates conservatively
 /// against the base class rather than spuriously matching.
 pub(crate) fn frame_class_name(frame: &dyn Frame) -> &'static str {
     use crate::frames::{DSBSpecFrame, FluxFrame, SkyFrame, SpecFluxFrame, SpecFrame, TimeFrame};

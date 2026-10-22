@@ -515,7 +515,7 @@ fn test_ratemap_neg_nonratemap_neighbour() {
     let mapping = obj.into_mapping().unwrap();
 
     let simplified = mapping.simplify().unwrap();
-    // Should NOT simplify to a UnitMap — the neighbour is not a RateMap.
+    // Should NOT simplify to a UnitMap — the neighbor is not a RateMap.
     assert!(
         !simplified.as_any().is::<UnitMap>(),
         "Should not simplify to UnitMap"

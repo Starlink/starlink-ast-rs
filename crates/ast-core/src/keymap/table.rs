@@ -1,6 +1,6 @@
 //! The parts of C's chained bucket table that a `HashMap`-backed KeyMap
 //! still needs: the hash function, the trailing-space-insensitive key
-//! comparison, key normalisation, and the arithmetic that reconstructs
+//! comparison, key normalization, and the arithmetic that reconstructs
 //! the `MapSz` card at dump time.
 
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -87,7 +87,7 @@ pub(crate) fn key_cmp(key1: &str, key2: &str) -> Ordering {
     }
 }
 
-/// Normalise a supplied key: when `KeyCase` is 0 the key is
+/// Normalize a supplied key: when `KeyCase` is 0 the key is
 /// upper-cased, and an over-long key is an error. Mirrors `ConvertKey`.
 ///
 /// `method` is the reporting name of the calling public function, which

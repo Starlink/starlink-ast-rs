@@ -1,6 +1,6 @@
 //! Tests for the BoxRegion implementation.
 //!
-//! Covers: construction (centre+corner and from_bounds), point_in_region,
+//! Covers: construction (center+corner and from_bounds), point_in_region,
 //! open boundary, negation, bounds, 3D box, batch transform, Frame delegation.
 //!
 //! Ancestor: reference/starlink-ast/ast_tester/testbox.c (partial port).
@@ -11,7 +11,7 @@ use ast_core::frames::{BasicFrameBuilder, Frame};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{BoxRegion, BoxRegionBuilder, NullRegion, Region};
 
-// ---- Construction from centre + corner ----
+// ---- Construction from center + corner ----
 
 #[test]
 fn construct_centre_corner() {
@@ -33,7 +33,7 @@ fn construct_centre_corner() {
 
 #[test]
 fn construct_centre_corner_symmetric() {
-    // Corner on the other side: corner < centre.
+    // Corner on the other side: corner < center.
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let b = BoxRegionBuilder::new(frame, vec![5.0, 10.0], vec![2.0, 6.0])
         .unwrap()
@@ -84,7 +84,7 @@ fn point_inside() {
         .build()
         .unwrap();
 
-    // Centre is inside.
+    // Center is inside.
     assert!(b.point_in_region(&[5.0, 5.0]).unwrap());
 
     // Points well inside.
@@ -202,7 +202,7 @@ fn negated_copy() {
 
 #[test]
 fn bounds_from_offset_centre() {
-    // Centre at (3, 7), corner at (5, 10).
+    // Center at (3, 7), corner at (5, 10).
     // Extent: |5-3| = 2, |10-7| = 3.
     // Bounds: [1, 4] to [5, 10].
     let frame = BasicFrameBuilder::new(2).build().unwrap();
@@ -515,7 +515,7 @@ fn reg_pins_interior_point_is_not_on_boundary() {
         .build()
         .unwrap();
 
-    // The centre is well inside, not on the boundary.
+    // The center is well inside, not on the boundary.
     let centre = PointSet::from_rows([[5.0_f64, 5.0]]);
     assert!(!b.reg_pins(&centre, None).unwrap());
 }
@@ -653,7 +653,7 @@ fn inverse_transform_masks_as_forward_does() {
 /// A Box of zero width on an axis is widened by its default uncertainty,
 /// which scales with the axis value (region.c `GetDefUnc`). The default
 /// uncertainty is kept once built, so moving the Box must rebuild it: after
-/// recentring at 1000 a point 2e-4 off the centre lies inside, as the
+/// recentring at 1000 a point 2e-4 off the center lies inside, as the
 /// uncertainty there is about 5e-4 wide, where at 5 it was 2.5e-6.
 #[test]
 fn default_uncertainty_follows_a_moved_box() {

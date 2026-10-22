@@ -1,6 +1,6 @@
 //! Shared helpers for cross-type Region parallel merges.
 //!
-//! `Interval` and `Box` can absorb a neighbouring `NullRegion` or
+//! `Interval` and `Box` can absorb a neighboring `NullRegion` or
 //! `PointList` in a parallel `CmpMap` to form a higher-dimensional
 //! Region. The two owning classes (`interval.c::MergeInterval` and
 //! `box.c::MergeBox` in the C reference) share the same tail logic:
@@ -21,11 +21,11 @@ use super::{
 
 /// The base-Frame geometry of a merged Region, before it is placed in a
 /// combined CmpFrame. `MergeInterval`/`MergeBox` produce one of a small
-/// set of concrete Region kinds depending on the neighbour type.
+/// set of concrete Region kinds depending on the neighbor type.
 pub(super) enum MergedRegion {
     /// An [`Interval`] defined by lower/upper bounds (BAD = unbounded).
     Interval(Vec<f64>, Vec<f64>),
-    /// A [`super::BoxRegion`] defined by centre/corner points.
+    /// A [`super::BoxRegion`] defined by center/corner points.
     Box(Vec<f64>, Vec<f64>),
     /// A [`PointList`] defined by one point per row.
     PointList(Vec<Vec<f64>>),
@@ -128,7 +128,7 @@ pub(super) struct MergeOverlay {
 /// scaled by the product of each source's used/default ratio.
 ///
 /// `astSetUnc` is the install path, not a direct field assignment, because it
-/// re-centres the uncertainty on the merged Region's first defining point
+/// re-centers the uncertainty on the merged Region's first defining point
 /// (region.c:10871-10876) — for a Box uncertainty that regenerates the corner
 /// from the cached geodesic half-lengths in the combined base Frame.
 ///

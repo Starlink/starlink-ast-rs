@@ -24,11 +24,11 @@ CmpRegion has no `MapMerge` of its own; it takes the Region base implementation.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialise the returned pointer | cmpregion.c:3594-3596 (fn Simplify) | -- | ceremony | n/a: the Rust signature returns `AstResult<(DynMapping, bool)>`, so there is no pointer to pre-set |
+| 1 | Initialize the returned pointer | cmpregion.c:3594-3596 (fn Simplify) | -- | ceremony | n/a: the Rust signature returns `AstResult<(DynMapping, bool)>`, so there is no pointer to pre-set |
 | 2 | Check the global error status and bail out | cmpregion.c:3597-3599 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Invoke the parent Region simplify, which simplifies the encapsulated FrameSet and uncertainty, giving a Region in the current Frame | cmpregion.c:3600-3606 (fn Simplify) | cmpregion.rs:1455-1457 (fn simplified) | architecture | ported |
 | 4 | Note whether that simplified, by comparing the returned pointer with the supplied one | cmpregion.c:3607-3611 (fn Simplify) | cmpregion.rs:1458 (fn simplified) | architecture | ported |
-| 5 | Initialise the base-Frame candidate to "not produced" | cmpregion.c:3612-3619 (fn Simplify) | cmpregion.rs:1495 (fn simplified) | architecture | ported |
+| 5 | Initialize the base-Frame candidate to "not produced" | cmpregion.c:3612-3619 (fn Simplify) | cmpregion.rs:1495 (fn simplified) | architecture | ported |
 | 6 | Get the component Regions, how they should be combined, and the Negated values they should be used with, all in the base Frame | cmpregion.c:3620-3626 (fn Simplify) | cmpregion.rs:1469 (fn simplified) | architecture | ported |
 | 7 | Where the first component does not carry its required `Negated` value, use its negation instead | cmpregion.c:3627-3635 (fn Simplify) | cmpregion.rs:1473-1475 (fn simplified) | architecture | ported |
 | 8 | The same for the second component | cmpregion.c:3636-3644 (fn Simplify) | cmpregion.rs:1476-1478 (fn simplified) | architecture | ported |
@@ -52,7 +52,7 @@ CmpRegion has no `MapMerge` of its own; it takes the Region base implementation.
 | 26 | Free the component and parent-simplified pointers | cmpregion.c:3787-3793 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
 | 27 | Annul the result if an error occurred | cmpregion.c:3794-3796 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
 | 28 | Return the result | cmpregion.c:3797-3799 (fn Simplify) | cmpregion.rs:1613 (fn simplified) | ceremony | ported |
-| 29 | Initialise the returned pointer | cmpregion.c:1142-1144 (fn GetDefUnc) | -- | ceremony | n/a: the Rust signature returns `AstResult<DynRegion>`, so there is no pointer to pre-set |
+| 29 | Initialize the returned pointer | cmpregion.c:1142-1144 (fn GetDefUnc) | -- | ceremony | n/a: the Rust signature returns `AstResult<DynRegion>`, so there is no pointer to pre-set |
 | 30 | Check the global error status and bail out | cmpregion.c:1145-1147 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 31 | Get a pointer to the CmpRegion structure | cmpregion.c:1148-1150 (fn GetDefUnc) | -- | ceremony | n/a: `&self` is already the CmpRegion |
 | 32 | Where the first component has a non-default uncertainty, take it as the CmpRegion's default; an uncertainty's current Frame is the CmpRegion's base Frame | cmpregion.c:1151-1157 (fn GetDefUnc) | cmpregion.rs:1195-1196 (fn get_def_unc) | architecture | ported |
@@ -110,7 +110,7 @@ dropped: the error was C's guard against a value the Rust type cannot hold.
 
 ## Row 18 — why the negation test is restricted
 
-C notes that "one component is the negation of the other" is only recognised in
+C notes that "one component is the negation of the other" is only recognized in
 the OR case. The port keeps that restriction rather than generalising it, which
 is the negative-control side of this rule: an AND of a Region and its negation is
 null, and that is reached by row 17's no-overlap test instead, whose guard admits

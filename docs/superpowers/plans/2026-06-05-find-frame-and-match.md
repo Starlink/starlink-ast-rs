@@ -100,7 +100,7 @@ Files to modify:
 - `crates/ast-core/src/frames/cmpframe.rs` — add `match_template`, `sub_frame` impls.
 - `crates/ast-core/src/frames/fluxframe.rs` — add `match_template`, `sub_frame` impls.
 - `crates/ast-core/src/frames/frameset.rs` — replace `find_frame` stub with the FrameSet override.
-- Each Frame class: expose `MatchEnd`, `PreserveAxes`, `Permute`, `MinAxes`, `MaxAxes` if not already. (Most are already exposed for serialisation.)
+- Each Frame class: expose `MatchEnd`, `PreserveAxes`, `Permute`, `MinAxes`, `MaxAxes` if not already. (Most are already exposed for serialization.)
 
 Files NOT to modify in this plan:
 
@@ -187,7 +187,7 @@ fn set_permute(&mut self, _v: bool) {}
 
 - [ ] **Step 2: Override per concrete class — add internal `Option<usize>` / `Option<bool>` storage where missing**
 
-For each Frame class that doesn't already store these attributes (most don't — only the ones touched by serialisation already do), add `Option<>` fields and the corresponding overrides on the `Frame` trait impl.
+For each Frame class that doesn't already store these attributes (most don't — only the ones touched by serialization already do), add `Option<>` fields and the corresponding overrides on the `Frame` trait impl.
 
 Concretely:
 - `BasicFrame`: add `min_axes_opt`, `max_axes_opt`, `match_end_opt`, `preserve_axes_opt`, `permute_opt` (all `Option<>`).
@@ -1242,7 +1242,7 @@ DsbSpecFrame extends SpecFrame with image-frequency sideband flag. Match must al
 
 ### Task 9b: `SpecFluxFrame::Match` / `SubFrame` / `Overlay`
 
-SpecFluxFrame is a 2-axis specialised composition (1 spectral + 1 flux). C: specfluxframe.c. Standard shape.
+SpecFluxFrame is a 2-axis specialized composition (1 spectral + 1 flux). C: specfluxframe.c. Standard shape.
 
 - [ ] **Step 1-5: Standard TDD, commit.**
 
@@ -1520,7 +1520,7 @@ The fixtures `skyspec3d_class_fits_class`, `jan_fits_class_ast`, `jan_fits_class
 Audit the project's existing `astFindFrame` callers (search for `find_frame`, `findframe`, `FindFrame`) and update any that were stubbed-out or routed around the old `FrameSet::find_frame` returning None.
 
 - [ ] **Step 1: `grep -rn "find_frame" crates/` — list every consumer.**
-- [ ] **Step 2: For each, verify the new behaviour matches the C library's expected output.**
+- [ ] **Step 2: For each, verify the new behavior matches the C library's expected output.**
 - [ ] **Step 3: Add regression tests covering at least the existing wcsconv fixtures that exercise virtual-system matching (e.g., the AzEl one).**
 - [ ] **Step 4: Commit.**
 

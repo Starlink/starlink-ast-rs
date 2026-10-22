@@ -432,7 +432,7 @@ fn polymap_setters() {
 }
 
 // ---------------------------------------------------------------------------
-// Serialisation round-trip
+// Serialization round-trip
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1285,7 +1285,7 @@ fn polymap_does_not_cancel_against_a_different_inverse() {
 /// 8019-8024.
 ///
 /// The forward transformation is `y = x^2` throughout, because a linear one is
-/// rebuilt as a MatrixMap and a ShiftMap by the branch above the neighbour half
+/// rebuilt as a MatrixMap and a ShiftMap by the branch above the neighbor half
 /// of `MapMerge`, which does not consult the explicit inverse at all; a linear
 /// pair cancels whatever `equal` says.
 #[test]
@@ -1311,7 +1311,7 @@ fn polymap_equal_compares_the_inverse_coefficients() {
     );
     assert!(!differ.equal(&a), "in either direction");
 
-    // The consequence in MapMerge: a PolyMap and a neighbour used in the
+    // The consequence in MapMerge: a PolyMap and a neighbor used in the
     // opposite direction are replaced by a UnitMap when the two compare equal,
     // so a pair whose inverses differ must not cancel.
     let mut differ_inv = differ;

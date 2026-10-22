@@ -147,7 +147,7 @@ concrete class incorrectly fell through to the base.
   limit is `±DBL_MAX` use `0.0/0.0`). Note: uses the interval limits, NOT the
   region bounding box the base method reads.
 - **NullRegion** — `nullregion.c:170-235`: returns a **zero-radius Circle**
-  centred at the origin (`astCircle(this, 1, cen={0..}, &rad=0, ...)`), not a Box.
+  centerd at the origin (`astCircle(this, 1, cen={0..}, &rad=0, ...)`), not a Box.
 - **Prism** — `prism.c:1212-1280`: `astPrism(astGetUncFrm(region1, CURRENT),
   astGetUncFrm(region2, CURRENT))` — a Prism of the two component current-Frame
   uncertainties (the components' current Frames == the Prism's base Frame).
@@ -212,11 +212,11 @@ uncertainty is otherwise internal. Document the probe alongside the fixture.
 
 ---
 
-## Gap SETUNC (medium) — `set_uncertainty` full remap/validate/recentre body
+## Gap SETUNC (medium) — `set_uncertainty` full remap/validate/recenter body
 
 ### Verdict
 CLOSED (`d5e78b6`). The full C `SetUnc` body (validate/remap/negate-to-bound/
-RegionFS/recentre/cache) landed as a shared default trait method, replacing the
+RegionFS/recenter/cache) landed as a shared default trait method, replacing the
 9 bare `self.data.uncertainty = Some(unc)` stores. Previously OPEN.
 
 ### C reference — `region.c:10761-10918`, read in full
@@ -232,21 +232,21 @@ In order:
    the documented "a deep copy is taken" contract.
 4. Error `AST__BADIN`/`AST__NCPIN` if the Frames are not convertible (10889-96).
 5. Ensure bounded: `if(!astGetBounded(this->unc)) astNegate(this->unc)` (10856).
-6. RegionFS optimisation: `smap = astSimplify(astGetMapping(unc->frameset, BASE,
+6. RegionFS optimization: `smap = astSimplify(astGetMapping(unc->frameset, BASE,
    CURRENT))`; if `astIsAUnitMap(smap)` → `astSetRegionFS(this->unc, 0)` so the
    FrameSet is omitted from dumps (10862-10869).
-7. Re-centre `unc` at the Region's first defining point:
+7. Re-center `unc` at the Region's first defining point:
    `if(this->points) astRegCentre(this->unc, NULL, ptr_reg, 0, CURRENT)`
    (10871-10876).
 8. `if(changed) astResetCache(this)` (10907-10909).
 
 ### Missing Rust primitives (add first)
 - **`reg_centre` query form** — C `astRegCentre(unc, NULL, NULL, 0, CURRENT)`
-  returns the centre (or NULL for a non-centro-symmetric class). Rust only has
+  returns the center (or NULL for a non-centro-symmetric class). Rust only has
   `reg_centre_set` (mod.rs:411). Add `fn reg_centre(&self) -> Option<Vec<f64>>`
   (returns `None` for classes that are not centro-symmetric — the same set that
   can't be an uncertainty: PointList, Polygon, CmpRegion, Prism, NullRegion
-  return `None`; Box/Circle/Ellipse/Interval return their centre).
+  return `None`; Box/Circle/Ellipse/Interval return their center).
 - Everything else exists: `convert_to` (Conv analogue, frames/mod.rs:190),
   `map_region` (mod.rs:440), `is_bounded`/`negate` (mod.rs:197/120),
   `set_region_fs`/`dummy_fs` (data.rs:134/70 — the RegionFS-omission flag),
@@ -264,12 +264,12 @@ query.
 SETUNC is a read/write-path gap, validated by round-trip through
 `test_serialisation.rs`, not `astSimplify`. Add to `gen_simplify_fixtures.c` (or
 a round-trip generator) objects that carry an explicit uncertainty supplied in a
-DIFFERENT Frame than the region's base, so the remap/recentre path fires:
+DIFFERENT Frame than the region's base, so the remap/recenter path fires:
 
 - `setunc_box_remapped_unc` — a 2-D Box in a base Frame, given an uncertainty Box
   defined in a zoomed/shifted Frame via `astSetUnc`; serialize. The Rust-vs-C
   check confirms the stored uncertainty is remapped into the region's base Frame
-  and re-centred at the box centre (the `Unc` node geometry must match C
+  and re-centerd at the box center (the `Unc` node geometry must match C
   byte-for-byte).
 - `setunc_unbounded_negated` — supply an uncertainty that is unbounded as given
   (e.g. a negated Box); confirm C's "negate to make bounded" step (10856) is
@@ -304,15 +304,15 @@ as `parent_simplify`). It:
    (11148).
 3. If `astTestUnc(new)` (explicit uncertainty):
    a. `unc = astGetUncFrm(new, BASE)`; get `map = base→current` of `this`.
-   b. If `nin != nout` (PermMap slice): re-centre `unc` by transforming its
-      current centre forward-then-back through `map` (11165-11188).
+   b. If `nin != nout` (PermMap slice): re-center `unc` by transforming its
+      current center forward-then-back through `map` (11165-11188).
    c. `sunc = astSimplify(unc)`; only if `sunc != unc` proceed to stability test.
    d. Stability test: pick a test box (bounding box of `this` if bounded, else
-      100× the uncertainty size centred on `orig_cen`); re-centre `sunc` at the
-      test box's lower corner, get its bounding-box widths `w1`; re-centre at the
+      100× the uncertainty size centerd on `orig_cen`); re-center `sunc` at the
+      test box's lower corner, get its bounding-box widths `w1`; re-center at the
       upper corner, get widths `w2`; per axis, if `|w1-w2| > 0.005*(|w1|+|w2|)`
       set `ok=0` and break (11277-11284).
-   e. Reinstate `sunc`'s original centre; if `ok`, `astSetUnc(new, sunc)` and
+   e. Reinstate `sunc`'s original center; if `ok`, `astSetUnc(new, sunc)` and
       mark `simpler=1` (11303-11306).
 
 ### Structural prerequisite
@@ -344,14 +344,14 @@ Add to `gen_region_fixtures()`:
   stable across the test box. Expect `.simp` to carry the simplified uncertainty
   (stability test passes, `ok=1`).
 - `simpstab_box_nonlinear_unc` — the same Box+uncertainty mapped through a
-  Mapping whose linearisation varies across `this` (e.g. a mildly non-linear
+  Mapping whose linearization varies across `this` (e.g. a mildly non-linear
   PolyMap or a SphMap-like transform) so the uncertainty width changes >0.1%
   corner-to-corner. Expect `.simp` to KEEP the un-simplified uncertainty
   (stability test fails, `ok=0`) — this is the branch that distinguishes a
   faithful port from a naive "always simplify the uncertainty".
 - `simpstab_permmap_slice_unc` — a Region whose base→current Mapping is a PermMap
   with `nin != nout` (a slice), carrying an explicit uncertainty; exercises the
-  re-centre-on-slice branch (11165-11188).
+  re-center-on-slice branch (11165-11188).
 
 The non-linear fixture is the load-bearing one: without it a port that skips the
 stability test would still pass the linear and slice fixtures.
@@ -446,7 +446,7 @@ rewritten to mirror C exactly, restoring byte-exact fitted-ellipse points.
 Circle (after `parent_simplify`):
 1. `map = base→current`; only if NOT a UnitMap do the re-fit.
 2. `mesh = astRegMesh(new)` (current-Frame boundary mesh); `unc =
-   astGetUncFrm(new, CURRENT)`; transform the centre into the current Frame.
+   astGetUncFrm(new, CURRENT)`; transform the center into the current Frame.
 3. `newreg = astBestCircle(mesh, cen, unc)`; if `astRegPins(newreg, mesh)` (all
    mesh points on the fitted circle within uncertainty) → adopt it.
 4. Else if 2-D: `newreg = astBestEllipse(mesh, cen, unc)`; if `astRegPins` →
@@ -459,21 +459,21 @@ UnitMap guard around it) and tries `astBestCircle` first, degrading
 
 ### The two fit helpers (unported — `grep best_circle|best_ellipse` is empty)
 - `astBestCircle` — **small** (circle.c:176-289): radius = RMS distance of mesh
-  points from the supplied centre, `rad = sqrt(nc*s2r/n)`; build a Circle at
+  points from the supplied center, `rad = sqrt(nc*s2r/n)`; build a Circle at
   `cen` with that radius in the uncertainty's Frame.
 - `astBestEllipse` — **medium** (ellipse.c:191-474): find the max-radius mesh
-  point (primary axis end) via a quadratic fit through three neighbouring
+  point (primary axis end) via a quadratic fit through three neighboring
   (radius, angle) samples; resolve all points into parallel/secondary
   components; derive the mean secondary-axis length; build the Ellipse. Pure
   geometry (atan2/sqrt), no matrix solve — tractable but non-trivial.
 
 ### Faithful-port sketch
 1. Port `astBestCircle` and `astBestEllipse` as free helpers in circle.rs /
-   ellipse.rs producing a current-Frame `Circle`/`Ellipse` from (mesh, centre,
+   ellipse.rs producing a current-Frame `Circle`/`Ellipse` from (mesh, center,
    uncertainty).
 2. Rewrite both `simplified()` to: call the shared parent-simplify (the
    SIMP-STAB helper); compute the current-Frame boundary mesh (`base_mesh`
-   → transform to current, infra exists); transform the centre; try
+   → transform to current, infra exists); transform the center; try
    `best_circle` + `reg_pins_mask` (Circle::reg_pins_mask exists circle.rs:358),
    adopt on all-on-boundary; else if `nc==2` try `best_ellipse` +
    `reg_pins_mask` (Ellipse ellipse.rs:323); finish with `reg_overlay`
@@ -492,14 +492,14 @@ Add to `gen_region_fixtures()`:
   the re-fitted radius (BestCircle validates via RegPins). Distinguishes the
   re-fit port from the naive transform only if the naive transform would produce
   a *different* radius representation — so pick a mapping where the naive
-  centre+radius-point transform is subtly wrong (e.g. radius point transforms to
+  center+radius-point transform is subtly wrong (e.g. radius point transforms to
   a slightly off distance) and BestCircle's RMS fit is the correct one.
 - `cefit_circle_to_ellipse` — a Circle mapped through an ANISOTROPIC scaling
   (different zoom per axis) so it becomes an ellipse. Expect `.simp` to be an
   **Ellipse** (Circle degrades). The naive stub would wrongly keep a Circle —
   this is the load-bearing fixture.
 - `cefit_ellipse_to_circle` — an Ellipse mapped through a Mapping that
-  equalises the axes into a circle. Expect `.simp` to be a **Circle** (Ellipse
+  equalizes the axes into a circle. Expect `.simp` to be a **Circle** (Ellipse
   degrades).
 - `cefit_circle_nonconformal_keep` — a Circle mapped through a NON-LINEAR
   MathMap so neither BestCircle nor BestEllipse validates via RegPins. A linear
@@ -535,7 +535,7 @@ and committed into
    serialization emit guards (byte-exact corpus re-run, failure set compared).
 3. **`reg_centre` query + `test_unc` primitives** — shared prerequisite for the
    next three (landed alongside SETUNC in `d5e78b6`).
-4. **SETUNC** (`d5e78b6`) — full remap/validate/recentre/cache body as a shared
+4. **SETUNC** (`d5e78b6`) — full remap/validate/recenter/cache body as a shared
    default; deleted the 9 bare stores.
 5. **DEFUNC** (`c608570`) — 4 per-class `get_def_unc` overrides (reuses
    `test_unc`, `get_unc_frm`, zero-radius Circle) + RegBaseBox2.
