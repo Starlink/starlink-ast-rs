@@ -2230,7 +2230,7 @@ pub(crate) fn frameset_find_frame(
     let base_idx = target.base_idx() + 1;
 
     // Build search order: current, then base (if different), then
-    // every other frame in 1..=nframe (cmpframe.c:3922-3934 in C).
+    // every other frame in 1..=nframe (frameset.c `FindFrame`, 3936-3947).
     let mut order: Vec<usize> = Vec::with_capacity(nframe);
     order.push(current_idx);
     if base_idx != current_idx {

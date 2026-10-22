@@ -134,6 +134,14 @@ pub(crate) struct ConvertRoute {
 /// frameset.c overrides `Convert` and `ConvertX`, so the FrameSet search
 /// runs whenever either argument is a FrameSet; a Region `from` takes part as
 /// its Frame.
+// C makes this dispatch through the `Convert`, `ConvertX` and `FindFrame`
+// methods, which only frameset.c and region.c override; here it tests the
+// argument classes. C's Plot and Plot3D are FrameSet subclasses and inherit
+// the FrameSet behavior: when they are ported they must be added to the
+// FrameSet tests here and in `find_frame_route`, or the tests replaced by
+// crate-private trait hooks at C's granularity (one dispatched on `from`, one
+// on `to`, one on a FindFrame target, and one writing Base or Current that
+// FrameSet overrides).
 pub(crate) fn convert_route(
     from: &dyn Frame,
     to: &dyn Frame,

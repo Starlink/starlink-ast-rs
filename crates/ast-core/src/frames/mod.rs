@@ -761,6 +761,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// `astConvert`.
     #[doc(alias = "astConvert")]
+    // Not to be overridden: an override would lose both the dispatch and the
+    // Base written to a FrameSet argument. Class-specific behavior belongs in
+    // `find_frame::convert_route`.
     fn convert_to(&mut self, to: &mut dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
         // C `astConvert` (frame.c:2965) swaps its first two arguments and
         // defers to `astConvertX`, which frameset.c and region.c override;
@@ -1905,6 +1908,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// `astFindFrame`.
     #[doc(alias = "astFindFrame")]
+    // Not to be overridden: an override would lose both the dispatch and the
+    // Current written to a FrameSet target. Class-specific behavior belongs in
+    // `find_frame::find_frame_route`.
     fn find_frame_template(
         &mut self,
         template: &dyn Frame,
