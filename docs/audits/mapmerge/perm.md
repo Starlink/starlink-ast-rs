@@ -24,8 +24,8 @@ was actually simplified.
 |---|---|---|---|---|---|
 | 1 | Initialize the returned result to -1 | permmap.c:920-921 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | permmap.c:923-924 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | In series, search adjacent lower-numbered Mappings until one is neither a PermMap nor a UnitMap | permmap.c:932-948 (fn MapMerge) | mappings/simplify.rs:1584-1593 (fn default_map_merge) | architecture | ported |
-| 4 | Search adjacent higher-numbered Mappings the same way | permmap.c:949-959 (fn MapMerge) | mappings/simplify.rs:1571-1580 (fn default_map_merge) | architecture | ported |
+| 3 | In series, search adjacent lower-numbered Mappings until one is neither a PermMap nor a UnitMap | permmap.c:932-948 (fn MapMerge) | mappings/simplify.rs:1594-1603 (fn default_map_merge) | architecture | ported |
+| 4 | Search adjacent higher-numbered Mappings the same way | permmap.c:949-959 (fn MapMerge) | mappings/simplify.rs:1581-1590 (fn default_map_merge) | architecture | ported |
 | 5 | Take the first Mapping found and how its Invert attribute is applied | permmap.c:960-964 (fn MapMerge) | -- | architecture | n/a: a pairwise merge composes two entries at a time, so there is no run to take endpoints from |
 | 6 | Use it to fix the replacement's input coordinate count | permmap.c:965-973 (fn MapMerge) | perm.rs:1174-1179 (fn try_merge) | architecture | ported |
 | 7 | Repeat for the last Mapping found to fix the output coordinate count | permmap.c:974-983 (fn MapMerge) | perm.rs:1165-1170 (fn try_merge) | architecture | ported |
@@ -44,7 +44,7 @@ was actually simplified.
 | 20 | Store a negative reference to that constant in the accumulated array | permmap.c:1097-1112 (fn MapMerge) | perm.rs:569-573 (fn compose_perms) | architecture | ported |
 | 21 | In parallel, take the nominated PermMap and how its Invert attribute is applied | permmap.c:1113-1122 (fn MapMerge) | mappings/simplify.rs:1178-1179 (fn perm_map_merge) | architecture | ported |
 | 22 | Initialize the replacement's coordinate counts from it | permmap.c:1123-1133 (fn MapMerge) | perm.rs:925-926 (fn try_merge) | architecture | ported |
-| 23 | Search both directions for adjacent PermMaps and UnitMaps, accumulating their effective coordinate counts | permmap.c:1134-1180 (fn MapMerge) | mappings/simplify.rs:1571-1593 (fn default_map_merge) | architecture | ported |
+| 23 | Search both directions for adjacent PermMaps and UnitMaps, accumulating their effective coordinate counts | permmap.c:1134-1180 (fn MapMerge) | mappings/simplify.rs:1581-1603 (fn default_map_merge) | architecture | ported |
 | 24 | Allocate the replacement arrays and constants list, then build both directions as in series | permmap.c:1181-1307 (fn MapMerge) | perm.rs:928-978 (fn try_merge) | architecture | ported |
 | 25 | Accumulate each Mapping's input and output coordinate offsets across the run | permmap.c:1298-1307 (fn MapMerge) | perm.rs:945 (fn try_merge),956 (fn try_merge) | architecture | ported |
 | 26 | Inspect the accumulated `inperm` to decide whether the replacement needs to store it | permmap.c:1308-1324 (fn MapMerge) | perm.rs:257-258 (fn canonical_null_form), via mappings/simplify.rs:1183 (fn perm_map_merge) | architecture | ported |

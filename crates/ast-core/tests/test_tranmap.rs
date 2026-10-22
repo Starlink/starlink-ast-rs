@@ -545,3 +545,26 @@ fn decompose_gives_recorded_invert_values_not_component_flags() {
     assert!(!d.map1.is_inverted());
     assert_eq!((d.invert1, d.invert2), (true, false));
 }
+
+/// A PermMap supplying constants to a conic WcsMap that lacks its PV2_1
+/// parameter: simplifying it raises an error that is not an undefined
+/// transformation.
+fn failing_component() -> CmpMap {
+    use ast_core::mappings::{PermMap, WcsMap, WcsProjection};
+    CmpMap::new(
+        Box::new(PermMap::new(&[0, 0], &[-1, -2], &[0.1, 0.2]).unwrap()),
+        Box::new(WcsMap::new(2, WcsProjection::Coe, 1, 2).unwrap()),
+        Composition::Series,
+    )
+    .unwrap()
+}
+
+/// The error simplifying an encapsulated Mapping is passed up from the
+/// TranMap's simplification, as in C.
+#[test]
+fn an_error_simplifying_a_component_is_passed_up() {
+    use ast_core::mappings::UnitMap;
+    let map = TranMap::new(Box::new(failing_component()), Box::new(UnitMap::new(2))).unwrap();
+    let err = <dyn Mapping>::simplify(&map).unwrap_err();
+    assert_eq!(err.code(), ast_core::error::ErrorCode::Wcspa);
+}

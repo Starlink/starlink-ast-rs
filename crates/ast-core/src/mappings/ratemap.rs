@@ -168,12 +168,12 @@ impl RateMap {
     /// store now. Tracing C on `cap_cmpmap_01` shows this directly: the
     /// encapsulated CmpMap dumps `Invert = 1` and C enters `astSimplify` on it
     /// with `inv=0`.
-    fn reduced_child(&self) -> Option<DynMapping> {
+    fn reduced_child(&self) -> AstResult<Option<DynMapping>> {
         let mut oriented = self.map.clone_box();
         if oriented.is_inverted() != self.invert_snapshot {
             oriented.invert();
         }
-        let mut simp_map = oriented.simplify().ok()?;
+        let mut simp_map = oriented.simplify()?;
         // Restore the stored orientation, as C's closing `astSetInvert` does.
         if simp_map.is_inverted() != self.map.is_inverted() {
             simp_map.invert();
@@ -183,14 +183,14 @@ impl RateMap {
         let changed =
             simp_map.is_inverted() != self.map.is_inverted() || !simp_map.equal(self.map.as_ref());
         if !changed {
-            return None;
+            return Ok(None);
         }
 
-        let mut new_rm = RateMap::new(simp_map, self.ax1, self.ax2).ok()?;
+        let mut new_rm = RateMap::new(simp_map, self.ax1, self.ax2)?;
         if self.inverted {
             new_rm.invert();
         }
-        Some(Box::new(new_rm))
+        Ok(Some(Box::new(new_rm)))
     }
 }
 

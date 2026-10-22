@@ -839,12 +839,14 @@ impl Mapping for SwitchMap {
             if !inverted.is_inverted() {
                 inverted.invert();
             }
-            let normalized = inverted.normalize_inverted().ok()??;
+            let normalized = ctx.settle(inverted.normalize_inverted())?;
             ctx.set_pair_single(where_, (Box::new(normalized), false, false));
             return Some(where_);
         }
 
-        let (reduced, changed) = self.reduced_children().ok()?;
+        // An error simplifying a child is passed up, as C leaves it in the
+        // global status.
+        let (reduced, changed) = ctx.settle(self.reduced_children().map(Some))?;
         if changed {
             let (eff, orig) = {
                 let e = ctx.entry(where_);

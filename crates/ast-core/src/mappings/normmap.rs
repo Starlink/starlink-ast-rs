@@ -218,20 +218,22 @@ impl Mapping for NormMap {
         // iteration and becomes a UnitMap on the next one. Collapsing the two
         // into a single pass yields a UnitMap where C yields a NormMap.
         //
-        // An error from the Frame simplify abandons the merge, as C's status
-        // check does.
-        let simplified_frame = self.frame.simplify_frame().ok()?;
-        let reduced: Option<DynMapping> = if let Some(frame) = simplified_frame {
-            // The encapsulated Frame reduced: rebuild the NormMap around it
-            // (normmap.c:619-631).
-            Some(Box::new(NormMap::new(frame)))
-        } else if self.frame.as_any().is::<BasicFrame>() {
-            // A basic Frame's astNorm does nothing, so the NormMap is a UnitMap
-            // (normmap.c:632-640).
-            Some(Box::new(UnitMap::new(self.naxes())))
-        } else {
-            None
-        };
+        // An error from the Frame simplify ends the merge and is passed up,
+        // as C leaves it in the global status.
+        let reduced = self.frame.simplify_frame().map(|simplified_frame| {
+            let reduced: Option<DynMapping> = if let Some(frame) = simplified_frame {
+                // The encapsulated Frame reduced: rebuild the NormMap around it
+                // (normmap.c:619-631).
+                Some(Box::new(NormMap::new(frame)))
+            } else if self.frame.as_any().is::<BasicFrame>() {
+                // A basic Frame's astNorm does nothing, so the NormMap is a
+                // UnitMap (normmap.c:632-640).
+                Some(Box::new(UnitMap::new(self.naxes())))
+            } else {
+                None
+            };
+            reduced
+        });
 
         super::simplify::self_reduce_map_merge(self, reduced, ctx, where_, series)
     }

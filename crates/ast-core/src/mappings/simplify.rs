@@ -1384,11 +1384,21 @@ pub(crate) fn wcs_map_merge(
 /// is made in the class body, not here.
 pub(crate) fn self_reduce_map_merge(
     this: &dyn Mapping,
-    reduced: Option<DynMapping>,
+    reduced: AstResult<Option<DynMapping>>,
     ctx: &mut MergeCtx,
     where_: usize,
     series: bool,
 ) -> Option<usize> {
+    // An error reaching the replacement, such as one simplifying an
+    // encapsulated Mapping, ends the merge, as C leaves it in the global
+    // status.
+    let reduced = match reduced {
+        Ok(reduced) => reduced,
+        Err(e) => {
+            ctx.fail(e);
+            return None;
+        }
+    };
     if let Some(modified) = try_self_reduce(this, reduced, ctx, where_) {
         return Some(modified);
     }
@@ -1689,9 +1699,18 @@ pub(crate) fn region_map_merge(
     // `simplify_reporting_change` reports. A Region re-expressed in its
     // current Frame covers the same points, so a conversion-based `equal`
     // would not see that change.
-    if let Ok((simplified, true)) = <dyn Mapping>::simplify_reporting_change(this) {
-        ctx.set_pair_single(where_, (simplified, false, false));
-        return Some(where_);
+    // An error the simplification raises ends the merge, as C leaves it in
+    // the global status.
+    match <dyn Mapping>::simplify_reporting_change(this) {
+        Ok((simplified, true)) => {
+            ctx.set_pair_single(where_, (simplified, false, false));
+            return Some(where_);
+        }
+        Ok((_, false)) => {}
+        Err(e) => {
+            ctx.fail(e);
+            return None;
+        }
     }
 
     // ---- 2. Parallel-only neighbor merge ----

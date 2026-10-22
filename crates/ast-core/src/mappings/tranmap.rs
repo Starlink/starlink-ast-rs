@@ -268,6 +268,77 @@ impl Clone for TranMap {
     }
 }
 
+impl TranMap {
+    /// C's "simplify the TranMap on its own" (`tranmap.c:834-897`): the list
+    /// entry that replaces this TranMap, applied in direction `applied_inv`,
+    /// or `None` when nothing reduces.
+    ///
+    /// The three cases are an either/or, and the applied inversion decides
+    /// which of them can run.
+    fn reduced_on_own(&self, applied_inv: bool) -> AstResult<Option<(DynMapping, bool, bool)>> {
+        // Case 1: an inverted TranMap equals a forward one whose components are
+        // inverted and swapped, so replace it with that and clear the invert
+        // flag (`tranmap.c:837-850`). C stops there — an inverted TranMap never
+        // reaches the other two cases in the same pass.
+        if applied_inv {
+            let mut new_map1 = self.map2.clone();
+            let mut new_map2 = self.map1.clone();
+            new_map1.invert();
+            new_map2.invert();
+            let normalized = TranMap::new(new_map1, new_map2)?;
+            return Ok(Some((Box::new(normalized), false, false)));
+        }
+
+        // Case 2: simplify both encapsulated Mappings and replace the TranMap
+        // when either reduced (`tranmap.c:851-863`). `astSimplify` returns the
+        // object it was given when it cannot reduce it, recording *that* object
+        // (`mapping.c:24763`), so both components end up recorded either way and
+        // only a real reduction is reported as a change. Owned values make the
+        // record an explicit rebuild rather than a side effect on a shared
+        // pointer.
+        let simp1 = self.map1.simplify()?;
+        let simp2 = self.map2.simplify()?;
+        let reduced = simp1.is_inverted() != self.map1.is_inverted()
+            || !simp1.equal(self.map1.as_ref())
+            || simp2.is_inverted() != self.map2.is_inverted()
+            || !simp2.equal(self.map2.as_ref());
+
+        if reduced {
+            let tm = TranMap::new(simp1, simp2)?;
+            return Ok(Some((Box::new(tm), false, false)));
+        }
+
+        // Case 3: when both components are defined in both directions, compose
+        // the first with the inverse of the second; if that reduces to a UnitMap
+        // the two are equal, so either one can stand for the whole TranMap
+        // (`tranmap.c:864-887`).
+        if self.map1.has_forward()
+            && self.map1.has_inverse()
+            && self.map2.has_forward()
+            && self.map2.has_inverse()
+        {
+            let mut map2_inv = self.map2.clone();
+            map2_inv.invert();
+            let cmp = CmpMap::new(self.map1.clone(), map2_inv, Composition::Series)?;
+            let simp_cmp = <dyn Mapping>::simplify(&cmp)?;
+            if simp_cmp.as_any().is::<UnitMap>() {
+                // C copies the component as it was when the TranMap was created
+                // and leaves the list's invert flag alone (`tranmap.c:881-886`).
+                // The list holds every entry in its forward state with the
+                // intrinsic flag beside it, so an inverted component is stored
+                // the way [`simplify::default_map_merge`] stores a merge result.
+                let mut m1 = self.map1.clone();
+                let orig = m1.is_inverted();
+                if orig {
+                    m1.invert();
+                }
+                return Ok(Some((m1, orig, orig)));
+            }
+        }
+        Ok(None)
+    }
+}
+
 impl Mapping for TranMap {
     fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
         &self.mapping_flags
@@ -384,71 +455,19 @@ impl Mapping for TranMap {
         where_: usize,
         series: bool,
     ) -> Option<usize> {
-        // "Simplify the TranMap on its own" (`tranmap.c:834-897`) is an
-        // either/or over three cases, and the applied inversion decides which
-        // of them can run.
+        // "Simplify the TranMap on its own" (`tranmap.c:834-897`). An error
+        // there, such as one simplifying a component, ends the merge, as C
+        // leaves it in the global status.
         let applied_inv = ctx.entry(where_).1;
-
-        // Case 1: an inverted TranMap equals a forward one whose components are
-        // inverted and swapped, so replace it with that and clear the invert
-        // flag (`tranmap.c:837-850`). C stops there — an inverted TranMap never
-        // reaches the other two cases in the same pass.
-        if applied_inv {
-            let mut new_map1 = self.map2.clone();
-            let mut new_map2 = self.map1.clone();
-            new_map1.invert();
-            new_map2.invert();
-            let normalized = TranMap::new(new_map1, new_map2).ok()?;
-            ctx.set_pair_single(where_, (Box::new(normalized), false, false));
-            return Some(where_);
-        }
-
-        // Case 2: simplify both encapsulated Mappings and replace the TranMap
-        // when either reduced (`tranmap.c:851-863`). `astSimplify` returns the
-        // object it was given when it cannot reduce it, recording *that* object
-        // (`mapping.c:24763`), so both components end up recorded either way and
-        // only a real reduction is reported as a change. Owned values make the
-        // record an explicit rebuild rather than a side effect on a shared
-        // pointer.
-        let simp1 = self.map1.simplify().ok()?;
-        let simp2 = self.map2.simplify().ok()?;
-        let reduced = simp1.is_inverted() != self.map1.is_inverted()
-            || !simp1.equal(self.map1.as_ref())
-            || simp2.is_inverted() != self.map2.is_inverted()
-            || !simp2.equal(self.map2.as_ref());
-
-        if reduced {
-            let tm = TranMap::new(simp1, simp2).ok()?;
-            ctx.set_pair_single(where_, (Box::new(tm), false, false));
-            return Some(where_);
-        }
-
-        // Case 3: when both components are defined in both directions, compose
-        // the first with the inverse of the second; if that reduces to a UnitMap
-        // the two are equal, so either one can stand for the whole TranMap
-        // (`tranmap.c:864-887`).
-        if self.map1.has_forward()
-            && self.map1.has_inverse()
-            && self.map2.has_forward()
-            && self.map2.has_inverse()
-        {
-            let mut map2_inv = self.map2.clone();
-            map2_inv.invert();
-            let cmp = CmpMap::new(self.map1.clone(), map2_inv, Composition::Series).ok()?;
-            let simp_cmp = <dyn Mapping>::simplify(&cmp).ok()?;
-            if simp_cmp.as_any().is::<UnitMap>() {
-                // C copies the component as it was when the TranMap was created
-                // and leaves the list's invert flag alone (`tranmap.c:881-886`).
-                // The list holds every entry in its forward state with the
-                // intrinsic flag beside it, so an inverted component is stored
-                // the way [`simplify::default_map_merge`] stores a merge result.
-                let mut m1 = self.map1.clone();
-                let orig = m1.is_inverted();
-                if orig {
-                    m1.invert();
-                }
-                ctx.set_pair_single(where_, (m1, orig, orig));
+        match self.reduced_on_own(applied_inv) {
+            Ok(Some(entry)) => {
+                ctx.set_pair_single(where_, entry);
                 return Some(where_);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                ctx.fail(e);
+                return None;
             }
         }
 

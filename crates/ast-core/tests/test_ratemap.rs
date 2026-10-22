@@ -585,3 +585,20 @@ fn rate_maps_of_a_compound_mapping() {
         m.invert();
     }
 }
+
+/// The error simplifying the encapsulated Mapping, here a PermMap supplying
+/// constants to a conic WcsMap that lacks its PV2_1 parameter, is passed up
+/// from the RateMap's simplification, as in C.
+#[test]
+fn an_error_simplifying_the_encapsulated_mapping_is_passed_up() {
+    use ast_core::mappings::{CmpMap, Composition, PermMap, WcsMap, WcsProjection};
+    let inner = CmpMap::new(
+        Box::new(PermMap::new(&[0, 0], &[-1, -2], &[0.1, 0.2]).unwrap()),
+        Box::new(WcsMap::new(2, WcsProjection::Coe, 1, 2).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
+    let map = RateMap::new(Box::new(inner), 1, 1).unwrap();
+    let err = <dyn Mapping>::simplify(&map).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Wcspa);
+}

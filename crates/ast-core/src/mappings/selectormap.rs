@@ -183,11 +183,11 @@ impl SelectorMap {
     /// A simplified Mapping that is still a known concrete Region type is
     /// retained; otherwise the original Region is kept for that slot, since a
     /// SelectorMap holds Regions and not Mappings.
-    fn reduced_children(&self) -> Option<DynMapping> {
+    fn reduced_children(&self) -> AstResult<Option<DynMapping>> {
         let mut changed = false;
         let mut simplified_regions: Vec<DynRegion> = Vec::with_capacity(self.regions.len());
         for reg in &self.regions {
-            let simp: DynMapping = (reg.as_ref() as &dyn Mapping).simplify().ok()?;
+            let simp: DynMapping = (reg.as_ref() as &dyn Mapping).simplify()?;
             let was_changed = !simp.equal(reg.as_ref() as &dyn Mapping)
                 || simp.is_inverted() != reg.is_inverted();
             let new_reg: DynRegion = if let Some(r) = simp.as_any().downcast_ref::<Circle>() {
@@ -220,10 +220,10 @@ impl SelectorMap {
         }
 
         if !changed {
-            return None;
+            return Ok(None);
         }
 
-        Some(Box::new(SelectorMap {
+        Ok(Some(Box::new(SelectorMap {
             regions: simplified_regions,
             badval: self.badval,
             inverted: self.inverted,
@@ -231,7 +231,7 @@ impl SelectorMap {
             ident: None,
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
-        }))
+        })))
     }
 }
 
