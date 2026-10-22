@@ -142,6 +142,73 @@ fn set_unknown_variant_errors() {
     assert_eq!(err.code(), ErrorCode::Attin);
 }
 
+/// With no variants, the only variant of the current Frame is named by its
+/// Domain, and selecting it does nothing: the values of a C-oracle probe.
+#[test]
+fn selecting_the_only_variant_of_a_frame_without_variants() {
+    let mut fs = base_fs();
+    fs.set_variant("  fplane ").unwrap();
+    assert_eq!(fs.variant(), "FPLANE");
+    assert!(!fs.test_variant());
+    for name in ["FP1", "pixel"] {
+        let err = fs.set_variant(name).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Attin);
+        assert_eq!(
+            err.message(),
+            format!(
+                "astSetVariant(FrameSet): Unknown Frame variant '{}' requested.",
+                name.to_uppercase()
+            )
+        );
+    }
+}
+
+/// C reads outside its arrays when the Frame whose variant is selected is
+/// on the root node, which has no Mapping from a parent to replace; the port
+/// moves the Frame to a new node joined to the root by the change of
+/// variant, so the Frames derived from the root do not move.
+#[test]
+fn selecting_a_variant_of_a_frame_on_the_root_node() {
+    use ast_core::mappings::ShiftMap;
+    let mut fs = base_fs();
+    fs.set_current(FrameRef::Index(1)).unwrap();
+    let shift = ShiftMap::new(vec![10.0, 20.0]);
+    fs.add_variant(Some(Box::new(shift)), "SHIFTED").unwrap();
+    assert_eq!(fs.variant(), "SHIFTED");
+    assert_eq!(fs.nframe(), 2);
+
+    // PIXEL is now the root shifted by (10, 20); FPLANE still derives from
+    // the root, so PIXEL (60.5, 120.5) is root (50.5, 100.5).
+    let pix_to_fp = |fs: &FrameSet| {
+        let map = fs.mapping(FrameRef::Index(1), FrameRef::Index(2)).unwrap();
+        let out = map
+            .transform(&PointSet::from_rows([[60.5, 120.5]]), true)
+            .unwrap();
+        (out.point(0)[0], out.point(0)[1])
+    };
+    let mut unshifted = base_fs();
+    unshifted.set_current(FrameRef::Index(2)).unwrap();
+    assert_eq!(pix_to_fp(&fs), tran(&unshifted, 50.5, 100.5));
+
+    let text = native_dump(&ast_core::AnyObject::FrameSet(fs.clone())).unwrap();
+    let ast_core::AnyObject::FrameSet(back) = ast_core::from_native_string(&text).unwrap() else {
+        panic!("expected a FrameSet");
+    };
+    assert_eq!(pix_to_fp(&back), pix_to_fp(&fs));
+
+    fs.set_variant("PIXEL").unwrap();
+    assert_eq!(fs.variant(), "PIXEL");
+    let out = fs
+        .mapping(FrameRef::Index(1), FrameRef::Index(2))
+        .unwrap()
+        .transform(&PointSet::from_rows([[50.5, 100.5]]), true)
+        .unwrap();
+    assert_eq!(
+        (out.point(0)[0], out.point(0)[1]),
+        tran(&unshifted, 50.5, 100.5)
+    );
+}
+
 #[test]
 fn duplicate_variant_name_errors() {
     let mut fs = base_fs();

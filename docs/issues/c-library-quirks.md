@@ -1113,6 +1113,7 @@ Node 0, the root, which holds the first Frame added unless it has been remapped,
 Consequence: undefined behaviour in C for variants on the root node.
 
 The port's `FrameSet::set_variant` (`crates/ast-core/src/frames/frameset.rs`) replaces the parent Mapping as C does for any other node, and for the root node moves the owner Frame to a new node linked to the root by the change of variant, so Frames derived from it do not move.
+`tests/test_frameset_variants.rs` (`selecting_a_variant_of_a_frame_on_the_root_node`) holds the port to that.
 A C fix: handle the root node, for instance by remapping the Frame as `astRemapFrame` does.
 
 ### The `astGetRegionPoints` documentation calls it an attribute and sends Prism users to a CmpRegion

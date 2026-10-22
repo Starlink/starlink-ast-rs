@@ -1441,12 +1441,15 @@ impl FrameSet {
 
         let myvar = name.trim().to_uppercase();
 
-        // No Variants FrameSet → only the frame's own (default) variant exists;
-        // C raises AST__ATTIN for any other name (testframeset Error 24).
+        // With no Variants FrameSet the only variant is the current Frame's
+        // own, named by its Domain; selecting it does nothing.
         let Some(vfs) = &self.frame_variants[owner] else {
+            if myvar == self.frames[icur].domain() {
+                return Ok(());
+            }
             return Err(AstError::new(
                 ErrorCode::Attin,
-                format!("setVariant: unknown Frame variant '{myvar}' requested"),
+                format!("astSetVariant(FrameSet): Unknown Frame variant '{myvar}' requested."),
             ));
         };
 
@@ -1466,7 +1469,7 @@ impl FrameSet {
             return Err(AstError::new(
                 ErrorCode::Attin,
                 format!(
-                    "setVariant: unknown Frame variant '{myvar}' requested - available variants are '{}'",
+                    "astSetVariant(FrameSet): Unknown Frame variant '{myvar}' requested - available variants are '{}'.",
                     self.all_variants()
                 ),
             ));
