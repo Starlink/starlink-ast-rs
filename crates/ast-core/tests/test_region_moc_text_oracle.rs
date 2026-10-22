@@ -212,15 +212,10 @@ fn empty_forms_match_c() {
 
 fn pieces(moc: &Moc, json: bool, buflen: usize) -> (Vec<String>, Option<ErrorCode>) {
     let mut out = Vec::new();
-    let result = moc.get_moc_text(
-        json,
-        buflen,
-        &mut |piece| {
-            out.push(piece.to_string());
-            Ok(())
-        },
-        "probe",
-    );
+    let result = moc.get_moc_text(json, buflen, &mut |piece| {
+        out.push(piece.to_string());
+        Ok(())
+    });
     (out, result.err().map(|e| e.code()))
 }
 

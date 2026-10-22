@@ -1789,15 +1789,10 @@ impl Moc {
     #[doc(alias = "astGetMocString")]
     pub fn get_moc_string(&self, json: bool) -> AstResult<String> {
         let mut out = String::new();
-        self.get_moc_text(
-            json,
-            80,
-            &mut |chunk| {
-                out.push_str(chunk);
-                Ok(())
-            },
-            "astGetMocString",
-        )?;
+        self.get_moc_text(json, 80, &mut |chunk| {
+            out.push_str(chunk);
+            Ok(())
+        })?;
         Ok(out)
     }
 
@@ -2160,7 +2155,6 @@ impl Moc {
     ///
     /// Each piece but the last ends after a space or comma, so that no value
     /// is split between pieces.
-    /// `method` names the operation in error messages.
     /// [`get_moc_string`](Self::get_moc_string) gives the whole text as one
     /// string.
     ///
@@ -2172,6 +2166,17 @@ impl Moc {
     /// - Passes on the error returned by `sink`.
     // C: moc.c `astGetMocText`, which MocChan shares.
     pub fn get_moc_text(
+        &self,
+        json: bool,
+        buflen: usize,
+        sink: &mut dyn FnMut(&str) -> AstResult<()>,
+    ) -> AstResult<()> {
+        self.get_moc_text_for(json, buflen, sink, "astGetMocString")
+    }
+
+    /// [`get_moc_text`](Self::get_moc_text) with `method` naming the calling
+    /// operation in error messages, as C's protected `astGetMocText` does.
+    pub(crate) fn get_moc_text_for(
         &self,
         json: bool,
         buflen: usize,

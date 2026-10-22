@@ -132,17 +132,18 @@ fn built(name: &str) -> DynRegion {
                 .unwrap(),
         ),
         "obs_data" => {
-            let mut stc = StcObsDataLocationBuilder::from_dyn(plain_circle())
-                .build()
-                .unwrap();
             let mut geo = BasicFrameBuilder::new(3).build().unwrap();
             Frame::set_domain(&mut geo, "GEO").unwrap();
             let obs = PointListBuilder::new(geo, vec![vec![1.0, 2.0, 3.0]])
                 .unwrap()
                 .build()
                 .unwrap();
-            stc.stc_set_obs(Some(obs));
-            Box::new(stc)
+            Box::new(
+                StcObsDataLocationBuilder::from_dyn(plain_circle())
+                    .obs(obs)
+                    .build()
+                    .unwrap(),
+            )
         }
         other => panic!("no case {other}"),
     }

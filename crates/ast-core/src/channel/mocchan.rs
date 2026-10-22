@@ -377,7 +377,7 @@ impl Channel for MocChan {
         let json = self.moc_format == MocFormat::Json;
         let buflen = self.moc_line_len() as usize;
         let base = &self.base;
-        moc.get_moc_text(
+        moc.get_moc_text_for(
             json,
             buflen,
             &mut |line| base.write_line("MocChan", line),
