@@ -31,9 +31,9 @@ use ast_core::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem};
 use ast_core::keymap::KeyMap;
 use ast_core::mappings::{Mapping, ZoomMap};
 use ast_core::regions::{
-    CircleBuilder, DynRegion, Overlap, PointListBuilder, Region, STC_ERROR, STC_NAME,
-    StcCatalogEntryLocationBuilder, StcObsDataLocationBuilder, StcResourceProfile,
-    StcResourceProfileBuilder, StcSearchLocationBuilder,
+    CircleBuilder, DynRegion, Overlap, Region, STC_ERROR, STC_NAME, StcCatalogEntryLocationBuilder,
+    StcObsDataLocationBuilder, StcResourceProfile, StcResourceProfileBuilder,
+    StcSearchLocationBuilder,
 };
 use ast_core::{AnyObject, Channel, NativeChannel, from_native_string};
 
@@ -131,19 +131,15 @@ fn built(name: &str) -> DynRegion {
                 .build()
                 .unwrap(),
         ),
+        // C gives the observatory position only to a dump that holds it,
+        // so this case is read from C's dump of one.
         "obs_data" => {
-            let mut geo = BasicFrameBuilder::new(3).build().unwrap();
-            Frame::set_domain(&mut geo, "GEO").unwrap();
-            let obs = PointListBuilder::new(geo, vec![vec![1.0, 2.0, 3.0]])
-                .unwrap()
-                .build()
-                .unwrap();
-            Box::new(
-                StcObsDataLocationBuilder::from_dyn(plain_circle())
-                    .obs(obs)
-                    .build()
-                    .unwrap(),
-            )
+            let first = cases::CASES
+                .iter()
+                .find(|c| c.0 == "obs_data")
+                .expect("case obs_data")
+                .1;
+            from_native_string(first).unwrap().into_region().unwrap()
         }
         other => panic!("no case {other}"),
     }

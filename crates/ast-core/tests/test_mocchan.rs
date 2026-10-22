@@ -95,6 +95,10 @@ fn zero_line_len_is_too_small() {
     assert_eq!(ch.moc_line_len(), 0);
     let err = ch.write(&AnyObject::Moc(moc)).unwrap_err();
     assert_eq!(err.code(), ErrorCode::Smbuf);
+    assert_eq!(
+        err.message(),
+        "astWrite(Moc): Supplied buffer length (0) is too small."
+    );
 }
 
 #[test]

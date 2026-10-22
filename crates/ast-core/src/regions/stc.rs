@@ -206,9 +206,10 @@ impl StcKind for ObsDataLocation {
 /// coordinate system and the location of the observatory in another.
 /// As an [`Stc`], an StcObsDataLocation covers the extent of the
 /// observation, not the observatory.
-/// The observatory position, if one has been given, is a [`PointList`]
-/// that [`obs`](Stc::obs) returns and [`StcBuilder::obs`]
-/// sets; the builder does not take one.
+/// The observatory position is a [`PointList`] that [`obs`](Stc::obs)
+/// returns.
+/// The builder gives an StcObsDataLocation no position, as C's constructor
+/// does; one that has a position comes from reading a dump that holds it.
 /// For a terrestrial observatory, the
 /// [ObsLon](crate::frames::Frame::obs_lon) and
 /// [ObsLat](crate::frames::Frame::obs_lat) attributes of the encapsulated
@@ -304,7 +305,6 @@ pub struct Stc<K: StcKind> {
 pub struct StcBuilder<K: StcKind> {
     region: DynRegion,
     coords: Vec<KeyMap>,
-    obs: Option<PointList>,
     kind: PhantomData<K>,
 }
 
@@ -328,7 +328,6 @@ impl<K: StcKind> StcBuilder<K> {
         StcBuilder {
             region,
             coords: Vec::new(),
-            obs: None,
             kind: PhantomData,
         }
     }
@@ -387,7 +386,7 @@ impl<K: StcKind> StcBuilder<K> {
             data,
             region: reg.clone_region(),
             coords: Vec::new(),
-            obs: self.obs,
+            obs: None,
             kind: PhantomData,
         };
 
@@ -407,20 +406,6 @@ impl<K: StcKind> StcBuilder<K> {
             new.coords.push(made);
         }
         Ok(new)
-    }
-}
-
-impl StcBuilder<ObsDataLocation> {
-    /// Give the Stc the position of the observatory.
-    ///
-    /// The position is a [`PointList`] in a coordinate system of its own,
-    /// which need not be the Stc's.
-    /// Without this call the Stc has no observatory position.
-    // C: the protected stcobsdatalocation.c `astStcSetObs`, which the public
-    // constructor does not call.
-    pub fn obs(mut self, obs: PointList) -> Self {
-        self.obs = Some(obs);
-        self
     }
 }
 
@@ -741,7 +726,7 @@ impl<K: StcKind> Stc<K> {
 impl Stc<ObsDataLocation> {
     /// The position of the observatory, if the StcObsDataLocation has one.
     ///
-    /// [`StcBuilder::obs`] gives it one.
+    /// Reading a dump that holds one gives it a position.
     pub fn obs(&self) -> Option<&PointList> {
         self.obs.as_ref()
     }

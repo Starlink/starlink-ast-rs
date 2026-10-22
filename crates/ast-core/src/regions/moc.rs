@@ -2164,6 +2164,8 @@ impl Moc {
     ///   the last space or comma.
     /// - [`ErrorCode::Bgmoc`] as for [`moc_length`](Self::moc_length).
     /// - Passes on the error returned by `sink`.
+    ///
+    /// Errors name `astGetMocString` as the operation that failed.
     // C: moc.c `astGetMocText`, which MocChan shares.
     pub fn get_moc_text(
         &self,

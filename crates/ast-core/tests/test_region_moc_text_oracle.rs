@@ -234,6 +234,16 @@ fn pieces_match_c() {
     assert_eq!(err.map_or(0, |c| c as i32), cases::SMALL_BUFFER);
 }
 
+/// The error names the public function that asked for the text.
+#[test]
+fn small_buffer_error_names_get_moc_string() {
+    let err = high().get_moc_text(false, 3, &mut |_| Ok(())).unwrap_err();
+    assert_eq!(
+        err.message(),
+        "astGetMocString(Moc): Supplied buffer length (3) is too small."
+    );
+}
+
 #[test]
 fn headers_match_c() {
     for (moc, want) in [(low(), cases::HEADER_LOW), (high(), cases::HEADER_HIGH)] {

@@ -515,7 +515,7 @@ function	astGetStcRegion	stc.c	Stc::get_stc_region		yes
 attribute	RegionClass	stc.c	Stc::region_class		yes
 class	StcCatalogEntryLocation	stccatalogentrylocation.c	StcCatalogEntryLocation		yes	a type alias of Stc
 function	astStcCatalogEntryLocation	stccatalogentrylocation.c	StcBuilder::new		yes	one generic builder for the four classes, through StcCatalogEntryLocationBuilder; the AstroCoords KeyMaps are given with coords
-class	StcObsDataLocation	stcobsdatalocation.c	StcObsDataLocation		yes	a type alias of Stc; obs and StcBuilder::obs give and set the observatory position
+class	StcObsDataLocation	stcobsdatalocation.c	StcObsDataLocation		yes	a type alias of Stc; obs and obs gives the observatory position, which only a dump can set (C's astStcSetObs is protected)
 function	astStcObsDataLocation	stcobsdatalocation.c	StcBuilder::new		yes	one generic builder for the four classes, through StcObsDataLocationBuilder; the header describes the class as StcResourceProfile's does (c-library-quirks.md)
 class	StcResourceProfile	stcresourceprofile.c	StcResourceProfile		yes	a type alias of Stc
 function	astStcResourceProfile	stcresourceprofile.c	StcBuilder::new		yes	one generic builder for the four classes, through StcResourceProfileBuilder; the AstroCoords KeyMaps are given with coords
