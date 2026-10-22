@@ -152,7 +152,7 @@ The Rust `CmpMap::simplified` (`cmpmap.rs:871-876 (fn simplified)`) passes its g
 `mappings/simplify.rs` unless stated. The `has_been_simplified` test at `cmpmap.rs:872 (fn simplified)` is
 C's `astGetIsSimple` short-circuit, which C performs one level up in
 `astSimplify_` (`mapping.c:24802-24804 (fn astSimplify_)`) and the port performs both there
-(`simplify_entry.rs:133 (fn simplify_with_outcome)`) and here.
+(`simplify_entry.rs:134 (fn simplify_with_outcome)`) and here.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
@@ -233,7 +233,7 @@ merges nothing returns `astClone( this )` and the supplied tree survives
 unswapped. And the protected `AllowSimplify` flag is cleared off each component
 as the sequence is folded back into a CmpMap (row 70), with `astSimplify_`
 clearing it on the result whichever branch ran
-(`mapping.c:24786-24788 (fn astSimplify_)`, `simplify_entry.rs:180 (fn record_simplified)`) so it cannot reach a public
+(`mapping.c:24786-24788 (fn astSimplify_)`, `simplify_entry.rs:181 (fn record_simplified)`) so it cannot reach a public
 dump. The base driver's own gate for an ineligible Mapping
 (`mapping.c:16853-16855 (fn Simplify)`) is at `mappings/simplify.rs:1376-1378 (fn base_simplify)`.
 
@@ -269,7 +269,7 @@ the base `MapList`, which appends the Mapping itself as one leaf. The port has
 the same condition on `flatten`'s decomposing branch (`mappings/simplify.rs:365 (fn flatten)`), and the
 non-decomposing path was already the single-leaf append, so a named CmpMap
 reaches the nominate loop intact. The companion gate in the public entry
-(`mapping.c:24764 (fn astSimplify_)`, `simplify_entry.rs:133 (fn simplify_with_outcome)`) shares its `astClone( this )` exit
+(`mapping.c:24764 (fn astSimplify_)`, `simplify_entry.rs:134 (fn simplify_with_outcome)`) shares its `astClone( this )` exit
 with the `IsSimple` short-circuit, as C's one expression does.
 
 `CmpMap::Equal` (`cmpmap.c:458 (fn Equal)`) is the reason the port needed a second

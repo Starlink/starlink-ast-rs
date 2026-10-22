@@ -11,10 +11,11 @@
 //! possible caller.
 //!
 //! **Do not add anything else to this file.** It holds the gate
-//! (`simplify_reporting_change`), the caller that drops the gate's answer to
-//! "did anything change?" (`simplify`) and the tail they share
-//! (`record_simplified`); there is exactly one `ViaSimplify` construction in the
-//! file and the guarantee is that nothing outside it can write a second one.
+//! (`simplify_with_outcome`), the result it reports (`SimplifyOutcome`), the
+//! callers that narrow its answer (`simplify_reporting_change` and `simplify`)
+//! and the tail they share (`record_simplified`); there is exactly one
+//! `ViaSimplify` construction in the file and the guarantee is that nothing
+//! outside it can write a second one.
 
 use super::simplify::TagTree;
 use super::{AstResult, DynMapping, Mapping, simplify};

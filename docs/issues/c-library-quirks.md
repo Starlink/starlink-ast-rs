@@ -2829,9 +2829,9 @@ read-only:
   (cmpmap.c:3326) leaves each non-duplicate list entry aliasing the
   real child, so a tag the nominate loop raises on an entry
   (cmpmap.c:1437) is also on `this`'s child when `Simplify` returns
-  `astClone( this )` (cmpmap.c:3634). `simplify::mirror_simple_tags`
-  and `apply_component_stamps` transplant those tags — sets and clears
-  alike — from the component list onto the preserved tree.
+  `astClone( this )` (cmpmap.c:3634). `simplify::stamped_tags` builds a
+  `TagTree` of those tags — sets and clears alike — from the component
+  list, and `TagTree::apply_to` transplants it onto the preserved tree.
 
 **Upstream discussion:** `IsSimple` conflating "already simplified"
 with "was simplified, dump it" — and having `astSetInvert` silently
