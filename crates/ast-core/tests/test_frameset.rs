@@ -913,3 +913,62 @@ fn inverted_add_frame_moves_the_default_base_to_the_new_frame() {
     .unwrap();
     assert_base_current(&fs, ("D", "D", false, true, 1.0));
 }
+
+// ---- Base and Current indices, and selection by Domain ----
+
+/// Frames with Domains X, Y, Y and Z, each added from the first through a
+/// ZoomMap of factor 2, 3 and 5.
+fn four_domains() -> FrameSet {
+    let mut fs = FrameSet::new(make_named_frame(1, "X"));
+    for (zoom, domain) in [(2.0, "Y"), (3.0, "Y"), (5.0, "Z")] {
+        fs.add_frame(
+            FrameRef::Index(1),
+            Box::new(ZoomMap::new(1, zoom).unwrap()),
+            make_named_frame(1, domain),
+        )
+        .unwrap();
+    }
+    fs
+}
+
+// C probe (astGetI "Base"/"Current", astSet "Base= y  " etc.) on these
+// Frames: unchanged FrameSet 1/4, then Base=2; inverted 4/1, then Base=2 and
+// Current=4.
+#[test]
+fn base_and_current_indices() {
+    let mut fs = four_domains();
+    assert_eq!((fs.base_index(), fs.current_index()), (1, 4));
+    fs.set_current(FrameRef::Index(2)).unwrap();
+    assert_eq!(fs.current_index(), 2);
+    fs.invert();
+    assert_eq!((fs.base_index(), fs.current_index()), (2, 1));
+}
+
+#[test]
+fn set_base_and_current_by_domain() {
+    let mut fs = four_domains();
+    // The first Frame with the Domain is taken, ignoring case, leading and
+    // trailing white space.
+    fs.set_base_by_domain(" y  ").unwrap();
+    assert_eq!((fs.base_index(), fs.current_index()), (2, 4));
+    fs.set_current_by_domain("x").unwrap();
+    assert_eq!(fs.current_index(), 1);
+
+    let mut inv = four_domains();
+    inv.invert();
+    assert_eq!((inv.base_index(), inv.current_index()), (4, 1));
+    inv.set_base_by_domain("Y").unwrap();
+    assert_eq!((inv.base_index(), inv.current_index()), (2, 1));
+    inv.set_current_by_domain("z").unwrap();
+    assert_eq!((inv.base_index(), inv.current_index()), (2, 4));
+}
+
+#[test]
+fn set_by_unknown_domain_is_attin() {
+    let mut fs = four_domains();
+    let err = fs.set_base_by_domain("Q").unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Attin);
+    let err = fs.set_current_by_domain("w").unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Attin);
+    assert_eq!((fs.base_index(), fs.current_index()), (1, 4));
+}

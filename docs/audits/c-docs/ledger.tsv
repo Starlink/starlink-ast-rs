@@ -163,8 +163,8 @@ function	astMirrorVariants	frameset.c	FrameSet::mirror_variants		yes	C's AST__NO
 function	astRemapFrame	frameset.c	FrameSet::remap_frame		yes
 function	astRemoveFrame	frameset.c	FrameSet::remove_frame		yes
 attribute	AllVariants	frameset.c	FrameSet::all_variants		yes
-attribute	Base	frameset.c	FrameSet::set_base		yes	No public getter gives the Base index; base gives the Frame (PLAN.md §2); C's setting by Domain name has no counterpart
-attribute	Current	frameset.c	FrameSet::set_current		yes	No public getter gives the Current index; current gives the Frame (PLAN.md §2); C's setting by Domain name has no counterpart
+attribute	Base	frameset.c	FrameSet::set_base;FrameSet::base_index;FrameSet::set_base_by_domain		yes	base gives the Frame; setting by Domain name is set_base_by_domain
+attribute	Current	frameset.c	FrameSet::set_current;FrameSet::current_index;FrameSet::set_current_by_domain		yes	current gives the Frame; setting by Domain name is set_current_by_domain
 attribute	Nframe	frameset.c	FrameSet::nframe		yes
 attribute	Variant	frameset.c	FrameSet::variant		yes	set_variant, test_variant and clear_variant are the setter, test and clear
 function	astFrameSet	frameset.c	FrameSet::new		yes	A FrameSet given is held as one Frame, where C takes its Frames, Mappings, Base, Current and Invert (PLAN.md §2)

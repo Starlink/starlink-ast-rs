@@ -448,6 +448,80 @@ impl FrameSet {
         Ok(())
     }
 
+    /// The Base attribute: the 1-based index of the base Frame; see
+    /// [`set_base`](FrameSet::set_base).
+    ///
+    /// While the FrameSet is inverted it is the index of the Frame that was
+    /// current before inversion.
+    #[doc(alias = "Base")]
+    pub fn base_index(&self) -> usize {
+        self.base_idx + 1
+    }
+
+    /// The Current attribute: the 1-based index of the current Frame; see
+    /// [`set_current`](FrameSet::set_current).
+    ///
+    /// While the FrameSet is inverted it is the index of the Frame that was
+    /// the base Frame before inversion.
+    #[doc(alias = "Current")]
+    pub fn current_index(&self) -> usize {
+        self.current_idx + 1
+    }
+
+    /// Make the first Frame whose Domain is `domain` the base Frame: set the
+    /// Base attribute by Domain name.
+    ///
+    /// Frames are searched in index order.
+    /// The Domains are compared ignoring case and leading and trailing white
+    /// space.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Attin` when no Frame has the Domain.
+    #[doc(alias = "Base")]
+    pub fn set_base_by_domain(&mut self, domain: &str) -> AstResult<()> {
+        let idx = self.domain_index(domain, "Base")?;
+        self.set_base(FrameRef::Index(idx))
+    }
+
+    /// Make the first Frame whose Domain is `domain` the current Frame: set
+    /// the Current attribute by Domain name.
+    ///
+    /// Frames are searched in index order.
+    /// The Domains are compared ignoring case and leading and trailing white
+    /// space.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Attin` when no Frame has the Domain.
+    #[doc(alias = "Current")]
+    pub fn set_current_by_domain(&mut self, domain: &str) -> AstResult<()> {
+        let idx = self.domain_index(domain, "Current")?;
+        self.set_current(FrameRef::Index(idx))
+    }
+
+    /// The 1-based index of the first Frame whose Domain matches `domain`.
+    // C: frameset.c `SetAttrib` reads the value with `%*s` after skipping
+    // leading white space, then compares each Frame's Domain with
+    // `astChrMatch`, which ignores case and trailing white space.
+    fn domain_index(&self, domain: &str, attrib: &str) -> AstResult<usize> {
+        let want = crate::mappings::helpers::chr_match_key(
+            domain.trim_start_matches([' ', '\t', '\n', '\x0b', '\x0c', '\r']),
+        );
+        self.frames
+            .iter()
+            .position(|f| crate::mappings::helpers::chr_match_key(f.domain()) == want)
+            .map(|i| i + 1)
+            .ok_or_else(|| {
+                AstError::new(
+                    ErrorCode::Attin,
+                    format!(
+                        "astSetAttrib(FrameSet): Invalid index value for {attrib} Frame \"{domain}\"."
+                    ),
+                )
+            })
+    }
+
     /// Whether the Base attribute is set; see
     /// [`set_base`](FrameSet::set_base).
     pub fn test_base(&self) -> bool {
