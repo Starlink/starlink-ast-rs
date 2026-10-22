@@ -278,7 +278,7 @@ fn listed_uncleaned() -> BTreeSet<&'static str> {
 #[test]
 fn rendered_docs_carry_no_c_references() {
     let (refs, pages) = rendered_c_references();
-    assert_scan_covered_the_docs(&pages);
+    assert_scan_covered_the_docs(pages);
     let listed = listed_uncleaned();
     let unlisted: Vec<_> = refs
         .iter()
@@ -293,7 +293,7 @@ fn rendered_docs_carry_no_c_references() {
 #[test]
 fn a_clean_module_cannot_stay_listed() {
     let (refs, pages) = rendered_c_references();
-    assert_scan_covered_the_docs(&pages);
+    assert_scan_covered_the_docs(pages);
     let clean: Vec<_> = listed_uncleaned()
         .into_iter()
         .filter(|m| !refs.contains_key(*m))
