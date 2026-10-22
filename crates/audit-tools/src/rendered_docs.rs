@@ -180,31 +180,67 @@ pub fn public_modules(src: &str) -> Vec<String> {
     out
 }
 
-/// Remove every rendered documentation directory under the cargo target
-/// directory `target`: `target/doc` and `target/<triple>/doc`.
-///
-/// An incremental `cargo doc` leaves pages and `type.impl/*.js` files that no
-/// source produces any more, which would be scanned as if they were current.
-/// Clearing them first means what is scanned is what the build wrote.
-pub fn clear_rendered_docs(target: &Path) -> std::io::Result<()> {
+/// The rendered documentation directories under the cargo target directory
+/// `target`: `target/doc` and `target/<triple>/doc`, where they exist.
+fn doc_dirs(target: &Path) -> Vec<std::path::PathBuf> {
     let mut dirs = vec![target.join("doc")];
     if let Ok(entries) = std::fs::read_dir(target) {
-        for e in entries {
-            let p = e?.path();
-            if p.is_dir() {
-                dirs.push(p.join("doc"));
-            }
-        }
+        dirs.extend(entries.flatten().map(|e| e.path().join("doc")));
     }
-    for d in dirs.into_iter().filter(|d| d.is_dir()) {
-        std::fs::remove_dir_all(d)?;
+    dirs.retain(|d| d.is_dir());
+    dirs
+}
+
+/// Every `.html` and `.js` file under `dir`, except the content-hashed
+/// `static.files` that rustdoc shares between builds.
+fn page_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+    for e in std::fs::read_dir(dir)? {
+        let p = e?.path();
+        if p.is_dir() {
+            if p.file_name().is_some_and(|n| n != "static.files") {
+                page_files(&p, out)?;
+            }
+        } else if p.extension().is_some_and(|x| x == "html" || x == "js") {
+            out.push(p);
+        }
     }
     Ok(())
 }
 
+/// Delete the rendered pages and scripts under the cargo target directory
+/// `target` that a documentation build started at `since` did not write.
+///
+/// An incremental `cargo doc` leaves pages and `type.impl/*.js` files that no
+/// source produces any more, which a scan would read as if they were current.
+/// When the build wrote nothing (cargo found the docs fresh) nothing is stale
+/// and nothing is deleted, so an incremental build stays incremental.
+/// Returns the number of files deleted.
+pub fn clear_stale_pages(target: &Path, since: std::time::SystemTime) -> std::io::Result<usize> {
+    let mut files = Vec::new();
+    for d in doc_dirs(target) {
+        page_files(&d, &mut files)?;
+    }
+    let mut stale = Vec::new();
+    let mut rewritten = false;
+    for f in files {
+        if std::fs::metadata(&f)?.modified()? >= since {
+            rewritten = true;
+        } else {
+            stale.push(f);
+        }
+    }
+    if !rewritten {
+        return Ok(0);
+    }
+    for f in &stale {
+        std::fs::remove_file(f)?;
+    }
+    Ok(stale.len())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{c_references, clear_rendered_docs, public_modules};
+    use super::{c_references, clear_stale_pages, public_modules};
     use std::collections::BTreeSet;
 
     #[test]
@@ -215,21 +251,48 @@ mod tests {
     }
 
     #[test]
-    fn clearing_removes_stale_pages_and_keeps_build_output() {
-        let root = std::env::temp_dir().join(format!("audit-tools-clear-{}", std::process::id()));
+    fn only_pages_the_build_did_not_write_are_cleared() {
+        use std::time::{Duration, SystemTime};
+        let root = std::env::temp_dir().join(format!("audit-tools-stale-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        for d in ["doc/ast_core", "aarch64/doc/ast_core", "debug/deps"] {
-            std::fs::create_dir_all(root.join(d)).unwrap();
+        let since = SystemTime::now();
+        let old = since - Duration::from_secs(3600);
+        let put = |rel: &str, mtime: SystemTime| {
+            let p = root.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, "x").unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(&p)
+                .unwrap()
+                .set_modified(mtime)
+                .unwrap();
+        };
+        put("doc/ast_core/fresh.html", since + Duration::from_secs(5));
+        put("doc/ast_core/stale.html", old);
+        put("doc/type.impl/ast_core/stale.js", old);
+        put("aarch64/doc/ast_core/stale.html", old);
+        put("doc/static.files/shared-1.js", old);
+        put("doc/ast_core/notes.txt", old);
+        put("debug/deps/lib.rlib", old);
+        assert_eq!(clear_stale_pages(&root, since).unwrap(), 3);
+        assert!(root.join("doc/ast_core/fresh.html").exists());
+        assert!(!root.join("doc/ast_core/stale.html").exists());
+        assert!(!root.join("doc/type.impl/ast_core/stale.js").exists());
+        assert!(!root.join("aarch64/doc/ast_core/stale.html").exists());
+        for kept in [
+            "doc/static.files/shared-1.js",
+            "doc/ast_core/notes.txt",
+            "debug/deps/lib.rlib",
+        ] {
+            assert!(root.join(kept).exists(), "{kept}");
         }
-        std::fs::write(root.join("doc/ast_core/stale.html"), "x").unwrap();
-        std::fs::write(root.join("aarch64/doc/ast_core/stale.html"), "x").unwrap();
-        std::fs::write(root.join("debug/deps/lib.rlib"), "x").unwrap();
-        clear_rendered_docs(&root).unwrap();
-        assert!(!root.join("doc").exists());
-        assert!(!root.join("aarch64/doc").exists());
-        assert!(root.join("debug/deps/lib.rlib").exists());
+        // A build that wrote nothing left nothing stale: keep everything.
+        let later = SystemTime::now() + Duration::from_secs(3600);
+        assert_eq!(clear_stale_pages(&root, later).unwrap(), 0);
+        assert!(root.join("doc/ast_core/fresh.html").exists());
         // A target that does not exist yet is fine.
-        clear_rendered_docs(&root.join("absent")).unwrap();
+        assert_eq!(clear_stale_pages(&root.join("absent"), since).unwrap(), 0);
         std::fs::remove_dir_all(&root).unwrap();
     }
 

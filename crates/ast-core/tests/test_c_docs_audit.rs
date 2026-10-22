@@ -180,15 +180,16 @@ fn rendered_c_references() -> &'static Scan {
 }
 
 /// Builds the docs into its own target directory, so it never reads docs built
-/// by someone else and does not wait on the outer `cargo test`'s lock. The
-/// rendered docs of earlier builds are cleared first, so a page or a
-/// `type.impl/*.js` file no source produces any more is not scanned. Only
+/// by someone else and does not wait on the outer `cargo test`'s lock. When
+/// the build rewrote the docs, the pages and `type.impl/*.js` files it did not
+/// write are deleted, so one no source produces any more is not scanned; when
+/// cargo found the docs fresh nothing is deleted and the run stays fast. Only
 /// `ast_core/` is scanned: the source-view pages under `src/`, which show
 /// `//` comments, are not user-facing documentation.
 fn scan_rendered_docs() -> Scan {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let target = manifest.join("../../target/c-docs-gate");
-    audit_tools::clear_rendered_docs(&target).unwrap();
+    let started = std::time::SystemTime::now();
     let status = std::process::Command::new(env!("CARGO"))
         .args(["doc", "-q", "-p", "ast-core", "--no-deps"])
         .env("CARGO_TARGET_DIR", &target)
@@ -196,6 +197,7 @@ fn scan_rendered_docs() -> Scan {
         .status()
         .unwrap();
     assert!(status.success(), "cargo doc failed");
+    audit_tools::clear_stale_pages(&target, started).unwrap();
     let public: BTreeSet<String> =
         parse_headers_tsv(&std::fs::read_to_string(audit_dir().join("c-headers.tsv")).unwrap())
             .into_iter()
