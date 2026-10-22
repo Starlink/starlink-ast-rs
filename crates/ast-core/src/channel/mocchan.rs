@@ -352,7 +352,6 @@ impl Channel for MocChan {
         let mut moc = Moc::new();
         let base = &self.base;
         let lines = std::iter::from_fn(|| base.read_line("MocChan"));
-        self.base.take_read_error()?;
         let added = moc.add_moc_text(-1, lines, "astRead");
         // A SourceFile that could not be opened reads as empty text, so its
         // error takes the place of the failure to find any.

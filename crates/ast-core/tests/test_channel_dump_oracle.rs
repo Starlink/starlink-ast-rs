@@ -243,6 +243,15 @@ fn a_clone_shares_the_sink() {
     assert_eq!(ch.into_string(), "1/3\n1/3\n");
 }
 
+/// The variable that tells a copy of this test program that it is the child
+/// [`a_channel_read_from_a_dump_has_no_source`] started.
+const NO_SOURCE_CHILD: &str = "AST_TEST_DUMP_NO_SOURCE_CHILD";
+
+/// A Channel read from a dump has no source or SourceFile, so a read takes
+/// standard input; here that is an empty pipe, and the read finds no text.
+///
+/// The read runs in a child process with piped, closed standard input, so it
+/// cannot wait on the harness's own.
 #[test]
 fn a_channel_read_from_a_dump_has_no_source() {
     let text = native_dump(&object("mocchan_string")).unwrap();
@@ -250,9 +259,29 @@ fn a_channel_read_from_a_dump_has_no_source() {
         panic!("expected a MocChan");
     };
     assert_eq!(ch.moc_line_len(), 40);
-    assert_eq!(
-        ch.read().unwrap_err().code(),
-        ast_core::error::ErrorCode::Inmoc
+    assert!(!ch.test_source_file());
+    if std::env::var_os(NO_SOURCE_CHILD).is_some() {
+        assert_eq!(
+            ch.read().unwrap_err().code(),
+            ast_core::error::ErrorCode::Inmoc
+        );
+        return;
+    }
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "test_channel_dump_oracle::a_channel_read_from_a_dump_has_no_source",
+            "--exact",
+            "--test-threads=1",
+        ])
+        .env(NO_SOURCE_CHILD, "1")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains("1 passed"),
+        "{stdout}{}",
+        String::from_utf8_lossy(&out.stderr)
     );
 }
 
