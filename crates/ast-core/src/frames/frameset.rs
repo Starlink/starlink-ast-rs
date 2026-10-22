@@ -1512,8 +1512,6 @@ impl FrameSet {
         } else {
             let parent = self.find_path(inode, 0)?[1];
             let map0 = self.edge_mapping(parent, inode)?;
-            let map6 = CmpMap::new(map0, map5, Composition::Series)?;
-            let new_map = <dyn Mapping>::simplify(&map6)?;
             let k = self
                 .edges
                 .iter()
@@ -1521,11 +1519,18 @@ impl FrameSet {
                     (e.from, e.to) == (parent, inode) || (e.from, e.to) == (inode, parent)
                 })
                 .expect("a node on a path has a link to its parent");
+            // C sets the Invert of the link's Mapping object to the link's
+            // flag, makes the CmpMap, which records that direction as its
+            // `InvA`, simplifies it, and then restores the object's own Invert
+            // (frameset.c `SetVariant`, `astSetInvert( map0, inv )`). The
+            // CmpMap therefore holds the object in its own orientation, which
+            // is what a component the simplification leaves alone is written
+            // with.
+            let mut map6 = CmpMap::new(map0, map5, Composition::Series)?;
+            map6.set_first_orientation(self.edges[k].object_invert);
+            let new_map = <dyn Mapping>::simplify(&map6)?;
             // C records the Invert of the simplified Mapping as the link's
-            // flag, as `Edge::new` does. C's result may share the link's old
-            // Mapping object, whose own Invert it then restores, which shows
-            // only in the dump of a component of a CmpMap result; the port's
-            // result holds copies (tests/test_frameset_variant_link_oracle.rs).
+            // flag, as `Edge::new` does.
             self.edges[k] = Edge::new(parent, inode, new_map);
         }
         if let Some(vfs) = &mut self.frame_variants[owner] {

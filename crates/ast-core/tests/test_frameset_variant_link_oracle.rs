@@ -23,21 +23,6 @@ use ast_core::AnyObject;
 use ast_core::frames::{BasicFrameBuilder, DynFrame, FrameRef, FrameSet};
 use ast_core::mappings::{DynMapping, MathMap, ShiftMap, UnitMap, ZoomMap};
 
-/// Cases whose dump differs from C's, with the reason.
-/// The transformations of these cases still match C's.
-const EXCLUDED: &[(&str, &str)] = &[
-    (
-        "mathmap_cur2_shift",
-        "C's simplified CmpMap shares the MathMap object of the link, whose own Invert \
-         SetVariant then restores, so C writes the component without Invert = 1; the port's \
-         CmpMap holds its own copy, written as it is used",
-    ),
-    (
-        "mathmap_cur2_zoom",
-        "as mathmap_cur2_shift: C writes the shared MathMap component with its restored Invert",
-    ),
-];
-
 fn frame(domain: &str) -> DynFrame {
     Box::new(BasicFrameBuilder::new(1).domain(domain).build().unwrap())
 }
@@ -85,33 +70,14 @@ fn run(current: usize, link: &str, variant: &str) -> (String, [f64; 2], String, 
     (added.0, added.1, dump(&outer), transforms(&outer))
 }
 
-fn excluded(name: &str) -> bool {
-    EXCLUDED.iter().any(|(n, _)| *n == name)
-}
-
 #[test]
 fn selecting_a_variant_matches_c() {
     for &(name, current, link, variant, dump1, tran1, dump2, tran2) in cases::CASES {
         let (port1, port_tran1, port2, port_tran2) = run(current, link, variant);
         assert_eq!(port_tran1, tran1, "{name}: added");
         assert_eq!(port_tran2, tran2, "{name}: selected again");
-        if !excluded(name) {
-            assert_eq!(port1, dump1, "{name}: added");
-            assert_eq!(port2, dump2, "{name}: selected again");
-        }
-    }
-}
-
-/// Each excluded case still differs from C's in the dump after the variant
-/// is added; when one stops differing, take it off the list.
-#[test]
-fn excluded_cases_still_differ() {
-    for &(name, _) in EXCLUDED {
-        let &(_, current, link, variant, dump1, _, _, _) = cases::CASES
-            .iter()
-            .find(|c| c.0 == name)
-            .unwrap_or_else(|| panic!("no case {name}"));
-        assert_ne!(run(current, link, variant).0, dump1, "{name} now matches C");
+        assert_eq!(port1, dump1, "{name}: added");
+        assert_eq!(port2, dump2, "{name}: selected again");
     }
 }
 
