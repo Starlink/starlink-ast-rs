@@ -41,6 +41,19 @@ impl Default for TransAttrs {
     }
 }
 
+/// The warnings `SpecTrans` raises, by where C's cursor is when it raises
+/// them. Those raised before the scan for `QV` cards in the primary axis
+/// description (`ClassTrans` and `SAOTrans`) are written in front of the
+/// card the read started at, since C's `Read` does not move the cursor
+/// first; that scan leaves the cursor at end-of-file, where the rest go.
+#[derive(Debug, Default)]
+pub(crate) struct TransWarnings {
+    /// Warnings written in front of the card the read started at.
+    pub entry: Vec<Warning>,
+    /// Warnings written at end-of-file.
+    pub end: Vec<Warning>,
+}
+
 /// Build the temporary "translations" CardList for `cards`, mirroring
 /// C `SpecTrans` (fitschan.c:30957).
 ///
@@ -66,19 +79,6 @@ impl Default for TransAttrs {
 /// rather than the translation chan `ret` (e.g. `GetUsedPolyTan`,
 /// fitschan.c:14128, :14073), so the caller pushes these onto the original
 /// card list rather than onto the returned one.
-/// The warnings `SpecTrans` raises, by where C's cursor is when it raises
-/// them. Those raised before the scan for `QV` cards in the primary axis
-/// description (`ClassTrans` and `SAOTrans`) are written in front of the
-/// card the read started at, since C's `Read` does not move the cursor
-/// first; that scan leaves the cursor at end-of-file, where the rest go.
-#[derive(Debug, Default)]
-pub(crate) struct TransWarnings {
-    /// Warnings written in front of the card the read started at.
-    pub entry: Vec<Warning>,
-    /// Warnings written at end-of-file.
-    pub end: Vec<Warning>,
-}
-
 ///
 /// With Strict in force (`policy`), the first warning raised whose condition
 /// is reported is returned as the error C's `Warn` reports. The
