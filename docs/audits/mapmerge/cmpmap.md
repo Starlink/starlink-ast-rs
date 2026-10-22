@@ -18,7 +18,7 @@ comments: simplify the CmpMap on its own; decompose a series CmpMap into the
 list; merge adjacent CmpMaps; update the list for that merge; and swap a series
 CmpMap past a neighbouring PermMap.
 
-The Rust `CmpMap::map_merge` (`cmpmap.rs:975-982 (fn map_merge)`) delegates to
+The Rust `CmpMap::map_merge` (`cmpmap.rs:976-983 (fn map_merge)`) delegates to
 `simplify::cmp_map_merge` (`mappings/simplify.rs:764-940 (fn cmp_map_merge)`), so Rust sites below are in
 `mappings/simplify.rs` unless stated.
 
@@ -147,9 +147,9 @@ engine for every composite Mapping: decompose the tree into a series or parallel
 list, drive each component's `astMapMerge` from a nominate loop until the list
 stops improving, and fold the survivors back into a right-associated CmpMap.
 
-The Rust `CmpMap::simplified` (`cmpmap.rs:968-973 (fn simplified)`) passes its gate to
+The Rust `CmpMap::simplified` (`cmpmap.rs:969-974 (fn simplified)`) passes its gate to
 `simplify::simplify_cmpmap` (`mappings/simplify.rs:3765-3856 (fn simplify_cmpmap_into)`), so Rust sites below are in
-`mappings/simplify.rs` unless stated. The `has_been_simplified` test at `cmpmap.rs:969 (fn simplified)` is
+`mappings/simplify.rs` unless stated. The `has_been_simplified` test at `cmpmap.rs:970 (fn simplified)` is
 C's `astGetIsSimple` short-circuit, which C performs one level up in
 `astSimplify_` (`mapping.c:24802-24804 (fn astSimplify_)`) and the port performs both there
 (`simplify_entry.rs:134 (fn simplify_with_outcome)`) and here.
@@ -159,7 +159,7 @@ C's `astGetIsSimple` short-circuit, which C performs one level up in
 | 43 | Initialise the result, check the inherited status and bail out | cmpmap.c:3660-3664 (fn Simplify) | -- | ceremony | n/a: the Rust signature hands back an owned Mapping in an `AstResult`, so there is no result pointer to initialise and no ambient status to test on entry |
 | 44 | Compare the supplied Mapping against every Mapping being simplified higher up the call stack, and return a clone on a match | cmpmap.c:3669-3689 (fn Simplify) | mappings/simplify.rs:60-63 (fn enter), mappings/simplify.rs:3775-3782 (fn simplify_cmpmap_into) | architecture | ported |
 | 45 | Increment the recursion depth and record the supplied Mapping for deeper invocations to compare against | cmpmap.c:3691-3697 (fn Simplify) | mappings/simplify.rs:64 (fn enter) | architecture | ported |
-| 46 | Obtain a pointer to the CmpMap structure | cmpmap.c:3699-3700 (fn Simplify) | cmpmap.rs:968-973 (fn simplified), mappings/simplify.rs:3764-3768 (fn simplify_cmpmap_into) | ceremony | ported |
+| 46 | Obtain a pointer to the CmpMap structure | cmpmap.c:3699-3700 (fn Simplify) | cmpmap.rs:969-974 (fn simplified), mappings/simplify.rs:3764-3768 (fn simplify_cmpmap_into) | ceremony | ported |
 | 47 | Initialise the Mapping-pointer and Invert-flag arrays | cmpmap.c:3702-3706 (fn Simplify) | -- | ceremony | n/a: `flatten` returns an owned list of (Mapping, invert, orientation) triples, so there are no arrays to pre-initialise |
 | 48 | Decompose the CmpMap into a series or parallel sequence with `astMapList`, setting `simpler` if any inverted CmpMap was found on the way | cmpmap.c:3708-3714 (fn Simplify) | mappings/simplify.rs:3791 (fn simplify_cmpmap_into), mappings/simplify.rs:3821 (fn simplify_cmpmap_into) | architecture | ported |
 | 49 | Read the RestrictedSimplify flag | cmpmap.c:3716-3722 (fn Simplify) | mappings/simplify.rs:3785 (fn simplify_cmpmap_into) | architecture | ported |

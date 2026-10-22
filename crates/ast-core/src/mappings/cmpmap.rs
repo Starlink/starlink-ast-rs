@@ -217,8 +217,9 @@ impl CmpMap {
     /// - `ErrorCode::Innco` if the components are in series and the number
     ///   of output coordinates of `first` differs from the number of input
     ///   coordinates of `second`.
-    /// - Any error from taking a FrameSet component's base-to-current
-    ///   Mapping.
+    /// - `ErrorCode::Frsin` or `ErrorCode::Innco` if a FrameSet component's
+    ///   base-to-current Mapping cannot be composed, which a well-formed
+    ///   FrameSet does not cause.
     #[doc(alias = "astCmpMap")]
     pub fn new(first: DynMapping, second: DynMapping, kind: Composition) -> AstResult<Self> {
         // A FrameSet component is replaced by its base-to-current Mapping, as

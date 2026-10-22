@@ -349,19 +349,19 @@ impl Mapping for XphMap {
         super::rate::numeric_rate(self, at, ax1, ax2)
     }
 
-    // C: xphmap.c `GetIsLinear`.
     /// Only an HPX12 XphMap is linear, though even
     /// that one makes positions outside the used area bad.
+    // C: xphmap.c `GetIsLinear`.
     fn is_linear(&self) -> bool {
         self.projection == XphProjection::Hpx12
     }
 
-    // C: xphmap.c `MapMerge`.
     /// In series, an XphMap and an adjacent XphMap (the
     /// previous one if that is an XphMap, otherwise the next) that are equal
     /// and opposite in the orientations the merge list gives them become a
     /// UnitMap. Nothing else merges: even an HPX12 XphMap is not a UnitMap,
     /// since it makes positions outside the used area bad.
+    // C: xphmap.c `MapMerge`.
     fn map_merge(
         &self,
         ctx: &mut super::simplify::MergeCtx,
@@ -394,8 +394,8 @@ impl Mapping for XphMap {
         Some(imap1)
     }
 
-    // C: xphmap.c `Equal`.
     /// The same Invert flag, projection and order.
+    // C: xphmap.c `Equal`.
     fn equal(&self, other: &dyn Mapping) -> bool {
         other.as_any().downcast_ref::<XphMap>().is_some_and(|o| {
             self.inverted == o.inverted && self.projection == o.projection && self.order == o.order
@@ -474,9 +474,9 @@ impl Serializable for XphMap {
         Ok(node)
     }
 
-    // C: xphmap.c `astLoadXphMap`.
     /// Order defaults to 19 and Type to HPX12;
     /// a Type that is not one of the projection names is AST__OPT.
+    // C: xphmap.c `astLoadXphMap`.
     fn from_node(node: &Node) -> AstResult<Self> {
         let whole = node;
         let node = &whole.section("XphMap");

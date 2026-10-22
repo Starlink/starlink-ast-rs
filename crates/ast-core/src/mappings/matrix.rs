@@ -218,12 +218,19 @@ impl MatrixMap {
     /// unit MatrixMap here and a diagonal one there.
     ///
     /// ```
+    /// use ast_core::coords::PointSet;
     /// use ast_core::mappings::{Mapping, MatrixMap};
     ///
     /// // Three inputs, two outputs: the third input is dropped.
     /// let map = MatrixMap::diagonal(3, 2, &[2.0, 4.0]).unwrap();
     /// assert_eq!((map.nin(), map.nout()), (3, 2));
     /// assert!(map.has_inverse());
+    ///
+    /// // The inverse zero-fills the dropped input.
+    /// let out = map.transform(&PointSet::from_columns(&[&[2.0], &[8.0]]).unwrap(), false).unwrap();
+    /// assert_eq!(out.axis(0), [1.0]);
+    /// assert_eq!(out.axis(1), [2.0]);
+    /// assert_eq!(out.axis(2), [0.0]);
     /// ```
     ///
     /// # Errors

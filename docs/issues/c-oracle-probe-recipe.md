@@ -304,6 +304,19 @@ stubs do not cover them: they are real implementations in `libast_pal` and
 `libast_cminpack`, which 9.5.0 builds as separate shared libraries, so they are
 named on the link line rather than stubbed.
 
+## macOS link line
+
+On macOS the build is `libast.dylib`.
+A probe linked against `reference/starlink-ast/build` needs the satellite libraries named on the link line, or it crashes on the first AST error:
+
+```sh
+R=$PWD/reference/starlink-ast/build
+cc probe.c -o probe -I "$R" -L "$R" -L/opt/homebrew/lib -Wl,-rpath,"$R" \
+  -last -last_pal -last_cminpack -last_err -last_grf3d -last_grf_5.6 -lyaml -lm
+```
+
+`-L/opt/homebrew/lib` is where Homebrew's libyaml lives; drop it if yours is elsewhere on the default path.
+
 ## When NOT to build a probe
 
 If the C source already answers the question unambiguously, read it and stop.
