@@ -641,3 +641,64 @@ fn fits_rounding_formats_found_cards() {
     fc.clear_fits_rounding();
     assert_eq!(fc.fits_rounding(), 10);
 }
+
+// ===========================================================================
+// CardList::put
+// ===========================================================================
+
+/// `CardList::put` stores a card as `put_fits` does: with `overwrite` it
+/// replaces the current card whatever its keyword, and a blank comment keeps
+/// the comment of the card replaced.
+// C probe: cards A, B, C with the second current, then astPutFits of X=9
+// (insert), Y=8 (overwrite) and A=7 (overwrite) gives A / first, X, Y /
+// second, A / third, with Card 5.
+#[test]
+fn card_list_put_overwrites_the_current_card() {
+    use ast_core::fitschan::card::FitsValue;
+    use ast_core::fitschan::card_list::CardList;
+
+    let one = |text: &str| {
+        CardList::from_header(text)
+            .unwrap()
+            .iter()
+            .next()
+            .unwrap()
+            .clone()
+    };
+    let mut list = CardList::from_header(
+        "A       =                    1 / first\n\
+         B       =                    2 / second\n\
+         C       =                    3 / third",
+    )
+    .unwrap();
+    list.set_position(1);
+    list.put(one("X       =                    9"), false);
+    list.put(one("Y       =                    8"), true);
+    list.put(one("A       =                    7"), true);
+    let got: Vec<(String, FitsValue, Option<String>)> = list
+        .iter()
+        .map(|c| (c.keyword.clone(), c.value.clone(), c.comment.clone()))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (
+                "A".to_string(),
+                FitsValue::Int(1),
+                Some("first".to_string())
+            ),
+            ("X".to_string(), FitsValue::Int(9), None),
+            (
+                "Y".to_string(),
+                FitsValue::Int(8),
+                Some("second".to_string())
+            ),
+            (
+                "A".to_string(),
+                FitsValue::Int(7),
+                Some("third".to_string())
+            ),
+        ]
+    );
+    assert_eq!(list.position(), 4);
+}

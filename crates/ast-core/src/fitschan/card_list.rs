@@ -171,12 +171,15 @@ impl CardList {
         false
     }
 
-    /// Insert or replace a card, then advance the position past it.
+    /// Store a card as [`FitsChan::put_fits`](super::FitsChan::put_fits)
+    /// stores one, then make the card after it current.
     ///
-    /// If `overwrite` is true and a card with the same keyword already exists,
-    /// the first matching card is replaced.
-    /// Otherwise, the card is inserted in front of the current card, which for
-    /// a position at end-of-file means it is appended.
+    /// Without `overwrite`, the card is inserted in front of the current
+    /// card.
+    /// With `overwrite`, it replaces the current card, whatever that card's
+    /// keyword, and a card with no comment takes the comment of the card it
+    /// replaces.
+    /// At end-of-file, either way, the card is appended.
     ///
     /// In both cases the position is left identifying the card *after* the one
     /// stored, so a run of stores appends in call order, as
@@ -185,25 +188,17 @@ impl CardList {
     /// attribute.
     // C: the astPutFits / astSetFits<X> contract, "In either case, the Card
     // attribute is then incremented by one so that it subsequently identifies
-    // the card following the one stored" (fitschan.c:25613).
-    pub fn put(&mut self, card: FitsCard, overwrite: bool) {
-        if overwrite {
-            // Search for existing card with same keyword.
-            let kw_upper = card.keyword.to_uppercase();
-            if let Some(idx) = self
-                .cards
-                .iter()
-                .position(|c| c.keyword.eq_ignore_ascii_case(&kw_upper))
-            {
-                self.cards[idx] = card;
-                self.position = idx + 1;
-                return;
-            }
+    // the card following the one stored" (fitschan.c:25613); the comment is
+    // kept as `SetValue` keeps it.
+    pub fn put(&mut self, mut card: FitsCard, overwrite: bool) {
+        if overwrite && card.comment.as_deref().is_none_or(|c| c.trim().is_empty()) {
+            card.comment = self
+                .current()
+                .and_then(|c| c.c_comment())
+                .map(|c| c.trim().to_string())
+                .filter(|c| !c.is_empty());
         }
-        // Insert in front of the current card.
-        let pos = self.position.min(self.cards.len());
-        self.cards.insert(pos, card);
-        self.position = pos + 1;
+        self.ins_card(card, overwrite);
     }
 
     /// Find the first card matching the given keyword (case-insensitive),
@@ -1328,6 +1323,9 @@ mod tests {
     #[test]
     fn put_with_overwrite_replaces() {
         let mut list = CardList::from_header(sample_header()).unwrap();
+        let original_len = list.len();
+        let naxis = list.iter().position(|c| c.keyword == "NAXIS").unwrap();
+        list.set_position(naxis);
         let new_card = FitsCard {
             keyword: "NAXIS".to_string(),
             value: FitsValue::Int(3),
@@ -1335,6 +1333,8 @@ mod tests {
             flags: crate::fitschan::card::CardFlags::default(),
         };
         list.put(new_card, true);
+        assert_eq!(list.len(), original_len);
+        assert_eq!(list.position(), naxis + 1);
         let card = list.find("NAXIS").unwrap();
         assert_eq!(card.value, FitsValue::Int(3));
         assert_eq!(card.comment, Some("Changed".to_string()));

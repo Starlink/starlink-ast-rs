@@ -1574,27 +1574,18 @@ impl FitsChan {
         Ok(())
     }
 
-    /// `InsCard` with a comment that, when blank and overwriting, is taken
-    /// from the card replaced. Leading and trailing spaces are removed from
+    /// [`CardList::put`], which takes the comment of the card replaced when
+    /// the new one is blank. Leading and trailing spaces are removed from
     /// the comment, as C's `NewCard` does for a card with a value.
     fn store_card(&mut self, keyword: String, value: FitsValue, comment: &str, overwrite: bool) {
-        let mut com = comment.trim().to_string();
-        if com.is_empty() && overwrite {
-            com = self
-                .cards
-                .current()
-                .and_then(|c| c.c_comment())
-                .unwrap_or("")
-                .trim()
-                .to_string();
-        }
+        let com = comment.trim().to_string();
         let card = FitsCard {
             keyword: keyword.to_uppercase(),
             value,
             comment: (!com.is_empty()).then_some(com),
             flags: crate::fitschan::card::CardFlags::default(),
         };
-        self.cards.ins_card(card, overwrite);
+        self.cards.put(card, overwrite);
     }
 
     /// Store an integer value under keyword `name`, inserting a card or
