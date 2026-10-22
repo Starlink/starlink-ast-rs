@@ -895,6 +895,7 @@ Each SkyFrame keeps its LAST, Epoch and solar-to-sidereal ratio in `Cell`s, extr
 The table is `frames/sky_last.rs`, a port of `CalcLAST`, `GetCachedLAST` and `SetCachedLAST` with C's tolerances.
 The one difference is scope: the Rust table is thread-local rather than process-wide, so the conversion path takes no lock, and each thread's results depend on what that thread converted before.
 As in C, every sky conversion computes the LAST of both frames, and a conversion uses the caller's own SkyFrames rather than copies, so their caches persist (`Frame::convert_to` passes `as_dyn_frame()`).
+The same holds for a SkyFrame inside a FrameSet: the FrameSet conversion passes the member Frames themselves, as C's `ConvertX` passes the pointers `astGetFrame` returns (`tests/test_sky_last.rs` `a_frameset_member_keeps_its_cached_last`, from `tools/oracle_fixtures/frameset_last_probe.c`).
 `tests/test_sky_last.rs`, from `tools/oracle_fixtures/sky_last_probe.c`, replays a sequence of conversions that exercise both caches and matches C bit for bit.
 
 Question for upstream: is the history dependence intended, and would an exact calculation (or a cache keyed on the exact epoch only) be acceptable?
