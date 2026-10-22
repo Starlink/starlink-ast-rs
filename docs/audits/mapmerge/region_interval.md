@@ -42,7 +42,7 @@ lives once.
 | 2 | Check the global error status and bail out | interval.c:654-656 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a pointer to the Interval structure | interval.c:657-659 (fn GetDefUnc) | -- | ceremony | n/a: the Rust method already has `&self` |
 | 4 | If this Interval is equivalent to a Box, return that Box's default uncertainty | interval.c:660-665 (fn GetDefUnc) | interval.rs:1442-1445 (fn get_def_unc) | architecture | ported |
-| 5 | Otherwise use a box covering 1.0E-6 of each axis interval, centerd on the origin | interval.c:666-669 (fn GetDefUnc) | interval.rs:1447-1451 (fn get_def_unc) | architecture | ported |
+| 5 | Otherwise use a box covering 1.0E-6 of each axis interval, centered on the origin | interval.c:666-669 (fn GetDefUnc) | interval.rs:1447-1451 (fn get_def_unc) | architecture | ported |
 | 6 | Get a pointer to the base Frame | interval.c:670-672 (fn GetDefUnc) | interval.rs:1452 (fn get_def_unc) | architecture | ported |
 | 7 | Get the number of base Frame axes | interval.c:673-675 (fn GetDefUnc) | interval.rs:1451 (fn get_def_unc) | architecture | ported |
 | 8 | Allocate arrays to hold the bounds of the uncertainty Box | interval.c:676-680 (fn GetDefUnc) | interval.rs:1454-1455 (fn get_def_unc) | ceremony | ported |

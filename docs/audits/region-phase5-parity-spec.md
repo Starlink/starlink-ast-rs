@@ -147,7 +147,7 @@ concrete class incorrectly fell through to the base.
   limit is `±DBL_MAX` use `0.0/0.0`). Note: uses the interval limits, NOT the
   region bounding box the base method reads.
 - **NullRegion** — `nullregion.c:170-235`: returns a **zero-radius Circle**
-  centerd at the origin (`astCircle(this, 1, cen={0..}, &rad=0, ...)`), not a Box.
+  centered at the origin (`astCircle(this, 1, cen={0..}, &rad=0, ...)`), not a Box.
 - **Prism** — `prism.c:1212-1280`: `astPrism(astGetUncFrm(region1, CURRENT),
   astGetUncFrm(region2, CURRENT))` — a Prism of the two component current-Frame
   uncertainties (the components' current Frames == the Prism's base Frame).
@@ -269,7 +269,7 @@ DIFFERENT Frame than the region's base, so the remap/recenter path fires:
 - `setunc_box_remapped_unc` — a 2-D Box in a base Frame, given an uncertainty Box
   defined in a zoomed/shifted Frame via `astSetUnc`; serialize. The Rust-vs-C
   check confirms the stored uncertainty is remapped into the region's base Frame
-  and re-centerd at the box center (the `Unc` node geometry must match C
+  and re-centered at the box center (the `Unc` node geometry must match C
   byte-for-byte).
 - `setunc_unbounded_negated` — supply an uncertainty that is unbounded as given
   (e.g. a negated Box); confirm C's "negate to make bounded" step (10856) is
@@ -308,7 +308,7 @@ as `parent_simplify`). It:
       current center forward-then-back through `map` (11165-11188).
    c. `sunc = astSimplify(unc)`; only if `sunc != unc` proceed to stability test.
    d. Stability test: pick a test box (bounding box of `this` if bounded, else
-      100× the uncertainty size centerd on `orig_cen`); re-center `sunc` at the
+      100× the uncertainty size centered on `orig_cen`); re-center `sunc` at the
       test box's lower corner, get its bounding-box widths `w1`; re-center at the
       upper corner, get widths `w2`; per axis, if `|w1-w2| > 0.005*(|w1|+|w2|)`
       set `ok=0` and break (11277-11284).

@@ -38,7 +38,7 @@ fn corners(frame: impl Frame + 'static, n: usize) -> BoxRegion {
         .unwrap()
 }
 
-/// The Box centerd on (0,0) with a corner at (10,10) degrees.
+/// The Box centered on (0,0) with a corner at (10,10) degrees.
 fn centred(frame: impl Frame + 'static, n: usize) -> BoxRegion {
     let c = [0.0, 0.0, 0.5];
     let k = [10.0 * D2R, 10.0 * D2R, 1.0];

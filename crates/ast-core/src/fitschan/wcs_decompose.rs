@@ -222,7 +222,7 @@ pub(crate) fn fit_line(
         None => 1.0,
     };
 
-    // Sample NP_USIZE points along input axis `axis`, centerd at g0,
+    // Sample NP_USIZE points along input axis `axis`, centered at g0,
     // spaced by `gap`.
     let mut rows: Vec<Vec<f64>> = Vec::with_capacity(NP_USIZE);
     for k in -NPO2..=NPO2 {

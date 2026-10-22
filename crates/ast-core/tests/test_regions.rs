@@ -66,7 +66,7 @@ fn general_interval_bounds() {
 
 #[test]
 fn general_circle_bounds_and_disc() {
-    // C: circle centerd at (0,0) with edge point at (1,0) -> radius 1
+    // C: circle centered at (0,0) with edge point at (1,0) -> radius 1
     let frm = BasicFrameBuilder::new(2).build().unwrap();
     let circle = CircleBuilder::new(frm, vec![0.0, 0.0])
         .unwrap()
@@ -322,7 +322,7 @@ fn general_negated_circle_and_prism_bounds() {
 
 #[test]
 fn sphere_3d_transform() {
-    // Create a 3D circle (sphere) centerd at (1, 2, 3) with edge at (0, -1, -2).
+    // Create a 3D circle (sphere) centered at (1, 2, 3) with edge at (0, -1, -2).
     // The radius = distance from (1,2,3) to (0,-1,-2) = sqrt(1 + 9 + 25) = sqrt(35).
     let frm = BasicFrameBuilder::new(3).build().unwrap();
     let circle = CircleBuilder::new(frm.clone(), vec![1.0, 2.0, 3.0])
@@ -1702,7 +1702,7 @@ fn sky_circle_bounds_equator() {
 
 #[test]
 fn sky_circle_bounds_near_pole() {
-    // Circle centerd near north pole: RA bounds should wrap to [0, 2*pi].
+    // Circle centered near north pole: RA bounds should wrap to [0, 2*pi].
     // From checkCircle lines 1765-1771 of testregions.c.
     // Center at (0.8, pi/2) — the north celestial pole with RA=0.8.
     // With radius 0.1, the circle extends from Dec = pi/2 - 0.1 to pi/2.
@@ -1853,7 +1853,7 @@ fn sky_circle_fk5_membership() {
 
 #[test]
 fn sky_box_basic_membership() {
-    // Box on SkyFrame centerd at (1.0, 0.5), half-widths (0.1, 0.1).
+    // Box on SkyFrame centered at (1.0, 0.5), half-widths (0.1, 0.1).
     // This is a small patch away from the pole where the geometry is
     // approximately flat.
     let sky = SkyFrame::new(SkySystem::Icrs);
@@ -2269,7 +2269,7 @@ fn sky_cmpregion_and_circle_box() {
         .build()
         .unwrap();
 
-    // Box centerd at same location, half-widths 0.15 in each axis.
+    // Box centered at same location, half-widths 0.15 in each axis.
     let bx = BoxRegionBuilder::new(sky, vec![1.0, 0.5], vec![1.15, 0.65])
         .unwrap()
         .build()
@@ -2536,7 +2536,7 @@ fn sky_circle_prism_with_interval() {
 // Circle on SkyFrame — verify that great-circle distance is used
 //
 // Key test: on a SkyFrame, the distance is the great-circle distance.
-// At high declination, a circle centerd at Dec=80 deg should NOT use
+// At high declination, a circle centered at Dec=80 deg should NOT use
 // Euclidean coordinate distance (which would give the wrong shape due
 // to RA coordinate compression near the pole).
 // ============================================================================
@@ -2561,7 +2561,7 @@ fn sky_circle_great_circle_distance_correctness() {
         gc_dist
     );
 
-    // Circle centerd at p1 with radius = gc_dist should include p2.
+    // Circle centered at p1 with radius = gc_dist should include p2.
     let circle = CircleBuilder::new(sky, vec![p1[0], p1[1]])
         .unwrap()
         .edge_point(vec![p2[0], p2[1]])
@@ -3652,7 +3652,7 @@ fn get_def_unc_interval_unbounded() {
 #[test]
 fn get_def_unc_nullregion_is_zero_circle() {
     // Oracle: defunc_nullregion_2d. NullRegion::get_def_unc (nullregion.c:170)
-    // is a zero-radius Circle centerd on the origin, not the base-class
+    // is a zero-radius Circle centered on the origin, not the base-class
     // bounding-box Box.
     let frm = BasicFrameBuilder::new(2).build().unwrap();
     let null = ast_core::regions::NullRegionBuilder::new(frm)
@@ -3693,7 +3693,7 @@ fn get_def_unc_prism_combines_components() {
 fn get_def_unc_cmpregion_uses_component_uncertainty() {
     // Oracle: defunc_cmpregion_component_unc. CmpRegion::get_def_unc
     // (cmpregion.c:1090) returns the first component's uncertainty when that
-    // component has an explicit (non-default) uncertainty, recenterd by
+    // component has an explicit (non-default) uncertainty, recentered by
     // set_uncertainty on the component's center.
     //
     // Every Box here is built the way upstream builds it, with

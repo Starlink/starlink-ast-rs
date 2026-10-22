@@ -55,7 +55,7 @@ impl SkyAxis {
     }
 
     /// A value normalized as skyaxis.c `AxisNorm` does: into -pi..pi when
-    /// the range is centerd on zero, else 0..2pi; a bad value is unchanged.
+    /// the range is centered on zero, else 0..2pi; a bad value is unchanged.
     pub(crate) fn axis_norm(&self, value: f64) -> f64 {
         if value == crate::constants::BAD_VALUE {
             value
@@ -1244,7 +1244,7 @@ mod tests {
     #[test]
     fn defaults_follow_is_latitude() {
         // skyaxis.c:4619-4642: with nothing set, an axis is neither a
-        // latitude nor formatted as a time, and is not centerd on zero.
+        // latitude nor formatted as a time, and is not centered on zero.
         let axis = SkyAxis::new();
         assert!(!axis.as_time_value());
         assert!(!axis.centre_zero_value());

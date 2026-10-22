@@ -590,7 +590,7 @@ impl<T: PixelValue> PixelSelection<'_, T> {
 }
 
 /// polygon.c `SmoothPoly`: replace each vertex by `strength` times the mean
-/// of the vertices in a box of `2*boxsize+1` vertices centerd on it, plus
+/// of the vertices in a box of `2*boxsize+1` vertices centered on it, plus
 /// `1-strength` times itself. The box wraps round the ends of the polygon,
 /// and is narrowed to leave room for two boxes round it.
 fn smooth_poly(x: &mut [f64], y: &mut [f64], boxsize: i32, strength: f64) {
@@ -608,7 +608,7 @@ fn smooth_poly(x: &mut [f64], y: &mut [f64], boxsize: i32, strength: f64) {
     let half_width = half_width as usize;
     let a = strength / (2 * half_width + 1) as f64;
 
-    // The sums over the box centerd on the first vertex, which takes
+    // The sums over the box centered on the first vertex, which takes
     // vertices from the end of the polygon.
     let (mut px, mut qx) = (1, nv);
     let (mut sx, mut sy) = (ox[0], oy[0]);
@@ -1109,7 +1109,7 @@ impl PolygonBuilder {
 
         // astSetUnc, as C's constructor calls it (region.c:13372). C reaches it
         // from astInitRegion, which astInitPolygon calls before EnsureInside, so
-        // the uncertainty is re-centerd on the first vertex as supplied -- before
+        // the uncertainty is re-centered on the first vertex as supplied -- before
         // any reversal below can change which vertex that is.
         if let Some(unc) = self.uncertainty {
             polygon.set_uncertainty(unc)?;
@@ -1861,7 +1861,7 @@ impl Region for Polygon {
         // `tunc` is this Polygon's own uncertainty in the base Frame; `l1` is
         // the geodesic length of its bounding-box diagonal. Re-centring is
         // omitted (bound width is center-invariant; the reachable default
-        // uncertainty is already centerd — tracked as the RCENT / R-UNC gaps).
+        // uncertainty is already centered — tracked as the RCENT / R-UNC gaps).
         let tunc = self.get_unc_frm(FrameRef::Base)?;
         let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
         let l1 = bfrm.distance(&lbnd_tunc, &ubnd_tunc)?;

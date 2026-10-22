@@ -11,7 +11,7 @@ use ast_core::regions::{CircleBuilder, IntervalBuilder, PrismBuilder, Region};
 
 // ---- Helpers ----
 
-/// Create a 2D circle centerd at (0, 0) with radius 5.
+/// Create a 2D circle centered at (0, 0) with radius 5.
 fn make_circle() -> ast_core::regions::Circle {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     CircleBuilder::new(frame, vec![0.0, 0.0])

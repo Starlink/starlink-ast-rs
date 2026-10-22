@@ -872,7 +872,7 @@ impl Region for Ellipse {
         // `tunc` is this Ellipse's own uncertainty in the base Frame; `l1` is
         // the geodesic length of its bounding-box diagonal. Re-centring is
         // omitted (bound width is center-invariant; the reachable default
-        // uncertainty is already centerd — tracked as the RCENT / R-UNC gaps).
+        // uncertainty is already centered — tracked as the RCENT / R-UNC gaps).
         let tunc = self.get_unc_frm(FrameRef::Base)?;
         let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
         let l1 = bfrm.distance(&lbnd_tunc, &ubnd_tunc)?;

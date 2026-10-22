@@ -79,7 +79,7 @@ When a divergence appears downstream of a reshape, suspect the shape before the 
 **Hazard.** They diverge in exactly the cases you have no fixture for, and because the field is load-bearing in two subsystems, untangling it later touches both.
 
 **Evidence.** The serialized `IsSimp` token and the internal "already-simplified, do not re-merge" barrier were one field.
-Separating them took `ca743c1` ("port IsSimple semantics — rename flag, clear on invert"), `e9ac139` ("use Frozen (not IsSimple) as the component merge barrier"), `d923dee` ("decouple serialized IsSimp tag from merge-guard flag"), and a series of tag-placement fixes — 14 commits over three months.
+Separating them took `ca743c1` ("port IsSimple semantics — rename flag, clear on invert"), `e9ac139` ("use Frozen (not IsSimple) as the component merge barrier"), `d923dee` ("decouple serialised IsSimp tag from merge-guard flag"), and a series of tag-placement fixes — 14 commits over three months.
 Part of the residue then turned out to be a genuine C quirk rather than a Rust bug, so the port was chasing a moving target for part of that time.
 
 **Check.** If the C source has two names, keep two fields until a fixture proves they cannot diverge.

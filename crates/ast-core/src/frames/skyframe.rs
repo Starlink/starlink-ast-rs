@@ -913,7 +913,7 @@ impl SkyFrame {
     /// ```
     #[doc(alias = "NegLon")]
     pub fn neg_lon(&self) -> bool {
-        // skyframe.c:11592: offset coordinates centerd on the origin
+        // skyframe.c:11592: offset coordinates centered on the origin
         // default to negative longitudes.
         if self.neglon_set {
             self.neglon

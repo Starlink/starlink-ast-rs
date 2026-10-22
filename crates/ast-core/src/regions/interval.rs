@@ -1175,7 +1175,7 @@ impl Region for Interval {
         // bounding boxes (interval.c:2707-2757). `tunc` is this Interval's own
         // uncertainty in the base Frame; re-centring is omitted for the same
         // reason as the Box port (bound width is center-invariant; the
-        // reachable default uncertainty is already centerd).
+        // reachable default uncertainty is already centered).
         let bfrm = self.data.frameset.base();
         let tunc = self.get_unc_frm(FrameRef::Base)?;
         let (lbnd_tunc, ubnd_tunc) = tunc.get_region_bounds()?;
@@ -1484,7 +1484,7 @@ impl Region for Interval {
     }
 
     fn reg_centre_query(&self, ifrm: FrameRef) -> AstResult<Option<Vec<f64>>> {
-        // An Interval can only be re-centerd (or report a center) when it is
+        // An Interval can only be re-centered (or report a center) when it is
         // effectively a closed Box (interval.c:2534-2567). Otherwise there is
         // no center and the query returns None without error.
         if !self.is_bounded_inner()? {
@@ -1522,7 +1522,7 @@ impl Region for Interval {
 
         box_reg.reg_centre_set(cen, ifrm)?;
 
-        // Recover the new base-Frame bounds from the re-centerd Box and store
+        // Recover the new base-Frame bounds from the re-centered Box and store
         // them back in the Interval's defining points.
         let (nlbnd, nubnd) = box_reg.reg_base_box()?;
         let nax = self.data.points[0].len();

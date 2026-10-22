@@ -207,7 +207,7 @@ impl RegionGeometry for PointList {
         // with at least one of the defining points. C negates the base-Frame
         // uncertainty Region, recenters it at each defining point in turn, and
         // transforms the supplied points through it, accumulating a BAD mask
-        // wherever a point falls inside a recenterd uncertainty. The net raw
+        // wherever a point falls inside a recentered uncertainty. The net raw
         // membership is therefore the OR, over all defining points, of "the
         // supplied point lies inside the *negated* uncertainty's complement"
         // — that is, inside the uncertainty Region under the boundary rule a
@@ -221,7 +221,7 @@ impl RegionGeometry for PointList {
         let npoint = pts.npoint();
         let naxes = self.data.frameset.base().naxes();
 
-        // Base-Frame uncertainty Region (default: a tiny Box centerd on the
+        // Base-Frame uncertainty Region (default: a tiny Box centered on the
         // PointList's bounding-box center). Mirrors astGetUncFrm(this,
         // AST__BASE); its current Frame is the PointList's base Frame, so the
         // supplied base-Frame points can be transformed through it directly.

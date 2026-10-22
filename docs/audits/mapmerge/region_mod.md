@@ -35,7 +35,7 @@ calls the parent — and `default_bounding_box_unc`
 | 8 | An uncertainty supplied explicitly is simplified in place instead | region.c:11177-11180 (fn Simplify) | regions/mod.rs:1918 (fn parent_region_simplify) | architecture | ported |
 | 9 | Obtain the Region's uncertainty | region.c:11181-11183 (fn Simplify) | regions/mod.rs:1920 (fn parent_region_simplify) | architecture | ported |
 | 10 | Get the base->current Mapping from `this` | region.c:11184-11186 (fn Simplify) | regions/mod.rs:1923-1925 (fn parent_region_simplify) | architecture | ported |
-| 11 | Where that Mapping has different numbers of inputs and outputs — a PermMap taking a slice through a Region — the uncertainty has to be centerd on the slice | region.c:11187-11193 (fn Simplify) | regions/mod.rs:1933 (fn parent_region_simplify) | architecture | ported |
+| 11 | Where that Mapping has different numbers of inputs and outputs — a PermMap taking a slice through a Region — the uncertainty has to be centered on the slice | region.c:11187-11193 (fn Simplify) | regions/mod.rs:1933 (fn parent_region_simplify) | architecture | ported |
 | 12 | Get the current center of the uncertainty in its current Frame, which is the base Frame of `this` | region.c:11194-11197 (fn Simplify) | regions/mod.rs:1934 (fn parent_region_simplify) | architecture | ported |
 | 13 | Store that center in a PointSet so it can be transformed | region.c:11198-11202 (fn Simplify) | regions/mod.rs:1936 (fn parent_region_simplify) | architecture | ported |
 | 14 | Transform it into the current Frame of `this` and then back into the base Frame | region.c:11203-11207 (fn Simplify) | regions/mod.rs:1937-1938 (fn parent_region_simplify) | architecture | ported |
@@ -49,7 +49,7 @@ calls the parent — and `default_bounding_box_unc`
 | 22 | Where `this` is bounded, use its base-Frame bounding box as the test box | region.c:11248-11252 (fn Simplify) | regions/mod.rs:1960-1961 (fn parent_region_simplify) | architecture | ported |
 | 23 | Otherwise center the test box on the uncertainty's own center, sized from the uncertainty's bounding box | region.c:11253-11264 (fn Simplify) | regions/mod.rs:1963-1972 (fn parent_region_simplify) | architecture | ported |
 | 24 | Re-center the uncertainty at the test box's lower bounds, which are in the base Frame of `this` and so the current Frame of `sunc` | region.c:11265-11268 (fn Simplify) | regions/mod.rs:1977 (fn parent_region_simplify) | architecture | ported |
-| 25 | Take the bounding box of the re-centerd uncertainty within its current Frame | region.c:11269-11274 (fn Simplify) | regions/mod.rs:1978 (fn parent_region_simplify) | architecture | ported |
+| 25 | Take the bounding box of the re-centered uncertainty within its current Frame | region.c:11269-11274 (fn Simplify) | regions/mod.rs:1978 (fn parent_region_simplify) | architecture | ported |
 | 26 | Re-center the uncertainty at the test box's upper bounds | region.c:11275-11278 (fn Simplify) | regions/mod.rs:1982 (fn parent_region_simplify) | architecture | ported |
 | 27 | Take its bounding box again | region.c:11279-11283 (fn Simplify) | regions/mod.rs:1983 (fn parent_region_simplify) | architecture | ported |
 | 28 | Get a pointer to the base Frame of `this` | region.c:11284-11286 (fn Simplify) | -- | ceremony | n/a: C fetches `bfrm` here and annuls it at `region.c:11327 (fn Simplify)` without ever reading it |
@@ -71,7 +71,7 @@ calls the parent — and `default_bounding_box_unc`
 | 44 | Get a pointer to the base Frame of the supplied Region | region.c:3563-3565 (fn GetDefUnc) | regions/mod.rs:1342 (fn default_bounding_box_unc) | architecture | ported |
 | 45 | Get the number of base-Frame axes | region.c:3566-3568 (fn GetDefUnc) | regions/mod.rs:1341 (fn default_bounding_box_unc) | architecture | ported |
 | 46 | Get the base-Frame bounding box through `astRegBaseBox2`, so the un-negated assumption reaches the component Regions of a Prism or CmpRegion | region.c:3569-3578 (fn GetDefUnc) | regions/mod.rs:1340 (fn default_bounding_box_unc) | architecture | ported |
-| 47 | Create a Box covering 1.0E-6 of that bounding box, centerd on its center, with an unbounded axis contributing zero and a degenerate axis a half-width scaled from its center | region.c:3579-3601 (fn GetDefUnc) | regions/mod.rs:1343-1365 (fn default_bounding_box_unc) | architecture | ported |
+| 47 | Create a Box covering 1.0E-6 of that bounding box, centered on its center, with an unbounded axis contributing zero and a degenerate axis a half-width scaled from its center | region.c:3579-3601 (fn GetDefUnc) | regions/mod.rs:1343-1365 (fn default_bounding_box_unc) | architecture | ported |
 | 48 | Free the base Frame pointer and the bounds arrays | region.c:3602-3606 (fn GetDefUnc) | -- | ceremony | n/a: owned values are dropped |
 | 49 | Return NULL if an error occurred | region.c:3607-3609 (fn GetDefUnc) | -- | ceremony | n/a: an error is a `Result::Err` |
 | 50 | Return the required pointer | region.c:3610-3612 (fn GetDefUnc) | regions/mod.rs:1365 (fn default_bounding_box_unc) | ceremony | ported |
@@ -111,7 +111,7 @@ diverge for `lbnd == +DBL_MAX`, where C is bounded.
 ## Row 11 — re-centring is what makes a sliced Region's uncertainty usable
 
 When the base->current Mapping has unequal input and output counts — a PermMap
-taking a slice through a Region — the uncertainty must be re-centerd inside the
+taking a slice through a Region — the uncertainty must be re-centered inside the
 Region's extent before it is simplified, or the stability test measures it
 somewhere the Region does not reach. C does that by transforming the uncertainty
 center into the current Frame and back, and the port does the same.

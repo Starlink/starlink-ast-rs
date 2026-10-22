@@ -392,7 +392,7 @@ impl Region for NullRegion {
 
     fn get_def_unc(&self) -> AstResult<DynRegion> {
         // Port of nullregion.c::GetDefUnc (nullregion.c:170): the default
-        // uncertainty is a zero-radius Circle centerd on the origin of the
+        // uncertainty is a zero-radius Circle centered on the origin of the
         // base Frame, not the base-class bounding box.
         let bfrm = self.data.frameset.base().snapshot();
         let n = bfrm.naxes();

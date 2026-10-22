@@ -1222,7 +1222,7 @@ impl Region for BoxRegion {
         // interior point (box.c:3078,3088) is omitted: it exists only to fix
         // bounds when an uncertainty straddles a discontinuity, and a Box's
         // bound width — the only quantity used below — is center-invariant.
-        // The reachable default uncertainty is a tiny box already centerd at
+        // The reachable default uncertainty is a tiny box already centered at
         // the region center, so the re-center is a proven no-op (tracked as
         // the RCENT / R-UNC parity gaps).
         let tunc = self.get_unc_frm(FrameRef::Base)?;

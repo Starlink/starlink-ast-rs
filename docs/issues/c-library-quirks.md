@@ -453,7 +453,7 @@ C location: `region.c` `GetUncFrm` (`if( !this->defunc ) this->defunc = astGetDe
 C builds the default uncertainty Region (`defunc`) on first use and keeps it until the uncertainty is cleared or the Region is simplified; `astResetCache`, which a change of the Region's points calls, leaves it alone.
 The default uncertainty is sized from the Region's bounding box, so after the Region is moved or reshaped C goes on using an uncertainty sized for the old shape.
 
-Consequence: a Region moved a long way (for example re-centerd far from the origin) keeps a default uncertainty scaled to its old position, which changes membership tests at the boundary at the 1e-6 level.
+Consequence: a Region moved a long way (for example re-centered far from the origin) keeps a default uncertainty scaled to its old position, which changes membership tests at the boundary at the 1e-6 level.
 
 The port caches the default uncertainty too (`RegionData::def_unc`), but clears it with the rest of the Region's cache whenever its geometry changes, so it always describes the current shape; `default_uncertainty_follows_a_moved_box` in `tests/test_box_region.rs` pins that.
 This is a deliberate divergence, recorded here in case upstream prefers the reset.
@@ -759,7 +759,7 @@ neither pole. A CmpFrame therefore never widens a box, for either component.
 The asymmetry is not, however, visible from the public API in the obvious place.
 `Circle::RegBaseMesh` accumulates its bounds from the mesh points themselves, and
 a mesh built by `astOffset` on a SkyFrame already has its longitudes normalized
-into `0 .. 2*pi` (`skyframe.c:7746`). A Circle centerd 0.3 radians from the north
+into `0 .. 2*pi` (`skyframe.c:7746`). A Circle centered 0.3 radians from the north
 pole with radius 0.3 therefore reports, on a `CmpFrame(SkyFrame, TimeFrame)`, a
 longitude range of exactly `0 .. 6.2831853071795862` and a latitude bound of
 `1.5707963267948966` — the pole — with no widening involved. Read the NormBox call
@@ -955,7 +955,7 @@ Resolved when upstream resets the flag per pixel; the cases would then need rege
 
 ### `astRebin<X>` zeroes only the first output element after an argument error
 
-`Rebin<X>` (`mapping.c`, `MAKE_REBIN`) reports a bad argument and carries on to its "initialize the output arrays to hold zeros" loops, which run whatever the status.
+`Rebin<X>` (`mapping.c`, `MAKE_REBIN`) reports a bad argument and carries on to its "initialise the output arrays to hold zeros" loops, which run whatever the status.
 Their length, `npix_out`, starts at 1 and is counted only once the argument checks have passed, so after an error in the axis counts, bounds, region or tolerance the output's first element is zeroed and the rest left alone; after a later error, such as a Mapping with no forward transformation, the whole output is zeroed.
 
 The port mirrors it: `rebin` in `crates/ast-core/src/mappings/rebin/mod.rs` zeroes the number of elements C would have.

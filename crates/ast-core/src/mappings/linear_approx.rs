@@ -124,7 +124,7 @@ pub(crate) fn linear_approx_default<M: Mapping + ?Sized>(
 
     // Step 2: extract per-output gradients and zero points from face pairs.
     // grad lives in fit[ndim_out..], zero lives in fit[..ndim_out].
-    // The first pass treats inputs as if centerd on the box midpoint.
+    // The first pass treats inputs as if centered on the box midpoint.
     {
         let (zero_slice, grad_slice) = fit.split_at_mut(ndim_out);
         for coord_out in 0..ndim_out {

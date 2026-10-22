@@ -232,7 +232,7 @@ A short design note on how C's `Invert` maps onto owned values would have been c
 C has two related but distinct concepts: a flag serialized into the dump, and a barrier that stops an already-simplified component being re-merged.
 The port used a single field for both.
 
-Untangling it took *"use Frozen (not IsSimple) as the component merge barrier"*, *"decouple serialized IsSimp tag from merge-guard flag"*, *"port IsSimple semantics — rename flag, clear on invert"*, and a series of tag-placement fixes.
+Untangling it took *"use Frozen (not IsSimple) as the component merge barrier"*, *"decouple serialised IsSimp tag from merge-guard flag"*, *"port IsSimple semantics — rename flag, clear on invert"*, and a series of tag-placement fixes.
 
 **Cost.**
 14 commits across three months.

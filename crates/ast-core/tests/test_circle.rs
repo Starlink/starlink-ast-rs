@@ -745,7 +745,7 @@ fn with_integrity_error_propagates() {
 
 #[test]
 fn reg_pins_circle_edge_on_boundary() {
-    // Circle centerd at origin, radius 5; default uncertainty band is tiny.
+    // Circle centered at origin, radius 5; default uncertainty band is tiny.
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let c = CircleBuilder::new(frame, vec![0.0, 0.0])
         .unwrap()

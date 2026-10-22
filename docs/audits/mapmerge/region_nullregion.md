@@ -57,7 +57,7 @@ Region shares; `NullRegion::simplified` (`nullregion.rs:744-813 (fn simplified)`
 | 30 | Return the result | nullregion.c:1415-1417 (fn Simplify) | nullregion.rs:809 (fn simplified),782 (fn simplified) | architecture | ported |
 | 31 | `GetDefUnc`: initialize | nullregion.c:224-226 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no sentinel to initialize |
 | 32 | Check the inherited status | nullregion.c:227-229 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 33 | Create a Circle centerd on the base Frame origin with zero radius | nullregion.c:230-241 (fn GetDefUnc) | nullregion.rs:397-402 (fn get_def_unc) | architecture | ported |
+| 33 | Create a Circle centered on the base Frame origin with zero radius | nullregion.c:230-241 (fn GetDefUnc) | nullregion.rs:397-402 (fn get_def_unc) | architecture | ported |
 | 34 | Return the default uncertainty Region | nullregion.c:242-244 (fn GetDefUnc) | nullregion.rs:402 (fn get_def_unc) | architecture | ported |
 
 ## Row 33 — a Circle, not the bounding box

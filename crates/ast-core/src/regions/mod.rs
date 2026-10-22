@@ -1927,7 +1927,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
             let nout = map.nout();
 
             // A slicing Mapping (nin != nout, e.g. a PermMap) requires the
-            // uncertainty to be re-centerd on the slice: transform its current
+            // uncertainty to be re-centered on the slice: transform its current
             // center forward then back through the base->current Mapping
             // (region.c:11165-11188).
             if nin != nout
@@ -1955,7 +1955,7 @@ pub trait Region: Frame + Mapping + AsDynRegion {
                 let naxb = self.get_region_frameset().base().naxes();
 
                 // The test box: this Region's base bounding box if bounded,
-                // else a box 100× the uncertainty size centerd on the
+                // else a box 100× the uncertainty size centered on the
                 // uncertainty center (region.c:11221-11236).
                 let (lbnd, ubnd) = if self.is_bounded()? {
                     self.region_base_box()?

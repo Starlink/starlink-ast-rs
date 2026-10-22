@@ -450,9 +450,9 @@ impl KeywordSequencer<'_> {
     }
 }
 
-/// Build a centerd banner comment string, mirroring C `MakeBanner`
+/// Build a centered banner comment string, mirroring C `MakeBanner`
 /// (fitschan.c:20887). The text is the concatenation of `prefix`, `middle`,
-/// and `suffix`, centerd in the 72-column comment field (`FITSCARDLEN -
+/// and `suffix`, centered in the 72-column comment field (`FITSCARDLEN -
 /// FITSNAMLEN`) and flanked by the `AST` token at each end.
 pub(crate) fn make_banner(prefix: &str, middle: &str, suffix: &str) -> String {
     const TOKEN: &str = "AST";

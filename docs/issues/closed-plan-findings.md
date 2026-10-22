@@ -1637,7 +1637,7 @@ Region's first defining point (`region.c:10871-10876`):
 and `Box::RegCentre`'s set path does not merely translate the Box. It resolves
 the new center, then rebuilds the corner from the cached geodesic half-lengths
 with `corner = GeoCorner( frm, ncb, bc, this->geolen, NULL, status )` and writes
-both points. Re-centring a Box on the point it is already centerd on therefore
+both points. Re-centring a Box on the point it is already centered on therefore
 still regenerates its corner, through whatever `astOffset` the base Frame
 provides.
 

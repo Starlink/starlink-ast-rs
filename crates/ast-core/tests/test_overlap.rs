@@ -274,7 +274,7 @@ fn circle_and_box_separated() {
 #[test]
 fn circle_and_box_partial() {
     let frame = frame2d();
-    // Circle centerd at origin, radius 5.
+    // Circle centered at origin, radius 5.
     let circle = CircleBuilder::new(frame.clone(), vec![0.0, 0.0])
         .unwrap()
         .radius(5.0)

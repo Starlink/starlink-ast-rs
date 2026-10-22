@@ -4894,7 +4894,7 @@ C's `astInitRegion` ends with `SetUnc( new, unc, status )` (`region.c:13372`),
 so every C Region constructed with an uncertainty — `astBox( frm, 1, lbnd,
 ubnd, unc, "" )`, `astInterval(…)`, `astPrism(…)` — gets the uncertainty
 remapped into its own base Frame, negated if unbounded, tagged to omit its
-FrameSet when the base→current Mapping is a UnitMap, and re-centerd on the new
+FrameSet when the base→current Mapping is a UnitMap, and re-centered on the new
 Region's first defining point. The port's builders write the supplied Region
 into `data.uncertainty` unchanged, so none of that happens.
 
@@ -5057,7 +5057,7 @@ with
 C reaches `SetUnc` inside `astInitRegion`, which `astInitPolygon` calls *before*
 it runs `EnsureInside` (`polygon.c:7160`). `EnsureInside` can reverse the vertex
 order, which changes which vertex is first, and `SetUnc` re-centers on the first
-vertex — so the uncertainty is centerd on the vertex that was first *before* the
+vertex — so the uncertainty is centered on the vertex that was first *before* the
 reversal. In `crates/ast-core/src/regions/polygon.rs`, replace
 
 ```rust
