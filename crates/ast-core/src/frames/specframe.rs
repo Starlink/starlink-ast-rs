@@ -436,7 +436,7 @@ impl SpecFrame {
     /// let mut freq = SpecFrame::new(SpecSystem::Freq);
     /// freq.set_rest_freq(1.0e15);
     /// freq.set_std_of_rest(StdOfRest::Lsrk).unwrap();
-    /// let fs = freq.convert_to(&velo, &[]).unwrap().unwrap();
+    /// let fs = freq.convert_to(&mut velo, &[]).unwrap().unwrap();
     /// let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     /// // The rest frequency, 1.0E6 GHz, is zero velocity.
     /// let v = map.tran1(&[1.0e6], true).unwrap();
@@ -960,7 +960,7 @@ impl SpecFrame {
         // the same FK5 J2000 template `set_ref_pos` uses.
         let mut canonical = super::SkyFrame::new(super::SkySystem::Fk5);
         canonical.set_equinox_year(2000.0);
-        let Some(fs) = crate::frames::Frame::find_frame_template(&canonical, frm, " ")? else {
+        let Some(fs) = crate::frames::find_frame::find_frame(&canonical, frm, " ")? else {
             // C leaves both values bad when no alignment is possible.
             return Ok((BAD_VALUE, BAD_VALUE));
         };
@@ -1040,7 +1040,7 @@ impl SpecFrame {
         // frame carry its own equinox through the alignment, collapsing the
         // conversion to a near-identity.
         canonical.set_equinox_year(2000.0);
-        let Some(fs) = crate::frames::Frame::find_frame_template(frm, &canonical, " ")? else {
+        let Some(fs) = crate::frames::find_frame::find_frame(frm, &canonical, " ")? else {
             // Alignment was not possible — leave RefRA/RefDec unchanged
             // (C silently no-ops in this case).
             return Ok(());
@@ -1891,7 +1891,7 @@ impl SpecFrame {
         let mut sf = self.clone();
         sf.std_of_rest = newsor;
         sf.sor_set = true;
-        let neworigin = match Frame::convert_to(&*self, &sf, &[])? {
+        let neworigin = match crate::frames::find_frame::convert(self, &sf, &[])? {
             Some(fs) => {
                 let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;
                 let pts = PointSet::from_columns(&[&[origin]])?;

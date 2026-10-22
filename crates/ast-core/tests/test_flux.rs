@@ -30,7 +30,7 @@ fn flux(spec_val: f64, sf: &SpecFrame, unit: Option<&str>) -> FluxFrame {
 /// The simplified Mapping from `from` to `to`, as `astConvert` and
 /// `astGetMapping` give it, or `None` when they do not convert.
 fn conversion(from: &FluxFrame, to: &FluxFrame) -> Option<DynMapping> {
-    let fs = from.convert_to(to, &[]).unwrap()?;
+    let fs = from.clone().convert_to(&mut to.clone(), &[]).unwrap()?;
     Some(
         fs.mapping(FrameRef::Base, FrameRef::Current)
             .unwrap()

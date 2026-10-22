@@ -838,7 +838,8 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     // honour the original CmpFrame permutation — unlike a hand-built
     // per-component parallel CmpMap, which would assume the components
     // are already in physical order and silently drop the permutation.
-    let Some(fsconv) = fs.current().convert_to(cmpfrm.as_ref(), &[])? else {
+    let Some(fsconv) = crate::frames::find_frame::convert(fs.current(), cmpfrm.as_ref(), &[])?
+    else {
         return Ok(());
     };
     let map = fsconv.mapping(FrameRef::Base, FrameRef::Current)?;

@@ -231,8 +231,8 @@ impl Frame for DummyRegion {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
     fn convert_to(
-        &self,
-        _to: &dyn Frame,
+        &mut self,
+        _to: &mut (dyn ast_core::frames::Frame + 'static),
         _domains: &[&str],
     ) -> AstResult<Option<ast_core::frames::FrameSet>> {
         Ok(None)

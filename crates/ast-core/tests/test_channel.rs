@@ -581,10 +581,13 @@ fn default_skyframe_file_round_trip_is_equal() {
 #[test]
 fn converted_frameset_string_round_trip() {
     use ast_core::frames::Frame;
-    let sf = SkyFrame::new(SkySystem::Icrs);
+    let mut sf = SkyFrame::new(SkySystem::Icrs);
     let mut bf = BasicFrameBuilder::new(2).build().unwrap();
     bf.set_domain("SKY");
-    let fs = bf.convert_to(&sf, &[]).unwrap().expect("astConvert failed");
+    let fs = bf
+        .convert_to(&mut sf, &[])
+        .unwrap()
+        .expect("astConvert failed");
     let pickle1 = native_dump(&AnyObject::FrameSet(fs.clone())).unwrap();
     let AnyObject::FrameSet(fs2) = from_native_string(&pickle1).unwrap() else {
         panic!("the string did not read back as a FrameSet");

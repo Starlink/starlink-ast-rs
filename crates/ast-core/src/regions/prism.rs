@@ -262,10 +262,11 @@ impl Prism {
         let next = this_reg2.naxes();
 
         let mut result = 0;
-        if let Some(fs) = self
-            .get_region_frame()
-            .convert_to(that.get_region_frame().as_ref(), &[])?
-        {
+        if let Some(fs) = crate::frames::find_frame::convert(
+            self.get_region_frame().as_ref(),
+            that.get_region_frame().as_ref(),
+            &[],
+        )? {
             // This Prism's base Frame to that's current Frame, simplified.
             let map1 = self
                 .data
@@ -1153,10 +1154,6 @@ impl Frame for Prism {
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         self.data.frameset.current().map_from(previous)
-    }
-
-    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        self.data.frameset.current().convert_to(to, domains)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

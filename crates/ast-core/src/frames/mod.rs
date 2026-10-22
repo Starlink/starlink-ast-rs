@@ -730,6 +730,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///   preferred, then one with only the forward transformation.
     ///   To force a particular Frame to be used, name its Domain in
     ///   `domains` or make it the base Frame.
+    ///   When a conversion is found, the Frame of each FrameSet that it was
+    ///   found through becomes that FrameSet's base Frame, so
+    ///   [`FrameSet::base_index`] tells which it was.
     ///
     /// # Errors
     ///
@@ -745,48 +748,37 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// use ast_core::frames::{BasicFrameBuilder, Frame};
     /// use ast_core::mappings::Mapping;
     ///
-    /// let a = BasicFrameBuilder::new(2).build().unwrap();
-    /// let b = BasicFrameBuilder::new(2).build().unwrap();
-    /// let cvt = a.convert_to(&b, &[]).unwrap().expect("plain Frames align");
+    /// let mut a = BasicFrameBuilder::new(2).build().unwrap();
+    /// let mut b = BasicFrameBuilder::new(2).build().unwrap();
+    /// let cvt = a.convert_to(&mut b, &[]).unwrap().expect("plain Frames align");
     /// assert_eq!(cvt.nin(), 2);
     ///
-    /// let c = BasicFrameBuilder::new(3).build().unwrap();
-    /// assert!(a.convert_to(&c, &[]).unwrap().is_none());
+    /// let mut c = BasicFrameBuilder::new(3).build().unwrap();
+    /// assert!(a.convert_to(&mut c, &[]).unwrap().is_none());
     /// ```
     ///
     /// # See also
     ///
     /// `astConvert`.
     #[doc(alias = "astConvert")]
-    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
+    fn convert_to(&mut self, to: &mut dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
         // C `astConvert` (frame.c:2965) swaps its first two arguments and
-        // defers to the generic `astConvertX` driver (frame.c:3028).
-        //
-        // The body joins `domains` into the comma-separated list C expects
-        // (an empty slice becomes a single blank field that permits any
-        // domain). This is frame.c `Convert`, which dispatches `astConvertX`
-        // on the class of `to`: when `to` is a FrameSet, the FrameSet
-        // `ConvertX` (frameset.c:3204) searches every Frame of it; otherwise
-        // the generic driver runs. FrameSet overrides this method, as
-        // frameset.c overrides `Convert`, so that a FrameSet `self` reaches
-        // its `ConvertX` too. All other class-specific alignment lives in
-        // `match_template` / `sub_frame`, exactly as in C.
-        //
-        // C's `ConvertX` also sets the Base attribute of a FrameSet `self` or
-        // `to` to the Frame used (frameset.c:3515); the port takes both by
-        // shared reference and leaves them unchanged.
-        let domainlist = if domains.is_empty() {
-            " ".to_string()
-        } else {
-            domains.join(",")
+        // defers to `astConvertX`, which frameset.c and region.c override;
+        // `convert_route` makes that dispatch. All other class-specific
+        // alignment lives in `match_template` / `sub_frame`, exactly as in C.
+        // FrameSet `ConvertX` then sets the Base of a FrameSet `from` or `to`
+        // to the Frame used (frameset.c:3515).
+        let domainlist = find_frame::domain_list(domains);
+        let Some(route) = find_frame::convert_route(self.as_dyn_frame(), &*to, &domainlist)? else {
+            return Ok(None);
         };
-        if let Some(to_fs) = to.as_any().downcast_ref::<FrameSet>() {
-            return frameset::frameset_convert_x(to_fs, self.as_dyn_frame(), &domainlist);
+        if let Some(fs) = self.as_any_mut().downcast_mut::<FrameSet>() {
+            fs.set_base(FrameRef::Index(route.from_frame))?;
         }
-        // The Frame itself, not a copy, takes part, as in C: a SkyFrame
-        // keeps the LAST it computes for the conversion. A Region `to` is
-        // replaced by its Frame, as region.c's `ConvertX` replaces it.
-        find_frame::convert_frames_or_regions(self.as_dyn_frame(), to, &domainlist)
+        if let Some(fs) = to.as_any_mut().downcast_mut::<FrameSet>() {
+            fs.set_base(FrameRef::Index(route.to_frame))?;
+        }
+        Ok(Some(route.fs))
     }
 
     /// Simplify this Frame.
@@ -1885,6 +1877,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///   order current Frame, base Frame, then the others in the order they
     ///   were added; the first match whose Frame has a Domain in that field
     ///   is accepted.
+    ///   The Frame matched becomes the target's current Frame, so
+    ///   [`FrameSet::current_index`] tells which it was.
     ///
     /// # Errors
     ///
@@ -1897,7 +1891,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// ```
     /// use ast_core::frames::{BasicFrameBuilder, Frame};
     ///
-    /// let target = BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap();
+    /// let mut target = BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap();
     /// let template = BasicFrameBuilder::new(2).build().unwrap();
     /// let found = target
     ///     .find_frame_template(&template, "sky,pixel,")
@@ -1912,11 +1906,22 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// `astFindFrame`.
     #[doc(alias = "astFindFrame")]
     fn find_frame_template(
-        &self,
+        &mut self,
         template: &dyn Frame,
         domainlist: &str,
     ) -> AstResult<Option<find_frame::FindFrameResult>> {
-        find_frame::default_find_frame(self.as_dyn_frame(), template, domainlist)
+        // frameset.c overrides `FindFrame`; `find_frame_route` makes that
+        // dispatch, and the FrameSet `FindFrame` sets the target's Current to
+        // the Frame matched (frameset.c:4022).
+        let Some((found, iframe)) =
+            find_frame::find_frame_route(self.as_dyn_frame(), template, domainlist)?
+        else {
+            return Ok(None);
+        };
+        if let Some(fs) = self.as_any_mut().downcast_mut::<FrameSet>() {
+            fs.set_current(FrameRef::Index(iframe))?;
+        }
+        Ok(Some(found))
     }
 
     /// Snapshot of `self` with only the axes listed in `target_axes`.

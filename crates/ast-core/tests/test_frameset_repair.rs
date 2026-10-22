@@ -238,9 +238,9 @@ fn convert_via_noncurrent_member_frame() {
         .unwrap();
     // current == PIXEL, base == FK5 SkyFrame.
 
-    let gal = SkyFrame::new(SkySystem::Galactic);
+    let mut gal = SkyFrame::new(SkySystem::Galactic);
     let out = fs
-        .convert_to(&gal, &[])
+        .convert_to(&mut gal, &[])
         .unwrap()
         .expect("FrameSet should convert to Galactic via its FK5 base member");
 
@@ -269,9 +269,9 @@ fn convert_via_current_frame_still_works() {
     .unwrap();
     // current == FK5 SkyFrame.
 
-    let gal = SkyFrame::new(SkySystem::Galactic);
+    let mut gal = SkyFrame::new(SkySystem::Galactic);
     let out = fs
-        .convert_to(&gal, &[])
+        .convert_to(&mut gal, &[])
         .unwrap()
         .expect("current FK5 frame converts to Galactic");
     let m = out.mapping(FrameRef::Base, FrameRef::Current).unwrap();

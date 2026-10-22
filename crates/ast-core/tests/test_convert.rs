@@ -29,11 +29,14 @@ fn is_perm(m: &dyn Mapping) -> bool {
 /// with the base/current frames preserved (testconvert.c Errors 1-8).
 #[test]
 fn convert_basic_sky_unitmap() {
-    let sf = SkyFrame::new(SkySystem::Fk5);
-    let bf = BasicFrameBuilder::new(2).domain("SKY").build().unwrap();
+    let mut sf = SkyFrame::new(SkySystem::Fk5);
+    let mut bf = BasicFrameBuilder::new(2).domain("SKY").build().unwrap();
 
     // astConvert(bf, sf) => base==bf, current==sf, mapping is UnitMap.
-    let fs = bf.convert_to(&sf, &[]).unwrap().expect("bf->sf converts");
+    let fs = bf
+        .convert_to(&mut sf, &[])
+        .unwrap()
+        .expect("bf->sf converts");
     assert!(fs.frame(FrameRef::Base).unwrap().equal(&bf));
     assert!(fs.frame(FrameRef::Current).unwrap().equal(&sf));
     assert!(is_unit(
@@ -43,7 +46,10 @@ fn convert_basic_sky_unitmap() {
     ));
 
     // astConvert(sf, bf) => base==sf, current==bf, mapping is UnitMap.
-    let fs = sf.convert_to(&bf, &[]).unwrap().expect("sf->bf converts");
+    let fs = sf
+        .convert_to(&mut bf, &[])
+        .unwrap()
+        .expect("sf->bf converts");
     assert!(fs.frame(FrameRef::Base).unwrap().equal(&sf));
     assert!(fs.frame(FrameRef::Current).unwrap().equal(&bf));
     assert!(is_unit(
@@ -57,10 +63,10 @@ fn convert_basic_sky_unitmap() {
 /// convert to a SkyFrame in either direction (testconvert.c Errors 9-10).
 #[test]
 fn convert_domain_gate_blocks_mismatch() {
-    let sf = SkyFrame::new(SkySystem::Fk5);
-    let bf = BasicFrameBuilder::new(2).domain("NOTSKY").build().unwrap();
-    assert!(bf.convert_to(&sf, &[]).unwrap().is_none());
-    assert!(sf.convert_to(&bf, &[]).unwrap().is_none());
+    let mut sf = SkyFrame::new(SkySystem::Fk5);
+    let mut bf = BasicFrameBuilder::new(2).domain("NOTSKY").build().unwrap();
+    assert!(bf.convert_to(&mut sf, &[]).unwrap().is_none());
+    assert!(sf.convert_to(&mut bf, &[]).unwrap().is_none());
 }
 
 /// `astConvert(bf[Domain=SKY], cf)` and the reverse yield a PermMap,
@@ -71,18 +77,21 @@ fn convert_domain_gate_blocks_mismatch() {
 fn convert_basic_cmp_permmap() {
     let sf = SkyFrame::new(SkySystem::Fk5);
     let df = SpecFrame::new(SpecSystem::Freq);
-    let cf = CmpFrame::new(Box::new(df), Box::new(sf));
+    let mut cf = CmpFrame::new(Box::new(df), Box::new(sf));
 
     // Domain=NOTSKY blocks the conversion in both directions.
-    let bf_notsky = BasicFrameBuilder::new(2).domain("NOTSKY").build().unwrap();
-    assert!(bf_notsky.convert_to(&cf, &[]).unwrap().is_none());
-    assert!(cf.convert_to(&bf_notsky, &[]).unwrap().is_none());
+    let mut bf_notsky = BasicFrameBuilder::new(2).domain("NOTSKY").build().unwrap();
+    assert!(bf_notsky.convert_to(&mut cf, &[]).unwrap().is_none());
+    assert!(cf.convert_to(&mut bf_notsky, &[]).unwrap().is_none());
 
     // Domain=SKY converts; the Mapping is a PermMap (the CmpFrame holds
     // the SkyFrame on axes 2-3, so the alignment permutes axes).
-    let bf = BasicFrameBuilder::new(2).domain("SKY").build().unwrap();
+    let mut bf = BasicFrameBuilder::new(2).domain("SKY").build().unwrap();
 
-    let fs = bf.convert_to(&cf, &[]).unwrap().expect("bf->cf converts");
+    let fs = bf
+        .convert_to(&mut cf, &[])
+        .unwrap()
+        .expect("bf->cf converts");
     assert!(fs.frame(FrameRef::Base).unwrap().equal(&bf));
     assert!(fs.frame(FrameRef::Current).unwrap().equal(&cf));
     assert!(is_perm(
@@ -91,7 +100,10 @@ fn convert_basic_cmp_permmap() {
             .as_ref()
     ));
 
-    let fs = cf.convert_to(&bf, &[]).unwrap().expect("cf->bf converts");
+    let fs = cf
+        .convert_to(&mut bf, &[])
+        .unwrap()
+        .expect("cf->bf converts");
     assert!(fs.frame(FrameRef::Base).unwrap().equal(&cf));
     assert!(fs.frame(FrameRef::Current).unwrap().equal(&bf));
     assert!(is_perm(
@@ -105,11 +117,14 @@ fn convert_basic_cmp_permmap() {
 /// base/current frames preserved (testconvert.c Errors 37-44).
 #[test]
 fn convert_sky_cmp_permmap() {
-    let sf = SkyFrame::new(SkySystem::Fk5);
+    let mut sf = SkyFrame::new(SkySystem::Fk5);
     let df = SpecFrame::new(SpecSystem::Freq);
-    let cf = CmpFrame::new(Box::new(df), Box::new(sf.clone()));
+    let mut cf = CmpFrame::new(Box::new(df), Box::new(sf.clone()));
 
-    let fs = sf.convert_to(&cf, &[]).unwrap().expect("sf->cf converts");
+    let fs = sf
+        .convert_to(&mut cf, &[])
+        .unwrap()
+        .expect("sf->cf converts");
     assert!(fs.frame(FrameRef::Base).unwrap().equal(&sf));
     assert!(fs.frame(FrameRef::Current).unwrap().equal(&cf));
     assert!(is_perm(
@@ -118,7 +133,10 @@ fn convert_sky_cmp_permmap() {
             .as_ref()
     ));
 
-    let fs = cf.convert_to(&sf, &[]).unwrap().expect("cf->sf converts");
+    let fs = cf
+        .convert_to(&mut sf, &[])
+        .unwrap()
+        .expect("cf->sf converts");
     assert!(fs.frame(FrameRef::Base).unwrap().equal(&cf));
     assert!(fs.frame(FrameRef::Current).unwrap().equal(&sf));
     assert!(is_perm(
@@ -133,9 +151,9 @@ fn convert_sky_cmp_permmap() {
 /// template tolerates a 3-axis target (testconvert.c Errors 45-50).
 #[test]
 fn find_frame_cmp_needs_widened_axes() {
-    let sf = SkyFrame::new(SkySystem::Fk5);
+    let mut sf = SkyFrame::new(SkySystem::Fk5);
     let df = SpecFrame::new(SpecSystem::Freq);
-    let cf = CmpFrame::new(Box::new(df), Box::new(sf.clone()));
+    let mut cf = CmpFrame::new(Box::new(df), Box::new(sf.clone()));
 
     // astFindFrame(sf, cf): a CmpFrame template against a SkyFrame target
     // is found (the SkyFrame supplies a sky axis pair).
@@ -168,7 +186,7 @@ fn find_frame_cmp_needs_widened_axes() {
 /// cast-retry does not produce a match (testconvert.c Error 51).
 #[test]
 fn find_frame_domain_mismatch_returns_none() {
-    let target = BasicFrameBuilder::new(2).domain("ARDAPP").build().unwrap();
+    let mut target = BasicFrameBuilder::new(2).domain("ARDAPP").build().unwrap();
     let template = SkyFrame::new(SkySystem::Gappt);
     assert!(
         target
@@ -195,7 +213,7 @@ fn convert_constant_numerator_units() {
         f1.set_active_unit(true);
         f2.set_active_unit(true);
         let fs = f1
-            .convert_to(&f2, &[])
+            .convert_to(&mut f2, &[])
             .unwrap()
             .unwrap_or_else(|| panic!("no conversion from {from} to {to}"));
         let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
@@ -215,18 +233,18 @@ fn convert_constant_numerator_units() {
 #[test]
 fn convert_between_regions_does_not_clip() {
     use ast_core::regions::CircleBuilder;
-    let par = CircleBuilder::new(SkyFrame::new(SkySystem::Icrs), vec![1.0, 0.5])
+    let mut par = CircleBuilder::new(SkyFrame::new(SkySystem::Icrs), vec![1.0, 0.5])
         .unwrap()
         .radius(0.01)
         .build()
         .unwrap();
-    let err = CircleBuilder::new(SkyFrame::new(SkySystem::Galactic), vec![2.0, -0.3])
+    let mut err = CircleBuilder::new(SkyFrame::new(SkySystem::Galactic), vec![2.0, -0.3])
         .unwrap()
         .radius(0.0001)
         .build()
         .unwrap();
     let fs = err
-        .convert_to(&par, &[])
+        .convert_to(&mut par, &[])
         .unwrap()
         .expect("the Circles convert");
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();

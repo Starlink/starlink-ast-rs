@@ -66,7 +66,11 @@ fn dsb(sideband: SideBand, align_sideband: bool) -> DSBSpecFrame {
 /// Convert from `from` to `to` and transform `points`, as the probe's
 /// `emit` does.
 fn convert(from: &dyn Frame, to: &dyn Frame, points: [f64; 2]) -> Result<Option<[f64; 2]>, ()> {
-    let Some(fs) = from.convert_to(to, &[]).map_err(|_| ())? else {
+    let Some(fs) = from
+        .snapshot()
+        .convert_to(to.snapshot().as_mut(), &[])
+        .map_err(|_| ())?
+    else {
         return Ok(None);
     };
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
@@ -121,7 +125,7 @@ fn run(name: &str) -> Result<Option<[f64; 2]>, ()> {
             }
         }
         "dsb_found_in_cube" => {
-            let cube = CmpFrame::new(
+            let mut cube = CmpFrame::new(
                 Box::new(SkyFrame::unset_system()),
                 Box::new(dsb(SideBand::LSB, false)),
             );
@@ -169,7 +173,7 @@ fn source_rest_frames_compare_through_their_defaults() {
     a.set_std_of_rest(StdOfRest::Source).unwrap();
     let mut b = a.clone();
     b.set_source_vrf(a.source_vrf()).unwrap();
-    let fs = a.convert_to(&b, &[]).unwrap().unwrap();
+    let fs = a.convert_to(&mut b, &[]).unwrap().unwrap();
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     assert!(map.as_any().is::<UnitMap>());
 }

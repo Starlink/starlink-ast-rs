@@ -334,7 +334,8 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
         v.set_max_axes(3)?;
         v
     };
-    let Some(found) = Frame::find_frame_template(fs.current(), &velo_template, "")? else {
+    let Some(found) = crate::frames::find_frame::find_frame(fs.current(), &velo_template, "")?
+    else {
         return Ok(());
     };
     // The match is a copy of the cube's spectral Frame, which may be a
@@ -352,7 +353,7 @@ pub(crate) fn write_velocities_from_frameset(fs: &FrameSet, cards: &mut CardList
 
     // Convert freq → velo to get the Mapping that takes Source-Hz
     // to LSRK-vrad-m/s.
-    let Some(conv_fs) = freq_frame.convert_to(&velo_frame, &[])? else {
+    let Some(conv_fs) = crate::frames::find_frame::convert(&freq_frame, &velo_frame, &[])? else {
         return Ok(());
     };
     let mapping = conv_fs.mapping(FrameRef::Base, FrameRef::Current)?;
@@ -521,7 +522,7 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
         sky.set_max_axes(3)?;
         sky
     };
-    let Some(fsconv1) = Frame::find_frame_template(curfrm, &radec_template, "")? else {
+    let Some(fsconv1) = crate::frames::find_frame::find_frame(curfrm, &radec_template, "")? else {
         return Ok(());
     };
 
@@ -533,7 +534,7 @@ pub(crate) fn write_azel_from_frameset(fs: &FrameSet, cards: &mut CardList) -> A
         sky.set_max_axes(3)?;
         sky
     };
-    let Some(fsconv2) = Frame::find_frame_template(curfrm, &azel_template, "")? else {
+    let Some(fsconv2) = crate::frames::find_frame::find_frame(curfrm, &azel_template, "")? else {
         return Ok(());
     };
 

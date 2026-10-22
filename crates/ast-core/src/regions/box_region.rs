@@ -1820,10 +1820,6 @@ impl Frame for BoxRegion {
         self.data.frameset.current().map_from(previous)
     }
 
-    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        self.data.frameset.current().convert_to(to, domains)
-    }
-
     fn equal(&self, other: &dyn Frame) -> bool {
         if let Some(other_box) = other.as_any().downcast_ref::<BoxRegion>() {
             self.data

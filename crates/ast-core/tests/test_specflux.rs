@@ -28,7 +28,7 @@ fn flux_unit(spec_val: f64, sf: Option<&SpecFrame>, unit: &str) -> FluxFrame {
 }
 
 fn convert(from: &SpecFluxFrame, to: &SpecFluxFrame) -> Option<FrameSet> {
-    from.convert_to(to, &[]).unwrap()
+    from.clone().convert_to(&mut to.clone(), &[]).unwrap()
 }
 
 /// `astTran2` through a FrameSet's base-to-current Mapping.

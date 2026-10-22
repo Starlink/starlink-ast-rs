@@ -330,7 +330,7 @@ fn check_tab() {
     let mut fs2v = read_frameset(&mut fc).expect("1058");
     fsv.invert();
     fs2v.invert();
-    let fs3v = fs2v.convert_to(&fsv, &[""]).unwrap().expect("1061");
+    let fs3v = fs2v.convert_to(&mut fsv, &[""]).unwrap().expect("1061");
     assert_eq!(fsv.base().domain(), "VOLTAGE", "1062");
     assert_eq!(fs2v.base().domain(), "VOLTAGE", "1063");
     let x = [1.0, 10.0, 100.0];
@@ -391,7 +391,7 @@ fn check_tab_sparse() {
     fssp.invert();
     fs2sp.invert();
     assert!(
-        fssp.convert_to(&fs2sp, &["SKY-DSBSPECTRUM"])
+        fssp.convert_to(&mut fs2sp, &["SKY-DSBSPECTRUM"])
             .unwrap()
             .is_some(),
         "1039"

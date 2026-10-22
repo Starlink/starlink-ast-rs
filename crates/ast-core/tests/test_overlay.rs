@@ -27,7 +27,10 @@ fn frame(naxes: usize, f: impl FnOnce(&mut dyn Frame)) -> DynFrame {
 }
 
 fn found(target: &dyn Frame, template: &dyn Frame) -> Option<DynFrame> {
-    let fs = target.find_frame_template(template, "").unwrap()?;
+    let fs = target
+        .snapshot()
+        .find_frame_template(template, "")
+        .unwrap()?;
     Some(fs.frame(FrameRef::Current).unwrap().snapshot())
 }
 

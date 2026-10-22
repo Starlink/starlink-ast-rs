@@ -520,7 +520,9 @@ fn make_astro_coords_key_map(reg: &dyn Region, coord: &KeyMap, class: &str) -> A
                      is a {obj_class}, not a Region. "
                 )));
             };
-            let Some(fs) = region.convert_to(reg.as_dyn_frame(), &[])? else {
+            let Some(fs) =
+                crate::frames::find_frame::convert(region.as_dyn_frame(), reg.as_dyn_frame(), &[])?
+            else {
                 return Err(stckey(format!(
                     "astInitStc({class}): The \"{key}\" value supplied in an AstroCoords list \
                      cannot be converted to the coordinate system of its parent Stc object."
@@ -1202,10 +1204,6 @@ impl<K: StcKind> Frame for Stc<K> {
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         self.data.frameset.current().map_from(previous)
-    }
-
-    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        self.data.frameset.current().convert_to(to, domains)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

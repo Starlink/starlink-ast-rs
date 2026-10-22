@@ -21,7 +21,7 @@ use std::f64::consts::PI;
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{Frame, FrameRef};
+use crate::frames::FrameRef;
 
 /// The LAST values computed for one observer position, DUT1 and DTAI
 /// (skyframe.c `AstSkyLastTable`). `epoch` increases monotonically, and
@@ -109,7 +109,7 @@ fn exact_last(
     };
     let tdb = frame(TimeScale::Tdb)?;
     let last_frame = frame(TimeScale::Last)?;
-    let fs = tdb.convert_to(&last_frame, &[])?.ok_or_else(|| {
+    let fs = crate::frames::find_frame::convert(&tdb, &last_frame, &[])?.ok_or_else(|| {
         AstError::new(ErrorCode::Inter, "CalcLAST: no conversion from TDB to LAST")
     })?;
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current)?;

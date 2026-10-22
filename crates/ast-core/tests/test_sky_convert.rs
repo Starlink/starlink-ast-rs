@@ -83,12 +83,12 @@ fn convert(
     to_sys: &str,
     align: Option<&str>,
 ) -> Option<Vec<[f64; 2]>> {
-    let from = sky(from_sys, cases::FROM_PROPS[config]);
+    let mut from = sky(from_sys, cases::FROM_PROPS[config]);
     let mut to = sky(to_sys, cases::TO_PROPS[config]);
     if let Some(a) = align {
         to.set_align_system(SkySystem::parse(a).expect("known system"));
     }
-    let fs = from.convert_to(&to, &[]).unwrap()?;
+    let fs = from.convert_to(&mut to, &[]).unwrap()?;
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     let xin: Vec<f64> = cases::POINTS.iter().map(|p| p[0]).collect();
     let yin: Vec<f64> = cases::POINTS.iter().map(|p| p[1]).collect();

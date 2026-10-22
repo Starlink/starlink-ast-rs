@@ -85,7 +85,8 @@ fn roundtrip(fs: &FrameSet, encoding: Encoding, tol: f64, expect: (&str, &str)) 
     let nin = fs.nin();
     let cvt = fs
         .current()
-        .convert_to(curfrm2, &[""])
+        .snapshot()
+        .convert_to(curfrm2.snapshot().as_mut(), &[""])
         .unwrap()
         .expect("the current Frames align");
     let pts = ast_core::coords::PointSet::from_rows(
@@ -371,8 +372,13 @@ fn supergalactic_writes_slon() {
         ],
     );
     let mut fs = read_fs(&mut fc);
-    let tgt = SkyFrame::new(SkySystem::Supergalactic);
-    let cvt = fs.current().convert_to(&tgt, &[""]).unwrap().unwrap();
+    let mut tgt = SkyFrame::new(SkySystem::Supergalactic);
+    let cvt = fs
+        .current()
+        .snapshot()
+        .convert_to(&mut tgt, &[""])
+        .unwrap()
+        .unwrap();
     fs.remap_frame(
         FrameRef::Current,
         cvt.mapping(FrameRef::Base, FrameRef::Current).unwrap(),

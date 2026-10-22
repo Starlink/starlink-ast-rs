@@ -5,7 +5,7 @@
 use super::fits_store::FitsStore;
 use super::warning::{Warning, Warnings};
 use crate::error::AstResult;
-use crate::frames::{Frame, FrameRef, TimeFrame, TimeScale, TimeSystem};
+use crate::frames::{FrameRef, TimeFrame, TimeScale, TimeSystem};
 
 /// C's `TimeSysToAst`: the timescale a TIMESYS value names, UTC when there
 /// is none. `UT`, `ET` and a value AST does not support raise `badval`
@@ -62,7 +62,7 @@ pub(crate) fn tdb_conv(mjd: f64, timescale: TimeScale, from_tdb: bool) -> AstRes
     tdbframe.set_timescale(TimeScale::Tdb)?;
     let mut timeframe = TimeFrame::new(TimeSystem::Mjd);
     timeframe.set_timescale(timescale)?;
-    let fs = Frame::convert_to(&tdbframe, &timeframe, &[])?
+    let fs = crate::frames::find_frame::convert(&tdbframe, &timeframe, &[])?
         .expect("MJD TimeFrames in any two timescales convert");
     let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;
     let pts = crate::coords::PointSet::from_rows([[mjd]]);

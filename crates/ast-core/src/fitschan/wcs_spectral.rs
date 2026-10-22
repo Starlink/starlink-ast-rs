@@ -284,7 +284,7 @@ fn nonlin_spec_wcs(
     // Build the S → X mapping via Frame::convert (mirrors
     // C:23606-23612). This returns a FrameSet whose forward mapping
     // takes S values to X values.
-    let fs = specfrm.convert_to(&xfrm, &[])?;
+    let fs = crate::frames::find_frame::convert(specfrm, &xfrm, &[])?;
 
     // Warn when the algorithm code's "P" character disagrees with the one the
     // axis's own system implies. Mirrors C:23675-23704, which runs this whether
@@ -392,7 +392,7 @@ fn grism_spec_wcs(
     wfrm.set_unit(1, "m")?;
 
     // Get the S → wavelength mapping via astConvert. Mirrors C:14301-14304.
-    let Some(fs) = specfrm.convert_to(&wfrm, &[])? else {
+    let Some(fs) = crate::frames::find_frame::convert(specfrm, &wfrm, &[])? else {
         return Ok(None);
     };
     let smap = fs.mapping(FrameRef::Base, FrameRef::Current)?;

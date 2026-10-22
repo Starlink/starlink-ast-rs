@@ -2567,7 +2567,8 @@ impl Moc {
         let mut fs = hpx12_frameset(maxorder)?;
         let gridframe = fs.base().snapshot();
         fs.invert();
-        let Some(fsconv) = picked_frame.convert_to(&fs, &[])? else {
+        let Some(fsconv) = crate::frames::find_frame::convert(picked_frame.as_ref(), &fs, &[])?
+        else {
             return Err(AstError::new(
                 ErrorCode::Nodef,
                 format!(
@@ -2802,7 +2803,7 @@ impl Moc {
 
         let mut fs = hpx12_frameset(maxorder)?;
         fs.invert();
-        let Some(fsconv) = Frame::convert_to(&picked, &fs, &[])? else {
+        let Some(fsconv) = crate::frames::find_frame::convert(&picked, &fs, &[])? else {
             return Err(AstError::new(
                 ErrorCode::Nodef,
                 format!(
@@ -3640,10 +3641,6 @@ impl Frame for Moc {
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         self.data.frameset.current().map_from(previous)
-    }
-
-    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        self.data.frameset.current().convert_to(to, domains)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

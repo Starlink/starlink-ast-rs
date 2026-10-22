@@ -628,7 +628,7 @@ impl DSBSpecFrame {
         let mut dsb_topo = dsb_src.clone();
         dsb_topo.set_std_of_rest(StdOfRest::Topocentric)?;
 
-        let Some(fs) = dsb_src.convert_to(&dsb_topo, &[])? else {
+        let Some(fs) = crate::frames::find_frame::convert(&dsb_src, &dsb_topo, &[])? else {
             // No conversion found (C:9018 — leaves the frame unchanged).
             return Ok(());
         };
@@ -824,7 +824,7 @@ impl DSBSpecFrame {
         tf2.set_system(SpecSystem::Freq)?;
         tf2.set_std_of_rest(StdOfRest::Topocentric)?;
         tf2.set_unit(1, "Hz")?;
-        let Some(fs) = tf1.convert_to(&tf2, &[])? else {
+        let Some(fs) = crate::frames::find_frame::convert(&tf1, &tf2, &[])? else {
             return Err(AstError::new(
                 ErrorCode::Inter,
                 "Cannot convert DSBCentre value from the supplied system to \

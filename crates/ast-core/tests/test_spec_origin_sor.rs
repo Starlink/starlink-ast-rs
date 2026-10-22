@@ -105,7 +105,11 @@ fn convert(f: &Spec, origin: Option<f64>, value: f64) -> AstResult<Option<f64>> 
     if let Some(o) = origin {
         h.spec_mut().set_spec_origin_cur(o)?;
     }
-    let Some(fs) = f.frame().convert_to(h.frame(), &[])? else {
+    let Some(fs) = f
+        .frame()
+        .snapshot()
+        .convert_to(h.frame().snapshot().as_mut(), &[])?
+    else {
         return Ok(None);
     };
     let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;

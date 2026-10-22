@@ -109,6 +109,87 @@ pub(crate) fn integrity_mapping(
     }
 }
 
+/// The comma-separated domain list C's `astConvert` takes, from the slice
+/// form: an empty slice is a single blank field, which permits any Domain.
+pub(crate) fn domain_list(domains: &[&str]) -> String {
+    if domains.is_empty() {
+        " ".to_string()
+    } else {
+        domains.join(",")
+    }
+}
+
+/// A conversion found by [`convert_route`]: the conversion FrameSet, and the
+/// 1-based indices of the Frames of `from` and `to` it was found through
+/// (1 for an argument that is not a FrameSet).
+pub(crate) struct ConvertRoute {
+    pub(crate) fs: FrameSet,
+    pub(crate) from_frame: usize,
+    pub(crate) to_frame: usize,
+}
+
+/// C's `astConvert` from `from` to `to` without its side effect on a
+/// FrameSet argument; [`Frame::convert_to`] applies that.
+///
+/// frameset.c overrides `Convert` and `ConvertX`, so the FrameSet search
+/// runs whenever either argument is a FrameSet; a Region `from` takes part as
+/// its Frame.
+pub(crate) fn convert_route(
+    from: &dyn Frame,
+    to: &dyn Frame,
+    domainlist: &str,
+) -> AstResult<Option<ConvertRoute>> {
+    let region_frame = crate::regions::any_as_region(from.as_any()).map(|r| r.get_region_frame());
+    let from = region_frame.as_deref().unwrap_or(from);
+    if from.as_any().is::<FrameSet>() || to.as_any().is::<FrameSet>() {
+        return super::frameset::frameset_convert_x(to, from, domainlist);
+    }
+    // The Frame itself, not a copy, takes part, as in C: a SkyFrame keeps
+    // the LAST it computes for the conversion.
+    Ok(
+        convert_frames_or_regions(from, to, domainlist)?.map(|fs| ConvertRoute {
+            fs,
+            from_frame: 1,
+            to_frame: 1,
+        }),
+    )
+}
+
+/// [`Frame::convert_to`] for Frames held by shared reference: the same
+/// conversion, leaving the Base of a FrameSet argument unchanged.
+pub(crate) fn convert(
+    from: &dyn Frame,
+    to: &dyn Frame,
+    domains: &[&str],
+) -> AstResult<Option<FrameSet>> {
+    Ok(convert_route(from, to, &domain_list(domains))?.map(|r| r.fs))
+}
+
+/// C's `astFindFrame` without its side effect on a FrameSet target: the
+/// result, and the 1-based index of the target Frame matched (1 for a target
+/// that is not a FrameSet). [`Frame::find_frame_template`] applies the side
+/// effect.
+pub(crate) fn find_frame_route(
+    target: &dyn Frame,
+    template: &dyn Frame,
+    domainlist: &str,
+) -> AstResult<Option<(FindFrameResult, usize)>> {
+    if let Some(fs) = target.as_any().downcast_ref::<FrameSet>() {
+        return super::frameset::frameset_find_frame(fs, template, domainlist);
+    }
+    Ok(default_find_frame(target, template, domainlist)?.map(|r| (r, 1)))
+}
+
+/// [`Frame::find_frame_template`] for a target held by shared reference: the
+/// same search, leaving the Current of a FrameSet target unchanged.
+pub(crate) fn find_frame(
+    target: &dyn Frame,
+    template: &dyn Frame,
+    domainlist: &str,
+) -> AstResult<Option<FindFrameResult>> {
+    Ok(find_frame_route(target, template, domainlist)?.map(|(r, _)| r))
+}
+
 /// C's `astConvert` between two Frames, neither a FrameSet: region.c
 /// overrides `Convert` and `ConvertX`, so when either Frame is a Region both
 /// are replaced by their own current Frames (a Region by the current Frame of

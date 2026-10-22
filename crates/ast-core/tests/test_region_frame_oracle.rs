@@ -59,11 +59,11 @@ fn system_and_picked_axes_come_from_the_sky_frame() {
 
 #[test]
 fn conversions_to_and_from_the_region() {
-    let c = circle();
-    let gal = SkyFrame::new(SkySystem::Galactic);
+    let mut c = circle();
+    let mut gal = SkyFrame::new(SkySystem::Galactic);
     let found = (
-        gal.convert_to(&c, &[]).unwrap().is_some(),
-        c.convert_to(&gal, &[]).unwrap().is_some(),
+        gal.convert_to(&mut c, &[]).unwrap().is_some(),
+        c.convert_to(&mut gal, &[]).unwrap().is_some(),
     );
     assert_eq!(found, cases::CONVERTS);
     assert!(!(&c as &dyn Region).is_unit_frame());

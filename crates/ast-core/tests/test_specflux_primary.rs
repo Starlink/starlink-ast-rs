@@ -41,7 +41,10 @@ fn spec_template(max_axes: usize) -> SpecFrame {
 }
 
 fn found(target: &dyn Frame, template: &dyn Frame) -> Option<f64> {
-    let fs = target.find_frame_template(template, "").unwrap()?;
+    let fs = target
+        .snapshot()
+        .find_frame_template(template, "")
+        .unwrap()?;
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     let cols: Vec<[f64; 1]> = cases::POINT[..target.naxes()]
         .iter()

@@ -1238,8 +1238,9 @@ impl FrameSet {
     /// The result is a FrameSet of two Frames: the base Frame of this
     /// FrameSet, and the Frame found, related by the Mapping from this
     /// FrameSet's base Frame through the Frame matched to the Frame found.
-    /// This FrameSet is not changed: its Current is not moved to the Frame
-    /// matched.
+    /// When a match is found, the Frame matched becomes this FrameSet's
+    /// current Frame, so [`current_index`](FrameSet::current_index) tells
+    /// which it was.
     ///
     /// # Errors
     ///
@@ -1248,7 +1249,7 @@ impl FrameSet {
     /// result.
     #[doc(alias = "astFindFrame")]
     pub fn find_frame(
-        &self,
+        &mut self,
         template: &dyn Frame,
         domains: &[&str],
     ) -> AstResult<Option<FrameSet>> {
@@ -2147,27 +2148,6 @@ impl Frame for FrameSet {
         true
     }
 
-    /// A FrameSet `from` reaches the FrameSet conversion whatever the class
-    /// of `to`.
-    // C: frameset.c `Convert` (frameset.c:3106) overrides the Frame method
-    // so that a FrameSet `from` reaches the FrameSet `ConvertX`.
-    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        let domainlist = if domains.is_empty() {
-            " ".to_string()
-        } else {
-            domains.join(",")
-        };
-        frameset_convert_x(to, self, &domainlist)
-    }
-
-    fn find_frame_template(
-        &self,
-        template: &dyn Frame,
-        domainlist: &str,
-    ) -> AstResult<Option<FrameSet>> {
-        frameset_find_frame(self, template, domainlist)
-    }
-
     fn system_string(&self) -> AstResult<Option<&str>> {
         self.current().system_string()
     }
@@ -2229,16 +2209,18 @@ impl Frame for FrameSet {
 /// wins. The resulting Mapping is prefixed by the FrameSet's
 /// base→matched-frame Mapping and simplified, then packaged as a
 /// 2-frame FrameSet (base = self.base, current = matched-frame's
-/// result).
+/// result), returned with the 1-based index of the Frame matched, which
+/// [`Frame::find_frame_template`] makes the target's current Frame
+/// (frameset.c:4022).
 ///
 /// `domainlist` is the standard comma-separated, case-insensitive,
 /// whitespace-stripped priority list. Each field (including the
 /// blank one introduced by adjacent commas) is tried in order.
-fn frameset_find_frame(
+pub(crate) fn frameset_find_frame(
     target: &FrameSet,
     template: &dyn Frame,
     domainlist: &str,
-) -> AstResult<Option<FrameSet>> {
+) -> AstResult<Option<(FrameSet, usize)>> {
     let nframe = target.nframe();
     let current_idx = target.current_idx() + 1; // 1-based
     let base_idx = target.base_idx() + 1;
@@ -2268,7 +2250,9 @@ fn frameset_find_frame(
     for domain_field in &fields {
         for &target_idx_1based in &order {
             let selected = target.frame(FrameRef::Index(target_idx_1based))?;
-            let Some(found) = Frame::find_frame_template(selected, template, domain_field)? else {
+            let Some(found) =
+                crate::frames::find_frame::find_frame(selected, template, domain_field)?
+            else {
                 continue;
             };
 
@@ -2288,7 +2272,7 @@ fn frameset_find_frame(
             // Build the result 2-frame FrameSet.
             let mut result_fs = FrameSet::new(target.base().snapshot());
             result_fs.add_frame(FrameRef::Base, simplified, result_frame)?;
-            return Ok(Some(result_fs));
+            return Ok(Some((result_fs, target_idx_1based)));
         }
     }
 
@@ -2338,15 +2322,14 @@ fn convert_current_to(from: &dyn Frame, to: &dyn Frame) -> AstResult<DynMapping>
 /// ascending index order, or descending for an inverted FrameSet, then the
 /// current frame last (frameset.c:3308-3348).
 ///
-/// Divergence from C: `ConvertX` also sets the *input* FrameSets' Base
-/// attribute to record the route used (frameset.c:3502-3503). The Frame trait
-/// takes `&self`/`&dyn Frame` and cannot mutate the inputs; that side-effect is
-/// an optimisation hint, not part of the conversion result, so it is omitted.
+/// The indices of the `from` and `to` Frames used are returned with the
+/// result; [`Frame::convert_to`] sets the Base of a FrameSet argument to them,
+/// as `ConvertX` does (frameset.c:3502-3503).
 pub(crate) fn frameset_convert_x(
     to: &dyn Frame,
     from: &dyn Frame,
     domainlist: &str,
-) -> AstResult<Option<FrameSet>> {
+) -> AstResult<Option<crate::frames::find_frame::ConvertRoute>> {
     let from_fs = from.as_any().downcast_ref::<FrameSet>();
     let to_fs = to.as_any().downcast_ref::<FrameSet>();
 
@@ -2388,6 +2371,7 @@ pub(crate) fn frameset_convert_x(
 
     let mut best_score = -1i32;
     let mut result_map: Option<DynMapping> = None;
+    let (mut iframe_from, mut iframe_to) = (0, 0);
 
     'search: for field in &fields {
         let domain = field.trim();
@@ -2441,6 +2425,8 @@ pub(crate) fn frameset_convert_x(
                 if score > best_score {
                     best_score = score;
                     result_map = Some(map);
+                    iframe_from = from_idx;
+                    iframe_to = to_idx;
                     if best_score >= 3 {
                         break 'search;
                     }
@@ -2464,7 +2450,11 @@ pub(crate) fn frameset_convert_x(
     };
     let mut result_fs = FrameSet::new(from_cur_frame);
     result_fs.add_frame(FrameRef::Base, result_map, to_cur_frame)?;
-    Ok(Some(result_fs))
+    Ok(Some(crate::frames::find_frame::ConvertRoute {
+        fs: result_fs,
+        from_frame: iframe_from,
+        to_frame: iframe_to,
+    }))
 }
 
 // ====================================================================== //

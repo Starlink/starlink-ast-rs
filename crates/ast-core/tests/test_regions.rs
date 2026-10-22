@@ -2615,9 +2615,9 @@ fn system_change_circle_membership() {
         .unwrap();
 
     // Convert the centre point from ICRS to Galactic.
-    let icrs_frame = SkyFrame::new(SkySystem::Icrs);
-    let gal_frame = SkyFrame::new(SkySystem::Galactic);
-    let conversion = icrs_frame.convert_to(&gal_frame, &[]).unwrap().unwrap();
+    let mut icrs_frame = SkyFrame::new(SkySystem::Icrs);
+    let mut gal_frame = SkyFrame::new(SkySystem::Galactic);
+    let conversion = icrs_frame.convert_to(&mut gal_frame, &[]).unwrap().unwrap();
 
     let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
     let centre_gal = conversion.transform(&centre_pts, true).unwrap();
@@ -2656,9 +2656,9 @@ fn system_change_circle_simplify() {
         .unwrap();
 
     // Convert the centre point to Galactic.
-    let icrs_frame = SkyFrame::new(SkySystem::Icrs);
-    let gal_frame = SkyFrame::new(SkySystem::Galactic);
-    let conversion = icrs_frame.convert_to(&gal_frame, &[]).unwrap().unwrap();
+    let mut icrs_frame = SkyFrame::new(SkySystem::Icrs);
+    let mut gal_frame = SkyFrame::new(SkySystem::Galactic);
+    let conversion = icrs_frame.convert_to(&mut gal_frame, &[]).unwrap().unwrap();
 
     let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
     let centre_gal = conversion.transform(&centre_pts, true).unwrap();
@@ -2757,9 +2757,9 @@ fn system_change_box_membership() {
     .unwrap();
 
     // Convert the centre from ICRS to Galactic.
-    let icrs_frame = SkyFrame::new(SkySystem::Icrs);
-    let gal_frame = SkyFrame::new(SkySystem::Galactic);
-    let conversion = icrs_frame.convert_to(&gal_frame, &[]).unwrap().unwrap();
+    let mut icrs_frame = SkyFrame::new(SkySystem::Icrs);
+    let mut gal_frame = SkyFrame::new(SkySystem::Galactic);
+    let conversion = icrs_frame.convert_to(&mut gal_frame, &[]).unwrap().unwrap();
 
     let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
     let centre_gal = conversion.transform(&centre_pts, true).unwrap();
@@ -2799,9 +2799,9 @@ fn system_change_simplified_transform_consistent() {
         .unwrap();
 
     // Convert several test points from ICRS to Galactic.
-    let icrs_frame = SkyFrame::new(SkySystem::Icrs);
-    let gal_frame = SkyFrame::new(SkySystem::Galactic);
-    let conversion = icrs_frame.convert_to(&gal_frame, &[]).unwrap().unwrap();
+    let mut icrs_frame = SkyFrame::new(SkySystem::Icrs);
+    let mut gal_frame = SkyFrame::new(SkySystem::Galactic);
+    let conversion = icrs_frame.convert_to(&mut gal_frame, &[]).unwrap().unwrap();
 
     // Points: centre, slightly inside, slightly outside, far away.
     let test_icrs = PointSet::from_rows([
@@ -2869,9 +2869,9 @@ fn system_change_circle_serialization_roundtrip() {
     };
 
     // Convert centre to Galactic for testing.
-    let icrs_frame = SkyFrame::new(SkySystem::Icrs);
-    let gal_frame = SkyFrame::new(SkySystem::Galactic);
-    let conversion = icrs_frame.convert_to(&gal_frame, &[]).unwrap().unwrap();
+    let mut icrs_frame = SkyFrame::new(SkySystem::Icrs);
+    let mut gal_frame = SkyFrame::new(SkySystem::Galactic);
+    let conversion = icrs_frame.convert_to(&mut gal_frame, &[]).unwrap().unwrap();
 
     let centre_pts = PointSet::from_rows([[1.0, 0.5]]);
     let centre_gal = conversion.transform(&centre_pts, true).unwrap();
@@ -3318,7 +3318,7 @@ fn pick_axes_basicframe_subset() {
 #[test]
 fn remove_regions_from_frameset() {
     // Create a Circle and verify it clips points.
-    let sf1 = SkyFrame::new(SkySystem::Icrs);
+    let mut sf1 = SkyFrame::new(SkySystem::Icrs);
     let circle = CircleBuilder::new(sf1.clone(), vec![0.0, 0.0])
         .unwrap()
         .radius(0.001)
@@ -3341,8 +3341,8 @@ fn remove_regions_from_frameset() {
 
     // Now build a FrameSet that has the circle as part of its mapping.
     // Use convert to get ICRS→Galactic through the circle.
-    let sf2 = SkyFrame::new(SkySystem::Galactic);
-    let fs = sf1.convert_to(&sf2, &[]).unwrap().unwrap();
+    let mut sf2 = SkyFrame::new(SkySystem::Galactic);
+    let fs = sf1.convert_to(&mut sf2, &[]).unwrap().unwrap();
 
     // The FrameSet's mapping from base to current transforms coordinates.
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();

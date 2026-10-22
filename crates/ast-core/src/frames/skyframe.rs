@@ -4414,7 +4414,9 @@ mod tests {
         fk5.set_epoch_year(2000.0);
         fk5.set_sky_tol(100.0);
 
-        let fs = Frame::convert_to(&icrs, &fk5, &[]).unwrap().unwrap();
+        let fs = Frame::convert_to(&mut icrs, &mut fk5, &[])
+            .unwrap()
+            .unwrap();
         let map = fs
             .mapping(FrameRef::Base, FrameRef::Current)
             .unwrap()
@@ -4429,7 +4431,9 @@ mod tests {
         icrs2.set_epoch_year(2000.0);
         let mut fk52 = SkyFrame::new(SkySystem::Fk5);
         fk52.set_epoch_year(2000.0);
-        let fs2 = Frame::convert_to(&icrs2, &fk52, &[]).unwrap().unwrap();
+        let fs2 = Frame::convert_to(&mut icrs2, &mut fk52, &[])
+            .unwrap()
+            .unwrap();
         let map2 = fs2
             .mapping(FrameRef::Base, FrameRef::Current)
             .unwrap()
@@ -4534,10 +4538,10 @@ mod tests {
 
     #[test]
     fn convert_fk5_to_galactic() {
-        let fk5 = SkyFrame::new(SkySystem::Fk5);
-        let gal = SkyFrame::new(SkySystem::Galactic);
+        let mut fk5 = SkyFrame::new(SkySystem::Fk5);
+        let mut gal = SkyFrame::new(SkySystem::Galactic);
 
-        let fs = fk5.convert_to(&gal, &[]).unwrap();
+        let fs = fk5.convert_to(&mut gal, &[]).unwrap();
         assert!(fs.is_some(), "FK5 -> Galactic conversion should succeed");
 
         let fs = fs.unwrap();
@@ -4560,11 +4564,11 @@ mod tests {
         // against the C oracle (ast_tester/testconvert.c errors 4/8 fire
         // if no FrameSet, 3/7 if not a UnitMap).
         use crate::frames::{BasicFrameBuilder, Frame};
-        let sky = SkyFrame::new(SkySystem::Fk5);
-        let basic = BasicFrameBuilder::new(2).build().unwrap();
+        let mut sky = SkyFrame::new(SkySystem::Fk5);
+        let mut basic = BasicFrameBuilder::new(2).build().unwrap();
 
         let fs = sky
-            .convert_to(&basic, &[])
+            .convert_to(&mut basic, &[])
             .unwrap()
             .expect("SkyFrame -> blank-domain Frame converts");
         let map = fs
@@ -4632,9 +4636,9 @@ mod tests {
         src.set_sky_ref_p_lon_lat(1.0, 0.5 + 0.1);
         src.set_sky_ref_is(SkyRefIs::Origin);
 
-        let dst = SkyFrame::new(SkySystem::Fk5);
+        let mut dst = SkyFrame::new(SkySystem::Fk5);
 
-        let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
+        let fs = src.convert_to(&mut dst, &[]).unwrap().unwrap();
 
         // (0, 0) in offset should map to sky_ref in standard.
         let pts = crate::coords::PointSet::from_rows([[0.0, 0.0]]);
@@ -4651,14 +4655,14 @@ mod tests {
     #[test]
     fn convert_to_offset_frame() {
         // Source is standard FK5; target has offset coordinates.
-        let src = SkyFrame::new(SkySystem::Fk5);
+        let mut src = SkyFrame::new(SkySystem::Fk5);
 
         let mut dst = SkyFrame::new(SkySystem::Fk5);
         dst.set_sky_ref_lon_lat(1.0, 0.5);
         dst.set_sky_ref_p_lon_lat(1.0, 0.5 + 0.1);
         dst.set_sky_ref_is(SkyRefIs::Origin);
 
-        let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
+        let fs = src.convert_to(&mut dst, &[]).unwrap().unwrap();
 
         // sky_ref in standard should map to (0, 0) in offset.
         let pts = crate::coords::PointSet::from_rows([[1.0, 0.5]]);
@@ -4685,7 +4689,7 @@ mod tests {
         dst.set_sky_ref_p_lon_lat(2.0, -0.4 + 0.1);
         dst.set_sky_ref_is(SkyRefIs::Origin);
 
-        let fs_fwd = src.convert_to(&dst, &[]).unwrap().unwrap();
+        let fs_fwd = src.convert_to(&mut dst, &[]).unwrap().unwrap();
 
         // Pick a point in source offset coords, convert to dst offset,
         // then convert back.

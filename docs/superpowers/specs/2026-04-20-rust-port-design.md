@@ -2,6 +2,21 @@
 
 ## Revision history
 
+- **2026-10-21 (rev 37)**: `Frame::convert_to` takes `&mut self` and
+  `to: &mut dyn Frame`, and `Frame::find_frame_template` and
+  `FrameSet::find_frame` take `&mut self`, because C's `astConvert` sets
+  the Base of a FrameSet argument to the Frame the conversion went
+  through, and `astFindFrame` sets the Current of a FrameSet target to
+  the Frame matched; callers learn which Frame was used from that.
+  Neither method is overridden any more: the FrameSet and Region
+  dispatch C makes through its `Convert`, `ConvertX` and `FindFrame`
+  overrides is made once, in crate-private functions that also serve
+  ast-core's internal callers, which hold their Frames by shared
+  reference and do not depend on the side effect.
+  `FrameSet` gains `base_index` and `current_index`, the integer Base and
+  Current attributes, and `set_base_by_domain` and
+  `set_current_by_domain`, C's setting of either by a Domain name.
+  `FrameRef::Name`, which would look up by Ident, remains unbuilt.
 - **2026-10-21 (rev 36)**: Every public item mapped from a C
   documentation header carries a `#[doc(alias)]` with its C name, and
   `docs/audits/c-docs/ledger.tsv` maps every C header to a Rust item or
@@ -646,7 +661,7 @@ pub trait Frame {
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64>;
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>>;
     fn norm(&self, coords: &mut [f64]) -> AstResult<()>;
-    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>>;  // rev 6: was `convert(.., &str)`
+    fn convert_to(&mut self, to: &mut dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>>;  // rev 6: was `convert(.., &str)`; rev 37: `&mut`
     // resolve, intersect, axnorm, matchaxes, axdistance, axoffset ...
 
     fn simplify_frame(&self) -> AstResult<Option<DynFrame>>;  // rev 9: C's inherited Simplify slot
@@ -1179,7 +1194,7 @@ impl FrameSet {
     pub fn set_base(&mut self, which: FrameRef) -> AstResult<()>;
     pub fn set_current(&mut self, which: FrameRef) -> AstResult<()>;
 
-    pub fn find_frame(&self, template: &dyn Frame, domains: &str)
+    pub fn find_frame(&mut self, template: &dyn Frame, domains: &[&str])  // rev 37: `&mut`, sets Current
         -> AstResult<Option<FrameSet>>;
     pub fn add_variant(&mut self, map: DynMapping, name: &str) -> AstResult<()>;
 }

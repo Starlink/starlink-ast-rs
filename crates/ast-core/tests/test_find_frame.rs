@@ -19,7 +19,7 @@ fn bf(naxes: usize) -> BasicFrame {
 fn find_frame_basic_self() {
     // 2-axis BasicFrame target and template — should produce a 2-frame
     // FrameSet (base = target, current = result).
-    let target = bf(2);
+    let mut target = bf(2);
     let template = bf(2);
     let result = target
         .find_frame_template(&template, "")
@@ -35,7 +35,7 @@ fn find_frame_basic_domain_priority() {
     // The template has its Domain explicitly set; the target has no
     // Domain. C `astMatch` (frame.c:7256-7281) requires equality when
     // the template's Domain is set.
-    let target = bf(2);
+    let mut target = bf(2);
     let mut template = bf(2);
     template.set_domain("PIXEL");
     let result = target.find_frame_template(&template, "").unwrap();
@@ -45,7 +45,7 @@ fn find_frame_basic_domain_priority() {
 #[test]
 fn find_frame_basic_domain_list_blank() {
     // An empty `domainlist` permits any domain.
-    let target = bf(2);
+    let mut target = bf(2);
     let template = bf(2);
     let result = target.find_frame_template(&template, "").unwrap();
     assert!(result.is_some());
@@ -332,7 +332,7 @@ fn find_frame_specframe_template_into_cmpframe_sky_spec() {
     template.set_max_axes(3).unwrap();
 
     // CmpFrame(SkyFrame(FK5) [2 axes], SpecFrame(Freq) [1 axis]) — 3 axes.
-    let target = CmpFrame::new(
+    let mut target = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Fk5)),
         Box::new(SpecFrame::new(SpecSystem::Freq)),
     );
@@ -361,7 +361,7 @@ fn find_frame_specframe_template_into_cmpframe_spec_sky() {
     template.set_min_axes(1).unwrap();
     template.set_max_axes(3).unwrap();
 
-    let target = CmpFrame::new(
+    let mut target = CmpFrame::new(
         Box::new(SpecFrame::new(SpecSystem::Freq)),
         Box::new(SkyFrame::new(SkySystem::Fk5)),
     );

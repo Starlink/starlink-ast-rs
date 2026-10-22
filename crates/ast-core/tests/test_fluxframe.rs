@@ -185,9 +185,9 @@ fn test_fluxframe_distance() {
 
 #[test]
 fn test_fluxframe_convert_same_system() {
-    let ff1 = FluxFrame::new(FluxSystem::FluxDen);
-    let ff2 = FluxFrame::new(FluxSystem::FluxDen);
-    let fs = ff1.convert_to(&ff2, &[]).unwrap();
+    let mut ff1 = FluxFrame::new(FluxSystem::FluxDen);
+    let mut ff2 = FluxFrame::new(FluxSystem::FluxDen);
+    let fs = ff1.convert_to(&mut ff2, &[]).unwrap();
     assert!(fs.is_some());
 }
 
@@ -570,9 +570,9 @@ fn test_specfluxframe_not_equal_different_spec() {
 fn test_specfluxframe_convert_same() {
     let sf = SpecFrame::new(SpecSystem::Freq);
     let ff = FluxFrame::new(FluxSystem::FluxDen);
-    let sff1 = SpecFluxFrame::new(sf.clone(), ff.clone());
-    let sff2 = SpecFluxFrame::new(sf, ff);
-    let fs = sff1.convert_to(&sff2, &[]).unwrap();
+    let mut sff1 = SpecFluxFrame::new(sf.clone(), ff.clone());
+    let mut sff2 = SpecFluxFrame::new(sf, ff);
+    let fs = sff1.convert_to(&mut sff2, &[]).unwrap();
     assert!(fs.is_some());
 }
 
@@ -584,9 +584,9 @@ fn test_specfluxframe_convert_different_spec_system_converts() {
     let sf1 = SpecFrame::new(SpecSystem::Freq);
     let sf2 = SpecFrame::new(SpecSystem::Wavelen);
     let ff = FluxFrame::new(FluxSystem::FluxDen);
-    let sff1 = SpecFluxFrame::new(sf1, ff.clone());
-    let sff2 = SpecFluxFrame::new(sf2, ff);
-    let fs = sff1.convert_to(&sff2, &[]).unwrap();
+    let mut sff1 = SpecFluxFrame::new(sf1, ff.clone());
+    let mut sff2 = SpecFluxFrame::new(sf2, ff);
+    let fs = sff1.convert_to(&mut sff2, &[]).unwrap();
     assert!(fs.is_some());
 }
 
@@ -636,7 +636,8 @@ use ast_core::frames::FrameRef;
 /// conversion. Returns `(x_out, v_out)`. Panics if no conversion exists.
 fn sff_convert(target: &SpecFluxFrame, result: &SpecFluxFrame, x: f64, v: f64) -> (f64, f64) {
     let fs = target
-        .convert_to(result, &[])
+        .clone()
+        .convert_to(&mut result.clone(), &[])
         .unwrap()
         .expect("SpecFluxFrame conversion");
     let m = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
@@ -678,8 +679,8 @@ fn test_specflux_jy_to_fluxdenw() {
 #[test]
 fn test_specflux_inverse() {
     // The inverse maps (x=2, v=1.33425638e-26) back to (2, 1).
-    let (sff, sff2) = jy_sff_pair();
-    let fs = sff.convert_to(&sff2, &[]).unwrap().unwrap();
+    let (mut sff, mut sff2) = jy_sff_pair();
+    let fs = sff.convert_to(&mut sff2, &[]).unwrap().unwrap();
     let m = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     let fwd = m
         .transform(&PointSet::from_rows([[2.0, 1.0]]), true)
@@ -772,7 +773,7 @@ mod unit_system {
         // astFluxFrame( 5.99584916e14, NULL, "System=FLXDN" ).
         let mut b = FluxFrame::with_spec_val(5.99584916e14, None);
         b.set_system(FluxSystem::FluxDen).unwrap();
-        let fs = a.convert_to(&b, &[]).unwrap().expect("converts");
+        let fs = a.convert_to(&mut b, &[]).unwrap().expect("converts");
         let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
         let out = map
             .transform(&PointSet::from_columns(&[&[1.0, 3.5]]).unwrap(), true)

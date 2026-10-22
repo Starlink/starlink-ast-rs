@@ -255,7 +255,7 @@ fn convert_dsb_to_dsb_same_sideband() {
     to.set_ifr(4.0e9);
     to.set_sideband(SideBand::USB);
 
-    let fs = from.convert_to(&to, &[]).unwrap().unwrap();
+    let fs = from.convert_to(&mut to, &[]).unwrap().unwrap();
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     let input = PointSet::from_columns(&[&[225.0e9]]).unwrap();
     let output = mapping.transform(&input, true).unwrap();
@@ -280,7 +280,7 @@ fn convert_dsb_to_dsb_different_sideband_with_align() {
     to.set_sideband(SideBand::LSB);
     to.set_align_sideband(true);
 
-    let fs = from.convert_to(&to, &[]).unwrap().unwrap();
+    let fs = from.convert_to(&mut to, &[]).unwrap().unwrap();
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
 
     // USB 225 GHz -> LSB: f_lo=224, f_lsb = 2*224 - 225 = 223 GHz
@@ -308,7 +308,7 @@ fn convert_dsb_to_dsb_different_sideband_no_align() {
     to.set_ifr(4.0e9);
     to.set_sideband(SideBand::LSB);
 
-    let fs = from.convert_to(&to, &[]).unwrap().unwrap();
+    let fs = from.convert_to(&mut to, &[]).unwrap().unwrap();
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
 
     // Without AlignSideBand, value passes through unchanged.
@@ -328,7 +328,7 @@ fn convert_dsb_to_specframe() {
     let mut to = ast_core::frames::SpecFrame::new(SpecSystem::Freq);
     to.set_std_of_rest(StdOfRest::Topocentric).unwrap();
 
-    let fs = from.convert_to(&to, &[]).unwrap().unwrap();
+    let fs = from.convert_to(&mut to, &[]).unwrap().unwrap();
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     let input = PointSet::from_columns(&[&[225.0e9]]).unwrap();
     let output = mapping.transform(&input, true).unwrap();
@@ -486,7 +486,7 @@ fn alignment_through_frameset() {
     dsb2.set_sideband(SideBand::LSB);
     dsb2.set_align_sideband(true);
 
-    let fs = dsb1.convert_to(&dsb2, &[]).unwrap().unwrap();
+    let fs = dsb1.convert_to(&mut dsb2, &[]).unwrap().unwrap();
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
 
     // USB 226 GHz → LSB: f_lo=224, f_lsb = 2*224-226 = 222 GHz
@@ -527,7 +527,7 @@ fn alignment_dsb_to_dsb_different_lo() {
     dsb2.set_sideband(SideBand::USB);
     dsb2.set_align_sideband(true);
 
-    let fs = dsb1.convert_to(&dsb2, &[]).unwrap().unwrap();
+    let fs = dsb1.convert_to(&mut dsb2, &[]).unwrap().unwrap();
     let mapping = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
 
     // dsb1 USB 225 GHz:

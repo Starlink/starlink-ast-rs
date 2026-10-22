@@ -51,14 +51,14 @@ fn check(cvt: Option<FrameSet>, case: cases::Case, what: &str) {
 
 #[test]
 fn frame_to_frameset_searches_its_frames() {
-    let galactic = SkyFrame::new(SkySystem::Galactic);
-    let cvt = galactic.convert_to(&frameset(), &[]).unwrap();
+    let mut galactic = SkyFrame::new(SkySystem::Galactic);
+    let cvt = galactic.convert_to(&mut frameset(), &[]).unwrap();
     check(cvt, cases::FRAME_TO_FRAMESET, "Frame to FrameSet");
 }
 
 #[test]
 fn frameset_to_frame_searches_its_frames() {
-    let galactic = SkyFrame::new(SkySystem::Galactic);
-    let cvt = Frame::convert_to(&frameset(), &galactic, &[]).unwrap();
+    let mut galactic = SkyFrame::new(SkySystem::Galactic);
+    let cvt = frameset().convert_to(&mut galactic, &[]).unwrap();
     check(cvt, cases::FRAMESET_TO_FRAME, "FrameSet to Frame");
 }

@@ -46,7 +46,7 @@ fn usb(name: &str) -> DSBSpecFrame {
 fn to_lsb(usb: &DSBSpecFrame) -> Option<[f64; 2]> {
     let mut lsb = usb.clone();
     lsb.set_sideband(SideBand::LSB);
-    let fs = usb.convert_to(&lsb, &[]).ok()??;
+    let fs = usb.clone().convert_to(&mut lsb, &[]).ok()??;
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).ok()?;
     let pts = PointSet::from_columns(&[&cases::POINTS[..]]).unwrap();
     let out = map.transform(&pts, true).ok()?;

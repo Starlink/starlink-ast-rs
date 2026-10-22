@@ -357,10 +357,10 @@ impl TimeFrame {
     /// use ast_core::frames::{Frame, TimeFrame, TimeScale, TimeSystem};
     /// use ast_core::mappings::Mapping;
     ///
-    /// let mjd = TimeFrame::new(TimeSystem::Mjd);
+    /// let mut mjd = TimeFrame::new(TimeSystem::Mjd);
     /// let mut jd = TimeFrame::new(TimeSystem::Jd);
     /// jd.set_timescale(TimeScale::Tai).unwrap();
-    /// let conv = mjd.convert_to(&jd, &[]).unwrap().unwrap();
+    /// let conv = mjd.convert_to(&mut jd, &[]).unwrap().unwrap();
     /// let out = conv.tran1(&[51544.5], true).unwrap();
     /// assert!((out[0] - 2451545.0).abs() < 1e-9);
     /// ```

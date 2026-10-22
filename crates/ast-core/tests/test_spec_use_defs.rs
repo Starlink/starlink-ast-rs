@@ -101,7 +101,7 @@ fn titles_match_the_c_library() {
 fn conversions_match_the_c_library() {
     let mut failures = Vec::new();
     for &(class, target, template, want) in cases::CONVERSIONS {
-        let t = make(class, target);
+        let mut t = make(class, target);
         let map = if template == "pick" {
             pick_axes(t.as_ref(), &[1]).map(|(_, map)| Some(map))
         } else {

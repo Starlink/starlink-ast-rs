@@ -150,7 +150,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     // axis.
     let mut cleared = specfrm.clone();
     Frame::clear_unit(&mut cleared, 1)?;
-    let Some(tfs) = specfrm.convert_to(&cleared, &[])? else {
+    let Some(tfs) = crate::frames::find_frame::convert(specfrm, &cleared, &[])? else {
         return Ok(Box::new(UnitMap::new(nwcs)));
     };
     let tmap1 = tfs.mapping(FrameRef::Base, FrameRef::Current)?;

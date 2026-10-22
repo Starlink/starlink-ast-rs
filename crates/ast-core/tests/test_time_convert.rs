@@ -63,7 +63,11 @@ fn system_frame(sys: &str) -> TimeFrame {
 }
 
 fn convert(from: &TimeFrame, to: &TimeFrame, points: [f64; 2]) -> Result<Option<[f64; 2]>, ()> {
-    let Some(fs) = from.convert_to(to, &[]).map_err(|_| ())? else {
+    let Some(fs) = from
+        .clone()
+        .convert_to(&mut to.clone(), &[])
+        .map_err(|_| ())?
+    else {
         return Ok(None);
     };
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();

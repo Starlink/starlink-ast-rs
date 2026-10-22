@@ -60,7 +60,7 @@ fn single_axis_picks_match_the_c_library() {
 
 #[test]
 fn template_matches_a_plain_cmpframe_as_c_does() {
-    let target = CmpFrame::new(Box::new(spec("GHz")), Box::new(flux()));
+    let mut target = CmpFrame::new(Box::new(spec("GHz")), Box::new(flux()));
     let template = SpecFluxFrame::new(spec("MHz"), flux());
     let found = target.find_frame_template(&template, "").unwrap();
     let got = found.map(|fs| {

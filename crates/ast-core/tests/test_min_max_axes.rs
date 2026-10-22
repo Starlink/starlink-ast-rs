@@ -74,7 +74,7 @@ fn find_frame_matches_the_c_library() {
     for &(settings, naxes, matched) in cases::FIND_CASES {
         let mut template = BasicFrameBuilder::new(2).build().unwrap();
         apply(&mut template, settings);
-        let target = BasicFrameBuilder::new(naxes).build().unwrap();
+        let mut target = BasicFrameBuilder::new(naxes).build().unwrap();
         let got = target.find_frame_template(&template, "").unwrap().is_some();
         if got != matched {
             failures.push(format!(

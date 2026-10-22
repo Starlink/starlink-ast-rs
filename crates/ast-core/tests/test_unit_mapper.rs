@@ -47,7 +47,8 @@ fn check(what: String, map: &dyn Mapping, want: &cases::Images, failures: &mut V
 
 /// The Mapping from `from` to `to` that `convert_to` finds.
 fn convert(from: &dyn Frame, to: &dyn Frame) -> DynMapping {
-    from.convert_to(to, &[])
+    from.snapshot()
+        .convert_to(to.snapshot().as_mut(), &[])
         .unwrap()
         .expect("a conversion")
         .mapping(FrameRef::Base, FrameRef::Current)

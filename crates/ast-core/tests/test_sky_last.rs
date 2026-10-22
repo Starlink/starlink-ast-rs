@@ -29,7 +29,7 @@ fn set_epochs(a: &mut SkyFrame, b: &mut SkyFrame, epoch: f64) {
 }
 
 /// Convert `from` to `to` and transform the probe's points.
-fn step(from: &SkyFrame, to: &SkyFrame) -> [[f64; 2]; 3] {
+fn step(from: &mut SkyFrame, to: &mut SkyFrame) -> [[f64; 2]; 3] {
     let fs = from.convert_to(to, &[]).unwrap().expect("a conversion");
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
     let xin: Vec<f64> = cases::POINTS.iter().map(|p| p[0]).collect();
@@ -45,40 +45,40 @@ fn cached_last_follows_the_c_library() {
 
     let mut azel = sky(SkySystem::Azel, e0, lon);
     let mut icrs = sky(SkySystem::Icrs, e0, lon);
-    got.push(("pair_e0", step(&azel, &icrs)));
+    got.push(("pair_e0", step(&mut azel, &mut icrs)));
     set_epochs(&mut azel, &mut icrs, e0 + 0.1);
-    got.push(("pair_plus_0.1", step(&azel, &icrs)));
+    got.push(("pair_plus_0.1", step(&mut azel, &mut icrs)));
     set_epochs(&mut azel, &mut icrs, e0 + 0.5);
-    got.push(("pair_plus_0.5", step(&azel, &icrs)));
+    got.push(("pair_plus_0.5", step(&mut azel, &mut icrs)));
     set_epochs(&mut azel, &mut icrs, e0 + 0.45);
-    got.push(("pair_plus_0.45", step(&azel, &icrs)));
-    got.push(("pair_reverse", step(&icrs, &azel)));
+    got.push(("pair_plus_0.45", step(&mut azel, &mut icrs)));
+    got.push(("pair_reverse", step(&mut icrs, &mut azel)));
 
     let mut a = sky(SkySystem::Azel, e0 + 0.25, lon);
     let mut b = sky(SkySystem::Icrs, e0 + 0.25, lon);
-    got.push(("fresh_plus_0.25", step(&a, &b)));
+    got.push(("fresh_plus_0.25", step(&mut a, &mut b)));
     set_epochs(&mut a, &mut b, e0);
-    got.push(("fresh_e0", step(&a, &b)));
+    got.push(("fresh_e0", step(&mut a, &mut b)));
 
-    let a = sky(SkySystem::Azel, e0 + 0.25, lon + 0.5);
-    let b = sky(SkySystem::Icrs, e0 + 0.25, lon + 0.5);
-    got.push(("other_lon_plus_0.25", step(&a, &b)));
+    let mut a = sky(SkySystem::Azel, e0 + 0.25, lon + 0.5);
+    let mut b = sky(SkySystem::Icrs, e0 + 0.25, lon + 0.5);
+    got.push(("other_lon_plus_0.25", step(&mut a, &mut b)));
 
-    let a = sky(SkySystem::Fk5, e0 + 2.0, lon);
-    let b = sky(SkySystem::Icrs, e0 + 2.3, lon);
-    got.push(("fk5_plus_2", step(&a, &b)));
-    let a = sky(SkySystem::Azel, e0 + 2.1, lon);
-    let b = sky(SkySystem::Icrs, e0 + 2.1, lon);
-    got.push(("azel_after_fk5", step(&a, &b)));
+    let mut a = sky(SkySystem::Fk5, e0 + 2.0, lon);
+    let mut b = sky(SkySystem::Icrs, e0 + 2.3, lon);
+    got.push(("fk5_plus_2", step(&mut a, &mut b)));
+    let mut a = sky(SkySystem::Azel, e0 + 2.1, lon);
+    let mut b = sky(SkySystem::Icrs, e0 + 2.1, lon);
+    got.push(("azel_after_fk5", step(&mut a, &mut b)));
 
     let mut copy = azel.clone();
     copy.set_epoch_mjd(e0 + 0.6);
-    got.push(("copy_plus_0.6", step(&copy, &icrs)));
+    got.push(("copy_plus_0.6", step(&mut copy, &mut icrs)));
 
     azel.set_obs_lon(lon + 0.5);
     icrs.set_obs_lon(lon + 0.5);
     set_epochs(&mut azel, &mut icrs, e0 + 0.35);
-    got.push(("pair_new_lon_plus_0.35", step(&azel, &icrs)));
+    got.push(("pair_new_lon_plus_0.35", step(&mut azel, &mut icrs)));
 
     let names: Vec<&str> = got.iter().map(|g| g.0).collect();
     let want_names: Vec<&str> = cases::STEPS.iter().map(|s| s.0).collect();

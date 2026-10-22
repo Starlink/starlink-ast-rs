@@ -303,9 +303,9 @@ fn set_get_observer_attributes() {
 
 #[test]
 fn fk5_to_galactic_centre() {
-    let fk5 = SkyFrame::new(SkySystem::Fk5);
-    let gal = SkyFrame::new(SkySystem::Galactic);
-    let result = fk5.convert_to(&gal, &[]).unwrap();
+    let mut fk5 = SkyFrame::new(SkySystem::Fk5);
+    let mut gal = SkyFrame::new(SkySystem::Galactic);
+    let result = fk5.convert_to(&mut gal, &[]).unwrap();
     assert!(result.is_some(), "FK5->Galactic should succeed");
     let fs = result.unwrap();
 
@@ -328,9 +328,9 @@ fn fk5_to_galactic_centre() {
 #[test]
 fn fk5_to_galactic_forward() {
     // Forward: FK5 -> Galactic
-    let fk5 = SkyFrame::new(SkySystem::Fk5);
-    let gal = SkyFrame::new(SkySystem::Galactic);
-    let fs = fk5.convert_to(&gal, &[]).unwrap().unwrap();
+    let mut fk5 = SkyFrame::new(SkySystem::Fk5);
+    let mut gal = SkyFrame::new(SkySystem::Galactic);
+    let fs = fk5.convert_to(&mut gal, &[]).unwrap().unwrap();
 
     // FK5 RA=0, Dec=0 should give some finite galactic coordinates.
     let (l, b) = transform_fwd(&fs, 0.0, 0.0);
@@ -341,9 +341,9 @@ fn fk5_to_galactic_forward() {
 #[test]
 fn fk5_to_icrs_near_identity() {
     // ICRS ~= FK5 J2000 to within ~20 mas (frame tie).
-    let fk5 = SkyFrame::new(SkySystem::Fk5);
-    let icrs = SkyFrame::new(SkySystem::Icrs);
-    let fs = fk5.convert_to(&icrs, &[]).unwrap().unwrap();
+    let mut fk5 = SkyFrame::new(SkySystem::Fk5);
+    let mut icrs = SkyFrame::new(SkySystem::Icrs);
+    let fs = fk5.convert_to(&mut icrs, &[]).unwrap().unwrap();
 
     let test_lon = 2.0;
     let test_lat = 0.3;
@@ -360,10 +360,10 @@ fn fk5_to_icrs_near_identity() {
 
 #[test]
 fn galactic_supergalactic_round_trip() {
-    let gal = SkyFrame::new(SkySystem::Galactic);
-    let sg = SkyFrame::new(SkySystem::Supergalactic);
+    let mut gal = SkyFrame::new(SkySystem::Galactic);
+    let mut sg = SkyFrame::new(SkySystem::Supergalactic);
 
-    let fs_fwd = gal.convert_to(&sg, &[]).unwrap().unwrap();
+    let fs_fwd = gal.convert_to(&mut sg, &[]).unwrap().unwrap();
 
     let test_lon = 1.5;
     let test_lat = 0.3;
@@ -376,9 +376,9 @@ fn galactic_supergalactic_round_trip() {
 
 #[test]
 fn fk4_to_fk5_round_trip() {
-    let fk4 = SkyFrame::new(SkySystem::Fk4);
-    let fk5 = SkyFrame::new(SkySystem::Fk5);
-    let fs = fk4.convert_to(&fk5, &[]).unwrap().unwrap();
+    let mut fk4 = SkyFrame::new(SkySystem::Fk4);
+    let mut fk5 = SkyFrame::new(SkySystem::Fk5);
+    let fs = fk4.convert_to(&mut fk5, &[]).unwrap().unwrap();
 
     let test_lon = 1.0;
     let test_lat = 0.5;
@@ -405,13 +405,13 @@ fn all_systems_round_trip_via_fk5() {
         SkySystem::Helioecliptic,
     ];
 
-    let fk5 = SkyFrame::new(SkySystem::Fk5);
+    let mut fk5 = SkyFrame::new(SkySystem::Fk5);
     let test_lon = 1.0;
     let test_lat = 0.4;
 
     for sys in systems {
-        let frame = SkyFrame::new(sys);
-        let fs = frame.convert_to(&fk5, &[]).unwrap().unwrap();
+        let mut frame = SkyFrame::new(sys);
+        let fs = frame.convert_to(&mut fk5, &[]).unwrap().unwrap();
 
         let (fk5_lon, fk5_lat) = transform_fwd(&fs, test_lon, test_lat);
         let (back_lon, back_lat) = transform_inv(&fs, fk5_lon, fk5_lat);
@@ -428,10 +428,10 @@ fn convert_skyframe_to_blank_domain_frame_is_unitmap() {
     // a blank-domain plain Frame matches any Frame, and the generic
     // ConvertX driver casts the SkyFrame down to a plain Frame for the
     // alignment. Matches the C oracle (ast_tester/testconvert.c).
-    let sky = SkyFrame::new(SkySystem::Fk5);
-    let basic = BasicFrameBuilder::new(2).build().unwrap();
+    let mut sky = SkyFrame::new(SkySystem::Fk5);
+    let mut basic = BasicFrameBuilder::new(2).build().unwrap();
     let fs = sky
-        .convert_to(&basic, &[])
+        .convert_to(&mut basic, &[])
         .unwrap()
         .expect("SkyFrame -> blank-domain Frame converts");
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
@@ -451,11 +451,11 @@ fn convert_skyframe_and_sky_domain_frame_is_unitmap() {
     // testconvert passes against libast.
     let mut bf = BasicFrameBuilder::new(2).build().unwrap();
     bf.set_domain("SKY");
-    let sky = SkyFrame::new(SkySystem::Fk5);
+    let mut sky = SkyFrame::new(SkySystem::Fk5);
 
     // Frame[SKY] -> SkyFrame.
     let fs1 = bf
-        .convert_to(&sky, &[])
+        .convert_to(&mut sky, &[])
         .unwrap()
         .expect("Frame[SKY] -> SkyFrame converts");
     assert!(
@@ -468,7 +468,7 @@ fn convert_skyframe_and_sky_domain_frame_is_unitmap() {
 
     // SkyFrame -> Frame[SKY].
     let fs2 = sky
-        .convert_to(&bf, &[])
+        .convert_to(&mut bf, &[])
         .unwrap()
         .expect("SkyFrame -> Frame[SKY] converts");
     assert!(
@@ -484,16 +484,16 @@ fn convert_skyframe_and_sky_domain_frame_is_unitmap() {
     let mut nf = BasicFrameBuilder::new(2).build().unwrap();
     nf.set_domain("NOTSKY");
     assert!(
-        sky.convert_to(&nf, &[]).unwrap().is_none(),
+        sky.convert_to(&mut nf, &[]).unwrap().is_none(),
         "SkyFrame -> Frame[NOTSKY] does not align"
     );
 }
 
 #[test]
 fn convert_same_system_is_identity() {
-    let f1 = SkyFrame::new(SkySystem::Fk5);
-    let f2 = SkyFrame::new(SkySystem::Fk5);
-    let fs = f1.convert_to(&f2, &[]).unwrap().unwrap();
+    let mut f1 = SkyFrame::new(SkySystem::Fk5);
+    let mut f2 = SkyFrame::new(SkySystem::Fk5);
+    let fs = f1.convert_to(&mut f2, &[]).unwrap().unwrap();
 
     let test_lon = 2.5;
     let test_lat = 0.8;
@@ -838,8 +838,8 @@ fn sky_ref_is_origin_offset() {
     src.set_sky_ref_p_lon_lat(1.0, 0.5 + 0.1);
     src.set_sky_ref_is(SkyRefIs::Origin);
 
-    let dst = SkyFrame::new(SkySystem::Fk5);
-    let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
+    let mut dst = SkyFrame::new(SkySystem::Fk5);
+    let fs = src.convert_to(&mut dst, &[]).unwrap().unwrap();
 
     // (0,0) in offset should map to sky_ref in standard.
     let (lon, lat) = transform_fwd(&fs, 0.0, 0.0);
@@ -854,8 +854,8 @@ fn sky_ref_is_origin_round_trip() {
     src.set_sky_ref_p_lon_lat(2.0, -0.3 + 0.1);
     src.set_sky_ref_is(SkyRefIs::Origin);
 
-    let dst = SkyFrame::new(SkySystem::Fk5);
-    let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
+    let mut dst = SkyFrame::new(SkySystem::Fk5);
+    let fs = src.convert_to(&mut dst, &[]).unwrap().unwrap();
 
     // Round-trip: offset -> standard -> offset
     let test_lon = 0.1;
@@ -874,8 +874,8 @@ fn sky_ref_is_pole_offset() {
     src.set_sky_ref_p_lon_lat(0.0, 0.0);
     src.set_sky_ref_is(SkyRefIs::Pole);
 
-    let dst = SkyFrame::new(SkySystem::Fk5);
-    let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
+    let mut dst = SkyFrame::new(SkySystem::Fk5);
+    let fs = src.convert_to(&mut dst, &[]).unwrap().unwrap();
 
     // The offset north pole (0, pi/2) should map to sky_ref.
     let (_, lat) = transform_fwd(&fs, 0.0, FRAC_PI_2);
@@ -889,8 +889,8 @@ fn sky_ref_is_pole_round_trip() {
     src.set_sky_ref_p_lon_lat(0.5, 0.0);
     src.set_sky_ref_is(SkyRefIs::Pole);
 
-    let dst = SkyFrame::new(SkySystem::Fk5);
-    let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
+    let mut dst = SkyFrame::new(SkySystem::Fk5);
+    let fs = src.convert_to(&mut dst, &[]).unwrap().unwrap();
 
     let test_lon = 0.3;
     let test_lat = 0.4;
@@ -907,8 +907,8 @@ fn sky_ref_is_ignored_no_effect() {
     src.set_sky_ref_lon_lat(1.0, 0.5);
     src.set_sky_ref_is(SkyRefIs::Ignored); // explicit
 
-    let dst = SkyFrame::new(SkySystem::Fk5);
-    let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
+    let mut dst = SkyFrame::new(SkySystem::Fk5);
+    let fs = src.convert_to(&mut dst, &[]).unwrap().unwrap();
 
     // With Ignored, the offset should have no effect. FK5->FK5 is identity.
     let test_lon = 2.0;
@@ -931,7 +931,7 @@ fn convert_between_offset_frames() {
     dst.set_sky_ref_p_lon_lat(2.0, -0.4 + 0.1);
     dst.set_sky_ref_is(SkyRefIs::Origin);
 
-    let fs = src.convert_to(&dst, &[]).unwrap().unwrap();
+    let fs = src.convert_to(&mut dst, &[]).unwrap().unwrap();
 
     // Round-trip test.
     let test_lon = 0.1;
@@ -1287,9 +1287,9 @@ fn debug_formatting() {
 
 #[test]
 fn convert_multi_point() {
-    let fk5 = SkyFrame::new(SkySystem::Fk5);
-    let gal = SkyFrame::new(SkySystem::Galactic);
-    let fs = fk5.convert_to(&gal, &[]).unwrap().unwrap();
+    let mut fk5 = SkyFrame::new(SkySystem::Fk5);
+    let mut gal = SkyFrame::new(SkySystem::Galactic);
+    let fs = fk5.convert_to(&mut gal, &[]).unwrap().unwrap();
 
     // Multiple points in one transform call.
     let pts = PointSet::from_rows([[0.0, 0.0], [PI, 0.0], [0.0, FRAC_PI_4]]);
@@ -1305,9 +1305,9 @@ fn convert_multi_point() {
 #[test]
 fn ecliptic_vernal_equinox() {
     // Ecliptic (lon=0, lat=0) = vernal equinox = FK5 (RA=0, Dec=0).
-    let ecl = SkyFrame::new(SkySystem::Ecliptic);
-    let fk5 = SkyFrame::new(SkySystem::Fk5);
-    let fs = ecl.convert_to(&fk5, &[]).unwrap().unwrap();
+    let mut ecl = SkyFrame::new(SkySystem::Ecliptic);
+    let mut fk5 = SkyFrame::new(SkySystem::Fk5);
+    let fs = ecl.convert_to(&mut fk5, &[]).unwrap().unwrap();
 
     // ECLEQ normalizes longitude into [0, 2*pi) via palDranrm, so a value
     // fractionally below zero wraps to ~2*pi; compare RA as an angle
@@ -1322,9 +1322,9 @@ fn ecliptic_vernal_equinox() {
 fn galactic_north_pole_in_fk5() {
     // The north galactic pole in FK5 J2000 is approximately
     // RA = 192.86 deg, Dec = 27.13 deg.
-    let gal = SkyFrame::new(SkySystem::Galactic);
-    let fk5 = SkyFrame::new(SkySystem::Fk5);
-    let fs = gal.convert_to(&fk5, &[]).unwrap().unwrap();
+    let mut gal = SkyFrame::new(SkySystem::Galactic);
+    let mut fk5 = SkyFrame::new(SkySystem::Fk5);
+    let fs = gal.convert_to(&mut fk5, &[]).unwrap().unwrap();
 
     // (l=0, b=pi/2) = north galactic pole
     let (ra, dec) = transform_fwd(&fs, 0.0, FRAC_PI_2);
@@ -1347,7 +1347,7 @@ fn galactic_north_pole_in_fk5() {
 #[test]
 fn an_icrs_template_converts_as_the_c_library_does() {
     use ast_core::frames::{Frame, FrameRef};
-    let target = SkyFrame::new(SkySystem::Galactic);
+    let mut target = SkyFrame::new(SkySystem::Galactic);
     for (template, system, want) in [
         (
             SkyFrame::new(SkySystem::Icrs),
@@ -1378,7 +1378,8 @@ fn an_epoch_change_within_skytol_converts_with_a_unitmap() {
     };
     let is_unit = |a: &SkyFrame, b: &SkyFrame| {
         let fs = a
-            .convert_to(b, &["SKY"])
+            .clone()
+            .convert_to(&mut b.clone(), &["SKY"])
             .unwrap()
             .expect("FK5 SkyFrames convert");
         fs.mapping(FrameRef::Base, FrameRef::Current)

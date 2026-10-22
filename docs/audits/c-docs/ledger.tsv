@@ -111,9 +111,9 @@ function	astAxAngle	frame.c	Frame::ax_angle		yes	C's header gives -PI/2 to +PI/2
 function	astAxDistance	frame.c	Frame::ax_distance		yes
 function	astAxNorm	frame.c	Frame::ax_norm		yes	C's header says SkyFrame latitudes always go into -PI to +PI; a SkyFrame's own SkyAxes are not latitude axes in C's code, and the port mirrors that (docs/issues/c-library-quirks.md)
 function	astAxOffset	frame.c	Frame::ax_offset		yes
-function	astConvert	frame.c	Frame::convert_to		yes	C sets the Base of a FrameSet argument to the Frame used for the conversion; the port takes both by shared reference and leaves them unchanged (PLAN.md 2).
+function	astConvert	frame.c	Frame::convert_to		yes
 function	astDistance	frame.c	Frame::distance		yes
-function	astFindFrame	frame.c	Frame::find_frame_template;FrameSet::find_frame		yes	C sets the Current of a FrameSet target to the Frame matched; the port leaves it unchanged (PLAN.md 2). The header's preference for paths with both transformations in a FrameSet search is not in C's FindFrame code, which takes the first match (docs/issues/c-library-quirks.md)
+function	astFindFrame	frame.c	Frame::find_frame_template;FrameSet::find_frame		yes	The header's preference for paths with both transformations in a FrameSet search is not in C's FindFrame code, which takes the first match (docs/issues/c-library-quirks.md)
 function	astGetActiveUnit	frame.c	Frame::get_active_unit		yes
 function	astIntersect	frame.c	Frame::intersect		yes
 function	astMatchAxes	frame.c	Frame::match_axes		yes

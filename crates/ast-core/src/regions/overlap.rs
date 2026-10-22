@@ -50,10 +50,12 @@ pub(crate) fn overlap_to_code(overlap: Overlap) -> i32 {
 /// is `astOverlap(this, that)`.
 pub(crate) fn null_region_overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<Overlap> {
     // Check that the Regions can be compared meaningfully (astConvert).
-    if this
-        .get_region_frame()
-        .convert_to(that.get_region_frame().as_ref(), &[])?
-        .is_none()
+    if crate::frames::find_frame::convert(
+        this.get_region_frame().as_ref(),
+        that.get_region_frame().as_ref(),
+        &[],
+    )?
+    .is_none()
     {
         return Ok(Overlap::Incomparable);
     }
@@ -116,10 +118,11 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
     // of the first Region (this). astConvert(that, this) yields a FrameSet
     // whose base->current Mapping runs that_current -> this_current
     // (region.c:7088).
-    let fs0 = match that
-        .get_region_frame()
-        .convert_to(this.get_region_frame().as_ref(), &[])?
-    {
+    let fs0 = match crate::frames::find_frame::convert(
+        that.get_region_frame().as_ref(),
+        this.get_region_frame().as_ref(),
+        &[],
+    )? {
         Some(fs) => fs,
         None => return Ok(0),
     };

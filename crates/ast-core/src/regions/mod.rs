@@ -1182,7 +1182,8 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         let mut to = self.get_region_frameset();
         to.invert();
         let domain = to.current().domain().to_string();
-        let converted = unc.get_region_frameset().convert_to(&to, &[&domain])?;
+        let converted =
+            crate::frames::find_frame::convert(&unc.get_region_frameset(), &to, &[&domain])?;
 
         // `Conv` re-instates each FrameSet's original base Frame index with
         // astSetBase (region.c:2373-2374). That restores the index it read,

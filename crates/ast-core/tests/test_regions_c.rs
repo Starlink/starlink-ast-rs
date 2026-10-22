@@ -131,8 +131,8 @@ fn check_remove_regions() {
     let near =
         |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).abs() <= 1.0e-10 && (a[1] - b[1]).abs() <= 1.0e-10;
 
-    let sf1 = SkyFrame::new(SkySystem::Icrs);
-    let reg = CircleBuilder::new(sf1.clone(), vec![0.0, 0.0])
+    let mut sf1 = SkyFrame::new(SkySystem::Icrs);
+    let mut reg = CircleBuilder::new(sf1.clone(), vec![0.0, 0.0])
         .unwrap()
         .radius(0.001)
         .build()
@@ -151,9 +151,9 @@ fn check_remove_regions() {
         "RemoveRegions test 3 failed"
     );
 
-    let sf2 = SkyFrame::new(SkySystem::Galactic);
+    let mut sf2 = SkyFrame::new(SkySystem::Galactic);
     let fs = sf1
-        .convert_to(&sf2, &[])
+        .convert_to(&mut sf2, &[])
         .unwrap()
         .expect("ICRS converts to Galactic");
     let gin = tran2(&fs, &iin);
@@ -161,7 +161,7 @@ fn check_remove_regions() {
     fs2.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(sf2))
         .unwrap();
     let fs = fs2
-        .convert_to(&reg, &[])
+        .convert_to(&mut reg, &[])
         .unwrap()
         .expect("the FrameSet converts to the Circle");
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
@@ -643,9 +643,9 @@ fn check_cmp_region() {
         [true, true, true, false],
     );
 
-    let cr2 = cmp(&r2, &r1, CmpOperator::And);
+    let mut cr2 = cmp(&r2, &r1, CmpOperator::And);
     let fs = cr
-        .convert_to(&cr2, &[])
+        .convert_to(&mut cr2, &[])
         .unwrap()
         .expect("CmpRegion: Error 5");
     let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
@@ -1950,7 +1950,7 @@ fn check_box_map_region() {
         "ast_mapregion6: Box2 has FrameSet (B)"
     );
 
-    let frm1 = SkyFrame::unset_system();
+    let mut frm1 = SkyFrame::unset_system();
     let box1 = BoxRegionBuilder::new(frm1.clone(), vec![0.0, 0.0], vec![0.001, 0.001])
         .unwrap()
         .build()
@@ -1958,7 +1958,7 @@ fn check_box_map_region() {
     let mut frm2 = frm1.clone();
     frm2.set_sky_ref(1, 0.0005).unwrap();
     frm2.set_sky_ref_is(SkyRefIs::Origin);
-    let fs = frm1.convert_to(&frm2, &[""]).unwrap().unwrap();
+    let fs = frm1.convert_to(&mut frm2, &[""]).unwrap().unwrap();
     let mut box2 = box1.map_region(&fs, &frm2).unwrap();
     assert!(
         !has_frameset(&any_region(box2.as_ref())),

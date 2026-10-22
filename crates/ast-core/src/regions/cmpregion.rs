@@ -187,9 +187,11 @@ impl CmpRegionBuilder {
         let mut reg2 = self.region2;
         reg1.clear_region_fs_deep();
         reg2.clear_region_fs_deep();
-        let Some(fs) = reg2
-            .get_region_frame()
-            .convert_to(reg1.get_region_frame().as_ref(), &[])?
+        let Some(fs) = crate::frames::find_frame::convert(
+            reg2.get_region_frame().as_ref(),
+            reg1.get_region_frame().as_ref(),
+            &[],
+        )?
         else {
             return Err(AstError::new(
                 ErrorCode::Intrd,
@@ -455,15 +457,14 @@ impl CmpRegion {
             into_fs.current().snapshot()
         };
         let that_frm = that.get_region_frame();
-        let fs = that_frm
-            .convert_to(target_frm.as_ref(), &[])?
+        let fs = crate::frames::find_frame::convert(that_frm.as_ref(), target_frm.as_ref(), &[])?
             .ok_or_else(|| {
-                AstError::new(
-                    ErrorCode::Inter,
-                    "MatchRegion: cannot convert between the two supplied coordinate Frames"
-                        .to_string(),
-                )
-            })?;
+            AstError::new(
+                ErrorCode::Inter,
+                "MatchRegion: cannot convert between the two supplied coordinate Frames"
+                    .to_string(),
+            )
+        })?;
         let map = fs.mapping(FrameRef::Base, FrameRef::Current)?;
         that.reg_map_region(map.as_ref(), target_frm.as_ref())
     }
@@ -1357,10 +1358,6 @@ impl Frame for CmpRegion {
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         self.data.frameset.current().map_from(previous)
-    }
-
-    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        self.data.frameset.current().convert_to(to, domains)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

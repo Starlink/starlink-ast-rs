@@ -2713,7 +2713,7 @@ impl FitsChan {
         s: char,
         wcsfrm: &dyn crate::frames::Frame,
     ) -> Option<Vec<f64>> {
-        use crate::frames::{Frame, FrameRef};
+        use crate::frames::FrameRef;
         let mut fc = self.clone();
         fc.encoding = None;
         fc.cards.reset_used();
@@ -2753,7 +2753,7 @@ impl FitsChan {
             return None;
         }
         let domain = wcsfrm.domain().to_string();
-        let tfs = Frame::convert_to(&fs, wcsfrm, &[domain.as_str()]).ok()??;
+        let tfs = crate::frames::find_frame::convert(&fs, wcsfrm, &[domain.as_str()]).ok()??;
         let map = tfs.mapping(FrameRef::Base, FrameRef::Current).ok()?;
         let out = map
             .transform(&crate::coords::PointSet::from_rows([crval]), true)

@@ -333,9 +333,11 @@ impl Interval {
 
         // astConvert(that, this): base->current runs that_current ->
         // this_current (interval.c:1892).
-        let Some(fs) = that
-            .get_region_frame()
-            .convert_to(self.get_region_frame().as_ref(), &[])?
+        let Some(fs) = crate::frames::find_frame::convert(
+            that.get_region_frame().as_ref(),
+            self.get_region_frame().as_ref(),
+            &[],
+        )?
         else {
             return Ok(None);
         };
@@ -1851,10 +1853,6 @@ impl Frame for Interval {
 
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping> {
         self.data.frameset.current().map_from(previous)
-    }
-
-    fn convert_to(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        self.data.frameset.current().convert_to(to, domains)
     }
 
     fn equal(&self, other: &dyn Frame) -> bool {

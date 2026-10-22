@@ -457,9 +457,9 @@ fn simplified_returns_base_to_current_mapping() {
 
 #[test]
 fn convert_same_naxes_succeeds() {
-    let f1 = BasicFrameBuilder::new(2).build().unwrap();
-    let f2 = BasicFrameBuilder::new(2).build().unwrap();
-    let result = f1.convert_to(&f2, &[]).unwrap();
+    let mut f1 = BasicFrameBuilder::new(2).build().unwrap();
+    let mut f2 = BasicFrameBuilder::new(2).build().unwrap();
+    let result = f1.convert_to(&mut f2, &[]).unwrap();
     assert!(result.is_some());
     let fs = result.unwrap();
     assert_eq!(fs.nframe(), 2);
@@ -472,9 +472,9 @@ fn convert_same_naxes_succeeds() {
 
 #[test]
 fn convert_different_naxes_returns_none() {
-    let f1 = BasicFrameBuilder::new(2).build().unwrap();
-    let f2 = BasicFrameBuilder::new(3).build().unwrap();
-    let result = f1.convert_to(&f2, &[]).unwrap();
+    let mut f1 = BasicFrameBuilder::new(2).build().unwrap();
+    let mut f2 = BasicFrameBuilder::new(3).build().unwrap();
+    let result = f1.convert_to(&mut f2, &[]).unwrap();
     assert!(result.is_none());
 }
 
@@ -484,8 +484,8 @@ fn frameset_convert_delegates_to_current() {
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
     fs.add_frame(FrameRef::Base, z, make_frame(2)).unwrap();
 
-    let target = BasicFrameBuilder::new(2).build().unwrap();
-    let result = fs.convert_to(&target, &[]).unwrap();
+    let mut target = BasicFrameBuilder::new(2).build().unwrap();
+    let result = fs.convert_to(&mut target, &[]).unwrap();
     assert!(result.is_some());
 }
 
@@ -504,7 +504,7 @@ fn add_variant_succeeds() {
 
 #[test]
 fn find_frame_stub_returns_none() {
-    let fs = FrameSet::new(make_frame(2));
+    let mut fs = FrameSet::new(make_frame(2));
     let template = BasicFrameBuilder::new(2).build().unwrap();
     let result = fs.find_frame(&template, &["SKY"]).unwrap();
     assert!(result.is_none());
@@ -984,18 +984,79 @@ fn tran_one(cvt: &FrameSet) -> f64 {
 // descending order, so Frame 3 is used each way round (3 and 1/3).
 #[test]
 fn convert_takes_an_inverted_framesets_other_frames_in_descending_order() {
-    let y = BasicFrameBuilder::new(1).domain("Y").build().unwrap();
+    let mut y = BasicFrameBuilder::new(1).domain("Y").build().unwrap();
     let mut fs = four_domains();
     fs.invert();
-    let cvt = fs.convert_to(&y, &[]).unwrap().unwrap();
+    let cvt = fs.convert_to(&mut y, &[]).unwrap().unwrap();
     assert!((tran_one(&cvt) - 3.0).abs() < 1e-15);
-    let cvt = y.convert_to(&fs, &[]).unwrap().unwrap();
+    let mut fs = four_domains();
+    fs.invert();
+    let cvt = y.convert_to(&mut fs, &[]).unwrap().unwrap();
     assert!((tran_one(&cvt) - 1.0 / 3.0).abs() < 1e-15);
 
     // Uninverted, the ascending order reaches Frame 2 first (C: 0.4, 2.5).
-    let fs = four_domains();
-    let cvt = fs.convert_to(&y, &[]).unwrap().unwrap();
+    let mut fs = four_domains();
+    let cvt = fs.convert_to(&mut y, &[]).unwrap().unwrap();
     assert!((tran_one(&cvt) - 0.4).abs() < 1e-15);
-    let cvt = y.convert_to(&fs, &[]).unwrap().unwrap();
+    let mut fs = four_domains();
+    let cvt = y.convert_to(&mut fs, &[]).unwrap().unwrap();
     assert!((tran_one(&cvt) - 2.5).abs() < 1e-15);
+}
+
+// C probe: astConvert sets the Base of a FrameSet argument, either way
+// round, to the Frame used (2 unchanged, 3 inverted), and leaves Current
+// alone.
+#[test]
+fn convert_sets_the_base_of_a_frameset_argument_to_the_frame_used() {
+    let mut y = BasicFrameBuilder::new(1).domain("Y").build().unwrap();
+    for (inverted, base, current) in [(false, 2, 4), (true, 3, 1)] {
+        let mut from = four_domains();
+        let mut to = four_domains();
+        if inverted {
+            from.invert();
+            to.invert();
+        }
+        from.convert_to(&mut y, &[]).unwrap().unwrap();
+        assert_eq!((from.base_index(), from.current_index()), (base, current));
+        y.convert_to(&mut to, &[]).unwrap().unwrap();
+        assert_eq!((to.base_index(), to.current_index()), (base, current));
+    }
+}
+
+#[test]
+fn failed_convert_leaves_the_base_alone() {
+    let mut q = BasicFrameBuilder::new(1).domain("Q").build().unwrap();
+    let mut fs = four_domains();
+    assert!(fs.convert_to(&mut q, &[]).unwrap().is_none());
+    assert!(!fs.test_base());
+    assert_eq!(fs.base_index(), 1);
+}
+
+// C probe: astFindFrame with domain list "Y" makes the Frame matched the
+// current Frame (2 both ways; the search ascends whether or not the
+// FrameSet is inverted), and the Mapping runs from the base Frame to it
+// (2 unchanged; 2/5 inverted, from Frame 4).
+#[test]
+fn find_frame_makes_the_frame_matched_current() {
+    let template = BasicFrameBuilder::new(1).build().unwrap();
+    for (inverted, base, value) in [(false, 1, 2.0), (true, 4, 0.4)] {
+        let mut fs = four_domains();
+        if inverted {
+            fs.invert();
+        }
+        let found = fs.find_frame(&template, &["Y"]).unwrap().unwrap();
+        assert_eq!((fs.base_index(), fs.current_index()), (base, 2));
+        assert!((tran_one(&found) - value).abs() < 1e-15);
+
+        let mut fs = four_domains();
+        if inverted {
+            fs.invert();
+        }
+        fs.find_frame_template(&template, "Y").unwrap().unwrap();
+        assert_eq!(fs.current_index(), 2);
+
+        // No match leaves the Current alone.
+        assert!(fs.find_frame(&template, &["Q"]).unwrap().is_none());
+        assert_eq!(fs.current_index(), 2);
+    }
 }
