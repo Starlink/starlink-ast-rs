@@ -289,3 +289,163 @@ fn report_level_zero_keeps_astwarn_cards_but_records_no_warnings() {
     assert_eq!(count(Some(2)), (Some(2), 4));
     assert_eq!(count(Some(-1)), (None, 4));
 }
+
+// ---------------------------------------------------------------------------
+// Strict
+// ---------------------------------------------------------------------------
+
+use ast_core::error::ErrorCode;
+
+/// A FitsChan with Warnings `conditions` and Strict set.
+fn strict_chan(conditions: &str) -> FitsChan {
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_warning_conditions(conditions).unwrap();
+    fc.config_mut().set_strict(true);
+    fc
+}
+
+/// With Strict set, a warning the Warnings attribute names is an error at
+/// the point it is raised, and nothing of it is stored.
+// C probe: astPutFits of "BAD!KEY = 1" with Warnings=BadKeyName and
+// Strict=1 fails with AST__BADIN and stores no card; with ReportLevel=0 it
+// stores the ASTWARN block and the card, and with Clean=1 the card alone.
+#[test]
+fn strict_put_fits_warning_is_an_error() {
+    let card = "BAD!KEY =                    1";
+    let mut fc = strict_chan("BadKeyName");
+    let e = fc.put_fits(card, false).unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Badin);
+    assert_eq!(
+        e.message(),
+        "astPutFits(FitsChan): The FITS keyword name ('BAD!KEY') contains an illegal \
+         character ('!')."
+    );
+    assert_eq!(fc.ncard().unwrap(), 0);
+    assert!(fc.warning_texts().is_empty());
+
+    let mut fc = strict_chan("BadKeyName");
+    fc.config_mut().set_report_level(0);
+    fc.put_fits(card, false).unwrap();
+    assert_eq!(fc.ncard().unwrap(), 5);
+
+    let mut fc = strict_chan("BadKeyName");
+    fc.set_clean(true);
+    fc.put_fits(card, false).unwrap();
+    assert_eq!(fc.ncard().unwrap(), 1);
+}
+
+/// A FITS-WCS header with no EQUINOX, which a read warns of under the
+/// `noequinox` condition.
+const NO_EQUINOX: [&str; 12] = [
+    "NAXIS   =                    2",
+    "NAXIS1  =                  100",
+    "NAXIS2  =                  100",
+    "CTYPE1  = 'RA---TAN'",
+    "CTYPE2  = 'DEC--TAN'",
+    "CRPIX1  =                   50",
+    "CRPIX2  =                   50",
+    "CRVAL1  =                   10",
+    "CRVAL2  =                   20",
+    "CDELT1  =               -0.001",
+    "CDELT2  =                0.001",
+    "RADECSYS= 'FK5'",
+];
+
+/// With Strict set a read that warns fails, leaving the cards as they were
+/// and the FitsChan rewound.
+// C probe: the read of NO_EQUINOX with Warnings=noequinox gives an object
+// and an ASTWARN block; with Strict=1 too it fails with AST__BADIN, the 12
+// cards unchanged, Card 1 and no warnings; with ReportLevel=0 as well it
+// succeeds as without Strict.
+#[test]
+fn strict_read_warning_is_an_error() {
+    let mut fc = strict_chan("noequinox");
+    for card in NO_EQUINOX {
+        fc.put_fits(card, false).unwrap();
+    }
+    fc.clear_card().unwrap();
+    let before = fc.to_header().unwrap();
+    let e = fc.read().unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Badin);
+    assert_eq!(
+        e.message(),
+        "astRead(FitsChan): The original FITS header did not specify the reference \
+         equinox. A default value of J2000 was assumed."
+    );
+    assert_eq!(fc.to_header().unwrap(), before);
+    assert_eq!(fc.card().unwrap(), 1);
+    assert!(fc.warning_texts().is_empty());
+
+    let mut fc = strict_chan("noequinox");
+    fc.config_mut().set_report_level(0);
+    for card in NO_EQUINOX {
+        fc.put_fits(card, false).unwrap();
+    }
+    fc.clear_card().unwrap();
+    assert!(fc.read().unwrap().is_some());
+    assert_eq!(fc.ncard().unwrap(), 7);
+}
+
+/// With Strict set a write that warns fails and leaves the cards as they
+/// were.
+// C probe: writing the FrameSet read from this TAN header, which has an
+// MJD-OBS, to a FITS-WCS FitsChan holding TIMESYS = 'ET', with
+// Warnings=badval, stores a badval ASTWARN block; with Strict=1 astWrite
+// returns 0 with AST__BADIN and the FitsChan holds only its TIMESYS card.
+// C's Write passes FsetToStore its method and class names in the wrong
+// order, so the error names the method "FitsChan".
+#[test]
+fn strict_write_warning_is_an_error() {
+    let mut fc = FitsChan::new().unwrap();
+    for card in &NO_EQUINOX[..11] {
+        fc.put_fits(card, false).unwrap();
+    }
+    fc.put_fits("EQUINOX =                 2000", false)
+        .unwrap();
+    fc.put_fits("MJD-OBS =                55000", false)
+        .unwrap();
+    fc.clear_card().unwrap();
+    let obj = fc.read().unwrap().unwrap();
+
+    let mut out = strict_chan("badval");
+    out.set_encoding(ast_core::Encoding::FitsWcs);
+    out.put_fits("TIMESYS = 'ET'", false).unwrap();
+    out.clear_card().unwrap();
+    let before = out.to_header().unwrap();
+    let e = out.write(&obj).unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Badin);
+    assert_eq!(
+        e.message(),
+        "FitsChan(FitsChan): The original FITS header contained a value of ET for keyword \
+         TIMESYS. TT will be used instead."
+    );
+    assert_eq!(out.to_header().unwrap(), before);
+}
+
+/// A warning raised as the read sweeps the WCS cards is an error there too.
+// C probe: NO_EQUINOX with CRVAL1 = 'abc', read with Warnings=badval, gives
+// an object and a badval ASTWARN block in front of CRVAL1; with Strict=1
+// the read fails with AST__BADIN, the 12 cards unchanged and Card 1.
+#[test]
+fn strict_sweep_warning_is_an_error() {
+    let mut fc = strict_chan("badval");
+    for card in NO_EQUINOX {
+        let card = if card.starts_with("CRVAL1") {
+            "CRVAL1  = 'abc'"
+        } else {
+            card
+        };
+        fc.put_fits(card, false).unwrap();
+    }
+    fc.clear_card().unwrap();
+    let before = fc.to_header().unwrap();
+    let e = fc.read().unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Badin);
+    assert_eq!(
+        e.message(),
+        "astRead(FitsChan): The original FITS header contained a value for keyword CRVAL1 \
+         which could not be converted to a floating point number."
+    );
+    assert_eq!(fc.to_header().unwrap(), before);
+    assert_eq!(fc.card().unwrap(), 1);
+}

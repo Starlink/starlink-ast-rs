@@ -194,13 +194,16 @@ impl ChannelConfig {
     /// is ignored, which leaves that attribute at its default value, and
     /// with Strict set the error names it.
     ///
-    /// A [`FitsChan`] records its warnings whatever the value of Strict,
-    /// and a [`MocChan`] reports no conditions.
+    /// In a [`FitsChan`], a condition its Warnings attribute names, met by
+    /// any method that reads or stores cards, is with Strict set the error
+    /// [`ErrorCode::Badin`] at the point it is met: the method stops there,
+    /// and no `ASTWARN` cards or warnings are stored for it.
+    /// A FitsChan with Clean set, or a ReportLevel below 1, reports no
+    /// conditions this way.
+    /// A [`MocChan`] reports no conditions.
     ///
     /// [`FitsChan`]: crate::fitschan::FitsChan
     /// [`ErrorCode::Badin`]: crate::error::ErrorCode::Badin
-    // C: a FitsChan warning with Strict set is the error AST__BADIN, which
-    // the port does not raise (PLAN.md §2).
     #[doc(alias = "Strict")]
     pub fn strict(&self) -> bool {
         self.strict.unwrap_or(false)

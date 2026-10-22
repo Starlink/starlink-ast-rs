@@ -610,7 +610,9 @@ mod tests {
             Encoding::FitsClass,
             crate::fitschan::spec_trans::TransAttrs::default(),
             &mut crate::fitschan::spec_trans::TransWarnings::default(),
+            &crate::fitschan::warning::Warnings::new(),
         )
+        .unwrap()
     }
 
     /// Standard CLASS header for testing.
@@ -872,7 +874,9 @@ DELTAV  = -0.106265872717E+003
             Encoding::FitsClass,
             crate::fitschan::spec_trans::TransAttrs::default(),
             &mut crate::fitschan::spec_trans::TransWarnings::default(),
-        );
+            &crate::fitschan::warning::Warnings::new(),
+        )
+        .unwrap();
         let store2 = read_from_cards(&cards_out_translated).unwrap();
 
         // Spectral axis should round-trip

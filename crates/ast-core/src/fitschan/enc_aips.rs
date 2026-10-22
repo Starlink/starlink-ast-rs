@@ -800,7 +800,9 @@ mod tests {
             crate::fitschan::Encoding::FitsAips,
             crate::fitschan::spec_trans::TransAttrs::default(),
             &mut crate::fitschan::spec_trans::TransWarnings::default(),
-        );
+            &crate::fitschan::warning::Warnings::new(),
+        )
+        .unwrap();
         Ok(
             super::super::wcs_keywords::extract_wcs_keywords_with_alts(&trans)?
                 .primary

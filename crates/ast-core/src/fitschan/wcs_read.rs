@@ -52,7 +52,7 @@ pub(crate) fn decode_wcs(store: &FitsStore) -> AstResult<AnyObject> {
         &CardList::new(),
         ' ',
         None,
-        &mut Vec::new(),
+        &mut Warnings::new(),
         &mut Vec::new(),
     )
 }
@@ -128,12 +128,12 @@ pub(crate) fn decode_wcs_inner(
 
     // Step 3: Decode the spectral axes, each SpecFrame given the celestial
     // reference position as C's `WcsSpectral` gives it.
-    let spectral = wcs_spectral::build_spectral(store, s, spectral_ref_pos(&celestial))?;
+    let spectral = wcs_spectral::build_spectral(store, s, spectral_ref_pos(&celestial), warnings)?;
     // `WcsCelestial` runs before `WcsSpectral` in `WcsMapFrm`
     // (fitschan.c:37984-37990), so the spectral warnings follow the
     // celestial ones.
     for sp in &spectral {
-        warnings.extend(sp.warnings.iter().cloned());
+        warnings.append(sp.warnings.clone());
     }
 
     // Step 4: Build the world frame (before consuming the decoders).
@@ -522,7 +522,7 @@ pub(crate) fn decode_wcs_with_alts_inner(
     for (letter, alt_store) in alts {
         cursors.push((warnings.len(), Some(alt_store.naxis)));
         let mut trial = fs.clone();
-        let mut alt_warnings = Vec::new();
+        let mut alt_warnings = warnings.child();
         let mut alt_cursors = Vec::new();
         let added = (|| -> AstResult<()> {
             let warnings = &mut alt_warnings;
@@ -549,8 +549,12 @@ pub(crate) fn decode_wcs_with_alts_inner(
             // to every plane, not just the primary).
             let alt_ref_pos = celestial.as_ref().and_then(|c| c.ref_pos);
             let alt_ref_pos_forced = celestial.as_ref().is_some_and(|c| c.ref_pos_forced);
-            let spectral =
-                wcs_spectral::build_spectral(alt_store, *letter, spectral_ref_pos(&celestial))?;
+            let spectral = wcs_spectral::build_spectral(
+                alt_store,
+                *letter,
+                spectral_ref_pos(&celestial),
+                warnings,
+            )?;
             let mut world_frame = build_world_frame(alt_store, &celestial, &spectral)?;
             let iwc_map = iwc_map.map(|m| {
                 (
@@ -600,13 +604,13 @@ pub(crate) fn decode_wcs_with_alts_inner(
         })();
         let base = warnings.len();
         cursors.extend(alt_cursors.into_iter().map(|(i, c)| (base + i, c)));
-        warnings.append(&mut alt_warnings);
+        warnings.append(alt_warnings);
         match added {
             Ok(()) => fs = trial,
             Err(_) if ignore_bad_alt => warnings.push(Warning::new(
                 "badalt",
                 format!("Ignoring unusable FITS-WCS alternate axes label '{letter}'."),
-            )),
+            ))?,
             Err(e) => return Err(e),
         }
     }

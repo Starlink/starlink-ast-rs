@@ -21,7 +21,7 @@ use super::card::{Consumption, FitsValue};
 use super::card_list::CardList;
 use super::card_value;
 use super::fits_match::match_keyword;
-use super::warning::Warning;
+use super::warning::{Warning, Warnings};
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// The FITS value type a template's branch converts its card to.
@@ -283,10 +283,12 @@ pub(crate) fn wcs_versions(cards: &CardList) -> WcsVersions {
 /// `CARDUSED` test in `MoveCard` with the default `ignore_used` of 1. Protected
 /// cards are visited but left unmarked, as in C `MarkCard`.
 ///
-/// Returns `AST__FUNDEF` when a card that must carry a value has none.
+/// Returns `AST__FUNDEF` when a card that must carry a value has none, and
+/// the error `policy` makes of a warning with Strict in force.
 pub(crate) fn mark_wcs_cards(
     cards: &mut CardList,
     translated: &[String],
+    policy: &Warnings,
 ) -> (Vec<(usize, Warning)>, AstResult<()>) {
     let mut warnings = Vec::new();
     for (index, card) in cards.iter_mut().enumerate() {
@@ -309,21 +311,24 @@ pub(crate) fn mark_wcs_cards(
             // unless the translations hold the keyword.
             Convert::No => {
                 if !translated.contains(&card.keyword) {
-                    warnings.push((
-                        index,
-                        Warning::new(
-                            "badval",
-                            format!(
-                                "The original FITS header contained a value for keyword {} \
-                                 which could not be converted to a {}.",
-                                card.keyword,
-                                match tmpl.want {
-                                    Want::Float => "floating point number",
-                                    Want::String => "character string",
-                                }
-                            ),
+                    let warning = Warning::new(
+                        "badval",
+                        format!(
+                            "The original FITS header contained a value for keyword {} \
+                             which could not be converted to a {}.",
+                            card.keyword,
+                            match tmpl.want {
+                                Want::Float => "floating point number",
+                                Want::String => "character string",
+                            }
                         ),
-                    ));
+                    );
+                    // With Strict in force the warning ends the sweep as an
+                    // error, as C's `Warn` does.
+                    if let Err(e) = policy.check(&warning) {
+                        return (warnings, Err(e));
+                    }
+                    warnings.push((index, warning));
                 }
             }
             Convert::Undefined => {
@@ -344,12 +349,13 @@ pub(crate) fn mark_wcs_cards(
 mod tests {
     use super::mark_wcs_cards;
     use crate::fitschan::card_list::CardList;
+    use crate::fitschan::warning::Warnings;
 
     /// Each card's keyword paired with whether the sweep marked it.
     fn consumed(header: &str) -> Vec<(String, bool)> {
         use crate::fitschan::card::Consumption;
         let mut cards = CardList::from_header(header).unwrap();
-        mark_wcs_cards(&mut cards, &[]).1.unwrap();
+        mark_wcs_cards(&mut cards, &[], &Warnings::new()).1.unwrap();
         cards
             .iter()
             // The structural END card is never a WCS keyword; exclude it so
@@ -453,12 +459,12 @@ mod tests {
     #[test]
     fn an_undefined_velosys_is_accepted() {
         let mut cards = CardList::from_header("VELOSYS =\nEND").unwrap();
-        assert!(mark_wcs_cards(&mut cards, &[]).1.is_ok());
+        assert!(mark_wcs_cards(&mut cards, &[], &Warnings::new()).1.is_ok());
     }
 
     #[test]
     fn an_undefined_crval_is_an_error() {
         let mut cards = CardList::from_header("CRVAL1  =\nEND").unwrap();
-        assert!(mark_wcs_cards(&mut cards, &[]).1.is_err());
+        assert!(mark_wcs_cards(&mut cards, &[], &Warnings::new()).1.is_err());
     }
 }

@@ -268,7 +268,7 @@ pub(crate) fn sky_sys(
     // which is then written too; UTC needs no TIMESYS.
     let ep = match timesys {
         Some(t) if t != "UTC" => {
-            let scale = super::super::epoch::time_sys_to_ast(Some(t), &mut warnings.borrow_mut());
+            let scale = super::super::epoch::time_sys_to_ast(Some(t), &mut warnings.borrow_mut())?;
             store.timesys = Some(t.to_string());
             ep_tdb
                 .map(|e| super::super::epoch::tdb_conv(e, scale, true))

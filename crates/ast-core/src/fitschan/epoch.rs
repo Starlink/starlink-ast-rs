@@ -9,19 +9,22 @@ use crate::frames::{FrameRef, TimeFrame, TimeScale, TimeSystem};
 
 /// C's `TimeSysToAst`: the timescale a TIMESYS value names, UTC when there
 /// is none. `UT`, `ET` and a value AST does not support raise `badval`
-/// warnings.
-pub(crate) fn time_sys_to_ast(timesys: Option<&str>, warnings: &mut Warnings) -> TimeScale {
+/// warnings, an error with Strict in force.
+pub(crate) fn time_sys_to_ast(
+    timesys: Option<&str>,
+    warnings: &mut Warnings,
+) -> AstResult<TimeScale> {
     let Some(timesys) = timesys else {
-        return TimeScale::Utc;
+        return Ok(TimeScale::Utc);
     };
-    match timesys {
+    Ok(match timesys {
         "UTC" => TimeScale::Utc,
         "UT" => {
             warnings.push(Warning::new(
                 "badval",
                 "The original FITS header contained a value of UT for keyword TIMESYS \
                  which is being interpreted as UTC.",
-            ));
+            ))?;
             TimeScale::Utc
         }
         "TAI" | "IAT" => TimeScale::Tai,
@@ -30,7 +33,7 @@ pub(crate) fn time_sys_to_ast(timesys: Option<&str>, warnings: &mut Warnings) ->
                 "badval",
                 "The original FITS header contained a value of ET for keyword TIMESYS. \
                  TT will be used instead.",
-            ));
+            ))?;
             TimeScale::Tt
         }
         "TT" | "TDT" => TimeScale::Tt,
@@ -45,10 +48,10 @@ pub(crate) fn time_sys_to_ast(timesys: Option<&str>, warnings: &mut Warnings) ->
                      TIMESYS. AST does not support this timescale so UTC will be used \
                      instead."
                 ),
-            ));
+            ))?;
             TimeScale::Utc
         }
-    }
+    })
 }
 
 /// C's `TDBConv`: convert the MJD `mjd` from `timescale` to TDB, or with
@@ -74,7 +77,7 @@ pub(crate) fn tdb_conv(mjd: f64, timescale: TimeScale, from_tdb: bool) -> AstRes
 /// in the timescale TIMESYS names. The timescale is found, and any warning
 /// about it raised, whether or not there is a date.
 pub(crate) fn choose_epoch(store: &FitsStore, warnings: &mut Warnings) -> AstResult<Option<f64>> {
-    let timescale = time_sys_to_ast(store.timesys.as_deref(), warnings);
+    let timescale = time_sys_to_ast(store.timesys.as_deref(), warnings)?;
     match store.mjdobs {
         Some(mjd) => tdb_conv(mjd, timescale, false).map(Some),
         None => Ok(None),
@@ -103,14 +106,20 @@ mod tests {
 
     #[test]
     fn time_sys_to_ast_warns_as_c_does() {
-        let mut w = Vec::new();
-        assert_eq!(time_sys_to_ast(None, &mut w), TimeScale::Utc);
-        assert_eq!(time_sys_to_ast(Some("IAT"), &mut w), TimeScale::Tai);
-        assert_eq!(time_sys_to_ast(Some("TDT"), &mut w), TimeScale::Tt);
+        let mut w = Warnings::new();
+        assert_eq!(time_sys_to_ast(None, &mut w).unwrap(), TimeScale::Utc);
+        assert_eq!(
+            time_sys_to_ast(Some("IAT"), &mut w).unwrap(),
+            TimeScale::Tai
+        );
+        assert_eq!(time_sys_to_ast(Some("TDT"), &mut w).unwrap(), TimeScale::Tt);
         assert!(w.is_empty());
-        assert_eq!(time_sys_to_ast(Some("UT"), &mut w), TimeScale::Utc);
-        assert_eq!(time_sys_to_ast(Some("ET"), &mut w), TimeScale::Tt);
-        assert_eq!(time_sys_to_ast(Some("utc"), &mut w), TimeScale::Utc);
+        assert_eq!(time_sys_to_ast(Some("UT"), &mut w).unwrap(), TimeScale::Utc);
+        assert_eq!(time_sys_to_ast(Some("ET"), &mut w).unwrap(), TimeScale::Tt);
+        assert_eq!(
+            time_sys_to_ast(Some("utc"), &mut w).unwrap(),
+            TimeScale::Utc
+        );
         assert_eq!(w.len(), 3);
         assert!(w.iter().all(|w| w.condition == "badval"));
     }

@@ -138,7 +138,7 @@ pub(crate) fn sky_pole(
         let delta0 = store.crval.get(fits_ilat).copied().flatten().unwrap_or(0.0) * DD2R;
 
         // C passes a LATPOLE of 999.0 and no FitsChan (fitschan.c:30012).
-        let (_, pole) = wcs_nat_pole(wcsmap, alpha0, delta0, Some(999.0), Some(phip_in), None);
+        let (_, pole) = wcs_nat_pole(wcsmap, alpha0, delta0, Some(999.0), Some(phip_in), None)?;
         if let Some((_, deltap)) = pole {
             // If the default LATPOLE matches the actual native lat
             // we found by inverse-transforming, the keyword is
@@ -202,14 +202,37 @@ fn equal_angles(a: f64, b: f64) -> bool {
 /// found.
 ///
 /// A default LONPOLE or LATPOLE raises a `nolonpole` or `nolatpole`
-/// warning in `warnings`; the writer passes none, as C passes no FitsChan.
+/// warning in `warnings`, an error with Strict in force, which names the
+/// method `astRead` whatever the caller, as C's does; the writer passes
+/// none, as C passes no FitsChan.
 pub(crate) fn wcs_nat_pole(
     wcsmap: &WcsMap,
     alpha0: f64,
     delta0: f64,
     latpole: Option<f64>,
     phip: Option<f64>,
-    mut warnings: Option<&mut Warnings>,
+    warnings: Option<&mut Warnings>,
+) -> AstResult<(f64, Option<(f64, f64)>)> {
+    // The rest is arithmetic, so its warnings are added once it is done,
+    // in the order raised.
+    let mut raised = Vec::new();
+    let result = nat_pole(wcsmap, alpha0, delta0, latpole, phip, &mut raised);
+    if let Some(w) = warnings {
+        for warning in raised {
+            w.push(warning.named_by("astRead"))?;
+        }
+    }
+    Ok(result)
+}
+
+/// The body of [`wcs_nat_pole`], adding its warnings to `warnings`.
+fn nat_pole(
+    wcsmap: &WcsMap,
+    alpha0: f64,
+    delta0: f64,
+    latpole: Option<f64>,
+    phip: Option<f64>,
+    warnings: &mut Vec<Warning>,
 ) -> (f64, Option<(f64, f64)>) {
     let (phi0, theta0) = get_fiducial_nsc(wcsmap);
     let g8 = |v: f64| crate::frames::axis_format::sprintf_double("%.8g", v);
@@ -220,16 +243,14 @@ pub(crate) fn wcs_nat_pole(
         Some(p) => p,
         None => {
             let p = if delta0 >= theta0 { 0.0 } else { DPI };
-            if let Some(w) = &mut warnings {
-                w.push(Warning::new(
-                    "nolonpole",
-                    format!(
-                        "The original FITS header did not specify the longitude of the \
-                         native north pole. A default value of {} degrees was assumed.",
-                        g8(p * DR2D)
-                    ),
-                ));
-            }
+            warnings.push(Warning::new(
+                "nolonpole",
+                format!(
+                    "The original FITS header did not specify the longitude of the \
+                     native north pole. A default value of {} degrees was assumed.",
+                    g8(p * DR2D)
+                ),
+            ));
             p
         }
     };
@@ -297,16 +318,14 @@ pub(crate) fn wcs_nat_pole(
             } else {
                 deltap_2
             };
-            if let Some(w) = &mut warnings {
-                w.push(Warning::new(
-                    "nolatpole",
-                    format!(
-                        "The original FITS header did not specify the latitude of the \
-                         native north pole. A default value of {} degrees was assumed.",
-                        g8(d * DR2D)
-                    ),
-                ));
-            }
+            warnings.push(Warning::new(
+                "nolatpole",
+                format!(
+                    "The original FITS header did not specify the latitude of the \
+                     native north pole. A default value of {} degrees was assumed.",
+                    g8(d * DR2D)
+                ),
+            ));
             d
         };
         if deltap.abs() > DPIBY2 + TOL2 {
@@ -435,8 +454,9 @@ mod tests {
         // coincides with the fiducial point.
         let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
         let (alpha0, delta0) = (1.5, 0.7);
-        let mut warnings = Vec::new();
-        let (phip, pole) = wcs_nat_pole(&wm, alpha0, delta0, None, None, Some(&mut warnings));
+        let mut warnings = Warnings::new();
+        let (phip, pole) =
+            wcs_nat_pole(&wm, alpha0, delta0, None, None, Some(&mut warnings)).unwrap();
         let (alphap, deltap) = pole.unwrap();
         assert!((alphap - alpha0).abs() < 1e-12);
         assert!((deltap - delta0).abs() < 1e-12);

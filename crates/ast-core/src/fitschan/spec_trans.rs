@@ -20,6 +20,7 @@ use super::Encoding;
 use super::card_list::CardList;
 use super::fits_match::match_keyword;
 use super::warning::{Warning, Warnings};
+use crate::error::AstResult;
 
 /// The FitsChan attributes the translations depend on.
 #[derive(Clone, Copy, Debug)]
@@ -73,21 +74,31 @@ impl Default for TransAttrs {
 #[derive(Debug, Default)]
 pub(crate) struct TransWarnings {
     /// Warnings written in front of the card the read started at.
-    pub entry: Warnings,
+    pub entry: Vec<Warning>,
     /// Warnings written at end-of-file.
-    pub end: Warnings,
+    pub end: Vec<Warning>,
 }
 
+///
+/// With Strict in force (`policy`), the first warning raised whose condition
+/// is reported is returned as the error C's `Warn` reports. The
+/// translations change only their own copy of the cards, so checking the
+/// warnings once they are done, in the order C raises them (those written
+/// at the entry card first), ends the read at the same point as C.
 pub(crate) fn spec_trans(
     cards: &CardList,
     encoding: Encoding,
     attrs: TransAttrs,
     warnings: &mut TransWarnings,
-) -> CardList {
+    policy: &Warnings,
+) -> AstResult<CardList> {
     let mut trans = cards.clone();
     trans.record_writes();
     spec_trans_inplace(&mut trans, encoding, attrs, warnings);
-    trans
+    for w in warnings.entry.iter().chain(warnings.end.iter()) {
+        policy.check(w)?;
+    }
+    Ok(trans)
 }
 
 /// In-place translation worker shared between [`spec_trans`] and the
@@ -438,7 +449,7 @@ fn translate_early_paper_iii_spectral(cards: &mut CardList) {
 /// two CTYPE keywords and the first three coefficients on each axis; one
 /// with every coefficient but the constant zero on an axis is warned of and
 /// not translated. The coefficients read are consumed either way.
-fn translate_sao_co(cards: &mut CardList, warnings: &mut Warnings) -> bool {
+fn translate_sao_co(cards: &mut CardList, warnings: &mut Vec<Warning>) -> bool {
     const NC: usize = 13;
     if cards.key_fields("CTYPE%d", 0).0 != 2 {
         return false;
@@ -658,7 +669,7 @@ fn get_used_poly_tan(
     axlon: usize,
     axlat: usize,
     s: char,
-    warnings: &mut Warnings,
+    warnings: &mut Vec<Warning>,
 ) -> bool {
     // A PolyTan that is set decides on its own.
     if poly_tan >= 0 {
@@ -773,7 +784,7 @@ fn translate_tpv_and_polytan_to_tpn(
     cards: &mut CardList,
     src: &CardList,
     poly_tan: i32,
-    warnings: &mut Warnings,
+    warnings: &mut Vec<Warning>,
 ) {
     for s in std::iter::once(' ').chain('A'..='Z') {
         let Some((axlon, axlat)) = celestial_axes(cards, s) else {
@@ -878,7 +889,7 @@ fn translate_iraf_zpx(cards: &mut CardList) {
 /// greater than 7, asymmetric axis orders, or full cross-terms) the
 /// partially-translated CTYPE is left in place and a `tnx` warning is
 /// raised, as C does (fitschan.c:32125-32129).
-fn translate_iraf_tnx(cards: &mut CardList, warnings: &mut Warnings) {
+fn translate_iraf_tnx(cards: &mut CardList, warnings: &mut Vec<Warning>) {
     let Some((axlon, axlat)) = celestial_axes(cards, ' ') else {
         return;
     };
@@ -1421,7 +1432,7 @@ fn translate_cunit_case(cards: &mut CardList) {
 ///     axes and step 1 found no spectral CTYPE.
 ///
 /// FitsClass-only; primary plane only.
-fn translate_class(cards: &mut CardList, warnings: &mut Warnings) {
+fn translate_class(cards: &mut CardList, warnings: &mut Vec<Warning>) {
     // Axis indices are 0-based here, as in C, and are -1 when the
     // corresponding axis is absent: C's `SpecTrans` sets `axlon = axlat = -1`
     // before each coordinate version (fitschan.c:31239-31240) and calls

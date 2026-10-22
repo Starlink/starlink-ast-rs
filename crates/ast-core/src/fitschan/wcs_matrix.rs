@@ -62,7 +62,7 @@ pub(crate) fn build_pixel_to_iwc(
     // A PC/CD matrix with a wholly zero row or column has no inverse, which
     // makes the whole pixel→IWC chain uninvertible (fitschan.c:37798-37803).
     if !pc_map.has_inverse() {
-        warnings.push(Warning::new("badmat", BADMAT_WARNING));
+        warnings.push(Warning::new("badmat", BADMAT_WARNING))?;
     }
 
     let mut result: Option<DynMapping> = dist.map1;
@@ -160,7 +160,7 @@ fn distort_maps(
                              be ignored.",
                             i + 1
                         ),
-                    ));
+                    ))?;
                 }
                 let nc = trimmed.len() - 4;
                 ct.truncate(nc);
@@ -194,7 +194,7 @@ fn distort_maps(
             "distortion",
             "More than two axes were found with the \"-ZPX\" projection code. A ZPN \
              projection will be used instead.",
-        ));
+        ))?;
     } else if found_axes.len() == 2 {
         let zpxaxes = [found_axes[0], found_axes[1]];
         if let Some(m) = zpx_mapping(cards, naxes, zpxaxes, warnings, cursors)? {
@@ -224,7 +224,7 @@ fn distort_maps(
                          distortion. The code has been removed from the CTYPE values.",
                         i + 1
                     ),
-                ));
+                ))?;
             }
             truncate_at(ct, 8);
         }
@@ -306,7 +306,7 @@ fn zpx_mapping(
     }
 
     if !ok {
-        warnings.push(Warning::new("zpx", ZPX_WARNING));
+        warnings.push(Warning::new("zpx", ZPX_WARNING))?;
         return Ok(None);
     }
 
@@ -663,7 +663,7 @@ mod tests {
         let mapping = build_pixel_to_iwc(
             &mut store,
             &CardList::new(),
-            &mut Vec::new(),
+            &mut Warnings::new(),
             &mut Vec::new(),
         )
         .unwrap();
@@ -682,7 +682,7 @@ mod tests {
         let mapping = build_pixel_to_iwc(
             &mut store,
             &CardList::new(),
-            &mut Vec::new(),
+            &mut Warnings::new(),
             &mut Vec::new(),
         )
         .unwrap();
@@ -702,7 +702,7 @@ mod tests {
         let mapping = build_pixel_to_iwc(
             &mut store,
             &CardList::new(),
-            &mut Vec::new(),
+            &mut Warnings::new(),
             &mut Vec::new(),
         )
         .unwrap();
@@ -721,7 +721,7 @@ mod tests {
         let mapping = build_pixel_to_iwc(
             &mut store,
             &CardList::new(),
-            &mut Vec::new(),
+            &mut Warnings::new(),
             &mut Vec::new(),
         )
         .unwrap();
@@ -740,7 +740,7 @@ mod tests {
         let mapping = build_pixel_to_iwc(
             &mut store,
             &CardList::new(),
-            &mut Vec::new(),
+            &mut Warnings::new(),
             &mut Vec::new(),
         )
         .unwrap();
@@ -766,7 +766,7 @@ mod tests {
         let mapping = build_pixel_to_iwc(
             &mut store,
             &CardList::new(),
-            &mut Vec::new(),
+            &mut Warnings::new(),
             &mut Vec::new(),
         )
         .unwrap();
@@ -788,7 +788,7 @@ mod tests {
         let mapping = build_pixel_to_iwc(
             &mut store,
             &CardList::new(),
-            &mut Vec::new(),
+            &mut Warnings::new(),
             &mut Vec::new(),
         )
         .unwrap();
@@ -817,7 +817,7 @@ mod tests {
         let mapping = build_pixel_to_iwc(
             &mut store,
             &CardList::new(),
-            &mut Vec::new(),
+            &mut Warnings::new(),
             &mut Vec::new(),
         )
         .unwrap();

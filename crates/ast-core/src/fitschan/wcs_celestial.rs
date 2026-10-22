@@ -148,7 +148,7 @@ fn find_celestial_axes(
                 "noctype",
                 "Axis type keywords (CTYPE, etc) were not found for one or more axes in \
                  the original FITS header. These axes will be assumed to be linear.",
-            ));
+            ))?;
             continue;
         };
         let ctype = ctype.trim_end();
@@ -240,7 +240,7 @@ fn find_celestial_axes(
 /// Returns `None` if no celestial axis pair is found.
 #[cfg(test)]
 pub(crate) fn build_celestial(store: &FitsStore) -> Option<CelestialResult> {
-    build_celestial_with_def_b1950(store, ' ', false, None, None, &mut Vec::new()).unwrap()
+    build_celestial_with_def_b1950(store, ' ', false, None, None, &mut Warnings::new()).unwrap()
 }
 
 /// Encoding-aware variant. `s` is the version character of the axis
@@ -426,7 +426,7 @@ fn build_projected_mapping(
                         m,
                         prj_name
                     ),
-                ));
+                ))?;
             }
         }
     }
@@ -550,7 +550,7 @@ fn wcs_sky_frame(
                             "FK5"
                         }
                     ),
-                ));
+                ))?;
             }
         }
     } else {
@@ -583,7 +583,7 @@ fn wcs_sky_frame(
                                 "ICRS"
                             }
                         ),
-                    ));
+                    ))?;
                 }
             }
             Radesys::Icrs | Radesys::Gappt => {}
@@ -599,7 +599,7 @@ fn wcs_sky_frame(
                     bj.unwrap_or('J'),
                     g8(eq)
                 ),
-            ));
+            ))?;
         }
     }
     let eqmjd = equinox.map(|eq| {
@@ -624,7 +624,7 @@ fn wcs_sky_frame(
                 bj.unwrap_or('J'),
                 g8(eq)
             ),
-        ));
+        ))?;
     }
 
     let system = match sys {
@@ -674,7 +674,7 @@ fn wcs_sky_frame(
                      It may not be possible to convert to other standard co-ordinate \
                      systems."
                 ),
-            ));
+            ))?;
         }
     }
 
@@ -1190,10 +1190,10 @@ pub(crate) fn build_native_to_celestial_rotation_for_wcsmap(
                 g15(unlimited.to_degrees()),
                 g15(delta0.to_degrees())
             ),
-        ));
+        ))?;
     }
 
-    let (phip, pole) = wcs_nat_pole(wcsmap, crval_lon, delta0, latpole, lonpole, warnings);
+    let (phip, pole) = wcs_nat_pole(wcsmap, crval_lon, delta0, latpole, lonpole, warnings)?;
     let Some((alphap, deltap)) = pole else {
         return Err(AstError::new(
             ErrorCode::Bdfts,

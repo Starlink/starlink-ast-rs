@@ -103,6 +103,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The FitsTable class documentation attributes `-TAB` to FITS-WCS paper 2](#the-fitstable-class-documentation-attributes--tab-to-fits-wcs-paper-2)
 - [The `astPutColumnData` documentation does not say a cell of non-finite values keeps its old value](#the-astputcolumndata-documentation-does-not-say-a-cell-of-non-finite-values-keeps-its-old-value)
 - [`astMapGetElemC` and `astMapGetElemA` give an out-of-range upper limit one past the vector](#astmapgetelemc-and-astmapgetelema-give-an-out-of-range-upper-limit-one-past-the-vector)
+- [A FitsChan write gives `FsetToStore` its method and class names in the wrong order](#a-fitschan-write-gives-fsettostore-its-method-and-class-names-in-the-wrong-order)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1517,6 +1518,18 @@ Consequence: the message for the string and Object functions names one more vali
 
 `KeyMap::get_elem` mirrors all three texts, including the `nel + 1`.
 A C fix: give the upper limit as `nel`, and name each numeric function by its type.
+
+### A FitsChan write gives `FsetToStore` its method and class names in the wrong order
+
+C location: `fitschan.c` `Write` (line 40928) calls `FsetToStore( this, ..., encoding, method, class, status )`, but `FsetToStore` (line 12257) declares those parameters as `class, method`.
+
+Inside `FsetToStore` and everything it calls, `method` is therefore the class name, "FitsChan".
+The only place it shows is a warning that `Strict` turns into an error: `astAddWarning` reports `"%s(%s): %s"` with the method and the object's class, so a C-oracle probe writing a FrameSet with an MJD-OBS to a FitsChan holding `TIMESYS = 'ET'`, with Warnings `badval` and Strict set, fails with "FitsChan(FitsChan): The original FITS header contained a value of ET for keyword TIMESYS. TT will be used instead." rather than naming `astWrite`.
+
+Consequence: the error for a warning met while a FrameSet is described for a write names no method.
+
+The port mirrors the message: `FitsChan::write_attrs` in `crates/ast-core/src/fitschan/mod.rs` makes the write's warning list with the method "FitsChan", and `strict_write_warning_is_an_error` in `tests/test_fitschan_astwarn.rs` pins it.
+A C fix: swap the two arguments in the call; the port's list then takes "astWrite".
 
 ## Addressed here, and not going upstream
 

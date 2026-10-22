@@ -63,18 +63,20 @@ pub(crate) type RefPos<'a> = (&'a crate::frames::SkyFrame, f64, f64);
 /// An algorithm code that cannot be implemented is AST__BDFTS, as C reports
 /// it, and ends the loop. `s` is the axis description's version character,
 /// and `reference` the celestial reference position, when there are
-/// celestial axes.
+/// celestial axes. Each axis's warnings are collected as `policy` collects
+/// them, so with Strict in force a reported one ends the loop as an error.
 pub(crate) fn build_spectral(
     store: &FitsStore,
     s: char,
     reference: Option<RefPos<'_>>,
+    policy: &Warnings,
 ) -> AstResult<Vec<SpectralResult>> {
     let mut result = Vec::new();
     for axis in 0..store.naxis {
         let spectral = store.ctype[axis]
             .as_deref()
             .is_some_and(super::fits_store::is_spectral_ctype);
-        if spectral && let Some(r) = build_spectral_axis(store, s, axis, reference)? {
+        if spectral && let Some(r) = build_spectral_axis(store, s, axis, reference, policy)? {
             result.push(r);
         }
     }
@@ -87,6 +89,7 @@ fn build_spectral_axis(
     s: char,
     axis: usize,
     reference: Option<RefPos<'_>>,
+    policy: &Warnings,
 ) -> AstResult<Option<SpectralResult>> {
     // Determine the spectral system + algorithm code from CTYPE.
     let Some((system, algcode)) = parse_spectral_ctype(store, axis) else {
@@ -120,7 +123,7 @@ fn build_spectral_axis(
     }
 
     // The date of observation, as C's `ChooseEpoch` gives it.
-    let mut epoch_warnings: Warnings = Vec::new();
+    let mut epoch_warnings = policy.child();
     if let Some(mjd) = super::epoch::choose_epoch(store, &mut epoch_warnings)? {
         frame.set_epoch_mjd(mjd);
     }
@@ -196,8 +199,8 @@ fn build_spectral_axis(
     } else if algcode == "-LOG" {
         log_wcs(crval)
     } else if is_nonlin_x2p(&algcode) {
-        let (map, warns) = nonlin_spec_wcs(&algcode, &frame, crval)?;
-        warnings.extend(warns);
+        let (map, warns) = nonlin_spec_wcs(&algcode, &frame, crval, policy)?;
+        warnings.append(warns);
         map
     } else if algcode == "-GRI" || algcode == "-GRA" {
         grism_spec_wcs(&algcode, store, axis, &frame)?
@@ -265,6 +268,7 @@ fn nonlin_spec_wcs(
     algcode: &str,
     specfrm: &SpecFrame,
     crval: f64,
+    policy: &Warnings,
 ) -> AstResult<(Option<DynMapping>, Warnings)> {
     // Identify the "X" system from algcode[1] and build a SpecFrame
     // copy describing X. Mirrors C:23579-23600. Copying the supplied
@@ -275,7 +279,7 @@ fn nonlin_spec_wcs(
         Some(b'W') => SpecSystem::Wavelen,
         Some(b'V') => SpecSystem::Vrel,
         Some(b'A') => SpecSystem::Airwave,
-        _ => return Ok((None, Vec::new())),
+        _ => return Ok((None, policy.child())),
     };
     let mut xfrm = specfrm.clone();
     xfrm.set_system(x_system)?;
@@ -291,7 +295,7 @@ fn nonlin_spec_wcs(
     // or not the conversion above succeeded — the only guard is that the X
     // system was identified. AST interprets the illegal "P" system correctly,
     // so nothing about the mapping changes.
-    let mut warnings: Warnings = Vec::new();
+    let mut warnings = policy.child();
     let s_sys = specfrm.system();
     let pc = match s_sys {
         // C's final `else` raises AST__INTER because it cannot prove the four
@@ -315,7 +319,7 @@ fn nonlin_spec_wcs(
              {text}{stem}{} instead.",
                 pc as char
             ),
-        ));
+        ))?;
     }
 
     let Some(fs) = fs else {
@@ -528,7 +532,10 @@ mod tests {
     /// The first spectral axis `build_spectral` finds, with no celestial
     /// reference position.
     fn first(store: &FitsStore) -> Option<SpectralResult> {
-        build_spectral(store, ' ', None).unwrap().into_iter().next()
+        build_spectral(store, ' ', None, &Warnings::new())
+            .unwrap()
+            .into_iter()
+            .next()
     }
 
     #[test]
@@ -631,7 +638,7 @@ mod tests {
         store.crval[0] = Some(1.0e-6);
         store.crval[2] = Some(1.4e9);
 
-        let all = build_spectral(&store, ' ', None).unwrap();
+        let all = build_spectral(&store, ' ', None, &Warnings::new()).unwrap();
         assert_eq!(all.len(), 2);
         assert_eq!(
             (all[0].axis, all[0].frame.system()),

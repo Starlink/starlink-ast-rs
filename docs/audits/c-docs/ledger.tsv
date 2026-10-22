@@ -15,7 +15,7 @@ attribute	Full	channel.c	ChannelConfig::full		yes	The FitsChan default is -1, as
 attribute	Indent	channel.c	ChannelConfig::indent		yes	The default is 3, as the code gives, not the 0 the header says (c-library-quirks.md)
 attribute	ReportLevel	channel.c	ChannelConfig::report_level		yes
 attribute	Skip	channel.c	ChannelConfig::skip		yes
-attribute	Strict	channel.c	ChannelConfig::strict		yes	A FitsChan warning is not an error when Strict is set, where C reports AST__BADIN (PLAN.md §2)
+attribute	Strict	channel.c	ChannelConfig::strict		yes
 function	astChannel	channel.c	NativeChannel::new		yes	No source, sink or options arguments: set_source, set_sink and the attribute setters take their place, and from_string, with_string_sink, from_file and to_file make one with a source or sink
 class	ChebyMap	chebymap.c	ChebyMap		yes	The C class and astChebyMap headers write the recurrence as Tn+1 = 2x Tn + Tn-1; the code subtracts Tn-1, as the port's doc says (docs/issues/c-library-quirks.md)
 function	astChebyDomain	chebymap.c	ChebyMap::domain		yes	C keeps no forward box when there are no forward coefficients and finds the forward domain by MapBox; the port always keeps the forward box given at creation (CH-8, docs/audits/mapping-c-parity.md; PLAN.md §2 row for that audit)
