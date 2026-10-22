@@ -269,6 +269,76 @@ impl Clone for TranMap {
 }
 
 impl TranMap {
+    /// C's merge of a TranMap with the TranMap above it in a series list
+    /// (`tranmap.c:902-1008`): the forward Mappings of the two, and their
+    /// inverse Mappings, are each combined in series and simplified, and a
+    /// new TranMap is built from the results when either simplified.
+    /// `self_inv` and `other_inv` are the directions the two are applied in.
+    ///
+    /// An error simplifying the combinations is returned, as C leaves it in
+    /// the global status.
+    fn merge_with_higher(
+        &self,
+        other_tm: &TranMap,
+        self_inv: bool,
+        other_inv: bool,
+    ) -> AstResult<Option<DynMapping>> {
+        // Determine the effective forward/inverse mappings for self,
+        // accounting for the external inversion flag.
+        let (self_fwd, self_inv_map) = if self_inv {
+            // Inverted: forward uses map2's inverse, inverse uses map1's forward
+            let mut sf = self.map2.clone();
+            sf.invert();
+            let mut si = self.map1.clone();
+            si.invert();
+            (sf, si)
+        } else {
+            (self.map1.clone(), self.map2.clone())
+        };
+
+        // Determine the effective forward/inverse mappings for other.
+        let (other_fwd, other_inv_map) = if other_inv {
+            let mut of = other_tm.map2.clone();
+            of.invert();
+            let mut oi = other_tm.map1.clone();
+            oi.invert();
+            (of, oi)
+        } else {
+            (other_tm.map1.clone(), other_tm.map2.clone())
+        };
+
+        // Check dimension compatibility for series composition.
+        // Forward chain: self_fwd then other_fwd.
+        if self_fwd.nout() != other_fwd.nin() {
+            return Ok(None);
+        }
+
+        // Combine forward mappings: self_fwd ; other_fwd
+        let cmp_fwd = CmpMap::new(self_fwd, other_fwd, Composition::Series)?;
+        let mut simp_fwd = <dyn Mapping>::simplify(&cmp_fwd)?;
+
+        // Combine inverse mappings: other_inv ; self_inv (reverse order for inverse)
+        let cmp_inv = CmpMap::new(other_inv_map, self_inv_map, Composition::Series)?;
+        let mut simp_inv = <dyn Mapping>::simplify(&cmp_inv)?;
+
+        // C reaches both through `astSimplify` (tranmap.c:951, 955), which
+        // records the result as simplified.
+        simp_fwd.set_has_been_simplified(true);
+        simp_inv.set_has_been_simplified(true);
+
+        // Check if any simplification happened (pointer comparison analog).
+        let fwd_simplified = !simp_fwd.equal(&cmp_fwd as &dyn Mapping);
+        let inv_simplified = !simp_inv.equal(&cmp_inv as &dyn Mapping);
+
+        if fwd_simplified || inv_simplified {
+            // Build a new TranMap from the simplified forward/inverse.
+            let result = TranMap::new(simp_fwd, simp_inv)?;
+            Ok(Some(Box::new(result)))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// C's "simplify the TranMap on its own" (`tranmap.c:834-897`): the list
     /// entry that replaces this TranMap, applied in direction `applied_inv`,
     /// or `None` when nothing reduces.
@@ -471,9 +541,28 @@ impl Mapping for TranMap {
             }
         }
 
-        // Nothing changed above, so look for a neighboring TranMap to merge
-        // with, in series only (`tranmap.c:898-903`).
-        super::simplify::default_map_merge(ctx, where_, series)
+        // Nothing changed above, so merge with a higher neighbor that is a
+        // TranMap, in series only (`tranmap.c:902-1008`). An error simplifying
+        // the combined Mappings ends the merge, as C leaves it in the global
+        // status.
+        if series
+            && where_ + 1 < ctx.len()
+            && let Some(higher) = ctx.entry(where_ + 1).0.as_any().downcast_ref::<TranMap>()
+        {
+            let merged = self.merge_with_higher(higher, applied_inv, ctx.entry(where_ + 1).1);
+            match merged {
+                Ok(Some(merged)) => {
+                    ctx.replace_pair_with(where_, merged, false);
+                    return Some(where_);
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    ctx.fail(e);
+                    return None;
+                }
+            }
+        }
+        None
     }
 
     fn try_merge(
@@ -483,68 +572,16 @@ impl Mapping for TranMap {
         self_inv: bool,
         other_inv: bool,
     ) -> Option<DynMapping> {
-        // TranMap merging only works in series.
+        // TranMap merging only works in series, with another TranMap.
+        // `try_merge` cannot report an error; a simplification merges two
+        // TranMaps through `map_merge`, which passes one up.
         if !series {
             return None;
         }
-
-        // The other mapping must also be a TranMap.
         let other_tm = other.as_any().downcast_ref::<TranMap>()?;
-
-        // Determine the effective forward/inverse mappings for self,
-        // accounting for the external inversion flag.
-        let (self_fwd, self_inv_map) = if self_inv {
-            // Inverted: forward uses map2's inverse, inverse uses map1's forward
-            let mut sf = self.map2.clone();
-            sf.invert();
-            let mut si = self.map1.clone();
-            si.invert();
-            (sf, si)
-        } else {
-            (self.map1.clone(), self.map2.clone())
-        };
-
-        // Determine the effective forward/inverse mappings for other.
-        let (other_fwd, other_inv_map) = if other_inv {
-            let mut of = other_tm.map2.clone();
-            of.invert();
-            let mut oi = other_tm.map1.clone();
-            oi.invert();
-            (of, oi)
-        } else {
-            (other_tm.map1.clone(), other_tm.map2.clone())
-        };
-
-        // Check dimension compatibility for series composition.
-        // Forward chain: self_fwd then other_fwd.
-        if self_fwd.nout() != other_fwd.nin() {
-            return None;
-        }
-
-        // Combine forward mappings: self_fwd ; other_fwd
-        let cmp_fwd = CmpMap::new(self_fwd, other_fwd, Composition::Series).ok()?;
-        let mut simp_fwd = <dyn Mapping>::simplify(&cmp_fwd).ok()?;
-
-        // Combine inverse mappings: other_inv ; self_inv (reverse order for inverse)
-        let cmp_inv = CmpMap::new(other_inv_map, self_inv_map, Composition::Series).ok()?;
-        let mut simp_inv = <dyn Mapping>::simplify(&cmp_inv).ok()?;
-
-        // C reaches both through `astSimplify` (tranmap.c:951, 955), which
-        // records the result as simplified.
-        simp_fwd.set_has_been_simplified(true);
-        simp_inv.set_has_been_simplified(true);
-
-        // Check if any simplification happened (pointer comparison analog).
-        let fwd_simplified = !simp_fwd.equal(&cmp_fwd as &dyn Mapping);
-        let inv_simplified = !simp_inv.equal(&cmp_inv as &dyn Mapping);
-
-        if fwd_simplified || inv_simplified {
-            // Build a new TranMap from the simplified forward/inverse.
-            let result = TranMap::new(simp_fwd, simp_inv).ok()?;
-            Some(Box::new(result))
-        } else {
-            None
-        }
+        self.merge_with_higher(other_tm, self_inv, other_inv)
+            .ok()
+            .flatten()
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

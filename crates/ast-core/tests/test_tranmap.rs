@@ -568,3 +568,23 @@ fn an_error_simplifying_a_component_is_passed_up() {
     let err = <dyn Mapping>::simplify(&map).unwrap_err();
     assert_eq!(err.code(), ast_core::error::ErrorCode::Wcspa);
 }
+
+/// Two TranMaps in series merge by simplifying their forward and their
+/// inverse Mappings in series; an error that raises is passed up, as in C.
+#[test]
+fn an_error_merging_two_tranmaps_is_passed_up() {
+    use ast_core::mappings::{PermMap, UnitMap, WcsMap, WcsProjection};
+    let constants = TranMap::new(
+        Box::new(PermMap::new(&[0, 0], &[-1, -2], &[0.1, 0.2]).unwrap()),
+        Box::new(UnitMap::new(2)),
+    )
+    .unwrap();
+    let conic = TranMap::new(
+        Box::new(WcsMap::new(2, WcsProjection::Coe, 1, 2).unwrap()),
+        Box::new(UnitMap::new(2)),
+    )
+    .unwrap();
+    let map = CmpMap::new(Box::new(constants), Box::new(conic), Composition::Series).unwrap();
+    let err = <dyn Mapping>::simplify(&map).unwrap_err();
+    assert_eq!(err.code(), ast_core::error::ErrorCode::Wcspa);
+}
