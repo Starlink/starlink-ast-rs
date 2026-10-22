@@ -2033,8 +2033,8 @@ impl FitsChan {
     /// Each case but 1 and 4 also needs a CTYPE, CRPIX or CRVAL keyword,
     /// for the primary or an alternate axis description, and is passed
     /// over without one.
-    /// A [source](Self::set_source) not yet read is read first, so its cards
-    /// are among those the default is chosen from.
+    /// For the default, a [source](Self::set_source) not yet read is read
+    /// first, so its cards are among those the default is chosen from.
     ///
     /// Reading a FrameSet usually consumes the keywords the default was
     /// chosen from, so the default after a read is usually different; to
@@ -2046,10 +2046,13 @@ impl FitsChan {
     /// As for [`card`](Self::card).
     #[doc(alias = "Encoding")]
     pub fn encoding(&mut self) -> AstResult<Encoding> {
-        self.read_from_source()?;
-        Ok(self
-            .encoding
-            .unwrap_or_else(|| guess_encoding::guess_encoding(&self.cards)))
+        match self.encoding {
+            Some(enc) => Ok(enc),
+            None => {
+                self.read_from_source()?;
+                Ok(guess_encoding::guess_encoding(&self.cards))
+            }
+        }
     }
 
     /// Set [FitsDigits](Self::fits_digits).
@@ -2897,7 +2900,9 @@ impl FitsChan {
     /// after a read is usually false even when the header had them; to keep
     /// the value, ask for the default before the read and set it.
     /// As for [Encoding](Self::encoding), a [source](Self::set_source) not
-    /// yet read is read first.
+    /// yet read is read first; the card current before that read is current
+    /// after, so a FitsChan whose source is read this way is left at
+    /// end-of-file.
     ///
     /// # Errors
     ///
@@ -2907,8 +2912,17 @@ impl FitsChan {
         match self.cd_matrix {
             Some(v) => Ok(v),
             None => {
+                // C saves the current card before the search reads the
+                // source and puts it back after, so a FitsChan at
+                // end-of-file, as one is before its source is read, is left
+                // there.
+                let card0 = self.cards.position();
+                let at_eof = card0 >= self.cards.len();
                 self.read_from_source()?;
-                Ok(self.cards.key_fields("CD%1d_%1d", 0).0 > 0)
+                let found = self.cards.key_fields("CD%1d_%1d", 0).0 > 0;
+                self.cards
+                    .set_position(if at_eof { usize::MAX } else { card0 });
+                Ok(found)
             }
         }
     }

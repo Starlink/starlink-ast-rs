@@ -740,6 +740,49 @@ fn defaults_read_a_source_not_yet_read() {
     assert!(!fitschan_with_cd_source().def_b1950().unwrap());
 }
 
+/// Asked first, CDMatrix leaves the FitsChan at end-of-file, since the card
+/// it puts back is the one current before the source was read, while
+/// Encoding and DefB1950 leave the first source card current.
+// C probe: CDMatrix first gives Card 12 of 11 cards, and a following
+// astRead returns NULL with no error, a foreign read needing the first card
+// current; Encoding or DefB1950 first gives Card 1.
+#[test]
+fn cd_matrix_from_a_source_leaves_end_of_file_as_c_does() {
+    let mut fc = fitschan_with_cd_source();
+    assert!(fc.cd_matrix().unwrap());
+    assert_eq!(fc.card().unwrap(), 12);
+    assert!(fc.read().unwrap().is_none());
+
+    let mut fc = fitschan_with_cd_source();
+    fc.encoding().unwrap();
+    assert_eq!(fc.card().unwrap(), 1);
+    let mut fc = fitschan_with_cd_source();
+    fc.def_b1950().unwrap();
+    assert_eq!(fc.card().unwrap(), 1);
+}
+
+/// A set Encoding is given without reading a source.
+// C probe: with Encoding=FITS-WCS set, astGetC "Encoding" pulls no card
+// from the source.
+#[test]
+fn set_encoding_reads_no_source() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct Counting(Arc<AtomicUsize>);
+    impl ast_core::channel::Source for Counting {
+        fn read_line(&mut self) -> Option<String> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            None
+        }
+    }
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_source(Box::new(Counting(Arc::clone(&calls))));
+    fc.set_encoding(Encoding::FitsWcs);
+    assert_eq!(fc.encoding().unwrap(), Encoding::FitsWcs);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
 // ===========================================================================
 // FITSCHAN_OPTIONS
 // ===========================================================================

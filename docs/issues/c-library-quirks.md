@@ -104,6 +104,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astPutColumnData` documentation does not say a cell of non-finite values keeps its old value](#the-astputcolumndata-documentation-does-not-say-a-cell-of-non-finite-values-keeps-its-old-value)
 - [`astMapGetElemC` and `astMapGetElemA` give an out-of-range upper limit one past the vector](#astmapgetelemc-and-astmapgetelema-give-an-out-of-range-upper-limit-one-past-the-vector)
 - [A FitsChan write gives `FsetToStore` its method and class names in the wrong order](#a-fitschan-write-gives-fsettostore-its-method-and-class-names-in-the-wrong-order)
+- [`GetCDMatrix` puts back the card current before the source was read](#getcdmatrix-puts-back-the-card-current-before-the-source-was-read)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1530,6 +1531,19 @@ Consequence: the error for a warning met while a FrameSet is described for a wri
 
 The port mirrors the message: `FitsChan::write_attrs` in `crates/ast-core/src/fitschan/mod.rs` makes the write's warning list with the method "FitsChan", and `strict_write_warning_is_an_error` in `tests/test_fitschan_astwarn.rs` pins it.
 A C fix: swap the two arguments in the call; the port's list then takes "astWrite".
+
+### `GetCDMatrix` puts back the card current before the source was read
+
+C location: `fitschan.c` `GetCDMatrix` (lines 12684 to 12700) saves `this->card`, then calls `astClearCard`, which reads a source function not yet read, and after `astKeyFields` restores the saved card.
+
+On a FitsChan whose source has not been read the saved card is NULL, so the FitsChan is left at end-of-file rather than on the first card the source gave.
+A C-oracle probe: a FitsChan with a source of 11 FITS-WCS cards, asked for CDMatrix first, has Card 12, and a following `astRead` returns NULL with no error, since a foreign read needs the first card current.
+`GetEncoding` saves the card index with `astGetCard`, which reads the source first, so asking for Encoding first leaves Card 1.
+
+Consequence: whether a read after a CDMatrix query finds anything depends on whether the source had already been read.
+
+The port mirrors it: `FitsChan::cd_matrix` in `crates/ast-core/src/fitschan/mod.rs` restores end-of-file when the FitsChan was at end-of-file before reading the source, and `cd_matrix_from_a_source_leaves_end_of_file_as_c_does` in `tests/test_fitschan.rs` pins it.
+A C fix: save the card after `astClearCard`, or read the source first, as `GetEncoding` does.
 
 ## Addressed here, and not going upstream
 
