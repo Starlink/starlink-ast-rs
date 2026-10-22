@@ -97,6 +97,52 @@ fn new_given_a_frameset_takes_its_frames_and_mappings() {
     assert!(FrameSet::new(Box::new(old)).test_invert());
 }
 
+/// A FrameSet made from a FrameSet takes its Frames' variant Mappings and
+/// the Frames that mirror them, as C's clones of the Frames and copy of
+/// the mirror indices do.
+#[test]
+fn new_given_a_frameset_takes_its_variants_and_mirrors() {
+    let mut old = xyz_unnamed();
+    old.add_variant(Some(Box::new(ShiftMap::new(vec![5.0, 5.0]))), "V2")
+        .unwrap();
+    old.set_current(FrameRef::Index(2)).unwrap();
+    old.mirror_variants(FrameRef::Index(3)).unwrap();
+    let expected = native_dump(&AnyObject::FrameSet(old.clone())).unwrap();
+    let probe = [1.0, 1.0];
+    let before = old
+        .mapping(FrameRef::Index(1), FrameRef::Index(3))
+        .unwrap()
+        .tran2(&probe[..1], &probe[1..], true)
+        .unwrap();
+
+    let mut fs = FrameSet::new(Box::new(old));
+    assert_eq!(
+        native_dump(&AnyObject::FrameSet(fs.clone())).unwrap(),
+        expected
+    );
+    assert_eq!(fs.variant(), "V2");
+    assert_eq!(fs.all_variants(), "Z V2");
+    assert_eq!(
+        fs.mapping(FrameRef::Index(1), FrameRef::Index(3))
+            .unwrap()
+            .tran2(&probe[..1], &probe[1..], true)
+            .unwrap(),
+        before
+    );
+
+    // Selecting a variant through the mirror changes the mirrored Frame.
+    fs.set_variant("Z").unwrap();
+    fs.set_current(FrameRef::Index(3)).unwrap();
+    assert_eq!(fs.variant(), "Z");
+    assert_eq!(
+        fs.mapping(FrameRef::Index(1), FrameRef::Index(3))
+            .unwrap()
+            .tran2(&probe[..1], &probe[1..], true)
+            .unwrap(),
+        (vec![3.0], vec![4.0])
+    );
+}
+
 /// An inverted FrameSet given to `FrameSet::new` gives an inverted FrameSet
 /// with the same effective Base and Current, dumped as C dumps it.
 #[test]
