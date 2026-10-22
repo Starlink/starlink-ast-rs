@@ -170,14 +170,25 @@ fn every_mapped_row_has_its_alias_on_its_item() {
 /// `a_clean_module_cannot_stay_listed` fails when a listed module is clean.
 const C_CITATIONS_UNCLEANED: &[(&str, &str)] = &[];
 
-/// The C references in each top-level module's rendered pages. Builds the
-/// docs into its own target directory, so it never reads docs built by
-/// someone else and does not wait on the outer `cargo test`'s lock. Only
+type Scan = (BTreeMap<String, Vec<String>>, BTreeMap<String, usize>);
+
+/// The C references in each top-level module's rendered pages, scanned once
+/// per test run so the two tests that use it neither rebuild nor race.
+fn rendered_c_references() -> &'static Scan {
+    static SCAN: std::sync::OnceLock<Scan> = std::sync::OnceLock::new();
+    SCAN.get_or_init(scan_rendered_docs)
+}
+
+/// Builds the docs into its own target directory, so it never reads docs built
+/// by someone else and does not wait on the outer `cargo test`'s lock. The
+/// rendered docs of earlier builds are cleared first, so a page or a
+/// `type.impl/*.js` file no source produces any more is not scanned. Only
 /// `ast_core/` is scanned: the source-view pages under `src/`, which show
 /// `//` comments, are not user-facing documentation.
-fn rendered_c_references() -> (BTreeMap<String, Vec<String>>, BTreeMap<String, usize>) {
+fn scan_rendered_docs() -> Scan {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let target = manifest.join("../../target/c-docs-gate");
+    audit_tools::clear_rendered_docs(&target).unwrap();
     let status = std::process::Command::new(env!("CARGO"))
         .args(["doc", "-q", "-p", "ast-core", "--no-deps"])
         .env("CARGO_TARGET_DIR", &target)
@@ -240,10 +251,7 @@ fn rendered_c_references() -> (BTreeMap<String, Vec<String>>, BTreeMap<String, u
 fn public_modules() -> Vec<String> {
     let lib = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
         .unwrap();
-    lib.lines()
-        .filter_map(|l| l.strip_prefix("pub mod "))
-        .map(|m| m.trim_end_matches(';').trim().to_string())
-        .collect()
+    audit_tools::public_modules(&lib)
 }
 
 /// Fails unless the scan read at least one page of every public module and

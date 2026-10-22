@@ -18,7 +18,7 @@ pub use c_headers::{
 };
 pub use c_steps::c_step_comments;
 pub use doc_aliases::{alias_satisfied_by_name, doc_aliases, duplicate_aliases, top_level_types};
-pub use rendered_docs::c_references;
+pub use rendered_docs::{c_references, clear_rendered_docs, public_modules};
 
 /// A parsed `file:line[-line] [(fn name)]` citation.
 #[derive(Debug, Clone, PartialEq, Eq)]

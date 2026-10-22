@@ -6,7 +6,9 @@
 //! are not using, and line numbers in the C source change with every upstream
 //! sync.
 
+use crate::{code_lines, is_ident};
 use std::collections::BTreeSet;
+use std::path::Path;
 
 /// The visible text of `html`: tags removed (each leaves a space) and the
 /// five entities rustdoc emits in prose decoded.
@@ -24,10 +26,27 @@ fn visible_text(html: &str) -> String {
             _ => {}
         }
     }
+    decode_entities(&text)
+}
+
+fn decode_entities(text: &str) -> String {
     text.replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&amp;", "&")
+}
+
+/// The `href` targets in `html`, entities decoded, in order of appearance.
+fn href_targets(html: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = html;
+    while let Some(at) = rest.find("href=\"") {
+        rest = &rest[at + 6..];
+        let Some(end) = rest.find('"') else { break };
+        out.push(decode_entities(&rest[..end]));
+        rest = &rest[end..];
+    }
+    out
 }
 
 fn is_word_char(b: u8) -> bool {
@@ -62,9 +81,18 @@ fn line_range_len(s: &[u8]) -> usize {
 /// followed by a word character.
 /// A path such as `reference/starlink-ast/src/table.c` is flagged by its file
 /// name.
-/// References are returned in order of appearance.
+/// The `href` targets are scanned the same way after the visible text, so a
+/// link to a C file (`https://example.org/src/permmap.c`) is found although
+/// its text may not name it.
+/// References are returned in order of appearance, the visible text first.
 pub fn c_references(html: &str, public: &BTreeSet<String>) -> Vec<String> {
-    let text = visible_text(html);
+    let mut text = visible_text(html);
+    for target in href_targets(html) {
+        // A newline separates targets from the text and from each other, so a
+        // reference cannot run across them.
+        text.push('\n');
+        text.push_str(&target);
+    }
     let bytes = text.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
@@ -109,10 +137,84 @@ pub fn c_references(html: &str, public: &BTreeSet<String>) -> Vec<String> {
     out
 }
 
+/// The names of the public modules declared in `src`, a crate root.
+///
+/// A declaration is found wherever `pub mod name` appears in code, so
+/// `#[cfg(unix)] pub mod name;` on one line counts, and one in a comment or a
+/// string does not.
+pub fn public_modules(src: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for code in code_lines(src) {
+        let mut rest = code.as_str();
+        while let Some(at) = rest.find("pub mod ") {
+            let before = rest[..at].chars().next_back();
+            let after = &rest[at + "pub mod ".len()..];
+            let name: String = after
+                .trim_start()
+                .chars()
+                .take_while(|c| is_ident(*c))
+                .collect();
+            if !before.is_some_and(is_ident) && !name.is_empty() {
+                out.push(name);
+            }
+            rest = after;
+        }
+    }
+    out
+}
+
+/// Remove every rendered documentation directory under the cargo target
+/// directory `target`: `target/doc` and `target/<triple>/doc`.
+///
+/// An incremental `cargo doc` leaves pages and `type.impl/*.js` files that no
+/// source produces any more, which would be scanned as if they were current.
+/// Clearing them first means what is scanned is what the build wrote.
+pub fn clear_rendered_docs(target: &Path) -> std::io::Result<()> {
+    let mut dirs = vec![target.join("doc")];
+    if let Ok(entries) = std::fs::read_dir(target) {
+        for e in entries {
+            let p = e?.path();
+            if p.is_dir() {
+                dirs.push(p.join("doc"));
+            }
+        }
+    }
+    for d in dirs.into_iter().filter(|d| d.is_dir()) {
+        std::fs::remove_dir_all(d)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::c_references;
+    use super::{c_references, clear_rendered_docs, public_modules};
     use std::collections::BTreeSet;
+
+    #[test]
+    fn public_modules_include_a_one_line_cfg_declaration() {
+        let src = "pub mod a;\n#[cfg(unix)] pub mod b;\npub(crate) mod c;\nmod d;\n\
+                   // pub mod e;\nlet _ = \"pub mod f;\";\n    pub mod g {\n}\n/* pub mod h; */\n";
+        assert_eq!(public_modules(src), ["a", "b", "g"]);
+    }
+
+    #[test]
+    fn clearing_removes_stale_pages_and_keeps_build_output() {
+        let root = std::env::temp_dir().join(format!("audit-tools-clear-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for d in ["doc/ast_core", "aarch64/doc/ast_core", "debug/deps"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        std::fs::write(root.join("doc/ast_core/stale.html"), "x").unwrap();
+        std::fs::write(root.join("aarch64/doc/ast_core/stale.html"), "x").unwrap();
+        std::fs::write(root.join("debug/deps/lib.rlib"), "x").unwrap();
+        clear_rendered_docs(&root).unwrap();
+        assert!(!root.join("doc").exists());
+        assert!(!root.join("aarch64/doc").exists());
+        assert!(root.join("debug/deps/lib.rlib").exists());
+        // A target that does not exist yet is fine.
+        clear_rendered_docs(&root.join("absent")).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     fn public() -> BTreeSet<String> {
         ["astPermMap".to_string()].into()
@@ -150,7 +252,29 @@ mod tests {
 
     #[test]
     fn markup_and_rust_names_are_not_text() {
-        let html = "<a href=\"permmap.c.html\" class=\"astx\">ast_core</a><p>AstError</p>";
+        let html = "<a href=\"permmap.html\" class=\"astx\">ast_core</a><p>AstError</p>";
+        assert!(c_references(html, &public()).is_empty());
+    }
+
+    #[test]
+    fn a_link_to_a_c_file_is_flagged_by_its_target() {
+        let html = "<a href=\"https://example.org/src/permmap.c#L12\">source</a>\
+                    <a href=\"https://example.org/frame.h:646\">header</a>";
+        assert_eq!(c_references(html, &public()), ["permmap.c", "frame.h:646"]);
+    }
+
+    #[test]
+    fn a_link_to_an_internal_c_function_is_flagged() {
+        let html = "<a href=\"https://example.org/?q=astInitPermMap&amp;x=1\">x</a>";
+        assert_eq!(c_references(html, &public()), ["astInitPermMap"]);
+    }
+
+    #[test]
+    fn ordinary_links_are_not_flagged() {
+        let html = "<a href=\"../ast_core/struct.PermMap.html#method.new\">a</a>\
+                    <a href=\"https://www.starlink.ac.uk/docs/sun211.htx/sun211.html\">b</a>\
+                    <a href=\"https://docs.rs/ndarray/latest/ndarray/index.html\">c</a>\
+                    <a href=\"#astPermMap\">d</a>";
         assert!(c_references(html, &public()).is_empty());
     }
 }
