@@ -40,9 +40,9 @@ struct LineSource {
 /// and `SinkFile` attributes, open for the names the Channel holds.
 ///
 /// A file is opened by the first read or write that needs it and closed when
-/// its attribute is set again, cleared, or the Channel is dropped. A clone
-/// has neither attribute and no file open, as C's Channel `Copy` clears
-/// them.
+/// its attribute is set again, cleared, or the Channel is dropped.
+/// A clone has neither attribute and no file open, as C's Channel `Copy`
+/// clears them.
 #[derive(Default)]
 struct Files {
     fd_in: Option<BufReader<File>>,
@@ -248,11 +248,13 @@ impl ChannelBase {
     }
 
     /// C's `astRead` of a Channel: the next Object in the source, `None` at
-    /// its end. `class` is the Channel's class, for messages. The lines of
-    /// one Object are read (see [`crate::serial::native_stream`]), and the
-    /// rest left for the next read; the warnings for items no loader reads
-    /// are kept in [`warnings`](Self::warnings), or with Strict set the
-    /// first is an error.
+    /// its end.
+    /// `class` is the Channel's class, for messages.
+    /// The lines of one Object are read (see
+    /// [`crate::serial::native_stream`]), and the rest left for the next
+    /// read; the warnings for items no loader reads are kept in
+    /// [`warnings`](Self::warnings), or with Strict set the first is an
+    /// error.
     pub(crate) fn read_native(&mut self, class: &str) -> AstResult<Option<AnyObject>> {
         self.take_read_error()?;
         self.warnings.clear();
@@ -297,7 +299,8 @@ impl ChannelBase {
     }
 
     /// Write `line` to the SinkFile, if set, or else the sink, or else
-    /// standard output. `class` names the Channel's class in an error.
+    /// standard output.
+    /// `class` names the Channel's class in an error.
     ///
     /// # Errors
     ///
@@ -343,8 +346,8 @@ impl ChannelBase {
         self.source_file.0.as_deref()
     }
 
-    /// Set the SourceFile, closing any file open for the last one. The file
-    /// is opened by the next read.
+    /// Set the SourceFile, closing any file open for the last one.
+    /// The file is opened by the next read.
     pub(crate) fn set_source_file(&mut self, name: &str) {
         let files = self.files.0.get_mut();
         files.fd_in = None;
@@ -366,8 +369,8 @@ impl ChannelBase {
         self.sink_file.0.as_deref()
     }
 
-    /// Set the SinkFile, closing any file open for the last one. The file is
-    /// created by the next write.
+    /// Set the SinkFile, closing any file open for the last one.
+    /// The file is created by the next write.
     pub(crate) fn set_sink_file(&mut self, name: &str) {
         self.files.0.get_mut().fd_out = None;
         self.sink_file = NotCopied(Some(name.to_string()));
