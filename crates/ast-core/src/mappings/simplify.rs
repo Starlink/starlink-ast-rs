@@ -1059,10 +1059,12 @@ pub(crate) fn zoom_map_merge(
             let (ref m, inv, _) = *ctx.entry(where_);
             if inv { m.nout() } else { m.nin() }
         };
+        // A product that underflows to zero is refused by the constructor,
+        // and C leaves that error in the global status.
         let new: DynMapping = if unit {
             Box::new(UnitMap::new(nin))
         } else {
-            Box::new(ZoomMap::new(nin, zoom_acc).ok()?)
+            Box::new(ctx.settle(ZoomMap::new(nin, zoom_acc).map(Some))?)
         };
         ctx.replace_range_with(imap1, imap2, new);
         return Some(imap1);
@@ -1122,10 +1124,10 @@ pub(crate) fn zoom_map_merge(
     let new: DynMapping = if unit {
         Box::new(UnitMap::new(nin))
     } else if single {
-        Box::new(ZoomMap::new(nin, minzoom).ok()?)
+        Box::new(ctx.settle(ZoomMap::new(nin, minzoom).map(Some))?)
     } else {
         // A diagonal MatrixMap, as C's zoommap.c MapMerge makes it.
-        Box::new(MatrixMap::diagonal(nin, nin, &zooms).ok()?)
+        Box::new(ctx.settle(MatrixMap::diagonal(nin, nin, &zooms).map(Some))?)
     };
     ctx.replace_range_with(imap1, imap2, new);
     Some(imap1)

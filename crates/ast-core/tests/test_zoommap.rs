@@ -157,3 +157,17 @@ fn zoom_attribute_set_clear_and_get() {
     assert!(zm.test_zoom(), "Error 7");
     assert_eq!(zm.zoom(), 2.5, "Error 8");
 }
+
+/// Two ZoomMaps whose product underflows to zero cannot merge into a ZoomMap,
+/// and C passes the constructor's error up from the simplification.
+#[test]
+fn a_merged_zoom_that_underflows_to_zero_is_an_error() {
+    let map = CmpMap::new(
+        Box::new(ZoomMap::new(1, 1e-200).unwrap()),
+        Box::new(ZoomMap::new(1, 1e-200).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
+    let err = <dyn Mapping>::simplify(&map).unwrap_err();
+    assert_eq!(err.code(), ast_core::error::ErrorCode::Zoomi);
+}
