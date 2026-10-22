@@ -588,3 +588,50 @@ fn an_error_merging_two_tranmaps_is_passed_up() {
     let err = <dyn Mapping>::simplify(&map).unwrap_err();
     assert_eq!(err.code(), ast_core::error::ErrorCode::Wcspa);
 }
+
+/// Two TranMaps in series merge into one whose inverse applies the higher
+/// TranMap's inverse first, as the series does; non-commuting inverse
+/// matrices make the order visible.
+#[test]
+fn a_merged_tranmap_keeps_the_order_of_the_inverses() {
+    use ast_core::mappings::{MatrixMap, UnitMap};
+    use ndarray::array;
+    let lower = TranMap::new(
+        Box::new(UnitMap::new(2)),
+        Box::new(MatrixMap::new(array![[1.0, 2.0], [0.0, 1.0]]).unwrap()),
+    )
+    .unwrap();
+    let higher = TranMap::new(
+        Box::new(UnitMap::new(2)),
+        Box::new(MatrixMap::new(array![[1.0, 0.0], [3.0, 1.0]]).unwrap()),
+    )
+    .unwrap();
+    let map = CmpMap::new(Box::new(lower), Box::new(higher), Composition::Series).unwrap();
+    let simplified = <dyn Mapping>::simplify(&map).unwrap();
+    assert!(simplified.as_any().is::<TranMap>());
+    let expected = map.tran2(&[1.0], &[2.0], false).unwrap();
+    let got = simplified.tran2(&[1.0], &[2.0], false).unwrap();
+    for (e, g) in [(expected.0[0], got.0[0]), (expected.1[0], got.1[0])] {
+        assert!((e - g).abs() < 1e-12, "{e} != {g}");
+    }
+}
+
+/// TranMaps of 2->3 then 3->4 Mappings merge, their inverse Mappings
+/// combining lower first, as in C.
+#[test]
+fn tranmaps_of_differing_dimensions_merge() {
+    use ast_core::mappings::PermMap;
+    let lower = TranMap::new(
+        Box::new(PermMap::new(&[1, 2], &[1, 2, -1], &[5.0]).unwrap()),
+        Box::new(PermMap::new(&[2, 1], &[2, 1, -1], &[6.0]).unwrap()),
+    )
+    .unwrap();
+    let higher = TranMap::new(
+        Box::new(PermMap::new(&[1, 2, 3], &[1, 2, 3, -1], &[5.0]).unwrap()),
+        Box::new(PermMap::new(&[3, 2, 1], &[3, 2, 1, -1], &[6.0]).unwrap()),
+    )
+    .unwrap();
+    let map = CmpMap::new(Box::new(lower), Box::new(higher), Composition::Series).unwrap();
+    let simplified = <dyn Mapping>::simplify(&map).unwrap();
+    assert!(simplified.as_any().is::<TranMap>());
+}

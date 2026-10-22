@@ -317,8 +317,10 @@ impl TranMap {
         let cmp_fwd = CmpMap::new(self_fwd, other_fwd, Composition::Series)?;
         let mut simp_fwd = <dyn Mapping>::simplify(&cmp_fwd)?;
 
-        // Combine inverse mappings: other_inv ; self_inv (reverse order for inverse)
-        let cmp_inv = CmpMap::new(other_inv_map, self_inv_map, Composition::Series)?;
+        // Combine the inverse Mappings in the same order, lower first
+        // (tranmap.c:958): each is used in its inverse direction, so the
+        // combination's inverse applies the higher TranMap's inverse first.
+        let cmp_inv = CmpMap::new(self_inv_map, other_inv_map, Composition::Series)?;
         let mut simp_inv = <dyn Mapping>::simplify(&cmp_inv)?;
 
         // C reaches both through `astSimplify` (tranmap.c:951, 955), which
