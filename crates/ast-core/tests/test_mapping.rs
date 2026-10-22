@@ -687,14 +687,7 @@ fn a_failed_swap_abandons_the_merges_before_it() {
 /// cleared.
 #[test]
 fn a_swap_past_an_inverted_singular_matrix_is_an_error() {
-    let mut inverted = singular_matrix();
-    inverted.invert();
-    let map = CmpMap::new(
-        Box::new(shifting_winmap()),
-        Box::new(inverted),
-        Composition::Series,
-    )
-    .unwrap();
+    let map = series_failing_with_mtrml();
     let err = <dyn Mapping>::simplify(&map).unwrap_err();
     assert_eq!(err.code(), ast_core::error::ErrorCode::Mtrml);
 }
@@ -730,4 +723,57 @@ fn a_wcsmap_swap_that_cannot_transform_its_constants_is_an_error() {
     // A projection that needs no parameter transforms the constants.
     let tan = constants_into_wcsmap(WcsProjection::Tan);
     assert!(<dyn Mapping>::simplify(&tan).is_ok());
+}
+
+/// A WinMap followed by an inverted singular MatrixMap, whose swap raises an
+/// error that is not an undefined transformation.
+fn series_failing_with_mtrml() -> CmpMap {
+    let mut inverted = singular_matrix();
+    inverted.invert();
+    CmpMap::new(
+        Box::new(shifting_winmap()),
+        Box::new(inverted),
+        Composition::Series,
+    )
+    .unwrap()
+}
+
+/// The error a component's own simplification raises is passed up from the
+/// simplification of the CmpMap holding it, as C's `astSimplify` passes up
+/// every error but an undefined transformation.
+#[test]
+fn an_error_simplifying_a_component_is_passed_up() {
+    let map = CmpMap::new(
+        Box::new(series_failing_with_mtrml()),
+        Box::new(UnitMap::new(1)),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let err = <dyn Mapping>::simplify(&map).unwrap_err();
+    assert_eq!(err.code(), ast_core::error::ErrorCode::Mtrml);
+}
+
+/// Two parallel CmpMaps in series are merged pair by pair, each pair
+/// simplified in series; an error that raises is passed up, as in C.
+#[test]
+fn an_error_simplifying_a_merged_pair_is_passed_up() {
+    use ast_core::mappings::MathMap;
+    let mut inverted = singular_matrix();
+    inverted.invert();
+    let math = MathMap::new(1, 1, &["y=x*x"], &["x=sqrt(y)"]).unwrap();
+    let p1 = CmpMap::new(
+        Box::new(shifting_winmap()),
+        Box::new(math),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let p2 = CmpMap::new(
+        Box::new(inverted),
+        Box::new(ZoomMap::new(1, 3.0).unwrap()),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let map = CmpMap::new(Box::new(p1), Box::new(p2), Composition::Series).unwrap();
+    let err = <dyn Mapping>::simplify(&map).unwrap_err();
+    assert_eq!(err.code(), ast_core::error::ErrorCode::Mtrml);
 }

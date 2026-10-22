@@ -789,75 +789,79 @@ pub(crate) fn cmp_map_merge(
     }
     if !oriented.has_been_simplified() {
         trace::simplify_enter("cmp-self-simplify-head", oriented.as_ref());
-        if let Ok((simplified, outcome)) = oriented.simplify_with_outcome() {
-            let changed = matches!(outcome, SimplifyOutcome::Changed(_));
-            trace::cmpmap_head(where_, changed, simplified.as_ref());
-            // C's test is `simpler = ( new != map ) || ( new_invert !=
-            // invert_list[where] )` (cmpmap.c:1456) — pointer identity, not
-            // structure, and `changed` is that identity answer reported by the
-            // callee. The second disjunct is redundant in C: it can only fire
-            // when `new != map` already has, because the `astClone( this )`
-            // branch hands back the very object whose `Invert` was just set to
-            // `invert_list[where]`.
-            if let SimplifyOutcome::Changed(records) = outcome {
-                // The records the reduction wrote on the component's own
-                // components stay on the component in C, though it is replaced
-                // here, so keep them in case this simplification fails.
-                if let Some(records) = records {
-                    records.apply_to(oriented.as_mut());
-                    if oriented.is_inverted() {
-                        oriented.invert();
-                    }
-                    let origin = ctx.entry(where_).0.mapping_flags().origin;
-                    ctx.record_tags(origin, TagTree::of(oriented.as_ref()));
+        // C's `astSimplify` passes up any error but an undefined
+        // transformation, which ends the merge (cmpmap.c:1641, 1659).
+        let (simplified, outcome) = match oriented.simplify_with_outcome() {
+            Ok(result) => result,
+            Err(e) => {
+                ctx.fail(e);
+                return None;
+            }
+        };
+        let changed = matches!(outcome, SimplifyOutcome::Changed(_));
+        trace::cmpmap_head(where_, changed, simplified.as_ref());
+        // C's test is `simpler = ( new != map ) || ( new_invert !=
+        // invert_list[where] )` (cmpmap.c:1456) — pointer identity, not
+        // structure, and `changed` is that identity answer reported by the
+        // callee. The second disjunct is redundant in C: it can only fire
+        // when `new != map` already has, because the `astClone( this )`
+        // branch hands back the very object whose `Invert` was just set to
+        // `invert_list[where]`.
+        if let SimplifyOutcome::Changed(records) = outcome {
+            // The records the reduction wrote on the component's own
+            // components stay on the component in C, though it is replaced
+            // here, so keep them in case this simplification fails.
+            if let Some(records) = records {
+                records.apply_to(oriented.as_mut());
+                if oriented.is_inverted() {
+                    oriented.invert();
                 }
-                let new_inv = simplified.is_inverted();
-                let mut fwd = simplified;
-                if new_inv {
-                    fwd.invert();
-                }
-                // C `astSimplify_` (mapping.c:24763) tagged this nominated
-                // component's reduced result. The record is per orientation and
-                // `fwd` sits at the forward one after the normalizing `invert()`
-                // above, while the tree serializes it at `new_inv`; record the
-                // orientation the tag was earned in.
-                fwd.set_simplified_in(new_inv, true);
-                // C stores the result object at its own orientation and sets
-                // `invert_list[where] = astGetInvert(new)` (cmpmap.c:1463-1464),
-                // so effective == stored for the replaced element; the final
-                // fold's set/restore then serializes the child at that stored
-                // orientation. Record it as `orig_inv` so `reconstruct` does
-                // the same.
-                ctx.set_pair_single(where_, (fwd, new_inv, new_inv));
-                return Some(where_);
+                let origin = ctx.entry(where_).0.mapping_flags().origin;
+                ctx.record_tags(origin, TagTree::of(oriented.as_ref()));
             }
-
-            // C's `!simpler` case is `new == map`: the recursion handed back the
-            // very object it was given, so every `IsSimple` it raised on that
-            // object's descendants is already on the component the closing fold
-            // will encapsulate. Owned values make the returned object a separate
-            // one, so adopt it in place of the entry to carry those records
-            // forward; `!changed` is C's pointer identity, which means the two
-            // are the same Mapping.
-            let mut adopted = simplified;
-            if adopted.is_inverted() {
-                adopted.invert();
+            let new_inv = simplified.is_inverted();
+            let mut fwd = simplified;
+            if new_inv {
+                fwd.invert();
             }
-            let (entry, eff, orig) = ctx.entry(where_);
-            let (eff, orig) = (*eff, *orig);
-            adopted.mapping_flags_mut().origin = entry.mapping_flags().origin;
-            ctx.set_pair_single(where_, (adopted, eff, orig));
-            // A reduction that failed is not recorded as simplified, as C's
-            // `astSimplify` records only one that succeeded; the copy it
-            // returns still carries the records written on its components.
-            if !matches!(outcome, SimplifyOutcome::Failed) {
-                ctx.set_component_simple_tag(where_);
-            }
-            ctx.record_component_stamp(where_);
-        } else {
-            ctx.set_component_simple_tag(where_);
-            ctx.record_component_stamp(where_);
+            // C `astSimplify_` (mapping.c:24763) tagged this nominated
+            // component's reduced result. The record is per orientation and
+            // `fwd` sits at the forward one after the normalizing `invert()`
+            // above, while the tree serializes it at `new_inv`; record the
+            // orientation the tag was earned in.
+            fwd.set_simplified_in(new_inv, true);
+            // C stores the result object at its own orientation and sets
+            // `invert_list[where] = astGetInvert(new)` (cmpmap.c:1463-1464),
+            // so effective == stored for the replaced element; the final
+            // fold's set/restore then serializes the child at that stored
+            // orientation. Record it as `orig_inv` so `reconstruct` does
+            // the same.
+            ctx.set_pair_single(where_, (fwd, new_inv, new_inv));
+            return Some(where_);
         }
+
+        // C's `!simpler` case is `new == map`: the recursion handed back the
+        // very object it was given, so every `IsSimple` it raised on that
+        // object's descendants is already on the component the closing fold
+        // will encapsulate. Owned values make the returned object a separate
+        // one, so adopt it in place of the entry to carry those records
+        // forward; `!changed` is C's pointer identity, which means the two
+        // are the same Mapping.
+        let mut adopted = simplified;
+        if adopted.is_inverted() {
+            adopted.invert();
+        }
+        let (entry, eff, orig) = ctx.entry(where_);
+        let (eff, orig) = (*eff, *orig);
+        adopted.mapping_flags_mut().origin = entry.mapping_flags().origin;
+        ctx.set_pair_single(where_, (adopted, eff, orig));
+        // A reduction that failed is not recorded as simplified, as C's
+        // `astSimplify` records only one that succeeded; the copy it
+        // returns still carries the records written on its components.
+        if !matches!(outcome, SimplifyOutcome::Failed) {
+            ctx.set_component_simple_tag(where_);
+        }
+        ctx.record_component_stamp(where_);
     } else {
         // C's `astSimplify` hands a tagged Mapping straight back, so its head
         // still runs and finds nothing simpler.
@@ -916,9 +920,16 @@ pub(crate) fn cmp_map_merge(
                 // Series CmpMaps in parallel (C 1582-1622).
                 compute_merge_series_pair_in_parallel(&ctx.list, imap1)
             };
-            if let Some(new) = merged {
-                ctx.replace_pair_with(imap1, new, false);
-                return Some(imap1);
+            match merged {
+                Ok(Some(new)) => {
+                    ctx.replace_pair_with(imap1, new, false);
+                    return Some(imap1);
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    ctx.fail(e);
+                    return None;
+                }
             }
         }
     }
@@ -2325,7 +2336,7 @@ fn effective_nin(m: &dyn Mapping, inv: bool) -> usize {
 fn compute_merge_parallel_pair_in_series(
     list: &[(DynMapping, bool, bool)],
     i: usize,
-) -> Option<DynMapping> {
+) -> AstResult<Option<DynMapping>> {
     // Both must be parallel CmpMaps.
     let is_par1 = list[i]
         .0
@@ -2338,22 +2349,20 @@ fn compute_merge_parallel_pair_in_series(
         .downcast_ref::<CmpMap>()
         .is_some_and(|c| c.composition() == Composition::Parallel);
     if !is_par1 || !is_par2 {
-        return None;
+        return Ok(None);
     }
 
     let (ref m1, inv1, _) = list[i];
     let (ref m2, inv2, _) = list[i + 1];
 
     // Flatten both for parallel composition.
-    let Ok(par_list1) = flatten(m1.as_ref(), inv1, false) else {
-        return None;
-    };
-    let Ok(par_list2) = flatten(m2.as_ref(), inv2, false) else {
-        return None;
-    };
+    let par_list1 = flatten(m1.as_ref(), inv1, false)?;
+    let par_list2 = flatten(m2.as_ref(), inv2, false)?;
 
     // Dimension-match the two parallel lists.
-    let matched = dimension_match_parallel_lists(&par_list1, &par_list2)?;
+    let Some(matched) = dimension_match_parallel_lists(&par_list1, &par_list2) else {
+        return Ok(None);
+    };
 
     // For each matched pair, combine in series and simplify.
     let mut simplified_pairs: Vec<(DynMapping, bool, bool)> = Vec::new();
@@ -2361,24 +2370,17 @@ fn compute_merge_parallel_pair_in_series(
 
     for (sub1, sub2) in matched {
         // Build parallel submaps from each sublist.
-        let Ok(par1) = reconstruct(sub1, false) else {
-            return None;
-        };
-        let Ok(par2) = reconstruct(sub2, false) else {
-            return None;
-        };
+        let par1 = reconstruct(sub1, false)?;
+        let par2 = reconstruct(sub2, false)?;
 
         // Combine in series.
-        let Ok(series_map) = CmpMap::new(par1, par2, Composition::Series) else {
-            return None;
-        };
+        let series_map = CmpMap::new(par1, par2, Composition::Series)?;
         let series_box: DynMapping = Box::new(series_map);
         let pre_simplify_inverted = series_box.is_inverted();
 
-        // Simplify the series combination.
-        let Ok((simplified, outcome)) = simplify_mapping_with_outcome(series_box.as_ref()) else {
-            return None;
-        };
+        // Simplify the series combination. C's `astSimplify` passes up any
+        // error but an undefined transformation (cmpmap.c:1926).
+        let (simplified, outcome) = simplify_mapping_with_outcome(series_box.as_ref())?;
         let changed = matches!(outcome, SimplifyOutcome::Changed(_));
         let failed = matches!(outcome, SimplifyOutcome::Failed);
 
@@ -2412,17 +2414,15 @@ fn compute_merge_parallel_pair_in_series(
     }
 
     if !any_improvement {
-        return None;
+        return Ok(None);
     }
 
     // Rebuild as parallel CmpMap and replace the pair in the list.
-    let Ok(result) = reconstruct(simplified_pairs, false) else {
-        return None;
-    };
+    let result = reconstruct(simplified_pairs, false)?;
     // C hands the assembled parallel CmpMap straight to the list and never
     // simplifies it (`new` at cmpmap.c:1738-1746); the nominate loop is what
     // reduces it further, once it is nominated in its own right.
-    Some(result)
+    Ok(Some(result))
 }
 
 /// Dimension-match two parallel component lists for series combination.
@@ -2506,7 +2506,7 @@ fn dimension_match_parallel_lists(
 fn compute_merge_series_pair_in_parallel(
     list: &[(DynMapping, bool, bool)],
     i: usize,
-) -> Option<DynMapping> {
+) -> AstResult<Option<DynMapping>> {
     // C `cmpmap.c` 1582-1622 uses ONLY each series CmpMap's two binary
     // children — it does not fully flatten the branches. From the two adjacent
     // series CmpMaps it forms:
@@ -2555,13 +2555,16 @@ fn compute_merge_series_pair_in_parallel(
             }
         };
 
-    let (fa1, fa1_inv, sa1, sa1_inv) = extract(&list[i])?;
-    let (fa2, fa2_inv, sa2, sa2_inv) = extract(&list[i + 1])?;
+    let (Some((fa1, fa1_inv, sa1, sa1_inv)), Some((fa2, fa2_inv, sa2, sa2_inv))) =
+        (extract(&list[i]), extract(&list[i + 1]))
+    else {
+        return Ok(None);
+    };
 
     // Rebuild each branch as a forward binary series CmpMap (first-applied then
     // second-applied child), then delegate to the shared recombination core.
-    let branch1 = reconstruct(vec![(fa1, fa1_inv, false), (sa1, sa1_inv, false)], true).ok()?;
-    let branch2 = reconstruct(vec![(fa2, fa2_inv, false), (sa2, sa2_inv, false)], true).ok()?;
+    let branch1 = reconstruct(vec![(fa1, fa1_inv, false), (sa1, sa1_inv, false)], true)?;
+    let branch2 = reconstruct(vec![(fa2, fa2_inv, false), (sa2, sa2_inv, false)], true)?;
 
     recombine_distributed_branches(&[(branch1, false, false), (branch2, false, false)])
 }
@@ -3402,9 +3405,9 @@ fn extract_3d_diagonal(m: &dyn Mapping, _inv: bool) -> Option<[f64; 3]> {
 /// keeps the parallel form, exactly as C does).
 pub(crate) fn recombine_distributed_branches(
     branches: &[(DynMapping, bool, bool)],
-) -> Option<DynMapping> {
+) -> AstResult<Option<DynMapping>> {
     if branches.len() != 2 {
-        return None;
+        return Ok(None);
     }
 
     // Each branch must be a forward, binary series CmpMap. The branches are
@@ -3444,24 +3447,29 @@ pub(crate) fn recombine_distributed_branches(
         Some((a, a_inv, a_orig, b, b_inv, b_orig))
     };
 
-    let (a1, a1_inv, a1_orig, b1, b1_inv, b1_orig) = split(&branches[0])?;
-    let (a2, a2_inv, a2_orig, b2, b2_inv, b2_orig) = split(&branches[1])?;
+    let (
+        Some((a1, a1_inv, a1_orig, b1, b1_inv, b1_orig)),
+        Some((a2, a2_inv, a2_orig, b2, b2_inv, b2_orig)),
+    ) = (split(&branches[0]), split(&branches[1]))
+    else {
+        return Ok(None);
+    };
 
     // new1 = A1 ‖ A2, new2 = B1 ‖ B2 (C CombineMaps with series == 0).
-    let new1 = reconstruct(vec![(a1, a1_inv, a1_orig), (a2, a2_inv, a2_orig)], false).ok()?;
-    let new2 = reconstruct(vec![(b1, b1_inv, b1_orig), (b2, b2_inv, b2_orig)], false).ok()?;
+    let new1 = reconstruct(vec![(a1, a1_inv, a1_orig), (a2, a2_inv, a2_orig)], false)?;
+    let new2 = reconstruct(vec![(b1, b1_inv, b1_orig), (b2, b2_inv, b2_orig)], false)?;
 
     // C `simpler = ( simp1 != new1 ) || ( simp2 != new2 ) ||
     // astGetInvert( simp1 ) || astGetInvert( simp2 )` (cmpmap.c:1616): pointer
     // identity on each half, reported by the callee, plus C's safety check that
     // neither half came back inverted.
-    let (mut simp1, outcome1) = simplify_mapping_with_outcome(new1.as_ref()).ok()?;
-    let (mut simp2, outcome2) = simplify_mapping_with_outcome(new2.as_ref()).ok()?;
+    let (mut simp1, outcome1) = simplify_mapping_with_outcome(new1.as_ref())?;
+    let (mut simp2, outcome2) = simplify_mapping_with_outcome(new2.as_ref())?;
     let changed1 = matches!(outcome1, SimplifyOutcome::Changed(_));
     let changed2 = matches!(outcome2, SimplifyOutcome::Changed(_));
     let simpler = changed1 || changed2 || simp1.is_inverted() || simp2.is_inverted();
     if !simpler {
-        return None;
+        return Ok(None);
     }
 
     // C reaches both halves through `astSimplify` (cmpmap.c:1602-1603), which
@@ -3477,9 +3485,11 @@ pub(crate) fn recombine_distributed_branches(
     }
 
     // Compose the two simplified halves in series (C astCmpMap(simp1, simp2, 1)).
-    CmpMap::new(simp1, simp2, Composition::Series)
-        .ok()
-        .map(|c| Box::new(c) as DynMapping)
+    Ok(Some(Box::new(CmpMap::new(
+        simp1,
+        simp2,
+        Composition::Series,
+    )?)))
 }
 
 /// Reconstruct a `CmpMap` tree (or single mapping) from a flat list.
