@@ -99,3 +99,7 @@ The Rust API is unreleased: where C can raise an error the Rust returns `AstResu
 
 - `docs/issues/c-oracle-probe-recipe.md` says that on macOS a probe linked against `reference/starlink-ast/build` needs `-last_err -last_grf3d -last_grf_5.6`, or it crashes on the first error.
 - `MatrixMap::diagonal` doctest checks the inverse zero-fill; `CmpMap::new`'s second `# Errors` bullet names its error; `// C:` comments placed after the `///` blocks in `xphmap.rs`; British spellings in `//` comments; C line numbers in `//` comments refreshed against the pinned C source (with a tool if the re-anchor tool can do it).
+
+### Task 13: Errors the merge code drops
+
+- Every place in the simplifier and the per-class merge code that drops an error C would pass up (listed in the Task 3 review): the WcsMap and WinMap matrix transforms, nested simplify `.ok()` calls, `if let Ok` on a component simplify in `cmp_map_merge`, and constructor failures; each confirmed against C with a probe, with the simplify corpus kept byte-exact.
