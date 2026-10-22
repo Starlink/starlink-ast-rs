@@ -40,7 +40,7 @@ const HEADER: &[&str] = &[
 
 /// The value the write returns and the cards written.
 fn written(unit: &str, dims: &str) -> (i32, Vec<String>) {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in HEADER {
         fc.put_fits(card, false).unwrap();
     }
@@ -51,7 +51,7 @@ fn written(unit: &str, dims: &str) -> (i32, Vec<String>) {
     if !unit.is_empty() {
         fs.set_unit(3, unit).unwrap();
     }
-    let mut out = FitsChan::new();
+    let mut out = FitsChan::new().unwrap();
     out.set_encoding(Encoding::FitsWcs);
     for card in dims.split('~').filter(|c| !c.is_empty()) {
         out.put_fits(card, false).unwrap();

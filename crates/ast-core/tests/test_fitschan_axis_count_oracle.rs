@@ -26,7 +26,7 @@ use ast_core::{AnyObject, Channel, FitsChan};
 /// What the port gives for `header`, in the form of a case's last five
 /// fields.
 fn read(header: &[&str]) -> (&'static str, i32, Vec<String>, Vec<i32>, Vec<f64>) {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in header {
         fc.put_fits(card, false).unwrap();
     }

@@ -229,7 +229,7 @@ fn object(name: &str) -> AnyObject {
             AnyObject::NativeChannel(Box::new(ch))
         }
         "fitschan" => {
-            let mut fc = FitsChan::new();
+            let mut fc = FitsChan::new().unwrap();
             fc.set_id("fc");
             AnyObject::FitsChan(Box::new(fc))
         }

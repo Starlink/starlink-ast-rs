@@ -34,7 +34,7 @@ const TAN_CARDS: [&str; 9] = [
 ];
 
 fn read_tan() -> ast_core::error::AstResult<Option<AnyObject>> {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in TAN_CARDS {
         fc.put_fits(card, false).unwrap();
     }

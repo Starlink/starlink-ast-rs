@@ -20,7 +20,7 @@ use ast_core::{AnyObject, AstType, FitsChan, FitsTable, KeyMap, from_native_stri
 
 /// A FitsTable with one integer column named `col`, holding 1 in row 1.
 fn table(col: &str) -> FitsTable {
-    let mut ft = FitsTable::new();
+    let mut ft = FitsTable::new().unwrap();
     ft.add_column(col, AstType::Int, &[], " ").unwrap();
     ft.put_0i(&format!("{col}(1)"), 1, None).unwrap();
     ft
@@ -114,7 +114,7 @@ fn run(fc: &mut FitsChan, op: &str) -> (String, Option<AstError>) {
 fn fitschan_tables_match_c() {
     let mut failed = Vec::new();
     for &(name, ops, want) in cases::CASES {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         let mut out = String::new();
         for op in ops {
             out.push_str(&format!("> {op}\n"));

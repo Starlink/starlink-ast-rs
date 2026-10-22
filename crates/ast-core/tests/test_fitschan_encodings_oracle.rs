@@ -43,7 +43,7 @@ fn sky(f: &mut dyn Frame) -> &mut SkyFrame {
 /// The header written with `enc`: the value the write returns, Ncard, the
 /// cards not used, and the name of every card.
 fn written(header: &[&str], epoch: &str, enc: &str) -> (i32, i32, Vec<String>, Vec<String>) {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in header {
         fc.put_fits(card, false).unwrap();
     }

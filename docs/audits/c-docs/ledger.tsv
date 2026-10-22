@@ -92,7 +92,7 @@ attribute	Ncard	fitschan.c	FitsChan::ncard		yes
 attribute	Nkey	fitschan.c	FitsChan::nkey		yes
 attribute	Warnings	fitschan.c	FitsChan::warning_conditions		yes	the header says it does not affect the warnings stored in the Channel, but the C code stores only those for conditions it names, as here (c-library-quirks.md)
 attribute	AllWarnings	fitschan.c	FitsChan::all_warning_conditions		yes
-function	astFitsChan	fitschan.c	FitsChan::new		yes	no source, sink or options arguments: set_source, set_sink and the attribute setters take their place, and the FITSCHAN_OPTIONS environment variable is not read (PLAN.md §2)
+function	astFitsChan	fitschan.c	FitsChan::new		yes	no source, sink or options arguments: set_source, set_sink and the attribute setters take their place; the FITSCHAN_OPTIONS environment variable is applied
 class	FitsTable	fitstable.c	FitsTable		yes
 function	astColumnNull	fitstable.c	FitsTable::column_null		yes	int null values only, deprecated; FitsTable::column_null covers every integer type with i64 values, as astColumnNullK
 function	astColumnNullK	fitstable.c	FitsTable::column_null		yes	returns a ColumnNull in place of the wasset and hasnull arguments; check_nulls stands for a non-NULL hasnull

@@ -74,7 +74,7 @@ fn test_arrays(input: &[f32], out: &[f32]) {
 
 /// A TAN projection covering 10 degrees on each axis of a `dims` grid.
 fn make_wcs(dims: [usize; 2]) -> FrameSet {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in [
         "NAXIS   = 2",
         "RADECSYS= 'ICRS    '",

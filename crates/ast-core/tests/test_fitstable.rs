@@ -72,7 +72,7 @@ fn header_cards(header: &mut FitsChan) -> Vec<String> {
 
 /// A FitsChan holding `cards`.
 fn header_of(cards: &[&str]) -> FitsChan {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in cards {
         fc.put_fits(card, false).unwrap();
     }
@@ -82,7 +82,7 @@ fn header_of(cards: &[&str]) -> FitsChan {
 #[test]
 fn testfitstable() {
     // An empty FitsTable has the default header.
-    let mut table = FitsTable::new();
+    let mut table = FitsTable::new().unwrap();
     let mut header = table.get_table_header().unwrap();
     assert_eq!(header.ncard().unwrap(), 8, "error 1");
     assert_eq!(
@@ -294,7 +294,7 @@ fn testfitstable() {
     let _copy = table.clone();
 
     // A null value stored in any element of a cell is found.
-    let mut table2 = FitsTable::new();
+    let mut table2 = FitsTable::new().unwrap();
     table2.add_column("SCALAR", AstType::Int, &[], " ").unwrap();
     table2.put_0i("SCALAR(1)", 5, Some(" ")).unwrap();
     table2.put_0i("SCALAR(2)", 7, Some(" ")).unwrap();
@@ -314,7 +314,7 @@ fn testfitstable() {
 
     // The default null value avoids the values in cells that follow an
     // empty cell.
-    let mut table2 = FitsTable::new();
+    let mut table2 = FitsTable::new().unwrap();
     table2.add_column("GAP", AstType::Byte, &[2], " ").unwrap();
     table2.put_1b("GAP(2)", &[0, 255], Some(" ")).unwrap();
     let null = table2.column_null("GAP", None, true).unwrap();
@@ -325,7 +325,7 @@ fn testfitstable() {
     // null value is zero if there are no empty cells, and an error
     // otherwise.
     let all: Vec<u8> = (0..=255).collect();
-    let mut table2 = FitsTable::new();
+    let mut table2 = FitsTable::new().unwrap();
     table2
         .add_column("ALL", AstType::Byte, &[256], " ")
         .unwrap();

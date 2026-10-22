@@ -567,7 +567,7 @@ pub(crate) fn split_map(
     // reference point; the keywords that do not affect them are given
     // arbitrary values. C formats CRVAL with `%.*g` and AST__DBL_DIG,
     // 17.
-    let mut fc = crate::fitschan::FitsChan::new();
+    let mut fc = crate::fitschan::FitsChan::new()?;
     for i in 0..nwcs {
         fc.put_fits(&format!("CRPIX{}  = 0", i + 1), false)?;
         fc.put_fits(&format!("CDELT{}  = 0.0003", i + 1), false)?;

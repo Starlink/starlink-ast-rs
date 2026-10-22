@@ -19,7 +19,7 @@ use ast_core::{AnyObject, Channel, Encoding, FitsChan, FitsTable, KeyMap, from_n
 
 /// A FitsChan with the given attributes and `NAXIS` cards.
 fn fitschan(encoding: Encoding, tab_ok: i32, naxis: &[usize]) -> FitsChan {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(encoding);
     fc.set_tab_ok(tab_ok);
     fc.put_fits(&format!("NAXIS   = {}", naxis.len()), false)
@@ -132,7 +132,7 @@ fn tab_spectrum() {
     )
     .unwrap();
 
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::FitsWcs);
     fc.set_cd_matrix(true);
     fc.set_tab_ok(1);

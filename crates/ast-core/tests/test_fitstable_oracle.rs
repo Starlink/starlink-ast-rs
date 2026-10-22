@@ -85,7 +85,7 @@ where
 
 /// A FitsChan holding the ';'-separated cards in `s`.
 fn cards(s: &str) -> FitsChan {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in list(s, ';') {
         fc.put_fits(card, false).unwrap();
     }
@@ -363,7 +363,7 @@ fn run(t: &mut FitsTable, op: &str) -> (String, Option<AstError>) {
 fn fitstables_match_c() {
     let mut failed = Vec::new();
     for &(name, ops, want) in cases::CASES {
-        let mut t = FitsTable::new();
+        let mut t = FitsTable::new().unwrap();
         let mut out = String::new();
         for op in ops {
             out.push_str(&format!("> {op}\n"));

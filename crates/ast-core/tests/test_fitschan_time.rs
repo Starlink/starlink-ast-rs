@@ -83,7 +83,7 @@ fn read_top_frame(text: &str) -> ast_core::frames::DynFrame {
 fn read_top_frame_native_dump(text: &str) -> String {
     let mut fc = FitsChan::from_header(text).unwrap();
     let obj = fc.read().unwrap().expect("read should produce a FrameSet");
-    let mut out_fc = FitsChan::new();
+    let mut out_fc = FitsChan::new().unwrap();
     out_fc.set_encoding(Encoding::Native);
     out_fc.write(&obj).expect("native write should succeed");
     out_fc.to_header().unwrap()

@@ -23,7 +23,7 @@ use ast_core::{Channel, FitsChan};
 
 /// The transcript the port gives for `header`.
 fn transcript(header: &[&str]) -> String {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in header {
         fc.put_fits(card, false).unwrap();
     }

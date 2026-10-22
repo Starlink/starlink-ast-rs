@@ -76,7 +76,7 @@ fn matches(name: &str, out: &str, want: &str) -> bool {
 /// The transcripts of a case, the port's and C's, with any licensed
 /// `IsSimp` card removed from C's.
 fn transcripts(name: &str, ops: &[&str], want: &str) -> (String, String) {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     let mut held = Held::new();
     let log = Arc::new(Mutex::new(String::new()));
     let mut out = String::new();
@@ -135,7 +135,7 @@ fn run(
             let i = match held.iter().position(|(name, _)| name == ext) {
                 Some(i) => i,
                 None => {
-                    held.push((ext.to_string(), FitsTable::new()));
+                    held.push((ext.to_string(), FitsTable::new().unwrap()));
                     held.len() - 1
                 }
             };

@@ -20,6 +20,7 @@ pub(crate) mod fits_store;
 pub mod format;
 pub(crate) mod fset_to_store;
 pub(crate) mod guess_encoding;
+mod options;
 pub(crate) mod source_sink;
 pub(crate) mod spec_trans;
 pub(crate) mod warning;
@@ -531,15 +532,52 @@ pub struct FitsChan {
 }
 
 impl FitsChan {
-    /// Create an empty FitsChan, with no attribute set.
+    /// Create an empty FitsChan, with the attribute settings in the
+    /// `FITSCHAN_OPTIONS` environment variable, if any.
     ///
-    /// Attributes are set with their setters, a source of cards with
+    /// The variable holds attribute settings separated by commas, such as
+    /// `Encoding=FITS-WCS, FitsDigits=-15`, applied in turn to every new
+    /// FitsChan, so that a program can be given its defaults without being
+    /// changed.
+    /// A setting is the attribute's name, in any case, then `=` and the
+    /// value, which is taken exactly as written after the `=`.
+    /// A string value may be enclosed in double quotes, inside which a
+    /// comma does not end the setting.
+    /// The variable is read when a thread makes its first FitsChan, and the
+    /// value then is used for every FitsChan the thread makes.
+    ///
+    /// Further attributes are set with their setters, a source of cards with
     /// [`set_source`](Self::set_source) and a sink for them with
     /// [`set_sink`](Self::set_sink).
     /// With the [Encoding](Self::encoding) unset, the encoding is chosen
     /// from the cards when it is needed: `NATIVE` while there are none.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::Badat`] if `FITSCHAN_OPTIONS` names an attribute a
+    ///   FitsChan does not have, or gives an Encoding or AltAxes value that
+    ///   is not one of its names.
+    /// - [`ErrorCode::Nowrt`] if it sets a read-only attribute.
+    /// - The error of the setter a setting is given to, such as
+    ///   [`set_warning_conditions`](Self::set_warning_conditions) for an
+    ///   unknown condition.
+    ///
+    /// [`ErrorCode::Badat`]: crate::error::ErrorCode::Badat
+    /// [`ErrorCode::Nowrt`]: crate::error::ErrorCode::Nowrt
+    // C: astFitsChan applies the variable through astEnvSet before its own
+    // options, which the Rust API sets through the typed setters.
     #[doc(alias = "astFitsChan")]
-    pub fn new() -> Self {
+    pub fn new() -> AstResult<Self> {
+        let mut fc = Self::bare();
+        if let Some(settings) = options::env_options() {
+            options::apply(&mut fc, &settings)?;
+        }
+        Ok(fc)
+    }
+
+    /// An empty FitsChan with no attribute set, ignoring
+    /// `FITSCHAN_OPTIONS`, as C's loader and copy make one.
+    pub(crate) fn bare() -> Self {
         Self {
             config: ChannelConfig::fitschan(),
             cards: CardList::new(),
@@ -577,50 +615,43 @@ impl FitsChan {
 
     /// Create a FitsChan from FITS header text, with the first card current.
     ///
+    /// The FitsChan is made by [`new`](Self::new), so it has the attribute
+    /// settings in `FITSCHAN_OPTIONS`, and the cards are then stored.
     /// The text is split into lines and each is parsed as a FITS card.
     /// An `END` card has no `=` in column 9, so it is stored as an ordinary
     /// commentary card, just like `HISTORY`, `COMMENT` or a blank keyword.
     /// A line that cannot be read as a card, one whose keyword name (its
     /// first 8 characters) holds an `=` before any other illegal character,
-    /// is left out, so this does not fail.
+    /// is left out.
     /// The warnings for illegal keyword names and values are stored as
     /// [`put_fits`](Self::put_fits) stores them.
+    ///
+    /// # Errors
+    ///
+    /// - The errors of [`new`](Self::new).
+    /// - [`ErrorCode::Badin`] for a card with a warning, when
+    ///   `FITSCHAN_OPTIONS` sets [Strict](ChannelConfig::strict), as for
+    ///   [`put_fits`](Self::put_fits).
+    ///
+    /// [`ErrorCode::Badin`]: crate::error::ErrorCode::Badin
     pub fn from_header(text: &str) -> AstResult<Self> {
-        let (mut cards, warnings) = CardList::from_header_with_warnings(text)?;
-        cards.clear_card();
-        Ok(Self {
-            config: ChannelConfig::fitschan(),
-            cards,
-            encoding: None,
-            warnings,
-            intra: IntraRegistry::new(),
-            fits_digits: DEFAULT_FITS_DIGITS,
-            fits_rounding: None,
-            cd_matrix: None,
-            sip_replace: None,
-            car_lin: None,
-            fits_tol: None,
-            def_b1950: None,
-            poly_tan: None,
-            ignore_bad_alt: None,
-            warning_conditions: None,
-            alt_axes: None,
-            iwc: None,
-            fits_axis_order: None,
-            keyseq: std::collections::HashMap::new(),
-            tables: None,
-            clean: None,
-            sip_ok: None,
-            ident: None,
-            id: Default::default(),
-            tab_ok: None,
-            force_tab: None,
-            source: SourceCell::default(),
-            sink: NotCopied::default(),
-            source_file: NotCopied::default(),
-            sink_file: NotCopied::default(),
-            table_source: NotCopied::default(),
-        })
+        let mut fc = Self::new()?;
+        for line in text.lines() {
+            let Ok((card, bad_value)) = FitsCard::split(line) else {
+                continue;
+            };
+            // The cards are appended, so the warnings go in front of the
+            // end-of-file, where C's are while `astPutFits` appends.
+            fc.cards.set_position(usize::MAX);
+            fc.split_warnings(line, bad_value);
+            // The setter `PutFits` hands the card to splits its keyword name
+            // again and warns again of an illegal name; that block matches
+            // the first, so adds no cards.
+            fc.split_warnings(line, false);
+            fc.cards.push(card);
+        }
+        fc.cards.clear_card();
+        Ok(fc)
     }
 
     // -----------------------------------------------------------------------
@@ -1674,7 +1705,7 @@ impl FitsChan {
     /// ```
     /// use ast_core::fitschan::FitsChan;
     ///
-    /// let mut fc = FitsChan::new();
+    /// let mut fc = FitsChan::new().unwrap();
     /// fc.set_fits_f("CDELT1", 0.5, "Degrees per pixel", false)?;
     /// fc.set_fits_s("CTYPE1", "RA---TAN", "", false)?;
     /// // Overwrite the first card, keeping its comment.
@@ -3129,12 +3160,6 @@ impl Clone for FitsChan {
     }
 }
 
-impl Default for FitsChan {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl std::fmt::Debug for FitsChan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FitsChan")
@@ -3672,7 +3697,7 @@ mod tests {
 
     #[test]
     fn new_fitschan_is_empty() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         assert_eq!(fc.ncard().unwrap(), 0);
         // No explicit encoding set; auto-detect on an empty chan
         // returns Native per C `astGetEncoding` (fitschan.c:12603).
@@ -3693,7 +3718,7 @@ mod tests {
 
     #[test]
     fn put_fits_and_find_fits() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.put_fits("NAXIS   =                    2 / Number of axes", false)
             .unwrap();
         fc.put_fits("CRVAL1  =     266.416666666667 / Reference value", false)
@@ -3709,7 +3734,7 @@ mod tests {
 
     #[test]
     fn set_fits_f_and_get_fits_f() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_fits_f("CRVAL1", 123.456, "Test value", false)
             .unwrap();
         let val = fc.get_fits_f(Some("CRVAL1")).unwrap().unwrap();
@@ -3718,14 +3743,14 @@ mod tests {
 
     #[test]
     fn set_fits_i_and_get_fits_i() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_fits_i("NAXIS", 3, "Number of axes", false).unwrap();
         assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(3));
     }
 
     #[test]
     fn set_fits_s_and_get_fits_s() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_fits_s("CTYPE1", "RA---TAN", "Axis type", false)
             .unwrap();
         assert_eq!(
@@ -3736,7 +3761,7 @@ mod tests {
 
     #[test]
     fn set_fits_l_and_get_fits_l() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_fits_l("SIMPLE", true, "Standard FITS", false)
             .unwrap();
         assert_eq!(fc.get_fits_l(Some("SIMPLE")).unwrap(), Some(true));
@@ -3744,7 +3769,7 @@ mod tests {
 
     #[test]
     fn ncard_tracks_insertions() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         assert_eq!(fc.ncard().unwrap(), 0);
         fc.set_fits_i("A", 1, "", false).unwrap();
         assert_eq!(fc.ncard().unwrap(), 1);
@@ -3754,7 +3779,7 @@ mod tests {
 
     #[test]
     fn empty_fits_clears_all() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_fits_i("NAXIS", 2, "", false).unwrap();
         fc.set_fits_i("NAXIS1", 100, "", false).unwrap();
         assert_eq!(fc.ncard().unwrap(), 2);
@@ -3764,7 +3789,7 @@ mod tests {
 
     #[test]
     fn overwrite_replaces_existing() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_fits_i("NAXIS", 2, "Original", false).unwrap();
         // Overwriting replaces the current card.
         fc.clear_card().unwrap();
@@ -3775,14 +3800,14 @@ mod tests {
 
     #[test]
     fn encoding_accessors() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_encoding(Encoding::Native);
         assert_eq!(fc.encoding().unwrap(), Encoding::Native);
     }
 
     #[test]
     fn fits_digits_accessors() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_fits_digits(15);
         assert_eq!(fc.fits_digits(), 15);
         fc.set_fits_digits(-3);
@@ -3791,7 +3816,7 @@ mod tests {
 
     #[test]
     fn del_fits_removes_current() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_fits_i("A", 1, "", false).unwrap();
         fc.set_fits_i("B", 2, "", false).unwrap();
         fc.set_fits_i("C", 3, "", false).unwrap();
@@ -3807,7 +3832,7 @@ mod tests {
         let zm = ZoomMap::new(2, 3.5).unwrap();
         let obj = AnyObject::ZoomMap(zm);
 
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_encoding(Encoding::Native);
         fc.write(&obj).expect("write should succeed");
 
@@ -3825,7 +3850,7 @@ mod tests {
 
     #[test]
     fn set_fits_u_stores_undef() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_fits_u("BLANK", "Undefined", false).unwrap();
         let card = fc.cards.find("BLANK").unwrap();
         assert_eq!(card.value, FitsValue::Undef);
@@ -3833,7 +3858,7 @@ mod tests {
 
     #[test]
     fn set_fits_cm_stores_comment() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_fits_cm("This is a test", false).unwrap();
         assert_eq!(fc.ncard().unwrap(), 1);
         // C's astSetFitsCM stores a commentary card with a blank keyword.
@@ -3845,7 +3870,7 @@ mod tests {
 
     #[test]
     fn put_cards_multi_line() {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         // Cards of 80 characters with no separators; the last may be short.
         let cards = format!(
             "{:<80}{:<80}END",

@@ -68,7 +68,7 @@ fn headers_match_c() {
                 .unwrap(),
         ));
         fs.add_frame(FrameRef::Base, map, frame).unwrap();
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_encoding(Encoding::FitsWcs);
         let written = fc.write(&AnyObject::FrameSet(fs)).unwrap();
         assert_eq!(written as i32, ret, "{name}: value written");

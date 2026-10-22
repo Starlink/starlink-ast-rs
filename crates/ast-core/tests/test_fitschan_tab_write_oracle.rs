@@ -44,7 +44,7 @@ fn dump(obj: &AnyObject) -> String {
 
 /// The FitsChan the probe writes to: its attributes, then its cards.
 fn fitschan(attrs: &str, hdr: &str) -> FitsChan {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for setting in attrs.split(',') {
         let (name, value) = setting.split_once('=').unwrap();
         match name {

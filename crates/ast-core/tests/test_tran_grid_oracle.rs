@@ -30,7 +30,7 @@ use ndarray::array;
 /// card the port's FITS-AIPS reader needs (C counts the axes from the CRPIX
 /// cards instead) and which leaves C's results unchanged.
 fn tan() -> DynMapping {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in [
         "CTYPE1  = 'RA---TAN'",
         "CTYPE2  = 'DEC--TAN'",

@@ -282,7 +282,7 @@ fn run_case(case: &TestCase, force_comparison: bool) -> Result<(), String> {
     // the chan ensures the post-read USED flags and any cards
     // spec_trans translated *into the same chan* (RESTFREQ→RESTFRQ
     // etc.) are visible to the write path's mark/sweep logic.
-    let mut fc_out = fc_in.unwrap_or_else(FitsChan::new);
+    let mut fc_out = fc_in.unwrap_or_else(|| FitsChan::new().unwrap());
     fc_out.set_encoding(target_enc);
 
     // Apply attributes.

@@ -93,7 +93,7 @@ fn makeimage() -> (Vec<f32>, [usize; 2], FrameSet) {
             data[i + nx * j] = (dx * dx + dy * dy).sqrt() as f32;
         }
     }
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_f("CRVAL1", 35.0, " ", true).unwrap();
     fc.set_fits_f("CRVAL2", 55.0, " ", true).unwrap();
     fc.set_fits_f("CRPIX1", 50.5, " ", true).unwrap();

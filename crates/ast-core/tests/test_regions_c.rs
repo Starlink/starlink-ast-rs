@@ -1601,7 +1601,7 @@ fn read_fits_frameset(cards: &[&str]) -> ast_core::frames::FrameSet {
     use ast_core::channel::Channel;
     use ast_core::fitschan::FitsChan;
 
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in cards {
         fc.put_fits(card, false).unwrap();
     }

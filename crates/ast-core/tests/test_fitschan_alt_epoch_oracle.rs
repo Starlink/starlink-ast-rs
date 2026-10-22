@@ -48,7 +48,7 @@ const HEADER: &[&str] = &[
 /// The value the write returns and the cards written. `prim` and `alt` are
 /// the MJD epochs set on the primary and alternate Frames, or 0 for none.
 fn written(mjdobs: &str, prim: f64, alt: f64, fail: bool) -> (i32, Vec<String>) {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in HEADER {
         fc.put_fits(card, false).unwrap();
     }
@@ -75,7 +75,7 @@ fn written(mjdobs: &str, prim: f64, alt: f64, fail: bool) -> (i32, Vec<String>) 
     }
     fs.set_current(FrameRef::Index(2)).unwrap();
 
-    let mut out = FitsChan::new();
+    let mut out = FitsChan::new().unwrap();
     out.set_encoding(Encoding::FitsWcs);
     out.put_fits("NAXIS1  = 100", false).unwrap();
     out.put_fits("NAXIS2  = 100", false).unwrap();

@@ -38,7 +38,7 @@ fn written(map: MathMap, nx: i32, ny: i32) -> (i32, Vec<String>) {
     let mut fs = FrameSet::new(Box::new(grid));
     fs.add_frame(FrameRef::Base, Box::new(map), Box::new(wcs))
         .unwrap();
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::FitsWcs);
     fc.put_fits(&format!("NAXIS1  = {nx}"), false).unwrap();
     fc.put_fits(&format!("NAXIS2  = {ny}"), false).unwrap();

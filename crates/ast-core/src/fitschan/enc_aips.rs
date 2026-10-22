@@ -862,7 +862,7 @@ END";
         enc: crate::fitschan::Encoding,
     ) -> AstResult<crate::frames::FrameSet> {
         use crate::channel::Channel;
-        let mut fc = crate::fitschan::FitsChan::new();
+        let mut fc = crate::fitschan::FitsChan::new()?;
         fc.set_encoding(enc);
         for line in header.lines().filter(|l| *l != "END") {
             fc.put_fits(line, false)?;

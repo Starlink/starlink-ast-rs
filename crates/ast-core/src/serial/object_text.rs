@@ -477,7 +477,10 @@ mod tests {
                 ),
             ),
             ("Table", AnyObject::Table(Box::default())),
-            ("FitsTable", AnyObject::FitsTable(Box::default())),
+            (
+                "FitsTable",
+                AnyObject::FitsTable(Box::new(crate::fitstable::FitsTable::new().unwrap())),
+            ),
             ("NativeChannel", AnyObject::NativeChannel(Box::default())),
             ("MocChan", AnyObject::MocChan(Box::default())),
         ]

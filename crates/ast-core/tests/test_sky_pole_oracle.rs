@@ -46,7 +46,7 @@ fn written(proj: &str, extra: &str) -> Option<(Option<f64>, Option<f64>)> {
     let mut fc = FitsChan::from_header(&header(proj, extra)).ok()?;
     fc.set_encoding(Encoding::FitsWcs);
     let obj = fc.read().ok()??;
-    let mut out = FitsChan::new();
+    let mut out = FitsChan::new().unwrap();
     out.set_encoding(Encoding::FitsWcs);
     out.write(&obj).ok()?;
     Some((

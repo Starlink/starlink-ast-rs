@@ -222,7 +222,7 @@ fn scan_int(s: &str) -> Option<(i64, usize)> {
 /// ```
 /// use ast_core::{AstType, ColumnData, FitsTable};
 ///
-/// let mut table = FitsTable::new();
+/// let mut table = FitsTable::new().unwrap();
 /// table.add_column("Flux", AstType::Double, &[], "Jy")?;
 /// table.add_column("Flag", AstType::Int, &[], "")?;
 /// table.put_column_data("FLUX", &ColumnData::Double(vec![1.5, 2.5, 3.5]))?;
@@ -249,26 +249,24 @@ pub struct FitsTable {
     header: FitsChan,
 }
 
-impl Default for FitsTable {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl FitsTable {
     /// Creates an empty FitsTable, with no columns and an empty header.
     ///
     /// [`from_header`](Self::from_header) creates one with the columns a
     /// FITS header describes.
-    // astFitsTable with a NULL header.
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`FitsChan::new`], which makes the header.
+    // astFitsTable with a NULL header; its header is made by astFitsChan.
     #[doc(alias = "astFitsTable")]
-    pub fn new() -> Self {
+    pub fn new() -> AstResult<Self> {
         let mut table = Table::new();
         table.set_class("FitsTable");
-        FitsTable {
+        Ok(FitsTable {
             table,
-            header: FitsChan::new(),
-        }
+            header: FitsChan::new()?,
+        })
     }
 
     /// Creates a FitsTable with an empty column for each column of the FITS
@@ -304,7 +302,7 @@ impl FitsTable {
     // astFitsTable with a header.
     #[doc(alias = "astFitsTable")]
     pub fn from_header(header: &mut FitsChan) -> AstResult<Self> {
-        let mut new = Self::new();
+        let mut new = Self::new()?;
         new.generate_columns(header)?;
         new.put_table_header(header)?;
         Ok(new)

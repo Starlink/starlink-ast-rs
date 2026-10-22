@@ -49,7 +49,7 @@ fn written(nprim: usize, nalt: usize) -> (i32, Vec<String>) {
         .unwrap();
     fs.set_current(FrameRef::Index(2)).unwrap();
 
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::FitsWcs);
     fc.put_fits("NAXIS   = 3", false).unwrap();
     let ret = fc.write(&AnyObject::FrameSet(fs)).map_or(0, |n| n as i32);

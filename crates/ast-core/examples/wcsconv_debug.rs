@@ -112,7 +112,7 @@ fn main() {
         other => panic!("unknown encoding {other}"),
     };
 
-    let mut fc_out = fc_in_opt.unwrap_or_default();
+    let mut fc_out = fc_in_opt.unwrap_or_else(|| FitsChan::new().unwrap());
     fc_out.set_encoding(enc);
     fc_out.set_fits_digits(8);
     for kv in attrs.split(',') {

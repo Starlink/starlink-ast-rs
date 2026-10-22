@@ -53,7 +53,7 @@ enum Rt {
 /// the two FrameSets' world coordinates at pixel offsets 50, 50.5, 51, 55
 /// and 45 on every axis, to `tol` absolute or relative.
 fn roundtrip(fs: &FrameSet, encoding: Encoding, tol: f64, expect: (&str, &str)) -> Rt {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(encoding);
     if fc.write(&AnyObject::FrameSet(fs.clone())).unwrap_or(0) != 1 {
         return Rt::Failed;
@@ -130,7 +130,7 @@ const TAN_CARDS: [&str; 9] = [
 /// 7777-7778: GetFitsK with no keyword reads the card at the cursor.
 #[test]
 fn get_fits_k_at_the_cursor() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     put(&mut fc, &TAN_CARDS);
     fc.set_card(2).unwrap();
     assert_eq!(fc.get_fits_k(None).unwrap(), Some(45), "Error 7777-7778");
@@ -140,7 +140,7 @@ fn get_fits_k_at_the_cursor() {
 /// as FITS-WCS.
 #[test]
 fn sip_header_does_not_write_as_fits_wcs() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_sip_ok(false);
     fc.set_source_file(fixture("wcsconv/inputs/sip.head").to_str().unwrap())
         .unwrap();
@@ -157,7 +157,7 @@ fn sip_header_does_not_write_as_fits_wcs() {
 fn alternate_axes_with_a_bad_set() {
     let alt = fixture("programs/testfitschan/alt.header");
     let alt = alt.to_str().unwrap();
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_clean(false);
     assert!(!fc.ignore_bad_alt(), "Error 14");
     fc.set_source_file(alt).unwrap();
@@ -182,7 +182,7 @@ fn alternate_axes_with_a_bad_set() {
 /// 115-117, 133-135: ForceTab and TabOK are set, read back and cleared.
 #[test]
 fn force_tab_and_tab_ok_set_and_clear() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_force_tab(1);
     assert!(fc.test_force_tab(), "Error 115");
     assert_eq!(fc.force_tab(), 1, "Error 116");
@@ -198,7 +198,7 @@ fn force_tab_and_tab_ok_set_and_clear() {
 /// 313: ShowFits succeeds.
 #[test]
 fn show_fits_succeeds() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     put(&mut fc, &TAN_CARDS);
     fc.clear_card().unwrap();
     fc.show_fits().expect("Error 313");
@@ -208,7 +208,7 @@ fn show_fits_succeeds() {
 /// AZEL, writes `AZ---TAN` as FITS-WCS and reads back.
 #[test]
 fn azel_writes_as_fits_wcs() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     put(
         &mut fc,
         &[
@@ -338,7 +338,7 @@ fn non_linear_spectral_writes() {
 /// 804-805: a bad floating-point value reads back as the string `<bad>`.
 #[test]
 fn bad_float_reads_as_the_bad_string() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_f("BADFLT", ast_core::constants::BAD_VALUE, "bad float", false)
         .unwrap();
     fc.clear_card().unwrap();
@@ -352,7 +352,7 @@ fn bad_float_reads_as_the_bad_string() {
 /// 836: an FK5 header remapped to Supergalactic writes `SLON` as FITS-WCS.
 #[test]
 fn supergalactic_writes_slon() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     put(
         &mut fc,
         &[
@@ -386,7 +386,7 @@ fn supergalactic_writes_slon() {
     .unwrap();
     set_sky_system(&mut fs, SkySystem::Supergalactic);
 
-    let mut wfc = FitsChan::new();
+    let mut wfc = FitsChan::new().unwrap();
     wfc.set_encoding(Encoding::FitsWcs);
     put(
         &mut wfc,
@@ -408,7 +408,7 @@ fn supergalactic_writes_slon() {
 /// Encoding and Clean test as set.
 #[test]
 fn encoding_and_clean_set_and_test() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for name in [
         "FITS-WCS",
         "FITS-PC",
@@ -446,7 +446,7 @@ fn failed_read_retains_cards() {
         "CTYPE2  = 'DEC--TAN'",
     ];
     for (clean, ctype2_kept, errs) in [(false, true, (4, 6, 7)), (true, false, (8, 10, 11))] {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         fc.set_clean(clean);
         put(&mut fc, &cards);
         fc.clear_card().unwrap();
@@ -495,7 +495,7 @@ fn sky_systems_through_five_encodings() {
     ];
     for (is, (sys, ctype)) in systems.iter().enumerate() {
         for (ie, &enc) in encodings.iter().enumerate() {
-            let mut fc = FitsChan::new();
+            let mut fc = FitsChan::new().unwrap();
             put(
                 &mut fc,
                 &[
@@ -619,7 +619,7 @@ fn log_spectral_axis_writes_freq_log() {
     fs.add_frame(FrameRef::Base, Box::new(logmap), Box::new(spec))
         .unwrap();
 
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::FitsWcs);
     put(&mut fc, &["NAXIS   = 1", "NAXIS1  = 1024"]);
     assert_eq!(
@@ -646,7 +646,7 @@ fn log_spectral_axis_writes_freq_log() {
 // C's values, to the digits of its header cards.
 #[allow(clippy::excessive_precision)]
 fn date_and_observatory_write_back() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     put(
         &mut fc,
         &[
@@ -674,7 +674,7 @@ fn date_and_observatory_write_back() {
         ],
     );
     let fs = read_fs(&mut fc);
-    let mut wfc = FitsChan::new();
+    let mut wfc = FitsChan::new().unwrap();
     wfc.set_encoding(Encoding::FitsWcs);
     assert_eq!(wfc.write(&AnyObject::FrameSet(fs)).unwrap(), 1, "Error 651");
     for (key, want, tol, err) in [
@@ -699,7 +699,7 @@ fn date_and_observatory_write_back() {
 /// 740-747: string values read as logicals.
 #[test]
 fn strings_read_as_logicals() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     let cases = [
         ("STRT", "T", true),
         ("STRY", "Y", true),
@@ -730,7 +730,7 @@ fn strings_read_as_logicals() {
 /// cursor, which each Get leaves on the card it found.
 #[test]
 fn put_fits_overwrites_each_type() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.put_fits("KTEST   = 9999999999 / original", true)
         .unwrap();
     fc.clear_card().unwrap();
@@ -812,7 +812,7 @@ fn every_timesys_reads() {
         .iter()
         .enumerate()
     {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         put(
             &mut fc,
             &[

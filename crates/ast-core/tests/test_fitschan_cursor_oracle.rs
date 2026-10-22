@@ -564,7 +564,7 @@ const NATIVE_WHOLE: &str = "FitsChan NATIVE read parses the whole description at
 /// The transcript the port gives for a case's operations.
 fn transcript(ops: &[&str]) -> String {
     let mut h = Harness::default();
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     let mut ops = ops;
     if let Some(src) = ops[0].strip_prefix("NEW|") {
         fc.set_source(Box::new(ScriptSource(src.to_string())));

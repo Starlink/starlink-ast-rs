@@ -57,7 +57,7 @@ fn read_frameset(header: &str) -> ast_core::AnyObject {
 
 /// Write an AnyObject to a new FitsChan with FitsWcs encoding, returning it.
 fn write_to_fitschan(obj: &ast_core::AnyObject) -> FitsChan {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::FitsWcs);
     fc.write(obj).expect("write should succeed");
     fc
@@ -377,7 +377,7 @@ PV1_2   =                  0.0
 END";
     let obj = read_frameset(header);
 
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::FitsWcs);
     fc.put_fits("NAXIS   =                    1", false)
         .unwrap();
@@ -471,7 +471,7 @@ fn read_lsst2_frameset() -> ast_core::AnyObject {
 
 /// A FitsChan carrying a 1000x1000 image size, so the pixel box is known.
 fn chan_with_dims(tol: Option<f64>) -> FitsChan {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::FitsWcs);
     if let Some(tol) = tol {
         fc.set_fits_tol(tol);
@@ -648,7 +648,7 @@ fn a_frameset_whose_mapping_has_no_inverse_writes_nothing() {
     )
     .unwrap();
 
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::FitsWcs);
     fc.put_fits("NAXIS1  =                  100", false)
         .unwrap();
@@ -791,7 +791,7 @@ RADESYS = 'ICRS'
     )
     .unwrap();
 
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::FitsWcs);
     fc.set_cd_matrix(true);
     fc.put_fits("NAXIS1  =                 4000", false)

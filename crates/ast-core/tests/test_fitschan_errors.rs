@@ -76,7 +76,7 @@ fn set_attrs(fc: &mut FitsChan, attrs: &str) -> ast_core::error::AstResult<()> {
 
 /// C's `test_bad_header`; returns a description of the first mismatch.
 fn check_case(t: &BadHeaderTest) -> Result<(), String> {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     if let Some(cat) = t.warn_cat {
         fc.set_warning_conditions(cat).map_err(|e| e.to_string())?;
     }
@@ -138,7 +138,7 @@ fn check_case(t: &BadHeaderTest) -> Result<(), String> {
     }
 
     if let (Some(enc), Ok(Some(obj))) = (t.write_enc, read) {
-        let mut wfc = FitsChan::new();
+        let mut wfc = FitsChan::new().unwrap();
         wfc.set_encoding(Encoding::from_name(enc).expect("a known encoding"));
         let nw = wfc.write(&obj).map_err(|e| e.to_string())?;
         if nw != 0 {

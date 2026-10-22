@@ -259,7 +259,7 @@ impl Serializable for FitsChan {
     /// stores as read; then the cards, up to the first with no type; then
     /// any tables.
     fn from_node(node: &Node) -> AstResult<Self> {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::bare();
         (fc.id, fc.ident) = base::read_parts(node, &mut fc.config);
         let part = node.section("FitsChan");
 

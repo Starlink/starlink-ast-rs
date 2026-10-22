@@ -38,7 +38,7 @@ fn run(enc: &str, sip_ok: &str) -> String {
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/wcsconv/inputs/sip.head"
     );
-    let mut fin = FitsChan::new();
+    let mut fin = FitsChan::new().unwrap();
     fin.set_sip_replace(false);
     for line in std::fs::read_to_string(path).unwrap().lines() {
         fin.put_fits(line, false).unwrap();
@@ -46,7 +46,7 @@ fn run(enc: &str, sip_ok: &str) -> String {
     fin.clear_card().unwrap();
     let obj = fin.read().unwrap().expect("sip.head holds a FrameSet");
 
-    let mut out = FitsChan::new();
+    let mut out = FitsChan::new().unwrap();
     out.set_encoding(encoding(enc));
     match sip_ok {
         "unset" => {}
@@ -101,7 +101,7 @@ fn excluded_encodings_still_differ() {
 
 #[test]
 fn sip_ok_accessors() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     assert!(fc.sip_ok());
     assert!(!fc.test_sip_ok());
     fc.set_sip_ok(false);

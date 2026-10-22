@@ -273,7 +273,7 @@ fn report_level_zero_keeps_astwarn_cards_but_records_no_warnings() {
     // with ReportLevel 0 or -1 no warnings (`astWarnings` returns NULL) but
     // the same four cards; ReportLevel 2 gives the default's.
     let count = |report_level: Option<i32>| {
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new().unwrap();
         if let Some(level) = report_level {
             fc.config_mut().set_report_level(level);
         }

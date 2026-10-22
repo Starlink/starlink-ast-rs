@@ -1703,7 +1703,7 @@ impl Moc {
         let mtype = self.moc_type()?;
         let moclen = self.moc_length()?;
         let maxorder = self.max_order();
-        let mut fc = FitsChan::new();
+        let mut fc = FitsChan::new()?;
         fc.set_fits_s(
             "XTENSION",
             "BINTABLE",

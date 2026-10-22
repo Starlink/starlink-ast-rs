@@ -155,7 +155,7 @@ fn object(name: &str) -> AnyObject {
 }
 
 fn fitschan(f: impl FnOnce(&mut FitsChan)) -> AnyObject {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     f(&mut fc);
     AnyObject::FitsChan(Box::new(fc))
 }
@@ -163,7 +163,7 @@ fn fitschan(f: impl FnOnce(&mut FitsChan)) -> AnyObject {
 /// The FitsChan the `fitschan_guessed_encoding` and `fitschan_used` cases
 /// start from: a FITS-WCS header whose CRVAL2 card is retained.
 fn wcs_header() -> FitsChan {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     for card in [
         "NAXIS   =                    2",
         "CTYPE1  = 'RA---TAN'",
@@ -258,7 +258,7 @@ fn a_channel_read_from_a_dump_has_no_source() {
 
 #[test]
 fn a_dump_leaves_the_source_cards_in_the_fitschan() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_source(Box::new(StringSource::new(SOURCE)));
     let obj = AnyObject::FitsChan(Box::new(fc));
     let first = native_dump(&obj).unwrap();
@@ -271,7 +271,7 @@ fn a_dump_leaves_the_source_cards_in_the_fitschan() {
 
 #[test]
 fn a_keymap_holding_a_fitschan_round_trips() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.put_fits("A       =                    1", false)
         .unwrap();
     let mut km = ast_core::KeyMap::new();

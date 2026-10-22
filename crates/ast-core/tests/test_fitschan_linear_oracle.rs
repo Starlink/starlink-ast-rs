@@ -25,7 +25,7 @@ fn written(fwd: &str, inv: &str, naxis1: i32) -> (i32, Vec<String>) {
     let mut fs = FrameSet::new(Box::new(grid));
     fs.add_frame(FrameRef::Base, Box::new(map), Box::new(wcs))
         .unwrap();
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::FitsWcs);
     fc.put_fits(&format!("NAXIS1  = {naxis1}"), false).unwrap();
     let ret = fc.write(&AnyObject::FrameSet(fs)).map_or(0, |n| n as i32);

@@ -253,7 +253,10 @@ pub(crate) fn is_map_tab_1d(
             crate::mappings::LutInterp::Nearest => 1,
         };
 
-        let table = table.get_or_insert_with(FitsTable::new);
+        if table.is_none() {
+            *table = Some(FitsTable::new()?);
+        }
+        let table = table.as_mut().expect("just made");
         table.add_column(&colname, AstType::Double, &[1, nlut], &unit)?;
         let icolmain = table.as_table().ncolumn();
 
@@ -290,7 +293,10 @@ pub(crate) fn is_map_tab_1d(
         )?;
         let nlut = work1.len();
 
-        let table = table.get_or_insert_with(FitsTable::new);
+        if table.is_none() {
+            *table = Some(FitsTable::new()?);
+        }
+        let table = table.as_mut().expect("just made");
         table.add_column(&colname, AstType::Double, &[1, nlut], &unit)?;
         let icolmain = table.as_table().ncolumn();
         let coords: Vec<f64> = work2.iter().map(|v| v * scale).collect();

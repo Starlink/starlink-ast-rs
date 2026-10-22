@@ -128,7 +128,7 @@ fn get_fits_typed_values() {
 
 #[test]
 fn put_fits_find_fits_round_trip() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
 
     // Put a card using an 80-char format.
     let card = "TESTKEY =                   42 / A test integer keyword                          ";
@@ -153,14 +153,14 @@ fn put_fits_find_fits_round_trip() {
 
 #[test]
 fn set_get_round_trip_integer() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_i("NAXIS", 4, "Number of axes", false).unwrap();
     assert_eq!(fc.get_fits_i(Some("NAXIS")).unwrap(), Some(4));
 }
 
 #[test]
 fn set_get_round_trip_float() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_f("CRVAL1", 123.456789012345, "Reference value", false)
         .unwrap();
     let val = fc.get_fits_f(Some("CRVAL1")).unwrap().unwrap();
@@ -172,7 +172,7 @@ fn set_get_round_trip_float() {
 
 #[test]
 fn set_get_round_trip_string() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_s("CTYPE1", "RA---TAN-SIP", "Axis type", false)
         .unwrap();
     assert_eq!(
@@ -183,7 +183,7 @@ fn set_get_round_trip_string() {
 
 #[test]
 fn set_get_round_trip_logical() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_l("SIMPLE", true, "Standard FITS", false)
         .unwrap();
     assert_eq!(fc.get_fits_l(Some("SIMPLE")).unwrap(), Some(true));
@@ -199,7 +199,7 @@ fn set_get_round_trip_logical() {
 
 #[test]
 fn del_fits_removes_card() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_i("ALPHA", 1, "First", false).unwrap();
     fc.set_fits_i("BETA", 2, "Second", false).unwrap();
     fc.set_fits_i("GAMMA", 3, "Third", false).unwrap();
@@ -246,7 +246,7 @@ fn empty_fits_clears_header() {
 
 #[test]
 fn find_fits_iteration_with_inc() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_i("KEY1", 10, "", false).unwrap();
     fc.set_fits_i("KEY2", 20, "", false).unwrap();
     fc.set_fits_i("KEY3", 30, "", false).unwrap();
@@ -276,7 +276,7 @@ fn find_fits_iteration_with_inc() {
 
 #[test]
 fn find_fits_searches_forward_only() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_i("FIRST", 1, "", false).unwrap();
     fc.set_fits_i("SECOND", 2, "", false).unwrap();
     fc.set_fits_i("THIRD", 3, "", false).unwrap();
@@ -301,7 +301,7 @@ fn native_round_trip_zoommap() {
     let obj = AnyObject::ZoomMap(zm);
 
     // Write through FitsChan with Native encoding.
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::Native);
     fc.write(&obj).expect("write should succeed");
 
@@ -343,7 +343,7 @@ fn native_round_trip_skyframe() {
     let obj = AnyObject::SkyFrame(sky);
 
     // Write through FitsChan.
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::Native);
     fc.write(&obj).expect("write SkyFrame should succeed");
     assert!(fc.ncard().unwrap() > 0);
@@ -377,13 +377,13 @@ fn native_round_trip_skyframe() {
 fn encoding_default_for_empty_chan_is_native() {
     // Mirrors C `astGetEncoding` (fitschan.c:12603): when none of the
     // recognised WCS keywords are present, Native encoding is assumed.
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     assert_eq!(fc.encoding().unwrap(), Encoding::Native);
 }
 
 #[test]
 fn encoding_set_and_get() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
 
     fc.set_encoding(Encoding::Native);
     assert_eq!(fc.encoding().unwrap(), Encoding::Native);
@@ -419,7 +419,7 @@ fn encoding_from_header_auto_detects() {
 
 #[test]
 fn fits_digits_default_and_set() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     // Default is AST__DBL_DIG (17), matching C fitschan.c:43079.
     assert_eq!(fc.fits_digits(), 17);
 
@@ -448,7 +448,7 @@ fn fits_digits_default_and_set() {
 
 #[test]
 fn overwrite_true_replaces_card() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_i("NAXIS", 2, "Original", false).unwrap();
     assert_eq!(fc.ncard().unwrap(), 1);
 
@@ -462,7 +462,7 @@ fn overwrite_true_replaces_card() {
 
 #[test]
 fn overwrite_false_appends_duplicate() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_fits_i("NAXIS", 2, "First", false).unwrap();
     fc.set_fits_i("NAXIS", 3, "Second", false).unwrap();
     // Both cards stored (first occurrence wins for get).
@@ -486,7 +486,7 @@ fn native_rewind_and_reread() {
     // FitsChan returns a null Object pointer.
     let zm = ZoomMap::new(2, 3.0).unwrap();
 
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_encoding(Encoding::Native);
     fc.write(&AnyObject::ZoomMap(zm)).unwrap();
 
@@ -621,7 +621,7 @@ const ROUNDING_STEPS: &[RoundingStep] = &[
 
 #[test]
 fn fits_rounding_formats_found_cards() {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     assert_eq!(fc.fits_rounding(), 10);
     for (i, &(card, rounding, expected)) in ROUNDING_STEPS.iter().enumerate() {
         match rounding {
@@ -721,7 +721,7 @@ CD1_1   =               -0.001\n\
 CD2_2   =                0.001";
 
 fn fitschan_with_cd_source() -> FitsChan {
-    let mut fc = FitsChan::new();
+    let mut fc = FitsChan::new().unwrap();
     fc.set_source(Box::new(ast_core::StringSource::new(CD_WCS_SOURCE)));
     fc
 }
@@ -738,4 +738,66 @@ fn defaults_read_a_source_not_yet_read() {
     );
     assert!(fitschan_with_cd_source().cd_matrix().unwrap());
     assert!(!fitschan_with_cd_source().def_b1950().unwrap());
+}
+
+// ===========================================================================
+// FITSCHAN_OPTIONS
+// ===========================================================================
+
+/// The variable that tells a copy of this test program that it is the child
+/// [`fitschan_options_applies_to_every_new_fitschan`] started.
+const OPTIONS_CHILD: &str = "AST_TEST_FITSCHAN_OPTIONS_CHILD";
+
+/// Every new FitsChan takes the attribute settings in the `FITSCHAN_OPTIONS`
+/// environment variable.
+///
+/// The variable is set only for a copy of this test program that runs this
+/// test alone, so no other test in this process sees it.
+// C: astFitsChan applies the variable through astEnvSet before its own
+// options, so Encoding and FitsDigits set there are what a new FitsChan
+// gives, and a bad setting makes the constructor fail.
+#[test]
+fn fitschan_options_applies_to_every_new_fitschan() {
+    let name = "test_fitschan::fitschan_options_applies_to_every_new_fitschan";
+    match std::env::var(OPTIONS_CHILD).as_deref() {
+        Ok("good") => {
+            for _ in 0..2 {
+                let mut fc = FitsChan::new().unwrap();
+                assert_eq!(fc.encoding().unwrap(), Encoding::FitsWcs);
+                assert!(fc.test_encoding());
+                assert_eq!(fc.fits_digits(), 8);
+                assert_eq!(fc.warning_conditions(), "badval");
+            }
+            let fc = FitsChan::from_header("NAXIS   =                    2").unwrap();
+            assert_eq!(fc.fits_digits(), 8);
+        }
+        Ok("bad") => {
+            let e = FitsChan::new().unwrap_err();
+            assert_eq!(e.code(), ast_core::error::ErrorCode::Badat);
+            assert!(e.message().contains("\"bogus=1\""), "{e}");
+        }
+        Ok(other) => panic!("unknown child mode {other}"),
+        Err(_) => {
+            for (mode, options) in [
+                (
+                    "good",
+                    "Encoding=fits_wcs, FitsDigits = 8 , Warnings=\"badval\"",
+                ),
+                ("bad", "FitsDigits=8, Bogus=1"),
+            ] {
+                let out = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([name, "--exact", "--test-threads=1"])
+                    .env(OPTIONS_CHILD, mode)
+                    .env("FITSCHAN_OPTIONS", options)
+                    .output()
+                    .unwrap();
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                assert!(
+                    out.status.success() && stdout.contains("1 passed"),
+                    "{mode}: {stdout}{}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+        }
+    }
 }
