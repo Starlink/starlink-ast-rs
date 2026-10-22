@@ -397,6 +397,20 @@ impl Frame for CmpFrame {
         }
     }
 
+    /// The component holding the axis answers, because a CmpFrame's Axis is
+    /// its component's: a SkyFrame leaves a Unit that describes its axis
+    /// values, such as `"hh mm ss"`, unchanged.
+    // C: frame.c `GetNormUnit` takes the NormUnit of the Axis, or normalizes
+    // the Unit, and the CmpFrame's Axis comes from cmpframe.c `GetAxis`.
+    fn norm_unit(&self, axis: usize) -> AstResult<String> {
+        super::frame_attrs::validate_axis(axis, self.naxes())?;
+        match self.component_axis(axis) {
+            Some((1, a)) => self.frame1.norm_unit(a),
+            Some((_, a)) => self.frame2.norm_unit(a),
+            None => Ok(crate::units::norm_unit(&self.unit(axis)?)),
+        }
+    }
+
     fn apply_axis_overlay(&mut self, axis: usize, source: &super::overlay::AxisOverlaySource) {
         match self.component_axis(axis) {
             Some((1, a)) => self.frame1.apply_axis_overlay(a, source),

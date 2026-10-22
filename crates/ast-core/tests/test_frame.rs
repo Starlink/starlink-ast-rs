@@ -371,3 +371,33 @@ fn picked_sky_axis_has_an_internal_unit_of_radians() {
     assert_eq!(cmp.internal_unit(1).unwrap(), "rad");
     assert_eq!(cmp.internal_unit(2).unwrap(), "km");
 }
+
+/// A CmpFrame's NormUnit for a SkyFrame axis is the SkyFrame's own, so a
+/// Unit that describes the axis values is left as it is, as the C library
+/// leaves it.
+#[test]
+fn cmp_frame_norm_unit_keeps_a_sky_description() {
+    let cases: [(&[(&str, &str)], &str); 6] = [
+        (&[("Format", "bhms")], "hh mm ss"),
+        (&[("Format", "bdms.2")], "ddd mm ss.ss"),
+        (&[("Format", "btm")], "minutes of time"),
+        (&[("Format", "bts")], "seconds of time"),
+        (&[("Format", "bhms"), ("Unit", "hh mm ss")], "hh mm ss"),
+        (&[], "hh:mm:ss.s"),
+    ];
+    for (settings, want) in cases {
+        let mut sky = SkyFrame::new(SkySystem::Icrs);
+        for &(name, value) in settings {
+            match name {
+                "Format" => sky.set_format_str(1, value).unwrap(),
+                _ => sky.set_unit(1, value).unwrap(),
+            }
+        }
+        assert_eq!(sky.norm_unit(1).unwrap(), want, "SkyFrame {settings:?}");
+        let cmp = CmpFrame::new(
+            Box::new(sky),
+            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+        );
+        assert_eq!(cmp.norm_unit(1).unwrap(), want, "CmpFrame {settings:?}");
+    }
+}
