@@ -23,11 +23,17 @@ thread_local! {
 }
 
 /// The `FITSCHAN_OPTIONS` settings for a new FitsChan in this thread.
-// C: `astEnvSet` stores "None" for an unset variable and skips it.
+///
+/// A variable set to `None` is ignored, as C's `astEnvSet` stores that
+/// string for an unset variable and skips any value equal to it.
 pub(super) fn env_options() -> Option<String> {
     ENV_OPTIONS.with(|cell| {
-        cell.get_or_init(|| std::env::var("FITSCHAN_OPTIONS").ok())
-            .clone()
+        cell.get_or_init(|| {
+            std::env::var("FITSCHAN_OPTIONS")
+                .ok()
+                .filter(|v| v != "None")
+        })
+        .clone()
     })
 }
 
@@ -36,9 +42,13 @@ fn is_space(b: u8) -> bool {
     matches!(b, b' ' | b'\t' | b'\n' | b'\x0b' | b'\x0c' | b'\r')
 }
 
-/// C's `VSet` without the `printf` expansion, which a setting from the
-/// environment does not have: split `settings` into assignments and apply
-/// each to `fc` in turn, stopping at the first that fails.
+/// C's `VSet`: split `settings` into assignments and apply each to `fc` in
+/// turn, stopping at the first that fails.
+///
+/// C passes the variable to `astSet` as its format string, so `VSet`
+/// expands any format specifiers in it (`%%` becoming `%`, and any other
+/// `%` specifier being undefined behavior); the port takes the value as
+/// written, without that expansion.
 pub(super) fn apply(fc: &mut FitsChan, settings: &str) -> AstResult<()> {
     if settings.is_empty() {
         return Ok(());

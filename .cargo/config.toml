@@ -21,3 +21,10 @@ lint-all = "clippy --workspace --all-targets"
 # Format check without rewriting files. Same as the CI `Format check`
 # step; useful before a commit.
 fmt-check = "fmt --all -- --check"
+
+# A new FitsChan applies the attribute settings in FITSCHAN_OPTIONS, as
+# C's astFitsChan does. The tests' byte-exact results assume none, so every
+# process cargo runs sees the variable empty, whatever the developer's
+# shell holds; a test or program that wants it sets it for a child process.
+[env]
+FITSCHAN_OPTIONS = { value = "", force = true }

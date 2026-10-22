@@ -798,7 +798,8 @@ const OPTIONS_CHILD: &str = "AST_TEST_FITSCHAN_OPTIONS_CHILD";
 /// test alone, so no other test in this process sees it.
 // C: astFitsChan applies the variable through astEnvSet before its own
 // options, so Encoding and FitsDigits set there are what a new FitsChan
-// gives, and a bad setting makes the constructor fail.
+// gives, and a bad setting makes the constructor fail; a C probe with the
+// variable set to "None" makes a FitsChan with no setting.
 #[test]
 fn fitschan_options_applies_to_every_new_fitschan() {
     let name = "test_fitschan::fitschan_options_applies_to_every_new_fitschan";
@@ -819,14 +820,29 @@ fn fitschan_options_applies_to_every_new_fitschan() {
             assert_eq!(e.code(), ast_core::error::ErrorCode::Badat);
             assert!(e.message().contains("\"bogus=1\""), "{e}");
         }
+        Ok("none") => {
+            let fc = FitsChan::new().unwrap();
+            assert_eq!(fc.fits_digits(), 17);
+        }
         Ok(other) => panic!("unknown child mode {other}"),
         Err(_) => {
+            // The suite's byte-exact results assume no settings; cargo
+            // sets the variable empty for every process it runs
+            // (.cargo/config.toml).
+            assert!(
+                std::env::var("FITSCHAN_OPTIONS").is_ok_and(|v| v.is_empty())
+                    || std::env::var_os("FITSCHAN_OPTIONS").is_none(),
+                "FITSCHAN_OPTIONS is set for the test process; unset it to run the tests"
+            );
             for (mode, options) in [
                 (
                     "good",
                     "Encoding=fits_wcs, FitsDigits = 8 , Warnings=\"badval\"",
                 ),
                 ("bad", "FitsDigits=8, Bogus=1"),
+                // C's `astEnvSet` stores "None" for an unset variable, so a
+                // variable set to it is ignored.
+                ("none", "None"),
             ] {
                 let out = std::process::Command::new(std::env::current_exe().unwrap())
                     .args([name, "--exact", "--test-threads=1"])
