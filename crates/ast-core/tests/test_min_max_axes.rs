@@ -12,6 +12,7 @@
 #[path = "min_max_axes_oracle/cases.rs"]
 mod cases;
 
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{BasicFrameBuilder, CmpFrame, Frame, SkyFrame};
 
 fn make(class: &str) -> Box<dyn Frame> {

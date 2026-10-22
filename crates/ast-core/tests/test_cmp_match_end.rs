@@ -11,6 +11,7 @@
 mod cases;
 
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{BasicFrameBuilder, CmpFrame, Frame, FrameRef};
 
 /// Apply the probe's comma-separated MinAxes, MaxAxes, MatchEnd and PreserveAxes

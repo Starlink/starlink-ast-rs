@@ -13,7 +13,7 @@
 #[path = "sky_convert_oracle/cases.rs"]
 mod cases;
 
-use ast_core::frames::{Frame, FrameRef, SkyFrame, SkySystem};
+use ast_core::frames::{FrameRef, FrameSearch, SkyFrame, SkySystem};
 
 /// Cases whose AZEL result may differ from C in the last few bits.
 ///

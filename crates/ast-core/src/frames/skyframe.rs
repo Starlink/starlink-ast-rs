@@ -163,7 +163,7 @@ impl SkyFrame {
     ///
     /// Every attribute takes its default.
     /// Because the System is unset, when the SkyFrame is the template of
-    /// [`find_frame_template`](Frame::find_frame_template), the Frame found
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template), the Frame found
     /// keeps the target's System rather than taking the template's.
     /// The default System may change in future as new astrometric standards
     /// evolve, so use [`SkyFrame::new`] with [`SkySystem::Icrs`] if ICRS is
@@ -190,7 +190,7 @@ impl SkyFrame {
     /// `system`.
     ///
     /// The System is set, so as a template of
-    /// [`find_frame_template`](Frame::find_frame_template) the SkyFrame asks
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template) the SkyFrame asks
     /// for that System even when it is the default, ICRS;
     /// [`SkyFrame::unset_system`] makes one whose System is unset.
     /// Every other attribute takes its default: among them the Domain is
@@ -204,7 +204,7 @@ impl SkyFrame {
     /// The SkyFrame has two axes, longitude then latitude, whose order
     /// [`perm_axes`](Frame::perm_axes) can change.
     /// When two SkyFrames are converted with
-    /// [`convert_to`](Frame::convert_to), the conversion takes account of
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to), the conversion takes account of
     /// the celestial coordinate systems they represent, with any qualifying
     /// Equinox and Epoch, and of their
     /// [`align_system`](SkyFrame::align_system), so the result fully reflects
@@ -696,8 +696,8 @@ impl SkyFrame {
     /// AlignSystem attribute, set or default.
     ///
     /// When two SkyFrames are aligned by
-    /// [`convert_to`](Frame::convert_to) or
-    /// [`find_frame_template`](Frame::find_frame_template), positions are
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to) or
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template), positions are
     /// mapped through this system (see
     /// [`BasicFrame::align_system`](super::BasicFrame::align_system) for the
     /// general rule), unless both use their offset coordinate systems for
@@ -991,8 +991,8 @@ impl SkyFrame {
     /// system on which the offset system is based, such as the way one
     /// celestial coordinate system drifts with respect to another over time.
     /// Normally, when two SkyFrames are aligned (by
-    /// [`convert_to`](Frame::convert_to) or
-    /// [`find_frame_template`](Frame::find_frame_template)), the effect of
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to) or
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template)), the effect of
     /// any offset coordinate system in either is removed, and alignment
     /// takes place in the system given by
     /// [`align_system`](SkyFrame::align_system).
@@ -1230,8 +1230,8 @@ impl SkyFrame {
     ///
     /// Indicates the accuracy of the axis values the SkyFrame represents.
     /// It is used only when the Mapping between two different SkyFrames is
-    /// constructed (by [`convert_to`](Frame::convert_to) or
-    /// [`find_frame_template`](Frame::find_frame_template), for instance):
+    /// constructed (by [`convert_to`](crate::frames::FrameSearch::convert_to) or
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template), for instance):
     /// if the transformation between them shifts positions by less than
     /// SkyTol, it is replaced by a [`UnitMap`].
     /// This can allow major simplifications of the transformation between
@@ -1285,8 +1285,8 @@ impl SkyFrame {
     ///
     /// Controls how a SkyFrame behaves when it is used as a template to
     /// match another (target) SkyFrame, by
-    /// [`find_frame_template`](Frame::find_frame_template) or
-    /// [`convert_to`](Frame::convert_to): it decides the coordinate system
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template) or
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to): it decides the coordinate system
     /// in which the two are aligned if they match.
     /// If both have an offset coordinate system (a
     /// [`sky_ref_is`](SkyFrame::sky_ref_is) of [`SkyRefIs::Origin`] or
@@ -4027,6 +4027,7 @@ fn shapp(dist: f64, r0: &[f64; 3], r3: &[f64; 3], a0: f64) -> [f64; 2] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::frames::FrameSearch;
     use crate::mappings::Mapping;
     use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -4414,7 +4415,7 @@ mod tests {
         fk5.set_epoch_year(2000.0);
         fk5.set_sky_tol(100.0);
 
-        let fs = Frame::convert_to(&mut icrs, &mut fk5, &[])
+        let fs = FrameSearch::convert_to(&mut icrs, &mut fk5, &[])
             .unwrap()
             .unwrap();
         let map = fs
@@ -4431,7 +4432,7 @@ mod tests {
         icrs2.set_epoch_year(2000.0);
         let mut fk52 = SkyFrame::new(SkySystem::Fk5);
         fk52.set_epoch_year(2000.0);
-        let fs2 = Frame::convert_to(&mut icrs2, &mut fk52, &[])
+        let fs2 = FrameSearch::convert_to(&mut icrs2, &mut fk52, &[])
             .unwrap()
             .unwrap();
         let map2 = fs2
@@ -4563,7 +4564,7 @@ mod tests {
         // Frame for the alignment, leaving the axes unchanged. Confirmed
         // against the C oracle (ast_tester/testconvert.c errors 4/8 fire
         // if no FrameSet, 3/7 if not a UnitMap).
-        use crate::frames::{BasicFrameBuilder, Frame};
+        use crate::frames::{BasicFrameBuilder, FrameSearch};
         let mut sky = SkyFrame::new(SkySystem::Fk5);
         let mut basic = BasicFrameBuilder::new(2).build().unwrap();
 

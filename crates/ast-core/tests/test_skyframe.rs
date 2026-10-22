@@ -13,6 +13,7 @@ use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     BasicFrameBuilder, Frame, FrameRef, FrameSet, SkyFrame, SkyRefIs, SkySystem,
 };
@@ -1346,7 +1347,7 @@ fn galactic_north_pole_in_fk5() {
 /// library's for the same calls.
 #[test]
 fn an_icrs_template_converts_as_the_c_library_does() {
-    use ast_core::frames::{Frame, FrameRef};
+    use ast_core::frames::{FrameRef, FrameSearch};
     let mut target = SkyFrame::new(SkySystem::Galactic);
     for (template, system, want) in [
         (

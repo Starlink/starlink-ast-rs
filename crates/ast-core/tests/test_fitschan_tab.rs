@@ -11,6 +11,7 @@
 
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     BasicFrameBuilder, Frame, FrameRef, FrameSet, SkyFrame, SpecFrame, SpecSystem,
 };

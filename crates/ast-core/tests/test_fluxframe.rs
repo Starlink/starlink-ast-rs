@@ -7,6 +7,7 @@
 use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{FluxFrame, FluxSystem, Frame, SpecFluxFrame, SpecFrame, SpecSystem};
 use ast_core::{AnyObject, from_native_string};
 
@@ -759,7 +760,7 @@ mod unit_system {
 
     use super::flux_unit_system_cases as cases;
     use ast_core::coords::PointSet;
-    use ast_core::frames::{FluxFrame, FluxSystem, Frame, FrameRef};
+    use ast_core::frames::{FluxFrame, FluxSystem, Frame, FrameRef, FrameSearch};
 
     #[test]
     fn system_from_unit_matches_the_c_library() {

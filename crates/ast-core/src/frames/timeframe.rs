@@ -347,14 +347,14 @@ impl TimeFrame {
     /// Every other attribute has its default: the TimeScale is TT for a
     /// Besselian epoch and TAI otherwise, and the TimeOrigin is zero.
     /// When two TimeFrames are converted with
-    /// [`convert_to`](Frame::convert_to), account is taken of the time
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to), account is taken of the time
     /// systems, time scales, offsets and units they represent, and of the
     /// AlignSystem and [`align_timescale`](TimeFrame::align_timescale).
     ///
     /// # Examples
     ///
     /// ```
-    /// use ast_core::frames::{Frame, TimeFrame, TimeScale, TimeSystem};
+    /// use ast_core::frames::{Frame, FrameSearch, TimeFrame, TimeScale, TimeSystem};
     /// use ast_core::mappings::Mapping;
     ///
     /// let mut mjd = TimeFrame::new(TimeSystem::Mjd);
@@ -709,8 +709,8 @@ impl TimeFrame {
     /// attribute, set or default.
     ///
     /// Controls how a TimeFrame behaves as the template of
-    /// [`find_frame_template`](Frame::find_frame_template) or
-    /// [`convert_to`](Frame::convert_to) when matched against another
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template) or
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to) when matched against another
     /// TimeFrame.
     /// The Mapping found between two TimeFrames is made of these steps, in
     /// order:

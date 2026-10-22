@@ -10,6 +10,7 @@
 use crate::common::native_dump;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{Frame, FrameSet, SpecFrame, SpecSystem, StdOfRest};
 use ast_core::mappings::Mapping;
 use ast_core::{AnyObject, from_native_string};
@@ -639,7 +640,7 @@ fn convert_applies_spec_origins() {
     f1.set_spec_origin(10.0);
     let mut f2 = vrad_lsrk();
     f2.set_spec_origin(25.0);
-    let fs = Frame::convert_to(&mut f1, &mut f2, &[])
+    let fs = FrameSearch::convert_to(&mut f1, &mut f2, &[])
         .unwrap()
         .expect("conversion");
     let pts = PointSet::from_columns(&[&[5.0_f64]]).unwrap();
@@ -656,7 +657,7 @@ fn convert_offset_to_absolute_applies_origin() {
     let mut f1 = vrad_lsrk();
     f1.set_spec_origin(10.0);
     let mut f2 = vrad_lsrk();
-    let fs = Frame::convert_to(&mut f1, &mut f2, &[])
+    let fs = FrameSearch::convert_to(&mut f1, &mut f2, &[])
         .unwrap()
         .expect("conversion");
     let pts = PointSet::from_columns(&[&[5.0_f64]]).unwrap();
@@ -678,7 +679,7 @@ fn align_spec_offset_aligns_offset_values() {
     let mut f2 = vrad_lsrk();
     f2.set_spec_origin(25.0);
     f2.set_align_spec_offset(true);
-    let fs = Frame::convert_to(&mut f1, &mut f2, &[])
+    let fs = FrameSearch::convert_to(&mut f1, &mut f2, &[])
         .unwrap()
         .expect("conversion");
     let pts = PointSet::from_columns(&[&[5.0_f64]]).unwrap();

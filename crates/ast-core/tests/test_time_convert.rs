@@ -16,6 +16,7 @@
 mod cases;
 
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{Frame, FrameRef, TimeFrame, TimeScale, TimeSystem};
 
 fn scale(name: &str) -> TimeScale {

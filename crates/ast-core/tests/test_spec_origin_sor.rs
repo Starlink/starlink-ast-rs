@@ -18,6 +18,7 @@ mod cases;
 
 use ast_core::coords::PointSet;
 use ast_core::error::{AstResult, ErrorCode};
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{DSBSpecFrame, Frame, FrameRef, SideBand, SpecFrame, SpecSystem, StdOfRest};
 
 /// The probe's Frame, as a SpecFrame or a DSBSpecFrame.

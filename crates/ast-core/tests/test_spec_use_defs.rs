@@ -16,6 +16,7 @@ mod cases;
 
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     DSBSpecFrame, DynFrame, Frame, FrameRef, SideBand, SpecFrame, SpecSystem, StdOfRest, TimeFrame,
     TimeScale, TimeSystem, pick_axes,

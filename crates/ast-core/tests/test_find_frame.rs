@@ -2,13 +2,14 @@
 //! templates.
 //!
 //! These cases exercise the default `find_frame_template` path
-//! (`Frame::find_frame_template` → `default_find_frame` →
+//! (`FrameSearch::find_frame_template` → `default_find_frame` →
 //! `Frame::match_template` → `Frame::sub_frame`) without involving
 //! FrameSet or CmpFrame. They focus on the domain-list filter and on
 //! the `Domain` attribute interaction with template matching, both of
 //! which are documented in C `astFindFrame` (frame.c:3735) and
 //! `Frame::Match` (frame.c:7073).
 
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{BasicFrame, BasicFrameBuilder, Frame};
 
 fn bf(naxes: usize) -> BasicFrame {

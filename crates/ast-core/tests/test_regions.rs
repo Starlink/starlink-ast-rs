@@ -14,6 +14,7 @@ use ast_core::channel::Channel;
 use ast_core::constants::BAD_VALUE;
 use ast_core::coords::PointSet;
 use ast_core::fitschan::FitsChan;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     BasicFrameBuilder, Frame, FrameRef, FrameSet, SkyFrame, SkySystem, pick_axes,
 };

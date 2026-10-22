@@ -129,7 +129,7 @@ pub(crate) struct ConvertRoute {
 }
 
 /// C's `astConvert` from `from` to `to` without its side effect on a
-/// FrameSet argument; [`Frame::convert_to`] applies that.
+/// FrameSet argument; [`FrameSearch::convert_to`](crate::frames::FrameSearch::convert_to) applies that.
 ///
 /// frameset.c overrides `Convert` and `ConvertX`, so the FrameSet search
 /// runs whenever either argument is a FrameSet; a Region `from` takes part as
@@ -163,7 +163,7 @@ pub(crate) fn convert_route(
     )
 }
 
-/// [`Frame::convert_to`] for Frames held by shared reference: the same
+/// [`FrameSearch::convert_to`](crate::frames::FrameSearch::convert_to) for Frames held by shared reference: the same
 /// conversion, leaving the Base of a FrameSet argument unchanged.
 pub(crate) fn convert(
     from: &dyn Frame,
@@ -175,7 +175,7 @@ pub(crate) fn convert(
 
 /// C's `astFindFrame` without its side effect on a FrameSet target: the
 /// result, and the 1-based index of the target Frame matched (1 for a target
-/// that is not a FrameSet). [`Frame::find_frame_template`] applies the side
+/// that is not a FrameSet). [`FrameSearch::find_frame_template`](crate::frames::FrameSearch::find_frame_template) applies the side
 /// effect.
 pub(crate) fn find_frame_route(
     target: &dyn Frame,
@@ -194,7 +194,7 @@ pub(crate) fn find_frame_route(
     Ok(default_find_frame(target, template, domainlist)?.map(|r| (r, 1)))
 }
 
-/// [`Frame::find_frame_template`] for a target held by shared reference: the
+/// [`FrameSearch::find_frame_template`](crate::frames::FrameSearch::find_frame_template) for a target held by shared reference: the
 /// same search, leaving the Current of a FrameSet target unchanged.
 pub(crate) fn find_frame(
     target: &dyn Frame,

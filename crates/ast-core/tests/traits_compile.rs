@@ -230,13 +230,6 @@ impl Frame for DummyRegion {
     fn map_from(&self, _previous: &dyn Frame) -> AstResult<DynMapping> {
         Err(AstError::new(ErrorCode::Nodef, "not implemented"))
     }
-    fn convert_to(
-        &mut self,
-        _to: &mut (dyn ast_core::frames::Frame + 'static),
-        _domains: &[&str],
-    ) -> AstResult<Option<ast_core::frames::FrameSet>> {
-        Ok(None)
-    }
     fn equal(&self, _other: &dyn Frame) -> bool {
         false
     }

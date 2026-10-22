@@ -506,8 +506,8 @@ impl BasicFrame {
     /// altered.
     ///
     /// Controls how the Frame behaves as the template of
-    /// [`find_frame_template`](Frame::find_frame_template) or the `to` Frame
-    /// of [`convert_to`](Frame::convert_to): it is the coordinate system in
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template) or the `to` Frame
+    /// of [`convert_to`](crate::frames::FrameSearch::convert_to): it is the coordinate system in
     /// which the two Frames are aligned.
     /// The Mapping found maps positions from the first Frame into this
     /// intermediate system using the attributes of the first Frame, then

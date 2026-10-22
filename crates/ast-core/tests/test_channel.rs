@@ -7,6 +7,7 @@
 use crate::common::native_dump;
 use ast_core::channel::{Channel, NativeChannel};
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSet, SkyFrame, SkySystem};
 use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
 use ast_core::{AnyObject, from_native_string};

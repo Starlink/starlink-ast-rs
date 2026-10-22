@@ -671,119 +671,6 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// maps coordinates in the old frame to coordinates in the new frame.
     fn map_from(&self, previous: &dyn Frame) -> AstResult<DynMapping>;
 
-    /// Determine how to convert between two coordinate systems.
-    ///
-    /// Compares this Frame, the source coordinate system (the one in which
-    /// coordinates are already available), with `to`, the destination, and
-    /// returns a [`FrameSet`] describing the conversion if one is possible,
-    /// or `None` if it is not.
-    /// The FrameSet holds two Frames: its base Frame describes the source
-    /// and its current Frame the destination, and the Mapping between them
-    /// performs the conversion.
-    /// Used as a Mapping, the FrameSet converts source coordinates to
-    /// destination coordinates (and back with its inverse); used as a Frame,
-    /// its attributes describe the destination.
-    /// Alignment takes place in the coordinate system given by the
-    /// AlignSystem attribute of `to`.
-    ///
-    /// Either Frame may be a FrameSet, whose current Frame then describes
-    /// its coordinate system.
-    /// This is how, for instance, two images calibrated by attaching a
-    /// FrameSet to each are aligned: the conversion finds a celestial
-    /// coordinate system both have in common, and converts between their
-    /// pixel coordinates through it.
-    /// To convert between the base Frames of two FrameSets (usually their
-    /// pixel coordinates), invert both with
-    /// [`invert`](crate::mappings::Mapping::invert) first.
-    ///
-    /// # Arguments
-    ///
-    /// - `domains`: a priority order for the intermediate coordinate system.
-    ///   The conversion is first sought through an intermediate system whose
-    ///   Domain matches the first entry, then the second, and so on.
-    ///   An empty entry, or an empty slice, permits any Domain.
-    ///   Matching ignores case and white space.
-    ///   With two plain Frames there is usually only one possible
-    ///   intermediate system, so an empty slice is normal.
-    ///
-    /// # Per class
-    ///
-    /// - Frame: alignment occurs in the coordinate system given by
-    ///   AlignSystem.
-    /// - SpecFrame: alignment occurs in the spectral system and standard of
-    ///   rest given by AlignSystem and AlignStdOfRest.
-    /// - DSBSpecFrame: when AlignSideBand is true, alignment occurs in the
-    ///   upper sideband, in the system and standard of rest given by
-    ///   AlignSystem and AlignStdOfRest; when it is false, the two are
-    ///   aligned as plain SpecFrames and the SideBand is ignored.
-    /// - TimeFrame: alignment occurs in the time system and time scale
-    ///   given by AlignSystem and AlignTimeScale.
-    /// - FrameSet: every Frame of each FrameSet is considered as a way of
-    ///   reaching an intermediate coordinate system.
-    ///   Each entry of `domains` is taken in turn.
-    ///   Within it, each FrameSet's Frames are tried with its base Frame
-    ///   first, then the others in ascending index order (descending while
-    ///   the FrameSet is inverted), then its current Frame last.
-    ///   Every source Frame is tried against the first destination
-    ///   Frame, then against the second, and so on.
-    ///   Among the paths found, one with both transformations defined is
-    ///   preferred, then one with only the forward transformation.
-    ///   To force a particular Frame to be used, name its Domain in
-    ///   `domains` or make it the base Frame.
-    ///   When a conversion is found, the Frame of each FrameSet that it was
-    ///   found through becomes that FrameSet's base Frame, so
-    ///   [`FrameSet::base_index`] tells which it was.
-    ///
-    /// # Errors
-    ///
-    /// Passes on the error of the class-specific matching of the Frames
-    /// involved ([`match_template`](Frame::match_template) and
-    /// [`sub_frame`](Frame::sub_frame)).
-    /// Units that cannot be converted into each other are not an error: that
-    /// pair of Frames does not match.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use ast_core::frames::{BasicFrameBuilder, Frame};
-    /// use ast_core::mappings::Mapping;
-    ///
-    /// let mut a = BasicFrameBuilder::new(2).build().unwrap();
-    /// let mut b = BasicFrameBuilder::new(2).build().unwrap();
-    /// let cvt = a.convert_to(&mut b, &[]).unwrap().expect("plain Frames align");
-    /// assert_eq!(cvt.nin(), 2);
-    ///
-    /// let mut c = BasicFrameBuilder::new(3).build().unwrap();
-    /// assert!(a.convert_to(&mut c, &[]).unwrap().is_none());
-    /// ```
-    ///
-    /// # See also
-    ///
-    /// `astConvert`.
-    #[doc(alias = "astConvert")]
-    // Not to be overridden: an override would lose both the dispatch and the
-    // Base written to a FrameSet argument. Class-specific behavior belongs in
-    // `find_frame::convert_route`.
-    fn convert_to(&mut self, to: &mut dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
-        // C `astConvert` (frame.c:2965) swaps its first two arguments and
-        // defers to `astConvertX`, which frameset.c and region.c override;
-        // `convert_route` makes that dispatch. All other class-specific
-        // alignment lives in `match_template` / `sub_frame`, exactly as in C.
-        // FrameSet `ConvertX` then sets the Base of a FrameSet `from` or `to`
-        // to the Frame used (frameset.c:3515).
-        let domainlist = find_frame::domain_list(domains);
-        let Some(route) = find_frame::convert_route(self.as_dyn_frame(), &*to, &domainlist)? else {
-            return Ok(None);
-        };
-        if let Some(fs) = self.as_any_mut().downcast_mut::<FrameSet>() {
-            fs.set_base(FrameRef::Index(route.from_frame))?;
-        }
-        if let Some(fs) = to.as_any_mut().downcast_mut::<FrameSet>() {
-            fs.set_base(FrameRef::Index(route.to_frame))?;
-        }
-        Ok(Some(route.fs))
-    }
-
     /// Simplify this Frame.
     ///
     /// `None` means no simplification took place.
@@ -845,7 +732,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Identifies the physical domain of the coordinate system the Frame
     /// describes.
     /// It also controls matching when the Frame is the template of
-    /// [`find_frame_template`](Frame::find_frame_template): with Domain set,
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template): with Domain set,
     /// the template matches only targets with the same Domain; unset, the
     /// target's Domain is ignored.
     /// Domain values are stored with white space removed and letters in
@@ -1169,7 +1056,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// set or default.
     ///
     /// Controls how the Frame behaves as the template of
-    /// [`find_frame_template`](Frame::find_frame_template): the fewest axes
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template): the fewest axes
     /// a target may have to match.
     /// Normally it equals [`naxes`](Frame::naxes), so a template matches
     /// only Frames with as many axes as itself; other values let matching
@@ -1196,7 +1083,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// set or default.
     ///
     /// Controls how the Frame behaves as the template of
-    /// [`find_frame_template`](Frame::find_frame_template): the most axes a
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template): the most axes a
     /// target may have to match.
     /// Normally it equals [`naxes`](Frame::naxes), so a template matches
     /// only Frames with as many axes as itself; other values let matching
@@ -1222,7 +1109,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Match trailing axes? The MatchEnd attribute, set or default.
     ///
     /// Controls how the Frame behaves as the template of
-    /// [`find_frame_template`](Frame::find_frame_template) when template and
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template) when template and
     /// target have different numbers of axes.
     /// When false, the first axes of each are matched and any trailing axes
     /// of either are disregarded; when true, the last axes are matched and
@@ -1243,7 +1130,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Preserve axes? The PreserveAxes attribute, set or default.
     ///
     /// Controls how the Frame behaves as the template of
-    /// [`find_frame_template`](Frame::find_frame_template): which axes appear,
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template): which axes appear,
     /// and in what order, in the Frame found.
     /// When false, that Frame has the number and order of axes of the
     /// template; when true, it keeps those of the target.
@@ -1264,7 +1151,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Permute axis order? The Permute attribute, set or default.
     ///
     /// Controls how the Frame behaves as the template of
-    /// [`find_frame_template`](Frame::find_frame_template): whether the axes
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template): whether the axes
     /// of the target may be permuted to obtain a match.
     /// When false, the template matches a target only without changing the
     /// order of its axes; when true, it permutes the target's axes as
@@ -1296,8 +1183,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// flag.
     ///
     /// The flag controls how the Frame behaves when it is matched against
-    /// another by [`find_frame_template`](Frame::find_frame_template) or
-    /// [`convert_to`](Frame::convert_to).
+    /// another by [`find_frame_template`](crate::frames::FrameSearch::find_frame_template) or
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to).
     /// When it is false in either Frame, the Mapping ignores any difference
     /// in the [`unit`](Frame::unit) of corresponding template and target
     /// axes, and the units are purely descriptive.
@@ -1778,156 +1665,6 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ) -> AstResult<Option<(DynMapping, DynFrame)>> {
         let _ = (template, result_naxes, target_axes, template_axes);
         Ok(None)
-    }
-
-    /// Find a coordinate system with specified characteristics.
-    ///
-    /// Uses `template`, an instance of the kind of Frame wanted, to search
-    /// this Frame, the target, for a coordinate system with a given set of
-    /// characteristics, and returns a [`FrameSet`] describing the system
-    /// found and how to convert to and from it, or `None` if there is none.
-    /// It answers questions about coordinate information of unknown form,
-    /// such as whether there is a wavelength scale, a 2-dimensional
-    /// coordinate system or a celestial coordinate system, and reconciles a
-    /// preference for a coordinate system with what is available.
-    /// [`FrameSet::find_frame`] is the same search with the domain list as
-    /// a slice.
-    ///
-    /// The systems searched are the target's own and every "virtual"
-    /// system reachable from it by a built-in conversion, such as the
-    /// celestial coordinate conversions; for a FrameSet target, the union
-    /// of those of all its Frames.
-    /// An attribute set in the template must have the same value in the
-    /// system found; one left unset takes its value from one of the target's
-    /// actual (not virtual) systems.
-    /// The result is a hybrid Frame with the attributes set in the template
-    /// and the rest from the target, the best compromise between what was
-    /// asked for and what is available.
-    ///
-    /// The returned FrameSet holds two Frames: its base Frame is (the base
-    /// Frame of) the target, and its current Frame the system found, related
-    /// by the Mapping from target coordinates to the new system.
-    /// Used as a Mapping it converts between them; used as a Frame its
-    /// attributes describe the system found.
-    /// The Mapping aligns in the coordinate system given by the template's
-    /// AlignSystem attribute.
-    ///
-    /// # Arguments
-    ///
-    /// - `domainlist`: a comma-separated priority list of Domains.
-    ///   A system whose Domain is the first entry is sought first, then the
-    ///   second, and so on; an empty field (two adjacent commas, or an
-    ///   empty string) accepts any Domain.
-    ///   Matching ignores case and white space.
-    ///   Setting the template's Domain and then giving a list that holds
-    ///   neither that Domain nor an empty field finds nothing.
-    ///
-    /// # Using templates
-    ///
-    /// A Frame is found if the template matches it and its Domain is in
-    /// `domainlist` (or the list has an empty field).
-    /// The template matches according to these rules:
-    ///
-    /// - A template matches a Frame of its own class or of a more
-    ///   specialized class: a SkyFrame template matches any SkyFrame but not
-    ///   a plain Frame, and a plain Frame template matches any class of
-    ///   Frame.
-    /// - A template of any class can match a CmpFrame that contains a Frame
-    ///   of its class, provided its [`min_axes`](Frame::min_axes) is no more
-    ///   and its [`max_axes`](Frame::max_axes) no less than the number of
-    ///   axes of the CmpFrame.
-    /// - A CmpFrame template takes its MinAxes and MaxAxes from its
-    ///   components, so set those on the component templates before
-    ///   combining them.
-    /// - A template with one of its main attributes set matches only Frames
-    ///   with the same value, or that a built-in conversion can give that
-    ///   value; descriptive attributes such as Title, Label and Symbol do
-    ///   not restrict the match.
-    ///   Setting the template's [`domain`](Frame::domain) restricts the
-    ///   search to Frames of that Domain, as `domainlist` does.
-    /// - A template normally matches only a Frame with as many axes as
-    ///   itself; MinAxes, MaxAxes and [`match_end`](Frame::match_end) change
-    ///   that, and [`permute`](Frame::permute) and
-    ///   [`preserve_axes`](Frame::preserve_axes) control whether permuted
-    ///   axes match and whether their order is kept in the result.
-    ///
-    /// Some templates:
-    ///
-    /// - A 3-axis [`BasicFrame`] with nothing set finds any 3-dimensional
-    ///   coordinate system.
-    /// - A [`SkyFrame`] finds a celestial coordinate system of any kind; with
-    ///   MaxAxes set to 100 it also finds one inside a CmpFrame of up to 100
-    ///   axes, the returned Mapping including a [`PermMap`](crate::mappings::PermMap) that selects
-    ///   its axes.
-    ///   With System set to FK5 it finds an FK5 system, taking the Equinox
-    ///   from the target.
-    ///   With Permute false it finds one only if its axes are in the
-    ///   conventional (longitude, latitude) order.
-    /// - A 2-axis BasicFrame with `domainlist` `"SKY,PIXEL,"` seeks a SKY
-    ///   system, then a PIXEL one, then any 2-dimensional one.
-    /// - A 1-axis BasicFrame with Domain WAVELENGTH, or with nothing set and
-    ///   `domainlist` `"WAVELENGTH"`, finds a 1-dimensional wavelength
-    ///   system.
-    /// - A 1-axis BasicFrame with MaxAxes 3 finds a system of 1, 2 or 3
-    ///   dimensions and returns a 1-dimensional Frame related to it by a
-    ///   Mapping that extracts its first axis; with PreserveAxes set as well,
-    ///   the Frame returned has the axes of the system found.
-    ///
-    /// # Per class
-    ///
-    /// - FrameSet: each field of `domainlist` is taken in turn, and within
-    ///   it the template is matched against the target's Frames in the
-    ///   order current Frame, base Frame, then the others in the order they
-    ///   were added; the first match whose Frame has a Domain in that field
-    ///   is accepted.
-    ///   The Frame matched becomes the target's current Frame, so
-    ///   [`FrameSet::current_index`] tells which it was.
-    ///
-    /// # Errors
-    ///
-    /// Passes on the error of the class-specific matching of the template
-    /// against the target ([`match_template`](Frame::match_template) and
-    /// [`sub_frame`](Frame::sub_frame)).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use ast_core::frames::{BasicFrameBuilder, Frame};
-    ///
-    /// let mut target = BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap();
-    /// let template = BasicFrameBuilder::new(2).build().unwrap();
-    /// let found = target
-    ///     .find_frame_template(&template, "sky,pixel,")
-    ///     .unwrap()
-    ///     .expect("a 2-dimensional system");
-    /// assert_eq!(found.current().domain(), "PIXEL");
-    /// assert!(target.find_frame_template(&template, "SKY").unwrap().is_none());
-    /// ```
-    ///
-    /// # See also
-    ///
-    /// `astFindFrame`.
-    #[doc(alias = "astFindFrame")]
-    // Not to be overridden: an override would lose both the dispatch and the
-    // Current written to a FrameSet target. Class-specific behavior belongs in
-    // `find_frame::find_frame_route`.
-    fn find_frame_template(
-        &mut self,
-        template: &dyn Frame,
-        domainlist: &str,
-    ) -> AstResult<Option<find_frame::FindFrameResult>> {
-        // frameset.c overrides `FindFrame`; `find_frame_route` makes that
-        // dispatch, and the FrameSet `FindFrame` sets the target's Current to
-        // the Frame matched (frameset.c:4022).
-        let Some((found, iframe)) =
-            find_frame::find_frame_route(self.as_dyn_frame(), template, domainlist)?
-        else {
-            return Ok(None);
-        };
-        if let Some(fs) = self.as_any_mut().downcast_mut::<FrameSet>() {
-            fs.set_current(FrameRef::Index(iframe))?;
-        }
-        Ok(Some(found))
     }
 
     /// Snapshot of `self` with only the axes listed in `target_axes`.
@@ -2709,8 +2446,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// the corresponding axis of this Frame, or 0 when it has none.
     ///
     /// Axes correspond when a Mapping can be found between them by
-    /// [`find_frame_template`](Frame::find_frame_template) or
-    /// [`convert_to`](Frame::convert_to), so they need not be identical:
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template) or
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to), so they need not be identical:
     /// the axes of two SkyFrames correspond even when they describe
     /// different celestial coordinate systems.
     ///
@@ -2801,6 +2538,284 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         Ok(())
     }
 }
+
+/// The searches that align one Frame with another: [`convert_to`] and
+/// [`find_frame_template`].
+///
+/// Every Frame has them, through the blanket implementation, and no class
+/// can override them.
+/// They dispatch on the classes of the Frames involved, so a FrameSet or a
+/// Region gets its own search, and they write the Frame used back to a
+/// FrameSet argument as its Base or Current.
+/// Class-specific matching belongs in [`Frame::match_template`] and
+/// [`Frame::sub_frame`].
+///
+/// [`convert_to`]: FrameSearch::convert_to
+/// [`find_frame_template`]: FrameSearch::find_frame_template
+// C: `astConvert` and `astFindFrame` are vtab methods that only FrameSet and
+// Region override; the port makes that dispatch once, in
+// `find_frame::convert_route` and `find_frame::find_frame_route`, so the
+// methods are kept out of `Frame` where an override could bypass it.
+pub trait FrameSearch: Frame {
+    /// Determine how to convert between two coordinate systems.
+    ///
+    /// Compares this Frame, the source coordinate system (the one in which
+    /// coordinates are already available), with `to`, the destination, and
+    /// returns a [`FrameSet`] describing the conversion if one is possible,
+    /// or `None` if it is not.
+    /// The FrameSet holds two Frames: its base Frame describes the source
+    /// and its current Frame the destination, and the Mapping between them
+    /// performs the conversion.
+    /// Used as a Mapping, the FrameSet converts source coordinates to
+    /// destination coordinates (and back with its inverse); used as a Frame,
+    /// its attributes describe the destination.
+    /// Alignment takes place in the coordinate system given by the
+    /// AlignSystem attribute of `to`.
+    ///
+    /// Either Frame may be a FrameSet, whose current Frame then describes
+    /// its coordinate system.
+    /// This is how, for instance, two images calibrated by attaching a
+    /// FrameSet to each are aligned: the conversion finds a celestial
+    /// coordinate system both have in common, and converts between their
+    /// pixel coordinates through it.
+    /// To convert between the base Frames of two FrameSets (usually their
+    /// pixel coordinates), invert both with
+    /// [`invert`](crate::mappings::Mapping::invert) first.
+    ///
+    /// # Arguments
+    ///
+    /// - `domains`: a priority order for the intermediate coordinate system.
+    ///   The conversion is first sought through an intermediate system whose
+    ///   Domain matches the first entry, then the second, and so on.
+    ///   An empty entry, or an empty slice, permits any Domain.
+    ///   Matching ignores case and white space.
+    ///   With two plain Frames there is usually only one possible
+    ///   intermediate system, so an empty slice is normal.
+    ///
+    /// # Per class
+    ///
+    /// - Frame: alignment occurs in the coordinate system given by
+    ///   AlignSystem.
+    /// - SpecFrame: alignment occurs in the spectral system and standard of
+    ///   rest given by AlignSystem and AlignStdOfRest.
+    /// - DSBSpecFrame: when AlignSideBand is true, alignment occurs in the
+    ///   upper sideband, in the system and standard of rest given by
+    ///   AlignSystem and AlignStdOfRest; when it is false, the two are
+    ///   aligned as plain SpecFrames and the SideBand is ignored.
+    /// - TimeFrame: alignment occurs in the time system and time scale
+    ///   given by AlignSystem and AlignTimeScale.
+    /// - FrameSet: every Frame of each FrameSet is considered as a way of
+    ///   reaching an intermediate coordinate system.
+    ///   Each entry of `domains` is taken in turn.
+    ///   Within it, each FrameSet's Frames are tried with its base Frame
+    ///   first, then the others in ascending index order (descending while
+    ///   the FrameSet is inverted), then its current Frame last.
+    ///   Every source Frame is tried against the first destination
+    ///   Frame, then against the second, and so on.
+    ///   Among the paths found, one with both transformations defined is
+    ///   preferred, then one with only the forward transformation.
+    ///   To force a particular Frame to be used, name its Domain in
+    ///   `domains` or make it the base Frame.
+    ///   When a conversion is found, the Frame of each FrameSet that it was
+    ///   found through becomes that FrameSet's base Frame, so
+    ///   [`FrameSet::base_index`] tells which it was.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of the class-specific matching of the Frames
+    /// involved ([`match_template`](Frame::match_template) and
+    /// [`sub_frame`](Frame::sub_frame)).
+    /// Units that cannot be converted into each other are not an error: that
+    /// pair of Frames does not match.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, FrameSearch};
+    /// use ast_core::mappings::Mapping;
+    ///
+    /// let mut a = BasicFrameBuilder::new(2).build().unwrap();
+    /// let mut b = BasicFrameBuilder::new(2).build().unwrap();
+    /// let cvt = a.convert_to(&mut b, &[]).unwrap().expect("plain Frames align");
+    /// assert_eq!(cvt.nin(), 2);
+    ///
+    /// let mut c = BasicFrameBuilder::new(3).build().unwrap();
+    /// assert!(a.convert_to(&mut c, &[]).unwrap().is_none());
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// `astConvert`.
+    #[doc(alias = "astConvert")]
+    fn convert_to(&mut self, to: &mut dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
+        // C `astConvert` (frame.c:2965) swaps its first two arguments and
+        // defers to `astConvertX`, which frameset.c and region.c override;
+        // `convert_route` makes that dispatch. All other class-specific
+        // alignment lives in `match_template` / `sub_frame`, exactly as in C.
+        // FrameSet `ConvertX` then sets the Base of a FrameSet `from` or `to`
+        // to the Frame used (frameset.c:3515).
+        let domainlist = find_frame::domain_list(domains);
+        let Some(route) = find_frame::convert_route(self.as_dyn_frame(), &*to, &domainlist)? else {
+            return Ok(None);
+        };
+        if let Some(fs) = self.as_any_mut().downcast_mut::<FrameSet>() {
+            fs.set_base(FrameRef::Index(route.from_frame))?;
+        }
+        if let Some(fs) = to.as_any_mut().downcast_mut::<FrameSet>() {
+            fs.set_base(FrameRef::Index(route.to_frame))?;
+        }
+        Ok(Some(route.fs))
+    }
+
+    /// Find a coordinate system with specified characteristics.
+    ///
+    /// Uses `template`, an instance of the kind of Frame wanted, to search
+    /// this Frame, the target, for a coordinate system with a given set of
+    /// characteristics, and returns a [`FrameSet`] describing the system
+    /// found and how to convert to and from it, or `None` if there is none.
+    /// It answers questions about coordinate information of unknown form,
+    /// such as whether there is a wavelength scale, a 2-dimensional
+    /// coordinate system or a celestial coordinate system, and reconciles a
+    /// preference for a coordinate system with what is available.
+    /// [`FrameSet::find_frame`] is the same search with the domain list as
+    /// a slice.
+    ///
+    /// The systems searched are the target's own and every "virtual"
+    /// system reachable from it by a built-in conversion, such as the
+    /// celestial coordinate conversions; for a FrameSet target, the union
+    /// of those of all its Frames.
+    /// An attribute set in the template must have the same value in the
+    /// system found; one left unset takes its value from one of the target's
+    /// actual (not virtual) systems.
+    /// The result is a hybrid Frame with the attributes set in the template
+    /// and the rest from the target, the best compromise between what was
+    /// asked for and what is available.
+    ///
+    /// The returned FrameSet holds two Frames: its base Frame is (the base
+    /// Frame of) the target, and its current Frame the system found, related
+    /// by the Mapping from target coordinates to the new system.
+    /// Used as a Mapping it converts between them; used as a Frame its
+    /// attributes describe the system found.
+    /// The Mapping aligns in the coordinate system given by the template's
+    /// AlignSystem attribute.
+    ///
+    /// # Arguments
+    ///
+    /// - `domainlist`: a comma-separated priority list of Domains.
+    ///   A system whose Domain is the first entry is sought first, then the
+    ///   second, and so on; an empty field (two adjacent commas, or an
+    ///   empty string) accepts any Domain.
+    ///   Matching ignores case and white space.
+    ///   Setting the template's Domain and then giving a list that holds
+    ///   neither that Domain nor an empty field finds nothing.
+    ///
+    /// # Using templates
+    ///
+    /// A Frame is found if the template matches it and its Domain is in
+    /// `domainlist` (or the list has an empty field).
+    /// The template matches according to these rules:
+    ///
+    /// - A template matches a Frame of its own class or of a more
+    ///   specialized class: a SkyFrame template matches any SkyFrame but not
+    ///   a plain Frame, and a plain Frame template matches any class of
+    ///   Frame.
+    /// - A template of any class can match a CmpFrame that contains a Frame
+    ///   of its class, provided its [`min_axes`](Frame::min_axes) is no more
+    ///   and its [`max_axes`](Frame::max_axes) no less than the number of
+    ///   axes of the CmpFrame.
+    /// - A CmpFrame template takes its MinAxes and MaxAxes from its
+    ///   components, so set those on the component templates before
+    ///   combining them.
+    /// - A template with one of its main attributes set matches only Frames
+    ///   with the same value, or that a built-in conversion can give that
+    ///   value; descriptive attributes such as Title, Label and Symbol do
+    ///   not restrict the match.
+    ///   Setting the template's [`domain`](Frame::domain) restricts the
+    ///   search to Frames of that Domain, as `domainlist` does.
+    /// - A template normally matches only a Frame with as many axes as
+    ///   itself; MinAxes, MaxAxes and [`match_end`](Frame::match_end) change
+    ///   that, and [`permute`](Frame::permute) and
+    ///   [`preserve_axes`](Frame::preserve_axes) control whether permuted
+    ///   axes match and whether their order is kept in the result.
+    ///
+    /// Some templates:
+    ///
+    /// - A 3-axis [`BasicFrame`] with nothing set finds any 3-dimensional
+    ///   coordinate system.
+    /// - A [`SkyFrame`] finds a celestial coordinate system of any kind; with
+    ///   MaxAxes set to 100 it also finds one inside a CmpFrame of up to 100
+    ///   axes, the returned Mapping including a [`PermMap`](crate::mappings::PermMap) that selects
+    ///   its axes.
+    ///   With System set to FK5 it finds an FK5 system, taking the Equinox
+    ///   from the target.
+    ///   With Permute false it finds one only if its axes are in the
+    ///   conventional (longitude, latitude) order.
+    /// - A 2-axis BasicFrame with `domainlist` `"SKY,PIXEL,"` seeks a SKY
+    ///   system, then a PIXEL one, then any 2-dimensional one.
+    /// - A 1-axis BasicFrame with Domain WAVELENGTH, or with nothing set and
+    ///   `domainlist` `"WAVELENGTH"`, finds a 1-dimensional wavelength
+    ///   system.
+    /// - A 1-axis BasicFrame with MaxAxes 3 finds a system of 1, 2 or 3
+    ///   dimensions and returns a 1-dimensional Frame related to it by a
+    ///   Mapping that extracts its first axis; with PreserveAxes set as well,
+    ///   the Frame returned has the axes of the system found.
+    ///
+    /// # Per class
+    ///
+    /// - FrameSet: each field of `domainlist` is taken in turn, and within
+    ///   it the template is matched against the target's Frames in the
+    ///   order current Frame, base Frame, then the others in the order they
+    ///   were added; the first match whose Frame has a Domain in that field
+    ///   is accepted.
+    ///   The Frame matched becomes the target's current Frame, so
+    ///   [`FrameSet::current_index`] tells which it was.
+    ///
+    /// # Errors
+    ///
+    /// Passes on the error of the class-specific matching of the template
+    /// against the target ([`match_template`](Frame::match_template) and
+    /// [`sub_frame`](Frame::sub_frame)).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ast_core::frames::{BasicFrameBuilder, Frame, FrameSearch};
+    ///
+    /// let mut target = BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap();
+    /// let template = BasicFrameBuilder::new(2).build().unwrap();
+    /// let found = target
+    ///     .find_frame_template(&template, "sky,pixel,")
+    ///     .unwrap()
+    ///     .expect("a 2-dimensional system");
+    /// assert_eq!(found.current().domain(), "PIXEL");
+    /// assert!(target.find_frame_template(&template, "SKY").unwrap().is_none());
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// `astFindFrame`.
+    #[doc(alias = "astFindFrame")]
+    fn find_frame_template(
+        &mut self,
+        template: &dyn Frame,
+        domainlist: &str,
+    ) -> AstResult<Option<find_frame::FindFrameResult>> {
+        // frameset.c overrides `FindFrame`; `find_frame_route` makes that
+        // dispatch, and the FrameSet `FindFrame` sets the target's Current to
+        // the Frame matched (frameset.c:4022).
+        let Some((found, iframe)) =
+            find_frame::find_frame_route(self.as_dyn_frame(), template, domainlist)?
+        else {
+            return Ok(None);
+        };
+        if let Some(fs) = self.as_any_mut().downcast_mut::<FrameSet>() {
+            fs.set_current(FrameRef::Index(iframe))?;
+        }
+        Ok(Some(found))
+    }
+}
+
+impl<T: Frame + ?Sized> FrameSearch for T {}
 
 /// Build a plain `BasicFrame` carrying `frame`'s axis count and the
 /// Frame-level + per-axis attributes that survive a cast to the Frame

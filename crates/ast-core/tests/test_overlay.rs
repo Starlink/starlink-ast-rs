@@ -10,6 +10,7 @@
 #[path = "overlay_oracle/cases.rs"]
 mod cases;
 
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     BasicFrameBuilder, CmpFrame, DynFrame, FluxFrame, FluxSystem, Frame, FrameRef, SkyFrame,
     SkySystem, SpecFrame, SpecSystem, TimeFrame, TimeSystem, pick_axes,

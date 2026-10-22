@@ -13,6 +13,7 @@
 //! classes were confirmed by building and running the C `testconvert.c`
 //! against the reference libast ("All astConvert tests passed").
 
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     BasicFrameBuilder, CmpFrame, Frame, FrameRef, SkyFrame, SkySystem, SpecFrame, SpecSystem,
 };

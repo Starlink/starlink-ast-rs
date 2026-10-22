@@ -11,6 +11,7 @@ use ast_core::AnyObject;
 use ast_core::channel::Channel;
 use ast_core::error::ErrorCode;
 use ast_core::fitschan::{Encoding, FitsChan};
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     BasicFrameBuilder, Frame, FrameRef, FrameSet, SkyFrame, SkySystem, SpecFrame, SpecSystem,
     StdOfRest,

@@ -4,6 +4,7 @@
 //! transform-definedness via the base→current path.
 
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     BasicFrameBuilder, DynFrame, Frame, FrameRef, FrameSet, SkyFrame, SkySystem,
 };

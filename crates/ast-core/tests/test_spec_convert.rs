@@ -15,6 +15,7 @@
 mod cases;
 
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     CmpFrame, DSBSpecFrame, Frame, FrameRef, SideBand, SkyFrame, SpecFrame, SpecSystem, StdOfRest,
 };

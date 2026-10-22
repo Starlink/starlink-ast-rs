@@ -12,6 +12,7 @@
 mod cases;
 
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{DSBSpecFrame, Frame, FrameRef, SideBand, SpecSystem, StdOfRest};
 
 /// The probe's DSBSpecFrame, with its per-case settings and Dsbcenter=230.

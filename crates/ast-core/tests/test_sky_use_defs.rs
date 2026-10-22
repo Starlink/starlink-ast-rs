@@ -14,6 +14,7 @@
 mod cases;
 
 use ast_core::error::ErrorCode;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{Frame, FrameRef, SkyFrame, SkySystem};
 
 /// A SkyFrame with the probe's comma-separated settings.

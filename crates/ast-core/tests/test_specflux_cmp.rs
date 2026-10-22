@@ -5,6 +5,7 @@
 //! components of a plain CmpFrame (specfluxframe.c `Match`, `SubFrame`).
 
 use crate::common::native_dump;
+use ast_core::frames::FrameSearch;
 #[path = "specflux_cmp_oracle/cases.rs"]
 mod cases;
 

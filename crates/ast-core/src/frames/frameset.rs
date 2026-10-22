@@ -10,7 +10,7 @@ use crate::serial::{
     FrameToNode, MappingToNode, Node, NodeValue, Serializable, frame_from_node, mapping_from_node,
 };
 
-use super::{AxisKind, DynFrame, Frame, simplify_frame_via_mapping};
+use super::{AxisKind, DynFrame, Frame, FrameSearch, simplify_frame_via_mapping};
 
 /// Identifies a frame within a [`FrameSet`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1263,7 +1263,7 @@ impl FrameSet {
     /// Find a coordinate system with specified characteristics in this
     /// FrameSet.
     ///
-    /// The search of [`Frame::find_frame_template`] with this FrameSet as
+    /// The search of [`FrameSearch::find_frame_template`](crate::frames::FrameSearch::find_frame_template) with this FrameSet as
     /// the target, which describes it in full.
     /// Each entry of `domains` is taken in turn, and within it `template` is
     /// matched against the FrameSet's Frames in the order current Frame,
@@ -1280,7 +1280,7 @@ impl FrameSet {
     ///
     /// # Errors
     ///
-    /// Passes on the error of [`Frame::find_frame_template`] on the Frames
+    /// Passes on the error of [`FrameSearch::find_frame_template`](crate::frames::FrameSearch::find_frame_template) on the Frames
     /// searched, or of [`add_frame`](FrameSet::add_frame) building the
     /// result.
     #[doc(alias = "astFindFrame")]
@@ -1289,16 +1289,8 @@ impl FrameSet {
         template: &dyn Frame,
         domains: &[&str],
     ) -> AstResult<Option<FrameSet>> {
-        // Synthesize the comma-separated string domainlist from the
-        // slice form. An empty slice → "" (allows any). Any empty
-        // entry appears in the synthesized string as adjacent commas
-        // (which the canonicalizer reads as "blank field").
-        let joined = if domains.is_empty() {
-            String::new()
-        } else {
-            domains.join(",")
-        };
-        Frame::find_frame_template(self, template, &joined)
+        let domainlist = super::find_frame::domain_list(domains);
+        FrameSearch::find_frame_template(self, template, &domainlist)
     }
 
     // ------------------------------------------------------------------ //
@@ -2254,12 +2246,12 @@ impl Frame for FrameSet {
 ///
 /// Iterate the FrameSet's frames in priority order — current first,
 /// base next, then everything else — calling
-/// `Frame::find_frame_template` on each. The first successful match
+/// `FrameSearch::find_frame_template` on each. The first successful match
 /// wins. The resulting Mapping is prefixed by the FrameSet's
 /// base→matched-frame Mapping and simplified, then packaged as a
 /// 2-frame FrameSet (base = self.base, current = matched-frame's
 /// result), returned with the 1-based index of the Frame matched, which
-/// [`Frame::find_frame_template`] makes the target's current Frame
+/// [`FrameSearch::find_frame_template`](crate::frames::FrameSearch::find_frame_template) makes the target's current Frame
 /// (frameset.c:4022).
 ///
 /// `domainlist` is the standard comma-separated, case-insensitive,
@@ -2372,7 +2364,7 @@ fn convert_current_to(from: &dyn Frame, to: &dyn Frame) -> AstResult<DynMapping>
 /// current frame last (frameset.c:3308-3348).
 ///
 /// The indices of the `from` and `to` Frames used are returned with the
-/// result; [`Frame::convert_to`] sets the Base of a FrameSet argument to them,
+/// result; [`FrameSearch::convert_to`](crate::frames::FrameSearch::convert_to) sets the Base of a FrameSet argument to them,
 /// as `ConvertX` does (frameset.c:3502-3503).
 pub(crate) fn frameset_convert_x(
     to: &dyn Frame,

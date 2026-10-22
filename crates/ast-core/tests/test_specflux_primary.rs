@@ -12,6 +12,7 @@
 mod cases;
 
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     BasicFrameBuilder, CmpFrame, FluxFrame, FluxSystem, Frame, FrameRef, SpecFluxFrame, SpecFrame,
     SpecSystem,

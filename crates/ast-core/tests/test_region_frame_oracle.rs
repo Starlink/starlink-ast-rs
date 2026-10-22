@@ -11,6 +11,7 @@
 #[path = "region_frame_oracle/cases.rs"]
 mod cases;
 
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{Frame, SkyFrame, SkySystem};
 use ast_core::regions::{Circle, CircleBuilder, Region};
 

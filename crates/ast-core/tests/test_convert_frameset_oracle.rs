@@ -1,4 +1,4 @@
-//! `Frame::convert_to` between a SkyFrame and a FrameSet whose current Frame
+//! `FrameSearch::convert_to` between a SkyFrame and a FrameSet whose current Frame
 //! is GRID and whose base Frame is an ICRS SkyFrame, each way round, against
 //! the C library. C dispatches `astConvertX` on the class of the target: to a
 //! FrameSet, frameset.c searches all of its Frames; from a FrameSet to a
@@ -15,7 +15,7 @@
 mod cases;
 
 use ast_core::coords::PointSet;
-use ast_core::frames::{BasicFrameBuilder, Frame, FrameRef, FrameSet, SkyFrame, SkySystem};
+use ast_core::frames::{BasicFrameBuilder, FrameRef, FrameSearch, FrameSet, SkyFrame, SkySystem};
 use ast_core::mappings::{Mapping, ZoomMap};
 
 fn frameset() -> FrameSet {

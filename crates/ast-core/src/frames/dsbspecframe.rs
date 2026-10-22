@@ -419,8 +419,8 @@ impl DSBSpecFrame {
     /// default.
     ///
     /// Controls how a DSBSpecFrame behaves when it is aligned with another
-    /// DSBSpecFrame by [`find_frame_template`](Frame::find_frame_template)
-    /// or [`convert_to`](Frame::convert_to).
+    /// DSBSpecFrame by [`find_frame_template`](crate::frames::FrameSearch::find_frame_template)
+    /// or [`convert_to`](crate::frames::FrameSearch::convert_to).
     /// If both have AlignSideBand true, the [`sideband`](DSBSpecFrame::sideband)
     /// of each is used so that alignment occurs between sidebands: if one
     /// represents USB and the other LSB, the Mapping takes the difference

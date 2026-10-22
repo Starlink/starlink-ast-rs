@@ -117,7 +117,7 @@ fn check_polygon_mask_large_lobe() {
 /// clipping; and a TranMap of two Regions becomes a UnitMap.
 #[test]
 fn check_remove_regions() {
-    use ast_core::frames::{Frame, FrameRef, FrameSet};
+    use ast_core::frames::{FrameRef, FrameSearch, FrameSet};
     use ast_core::mappings::{TranMap, UnitMap};
     use ast_core::regions::{CircleBuilder, remove_regions};
 
@@ -534,7 +534,7 @@ fn check_prism() {
 #[test]
 fn check_cmp_region() {
     use ast_core::AnyObject;
-    use ast_core::frames::{Frame, FrameRef};
+    use ast_core::frames::{FrameRef, FrameSearch};
     use ast_core::regions::{
         BoxRegion, Circle, CircleBuilder, CmpOperator, CmpRegion, CmpRegionBuilder, NullRegion,
     };
@@ -1903,7 +1903,7 @@ fn any_region(r: &dyn Region) -> ast_core::AnyObject {
 /// clips as the original did, across zero longitude.
 #[test]
 fn check_box_map_region() {
-    use ast_core::frames::{Frame, SkyRefIs};
+    use ast_core::frames::{FrameSearch, SkyRefIs};
     use ast_core::mappings::{MatrixMap, ZoomMap};
     use ndarray::array;
 

@@ -6,6 +6,7 @@
 
 use crate::common::native_dump;
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{DSBSpecFrame, Frame, FrameRef, FrameSet, SideBand, SpecSystem, StdOfRest};
 use ast_core::{AnyObject, from_native_string};
 

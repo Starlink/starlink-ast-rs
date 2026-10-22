@@ -10,6 +10,7 @@
 //! attribute string calls.
 
 use crate::common::native_dump;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{
     FluxFrame, FluxSystem, Frame, FrameRef, FrameSet, SpecFluxFrame, SpecFrame, SpecSystem,
 };

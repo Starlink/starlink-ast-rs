@@ -12,7 +12,7 @@
 #[path = "sky_last_oracle/cases.rs"]
 mod cases;
 
-use ast_core::frames::{Frame, FrameRef, FrameSet, SkyFrame, SkySystem};
+use ast_core::frames::{FrameRef, FrameSearch, FrameSet, SkyFrame, SkySystem};
 use ast_core::mappings::Mapping;
 
 fn sky(system: SkySystem, epoch: f64, obslon: f64) -> SkyFrame {

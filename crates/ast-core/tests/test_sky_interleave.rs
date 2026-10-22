@@ -11,6 +11,7 @@
 mod cases;
 
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{CmpFrame, Frame, FrameRef, SkyFrame, SkySystem};
 
 fn sky(system: SkySystem) -> SkyFrame {

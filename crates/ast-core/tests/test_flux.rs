@@ -9,6 +9,7 @@
 //! Mapping, so the Mappings are simplified before they are examined.
 
 use crate::common::native_dump;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{FluxFrame, FluxSystem, Frame, FrameRef, SpecFrame, SpecSystem};
 use ast_core::mappings::{DynMapping, Mapping, UnitMap, ZoomMap};
 use ast_core::{AnyObject, from_native_string};

@@ -2,6 +2,12 @@
 
 ## Revision history
 
+- **2026-10-22 (rev 38)**: `convert_to` and `find_frame_template` move
+  from `Frame` to a new trait, `FrameSearch`, implemented for every
+  Frame by a blanket implementation, so no class can override them and
+  bypass the FrameSet and Region dispatch or the Base and Current they
+  write back.
+  Callers import `ast_core::frames::FrameSearch` to use them.
 - **2026-10-21 (rev 37)**: `Frame::convert_to` takes `&mut self` and
   `to: &mut dyn Frame`, and `Frame::find_frame_template` and
   `FrameSet::find_frame` take `&mut self`, because C's `astConvert` sets

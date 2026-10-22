@@ -268,7 +268,7 @@ impl FluxFrame {
     /// position.
     ///
     /// When two FluxFrames are converted with
-    /// [`convert_to`](Frame::convert_to), account is taken of the flux
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to), account is taken of the flux
     /// systems they represent, of their AlignSystem and other attributes,
     /// and of any difference in their Units.
     #[doc(alias = "astFluxFrame")]
@@ -304,7 +304,7 @@ impl FluxFrame {
     /// rather than a set one, and the System is unset, so it follows a Unit
     /// when one is set.
     /// `spec_val` may be `BAD_VALUE` if the spectral position is unknown,
-    /// but then [`convert_to`](Frame::convert_to) may find no conversion to
+    /// but then [`convert_to`](crate::frames::FrameSearch::convert_to) may find no conversion to
     /// another FluxFrame.
     /// With no `spec_frame`, `spec_val` is a frequency in Hz for a "per Hz"
     /// System and a wavelength in Angstrom for a "per Angstrom" one.

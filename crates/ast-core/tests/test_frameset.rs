@@ -9,6 +9,7 @@ use crate::common::native_dump;
 use ast_core::AnyObject;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{BasicFrameBuilder, Frame, FrameRef, FrameSet};
 use ast_core::mappings::{DynMapping, Mapping, MathMap, PermMap, ShiftMap, UnitMap, ZoomMap};
 

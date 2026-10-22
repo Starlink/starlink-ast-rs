@@ -411,7 +411,7 @@ impl SpecFrame {
     /// [`set_std_of_rest`](SpecFrame::set_std_of_rest).
     ///
     /// When two SpecFrames are converted with
-    /// [`convert_to`](Frame::convert_to), the conversion takes account of
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to), the conversion takes account of
     /// the spectral coordinate systems they represent, with any qualifying
     /// rest frequency, standard of rest and epoch, and of their
     /// [`align_system`](SpecFrame::align_system) and
@@ -422,7 +422,7 @@ impl SpecFrame {
     /// account too.
     ///
     /// ```
-    /// use ast_core::frames::{Frame, FrameRef, SpecFrame, SpecSystem, StdOfRest};
+    /// use ast_core::frames::{Frame, FrameRef, FrameSearch, SpecFrame, SpecSystem, StdOfRest};
     /// use ast_core::mappings::Mapping;
     ///
     /// // Apparent radial velocity with a rest frequency of 1.0E15 Hz (about
@@ -479,7 +479,7 @@ impl SpecFrame {
     ///
     /// Its System is wavelength by default rather than by being set, so when
     /// it is the template of
-    /// [`find_frame_template`](Frame::find_frame_template), the Frame found
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template), the Frame found
     /// keeps the target's System rather than taking the template's.
     // C: `astSpecFrame("")`.
     #[doc(alias = "astSpecFrame")]
@@ -725,8 +725,8 @@ impl SpecFrame {
     ///
     /// Controls how a SpecFrame behaves when it is used as a template to
     /// match another (target) SpecFrame, by
-    /// [`find_frame_template`](Frame::find_frame_template) or
-    /// [`convert_to`](Frame::convert_to): it is the standard of rest in which
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template) or
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to): it is the standard of rest in which
     /// alignment occurs.
     /// [`std_of_rest`](SpecFrame::std_of_rest) describes the values.
     ///
@@ -853,8 +853,8 @@ impl SpecFrame {
     /// the source; for spectral data with spatial coverage (spectral cubes
     /// and so on), a position close to the center of the spatial coverage.
     /// It defines the correction for Doppler shift applied when
-    /// [`convert_to`](Frame::convert_to) or
-    /// [`find_frame_template`](Frame::find_frame_template) converts between
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to) or
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template) converts between
     /// different standards of rest.
     ///
     /// The correction is assumed to be spatially invariant.
@@ -936,7 +936,7 @@ impl SpecFrame {
     /// # Errors
     ///
     /// Passes on any error from aligning `frm` with FK5 J2000.0
-    /// ([`find_frame_template`](Frame::find_frame_template)) or from
+    /// ([`find_frame_template`](crate::frames::FrameSearch::find_frame_template)) or from
     /// transforming the position.
     ///
     /// ```
@@ -1003,7 +1003,7 @@ impl SpecFrame {
     /// # Errors
     ///
     /// Passes on any error from aligning `frm` with FK5 J2000.0
-    /// ([`find_frame_template`](Frame::find_frame_template)) or from
+    /// ([`find_frame_template`](crate::frames::FrameSearch::find_frame_template)) or from
     /// transforming the position.
     // C: specframe.c:3913-4038.
     #[doc(alias = "astSetRefPos")]
@@ -1464,8 +1464,8 @@ impl SpecFrame {
     ///
     /// Controls how a SpecFrame behaves when it is used as a template to
     /// match another (target) SpecFrame, by
-    /// [`find_frame_template`](Frame::find_frame_template) or
-    /// [`convert_to`](Frame::convert_to): whether alignment occurs between
+    /// [`find_frame_template`](crate::frames::FrameSearch::find_frame_template) or
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to): whether alignment occurs between
     /// the offset values defined by the [`spec_origin`](SpecFrame::spec_origin)
     /// of each, or between the corresponding absolute spectral values.
     /// False aligns the two so that a given absolute spectral value in one

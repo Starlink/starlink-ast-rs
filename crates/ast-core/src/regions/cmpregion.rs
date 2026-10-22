@@ -38,7 +38,7 @@ use super::{CmpOperator, DynRegion, NullRegion, NullRegionBuilder, Overlap, Regi
 ///
 /// The two components need not be in the same Frame, but there must be a
 /// Mapping between their Frames, as
-/// [`convert_to`](crate::frames::Frame::convert_to) finds it.
+/// [`convert_to`](crate::frames::FrameSearch::convert_to) finds it.
 /// For instance, a CmpRegion may combine a Region in an ICRS
 /// [`SkyFrame`](crate::frames::SkyFrame) with one in a Galactic SkyFrame.
 /// The second component is then mapped into the Frame of the first, which

@@ -21,6 +21,7 @@
 mod cases;
 
 use ast_core::coords::PointSet;
+use ast_core::frames::FrameSearch;
 use ast_core::frames::{BasicFrameBuilder, Frame, FrameRef, SpecFrame, SpecSystem};
 use ast_core::mappings::{CmpMap, Composition, DynMapping, Mapping, ZoomMap};
 
