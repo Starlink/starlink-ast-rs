@@ -214,45 +214,43 @@ impl Clone for RegionData {
 }
 
 /// The Frame a Region encapsulates, given the Frame its constructor was
-/// supplied (`region.c:13311-13323`).
+/// supplied (`region.c:13336-13345`).
 ///
 /// A Region contributes the current Frame of its own FrameSet, a FrameSet its
 /// current Frame, and any other Frame is used as supplied.
-fn resolve_supplied_frame(frame: &dyn Frame) -> DynFrame {
-    if let Some(region) = crate::regions::any_as_region(frame.as_any()) {
+fn resolve_supplied_frame(frame: DynFrame) -> DynFrame {
+    if let Some(region) = crate::regions::any_as_region(frame.as_ref().as_any()) {
         region.get_region_frame()
-    } else if let Some(fs) = frame.as_any().downcast_ref::<FrameSet>() {
+    } else if let Some(fs) = frame.as_ref().as_any().downcast_ref::<FrameSet>() {
         fs.current().snapshot()
     } else {
-        frame.snapshot()
+        frame
     }
 }
 
 impl RegionData {
-    /// Create a new `RegionData` with default attribute values.
+    /// Create a new `RegionData` with default attribute values, for the
+    /// Frame a Region constructor was supplied (C `astInitRegion`).
     ///
-    /// - `frameset`: the encapsulated FrameSet (base = geometry frame,
-    ///   current = user frame).
+    /// The encapsulated FrameSet holds two copies of the Frame the supplied
+    /// one resolves to, joined by a UnitMap, as C's `SetRegFS` makes it.
     /// - `points`: defining points in the base frame.
-    pub(crate) fn new(frameset: FrameSet, points: Vec<Vec<f64>>) -> Self {
-        let mut fs = frameset;
-        // Ensure 2-frame structure: base + current connected by UnitMap.
-        // This matches the C library and ensures with_integrity works
-        // (fuse_into_current_edges needs at least one edge to compose the delta).
-        //
-        // A single-frame FrameSet is the frame a Region constructor was handed,
-        // which C resolves before storing: a Region contributes the Frame it
-        // encapsulates and a FrameSet its current Frame (region.c:13311-13323).
-        if fs.nframe() == 1 {
-            let resolved = resolve_supplied_frame(fs.current());
-            let naxes = resolved.naxes();
-            fs = FrameSet::new(resolved);
-            let current_snap = fs.current().snapshot();
-            fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
-                .expect("adding current frame to region FrameSet");
-        }
+    pub(crate) fn new(frame: DynFrame, points: Vec<Vec<f64>>) -> Self {
+        let resolved = resolve_supplied_frame(frame);
+        let naxes = resolved.naxes();
+        let current = resolved.snapshot();
+        let mut fs = FrameSet::new(resolved);
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current)
+            .expect("adding current frame to region FrameSet");
+        Self::with_frameset(fs, points)
+    }
+
+    /// Create a new `RegionData` with default attribute values that
+    /// encapsulates `frameset` (base = geometry frame, current = user frame).
+    /// - `points`: defining points in the base frame.
+    pub(crate) fn with_frameset(frameset: FrameSet, points: Vec<Vec<f64>>) -> Self {
         RegionData {
-            frameset: fs,
+            frameset,
             ident: None,
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),

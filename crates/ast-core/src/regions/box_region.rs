@@ -222,11 +222,9 @@ impl BoxRegionBuilder {
     /// Passes on the error of [`Region::set_uncertainty`] for an
     /// uncertainty given to [`uncertainty`](Self::uncertainty).
     pub fn build(self) -> AstResult<BoxRegion> {
-        let frameset = FrameSet::new(self.frame);
-
         // Defining points: points[0] = centre, points[1] = corner.
         let points = vec![self.centre, self.corner];
-        let data = RegionData::new(frameset, points);
+        let data = RegionData::new(self.frame, points);
         let mut region = BoxRegion { data };
 
         // C's constructor routes a construction-time uncertainty through
@@ -276,8 +274,7 @@ impl BoxRegion {
         centre: Vec<f64>,
         corner: Vec<f64>,
     ) -> AstResult<BoxRegion> {
-        let frameset = FrameSet::new(frame);
-        let data = RegionData::new(frameset, vec![centre, corner]);
+        let data = RegionData::new(frame, vec![centre, corner]);
         Ok(BoxRegion { data })
     }
 
@@ -1539,8 +1536,7 @@ impl Region for BoxRegion {
             None => None,
         };
 
-        let frameset = FrameSet::new(frm);
-        let mut data = RegionData::new(frameset, vec![centre, corner]);
+        let mut data = RegionData::new(frm, vec![centre, corner]);
         data.uncertainty = unc;
         Ok(Some(Box::new(BoxRegion { data })))
     }

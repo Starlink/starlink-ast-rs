@@ -295,10 +295,9 @@ impl CircleBuilder {
         }
 
         // Create a FrameSet with the frame as both base and current.
-        let frameset = FrameSet::new(self.frame);
 
         let points = vec![self.centre, edge];
-        let data = RegionData::new(frameset, points);
+        let data = RegionData::new(self.frame, points);
         let mut region = Circle { data };
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
@@ -718,8 +717,7 @@ impl Region for Circle {
         let small_edge = bfrm.offset(centre, edge, small_r)?;
 
         let make_circle = |edge_pt: Vec<f64>, negated: bool| -> Circle {
-            let frameset = FrameSet::new(bfrm.snapshot());
-            let mut data = RegionData::new(frameset, vec![centre.clone(), edge_pt]);
+            let mut data = RegionData::new(bfrm.snapshot(), vec![centre.clone(), edge_pt]);
             if negated {
                 data.negate();
             }

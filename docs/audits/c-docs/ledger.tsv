@@ -167,7 +167,7 @@ attribute	Base	frameset.c	FrameSet::set_base;FrameSet::base_index;FrameSet::set_
 attribute	Current	frameset.c	FrameSet::set_current;FrameSet::current_index;FrameSet::set_current_by_domain		yes	current gives the Frame; setting by Domain name is set_current_by_domain
 attribute	Nframe	frameset.c	FrameSet::nframe		yes
 attribute	Variant	frameset.c	FrameSet::variant		yes	set_variant, test_variant and clear_variant are the setter, test and clear
-function	astFrameSet	frameset.c	FrameSet::new		yes	A FrameSet given is held as one Frame, where C takes its Frames, Mappings, Base, Current and Invert (PLAN.md §2)
+function	astFrameSet	frameset.c	FrameSet::new		yes
 class	GrismMap	grismmap.c	GrismMap		yes
 attribute	GrismNR	grismmap.c	GrismMap::grism_nr		yes	C refuses to set it on a GrismMap with more than one reference; owned values have no such restriction
 attribute	GrismNRP	grismmap.c	GrismMap::grism_nrp		yes	C refuses to set it on a GrismMap with more than one reference

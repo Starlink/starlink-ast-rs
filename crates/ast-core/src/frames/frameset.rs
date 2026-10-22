@@ -317,10 +317,16 @@ impl FrameSet {
     /// current Frame; further Frames are added with
     /// [`add_frame`](FrameSet::add_frame).
     ///
-    /// A FrameSet given as `base` is held as one Frame, which presents its
-    /// current Frame.
+    /// Given a FrameSet, the new FrameSet instead holds its Frames and
+    /// Mappings, with the same Base, Current and Invert attributes; its other
+    /// attributes, such as [`ident`](Frame::ident), are not taken.
     #[doc(alias = "astFrameSet")]
-    pub fn new(base: DynFrame) -> Self {
+    pub fn new(mut base: DynFrame) -> Self {
+        // C: frameset.c `astInitFrameSet` takes the arrays of a FrameSet
+        // argument and copies only its `base`, `current` and a set Invert.
+        if let Some(old) = base.as_mut().as_any_mut().downcast_mut::<FrameSet>() {
+            return Self::taking_frames_of(old);
+        }
         Self {
             frames: vec![base],
             edges: Vec::new(),
@@ -337,6 +343,32 @@ impl FrameSet {
             mapping_flags: crate::mappings::MappingFlags::default(),
             use_defs: None,
             inverted: false,
+        }
+    }
+
+    /// A FrameSet holding the Frames and Mappings of `old`, which is left
+    /// empty, with its Base, Current and Invert.
+    fn taking_frames_of(old: &mut FrameSet) -> Self {
+        let mapping_flags = crate::mappings::MappingFlags {
+            invert_zero: old.mapping_flags.invert_zero,
+            ..Default::default()
+        };
+        Self {
+            frames: std::mem::take(&mut old.frames),
+            edges: std::mem::take(&mut old.edges),
+            base_idx: old.base_idx,
+            current_idx: old.current_idx,
+            base_set: old.base_set,
+            current_set: old.current_set,
+            frame_variants: std::mem::take(&mut old.frame_variants),
+            varfrm: std::mem::take(&mut old.varfrm),
+            nnode: old.nnode,
+            node_map: std::mem::take(&mut old.node_map),
+            ident: None,
+            id: Default::default(),
+            mapping_flags,
+            use_defs: None,
+            inverted: old.inverted,
         }
     }
 

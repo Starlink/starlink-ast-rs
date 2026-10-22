@@ -908,7 +908,7 @@ fn pixel_frame() -> AstResult<crate::frames::BasicFrame> {
 /// order is not checked by `EnsureInside`.
 fn pixel_polygon(frame: crate::frames::BasicFrame, points: Vec<Vec<f64>>) -> Polygon {
     Polygon {
-        data: RegionData::new(FrameSet::new(Box::new(frame)), points),
+        data: RegionData::new(Box::new(frame), points),
         simp_vertices: None,
     }
 }
@@ -1084,8 +1084,6 @@ impl PolygonBuilder {
     ///   error of [`is_bounded`](Region::is_bounded), or of measuring the
     ///   area of the Polygon in a sky Frame.
     pub fn build(self) -> AstResult<Polygon> {
-        let frameset = FrameSet::new(self.frame);
-
         // A vertex may not be bad (polygon.c:7131). C checks every X value
         // before any Y value, so reports the first vertex with a bad X.
         for axis in 0..2 {
@@ -1103,7 +1101,7 @@ impl PolygonBuilder {
 
         // Defining points are the vertices themselves.
         let points = self.vertices;
-        let data = RegionData::new(frameset, points);
+        let data = RegionData::new(self.frame, points);
         let mut polygon = Polygon {
             data,
             simp_vertices: None,
@@ -2363,7 +2361,7 @@ impl Mapping for Polygon {
         // correction — SetUnc re-centres the uncertainty on the first defining
         // point, so it must run before any reversal of the vertex order.
         let mut newpol = Polygon {
-            data: RegionData::new(FrameSet::new(current_frame), new_points),
+            data: RegionData::new(current_frame, new_points),
             simp_vertices: None,
         };
         newpol.set_uncertainty(unc)?;

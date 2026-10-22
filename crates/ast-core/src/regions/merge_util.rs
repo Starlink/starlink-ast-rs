@@ -10,7 +10,7 @@
 //! per-class bounds/points.
 
 use crate::error::AstResult;
-use crate::frames::{DynFrame, FrameSet};
+use crate::frames::DynFrame;
 use crate::mappings::{DynMapping, Mapping};
 
 use super::data::{RegionData, default_mesh_size};
@@ -156,21 +156,19 @@ pub(super) fn finish_region_merge(
         data.negated_set = overlay.negated;
     };
 
-    let frameset = FrameSet::new(bfrm);
-
     let mut new: DynRegion = match built {
         MergedRegion::Interval(lbnd, ubnd) => {
-            let mut data = RegionData::new(frameset, vec![lbnd, ubnd]);
+            let mut data = RegionData::new(bfrm, vec![lbnd, ubnd]);
             apply_attrs(&mut data);
             Box::new(Interval { data })
         }
         MergedRegion::Box(centre, corner) => {
-            let mut data = RegionData::new(frameset, vec![centre, corner]);
+            let mut data = RegionData::new(bfrm, vec![centre, corner]);
             apply_attrs(&mut data);
             Box::new(BoxRegion { data })
         }
         MergedRegion::PointList(points) => {
-            let mut data = RegionData::new(frameset, points);
+            let mut data = RegionData::new(bfrm, points);
             apply_attrs(&mut data);
             Box::new(PointList { data })
         }

@@ -162,11 +162,10 @@ impl PrismBuilder {
         let frame1 = self.region1.get_region_frame();
         let frame2 = self.region2.get_region_frame();
         let cmpframe = CmpFrame::new(frame1, frame2);
-        let frameset = FrameSet::new(Box::new(cmpframe) as DynFrame);
 
         // Prism has no defining points of its own (geometry is in sub-regions).
         let points = Vec::new();
-        let data = RegionData::new(frameset, points);
+        let data = RegionData::new(Box::new(cmpframe), points);
         let mut region = Prism {
             data,
             region1: self.region1,

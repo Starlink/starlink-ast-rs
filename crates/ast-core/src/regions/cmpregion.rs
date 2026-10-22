@@ -241,8 +241,7 @@ impl CmpRegionBuilder {
             }
         }
 
-        let frameset = FrameSet::new(frame);
-        let data = RegionData::new(frameset, Vec::new());
+        let data = RegionData::new(frame, Vec::new());
         let mut region = CmpRegion {
             data,
             region1: reg1,

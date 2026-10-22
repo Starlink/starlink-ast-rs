@@ -380,7 +380,7 @@ impl<K: StcKind> StcBuilder<K> {
             None => self.region.copy_region(),
         };
 
-        let data = RegionData::new(FrameSet::new(reg.get_region_frame()), Vec::new());
+        let data = RegionData::new(reg.get_region_frame(), Vec::new());
         let mut new = Stc::<K> {
             data,
             region: reg.clone_region(),

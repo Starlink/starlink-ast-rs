@@ -146,11 +146,9 @@ impl IntervalBuilder {
     /// Passes on the error of [`Region::set_uncertainty`] for an
     /// uncertainty given to [`uncertainty`](Self::uncertainty).
     pub fn build(self) -> AstResult<Interval> {
-        let frameset = FrameSet::new(self.frame);
-
         // Defining points: points[0] = lower bounds, points[1] = upper bounds.
         let points = vec![self.lbnd, self.ubnd];
-        let data = RegionData::new(frameset, points);
+        let data = RegionData::new(self.frame, points);
         let mut region = Interval { data };
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
@@ -174,8 +172,7 @@ impl Interval {
         lbnd: Vec<f64>,
         ubnd: Vec<f64>,
     ) -> AstResult<Interval> {
-        let frameset = FrameSet::new(frame);
-        let data = RegionData::new(frameset, vec![lbnd, ubnd]);
+        let data = RegionData::new(frame, vec![lbnd, ubnd]);
         Ok(Interval { data })
     }
 }
@@ -796,12 +793,11 @@ impl Interval {
         let centre: Vec<f64> = (0..nc).map(|i| 0.5 * (lbnd[i] + ubnd[i])).collect();
         let corner: Vec<f64> = ubnd.clone();
         let mut box_reg = {
-            let frameset = FrameSet::new(base_frame);
             // C constructs this Box with `astBox( bfrm, 1, lbnd, ubnd, unc, "" )`
             // and no astSetClosed (interval.c:3338), so Closed keeps its default
             // and stays unset. Only Cache's equivalent Box gets an explicit
             // Closed (interval.c:512).
-            let data = RegionData::new(frameset, vec![centre, corner]);
+            let data = RegionData::new(base_frame, vec![centre, corner]);
             super::BoxRegion { data }
         };
         // The `unc` argument is this Interval's uncertainty read in the base
@@ -909,8 +905,7 @@ impl Interval {
         }
 
         // 6. Build the simplified Interval from the current-Frame limits.
-        let frameset = FrameSet::new(current_frame);
-        let mut data = RegionData::new(frameset, vec![slbnd, subnd]);
+        let mut data = RegionData::new(current_frame, vec![slbnd, subnd]);
         data.negated = self.data.negated;
         data.negated_set = self.data.negated_set;
         data.closed = self.data.closed;
@@ -1236,8 +1231,7 @@ impl Region for Interval {
         }
 
         let make_interval = |lb: Vec<f64>, ub: Vec<f64>, negated: bool| -> Interval {
-            let frameset = FrameSet::new(self.data.frameset.base().snapshot());
-            let mut data = RegionData::new(frameset, vec![lb, ub]);
+            let mut data = RegionData::new(self.data.frameset.base().snapshot(), vec![lb, ub]);
             if negated {
                 data.negate();
             }
@@ -1518,7 +1512,7 @@ impl Region for Interval {
         // over the current bounds that shares this Interval's FrameSet, set
         // its centre, then read back the new base-Frame bounds.
         let (lbnd, ubnd) = self.effective_bounds();
-        let mut box_data = RegionData::new(self.data.frameset.clone(), {
+        let mut box_data = RegionData::with_frameset(self.data.frameset.clone(), {
             let centre: Vec<f64> = lbnd.iter().zip(&ubnd).map(|(l, u)| 0.5 * (l + u)).collect();
             vec![centre, ubnd.clone()]
         });
@@ -1559,8 +1553,7 @@ impl Region for Interval {
             None => None,
         };
 
-        let frameset = FrameSet::new(frm);
-        let mut data = RegionData::new(frameset, vec![lbnd, ubnd]);
+        let mut data = RegionData::new(frm, vec![lbnd, ubnd]);
         data.uncertainty = unc;
         Ok(Some(Box::new(Interval { data })))
     }

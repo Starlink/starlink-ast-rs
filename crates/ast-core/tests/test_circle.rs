@@ -901,3 +901,42 @@ fn get_unc_gives_the_uncertainty_in_the_current_frame() {
     assert_eq!(got.get_region_frame().domain(), "BAR");
     assert!(!got.test_region_fs());
 }
+
+/// A Region given a FrameSet encapsulates the FrameSet's current Frame, and
+/// one given a Region the Region's Frame: the values of a C-oracle probe of
+/// `astCircle`.
+#[test]
+fn a_frameset_given_as_the_frame_contributes_its_current_frame() {
+    use ast_core::AnyObject;
+    use ast_core::frames::{FrameRef, FrameSet};
+    use ast_core::mappings::ZoomMap;
+
+    let frame = |domain: &str| BasicFrameBuilder::new(2).domain(domain).build().unwrap();
+    let mut fs = FrameSet::new(Box::new(frame("X")));
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(ZoomMap::new(2, 2.0).unwrap()),
+        Box::new(frame("Y")),
+    )
+    .unwrap();
+    fn circle(f: impl Frame + 'static, r: f64) -> ast_core::regions::Circle {
+        CircleBuilder::new(f, vec![0.0, 0.0])
+            .unwrap()
+            .radius(r)
+            .build()
+            .unwrap()
+    }
+
+    let on_fs = circle(fs.clone(), 1.0);
+    assert_eq!(on_fs.domain(), "Y");
+    assert_eq!(
+        native_dump(&AnyObject::Circle(on_fs)).unwrap(),
+        native_dump(&AnyObject::Circle(circle(frame("Y"), 1.0))).unwrap()
+    );
+
+    fs.invert();
+    let on_inverted = circle(fs, 1.0);
+    assert_eq!(on_inverted.domain(), "X");
+    let on_circle = circle(on_inverted, 2.0);
+    assert_eq!(on_circle.domain(), "X");
+}

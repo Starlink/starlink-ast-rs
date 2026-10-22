@@ -6,6 +6,7 @@
 
 use crate::common::native_dump;
 
+use ast_core::AnyObject;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::frames::{BasicFrameBuilder, Frame, FrameRef, FrameSet};
@@ -37,6 +38,86 @@ fn new_frameset_single_frame() {
     assert_eq!(fs.nframe(), 1);
     assert_eq!(fs.base().naxes(), 2);
     assert_eq!(fs.current().naxes(), 2);
+}
+
+/// Frames X, Y and Z, with X to Y a ZoomMap of 2 and Y to Z a ShiftMap of
+/// (1, 2).
+fn xyz_unnamed() -> FrameSet {
+    let mut fs = FrameSet::new(make_named_frame(2, "X"));
+    fs.add_frame(
+        FrameRef::Index(1),
+        Box::new(ZoomMap::new(2, 2.0).unwrap()),
+        make_named_frame(2, "Y"),
+    )
+    .unwrap();
+    fs.add_frame(
+        FrameRef::Index(2),
+        Box::new(ShiftMap::new(vec![1.0, 2.0])),
+        make_named_frame(2, "Z"),
+    )
+    .unwrap();
+    fs
+}
+
+/// [`xyz_unnamed`] with Ident "orig".
+fn xyz() -> FrameSet {
+    let mut fs = xyz_unnamed();
+    Frame::set_ident(&mut fs, "orig").unwrap();
+    fs
+}
+
+/// A FrameSet made from a FrameSet takes its Frames, Mappings, Base, Current
+/// and Invert, and none of its other attributes: the values of a C-oracle
+/// probe of `astFrameSet` given a FrameSet.
+#[test]
+fn new_given_a_frameset_takes_its_frames_and_mappings() {
+    let fs = FrameSet::new(Box::new(xyz()));
+    assert_eq!(fs.nframe(), 3);
+    assert_eq!((fs.base_index(), fs.current_index()), (1, 3));
+    assert!(!fs.test_base());
+    assert!(fs.test_current());
+    assert!(!fs.test_invert());
+    assert_eq!(fs.domain(), "Z");
+    assert_eq!(Frame::ident(&fs), "");
+    assert_eq!(
+        native_dump(&AnyObject::FrameSet(fs)).unwrap(),
+        native_dump(&AnyObject::FrameSet(xyz_unnamed())).unwrap()
+    );
+
+    let mut old = xyz();
+    old.set_current(FrameRef::Index(2)).unwrap();
+    old.set_base(FrameRef::Index(3)).unwrap();
+    let fs = FrameSet::new(Box::new(old));
+    assert_eq!((fs.base_index(), fs.current_index()), (3, 2));
+    assert!(fs.test_base() && fs.test_current());
+    assert_eq!(fs.domain(), "Y");
+
+    let mut old = xyz();
+    old.set_invert(false);
+    assert!(FrameSet::new(Box::new(old)).test_invert());
+}
+
+/// An inverted FrameSet given to `FrameSet::new` gives an inverted FrameSet
+/// with the same effective Base and Current, dumped as C dumps it.
+#[test]
+fn new_given_an_inverted_frameset_stays_inverted() {
+    let mut old = xyz();
+    old.invert();
+    let fs = FrameSet::new(Box::new(old));
+    assert_eq!(fs.nframe(), 3);
+    assert!(fs.is_inverted());
+    assert_eq!((fs.base_index(), fs.current_index()), (3, 1));
+    assert!(fs.test_base());
+    assert!(!fs.test_current());
+    assert_eq!(fs.domain(), "X");
+    assert_eq!(
+        fs.tran2(&[1.0], &[1.0], true).unwrap(),
+        (vec![0.0], vec![-0.5])
+    );
+    assert_eq!(
+        native_dump(&AnyObject::FrameSet(fs)).unwrap(),
+        include_str!("fixtures/frameset_of_inverted_frameset.native")
+    );
 }
 
 #[test]

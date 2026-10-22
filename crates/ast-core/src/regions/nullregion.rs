@@ -96,10 +96,9 @@ impl NullRegionBuilder {
     /// Passes on the error of [`Region::set_uncertainty`] for an
     /// uncertainty given to [`uncertainty`](Self::uncertainty).
     pub fn build(self) -> AstResult<NullRegion> {
-        let frameset = FrameSet::new(self.frame);
         // NullRegion has no defining points.
         let points = Vec::new();
-        let data = RegionData::new(frameset, points);
+        let data = RegionData::new(self.frame, points);
         let mut region = NullRegion { data };
 
         // astSetUnc, as C's constructor calls it (region.c:13372). A NullRegion
@@ -421,8 +420,7 @@ impl Region for NullRegion {
             None => None,
         };
 
-        let frameset = FrameSet::new(frm);
-        let mut data = RegionData::new(frameset, Vec::new());
+        let mut data = RegionData::new(frm, Vec::new());
         data.uncertainty = unc;
         Ok(Some(Box::new(NullRegion { data })))
     }
@@ -457,9 +455,8 @@ impl Region for NullRegion {
         };
 
         // NullRegion has no defining points.
-        let frameset = FrameSet::new(Box::new(bfrm) as DynFrame);
         let mut new = NullRegion {
-            data: RegionData::new(frameset, Vec::new()),
+            data: RegionData::new(Box::new(bfrm), Vec::new()),
         };
 
         // Propagate the supplied Region's attributes (nullregion.c:675). C
@@ -777,8 +774,7 @@ impl Mapping for NullRegion {
             // Build a NullRegion on the parent-simplified current Frame,
             // carrying the parent's uncertainty (nullregion.c:1386-1389).
             let current_frame = new.data.frameset.current().snapshot();
-            let frameset = FrameSet::new(current_frame);
-            let mut data = RegionData::new(frameset, Vec::new());
+            let mut data = RegionData::new(current_frame, Vec::new());
             data.negated = new.data.negated;
             data.negated_set = new.data.negated_set;
             data.closed = new.data.closed;

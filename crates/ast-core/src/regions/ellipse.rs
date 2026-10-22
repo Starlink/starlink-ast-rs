@@ -472,9 +472,8 @@ impl Ellipse {
                 }
             }
         }
-        let frameset = FrameSet::new(frame);
         let points = vec![centre, point1, point2];
-        let mut data = RegionData::new(frameset, points);
+        let mut data = RegionData::new(frame, points);
         data.uncertainty = uncertainty;
         Ok(Ellipse { data })
     }

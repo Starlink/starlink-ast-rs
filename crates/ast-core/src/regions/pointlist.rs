@@ -132,8 +132,7 @@ impl PointListBuilder {
     /// Passes on the error of [`Region::set_uncertainty`] for an
     /// uncertainty given to [`uncertainty`](Self::uncertainty).
     pub fn build(self) -> AstResult<PointList> {
-        let frameset = FrameSet::new(self.frame);
-        let data = RegionData::new(frameset, self.points);
+        let data = RegionData::new(self.frame, self.points);
         let mut region = PointList { data };
 
         // astSetUnc, as C's constructor calls it (region.c:13372).
@@ -406,8 +405,7 @@ impl Region for PointList {
             Some(u) => u.get_region_frame(),
             None => base_frame.snapshot(),
         };
-        let frameset = FrameSet::new(pl_frame);
-        let mut data = RegionData::new(frameset, supplied);
+        let mut data = RegionData::new(pl_frame, supplied);
         data.uncertainty = unc.map(|u| u.clone_region());
         let pl = PointList { data };
 
@@ -624,8 +622,7 @@ impl Region for PointList {
             None => None,
         };
 
-        let frameset = FrameSet::new(frm);
-        let mut data = RegionData::new(frameset, new_points);
+        let mut data = RegionData::new(frm, new_points);
         data.uncertainty = unc;
         Ok(Some(Box::new(PointList { data })))
     }
@@ -992,14 +989,13 @@ impl Mapping for PointList {
         let new_points: Vec<Vec<f64>> = (0..this.data.points.len())
             .map(|i| transformed.point(i)[..naxes].to_vec())
             .collect();
-        let frameset = FrameSet::new(current_frame);
         // C hands the constructor the uncertainty in the *current* Frame
         // (pointlist.c:2254-2257), and the constructor's SetUnc maps it into the
         // new PointList's base Frame and re-centres it on the first point. The
         // `reg_overlay` below then clears it again when the supplied Region had
         // no uncertainty of its own.
         let unc = this.get_unc_frm(FrameRef::Current)?;
-        let data = RegionData::new(frameset, new_points);
+        let data = RegionData::new(current_frame, new_points);
         let mut result: DynRegion = Box::new(PointList { data });
         result.set_uncertainty(unc)?;
         result.reg_overlay(self, true)?;

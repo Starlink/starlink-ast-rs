@@ -326,7 +326,7 @@ impl Moc {
     pub fn new() -> Self {
         let frame: DynFrame = Box::new(SkyFrame::new(SkySystem::Icrs));
         Moc {
-            data: RegionData::new(FrameSet::new(frame), Vec::new()),
+            data: RegionData::new(frame, Vec::new()),
             max_order: None,
             min_order: None,
             range: Vec::new(),
