@@ -433,3 +433,70 @@ fn perm_map_keeping_leading_axes_simplifies_once() {
     );
     assert_eq!(dump(twice.as_ref()), text);
 }
+
+/// A PermMap built with a null inverse or forward array dumps it as
+/// `InCpy` / `OutCpy`, byte for byte as C's `astPermMap` with a NULL array
+/// does, transforms as the null permutation, and reads back the same.
+#[test]
+fn null_permutation_dumps_as_cpy_like_c() {
+    use ast_core::{AnyObject, from_native_string};
+    let c_one_null = " Begin PermMap \t# Coordinate permutation
+    Nin = 2 \t# Number of input coordinates
+    Nout = 3 \t# Number of output coordinates
+ IsA Mapping \t# Mapping between coordinate systems
+    Out1 = 2 \t# Output coordinate 1 = input coordinate 2
+    Out2 = 1 \t# Output coordinate 2 = input coordinate 1
+    Out3 = -1 \t# Output coordinate 3 = constant no. 1
+    InCpy = 1 \t# Input coordinates = output coordinates
+    Nconst = 1 \t# Number of constants
+    Con1 = 7.5 \t# Constant number 1
+ End PermMap
+";
+    let c_both_null = " Begin PermMap \t# Coordinate permutation
+    Nin = 3 \t# Number of input coordinates
+    Nout = 2 \t# Number of output coordinates
+ IsA Mapping \t# Mapping between coordinate systems
+    OutCpy = 1 \t# Output coordinates = input coordinates
+    InCpy = 1 \t# Input coordinates = output coordinates
+ End PermMap
+";
+    let p1 = PermMap::with_null_perms(2, None, 3, Some(&[2, 1, -1]), &[7.5]).unwrap();
+    assert_eq!((p1.nin(), p1.nout()), (2, 3));
+    // C probe: forward (1, 2) -> (2, 1, 7.5); inverse (5, 6, 7) -> (5, 6).
+    let fwd = p1
+        .transform(&PointSet::from_rows([[1.0, 2.0]]), true)
+        .unwrap();
+    assert_eq!(fwd.point(0), &[2.0, 1.0, 7.5]);
+    let inv = p1
+        .transform(&PointSet::from_rows([[5.0, 6.0, 7.0]]), false)
+        .unwrap();
+    assert_eq!(inv.point(0), &[5.0, 6.0]);
+    assert_eq!(native_dump(&AnyObject::PermMap(p1)).unwrap(), c_one_null);
+
+    let p2 = PermMap::with_null_perms(3, None, 2, None, &[]).unwrap();
+    let fwd = p2
+        .transform(&PointSet::from_rows([[1.0, 2.0, 3.0]]), true)
+        .unwrap();
+    assert_eq!(fwd.point(0), &[1.0, 2.0]);
+    let inv = p2
+        .transform(&PointSet::from_rows([[4.0, 5.0]]), false)
+        .unwrap();
+    assert_eq!(inv.point(0), &[4.0, 5.0, BAD_VALUE]);
+    assert_eq!(native_dump(&AnyObject::PermMap(p2)).unwrap(), c_both_null);
+
+    // Reading C's dumps gives PermMaps that write the same text again.
+    for text in [c_one_null, c_both_null] {
+        let obj = from_native_string(text).unwrap();
+        assert_eq!(native_dump(&obj).unwrap(), text);
+    }
+}
+
+/// A supplied array must have one entry per coordinate it describes.
+#[test]
+fn null_permutation_constructor_checks_array_lengths() {
+    use ast_core::error::ErrorCode;
+    let e = PermMap::with_null_perms(2, Some(&[1]), 2, None, &[]).unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Badni);
+    let e = PermMap::with_null_perms(2, None, 2, Some(&[1, 2, 3]), &[]).unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Badno);
+}

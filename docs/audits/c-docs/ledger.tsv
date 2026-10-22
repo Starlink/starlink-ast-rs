@@ -348,7 +348,7 @@ attribute	Disco	pcdmap.c	PcdMap::disc		yes	C refuses to set it on a PcdMap with 
 attribute	PcdCen	pcdmap.c	PcdMap::pcdcen		yes	The getter returns both axes; C's PcdCen without an axis reads axis 1. C refuses to set it on a PcdMap with more than one reference
 function	astPcdMap	pcdmap.c	PcdMap::new		yes	The options string is replaced by the typed setters
 class	PermMap	permmap.c	PermMap		yes
-function	astPermMap	permmap.c	PermMap::new		yes	C accepts a NULL inperm or outperm for the null permutation, dumped as InCpy/OutCpy; the port needs explicit arrays, which transform the same but dump every element (PLAN.md §2)
+function	astPermMap	permmap.c	PermMap::new;PermMap::with_null_perms		yes
 class	Plot	plot.c		not-ported	yes
 attribute	Tol	plot.c		not-ported	yes
 attribute	Grid	plot.c		not-ported	yes

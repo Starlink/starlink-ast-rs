@@ -9,7 +9,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{PointSet, Points, PointsMut};
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
@@ -135,6 +135,77 @@ impl PermMap {
             in_is_copy: false,
             perm_split: None,
         })
+    }
+
+    /// Create a PermMap with `nin` input and `nout` output coordinates,
+    /// where either permutation array may be omitted to request the null
+    /// permutation.
+    ///
+    /// `inperm`, `outperm` and `constants` mean what they do for
+    /// [`new`](PermMap::new).
+    /// Passing `None` for `inperm` makes each input coordinate take the
+    /// output coordinate with the same number, or `BAD_VALUE` where there is
+    /// no such output coordinate; `None` for `outperm` does the same for the
+    /// output coordinates.
+    /// An omitted array is not stored, and a Native dump records it as
+    /// `InCpy = 1` or `OutCpy = 1` instead of listing every element.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Badni` when `inperm` is supplied without `nin`
+    ///   elements.
+    /// - `ErrorCode::Badno` when `outperm` is supplied without `nout`
+    ///   elements.
+    ///
+    /// ```
+    /// use ast_core::coords::PointSet;
+    /// use ast_core::mappings::{Mapping, PermMap};
+    ///
+    /// // Three inputs feed the first two outputs; the inverse copies the
+    /// // two outputs back and sets the third input bad.
+    /// let map = PermMap::with_null_perms(3, None, 2, None, &[]).unwrap();
+    /// let out = map.transform(&PointSet::from_rows([[1.0, 2.0, 3.0]]), true).unwrap();
+    /// assert_eq!(out.point(0), &[1.0, 2.0]);
+    /// ```
+    #[doc(alias = "astPermMap")]
+    pub fn with_null_perms(
+        nin: usize,
+        inperm: Option<&[i64]>,
+        nout: usize,
+        outperm: Option<&[i64]>,
+        constants: &[f64],
+    ) -> AstResult<Self> {
+        if let Some(p) = inperm
+            && p.len() != nin
+        {
+            return Err(AstError::new(
+                ErrorCode::Badni,
+                format!(
+                    "astPermMap: {} input permutation values supplied; the PermMap has {nin} inputs",
+                    p.len()
+                ),
+            ));
+        }
+        if let Some(p) = outperm
+            && p.len() != nout
+        {
+            return Err(AstError::new(
+                ErrorCode::Badno,
+                format!(
+                    "astPermMap: {} output permutation values supplied; the PermMap has {nout} outputs",
+                    p.len()
+                ),
+            ));
+        }
+        // The omitted array is held expanded so that every transformation
+        // path reads one representation; the flags record that it is not
+        // stored, which is what the dump and the simplifier's null test read.
+        let in_vec = inperm.map_or_else(|| null_perm(nin, nout), <[i64]>::to_vec);
+        let out_vec = outperm.map_or_else(|| null_perm(nout, nin), <[i64]>::to_vec);
+        let mut map = Self::new(&in_vec, &out_vec, constants)?;
+        map.in_is_copy = inperm.is_none();
+        map.out_is_copy = outperm.is_none();
+        Ok(map)
     }
 
     pub(crate) fn outperm(&self) -> &[i64] {
