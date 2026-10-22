@@ -29,6 +29,8 @@ mod test_fixture_full_dump_oracle;
 mod test_fixture_read_warnings_oracle;
 #[path = "../test_frame_load.rs"]
 mod test_frame_load;
+#[path = "../test_frameset_variant_link_oracle.rs"]
+mod test_frameset_variant_link_oracle;
 #[path = "../test_frameset_variants_oracle.rs"]
 mod test_frameset_variants_oracle;
 #[path = "../test_keymap.rs"]

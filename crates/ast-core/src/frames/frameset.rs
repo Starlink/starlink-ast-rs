@@ -1521,6 +1521,11 @@ impl FrameSet {
                     (e.from, e.to) == (parent, inode) || (e.from, e.to) == (inode, parent)
                 })
                 .expect("a node on a path has a link to its parent");
+            // C records the Invert of the simplified Mapping as the link's
+            // flag, as `Edge::new` does. C's result may share the link's old
+            // Mapping object, whose own Invert it then restores, which shows
+            // only in the dump of a component of a CmpMap result; the port's
+            // result holds copies (tests/test_frameset_variant_link_oracle.rs).
             self.edges[k] = Edge::new(parent, inode, new_map);
         }
         if let Some(vfs) = &mut self.frame_variants[owner] {

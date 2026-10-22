@@ -58,6 +58,15 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          object IDs differ (feedback-no-clone-copy-emulation)",
     ),
     (
+        "test_frameset_variant_link_oracle.rs",
+        "EXCLUDED",
+        2,
+        "C's simplified CmpMap shares the MathMap object of a reversed \
+         FrameSet link, whose own Invert SetVariant then restores, so C dumps \
+         the component's Invert differently; the port's CmpMap holds its own \
+         copy (feedback-no-clone-copy-emulation). Transformations compared",
+    ),
+    (
         "test_channel_read_oracle.rs",
         "EXCLUDED",
         2,
