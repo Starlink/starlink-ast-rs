@@ -1421,8 +1421,10 @@ fn ax_norm_on_the_longitude_axis_matches_c() {
 /// `sky_offset_map` gives the Mapping C's `astSkyOffsetMap` gives: a UnitMap
 /// without an offset coordinate system, and otherwise a CmpMap whose
 /// transformations match the C library's.
-/// Values captured by `tools/oracle_fixtures/sky_offset_map_probe.c`.
+/// Values captured by `tools/oracle_fixtures/sky_offset_map_probe.c`, which
+/// prints them with 17 significant digits.
 #[test]
+#[allow(clippy::approx_constant, clippy::excessive_precision)]
 fn sky_offset_map_follows_the_c_library() {
     use ast_core::error::ErrorCode;
     use ast_core::mappings::{CmpMap, UnitMap};
