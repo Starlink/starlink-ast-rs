@@ -17,45 +17,45 @@ comes back. The rule itself lives in `CanMerge`
 (`grismmap.c:466-600 (fn CanMerge)`), so both are audited here.
 
 `GrismMap::map_merge` (`grismmap.rs:861-868 (fn map_merge)`) delegates to
-`simplify::grism_map_merge` (`mappings/simplify.rs:2871-2889 (fn grism_map_merge)`),
+`simplify::grism_map_merge` (`mappings/simplify.rs:2899-2917 (fn grism_map_merge)`),
 whose per-pair body is
-`grism_zoom_merge_at` (`mappings/simplify.rs:2785-2845 (fn grism_zoom_merge_at)`).
+`grism_zoom_merge_at` (`mappings/simplify.rs:2813-2873 (fn grism_zoom_merge_at)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
 | 1 | Initialise the returned result to -1 | grismmap.c:1198-1199 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | grismmap.c:1201-1202 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Initialise the pair indices to silence compiler warnings | grismmap.c:1204-1207 (fn MapMerge) | -- | ceremony | n/a: the Rust locals are initialised where they are declared |
-| 4 | A GrismMap can only merge in series, so do nothing in parallel | grismmap.c:1209-1213 (fn MapMerge) | mappings/simplify.rs:2877 (fn grism_map_merge) | architecture | ported |
+| 4 | A GrismMap can only merge in series, so do nothing in parallel | grismmap.c:1209-1213 (fn MapMerge) | mappings/simplify.rs:2905 (fn grism_map_merge) | architecture | ported |
 | 5 | Note that no mergeable neighbour has been found yet | grismmap.c:1214-1217 (fn MapMerge) | -- | ceremony | n/a: the Rust flow returns on the first success instead of carrying a found-flag |
-| 6 | Ask `CanMerge` about the lower neighbour first | grismmap.c:1218-1225 (fn MapMerge) | mappings/simplify.rs:2878-2881 (fn grism_map_merge) | architecture | ported |
-| 7 | If that failed, ask about the upper neighbour | grismmap.c:1226-1234 (fn MapMerge) | mappings/simplify.rs:2882-2885 (fn grism_map_merge) | architecture | ported |
-| 8 | Replace the merged pair with the single Mapping `CanMerge` returned | grismmap.c:1235-1239 (fn MapMerge) | mappings/simplify.rs:2785-2845 (fn grism_zoom_merge_at) | architecture | ported |
+| 6 | Ask `CanMerge` about the lower neighbour first | grismmap.c:1218-1225 (fn MapMerge) | mappings/simplify.rs:2906-2909 (fn grism_map_merge) | architecture | ported |
+| 7 | If that failed, ask about the upper neighbour | grismmap.c:1226-1234 (fn MapMerge) | mappings/simplify.rs:2910-2913 (fn grism_map_merge) | architecture | ported |
+| 8 | Replace the merged pair with the single Mapping `CanMerge` returned | grismmap.c:1235-1239 (fn MapMerge) | mappings/simplify.rs:2813-2873 (fn grism_zoom_merge_at) | architecture | ported |
 | 9 | Annul the two Mappings | grismmap.c:1240-1243 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 10 | Store the merged Mapping in place of the first of the pair | grismmap.c:1244-1248 (fn MapMerge) | mappings/simplify.rs:2859 (fn store_merged), via mappings/simplify.rs:2810 (fn grism_zoom_merge_at),2836 (fn grism_zoom_merge_at) | architecture | ported |
-| 11 | Shuffle the remaining Mappings down and clear the vacated slot | grismmap.c:1249-1259 (fn MapMerge) | mappings/simplify.rs:2860 (fn store_merged), via mappings/simplify.rs:2810 (fn grism_zoom_merge_at),2836 (fn grism_zoom_merge_at) | architecture | ported |
-| 12 | Decrement the Mapping count and return the index of the first modified element | grismmap.c:1260-1267 (fn MapMerge) | mappings/simplify.rs:2880 (fn grism_map_merge),2882 (fn grism_map_merge) | architecture | ported |
-| 13 | Return the result | grismmap.c:1268-1269 (fn MapMerge) | mappings/simplify.rs:2888 (fn grism_map_merge) | ceremony | ported |
+| 10 | Store the merged Mapping in place of the first of the pair | grismmap.c:1244-1248 (fn MapMerge) | mappings/simplify.rs:2887 (fn store_merged), via mappings/simplify.rs:2838 (fn grism_zoom_merge_at),2864 (fn grism_zoom_merge_at) | architecture | ported |
+| 11 | Shuffle the remaining Mappings down and clear the vacated slot | grismmap.c:1249-1259 (fn MapMerge) | mappings/simplify.rs:2888 (fn store_merged), via mappings/simplify.rs:2838 (fn grism_zoom_merge_at),2864 (fn grism_zoom_merge_at) | architecture | ported |
+| 12 | Decrement the Mapping count and return the index of the first modified element | grismmap.c:1260-1267 (fn MapMerge) | mappings/simplify.rs:2908 (fn grism_map_merge),2910 (fn grism_map_merge) | architecture | ported |
+| 13 | Return the result | grismmap.c:1268-1269 (fn MapMerge) | mappings/simplify.rs:2916 (fn grism_map_merge) | ceremony | ported |
 | 14 | `CanMerge`: initialise the returned Mapping to NULL | grismmap.c:476-478 (fn CanMerge) | -- | ceremony | n/a: "no merge" is `false` from `grism_zoom_merge_at`, not a null pointer |
 | 15 | Check the global error status and bail out | grismmap.c:479-480 (fn CanMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 16 | Initialise the GrismMap pointer and the invert flag to silence compiler warnings | grismmap.c:482-485 (fn CanMerge) | -- | ceremony | n/a: the Rust locals are initialised where they are declared |
 | 17 | Initialise the adjacent ZoomMap's factor to mean "none found" | grismmap.c:487-489 (fn CanMerge) | -- | ceremony | n/a: each pattern reads its own zoom factor inside the branch that matched, so there is no sentinel spanning the branches |
-| 18 | If the first Mapping is a GrismMap | grismmap.c:491-494 (fn CanMerge) | mappings/simplify.rs:2791 (fn grism_zoom_merge_at), grismmap.rs:882 (fn try_merge) | architecture | ported |
+| 18 | If the first Mapping is a GrismMap | grismmap.c:491-494 (fn CanMerge) | mappings/simplify.rs:2819 (fn grism_zoom_merge_at), grismmap.rs:882 (fn try_merge) | architecture | ported |
 | 19 | Two GrismMaps merge to a UnitMap when one is the inverse of the other | grismmap.c:495-499 (fn CanMerge) | grismmap.rs:882 (fn try_merge) | architecture | ported |
 | 20 | Require the two GrismMaps to have equal attribute values | grismmap.c:500-509 (fn CanMerge) | grismmap.rs:886-893 (fn try_merge) | architecture | ported |
 | 21 | Require them to be applied in opposite senses, then return a UnitMap | grismmap.c:510-514 (fn CanMerge) | grismmap.rs:894-896 (fn try_merge) | architecture | ported |
-| 22 | A GrismMap followed by a non-GrismMap merges only if the GrismMap is un-inverted, so its output is the wavelength | grismmap.c:515-523 (fn CanMerge) | mappings/simplify.rs:2791-2794 (fn grism_zoom_merge_at) | architecture | ported |
-| 23 | Note that the merged Mapping will not need inverting | grismmap.c:524-527 (fn CanMerge) | mappings/simplify.rs:2808 (fn grism_zoom_merge_at) | architecture | ported |
-| 24 | Require the second Mapping to be a ZoomMap, and take its zoom factor at the right Invert setting | grismmap.c:528-538 (fn CanMerge) | mappings/simplify.rs:2792-2805 (fn grism_zoom_merge_at) | architecture | ported |
-| 25 | A non-GrismMap followed by a GrismMap merges only if the GrismMap is inverted | grismmap.c:539-548 (fn CanMerge) | mappings/simplify.rs:2816-2819 (fn grism_zoom_merge_at) | architecture | ported |
-| 26 | Re-express that case as an un-inverted GrismMap followed by a ZoomMap, inverting the result at the end | grismmap.c:549-555 (fn CanMerge) | mappings/simplify.rs:2837 (fn grism_zoom_merge_at) | architecture | ported |
-| 27 | Require the first Mapping to be a ZoomMap at the opposite Invert setting, and take its factor | grismmap.c:556-566 (fn CanMerge) | mappings/simplify.rs:2820-2834 (fn grism_zoom_merge_at) | architecture | ported |
-| 28 | Build the merged Mapping by folding the zoom factor into the GrismMap's attributes | grismmap.c:567-571 (fn CanMerge) | grismmap.rs:678-710 (fn merge_with_zoom), via mappings/simplify.rs:2808 (fn grism_zoom_merge_at) | architecture | ported |
-| 29 | Ensure a forward GrismMap before doing so | grismmap.c:572-575 (fn CanMerge) | grismmap.rs:691 (fn merge_with_zoom), via mappings/simplify.rs:2791 (fn grism_zoom_merge_at) | architecture | ported |
-| 30 | Read the GrismMap attribute values the fold needs | grismmap.c:576-580 (fn CanMerge) | grismmap.rs:692-694 (fn merge_with_zoom), via mappings/simplify.rs:2808 (fn grism_zoom_merge_at) | architecture | ported |
-| 31 | Apply the zoom to the wavelength scale, producing the amended attributes | grismmap.c:581-593 (fn CanMerge) | grismmap.rs:692-698 (fn merge_with_zoom), via mappings/simplify.rs:2808 (fn grism_zoom_merge_at) | architecture | ported |
-| 32 | Invert the resulting GrismMap if the original pair required it | grismmap.c:594-598 (fn CanMerge) | grismmap.rs:700-702 (fn merge_with_zoom), via mappings/simplify.rs:2837 (fn grism_zoom_merge_at) | architecture | ported |
-| 33 | Return the merged Mapping, or NULL | grismmap.c:599-600 (fn CanMerge) | mappings/simplify.rs:2811 (fn grism_zoom_merge_at),2837 (fn grism_zoom_merge_at) | architecture | ported |
+| 22 | A GrismMap followed by a non-GrismMap merges only if the GrismMap is un-inverted, so its output is the wavelength | grismmap.c:515-523 (fn CanMerge) | mappings/simplify.rs:2819-2822 (fn grism_zoom_merge_at) | architecture | ported |
+| 23 | Note that the merged Mapping will not need inverting | grismmap.c:524-527 (fn CanMerge) | mappings/simplify.rs:2836 (fn grism_zoom_merge_at) | architecture | ported |
+| 24 | Require the second Mapping to be a ZoomMap, and take its zoom factor at the right Invert setting | grismmap.c:528-538 (fn CanMerge) | mappings/simplify.rs:2820-2833 (fn grism_zoom_merge_at) | architecture | ported |
+| 25 | A non-GrismMap followed by a GrismMap merges only if the GrismMap is inverted | grismmap.c:539-548 (fn CanMerge) | mappings/simplify.rs:2844-2847 (fn grism_zoom_merge_at) | architecture | ported |
+| 26 | Re-express that case as an un-inverted GrismMap followed by a ZoomMap, inverting the result at the end | grismmap.c:549-555 (fn CanMerge) | mappings/simplify.rs:2865 (fn grism_zoom_merge_at) | architecture | ported |
+| 27 | Require the first Mapping to be a ZoomMap at the opposite Invert setting, and take its factor | grismmap.c:556-566 (fn CanMerge) | mappings/simplify.rs:2848-2862 (fn grism_zoom_merge_at) | architecture | ported |
+| 28 | Build the merged Mapping by folding the zoom factor into the GrismMap's attributes | grismmap.c:567-571 (fn CanMerge) | grismmap.rs:678-710 (fn merge_with_zoom), via mappings/simplify.rs:2836 (fn grism_zoom_merge_at) | architecture | ported |
+| 29 | Ensure a forward GrismMap before doing so | grismmap.c:572-575 (fn CanMerge) | grismmap.rs:691 (fn merge_with_zoom), via mappings/simplify.rs:2819 (fn grism_zoom_merge_at) | architecture | ported |
+| 30 | Read the GrismMap attribute values the fold needs | grismmap.c:576-580 (fn CanMerge) | grismmap.rs:692-694 (fn merge_with_zoom), via mappings/simplify.rs:2836 (fn grism_zoom_merge_at) | architecture | ported |
+| 31 | Apply the zoom to the wavelength scale, producing the amended attributes | grismmap.c:581-593 (fn CanMerge) | grismmap.rs:692-698 (fn merge_with_zoom), via mappings/simplify.rs:2836 (fn grism_zoom_merge_at) | architecture | ported |
+| 32 | Invert the resulting GrismMap if the original pair required it | grismmap.c:594-598 (fn CanMerge) | grismmap.rs:700-702 (fn merge_with_zoom), via mappings/simplify.rs:2865 (fn grism_zoom_merge_at) | architecture | ported |
+| 33 | Return the merged Mapping, or NULL | grismmap.c:599-600 (fn CanMerge) | mappings/simplify.rs:2839 (fn grism_zoom_merge_at),2865 (fn grism_zoom_merge_at) | architecture | ported |
 
 ## A lone GrismMap has no reduction of its own
 
@@ -79,7 +79,7 @@ telling the callee which side of the pair it is. The comment at
 ## Rows 6 and 7 — the order is observable
 
 C asks about the lower neighbour first and only then the upper. The port keeps
-that order at `mappings/simplify.rs:2878-2885 (fn grism_map_merge)`, which
+that order at `mappings/simplify.rs:2906-2913 (fn grism_map_merge)`, which
 matters when both neighbours are eligible: the pair chosen decides the index
 reported and where the nominate loop resumes.
 

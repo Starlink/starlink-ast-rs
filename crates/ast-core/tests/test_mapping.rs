@@ -522,3 +522,107 @@ fn simplify_clears_an_undefined_transformation_error() {
 ";
     assert_eq!(got, want);
 }
+
+/// The PermMap with two constant outputs followed by a parallel CmpMap whose
+/// first component lacks a forward transformation, which fails to simplify.
+fn failing_series() -> CmpMap {
+    use ast_core::mappings::{MathMap, PermMap};
+    let pm = PermMap::new(&[1, 2], &[-1, -2], &[3.0, 4.0]).unwrap();
+    let mm = MathMap::new(1, 1, &["y"], &["x=y"]).unwrap();
+    let par = CmpMap::new(
+        Box::new(mm),
+        Box::new(UnitMap::new(1)),
+        Composition::Parallel,
+    )
+    .unwrap();
+    CmpMap::new(Box::new(pm), Box::new(par), Composition::Series).unwrap()
+}
+
+fn dump_of_simplified(map: &dyn Mapping) -> String {
+    let simplified = <dyn Mapping>::simplify(map).unwrap();
+    native_dump(&AnyObject::from_mapping(simplified.as_ref()).unwrap()).unwrap()
+}
+
+/// A component whose own simplification fails is not recorded as
+/// simplified, while the CmpMap holding it, which simplifies without
+/// change, is.
+/// The expected dump is what the C library writes
+/// (`simplify_trnnd_oracle/nested_failure.ast`).
+#[test]
+fn a_component_whose_simplification_fails_is_not_recorded_as_simplified() {
+    let map = CmpMap::new(
+        Box::new(failing_series()),
+        Box::new(UnitMap::new(1)),
+        Composition::Parallel,
+    )
+    .unwrap();
+    assert_eq!(
+        dump_of_simplified(&map),
+        include_str!("simplify_trnnd_oracle/nested_failure.ast")
+    );
+}
+
+/// A pair of parallel CmpMaps whose merged series fails to simplify is
+/// left unsimplified, and the merge goes on with the other pair, as C's
+/// `astSimplify` clears the error wherever it is called.
+/// The expected dump is what the C library writes
+/// (`simplify_trnnd_oracle/failing_pair.ast`).
+#[test]
+fn a_failing_pair_does_not_stop_the_merge() {
+    use ast_core::mappings::{MathMap, PermMap};
+    let pm = PermMap::new(&[1, 2], &[-1, -2], &[3.0, 4.0]).unwrap();
+    let mm = MathMap::new(1, 1, &["y"], &["x=y"]).unwrap();
+    let p1 = CmpMap::new(
+        Box::new(pm),
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let inner = CmpMap::new(
+        Box::new(mm),
+        Box::new(UnitMap::new(1)),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let p2 = CmpMap::new(
+        Box::new(inner),
+        Box::new(ZoomMap::new(1, 0.5).unwrap()),
+        Composition::Parallel,
+    )
+    .unwrap();
+    let map = CmpMap::new(Box::new(p1), Box::new(p2), Composition::Series).unwrap();
+    assert_eq!(
+        dump_of_simplified(&map),
+        include_str!("simplify_trnnd_oracle/failing_pair.ast")
+    );
+}
+
+/// When a component simplifies to something new and a later merge fails,
+/// the records its simplification left on its own components are kept, as
+/// C writes them on the component itself.
+/// The expected dump is what the C library writes
+/// (`simplify_trnnd_oracle/nested_change_then_failure.ast`).
+#[test]
+fn records_from_a_changed_component_survive_a_later_failure() {
+    use ast_core::mappings::{MathMap, PermMap};
+    let pm = PermMap::new(&[1, 2], &[-1, -2], &[3.0, 4.0]).unwrap();
+    let mm = MathMap::new(1, 1, &["y"], &["x=y"]).unwrap();
+    let a = CmpMap::new(
+        Box::new(mm),
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
+    let b = CmpMap::new(
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        Box::new(ZoomMap::new(1, 0.5).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
+    let par = CmpMap::new(Box::new(a), Box::new(b), Composition::Parallel).unwrap();
+    let map = CmpMap::new(Box::new(pm), Box::new(par), Composition::Series).unwrap();
+    assert_eq!(
+        dump_of_simplified(&map),
+        include_str!("simplify_trnnd_oracle/nested_change_then_failure.ast")
+    );
+}

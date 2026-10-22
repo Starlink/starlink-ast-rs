@@ -43,9 +43,9 @@ merge's own rule is `TranMap::try_merge` (`tranmap.rs:415-484 (fn try_merge)`).
 | 21 | Take the merge only if either composition actually simplified | tranmap.c:961-964 (fn MapMerge) | tranmap.rs:473-477 (fn try_merge) | architecture | ported |
 | 22 | Construct a new TranMap from the two simplified compositions | tranmap.c:965-971 (fn MapMerge) | tranmap.rs:478-480 (fn try_merge) | architecture | ported |
 | 23 | Free resources and re-instate the higher TranMap's component Invert values | tranmap.c:972-982 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped and nothing was mutated |
-| 24 | Replace the first of the pair with the merged TranMap and set its invert flag | tranmap.c:983-989 (fn MapMerge) | mappings/simplify.rs:1561-1566 (fn default_map_merge) | architecture | ported |
-| 25 | Annul the second and shuffle the rest down, clearing the vacated slot | tranmap.c:990-1001 (fn MapMerge) | mappings/simplify.rs:1566 (fn default_map_merge) | architecture | ported |
-| 26 | Decrement the Mapping count and return the index of the first modified element | tranmap.c:1002-1009 (fn MapMerge) | mappings/simplify.rs:1567-1568 (fn default_map_merge) | architecture | ported |
+| 24 | Replace the first of the pair with the merged TranMap and set its invert flag | tranmap.c:983-989 (fn MapMerge) | mappings/simplify.rs:1585-1590 (fn default_map_merge) | architecture | ported |
+| 25 | Annul the second and shuffle the rest down, clearing the vacated slot | tranmap.c:990-1001 (fn MapMerge) | mappings/simplify.rs:1590 (fn default_map_merge) | architecture | ported |
+| 26 | Decrement the Mapping count and return the index of the first modified element | tranmap.c:1002-1009 (fn MapMerge) | mappings/simplify.rs:1591-1592 (fn default_map_merge) | architecture | ported |
 | 27 | Re-instate the nominated TranMap's component Invert values | tranmap.c:1010-1013 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
 | 28 | Clear the result value if an error occurred | tranmap.c:1014-1016 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 29 | Return the result | tranmap.c:1017-1018 (fn MapMerge) | tranmap.rs:412 (fn map_merge) | ceremony | ported |

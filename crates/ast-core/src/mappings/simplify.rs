@@ -16,7 +16,7 @@
 use std::cell::RefCell;
 
 use crate::constants::BAD_VALUE;
-use crate::error::{AstError, AstResult};
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::helpers::ast_equal;
 
 use super::ViaSimplify;
@@ -26,6 +26,7 @@ use super::matrix::{MatrixMap, is_diagonal};
 use super::pcdmap::PcdMap;
 use super::perm::PermMap;
 use super::shift::ShiftMap;
+use super::simplify_entry::SimplifyOutcome;
 use super::sphmap::SphMap;
 use super::unit::UnitMap;
 use super::wcsmap::WcsMap;
@@ -508,12 +509,12 @@ pub struct MergeCtx {
     /// nominate loop stops at it (`while ( astOK && ... )`, cmpmap.c:3754)
     /// and the simplification fails with it.
     error: Option<AstError>,
-    /// A copy of each component of the CmpMap being simplified that the
-    /// nominate loop recorded as simplified, by the component's position in
-    /// the list the simplification began with (`MappingFlags::origin`).
+    /// The records of simplification the nominate loop wrote on each
+    /// component of the CmpMap being simplified, by the component's position
+    /// in the list the simplification began with (`MappingFlags::origin`).
     /// C writes those records through its list's aliases onto the CmpMap's
     /// own components, where they stay whatever later merges do to the list.
-    stamped: Vec<(usize, DynMapping)>,
+    stamped: Vec<(usize, TagTree)>,
 }
 
 impl MergeCtx {
@@ -541,19 +542,23 @@ impl MergeCtx {
         self.error.take()
     }
 
-    /// Keep a copy of the entry at `index` if it is one of the components the
-    /// simplification began with, so the records of simplification on it can
-    /// be returned on the CmpMap if the simplification fails.
+    /// Keep the records of simplification on the entry at `index` if it is
+    /// one of the components the simplification began with, so they can be
+    /// returned on the CmpMap if the simplification fails.
     fn record_component_stamp(&mut self, index: usize) {
         let entry = &self.list[index].0;
-        let origin = entry.mapping_flags().origin;
+        self.record_tags(entry.mapping_flags().origin, TagTree::of(entry.as_ref()));
+    }
+
+    /// Keep `tags` as the records of simplification on the component the
+    /// simplification began with at position `origin`; 0 names none.
+    fn record_tags(&mut self, origin: usize, tags: TagTree) {
         if origin == 0 {
             return;
         }
-        let copy = entry.clone_box();
         match self.stamped.iter_mut().find(|(o, _)| *o == origin) {
-            Some(slot) => slot.1 = copy,
-            None => self.stamped.push((origin, copy)),
+            Some(slot) => slot.1 = tags,
+            None => self.stamped.push((origin, tags)),
         }
     }
 
@@ -773,7 +778,8 @@ pub(crate) fn cmp_map_merge(
     }
     if !oriented.has_been_simplified() {
         trace::simplify_enter("cmp-self-simplify-head", oriented.as_ref());
-        if let Ok((simplified, changed)) = oriented.simplify_reporting_change() {
+        if let Ok((simplified, outcome)) = oriented.simplify_with_outcome() {
+            let changed = matches!(outcome, SimplifyOutcome::Changed(_));
             trace::cmpmap_head(where_, changed, simplified.as_ref());
             // C's test is `simpler = ( new != map ) || ( new_invert !=
             // invert_list[where] )` (cmpmap.c:1456) — pointer identity, not
@@ -782,7 +788,18 @@ pub(crate) fn cmp_map_merge(
             // when `new != map` already has, because the `astClone( this )`
             // branch hands back the very object whose `Invert` was just set to
             // `invert_list[where]`.
-            if changed {
+            if let SimplifyOutcome::Changed(records) = outcome {
+                // The records the reduction wrote on the component's own
+                // components stay on the component in C, though it is replaced
+                // here, so keep them in case this simplification fails.
+                if let Some(records) = records {
+                    records.apply_to(oriented.as_mut());
+                    if oriented.is_inverted() {
+                        oriented.invert();
+                    }
+                    let origin = ctx.entry(where_).0.mapping_flags().origin;
+                    ctx.record_tags(origin, TagTree::of(oriented.as_ref()));
+                }
                 let new_inv = simplified.is_inverted();
                 let mut fwd = simplified;
                 if new_inv {
@@ -819,10 +836,17 @@ pub(crate) fn cmp_map_merge(
             let (eff, orig) = (*eff, *orig);
             adopted.mapping_flags_mut().origin = entry.mapping_flags().origin;
             ctx.set_pair_single(where_, (adopted, eff, orig));
+            // A reduction that failed is not recorded as simplified, as C's
+            // `astSimplify` records only one that succeeded; the copy it
+            // returns still carries the records written on its components.
+            if !matches!(outcome, SimplifyOutcome::Failed) {
+                ctx.set_component_simple_tag(where_);
+            }
+            ctx.record_component_stamp(where_);
+        } else {
+            ctx.set_component_simple_tag(where_);
+            ctx.record_component_stamp(where_);
         }
-
-        ctx.set_component_simple_tag(where_);
-        ctx.record_component_stamp(where_);
     } else {
         // C's `astSimplify` hands a tagged Mapping straight back, so its head
         // still runs and finds nothing simpler.
@@ -1815,8 +1839,8 @@ pub(crate) fn merge_loop(list: &mut Vec<(DynMapping, bool, bool)>, series: bool)
 /// only components carrying `AllowSimplify` may be nominated
 /// (`cmpmap.c:3563-3573`).
 ///
-/// `stamped` receives the copies [`MergeCtx`] keeps of the components the
-/// loop recorded as simplified.
+/// `stamped` receives the records of simplification [`MergeCtx`] keeps for
+/// the components the loop began with.
 ///
 /// # Errors
 ///
@@ -1826,7 +1850,7 @@ fn merge_loop_restricted(
     list: &mut Vec<(DynMapping, bool, bool)>,
     series: bool,
     restricted: bool,
-    stamped: &mut Vec<(usize, DynMapping)>,
+    stamped: &mut Vec<(usize, TagTree)>,
 ) -> AstResult<bool> {
     let mut ctx = MergeCtx::new(std::mem::take(list));
     ctx.clear_frozen();
@@ -2298,10 +2322,11 @@ fn compute_merge_parallel_pair_in_series(
         let pre_simplify_inverted = series_box.is_inverted();
 
         // Simplify the series combination.
-        let Ok((simplified, changed)) = simplify_mapping_reporting_change(series_box.as_ref())
-        else {
+        let Ok((simplified, outcome)) = simplify_mapping_with_outcome(series_box.as_ref()) else {
             return None;
         };
+        let changed = matches!(outcome, SimplifyOutcome::Changed(_));
+        let failed = matches!(outcome, SimplifyOutcome::Failed);
 
         // C's `simpler` test (`cmpmap.c:1730-1734`): the simplified pair is a
         // different object, or its orientation changed.
@@ -2321,11 +2346,14 @@ fn compute_merge_parallel_pair_in_series(
         if new_inv {
             simplified.invert();
         }
-        // C `astSimplify_` (mapping.c:24763) tags every result. Each matched
-        // pair was combined in series and `astSimplify`'d, so its reduced
-        // result carries the record — in the orientation it was earned in,
-        // which is the one the tree serialises the pair at.
-        simplified.set_simplified_in(new_inv, true);
+        // C `astSimplify_` (mapping.c:24763) tags every result but one whose
+        // reduction failed. Each matched pair was combined in series and
+        // `astSimplify`'d, so its reduced result carries the record — in the
+        // orientation it was earned in, which is the one the tree serialises
+        // the pair at.
+        if !failed {
+            simplified.set_simplified_in(new_inv, true);
+        }
         simplified_pairs.push((simplified, new_inv, new_inv));
     }
 
@@ -3373,19 +3401,26 @@ pub(crate) fn recombine_distributed_branches(
     // astGetInvert( simp1 ) || astGetInvert( simp2 )` (cmpmap.c:1616): pointer
     // identity on each half, reported by the callee, plus C's safety check that
     // neither half came back inverted.
-    let (mut simp1, changed1) = simplify_mapping_reporting_change(new1.as_ref()).ok()?;
-    let (mut simp2, changed2) = simplify_mapping_reporting_change(new2.as_ref()).ok()?;
+    let (mut simp1, outcome1) = simplify_mapping_with_outcome(new1.as_ref()).ok()?;
+    let (mut simp2, outcome2) = simplify_mapping_with_outcome(new2.as_ref()).ok()?;
+    let changed1 = matches!(outcome1, SimplifyOutcome::Changed(_));
+    let changed2 = matches!(outcome2, SimplifyOutcome::Changed(_));
     let simpler = changed1 || changed2 || simp1.is_inverted() || simp2.is_inverted();
     if !simpler {
         return None;
     }
 
     // C reaches both halves through `astSimplify` (cmpmap.c:1602-1603), which
-    // stamps its result; `simplify_mapping` is the untagged internal entry, so
-    // stamp them here. Each becomes an element of the series list the closing
-    // fold walks, which used to clear the tag again and no longer does.
-    simp1.set_has_been_simplified(true);
-    simp2.set_has_been_simplified(true);
+    // stamps its result unless the reduction failed; `simplify_mapping` is the
+    // untagged internal entry, so stamp them here. Each becomes an element of
+    // the series list the closing fold walks, which used to clear the tag again
+    // and no longer does.
+    if !matches!(outcome1, SimplifyOutcome::Failed) {
+        simp1.set_has_been_simplified(true);
+    }
+    if !matches!(outcome2, SimplifyOutcome::Failed) {
+        simp2.set_has_been_simplified(true);
+    }
 
     // Compose the two simplified halves in series (C astCmpMap(simp1, simp2, 1)).
     CmpMap::new(simp1, simp2, Composition::Series)
@@ -3507,55 +3542,146 @@ fn reconstruct_inner(list: Vec<(DynMapping, bool, bool)>, series: bool) -> AstRe
     Ok(acc)
 }
 
-/// Write the nominate loop's `IsSimple` stamps back onto the tree that
-/// `simplify_mapping` is about to return unchanged.
+/// The `IsSimple` records on a Mapping's tree of CmpMaps.
+///
+/// C's records of simplification live on the objects themselves, and the
+/// nominate loop's list entries alias the CmpMap's own components, so a record
+/// written on an entry is on the component.
+/// The port's list holds copies, so it carries the records across in this
+/// form, which holds only the tags and the shape needed to place them, not the
+/// Mappings.
+#[derive(Clone, Debug)]
+pub(crate) enum TagTree {
+    /// Anything other than a CmpMap, which carries no record here.
+    Other,
+    /// A CmpMap: its record at its own orientation, that orientation, and the
+    /// records of its two components.
+    Cmp {
+        tag: bool,
+        inverted: bool,
+        components: Box<[TagTree; 2]>,
+    },
+}
+
+impl TagTree {
+    /// The records on `m` and its components.
+    pub(crate) fn of(m: &dyn Mapping) -> Self {
+        match m.as_any().downcast_ref::<CmpMap>() {
+            None => TagTree::Other,
+            Some(c) => TagTree::Cmp {
+                tag: c.dump_is_simple(),
+                inverted: c.is_inverted(),
+                components: Box::new([TagTree::of(c.first()), TagTree::of(c.second())]),
+            },
+        }
+    }
+
+    /// The records of `dst` once these are written onto it: where both are
+    /// CmpMaps, this tag replaces `dst`'s at its own orientation, and when the
+    /// two are held at the same orientation their components are matched in
+    /// turn; elsewhere `dst` keeps its own.
+    /// The tag is carried in both directions, so an untagged source clears
+    /// the tag on `dst`.
+    fn written_onto(&self, dst: &TagTree) -> TagTree {
+        match (self, dst) {
+            (
+                TagTree::Cmp {
+                    tag,
+                    inverted: s_inv,
+                    components: s_c,
+                },
+                TagTree::Cmp {
+                    inverted: d_inv,
+                    components: d_c,
+                    ..
+                },
+            ) => TagTree::Cmp {
+                tag: *tag,
+                inverted: *d_inv,
+                components: if s_inv == d_inv {
+                    Box::new([s_c[0].written_onto(&d_c[0]), s_c[1].written_onto(&d_c[1])])
+                } else {
+                    d_c.clone()
+                },
+            },
+            _ => dst.clone(),
+        }
+    }
+
+    /// Write these records onto `dst`, which has the shape they were taken
+    /// from.
+    pub(crate) fn apply_to(&self, dst: &mut dyn Mapping) {
+        let TagTree::Cmp {
+            tag,
+            inverted,
+            components,
+        } = self
+        else {
+            return;
+        };
+        let Some(d) = dst.as_any_mut().downcast_mut::<CmpMap>() else {
+            return;
+        };
+        let d_inv = d.is_inverted();
+        d.set_dump_simplified_in(d_inv, *tag);
+        if *inverted != d_inv {
+            return;
+        }
+        components[0].apply_to(d.first_mut().as_mut());
+        components[1].apply_to(d.second_mut().as_mut());
+    }
+}
+
+/// The records on `node` once the nominate loop's records for the components
+/// it began with are written onto them.
 ///
 /// C's `SeparateMappings` (cmpmap.c:3326) only deep-copies *duplicate*
 /// component pointers; every other entry of `map_list` aliases the live child
 /// of the CmpMap being simplified. So when the nominate loop's self-simplify
 /// head stamps `IsSimple` on an entry it reduced no further — `astSimplify`
 /// (cmpmap.c:1437) tags even the clone it returns for an unreduced Mapping —
-/// the stamp mutates the real child, and is still there when `Simplify` takes
-/// its `!simpler` branch and returns `astClone( this )` (cmpmap.c:3634).
+/// the stamp mutates the real child, and is still there when `Simplify` returns
+/// `astClone( this )`, after its `!simpler` branch (cmpmap.c:3634) or a failed
+/// merge, and when a nested reduction returns a new Mapping the stamps it wrote
+/// on its own components are on the original.
 ///
-/// Our list holds clones, so the stamps would otherwise be discarded with it.
-/// Copy them across, walking the tree in the order [`flatten`] built the list so
-/// entry *i* lands on the component it came from. A stamp can sit anywhere
-/// inside an entry, not just on its root — the entry is a whole subtree that C
-/// shares with the tree, so [`mirror_simple_tags`] transplants the entry's tag
-/// state at every level.
-fn apply_component_stamps(
-    node: &mut DynMapping,
+/// Walk the tree in the order [`flatten`] built the list so entry *i* lands on
+/// the component it came from. A stamp can sit anywhere inside an entry, not
+/// just on its root — the entry is a whole subtree that C shares with the tree,
+/// so [`TagTree::written_onto`] transplants the entry's tag state at every level.
+fn stamped_tags(
+    node: &dyn Mapping,
     inv: bool,
     series: bool,
-    entries: &[Option<DynMapping>],
+    entries: &[Option<TagTree>],
     next: &mut usize,
-) {
+) -> TagTree {
     let target_kind = if series {
         Composition::Series
     } else {
         Composition::Parallel
     };
-    if let Some(cmp) = node.as_any().downcast_ref::<CmpMap>() {
-        if cmp.composition() == target_kind {
-            let cmp_inv = inv != cmp.is_inverted();
-            let first_inv = cmp_inv != (cmp.inv_a() != cmp.first().is_inverted());
-            let second_inv = cmp_inv != (cmp.inv_b() != cmp.second().is_inverted());
-            // `flatten` reverses the child order for an inverted series CmpMap.
-            let reversed = cmp_inv && series;
-            let cmp = node
-                .as_any_mut()
-                .downcast_mut::<CmpMap>()
-                .expect("downcast succeeded immediately above");
-            if reversed {
-                apply_component_stamps(cmp.second_mut(), second_inv, series, entries, next);
-                apply_component_stamps(cmp.first_mut(), first_inv, series, entries, next);
-            } else {
-                apply_component_stamps(cmp.first_mut(), first_inv, series, entries, next);
-                apply_component_stamps(cmp.second_mut(), second_inv, series, entries, next);
-            }
-            return;
-        }
+    if let Some(cmp) = node.as_any().downcast_ref::<CmpMap>()
+        && cmp.composition() == target_kind
+    {
+        let cmp_inv = inv != cmp.is_inverted();
+        let first_inv = cmp_inv != (cmp.inv_a() != cmp.first().is_inverted());
+        let second_inv = cmp_inv != (cmp.inv_b() != cmp.second().is_inverted());
+        // `flatten` reverses the child order for an inverted series CmpMap.
+        let [first, second] = if cmp_inv && series {
+            let second = stamped_tags(cmp.second(), second_inv, series, entries, next);
+            let first = stamped_tags(cmp.first(), first_inv, series, entries, next);
+            [first, second]
+        } else {
+            let first = stamped_tags(cmp.first(), first_inv, series, entries, next);
+            let second = stamped_tags(cmp.second(), second_inv, series, entries, next);
+            [first, second]
+        };
+        return TagTree::Cmp {
+            tag: cmp.dump_is_simple(),
+            inverted: cmp.is_inverted(),
+            components: Box::new([first, second]),
+        };
     }
     // A class overriding C `astMapList` contributes its own components; skip
     // past the indices they occupy without descending, since only a `CmpMap`
@@ -3566,84 +3692,78 @@ fn apply_component_stamps(
                 .map(|f| f.len())
                 .unwrap_or(1);
         }
-        return;
+        return TagTree::of(node);
     }
     // Leaf: `flatten` emitted exactly one entry for this component.
-    if let Some(Some(entry)) = entries.get(*next) {
-        mirror_simple_tags(entry.as_ref(), node);
-    }
+    let own = TagTree::of(node);
+    let tags = match entries.get(*next) {
+        Some(Some(entry)) => entry.written_onto(&own),
+        _ => own,
+    };
     *next += 1;
-}
-
-/// Assign to `dst` the `IsSimple` tag carried by the structurally-corresponding
-/// `CmpMap` in `src`, descending both trees in step.
-///
-/// The tag is mirrored in both directions: where `src` is untagged the tag is
-/// removed from `dst`. `src` is a component-list entry and `dst` the same
-/// component on the tree the caller preserves; in C they are one object, so
-/// whatever the entry ended up holding has to land on `dst`.
-fn mirror_simple_tags(src: &dyn Mapping, dst: &mut DynMapping) {
-    let Some(s) = src.as_any().downcast_ref::<CmpMap>() else {
-        return;
-    };
-    let (s_tag, s_inv) = (s.dump_is_simple(), s.is_inverted());
-    let Some(d) = dst.as_any_mut().downcast_mut::<CmpMap>() else {
-        return;
-    };
-    let d_inv = d.is_inverted();
-    d.set_dump_simplified_in(d_inv, s_tag);
-    // A differing stored orientation means the two trees pair children the other
-    // way round; without a shared shape there is nothing to descend into.
-    if s_inv != d.is_inverted() {
-        return;
-    }
-    let (s_first, s_second) = (s.first(), s.second());
-    mirror_simple_tags(s_first, d.first_mut());
-    mirror_simple_tags(s_second, d.second_mut());
+    tags
 }
 
 #[cfg(test)]
 fn simplify_mapping(mapping: &dyn Mapping) -> AstResult<DynMapping> {
-    simplify_mapping_reporting_change(mapping).map(|(m, _)| m)
+    simplify_mapping_with_outcome(mapping).map(|(m, _)| m)
 }
 
-/// C's `Simplify` for a CmpMap (`cmpmap.c:3396`), reporting whether the result
-/// differs from the input — C's `tmap != tmap2` (`cmpmap.c:1730`), which in an
-/// owned-value port is a fact the engine knows rather than a pointer comparison.
+/// C's `Simplify` for a CmpMap (`cmpmap.c:3396`), reporting how it ended:
+/// whether the result differs from the input — C's `tmap != tmap2`
+/// (`cmpmap.c:1730`), which in an owned-value port is a fact the engine knows
+/// rather than a pointer comparison — and whether the reduction failed, since
+/// only one that did not is recorded as simplified.
 ///
 /// The non-CmpMap path delegates to the public entry, which reports the same
-/// bit for whichever per-class seam runs.
-pub(crate) fn simplify_mapping_reporting_change(
+/// for whichever per-class seam runs.
+/// As every C call this stands in for is an `astSimplify`, a reduction that
+/// reaches an undefined transformation returns the Mapping unsimplified,
+/// carrying the records of simplification written on its components.
+pub(crate) fn simplify_mapping_with_outcome(
     mapping: &dyn Mapping,
-) -> AstResult<(DynMapping, bool)> {
+) -> AstResult<(DynMapping, SimplifyOutcome)> {
     let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() else {
-        return mapping.simplify_reporting_change();
+        return mapping.simplify_with_outcome();
     };
-    simplify_cmpmap_into(cmp, &mut None)
+    let mut tags = None;
+    match simplify_cmpmap_into(cmp, &mut tags) {
+        Ok((m, true)) => Ok((m, SimplifyOutcome::Changed(tags))),
+        Ok((m, false)) => Ok((m, SimplifyOutcome::Unchanged)),
+        Err(e) if matches!(e.code(), ErrorCode::Nodef | ErrorCode::Trnnd) => {
+            let mut unsimplified = mapping.clone_box();
+            if let Some(tags) = tags {
+                tags.apply_to(unsimplified.as_mut());
+            }
+            Ok((unsimplified, SimplifyOutcome::Failed))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// [`CmpMap`]'s per-class simplification, reached through the gate.
 ///
-/// When a merge fails, the CmpMap carrying the records of the components
-/// simplified before the failure is handed to the gate, as C returns the
-/// CmpMap whose components it wrote them to.
+/// The records of simplification the reduction wrote on the CmpMap's own
+/// components are handed to the gate, as C writes them on the components
+/// themselves.
 pub(crate) fn simplify_cmpmap(
     cmp: &CmpMap,
     gate: &mut ViaSimplify,
 ) -> AstResult<(DynMapping, bool)> {
-    let mut unsimplified = None;
-    let result = simplify_cmpmap_into(cmp, &mut unsimplified);
-    if let Some(m) = unsimplified {
-        gate.unsimplified_on_failure(m);
+    let mut tags = None;
+    let result = simplify_cmpmap_into(cmp, &mut tags);
+    if let Some(tags) = tags {
+        gate.component_records(tags);
     }
     result
 }
 
-/// The body of [`simplify_cmpmap`]: on a failed merge, `unsimplified` receives
-/// a copy of `cmp` carrying the records of the components simplified first.
+/// The body of [`simplify_cmpmap`]: when the reduction fails or returns a new
+/// Mapping, `input_tags` receives the records on `cmp` once those the
+/// reduction wrote on its components are added.
 fn simplify_cmpmap_into(
     cmp: &CmpMap,
-    unsimplified: &mut Option<DynMapping>,
+    input_tags: &mut Option<TagTree>,
 ) -> AstResult<(DynMapping, bool)> {
     let mapping: &dyn Mapping = cmp;
 
@@ -3674,19 +3794,17 @@ fn simplify_cmpmap_into(
     for (m, _, _) in &mut list {
         m.mapping_flags_mut().origin = 0;
     }
+    let mut records: Vec<Option<TagTree>> = (0..ncomponents).map(|_| None).collect();
+    for (origin, tags) in stamped {
+        records[origin - 1] = Some(tags);
+    }
     let changed = match changed {
         Ok(changed) => changed,
         Err(e) => {
             // C's `Simplify` returns nothing and leaves the error for
             // `astSimplify` (cmpmap.c:3954), whose `astClone( this )` carries
             // the records written through the list's aliases.
-            let mut cloned = mapping.clone_box();
-            let mut entries: Vec<Option<DynMapping>> = (0..ncomponents).map(|_| None).collect();
-            for (origin, copy) in stamped {
-                entries[origin - 1] = Some(copy);
-            }
-            apply_component_stamps(&mut cloned, false, series, &entries, &mut 0);
-            *unsimplified = Some(cloned);
+            *input_tags = Some(stamped_tags(mapping, false, series, &records, &mut 0));
             return Err(e);
         }
     };
@@ -3709,10 +3827,17 @@ fn simplify_cmpmap_into(
         // (cmpmap.c:1437) writes through that alias. So the tags are still on
         // `this`'s children when `Simplify` returns `astClone( this )`
         // (cmpmap.c:3634), and they must be transplanted onto our fresh clone.
-        let entries: Vec<Option<DynMapping>> = list.into_iter().map(|(m, _, _)| Some(m)).collect();
-        apply_component_stamps(&mut cloned, false, series, &entries, &mut 0);
+        let entries: Vec<Option<TagTree>> = list
+            .iter()
+            .map(|(m, _, _)| Some(TagTree::of(m.as_ref())))
+            .collect();
+        stamped_tags(mapping, false, series, &entries, &mut 0).apply_to(cloned.as_mut());
         return Ok((cloned, false));
     }
+
+    // The reduction makes a new Mapping, but the records it wrote on this
+    // CmpMap's components stay on them in C.
+    *input_tags = Some(stamped_tags(mapping, false, series, &records, &mut 0));
 
     // C's `simpler` branch: the result is folded afresh from the component list,
     // so it is a new pointer even when the fold reproduces the input's shape.

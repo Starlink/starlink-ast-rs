@@ -54,13 +54,13 @@ normalisation into the matrix and the offsets, and the port follows.
 | 15 | The only merge available is a PolyMap with its own inverse, in series | polymap.c:3930-3934 (fn MapMerge) | chebymap.rs:721-728 (fn try_merge) | architecture | ported |
 | 16 | Temporarily set the nominated PolyMap's Invert flag to the requested value | polymap.c:3936-3940 (fn MapMerge) | chebymap.rs:738-742 (fn try_merge) | architecture | ported |
 | 17 | Read the nominated PolyMap's shape at that orientation | polymap.c:3942-3944 (fn MapMerge) | chebymap.rs:751-752 (fn try_merge) | architecture | ported |
-| 18 | Take each neighbour in turn, skipping one that does not exist or is not a PolyMap | polymap.c:3946-3956 (fn MapMerge) | mappings/simplify.rs:1487-1508 (fn default_map_merge) | architecture | ported |
+| 18 | Take each neighbour in turn, skipping one that does not exist or is not a PolyMap | polymap.c:3946-3956 (fn MapMerge) | mappings/simplify.rs:1511-1532 (fn default_map_merge) | architecture | ported |
 | 19 | Require the neighbour to be used in the opposite direction | polymap.c:3958-3959 (fn MapMerge) | chebymap.rs:725-727 (fn try_merge) | architecture | ported |
 | 20 | Set the neighbour's Invert flag so the equality test compares like with like | polymap.c:3961-3969 (fn MapMerge) | chebymap.rs:743-745 (fn try_merge) | architecture | ported |
 | 21 | Use astEqual to check the coefficients and the rest are equal | polymap.c:3971-3973 (fn MapMerge) | chebymap.rs:746-748 (fn try_merge), chebymap.rs:826-870 (fn equal) | architecture | ported |
 | 22 | Re-instate the neighbour's Invert flag | polymap.c:3975-3976 (fn MapMerge) | -- | ceremony | n/a: the two ChebyMaps are compared as copies, so the list entries are never mutated and nothing is restored |
 | 23 | Move on if the neighbour differs | polymap.c:3978-3980 (fn MapMerge) | chebymap.rs:746-748 (fn try_merge) | architecture | ported |
-| 24 | Replace both entries with UnitMaps and leave the loop | polymap.c:3982-4001 (fn MapMerge) | chebymap.rs:751-752 (fn try_merge), mappings/simplify.rs:1561-1568 (fn default_map_merge) | architecture | ported |
+| 24 | Replace both entries with UnitMaps and leave the loop | polymap.c:3982-4001 (fn MapMerge) | chebymap.rs:751-752 (fn try_merge), mappings/simplify.rs:1585-1592 (fn default_map_merge) | architecture | ported |
 | 25 | Re-instate the nominated PolyMap's Invert flag if it was not replaced | polymap.c:4004-4006 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
 | 26 | Return the result | polymap.c:4009-4010 (fn MapMerge) | chebymap.rs:818 (fn map_merge) | ceremony | ported |
 
@@ -155,7 +155,7 @@ per-class `MapMerge` runs when the nominated Mapping's `Ident` is set
 (`mapping.c:24257 (fn astMapMerge_)`), so an identified ChebyMap keeps its
 coefficients as constructed even when the tree around it simplifies. The port
 applies that guard in `dispatch_map_merge`
-(`mappings/simplify.rs:1411-1474 (fn dispatch_map_merge)`), which is how
+(`mappings/simplify.rs:1435-1498 (fn dispatch_map_merge)`), which is how
 `ChebyMap::map_merge` gets it; see PLAN.md §10.29.
 
 ## Row 24 — C leaves two UnitMaps, the port leaves one entry

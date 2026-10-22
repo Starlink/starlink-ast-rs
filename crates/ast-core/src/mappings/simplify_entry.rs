@@ -16,6 +16,7 @@
 //! (`record_simplified`); there is exactly one `ViaSimplify` construction in the
 //! file and the guarantee is that nothing outside it can write a second one.
 
+use super::simplify::TagTree;
 use super::{AstResult, DynMapping, Mapping, simplify};
 use crate::error::ErrorCode;
 
@@ -24,20 +25,31 @@ use crate::error::ErrorCode;
 ///
 /// Constructible only in this module. Implementations of
 /// [`Mapping::simplified`] receive one and never build one.
-pub struct ViaSimplify<'a>(&'a mut Option<DynMapping>);
+pub struct ViaSimplify<'a>(&'a mut Option<TagTree>);
 
 impl ViaSimplify<'_> {
-    /// Supply the Mapping to return if the reduction fails because it
-    /// reached an undefined transformation.
+    /// Supply the records of simplification the reduction wrote on this
+    /// Mapping's own components.
     ///
-    /// C returns the Mapping it was given in that case (mapping.c
-    /// `astSimplify_`), and that object carries the records of the components
-    /// simplified before the failure, written through aliases; a reduction
-    /// that writes such records supplies a copy of itself carrying them.
-    /// Without one, the failure returns a plain copy.
-    pub(crate) fn unsimplified_on_failure(&mut self, unsimplified: DynMapping) {
-        *self.0 = Some(unsimplified);
+    /// C writes them on the components themselves, through aliases, so they
+    /// are on the Mapping C returns when the reduction fails because it
+    /// reached an undefined transformation (mapping.c `astSimplify_`), and on
+    /// the Mapping its caller holds when the reduction returns a new one.
+    pub(crate) fn component_records(&mut self, records: TagTree) {
+        *self.0 = Some(records);
     }
+}
+
+/// How a simplification ended.
+pub(crate) enum SimplifyOutcome {
+    /// The reduction returned a new Mapping. The records it wrote on this
+    /// Mapping's components, if it wrote any, come with it.
+    Changed(Option<TagTree>),
+    /// Nothing reduced; the returned copy is recorded as simplified.
+    Unchanged,
+    /// The reduction reached an undefined transformation; the returned copy
+    /// is not recorded as simplified.
+    Failed,
 }
 
 impl dyn Mapping {
@@ -91,6 +103,12 @@ impl dyn Mapping {
     ///
     /// As for `simplify`.
     pub fn simplify_reporting_change(&self) -> AstResult<(DynMapping, bool)> {
+        self.simplify_with_outcome()
+            .map(|(result, outcome)| (result, matches!(outcome, SimplifyOutcome::Changed(_))))
+    }
+
+    /// `simplify`, also reporting how it ended.
+    pub(crate) fn simplify_with_outcome(&self) -> AstResult<(DynMapping, SimplifyOutcome)> {
         // `false` is C's `astClone( this )` exit: the per-class slot handed
         // back the object it was given, so the identity test C's generic
         // drivers apply to the returned pointer (frameset.c:10208,
@@ -113,20 +131,29 @@ impl dyn Mapping {
         // intact (`astDoNotSimplify`, mapping.c:24764) — C tests both in one
         // expression, so the two take the same `astClone( this )` exit.
         if self.has_been_simplified() || self.do_not_simplify() {
-            return Ok((self.clone_box(), false));
+            return Ok((self.clone_box(), SimplifyOutcome::Unchanged));
         }
 
-        let mut unsimplified = None;
-        match self.simplified(ViaSimplify(&mut unsimplified)) {
+        let mut records = None;
+        match self.simplified(ViaSimplify(&mut records)) {
             Ok((mut result, changed)) => {
                 record_simplified(self, &mut result);
-                Ok((result, changed))
+                let outcome = if changed {
+                    SimplifyOutcome::Changed(records)
+                } else {
+                    SimplifyOutcome::Unchanged
+                };
+                Ok((result, outcome))
             }
             // C clears an AST__NODEF or AST__TRNND raised by the reduction and
             // returns `astClone( this )`, which is not recorded as simplified
             // (mapping.c `astSimplify_`).
             Err(e) if matches!(e.code(), ErrorCode::Nodef | ErrorCode::Trnnd) => {
-                Ok((unsimplified.unwrap_or_else(|| self.clone_box()), false))
+                let mut unsimplified = self.clone_box();
+                if let Some(records) = records {
+                    records.apply_to(unsimplified.as_mut());
+                }
+                Ok((unsimplified, SimplifyOutcome::Failed))
             }
             Err(e) => Err(e),
         }
