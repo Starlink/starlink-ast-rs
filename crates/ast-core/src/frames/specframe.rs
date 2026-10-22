@@ -64,20 +64,22 @@ impl SpecSystem {
     }
 
     /// Parse from string, ignoring case and trailing white space.
-    /// Accepts both short and long forms.
+    /// Accepts the short names [`as_str`](Self::as_str) gives, and the
+    /// long forms `"ENERGY"`, `"WAVENUM"`, `"WAVELEN"`, `"AIRWAVE"`,
+    /// `"VRADIO"`, `"VOPTICAL"`, `"REDSHIFT"` and `"VREL"`.
     // C: specframe.c `SystemCode`, which matches with `astChrMatch`.
     pub fn parse(s: &str) -> Option<Self> {
         match crate::mappings::helpers::chr_match_key(s).as_str() {
-            "FREQ" | "FREQUENCY" => Some(Self::Freq),
+            "FREQ" => Some(Self::Freq),
             "ENER" | "ENERGY" => Some(Self::Energy),
-            "WAVN" | "WAVENUM" | "WAVENUMBER" => Some(Self::Wavenum),
-            "WAVE" | "WAVELEN" | "WAVELENGTH" => Some(Self::Wavelen),
-            "AWAV" | "AIRWAVE" | "AIRWAV" => Some(Self::Airwave),
+            "WAVN" | "WAVENUM" => Some(Self::Wavenum),
+            "WAVE" | "WAVELEN" => Some(Self::Wavelen),
+            "AWAV" | "AIRWAVE" => Some(Self::Airwave),
             "VRAD" | "VRADIO" => Some(Self::Vradio),
             "VOPT" | "VOPTICAL" => Some(Self::Voptical),
             "ZOPT" | "REDSHIFT" => Some(Self::Redshift),
             "BETA" => Some(Self::Beta),
-            "VELO" | "VREL" | "RELATIVISTIC" => Some(Self::Vrel),
+            "VELO" | "VREL" => Some(Self::Vrel),
             _ => None,
         }
     }

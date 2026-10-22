@@ -86,6 +86,35 @@ fn test_spec_system_parsing() {
     assert_eq!(SpecSystem::parse("junk"), None);
 }
 
+/// Only the names the C library accepts parse: each system's short name,
+/// and the long forms ENERGY, WAVENUM, WAVELEN, AIRWAVE, VRADIO, VOPTICAL,
+/// REDSHIFT and VREL.
+#[test]
+fn spec_system_parses_only_c_names() {
+    let accepted = [
+        ("ENERGY", SpecSystem::Energy),
+        ("WAVENUM", SpecSystem::Wavenum),
+        ("WAVELEN", SpecSystem::Wavelen),
+        ("AIRWAVE", SpecSystem::Airwave),
+        ("VRADIO", SpecSystem::Vradio),
+        ("VOPTICAL", SpecSystem::Voptical),
+        ("REDSHIFT", SpecSystem::Redshift),
+        ("VREL", SpecSystem::Vrel),
+    ];
+    for (name, want) in accepted {
+        assert_eq!(SpecSystem::parse(name), Some(want), "{name}");
+    }
+    for name in [
+        "FREQUENCY",
+        "WAVENUMBER",
+        "WAVELENGTH",
+        "AIRWAV",
+        "RELATIVISTIC",
+    ] {
+        assert_eq!(SpecSystem::parse(name), None, "{name}");
+    }
+}
+
 #[test]
 fn test_std_of_rest_parsing() {
     assert_eq!(
