@@ -39,10 +39,10 @@ impl SideBand {
         }
     }
 
-    /// Parse from string (case-insensitive).
+    /// Parse from string, ignoring case and trailing white space.
+    // C: dsbspecframe.c `SetAttrib`, which matches with `astChrMatch`.
     pub fn parse(s: &str) -> Option<Self> {
-        let upper = s.to_ascii_uppercase();
-        match upper.as_str() {
+        match crate::mappings::helpers::chr_match_key(s).as_str() {
             "USB" => Some(Self::USB),
             "LSB" => Some(Self::LSB),
             "LO" => Some(Self::LO),

@@ -387,9 +387,11 @@ impl Serializable for MocChan {
         if let Some(name) = part.get_string_if_set("MocEnc")
             && name != "UNKNOWN"
         {
-            ch.moc_format = if name.eq_ignore_ascii_case("STRING") {
+            // mocchan.c `FindString` matches with `astChrMatch`.
+            let key = crate::mappings::helpers::chr_match_key(&name);
+            ch.moc_format = if key == "STRING" {
                 MocFormat::String
-            } else if name.eq_ignore_ascii_case("JSON") {
+            } else if key == "JSON" {
                 MocFormat::Json
             } else {
                 return Err(AstError::new(

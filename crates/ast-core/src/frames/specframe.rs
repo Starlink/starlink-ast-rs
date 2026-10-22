@@ -63,10 +63,11 @@ impl SpecSystem {
         }
     }
 
-    /// Parse from string (case-insensitive). Accepts both short and long forms.
+    /// Parse from string, ignoring case and trailing white space.
+    /// Accepts both short and long forms.
+    // C: specframe.c `SystemCode`, which matches with `astChrMatch`.
     pub fn parse(s: &str) -> Option<Self> {
-        let upper = s.to_ascii_uppercase();
-        match upper.as_str() {
+        match crate::mappings::helpers::chr_match_key(s).as_str() {
             "FREQ" | "FREQUENCY" => Some(Self::Freq),
             "ENER" | "ENERGY" => Some(Self::Energy),
             "WAVN" | "WAVENUM" | "WAVENUMBER" => Some(Self::Wavenum),
@@ -239,10 +240,11 @@ impl StdOfRest {
         }
     }
 
-    /// Parse from string (case-insensitive). Accepts various abbreviations.
+    /// Parse from string, ignoring case and trailing white space.
+    /// Accepts various abbreviations.
+    // C: specframe.c `StdOfRestCode`, which matches with `astChrMatch`.
     pub fn parse(s: &str) -> Option<Self> {
-        let upper = s.to_ascii_uppercase();
-        match upper.as_str() {
+        match crate::mappings::helpers::chr_match_key(s).as_str() {
             "TOPO" | "TOPOCENT" | "TOPOCENTRIC" => Some(Self::Topocentric),
             "GEO" | "GEOCENTR" | "GEOCENTRIC" => Some(Self::Geocentric),
             "BARY" | "BARYCENT" | "BARYCENTRIC" => Some(Self::Barycentric),

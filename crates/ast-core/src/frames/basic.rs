@@ -1203,9 +1203,9 @@ impl Serializable for BasicFrame {
             align_system_set: false,
         };
         frame.attrs = read_frame_attrs(whole);
+        // frame.c `SystemCode` matches with `astChrMatch`.
         let cartesian = |name: &str| {
-            name.eq_ignore_ascii_case(FrameSystem::Cartesian.as_str())
-                .then_some(())
+            (crate::mappings::helpers::chr_match_key(name) == "CARTESIAN").then_some(())
         };
         frame.system_set = read_system_item(node, "System", "System", cartesian)?.is_some();
         frame.align_system_set =

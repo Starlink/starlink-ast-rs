@@ -401,3 +401,41 @@ fn cmp_frame_norm_unit_keeps_a_sky_description() {
         assert_eq!(cmp.norm_unit(1).unwrap(), want, "CmpFrame {settings:?}");
     }
 }
+
+/// Names the C library matches with `astChrMatch` ignore white space after
+/// the name, whether given to a parser or read from a dump.
+#[test]
+fn names_ignore_trailing_white_space() {
+    use ast_core::frames::{FrameSystem, SideBand, SkyRefIs, StdOfRest};
+    use ast_core::{AnyObject, from_native_string};
+
+    assert_eq!(SpecSystem::parse("WAVE "), Some(SpecSystem::Wavelen));
+    assert_eq!(SpecSystem::parse(" WAVE"), None);
+    assert_eq!(StdOfRest::parse("LSRK\t"), Some(StdOfRest::Lsrk));
+    assert_eq!(SideBand::parse("usb "), Some(SideBand::USB));
+
+    let mut frame = BasicFrameBuilder::new(2).build().unwrap();
+    frame.set_system(FrameSystem::Cartesian);
+    let text = crate::common::native_dump(&AnyObject::BasicFrame(frame)).unwrap();
+    assert!(text.contains("System = \"Cartesian\""), "{text}");
+    let text = text.replace("System = \"Cartesian\"", "System = \"cartesian \"");
+    let AnyObject::BasicFrame(back) = from_native_string(&text).unwrap() else {
+        panic!("expected a Frame");
+    };
+    assert!(back.test_system());
+
+    let mut sky = SkyFrame::new(SkySystem::Icrs);
+    sky.set_sky_ref_is(SkyRefIs::Pole);
+    let text = crate::common::native_dump(&AnyObject::SkyFrame(sky)).unwrap();
+    assert!(text.contains("SRefIs = \"Pole\""), "{text}");
+    let read = |value: &str| {
+        from_native_string(&text.replace("SRefIs = \"Pole\"", &format!("SRefIs = \"{value}\"")))
+    };
+    let AnyObject::SkyFrame(back) = read("pole  ").unwrap() else {
+        panic!("expected a SkyFrame");
+    };
+    assert_eq!(back.sky_ref_is(), SkyRefIs::Pole);
+    assert!(back.test_sky_ref_is());
+    // C reports a value it does not know as a corrupt SkyFrame.
+    assert_eq!(read("Polar").unwrap_err().code(), ErrorCode::Inter);
+}

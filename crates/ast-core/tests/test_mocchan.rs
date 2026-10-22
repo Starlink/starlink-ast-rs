@@ -120,3 +120,17 @@ fn negative_line_len_loads_as_zero() {
     };
     assert_eq!(ch.moc_line_len(), 0);
 }
+
+/// A MocEnc read from a dump matches as C's `astChrMatch` matches it, so
+/// white space after the name is ignored.
+#[test]
+fn dump_format_ignores_trailing_white_space() {
+    let mut ch = MocChan::new();
+    ch.set_moc_format(MocFormat::Json);
+    let text = native_dump(&AnyObject::MocChan(Box::new(ch))).unwrap();
+    let text = text.replace("MocEnc = \"JSON\"", "MocEnc = \"json  \"");
+    let AnyObject::MocChan(back) = from_native_string(&text).unwrap() else {
+        panic!("expected a MocChan");
+    };
+    assert_eq!(back.moc_format(), MocFormat::Json);
+}

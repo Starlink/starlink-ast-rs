@@ -3884,16 +3884,24 @@ impl Serializable for SkyFrame {
             sky.sky_tol = Some(node.get_double("SkyTol", 0.0));
         }
 
-        // SRefIs.
+        // SRefIs: skyframe.c `astLoadSkyFrame` matches the value with
+        // `astChrMatch`, leaves a blank one unset, and reports any other as
+        // AST__INTER.
         if node.get("SRefIs").is_some() {
-            sky.sky_ref_is_set = true;
+            let srefis_str = node.get_string("SRefIs", " ");
+            if let Some(mode) = SkyRefIs::parse(&srefis_str) {
+                sky.sky_ref_is = mode;
+                sky.sky_ref_is_set = true;
+            } else if !crate::mappings::helpers::chr_match_key(&srefis_str).is_empty() {
+                return Err(AstError::new(
+                    ErrorCode::Inter,
+                    format!(
+                        "astRead(SkyFrame): Corrupt SkyFrame contains invalid SkyRefIs \
+                         attribute value ({srefis_str})."
+                    ),
+                ));
+            }
         }
-        let srefis_str = node.get_string("SRefIs", "Ignored");
-        sky.sky_ref_is = match srefis_str.to_ascii_uppercase().as_str() {
-            "POLE" => SkyRefIs::Pole,
-            "ORIGIN" => SkyRefIs::Origin,
-            _ => SkyRefIs::Ignored,
-        };
 
         // SRef1, SRef2.
         if node.get("SRef1").is_some() {
