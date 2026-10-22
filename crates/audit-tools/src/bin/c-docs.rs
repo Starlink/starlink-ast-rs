@@ -38,7 +38,7 @@ fn headers(dir: &Path) -> Result<(), String> {
     let mut all = Vec::new();
     for path in files {
         let name = path.file_name().expect("file has a name").to_string_lossy();
-        all.extend(c_headers(&read(&path)?, &name));
+        all.extend(c_headers(&read(&path)?, &name).map_err(|e| e.join("\n"))?);
     }
     print!("{}", headers_tsv(&all));
     Ok(())
@@ -78,7 +78,7 @@ fn show(file: &str, src: &Path) -> Result<(), String> {
         src.join(file)
     };
     let name = path.file_name().expect("file has a name").to_string_lossy();
-    for h in c_headers(&read(&path)?, &name) {
+    for h in c_headers(&read(&path)?, &name).map_err(|e| e.join("\n"))? {
         println!("== {} {}", h.kind, h.name);
         println!("{}", h.text);
     }

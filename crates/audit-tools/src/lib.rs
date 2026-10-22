@@ -6,6 +6,19 @@
 //! This crate holds the one derivation of that name, so the tool that writes
 //! the citations and the test that checks them cannot disagree about it.
 
+pub mod c_docs_ledger;
+pub mod c_headers;
+mod c_steps;
+pub mod doc_aliases;
+mod rendered_docs;
+pub use c_docs_ledger::{LedgerRow, parse_ledger};
+pub use c_headers::{
+    CHeader, HeaderKind, HeaderRow, c_headers, headers_tsv, parse_headers_tsv, text_digest,
+};
+pub use c_steps::c_step_comments;
+pub use doc_aliases::{alias_satisfied_by_name, doc_aliases, top_level_types};
+pub use rendered_docs::c_references;
+
 /// A parsed `file:line[-line] [(fn name)]` citation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Citation {
@@ -552,19 +565,6 @@ fn c_definition_name(lines: &[&str], i: usize) -> Option<CDefinition> {
     }
     None
 }
-
-pub mod c_docs_ledger;
-pub mod c_headers;
-mod c_steps;
-pub mod doc_aliases;
-mod rendered_docs;
-pub use c_docs_ledger::{LedgerRow, parse_ledger};
-pub use c_headers::{
-    CHeader, HeaderKind, HeaderRow, c_headers, headers_tsv, parse_headers_tsv, text_digest,
-};
-pub use c_steps::c_step_comments;
-pub use doc_aliases::{alias_satisfied_by_name, doc_aliases, top_level_types};
-pub use rendered_docs::c_references;
 
 #[cfg(test)]
 mod tests {

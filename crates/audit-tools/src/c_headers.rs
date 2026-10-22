@@ -77,12 +77,14 @@ fn opener(line: &str) -> Option<(Option<HeaderKind>, &'static str)> {
 /// The text of a kept line with its marker removed, or `None` for a line of
 /// the Fortran edition or a non-comment line.
 fn kept(line: &str) -> Option<String> {
+    // A `c` marker is a one-column marker like `*`, and counts only when the
+    // text after it is separated by a space or absent.
     let rest = if let Some(r) = line.strip_prefix('*') {
         r
-    } else if let Some(r) = line.strip_prefix("c ") {
+    } else if let Some(r) = line.strip_prefix('c')
+        && (r.is_empty() || r.starts_with(' '))
+    {
         r
-    } else if line == "c" {
-        ""
     } else {
         return None;
     };
@@ -122,26 +124,32 @@ fn header_name(lines: &[String]) -> Option<&str> {
 
 /// Every header of the C edition in `src`, in source order.
 ///
-/// `file` is recorded on each header. A header with no `Name:` entry is
-/// skipped.
-pub fn c_headers(src: &str, file: &str) -> Vec<CHeader> {
+/// `file` is recorded on each header.
+///
+/// A header of the C edition with no `Name:` entry, and a header still open at
+/// the end of `src`, are errors rather than omissions: the error lists each one
+/// as `file:line: …`, with the line of the header's opening marker.
+pub fn c_headers(src: &str, file: &str) -> Result<Vec<CHeader>, Vec<String>> {
     let mut out = Vec::new();
-    let mut open: Option<(Option<HeaderKind>, &str, Vec<String>)> = None;
-    for line in src.lines() {
+    let mut problems = Vec::new();
+    let mut open: Option<(Option<HeaderKind>, &str, Vec<String>, usize)> = None;
+    for (index, line) in src.lines().enumerate() {
         let line = line.trim_end();
-        if let Some((kind, close, body)) = open.as_mut() {
+        if let Some((kind, close, body, opened)) = open.as_mut() {
             if line == *close {
-                if let Some(kind) = *kind
-                    && let Some(raw) = header_name(body)
-                {
-                    let name = normalize(raw);
-                    out.push(CHeader {
-                        kind,
-                        alias: alias_of(&name),
-                        name,
-                        file: file.to_string(),
-                        text: body.join("\n"),
-                    });
+                if let Some(kind) = *kind {
+                    if let Some(raw) = header_name(body) {
+                        let name = normalize(raw);
+                        out.push(CHeader {
+                            kind,
+                            alias: alias_of(&name),
+                            name,
+                            file: file.to_string(),
+                            text: body.join("\n"),
+                        });
+                    } else {
+                        problems.push(format!("{file}:{opened}: header has no Name: entry",));
+                    }
                 }
                 open = None;
             } else if kind.is_some()
@@ -152,10 +160,19 @@ pub fn c_headers(src: &str, file: &str) -> Vec<CHeader> {
                 body.push(String::new());
             }
         } else if let Some((kind, close)) = opener(line) {
-            open = Some((kind, close, Vec::new()));
+            open = Some((kind, close, Vec::new(), index + 1));
         }
     }
-    out
+    if let Some((_, close, _, opened)) = open {
+        problems.push(format!(
+            "{file}:{opened}: header is not closed by {close} before the end of the file"
+        ));
+    }
+    if problems.is_empty() {
+        Ok(out)
+    } else {
+        Err(problems)
+    }
 }
 
 /// Sections of a header that record its provenance rather than document the
@@ -310,7 +327,7 @@ f--
 
     #[test]
     fn every_c_edition_header_is_found() {
-        let h = c_headers(SRC, "x.c");
+        let h = c_headers(SRC, "x.c").unwrap();
         let names: Vec<_> = h.iter().map(|h| h.name.as_str()).collect();
         assert_eq!(
             names,
@@ -331,29 +348,70 @@ f--
 
     #[test]
     fn names_are_normalized() {
-        let h = c_headers(SRC, "x.c");
+        let h = c_headers(SRC, "x.c").unwrap();
         assert_eq!(h[4].alias, "astMapGet0");
         assert_eq!(h[2].alias, "Digits");
     }
 
     #[test]
     fn the_text_is_the_c_edition() {
-        let h = c_headers(SRC, "x.c");
+        let h = c_headers(SRC, "x.c").unwrap();
         assert!(h[1].text.contains("C only line."));
         assert!(!h[1].text.contains("Fortran only line."));
         assert!(!h[1].text.contains("AST_PERMMAP"));
     }
 
     #[test]
+    fn c_only_lines_align_with_starred_lines() {
+        let h = c_headers(SRC, "x.c").unwrap();
+        assert!(h[1].text.contains("\nC only line."), "{:?}", h[1].text);
+        assert!(
+            h[1].text.starts_with("Name:\n   astPermMap\n"),
+            "{:?}",
+            h[1].text
+        );
+    }
+
+    #[test]
+    fn a_header_with_no_name_is_an_error() {
+        let src = "*\n*++\n*  Purpose:\n*     Nothing.\n*--\n";
+        let e = c_headers(src, "x.c").unwrap_err();
+        assert_eq!(e.len(), 1);
+        assert!(
+            e[0].starts_with("x.c:2:") && e[0].contains("Name:"),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn a_header_open_at_the_end_of_the_file_is_an_error() {
+        let src = "*\n*class++\n*  Name:\n*     Box\n";
+        let e = c_headers(src, "x.c").unwrap_err();
+        assert_eq!(e.len(), 1);
+        assert!(
+            e[0].starts_with("x.c:2:") && e[0].contains("*class--"),
+            "{e:?}"
+        );
+        let src = "f++\n*  Name:\n*     AST_BOX\n";
+        assert!(c_headers(src, "x.c").is_err());
+    }
+
+    #[test]
+    fn a_fortran_header_with_no_name_is_not_an_error() {
+        let src = "f++\n*  Purpose:\n*     x\nf--\n";
+        assert_eq!(c_headers(src, "x.c").unwrap(), []);
+    }
+
+    #[test]
     fn indentation_is_relative() {
-        let h = c_headers(SRC, "x.c");
+        let h = c_headers(SRC, "x.c").unwrap();
         assert!(h[0].text.starts_with("Name:\n   PermMap\n"));
     }
 
     #[test]
     fn key_includes_the_file() {
-        let a = c_headers(SRC, "a.c");
-        let b = c_headers(SRC, "b.c");
+        let a = c_headers(SRC, "a.c").unwrap();
+        let b = c_headers(SRC, "b.c").unwrap();
         let tsv = headers_tsv(&[a.clone(), b].concat());
         let rows = parse_headers_tsv(&tsv);
         assert_eq!(rows.len(), 12);
@@ -366,10 +424,10 @@ f--
 
     #[test]
     fn the_digest_follows_the_body() {
-        let before = headers_tsv(&c_headers(SRC, "x.c"));
-        assert_eq!(before, headers_tsv(&c_headers(SRC, "x.c")));
+        let before = headers_tsv(&c_headers(SRC, "x.c").unwrap());
+        assert_eq!(before, headers_tsv(&c_headers(SRC, "x.c").unwrap()));
         let edited = SRC.replace("Create a PermMap.", "Create a new PermMap.");
-        let after = headers_tsv(&c_headers(&edited, "x.c"));
+        let after = headers_tsv(&c_headers(&edited, "x.c").unwrap());
         let (old, new) = (parse_headers_tsv(&before), parse_headers_tsv(&after));
         assert_eq!(old.len(), new.len());
         let changed: Vec<_> = old
