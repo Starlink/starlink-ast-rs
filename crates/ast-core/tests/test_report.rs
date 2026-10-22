@@ -165,3 +165,14 @@ fn a_clone_clears_report() {
     assert!(!circle.clone().test_report());
     assert!(!ast_core::regions::Region::clone_region(&circle).test_report());
 }
+
+/// Wrapping a Mapping held as a trait object to write it is not a copy, so
+/// the dump records Report as C's `astWrite` does.
+#[test]
+fn a_dump_through_from_mapping_keeps_report() {
+    let mut zoom = ZoomMap::new(2, 2.5).unwrap();
+    zoom.set_report(true);
+    let m: &dyn Mapping = &zoom;
+    let written = native_dump(&AnyObject::from_mapping(m).unwrap()).unwrap();
+    assert_eq!(written, text(cases::ZOOM_DUMP));
+}

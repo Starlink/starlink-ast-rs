@@ -2044,135 +2044,143 @@ impl AnyObject {
     /// Every variant for which `as_mapping` yields `Some` appears below, and
     /// `any_object_from_mapping_covers_as_mapping` in `serial`'s tests asserts
     /// the two lists stay the same length.
+    ///
+    /// The wrapped object keeps the Mapping's [`report`](Mapping::report),
+    /// which a clone clears, since wrapping it to write it is not a copy.
     pub fn from_mapping(m: &dyn Mapping) -> Option<Self> {
+        fn wrapped<T: Mapping + Clone>(x: &T) -> T {
+            let mut copy = x.clone();
+            copy.set_report_attr(x.report_attr());
+            copy
+        }
         if let Some(x) = m.as_any().downcast_ref::<UnitMap>() {
-            return Some(AnyObject::UnitMap(x.clone()));
+            return Some(AnyObject::UnitMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<ZoomMap>() {
-            return Some(AnyObject::ZoomMap(x.clone()));
+            return Some(AnyObject::ZoomMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<ShiftMap>() {
-            return Some(AnyObject::ShiftMap(x.clone()));
+            return Some(AnyObject::ShiftMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<MatrixMap>() {
-            return Some(AnyObject::MatrixMap(x.clone()));
+            return Some(AnyObject::MatrixMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<PermMap>() {
-            return Some(AnyObject::PermMap(x.clone()));
+            return Some(AnyObject::PermMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<WinMap>() {
-            return Some(AnyObject::WinMap(x.clone()));
+            return Some(AnyObject::WinMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<LutMap>() {
-            return Some(AnyObject::LutMap(x.clone()));
+            return Some(AnyObject::LutMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<PolyMap>() {
-            return Some(AnyObject::PolyMap(x.clone()));
+            return Some(AnyObject::PolyMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<ChebyMap>() {
-            return Some(AnyObject::ChebyMap(x.clone()));
+            return Some(AnyObject::ChebyMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<CmpMap>() {
-            return Some(AnyObject::CmpMap(x.clone()));
+            return Some(AnyObject::CmpMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<WcsMap>() {
-            return Some(AnyObject::WcsMap(x.clone()));
+            return Some(AnyObject::WcsMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<SlaMap>() {
-            return Some(AnyObject::SlaMap(x.clone()));
+            return Some(AnyObject::SlaMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<SpecMap>() {
-            return Some(AnyObject::SpecMap(x.clone()));
+            return Some(AnyObject::SpecMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<TimeMap>() {
-            return Some(AnyObject::TimeMap(x.clone()));
+            return Some(AnyObject::TimeMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<PcdMap>() {
-            return Some(AnyObject::PcdMap(x.clone()));
+            return Some(AnyObject::PcdMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<GrismMap>() {
-            return Some(AnyObject::GrismMap(x.clone()));
+            return Some(AnyObject::GrismMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<SphMap>() {
-            return Some(AnyObject::SphMap(x.clone()));
+            return Some(AnyObject::SphMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<UnitNormMap>() {
-            return Some(AnyObject::UnitNormMap(x.clone()));
+            return Some(AnyObject::UnitNormMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<XphMap>() {
-            return Some(AnyObject::XphMap(x.clone()));
+            return Some(AnyObject::XphMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<IntraMap>() {
-            return Some(AnyObject::IntraMap(x.clone()));
+            return Some(AnyObject::IntraMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<TranMap>() {
-            return Some(AnyObject::TranMap(x.clone()));
+            return Some(AnyObject::TranMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<RateMap>() {
-            return Some(AnyObject::RateMap(x.clone()));
+            return Some(AnyObject::RateMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<MathMap>() {
-            return Some(AnyObject::MathMap(x.clone()));
+            return Some(AnyObject::MathMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<SplineMap>() {
-            return Some(AnyObject::SplineMap(x.clone()));
+            return Some(AnyObject::SplineMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<DssMap>() {
-            return Some(AnyObject::DssMap(x.clone()));
+            return Some(AnyObject::DssMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<NormMap>() {
-            return Some(AnyObject::NormMap(x.clone()));
+            return Some(AnyObject::NormMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<SelectorMap>() {
-            return Some(AnyObject::SelectorMap(x.clone()));
+            return Some(AnyObject::SelectorMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<SwitchMap>() {
-            return Some(AnyObject::SwitchMap(x.clone()));
+            return Some(AnyObject::SwitchMap(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<FrameSet>() {
-            return Some(AnyObject::FrameSet(x.clone()));
+            return Some(AnyObject::FrameSet(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<Circle>() {
-            return Some(AnyObject::Circle(x.clone()));
+            return Some(AnyObject::Circle(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<BoxRegion>() {
-            return Some(AnyObject::BoxRegion(x.clone()));
+            return Some(AnyObject::BoxRegion(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<Ellipse>() {
-            return Some(AnyObject::Ellipse(x.clone()));
+            return Some(AnyObject::Ellipse(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<Polygon>() {
-            return Some(AnyObject::Polygon(x.clone()));
+            return Some(AnyObject::Polygon(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<Interval>() {
-            return Some(AnyObject::Interval(x.clone()));
+            return Some(AnyObject::Interval(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<NullRegion>() {
-            return Some(AnyObject::NullRegion(x.clone()));
+            return Some(AnyObject::NullRegion(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<CmpRegion>() {
-            return Some(AnyObject::CmpRegion(x.clone()));
+            return Some(AnyObject::CmpRegion(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<PointList>() {
-            return Some(AnyObject::PointList(x.clone()));
+            return Some(AnyObject::PointList(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<Prism>() {
-            return Some(AnyObject::Prism(x.clone()));
+            return Some(AnyObject::Prism(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<Moc>() {
-            return Some(AnyObject::Moc(x.clone()));
+            return Some(AnyObject::Moc(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<StcResourceProfile>() {
-            return Some(AnyObject::StcResourceProfile(x.clone()));
+            return Some(AnyObject::StcResourceProfile(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<StcSearchLocation>() {
-            return Some(AnyObject::StcSearchLocation(x.clone()));
+            return Some(AnyObject::StcSearchLocation(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<StcCatalogEntryLocation>() {
-            return Some(AnyObject::StcCatalogEntryLocation(x.clone()));
+            return Some(AnyObject::StcCatalogEntryLocation(wrapped(x)));
         }
         if let Some(x) = m.as_any().downcast_ref::<StcObsDataLocation>() {
-            return Some(AnyObject::StcObsDataLocation(x.clone()));
+            return Some(AnyObject::StcObsDataLocation(wrapped(x)));
         }
         None
     }
