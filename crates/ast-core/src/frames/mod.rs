@@ -2294,11 +2294,12 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         // per-class `astNormalPoints`, which is `normal_points` here.
         let naxes = self.naxes();
         if points.ncoord() != naxes {
+            let class = class_name(self.as_dyn_frame());
             return Err(AstError::new(
                 ErrorCode::Dimin,
                 format!(
-                    "astNormPoints: The number of input axes ({}) is not the same \
-                     as the number of axes in the Frame ({naxes}).",
+                    "astNormPoints({class}): The number of input axes ({}) is not the same \
+                     as the number of axes in the {class} ({naxes}).",
                     points.ncoord()
                 ),
             ));
@@ -2937,6 +2938,16 @@ pub(crate) fn frame_grid_default(
         }
     }
     Ok(out)
+}
+
+/// The AST class name of a Frame or Region, as C's `astGetClass` gives it.
+fn class_name(frame: &dyn Frame) -> &'static str {
+    let any = frame.as_any();
+    if crate::regions::any_as_region(any).is_some() {
+        crate::regions::class_name(any)
+    } else {
+        find_frame::frame_class_name(frame)
+    }
 }
 
 /// frame.c `NormalPoints`: check that `points` has one value per axis of

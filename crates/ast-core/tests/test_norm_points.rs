@@ -117,19 +117,30 @@ fn norm_points_rejects_a_wrong_coordinate_count() {
         .build()
         .unwrap();
     let basic = BasicFrameBuilder::new(2).build().unwrap();
-    let frames: [(&str, &dyn Frame); 5] = [
-        ("basic", &basic),
-        ("sky", &sky),
-        ("cmpframe", &cmp),
-        ("frameset", &fs),
-        ("circle", &circle),
+    // The second field is the class name C's message gives.
+    let frames: [(&dyn Frame, &str); 5] = [
+        (&basic, "Frame"),
+        (&sky, "SkyFrame"),
+        (&cmp, "CmpFrame"),
+        (&fs, "FrameSet"),
+        (&circle, "Circle"),
     ];
-    for (name, frame) in frames {
+    for (frame, class) in frames {
         for ncoord in [1, 4] {
             let ps = PointSet::from_rows([vec![0.5; ncoord]]);
             for contig in [false, true] {
                 let err = frame.norm_points(&ps, contig).unwrap_err();
-                assert_eq!(err.code(), ErrorCode::Dimin, "{name}, {ncoord} coordinates");
+                assert_eq!(
+                    err.code(),
+                    ErrorCode::Dimin,
+                    "{class}, {ncoord} coordinates"
+                );
+                let naxes = frame.naxes();
+                let want = format!(
+                    "astNormPoints({class}): The number of input axes ({ncoord}) is not the \
+                     same as the number of axes in the {class} ({naxes})."
+                );
+                assert!(err.to_string().contains(&want), "{err}");
             }
         }
     }
