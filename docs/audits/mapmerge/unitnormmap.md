@@ -18,7 +18,7 @@ splices in the first result. Both are audited here.
 `UnitNormMap::try_merge` (`unitnormmap.rs:420-553 (fn try_merge)`) or to
 `try_merge_into_unitnormmap` (`unitnormmap.rs:681-743 (fn try_merge_into_unitnormmap)`) according to
 which member of the pair is the UnitNormMap. The splice itself is
-`MergeCtx::replace_pair_with` (`mappings/simplify.rs:659-672 (fn replace_pair_with)`).
+`MergeCtx::replace_pair_with` (`mappings/simplify.rs:666-679 (fn replace_pair_with)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
@@ -27,8 +27,8 @@ which member of the pair is the UnitNormMap. The splice itself is
 | 3 | In series, walk the pairs from `where - 1` to the end of the list | unitnormmap.c:854-860 (fn MapMerge) | unitnormmap.rs:575-577 (fn map_merge) | architecture | ported |
 | 4 | Set both members of each pair to the Invert values the list requests, then restore them | unitnormmap.c:861-867 (fn MapMerge) | unitnormmap.rs:578-580 (fn map_merge) | architecture | ported |
 | 5 | Ask `MakeMergedMap` about the pair, stop at the first it accepts, and report no change when none does | unitnormmap.c:868-878 (fn MapMerge) | unitnormmap.rs:580-586 (fn map_merge) | architecture | ported |
-| 6 | Replace the first of the pair with the merged Mapping and update its invert flag | unitnormmap.c:880-885 (fn MapMerge) | unitnormmap.rs:581 (fn map_merge), mappings/simplify.rs:667-671 (fn replace_pair_with) | architecture | ported |
-| 7 | Annul the second of the pair, shuffle the rest down and clear the vacated element | unitnormmap.c:886-897 (fn MapMerge) | unitnormmap.rs:581 (fn map_merge), mappings/simplify.rs:671 (fn replace_pair_with) | architecture | ported |
+| 6 | Replace the first of the pair with the merged Mapping and update its invert flag | unitnormmap.c:880-885 (fn MapMerge) | unitnormmap.rs:581 (fn map_merge), mappings/simplify.rs:674-678 (fn replace_pair_with) | architecture | ported |
+| 7 | Annul the second of the pair, shuffle the rest down and clear the vacated element | unitnormmap.c:886-897 (fn MapMerge) | unitnormmap.rs:581 (fn map_merge), mappings/simplify.rs:678 (fn replace_pair_with) | architecture | ported |
 | 8 | Decrement the Mapping count and return the index of the first modified element | unitnormmap.c:898-900 (fn MapMerge) | unitnormmap.rs:582 (fn map_merge) | architecture | ported |
 | 9 | In parallel, a UnitNormMap combines with nothing | unitnormmap.c:904-906 (fn MapMerge) | unitnormmap.rs:563-565 (fn map_merge) | architecture | ported |
 | 10 | Return the result | unitnormmap.c:908-909 (fn MapMerge) | unitnormmap.rs:582 (fn map_merge),586 (fn map_merge) | ceremony | ported |

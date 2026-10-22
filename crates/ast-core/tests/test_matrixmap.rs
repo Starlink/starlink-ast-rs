@@ -650,3 +650,31 @@ fn matrix_diagonal_long_array_with_non_finite_inputs() {
     assert!((0..n).any(|i| value(2, i) == 1e10));
     assert!((0..n).any(|i| value(1, i).is_nan()));
 }
+
+/// An inverted singular MatrixMap, which has no forward transformation.
+fn inverted_singular() -> MatrixMap {
+    let mut m = MatrixMap::new(array![[1.0_f64, 1.0], [1.0, 1.0]]).unwrap();
+    m.invert();
+    m
+}
+
+/// Merging a MatrixMap with a neighbor multiplies the matrices, which an
+/// inverted singular MatrixMap cannot take part in, and C passes the error
+/// up from the simplification.
+#[test]
+fn merging_with_an_inverted_singular_matrix_is_an_error() {
+    use ast_core::mappings::{CmpMap, Composition, ZoomMap};
+    let full = MatrixMap::new(array![[1.0_f64, 2.0], [3.0, 4.0]]).unwrap();
+    let pairs: [(Box<dyn Mapping>, Box<dyn Mapping>); 2] = [
+        (Box::new(full), Box::new(inverted_singular())),
+        (
+            Box::new(inverted_singular()),
+            Box::new(ZoomMap::new(2, 3.0).unwrap()),
+        ),
+    ];
+    for (first, second) in pairs {
+        let map = CmpMap::new(first, second, Composition::Series).unwrap();
+        let err = <dyn Mapping>::simplify(&map).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Mtrml);
+    }
+}

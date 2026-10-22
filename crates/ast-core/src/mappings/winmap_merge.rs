@@ -401,6 +401,9 @@ pub(crate) fn win_map_merge(
     if let Some(result) = try_direct_merge(ctx, where_, series, win_inv) {
         return Some(result);
     }
+    if ctx.failed() {
+        return None;
+    }
 
     // ---- Step 2b (series): distribute the WinMap into a neighboring
     // parallel CmpMap (C winmap.c:1264-1416).
@@ -409,12 +412,18 @@ pub(crate) fn win_map_merge(
         if let Some(result) = ctx.settle(distributed) {
             return Some(result);
         }
+        if ctx.failed() {
+            return None;
+        }
     }
 
     // ---- Steps 3 & 4 apply to series only.
     if series {
         if let Some(result) = try_swap_strategy(ctx, where_, series) {
             return Some(result);
+        }
+        if ctx.failed() {
+            return None;
         }
     }
 

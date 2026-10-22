@@ -548,6 +548,13 @@ impl MergeCtx {
         })
     }
 
+    /// Whether a merge has raised an error.
+    /// C's later merge steps do nothing once the global status is set, so a
+    /// merge checks this before taking its next step.
+    pub(crate) fn failed(&self) -> bool {
+        self.error.is_some()
+    }
+
     /// Take the error a merge raised, if any.
     pub(crate) fn take_error(&mut self) -> Option<AstError> {
         self.error.take()

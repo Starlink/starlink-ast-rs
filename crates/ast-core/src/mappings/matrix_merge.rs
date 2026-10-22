@@ -75,11 +75,17 @@ pub(crate) fn matrix_map_merge(
     if let Some(result) = try_direct_merge(mm, ctx, where_) {
         return Some(result);
     }
+    if ctx.failed() {
+        return None;
+    }
 
     // ---- Steps 3 & 4 (series): swap toward the nearest mergeable target,
     // then a speculative swap if no target exists.
     if let Some(result) = try_swap_strategy(mm, ctx, where_, series) {
         return Some(result);
+    }
+    if ctx.failed() {
+        return None;
     }
 
     // C's merge only ever considers a neighbor of a class it names:
@@ -185,7 +191,8 @@ fn try_direct_merge(mm: &MatrixMap, ctx: &mut MergeCtx, where_: usize) -> Option
 
     let (m1, inv1, _) = ctx.entry(i1);
     let (m2, inv2, _) = ctx.entry(i2);
-    let merged = merge_matrix_pair(m1.as_ref(), *inv1, m2.as_ref(), *inv2, mm_first)?;
+    let merged = merge_matrix_pair(m1.as_ref(), *inv1, m2.as_ref(), *inv2, mm_first);
+    let merged = ctx.settle(merged)?;
     ctx.replace_pair_with(i1, merged, false);
     Some(i1)
 }
@@ -199,32 +206,38 @@ fn merge_matrix_pair(
     map2: &dyn Mapping,
     inv2: bool,
     mm_first: bool,
-) -> Option<DynMapping> {
+) -> AstResult<Option<DynMapping>> {
     // Identify the MatrixMap and the neighbor.
     let (mm, mm_inv, other, other_inv) = if mm_first {
-        (map1.as_any().downcast_ref::<MatrixMap>()?, inv1, map2, inv2)
+        (map1.as_any().downcast_ref::<MatrixMap>(), inv1, map2, inv2)
     } else {
-        (map2.as_any().downcast_ref::<MatrixMap>()?, inv2, map1, inv1)
+        (map2.as_any().downcast_ref::<MatrixMap>(), inv2, map1, inv1)
+    };
+    let Some(mm) = mm else {
+        return Ok(None);
     };
 
     // MatMat (matrixmap.c MatMat): `astMtrMult` of the two MatrixMaps, each
     // in the direction it is applied, map1 first. `mtr_mult` forms the
     // product as C's `MtrMult` does, element by element in C's order, which
     // is what keeps the last digits C's.
-    if other.as_any().is::<MatrixMap>() {
-        let mut first = map1.as_any().downcast_ref::<MatrixMap>()?.clone();
+    if let (Some(first), Some(second)) = (
+        map1.as_any().downcast_ref::<MatrixMap>(),
+        map2.as_any().downcast_ref::<MatrixMap>(),
+    ) {
+        let mut first = first.clone();
         if inv1 {
             first.invert();
         }
-        let mut second = map2.as_any().downcast_ref::<MatrixMap>()?.clone();
+        let mut second = second.clone();
         if inv2 {
             second.invert();
         }
         if second.nin() != first.nout() {
-            return None;
+            return Ok(None);
         }
-        let product = first.mtr_mult(&second).ok()?;
-        return mat_or_unit(product.forward_matrix().clone());
+        let product = first.mtr_mult(&second)?;
+        return mat_or_unit(product.forward_matrix().clone()).map(Some);
     }
 
     // MatZoom (matrixmap.c MatZoom): the product of the MatrixMap, in the
@@ -244,17 +257,17 @@ fn merge_matrix_pair(
         }
         let nrow = applied.nout();
         if zm.nin() != nrow {
-            return None;
+            return Ok(None);
         }
-        let zmm = MatrixMap::diagonal(nrow, nrow, &vec![zfac; nrow]).ok()?;
-        let product = applied.mtr_mult(&zmm).ok()?;
-        return mat_or_unit(product.forward_matrix().clone());
+        let zmm = MatrixMap::diagonal(nrow, nrow, &vec![zfac; nrow])?;
+        let product = applied.mtr_mult(&zmm)?;
+        return mat_or_unit(product.forward_matrix().clone()).map(Some);
     }
 
     // MatPerm (matrixmap.c:2608): merge with an invertible PermMap.
     if let Some(pm) = other.as_any().downcast_ref::<PermMap>() {
         if !perm_ok(pm) {
-            return None;
+            return Ok(None);
         }
         return mat_perm(mm, mm_inv, pm, other_inv, mm_first);
     }
@@ -262,16 +275,17 @@ fn merge_matrix_pair(
     // MatWin2 (matrixmap.c:3230): diagonal MatrixMap + WinMap → WinMap. Since
     // the matrix is diagonal, this reduces to a per-axis linear composition.
     if other.as_any().is::<WinMap>() {
-        let m = eff_matrix(mm, mm_inv)?;
-        if !is_diagonal(&m) {
-            return None;
-        }
+        let Some(m) = eff_matrix(mm, mm_inv).filter(is_diagonal) else {
+            return Ok(None);
+        };
         let n = m.nrows();
         let diag: Vec<f64> = (0..n).map(|i| m[[i, i]]).collect();
         let zeros = vec![0.0; n];
-        let (wshifts, wscales) = extract_linear_params(other, other_inv)?;
+        let Some((wshifts, wscales)) = extract_linear_params(other, other_inv) else {
+            return Ok(None);
+        };
         if wshifts.len() != n {
-            return None;
+            return Ok(None);
         }
         // Compute the merged scale/shift terms exactly as C's MatWin2
         // (matrixmap.c:3340). For a diagonal matrix, astTranN reduces to a
@@ -302,22 +316,20 @@ fn merge_matrix_pair(
         let inb = vec![1.0; n];
         let outa = newshifts;
         let outb: Vec<f64> = (0..n).map(|i| newscales[i] + outa[i]).collect();
-        let wm = WinMap::from_corners(&ina, &inb, &outa, &outb).ok()?;
+        let wm = WinMap::from_corners(&ina, &inb, &outa, &outb)?;
         let (fin_shifts, fin_scales) = (wm.shifts().to_vec(), wm.scales().to_vec());
-        return super::winmap::finalize_linear(fin_shifts, fin_scales);
+        return Ok(super::winmap::finalize_linear(fin_shifts, fin_scales));
     }
 
-    None
+    Ok(None)
 }
 
 /// Turn a product matrix into a `UnitMap` (if identity) or a `MatrixMap`.
-fn mat_or_unit(product: Array2<f64>) -> Option<DynMapping> {
+fn mat_or_unit(product: Array2<f64>) -> AstResult<DynMapping> {
     if super::matrix::is_identity_matrix_pub(&product) {
-        return Some(Box::new(UnitMap::new(product.nrows())));
+        return Ok(Box::new(UnitMap::new(product.nrows())));
     }
-    MatrixMap::new(product)
-        .ok()
-        .map(|m| Box::new(m) as DynMapping)
+    Ok(Box::new(MatrixMap::new(product)?))
 }
 
 /// C `matrixmap.c::MatPerm` (2608): merge a MatrixMap and a (square,
@@ -333,7 +345,7 @@ fn mat_perm(
     pm: &PermMap,
     pm_inv: bool,
     mm_first: bool,
-) -> Option<DynMapping> {
+) -> AstResult<Option<DynMapping>> {
     let nax = if pm_inv { pm.nout() } else { pm.nin() };
     // PermOK guarantees nin == nout, so nax is unambiguous.
 
@@ -346,7 +358,7 @@ fn mat_perm(
         .collect();
     let unit = PointSet::from_rows(rows.iter().map(|r| r.as_slice()));
     // Effective forward direction of pm is `!pm_inv`; the inverse is `pm_inv`.
-    let transformed = pm.transform(&unit, pm_inv).ok()?;
+    let transformed = pm.transform(&unit, pm_inv)?;
 
     // C `matrixmap.c:2735-2738`: `matrix[j][i] = ptr2[i][j]`, where `ptr2` is
     // AST's `[coord][point]` layout, so element `[i][j]` is coordinate `i` of
@@ -359,22 +371,24 @@ fn mat_perm(
         }
     }
 
-    let m = eff_matrix(mm, mm_inv)?;
+    let Some(m) = eff_matrix(mm, mm_inv) else {
+        return Ok(None);
+    };
     // astMtrMult(this, a) = a·this (this applied first). MatPerm:
     //   mat1  : result = astMtrMult(mm, P) = P·M  (M first, then P)
     //   !mat1 : result = astMtrMult(P, mm) = M·P  (P first, then M)
     let product = if mm_first {
         if p.ncols() != m.nrows() {
-            return None;
+            return Ok(None);
         }
         super::matrix::mtr_product(&p, &m)
     } else {
         if m.ncols() != p.nrows() {
-            return None;
+            return Ok(None);
         }
         super::matrix::mtr_product(&m, &p)
     };
-    mat_or_unit(product)
+    mat_or_unit(product).map(Some)
 }
 
 /// C `matrixmap.c::PermOK` (4535): a PermMap can merge with a MatrixMap only
