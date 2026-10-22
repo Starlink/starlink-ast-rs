@@ -175,6 +175,15 @@ pub fn c_headers(src: &str, file: &str) -> Result<Vec<CHeader>, Vec<String>> {
     }
 }
 
+/// Write `text` to `out`, treating a closed pipe (`c-docs … | head`) as the
+/// reader having finished rather than as a failure.
+pub fn write_report(out: &mut impl std::io::Write, text: &str) -> std::io::Result<()> {
+    match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+        other => other,
+    }
+}
+
 /// Sections of a header that record its provenance rather than document the
 /// item; [`text_digest`] leaves them out.
 const UNDIGESTED_SECTIONS: [&str; 4] = ["Authors:", "Copyright:", "History:", "Licence:"];
@@ -420,6 +429,33 @@ f--
         assert_eq!(permmaps[0].file, "a.c");
         assert_eq!(permmaps[1].file, "b.c");
         assert_eq!(permmaps[0].digest, text_digest(&a[0].text));
+    }
+
+    #[test]
+    fn a_closed_pipe_is_not_an_error() {
+        struct Closed;
+        impl std::io::Write for Closed {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        struct Full;
+        impl std::io::Write for Full {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::StorageFull.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        assert!(write_report(&mut Closed, "x").is_ok());
+        assert!(write_report(&mut Full, "x").is_err());
+        let mut v = Vec::new();
+        write_report(&mut v, "x").unwrap();
+        assert_eq!(v, b"x");
     }
 
     #[test]

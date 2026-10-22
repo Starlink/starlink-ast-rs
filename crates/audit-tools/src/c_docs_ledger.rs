@@ -6,6 +6,7 @@
 //! `rust_item` lists the Rust items that document the header, separated by
 //! `;`, and is empty when the header has none.
 //! A row whose `note` is empty may omit the final tab.
+//! The header line must name those columns, in that order.
 
 /// The reasons a header may have no Rust item.
 const REASONS: [&str; 3] = ["c-api-only", "not-ported", "merged"];
@@ -29,8 +30,29 @@ pub struct LedgerRow {
     pub note: String,
 }
 
+/// The header line every ledger starts with.
+const HEADER: &str = "kind\tname\tfile\trust_item\treason\treviewed\tnote";
+
+/// The owner and the item name in a ledger `rust_item`.
+///
+/// `Owner::item` names a member of `Owner`, and a longer path
+/// (`module::Owner::item`) names it by its last two segments, which are what a
+/// `#[doc(alias)]` sits on and inside. A bare `Owner` is its own item.
+pub fn owner_and_name(item: &str) -> (&str, &str) {
+    match item.rsplit_once("::") {
+        Some((path, name)) => (path.rsplit("::").next().unwrap_or(path), name),
+        None => (item, item),
+    }
+}
+
 /// Parse the ledger text. An error names the offending line (1-based).
 pub fn parse_ledger(text: &str) -> Result<Vec<LedgerRow>, String> {
+    let first = text.lines().next().unwrap_or("");
+    if first != HEADER {
+        return Err(format!(
+            "line 1: expected the header {HEADER:?}, found {first:?}"
+        ));
+    }
     let mut rows = Vec::new();
     for (i, line) in text.lines().enumerate().skip(1) {
         let n = i + 1;
@@ -44,7 +66,7 @@ pub fn parse_ledger(text: &str) -> Result<Vec<LedgerRow>, String> {
         }
         let [kind, name, file, rust_item, reason, reviewed, note] = cols[..] else {
             return Err(format!(
-                "line {n}: expected 7 columns, found {}",
+                "line {n}: expected 6 or 7 columns, found {}",
                 cols.len()
             ));
         };
@@ -117,6 +139,33 @@ mod tests {
         let text = format!("{HEAD}class\tPlot\tplot.c\n");
         let e = parse_ledger(&text).unwrap_err();
         assert!(e.contains("line 2") && e.contains("7 columns"), "{e}");
+    }
+
+    #[test]
+    fn rejects_a_row_with_too_many_columns() {
+        let text = format!("{HEAD}class\tA\ta.c\t\t\tno\tn\textra\n");
+        let e = parse_ledger(&text).unwrap_err();
+        assert!(e.contains("line 2") && e.contains("6 or 7 columns"), "{e}");
+        assert!(e.contains("found 8"), "{e}");
+    }
+
+    #[test]
+    fn rejects_a_wrong_header_line() {
+        let text = "kind\tname\tfile\treason\trust_item\treviewed\tnote\nclass\tA\ta.c\t\t\tno\t\n";
+        let e = parse_ledger(text).unwrap_err();
+        assert!(e.contains("line 1") && e.contains("header"), "{e}");
+        // A first data row mistaken for the header is not skipped silently.
+        let e = parse_ledger("class\tA\ta.c\t\t\tno\t\n").unwrap_err();
+        assert!(e.contains("line 1"), "{e}");
+        assert!(parse_ledger("").is_err());
+    }
+
+    #[test]
+    fn an_item_path_is_split_at_its_last_two_segments() {
+        assert_eq!(owner_and_name("Foo"), ("Foo", "Foo"));
+        assert_eq!(owner_and_name("Foo::bar"), ("Foo", "bar"));
+        assert_eq!(owner_and_name("a::Foo::bar"), ("Foo", "bar"));
+        assert_eq!(owner_and_name("a::b::Foo::bar"), ("Foo", "bar"));
     }
 
     #[test]

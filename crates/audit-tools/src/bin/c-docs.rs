@@ -9,7 +9,7 @@
 //!       print the C text of each header in one file; `<src-dir>` defaults to
 //!       `reference/starlink-ast/src`
 
-use audit_tools::{c_headers, headers_tsv, parse_headers_tsv};
+use audit_tools::{c_headers, headers_tsv, parse_headers_tsv, write_report};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -28,6 +28,11 @@ fn read(path: &Path) -> Result<String, String> {
         .map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// Write a report to standard output; a closed pipe ends it quietly.
+fn out(text: &str) -> Result<(), String> {
+    write_report(&mut std::io::stdout().lock(), text).map_err(|e| format!("stdout: {e}"))
+}
+
 fn headers(dir: &Path) -> Result<(), String> {
     let mut files: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?
@@ -40,8 +45,7 @@ fn headers(dir: &Path) -> Result<(), String> {
         let name = path.file_name().expect("file has a name").to_string_lossy();
         all.extend(c_headers(&read(&path)?, &name).map_err(|e| e.join("\n"))?);
     }
-    print!("{}", headers_tsv(&all));
-    Ok(())
+    out(&headers_tsv(&all))
 }
 
 /// Files whose headers describe classes and functions the port does not carry.
@@ -59,16 +63,16 @@ const NOT_PORTED_FILES: [&str; 10] = [
 ];
 
 fn init_ledger(tsv: &Path) -> Result<(), String> {
-    println!("kind\tname\tfile\trust_item\treason\treviewed\tnote");
+    let mut text = String::from("kind\tname\tfile\trust_item\treason\treviewed\tnote\n");
     for row in parse_headers_tsv(&read(tsv)?) {
         let (kind, name, file) = (row.kind, row.name, row.file);
         if NOT_PORTED_FILES.contains(&file.as_str()) {
-            println!("{kind}\t{name}\t{file}\t\tnot-ported\tyes\t");
+            text.push_str(&format!("{kind}\t{name}\t{file}\t\tnot-ported\tyes\t\n"));
         } else {
-            println!("{kind}\t{name}\t{file}\t\t\tno\t");
+            text.push_str(&format!("{kind}\t{name}\t{file}\t\t\tno\t\n"));
         }
     }
-    Ok(())
+    out(&text)
 }
 
 fn show(file: &str, src: &Path) -> Result<(), String> {
@@ -78,11 +82,11 @@ fn show(file: &str, src: &Path) -> Result<(), String> {
         src.join(file)
     };
     let name = path.file_name().expect("file has a name").to_string_lossy();
+    let mut text = String::new();
     for h in c_headers(&read(&path)?, &name).map_err(|e| e.join("\n"))? {
-        println!("== {} {}", h.kind, h.name);
-        println!("{}", h.text);
+        text.push_str(&format!("== {} {}\n{}\n", h.kind, h.name, h.text));
     }
-    Ok(())
+    out(&text)
 }
 
 fn main() -> ExitCode {
