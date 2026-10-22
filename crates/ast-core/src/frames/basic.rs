@@ -873,6 +873,19 @@ impl Frame for BasicFrame {
         }
     }
 
+    /// A sky axis, such as one picked out of a SkyFrame, holds its values
+    /// in radians whatever its Unit.
+    // C: frame.c `GetInternalUnit` (`MAKE_GET`) takes the Axis value when
+    // `astTestAxisInternalUnit` is set, which skyaxis.c `TestAxisInternalUnit`
+    // always is, and skyaxis.c `GetAxisInternalUnit` gives "rad".
+    fn internal_unit(&self, axis: usize) -> AstResult<String> {
+        super::frame_attrs::validate_axis(axis, self.naxes())?;
+        match self.axis_object(axis)? {
+            FrameAxis::Sky(_) => Ok("rad".to_string()),
+            FrameAxis::Plain(_) => self.unit(axis),
+        }
+    }
+
     /// A SkyAxis supplies its own.
     // C: `Frame::GetNormUnit` (frame.c:13149); skyaxis.c:3101.
     fn norm_unit(&self, axis: usize) -> AstResult<String> {

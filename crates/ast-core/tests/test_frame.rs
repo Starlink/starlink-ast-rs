@@ -347,3 +347,27 @@ fn units_of_an_axis_out_of_range_are_an_error() {
     assert_eq!(circle.norm_unit(3).unwrap_err().code(), ErrorCode::Axiin);
     assert_eq!(cmp.internal_unit(3).unwrap(), "");
 }
+
+/// An axis picked out of a SkyFrame is still a sky axis, whose values are
+/// in radians: the C library gives an InternalUnit of `"rad"` for it, and
+/// for a CmpFrame holding it.
+#[test]
+fn picked_sky_axis_has_an_internal_unit_of_radians() {
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    for axis in [1, 2] {
+        let (picked, _) = ast_core::frames::pick_axes(&sky, &[axis]).unwrap();
+        assert_eq!(picked.internal_unit(1).unwrap(), "rad", "axis {axis}");
+        assert_eq!(
+            picked.internal_unit(2).unwrap_err().code(),
+            ErrorCode::Axiin
+        );
+    }
+    let (picked, _) = ast_core::frames::pick_axes(&sky, &[1]).unwrap();
+    assert_eq!(picked.unit(1).unwrap(), "hh:mm:ss.s");
+    let cmp = CmpFrame::new(
+        picked,
+        Box::new(BasicFrameBuilder::new(1).unit(1, "km").build().unwrap()),
+    );
+    assert_eq!(cmp.internal_unit(1).unwrap(), "rad");
+    assert_eq!(cmp.internal_unit(2).unwrap(), "km");
+}

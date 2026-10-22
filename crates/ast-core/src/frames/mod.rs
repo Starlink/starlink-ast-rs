@@ -1628,7 +1628,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// the axis, as application code handles them.
     /// Usually it equals [`unit`](Frame::unit), since formatted and
     /// unformatted values normally share units; the main exception is a
-    /// SkyFrame, whose values are in radians (`"rad"`) whatever its Unit.
+    /// sky axis, whose values are in radians (`"rad"`) whatever its Unit:
+    /// an axis of a SkyFrame, or one picked out of a SkyFrame.
     ///
     /// # Errors
     ///
