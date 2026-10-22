@@ -742,3 +742,92 @@ fn clone_does_not_inherit_source_file_or_sink_file() {
     assert!(!copy.test_sink_file());
     assert!(ch.test_source_file() && ch.test_sink_file());
 }
+
+// ===========================================================================
+// Standard input and output
+// ===========================================================================
+
+/// The variable that tells a copy of this test program which standard I/O
+/// check it is the child of.
+const STDIO_CHILD: &str = "AST_TEST_CHANNEL_STDIO_CHILD";
+
+/// Run the test `name` in a child of this test program with standard input
+/// `input` and `mode` in [`STDIO_CHILD`], returning its standard output.
+///
+/// A test that uses the real standard input or output would hang waiting for
+/// the harness's terminal or interleave with other tests' output.
+fn run_stdio_child(name: &str, mode: &str, input: &str) -> String {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args([name, "--exact", "--nocapture", "--test-threads=1"])
+        .env(STDIO_CHILD, mode)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        out.status.success() && stdout.contains("1 passed"),
+        "{mode}: {stdout}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    stdout
+}
+
+/// A NativeChannel with no source reads standard input.
+// C: channel.c `ReadData` reads stdin when the Channel has neither a
+// SourceFile nor a source function.
+#[test]
+fn channel_without_source_reads_standard_input() {
+    let name = "test_channel::channel_without_source_reads_standard_input";
+    match std::env::var(STDIO_CHILD).as_deref() {
+        Ok("read") => {
+            let mut ch = NativeChannel::new();
+            assert_eq!(nin_of(ch.read().unwrap().unwrap()), 3);
+            assert_eq!(nin_of(ch.read().unwrap().unwrap()), 4);
+            assert!(ch.read().unwrap().is_none());
+        }
+        Ok(_) => {}
+        Err(_) => {
+            run_stdio_child(name, "read", &format!("{}{}", zoom_dump(3), zoom_dump(4)));
+        }
+    }
+}
+
+/// A NativeChannel with no sink writes standard output, and clearing the
+/// SinkFile returns to it.
+// C: channel.c `WriteData` printfs to stdout when the Channel has neither a
+// SinkFile nor a sink function.
+#[test]
+fn channel_without_sink_writes_standard_output() {
+    let name = "test_channel::channel_without_sink_writes_standard_output";
+    match std::env::var(STDIO_CHILD).as_deref() {
+        Ok("write") => {
+            let path = scratch_path("stdout_sink.ast");
+            let mut ch = NativeChannel::new();
+            ch.set_sink_file(path.to_str().unwrap());
+            ch.write(&AnyObject::ZoomMap(ZoomMap::new(3, 2.0).unwrap()))
+                .unwrap();
+            ch.clear_sink_file();
+            ch.write(&AnyObject::ZoomMap(ZoomMap::new(4, 2.0).unwrap()))
+                .unwrap();
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), zoom_dump(3));
+            let _ = std::fs::remove_file(&path);
+        }
+        Ok(_) => {}
+        Err(_) => {
+            let out = run_stdio_child(name, "write", "");
+            assert!(out.contains(&zoom_dump(4)), "{out}");
+            assert!(!out.contains(&zoom_dump(3)), "{out}");
+        }
+    }
+}

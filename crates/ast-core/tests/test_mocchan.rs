@@ -264,3 +264,82 @@ fn clone_does_not_inherit_source_file_or_sink_file() {
     assert!(!copy.test_source_file());
     assert!(!copy.test_sink_file());
 }
+
+/// The variable that tells a copy of this test program which standard I/O
+/// check it is the child of.
+const STDIO_CHILD: &str = "AST_TEST_MOCCHAN_STDIO_CHILD";
+
+/// Run the test `name` in a child of this test program with standard input
+/// `input` and `mode` in [`STDIO_CHILD`], returning its standard output.
+fn run_stdio_child(name: &str, mode: &str, input: &str) -> String {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args([name, "--exact", "--nocapture", "--test-threads=1"])
+        .env(STDIO_CHILD, mode)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        out.status.success() && stdout.contains("1 passed"),
+        "{mode}: {stdout}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    stdout
+}
+
+/// A MocChan with no source reads standard input.
+// C: channel.c `ReadData` reads stdin when the Channel has neither a
+// SourceFile nor a source function.
+#[test]
+fn mocchan_without_source_reads_standard_input() {
+    let name = "test_mocchan::mocchan_without_source_reads_standard_input";
+    match std::env::var(STDIO_CHILD).as_deref() {
+        Ok("read") => {
+            let mut ch = MocChan::new();
+            let AnyObject::Moc(moc) = ch.read().unwrap().unwrap() else {
+                panic!("not a Moc");
+            };
+            assert_eq!(
+                write(&moc, MocFormat::String),
+                write(&read("1/3 2/37,101-103").0, MocFormat::String)
+            );
+        }
+        Ok(_) => {}
+        Err(_) => {
+            run_stdio_child(name, "read", "1/3 2/37,101-103\n");
+        }
+    }
+}
+
+/// A MocChan with no sink writes standard output.
+// C: channel.c `WriteData` printfs to stdout when the Channel has neither a
+// SinkFile nor a sink function.
+#[test]
+fn mocchan_without_sink_writes_standard_output() {
+    let name = "test_mocchan::mocchan_without_sink_writes_standard_output";
+    match std::env::var(STDIO_CHILD).as_deref() {
+        Ok("write") => {
+            let mut ch = MocChan::new();
+            ch.write(&AnyObject::Moc(read("1/3 2/37").0)).unwrap();
+        }
+        Ok(_) => {}
+        Err(_) => {
+            let out = run_stdio_child(name, "write", "");
+            assert!(
+                out.contains(&write(&read("1/3 2/37").0, MocFormat::String)),
+                "{out}"
+            );
+        }
+    }
+}

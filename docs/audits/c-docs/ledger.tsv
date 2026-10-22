@@ -2,7 +2,7 @@ kind	name	file	rust_item	reason	reviewed	note
 class	Axis	axis.c		merged	yes	Frame
 class	Box	box.c	BoxRegion		yes
 function	astBox	box.c	BoxRegionBuilder::new;BoxRegionBuilder::from_bounds		yes	new takes a center and a corner (form 0), from_bounds two opposite corners (form 1)
-class	Channel	channel.c	NativeChannel		yes	With no source a read finds no object and with no sink the text is discarded, where C reads standard input and writes standard output (PLAN.md §2)
+class	Channel	channel.c	NativeChannel		yes	With no source or SourceFile a read takes standard input, and with no sink or SinkFile a write goes to standard output, as in C
 function	astChannelData	channel.c		c-api-only	yes	A Source or Sink implementation holds its own data
 function	astWarnings	channel.c	Channel::warnings		yes
 function	astPutChannelData	channel.c		c-api-only	yes	A Source or Sink implementation holds its own data
@@ -301,7 +301,7 @@ function	astMoc	moc.c	Moc::new		yes	takes no attribute options; set MaxOrder and
 class	MocChan	mocchan.c	MocChan		yes
 attribute	MocFormat	mocchan.c	MocChan::moc_format		yes
 attribute	MocLineLen	mocchan.c	MocChan::moc_line_len		yes
-function	astMocChan	mocchan.c	MocChan::new		yes	No source, sink or options arguments: set_source, set_sink and the attribute setters take their place; with no source or sink C uses standard input or output (PLAN.md §2)
+function	astMocChan	mocchan.c	MocChan::new		yes	No source, sink or options arguments: set_source, set_sink and the attribute setters take their place; with no source or sink the MocChan uses standard input or output, as in C
 class	NormMap	normmap.c	NormMap		yes
 function	astNormMap	normmap.c	NormMap::new		yes	The NormMap owns its Frame
 class	NullRegion	nullregion.c	NullRegion		yes
