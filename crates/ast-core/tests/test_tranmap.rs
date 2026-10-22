@@ -516,3 +516,32 @@ fn decompose_gives_components_and_invert_values_like_c() {
     assert!(d.map1.as_any().is::<ShiftMap>() && d.map2.as_any().is::<ZoomMap>());
     assert_eq!((d.invert1, d.invert2), (false, true));
 }
+
+/// `decompose` gives the Invert values recorded in the TranMap, which a
+/// loaded TranMap can hold apart from its components' own Invert flags.
+#[test]
+fn decompose_gives_recorded_invert_values_not_component_flags() {
+    let text = " Begin TranMap \t# Compound Transformation Mapping
+    Nin = 1 \t# Number of input coordinates
+ IsA Mapping \t# Mapping between coordinate systems
+    InvA = 1 \t# First Mapping used in inverse direction
+    MapA = \t# Mapping for forward transformation
+       Begin ZoomMap \t# Zoom about the origin
+          Nin = 1 \t# Number of input coordinates
+       IsA Mapping \t# Mapping between coordinate systems
+          Zoom = 2 \t# Zoom factor
+       End ZoomMap
+    MapB = \t# Mapping for inverse transformation
+       Begin ZoomMap \t# Zoom about the origin
+          Nin = 1 \t# Number of input coordinates
+       IsA Mapping \t# Mapping between coordinate systems
+          Zoom = 0.5 \t# Zoom factor
+       End ZoomMap
+ End TranMap
+";
+    let mapping = from_native_string(text).unwrap().into_mapping().unwrap();
+    let map = mapping.as_any().downcast_ref::<TranMap>().unwrap();
+    let d = map.decompose();
+    assert!(!d.map1.is_inverted());
+    assert_eq!((d.invert1, d.invert2), (true, false));
+}

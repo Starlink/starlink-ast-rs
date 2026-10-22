@@ -141,8 +141,9 @@ pub struct CmpMap {
 ///
 /// [`CmpMap::decompose`] and [`TranMap::decompose`](super::TranMap::decompose)
 /// return one.
-/// The components are borrowed from the compound Mapping; clone one to
-/// change it, and set its Invert to the value given here to use it as the
+/// The components are borrowed from the compound Mapping.
+/// To change one, downcast it to its concrete type with `as_any()` and
+/// clone that, then set its Invert to the value given here to use it as the
 /// compound Mapping does.
 #[derive(Clone, Copy)]
 pub struct Decomposition<'a> {
