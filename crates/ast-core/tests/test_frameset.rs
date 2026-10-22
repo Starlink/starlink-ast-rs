@@ -9,7 +9,7 @@ use crate::common::native_dump;
 use ast_core::coords::PointSet;
 use ast_core::error::ErrorCode;
 use ast_core::frames::{BasicFrameBuilder, Frame, FrameRef, FrameSet};
-use ast_core::mappings::{DynMapping, Mapping, PermMap, ShiftMap, UnitMap, ZoomMap};
+use ast_core::mappings::{DynMapping, Mapping, MathMap, PermMap, ShiftMap, UnitMap, ZoomMap};
 
 fn make_frame(naxes: usize) -> Box<dyn Frame> {
     Box::new(BasicFrameBuilder::new(naxes).build().unwrap())
@@ -1059,4 +1059,51 @@ fn find_frame_makes_the_frame_matched_current() {
         assert!(fs.find_frame(&template, &["Q"]).unwrap().is_none());
         assert_eq!(fs.current_index(), 2);
     }
+}
+
+/// `from`: Domain X (base and current), then A from X by a forward-only
+/// y = 2x, then B from X by a ZoomMap of 3.
+/// `to`: Domain A (base and current), then B from A by a UnitMap.
+fn first_domain_pair() -> (FrameSet, FrameSet) {
+    let mut from = FrameSet::new(make_named_frame(1, "X"));
+    from.add_frame(
+        FrameRef::Index(1),
+        Box::new(MathMap::new(1, 1, &["y=2*x"], &["x"]).unwrap()),
+        make_named_frame(1, "A"),
+    )
+    .unwrap();
+    from.add_frame(
+        FrameRef::Index(1),
+        Box::new(ZoomMap::new(1, 3.0).unwrap()),
+        make_named_frame(1, "B"),
+    )
+    .unwrap();
+    from.set_current(FrameRef::Index(1)).unwrap();
+    let mut to = FrameSet::new(make_named_frame(1, "A"));
+    to.add_frame(
+        FrameRef::Index(1),
+        Box::new(UnitMap::new(1)),
+        make_named_frame(1, "B"),
+    )
+    .unwrap();
+    to.set_current(FrameRef::Index(1)).unwrap();
+    (from, to)
+}
+
+// C probe of astConvert with domains "A,B": the first field gives a
+// forward-only conversion through Domain A and the search stops there
+// (from Base 2, to Base 1, maps 1 to 2), although "B" alone would give one
+// with both transformations (from Base 3, to Base 2, maps 1 to 3).
+#[test]
+fn convert_stops_at_the_first_domain_that_gives_a_conversion() {
+    let (mut from, mut to) = first_domain_pair();
+    let cvt = from.convert_to(&mut to, &["A", "B"]).unwrap().unwrap();
+    assert_eq!((from.base_index(), to.base_index()), (2, 1));
+    assert!(cvt.has_forward() && !cvt.has_inverse());
+    assert!((tran_one(&cvt) - 2.0).abs() < 1e-15);
+
+    let (mut from, mut to) = first_domain_pair();
+    let cvt = from.convert_to(&mut to, &["B", "A"]).unwrap().unwrap();
+    assert_eq!((from.base_index(), to.base_index()), (3, 2));
+    assert!((tran_one(&cvt) - 3.0).abs() < 1e-15);
 }

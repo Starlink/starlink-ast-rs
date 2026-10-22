@@ -2369,12 +2369,14 @@ pub(crate) fn frameset_convert_x(
         domainlist.split(',').map(|s| s.to_string()).collect()
     };
 
-    let mut best_score = -1i32;
     let mut result_map: Option<DynMapping> = None;
     let (mut iframe_from, mut iframe_to) = (0, 0);
 
+    // Each field is scored afresh, and the first field that gives any
+    // conversion ends the search (frameset.c:3366-3378).
     'search: for field in &fields {
         let domain = field.trim();
+        let mut best_score = -1i32;
         for &to_idx in &to_order {
             // The selected `to` member frame (or `to` itself when not a set).
             let to_member: DynFrame = match to_fs {
@@ -2432,6 +2434,9 @@ pub(crate) fn frameset_convert_x(
                     }
                 }
             }
+        }
+        if result_map.is_some() {
+            break;
         }
     }
 
