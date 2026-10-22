@@ -12,7 +12,8 @@
 #[path = "sky_last_oracle/cases.rs"]
 mod cases;
 
-use ast_core::frames::{Frame, FrameRef, SkyFrame, SkySystem};
+use ast_core::frames::{Frame, FrameRef, FrameSet, SkyFrame, SkySystem};
+use ast_core::mappings::Mapping;
 
 fn sky(system: SkySystem, epoch: f64, obslon: f64) -> SkyFrame {
     let mut f = SkyFrame::unset_system();
@@ -89,5 +90,86 @@ fn cached_last_follows_the_c_library() {
         .filter(|(g, w)| !crate::common::c_values_eq(g.1.as_flattened(), w.1.as_flattened()))
         .map(|(g, w)| format!("{}: got {:?}, C gives {:?}", g.0, g.1, w.1))
         .collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Transform the probe's points through `cvt`.
+fn points(cvt: &FrameSet) -> [[f64; 2]; 3] {
+    let xin: Vec<f64> = cases::POINTS.iter().map(|p| p[0]).collect();
+    let yin: Vec<f64> = cases::POINTS.iter().map(|p| p[1]).collect();
+    let (x, y) = cvt.tran2(&xin, &yin, true).unwrap();
+    [[x[0], y[0]], [x[1], y[1]], [x[2], y[2]]]
+}
+
+// An AZEL SkyFrame inside a FrameSet keeps the LAST it computes across
+// conversions of the FrameSet, as one converted directly does, so a change
+// of Epoch under 0.4 day extrapolates it.
+// Values from tools/oracle_fixtures/frameset_last_probe.c.
+#[test]
+fn a_frameset_member_keeps_its_cached_last() {
+    const STEPS: [(&str, f64, [[f64; 2]; 3]); 4] = [
+        (
+            "e0",
+            0.0,
+            [
+                [3.5775542230687107, 0.65529042636910739],
+                [6.2301496148307791, -0.58611966251315417],
+                [2.2594791074935849, 0.59512118783272816],
+            ],
+        ),
+        (
+            "plus_0.1",
+            0.1,
+            [
+                [4.2079773122463449, 0.65489446359345305],
+                [0.5774247306448278, -0.58593155281489762],
+                [2.8898206248374603, 0.59548777894224925],
+            ],
+        ),
+        (
+            "plus_0.2",
+            0.2,
+            [
+                [4.8381723552049021, 0.6542902600966608],
+                [1.2077027700038605, -0.58541218765104353],
+                [3.5202652721300987, 0.5954854423642868],
+            ],
+        ),
+        (
+            "plus_0.35",
+            0.35,
+            [
+                [5.7829379765830327, 0.65350134786535496],
+                [2.1526058615684747, -0.58446503438470887],
+                [4.4657874418107237, 0.5948320834871238],
+            ],
+        ),
+    ];
+    const REVERSE: [[f64; 2]; 3] = [
+        [0.48236421263451101, -0.62183856163994111],
+        [3.3867489100596382, 0.27959613814207229],
+        [0.28387300653166092, 0.4016498791056195],
+    ];
+    let (e0, lon) = (cases::E0, cases::LON);
+    let mut fs = FrameSet::new(Box::new(sky(SkySystem::Azel, e0, lon)));
+    let mut icrs = sky(SkySystem::Icrs, e0, lon);
+    let mut failures = Vec::new();
+    for (name, de, want) in STEPS {
+        fs.frame_mut(FrameRef::Current)
+            .unwrap()
+            .set_epoch_mjd(e0 + de)
+            .unwrap();
+        icrs.set_epoch_mjd(e0 + de);
+        let cvt = fs.convert_to(&mut icrs, &[]).unwrap().unwrap();
+        let got = points(&cvt);
+        if got != want {
+            failures.push(format!("{name}: got {got:?}, C gives {want:?}"));
+        }
+    }
+    let cvt = icrs.convert_to(&mut fs, &[]).unwrap().unwrap();
+    let got = points(&cvt);
+    if got != REVERSE {
+        failures.push(format!("reverse: got {got:?}, C gives {REVERSE:?}"));
+    }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

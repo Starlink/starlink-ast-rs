@@ -2383,23 +2383,25 @@ pub(crate) fn frameset_convert_x(
         let mut best_score = -1i32;
         for &to_idx in &to_order {
             // The selected `to` member frame (or `to` itself when not a set).
-            let to_member: DynFrame = match to_fs {
-                Some(fs) => fs.frame(FrameRef::Index(to_idx))?.snapshot(),
-                None => to.snapshot(),
+            // The member itself, not a copy, takes part, as in C: a
+            // SkyFrame member keeps the LAST it computes for the conversion.
+            let to_member: &dyn Frame = match to_fs {
+                Some(fs) => fs.frame(FrameRef::Index(to_idx))?,
+                None => to,
             };
 
             for &from_idx in &from_order {
-                let from_member: DynFrame = match from_fs {
-                    Some(fs) => fs.frame(FrameRef::Index(from_idx))?.snapshot(),
-                    None => from.snapshot(),
+                let from_member: &dyn Frame = match from_fs {
+                    Some(fs) => fs.frame(FrameRef::Index(from_idx))?,
+                    None => from,
                 };
 
                 // Per-pair alignment between the two selected member frames,
                 // through C's virtual `astConvert`, so a Region member takes
                 // part as its Frame (frameset.c:3410).
                 let Some(cvt) = crate::frames::find_frame::convert_frames_or_regions(
-                    from_member.as_ref(),
-                    to_member.as_ref(),
+                    from_member,
+                    to_member,
                     domain,
                 )?
                 else {
@@ -2449,6 +2451,9 @@ pub(crate) fn frameset_convert_x(
     };
 
     // Result: from-current Frame → to-current Frame, linked by the best route.
+    // C's result shares these Frames with the arguments; an owned result
+    // holds copies, taken after the search so that they carry the LAST the
+    // search cached in the arguments' Frames.
     let to_cur_frame: DynFrame = match to_fs {
         Some(fs) => fs.current().snapshot(),
         None => to.snapshot(),
