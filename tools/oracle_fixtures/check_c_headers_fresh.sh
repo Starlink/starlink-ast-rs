@@ -5,10 +5,11 @@
 #
 # The source is read from the commit the superproject pins, not from whatever
 # the submodule has checked out, so a stale or advanced checkout cannot change
-# the answer.
+# the answer. The pin is read from the index, so a pin move that is staged but
+# not yet committed is the one checked; with nothing staged it is the commit's.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-pin=$(git rev-parse HEAD:reference/starlink-ast)
+pin=$(git rev-parse :reference/starlink-ast)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 if ! git -C reference/starlink-ast archive "$pin" src | tar -x -C "$work"; then
