@@ -120,7 +120,9 @@ fn every_mapped_row_has_its_alias_on_its_item() {
             .into_iter()
             .map(|r| (r.name, r.alias))
             .collect();
-    let found: BTreeSet<_> = source_aliases().into_iter().collect();
+    let all_aliases = source_aliases();
+    let duplicates = audit_tools::duplicate_aliases(&all_aliases);
+    let found: BTreeSet<_> = all_aliases.into_iter().collect();
     // rustdoc rejects an alias equal to the item's own name, so a row whose
     // Rust item is a public top-level type or trait with the C name is checked
     // against the declarations instead.
@@ -139,7 +141,7 @@ fn every_mapped_row_has_its_alias_on_its_item() {
             continue;
         };
         for item in &r.rust_item {
-            let (owner, name) = item.split_once("::").unwrap_or((item, item));
+            let (owner, name) = audit_tools::owner_and_name(item);
             if audit_tools::alias_satisfied_by_name(item, alias, &types) {
                 continue;
             }
@@ -155,8 +157,8 @@ fn every_mapped_row_has_its_alias_on_its_item() {
     }
     let unlisted: Vec<_> = found.iter().filter(|k| !wanted.contains(*k)).collect();
     assert!(
-        missing.is_empty() && unlisted.is_empty(),
-        "missing:\n{}\naliases with no ledger row: {unlisted:?}",
+        missing.is_empty() && unlisted.is_empty() && duplicates.is_empty(),
+        "missing:\n{}\naliases with no ledger row: {unlisted:?}\nduplicated aliases: {duplicates:?}",
         missing.join("\n")
     );
 }

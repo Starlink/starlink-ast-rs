@@ -17,7 +17,7 @@ pub use c_headers::{
     write_report,
 };
 pub use c_steps::c_step_comments;
-pub use doc_aliases::{alias_satisfied_by_name, doc_aliases, top_level_types};
+pub use doc_aliases::{alias_satisfied_by_name, doc_aliases, duplicate_aliases, top_level_types};
 pub use rendered_docs::c_references;
 
 /// A parsed `file:line[-line] [(fn name)]` citation.
@@ -170,12 +170,14 @@ enum OpenLiteral {
     Str,
     /// A raw string closed by `"` and this many `#`.
     Raw(usize),
+    /// A `/* … */` comment, which nests, at this depth.
+    Block(usize),
 }
 
-/// Every line of `src` with line comments and string and char literal bodies
+/// Every line of `src` with comments and string and char literal bodies
 /// stripped, so their braces do not count as block structure.
 ///
-/// A string literal may span lines, so the state of each line carries into
+/// A string literal or a block comment may span lines, so the state of each line carries into
 /// the next.
 fn code_lines(src: &str) -> Vec<String> {
     let mut open = OpenLiteral::None;
@@ -217,10 +219,31 @@ fn code_only(line: &str, open: &mut OpenLiteral) -> String {
                 }
                 continue;
             }
+            OpenLiteral::Block(depth) => {
+                match (chars[i], chars.get(i + 1)) {
+                    ('/', Some('*')) => {
+                        *open = OpenLiteral::Block(depth + 1);
+                        i += 2;
+                    }
+                    ('*', Some('/')) => {
+                        *open = match depth {
+                            1 => OpenLiteral::None,
+                            _ => OpenLiteral::Block(depth - 1),
+                        };
+                        i += 2;
+                    }
+                    _ => i += 1,
+                }
+                continue;
+            }
             OpenLiteral::None => {}
         }
         match chars[i] {
             '/' if chars.get(i + 1) == Some(&'/') => break,
+            '/' if chars.get(i + 1) == Some(&'*') => {
+                *open = OpenLiteral::Block(1);
+                i += 2;
+            }
             '"' => {
                 *open = OpenLiteral::Str;
                 i += 1;
@@ -253,9 +276,10 @@ fn code_only(line: &str, open: &mut OpenLiteral) -> String {
 /// The number of `#` in the raw string literal opening at `chars[at]`, an `r`,
 /// or `None` when `r` there starts no raw string.
 fn raw_string_hashes(chars: &[char], at: usize) -> Option<usize> {
-    // `r` must begin a token, or follow the `b` that begins one in `br"…"`.
+    // `r` must begin a token, or follow the `b` or `c` that begins one in
+    // `br"…"` and `cr"…"`.
     let starts_token = |k: usize| k == 0 || !is_ident(chars[k - 1]);
-    if !(starts_token(at) || (chars[at - 1] == 'b' && starts_token(at - 1))) {
+    if !(starts_token(at) || (matches!(chars[at - 1], 'b' | 'c') && starts_token(at - 1))) {
         return None;
     }
     let hashes = chars[at + 1..].iter().take_while(|c| **c == '#').count();
@@ -717,6 +741,23 @@ fn free() -> u32 {
         assert_eq!(enclosing_rust_item(RUST, 5).as_deref(), Some("outer"));
         assert_eq!(enclosing_rust_item(RUST, 14).as_deref(), Some("other"));
         assert_eq!(enclosing_rust_item(RUST, 19).as_deref(), Some("free"));
+    }
+
+    #[test]
+    fn block_comments_are_stripped_across_lines_and_nest() {
+        let src = "a /* { x */ b\n/* open {\n /* inner } */ still {\n*/ c { d\n// } e\n";
+        let code: Vec<String> = code_lines(src);
+        assert_eq!(code, ["a  b", "", "", " c { d", ""]);
+    }
+
+    #[test]
+    fn c_string_raw_literals_are_stripped() {
+        let src = "let a = cr#\"} {\"#; let b = br\"}\"; let c = r\"}\"; x\n";
+        assert_eq!(code_lines(src), ["let a = c; let b = b; let c = ; x"]);
+        // A backslash is literal in a raw string, so it must not hide the close.
+        assert_eq!(code_lines("cr#\"\\\"#; {\n"), ["c; {"]);
+        let src = "let a = cr#\"\n}\n\"#; y\n";
+        assert_eq!(code_lines(src), ["let a = c", "", "; y"]);
     }
 
     #[test]

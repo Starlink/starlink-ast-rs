@@ -4,9 +4,14 @@
 //! of the item an alias sits on and the type or trait that owns it are
 //! derived here once.
 
-use crate::enclosing_rust_block;
+use crate::{code_lines, enclosing_rust_block};
+use std::collections::BTreeMap;
 
 /// Every `#[doc(alias = "…")]` in `src`: (alias, item name, owner).
+///
+/// An attribute that lists several aliases, `#[doc(alias = "a", alias = "b")]`,
+/// yields one entry per alias. A `doc(alias …)` inside a string literal or a
+/// comment is not an attribute and is skipped.
 ///
 /// The item is the next `fn`/`struct`/`enum`/`trait`/`type`/`const` declared
 /// after the attribute; the owner is the subject of the enclosing `impl` or
@@ -20,9 +25,10 @@ use crate::enclosing_rust_block;
 /// it rather than missing it.
 pub fn doc_aliases(src: &str) -> Vec<(String, String, String)> {
     let lines: Vec<&str> = src.lines().collect();
+    let code = code_lines(src);
     let mut out = Vec::new();
     for (i, line) in lines.iter().enumerate() {
-        if line.trim_start().starts_with("//") || !mentions_alias(line) {
+        if !mentions_alias(&code[i]) {
             continue;
         }
         let unparsed = || {
@@ -32,7 +38,7 @@ pub fn doc_aliases(src: &str) -> Vec<(String, String, String)> {
                 "<unparsed>".to_string(),
             )
         };
-        let Some(alias) = alias_of(line) else {
+        let Some(aliases) = aliases_of(line) else {
             out.push(unparsed());
             continue;
         };
@@ -42,11 +48,13 @@ pub fn doc_aliases(src: &str) -> Vec<(String, String, String)> {
         });
         let resolved = declaration.and_then(|(at, text)| Some((at, declared_name(text)?)));
         let Some((at, item)) = resolved else {
-            out.push((
-                alias,
-                format!("<unresolved: line {}>", i + 1),
-                "<unresolved>".to_string(),
-            ));
+            for alias in aliases {
+                out.push((
+                    alias,
+                    format!("<unresolved: line {}>", i + 1),
+                    "<unresolved>".to_string(),
+                ));
+            }
             continue;
         };
         let owner = match enclosing_rust_block(src, at + 1) {
@@ -60,9 +68,27 @@ pub fn doc_aliases(src: &str) -> Vec<(String, String, String)> {
             },
             None => item.clone(),
         };
-        out.push((alias, item, owner));
+        for alias in aliases {
+            out.push((alias, item.clone(), owner.clone()));
+        }
     }
     out
+}
+
+/// The entries of `aliases` (from [`doc_aliases`]) that occur more than once.
+///
+/// An alias set compared as a set hides a second identical attribute on the
+/// same item, so the gate counts them here.
+pub fn duplicate_aliases(aliases: &[(String, String, String)]) -> Vec<(String, String, String)> {
+    let mut counts: BTreeMap<&(String, String, String), usize> = BTreeMap::new();
+    for a in aliases {
+        *counts.entry(a).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .filter(|(_, n)| *n > 1)
+        .map(|(a, _)| a.clone())
+        .collect()
 }
 
 /// The names of the public types and traits `src` declares at the top level
@@ -110,16 +136,28 @@ fn mentions_alias(line: &str) -> bool {
     compact.contains("doc(alias") || compact.ends_with("#[doc(")
 }
 
-/// The alias in a line that is a `#[doc(alias = "…")]` attribute.
-fn alias_of(line: &str) -> Option<String> {
+/// The aliases in a line that is a `#[doc(alias = "…", alias = "…")]`
+/// attribute, or `None` when the line is not of that form.
+fn aliases_of(line: &str) -> Option<Vec<String>> {
     let rest = line.trim_start().strip_prefix("#[")?.trim_start();
     let rest = rest.strip_prefix("doc")?.trim_start();
-    let rest = rest.strip_prefix('(')?.trim_start();
-    let rest = rest.strip_prefix("alias")?.trim_start();
-    let rest = rest.strip_prefix('=')?.trim_start();
-    let rest = rest.strip_prefix('"')?;
-    let end = rest.find('"')?;
-    Some(rest[..end].to_string())
+    let mut rest = rest.strip_prefix('(')?.trim_start();
+    let mut out = Vec::new();
+    loop {
+        let r = rest.strip_prefix("alias")?.trim_start();
+        let r = r.strip_prefix('=')?.trim_start();
+        let r = r.strip_prefix('"')?;
+        let end = r.find('"')?;
+        out.push(r[..end].to_string());
+        let r = r[end + 1..].trim_start();
+        match r.strip_prefix(',') {
+            Some(more) if !more.trim_start().starts_with(')') => rest = more.trim_start(),
+            _ => {
+                let closed = r.trim_start_matches(',').trim_start().starts_with(')');
+                return closed.then_some(out);
+            }
+        }
+    }
 }
 
 /// The name a declaration line introduces, past visibility and qualifiers.
@@ -156,7 +194,7 @@ fn ident(s: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{alias_satisfied_by_name, doc_aliases, top_level_types};
+    use super::{alias_satisfied_by_name, doc_aliases, duplicate_aliases, top_level_types};
 
     fn t(a: &str, i: &str, o: &str) -> (String, String, String) {
         (a.into(), i.into(), o.into())
@@ -340,5 +378,31 @@ impl Mapping for PermMap {
         let a = doc_aliases(src);
         assert_eq!(a.len(), 1, "{a:?}");
         assert!(a[0].1.starts_with("<unparsed"), "{a:?}");
+    }
+
+    #[test]
+    fn a_second_alias_in_one_attribute_is_found() {
+        let src = "impl K {\n    #[doc(alias = \"a\", alias = \"b\")]\n    pub fn f(&self) {}\n    #[doc(alias = \"c\",)]\n    pub fn g(&self) {}\n}\n";
+        assert_eq!(
+            doc_aliases(src),
+            [t("a", "f", "K"), t("b", "f", "K"), t("c", "g", "K")]
+        );
+        let src = "#[doc(alias = \"a\", hidden)]\nfn f() {}\n";
+        assert!(doc_aliases(src)[0].1.starts_with("<unparsed"));
+    }
+
+    #[test]
+    fn an_alias_in_a_string_or_comment_is_not_an_attribute() {
+        let src = "fn f() {\n    let _ = \"#[doc(alias = \\\"x\\\")]\";\n    /* #[doc(alias = \"y\")]\n       #[doc(alias = \"z\")] */\n    // #[doc(alias = \"w\")]\n}\n";
+        assert_eq!(doc_aliases(src), []);
+        let src = "const S: &str = r#\"\n#[doc(alias = \"x\")]\n\"#;\n";
+        assert_eq!(doc_aliases(src), []);
+    }
+
+    #[test]
+    fn duplicates_are_reported() {
+        let a = [t("x", "f", "K"), t("y", "f", "K"), t("x", "f", "K")];
+        assert_eq!(duplicate_aliases(&a), [t("x", "f", "K")]);
+        assert!(duplicate_aliases(&a[..2]).is_empty());
     }
 }
