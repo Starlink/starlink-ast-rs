@@ -96,7 +96,7 @@ fn query(f: &dyn Frame, q: &str, axis: usize, second: bool) -> V {
         "Direction" => V::I(i32::from(f.direction(axis).unwrap())),
         "Top" => V::D(f.top(axis).unwrap()),
         "Bottom" => V::D(f.bottom(axis).unwrap()),
-        "NormUnit" => s(f.norm_unit(axis)),
+        "NormUnit" => s(f.norm_unit(axis).unwrap()),
         other => panic!("unexpected query {other}"),
     }
 }

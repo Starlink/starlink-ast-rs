@@ -1367,12 +1367,12 @@ fn check_interval() {
     let mut frm2 = SpecFrame::unset_system();
     frm2.set_unit(1, "Angstrom").unwrap();
     let frm3 = CmpFrame::new(Box::new(frm1.clone()), Box::new(frm2.clone()));
-    assert_eq!(frm1.internal_unit(1), "rad", "InternalUnit 1");
-    assert_eq!(frm1.internal_unit(2), "rad", "InternalUnit 2");
-    assert_eq!(frm2.internal_unit(1), "Angstrom", "InternalUnit 3");
-    assert_eq!(frm3.internal_unit(1), "rad", "InternalUnit 4");
-    assert_eq!(frm3.internal_unit(2), "rad", "InternalUnit 5");
-    assert_eq!(frm3.internal_unit(3), "Angstrom", "InternalUnit 6");
+    assert_eq!(frm1.internal_unit(1).unwrap(), "rad", "InternalUnit 1");
+    assert_eq!(frm1.internal_unit(2).unwrap(), "rad", "InternalUnit 2");
+    assert_eq!(frm2.internal_unit(1).unwrap(), "Angstrom", "InternalUnit 3");
+    assert_eq!(frm3.internal_unit(1).unwrap(), "rad", "InternalUnit 4");
+    assert_eq!(frm3.internal_unit(2).unwrap(), "rad", "InternalUnit 5");
+    assert_eq!(frm3.internal_unit(3).unwrap(), "Angstrom", "InternalUnit 6");
 
     const B: f64 = BAD_VALUE;
     let interval = |f: &CmpFrame, lb: &[f64], ub: &[f64]| -> Interval {

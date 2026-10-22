@@ -86,7 +86,7 @@ fn format_unit_and_norm_unit_match_the_c_library() {
         let got = (
             sky.format_str(axis).unwrap(),
             sky.unit(axis).unwrap(),
-            sky.norm_unit(axis),
+            sky.norm_unit(axis).unwrap(),
         );
         if got != (format.to_string(), unit.to_string(), norm.to_string()) {
             failures.push(format!(
@@ -134,7 +134,7 @@ fn a_read_dump_keeps_its_attributes() {
     assert!(sky.as_time(1).unwrap());
     assert!(sky.test_as_time(1).unwrap());
     assert!(!sky.test_format_str(2).unwrap());
-    assert_eq!(sky.norm_unit(1), "hh mm ss");
+    assert_eq!(sky.norm_unit(1).unwrap(), "hh mm ss");
 }
 
 /// Clearing an attribute returns the axis to the default the System and

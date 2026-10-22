@@ -1974,6 +1974,21 @@ impl Frame for FrameSet {
         self.current().frame_grid(size, lbnd, ubnd)
     }
 
+    /// The current Frame answers, as its Axis is the FrameSet's.
+    // C: frame.c `GetInternalUnit` reads the Axis that frameset.c
+    // `GetAxis` takes from the current Frame.
+    fn internal_unit(&self, axis: usize) -> AstResult<String> {
+        self.current().internal_unit(axis)
+    }
+
+    /// The current Frame answers, as its Axis is the FrameSet's.
+    // C: frame.c `GetNormUnit` reads the Axis that frameset.c `GetAxis`
+    // takes from the current Frame, and the Unit through frameset.c
+    // `GetUnit`.
+    fn norm_unit(&self, axis: usize) -> AstResult<String> {
+        self.current().norm_unit(axis)
+    }
+
     /// The current Frame normalises the points.
     // C: frameset.c `NormalPoints`.
     fn normal_points(

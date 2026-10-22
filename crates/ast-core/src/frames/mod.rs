@@ -1629,12 +1629,18 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Usually it equals [`unit`](Frame::unit), since formatted and
     /// unformatted values normally share units; the main exception is a
     /// SkyFrame, whose values are in radians (`"rad"`) whatever its Unit.
-    /// An `axis` out of range gives an empty string.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
     #[doc(alias = "InternalUnit")]
-    fn internal_unit(&self, axis: usize) -> String {
-        // C `astGetInternalUnit` (frame.c). Frames whose internal and
-        // external units agree trigger no remapping in `MakeFitsFrameSet`.
-        self.unit(axis).unwrap_or_default()
+    fn internal_unit(&self, axis: usize) -> AstResult<String> {
+        // C `astGetInternalUnit` (frame.c `MAKE_GET`), which validates the
+        // axis first. Frames whose internal and external units agree
+        // trigger no remapping in `MakeFitsFrameSet`.
+        frame_attrs::validate_axis(axis, self.naxes())?;
+        self.unit(axis)
     }
 
     /// The normalized physical units of formatted values on an axis: the
@@ -1644,7 +1650,11 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// simpler form: a Unit of `"s*(m/s)"` gives `"m"`.
     /// When no simplification can be made, as for a blank Unit or a
     /// description of axis values such as `"ddd:mm:ss"`, it equals the Unit.
-    /// An `axis` out of range gives an empty string.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
     ///
     /// # Examples
     ///
@@ -1652,10 +1662,11 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// use ast_core::frames::{BasicFrameBuilder, Frame};
     ///
     /// let frame = BasicFrameBuilder::new(1).unit(1, "s*(m/s)").build().unwrap();
-    /// assert_eq!(frame.norm_unit(1), "m");
+    /// assert_eq!(frame.norm_unit(1).unwrap(), "m");
+    /// assert!(frame.norm_unit(2).is_err());
     /// ```
     #[doc(alias = "NormUnit")]
-    fn norm_unit(&self, axis: usize) -> String {
+    fn norm_unit(&self, axis: usize) -> AstResult<String> {
         // C `astGetNormUnit` (frame.c:13149) normalizes the Unit the Frame
         // reports rather than the one stored in the Axis, because SpecFrame,
         // TimeFrame, FluxFrame and SkyFrame each report Units of their own.
@@ -1663,7 +1674,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         // normalizes the same string. `SkyFrame` overrides this, as it does
         // in C. C reports `AST__FMTER` for a result longer than its
         // 127-character buffer; the port has no such limit.
-        crate::units::norm_unit(&self.unit(axis).unwrap_or_default())
+        frame_attrs::validate_axis(axis, self.naxes())?;
+        Ok(crate::units::norm_unit(&self.unit(axis)?))
     }
 
     /// Permute the order of this Frame's axes.

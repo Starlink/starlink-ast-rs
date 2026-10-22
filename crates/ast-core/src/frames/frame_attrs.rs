@@ -1203,6 +1203,15 @@ macro_rules! region_frame_attrs {
                 $crate::regions::PickedAxes::Frame(frame) => frame,
             })
         }
+        // frame.c `GetInternalUnit` and `GetNormUnit` read the Axis that
+        // region.c `GetAxis` takes from the current Frame of the Region's
+        // FrameSet.
+        fn internal_unit(&self, axis: usize) -> $crate::error::AstResult<String> {
+            self.data.frameset.current().internal_unit(axis)
+        }
+        fn norm_unit(&self, axis: usize) -> $crate::error::AstResult<String> {
+            self.data.frameset.current().norm_unit(axis)
+        }
         // region.c `NormalPoints` (6591): the current Frame of the Region's
         // FrameSet normalises the points.
         fn normal_points(

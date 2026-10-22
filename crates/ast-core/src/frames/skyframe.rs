@@ -2054,10 +2054,12 @@ impl Frame for SkyFrame {
         false
     }
 
-    fn internal_unit(&self, _axis: usize) -> String {
+    fn internal_unit(&self, axis: usize) -> AstResult<String> {
         // SkyFrame axes are angles stored internally in radians. Mirrors
-        // C `astGetInternalUnit` for a SkyAxis returning "rad".
-        "rad".to_string()
+        // C `astGetInternalUnit` for a SkyAxis returning "rad", after the
+        // axis is validated.
+        super::frame_attrs::validate_axis(axis, self.naxes())?;
+        Ok("rad".to_string())
     }
 
     /// A Unit that describes the axis values, such as `"hh:mm:ss.s"`, has no
@@ -2070,13 +2072,12 @@ impl Frame for SkyFrame {
     /// normalised.
     // C: `SkyFrame::GetNormUnit` (skyframe.c:4349), which asks the SkyAxis
     // (`SkyAxis::GetAxisNormUnit`, skyaxis.c:3095).
-    fn norm_unit(&self, axis: usize) -> String {
-        let Ok(phys) = self.physical_axis(axis) else {
-            return String::new();
-        };
+    fn norm_unit(&self, axis: usize) -> AstResult<String> {
+        super::frame_attrs::validate_axis(axis, self.naxes())?;
+        let phys = self.physical_axis(axis)?;
         // A plain Axis normalises the Unit it reports (axis.c).
         if let FrameAxis::Plain(_) = &self.axes[phys] {
-            return crate::units::norm_unit(&self.phys_unit(phys));
+            return Ok(crate::units::norm_unit(&self.phys_unit(phys)));
         }
         let fmt = self.phys_format(phys);
         if !fmt.starts_with('%') {
@@ -2088,10 +2089,10 @@ impl Frame for SkyFrame {
                     .as_ref()
                     .is_none_or(|unit| *unit == description)
             {
-                return description;
+                return Ok(description);
             }
         }
-        crate::units::norm_unit(&self.phys_unit(phys))
+        Ok(crate::units::norm_unit(&self.phys_unit(phys)))
     }
 
     /// The axis Format, set or default, formats the value as a sky axis does.

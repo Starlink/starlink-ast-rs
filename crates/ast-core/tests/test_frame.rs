@@ -12,10 +12,12 @@
 //!   It includes the cases upstream's `testunitnorm.c` checks through the
 //!   protected `astUnitNormaliser`.
 
+use ast_core::error::ErrorCode;
 use ast_core::frames::{
-    BasicFrameBuilder, CmpFrame, DSBSpecFrame, FluxFrame, FluxSystem, Frame, SkyFrame, SkySystem,
-    SpecFrame, SpecSystem, TimeFrame, TimeSystem,
+    BasicFrameBuilder, CmpFrame, DSBSpecFrame, FluxFrame, FluxSystem, Frame, FrameSet, SkyFrame,
+    SkySystem, SpecFrame, SpecSystem, TimeFrame, TimeSystem,
 };
+use ast_core::regions::CircleBuilder;
 
 fn one_axis_frame(unit: &str) -> ast_core::frames::BasicFrame {
     BasicFrameBuilder::new(1).unit(1, unit).build().unwrap()
@@ -23,7 +25,7 @@ fn one_axis_frame(unit: &str) -> ast_core::frames::BasicFrame {
 
 #[test]
 fn unit_is_simplified() {
-    assert_eq!(one_axis_frame("s*(m/s)").norm_unit(1), "m");
+    assert_eq!(one_axis_frame("s*(m/s)").norm_unit(1).unwrap(), "m");
 }
 
 /// NormUnit is documented to equal Unit when no simplification can be
@@ -44,7 +46,7 @@ fn norm_unit_equals_unit_when_it_cannot_be_simplified() {
     for (name, frame) in &frames {
         for axis in 1..=frame.naxes() {
             assert_eq!(
-                frame.norm_unit(axis),
+                frame.norm_unit(axis).unwrap(),
                 frame.unit(axis).unwrap(),
                 "NormUnit({axis}) of a default {name}"
             );
@@ -60,8 +62,8 @@ fn norm_unit_follows_a_permutation() {
         .build()
         .unwrap();
     frame.perm_axes(&[2, 1]).unwrap();
-    assert_eq!(frame.norm_unit(1), "m");
-    assert_eq!(frame.norm_unit(2), "km");
+    assert_eq!(frame.norm_unit(1).unwrap(), "m");
+    assert_eq!(frame.norm_unit(2).unwrap(), "km");
 }
 
 /// A SkyFrame axis whose Unit describes its values ("hh:mm:ss.s") reports
@@ -78,12 +80,20 @@ fn sky_frame_norm_unit() {
     ];
     for (system, expected) in cases {
         let mut sky = SkyFrame::new(system);
-        assert_eq!(sky.norm_unit(1), expected[0], "{system:?} axis 1");
-        assert_eq!(sky.norm_unit(2), expected[1], "{system:?} axis 2");
+        assert_eq!(sky.norm_unit(1).unwrap(), expected[0], "{system:?} axis 1");
+        assert_eq!(sky.norm_unit(2).unwrap(), expected[1], "{system:?} axis 2");
 
         sky.perm_axes(&[2, 1]).unwrap();
-        assert_eq!(sky.norm_unit(1), expected[1], "permuted {system:?} axis 1");
-        assert_eq!(sky.norm_unit(2), expected[0], "permuted {system:?} axis 2");
+        assert_eq!(
+            sky.norm_unit(1).unwrap(),
+            expected[1],
+            "permuted {system:?} axis 1"
+        );
+        assert_eq!(
+            sky.norm_unit(2).unwrap(),
+            expected[0],
+            "permuted {system:?} axis 2"
+        );
     }
 }
 
@@ -117,7 +127,7 @@ fn sky_frame_norm_unit_follows_the_format() {
             "Unit(1) with {format:?} {unit:?}"
         );
         assert_eq!(
-            sky.norm_unit(1),
+            sky.norm_unit(1).unwrap(),
             expected_norm,
             "NormUnit(1) with {format:?} {unit:?}"
         );
@@ -127,27 +137,30 @@ fn sky_frame_norm_unit_follows_the_format() {
 #[test]
 fn spectral_time_and_flux_frames_normalise_the_unit_they_report() {
     let mut freq = SpecFrame::new(SpecSystem::Freq);
-    assert_eq!(freq.norm_unit(1), "GHz");
+    assert_eq!(freq.norm_unit(1).unwrap(), "GHz");
     freq.set_unit(1, "MHz*1000").unwrap();
-    assert_eq!(freq.norm_unit(1), "GHz");
-    assert_eq!(SpecFrame::new(SpecSystem::Wavenum).norm_unit(1), "m**-1");
+    assert_eq!(freq.norm_unit(1).unwrap(), "GHz");
+    assert_eq!(
+        SpecFrame::new(SpecSystem::Wavenum).norm_unit(1).unwrap(),
+        "m**-1"
+    );
 
     let mut time = TimeFrame::new(TimeSystem::Mjd);
-    assert_eq!(time.norm_unit(1), "d");
+    assert_eq!(time.norm_unit(1).unwrap(), "d");
     time.set_unit(1, "1000*s").unwrap();
-    assert_eq!(time.norm_unit(1), "ks");
+    assert_eq!(time.norm_unit(1).unwrap(), "ks");
 
     let mut flux = FluxFrame::new(FluxSystem::FluxDen);
-    assert_eq!(flux.norm_unit(1), "(W/Hz)*m**-2");
+    assert_eq!(flux.norm_unit(1).unwrap(), "(W/Hz)*m**-2");
     flux.set_unit(1, "erg/s/cm**2/Hz").unwrap();
-    assert_eq!(flux.norm_unit(1), "(erg/Hz)*cm**-2/s");
+    assert_eq!(flux.norm_unit(1).unwrap(), "(erg/Hz)*cm**-2/s");
     assert_eq!(
-        FluxFrame::new(FluxSystem::SBright).norm_unit(1),
+        FluxFrame::new(FluxSystem::SBright).norm_unit(1).unwrap(),
         "(W/Hz)*arcmin**-2*m**-2"
     );
 
     assert_eq!(
-        DSBSpecFrame::new(SpecSystem::Wavelen).norm_unit(1),
+        DSBSpecFrame::new(SpecSystem::Wavelen).norm_unit(1).unwrap(),
         "Angstrom"
     );
 }
@@ -158,9 +171,9 @@ fn cmp_frame_norm_unit_comes_from_the_component() {
         Box::new(SkyFrame::new(SkySystem::Galactic)),
         Box::new(one_axis_frame("s*(m/s)")),
     );
-    assert_eq!(cmp.norm_unit(1), "deg");
-    assert_eq!(cmp.norm_unit(2), "deg");
-    assert_eq!(cmp.norm_unit(3), "m");
+    assert_eq!(cmp.norm_unit(1).unwrap(), "deg");
+    assert_eq!(cmp.norm_unit(2).unwrap(), "deg");
+    assert_eq!(cmp.norm_unit(3).unwrap(), "m");
 }
 
 /// `(Unit, NormUnit)` pairs read back from a one-axis C Frame.
@@ -224,7 +237,7 @@ const C_ORACLE: &[(&str, &str)] = &[
 fn norm_unit_matches_the_c_library() {
     let mut failures = Vec::new();
     for &(unit, expected) in C_ORACLE {
-        let got = one_axis_frame(unit).norm_unit(1);
+        let got = one_axis_frame(unit).norm_unit(1).unwrap();
         if got != expected {
             failures.push(format!("Unit {unit:?}: got {got:?}, C gives {expected:?}"));
         }
@@ -250,7 +263,12 @@ fn picked_sky_axis_keeps_its_norm_unit() {
                 picked.unit(1).unwrap(),
                 sky.unit(axis as usize + 1).unwrap()
             );
-            assert_eq!(picked.norm_unit(1), want, "{system:?} axis {}", axis + 1);
+            assert_eq!(
+                picked.norm_unit(1).unwrap(),
+                want,
+                "{system:?} axis {}",
+                axis + 1
+            );
         }
     }
 }
@@ -280,12 +298,52 @@ fn bad_top_bottom_and_epoch_are_unset() {
 /// of range (frame.c:1442 `astValidateAxis`).
 #[test]
 fn ax_angle_rejects_an_invalid_axis() {
-    use ast_core::error::ErrorCode;
-    use ast_core::frames::{BasicFrameBuilder, Frame};
-
     let f = BasicFrameBuilder::new(2).build().unwrap();
     for axis in [0, 3] {
         let err = f.ax_angle(&[0.0, 0.0], &[1.0, 1.0], axis).unwrap_err();
         assert_eq!(err.code(), ErrorCode::Axiin);
     }
+}
+
+/// NormUnit and InternalUnit reject an axis out of range with `Axiin`, as
+/// the C library does for every class probed: a Frame, a SkyFrame, a
+/// CmpFrame and a FrameSet.
+/// A FrameSet and a Region answer as their current Frame does.
+#[test]
+fn units_of_an_axis_out_of_range_are_an_error() {
+    let sky = SkyFrame::new(SkySystem::Icrs);
+    let cmp = CmpFrame::new(
+        Box::new(sky.clone()),
+        Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+    );
+    let fs = FrameSet::new(Box::new(sky.clone()));
+    let basic = BasicFrameBuilder::new(2).build().unwrap();
+    let frames: [(&str, &dyn Frame); 4] = [
+        ("frame", &basic),
+        ("sky", &sky),
+        ("cmp", &cmp),
+        ("frameset", &fs),
+    ];
+    for (name, frame) in frames {
+        for axis in [0, frame.naxes() + 1] {
+            let err = frame.norm_unit(axis).unwrap_err();
+            assert_eq!(err.code(), ErrorCode::Axiin, "{name} NormUnit({axis})");
+            let err = frame.internal_unit(axis).unwrap_err();
+            assert_eq!(err.code(), ErrorCode::Axiin, "{name} InternalUnit({axis})");
+        }
+    }
+    // The values the C library gives for axis 1.
+    assert_eq!(sky.internal_unit(1).unwrap(), "rad");
+    assert_eq!(cmp.internal_unit(1).unwrap(), "rad");
+    assert_eq!(fs.internal_unit(1).unwrap(), "rad");
+    assert_eq!(fs.norm_unit(1).unwrap(), "hh:mm:ss.s");
+    let circle = CircleBuilder::new(sky.clone(), vec![0.0, 0.0])
+        .unwrap()
+        .radius(0.1)
+        .build()
+        .unwrap();
+    assert_eq!(circle.internal_unit(1).unwrap(), "rad");
+    assert_eq!(circle.norm_unit(1).unwrap(), "hh:mm:ss.s");
+    assert_eq!(circle.norm_unit(3).unwrap_err().code(), ErrorCode::Axiin);
+    assert_eq!(cmp.internal_unit(3).unwrap(), "");
 }

@@ -144,8 +144,8 @@ fn value(f: &BasicFrame, attr: &str, axis: usize) -> V {
         "Dtai" => V::D(BasicFrame::dtai(f)),
         "Dut1" => V::D(BasicFrame::dut1(f)),
         "Naxes" => V::I(f.naxes() as i32),
-        "NormUnit" => s(f.norm_unit(axis)),
-        "InternalUnit" => s(f.internal_unit(axis)),
+        "NormUnit" => s(f.norm_unit(axis).unwrap()),
+        "InternalUnit" => s(f.internal_unit(axis).unwrap()),
         other => panic!("unexpected attribute {other}"),
     }
 }

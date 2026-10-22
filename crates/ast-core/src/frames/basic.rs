@@ -875,14 +875,11 @@ impl Frame for BasicFrame {
 
     /// A SkyAxis supplies its own.
     // C: `Frame::GetNormUnit` (frame.c:13149); skyaxis.c:3101.
-    fn norm_unit(&self, axis: usize) -> String {
-        match self
-            .axis_object(axis)
-            .ok()
-            .and_then(|a| a.sky_norm_unit(self.digits()))
-        {
-            Some(u) => u,
-            None => crate::units::norm_unit(&self.unit(axis).unwrap_or_default()),
+    fn norm_unit(&self, axis: usize) -> AstResult<String> {
+        super::frame_attrs::validate_axis(axis, self.naxes())?;
+        match self.axis_object(axis)?.sky_norm_unit(self.digits()) {
+            Some(u) => Ok(u),
+            None => Ok(crate::units::norm_unit(&self.unit(axis)?)),
         }
     }
 

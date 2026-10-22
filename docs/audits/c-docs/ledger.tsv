@@ -134,8 +134,8 @@ attribute	Format	frame.c	Frame::format_str		yes	The g SkyFrame flag behaves as l
 attribute	Label	frame.c	Frame::label		yes
 attribute	Symbol	frame.c	Frame::symbol		yes	C's header says the default is truncated to 15 characters; the code's limit is SYMBOL_BUFF_LEN, 50, as the port's doc says (docs/issues/c-library-quirks.md)
 attribute	Unit	frame.c	Frame::unit		yes
-attribute	NormUnit	frame.c	Frame::norm_unit		yes	An axis out of range gives an empty string where C reports AST__AXIIN (PLAN.md 2)
-attribute	InternalUnit	frame.c	Frame::internal_unit		yes	An axis out of range gives an empty string where C reports AST__AXIIN (PLAN.md 2)
+attribute	NormUnit	frame.c	Frame::norm_unit		yes
+attribute	InternalUnit	frame.c	Frame::internal_unit		yes
 attribute	Digits	frame.c	Frame::digits;Frame::axis_digits		yes	Plot is not ported, so the Plot applicability is dropped
 attribute	MatchEnd	frame.c	Frame::match_end		yes
 attribute	MaxAxes	frame.c	Frame::max_axes		yes	C's header says the default may be reduced to stay consistent with MinAxes; DefaultMaxAxes raises it, as the port's doc says (docs/issues/c-library-quirks.md)

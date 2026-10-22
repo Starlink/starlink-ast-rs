@@ -388,11 +388,12 @@ impl Frame for CmpFrame {
     /// its component's: a SkyFrame axis is in radians whatever its Unit.
     // C: frame.c `GetInternalUnit` takes the InternalUnit of the Axis, and
     // the CmpFrame's Axis comes from cmpframe.c `GetAxis`.
-    fn internal_unit(&self, axis: usize) -> String {
+    fn internal_unit(&self, axis: usize) -> AstResult<String> {
+        super::frame_attrs::validate_axis(axis, self.naxes())?;
         match self.component_axis(axis) {
             Some((1, a)) => self.frame1.internal_unit(a),
             Some((_, a)) => self.frame2.internal_unit(a),
-            None => self.unit(axis).unwrap_or_default(),
+            None => self.unit(axis),
         }
     }
 
