@@ -498,3 +498,21 @@ fn simplify_invert_normalize_fixture_roundtrip() {
         assert_eq!(text, ref_text);
     }
 }
+
+/// `decompose` gives the forward and inverse Mappings and the Invert values
+/// to apply them with; an inverted TranMap swaps them, as C's
+/// `astDecompose` does (C probe).
+#[test]
+fn decompose_gives_components_and_invert_values_like_c() {
+    use ast_core::mappings::ShiftMap;
+    let mut shift = ShiftMap::new(vec![1.0]);
+    shift.invert();
+    let mut map = TranMap::new(Box::new(ZoomMap::new(1, 2.0).unwrap()), Box::new(shift)).unwrap();
+    let d = map.decompose();
+    assert!(d.map1.as_any().is::<ZoomMap>() && d.map2.as_any().is::<ShiftMap>());
+    assert_eq!((d.invert1, d.invert2), (false, true));
+    map.invert();
+    let d = map.decompose();
+    assert!(d.map1.as_any().is::<ShiftMap>() && d.map2.as_any().is::<ZoomMap>());
+    assert_eq!((d.invert1, d.invert2), (false, true));
+}

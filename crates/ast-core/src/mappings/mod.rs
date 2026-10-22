@@ -53,7 +53,7 @@ pub use xphmap::{XphMap, XphProjection};
 mod sphmap;
 pub use sphmap::SphMap;
 mod cmpmap;
-pub use cmpmap::{CmpMap, Composition};
+pub use cmpmap::{CmpMap, Composition, Decomposition};
 mod tranmap;
 pub use tranmap::TranMap;
 mod ratemap;

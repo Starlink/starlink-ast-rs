@@ -136,6 +136,43 @@ pub struct CmpMap {
     inv_b: bool,
 }
 
+/// Two component Mappings of a compound Mapping, each with the Invert value
+/// to apply it with.
+///
+/// [`CmpMap::decompose`] and [`TranMap::decompose`](super::TranMap::decompose)
+/// return one.
+/// The components are borrowed from the compound Mapping; clone one to
+/// change it, and set its Invert to the value given here to use it as the
+/// compound Mapping does.
+#[derive(Clone, Copy)]
+pub struct Decomposition<'a> {
+    /// The first component.
+    pub map1: &'a dyn Mapping,
+    /// The Invert value to apply [`map1`](Decomposition::map1) with.
+    pub invert1: bool,
+    /// The second component.
+    pub map2: &'a dyn Mapping,
+    /// The Invert value to apply [`map2`](Decomposition::map2) with.
+    pub invert2: bool,
+}
+
+impl fmt::Debug for Decomposition<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Decomposition")
+            .field(
+                "map1",
+                &format_args!("{} -> {}", self.map1.nin(), self.map1.nout()),
+            )
+            .field("invert1", &self.invert1)
+            .field(
+                "map2",
+                &format_args!("{} -> {}", self.map2.nin(), self.map2.nout()),
+            )
+            .field("invert2", &self.invert2)
+            .finish()
+    }
+}
+
 impl CmpMap {
     /// Create a CmpMap that connects `first` and `second` in series or in
     /// parallel, as `kind` says.
@@ -241,6 +278,65 @@ impl CmpMap {
     /// decomposing a component C decomposes freely.
     pub(crate) fn set_dump_simplified_in(&mut self, inverted: bool, flag: bool) {
         self.simplified.set(inverted, flag);
+    }
+
+    /// The two component Mappings of this CmpMap, with the Invert value to
+    /// apply each with, and whether they are combined in series or in
+    /// parallel.
+    ///
+    /// Applying [`map1`](Decomposition::map1) and then
+    /// [`map2`](Decomposition::map2) in series, or `map1` to the earlier
+    /// coordinates and `map2` to the later ones in parallel, each with its
+    /// Invert value, is equivalent to this CmpMap.
+    /// The components are those the CmpMap was created with.
+    /// For an inverted CmpMap in series they come in the reverse order with
+    /// their Invert values negated; in parallel they keep their order and
+    /// only the Invert values are negated.
+    ///
+    /// Use [`invert1`](Decomposition::invert1) and
+    /// [`invert2`](Decomposition::invert2) in preference to each component's
+    /// own [`is_inverted`](Mapping::is_inverted), which need not agree with
+    /// them, for instance in a CmpMap read from a Native dump.
+    ///
+    /// ```
+    /// use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
+    ///
+    /// let mut map = CmpMap::new(
+    ///     Box::new(ZoomMap::new(1, 2.0).unwrap()),
+    ///     Box::new(ShiftMap::new([1.0])),
+    ///     Composition::Series,
+    /// )
+    /// .unwrap();
+    /// map.invert();
+    /// let (parts, kind) = map.decompose();
+    /// assert_eq!(kind, Composition::Series);
+    /// assert!(parts.map1.as_any().is::<ShiftMap>());
+    /// assert!(parts.invert1 && parts.invert2);
+    /// ```
+    #[doc(alias = "astDecompose")]
+    pub fn decompose(&self) -> (Decomposition<'_>, Composition) {
+        let (first, second) = (self.first.as_ref(), self.second.as_ref());
+        let parts = match (self.kind, self.inverted) {
+            (_, false) => Decomposition {
+                map1: first,
+                invert1: self.inv_a,
+                map2: second,
+                invert2: self.inv_b,
+            },
+            (Composition::Series, true) => Decomposition {
+                map1: second,
+                invert1: !self.inv_b,
+                map2: first,
+                invert2: !self.inv_a,
+            },
+            (Composition::Parallel, true) => Decomposition {
+                map1: first,
+                invert1: !self.inv_a,
+                map2: second,
+                invert2: !self.inv_b,
+            },
+        };
+        (parts, self.kind)
     }
 
     /// The first component mapping.

@@ -10,7 +10,7 @@ use crate::serial::{
     MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
 };
 
-use super::cmpmap::{CmpMap, Composition};
+use super::cmpmap::{CmpMap, Composition, Decomposition};
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
@@ -145,6 +145,51 @@ impl TranMap {
             inv_a,
             inv_b,
         })
+    }
+
+    /// The Mapping that gives this TranMap's forward transformation and the
+    /// one that gives its inverse, each with the Invert value to apply it
+    /// with.
+    ///
+    /// [`map1`](Decomposition::map1) supplies the forward transformation and
+    /// [`map2`](Decomposition::map2) the inverse.
+    /// The components are those the TranMap was created with; for an
+    /// inverted TranMap they come in the reverse order with their Invert
+    /// values negated.
+    /// Use [`invert1`](Decomposition::invert1) and
+    /// [`invert2`](Decomposition::invert2) in preference to each component's
+    /// own [`is_inverted`](Mapping::is_inverted), which need not agree with
+    /// them, for instance in a TranMap read from a Native dump.
+    ///
+    /// ```
+    /// use ast_core::mappings::{Mapping, TranMap, ZoomMap};
+    ///
+    /// let map = TranMap::new(
+    ///     Box::new(ZoomMap::new(1, 2.0).unwrap()),
+    ///     Box::new(ZoomMap::new(1, 4.0).unwrap()),
+    /// )
+    /// .unwrap();
+    /// let parts = map.decompose();
+    /// assert_eq!(parts.map1.tran1(&[1.0], true).unwrap(), vec![2.0]);
+    /// assert!(!parts.invert1 && !parts.invert2);
+    /// ```
+    #[doc(alias = "astDecompose")]
+    pub fn decompose(&self) -> Decomposition<'_> {
+        if self.inverted {
+            Decomposition {
+                map1: self.map2.as_ref(),
+                invert1: !self.inv_b,
+                map2: self.map1.as_ref(),
+                invert2: !self.inv_a,
+            }
+        } else {
+            Decomposition {
+                map1: self.map1.as_ref(),
+                invert1: self.inv_a,
+                map2: self.map2.as_ref(),
+                invert2: self.inv_b,
+            }
+        }
     }
 
     /// The first component mapping (defines forward transformation).

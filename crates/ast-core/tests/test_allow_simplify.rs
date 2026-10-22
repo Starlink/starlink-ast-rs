@@ -92,6 +92,50 @@ fn testresimp_restricted_cancellation_keeps_the_shiftmaps() {
 ";
     let got = native_dump(&AnyObject::from_mapping(m2.as_ref()).unwrap()).unwrap();
     assert_eq!(got, expected, "Errors 6-8");
+
+    let cmp = m2.as_ref().as_any().downcast_ref::<CmpMap>().unwrap();
+    let (parts, _) = cmp.decompose();
+    assert!(
+        parts.map1.as_any().is::<ShiftMap>() && parts.map2.as_any().is::<ShiftMap>(),
+        "Error 6"
+    );
+    assert!(!parts.invert1, "Error 7");
+    assert!(parts.invert2, "Error 8");
+}
+
+/// testresimp.c Errors 11-13: Shift(1), Zoom(2), Shift(-2) under a restricted
+/// simplify with AllowSimplify on the ZoomMap merges the first two into a
+/// WinMap and keeps the last ShiftMap. C sets AllowSimplify on the ZoomMap
+/// after composing it, through its shared pointer; here it is set before.
+#[test]
+fn testresimp_restricted_shift_zoom_shift_keeps_the_last_shiftmap() {
+    use ast_core::mappings::{CmpMap, Composition, DynMapping, ShiftMap, WinMap, ZoomMap};
+    let mut zm1 = ZoomMap::new(1, 2.0).unwrap();
+    zm1.set_allow_simplify(true);
+    let cm1 = CmpMap::new(
+        Box::new(ShiftMap::new(vec![1.0])),
+        Box::new(zm1),
+        Composition::Series,
+    )
+    .unwrap();
+    let mut cm2: DynMapping = Box::new(
+        CmpMap::new(
+            Box::new(cm1),
+            Box::new(ShiftMap::new(vec![-2.0])),
+            Composition::Series,
+        )
+        .unwrap(),
+    );
+    cm2.set_restricted_simplify(true);
+    let m2 = cm2.simplify().unwrap();
+    let cmp = m2.as_ref().as_any().downcast_ref::<CmpMap>().unwrap();
+    let (parts, _) = cmp.decompose();
+    assert!(
+        parts.map1.as_any().is::<WinMap>() && parts.map2.as_any().is::<ShiftMap>(),
+        "Error 11"
+    );
+    assert!(!parts.invert1, "Error 12");
+    assert!(!parts.invert2, "Error 13");
 }
 
 /// testresimp.c Errors 9-10: an unrestricted simplify of Shift(1), Zoom(2),

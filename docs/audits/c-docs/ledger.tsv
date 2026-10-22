@@ -238,7 +238,7 @@ attribute	Nout	mapping.c	Mapping::nout		yes
 attribute	Report	mapping.c	Mapping::report		yes	only tran1/tran2 report (PLAN.md §2); C's header says a dump drops it, but C's Dump writes it when set, as the port does
 attribute	TranForward	mapping.c	Mapping::has_forward		yes
 attribute	TranInverse	mapping.c	Mapping::has_inverse		yes
-function	astDecompose	mapping.c		not-ported	yes	CmpMap and TranMap components are crate-private; CmpFrame::frame1/frame2 cover a CmpFrame (PLAN.md §2)
+function	astDecompose	mapping.c	CmpMap::decompose;TranMap::decompose		yes	CmpFrame::frame1/frame2 and CmpRegion's and Prism's region1/region2 give those classes' components, whose Invert values C takes from the components themselves; a Mapping that is not compound, which C decomposes into itself, has no counterpart
 function	astMapBox	mapping.c	Mapping::map_box		yes
 function	astRate	mapping.c	Mapping::rate		yes
 function	astMapSplit	mapping.c	Mapping::map_split		yes

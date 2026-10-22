@@ -316,3 +316,41 @@ fn a_frameset_component_becomes_its_mapping() {
         + "\n";
     assert_eq!(native_dump(&AnyObject::CmpMap(cmp)).unwrap(), want);
 }
+
+/// `decompose` gives the components and the Invert values to apply them
+/// with, as C's `astDecompose` does (C probe): an inverted series CmpMap
+/// swaps the components and their flags, an inverted parallel CmpMap keeps
+/// the order and negates the flags.
+#[test]
+fn decompose_gives_components_and_invert_values_like_c() {
+    let zoom = || -> Box<dyn Mapping> { Box::new(ZoomMap::new(1, 2.0).unwrap()) };
+    let shift = || -> Box<dyn Mapping> {
+        let mut s = ShiftMap::new(vec![1.0]);
+        s.invert();
+        Box::new(s)
+    };
+    let is_zoom = |m: &dyn Mapping| m.as_any().is::<ZoomMap>();
+    let is_shift = |m: &dyn Mapping| m.as_any().is::<ShiftMap>();
+
+    let mut ser = CmpMap::new(zoom(), shift(), Composition::Series).unwrap();
+    let (d, kind) = ser.decompose();
+    assert_eq!(kind, Composition::Series);
+    assert!(is_zoom(d.map1) && is_shift(d.map2));
+    assert_eq!((d.invert1, d.invert2), (false, true));
+    ser.invert();
+    let (d, kind) = ser.decompose();
+    assert_eq!(kind, Composition::Series);
+    assert!(is_shift(d.map1) && is_zoom(d.map2));
+    assert_eq!((d.invert1, d.invert2), (false, true));
+
+    let mut par = CmpMap::new(zoom(), shift(), Composition::Parallel).unwrap();
+    let (d, kind) = par.decompose();
+    assert_eq!(kind, Composition::Parallel);
+    assert!(is_zoom(d.map1) && is_shift(d.map2));
+    assert_eq!((d.invert1, d.invert2), (false, true));
+    par.invert();
+    let (d, kind) = par.decompose();
+    assert_eq!(kind, Composition::Parallel);
+    assert!(is_zoom(d.map1) && is_shift(d.map2));
+    assert_eq!((d.invert1, d.invert2), (true, false));
+}
