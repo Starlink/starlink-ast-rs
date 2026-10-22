@@ -1564,3 +1564,34 @@ fn c_2d_poly_tran_nonunit_domain() {
         assert!((got - want).abs() <= 1.0e-6, "Error {err}: {got}");
     }
 }
+
+/// `coeffs` gives the coefficients of the ChebyMap as it stands, so an
+/// inverted ChebyMap's forward coefficients are those it was created with
+/// for the inverse, as C's `astPolyCoeffs` gives them (C probe below).
+#[test]
+fn coeffs_follow_inversion_like_c() {
+    let t = |coeff: f64, powers: Vec<usize>, out_axis: usize| PolyTerm {
+        coeff,
+        powers,
+        out_axis,
+    };
+    let fwd = [t(1.5, vec![1, 0], 1), t(2.5, vec![0, 2], 1)];
+    let inv = [t(3.0, vec![1], 1), t(4.0, vec![0], 2)];
+    let mut map = ChebyMap::new(
+        2,
+        1,
+        &fwd,
+        Some(&inv),
+        &[-1.0, -2.0],
+        &[1.0, 2.0],
+        Some(&[0.0]),
+        Some(&[5.0]),
+    )
+    .unwrap();
+    // C: astPolyCoeffs forward gives 1.5 1 1 0 / 2.5 1 0 2, inverse 3 1 1 / 4 2 0.
+    assert_eq!(map.coeffs(true), fwd.to_vec());
+    assert_eq!(map.coeffs(false), inv.to_vec());
+    map.invert();
+    assert_eq!(map.coeffs(true), inv.to_vec());
+    assert_eq!(map.coeffs(false), fwd.to_vec());
+}

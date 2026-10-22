@@ -419,7 +419,7 @@ function	astOutline<X>	polygon.c	Polygon::outline		yes	one function generic over
 attribute	SimpVertices	polygon.c	Polygon::simp_vertices		yes
 function	astPolygon	polygon.c	PolygonBuilder::new		yes	vertices are given as one Vec per vertex rather than a [2][dim] array
 class	PolyMap	polymap.c	PolyMap		yes
-function	astPolyCoeffs	polymap.c	PolyMap::coeffs		yes	C also applies to a ChebyMap; ChebyMap has no coeffs and gives only the uninverted forward_terms/inverse_terms (PLAN.md §2)
+function	astPolyCoeffs	polymap.c	PolyMap::coeffs;ChebyMap::coeffs		yes
 function	astPolyTran	polymap.c	PolyMap::poly_tran;ChebyMap::poly_tran		yes	ChebyMap's Applicability text (NULL bounds use the ChebyMap's own box, Chebyshev result) is on ChebyMap::poly_tran
 attribute	IterInverse	polymap.c	PolyMap::iter_inverse		yes	ChebyMap's Applicability (always zero, setting has no effect) is on the ChebyMap struct doc: ChebyMap has no iter_inverse methods
 attribute	NiterInverse	polymap.c	PolyMap::niter_inverse		yes

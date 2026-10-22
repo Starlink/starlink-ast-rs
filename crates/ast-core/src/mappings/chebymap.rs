@@ -307,14 +307,46 @@ impl ChebyMap {
         self.ubnd_i.as_deref()
     }
 
-    /// Return a reference to the forward polynomial terms.
+    /// Return a reference to the forward polynomial terms of the original,
+    /// uninverted ChebyMap, in the order they were given.
+    /// [`coeffs`](ChebyMap::coeffs) gives them relative to the ChebyMap as it
+    /// stands.
     pub fn forward_terms(&self) -> &[PolyTerm] {
         self.poly.forward_terms()
     }
 
-    /// Return a reference to the inverse polynomial terms, if defined.
+    /// Return a reference to the inverse polynomial terms of the original,
+    /// uninverted ChebyMap, if defined, in the order they were given.
     pub fn inverse_terms(&self) -> Option<&[PolyTerm]> {
         self.poly.inverse_terms()
+    }
+
+    /// The Chebyshev coefficients of the forward (`forward` true) or inverse
+    /// transformation of this ChebyMap, in the form [`new`](ChebyMap::new)
+    /// takes them.
+    ///
+    /// The transformation is that of the ChebyMap as it stands, so the
+    /// forward coefficients of an inverted ChebyMap are the inverse
+    /// coefficients it was created with.
+    /// The terms are grouped by the output each defines, in output order, and
+    /// within each output in the order they were given.
+    /// The result is empty when the transformation has no defining
+    /// polynomials.
+    ///
+    /// ```
+    /// use ast_core::mappings::{ChebyMap, Mapping, PolyTerm};
+    ///
+    /// let terms = [PolyTerm { coeff: 2.0, powers: vec![1], out_axis: 1 }];
+    /// let mut map = ChebyMap::new(1, 1, &terms, None, &[0.0], &[10.0], None, None).unwrap();
+    /// assert_eq!(map.coeffs(true), terms.to_vec());
+    /// map.invert();
+    /// assert!(map.coeffs(true).is_empty());
+    /// ```
+    #[doc(alias = "astPolyCoeffs")]
+    pub fn coeffs(&self, forward: bool) -> Vec<PolyTerm> {
+        // The inner PolyMap is inverted together with the ChebyMap, so its
+        // coefficients already follow the ChebyMap's orientation.
+        self.poly.coeffs(forward)
     }
 
     /// The bounding box of the domain of the forward (`forward` true) or
