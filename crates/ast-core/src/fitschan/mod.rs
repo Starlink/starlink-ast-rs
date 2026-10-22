@@ -3057,19 +3057,6 @@ impl FitsChan {
         )
     }
 
-    /// The end of a read of an encoding other than NATIVE or DSS, mirroring
-    /// C's `Read` and its `FixUsed`: on success consume the cards the read
-    /// used and store its warnings; on failure consume them only when Clean
-    /// is set.
-    ///
-    /// The cards used are those SpecTrans used (`spec_names`), every card
-    /// C's `WcsFcRead` sweep marks ([`wcs_mark::mark_wcs_cards`]), which
-    /// covers every copy of a repeated WCS keyword whose value converts, and
-    /// the other names the extraction recorded on `trans`, each marking
-    /// every matching card as C's `MarkAllCards` does. The sweep is also C's
-    /// extraction, so it fails where C's read fails at a card with no value,
-    /// and then the cards after that card, and the extraction's names, are
-    /// not used.
     /// C's `WcsFcRead` sweep, after the warnings `SpecTrans` raised are
     /// stored: flag every WCS card whose value converts as provisionally
     /// used, warning in front of each card it cannot convert.
