@@ -10,20 +10,37 @@ use crate::{code_lines, is_ident};
 use std::collections::BTreeSet;
 use std::path::Path;
 
-/// The visible text of `html`: tags removed (each leaves a space) and the
-/// five entities rustdoc emits in prose decoded.
+/// Tags that style or link a run of words inside a line, such as the
+/// highlighting rustdoc puts around part of a name.
+/// Removing one leaves no space, so `<span>permmap</span>.c` reads as `permmap.c`.
+const INLINE_TAGS: [&str; 8] = ["a", "b", "code", "em", "i", "span", "strong", "u"];
+
+/// Whether `tag`, the text between `<` and `>`, opens or closes an inline tag.
+fn is_inline_tag(tag: &str) -> bool {
+    let name: String = tag
+        .trim_start_matches('/')
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .collect();
+    INLINE_TAGS.contains(&name.to_ascii_lowercase().as_str())
+}
+
+/// The visible text of `html`: tags removed (an inline tag leaves nothing, any
+/// other leaves a space) and the five entities rustdoc emits in prose decoded.
 fn visible_text(html: &str) -> String {
     let mut text = String::with_capacity(html.len());
-    let mut in_tag = false;
+    let mut tag: Option<String> = None;
     for c in html.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' if in_tag => {
-                in_tag = false;
-                text.push(' ');
+        match (c, tag.as_mut()) {
+            ('<', None) => tag = Some(String::new()),
+            ('>', Some(t)) => {
+                if !is_inline_tag(t) {
+                    text.push(' ');
+                }
+                tag = None;
             }
-            _ if !in_tag => text.push(c),
-            _ => {}
+            (_, None) => text.push(c),
+            (_, Some(t)) => t.push(c),
         }
     }
     decode_entities(&text)
@@ -253,6 +270,15 @@ mod tests {
     #[test]
     fn markup_and_rust_names_are_not_text() {
         let html = "<a href=\"permmap.html\" class=\"astx\">ast_core</a><p>AstError</p>";
+        assert!(c_references(html, &public()).is_empty());
+    }
+
+    #[test]
+    fn an_inline_tag_inside_a_file_name_does_not_split_it() {
+        let html = "<p>See <span class=\"x\">permmap</span>.c:12 and <code>frame</code>.h.</p>";
+        assert_eq!(c_references(html, &public()), ["permmap.c:12", "frame.h"]);
+        // Block tags still separate words.
+        let html = "<p>permmap</p><p>.c</p>";
         assert!(c_references(html, &public()).is_empty());
     }
 
