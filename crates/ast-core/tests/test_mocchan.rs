@@ -134,3 +134,133 @@ fn dump_format_ignores_trailing_white_space() {
     };
     assert_eq!(back.moc_format(), MocFormat::Json);
 }
+
+// ===========================================================================
+// SourceFile, SinkFile and standard input and output
+// ===========================================================================
+
+/// A path in the temporary directory that no other test uses.
+fn scratch_path(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("ast_mocchan_{}_{name}", std::process::id()))
+}
+
+/// SourceFile is read in place of the source, clearing it restores the
+/// source, and setting it again reads the file from its start.
+// C: channel.c `SetSourceFile`, `ClearSourceFile` and `ReadData`, which
+// MocChan inherits.
+#[test]
+fn source_file_replaces_source_and_clear_restores_it() {
+    let path = scratch_path("source.moc");
+    std::fs::write(&path, "1/3 2/37,101-103\n").unwrap();
+    let name = path.to_str().unwrap();
+    let from_file = read("1/3 2/37,101-103").0;
+
+    let mut ch = MocChan::from_string("0/1");
+    assert!(!ch.test_source_file());
+    ch.set_source_file(name);
+    assert!(ch.test_source_file());
+    assert_eq!(ch.source_file(), Some(name));
+    let AnyObject::Moc(moc) = ch.read().unwrap().unwrap() else {
+        panic!("not a Moc");
+    };
+    assert_eq!(
+        write(&moc, MocFormat::String),
+        write(&from_file, MocFormat::String)
+    );
+
+    ch.clear_source_file();
+    assert!(!ch.test_source_file());
+    let AnyObject::Moc(moc) = ch.read().unwrap().unwrap() else {
+        panic!("not a Moc");
+    };
+    assert_eq!(
+        write(&moc, MocFormat::String),
+        write(&read("0/1").0, MocFormat::String)
+    );
+
+    // The file is opened again, from its start.
+    ch.set_source_file(name);
+    let AnyObject::Moc(moc) = ch.read().unwrap().unwrap() else {
+        panic!("not a Moc");
+    };
+    assert_eq!(
+        write(&moc, MocFormat::String),
+        write(&from_file, MocFormat::String)
+    );
+    let _ = std::fs::remove_file(&path);
+}
+
+/// SinkFile is written in place of the sink, clearing it restores the sink,
+/// and setting it again creates the file anew.
+#[test]
+fn sink_file_replaces_sink_and_clear_restores_it() {
+    let first = scratch_path("sink1.moc");
+    let second = scratch_path("sink2.moc");
+    let a = AnyObject::Moc(read("1/3").0);
+    let b = AnyObject::Moc(read("2/37").0);
+
+    let mut ch = MocChan::with_string_sink();
+    ch.set_sink_file(first.to_str().unwrap());
+    assert!(ch.test_sink_file());
+    assert_eq!(ch.sink_file(), first.to_str());
+    ch.write(&a).unwrap();
+    ch.set_sink_file(second.to_str().unwrap());
+    ch.write(&b).unwrap();
+    ch.clear_sink_file();
+    assert!(!ch.test_sink_file());
+    ch.write(&a).unwrap();
+    // The first name again replaces the file's contents.
+    ch.set_sink_file(first.to_str().unwrap());
+    ch.write(&b).unwrap();
+    ch.clear_sink_file();
+
+    let a_moc = read("1/3").0;
+    assert_eq!(
+        std::fs::read_to_string(&first).unwrap(),
+        write(&read("2/37").0, MocFormat::String)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&second).unwrap(),
+        write(&read("2/37").0, MocFormat::String)
+    );
+    assert_eq!(ch.into_string(), write(&a_moc, MocFormat::String));
+    let _ = std::fs::remove_file(&first);
+    let _ = std::fs::remove_file(&second);
+}
+
+/// A SourceFile that cannot be opened is an error at the first read, and a
+/// SinkFile at the first write.
+#[test]
+fn source_and_sink_file_open_failures() {
+    let missing = scratch_path("no_such_dir").join("x.moc");
+    let mut ch = MocChan::from_string("1/3");
+    ch.set_source_file(missing.to_str().unwrap());
+    let e = ch.read().unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Rderr);
+    assert!(
+        e.message()
+            .contains("astRead(MocChan): Failed to open input SourceFile"),
+        "{e}"
+    );
+
+    let mut ch = MocChan::with_string_sink();
+    ch.set_sink_file(missing.to_str().unwrap());
+    let e = ch.write(&AnyObject::Moc(read("1/3").0)).unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Wrerr);
+    assert!(
+        e.message()
+            .contains("astWrite(MocChan): Failed to open output SinkFile"),
+        "{e}"
+    );
+}
+
+/// A clone has neither attribute.
+#[test]
+fn clone_does_not_inherit_source_file_or_sink_file() {
+    let mut ch = MocChan::new();
+    ch.set_source_file("a.moc");
+    ch.set_sink_file("b.moc");
+    let copy = ch.clone();
+    assert!(!copy.test_source_file());
+    assert!(!copy.test_sink_file());
+}

@@ -60,8 +60,9 @@ const DEFAULT_LINE_LEN: i32 = 80;
 /// [`with_string_sink`](Self::with_string_sink) read from and write to a
 /// string, and [`from_file`](Self::from_file) and [`to_file`](Self::to_file)
 /// read from and write to a file.
-/// Without a source, a read finds no text and fails; without a sink, the
-/// text written is discarded.
+/// Without a source or SourceFile, a read takes the text from standard
+/// input; without a sink or SinkFile, the text is written to standard
+/// output.
 /// A clone shares the original's source and sink.
 ///
 /// Besides the attributes of every Channel, in [`ChannelConfig`], none of
@@ -83,9 +84,7 @@ const DEFAULT_LINE_LEN: i32 = 80;
 /// assert_eq!(out.write(&moc).unwrap(), 1);
 /// assert_eq!(out.into_string(), "{\"1\":[3],\"2\":[37,101,102,103]}\n");
 /// ```
-// C: the MocChan class (mocchan.c). C reads standard input and writes
-// standard output when a MocChan has no source or sink function (PLAN.md
-// §2).
+// C: the MocChan class (mocchan.c).
 #[derive(Debug, Clone, Default)]
 pub struct MocChan {
     base: ChannelBase,
@@ -161,6 +160,74 @@ impl MocChan {
     /// Set a custom sink for writing.
     pub fn set_sink(&mut self, sink: Box<dyn Sink>) {
         self.base.set_sink(sink);
+    }
+
+    /// The SourceFile attribute: the name of a text file from which the
+    /// MocChan reads, or `None` when unset.
+    ///
+    /// Default: unset, when the text comes from the [source](Self::set_source),
+    /// or from standard input if there is none.
+    ///
+    /// When it is set, the file is used in place of the source.
+    /// It is opened by the first read after the attribute is set, which
+    /// fails if the file cannot be opened.
+    /// Setting the attribute again or clearing it closes the file.
+    /// A clone does not inherit it.
+    #[doc(alias = "SourceFile")]
+    pub fn source_file(&self) -> Option<&str> {
+        self.base.source_file()
+    }
+
+    /// Set [`source_file`](Self::source_file), closing any file open for the
+    /// last value.
+    pub fn set_source_file(&mut self, source_file: &str) {
+        self.base.set_source_file(source_file);
+    }
+
+    /// Whether [`source_file`](Self::source_file) is set.
+    pub fn test_source_file(&self) -> bool {
+        self.base.source_file().is_some()
+    }
+
+    /// Clear [`source_file`](Self::source_file), closing any file open for it.
+    /// Reads then return to the source, or to standard input if there is
+    /// none.
+    pub fn clear_source_file(&mut self) {
+        self.base.clear_source_file();
+    }
+
+    /// The SinkFile attribute: the name of a text file to which the MocChan
+    /// writes, or `None` when unset.
+    ///
+    /// Default: unset, when the text goes to the [sink](Self::set_sink), or
+    /// to standard output if there is none.
+    ///
+    /// When it is set, the file is used in place of the sink.
+    /// It is created, replacing any file of that name, by the first write
+    /// after the attribute is set, which fails if it cannot be created.
+    /// Setting the attribute again or clearing it closes the file.
+    /// A clone does not inherit it.
+    #[doc(alias = "SinkFile")]
+    pub fn sink_file(&self) -> Option<&str> {
+        self.base.sink_file()
+    }
+
+    /// Set [`sink_file`](Self::sink_file), closing any file open for the
+    /// last value.
+    pub fn set_sink_file(&mut self, sink_file: &str) {
+        self.base.set_sink_file(sink_file);
+    }
+
+    /// Whether [`sink_file`](Self::sink_file) is set.
+    pub fn test_sink_file(&self) -> bool {
+        self.base.sink_file().is_some()
+    }
+
+    /// Clear [`sink_file`](Self::sink_file), closing any file open for it.
+    /// Writes then return to the sink, or to standard output if there is
+    /// none.
+    pub fn clear_sink_file(&mut self) {
+        self.base.clear_sink_file();
     }
 
     /// The Ident attribute: a permanent string identifying this MocChan.
@@ -284,8 +351,13 @@ impl Channel for MocChan {
         self.base.warnings.clear();
         let mut moc = Moc::new();
         let base = &self.base;
-        let lines = std::iter::from_fn(|| base.read_line());
-        let json = moc.add_moc_text(-1, lines, "astRead")?;
+        let lines = std::iter::from_fn(|| base.read_line("MocChan"));
+        self.base.take_read_error()?;
+        let added = moc.add_moc_text(-1, lines, "astRead");
+        // A SourceFile that could not be opened reads as empty text, so its
+        // error takes the place of the failure to find any.
+        self.base.take_read_error()?;
+        let json = added?;
         let maxorder = moc.max_order();
         moc.moc_norm(false, CmpOperator::Or, 0, maxorder, "astRead")?;
         self.moc_format = if json {
@@ -309,12 +381,10 @@ impl Channel for MocChan {
         moc.get_moc_text(
             json,
             buflen,
-            &mut |line| {
-                base.write_line(line);
-                Ok(())
-            },
+            &mut |line| base.write_line("MocChan", line),
             "astWrite",
         )?;
+        base.flush();
         Ok(1)
     }
 

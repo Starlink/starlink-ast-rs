@@ -105,6 +105,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`astMapGetElemC` and `astMapGetElemA` give an out-of-range upper limit one past the vector](#astmapgetelemc-and-astmapgetelema-give-an-out-of-range-upper-limit-one-past-the-vector)
 - [A FitsChan write gives `FsetToStore` its method and class names in the wrong order](#a-fitschan-write-gives-fsettostore-its-method-and-class-names-in-the-wrong-order)
 - [`GetCDMatrix` puts back the card current before the source was read](#getcdmatrix-puts-back-the-card-current-before-the-source-was-read)
+- [`WriteData` never refuses a SinkFile that is the SourceFile in use](#writedata-never-refuses-a-sinkfile-that-is-the-sourcefile-in-use)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1544,6 +1545,19 @@ Consequence: whether a read after a CDMatrix query finds anything depends on whe
 
 The port mirrors it: `FitsChan::cd_matrix` in `crates/ast-core/src/fitschan/mod.rs` restores end-of-file when the FitsChan was at end-of-file before reading the source, and `cd_matrix_from_a_source_leaves_end_of_file_as_c_does` in `tests/test_fitschan.rs` pins it.
 A C fix: save the card after `astClearCard`, or read the source first, as `GetEncoding` does.
+
+### `WriteData` never refuses a SinkFile that is the SourceFile in use
+
+C location: `channel.c` `WriteData`, the check after `fd_out` is tested and before `fopen( sink_file, "w" )`.
+
+The check that the SinkFile is not the file the Channel is reading is written inside the branch `if( astTestSinkFile( this ) && !this->fd_out )` as `if( this->fd_out )`, which is false there.
+It also tests `astGetSourceFile` against the sink name, not `fd_in`.
+`ReadData` has the matching check in the right form, so opening the SourceFile while the SinkFile is open reports AST__RDERR, while opening the SinkFile with the SourceFile open does not.
+
+Consequence: a Channel that reads and writes the same file truncates it when it first writes.
+
+The port mirrors it: `ChannelBase::write_line` makes no check, and `ChannelBase::read_line` refuses a SourceFile the SinkFile has open.
+A C fix: test `this->fd_in` in `WriteData` and compare the names there.
 
 ## Addressed here, and not going upstream
 

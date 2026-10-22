@@ -8,8 +8,8 @@ function	astWarnings	channel.c	Channel::warnings		yes
 function	astPutChannelData	channel.c		c-api-only	yes	A Source or Sink implementation holds its own data
 function	astRead	channel.c	Channel::read		yes	A MocChan with no text left fails with AST__INMOC, as C's does, where the header promises no object and no error (c-library-quirks.md)
 function	astWrite	channel.c	Channel::write		yes
-attribute	SourceFile	channel.c	FitsChan::source_file		yes	Only a FitsChan has it; NativeChannel::from_file and MocChan::from_file read a file instead (PLAN.md §2)
-attribute	SinkFile	channel.c	FitsChan::sink_file		yes	Only a FitsChan has it; NativeChannel::to_file and MocChan::to_file write a file instead (PLAN.md §2)
+attribute	SourceFile	channel.c	FitsChan::source_file; NativeChannel::source_file; MocChan::source_file		yes	A FitsChan reads the file when the attribute is set and keeps the cards; the other Channels read it from the first read after
+attribute	SinkFile	channel.c	FitsChan::sink_file; NativeChannel::sink_file; MocChan::sink_file		yes	A FitsChan writes the file when it is dropped or write_fits is called; the other Channels write it as they write
 attribute	Comment	channel.c	ChannelConfig::comment		yes
 attribute	Full	channel.c	ChannelConfig::full		yes	The FitsChan default is -1, as the code gives, not the 0 the header says (c-library-quirks.md)
 attribute	Indent	channel.c	ChannelConfig::indent		yes	The default is 3, as the code gives, not the 0 the header says (c-library-quirks.md)

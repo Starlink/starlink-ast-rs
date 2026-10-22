@@ -396,16 +396,6 @@ fn to_native_string_matches_a_channel_set_as_ast_to_string_sets_it() {
 // ===========================================================================
 
 #[test]
-fn read_with_no_source_returns_none() {
-    let mut ch = NativeChannel::new();
-    let result = ch.read().unwrap();
-    assert!(
-        result.is_none(),
-        "reading from a channel with no source should return None"
-    );
-}
-
-#[test]
 fn read_empty_string_returns_none() {
     let mut ch = NativeChannel::from_string("");
     let result = ch.read().unwrap();
@@ -598,4 +588,157 @@ fn converted_frameset_string_round_trip() {
         Frame::equal(&fs2, &fs),
         "reloaded Object is not equal to the original"
     );
+}
+
+// ===========================================================================
+// SourceFile and SinkFile
+// ===========================================================================
+
+/// The native dump of a ZoomMap with `nin` inputs.
+fn zoom_dump(nin: usize) -> String {
+    native_dump(&AnyObject::ZoomMap(ZoomMap::new(nin, 2.0).unwrap())).unwrap()
+}
+
+/// A path in the temporary directory that no other test uses.
+fn scratch_path(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("ast_channel_{}_{name}", std::process::id()))
+}
+
+fn nin_of(object: AnyObject) -> usize {
+    object.as_mapping().unwrap().nin()
+}
+
+/// SourceFile is read in place of the source; clearing it restores the
+/// source, and setting it again reads the file from its start.
+// C: channel.c `SetSourceFile` and `ClearSourceFile` close the open file,
+// and `ReadData` opens it again on the next read.
+#[test]
+fn source_file_replaces_source_and_clear_restores_it() {
+    let path = scratch_path("source.ast");
+    std::fs::write(&path, format!("{}{}", zoom_dump(3), zoom_dump(4))).unwrap();
+    let name = path.to_str().unwrap();
+
+    let mut ch = NativeChannel::from_string(&zoom_dump(2));
+    assert!(!ch.test_source_file());
+    assert_eq!(ch.source_file(), None);
+
+    ch.set_source_file(name);
+    assert!(ch.test_source_file());
+    assert_eq!(ch.source_file(), Some(name));
+    assert_eq!(nin_of(ch.read().unwrap().unwrap()), 3);
+
+    // The file is closed and the next read goes to the source, which no
+    // read has touched.
+    ch.clear_source_file();
+    assert!(!ch.test_source_file());
+    assert_eq!(nin_of(ch.read().unwrap().unwrap()), 2);
+    assert!(ch.read().unwrap().is_none());
+
+    // A new open starts at the beginning of the file, not where the closed
+    // one stopped.
+    ch.set_source_file(name);
+    assert_eq!(nin_of(ch.read().unwrap().unwrap()), 3);
+    // Setting the same name again closes the file and so starts again.
+    ch.set_source_file(name);
+    assert_eq!(nin_of(ch.read().unwrap().unwrap()), 3);
+    assert_eq!(nin_of(ch.read().unwrap().unwrap()), 4);
+    assert!(ch.read().unwrap().is_none());
+    let _ = std::fs::remove_file(&path);
+}
+
+/// SinkFile is written in place of the sink; clearing it restores the sink,
+/// and setting it again creates the file anew.
+#[test]
+fn sink_file_replaces_sink_and_clear_restores_it() {
+    let first = scratch_path("sink1.ast");
+    let second = scratch_path("sink2.ast");
+    let zoom = |nin| AnyObject::ZoomMap(ZoomMap::new(nin, 2.0).unwrap());
+
+    let mut ch = NativeChannel::with_string_sink();
+    assert!(!ch.test_sink_file());
+    ch.set_sink_file(first.to_str().unwrap());
+    assert!(ch.test_sink_file());
+    assert_eq!(ch.sink_file(), first.to_str());
+    ch.write(&zoom(2)).unwrap();
+    ch.write(&zoom(3)).unwrap();
+
+    // A different name closes the first file and writes to the second.
+    ch.set_sink_file(second.to_str().unwrap());
+    ch.write(&zoom(4)).unwrap();
+
+    // Clearing returns to the sink.
+    ch.clear_sink_file();
+    assert_eq!(ch.sink_file(), None);
+    ch.write(&zoom(5)).unwrap();
+
+    // The first name again replaces the first file's contents.
+    ch.set_sink_file(first.to_str().unwrap());
+    ch.write(&zoom(6)).unwrap();
+    ch.clear_sink_file();
+
+    assert_eq!(
+        std::fs::read_to_string(&first).unwrap(),
+        zoom_dump(6),
+        "the first file was written to by a handle that was not reopened"
+    );
+    assert_eq!(std::fs::read_to_string(&second).unwrap(), zoom_dump(4));
+    assert_eq!(ch.into_string(), zoom_dump(5));
+    let _ = std::fs::remove_file(&first);
+    let _ = std::fs::remove_file(&second);
+}
+
+/// A SourceFile that cannot be opened is an error at the first read, a
+/// SinkFile at the first write, and a SourceFile the SinkFile has open is
+/// refused.
+#[test]
+fn source_and_sink_file_open_failures() {
+    let missing = scratch_path("no_such_dir").join("x.ast");
+    let mut ch = NativeChannel::from_string(&zoom_dump(2));
+    ch.set_source_file(missing.to_str().unwrap());
+    let e = ch.read().unwrap_err();
+    assert_eq!(e.code(), ast_core::error::ErrorCode::Rderr);
+    assert!(
+        e.message()
+            .contains("astRead(Channel): Failed to open input SourceFile"),
+        "{e}"
+    );
+
+    let mut ch = NativeChannel::with_string_sink();
+    ch.set_sink_file(missing.to_str().unwrap());
+    let e = ch
+        .write(&AnyObject::ZoomMap(ZoomMap::new(2, 2.0).unwrap()))
+        .unwrap_err();
+    assert_eq!(e.code(), ast_core::error::ErrorCode::Wrerr);
+    assert!(
+        e.message()
+            .contains("astWrite(Channel): Failed to open output SinkFile"),
+        "{e}"
+    );
+
+    let path = scratch_path("both.ast");
+    let name = path.to_str().unwrap();
+    let mut ch = NativeChannel::new();
+    ch.set_sink_file(name);
+    ch.write(&AnyObject::ZoomMap(ZoomMap::new(2, 2.0).unwrap()))
+        .unwrap();
+    ch.set_source_file(name);
+    let e = ch.read().unwrap_err();
+    assert_eq!(e.code(), ast_core::error::ErrorCode::Rderr);
+    assert!(
+        e.message().contains("being used as the output SinkFile"),
+        "{e}"
+    );
+    let _ = std::fs::remove_file(&path);
+}
+
+/// A clone has neither attribute, and no file open.
+#[test]
+fn clone_does_not_inherit_source_file_or_sink_file() {
+    let mut ch = NativeChannel::new();
+    ch.set_source_file("a.ast");
+    ch.set_sink_file("b.ast");
+    let copy = ch.clone();
+    assert!(!copy.test_source_file());
+    assert!(!copy.test_sink_file());
+    assert!(ch.test_source_file() && ch.test_sink_file());
 }

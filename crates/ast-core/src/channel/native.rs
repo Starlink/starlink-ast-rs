@@ -32,8 +32,9 @@ use crate::serial::{self, AnyObject, Node, Serializable};
 /// [`with_string_sink`](Self::with_string_sink) read from and write to a
 /// string, and [`from_file`](Self::from_file) and [`to_file`](Self::to_file)
 /// read from and write to a file.
-/// Without a source, a read finds no object; without a sink, the text
-/// written is discarded.
+/// Without a source or SourceFile, a read takes the text from standard
+/// input; without a sink or SinkFile, the text is written to standard
+/// output.
 /// A clone shares the original's source and sink.
 ///
 /// Besides the attributes of every Channel, in [`ChannelConfig`], a
@@ -57,8 +58,7 @@ use crate::serial::{self, AnyObject, Node, Serializable};
 /// assert!(input.read().unwrap().is_none());
 /// ```
 // C: the Channel class (channel.c), whose text this is; C's StdChannel
-// writes the same. C reads standard input and writes standard output when
-// a Channel has no source or sink function (PLAN.md §2).
+// writes the same.
 #[doc(alias = "Channel")]
 #[derive(Debug, Clone, Default)]
 pub struct NativeChannel {
@@ -150,6 +150,74 @@ impl NativeChannel {
         self.base.set_sink(sink);
     }
 
+    /// The SourceFile attribute: the name of a text file from which the
+    /// NativeChannel reads, or `None` when unset.
+    ///
+    /// Default: unset, when the text comes from the [source](Self::set_source),
+    /// or from standard input if there is none.
+    ///
+    /// When it is set, the file is used in place of the source.
+    /// It is opened by the first read after the attribute is set, which
+    /// fails if the file cannot be opened.
+    /// Setting the attribute again or clearing it closes the file.
+    /// A clone does not inherit it.
+    #[doc(alias = "SourceFile")]
+    pub fn source_file(&self) -> Option<&str> {
+        self.base.source_file()
+    }
+
+    /// Set [`source_file`](Self::source_file), closing any file open for the
+    /// last value.
+    pub fn set_source_file(&mut self, source_file: &str) {
+        self.base.set_source_file(source_file);
+    }
+
+    /// Whether [`source_file`](Self::source_file) is set.
+    pub fn test_source_file(&self) -> bool {
+        self.base.source_file().is_some()
+    }
+
+    /// Clear [`source_file`](Self::source_file), closing any file open for it.
+    /// Reads then return to the source, or to standard input if there is
+    /// none.
+    pub fn clear_source_file(&mut self) {
+        self.base.clear_source_file();
+    }
+
+    /// The SinkFile attribute: the name of a text file to which the NativeChannel
+    /// writes, or `None` when unset.
+    ///
+    /// Default: unset, when the text goes to the [sink](Self::set_sink), or
+    /// to standard output if there is none.
+    ///
+    /// When it is set, the file is used in place of the sink.
+    /// It is created, replacing any file of that name, by the first write
+    /// after the attribute is set, which fails if it cannot be created.
+    /// Setting the attribute again or clearing it closes the file.
+    /// A clone does not inherit it.
+    #[doc(alias = "SinkFile")]
+    pub fn sink_file(&self) -> Option<&str> {
+        self.base.sink_file()
+    }
+
+    /// Set [`sink_file`](Self::sink_file), closing any file open for the
+    /// last value.
+    pub fn set_sink_file(&mut self, sink_file: &str) {
+        self.base.set_sink_file(sink_file);
+    }
+
+    /// Whether [`sink_file`](Self::sink_file) is set.
+    pub fn test_sink_file(&self) -> bool {
+        self.base.sink_file().is_some()
+    }
+
+    /// Clear [`sink_file`](Self::sink_file), closing any file open for it.
+    /// Writes then return to the sink, or to standard output if there is
+    /// none.
+    pub fn clear_sink_file(&mut self) {
+        self.base.clear_sink_file();
+    }
+
     /// The Ident attribute: a permanent string identifying this Channel.
     ///
     /// A clone keeps it, and it is written to and read back from a Native
@@ -215,8 +283,9 @@ impl Channel for NativeChannel {
         let text = serial::native_write::render_native_with_options(&node, &options)?;
 
         for line in text.lines() {
-            self.base.write_line(line);
+            self.base.write_line("Channel", line)?;
         }
+        self.base.flush();
         // The native encoding can represent every AST class, so a write that
         // did not error wrote the object, as C's Channel `Write` returns 1.
         Ok(1)
