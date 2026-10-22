@@ -474,6 +474,8 @@ impl FrameSet {
     /// Frames are searched in index order.
     /// The Domains are compared ignoring case and leading and trailing white
     /// space.
+    /// Every name is a Domain here, including "Base" and "Current"; select
+    /// those Frames with [`FrameRef::Base`] and [`FrameRef::Current`].
     ///
     /// # Errors
     ///
@@ -490,6 +492,8 @@ impl FrameSet {
     /// Frames are searched in index order.
     /// The Domains are compared ignoring case and leading and trailing white
     /// space.
+    /// Every name is a Domain here, including "Base" and "Current"; select
+    /// those Frames with [`FrameRef::Base`] and [`FrameRef::Current`].
     ///
     /// # Errors
     ///
