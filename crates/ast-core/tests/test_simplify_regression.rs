@@ -992,8 +992,8 @@ fn simplify_regression() {
         DEFERRED.len()
     );
     assert_eq!(
-        passed, 515,
-        "{passed} cases passed, where the manifest holds 515: a change means \
+        passed, 517,
+        "{passed} cases passed, where the manifest holds 517: a change means \
          cases stopped being run, which no failure count would show, or were \
          added without this count"
     );
