@@ -1228,12 +1228,18 @@ pub(crate) fn wcs_map_merge(
 
         // Can the WcsMap swap with its higher neighbor, and would that be
         // intrinsically simpler? (C wcsmap.c:3181-3194.)
-        let (swaphi, do2, newwcs_hi) = match (where_ + 1 < ctx.len())
-            .then(|| can_swap_wcsmap_past_permmap(&ctx.list, where_))
-            .flatten()
-        {
-            Some((simpler, newwcs)) => (true, simpler, newwcs),
-            None => (false, false, None),
+        let hi = if where_ + 1 < ctx.len() {
+            can_swap_wcsmap_past_permmap(&ctx.list, where_)
+        } else {
+            Ok(None)
+        };
+        let (swaphi, do2, newwcs_hi) = match hi {
+            Ok(Some((simpler, newwcs))) => (true, simpler, newwcs),
+            Ok(None) => (false, false, None),
+            Err(e) => {
+                ctx.fail(e);
+                return None;
+            }
         };
 
         // Step forward looking for a Mapping the swapped WcsMap could cancel
@@ -1254,12 +1260,18 @@ pub(crate) fn wcs_map_merge(
 
         // The same working back towards the start of the list
         // (C wcsmap.c:3226-3255).
-        let (swaplo, do1, newwcs_lo) = match (where_ > 0)
-            .then(|| can_swap_wcsmap_past_permmap(&ctx.list, where_.wrapping_sub(1)))
-            .flatten()
-        {
-            Some((simpler, newwcs)) => (true, simpler, newwcs),
-            None => (false, false, None),
+        let lo = if where_ > 0 {
+            can_swap_wcsmap_past_permmap(&ctx.list, where_ - 1)
+        } else {
+            Ok(None)
+        };
+        let (swaplo, do1, newwcs_lo) = match lo {
+            Ok(Some((simpler, newwcs))) => (true, simpler, newwcs),
+            Ok(None) => (false, false, None),
+            Err(e) => {
+                ctx.fail(e);
+                return None;
+            }
         };
 
         let mut nstep1: Option<usize> = None;
@@ -1288,8 +1300,13 @@ pub(crate) fn wcs_map_merge(
 
         // With a target, swap unconditionally (C wcsmap.c:3274-3281).
         if let Some(i1) = target {
-            if wcs_perm_at(&mut ctx.list, i1) {
-                return Some(i1);
+            match wcs_perm_at(&mut ctx.list, i1) {
+                Ok(true) => return Some(i1),
+                Ok(false) => {}
+                Err(e) => {
+                    ctx.fail(e);
+                    return None;
+                }
             }
 
         // With no target, the swapped pair may still be simpler than the
@@ -1306,12 +1323,24 @@ pub(crate) fn wcs_map_merge(
                     ctx.list[i1 + 1].2,
                 ),
             ];
-            if wcs_perm_at(&mut copy, 0)
-                && let Ok(s0) = copy[0].0.simplify()
-                && let Ok(s1) = copy[1].0.simplify()
-                && (s0.as_any().type_id() != copy[0].0.as_any().type_id()
+            // C simplifies both swapped Mappings before comparing either.
+            let swapped = wcs_perm_at(&mut copy, 0).and_then(|swapped| {
+                if !swapped {
+                    return Ok(false);
+                }
+                let s0 = copy[0].0.simplify()?;
+                let s1 = copy[1].0.simplify()?;
+                Ok(s0.as_any().type_id() != copy[0].0.as_any().type_id()
                     || s1.as_any().type_id() != copy[1].0.as_any().type_id())
-            {
+            });
+            let worthwhile = match swapped {
+                Ok(worthwhile) => worthwhile,
+                Err(e) => {
+                    ctx.fail(e);
+                    return None;
+                }
+            };
+            if worthwhile {
                 let mut entries = copy.into_iter();
                 ctx.list[i1] = entries.next().unwrap();
                 ctx.list[i1 + 1] = entries.next().unwrap();
@@ -2014,18 +2043,26 @@ fn effective_perms(perm: &PermMap, perm_inv: bool) -> (&[i64], &[i64]) {
 /// `*simpler`, whether the swapped pair is intrinsically simpler
 /// (`wcsmap.c:1112-1120`), and the WcsMap is C's `*newwcsmap`, the WcsMap the
 /// swap would produce — absent when the swap replaces it with a UnitMap.
+///
+/// C finds that WcsMap by making the swap (`WcsPerm`), which transforms the
+/// PermMap's constants through the WcsMap when the swap replaces it with a
+/// UnitMap, so an error that transformation raises is returned here too.
 fn can_swap_wcsmap_past_permmap(
     list: &[(DynMapping, bool, bool)],
     i: usize,
-) -> Option<(bool, Option<WcsMap>)> {
+) -> AstResult<Option<(bool, Option<WcsMap>)>> {
     let is_wcs_perm = list[i].0.as_any().is::<WcsMap>() && list[i + 1].0.as_any().is::<PermMap>();
     let is_perm_wcs = list[i].0.as_any().is::<PermMap>() && list[i + 1].0.as_any().is::<WcsMap>();
     if !is_wcs_perm && !is_perm_wcs {
-        return None;
+        return Ok(None);
     }
     let (wcs_idx, perm_idx) = if is_wcs_perm { (i, i + 1) } else { (i + 1, i) };
-    let wcs = list[wcs_idx].0.as_any().downcast_ref::<WcsMap>()?;
-    let perm = list[perm_idx].0.as_any().downcast_ref::<PermMap>()?;
+    let (Some(wcs), Some(perm)) = (
+        list[wcs_idx].0.as_any().downcast_ref::<WcsMap>(),
+        list[perm_idx].0.as_any().downcast_ref::<PermMap>(),
+    ) else {
+        return Ok(None);
+    };
     let (inperm, outperm) = effective_perms(perm, list[perm_idx].1);
     let npin = inperm.len();
     let npout = outperm.len();
@@ -2035,12 +2072,12 @@ fn can_swap_wcsmap_past_permmap(
     // with negative values naming constants.
     for (k, &j) in outperm.iter().enumerate() {
         if j > 0 && (j as usize) <= npin && inperm[j as usize - 1] != k as i64 + 1 {
-            return None;
+            return Ok(None);
         }
     }
     for (k, &j) in inperm.iter().enumerate() {
         if j > 0 && (j as usize) <= npout && outperm[j as usize - 1] != k as i64 + 1 {
-            return None;
+            return Ok(None);
         }
     }
 
@@ -2055,15 +2092,20 @@ fn can_swap_wcsmap_past_permmap(
         (outperm, npin)
     };
     if lonax >= from.len() || latax >= from.len() {
-        return None;
+        return Ok(None);
     }
     let (lon, lat) = (from[lonax], from[latax]);
     let new_wcs = if lon < 0 && lat < 0 {
+        swap_wcsmap_perm_unassigned(wcs, perm, list[wcs_idx].1, list[perm_idx].1, is_wcs_perm)?;
         None
     } else if lon < 1 || lon as usize > limit || lat < 1 || lat as usize > limit {
-        return None;
+        return Ok(None);
     } else {
-        Some(wcs.with_permuted_axes(limit, lon as usize - 1, lat as usize - 1)?)
+        let Some(new_wcs) = wcs.with_permuted_axes(limit, lon as usize - 1, lat as usize - 1)
+        else {
+            return Ok(None);
+        };
+        Some(new_wcs)
     };
 
     // The swapped pair is intrinsically simpler when the PermMap loses axes in
@@ -2073,7 +2115,7 @@ fn can_swap_wcsmap_past_permmap(
     } else {
         npout > npin
     };
-    Some((simpler, new_wcs))
+    Ok(Some((simpler, new_wcs)))
 }
 
 /// C's `WcsPerm` (`wcsmap.c:4471-4706`): replace the adjacent WcsMap/PermMap
@@ -2081,18 +2123,18 @@ fn can_swap_wcsmap_past_permmap(
 /// PermMap taking the WcsMap's slot. Returns `false` when the replacement
 /// could not be built, leaving `list` unchanged.
 /// [`can_swap_wcsmap_past_permmap`] establishes that the pair can be swapped.
-fn wcs_perm_at(list: &mut [(DynMapping, bool, bool)], i: usize) -> bool {
+fn wcs_perm_at(list: &mut [(DynMapping, bool, bool)], i: usize) -> AstResult<bool> {
     let is_wcs_perm = list[i].0.as_any().is::<WcsMap>() && list[i + 1].0.as_any().is::<PermMap>();
     let is_perm_wcs = list[i].0.as_any().is::<PermMap>() && list[i + 1].0.as_any().is::<WcsMap>();
     if !is_wcs_perm && !is_perm_wcs {
-        return false;
+        return Ok(false);
     }
     let (wcs_idx, perm_idx) = if is_wcs_perm { (i, i + 1) } else { (i + 1, i) };
     let Some(wcs) = list[wcs_idx].0.as_any().downcast_ref::<WcsMap>() else {
-        return false;
+        return Ok(false);
     };
     let Some(perm) = list[perm_idx].0.as_any().downcast_ref::<PermMap>() else {
-        return false;
+        return Ok(false);
     };
     let wcs_inv = list[wcs_idx].1;
     let perm_inv = list[perm_idx].1;
@@ -2105,36 +2147,33 @@ fn wcs_perm_at(list: &mut [(DynMapping, bool, bool)], i: usize) -> bool {
     let lonax = wcs.lonax_0based();
     let latax = wcs.latax_0based();
     if lonax >= from.len() || latax >= from.len() {
-        return false;
+        return Ok(false);
     }
     let (lon, lat) = (from[lonax], from[latax]);
 
     // Both celestial axes unassigned: the WcsMap becomes a UnitMap and the
     // PermMap's constants are transformed through it (wcsmap.c:4571-4657).
     if lon < 0 && lat < 0 {
-        let Some((first, first_inv, second, second_inv)) =
-            swap_wcsmap_perm_unassigned(wcs, perm, wcs_inv, perm_inv, is_wcs_perm)
-        else {
-            return false;
-        };
+        let (first, first_inv, second, second_inv) =
+            swap_wcsmap_perm_unassigned(wcs, perm, wcs_inv, perm_inv, is_wcs_perm)?;
         list[i] = (first, first_inv, false);
         list[i + 1] = (second, second_inv, false);
-        return true;
+        return Ok(true);
     }
 
     // Both assigned: build the WcsMap with permuted celestial axes and
     // exchange the two entries' positions (wcsmap.c:4659-4702).
     if lon < 1 || lon as usize > limit || lat < 1 || lat as usize > limit {
-        return false;
+        return Ok(false);
     }
     let Some(new_wcs) = wcs.with_permuted_axes(limit, lon as usize - 1, lat as usize - 1) else {
-        return false;
+        return Ok(false);
     };
     let vacated = if is_wcs_perm { i + 1 } else { i };
     let occupied = if is_wcs_perm { i } else { i + 1 };
     let perm_entry = std::mem::replace(&mut list[vacated], (Box::new(new_wcs), wcs_inv, false));
     list[occupied] = perm_entry;
-    true
+    Ok(true)
 }
 
 /// Handle the "unassigned lon/lat" case of WcsMap↔PermMap swap.
@@ -2143,15 +2182,17 @@ fn wcs_perm_at(list: &mut [(DynMapping, bool, bool)], i: usize) -> bool {
 /// receives constants from them), the WcsMap can be replaced by a UnitMap
 /// and the PermMap's constants are transformed through the WcsMap.
 ///
-/// Returns (new_first_mapping, new_first_inv, new_second_mapping, new_second_inv)
-/// or None if the transformation fails.
+/// Returns (new_first_mapping, new_first_inv, new_second_mapping, new_second_inv).
+/// An error transforming the constants, such as a WcsMap lacking a
+/// projection parameter it needs, is returned, as C's `astTranN` leaves it
+/// in the global status.
 fn swap_wcsmap_perm_unassigned(
     wcs: &WcsMap,
     perm: &PermMap,
     wcs_inv: bool,
     perm_inv: bool,
     wcs_first: bool, // true if WcsMap comes before PermMap in the pipeline
-) -> Option<(DynMapping, bool, DynMapping, bool)> {
+) -> AstResult<(DynMapping, bool, DynMapping, bool)> {
     use crate::coords::PointSet;
 
     let outperm = if perm_inv {
@@ -2189,7 +2230,7 @@ fn swap_wcsmap_perm_unassigned(
         // effective_forward = forward XOR invert = 0 XOR wcs_inv = wcs_inv.
         // In Rust (self.inverted=false): transform(&pts, wcs_inv) gives same effective direction.
         let pts = PointSet::from_rows(vec![p]);
-        let transformed = wcs.transform(&pts, wcs_inv).ok()?;
+        let transformed = wcs.transform(&pts, wcs_inv)?;
         let q = transformed.point(0);
 
         // Update constants.
@@ -2202,7 +2243,7 @@ fn swap_wcsmap_perm_unassigned(
             }
         }
 
-        let new_pm = PermMap::new(inperm, outperm, &new_constants).ok()?;
+        let new_pm = PermMap::new(inperm, outperm, &new_constants)?;
         let unit = UnitMap::new(npout);
 
         // Result: [PermMap (at original PermMap position), UnitMap (replacing WcsMap)]
@@ -2210,7 +2251,7 @@ fn swap_wcsmap_perm_unassigned(
         // Actually the C code puts: maps[iwm=0] = newpm, maps[1] = UnitMap(npout)
         // That means: position 0 gets the PermMap, position 1 gets the UnitMap.
         // So the result is [PermMap, UnitMap].
-        Some((
+        Ok((
             Box::new(new_pm) as DynMapping,
             perm_inv,
             Box::new(unit) as DynMapping,
@@ -2236,7 +2277,7 @@ fn swap_wcsmap_perm_unassigned(
         // effective_forward = forward XOR invert = 1 XOR wcs_inv = !wcs_inv.
         // In Rust (self.inverted=false): transform(&pts, !wcs_inv) gives same effective direction.
         let pts = PointSet::from_rows(vec![p]);
-        let transformed = wcs.transform(&pts, !wcs_inv).ok()?;
+        let transformed = wcs.transform(&pts, !wcs_inv)?;
         let q = transformed.point(0);
 
         // Update constants.
@@ -2249,11 +2290,11 @@ fn swap_wcsmap_perm_unassigned(
             }
         }
 
-        let new_pm = PermMap::new(inperm, outperm, &new_constants).ok()?;
+        let new_pm = PermMap::new(inperm, outperm, &new_constants)?;
         let unit = UnitMap::new(npin);
 
         // Swapped: [UnitMap (replacing WcsMap), PermMap]
-        Some((
+        Ok((
             Box::new(unit) as DynMapping,
             false,
             Box::new(new_pm) as DynMapping,

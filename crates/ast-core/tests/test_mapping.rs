@@ -698,3 +698,36 @@ fn a_swap_past_an_inverted_singular_matrix_is_an_error() {
     let err = <dyn Mapping>::simplify(&map).unwrap_err();
     assert_eq!(err.code(), ast_core::error::ErrorCode::Mtrml);
 }
+
+/// A PermMap feeding constants to both celestial axes of a WcsMap.
+fn constants_into_wcsmap(projection: ast_core::mappings::WcsProjection) -> CmpMap {
+    use ast_core::mappings::{PermMap, WcsMap};
+    CmpMap::new(
+        Box::new(PermMap::new(&[0, 0], &[-1, -2], &[0.1, 0.2]).unwrap()),
+        Box::new(WcsMap::new(2, projection, 1, 2).unwrap()),
+        Composition::Series,
+    )
+    .unwrap()
+}
+
+/// Swapping a WcsMap past a PermMap that supplies constants for both its
+/// celestial axes transforms the constants through the WcsMap.
+/// A conic projection without its PV2_1 parameter cannot transform, and C
+/// passes the error up from the simplification, in either order.
+#[test]
+fn a_wcsmap_swap_that_cannot_transform_its_constants_is_an_error() {
+    use ast_core::error::ErrorCode;
+    use ast_core::mappings::WcsProjection;
+    let map = constants_into_wcsmap(WcsProjection::Coe);
+    let err = <dyn Mapping>::simplify(&map).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Wcspa);
+
+    let mut inverted = map.clone();
+    inverted.invert();
+    let err = <dyn Mapping>::simplify(&inverted).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Wcspa);
+
+    // A projection that needs no parameter transforms the constants.
+    let tan = constants_into_wcsmap(WcsProjection::Tan);
+    assert!(<dyn Mapping>::simplify(&tan).is_ok());
+}
