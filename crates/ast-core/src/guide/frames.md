@@ -5,7 +5,7 @@ Contrast this with a Mapping ([Inter-Relating Coordinate Systems](crate::guide::
 The two concepts are complementary and we will see how they work together in *Coordinate System Networks*<!-- link: crate::guide::framesets -->.
 
 In this section we will discuss only basic Frames, which represent Cartesian coordinate systems.
-More specialized types of Frame (*e.g.* the SkyFrame, which represents celestial coordinate systems, and the SpecFrame, which represents spectral coordinate systems) are covered later ([Celestial Coordinate Systems](crate::guide::skyframes) and *Spectral Coordinate Systems*<!-- link: crate::guide::specframes -->) and, naturally, share the properties and behavior of the simple Frames discussed here.
+More specialized types of Frame (*e.g.* the SkyFrame, which represents celestial coordinate systems, and the SpecFrame, which represents spectral coordinate systems) are covered later ([Celestial Coordinate Systems](crate::guide::skyframes) and [Spectral Coordinate Systems](crate::guide::specframes)) and, naturally, share the properties and behavior of the simple Frames discussed here.
 What every kind of Frame has in common is the [`Frame`](crate::frames::Frame) trait; a basic Frame is a [`BasicFrame`](crate::frames::BasicFrame).
 
 ## The Frame Model
@@ -676,7 +676,7 @@ For this purpose, the following Domain names are reserved by AST and the use rec
   Since there is only one sky, you probably won't need to change this very often.
 - **SPECTRUM**:
   Identifies the domain used to describe positions within an electro-magnetic spectrum.
-  The AST SpecFrame (*Spectral Coordinate Systems*<!-- link: crate::guide::specframes -->) class describes positions within this domain, allowing a wide range of different coordinate systems to be used (frequency, wavelength, *etc*).
+  The AST SpecFrame ([Spectral Coordinate Systems](crate::guide::specframes)) class describes positions within this domain, allowing a wide range of different coordinate systems to be used (frequency, wavelength, *etc*).
   The default Domain value for a SpecFrame is SPECTRUM.
 - **TIME**:
   Identifies the domain used to describe moments in time.

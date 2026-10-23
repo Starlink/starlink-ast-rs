@@ -18,6 +18,7 @@
 //! - [Compound Mappings (CmpMaps)](cmpmaps)
 //! - [Representing Coordinate Systems (Frames)](frames)
 //! - [Celestial Coordinate Systems (SkyFrames)](skyframes)
+//! - [Spectral Coordinate Systems (SpecFrames)](specframes)
 //! - [Using AST from Cargo](cargo)
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
@@ -37,5 +38,6 @@ chapter!(mappings);
 chapter!(cmpmaps);
 chapter!(frames);
 chapter!(skyframes);
+chapter!(specframes);
 
 chapter!(cargo);

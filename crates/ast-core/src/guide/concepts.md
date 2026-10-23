@@ -117,7 +117,7 @@ Knowledge of the relationships between the axes is preserved internally by the p
 Note how the special relationship which exists between the RA and Dec axes is preserved within this data structure.
 As with compound Mappings (Figure 4), CmpFrames may be nested in order to build more complex Frames.*
 
-**Further reading:** For a more complete description of Frames see [Representing Coordinate Systems](crate::guide::frames), for SkyFrames see [Celestial Coordinate Systems](crate::guide::skyframes) and for SpecFrames see *Spectral Coordinate Systems*<!-- link: crate::guide::specframes -->.
+**Further reading:** For a more complete description of Frames see [Representing Coordinate Systems](crate::guide::frames), for SkyFrames see [Celestial Coordinate Systems](crate::guide::skyframes) and for SpecFrames see [Spectral Coordinate Systems](crate::guide::specframes).
 
 ## Networks of Coordinate Systems
 

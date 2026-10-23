@@ -135,14 +135,14 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 7912 | &nbsp;&nbsp;Formatting Celestial Coordinates | guide::skyframes#formatting-celestial-coordinates |
 | 8023 | &nbsp;&nbsp;Reading Formatted Celestial Coordinates | guide::skyframes#reading-formatted-celestial-coordinates |
 | 8255 | &nbsp;&nbsp;Representing Offsets from a Specified Sky Position | guide::skyframes#representing-offsets-from-a-specified-sky-position |
-| 8283 | Spectral Coordinate Systems (SpecFrames) | pending |
-| 8290 | &nbsp;&nbsp;The SpecFrame Model | pending |
-| 8305 | &nbsp;&nbsp;Creating a SpecFrame | pending |
-| 8342 | &nbsp;&nbsp;Specifying a Particular Spectral Coordinate System | pending |
-| 8374 | &nbsp;&nbsp;Attributes which Qualify Spectral Coordinate Systems | pending |
-| 8451 | &nbsp;&nbsp;Using Default SpecFrame Attributes | pending |
-| 8576 | &nbsp;&nbsp;Creating Spectral Cubes | pending |
-| 8651 | &nbsp;&nbsp;Handling Dual-Sideband Spectra | pending |
+| 8283 | Spectral Coordinate Systems (SpecFrames) | guide::specframes |
+| 8290 | &nbsp;&nbsp;The SpecFrame Model | guide::specframes#the-specframe-model |
+| 8305 | &nbsp;&nbsp;Creating a SpecFrame | guide::specframes#creating-a-specframe |
+| 8342 | &nbsp;&nbsp;Specifying a Particular Spectral Coordinate System | guide::specframes#specifying-a-particular-spectral-coordinate-system |
+| 8374 | &nbsp;&nbsp;Attributes which Qualify Spectral Coordinate Systems | guide::specframes#attributes-which-qualify-spectral-coordinate-systems |
+| 8451 | &nbsp;&nbsp;Using Default SpecFrame Attributes | guide::specframes#using-default-specframe-attributes |
+| 8576 | &nbsp;&nbsp;Creating Spectral Cubes | guide::specframes#creating-spectral-cubes |
+| 8651 | &nbsp;&nbsp;Handling Dual-Sideband Spectra | guide::specframes#handling-dual-sideband-spectra |
 | 9095 | Time Systems (TimeFrames) | pending |
 | 9101 | &nbsp;&nbsp;The TimeFrame Model | pending |
 | 9121 | &nbsp;&nbsp;Creating a TimeFrame | pending |
@@ -279,3 +279,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | cmpmaps | 5055–5564 | Rodney Warren-Smith | |
 | frames | 5565–7588 | Rodney Warren-Smith | David Berry |
 | skyframes | 7589–8282 | Rodney Warren-Smith | David Berry |
+| specframes | 8283–9094 | David Berry | |
