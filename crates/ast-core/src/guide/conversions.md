@@ -55,7 +55,7 @@ The second argument of `convert_to` lists the Domains to be searched for a conve
 In this example, conversion is possible, so it will return a new Object that describes the conversion.
 
 The Object returned is called a FrameSet.
-We have not discussed FrameSets yet (*Coordinate System Networks*<!-- link: crate::guide::framesets -->), but for the present purposes we can consider them simply as Objects that can behave both as Mappings and as Frames.
+We have not discussed FrameSets yet ([Coordinate System Networks](crate::guide::framesets)), but for the present purposes we can consider them simply as Objects that can behave both as Mappings and as Frames.
 It is the FrameSet's behavior as a Mapping in which we are mainly interested here, because the Mapping it implements is the one we require — *i.e.* it converts between the two celestial coordinate systems (*Creating FrameSets by Conversion*<!-- link: crate::guide::frameset_ops#creating-framesets-by-conversion -->).
 
 For example, if `alpha1` and `delta1` are two arrays containing the longitude and latitude, in radians, of points on the sky in the original coordinate system (corresponding to `skyframe1`), then they could be converted into the new coordinate system (represented by `skyframe2`) as follows:

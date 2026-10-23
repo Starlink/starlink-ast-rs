@@ -64,7 +64,7 @@ The whole process can probably be encapsulated in a similar way for most data sy
 
 For more details about reading WCS information from datasets, see *Identifying Foreign Encodings on Input*<!-- link: crate::guide::foreign_fits#identifying-foreign-encodings-on-input --> and *Reading Foreign WCS Information from a FITS Header*<!-- link: crate::guide::foreign_fits#reading-foreign-wcs-information-from-a-fits-header -->.
 For a more general description of FitsChans and their use with FITS header cards, see *Storing AST Objects in FITS Headers*<!-- link: crate::guide::fitschans --> and *Using Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits -->.
-For more details about FrameSets, see *Coordinate System Networks*<!-- link: crate::guide::framesets --> and *Higher Level Operations on FrameSets*<!-- link: crate::guide::frameset_ops -->.
+For more details about FrameSets, see [Coordinate System Networks](crate::guide::framesets) and *Higher Level Operations on FrameSets*<!-- link: crate::guide::frameset_ops -->.
 
 ## … Validate WCS Information
 
@@ -158,7 +158,7 @@ To transform in the opposite direction, give the world coordinates as input and 
 To transform points in one dimension, use [`tran1`](crate::mappings::Mapping::tran1).
 In any other number of dimensions (or if the number of dimensions is initially unknown), use [`transform`](crate::mappings::Mapping::transform).
 
-For more information about transforming coordinates, see [Transforming Coordinates](crate::guide::objects#transforming-coordinates) and *Using a FrameSet as a Mapping*<!-- link: crate::guide::framesets#using-a-frameset-as-a-mapping -->.
+For more information about transforming coordinates, see [Transforming Coordinates](crate::guide::objects#transforming-coordinates) and [Using a FrameSet as a Mapping](crate::guide::framesets#using-a-frameset-as-a-mapping).
 For details of how to handle missing coordinates, see [Handling Missing (Bad) Coordinate Values](crate::guide::mappings#handling-missing-bad-coordinate-values).
 
 ## … Test if a WCS is a Celestial Coordinate System

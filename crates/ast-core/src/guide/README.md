@@ -158,17 +158,17 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 9887 | &nbsp;&nbsp;Handling SkyFrame Axis Permutations | guide::conversions#handling-skyframe-axis-permutations |
 | 9991 | &nbsp;&nbsp;Converting Between Frames | guide::conversions#converting-between-frames |
 | 10125 | &nbsp;&nbsp;The Choice of Alignment System | guide::conversions#the-choice-of-alignment-system |
-| 10182 | Coordinate System Networks (FrameSets) | pending |
-| 10233 | &nbsp;&nbsp;The FrameSet Model | pending |
-| 10268 | &nbsp;&nbsp;Creating a FrameSet | pending |
-| 10329 | &nbsp;&nbsp;Adding New Frames to a FrameSet | pending |
-| 10481 | &nbsp;&nbsp;The Base and Current Frames | pending |
-| 10537 | &nbsp;&nbsp;Referring to the Base and Current Frames | pending |
-| 10592 | &nbsp;&nbsp;Using a FrameSet as a Mapping | pending |
-| 10672 | &nbsp;&nbsp;Extracting a Mapping from a FrameSet | pending |
-| 10750 | &nbsp;&nbsp;Using a FrameSet as a Frame | pending |
-| 10818 | &nbsp;&nbsp;Extracting a Frame from a FrameSet | pending |
-| 10853 | &nbsp;&nbsp;Removing a Frame from a FrameSet | pending |
+| 10182 | Coordinate System Networks (FrameSets) | guide::framesets |
+| 10233 | &nbsp;&nbsp;The FrameSet Model | guide::framesets#the-frameset-model |
+| 10268 | &nbsp;&nbsp;Creating a FrameSet | guide::framesets#creating-a-frameset |
+| 10329 | &nbsp;&nbsp;Adding New Frames to a FrameSet | guide::framesets#adding-new-frames-to-a-frameset |
+| 10481 | &nbsp;&nbsp;The Base and Current Frames | guide::framesets#the-base-and-current-frames |
+| 10537 | &nbsp;&nbsp;Referring to the Base and Current Frames | guide::framesets#referring-to-the-base-and-current-frames |
+| 10592 | &nbsp;&nbsp;Using a FrameSet as a Mapping | guide::framesets#using-a-frameset-as-a-mapping |
+| 10672 | &nbsp;&nbsp;Extracting a Mapping from a FrameSet | guide::framesets#extracting-a-mapping-from-a-frameset |
+| 10750 | &nbsp;&nbsp;Using a FrameSet as a Frame | guide::framesets#using-a-frameset-as-a-frame |
+| 10818 | &nbsp;&nbsp;Extracting a Frame from a FrameSet | guide::framesets#extracting-a-frame-from-a-frameset |
+| 10853 | &nbsp;&nbsp;Removing a Frame from a FrameSet | guide::framesets#removing-a-frame-from-a-frameset |
 | 10914 | Higher Level Operations on FrameSets | pending |
 | 10917 | &nbsp;&nbsp;Creating FrameSets with astConvert | pending |
 | 11067 | &nbsp;&nbsp;Converting between FrameSet Coordinate Systems | pending |
@@ -283,3 +283,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | timeframes | 9095–9245 | David Berry | |
 | cmpframes | 9246–9384 | David Berry | |
 | conversions | 9385–10181 | Rodney Warren-Smith | David Berry |
+| framesets | 10182–10913 | Rodney Warren-Smith | |

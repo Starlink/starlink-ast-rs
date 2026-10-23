@@ -2,7 +2,7 @@
 
 An AST Frame is an Object that is used to represent a coordinate system.
 Contrast this with a Mapping ([Inter-Relating Coordinate Systems](crate::guide::mappings)), which is used to describe how to convert between coordinate systems.
-The two concepts are complementary and we will see how they work together in *Coordinate System Networks*<!-- link: crate::guide::framesets -->.
+The two concepts are complementary and we will see how they work together in [Coordinate System Networks](crate::guide::framesets).
 
 In this section we will discuss only basic Frames, which represent Cartesian coordinate systems.
 More specialized types of Frame (*e.g.* the SkyFrame, which represents celestial coordinate systems, and the SpecFrame, which represents spectral coordinate systems) are covered later ([Celestial Coordinate Systems](crate::guide::skyframes) and [Spectral Coordinate Systems](crate::guide::specframes)) and, naturally, share the properties and behavior of the simple Frames discussed here.
@@ -54,7 +54,7 @@ assert_eq!((x, y), (vec![1.0, 2.0], vec![2.0, 4.0]));
 # Ok::<(), ast_core::error::AstError>(())
 ```
 
-A FrameSet (*Using a FrameSet as a Mapping*<!-- link: crate::guide::framesets#using-a-frameset-as-a-mapping -->) and every Region are both Frames and Mappings, and when we consider these we will see that using them as Mappings can be very useful indeed.
+A FrameSet ([Using a FrameSet as a Mapping](crate::guide::framesets#using-a-frameset-as-a-mapping)) and every Region are both Frames and Mappings, and when we consider these we will see that using them as Mappings can be very useful indeed.
 
 ## Frame Axis Attributes
 
@@ -604,7 +604,7 @@ The way it operates is as follows:
 - Coordinate systems which apply to different physical domains (*i.e.* whose Frames have different Domain values) cannot be directly inter-compared.
 
   If any relationship does exist between such coordinate systems — and it need not — then additional information must be supplied in order to establish the relationship between them in any particular case.
-  We will see later (*Coordinate System Networks*<!-- link: crate::guide::framesets -->) how to establish such relationships between Frames in different domains.
+  We will see later ([Coordinate System Networks](crate::guide::framesets)) how to establish such relationships between Frames in different domains.
 
 With the basic Frames we are considering here, each physical domain only has a single (Cartesian) coordinate system associated with it, so that if two such Frames have the same Domain value, their coordinate systems will be identical and may simply be equated.
 With more specialized Frames, however, more than one coordinate system may apply to each domain.
