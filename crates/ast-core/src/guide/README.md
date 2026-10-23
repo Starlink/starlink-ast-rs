@@ -148,9 +148,9 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 9121 | &nbsp;&nbsp;Creating a TimeFrame | guide::timeframes#creating-a-timeframe |
 | 9157 | &nbsp;&nbsp;Specifying a Particular Time System | guide::timeframes#specifying-a-particular-time-system |
 | 9191 | &nbsp;&nbsp;Attributes which Qualify Time Coordinate Systems | guide::timeframes#attributes-which-qualify-time-coordinate-systems |
-| 9246 | Compound Frames (CmpFrames) | pending |
-| 9260 | &nbsp;&nbsp;Creating a CmpFrame | pending |
-| 9328 | &nbsp;&nbsp;The Attributes of a CmpFrame | pending |
+| 9246 | Compound Frames (CmpFrames) | guide::cmpframes |
+| 9260 | &nbsp;&nbsp;Creating a CmpFrame | guide::cmpframes#creating-a-cmpframe |
+| 9328 | &nbsp;&nbsp;The Attributes of a CmpFrame | guide::cmpframes#the-attributes-of-a-cmpframe |
 | 9385 | An Introduction to Coordinate System Conversions | pending |
 | 9395 | &nbsp;&nbsp;Converting between Celestial Coordinate Systems | pending |
 | 9706 | &nbsp;&nbsp;Converting between Spectral Coordinate Systems | pending |
@@ -281,3 +281,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | skyframes | 7589–8282 | Rodney Warren-Smith | David Berry |
 | specframes | 8283–9094 | David Berry | |
 | timeframes | 9095–9245 | David Berry | |
+| cmpframes | 9246–9384 | David Berry | |

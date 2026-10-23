@@ -20,6 +20,7 @@
 //! - [Celestial Coordinate Systems (SkyFrames)](skyframes)
 //! - [Spectral Coordinate Systems (SpecFrames)](specframes)
 //! - [Time Systems (TimeFrames)](timeframes)
+//! - [Compound Frames (CmpFrames)](cmpframes)
 //! - [Using AST from Cargo](cargo)
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
@@ -41,5 +42,6 @@ chapter!(frames);
 chapter!(skyframes);
 chapter!(specframes);
 chapter!(timeframes);
+chapter!(cmpframes);
 
 chapter!(cargo);
