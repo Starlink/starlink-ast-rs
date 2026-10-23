@@ -4,7 +4,7 @@ We now turn to a rather special form of Mapping, the CmpMap.
 The Mappings we have considered so far have been atomic, in the sense that they perform pre-defined elementary transformations.
 A [`CmpMap`](crate::mappings::CmpMap), however, is a compound Mapping.
 In essence, it is a framework for containing other Mappings and its purpose is to allow those Mappings to work together in various combinations while appearing as a single Object.
-A CmpMap's behaviour is therefore not pre-defined, but is determined by the other Mappings it contains.
+A CmpMap's behavior is therefore not pre-defined, but is determined by the other Mappings it contains.
 
 ## Combining Mappings in Series
 
@@ -143,7 +143,7 @@ Consider the example above ([Example — Transforming Between Two Calibrated Ima
 If the two images turned out to be simply offset from each other by a shift along each pixel axis, then this approach would align them correctly, but it would be inefficient.
 This is because it would introduce unnecessary and expensive transformations to and from an intermediate celestial coordinate system, whereas a simple shift of pixel origin would suffice.
 
-Recognising that a simpler and more efficient solution exists obviously requires a little more than simply joining two Mappings end-to-end.
+Recognizing that a simpler and more efficient solution exists obviously requires a little more than simply joining two Mappings end-to-end.
 We must also determine whether the resulting CmpMap is more complex than it needs to be, *i.e.* contains redundant information.
 If it is, we then need a way to simplify it.
 
@@ -164,7 +164,7 @@ Clearly, there is an important use here for some means of simplifying the intern
 
 The ability to simplify compound Mappings is provided by the [`simplify`](crate::mappings::Mapping#method.simplify) method.
 This method encapsulates a number of heuristics for converting Mappings, or combinations of Mappings within a CmpMap, into simpler, equivalent ones.
-When applied to a CmpMap, `simplify` tries to reduce the number of individual Mappings within it by merging neighbouring component Mappings together.
+When applied to a CmpMap, `simplify` tries to reduce the number of individual Mappings within it by merging neighboring component Mappings together.
 It will do this with both series and parallel combinations of Mappings, or both, and will handle CmpMaps nested to any depth ([Creating More Complex Mappings](#creating-more-complex-mappings)).
 
 To illustrate how `simplify` works, consider the combination of Mappings shown in Figure 8.

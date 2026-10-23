@@ -98,11 +98,11 @@ A Frame is similar in concept to the frame you might draw around a graph.
 It contains information about the labels which appear on the axes, the axis units, a title, knowledge of how to format the coordinate values on each axis, *etc.*
 An AST Frame is not, however, restricted to two dimensions and may have any number of axes.
 
-A basic Frame ([`BasicFrame`](crate::frames::BasicFrame)) may be used to represent a Cartesian coordinate system by setting values for its *attributes* (all AST Objects have values associated with them called attributes, which may be set and enquired).
+A basic Frame ([`BasicFrame`](crate::frames::BasicFrame)) may be used to represent a Cartesian coordinate system by setting values for its *attributes* (all AST Objects have values associated with them called attributes, which may be set and inquired).
 Usually, this would involve setting appropriate axis labels and units, for example.
 Methods are provided for use with Frames to perform operations such as formatting coordinate values as text, calculating distances between points, interchanging axes, *etc.*
 
-There are several more specialised forms of Frame, which provide the additional functionality required when handling coordinates within some specific physical domain.
+There are several more specialized forms of Frame, which provide the additional functionality required when handling coordinates within some specific physical domain.
 This ranges from tasks such as formatting axis values, to complex tasks such as determining the transformation between any pair of related coordinate systems.
 For instance, the [`SkyFrame`](crate::frames::SkyFrame) (Figure 5b,c), represents celestial coordinate systems, the [`SpecFrame`](crate::frames::SpecFrame) represents spectral coordinate systems, and the [`TimeFrame`](crate::frames::TimeFrame) represents time coordinate systems.
 All these provide a wide range of different systems for describing positions within their associated physical domain, and these may be selected by setting appropriate attributes.
@@ -150,9 +150,9 @@ A Channel provides a number of options for controlling the information content o
 It is also possible to intercept the text being processed by a Channel so that it may be redirected to/from any chosen external data store, such as a text file, an astronomical dataset, or a network connection.
 
 The text format used by the basic Channel class is peculiar to the AST library — no other software will understand it.
-However, more specialised forms of Channel are provided which use text formats more widely understood.
+However, more specialized forms of Channel are provided which use text formats more widely understood.
 
-To further facilitate the storage of coordinate system information in astronomical datasets, a more specialised form of Channel called a [`FitsChan`](crate::FitsChan) is provided.
+To further facilitate the storage of coordinate system information in astronomical datasets, a more specialized form of Channel called a [`FitsChan`](crate::FitsChan) is provided.
 Instead of using free-format text, a FitsChan converts AST Objects to and from FITS header cards.
 It also allows the information to be encoded in the FITS cards in a number of ways (called *encodings*), so that WCS information from a variety of sources can be handled.
 

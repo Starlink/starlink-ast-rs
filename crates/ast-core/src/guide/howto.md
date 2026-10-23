@@ -151,7 +151,7 @@ let (xworld, yworld) = wcsinfo.tran2(&xpixel, &ypixel, true)?;
 ```
 
 Here, `xpixel` and `ypixel` hold the pixel coordinates, and `xworld` and `yworld` receive the returned world coordinates.
-By pixel coordinates, we mean a coordinate system in which the first pixel in the image is centred on (1,1) and each pixel is a unit square.
+By pixel coordinates, we mean a coordinate system in which the first pixel in the image is centered on (1,1) and each pixel is a unit square.
 Note that the world coordinates will not necessarily be celestial coordinates, but if they are, then they will be in radians.
 To transform in the opposite direction, give the world coordinates as input and change the third argument of [`tran2`](crate::mappings::Mapping::tran2) to `false`.
 
@@ -235,7 +235,7 @@ With celestial coordinates, this will usually result in sexagesimal notation, su
 However, the same method may be applied to any type of coordinates and appropriate formatting will be employed.
 
 For more information about formatting coordinate values and how to control the style of formatting used, see *Formatting Axis Values*<!-- link: crate::guide::frames#formatting-axis-values --> and *Formatting Celestial Coordinates*<!-- link: crate::guide::skyframes#formatting-celestial-coordinates -->.
-If necessary, also see *Normalising Frame Coordinates*<!-- link: crate::guide::frames#normalizing-frame-coordinates --> for details of how to "normalize" a set of coordinates so that they lie within the standard range (*e.g.* 0 to 24 hours for right ascension and ±90° for declination).
+If necessary, also see *Normalizing Frame Coordinates*<!-- link: crate::guide::frames#normalizing-frame-coordinates --> for details of how to "normalize" a set of coordinates so that they lie within the standard range (*e.g.* 0 to 24 hours for right ascension and ±90° for declination).
 
 ## … Display Coordinates as they are Transformed
 
@@ -281,7 +281,7 @@ By setting the FrameSet's [Report](crate::mappings::Mapping::report) attribute t
 ```
 
 The report can be sent somewhere other than standard output with [`set_report_sink`](crate::mappings::report::set_report_sink).
-For further details of how to set and enquire attribute values, see [Setting Attribute Values](crate::guide::objects#setting-attribute-values) and [Getting Attribute Values](crate::guide::objects#getting-attribute-values).
+For further details of how to set and inquire attribute values, see [Setting Attribute Values](crate::guide::objects#setting-attribute-values) and [Getting Attribute Values](crate::guide::objects#getting-attribute-values).
 
 ## … Read Coordinates Entered by a User
 
@@ -420,7 +420,7 @@ The usual reason for wishing to modify the WCS calibration associated with a dat
 This causes the image features (stars, galaxies, *etc.*) to move with respect to the grid of pixels which they occupy, so that any coordinate systems previously associated with the image become invalid.
 
 To correct for this, it is necessary to set up a Mapping which expresses the positions of image features in the new data grid in terms of their positions in the old grid.
-In both cases, the grid coordinates we use will have the first pixel centred at (1,1) with each pixel being a unit square.
+In both cases, the grid coordinates we use will have the first pixel centered at (1,1) with each pixel being a unit square.
 
 AST allows you to correct for any type of geometrical transformation in this way, so long as a suitable Mapping to describe it can be constructed.
 For purposes of illustration, we will assume here that the new image coordinates `xnew` and `ynew` can be expressed in terms of the old coordinates `xold` and `yold` as follows:
@@ -530,7 +530,7 @@ let wcsinfo1 = fitschan1.read()?;
 # Ok::<(), ast_core::error::AstError>(())
 ```
 
-Note how we have added an enquiry to determine how the WCS information is encoded in the input FITS cards, storing the result in the `encode` variable.
+Note how we have added an inquiry to determine how the WCS information is encoded in the input FITS cards, storing the result in the `encode` variable.
 This must be done **before** actually reading the WCS calibration.
 
 Once you have produced a modified WCS calibration for the output dataset (*e.g.* [… Modify a WCS Calibration](#-modify-a-wcs-calibration)), in the form of a FrameSet `wcsinfo2`, you can produce a new FitsChan containing the output FITS header cards as follows:

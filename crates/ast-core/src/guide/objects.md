@@ -3,7 +3,7 @@
 The AST library deals throughout with entities called Objects and a basic understanding of how to handle these is needed before you can use the library effectively.
 If you are already familiar with object-oriented programming, few of the concepts should seem new to you.
 
-If you are not already familiar with object-oriented programming, then don't worry — we will not emphasise this aspect more than is necessary and will not assume any background knowledge.
+If you are not already familiar with object-oriented programming, then don't worry — we will not emphasize this aspect more than is necessary and will not assume any background knowledge.
 Instead, this section concentrates on presenting all the fundamental information you will need, explaining how AST Objects behave and how to manipulate them.
 
 If you like to read documents from cover to cover, then you can consider this section as an introduction to the programming techniques used in the rest of the document.
@@ -32,7 +32,7 @@ let zoommap = ZoomMap::new(2, 5.0)?;
 ```
 
 Each class of AST Object is a Rust type of the same name, and the function that creates an Object is usually that type's `new`.
-These functions are called *constructors*, and the arguments passed to the constructor are used to initialise the new Object.
+These functions are called *constructors*, and the arguments passed to the constructor are used to initialize the new Object.
 In this case, we specify 2 as the number of coordinates (*i.e.* we are going to work in a 2-dimensional space) and 5.0 as the Zoom factor to be applied.
 A constructor checks its arguments, which is why [`ZoomMap::new`](crate::mappings::ZoomMap::new) returns an [`AstResult`](crate::error::AstResult): a Zoom factor of zero is an error.
 
@@ -85,7 +85,7 @@ The output from this will appear on the standard output stream and should look l
  End ZoomMap
 ```
 
-Here, the "Begin" and "End" lines mark the beginning and end of the ZoomMap, while the values 2 and 5 are simply the values we supplied to initialise it.
+Here, the "Begin" and "End" lines mark the beginning and end of the ZoomMap, while the values 2 and 5 are simply the values we supplied to initialize it.
 These have been given simple names to make them easy to refer to, and each line carries a comment saying what it holds.
 
 The line in the middle which says "IsA Mapping" is a dividing line between the two values.
@@ -155,12 +155,12 @@ If no value has been set, the AST library will generate a suitable default value
 Often, the default value of an attribute will not simply be trivial (zero or blank) but may involve considerable processing to calculate.
 Wherever possible, defaults are designed to be real-life, sensible values that convey information about the state of the Object.
 In particular, they may often be based on the values of other attributes, so their values may change in response to changes in these other attributes.
-The ZoomMap class that we have studied so far is a little too simple to show this behaviour, but we will meet it later on.
+The ZoomMap class that we have studied so far is a little too simple to show this behavior, but we will meet it later on.
 
 An attribute that returns a default value in this way is said to be *un-set*.
 Conversely, once an explicit value has been assigned to an attribute, it becomes *set* and will always return precisely that value, never a default.
 
-The distinction between set and un-set attributes is important and affects the behaviour of several key routines in the AST library.
+The distinction between set and un-set attributes is important and affects the behavior of several key routines in the AST library.
 You can test if an attribute is set using the method named after it with `test_` in front, which returns a boolean result, as in:
 
 ```rust

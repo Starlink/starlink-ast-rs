@@ -131,6 +131,28 @@ fn every_guide_fragment_names_a_heading() {
     assert!(bad.is_empty(), "fragments naming no heading: {bad:?}");
 }
 
+/// A link to a chapter has to wait, as a marker, until the chapter exists;
+/// rustdoc would reject it, but only after building every other page.
+#[test]
+fn every_guide_link_names_a_declared_chapter() {
+    let declared = declared_chapters();
+    let mut bad = Vec::new();
+    for name in chapter_files() {
+        for (i, line) in read(&name).lines().enumerate() {
+            for rest in line.split("](crate::guide::").skip(1) {
+                let chapter: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_lowercase() || *c == '_')
+                    .collect();
+                if !declared.contains(&chapter) {
+                    bad.push(format!("{name}:{}: {chapter}", i + 1));
+                }
+            }
+        }
+    }
+    assert!(bad.is_empty(), "links to undeclared chapters: {bad:?}");
+}
+
 #[test]
 fn guide_mentions_no_unported_class() {
     const UNPORTED: [&str; 5] = ["XmlChan", "StcsChan", "YamlChan", "Plot", "Plot3D"];
