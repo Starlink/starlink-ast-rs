@@ -155,7 +155,18 @@ fn every_guide_link_names_a_declared_chapter() {
 
 #[test]
 fn guide_mentions_no_unported_class() {
-    const UNPORTED: [&str; 5] = ["XmlChan", "StcsChan", "YamlChan", "Plot", "Plot3D"];
+    const UNPORTED: [&str; 10] = [
+        "XmlChan",
+        "XmlChans",
+        "StcsChan",
+        "StcsChans",
+        "YamlChan",
+        "YamlChans",
+        "Plot",
+        "Plots",
+        "Plot3D",
+        "Plot3Ds",
+    ];
     // Code blocks show the library's own output, whose comments may name a
     // class that is not ported, as a dump's "Plot axis 1 in reverse
     // direction" does; only the prose is checked.

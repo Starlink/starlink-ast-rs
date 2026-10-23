@@ -120,6 +120,10 @@ use ast_core::frames::{SkyFrame, SkySystem};
 let mut skyframe = SkyFrame::new(SkySystem::Fk4NoE);
 skyframe.set_epoch_year(1958.0);
 skyframe.show()?;
+# use ast_core::{AnyObject, Channel, NativeChannel};
+# let mut shown = NativeChannel::with_string_sink();
+# shown.write(&AnyObject::SkyFrame(skyframe))?;
+# assert_eq!(shown.into_string(), " Begin SkyFrame \t# Description of celestial coordinate system\n#   Title = \"FK4 equatorial coordinates; no E-terms; mean equinox B1950.0; epoch B1958.0\" \t# Title of coordinate system\n    Naxes = 2 \t# Number of coordinate axes\n#   Domain = \"SKY\" \t# Coordinate system domain\n    Epoch = 1958 \t# Besselian epoch of observation\n#   Lbl1 = \"Right ascension\" \t# Label for axis 1\n#   Lbl2 = \"Declination\" \t# Label for axis 2\n    System = \"FK4-NO-E\" \t# Coordinate system type\n#   Uni1 = \"hh:mm:ss.s\" \t# Units for axis 1\n#   Uni2 = \"ddd:mm:ss\" \t# Units for axis 2\n#   Dir1 = 0 \t# Plot axis 1 in reverse direction\n#   Bot2 = -1.5707963267948966 \t# Lowest legal axis value\n#   Top2 = 1.5707963267948966 \t# Highest legal axis value\n    Ax1 = \t# Axis number 1\n       Begin SkyAxis \t# Celestial coordinate axis\n       End SkyAxis\n    Ax2 = \t# Axis number 2\n       Begin SkyAxis \t# Celestial coordinate axis\n       End SkyAxis\n IsA Frame \t# Coordinate system description\n#   SkyTol = 0.001 \t# Smallest significant separation [arc-sec]\n#   Eqnox = 1950 \t# Besselian epoch of mean equinox\n End SkyFrame\n");
 # Ok::<(), ast_core::error::AstError>(())
 ```
 

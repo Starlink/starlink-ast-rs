@@ -72,6 +72,15 @@ Every class of Object has it:
 # use ast_core::mappings::ZoomMap;
 # let zoommap = ZoomMap::new(2, 5.0)?;
 zoommap.show()?;
+# use ast_core::{AnyObject, Channel, NativeChannel};
+# let mut shown = NativeChannel::with_string_sink();
+# shown.write(&AnyObject::ZoomMap(zoommap.clone()))?;
+# assert_eq!(shown.into_string(), r#" Begin ZoomMap 	# Zoom about the origin
+    Nin = 2 	# Number of input coordinates
+ IsA Mapping 	# Mapping between coordinate systems
+    Zoom = 5 	# Zoom factor
+ End ZoomMap
+"#);
 # Ok::<(), ast_core::error::AstError>(())
 ```
 
@@ -92,7 +101,7 @@ The line in the middle which says "IsA Mapping" is a dividing line between the t
 It indicates that the "Nin" value is a property shared by all Mappings, so the ZoomMap has inherited this from its *parent class* (Mapping).
 The "Zoom" value, however, is specific to a ZoomMap and isn't shared by other kinds of Mappings.
 
-The same text is returned as a string by [`to_native_string`](crate::mappings::ZoomMap::to_native_string).
+A minimal form of the same description, without the comments, the default values or the indentation, is returned as a string by [`to_native_string`](crate::mappings::ZoomMap::to_native_string).
 
 ## Getting Attribute Values
 
@@ -228,7 +237,26 @@ Fortunately, a ZoomMap is a Mapping, so we can use it with `tran2` to transform 
 # zoommap.set_report(true);
 # let xin = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
 # let yin = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0];
+# let report = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+# struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+# impl std::io::Write for Capture {
+#     fn write(&mut self, b: &[u8]) -> std::io::Result<usize> { self.0.lock().unwrap().extend_from_slice(b); Ok(b.len()) }
+#     fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+# }
+# ast_core::mappings::report::set_report_sink(Box::new(Capture(report.clone())));
 let (xout, yout) = zoommap.tran2(&xin, &yin, true)?;
+# ast_core::mappings::report::reset_report_sink();
+# assert_eq!(String::from_utf8(report.lock().unwrap().clone()).unwrap(), r#"(0, 0) --> (0, 0)
+(1, 2) --> (5, 10)
+(2, 4) --> (10, 20)
+(3, 6) --> (15, 30)
+(4, 8) --> (20, 40)
+(5, 10) --> (25, 50)
+(6, 12) --> (30, 60)
+(7, 14) --> (35, 70)
+(8, 16) --> (40, 80)
+(9, 18) --> (45, 90)
+"#);
 # assert_eq!(xout[9], 45.0);
 # assert_eq!(yout[9], 90.0);
 # Ok::<(), ast_core::error::AstError>(())
@@ -262,9 +290,29 @@ We can also feed the output coordinates from the above back into the method:
 # use ast_core::mappings::{Mapping, ZoomMap};
 # let mut zoommap = ZoomMap::new(2, 5.0)?;
 # zoommap.set_report(true);
-# let (xout, yout) = zoommap.tran2(&[0.0, 1.0], &[0.0, 2.0], true)?;
+# let xout: Vec<f64> = (0..10).map(|i| 5.0 * i as f64).collect();
+# let yout: Vec<f64> = (0..10).map(|i| 10.0 * i as f64).collect();
+# let report = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+# struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+# impl std::io::Write for Capture {
+#     fn write(&mut self, b: &[u8]) -> std::io::Result<usize> { self.0.lock().unwrap().extend_from_slice(b); Ok(b.len()) }
+#     fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+# }
+# ast_core::mappings::report::set_report_sink(Box::new(Capture(report.clone())));
 let (xin, yin) = zoommap.tran2(&xout, &yout, false)?;
-# assert_eq!((xin, yin), (vec![0.0, 1.0], vec![0.0, 2.0]));
+# ast_core::mappings::report::reset_report_sink();
+# assert_eq!(String::from_utf8(report.lock().unwrap().clone()).unwrap(), r#"(0, 0) --> (0, 0)
+(5, 10) --> (1, 2)
+(10, 20) --> (2, 4)
+(15, 30) --> (3, 6)
+(20, 40) --> (4, 8)
+(25, 50) --> (5, 10)
+(30, 60) --> (6, 12)
+(35, 70) --> (7, 14)
+(40, 80) --> (8, 16)
+(45, 90) --> (9, 18)
+"#);
+# assert_eq!(xin[9], 9.0);
 # Ok::<(), ast_core::error::AstError>(())
 ```
 
@@ -367,4 +415,4 @@ match zoom_a_point() {
 }
 ```
 
-An error never leaves any state behind, so once you have handled one, AST methods execute normally again.
+Once you have handled an error, AST methods execute normally again.

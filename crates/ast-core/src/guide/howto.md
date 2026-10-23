@@ -258,9 +258,19 @@ use ast_core::mappings::Mapping;
 # let mut fitschan = FitsChan::new()?;
 # fitschan.put_cards(&header)?;
 # let mut wcsinfo = FrameSet::try_from(fitschan.read()?.unwrap())?;
-# let (xpixel, ypixel) = ([100.5], [98.4]);
+# let (xpixel, ypixel) = ([100.5, 200.0], [98.4, 300.0]);
 wcsinfo.set_report(true);
+# let report = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+# struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+# impl std::io::Write for Capture {
+#     fn write(&mut self, b: &[u8]) -> std::io::Result<usize> { self.0.lock().unwrap().extend_from_slice(b); Ok(b.len()) }
+#     fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+# }
+# ast_core::mappings::report::set_report_sink(Box::new(Capture(report.clone())));
 let (xworld, yworld) = wcsinfo.tran2(&xpixel, &ypixel, true)?;
+# ast_core::mappings::report::reset_report_sink();
+# assert_eq!(String::from_utf8(report.lock().unwrap().clone()).unwrap(),
+#     "(100.5, 98.4) --> (11:00:10.0, -23:26:02)\n(200, 300) --> (11:00:01.3, -23:22:00)\n");
 # let _ = (xworld, yworld);
 # Ok::<(), ast_core::error::AstError>(())
 ```
@@ -268,16 +278,8 @@ let (xworld, yworld) = wcsinfo.tran2(&xpixel, &ypixel, true)?;
 By setting the FrameSet's [Report](crate::mappings::Mapping::report) attribute to `true`, coordinate transformations are automatically displayed on the program's standard output stream, appropriately formatted, for example:
 
 ```text
-(42.1087, 20.2717) --> (2:06:03.0, 34:22:39)
-(43.0197, 21.1705) --> (2:08:20.6, 35:31:24)
-(43.9295, 22.0716) --> (2:10:38.1, 36:40:09)
-(44.8382, 22.9753) --> (2:12:55.6, 37:48:55)
-(45.7459, 23.8814) --> (2:15:13.1, 38:57:40)
-(46.6528, 24.7901) --> (2:17:30.6, 40:06:25)
-(47.5589, 25.7013) --> (2:19:48.1, 41:15:11)
-(48.4644, 26.6149) --> (2:22:05.6, 42:23:56)
-(49.3695, 27.5311) --> (2:24:23.1, 43:32:41)
-(50.2742, 28.4499) --> (2:26:40.6, 44:41:27)
+(100.5, 98.4) --> (11:00:10.0, -23:26:02)
+(200, 300) --> (11:00:01.3, -23:22:00)
 ```
 
 The report can be sent somewhere other than standard output with [`set_report_sink`](crate::mappings::report::set_report_sink).

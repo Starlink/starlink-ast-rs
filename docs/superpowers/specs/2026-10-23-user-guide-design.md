@@ -136,7 +136,8 @@ C function names may appear only in the introduction and where a difference from
 ## Shape
 
 - `crates/ast-core/src/guide/mod.rs` declares `pub mod guide` (in `lib.rs`), with the guide's table of contents as its module doc.
-- One submodule per chapter, each with no items and its text in `crates/ast-core/src/guide/<chapter>.md`, pulled in with `#![doc = include_str!("<chapter>.md")]`.
+- One submodule per chapter, each with no items and its text in `crates/ast-core/src/guide/<chapter>.md`, declared in `guide/mod.rs` with `chapter!(<chapter>)`.
+  The build script copies each chapter to `$OUT_DIR/guide/` with its figure links inlined (below), and the module documentation is that copy.
   Plain Markdown files keep a later move to mdBook a copy.
 - Cross-references between sections (`\label` / `\htmlref` in the LaTeX) become intra-doc links to the chapter module and, where needed, its heading anchor.
 - One sentence per line in the Markdown, American English spelling (the user's documentation conventions).
@@ -144,7 +145,8 @@ C function names may appear only in the introduction and where a difference from
 
 **Figures** (Claude's call).
 The SUN/211 figures are PDFs in `reference/starlink-ast/sun211_figures/`.
-Those for kept chapters (mapping, series, parallel, complex, frames, cmpframe, frameset, simpexamp, dsbspec1–3, fsexample, fsconvert, fsalign, fsremap, fsmerge) are converted to SVG and committed under `crates/ast-core/src/guide/figures/`, then embedded inline in the chapter Markdown so they render without the submodule and without hosting.
+Those for kept chapters (mapping, series, parallel, complex, frames, cmpframe, frameset, simpexamp, dsbspec1–3, fsexample, fsconvert, fsalign, fsremap, fsmerge) are converted to SVG and committed under `crates/ast-core/src/guide/figures/`, and referred to from the chapter Markdown as ordinary images, `![caption](figures/<name>.svg)`.
+The build script replaces each such link with a `data:` URI holding the SVG, so the figures render without the submodule and without hosting, and the ids inside one SVG cannot collide with another's.
 The front-page and Plot figures are dropped.
 If a converted figure shows C-only content (C function names in a box, for example), it is redrawn or dropped rather than shipped wrong.
 

@@ -95,6 +95,14 @@ use ast_core::frames::{SpecFrame, SpecSystem};
 let mut specframe = SpecFrame::new(SpecSystem::Voptical);
 specframe.set_rest_freq(250.0e9);
 specframe.show()?;
+# use ast_core::{AnyObject, Channel, NativeChannel};
+# let mut shown = NativeChannel::with_string_sink();
+# shown.write(&AnyObject::SpecFrame(specframe.clone()))?;
+# assert_eq!(shown.into_string(), " Begin SpecFrame \t# Description of spectral coordinate system\n#   Title = \"Optical velocity, rest frequency = 250 GHz\" \t# Title of coordinate system\n    Naxes = 1 \t# Number of coordinate axes\n#   Domain = \"SPECTRUM\" \t# Coordinate system domain\n#   Epoch = 2000 \t# Julian epoch of observation\n#   Lbl1 = \"Optical velocity\" \t# Label for axis 1\n    System = \"VOPT\" \t# Coordinate system type\n#   Uni1 = \"km/s\" \t# Units for axis 1\n    Ax1 = \t# Axis number 1\n       Begin Axis \t# Coordinate axis\n       End Axis\n IsA Frame \t# Coordinate system description\n#   SoR = \"Heliocentric\" \t# Standard of rest\n    RstFrq = 250000000000 \t# Rest frequency (Hz)\n End SpecFrame\n");
+# specframe.set_system(SpecSystem::Freq)?;
+# let mut shown = NativeChannel::with_string_sink();
+# shown.write(&AnyObject::SpecFrame(specframe))?;
+# assert!(shown.into_string().contains("#   Uni1 = \"GHz\" \t# Units for axis 1\n"));
 # Ok::<(), ast_core::error::AstError>(())
 ```
 

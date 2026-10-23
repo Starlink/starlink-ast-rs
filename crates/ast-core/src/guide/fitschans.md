@@ -145,6 +145,30 @@ let mut skyframe = SkyFrame::new(SkySystem::Fk4NoE);
 skyframe.set_epoch_year(1958.0);
 let nobj = fitschan.write(&AnyObject::SkyFrame(skyframe))?;
 # assert_eq!(nobj, 1);
+# let mut copy = fitschan.clone();
+# copy.clear_card()?;
+# let mut cards = String::new();
+# while let Some(card) = copy.find_fits("%f", true)? { cards.push_str(card.trim_end()); cards.push('\n'); }
+# assert_eq!(cards, r#"
+COMMENT AST ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ AST
+COMMENT AST            Beginning of AST data for SkyFrame object             AST
+COMMENT AST ................................................................ AST
+BEGAST_A= 'SkyFrame'           / Description of celestial coordinate system
+NAXES_A =                    2 / Number of coordinate axes
+EPOCH_A =               1958.0 / Besselian epoch of observation
+SYSTEM_A= 'FK4-NO-E'           / Coordinate system type
+AX1_A   = '        '           / Axis number 1
+BEGAST_B= 'SkyAxis '           / Celestial coordinate axis
+ENDAST_A= 'SkyAxis '           / End of object definition
+AX2_A   = '        '           / Axis number 2
+BEGAST_C= 'SkyAxis '           / Celestial coordinate axis
+ENDAST_B= 'SkyAxis '           / End of object definition
+ISA_A   = 'Frame   '           / Coordinate system description
+ENDAST_C= 'SkyFrame'           / End of object definition
+COMMENT AST ................................................................ AST
+COMMENT AST               End of AST data for SkyFrame object                AST
+COMMENT AST ---------------------------------------------------------------- AST
+"#);
 # assert_eq!(fitschan.card()?, fitschan.ncard()? + 1);
 # Ok::<(), ast_core::error::AstError>(())
 ```
@@ -163,7 +187,7 @@ Each "continuation" card will have the keyword `CONTINUE` in columns 1 to 8, and
 An ampersand ("&") is appended to the end of each of the strings (except the last one) to indicate that the string is continued on the next card.
 
 Note, this splitting of long strings over several cards only occurs when writing AST Objects to a FitsChan using `write` and the *native* encoding.
-If a long string is stored in a FitsChan using (for instance) `put_fits` or `put_cards`, it will simply be truncated.
+A long string stored in a FitsChan using (for instance) `put_fits` or `put_cards` is not split, and cannot then be written out as a card: [`find_fits`](crate::FitsChan::find_fits) reports an error for it.
 
 ## Extracting Individual Cards from a FitsChan
 

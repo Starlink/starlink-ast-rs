@@ -4,8 +4,10 @@ Add the library to the `[dependencies]` of your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ast-core = "0.1"
+ast-core = { git = "https://github.com/lsst-dm/starlink-astrs" }
 ```
+
+The crate is not yet published on crates.io, so it is taken from its repository.
 
 The library includes the C sources of the PAL, ERFA and WCSLIB libraries it uses, and its build script compiles them.
 Building it needs a C compiler, and nothing else installed.

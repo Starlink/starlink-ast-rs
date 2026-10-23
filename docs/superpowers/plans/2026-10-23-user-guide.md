@@ -99,9 +99,9 @@ git commit --author="<author line from F>" -m "guide: <chapter title>
 
 Ported from SUN/211.
 
-Co-authored-by: <co-author line from F, omit if none>
 Generated with AI
 
+Co-authored-by: <co-author line from F, omit if none>
 Co-Authored-By: SLAC AI"
 ```
 

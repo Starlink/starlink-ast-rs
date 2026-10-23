@@ -142,7 +142,7 @@ As explained above ([Limitations of IntraMaps](#limitations-of-intramaps)), you 
 3. Contact details, such as an e-mail or WWW address.
 
 The idea is that anyone finding an IntraMap in their data, but lacking the necessary transformation, should be able to contact the author and make a sensible inquiry in order to obtain it.
-If you expect many inquiries, you may like to set up a World Wide Web page and use that instead (in the example above, we use the WWW address of the C edition of this document).
+If you expect many inquiries, you may like to set up a World Wide Web page and use that instead (in the example above, we use the WWW address of SUN/211).
 
 ## Creating an IntraMap
 

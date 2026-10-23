@@ -116,12 +116,36 @@ Another way to see how the FrameSet produced by `convert_to` retains information
 ```rust
 # use ast_core::mappings::Mapping;
 # use ast_core::frames::{FrameSearch, SkyFrame, SkySystem};
+# use ast_core::frames::Frame;
 # let mut skyframe1 = SkyFrame::new(SkySystem::Fk4NoE);
+# skyframe1.set_epoch_year(1958.0);
+# skyframe1.set_equinox_year(1960.0);
 # let mut skyframe2 = SkyFrame::new(SkySystem::Ecliptic);
+# skyframe2.set_equinox_year(2010.5);
+# let alpha1: Vec<f64> = ["2:06:03.0","2:08:20.6","2:10:38.1","2:12:55.6","2:15:13.1","2:17:30.6","2:19:48.1","2:22:05.6","2:24:23.1","2:26:40.6"].iter().map(|t| skyframe1.unformat(1, t).unwrap().0).collect();
+# let delta1: Vec<f64> = ["34:22:39","35:31:24","36:40:09","37:48:55","38:57:40","40:06:25","41:15:11","42:23:56","43:32:41","44:41:27"].iter().map(|t| skyframe1.unformat(2, t).unwrap().0).collect();
 # let mut cvt = skyframe1.convert_to(&mut skyframe2, &[])?.unwrap();
-# let (alpha1, delta1) = ([0.55], [0.6]);
 cvt.set_report(true);
+# let report = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+# struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+# impl std::io::Write for Capture {
+#     fn write(&mut self, b: &[u8]) -> std::io::Result<usize> { self.0.lock().unwrap().extend_from_slice(b); Ok(b.len()) }
+#     fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+# }
+# ast_core::mappings::report::set_report_sink(Box::new(Capture(report.clone())));
 let (alpha2, delta2) = cvt.tran2(&alpha1, &delta1, true)?;
+# ast_core::mappings::report::reset_report_sink();
+# assert_eq!(String::from_utf8(report.lock().unwrap().clone()).unwrap(), r#"(2:06:03.0, 34:22:39) --> (42.1086, 20.2718)
+(2:08:20.6, 35:31:24) --> (43.0198, 21.1703)
+(2:10:38.1, 36:40:09) --> (43.9296, 22.0715)
+(2:12:55.6, 37:48:55) --> (44.8383, 22.9753)
+(2:15:13.1, 38:57:40) --> (45.7460, 23.8814)
+(2:17:30.6, 40:06:25) --> (46.6528, 24.7900)
+(2:19:48.1, 41:15:11) --> (47.5589, 25.7013)
+(2:22:05.6, 42:23:56) --> (48.4644, 26.6150)
+(2:24:23.1, 43:32:41) --> (49.3694, 27.5311)
+(2:26:40.6, 44:41:27) --> (50.2741, 28.4500)
+"#);
 # Ok::<(), ast_core::error::AstError>(())
 ```
 
@@ -259,6 +283,37 @@ use ast_core::frames::{Frame, FrameSearch};
 let perm = [2, 1];
 skyframe2.perm_axes(&perm)?;
 let cvt = skyframe1.convert_to(&mut skyframe2, &[])?;
+# use ast_core::mappings::Mapping;
+# let mut skyframe1 = SkyFrame::new(SkySystem::Fk4NoE);
+# skyframe1.set_epoch_year(1958.0);
+# skyframe1.set_equinox_year(1960.0);
+# let mut skyframe2 = SkyFrame::new(SkySystem::Ecliptic);
+# skyframe2.set_equinox_year(2010.5);
+# skyframe2.perm_axes(&perm)?;
+# let mut cvt = skyframe1.convert_to(&mut skyframe2, &[])?.unwrap();
+# let alpha1: Vec<f64> = ["2:06:03.0","2:08:20.6","2:10:38.1","2:12:55.6","2:15:13.1","2:17:30.6","2:19:48.1","2:22:05.6","2:24:23.1","2:26:40.6"].iter().map(|t| skyframe1.unformat(1, t).unwrap().0).collect();
+# let delta1: Vec<f64> = ["34:22:39","35:31:24","36:40:09","37:48:55","38:57:40","40:06:25","41:15:11","42:23:56","43:32:41","44:41:27"].iter().map(|t| skyframe1.unformat(2, t).unwrap().0).collect();
+# cvt.set_report(true);
+# let report = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+# struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+# impl std::io::Write for Capture {
+#     fn write(&mut self, b: &[u8]) -> std::io::Result<usize> { self.0.lock().unwrap().extend_from_slice(b); Ok(b.len()) }
+#     fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+# }
+# ast_core::mappings::report::set_report_sink(Box::new(Capture(report.clone())));
+# cvt.tran2(&alpha1, &delta1, true)?;
+# ast_core::mappings::report::reset_report_sink();
+# assert_eq!(String::from_utf8(report.lock().unwrap().clone()).unwrap(), r#"(2:06:03.0, 34:22:39) --> (20.2718, 42.1086)
+(2:08:20.6, 35:31:24) --> (21.1703, 43.0198)
+(2:10:38.1, 36:40:09) --> (22.0715, 43.9296)
+(2:12:55.6, 37:48:55) --> (22.9753, 44.8383)
+(2:15:13.1, 38:57:40) --> (23.8814, 45.7460)
+(2:17:30.6, 40:06:25) --> (24.7900, 46.6528)
+(2:19:48.1, 41:15:11) --> (25.7013, 47.5589)
+(2:22:05.6, 42:23:56) --> (26.6150, 48.4644)
+(2:24:23.1, 43:32:41) --> (27.5311, 49.3694)
+(2:26:40.6, 44:41:27) --> (28.4500, 50.2741)
+"#);
 # Ok::<(), ast_core::error::AstError>(())
 ```
 
