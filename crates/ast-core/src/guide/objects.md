@@ -414,5 +414,3 @@ match zoom_a_point() {
     }
 }
 ```
-
-Once you have handled an error, AST methods execute normally again.
