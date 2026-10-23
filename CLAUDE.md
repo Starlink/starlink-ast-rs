@@ -439,6 +439,7 @@ The C ABI is **frozen**. Existing applications must keep linking.
   the values, which is what `tools/oracle_fixtures/merge_card_hunks.py` does.
   Regenerate in the same commit range as the pin move.
   Also run `tools/oracle_fixtures/check_c_headers_fresh.sh`; a new C documentation header needs a row in `docs/audits/c-docs/ledger.tsv`, and a header whose body changed (its `digest` column differs) needs its row re-reviewed against the new C text and the Rust docs updated to match.
+  The user guide in `ast_core::guide` is ported from `sun_master.tex` at the commit recorded in `crates/ast-core/src/guide/README.md`; run `git -C reference/starlink-ast diff <that commit>..<new pin> -- sun_master.tex`, port each changed section into the guide chapter the README names for it, and record the new commit.
 - **Design spec** (authoritative for API shape and the reasoning behind it):
   [`docs/superpowers/specs/2026-04-20-rust-port-design.md`](docs/superpowers/specs/2026-04-20-rust-port-design.md).
   This is *the* overarching port design — the one document that fixes the

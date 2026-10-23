@@ -1,7 +1,7 @@
 //! Print the commit author and co-author for a user-guide chapter.
 //!
 //! Usage:
-//!   guide-authors <start> <end>
+//!   `guide-authors <start> <end>`
 //!       blame lines `<start>..=<end>` of `reference/starlink-ast/sun_master.tex`
 //!       and print `author: …` and, if there is one, `co-author: …`, followed by
 //!       each blame author's share

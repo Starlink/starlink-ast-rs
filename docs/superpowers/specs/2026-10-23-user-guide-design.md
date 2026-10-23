@@ -1,6 +1,6 @@
 # User guide from SUN/211: design
 
-**Status:** draft, 2026-10-23.
+**Status:** implemented, 2026-10-23.
 **Scope:** the narrative chapters of SUN/211 (`reference/starlink-ast/sun_master.tex`), ported into `ast-core`'s rustdoc as the `ast_core::guide` module, with Rust examples as doctests and links to the Rust API.
 
 ## Context
