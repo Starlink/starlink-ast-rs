@@ -23,6 +23,7 @@
 //! - [Compound Frames (CmpFrames)](cmpframes)
 //! - [An Introduction to Coordinate System Conversions](conversions)
 //! - [Coordinate System Networks (FrameSets)](framesets)
+//! - [Higher Level Operations on FrameSets](frameset_ops)
 //! - [Using AST from Cargo](cargo)
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
@@ -47,5 +48,6 @@ chapter!(timeframes);
 chapter!(cmpframes);
 chapter!(conversions);
 chapter!(framesets);
+chapter!(frameset_ops);
 
 chapter!(cargo);

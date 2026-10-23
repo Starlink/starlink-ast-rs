@@ -570,7 +570,7 @@ The lengths of the two components are returned, together with the position on th
 ## The Domain Attribute
 
 The Domain attribute is one of the most important properties of a Frame, although the concept it expresses can sometimes seem a little subtle.
-We will introduce it here, but its true value will probably not become apparent until later (*Converting between FrameSet Coordinate Systems*<!-- link: crate::guide::frameset_ops#converting-between-frameset-coordinate-systems -->).
+We will introduce it here, but its true value will probably not become apparent until later ([Converting between FrameSet Coordinate Systems](crate::guide::frameset_ops#converting-between-frameset-coordinate-systems)).
 
 To understand the need for the Domain attribute, consider using different Frames to represent the following different coordinate systems associated with a CCD image:
 

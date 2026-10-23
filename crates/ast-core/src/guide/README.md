@@ -169,14 +169,14 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 10750 | &nbsp;&nbsp;Using a FrameSet as a Frame | guide::framesets#using-a-frameset-as-a-frame |
 | 10818 | &nbsp;&nbsp;Extracting a Frame from a FrameSet | guide::framesets#extracting-a-frame-from-a-frameset |
 | 10853 | &nbsp;&nbsp;Removing a Frame from a FrameSet | guide::framesets#removing-a-frame-from-a-frameset |
-| 10914 | Higher Level Operations on FrameSets | pending |
-| 10917 | &nbsp;&nbsp;Creating FrameSets with astConvert | pending |
-| 11067 | &nbsp;&nbsp;Converting between FrameSet Coordinate Systems | pending |
-| 11293 | &nbsp;&nbsp;Example — Registering Two Images | pending |
-| 11474 | &nbsp;&nbsp;Re-Defining a FrameSet Coordinate System | pending |
-| 11578 | &nbsp;&nbsp;Example — Binning an Image | pending |
-| 11689 | &nbsp;&nbsp;Maintaining the Integrity of FrameSets | pending |
-| 11897 | &nbsp;&nbsp;Merging FrameSets | pending |
+| 10914 | Higher Level Operations on FrameSets | guide::frameset_ops |
+| 10917 | &nbsp;&nbsp;Creating FrameSets with astConvert | guide::frameset_ops#creating-framesets-by-conversion |
+| 11067 | &nbsp;&nbsp;Converting between FrameSet Coordinate Systems | guide::frameset_ops#converting-between-frameset-coordinate-systems |
+| 11293 | &nbsp;&nbsp;Example — Registering Two Images | guide::frameset_ops#example--registering-two-images |
+| 11474 | &nbsp;&nbsp;Re-Defining a FrameSet Coordinate System | guide::frameset_ops#re-defining-a-frameset-coordinate-system |
+| 11578 | &nbsp;&nbsp;Example — Binning an Image | guide::frameset_ops#example--binning-an-image |
+| 11689 | &nbsp;&nbsp;Maintaining the Integrity of FrameSets | guide::frameset_ops#maintaining-the-integrity-of-framesets |
+| 11897 | &nbsp;&nbsp;Merging FrameSets | guide::frameset_ops#merging-framesets |
 | 12012 | Saving and Restoring Objects (Channels) | pending |
 | 12035 | &nbsp;&nbsp;The Channel Model | pending |
 | 12072 | &nbsp;&nbsp;Creating a Channel | pending |
@@ -284,3 +284,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | cmpframes | 9246–9384 | David Berry | |
 | conversions | 9385–10181 | Rodney Warren-Smith | David Berry |
 | framesets | 10182–10913 | Rodney Warren-Smith | |
+| frameset_ops | 10914–12011 | Rodney Warren-Smith | |

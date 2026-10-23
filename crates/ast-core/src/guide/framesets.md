@@ -288,7 +288,7 @@ There are, however, a few exceptions:
   Is independent of any of the Objects within the FrameSet.
 
 The attributes a particular class of Frame adds, such as a SkyFrame's Equinox, are read from the current Frame itself, through [`current`](crate::frames::FrameSet::current), and the set of them changes when a Frame of another class is made current.
-Changing an attribute of the current Frame is described in *Maintaining the Integrity of FrameSets*<!-- link: crate::guide::frameset_ops#maintaining-the-integrity-of-framesets -->.
+Changing an attribute of the current Frame is described in [Maintaining the Integrity of FrameSets](crate::guide::frameset_ops#maintaining-the-integrity-of-framesets).
 
 ## Extracting a Frame from a FrameSet
 

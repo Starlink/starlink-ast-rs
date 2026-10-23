@@ -337,7 +337,7 @@ The USB window covers the radio velocity range [-8549.462669, -8749.462669] km/s
 ```
 
 Note, changing the value of the SideBand attribute through the FrameSet with [`with_integrity`](crate::frames::FrameSet::with_integrity), as is done above, automatically causes the Mapping inside the FrameSet to be updated to include the mapping from LSB frequency to USB frequency.
-This automatic modification of the Mappings inside a FrameSet is described further in *Maintaining the Integrity of FrameSets*<!-- link: crate::guide::frameset_ops#maintaining-the-integrity-of-framesets --> and illustrated in Figure 10.
+This automatic modification of the Mappings inside a FrameSet is described further in [Maintaining the Integrity of FrameSets](crate::guide::frameset_ops#maintaining-the-integrity-of-framesets) and illustrated in Figure 10.
 It relies on [`convert_to`](crate::frames::FrameSearch::convert_to) to find the Mapping that converts values from one DSBSpecFrame to another.
 
 ![When a FrameSet is used to change the attributes of its current Frame, the FrameSet is remapped.](figures/dsbspec2.svg)

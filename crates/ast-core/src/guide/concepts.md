@@ -138,7 +138,7 @@ Similarly, one Frame is termed the *current* Frame and represents the "currently
 It might, typically, be a celestial or spectral coordinate system and would be used during interactions with a user, as when plotting axes on a graph or producing a table of results.
 Other Frames within the FrameSet represent a library of alternative coordinate systems which a software user can select by making them current.
 
-**Further reading:** For a more complete description of FrameSets, see [Coordinate System Networks](crate::guide::framesets) and *Higher Level Operations on FrameSets*<!-- link: crate::guide::frameset_ops -->.
+**Further reading:** For a more complete description of FrameSets, see [Coordinate System Networks](crate::guide::framesets) and [Higher Level Operations on FrameSets](crate::guide::frameset_ops).
 
 ## Input/Output Facilities
 
