@@ -5,8 +5,11 @@
 //! checked and read back to an equal Moc, and the `MocFormat` a read leaves
 //! is checked; then a Moc made from a small Circle makes the same round
 //! trips. The checks added upstream are `zero_line_len_is_too_small`
-//! (`checkZeroLineLen`, `7ef81c01`), `dump_names_the_format`
-//! (`checkDumpFormat`, `7ef81c01`) and `negative_line_len_loads_as_zero`
+//! (`checkZeroLineLen`, `7ef81c01`),
+//! `dump_names_the_format_the_historical_way_round` (`checkDumpFormat`,
+//! `7ef81c01`, reversed with the explanatory comments at `f5fdca61`),
+//! `master_dumps_load_with_their_original_format` (`checkLoadMasterDump`,
+//! `f5fdca61`) and `negative_line_len_loads_as_zero`
 //! (`checkLoadNegativeLineLen`, `228a0310`).
 //!
 //! Divergence from C: the lines go to an in-memory sink and are read back
@@ -19,7 +22,7 @@ use ast_core::error::ErrorCode;
 use ast_core::frames::{SkyFrame, SkySystem};
 use ast_core::mappings::Mapping;
 use ast_core::regions::{CircleBuilder, CmpOperator, Moc};
-use ast_core::{AnyObject, Channel, MocChan, MocFormat, from_native_string};
+use ast_core::{AnyObject, Channel, MocChan, MocFormat, NativeChannel, from_native_string};
 
 /// Write `moc` through a MocChan with the given format, returning the lines.
 fn write(moc: &Moc, format: MocFormat) -> String {
@@ -101,17 +104,63 @@ fn zero_line_len_is_too_small() {
     );
 }
 
+/// A dump names the MocFormat with the reversed MocEnc names that older
+/// writers and readers use, says which format the name means when comments
+/// are on, writes no comment when they are off, and reads back with the
+/// format it was written from.
 #[test]
-fn dump_names_the_format() {
-    for (format, name) in [(MocFormat::String, "STRING"), (MocFormat::Json, "JSON")] {
-        let mut ch = MocChan::new();
-        ch.set_moc_format(format);
-        let text = native_dump(&AnyObject::MocChan(Box::new(ch))).unwrap();
-        assert!(text.contains(&format!("MocEnc = \"{name}\"")), "{text}");
-        let AnyObject::MocChan(back) = from_native_string(&text).unwrap() else {
-            panic!("expected a MocChan");
+fn dump_names_the_format_the_historical_way_round() {
+    for (format, name, encoded) in [
+        (MocFormat::String, "STRING", "JSON"),
+        (MocFormat::Json, "JSON", "STRING"),
+    ] {
+        for comments in [true, false] {
+            let mut ch = MocChan::new();
+            ch.set_moc_format(format);
+            let mut dump = NativeChannel::with_string_sink();
+            dump.config_mut().set_comment(comments);
+            dump.write(&AnyObject::MocChan(Box::new(ch))).unwrap();
+            let text = dump.into_string();
+            let want = format!("MocEnc = \"{encoded}\"");
+            let line = text
+                .lines()
+                .find(|line| line.contains(&want))
+                .unwrap_or_else(|| panic!("{name}: no {want} in\n{text}"));
+            if comments {
+                let explanation = format!("{encoded} means {name} (backwards compatibility)");
+                assert!(line.contains(&explanation), "{name}: {line}");
+            } else {
+                assert!(!text.contains('#'), "{name}:\n{text}");
+            }
+            let AnyObject::MocChan(back) = from_native_string(&text).unwrap() else {
+                panic!("expected a MocChan");
+            };
+            assert_eq!(back.moc_format(), format, "{name}");
+        }
+    }
+}
+
+/// Dumps written by C before the MocEnc names were explained load with the
+/// MocFormat they were written from. The fixtures were written by C master
+/// at `3dc9d49a`, so a round trip through this library alone could not show
+/// this.
+#[test]
+fn master_dumps_load_with_their_original_format() {
+    for (file, format) in [
+        ("backcompat_string.ast", MocFormat::String),
+        ("backcompat_json.ast", MocFormat::Json),
+    ] {
+        let dir = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/programs/testmocchan/"
+        );
+        let mut ch = NativeChannel::new();
+        ch.set_source_file(&format!("{dir}{file}"));
+        let Some(AnyObject::MocChan(back)) = ch.read().unwrap() else {
+            panic!("{file}: expected a MocChan");
         };
-        assert_eq!(back.moc_format(), format);
+        assert!(back.test_moc_format(), "{file}");
+        assert_eq!(back.moc_format(), format, "{file}");
     }
 }
 
@@ -132,7 +181,9 @@ fn dump_format_ignores_trailing_white_space() {
     let mut ch = MocChan::new();
     ch.set_moc_format(MocFormat::Json);
     let text = native_dump(&AnyObject::MocChan(Box::new(ch))).unwrap();
-    let text = text.replace("MocEnc = \"JSON\"", "MocEnc = \"json  \"");
+    // A JSON MocFormat is dumped under the historical name STRING.
+    let text = text.replace("MocEnc = \"STRING\"", "MocEnc = \"string  \"");
+    assert!(text.contains("MocEnc = \"string  \""), "{text}");
     let AnyObject::MocChan(back) = from_native_string(&text).unwrap() else {
         panic!("expected a MocChan");
     };

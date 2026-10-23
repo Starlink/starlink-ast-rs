@@ -8,8 +8,9 @@
  * and status of objects read from hand-written dumps holding values the
  * setters change, a lower-case MocEnc and an unknown one, missing FitsChan
  * card items, a legacy deletion flag, and unknown card types, encodings
- * and AltAxes values. It needs mocchan.c as fixed upstream at 228a0310,
- * and fitschan.c as fixed at c16f9b11.
+ * and AltAxes values. It needs mocchan.c as fixed upstream at 228a0310
+ * and with the reversed MocEnc names explained at f5fdca61, and
+ * fitschan.c as fixed at c16f9b11.
  *
  * Each case is also dumped with Full set to 1, which writes every unset
  * value (channel.c Use).

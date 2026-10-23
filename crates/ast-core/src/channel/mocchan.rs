@@ -8,6 +8,12 @@
 //! lines after a malformed one are left for the next read.
 //! Writing passes the text to the sink in lines of at most `MocLineLen`
 //! characters.
+//!
+//! A native dump of a MocChan names its `MocFormat` the reverse way round,
+//! `MocEnc = "JSON"` for the string serialization and `"STRING"` for JSON,
+//! and its comment says which format the name means. Every version of the
+//! C library writes and reads the names this way, so dumps and readers of
+//! every version agree, and this port keeps to it.
 
 // C: mocchan.c. A read goes through moc.c `astAddMocText`, here
 // `Moc::add_moc_text`, and a write through `astGetMocText`, here
@@ -406,11 +412,39 @@ impl Channel for MocChan {
 
 impl MocFormat {
     /// The name a dump gives it (mocchan.c `xencod`).
+    ///
+    /// The two format names are the reverse of what they say: a STRING
+    /// format is dumped as `JSON` and a JSON one as `STRING`. C has always
+    /// written and read them this way, the one reversal cancelling the
+    /// other, and keeps the order so that dumps and readers of every
+    /// version agree; this port does the same. The public MocFormat is
+    /// unaffected.
     fn dump_name(self) -> &'static str {
         match self {
             MocFormat::Unknown => "UNKNOWN",
-            MocFormat::String => "STRING",
-            MocFormat::Json => "JSON",
+            MocFormat::String => "JSON",
+            MocFormat::Json => "STRING",
+        }
+    }
+
+    /// The comment a dump gives the name: which format the reversed name
+    /// means (mocchan.c `Dump`).
+    fn dump_comment(self) -> &'static str {
+        match self {
+            MocFormat::Unknown => "Format",
+            MocFormat::String => "JSON means STRING (backwards compatibility)",
+            MocFormat::Json => "STRING means JSON (backwards compatibility)",
+        }
+    }
+
+    /// The format a dump's name means (mocchan.c `astLoadMocChan`), given
+    /// the name as C's `astChrMatch` would match it, or `None` for a name
+    /// that is neither.
+    fn from_dump_name(key: &str) -> Option<Self> {
+        match key {
+            "JSON" => Some(MocFormat::String),
+            "STRING" => Some(MocFormat::Json),
+            _ => None,
         }
     }
 }
@@ -428,7 +462,7 @@ impl Serializable for MocChan {
         self.base.write_parts(&mut node, false);
         // C writes MocEnc even when unset, as a comment.
         let name = self.moc_format.dump_name();
-        let comment = Some("Format".to_string());
+        let comment = Some(self.moc_format.dump_comment().to_string());
         if self.test_moc_format() {
             node.push_string("MocEnc", name, comment);
         } else {
@@ -445,8 +479,8 @@ impl Serializable for MocChan {
     }
 
     /// mocchan.c `astLoadMocChan`: each attribute through its setter. A
-    /// MocEnc other than `UNKNOWN` must name a format, ignoring case, or it
-    /// is AST__RDERR.
+    /// MocEnc other than `UNKNOWN` must be one of the reversed format names,
+    /// ignoring case, or it is AST__RDERR.
     fn from_node(node: &Node) -> AstResult<Self> {
         let mut ch = MocChan {
             base: ChannelBase::read_parts(node)?,
@@ -458,19 +492,15 @@ impl Serializable for MocChan {
         {
             // mocchan.c `FindString` matches with `astChrMatch`.
             let key = crate::mappings::helpers::chr_match_key(&name);
-            ch.moc_format = if key == "STRING" {
-                MocFormat::String
-            } else if key == "JSON" {
-                MocFormat::Json
-            } else {
-                return Err(AstError::new(
+            ch.moc_format = MocFormat::from_dump_name(&key).ok_or_else(|| {
+                AstError::new(
                     ErrorCode::Rderr,
                     format!(
                         "astRead(Channel): Illegal value '{name}' supplied for the MocChan \
                          component 'MocEnc'."
                     ),
-                ));
-            };
+                )
+            })?;
         }
         if let Some(len) = part.get_int_any_if_set("MocLLn") {
             ch.set_moc_line_len(len as i32);

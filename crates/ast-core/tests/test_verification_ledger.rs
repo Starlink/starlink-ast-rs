@@ -366,9 +366,11 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_serialisation.rs",
         "ROUND_TRIP_EXCLUDED",
-        1,
+        3,
         "one port gap: a Frame in a Mapping slot, which the Mapping loader has \
-         no case for. Gated by round_trip_exclusions_still_fail",
+         no case for; and two historical MocChan dumps whose MocEnc comment \
+         the writer replaces, kept out of upstream's roundtrip family for \
+         the same reason. Gated by round_trip_exclusions_still_fail",
     ),
     (
         "test_map_split_oracle.rs",

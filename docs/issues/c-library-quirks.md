@@ -2107,7 +2107,7 @@ Only a hand-written description can do this, since Dump never writes an index be
 Fixed on `u/timj/norm-unit` in 0d05fc29, which checks Current as Base is checked, with a `testframeset` case (Errors 41-43).
 The port treats a `Currnt` below 1 as unset, as the fixed C does (`frameset.rs` `from_node`), and `tests/test_frameset_current.rs` covers Current's set state against C.
 
-### RESOLVED (upstream 7ef81c01): a MocChan with a MocLineLen of zero or less crashes on writing, and its dump names the MocFormat the wrong way round
+### RESOLVED (upstream 7ef81c01; the reversed names kept at f5fdca61): a MocChan with a MocLineLen of zero or less crashes on writing, and its dump names the MocFormat the wrong way round
 
 C location: `moc.c` `astGetMocText` (`TOKEN_WRITE`) and `mocchan.c` `Dump` and `astLoadMocChan`.
 
@@ -2116,9 +2116,11 @@ With a buffer length of zero, the search for the last space or comma starts at t
 `astGetMocString` never passes zero, as it replaces it with 80.
 `Dump` and `astLoadMocChan` index the `MocEnc` names with `{ "JSON", "STRING" }`, whose order is the reverse of the format values, so a STRING MocFormat is dumped as `MocEnc = "JSON"` and read back as STRING; the two swaps cancel on a round trip.
 
-Fixed on `u/timj/norm-unit` in 7ef81c01: a zero buffer length is reported as AST__SMBUF and the names are indexed by format; `testmocchan` `checkZeroLineLen` (which segfaults without the fix) and `checkDumpFormat`.
-Dumps written by C before the fix name the format the wrong way round, and the fixed C reads them back with the other format.
-The port follows both; `tests/test_mocchan.rs` (`zero_line_len_is_too_small`, `dump_names_the_format`).
+Fixed on `u/timj/norm-unit` in 7ef81c01: a zero buffer length is reported as AST__SMBUF and the names were indexed by format; `testmocchan` `checkZeroLineLen` (which segfaults without the fix) and `checkDumpFormat`.
+Indexing the names by format was withdrawn in f5fdca61 (merged in #95): a dump written by the corrected library loads with the other format in every earlier deployment, while the reversal costs nothing on a round trip, so the reversed names are kept for compatibility and the dump's comment now says which format the name means (`JSON means STRING (backwards compatibility)`).
+`testmocchan` `checkDumpFormat` checks the reversed names with and without comments, and `checkLoadMasterDump` reads two dumps written by master at 3dc9d49a (`programs/testmocchan/backcompat_string.ast` and `backcompat_json.ast`) with their original formats; upstream keeps those two out of its byte-for-byte roundtrip family because their `# Format` comments are not what the current writer writes.
+The port mirrors the reversal deliberately (`mocchan.rs` `MocFormat::dump_name` and `from_dump_name`), so a sync that changes it upstream must change it here too.
+`tests/test_mocchan.rs` (`zero_line_len_is_too_small`, `dump_names_the_format_the_historical_way_round`, `master_dumps_load_with_their_original_format`) and `tests/test_channel_dump_oracle.rs` check it, and the two fixtures sit in `ROUND_TRIP_EXCLUDED` in `tests/test_serialisation.rs` for upstream's reason.
 
 ### RESOLVED (upstream 228a0310): a MocChan read from a dump keeps a negative MocLineLen
 

@@ -1179,10 +1179,11 @@ fn lines_numerically_equivalent(got: &str, want: &str) -> bool {
     true
 }
 
-/// Round-trip fixtures the Rust reader cannot load yet, each with the class that
-/// blocks it. Named here rather than passed over by a substring match on the
-/// error text, so the list shrinks only by deliberate edit and
-/// `round_trip_exclusions_still_fail` can check every entry still applies.
+/// Round-trip fixtures the Rust reader cannot load yet, or whose dump differs
+/// from the fixture by design, each with what blocks it. Named here rather
+/// than passed over by a substring match on the error text, so the list
+/// shrinks only by deliberate edit and `round_trip_exclusions_still_fail` can
+/// check every entry still applies.
 const ROUND_TRIP_EXCLUDED: &[(&str, &str)] = &[
     // A FrameSet holding a CmpFrame where a Mapping belongs. C accepts it
     // because astLoadFrameSet reads that slot with astRead and a Frame is a
@@ -1193,6 +1194,20 @@ const ROUND_TRIP_EXCLUDED: &[(&str, &str)] = &[
     (
         "frame_in_map_slot.ast",
         "a Frame in a Mapping slot, declined by decision",
+    ),
+    // MocChan dumps written by C master at 3dc9d49a, kept with their original
+    // `# Format` comments: the current writer explains the reversed MocEnc
+    // name instead, so the dump is not byte-identical. Upstream excludes
+    // them from its roundtrip family for the same reason
+    // (`ast_tester/CMakeLists.txt`); `test_mocchan.rs` checks they load
+    // with their original MocFormat.
+    (
+        "backcompat_string.ast",
+        "a historical MocChan dump whose MocEnc comment the writer replaces",
+    ),
+    (
+        "backcompat_json.ast",
+        "a historical MocChan dump whose MocEnc comment the writer replaces",
     ),
 ];
 
