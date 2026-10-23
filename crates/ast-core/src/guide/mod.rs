@@ -21,6 +21,7 @@
 //! - [Spectral Coordinate Systems (SpecFrames)](specframes)
 //! - [Time Systems (TimeFrames)](timeframes)
 //! - [Compound Frames (CmpFrames)](cmpframes)
+//! - [An Introduction to Coordinate System Conversions](conversions)
 //! - [Using AST from Cargo](cargo)
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
@@ -43,5 +44,6 @@ chapter!(skyframes);
 chapter!(specframes);
 chapter!(timeframes);
 chapter!(cmpframes);
+chapter!(conversions);
 
 chapter!(cargo);

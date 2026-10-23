@@ -151,13 +151,13 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 9246 | Compound Frames (CmpFrames) | guide::cmpframes |
 | 9260 | &nbsp;&nbsp;Creating a CmpFrame | guide::cmpframes#creating-a-cmpframe |
 | 9328 | &nbsp;&nbsp;The Attributes of a CmpFrame | guide::cmpframes#the-attributes-of-a-cmpframe |
-| 9385 | An Introduction to Coordinate System Conversions | pending |
-| 9395 | &nbsp;&nbsp;Converting between Celestial Coordinate Systems | pending |
-| 9706 | &nbsp;&nbsp;Converting between Spectral Coordinate Systems | pending |
-| 9882 | &nbsp;&nbsp;Converting between Time Coordinate Systems | pending |
-| 9887 | &nbsp;&nbsp;Handling SkyFrame Axis Permutations | pending |
-| 9991 | &nbsp;&nbsp;Converting Between Frames | pending |
-| 10125 | &nbsp;&nbsp;The Choice of Alignment System | pending |
+| 9385 | An Introduction to Coordinate System Conversions | guide::conversions |
+| 9395 | &nbsp;&nbsp;Converting between Celestial Coordinate Systems | guide::conversions#converting-between-celestial-coordinate-systems |
+| 9706 | &nbsp;&nbsp;Converting between Spectral Coordinate Systems | guide::conversions#converting-between-spectral-coordinate-systems |
+| 9882 | &nbsp;&nbsp;Converting between Time Coordinate Systems | guide::conversions#converting-between-time-coordinate-systems |
+| 9887 | &nbsp;&nbsp;Handling SkyFrame Axis Permutations | guide::conversions#handling-skyframe-axis-permutations |
+| 9991 | &nbsp;&nbsp;Converting Between Frames | guide::conversions#converting-between-frames |
+| 10125 | &nbsp;&nbsp;The Choice of Alignment System | guide::conversions#the-choice-of-alignment-system |
 | 10182 | Coordinate System Networks (FrameSets) | pending |
 | 10233 | &nbsp;&nbsp;The FrameSet Model | pending |
 | 10268 | &nbsp;&nbsp;Creating a FrameSet | pending |
@@ -282,3 +282,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | specframes | 8283–9094 | David Berry | |
 | timeframes | 9095–9245 | David Berry | |
 | cmpframes | 9246–9384 | David Berry | |
+| conversions | 9385–10181 | Rodney Warren-Smith | David Berry |

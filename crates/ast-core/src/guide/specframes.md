@@ -366,7 +366,7 @@ The one exception is that differences in SideBand are always taken into account,
 If an attempt is made to find the Mapping between a pair of DSBSpecFrames, then the SideBand attribute will be ignored if the AlignSideband attribute is `false` in either of the DSBSpecFrames.
 In other words, the Mapping will be determined as if both objects were simple SpecFrames rather than DSBSpecFrames.
 This also happens if an attempt is made to align a DSBSpecFrame with a simple SpecFrame.
-See *The Choice of Alignment System*<!-- link: crate::guide::conversions#the-choice-of-alignment-system --> for more about how simple SpecFrames align.
+See [The Choice of Alignment System](crate::guide::conversions#the-choice-of-alignment-system) for more about how simple SpecFrames align.
 
 If both DSBSpecFrames have AlignSideband set to `true`, the Mapping from one to the other is made of three parts in series:
 

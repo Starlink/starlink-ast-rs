@@ -58,7 +58,7 @@ You may change the System value at any time with [`set_system`](crate::frames::S
 The values supported are set out in the description of [`SkySystem`](crate::frames::SkySystem) and include a variety of equatorial coordinate systems, together with ecliptic and galactic coordinates.
 
 General spherical coordinates are supported by specifying [`SkySystem::Unknown`](crate::frames::SkySystem::Unknown).
-You should note, though, that no Mapping can be created to convert between "unknown" coordinates and any of the other celestial coordinate systems (see *An Introduction to Coordinate System Conversions*<!-- link: crate::guide::conversions -->).
+You should note, though, that no Mapping can be created to convert between "unknown" coordinates and any of the other celestial coordinate systems (see [An Introduction to Coordinate System Conversions](crate::guide::conversions)).
 
 ## Attributes which Qualify Celestial Coordinate Systems
 
