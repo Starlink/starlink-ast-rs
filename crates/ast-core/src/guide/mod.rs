@@ -10,13 +10,17 @@
 //!
 //! ## Contents
 //!
-//! 1. [Introduction](intro)
-//! 2. [Using AST from Cargo](cargo)
+//! - [Introduction](intro)
+//! - [Using AST from Cargo](cargo)
 
-pub mod intro {
-    #![doc = include_str!("intro.md")]
+/// Declares a chapter module whose documentation is `<name>.md`, as the build
+/// script writes it with its figures inlined.
+macro_rules! chapter {
+    ($name:ident) => {
+        #[doc = include_str!(concat!(env!("OUT_DIR"), "/guide/", stringify!($name), ".md"))]
+        pub mod $name {}
+    };
 }
 
-pub mod cargo {
-    #![doc = include_str!("cargo.md")]
-}
+chapter!(intro);
+chapter!(cargo);

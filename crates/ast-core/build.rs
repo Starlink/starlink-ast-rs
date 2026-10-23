@@ -11,6 +11,7 @@ fn main() {
     compile_wcslib(&vendor_dir);
     generate_error_codes(&vendor_dir);
     generate_wcsconv_tests(&manifest_dir);
+    generate_guide(&manifest_dir);
 }
 
 /// Read `tests/fixtures/wcsconv/cases.txt` and emit one
@@ -339,4 +340,60 @@ fn to_pascal_case(name: &str) -> String {
         result.push(c.to_ascii_lowercase());
     }
     result
+}
+
+/// Copy each user-guide chapter in `src/guide/` to `$OUT_DIR/guide/`, with
+/// every image link to `figures/<name>.svg` replaced by a `data:` URI holding
+/// the SVG, so the rendered guide carries its figures without any file being
+/// installed beside the docs. Each figure is its own image document, so the
+/// ids inside one SVG cannot collide with another's.
+fn generate_guide(manifest_dir: &Path) {
+    let guide = manifest_dir.join("src/guide");
+    println!("cargo::rerun-if-changed={}", guide.display());
+    let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join("guide");
+    fs::create_dir_all(&out).unwrap();
+    for entry in fs::read_dir(&guide).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_str().unwrap().to_string();
+        if !name.ends_with(".md") || name == "README.md" {
+            continue;
+        }
+        let text = fs::read_to_string(&path).unwrap();
+        let mut rendered = String::with_capacity(text.len());
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find("](figures/") {
+            let (before, after) = rest.split_at(at + 2);
+            let end = after.find(')').expect("unterminated figure link");
+            let figure = &after[..end];
+            let svg = guide.join(figure);
+            println!("cargo::rerun-if-changed={}", svg.display());
+            let bytes = fs::read(&svg).unwrap_or_else(|e| panic!("{}: {e}", svg.display()));
+            rendered.push_str(before);
+            rendered.push_str("data:image/svg+xml;base64,");
+            rendered.push_str(&base64(&bytes));
+            rest = &after[end..];
+        }
+        rendered.push_str(rest);
+        fs::write(out.join(&name), rendered).unwrap();
+    }
+}
+
+/// Standard base64 with padding.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, b)| n | (u32::from(*b) << (16 - 8 * i)));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }

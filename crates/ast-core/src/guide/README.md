@@ -18,6 +18,18 @@ perl -ne 'BEGIN{$s=1} if(/^[fc]\+ *$/){$s=/^c\+/?1:0; next} if(/^[fc]- *$/){$s=1
     reference/starlink-ast/sun_master.tex > crates/ast-core/src/guide/sections.tsv
 ```
 
+## Figures
+
+`figures/*.svg` are converted from the PDFs in `reference/starlink-ast/sun211_figures/` with Poppler's `pdftocairo`:
+
+```shell
+conda create -y -p <scratch>/poppler -c conda-forge poppler
+<scratch>/poppler/bin/pdftocairo -svg reference/starlink-ast/sun211_figures/<name>.pdf crates/ast-core/src/guide/figures/<name>.svg
+```
+
+A chapter refers to a figure with an ordinary Markdown image, `![caption](figures/<name>.svg)`.
+The build script copies each chapter into `$OUT_DIR/guide/` with every such link replaced by a `data:` URI holding the SVG, and the chapter's module documentation is that copy, so the figures travel inside the rendered pages.
+
 ## Sections
 
 Each row's fate is one of:
@@ -32,9 +44,9 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | line | title | fate |
 |---:|---|---|
 | 97 | Introduction | guide::intro |
-| 110 | &nbsp;&nbsp;What Problems Does AST Tackle? | merged into guide::intro |
-| 187 | &nbsp;&nbsp;Other Design Objectives | merged into guide::intro |
-| 277 | &nbsp;&nbsp;What Does "AST" Stand For? | merged into guide::intro |
+| 110 | &nbsp;&nbsp;What Problems Does AST Tackle? | guide::intro#what-problems-does-ast-tackle |
+| 187 | &nbsp;&nbsp;Other Design Objectives | guide::intro#other-design-objectives |
+| 277 | &nbsp;&nbsp;What Does "AST" Stand For? | guide::intro#what-does-ast-stand-for |
 | 286 | Overview of AST Concepts | pending |
 | 292 | &nbsp;&nbsp;Relationships Between Coordinate Systems | pending |
 | 334 | &nbsp;&nbsp;Mappings Available | pending |

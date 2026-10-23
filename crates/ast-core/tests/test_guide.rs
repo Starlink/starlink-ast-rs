@@ -27,13 +27,46 @@ fn chapter_files() -> BTreeSet<String> {
 
 #[test]
 fn every_chapter_file_is_declared() {
-    let module = read("mod.rs");
-    let declared: BTreeSet<String> = module
-        .split("include_str!(\"")
-        .skip(1)
-        .map(|rest| rest.split('"').next().unwrap().to_string())
+    let declared: BTreeSet<String> = declared_chapters()
+        .into_iter()
+        .map(|name| format!("{name}.md"))
         .collect();
     assert_eq!(chapter_files(), declared);
+}
+
+/// The chapters `guide/mod.rs` declares.
+fn declared_chapters() -> BTreeSet<String> {
+    read("mod.rs")
+        .lines()
+        .filter_map(|l| l.strip_prefix("chapter!(")?.strip_suffix(");"))
+        .map(str::to_string)
+        .collect()
+}
+
+/// A link to a chapter not yet written is kept as its text followed by
+/// `<!-- link: crate::guide::<chapter>... -->`; once that chapter is declared,
+/// the marker has to become a link.
+#[test]
+fn no_link_marker_names_a_declared_chapter() {
+    let declared = declared_chapters();
+    let mut stale = Vec::new();
+    for name in chapter_files() {
+        for (i, line) in read(&name).lines().enumerate() {
+            for marker in line.split("<!-- link: crate::guide::").skip(1) {
+                let chapter: String = marker
+                    .chars()
+                    .take_while(|c| c.is_ascii_lowercase() || *c == '_')
+                    .collect();
+                if declared.contains(&chapter) {
+                    stale.push(format!("{name}:{}: {chapter}", i + 1));
+                }
+            }
+        }
+    }
+    assert!(
+        stale.is_empty(),
+        "link markers to declared chapters: {stale:?}"
+    );
 }
 
 #[test]
