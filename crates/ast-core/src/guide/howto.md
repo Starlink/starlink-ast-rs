@@ -63,7 +63,7 @@ Some datasets which do not easily yield FITS header cards may require a differen
 The whole process can probably be encapsulated in a similar way for most data systems, whether they use FITS header cards or not.
 
 For more details about reading WCS information from datasets, see *Identifying Foreign Encodings on Input*<!-- link: crate::guide::foreign_fits#identifying-foreign-encodings-on-input --> and *Reading Foreign WCS Information from a FITS Header*<!-- link: crate::guide::foreign_fits#reading-foreign-wcs-information-from-a-fits-header -->.
-For a more general description of FitsChans and their use with FITS header cards, see *Storing AST Objects in FITS Headers*<!-- link: crate::guide::fitschans --> and *Using Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits -->.
+For a more general description of FitsChans and their use with FITS header cards, see [Storing AST Objects in FITS Headers](crate::guide::fitschans) and *Using Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits -->.
 For more details about FrameSets, see [Coordinate System Networks](crate::guide::framesets) and [Higher Level Operations on FrameSets](crate::guide::frameset_ops).
 
 ## … Validate WCS Information
@@ -584,7 +584,7 @@ if fitschan2.write(&wcsinfo2)? == 0 {
 # Ok::<(), ast_core::error::AstError>(())
 ```
 
-For details of how to modify the contents of the output FitsChan in other ways, such as by adding, over-writing or deleting header cards, see *Addressing Cards in a FitsChan*<!-- link: crate::guide::fitschans#addressing-cards-in-a-fitschan -->, *Adding Concatenated Cards to a FitsChan*<!-- link: crate::guide::fitschans#adding-concatenated-cards-to-a-fitschan -->, *Adding Individual Cards to a FitsChan*<!-- link: crate::guide::fitschans#adding-individual-cards-to-a-fitschan --> and *Finding and Changing Cards in a FitsChan*<!-- link: crate::guide::fitschans#finding-and-changing-cards-in-a-fitschan -->.
+For details of how to modify the contents of the output FitsChan in other ways, such as by adding, over-writing or deleting header cards, see [Addressing Cards in a FitsChan](crate::guide::fitschans#addressing-cards-in-a-fitschan), [Adding Concatenated Cards to a FitsChan](crate::guide::fitschans#adding-concatenated-cards-to-a-fitschan), [Adding Individual Cards to a FitsChan](crate::guide::fitschans#adding-individual-cards-to-a-fitschan) and [Finding and Changing Cards in a FitsChan](crate::guide::fitschans#finding-and-changing-cards-in-a-fitschan).
 
 Once you have assembled the output FITS cards, you may retrieve them from the FitsChan that contains them as follows:
 
@@ -605,6 +605,6 @@ For data systems that do not use FITS header cards, a different approach may be 
 The whole process can probably be encapsulated in a similar way for most data systems, whether they use FITS header cards or not.
 
 For an overview of how to propagate WCS information through data processing steps, see *Propagating WCS Information through Data Processing Steps*<!-- link: crate::guide::foreign_fits#propagating-wcs-information-through-data-processing-steps -->.
-For more information about writing WCS information to FitsChans, see *Writing Native Objects to a FitsChan*<!-- link: crate::guide::fitschans#writing-native-objects-to-a-fitschan --> and *Writing Foreign WCS Information to a FITS Header*<!-- link: crate::guide::foreign_fits#writing-foreign-wcs-information-to-a-fits-header -->.
-For information about the options for encoding WCS information in FITS header cards, see *The Native FITS Encoding*<!-- link: crate::guide::fitschans#the-native-fits-encoding -->, *The Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits#the-foreign-fits-encodings -->, and the [`Encoding`](crate::Encoding) type.
-For a complete understanding of FitsChans and their use with FITS header cards, you should read *Storing AST Objects in FITS Headers*<!-- link: crate::guide::fitschans --> and *Using Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits -->.
+For more information about writing WCS information to FitsChans, see [Writing Native Objects to a FitsChan](crate::guide::fitschans#writing-native-objects-to-a-fitschan) and *Writing Foreign WCS Information to a FITS Header*<!-- link: crate::guide::foreign_fits#writing-foreign-wcs-information-to-a-fits-header -->.
+For information about the options for encoding WCS information in FITS header cards, see [The Native FITS Encoding](crate::guide::fitschans#the-native-fits-encoding), *The Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits#the-foreign-fits-encodings -->, and the [`Encoding`](crate::Encoding) type.
+For a complete understanding of FitsChans and their use with FITS header cards, you should read [Storing AST Objects in FITS Headers](crate::guide::fitschans) and *Using Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits -->.

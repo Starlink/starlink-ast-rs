@@ -193,21 +193,21 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 12896 | &nbsp;&nbsp;Reading Objects from Files | guide::channels#reading-objects-from-files |
 | 13076 | &nbsp;&nbsp;Writing Objects to Files | guide::channels#writing-objects-to-files |
 | 13239 | &nbsp;&nbsp;Reading and Writing Objects to other Places | guide::channels#reading-and-writing-objects-to-other-places |
-| 13269 | Storing AST Objects in FITS Headers (FitsChans) | pending |
-| 13298 | &nbsp;&nbsp;The Native FITS Encoding | pending |
-| 13325 | &nbsp;&nbsp;The FitsChan Model | pending |
-| 13465 | &nbsp;&nbsp;Creating a FitsChan | pending |
-| 13521 | &nbsp;&nbsp;Addressing Cards in a FitsChan | pending |
-| 13638 | &nbsp;&nbsp;Writing Native Objects to a FitsChan | pending |
-| 13732 | &nbsp;&nbsp;Extracting Individual Cards from a FitsChan | pending |
-| 13815 | &nbsp;&nbsp;The Native FitsChan Output Format | pending |
-| 13910 | &nbsp;&nbsp;Adding Individual Cards to a FitsChan | pending |
-| 14011 | &nbsp;&nbsp;Adding Concatenated Cards to a FitsChan | pending |
-| 14064 | &nbsp;&nbsp;Reading Native Objects From a FitsChan | pending |
-| 14156 | &nbsp;&nbsp;Saving and Restoring Multiple Objects in a FitsChan | pending |
-| 14176 | &nbsp;&nbsp;Mixing Native Objects with Other FITS Cards | pending |
-| 14196 | &nbsp;&nbsp;Finding and Changing Cards in a FitsChan | pending |
-| 14359 | &nbsp;&nbsp;Source and Sink Functions for FitsChans | pending |
+| 13269 | Storing AST Objects in FITS Headers (FitsChans) | guide::fitschans |
+| 13298 | &nbsp;&nbsp;The Native FITS Encoding | guide::fitschans#the-native-fits-encoding |
+| 13325 | &nbsp;&nbsp;The FitsChan Model | guide::fitschans#the-fitschan-model |
+| 13465 | &nbsp;&nbsp;Creating a FitsChan | guide::fitschans#creating-a-fitschan |
+| 13521 | &nbsp;&nbsp;Addressing Cards in a FitsChan | guide::fitschans#addressing-cards-in-a-fitschan |
+| 13638 | &nbsp;&nbsp;Writing Native Objects to a FitsChan | guide::fitschans#writing-native-objects-to-a-fitschan |
+| 13732 | &nbsp;&nbsp;Extracting Individual Cards from a FitsChan | guide::fitschans#extracting-individual-cards-from-a-fitschan |
+| 13815 | &nbsp;&nbsp;The Native FitsChan Output Format | guide::fitschans#the-native-fitschan-output-format |
+| 13910 | &nbsp;&nbsp;Adding Individual Cards to a FitsChan | guide::fitschans#adding-individual-cards-to-a-fitschan |
+| 14011 | &nbsp;&nbsp;Adding Concatenated Cards to a FitsChan | guide::fitschans#adding-concatenated-cards-to-a-fitschan |
+| 14064 | &nbsp;&nbsp;Reading Native Objects From a FitsChan | guide::fitschans#reading-native-objects-from-a-fitschan |
+| 14156 | &nbsp;&nbsp;Saving and Restoring Multiple Objects in a FitsChan | guide::fitschans#saving-and-restoring-multiple-objects-in-a-fitschan |
+| 14176 | &nbsp;&nbsp;Mixing Native Objects with Other FITS Cards | guide::fitschans#mixing-native-objects-with-other-fits-cards |
+| 14196 | &nbsp;&nbsp;Finding and Changing Cards in a FitsChan | guide::fitschans#finding-and-changing-cards-in-a-fitschan |
+| 14359 | &nbsp;&nbsp;Source and Sink Functions for FitsChans | guide::fitschans#sources-and-sinks-for-fitschans |
 | 14475 | Using Foreign FITS Encodings | pending |
 | 14490 | &nbsp;&nbsp;The Foreign FITS Encodings | pending |
 | 14575 | &nbsp;&nbsp;Limitations of Foreign Encodings | pending |
@@ -286,3 +286,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | framesets | 10182–10913 | Rodney Warren-Smith | |
 | frameset_ops | 10914–12011 | Rodney Warren-Smith | |
 | channels | 12012–13268 | Rodney Warren-Smith | David Berry |
+| fitschans | 13269–14474 | Rodney Warren-Smith | David Berry |

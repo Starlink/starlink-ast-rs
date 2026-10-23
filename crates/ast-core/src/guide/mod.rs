@@ -25,6 +25,7 @@
 //! - [Coordinate System Networks (FrameSets)](framesets)
 //! - [Higher Level Operations on FrameSets](frameset_ops)
 //! - [Saving and Restoring Objects (Channels)](channels)
+//! - [Storing AST Objects in FITS Headers (FitsChans)](fitschans)
 //! - [Using AST from Cargo](cargo)
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
@@ -51,5 +52,6 @@ chapter!(conversions);
 chapter!(framesets);
 chapter!(frameset_ops);
 chapter!(channels);
+chapter!(fitschans);
 
 chapter!(cargo);

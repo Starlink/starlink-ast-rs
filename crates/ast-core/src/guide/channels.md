@@ -10,7 +10,7 @@ This means that Objects may need converting into a number of different external 
 In this section, we discuss the basic I/O facilities which support external representations based on a textual format referred to as the AST "native format".
 These are implemented using a new kind of Object — a Channel.
 We will examine later how to use another representation, based on the use of FITS headers, for storing Objects.
-This is implemented using a more specialized form of Channel called a FitsChan (*Storing AST Objects in FITS Headers*<!-- link: crate::guide::fitschans -->).
+This is implemented using a more specialized form of Channel called a FitsChan ([Storing AST Objects in FITS Headers](crate::guide::fitschans)).
 
 What every kind of Channel has in common is the [`Channel`](crate::Channel) trait.
 The basic Channel, which uses the native format, is a [`NativeChannel`](crate::NativeChannel).
