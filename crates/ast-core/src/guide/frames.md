@@ -5,7 +5,7 @@ Contrast this with a Mapping ([Inter-Relating Coordinate Systems](crate::guide::
 The two concepts are complementary and we will see how they work together in *Coordinate System Networks*<!-- link: crate::guide::framesets -->.
 
 In this section we will discuss only basic Frames, which represent Cartesian coordinate systems.
-More specialized types of Frame (*e.g.* the SkyFrame, which represents celestial coordinate systems, and the SpecFrame, which represents spectral coordinate systems) are covered later (*Celestial Coordinate Systems*<!-- link: crate::guide::skyframes --> and *Spectral Coordinate Systems*<!-- link: crate::guide::specframes -->) and, naturally, share the properties and behavior of the simple Frames discussed here.
+More specialized types of Frame (*e.g.* the SkyFrame, which represents celestial coordinate systems, and the SpecFrame, which represents spectral coordinate systems) are covered later ([Celestial Coordinate Systems](crate::guide::skyframes) and *Spectral Coordinate Systems*<!-- link: crate::guide::specframes -->) and, naturally, share the properties and behavior of the simple Frames discussed here.
 What every kind of Frame has in common is the [`Frame`](crate::frames::Frame) trait; a basic Frame is a [`BasicFrame`](crate::frames::BasicFrame).
 
 ## The Frame Model
@@ -224,7 +224,7 @@ You should also consider regularly using the [`norm`](crate::frames::Frame::norm
 
 The method [`norm`](crate::frames::Frame::norm) is provided to cope with the fact that some coordinate systems do not extend indefinitely in all directions.
 Some may have boundaries, outside which coordinates are meaningless, while others wrap around on themselves, so that after a certain distance you return to the beginning again (coordinate systems based on circles and spheres, for instance).
-A basic Frame has no such complications, but other more specialized Frames (such as SkyFrames, representing the celestial sphere — *Celestial Coordinate Systems*<!-- link: crate::guide::skyframes -->) do.
+A basic Frame has no such complications, but other more specialized Frames (such as SkyFrames, representing the celestial sphere — [Celestial Coordinate Systems](crate::guide::skyframes)) do.
 
 The role played by `norm` is to *normalize* any arbitrary set of coordinates by converting them into a set which is "within bounds", interpreted according to the particular Frame in question.
 For example, on the celestial sphere, a right ascension value of 24 hours or more can have a suitable multiple of 24 hours subtracted without affecting its meaning and `norm` would perform this task.
@@ -672,7 +672,7 @@ For this purpose, the following Domain names are reserved by AST and the use rec
   In general, additional information is required in order to convert from one to the other.
 - **SKY**:
   Identifies the domain which contains all equivalent celestial coordinate systems.
-  Because these are represented in AST by SkyFrames (*Celestial Coordinate Systems*<!-- link: crate::guide::skyframes -->), it should be no surprise that the default Domain value for a SkyFrame is SKY.
+  Because these are represented in AST by SkyFrames ([Celestial Coordinate Systems](crate::guide::skyframes)), it should be no surprise that the default Domain value for a SkyFrame is SKY.
   Since there is only one sky, you probably won't need to change this very often.
 - **SPECTRUM**:
   Identifies the domain used to describe positions within an electro-magnetic spectrum.

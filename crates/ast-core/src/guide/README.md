@@ -126,15 +126,15 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 7048 | &nbsp;&nbsp;The Domain Attribute | guide::frames#the-domain-attribute |
 | 7186 | &nbsp;&nbsp;Conventions for Domain Names | guide::frames#conventions-for-domain-names |
 | 7280 | &nbsp;&nbsp;The Unit Attribute | guide::frames#the-unit-attribute |
-| 7589 | Celestial Coordinate Systems (SkyFrames) | pending |
-| 7597 | &nbsp;&nbsp;The SkyFrame Model | pending |
-| 7640 | &nbsp;&nbsp;Creating a SkyFrame | pending |
-| 7676 | &nbsp;&nbsp;Specifying a Particular Celestial Coordinate System | pending |
-| 7720 | &nbsp;&nbsp;Attributes which Qualify Celestial Coordinate Systems | pending |
-| 7816 | &nbsp;&nbsp;Using Default SkyFrame Attributes | pending |
-| 7912 | &nbsp;&nbsp;Formatting Celestial Coordinates | pending |
-| 8023 | &nbsp;&nbsp;Reading Formatted Celestial Coordinates | pending |
-| 8255 | &nbsp;&nbsp;Representing Offsets from a Specified Sky Position | pending |
+| 7589 | Celestial Coordinate Systems (SkyFrames) | guide::skyframes |
+| 7597 | &nbsp;&nbsp;The SkyFrame Model | guide::skyframes#the-skyframe-model |
+| 7640 | &nbsp;&nbsp;Creating a SkyFrame | guide::skyframes#creating-a-skyframe |
+| 7676 | &nbsp;&nbsp;Specifying a Particular Celestial Coordinate System | guide::skyframes#specifying-a-particular-celestial-coordinate-system |
+| 7720 | &nbsp;&nbsp;Attributes which Qualify Celestial Coordinate Systems | guide::skyframes#attributes-which-qualify-celestial-coordinate-systems |
+| 7816 | &nbsp;&nbsp;Using Default SkyFrame Attributes | guide::skyframes#using-default-skyframe-attributes |
+| 7912 | &nbsp;&nbsp;Formatting Celestial Coordinates | guide::skyframes#formatting-celestial-coordinates |
+| 8023 | &nbsp;&nbsp;Reading Formatted Celestial Coordinates | guide::skyframes#reading-formatted-celestial-coordinates |
+| 8255 | &nbsp;&nbsp;Representing Offsets from a Specified Sky Position | guide::skyframes#representing-offsets-from-a-specified-sky-position |
 | 8283 | Spectral Coordinate Systems (SpecFrames) | pending |
 | 8290 | &nbsp;&nbsp;The SpecFrame Model | pending |
 | 8305 | &nbsp;&nbsp;Creating a SpecFrame | pending |
@@ -278,3 +278,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | mappings | 4387–5054 | Rodney Warren-Smith | |
 | cmpmaps | 5055–5564 | Rodney Warren-Smith | |
 | frames | 5565–7588 | Rodney Warren-Smith | David Berry |
+| skyframes | 7589–8282 | Rodney Warren-Smith | David Berry |
