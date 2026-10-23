@@ -163,13 +163,13 @@ fn a_frameset_member_keeps_its_cached_last() {
         icrs.set_epoch_mjd(e0 + de);
         let cvt = fs.convert_to(&mut icrs, &[]).unwrap().unwrap();
         let got = points(&cvt);
-        if got != want {
+        if !crate::common::c_values_eq(got.as_flattened(), want.as_flattened()) {
             failures.push(format!("{name}: got {got:?}, C gives {want:?}"));
         }
     }
     let cvt = icrs.convert_to(&mut fs, &[]).unwrap().unwrap();
     let got = points(&cvt);
-    if got != REVERSE {
+    if !crate::common::c_values_eq(got.as_flattened(), REVERSE.as_flattened()) {
         failures.push(format!("reverse: got {got:?}, C gives {REVERSE:?}"));
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
