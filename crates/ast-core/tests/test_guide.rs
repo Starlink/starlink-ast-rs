@@ -69,6 +69,68 @@ fn no_link_marker_names_a_declared_chapter() {
     );
 }
 
+/// The anchor rustdoc gives a Markdown heading: lower case, with each space
+/// made a `-` and anything but letters, digits, `-` and `_` dropped.
+fn anchor(heading: &str) -> String {
+    heading
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter_map(|c| match c {
+            ' ' => Some('-'),
+            c if c.is_alphanumeric() || c == '-' || c == '_' => Some(c),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The anchors of a chapter's headings, outside code blocks.
+fn anchors(chapter: &str) -> BTreeSet<String> {
+    let mut fenced = false;
+    let mut out = BTreeSet::new();
+    for line in read(&format!("{chapter}.md")).lines() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+        } else if !fenced && line.starts_with('#') {
+            out.insert(anchor(line.trim_start_matches('#')));
+        }
+    }
+    out
+}
+
+/// rustdoc checks the item an intra-doc link names but not its `#fragment`,
+/// so every fragment of a link to a guide chapter, or of a marker for one
+/// not yet written, has to name one of that chapter's headings once it exists.
+#[test]
+fn every_guide_fragment_names_a_heading() {
+    let declared = declared_chapters();
+    let mut bad = Vec::new();
+    for name in chapter_files() {
+        let this = name.trim_end_matches(".md");
+        for (i, line) in read(&name).lines().enumerate() {
+            let mut targets: Vec<(String, String)> = line
+                .split("crate::guide::")
+                .skip(1)
+                .filter_map(|rest| {
+                    let end = rest.find([')', ' ']).unwrap_or(rest.len());
+                    let (chapter, frag) = rest[..end].split_once('#')?;
+                    Some((chapter.to_string(), frag.to_string()))
+                })
+                .collect();
+            targets.extend(line.split("](#").skip(1).map(|rest| {
+                let end = rest.find(')').unwrap_or(rest.len());
+                (this.to_string(), rest[..end].to_string())
+            }));
+            for (chapter, frag) in targets {
+                if declared.contains(&chapter) && !anchors(&chapter).contains(&frag) {
+                    bad.push(format!("{name}:{}: {chapter}#{frag}", i + 1));
+                }
+            }
+        }
+    }
+    assert!(bad.is_empty(), "fragments naming no heading: {bad:?}");
+}
+
 #[test]
 fn guide_mentions_no_unported_class() {
     const UNPORTED: [&str; 5] = ["XmlChan", "StcsChan", "YamlChan", "Plot", "Plot3D"];
@@ -130,6 +192,24 @@ fn readme_records_every_section() {
         .filter(|(_, f)| !fate_is_well_formed(f))
         .collect();
     assert!(bad.is_empty(), "malformed fates: {bad:?}");
+    let declared = declared_chapters();
+    let unknown: Vec<_> = rows
+        .iter()
+        .filter_map(|(line, fate)| {
+            let target = fate.strip_prefix("merged into ").unwrap_or(fate);
+            let (chapter, frag) = match target.strip_prefix("guide::")?.split_once('#') {
+                Some((c, f)) => (c, Some(f)),
+                None => (target.strip_prefix("guide::")?, None),
+            };
+            let known =
+                declared.contains(chapter) && frag.is_none_or(|f| anchors(chapter).contains(f));
+            (!known).then_some((line, fate))
+        })
+        .collect();
+    assert!(
+        unknown.is_empty(),
+        "fates naming no chapter or heading: {unknown:?}"
+    );
     let pending = rows.values().filter(|f| *f == "pending").count();
     assert_eq!(
         pending, GUIDE_SECTIONS_PENDING,
