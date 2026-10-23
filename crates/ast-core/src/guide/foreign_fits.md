@@ -28,7 +28,7 @@ AST supports several foreign encodings, which may be selected by setting the Enc
   The conventions used are described in a series of papers by E.W. Greisen, M. Calabretta, *et al.*, often referred to as the "FITS-WCS papers".
   They are described at <http://fits.gsfc.nasa.gov/fits_wcs.html>.
   This encoding should be understood by any FITS-WCS compliant software.
-  For details of the coverage of these conventions provided by the FitsChan class, see *FITS-WCS Coverage*<!-- link: crate::guide::fits_wcs -->.
+  For details of the coverage of these conventions provided by the FitsChan class, see [FITS-WCS Coverage](crate::guide::fits_wcs).
 - [`Encoding::FitsIraf`](crate::Encoding::FitsIraf):
   This encoding is based on the conventions described in the document "World Coordinate Systems Representations Within the FITS Format" by R.J. Hanisch and D.G. Wells, 1988.
   It is employed by the IRAF data analysis facility, so its use will facilitate data exchange with IRAF.

@@ -28,6 +28,7 @@
 //! - [Storing AST Objects in FITS Headers (FitsChans)](fitschans)
 //! - [Using Foreign FITS Encodings](foreign_fits)
 //! - [Creating Your Own Private Mappings (IntraMaps)](intramaps)
+//! - [FITS-WCS Coverage](fits_wcs)
 //! - [Using AST from Cargo](cargo)
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
@@ -57,5 +58,6 @@ chapter!(channels);
 chapter!(fitschans);
 chapter!(foreign_fits);
 chapter!(intramaps);
+chapter!(fits_wcs);
 
 chapter!(cargo);
