@@ -103,14 +103,14 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 4679 | &nbsp;&nbsp;Handling Missing (Bad) Coordinate Values | guide::mappings#handling-missing-bad-coordinate-values |
 | 4768 | &nbsp;&nbsp;Example — the UnitMap | guide::mappings#example--the-unitmap |
 | 4817 | &nbsp;&nbsp;Example — the PermMap | guide::mappings#example--the-permmap |
-| 5055 | Compound Mappings (CmpMaps) | pending |
-| 5066 | &nbsp;&nbsp;Combining Mappings in Series | pending |
-| 5161 | &nbsp;&nbsp;Combining Mappings in Parallel | pending |
-| 5217 | &nbsp;&nbsp;The Component Mappings | pending |
-| 5260 | &nbsp;&nbsp;Creating More Complex Mappings | pending |
-| 5318 | &nbsp;&nbsp;Example — Transforming Between Two Calibrated Images | pending |
-| 5390 | &nbsp;&nbsp;Over-Complex Compound Mappings | pending |
-| 5438 | &nbsp;&nbsp;Simplifying Compound Mappings | pending |
+| 5055 | Compound Mappings (CmpMaps) | guide::cmpmaps |
+| 5066 | &nbsp;&nbsp;Combining Mappings in Series | guide::cmpmaps#combining-mappings-in-series |
+| 5161 | &nbsp;&nbsp;Combining Mappings in Parallel | guide::cmpmaps#combining-mappings-in-parallel |
+| 5217 | &nbsp;&nbsp;The Component Mappings | guide::cmpmaps#the-component-mappings |
+| 5260 | &nbsp;&nbsp;Creating More Complex Mappings | guide::cmpmaps#creating-more-complex-mappings |
+| 5318 | &nbsp;&nbsp;Example — Transforming Between Two Calibrated Images | guide::cmpmaps#example--transforming-between-two-calibrated-images |
+| 5390 | &nbsp;&nbsp;Over-Complex Compound Mappings | guide::cmpmaps#over-complex-compound-mappings |
+| 5438 | &nbsp;&nbsp;Simplifying Compound Mappings | guide::cmpmaps#simplifying-compound-mappings |
 | 5565 | Representing Coordinate Systems (Frames) | pending |
 | 5581 | &nbsp;&nbsp;The Frame Model | pending |
 | 5602 | &nbsp;&nbsp;Creating a Frame | pending |
@@ -276,3 +276,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | howto | 750–2137 | Rodney Warren-Smith | David Berry |
 | objects | 2587–4386 | Rodney Warren-Smith | |
 | mappings | 4387–5054 | Rodney Warren-Smith | |
+| cmpmaps | 5055–5564 | Rodney Warren-Smith | |

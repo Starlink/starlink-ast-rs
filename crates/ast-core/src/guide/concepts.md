@@ -82,7 +82,7 @@ This nesting of CmpMaps can be repeated indefinitely, so that complex Mappings m
 
 This gives AST great flexibility in the coordinate transformations it can describe.
 
-**Further reading:** For a more complete description of CmpMaps, see *Compound Mappings*<!-- link: crate::guide::cmpmaps -->.
+**Further reading:** For a more complete description of CmpMaps, see [Compound Mappings](crate::guide::cmpmaps).
 
 ## Representing Coordinate Systems
 

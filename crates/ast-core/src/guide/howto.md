@@ -468,7 +468,7 @@ let newmap = Box::new(matrixmap).then(Box::new(winmap))?;
 
 You might, of course, create any other form of Mapping depending on the type of geometrical transformation involved.
 For an overview of the Mappings provided by AST, see [Mappings Available](crate::guide::concepts#mappings-available), and for a description of the capabilities of each kind of Mapping, see its own documentation.
-For an overview of how individual Mappings may be combined, see [Compound Mappings](crate::guide::concepts#compound-mappings) (*Compound Mappings*<!-- link: crate::guide::cmpmaps --> gives more details).
+For an overview of how individual Mappings may be combined, see [Compound Mappings](crate::guide::concepts#compound-mappings) ([Compound Mappings](crate::guide::cmpmaps) gives more details).
 
 Assuming you have obtained a WCS calibration for your original image in the form of a FrameSet, `wcsinfo1` ([… Read a WCS Calibration from a Dataset](#-read-a-wcs-calibration-from-a-dataset)), the Mapping created above may be used to produce a calibration for the new image as follows:
 
