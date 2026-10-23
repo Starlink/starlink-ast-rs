@@ -965,10 +965,10 @@ trait T {
         // A component must match whole: `list.rs` is not a suffix of
         // `pointlist.rs`.
         assert_eq!(resolve_source(root, "no_such_file.rs"), Resolution::Missing);
-        // Seventeen files are named `mod.rs`, and one leading component is
+        // Eighteen files are named `mod.rs`, and one leading component is
         // enough for each of them however deep it sits.
         match resolve_source(root, "mod.rs") {
-            Resolution::Ambiguous(paths) => assert_eq!(paths.len(), 17, "{paths:?}"),
+            Resolution::Ambiguous(paths) => assert_eq!(paths.len(), 18, "{paths:?}"),
             other => panic!("expected Ambiguous, got {other:?}"),
         }
         match resolve_source(root, "mathmap/mod.rs") {
