@@ -16,13 +16,31 @@ fn read(name: &str) -> String {
     std::fs::read_to_string(guide_dir().join(name)).unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 
-/// The guide's chapter files: every `*.md` but the README.
+/// The guide's chapter files: every `*.md` but the README and the contents
+/// list, which is shared by the guide's page and the crate's landing page.
 fn chapter_files() -> BTreeSet<String> {
     std::fs::read_dir(guide_dir())
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
-        .filter(|n| n.ends_with(".md") && n != "README.md")
+        .filter(|n| n.ends_with(".md") && n != "README.md" && n != "contents.md")
         .collect()
+}
+
+/// The contents list names each declared chapter once, in the order
+/// `guide/mod.rs` declares them.
+#[test]
+fn contents_lists_every_chapter_in_order() {
+    let listed: Vec<String> = read("contents.md")
+        .lines()
+        .filter_map(|l| l.split("](crate::guide::").nth(1)?.strip_suffix(')'))
+        .map(str::to_string)
+        .collect();
+    let declared: Vec<String> = read("mod.rs")
+        .lines()
+        .filter_map(|l| l.strip_prefix("chapter!(")?.strip_suffix(");"))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(listed, declared);
 }
 
 #[test]

@@ -9,27 +9,7 @@
 //! recorded in `README.md` beside these files.
 //!
 //! ## Contents
-//!
-//! - [Introduction](intro)
-//! - [Overview of AST Concepts](concepts)
-//! - [How To…](howto)
-//! - [An AST Object Primer](objects)
-//! - [Inter-Relating Coordinate Systems (Mappings)](mappings)
-//! - [Compound Mappings (CmpMaps)](cmpmaps)
-//! - [Representing Coordinate Systems (Frames)](frames)
-//! - [Celestial Coordinate Systems (SkyFrames)](skyframes)
-//! - [Spectral Coordinate Systems (SpecFrames)](specframes)
-//! - [Time Systems (TimeFrames)](timeframes)
-//! - [Compound Frames (CmpFrames)](cmpframes)
-//! - [An Introduction to Coordinate System Conversions](conversions)
-//! - [Coordinate System Networks (FrameSets)](framesets)
-//! - [Higher Level Operations on FrameSets](frameset_ops)
-//! - [Saving and Restoring Objects (Channels)](channels)
-//! - [Storing AST Objects in FITS Headers (FitsChans)](fitschans)
-//! - [Using Foreign FITS Encodings](foreign_fits)
-//! - [Creating Your Own Private Mappings (IntraMaps)](intramaps)
-//! - [FITS-WCS Coverage](fits_wcs)
-//! - [Using AST from Cargo](cargo)
+#![doc = include_str!("contents.md")]
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
 /// script writes it with its figures inlined.

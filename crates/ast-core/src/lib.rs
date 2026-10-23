@@ -14,6 +14,10 @@
 //! FrameSets and FITS headers.
 //! The documentation of each module and item below is the reference for the
 //! API.
+//!
+//! ## The guide's chapters
+//!
+#![doc = include_str!("guide/contents.md")]
 
 pub mod channel;
 pub mod constants;
