@@ -27,6 +27,7 @@
 //! - [Saving and Restoring Objects (Channels)](channels)
 //! - [Storing AST Objects in FITS Headers (FitsChans)](fitschans)
 //! - [Using Foreign FITS Encodings](foreign_fits)
+//! - [Creating Your Own Private Mappings (IntraMaps)](intramaps)
 //! - [Using AST from Cargo](cargo)
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
@@ -55,5 +56,6 @@ chapter!(frameset_ops);
 chapter!(channels);
 chapter!(fitschans);
 chapter!(foreign_fits);
+chapter!(intramaps);
 
 chapter!(cargo);

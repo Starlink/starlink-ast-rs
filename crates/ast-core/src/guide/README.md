@@ -219,19 +219,19 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 15289 | Storing AST Objects as XML (XmlChan) | dropped: XmlChan is not ported |
 | 15402 | &nbsp;&nbsp;Reading IVOA Space-Time-Coordinates XML (STC-X) Descriptions | dropped: XmlChan is not ported |
 | 15424 | Reading and writing STC-S descriptions (StcsChans) | dropped: StcsChan is not ported |
-| 15438 | Creating Your Own Private Mappings (IntraMaps) | pending |
-| 15440 | &nbsp;&nbsp;The Need for Extensibility | pending |
-| 15467 | &nbsp;&nbsp;The IntraMap Model | pending |
-| 15497 | &nbsp;&nbsp;Limitations of IntraMaps | pending |
-| 15571 | &nbsp;&nbsp;Writing a Transformation Function | pending |
-| 15773 | &nbsp;&nbsp;Registering a Transformation Function | pending |
-| 15937 | &nbsp;&nbsp;Creating an IntraMap | pending |
-| 16032 | &nbsp;&nbsp;Restricted Implementations of Transformation Functions | pending |
-| 16149 | &nbsp;&nbsp;Variable Numbers of Coordinates | pending |
-| 16263 | &nbsp;&nbsp;Adapting a Transformation Function to Individual IntraMaps | pending |
-| 16351 | &nbsp;&nbsp;Simplifying IntraMaps | pending |
-| 16598 | &nbsp;&nbsp;Writing and Reading IntraMaps | pending |
-| 16674 | &nbsp;&nbsp;Managing Transformation Functions in Libraries | pending |
+| 15438 | Creating Your Own Private Mappings (IntraMaps) | guide::intramaps |
+| 15440 | &nbsp;&nbsp;The Need for Extensibility | guide::intramaps#the-need-for-extensibility |
+| 15467 | &nbsp;&nbsp;The IntraMap Model | guide::intramaps#the-intramap-model |
+| 15497 | &nbsp;&nbsp;Limitations of IntraMaps | guide::intramaps#limitations-of-intramaps |
+| 15571 | &nbsp;&nbsp;Writing a Transformation Function | guide::intramaps#writing-a-transformation |
+| 15773 | &nbsp;&nbsp;Registering a Transformation Function | merged into guide::intramaps#writing-a-transformation |
+| 15937 | &nbsp;&nbsp;Creating an IntraMap | guide::intramaps#creating-an-intramap |
+| 16032 | &nbsp;&nbsp;Restricted Implementations of Transformation Functions | guide::intramaps#restricted-implementations-of-transformations |
+| 16149 | &nbsp;&nbsp;Variable Numbers of Coordinates | guide::intramaps#variable-numbers-of-coordinates |
+| 16263 | &nbsp;&nbsp;Adapting a Transformation Function to Individual IntraMaps | guide::intramaps#adapting-a-transformation-to-individual-intramaps |
+| 16351 | &nbsp;&nbsp;Simplifying IntraMaps | guide::intramaps#simplifying-intramaps |
+| 16598 | &nbsp;&nbsp;Writing and Reading IntraMaps | guide::intramaps#writing-and-reading-intramaps |
+| 16674 | &nbsp;&nbsp;Managing Transformation Functions in Libraries | guide::intramaps#managing-transformations-in-libraries |
 | 16797 | Producing Graphical Output (Plots) | dropped: Plot is not ported |
 | 16805 | &nbsp;&nbsp;The Plot Model | dropped: Plot is not ported |
 | 16848 | &nbsp;&nbsp;Plotting Symbols | dropped: Plot is not ported |
@@ -288,3 +288,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | channels | 12012–13268 | Rodney Warren-Smith | David Berry |
 | fitschans | 13269–14474 | Rodney Warren-Smith | David Berry |
 | foreign_fits | 14475–15288 | Rodney Warren-Smith | David Berry |
+| intramaps | 15438–16796 | Rodney Warren-Smith | |
