@@ -106,6 +106,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A FitsChan write gives `FsetToStore` its method and class names in the wrong order](#a-fitschan-write-gives-fsettostore-its-method-and-class-names-in-the-wrong-order)
 - [`GetCDMatrix` puts back the card current before the source was read](#getcdmatrix-puts-back-the-card-current-before-the-source-was-read)
 - [`WriteData` never refuses a SinkFile that is the SourceFile in use](#writedata-never-refuses-a-sinkfile-that-is-the-sourcefile-in-use)
+- [SUN/211 shows examples and output that the current library does not produce](#sun211-shows-examples-and-output-that-the-current-library-does-not-produce)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1558,6 +1559,29 @@ Consequence: a Channel that reads and writes the same file truncates it when it 
 
 The port mirrors it: `ChannelBase::write_line` makes no check, and `ChannelBase::read_line` refuses a SourceFile the SinkFile has open.
 A C fix: test `this->fd_in` in `WriteData` and compare the names there.
+
+### SUN/211 shows examples and output that the current library does not produce
+
+C location: `sun_master.tex` (SUN/211 211.34), at the lines given below; found while porting it into `ast_core::guide`.
+
+Each item was checked against the C library built from the same submodule commit (`build-ast`), and the port agrees with C in every case, so these are errors in the document, not in either library.
+The guide shows what the library does.
+
+- **Conversion and Report tables** (lines 1384-1393 and 9669-9678, and the permuted copy at 9955-9964): `(2:06:03.0, 34:22:39) --> (42.1087, 20.2717)` and the rows after it differ from the current output, `(42.1086, 20.2718)`, in the fourth decimal; they come from an older version of the library.
+  The How To copy (line 1384) is also shown as the output of a pixel-to-sky FrameSet, when it is the FK4-to-ecliptic conversion of the Conversions chapter.
+- **Unit side effects** (line 7582): changing a Unit from "Hz" to "log(Hz)" is said to give Label and Symbol "log(Frequency)" and "Log(nu)"; the library gives "log( Frequency )" and "log( nu )".
+- **SkyFrame format specifier table** (lines 7957-7968): the "Example Formatted Value" column formats several different values (219.123 for `d.3` but 219:05:42 for `dms`, 15:44:13.8 for `hms.1` but +06h10m44s for `+zlhms`), so it cannot be reproduced; the guide formats one value, 219.0951°, with every specifier.
+- **CmpFrame axis permutation** (lines 9307-9310): `perm[] = (0, 2, 1)` is 0-based, but `astPermAxes` takes 1-based axes, and C rejects it ("Each axis index should lie in the range 1 to 3"); it should be `(1, 3, 2)`.
+- **Native FitsChan output** (lines 13822-13840): the cards are listed in an older order, and the blank card the library writes before the first `COMMENT AST` card is missing.
+- **Long strings given to `astPutFits`** (line 13722): said to be "simply truncated"; C stores the card, and `astFindFits` then reports "Cannot encode string ... into a FITS header card".
+- **Foreign encodings** (line 14498): "six foreign encodings" omits FITS-CLASS, which the library supports.
+- **Write fallback** (line 15204): the example's first step sets `Encoding=FITS-IRAF`, but the text after it says the first step tries the FITS-WCS encoding.
+- **`-SIP` write** (lines 18614-18619): says a write of a FrameSet with SIP distortion fails unless the distortion is insignificant; with the SipOK attribute, which defaults to 1, the library writes SIP keywords when the Mapping can be arranged as SIP needs.
+
+Consequence: documentation only; a reader who runs the examples gets output that differs from the guide, or, for the permutation, an error.
+
+The port's guide (`crates/ast-core/src/guide/`) uses the current output, the 1-based permutation, the FITS-WCS first step and the SipOK behavior.
+A C fix: regenerate the output blocks from the current library and correct the items above in `sun_master.tex`.
 
 ## Addressed here, and not going upstream
 
