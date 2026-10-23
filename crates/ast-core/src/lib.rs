@@ -1,6 +1,19 @@
 #![warn(missing_docs)]
 
 //! Starlink AST — World Coordinate Systems library.
+//!
+//! AST describes coordinate systems and the relationships between them:
+//! celestial, spectral, time and other coordinates, the Mappings that
+//! convert between them, and the FITS headers and other formats that store
+//! them.
+//!
+//! **New to AST? Start with [the user guide](guide).**
+//! It explains the library's concepts and how its parts fit together, with
+//! worked examples, from an [overview](guide::concepts) and quick
+//! [How To… recipes](guide::howto) to full chapters on Mappings, Frames,
+//! FrameSets and FITS headers.
+//! The documentation of each module and item below is the reference for the
+//! API.
 
 pub mod channel;
 pub mod constants;
