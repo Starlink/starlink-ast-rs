@@ -143,11 +143,11 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 8451 | &nbsp;&nbsp;Using Default SpecFrame Attributes | guide::specframes#using-default-specframe-attributes |
 | 8576 | &nbsp;&nbsp;Creating Spectral Cubes | guide::specframes#creating-spectral-cubes |
 | 8651 | &nbsp;&nbsp;Handling Dual-Sideband Spectra | guide::specframes#handling-dual-sideband-spectra |
-| 9095 | Time Systems (TimeFrames) | pending |
-| 9101 | &nbsp;&nbsp;The TimeFrame Model | pending |
-| 9121 | &nbsp;&nbsp;Creating a TimeFrame | pending |
-| 9157 | &nbsp;&nbsp;Specifying a Particular Time System | pending |
-| 9191 | &nbsp;&nbsp;Attributes which Qualify Time Coordinate Systems | pending |
+| 9095 | Time Systems (TimeFrames) | guide::timeframes |
+| 9101 | &nbsp;&nbsp;The TimeFrame Model | guide::timeframes#the-timeframe-model |
+| 9121 | &nbsp;&nbsp;Creating a TimeFrame | guide::timeframes#creating-a-timeframe |
+| 9157 | &nbsp;&nbsp;Specifying a Particular Time System | guide::timeframes#specifying-a-particular-time-system |
+| 9191 | &nbsp;&nbsp;Attributes which Qualify Time Coordinate Systems | guide::timeframes#attributes-which-qualify-time-coordinate-systems |
 | 9246 | Compound Frames (CmpFrames) | pending |
 | 9260 | &nbsp;&nbsp;Creating a CmpFrame | pending |
 | 9328 | &nbsp;&nbsp;The Attributes of a CmpFrame | pending |
@@ -280,3 +280,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | frames | 5565–7588 | Rodney Warren-Smith | David Berry |
 | skyframes | 7589–8282 | Rodney Warren-Smith | David Berry |
 | specframes | 8283–9094 | David Berry | |
+| timeframes | 9095–9245 | David Berry | |
