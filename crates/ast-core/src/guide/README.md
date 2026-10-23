@@ -111,21 +111,21 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 5318 | &nbsp;&nbsp;Example — Transforming Between Two Calibrated Images | guide::cmpmaps#example--transforming-between-two-calibrated-images |
 | 5390 | &nbsp;&nbsp;Over-Complex Compound Mappings | guide::cmpmaps#over-complex-compound-mappings |
 | 5438 | &nbsp;&nbsp;Simplifying Compound Mappings | guide::cmpmaps#simplifying-compound-mappings |
-| 5565 | Representing Coordinate Systems (Frames) | pending |
-| 5581 | &nbsp;&nbsp;The Frame Model | pending |
-| 5602 | &nbsp;&nbsp;Creating a Frame | pending |
-| 5642 | &nbsp;&nbsp;Using a Frame as a Mapping | pending |
-| 5708 | &nbsp;&nbsp;Frame Axis Attributes | pending |
-| 5834 | &nbsp;&nbsp;Frame Attributes | pending |
-| 5935 | &nbsp;&nbsp;Formatting Axis Values | pending |
-| 6084 | &nbsp;&nbsp;Normalising Frame Coordinates | pending |
-| 6178 | &nbsp;&nbsp;Reading Formatted Axis Values | pending |
-| 6610 | &nbsp;&nbsp;Permuting Frame Axes | pending |
-| 6665 | &nbsp;&nbsp;Selecting Frame Axes | pending |
-| 6806 | &nbsp;&nbsp;Calculating Distances, Angles and Offsets | pending |
-| 7048 | &nbsp;&nbsp;The Domain Attribute | pending |
-| 7186 | &nbsp;&nbsp;Conventions for Domain Names | pending |
-| 7280 | &nbsp;&nbsp;The Unit Attribute | pending |
+| 5565 | Representing Coordinate Systems (Frames) | guide::frames |
+| 5581 | &nbsp;&nbsp;The Frame Model | guide::frames#the-frame-model |
+| 5602 | &nbsp;&nbsp;Creating a Frame | guide::frames#creating-a-frame |
+| 5642 | &nbsp;&nbsp;Using a Frame as a Mapping | guide::frames#using-a-frame-as-a-mapping |
+| 5708 | &nbsp;&nbsp;Frame Axis Attributes | guide::frames#frame-axis-attributes |
+| 5834 | &nbsp;&nbsp;Frame Attributes | guide::frames#frame-attributes |
+| 5935 | &nbsp;&nbsp;Formatting Axis Values | guide::frames#formatting-axis-values |
+| 6084 | &nbsp;&nbsp;Normalising Frame Coordinates | guide::frames#normalizing-frame-coordinates |
+| 6178 | &nbsp;&nbsp;Reading Formatted Axis Values | guide::frames#reading-formatted-axis-values |
+| 6610 | &nbsp;&nbsp;Permuting Frame Axes | guide::frames#permuting-frame-axes |
+| 6665 | &nbsp;&nbsp;Selecting Frame Axes | guide::frames#selecting-frame-axes |
+| 6806 | &nbsp;&nbsp;Calculating Distances, Angles and Offsets | guide::frames#calculating-distances-angles-and-offsets |
+| 7048 | &nbsp;&nbsp;The Domain Attribute | guide::frames#the-domain-attribute |
+| 7186 | &nbsp;&nbsp;Conventions for Domain Names | guide::frames#conventions-for-domain-names |
+| 7280 | &nbsp;&nbsp;The Unit Attribute | guide::frames#the-unit-attribute |
 | 7589 | Celestial Coordinate Systems (SkyFrames) | pending |
 | 7597 | &nbsp;&nbsp;The SkyFrame Model | pending |
 | 7640 | &nbsp;&nbsp;Creating a SkyFrame | pending |
@@ -277,3 +277,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | objects | 2587–4386 | Rodney Warren-Smith | |
 | mappings | 4387–5054 | Rodney Warren-Smith | |
 | cmpmaps | 5055–5564 | Rodney Warren-Smith | |
+| frames | 5565–7588 | Rodney Warren-Smith | David Berry |

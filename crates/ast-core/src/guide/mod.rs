@@ -16,6 +16,7 @@
 //! - [An AST Object Primer](objects)
 //! - [Inter-Relating Coordinate Systems (Mappings)](mappings)
 //! - [Compound Mappings (CmpMaps)](cmpmaps)
+//! - [Representing Coordinate Systems (Frames)](frames)
 //! - [Using AST from Cargo](cargo)
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
@@ -33,5 +34,6 @@ chapter!(howto);
 chapter!(objects);
 chapter!(mappings);
 chapter!(cmpmaps);
+chapter!(frames);
 
 chapter!(cargo);

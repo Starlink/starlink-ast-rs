@@ -234,8 +234,8 @@ Here, the first argument to [`format`](crate::frames::Frame::format) is the axis
 With celestial coordinates, this will usually result in sexagesimal notation, such as "12:34:56.7".
 However, the same method may be applied to any type of coordinates and appropriate formatting will be employed.
 
-For more information about formatting coordinate values and how to control the style of formatting used, see *Formatting Axis Values*<!-- link: crate::guide::frames#formatting-axis-values --> and *Formatting Celestial Coordinates*<!-- link: crate::guide::skyframes#formatting-celestial-coordinates -->.
-If necessary, also see *Normalizing Frame Coordinates*<!-- link: crate::guide::frames#normalizing-frame-coordinates --> for details of how to "normalize" a set of coordinates so that they lie within the standard range (*e.g.* 0 to 24 hours for right ascension and ±90° for declination).
+For more information about formatting coordinate values and how to control the style of formatting used, see [Formatting Axis Values](crate::guide::frames#formatting-axis-values) and *Formatting Celestial Coordinates*<!-- link: crate::guide::skyframes#formatting-celestial-coordinates -->.
+If necessary, also see [Normalizing Frame Coordinates](crate::guide::frames#normalizing-frame-coordinates) for details of how to "normalize" a set of coordinates so that they lie within the standard range (*e.g.* 0 to 24 hours for right ascension and ±90° for declination).
 
 ## … Display Coordinates as they are Transformed
 
@@ -346,7 +346,7 @@ This algorithm has the advantage of accepting free-format input in whatever styl
 For example, wavelength values might be read as floating point numbers (*e.g.* "1.047" or "4787"), whereas celestial positions could be given in sexagesimal format (*e.g.* "12:34:56" or "12 34.5") and would be converted into radians.
 Individual coordinate values may be separated by white space and/or any non-ambiguous separator character, such as a comma.
 
-For more information on reading coordinate values using `unformat`, see *Reading Formatted Axis Values*<!-- link: crate::guide::frames#reading-formatted-axis-values -->.
+For more information on reading coordinate values using `unformat`, see [Reading Formatted Axis Values](crate::guide::frames#reading-formatted-axis-values).
 For details of how sexagesimal formats are handled, and the forms of input that may be used for celestial coordinates, see *Reading Formatted Celestial Coordinates*<!-- link: crate::guide::skyframes#reading-formatted-celestial-coordinates -->.
 
 ## … Create a New WCS Calibration
