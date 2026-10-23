@@ -177,22 +177,22 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 11578 | &nbsp;&nbsp;Example — Binning an Image | guide::frameset_ops#example--binning-an-image |
 | 11689 | &nbsp;&nbsp;Maintaining the Integrity of FrameSets | guide::frameset_ops#maintaining-the-integrity-of-framesets |
 | 11897 | &nbsp;&nbsp;Merging FrameSets | guide::frameset_ops#merging-framesets |
-| 12012 | Saving and Restoring Objects (Channels) | pending |
-| 12035 | &nbsp;&nbsp;The Channel Model | pending |
-| 12072 | &nbsp;&nbsp;Creating a Channel | pending |
-| 12145 | &nbsp;&nbsp;Writing Objects to a Channel | pending |
-| 12205 | &nbsp;&nbsp;Reading Objects from a Channel | pending |
-| 12264 | &nbsp;&nbsp;Saving and Restoring Multiple Objects | pending |
-| 12293 | &nbsp;&nbsp;Validating Input | pending |
-| 12356 | &nbsp;&nbsp;Storing an ID String with an Object | pending |
-| 12424 | &nbsp;&nbsp;The Textual Output Format | pending |
-| 12566 | &nbsp;&nbsp;Controlling the Amount of Output | pending |
-| 12710 | &nbsp;&nbsp;Controlling Commenting | pending |
-| 12755 | &nbsp;&nbsp;Editing Textual Output | pending |
-| 12817 | &nbsp;&nbsp;Mixing Objects with other Text | pending |
-| 12896 | &nbsp;&nbsp;Reading Objects from Files | pending |
-| 13076 | &nbsp;&nbsp;Writing Objects to Files | pending |
-| 13239 | &nbsp;&nbsp;Reading and Writing Objects to other Places | pending |
+| 12012 | Saving and Restoring Objects (Channels) | guide::channels |
+| 12035 | &nbsp;&nbsp;The Channel Model | guide::channels#the-channel-model |
+| 12072 | &nbsp;&nbsp;Creating a Channel | guide::channels#creating-a-channel |
+| 12145 | &nbsp;&nbsp;Writing Objects to a Channel | guide::channels#writing-objects-to-a-channel |
+| 12205 | &nbsp;&nbsp;Reading Objects from a Channel | guide::channels#reading-objects-from-a-channel |
+| 12264 | &nbsp;&nbsp;Saving and Restoring Multiple Objects | guide::channels#saving-and-restoring-multiple-objects |
+| 12293 | &nbsp;&nbsp;Validating Input | guide::channels#validating-input |
+| 12356 | &nbsp;&nbsp;Storing an ID String with an Object | guide::channels#storing-an-id-string-with-an-object |
+| 12424 | &nbsp;&nbsp;The Textual Output Format | guide::channels#the-textual-output-format |
+| 12566 | &nbsp;&nbsp;Controlling the Amount of Output | guide::channels#controlling-the-amount-of-output |
+| 12710 | &nbsp;&nbsp;Controlling Commenting | guide::channels#controlling-commenting |
+| 12755 | &nbsp;&nbsp;Editing Textual Output | guide::channels#editing-textual-output |
+| 12817 | &nbsp;&nbsp;Mixing Objects with other Text | guide::channels#mixing-objects-with-other-text |
+| 12896 | &nbsp;&nbsp;Reading Objects from Files | guide::channels#reading-objects-from-files |
+| 13076 | &nbsp;&nbsp;Writing Objects to Files | guide::channels#writing-objects-to-files |
+| 13239 | &nbsp;&nbsp;Reading and Writing Objects to other Places | guide::channels#reading-and-writing-objects-to-other-places |
 | 13269 | Storing AST Objects in FITS Headers (FitsChans) | pending |
 | 13298 | &nbsp;&nbsp;The Native FITS Encoding | pending |
 | 13325 | &nbsp;&nbsp;The FitsChan Model | pending |
@@ -285,3 +285,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | conversions | 9385–10181 | Rodney Warren-Smith | David Berry |
 | framesets | 10182–10913 | Rodney Warren-Smith | |
 | frameset_ops | 10914–12011 | Rodney Warren-Smith | |
+| channels | 12012–13268 | Rodney Warren-Smith | David Berry |

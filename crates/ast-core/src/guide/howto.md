@@ -59,7 +59,7 @@ let wcsinfo = fitschan.read()?;
 The result should be a FrameSet, `wcsinfo`, which contains the WCS information.
 It can now be used to perform many useful tasks, some of which are illustrated in the following recipes.
 
-Some datasets which do not easily yield FITS header cards may require a different approach, possibly involving use of a [`Channel`](crate::Channel) (*Saving and Restoring Objects*<!-- link: crate::guide::channels -->) rather than a FitsChan.
+Some datasets which do not easily yield FITS header cards may require a different approach, possibly involving use of a [`Channel`](crate::Channel) ([Saving and Restoring Objects](crate::guide::channels)) rather than a FitsChan.
 The whole process can probably be encapsulated in a similar way for most data systems, whether they use FITS header cards or not.
 
 For more details about reading WCS information from datasets, see *Identifying Foreign Encodings on Input*<!-- link: crate::guide::foreign_fits#identifying-foreign-encodings-on-input --> and *Reading Foreign WCS Information from a FITS Header*<!-- link: crate::guide::foreign_fits#reading-foreign-wcs-information-from-a-fits-header -->.
@@ -102,7 +102,7 @@ match fitschan.read() {
 ```
 
 For more information about detecting errors in AST functions, see [Error Detection](crate::guide::objects#error-detection).
-For details of how to validate input data read by AST, see *Validating Input*<!-- link: crate::guide::channels#validating-input --> and *Reading Foreign WCS Information from a FITS Header*<!-- link: crate::guide::foreign_fits#reading-foreign-wcs-information-from-a-fits-header -->.
+For details of how to validate input data read by AST, see [Validating Input](crate::guide::channels#validating-input) and *Reading Foreign WCS Information from a FITS Header*<!-- link: crate::guide::foreign_fits#reading-foreign-wcs-information-from-a-fits-header -->.
 
 ## … Display AST Data
 
@@ -120,7 +120,7 @@ The result is written to the program's standard output stream.
 This can be very useful during debugging.
 
 For more details about using `show`, see [Displaying Objects](crate::guide::objects#displaying-objects).
-For information about interpreting the output, also see *The Textual Output Format*<!-- link: crate::guide::channels#the-textual-output-format -->.
+For information about interpreting the output, also see [The Textual Output Format](crate::guide::channels#the-textual-output-format).
 
 ## … Convert Between Pixel and World Coordinates
 
@@ -601,7 +601,7 @@ while let Some(card) = fitschan2.find_fits("%f", true)? {
 
 Here, we have simply written each card to the standard output stream, but you would obviously replace this with code to store the cards in your output dataset.
 
-For data systems that do not use FITS header cards, a different approach may be needed, possibly involving use of a Channel (*Saving and Restoring Objects*<!-- link: crate::guide::channels -->) rather than a FitsChan.
+For data systems that do not use FITS header cards, a different approach may be needed, possibly involving use of a Channel ([Saving and Restoring Objects](crate::guide::channels)) rather than a FitsChan.
 The whole process can probably be encapsulated in a similar way for most data systems, whether they use FITS header cards or not.
 
 For an overview of how to propagate WCS information through data processing steps, see *Propagating WCS Information through Data Processing Steps*<!-- link: crate::guide::foreign_fits#propagating-wcs-information-through-data-processing-steps -->.

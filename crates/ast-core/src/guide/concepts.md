@@ -156,5 +156,5 @@ To further facilitate the storage of coordinate system information in astronomic
 Instead of using free-format text, a FitsChan converts AST Objects to and from FITS header cards.
 It also allows the information to be encoded in the FITS cards in a number of ways (called *encodings*), so that WCS information from a variety of sources can be handled.
 
-**Further reading:** For a more complete description of Channels see *Saving and Restoring Objects*<!-- link: crate::guide::channels --> and for FitsChans see *Storing AST Objects in FITS Headers*<!-- link: crate::guide::fitschans --> and *Using Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits -->.
+**Further reading:** For a more complete description of Channels see [Saving and Restoring Objects](crate::guide::channels) and for FitsChans see *Storing AST Objects in FITS Headers*<!-- link: crate::guide::fitschans --> and *Using Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits -->.
 Also see the [`Encoding`](crate::Encoding) type.
