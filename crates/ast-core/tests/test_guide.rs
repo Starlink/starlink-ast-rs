@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 /// Sections of SUN/211 not yet ported. It may only go down; it reaches zero
 /// when the guide is complete.
-const GUIDE_SECTIONS_PENDING: usize = 187;
+const GUIDE_SECTIONS_PENDING: usize = 183;
 
 fn guide_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/guide")
@@ -49,6 +49,11 @@ fn guide_mentions_no_unported_class() {
         }
     }
     assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+#[test]
+fn intro_carries_the_copyright() {
+    assert!(read("intro.md").contains("Copyright (C) 2026 East Asian Observatory and AURA"));
 }
 
 /// Whether a README fate is one of the forms the README describes.

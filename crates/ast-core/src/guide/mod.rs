@@ -10,7 +10,12 @@
 //!
 //! ## Contents
 //!
-//! 1. [Using AST from Cargo](cargo)
+//! 1. [Introduction](intro)
+//! 2. [Using AST from Cargo](cargo)
+
+pub mod intro {
+    #![doc = include_str!("intro.md")]
+}
 
 pub mod cargo {
     #![doc = include_str!("cargo.md")]

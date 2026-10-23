@@ -31,10 +31,10 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 
 | line | title | fate |
 |---:|---|---|
-| 97 | Introduction | pending |
-| 110 | &nbsp;&nbsp;What Problems Does AST Tackle? | pending |
-| 187 | &nbsp;&nbsp;Other Design Objectives | pending |
-| 277 | &nbsp;&nbsp;What Does "AST" Stand For? | pending |
+| 97 | Introduction | guide::intro |
+| 110 | &nbsp;&nbsp;What Problems Does AST Tackle? | merged into guide::intro |
+| 187 | &nbsp;&nbsp;Other Design Objectives | merged into guide::intro |
+| 277 | &nbsp;&nbsp;What Does "AST" Stand For? | merged into guide::intro |
 | 286 | Overview of AST Concepts | pending |
 | 292 | &nbsp;&nbsp;Relationships Between Coordinate Systems | pending |
 | 334 | &nbsp;&nbsp;Mappings Available | pending |
@@ -259,3 +259,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 
 | chapter | lines | author | co-author |
 |---|---|---|---|
+| intro | 97–285 | Rodney Warren-Smith | David Berry |
