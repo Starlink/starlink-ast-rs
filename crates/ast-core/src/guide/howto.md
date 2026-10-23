@@ -4,7 +4,7 @@ For those of you with a plane to catch, this section provides some instant templ
 The examples given (sort of) follow on from each other, so you should be able to construct a variety of programs by piecing them together.
 Note that some of them appear longer than they actually are, because we have included plenty of comments and a few options that you probably won't need.
 
-If any of this material has you completely baffled, then you may want to read the introduction to AST programming concepts in *An AST Object Primer*<!-- link: crate::guide::objects --> first.
+If any of this material has you completely baffled, then you may want to read the introduction to AST programming concepts in [An AST Object Primer](crate::guide::objects) first.
 Otherwise, references to more detailed reading are given after each example, just in case they don't quite do what you want.
 
 To add AST to a program, see [Using AST from Cargo](crate::guide::cargo).
@@ -25,7 +25,7 @@ fn main() -> AstResult<()> {
 
 Every operation that can fail returns an [`AstResult`](crate::error::AstResult), so a function that uses AST usually returns one too and passes errors on with `?`.
 Objects are freed when they go out of scope, so there is nothing to tidy up after you have finished using AST.
-For more details of errors, see *Error Detection*<!-- link: crate::guide::objects#error-detection -->.
+For more details of errors, see [Error Detection](crate::guide::objects#error-detection).
 
 ## … Read a WCS Calibration from a Dataset
 
@@ -101,7 +101,7 @@ match fitschan.read() {
 # Ok::<(), ast_core::error::AstError>(())
 ```
 
-For more information about detecting errors in AST functions, see *Error Detection*<!-- link: crate::guide::objects#error-detection -->.
+For more information about detecting errors in AST functions, see [Error Detection](crate::guide::objects#error-detection).
 For details of how to validate input data read by AST, see *Validating Input*<!-- link: crate::guide::channels#validating-input --> and *Reading Foreign WCS Information from a FITS Header*<!-- link: crate::guide::foreign_fits#reading-foreign-wcs-information-from-a-fits-header -->.
 
 ## … Display AST Data
@@ -119,7 +119,7 @@ Here, we have used the FrameSet which we read earlier ([… Read a WCS Calibrati
 The result is written to the program's standard output stream.
 This can be very useful during debugging.
 
-For more details about using `show`, see *Displaying Objects*<!-- link: crate::guide::objects#displaying-objects -->.
+For more details about using `show`, see [Displaying Objects](crate::guide::objects#displaying-objects).
 For information about interpreting the output, also see *The Textual Output Format*<!-- link: crate::guide::channels#the-textual-output-format -->.
 
 ## … Convert Between Pixel and World Coordinates
@@ -158,7 +158,7 @@ To transform in the opposite direction, give the world coordinates as input and 
 To transform points in one dimension, use [`tran1`](crate::mappings::Mapping::tran1).
 In any other number of dimensions (or if the number of dimensions is initially unknown), use [`transform`](crate::mappings::Mapping::transform).
 
-For more information about transforming coordinates, see *Transforming Coordinates*<!-- link: crate::guide::objects#transforming-coordinates --> and *Using a FrameSet as a Mapping*<!-- link: crate::guide::framesets#using-a-frameset-as-a-mapping -->.
+For more information about transforming coordinates, see [Transforming Coordinates](crate::guide::objects#transforming-coordinates) and *Using a FrameSet as a Mapping*<!-- link: crate::guide::framesets#using-a-frameset-as-a-mapping -->.
 For details of how to handle missing coordinates, see *Handling Missing (Bad) Coordinate Values*<!-- link: crate::guide::mappings#handling-missing-bad-coordinate-values -->.
 
 ## … Test if a WCS is a Celestial Coordinate System
@@ -281,7 +281,7 @@ By setting the FrameSet's [Report](crate::mappings::Mapping::report) attribute t
 ```
 
 The report can be sent somewhere other than standard output with [`set_report_sink`](crate::mappings::report::set_report_sink).
-For further details of how to set and enquire attribute values, see *Setting Attribute Values*<!-- link: crate::guide::objects#setting-attribute-values --> and *Getting Attribute Values*<!-- link: crate::guide::objects#getting-attribute-values -->.
+For further details of how to set and enquire attribute values, see [Setting Attribute Values](crate::guide::objects#setting-attribute-values) and [Getting Attribute Values](crate::guide::objects#getting-attribute-values).
 
 ## … Read Coordinates Entered by a User
 

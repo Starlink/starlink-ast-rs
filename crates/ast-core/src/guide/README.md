@@ -74,23 +74,23 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 2138 | &nbsp;&nbsp;... Display a Graphical Coordinate Grid | dropped: Plot is not ported |
 | 2409 | &nbsp;&nbsp;... Switch to Plot a Different Celestial Coordinate Grid | dropped: Plot is not ported |
 | 2466 | &nbsp;&nbsp;... Give a User Control Over the Appearance of a Plot | dropped: Plot is not ported |
-| 2587 | An AST Object Primer | pending |
-| 2631 | &nbsp;&nbsp;AST Objects | pending |
-| 2648 | &nbsp;&nbsp;Object Creation and Pointers | pending |
-| 2733 | &nbsp;&nbsp;The Object Hierarchy | pending |
-| 2808 | &nbsp;&nbsp;Displaying Objects | pending |
-| 2884 | &nbsp;&nbsp;Getting Attribute Values | pending |
-| 3011 | &nbsp;&nbsp;Setting Attribute Values | pending |
-| 3240 | &nbsp;&nbsp;Testing, Clearing and Defaulting Attributes | pending |
-| 3340 | &nbsp;&nbsp;Transforming Coordinates | pending |
-| 3541 | &nbsp;&nbsp;Managing Object Pointers | pending |
-| 3609 | &nbsp;&nbsp;AST Pointer Contexts — Begin and End | pending |
-| 3723 | &nbsp;&nbsp;Exporting, Importing and Exempting AST Pointers | pending |
-| 3832 | &nbsp;&nbsp;AST Objects within Multi-threaded Applications | pending |
-| 3913 | &nbsp;&nbsp;Copying Objects | pending |
-| 3973 | &nbsp;&nbsp;C Pointer Types | pending |
-| 4090 | &nbsp;&nbsp;Error Detection | pending |
-| 4350 | &nbsp;&nbsp;Sharing the Error Status | pending |
+| 2587 | An AST Object Primer | guide::objects |
+| 2631 | &nbsp;&nbsp;AST Objects | guide::objects#ast-objects |
+| 2648 | &nbsp;&nbsp;Object Creation and Pointers | guide::objects#object-creation |
+| 2733 | &nbsp;&nbsp;The Object Hierarchy | guide::objects#the-object-hierarchy |
+| 2808 | &nbsp;&nbsp;Displaying Objects | guide::objects#displaying-objects |
+| 2884 | &nbsp;&nbsp;Getting Attribute Values | guide::objects#getting-attribute-values |
+| 3011 | &nbsp;&nbsp;Setting Attribute Values | guide::objects#setting-attribute-values |
+| 3240 | &nbsp;&nbsp;Testing, Clearing and Defaulting Attributes | guide::objects#testing-clearing-and-defaulting-attributes |
+| 3340 | &nbsp;&nbsp;Transforming Coordinates | guide::objects#transforming-coordinates |
+| 3541 | &nbsp;&nbsp;Managing Object Pointers | guide::objects#disposing-of-objects |
+| 3609 | &nbsp;&nbsp;AST Pointer Contexts — Begin and End | dropped: C pointer contexts; Rust objects are dropped by their owner |
+| 3723 | &nbsp;&nbsp;Exporting, Importing and Exempting AST Pointers | dropped: C pointer contexts; Rust objects are dropped by their owner |
+| 3832 | &nbsp;&nbsp;AST Objects within Multi-threaded Applications | guide::objects#ast-objects-within-multi-threaded-applications |
+| 3913 | &nbsp;&nbsp;Copying Objects | guide::objects#copying-objects |
+| 3973 | &nbsp;&nbsp;C Pointer Types | dropped: C pointer types |
+| 4090 | &nbsp;&nbsp;Error Detection | guide::objects#error-detection |
+| 4350 | &nbsp;&nbsp;Sharing the Error Status | dropped: C global error status; errors are returned values |
 | 4387 | Inter-Relating Coordinate Systems (Mappings) | pending |
 | 4402 | &nbsp;&nbsp;The Mapping Class | pending |
 | 4454 | &nbsp;&nbsp;The Mapping Model | pending |
@@ -274,3 +274,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | intro | 97–285 | Rodney Warren-Smith | David Berry |
 | concepts | 286–749 | Rodney Warren-Smith | David Berry |
 | howto | 750–2137 | Rodney Warren-Smith | David Berry |
+| objects | 2587–4386 | Rodney Warren-Smith | |
