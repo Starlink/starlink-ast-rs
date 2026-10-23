@@ -22,7 +22,7 @@ That is, the two coordinate spaces which it inter-relates need not have the same
 In many cases, the transformation can, in principle, be performed in either direction: either from the *input* coordinate space to the *output*, or *vice versa*.
 The first of these is termed the *forward* transformation and the other the *inverse* transformation.
 
-**Further reading:** For a more complete discussion of Mappings, see *Inter-Relating Coordinate Systems*<!-- link: crate::guide::mappings --> and the [`Mapping`](crate::mappings::Mapping) trait.
+**Further reading:** For a more complete discussion of Mappings, see [Inter-Relating Coordinate Systems](crate::guide::mappings) and the [`Mapping`](crate::mappings::Mapping) trait.
 
 ## Mappings Available
 
@@ -42,7 +42,7 @@ AST provides a range of these, to perform transformations such as the following 
 - Transformations for internal use within a program, based on private transformation functions which you write yourself in Rust (the [`IntraMap`](crate::mappings::IntraMap)).
 
 **Further reading:** For a more complete description of each of the Mappings mentioned above, see its own documentation.
-In addition, see the discussion of the PermMap and the UnitMap in *Inter-Relating Coordinate Systems*<!-- link: crate::guide::mappings --> and the IntraMap in *Creating Your Own Private Mappings*<!-- link: crate::guide::intramaps -->.
+In addition, see the discussion of the PermMap and the UnitMap in [Inter-Relating Coordinate Systems](crate::guide::mappings) and the IntraMap in *Creating Your Own Private Mappings*<!-- link: crate::guide::intramaps -->.
 The ZoomMap is used as an example throughout [An AST Object Primer](crate::guide::objects).
 
 ## Compound Mappings

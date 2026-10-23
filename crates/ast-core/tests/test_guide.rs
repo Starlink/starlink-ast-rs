@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 /// Sections of SUN/211 not yet ported. It may only go down; it reaches zero
 /// when the guide is complete.
-const GUIDE_SECTIONS_PENDING: usize = 143;
+const GUIDE_SECTIONS_PENDING: usize = 131;
 
 fn guide_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/guide")

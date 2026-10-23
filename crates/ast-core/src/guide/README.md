@@ -91,18 +91,18 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 3973 | &nbsp;&nbsp;C Pointer Types | dropped: C pointer types |
 | 4090 | &nbsp;&nbsp;Error Detection | guide::objects#error-detection |
 | 4350 | &nbsp;&nbsp;Sharing the Error Status | dropped: C global error status; errors are returned values |
-| 4387 | Inter-Relating Coordinate Systems (Mappings) | pending |
-| 4402 | &nbsp;&nbsp;The Mapping Class | pending |
-| 4454 | &nbsp;&nbsp;The Mapping Model | pending |
-| 4463 | &nbsp;&nbsp;Changing Attributes of a Mapping | pending |
-| 4486 | &nbsp;&nbsp;Input and Output Coordinate Numbers | pending |
-| 4543 | &nbsp;&nbsp;Forward and Inverse Transformations | pending |
-| 4565 | &nbsp;&nbsp;Inverting Mappings | pending |
-| 4629 | &nbsp;&nbsp;Finding the Rate of Change of a Mapping Output | pending |
-| 4644 | &nbsp;&nbsp;Reporting Coordinate Transformations | pending |
-| 4679 | &nbsp;&nbsp;Handling Missing (Bad) Coordinate Values | pending |
-| 4768 | &nbsp;&nbsp;Example — the UnitMap | pending |
-| 4817 | &nbsp;&nbsp;Example — the PermMap | pending |
+| 4387 | Inter-Relating Coordinate Systems (Mappings) | guide::mappings |
+| 4402 | &nbsp;&nbsp;The Mapping Class | guide::mappings#the-mapping-class |
+| 4454 | &nbsp;&nbsp;The Mapping Model | guide::mappings#the-mapping-model |
+| 4463 | &nbsp;&nbsp;Changing Attributes of a Mapping | guide::mappings#changing-attributes-of-a-mapping |
+| 4486 | &nbsp;&nbsp;Input and Output Coordinate Numbers | guide::mappings#input-and-output-coordinate-numbers |
+| 4543 | &nbsp;&nbsp;Forward and Inverse Transformations | guide::mappings#forward-and-inverse-transformations |
+| 4565 | &nbsp;&nbsp;Inverting Mappings | guide::mappings#inverting-mappings |
+| 4629 | &nbsp;&nbsp;Finding the Rate of Change of a Mapping Output | guide::mappings#finding-the-rate-of-change-of-a-mapping-output |
+| 4644 | &nbsp;&nbsp;Reporting Coordinate Transformations | guide::mappings#reporting-coordinate-transformations |
+| 4679 | &nbsp;&nbsp;Handling Missing (Bad) Coordinate Values | guide::mappings#handling-missing-bad-coordinate-values |
+| 4768 | &nbsp;&nbsp;Example — the UnitMap | guide::mappings#example--the-unitmap |
+| 4817 | &nbsp;&nbsp;Example — the PermMap | guide::mappings#example--the-permmap |
 | 5055 | Compound Mappings (CmpMaps) | pending |
 | 5066 | &nbsp;&nbsp;Combining Mappings in Series | pending |
 | 5161 | &nbsp;&nbsp;Combining Mappings in Parallel | pending |
@@ -275,3 +275,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | concepts | 286–749 | Rodney Warren-Smith | David Berry |
 | howto | 750–2137 | Rodney Warren-Smith | David Berry |
 | objects | 2587–4386 | Rodney Warren-Smith | |
+| mappings | 4387–5054 | Rodney Warren-Smith | |

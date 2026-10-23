@@ -14,6 +14,7 @@
 //! - [Overview of AST Concepts](concepts)
 //! - [How To…](howto)
 //! - [An AST Object Primer](objects)
+//! - [Inter-Relating Coordinate Systems (Mappings)](mappings)
 //! - [Using AST from Cargo](cargo)
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
@@ -29,5 +30,6 @@ chapter!(intro);
 chapter!(concepts);
 chapter!(howto);
 chapter!(objects);
+chapter!(mappings);
 
 chapter!(cargo);

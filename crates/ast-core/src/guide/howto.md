@@ -159,7 +159,7 @@ To transform points in one dimension, use [`tran1`](crate::mappings::Mapping::tr
 In any other number of dimensions (or if the number of dimensions is initially unknown), use [`transform`](crate::mappings::Mapping::transform).
 
 For more information about transforming coordinates, see [Transforming Coordinates](crate::guide::objects#transforming-coordinates) and *Using a FrameSet as a Mapping*<!-- link: crate::guide::framesets#using-a-frameset-as-a-mapping -->.
-For details of how to handle missing coordinates, see *Handling Missing (Bad) Coordinate Values*<!-- link: crate::guide::mappings#handling-missing-bad-coordinate-values -->.
+For details of how to handle missing coordinates, see [Handling Missing (Bad) Coordinate Values](crate::guide::mappings#handling-missing-bad-coordinate-values).
 
 ## … Test if a WCS is a Celestial Coordinate System
 
