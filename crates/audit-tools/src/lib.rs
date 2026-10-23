@@ -10,6 +10,7 @@ pub mod c_docs_ledger;
 pub mod c_headers;
 mod c_steps;
 pub mod doc_aliases;
+pub mod guide_authors;
 mod rendered_docs;
 pub use c_docs_ledger::{LedgerRow, owner_and_name, parse_ledger};
 pub use c_headers::{

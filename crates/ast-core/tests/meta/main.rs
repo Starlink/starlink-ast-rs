@@ -33,6 +33,8 @@ mod test_c_docs_audit;
 mod test_constructor_checks;
 #[path = "../test_dump_comparator.rs"]
 mod test_dump_comparator;
+#[path = "../test_guide.rs"]
+mod test_guide;
 #[path = "../test_mapmerge_audit.rs"]
 mod test_mapmerge_audit;
 #[path = "../test_nan_protocol.rs"]

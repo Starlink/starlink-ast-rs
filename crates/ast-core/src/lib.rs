@@ -12,6 +12,7 @@ pub mod pixel;
 #[macro_use]
 pub mod frames;
 pub mod call_counts;
+pub mod guide;
 pub mod keymap;
 pub mod mappings;
 pub(crate) mod math;
