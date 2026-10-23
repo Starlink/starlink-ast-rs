@@ -1,11 +1,11 @@
 //! Inspect the public documentation headers of the C library.
 //!
 //! Usage:
-//!   c-docs headers <src-dir>
+//!   `c-docs headers <src-dir>`
 //!       print the TSV of every header in every `*.c` file of `<src-dir>`
-//!   c-docs init-ledger <c-headers.tsv>
+//!   `c-docs init-ledger <c-headers.tsv>`
 //!       print a fresh ledger, one row per header, for the audit
-//!   c-docs show <file.c> [--src <src-dir>]
+//!   `c-docs show <file.c> [--src <src-dir>]`
 //!       print the C text of each header in one file; `<src-dir>` defaults to
 //!       `reference/starlink-ast/src`
 

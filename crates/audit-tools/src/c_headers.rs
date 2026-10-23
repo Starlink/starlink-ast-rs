@@ -213,8 +213,9 @@ const UNDIGESTED_SECTIONS: [&str; 4] = ["Authors:", "Copyright:", "History:", "L
 /// bytes, as 16 lower-case hex digits.
 ///
 /// A section heading is a line with no leading space that ends in `:`; the
-/// sections named in [`UNDIGESTED_SECTIONS`] are skipped, so a new `History:`
-/// entry does not change the digest but any change to the documentation does.
+/// provenance sections (`Authors:`, `Copyright:`, `History:` and `Licence:`)
+/// are skipped, so a new `History:` entry does not change the digest but any
+/// change to the documentation does.
 /// It identifies the text; it is not a cryptographic hash.
 pub fn text_digest(text: &str) -> String {
     const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
