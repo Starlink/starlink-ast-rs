@@ -47,13 +47,13 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 110 | &nbsp;&nbsp;What Problems Does AST Tackle? | guide::intro#what-problems-does-ast-tackle |
 | 187 | &nbsp;&nbsp;Other Design Objectives | guide::intro#other-design-objectives |
 | 277 | &nbsp;&nbsp;What Does "AST" Stand For? | guide::intro#what-does-ast-stand-for |
-| 286 | Overview of AST Concepts | pending |
-| 292 | &nbsp;&nbsp;Relationships Between Coordinate Systems | pending |
-| 334 | &nbsp;&nbsp;Mappings Available | pending |
-| 399 | &nbsp;&nbsp;Compound Mappings | pending |
-| 482 | &nbsp;&nbsp;Representing Coordinate Systems | pending |
-| 573 | &nbsp;&nbsp;Networks of Coordinate Systems | pending |
-| 619 | &nbsp;&nbsp;Input/Output Facilities | pending |
+| 286 | Overview of AST Concepts | guide::concepts |
+| 292 | &nbsp;&nbsp;Relationships Between Coordinate Systems | guide::concepts#relationships-between-coordinate-systems |
+| 334 | &nbsp;&nbsp;Mappings Available | guide::concepts#mappings-available |
+| 399 | &nbsp;&nbsp;Compound Mappings | guide::concepts#compound-mappings |
+| 482 | &nbsp;&nbsp;Representing Coordinate Systems | guide::concepts#representing-coordinate-systems |
+| 573 | &nbsp;&nbsp;Networks of Coordinate Systems | guide::concepts#networks-of-coordinate-systems |
+| 619 | &nbsp;&nbsp;Input/Output Facilities | guide::concepts#inputoutput-facilities |
 | 681 | &nbsp;&nbsp;Producing Graphical Output | dropped: Plot is not ported |
 | 750 | How To... | pending |
 | 767 | &nbsp;&nbsp;... Obtain and Install AST | pending |
@@ -272,3 +272,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | chapter | lines | author | co-author |
 |---|---|---|---|
 | intro | 97–285 | Rodney Warren-Smith | David Berry |
+| concepts | 286–749 | Rodney Warren-Smith | David Berry |
