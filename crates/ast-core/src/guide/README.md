@@ -55,22 +55,22 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 573 | &nbsp;&nbsp;Networks of Coordinate Systems | guide::concepts#networks-of-coordinate-systems |
 | 619 | &nbsp;&nbsp;Input/Output Facilities | guide::concepts#inputoutput-facilities |
 | 681 | &nbsp;&nbsp;Producing Graphical Output | dropped: Plot is not ported |
-| 750 | How To... | pending |
-| 767 | &nbsp;&nbsp;... Obtain and Install AST | pending |
-| 777 | &nbsp;&nbsp;... Structure an AST Program | pending |
-| 841 | &nbsp;&nbsp;... Build an AST Program | pending |
-| 899 | &nbsp;&nbsp;... Read a WCS Calibration from a Dataset | pending |
-| 1016 | &nbsp;&nbsp;... Validate WCS Information | pending |
-| 1071 | &nbsp;&nbsp;... Display AST Data | pending |
-| 1106 | &nbsp;&nbsp;... Convert Between Pixel and World Coordinates | pending |
-| 1182 | &nbsp;&nbsp;... Test if a WCS is a Celestial Coordinate System | pending |
-| 1245 | &nbsp;&nbsp;... Test if a WCS is a Spectral Coordinate System | pending |
-| 1263 | &nbsp;&nbsp;... Format Coordinates for Display | pending |
-| 1338 | &nbsp;&nbsp;... Display Coordinates as they are Transformed | pending |
-| 1401 | &nbsp;&nbsp;... Read Coordinates Entered by a User | pending |
-| 1565 | &nbsp;&nbsp;... Create a New WCS Calibration | pending |
-| 1668 | &nbsp;&nbsp;... Modify a WCS Calibration | pending |
-| 1882 | &nbsp;&nbsp;... Write a Modified WCS Calibration to a Dataset | pending |
+| 750 | How To... | guide::howto |
+| 767 | &nbsp;&nbsp;... Obtain and Install AST | merged into guide::cargo |
+| 777 | &nbsp;&nbsp;... Structure an AST Program | guide::howto#-structure-an-ast-program |
+| 841 | &nbsp;&nbsp;... Build an AST Program | merged into guide::cargo |
+| 899 | &nbsp;&nbsp;... Read a WCS Calibration from a Dataset | guide::howto#-read-a-wcs-calibration-from-a-dataset |
+| 1016 | &nbsp;&nbsp;... Validate WCS Information | guide::howto#-validate-wcs-information |
+| 1071 | &nbsp;&nbsp;... Display AST Data | guide::howto#-display-ast-data |
+| 1106 | &nbsp;&nbsp;... Convert Between Pixel and World Coordinates | guide::howto#-convert-between-pixel-and-world-coordinates |
+| 1182 | &nbsp;&nbsp;... Test if a WCS is a Celestial Coordinate System | guide::howto#-test-if-a-wcs-is-a-celestial-coordinate-system |
+| 1245 | &nbsp;&nbsp;... Test if a WCS is a Spectral Coordinate System | guide::howto#-test-if-a-wcs-is-a-spectral-coordinate-system |
+| 1263 | &nbsp;&nbsp;... Format Coordinates for Display | guide::howto#-format-coordinates-for-display |
+| 1338 | &nbsp;&nbsp;... Display Coordinates as they are Transformed | guide::howto#-display-coordinates-as-they-are-transformed |
+| 1401 | &nbsp;&nbsp;... Read Coordinates Entered by a User | guide::howto#-read-coordinates-entered-by-a-user |
+| 1565 | &nbsp;&nbsp;... Create a New WCS Calibration | guide::howto#-create-a-new-wcs-calibration |
+| 1668 | &nbsp;&nbsp;... Modify a WCS Calibration | guide::howto#-modify-a-wcs-calibration |
+| 1882 | &nbsp;&nbsp;... Write a Modified WCS Calibration to a Dataset | guide::howto#-write-a-modified-wcs-calibration-to-a-dataset |
 | 2138 | &nbsp;&nbsp;... Display a Graphical Coordinate Grid | dropped: Plot is not ported |
 | 2409 | &nbsp;&nbsp;... Switch to Plot a Different Celestial Coordinate Grid | dropped: Plot is not ported |
 | 2466 | &nbsp;&nbsp;... Give a User Control Over the Appearance of a Plot | dropped: Plot is not ported |
@@ -273,3 +273,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 |---|---|---|---|
 | intro | 97–285 | Rodney Warren-Smith | David Berry |
 | concepts | 286–749 | Rodney Warren-Smith | David Berry |
+| howto | 750–2137 | Rodney Warren-Smith | David Berry |

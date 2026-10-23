@@ -12,6 +12,7 @@
 //!
 //! - [Introduction](intro)
 //! - [Overview of AST Concepts](concepts)
+//! - [How To…](howto)
 //! - [Using AST from Cargo](cargo)
 
 /// Declares a chapter module whose documentation is `<name>.md`, as the build
@@ -25,5 +26,6 @@ macro_rules! chapter {
 
 chapter!(intro);
 chapter!(concepts);
+chapter!(howto);
 
 chapter!(cargo);
