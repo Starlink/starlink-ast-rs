@@ -65,7 +65,7 @@ Any class of Object may be converted into text in this way.
 `write` returns a count of the number of Objects written.
 Usually, this will be one, unless the Object supplied cannot be represented.
 With a basic Channel all Objects can be represented, so a value of one will always be returned unless there has been an error.
-We will see later, however, that more specialized forms of Channel may impose restrictions on the kind of Object you can write (*Limitations of Foreign Encodings*<!-- link: crate::guide::foreign_fits#limitations-of-foreign-encodings -->).
+We will see later, however, that more specialized forms of Channel may impose restrictions on the kind of Object you can write ([Limitations of Foreign Encodings](crate::guide::foreign_fits#limitations-of-foreign-encodings)).
 In such cases, `write` may return zero to indicate that the Object was not acceptable.
 
 ## Reading Objects from a Channel

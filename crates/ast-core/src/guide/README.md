@@ -208,14 +208,14 @@ The `test_guide` gate checks that every row of `sections.tsv` has a row here and
 | 14176 | &nbsp;&nbsp;Mixing Native Objects with Other FITS Cards | guide::fitschans#mixing-native-objects-with-other-fits-cards |
 | 14196 | &nbsp;&nbsp;Finding and Changing Cards in a FitsChan | guide::fitschans#finding-and-changing-cards-in-a-fitschan |
 | 14359 | &nbsp;&nbsp;Source and Sink Functions for FitsChans | guide::fitschans#sources-and-sinks-for-fitschans |
-| 14475 | Using Foreign FITS Encodings | pending |
-| 14490 | &nbsp;&nbsp;The Foreign FITS Encodings | pending |
-| 14575 | &nbsp;&nbsp;Limitations of Foreign Encodings | pending |
-| 14634 | &nbsp;&nbsp;Identifying Foreign Encodings on Input | pending |
-| 14792 | &nbsp;&nbsp;Reading Foreign WCS Information from a FITS Header | pending |
-| 14945 | &nbsp;&nbsp;Removing WCS Information from FITS Headers — the Destructive Read | pending |
-| 15059 | &nbsp;&nbsp;Propagating WCS Information through Data Processing Steps | pending |
-| 15104 | &nbsp;&nbsp;Writing Foreign WCS Information to a FITS Header | pending |
+| 14475 | Using Foreign FITS Encodings | guide::foreign_fits |
+| 14490 | &nbsp;&nbsp;The Foreign FITS Encodings | guide::foreign_fits#the-foreign-fits-encodings |
+| 14575 | &nbsp;&nbsp;Limitations of Foreign Encodings | guide::foreign_fits#limitations-of-foreign-encodings |
+| 14634 | &nbsp;&nbsp;Identifying Foreign Encodings on Input | guide::foreign_fits#identifying-foreign-encodings-on-input |
+| 14792 | &nbsp;&nbsp;Reading Foreign WCS Information from a FITS Header | guide::foreign_fits#reading-foreign-wcs-information-from-a-fits-header |
+| 14945 | &nbsp;&nbsp;Removing WCS Information from FITS Headers — the Destructive Read | guide::foreign_fits#removing-wcs-information-from-fits-headers--the-destructive-read |
+| 15059 | &nbsp;&nbsp;Propagating WCS Information through Data Processing Steps | guide::foreign_fits#propagating-wcs-information-through-data-processing-steps |
+| 15104 | &nbsp;&nbsp;Writing Foreign WCS Information to a FITS Header | guide::foreign_fits#writing-foreign-wcs-information-to-a-fits-header |
 | 15289 | Storing AST Objects as XML (XmlChan) | dropped: XmlChan is not ported |
 | 15402 | &nbsp;&nbsp;Reading IVOA Space-Time-Coordinates XML (STC-X) Descriptions | dropped: XmlChan is not ported |
 | 15424 | Reading and writing STC-S descriptions (StcsChans) | dropped: StcsChan is not ported |
@@ -287,3 +287,4 @@ A writer with 10% or more of the counted lines is credited, the larger share as 
 | frameset_ops | 10914–12011 | Rodney Warren-Smith | |
 | channels | 12012–13268 | Rodney Warren-Smith | David Berry |
 | fitschans | 13269–14474 | Rodney Warren-Smith | David Berry |
+| foreign_fits | 14475–15288 | Rodney Warren-Smith | David Berry |

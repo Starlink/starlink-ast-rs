@@ -9,7 +9,7 @@ As such, FITS headers are prime territory for storing information about the coor
 
 In this section, we will examine how to store information in FITS headers directly in the form of AST Objects — a process which is supported by a specialized class of Channel called a [`FitsChan`](crate::FitsChan).
 Our discussion here will turn out to be a transitional step that emphasizes the similarities between a FitsChan and a Channel ([Saving and Restoring Objects](crate::guide::channels)).
-At the same time, it will prepare us for the next section (*Using Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits -->), where we will examine how to use a FitsChan to tackle some of the more difficult problems that FITS headers can present.
+At the same time, it will prepare us for the next section ([Using Foreign FITS Encodings](crate::guide::foreign_fits)), where we will examine how to use a FitsChan to tackle some of the more difficult problems that FITS headers can present.
 
 ## The Native FITS Encoding
 
@@ -17,7 +17,7 @@ As it turns out, we are not the first to have thought of storing WCS information
 In fact, the original FITS standard (1981 vintage) defined a set of header keywords for this purpose which have been widely used, although they have proved too limited for many practical purposes.
 
 At the time of writing, a number of different ways of using FITS headers for storing WCS information are in use, most (although not all) based on the original standard.
-We will refer to these alternative ways of storing the information as FITS *encodings* but will defer a discussion of their advantages and limitations until the next section (*Using Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits -->).
+We will refer to these alternative ways of storing the information as FITS *encodings* but will defer a discussion of their advantages and limitations until the next section ([Using Foreign FITS Encodings](crate::guide::foreign_fits)).
 
 Here, we will examine how to store AST Objects directly in FITS headers.
 In effect, this defines a new encoding, which we will term the *native encoding*.
@@ -54,7 +54,7 @@ There are also four ways of removing cards from a FitsChan:
 
 Note, in particular, that reading an AST Object from a FitsChan is *destructive*.
 That is, it deletes the FITS cards that describe the Object.
-The reason for this is explained in *Removing WCS Information from FITS Headers — the Destructive Read*<!-- link: crate::guide::foreign_fits#removing-wcs-information-from-fits-headers--the-destructive-read -->.
+The reason for this is explained in [Removing WCS Information from FITS Headers — the Destructive Read](crate::guide::foreign_fits#removing-wcs-information-from-fits-headers--the-destructive-read).
 
 In addition to the above, you may also read individual cards from a FitsChan using [`find_fits`](crate::FitsChan::find_fits) (which is not destructive).
 This is the main means of writing out FITS cards if you have not supplied a sink.

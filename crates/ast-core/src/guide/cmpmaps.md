@@ -156,7 +156,7 @@ Typically, on each occasion, another Mapping will be concatenated to reflect wha
 This could soon make it difficult to discern the overall nature of the transformation from the complex CmpMap that accumulates.
 If only shifts of origin were involved on each occasion, however, they could be combined into a single shift which could be represented much more simply.
 
-Suppose we now wanted to represent our image's celestial coordinate calibration using FITS conventions (*Using Foreign FITS Encodings*<!-- link: crate::guide::foreign_fits -->).
+Suppose we now wanted to represent our image's celestial coordinate calibration using FITS conventions ([Using Foreign FITS Encodings](crate::guide::foreign_fits)).
 This requires AST to determine whether the Mapping which relates pixel coordinate to sky positions conforms to the FITS model (for example, whether it is equivalent to applying a single set of shifts and scale factors followed by a map projection).
 Clearly, there is an important use here for some means of simplifying the internal structure of a CmpMap.
 
