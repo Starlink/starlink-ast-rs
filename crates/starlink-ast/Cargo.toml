@@ -5,7 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Pure-Rust port of the Starlink AST world coordinate system library"
+description = "World coordinate systems for astronomy: a pure-Rust port of the Starlink AST library (FITS-WCS, celestial, spectral and time frames)"
+documentation = "https://docs.rs/starlink-ast"
+readme = "README.md"
+keywords = ["astronomy", "wcs", "fits", "coordinates", "starlink"]
+categories = ["science"]
 # The files in tests/ are modules of a few test programs, one per area, each
 # tests/<area>/main.rs, rather than one program each: every test program links
 # all of starlink-ast, and on macOS each new program is scanned on its first run,

@@ -7,6 +7,15 @@
 //! convert between them, and the FITS headers and other formats that store
 //! them.
 //!
+//! AST comes from the [Starlink Project](https://en.wikipedia.org/wiki/Starlink_Project).
+//! The library and its design are described in Berry, Warren-Smith and
+//! Jenness (2016), *AST: A library for modelling and manipulating coordinate
+//! systems*, Astronomy and Computing 15, 33,
+//! [doi:10.1016/j.ascom.2016.02.003](https://doi.org/10.1016/j.ascom.2016.02.003).
+//! This port is evolving: it follows the C library closely and is checked
+//! against it, and its API will change between minor versions until it
+//! settles.
+//!
 //! **New to AST? Start with [the user guide](guide).**
 //! It explains the library's concepts and how its parts fit together, with
 //! worked examples, from an [overview](guide::concepts) and quick
@@ -18,6 +27,12 @@
 //! ## The guide's chapters
 //!
 #![doc = include_str!("guide/contents.md")]
+
+// The README's example is compiled and run with the doctests, so it cannot
+// rot.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
 
 pub mod channel;
 pub mod constants;
