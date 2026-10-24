@@ -23,6 +23,8 @@
 //! FrameSets and FITS headers.
 //! The documentation of each module and item below is the reference for the
 //! API.
+//! The [prelude] brings in the traits whose methods are called on Mappings,
+//! Frames, Regions and Channels.
 //!
 //! ## The guide's chapters
 //!
@@ -50,6 +52,7 @@ pub mod mappings;
 pub(crate) mod math;
 pub(crate) mod object_id;
 pub(crate) mod pal;
+pub mod prelude;
 pub mod regions;
 pub(crate) mod serial;
 pub mod table;

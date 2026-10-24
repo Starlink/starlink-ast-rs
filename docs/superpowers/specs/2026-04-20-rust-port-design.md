@@ -2,6 +2,10 @@
 
 ## Revision history
 
+- **2026-10-24 (rev 41)**: `starlink_ast::prelude` re-exports the traits
+  whose methods are called on values (`Mapping`, `Frame`, `FrameSearch`,
+  `Region`, `Channel`), so one glob import makes them callable. Concrete
+  types stay in their modules and are not re-exported there.
 - **2026-10-24 (rev 40)**: The vendored C (`pal`, `erfa`, `wcslib`,
   `ast_err.msg`) lives at `crates/starlink-ast/vendor/`, inside the
   crate: `cargo package` archives only files under the package

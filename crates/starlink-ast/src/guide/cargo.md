@@ -12,11 +12,14 @@ The crate is not yet published on crates.io, so it is taken from its repository.
 The library includes the C sources of the PAL, ERFA and WCSLIB libraries it uses, and its build script compiles them.
 Building it needs a C compiler, and nothing else installed.
 
+The traits whose methods are called on Mappings, Frames, Regions and Channels are re-exported by `starlink_ast::prelude`, so one `use starlink_ast::prelude::*;` makes them all callable.
+The types are named from their modules.
+
 A first program converts a position from FK5 equatorial coordinates to Galactic coordinates:
 
 ```rust
-use starlink_ast::frames::{Frame, FrameSearch, SkyFrame, SkySystem};
-use starlink_ast::mappings::Mapping;
+use starlink_ast::prelude::*;
+use starlink_ast::frames::{SkyFrame, SkySystem};
 
 let mut fk5 = SkyFrame::new(SkySystem::Fk5);
 let mut galactic = SkyFrame::new(SkySystem::Galactic);

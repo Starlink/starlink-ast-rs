@@ -24,8 +24,8 @@ The crate carries the C sources of the PAL, ERFA and WCSLIB routines it still us
 A first program converts a position from FK5 equatorial coordinates to Galactic coordinates:
 
 ```rust
-use starlink_ast::frames::{Frame, FrameSearch, SkyFrame, SkySystem};
-use starlink_ast::mappings::Mapping;
+use starlink_ast::prelude::*;
+use starlink_ast::frames::{SkyFrame, SkySystem};
 
 fn main() -> Result<(), starlink_ast::error::AstError> {
     let mut fk5 = SkyFrame::new(SkySystem::Fk5);
