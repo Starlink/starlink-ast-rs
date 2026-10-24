@@ -3,7 +3,7 @@
 This crate is a Rust port of the Starlink AST library, which is written in C.
 This guide is adapted from SUN/211, the guide to the C library, by Rodney Warren-Smith and David Berry.
 
-Copyright (C) 2026 East Asian Observatory and AURA.
+Copyright (C) 2026 East Asian Observatory and the Association of Universities for Research in Astronomy.
 
 Welcome to the AST library.
 If you are writing software for astronomy and need to use celestial coordinates (*e.g.* RA and Dec), spectral coordinates (*e.g.* wavelength, frequency, *etc.*), or other coordinate system information, then this library should be of interest.

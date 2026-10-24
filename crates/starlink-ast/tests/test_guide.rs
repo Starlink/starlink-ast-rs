@@ -210,7 +210,7 @@ fn guide_mentions_no_unported_class() {
 
 #[test]
 fn intro_carries_the_copyright() {
-    assert!(read("intro.md").contains("Copyright (C) 2026 East Asian Observatory and AURA"));
+    assert!(read("intro.md").contains("Copyright (C) 2026 East Asian Observatory and the Association of Universities for Research in Astronomy"));
 }
 
 /// Whether a README fate is one of the forms the README describes.

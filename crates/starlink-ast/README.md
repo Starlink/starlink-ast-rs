@@ -49,4 +49,6 @@ fn main() -> Result<(), starlink_ast::error::AstError> {
 
 ## License
 
-LGPL-3.0-or-later, like the C library.
+Copyright 2026 Association of Universities for Research in Astronomy (AURA).
+The crate is distributed under the GNU Lesser General Public License, version 3 or later, like the C library it is ported from.
+`COPYRIGHT` lists the copyright holders of the C library and of the C sources the crate carries.

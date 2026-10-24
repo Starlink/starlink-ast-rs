@@ -85,6 +85,12 @@ starlink-ast-rs/
 A user-visible change to a published crate is recorded under `Unreleased` in [CHANGELOG.md](CHANGELOG.md) as it lands.
 [docs/releasing.md](docs/releasing.md) is the release checklist, including the `cargo semver-checks` run that decides the version bump.
 
+## License
+
+Copyright 2026 Association of Universities for Research in Astronomy (AURA).
+This repository is distributed under the GNU Lesser General Public License, version 3 or later, the license of the C library it ports; the text is in [LICENSE](LICENSE).
+[COPYRIGHT](COPYRIGHT) lists the copyright holders of the C library and of the C sources the crate carries.
+
 ## Documentation for the Classical Interface
 
 Full documentation of the C and Fortran versions is available in the Starlink User Notes:
