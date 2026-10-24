@@ -115,7 +115,7 @@ Ordered roughly by impact.
 - **IntraMap**: ported 2026-10-08 as `mappings/intramap.rs`, with the spec's `Arc<dyn IntraTransform>` and a per-Channel `IntraRegistry` (`Channel::register_intra`).
 - **Moc**/**MocChan**: absent. XphMap, whose only C creator is `moc.c`, is ported (2026-10-07).
 - **Stc\*** classes and **YamlChan/StcsChan/XmlChan**: absent (step 8/9 remainder).
-- **wcslib**: still vendored C behind FFI (`src/wcslib.rs`); step 6a (Rust port, delete `vendor/wcslib/`) not started — by design, do not rewrite piecemeal.
+- **wcslib**: still vendored C behind FFI (`src/wcslib.rs`); step 6a (Rust port, delete `crates/starlink-ast/vendor/wcslib/`) not started — by design, do not rewrite piecemeal.
 
 ## 3. Deliberate divergences (do NOT "fix")
 

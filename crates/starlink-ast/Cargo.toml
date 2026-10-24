@@ -4,6 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Pure-Rust port of the Starlink AST world coordinate system library"
 # The files in tests/ are modules of a few test programs, one per area, each
 # tests/<area>/main.rs, rather than one program each: every test program links

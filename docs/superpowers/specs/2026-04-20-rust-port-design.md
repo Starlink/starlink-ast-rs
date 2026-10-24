@@ -2,6 +2,12 @@
 
 ## Revision history
 
+- **2026-10-24 (rev 40)**: The vendored C (`pal`, `erfa`, `wcslib`,
+  `ast_err.msg`) lives at `crates/starlink-ast/vendor/`, inside the
+  crate: `cargo package` archives only files under the package
+  directory, and the crate's `build.rs` compiles them, so at the top of
+  the workspace the published crate could not build. No other crate
+  uses it.
 - **2026-10-24 (rev 39)**: The library crate is `starlink-ast` (import
   path `starlink_ast`), not `ast-core`, and the C shim is
   `starlink-ast-capi`. On crates.io `ast` means abstract syntax tree, so
@@ -542,17 +548,17 @@ starlink-ast-rs/                # new fresh repo, Rust-only history
 ├── Cargo.toml                 # workspace root
 ├── README.md
 ├── crates/
-│   ├── starlink-ast/              # pure-Rust idiomatic API (rlib)
-│   ├── starlink-ast-capi/              # cdylib; re-exports ast.h symbols
+│   ├── starlink-ast/          # pure-Rust idiomatic API (rlib)
+│   │   └── vendor/            # copied in-tree, owned by THIS repo
+│   │       ├── pal/           #   small astrometry routines (was AST's pal/)
+│   │       ├── erfa/          #   ERFA snapshot (was AST's erfa/)
+│   │       ├── wcslib/        #   AST's wcslib fork, pre-port (deleted at step 6a)
+│   │       └── README.md      #   provenance notes: where each came from, what was changed
+│   ├── starlink-ast-capi/     # cdylib; re-exports ast.h symbols
 │   ├── ast-plugins/           # optional Grf / Grf3d backends (PLplot, SVG, logging)
 │   ├── ast-ffi-tests/         # builds starlink-ast-capi, runs C ast_tester programs
 │   ├── ast-oracle-tests/      # links starlink-ast + reference libast.a
 │   └── ast-bench/             # transform benches: Rust, optionally vs C
-├── vendor/                    # copied in-tree, owned by THIS repo
-│   ├── pal/                   #   small astrometry routines (was AST's pal/)
-│   ├── erfa/                  #   ERFA snapshot (was AST's erfa/)
-│   ├── wcslib/                #   AST's wcslib fork, pre-port (deleted at step 6a)
-│   └── README.md              #   provenance notes: where each came from, what was changed
 └── reference/                 # optional, populated only for tests
     └── starlink-ast/          # git submodule -> Starlink/starlink-ast at a pinned commit
                                #   used by ast-ffi-tests (its ast_tester C programs)
@@ -564,7 +570,7 @@ Two key principles:
 1. **The everyday build does not need the submodule.** A fresh
    `git clone` + `cargo build` + `cargo test -p starlink-ast` works
    without any submodule initialization. The vendored C sources in
-   `vendor/` are committed in-tree, owned by this repo. This matters
+   `crates/starlink-ast/vendor/` are committed in-tree, owned by this repo. This matters
    for packaging (`cargo publish`, distribution tarballs) and for
    contributors who don't care about the C parity tests.
 2. **The submodule is opt-in for parity testing.** Running tier-3
@@ -575,23 +581,23 @@ Two key principles:
 
 Notes:
 
-- `vendor/pal`, `vendor/erfa`, `vendor/wcslib` are **copies** of what
+- `crates/starlink-ast/vendor/pal`, `crates/starlink-ast/vendor/erfa`, `crates/starlink-ast/vendor/wcslib` are **copies** of what
   the AST C library currently bundles, not git submodules to upstream
   projects. We take ownership: AST-specific symbol-renaming, patches,
   and dynamic-array changes are preserved verbatim during the copy.
-  `vendor/README.md` records provenance (source repo, commit hash,
+  `crates/starlink-ast/vendor/README.md` records provenance (source repo, commit hash,
   date copied, list of AST-specific local modifications) so the
   history is recoverable without git.
-- `starlink-ast`'s `build.rs` compiles `vendor/pal/`, `vendor/erfa/`, and
-  (until step 6a) `vendor/wcslib/` via the `cc` crate, using the same
+- `starlink-ast`'s `build.rs` compiles `crates/starlink-ast/vendor/pal/`, `crates/starlink-ast/vendor/erfa/`, and
+  (until step 6a) `crates/starlink-ast/vendor/wcslib/` via the `cc` crate, using the same
   symbol-renaming conventions `palwrap.c` / `pal2ast.h` / `erfa2ast.h`
   use today.
 - `ast-oracle-tests` and `ast-ffi-tests` add the submodule path to
   their build dependencies. If the submodule is not initialized,
   those crates are skipped (with a warning) rather than failing the
   workspace build.
-- After step 6a (`wcslib` port), `vendor/wcslib/` is deleted from the
-  Rust repo. `vendor/pal/` and `vendor/erfa/` stay until / unless a
+- After step 6a (`wcslib` port), `crates/starlink-ast/vendor/wcslib/` is deleted from the
+  Rust repo. `crates/starlink-ast/vendor/pal/` and `crates/starlink-ast/vendor/erfa/` stay until / unless a
   later perf decision motivates Rust ports.
 - After step 12 (cutover), the upstream C library `libast` is
   effectively retired from active development. The submodule pointer
@@ -601,23 +607,23 @@ Notes:
 ### Vendored C dependencies
 
 The Rust repo owns its own copies of the vendored C sources at
-`vendor/`. They are not pulled from the reference submodule at build
+`crates/starlink-ast/vendor/`. They are not pulled from the reference submodule at build
 time, so the everyday workflow does not need it.
 
-`pal` (`vendor/pal/`) and `erfa` (`vendor/erfa/`) are compiled by
+`pal` (`crates/starlink-ast/vendor/pal/`) and `erfa` (`crates/starlink-ast/vendor/erfa/`) are compiled by
 `starlink-ast`'s `build.rs` using the `cc` crate, with the same
 symbol-renaming conventions `palwrap.c` / `pal2ast.h` / `erfa2ast.h`
 use today, keeping them private to `starlink-ast`. Porting to Rust is a
 later perf decision, not a phase-one goal — the C source is small,
 well-tested, and stable.
 
-`wcslib` (`vendor/wcslib/`) is treated differently. The fork is ~20
+`wcslib` (`crates/starlink-ast/vendor/wcslib/`) is treated differently. The fork is ~20
 years old and upstream has diverged too far to re-adopt; @timj's
 conclusion on the PR was that once we are reimplementing AST we should
 also take on the `wcslib` port to remove the FFI crossing and to
 expose upstream's newer **vectorized transform API** to `WcsMap`. That
 port is sequenced as **step 6a** of the indicative delivery order,
-immediately before `WcsMap` itself. Until then, `vendor/wcslib/`
+immediately before `WcsMap` itself. Until then, `crates/starlink-ast/vendor/wcslib/`
 continues to be built as C by `starlink-ast`'s `build.rs` and called
 through a small private FFI. After step 6a it is removed from the
 repo entirely.
@@ -629,7 +635,7 @@ confirms Rust-LM output matches cminpack output to within fitting
 tolerances; the cminpack source we validate against lives inside the
 reference submodule and is not vendored into the new repo.
 
-`vendor/README.md` records provenance for each copied directory: the
+`crates/starlink-ast/vendor/README.md` records provenance for each copied directory: the
 upstream URL it came from, the commit hash and date of the import,
 and a list of any AST-specific local modifications applied. This
 keeps the chain of custody legible without relying on git history of
@@ -1556,7 +1562,7 @@ progress the same way it tracks today's Fortran → C migrations.
 
 0. **Project bootstrap.** Initialize the new `starlink-ast-rs` repo,
    copy `pal` / `erfa` / `wcslib` from the current C tree into
-   `vendor/` with a `vendor/README.md` recording provenance, and add
+   `crates/starlink-ast/vendor/` with a `crates/starlink-ast/vendor/README.md` recording provenance, and add
    `reference/starlink-ast/` as a submodule pinned to a known-good
    commit. CI configured to run tier-1 / tier-2 / tier-5 tests on
    every PR; tier-3 / tier-4 (submodule-dependent) on a nightly job.
@@ -1579,7 +1585,7 @@ progress the same way it tracks today's Fortran → C migrations.
     exposes upstream's vectorized transform API to `WcsMap`. `pal` and
     `erfa` remain vendored C. Oracle tests validate bit-compatibility
     against the old C `wcslib` implementation; once green,
-    `vendor/wcslib/` is deleted from the repo and the `cc`-driven
+    `crates/starlink-ast/vendor/wcslib/` is deleted from the repo and the `cc`-driven
     `wcslib` build is removed from `starlink-ast`'s `build.rs`.
 7. `SkyFrame`, `SpecFrame`, `TimeFrame`, `FluxFrame`, `SpecFluxFrame`.
    Oracle benchmarks for per-time-slice attribute mutation go green

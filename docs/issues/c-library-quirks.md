@@ -909,7 +909,7 @@ Question for upstream: is the history dependence intended, and would an exact ca
 **Status:** Confirmed against the C source and the built oracle (2026-10-07).
 
 `InitPrjPrm` (wcsmap.c) leaves wcslib's `flag` clear, so the first projection call runs the projection's set-up routine, and `Map` turns its failure (status 1) into `AST__WCSPA`.
-The set-up routines record themselves in `flag` before validating the parameters: `azpset` sets `prj->flag` and then returns 1 when `mu` is -1 (`vendor/wcslib/proj.c`).
+The set-up routines record themselves in `flag` before validating the parameters: `azpset` sets `prj->flag` and then returns 1 when `mu` is -1 (`crates/starlink-ast/vendor/wcslib/proj.c`).
 The next call therefore skips the set-up and projects with the unusable parameters, and wcslib reports a point it cannot project (status 2), which `Map` makes bad.
 An AZP WcsMap with `PV2_1 = -1` therefore raises `AST__WCSPA` on a first forward transformation and gives bad values on an inverse one after it.
 The inverse path calls the forward projection first, to find the longitude range (`LongRange`), so an inverse transformation of a fresh WcsMap fails the set-up silently there: it raises nothing and gives bad values, and a forward transformation after it projects with the partly set-up parameters, giving `(-0, 0)` for the input `(0.1, 0.2)`.

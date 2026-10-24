@@ -46,7 +46,7 @@ Apple's libm already computes a `sin` and `cos` pair cheaply, so SphMap's invers
 Two steps, each gated on its own:
 
 1. Port the ERFA, PAL and wcslib functions the transform paths call to Rust, with bulk interfaces (slices in, slices out, as a Mapping kernel holds its axes) over per-value bodies, keeping C's operations in C's order and calling `f64`'s libm functions.
-   The output bits stay C's, so `ast-bench bits` and the transform corpus gate it unchanged, and `vendor/erfa`, `vendor/pal` and `vendor/wcslib` can then be deleted (design spec step 6a).
+   The output bits stay C's, so `ast-bench bits` and the transform corpus gate it unchanged, and `crates/starlink-ast/vendor/erfa`, `crates/starlink-ast/vendor/pal` and `crates/starlink-ast/vendor/wcslib` can then be deleted (design spec step 6a).
    wcslib's projection functions (`tanx2s` and the rest) already take strided arrays; what needs changing there is the per-element branching inside them.
 2. Replace the libm calls inside those bodies with vectorizable ones like the `atan2` above.
    This moves results by up to 1 or 2 ULP, so it needs the decision below.

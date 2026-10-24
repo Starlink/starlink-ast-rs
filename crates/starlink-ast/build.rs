@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let vendor_dir = manifest_dir.join("../../vendor");
+    let vendor_dir = manifest_dir.join("vendor");
 
     compile_pal_erfa(&vendor_dir);
     compile_wcslib(&vendor_dir);

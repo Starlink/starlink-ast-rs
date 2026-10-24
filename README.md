@@ -69,12 +69,12 @@ This builds rustdoc for all crates and opens the result in a browser. The `starl
 starlink-ast-rs/
 ├── crates/
 │   ├── starlink-ast/      # pure-Rust idiomatic API
+│   │   └── vendor/        # vendored C sources (pal, erfa, wcslib)
 │   ├── starlink-ast-capi/ # cdylib; re-exports ast.h symbols
 │   ├── ast-plugins/       # Grf / Grf3d backends
 │   ├── ast-ffi-tests/     # tier 3: C tests vs Rust libast
 │   ├── ast-oracle-tests/  # tier 4: bit/ULP comparison
 │   └── ast-bench/         # tier 5: transform benchmarks
-├── vendor/                # vendored C sources (pal, erfa, wcslib)
 ├── reference/             # git submodule (optional, for tier 3+4)
 └── docs/                  # design specs and implementation plans
 ```
