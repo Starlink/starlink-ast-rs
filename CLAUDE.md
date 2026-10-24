@@ -496,6 +496,10 @@ The C ABI is **frozen**. Existing applications must keep linking.
   been through six revisions — five of stakeholder feedback, then one
   reconciliation against the implementation; resist the urge to
   redesign on the fly.
+- A user-visible change to a published crate (`starlink-ast`, later
+  `starlink-ast-capi`) gets an entry under `Unreleased` in `CHANGELOG.md`
+  in the same commit, in Keep a Changelog form. Releases follow
+  `docs/releasing.md`; `cargo semver-checks` decides the version bump.
 - Prefer small, focused PRs that land one class or one batch of tests
   at a time. The implementation plan (forthcoming) will decompose
   the delivery order into PR-sized chunks.

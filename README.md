@@ -79,6 +79,11 @@ starlink-ast-rs/
 └── docs/                  # design specs and implementation plans
 ```
 
+## Releasing
+
+A user-visible change to a published crate is recorded under `Unreleased` in [CHANGELOG.md](CHANGELOG.md) as it lands.
+[docs/releasing.md](docs/releasing.md) is the release checklist, including the `cargo semver-checks` run that decides the version bump.
+
 ## Documentation for the Classical Interface
 
 Full documentation of the C and Fortran versions is available in the Starlink User Notes:
