@@ -12,6 +12,7 @@ especially celestial or spectral coordinate systems.
 AST is portable and environment-independent.
 
 This repository is a project to create a from-scratch rewrite of the C library in Rust, retaining a thin C wrapper that will enable existing users to link against it without changing their code.
+It has been created almost entirely using large-language model coding agents such as Anthropic Claude and OpenAI Codex, with human guidance.
 
 ## Building
 
@@ -90,3 +91,4 @@ Full documentation of the C and Fortran versions is available in the Starlink Us
 
 - [SUN/210](https://starlink.eao.hawaii.edu/devdocs/sun210.htx/sun210.html) -- Fortran documentation
 - [SUN/211](https://starlink.eao.hawaii.edu/devdocs/sun211.htx/sun211.html) -- C documentation
+- [doi:10.1016/j.ascom.2016.02.003](https://doi.org/10.1016/j.ascom.2016.02.003) for an overview of the library in Astronomy & Computing.

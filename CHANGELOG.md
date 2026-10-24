@@ -9,7 +9,7 @@ An entry names its crate when the repository publishes more than one.
 
 ### Added
 
-- `starlink-ast`, a pure-Rust port of the Starlink AST library: the Mapping, Frame, FrameSet and Region classes, FitsChan for reading and writing FITS-WCS headers, the Native and MOC channels, KeyMap, Table and FitsTable, and a user guide ported from SUN/211, with transforms, simplification and serialization checked against the C library.
-- `starlink_ast::prelude`, which re-exports the traits whose methods are called on Mappings, Frames, Regions and Channels.
+- `starlink-ast`, a pure-Rust port of the Starlink AST library: the Mapping, Frame, FrameSet and Region classes, FitsChan for reading and writing FITS-WCS headers, the Native and MOC channels, KeyMap, Table and FitsTable, and a user guide ported from [SUN/211](https://starlink.eao.hawaii.edu/devdocs/sun211.htx/sun211.html), with transforms, simplification and serialization checked against the C library.
+
 
 [Unreleased]: https://github.com/Starlink/starlink-ast-rs/commits/main

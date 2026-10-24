@@ -1,6 +1,6 @@
 # starlink-ast
 
-A pure-Rust port of AST, the [Starlink Project](https://en.wikipedia.org/wiki/Starlink_Project)'s library for world coordinate systems in astronomical data.
+A pure-Rust port of the [C AST](https://starlink.eao.hawaii.edu/starlink/AST), the [Starlink Project](https://en.wikipedia.org/wiki/Starlink_Project)'s library for world coordinate systems in astronomical data.
 
 AST describes coordinate systems and the relationships between them.
 It attaches celestial, spectral, time and other coordinate systems to data, converts positions between them, and reads and writes them as FITS-WCS headers and in its own formats.
@@ -10,6 +10,7 @@ The library and its design are described in Berry, Warren-Smith and Jenness (201
 
 This port is evolving.
 It follows the C library closely and is checked against it, and its Rust API will change between minor versions until it settles.
+It has been created almost entirely using large-language model coding agents such as Anthropic Claude and OpenAI Codex, with human guidance.
 A thin C-compatible shim, `starlink-ast-capi`, will let existing applications link against the Rust build without changing their code; it is not published yet.
 
 ## Using the crate
