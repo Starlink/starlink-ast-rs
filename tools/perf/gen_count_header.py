@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
 """Write ast_counts.h and ast_counts.c into a copy of the reference source tree.
 
 ast_counts.h is prepended to every src/*.c file of a counting build.  It

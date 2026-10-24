@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A 3-dimensional SpecMap, whose second and third axes give the RA and Dec
 //! of each point's source, matches C's (specmap.c `Transform` and
 //! `FrameChange`): each case's dump loads with three axes and re-dumps as C

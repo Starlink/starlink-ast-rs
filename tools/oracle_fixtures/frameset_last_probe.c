@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* frameset_last_probe -- AZEL conversions through a FrameSet member.
  * astConvert passes the FrameSet's own member Frames to the per-pair
  * conversion (frameset.c ConvertX), so an AZEL SkyFrame inside a FrameSet

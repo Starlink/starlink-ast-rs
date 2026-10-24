@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Channel, MocChan and FitsChan dumps against C's (channel.c, mocchan.c and
 //! fitschan.c `Dump` and loaders): every attribute unset, each set, values
 //! the setters change, and an Ident; FitsChans holding a card of each type,

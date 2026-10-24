@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Per-plane FitsStore collection for FITS-WCS encoders.
 //!
 //! Mirrors `fitschan.c::FsetToStore` (12169-12259): given a FrameSet,

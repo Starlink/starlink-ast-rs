@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of `reference/starlink-ast/ast_tester/testhuge.c`: the 64-bit pixel
 //! index paths of `resample`, `Polygon::outline`, `mask` and
 //! `Moc::add_pixel_mask` on a 60001 x 60001 `f32` grid, more pixels than a

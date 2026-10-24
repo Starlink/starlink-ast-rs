@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of fitschan.c::SpecTrans (line 30828-32545).
 //!
 //! Translates non-standard FITS-WCS keywords into their standard

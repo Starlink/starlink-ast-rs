@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_errors_probe -- capture the errors C's Region constructors and
  * setters report, and the values its loader repairs: astSetUnc given a
  * Region that cannot be re-centred, or one in a Frame that cannot be

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The errors C's Region constructors and setters report, and the values its
 //! loader repairs: `astSetUnc` given a Region that cannot be re-centered or
 //! whose Frame cannot be converted (region.c `SetUnc`), `astSetFillFactor`

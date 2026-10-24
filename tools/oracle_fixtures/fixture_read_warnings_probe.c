@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fixture_read_warnings_probe -- read each native fixture named on standard
  * input with a Channel, as the port's tests read them, and print the
  * warnings each read leaves (channel.c ClearValues: items no class loader

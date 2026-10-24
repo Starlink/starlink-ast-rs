@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* poly_bad_probe -- capture how PolyMaps and ChebyMaps treat bad values
  * (polymap.c Transform and PolyPowers, chebymap.c PolyPowers): a bad input
  * makes bad only the powers of that input above zero, a ChebyMap input

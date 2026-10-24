@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Linear matrix transformation mapping.
 //!
 //! `MatrixMap` applies a matrix multiplication to a set of input coordinates,

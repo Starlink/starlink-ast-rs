@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* specflux_cmp_probe -- capture the SpecFluxFrame methods C inherits from
  * CmpFrame (specfluxframe.c Match, SubFrame): picking one axis of a
  * SpecFluxFrame, and matching a SpecFluxFrame template against a CmpFrame

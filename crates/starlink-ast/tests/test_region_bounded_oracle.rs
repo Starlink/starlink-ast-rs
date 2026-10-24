@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Whether Regions are bounded, and their bounding boxes, against the C
 //! library where a class's own `GetBounded` or `RegBaseBox` decides them: a
 //! PointList, negated in a Cartesian Frame and in a SkyFrame (region.c

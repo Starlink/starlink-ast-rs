@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Selecting a variant of a Frame whose node's Mapping is used in its inverse
 //! direction, against C.
 //!

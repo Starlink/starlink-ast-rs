@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `Frame::norm_points` normalizes a set of points as C's `astNormPoints`
 //! does through each class's `astNormalPoints`: a SkyFrame asked for
 //! contiguous values keeps its longitudes on one side of the widest gap

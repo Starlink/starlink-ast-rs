@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* mocchan_probe -- capture MocChan reads and writes (mocchan.c).
  *
  * Writes: the lines astWrite passes to the sink for two Mocs in string and

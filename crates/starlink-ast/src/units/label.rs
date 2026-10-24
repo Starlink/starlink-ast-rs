@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Axis labels rewritten for a change of units, as C's `astUnitMapper`
 //! produces them when given an input label (unit.c:5349).
 //!

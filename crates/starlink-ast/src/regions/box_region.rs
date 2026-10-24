@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Box region: an axis-aligned box defined by a center and a corner.
 //!
 //! A [`BoxRegion`] represents a rectangular area with sides parallel to

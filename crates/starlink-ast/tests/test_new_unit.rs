@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! What setting or clearing an axis Unit does to that axis's Label, Symbol
 //! and Format, checked against the C library.
 //!

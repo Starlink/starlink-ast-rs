@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Which directions a Mapping defines, and whether transforming in each is
 //! an error, match C for Mappings whose definedness depends on more than
 //! their coefficients: a PolyMap with unequal numbers of inputs and outputs

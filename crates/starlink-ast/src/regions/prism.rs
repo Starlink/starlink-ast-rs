@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Prism: an extrusion of a region into higher dimensions.
 //!
 //! A [`Prism`] represents an extrusion of an existing Region into one or

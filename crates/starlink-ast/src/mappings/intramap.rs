@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Mapping that applies a transformation supplied by the caller.
 //!
 //! An [`IntraMap`] wraps a transformation the caller provides as an

@@ -1,4 +1,7 @@
 #!/bin/sh
+# Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
 # Build the reference C library as a runtime-loadable engine for ast-bench.
 #
 #   tools/perf/build_c_engine.sh bench   # timing build

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* axis_format_probe -- capture astFormat on a plain Frame axis for a corpus
  * of Format strings and values. C's AxisFormat (axis.c:637) rewrites the
  * Format with ParseAxisFormat, which removes the AST "&" log flag and

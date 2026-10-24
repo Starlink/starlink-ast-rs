@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The public `map_region` of an Interval with a missing limit, against the
 //! C library's `astMapRegion`, which simplifies the mapped Interval and so
 //! re-defines it in the new Frame (interval.c `Simplify`): through a ZoomMap,

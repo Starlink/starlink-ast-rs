@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_interval_remap_probe -- capture the public astMapRegion of an
  * Interval that is not equivalent to a Box, which simplifies the mapped
  * Interval and so re-defines it in the new Frame (interval.c Simplify, the

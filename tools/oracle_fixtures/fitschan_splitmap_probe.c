@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_splitmap_probe -- capture the FITS-WCS headers C writes for
  * FrameSets whose pixel->sky Mapping holds no WcsMap, which fitschan.c
  * SplitMap gives one: a linear Mapping is given a CAR projection, with

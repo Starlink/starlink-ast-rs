@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* sky_norm_probe -- capture SkyFrame Norm (skyframe.c Norm) for points with
  * a bad coordinate, past either pole, just short of 2pi, and with NegLon set,
  * on an unpermuted and a permuted SkyFrame; and the SkyTol and Equinox

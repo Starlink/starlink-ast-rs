@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Every test file in `tests/` is a module of exactly one test program.
 //!
 //! The package sets `autotests = false` and builds the files as modules of

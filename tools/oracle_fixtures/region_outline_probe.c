@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_outline_probe -- capture astDownsize (polygon.c Downsize,
  * DownsizePoly, FindMax and the Segment chain) and astOutline<X> (polygon.c
  * MAKE_OUTLINE, FindInsidePoint, TraceEdge and SmoothPoly).

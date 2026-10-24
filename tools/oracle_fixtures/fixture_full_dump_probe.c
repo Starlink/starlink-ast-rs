@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fixture_full_dump_probe -- read each native fixture named on standard
  * input with a Channel, as the port's tests read them, and write every
  * Object read with a second Channel whose Full is 1, so that every value a

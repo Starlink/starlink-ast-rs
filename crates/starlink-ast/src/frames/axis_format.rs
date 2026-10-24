@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of `axis.c`'s `ParseAxisFormat` and `AxisFormat`, which format an
 //! axis value by handing the Axis `Format` string to C's `sprintf`, and of
 //! the part of C's `printf` that call needs: a format with at most one

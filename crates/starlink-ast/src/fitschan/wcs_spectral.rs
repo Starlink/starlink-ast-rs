@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Spectral axis decoder for FITS-WCS.
 //!
 //! If a spectral axis is present in the [`FitsStore`], this module builds the

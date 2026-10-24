@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Oracle comparison: verify Rust LSST FrameSet transforms match C library output.
 //!
 //! C reference values were produced by `/tmp/dump_lsst.c` linking against

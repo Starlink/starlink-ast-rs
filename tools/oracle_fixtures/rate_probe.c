@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* rate_probe -- capture the rates of change that classes delegating to a
  * component's astRate give: a RateMap at every point, bad inputs included
  * (ratemap.c Transform), a TranMap through its forward component in the

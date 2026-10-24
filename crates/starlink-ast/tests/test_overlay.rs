@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The attributes of the Frames FindFrame and PickAxes produce, checked
 //! against the C library.
 //!

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Describing WCS axes with the `-TAB` algorithm of FITS-WCS paper III:
 //! whether the pixel to WCS Mapping of an axis can be expressed as a
 //! look-up table, and the FitsTable columns that hold it.

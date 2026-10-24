@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! PolyMaps and ChebyMaps treat bad values as C does (polymap.c `Transform`
 //! and `PolyPowers`, chebymap.c `PolyPowers`): a bad or NaN input, or a
 //! ChebyMap input outside its bounding box, spoils only the terms that use a

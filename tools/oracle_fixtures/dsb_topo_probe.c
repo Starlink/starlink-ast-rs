@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* dsb_topo_probe -- capture the DSBSpecFrame values that go through C's
  * TopoMap (dsbspecframe.c:2051), which converts between the current system
  * and topocentric frequency in Hz. TopoMap overlays the DSBSpecFrame onto a

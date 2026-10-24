@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Faithful Rust port of `reference/starlink-ast/src/unit.c`. Provides
 //! `unit_mapper`, `unit_normaliser`, and `unit_label` — the public C
 //! entry points — for converting FITS-WCS-style unit strings into

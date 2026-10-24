@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Keyword-name template matching.
 //!
 //! Port of C `Match` / `MatchFront` / `MatchChar` (fitschan.c:22661, 22826,

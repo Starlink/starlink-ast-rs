@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Per-thread counts of calls into libm, PAL, ERFA and wcslib, keyed by the name of the called function.
 //!
 //! The counts show how many calls into each numerical library a computation makes, so two builds can be compared call for call.

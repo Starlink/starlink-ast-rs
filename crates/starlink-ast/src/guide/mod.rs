@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! # The AST user guide
 //!
 //! This guide explains the concepts of the AST library and how its parts fit

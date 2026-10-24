@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Random number generator — exact port of the C library's combined LCG
 //! with Bays-Durham shuffle (the "ran2" algorithm from Numerical Recipes).
 

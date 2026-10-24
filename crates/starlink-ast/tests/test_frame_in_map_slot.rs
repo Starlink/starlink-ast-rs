@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A bare Frame where a Mapping is expected.
 //!
 //! C accepts a Frame in any Mapping slot, because `Frame::Transform`

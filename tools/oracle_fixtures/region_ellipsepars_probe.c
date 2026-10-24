@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_ellipsepars_probe -- capture astEllipsePars (ellipse.c
  * EllipsePars and CalcPars): the centre, the half-lengths of the axes, the
  * angle from the second axis to the primary axis, and the ends of the two

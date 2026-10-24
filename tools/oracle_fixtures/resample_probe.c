@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* resample_probe -- capture astResample<X> (mapping.c) for every data type
  * and every interpolation scheme: nearest neighbour, linear, the 1-d
  * kernels, block averaging, a user kernel (tri_kernel below) and a user

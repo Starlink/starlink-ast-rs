@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Serialization: Node tree, Serializable trait, and Native format.
 
 pub(crate) mod native_read;

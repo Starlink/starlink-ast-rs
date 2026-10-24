@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* lutmap_inverse_probe -- capture the inverse transformation of LutMaps
  * whose tables have bad entries, flat runs, and either direction, with
  * linear and nearest-neighbour interpolation (lutmap.c Transform). The

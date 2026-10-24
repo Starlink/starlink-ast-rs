@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_polygon_probe -- capture Polygon boundary meshes (polygon.c
  * RegBaseMesh): a quadrilateral in an ICRS SkyFrame, whose mesh follows
  * great circles, and a Cartesian square and triangle, whose edges get

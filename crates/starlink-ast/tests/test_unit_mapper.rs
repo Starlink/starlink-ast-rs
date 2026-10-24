@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Scale factors derived from unit strings, and the way a chain of ZoomMaps
 //! combines them, checked bit-for-bit against the C library.
 //!

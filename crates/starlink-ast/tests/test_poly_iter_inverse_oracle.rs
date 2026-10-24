@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The iterative inverse of PolyMaps with no inverse coefficients, against
 //! C's bit for bit (polymap.c Transform with IterInverse set): an initial
 //! guess from the linear truncation of the forward transformation

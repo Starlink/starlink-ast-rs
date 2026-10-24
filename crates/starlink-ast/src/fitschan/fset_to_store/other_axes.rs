@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of `fitschan.c::OtherAxes` (~24030).
 //!
 //! Catch-all builder for WCS-frame axes not handled by `celestial_axes`

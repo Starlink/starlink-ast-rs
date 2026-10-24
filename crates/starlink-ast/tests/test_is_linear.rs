@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The read-only `IsLinear` attribute is what C's `GetIsLinear` overrides
 //! report: UnitMap, ZoomMap, ShiftMap, WinMap and MatrixMap are linear, a
 //! CmpMap is when both its components are, a FrameSet when its

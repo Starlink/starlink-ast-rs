@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* tran_grid_probe -- capture astTranGrid and astQuadApprox (mapping.c).
  *
  * For astTranGrid: grids transformed through a ZoomMap, the FITS-WCS

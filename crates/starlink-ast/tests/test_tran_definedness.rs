@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for `Mapping::has_forward` / `has_inverse` transform-definedness.
 //!
 //! C ancestors: polymap.c `GetTranForward`/`GetTranInverse` (~2222/2285),

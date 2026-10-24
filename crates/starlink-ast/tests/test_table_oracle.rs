@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tables against C (table.c): adding, removing and querying columns and
 //! parameters, putting and getting cell values, removing and purging rows,
 //! the read-only attributes, copying, and the native dump and its reading.

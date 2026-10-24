@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! ASTWARN card placement on the FITS read path.
 //!
 //! C `Warn` (fitschan.c:35119) inserts its cards in front of the current

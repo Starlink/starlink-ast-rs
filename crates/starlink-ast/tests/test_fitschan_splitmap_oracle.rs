@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FITS-WCS headers written for FrameSets whose pixel->sky Mapping holds no
 //! WcsMap, against C's. fitschan.c `SplitMap` gives such a Mapping one: a
 //! linear Mapping a CAR projection, with its longitude origin moved to the

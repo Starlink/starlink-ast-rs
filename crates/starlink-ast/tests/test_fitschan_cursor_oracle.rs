@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FitsChan card functions against the C library: how `put_fits`,
 //! `put_cards`, `find_fits`, `del_fits`, `empty_fits`, the typed getters and
 //! setters, `read` and `write` use and move the current card, and the `Card`,

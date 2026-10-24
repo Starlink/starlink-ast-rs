@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* flux_badun_probe -- capture where C reports a FluxFrame Unit that fits no
  * flux system. GetSystem takes an unset System from a set Unit and raises
  * AST__BADUN when no system's default units can be converted to it

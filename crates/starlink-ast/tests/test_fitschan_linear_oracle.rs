@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! How a FITS-WCS write describes a 1-D axis that is linear, nearly linear
 //! or logarithmic in pixel coordinates, against C: `OtherAxes` (fitschan.c)
 //! uses a linear description when `IsMapLinear` finds the axis linear, a

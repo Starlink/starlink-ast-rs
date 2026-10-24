@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Region interior grids (`Region::region_grid`, C `astGetRegionMesh` with
 //! `surface` unset) and a Prism's boundary mesh, checked against C. A Box
 //! makes its grid with its base Frame's `frame_grid` (box.c `RegBaseGrid`);

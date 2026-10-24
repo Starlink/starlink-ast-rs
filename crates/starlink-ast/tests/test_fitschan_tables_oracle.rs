@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The FitsTables a FitsChan holds, against C (fitschan.c): `put_table`,
 //! `put_tables`, `get_tables` and `remove_tables`, and the tables in a
 //! copy, an emptied FitsChan and the native dump.

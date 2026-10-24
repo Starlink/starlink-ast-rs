@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Mapping that decomposes a vector into a unit vector and its norm.
 //!
 //! See [`UnitNormMap`].

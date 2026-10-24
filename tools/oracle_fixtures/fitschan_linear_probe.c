@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_linear_probe -- capture how a FITS-WCS write describes a 1-D
  * axis that is linear, nearly linear or logarithmic in pixel coordinates.
  * OtherAxes (fitschan.c) uses a linear description when IsMapLinear finds

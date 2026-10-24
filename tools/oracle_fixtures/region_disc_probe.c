@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_disc_probe -- capture astGetRegionDisc (region.c GetRegionDisc)
  * for Regions whose boundary meshes the port already makes as C does: a
  * Cartesian Box, negated and not, an ICRS Circle and Polygon, a Cartesian

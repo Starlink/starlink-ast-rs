@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* specmap_3d_probe -- capture 3-dimensional SpecMaps, whose second and
  * third axes give the RA and Dec of each point's source (specmap.c
  * Transform and FrameChange). Each case is the dump of the SpecMap and its

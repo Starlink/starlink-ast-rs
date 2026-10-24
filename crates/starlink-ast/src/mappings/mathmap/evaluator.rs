@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Stack-based virtual machine for evaluating compiled MathMap expressions.
 // The VM uses indexed access to stack slots by design (stack[slot][point]),
 // where `slot` is a separate computed index. Iterator-based rewrites would

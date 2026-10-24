@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Region equality against the C library (region.c `Equal`): the same
 //! class, defining points equal within pointset.c `Equal`'s default
 //! accuracy, equal base and current Frames, an equal base->current Mapping,

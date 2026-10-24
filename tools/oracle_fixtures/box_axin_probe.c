@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* box_axin_probe -- capture which points a Box contains when its Frame has
  * sky axes. Box tests each axis value with astAxIn (box.c:4268), which a
  * SkyAxis answers after moving the value by whole turns into the Box's

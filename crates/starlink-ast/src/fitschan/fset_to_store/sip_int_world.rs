@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of `fitschan.c::SIPIntWorld` (~line 28495).
 //!
 //! Receives a pixel→IWC `Mapping` that contains a 2-in/2-out SIP

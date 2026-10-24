@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! C references in rendered documentation.
 //!
 //! The documentation of the Rust API should describe the Rust API.

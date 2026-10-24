@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The conditions C's `Warn` reports, and the Warnings attribute that selects
 //! them (fitschan.c:35431, 43585).
 //!

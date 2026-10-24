@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A restricted simplification follows C's AllowSimplify flags: a CmpMap
 //! with RestrictedSimplify set nominates only components that have
 //! AllowSimplify set, and a merge gives the Mappings it creates the flag

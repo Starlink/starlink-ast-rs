@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* The reference C library as an ast-bench engine.  See bench_engine.h. */
 #include <stdio.h>
 #include <string.h>

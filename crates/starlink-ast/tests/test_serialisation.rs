@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Serialization round-trip tests for all concrete AST types.
 //!
 //! Tests the public API: `from_native_string` and `AnyObject`, writing through a

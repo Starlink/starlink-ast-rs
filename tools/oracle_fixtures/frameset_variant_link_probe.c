@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* frameset_variant_link_probe -- capture the dumps of a FrameSet after a
  * variant is added to, and then removed from, a Frame whose node's Mapping
  * is used in its inverse direction (Inv2 = 1). The FrameSet joins Frame

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_tab_write_probe -- capture how a FitsChan (fitschan.c) writes
  * FrameSets whose axes need the "-TAB" algorithm of FITS-WCS paper III: the
  * header cards, the look-up tables left in the FitsChan, and the FrameSet

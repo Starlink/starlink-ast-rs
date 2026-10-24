@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `FrameSearch::convert_to` between a SkyFrame and a FrameSet whose current Frame
 //! is GRID and whose base Frame is an ICRS SkyFrame, each way round, against
 //! the C library. C dispatches `astConvertX` on the class of the target: to a

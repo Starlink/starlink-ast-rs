@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* sky_last_probe -- capture AZEL conversions whose LAST C serves from its
  * caches: the LAST each SkyFrame keeps and extrapolates for Epoch changes
  * under 0.4 day (skyframe.c GetLAST), and the table of LAST values shared by

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_axis_count_probe -- capture how many pixel and WCS axes a
  * FITS-WCS read gives. FitsToStore (fitschan.c) takes the number of pixel
  * axes as the highest CRPIX index in the primary or any alternate axis

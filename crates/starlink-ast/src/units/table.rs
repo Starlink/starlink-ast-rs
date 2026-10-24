@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Known-unit and SI-multiplier registries. Mirrors the
 //! `MakeKnownUnit` calls and the `MAKEMULT` table in
 //! `reference/starlink-ast/src/unit.c`:2203-2388.

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_ellipse_probe -- capture Ellipse membership (ellipse.c Transform,
  * with its axes from CalcPars): an Ellipse given by its centre, the end of
  * its primary axis and another point on it (form 0), whose second point is

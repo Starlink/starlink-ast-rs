@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* show_tostring_probe -- capture astShow and astToString for four objects,
  * each exercising one part of the port's show / to_native_string: set
  * attributes under Full=-1 (a ZoomMap with ID and Ident), nesting (a

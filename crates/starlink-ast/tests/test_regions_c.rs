@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `testregions.c` functions not covered elsewhere, one test per function.
 //!
 //! Ancestor: `reference/starlink-ast/ast_tester/testregions.c`. The functions

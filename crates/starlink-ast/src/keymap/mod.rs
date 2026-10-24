@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! KeyMaps: sets of values, each stored under a string key.
 //!
 //! See [`KeyMap`] for keys, the value types and the conversions between

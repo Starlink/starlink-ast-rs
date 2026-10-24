@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_compound_attr_probe -- capture how a CmpRegion and a Prism share
  * Closed, MeshSize and FillFactor with their components: setting or
  * clearing Closed or MeshSize on either sets or clears it on both components

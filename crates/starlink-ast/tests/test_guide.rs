@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Gates on the user guide in `starlink_ast::guide`
 //! (`docs/superpowers/specs/2026-10-23-user-guide-design.md`).
 

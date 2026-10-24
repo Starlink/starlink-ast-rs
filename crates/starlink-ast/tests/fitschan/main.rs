@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Integration tests: FitsChan: FITS headers, WCS encodings and the wcsconverter regression.
 //!
 //! Each module is one test file in the parent directory, built into this one

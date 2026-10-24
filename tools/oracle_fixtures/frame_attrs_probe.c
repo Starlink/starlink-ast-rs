@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* frame_attrs_probe -- capture every public attribute of a plain Frame as
  * the C library reports it, for each attribute set on its own, and the dump
  * of each such Frame.

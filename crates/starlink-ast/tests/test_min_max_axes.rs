@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! MinAxes and MaxAxes, and the FindFrame matches they allow, checked
 //! against the C library.
 //!

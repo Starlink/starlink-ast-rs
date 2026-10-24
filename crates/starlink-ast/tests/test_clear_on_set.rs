@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The clear-on-set convention: a setter for an attribute C covers discards
 //! both simplified records.
 //!

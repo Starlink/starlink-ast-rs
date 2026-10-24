@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for the BoxRegion implementation.
 //!
 //! Covers: construction (center+corner and from_bounds), point_in_region,

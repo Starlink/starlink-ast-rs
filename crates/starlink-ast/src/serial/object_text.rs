@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `show`, `to_native_string` and `TryFrom<AnyObject>` for every class.
 //!
 //! Both text forms render the class's own node, so neither copies the object

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for the Circle region implementation.
 //!
 //! Covers: construction (radius and edge_point), point_in_region,

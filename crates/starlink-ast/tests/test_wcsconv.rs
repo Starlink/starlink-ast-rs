@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! WCS conversion regression test harness.
 //!
 //! Data-driven tests from `fixtures/wcsconv/cases.txt` that verify encoding

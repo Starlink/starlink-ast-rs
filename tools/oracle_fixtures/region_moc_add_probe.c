@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_moc_add_probe -- capture Mocs built by astAddRegion and
  * astAddPixelMask<X> (moc.c): Circles, a Polygon, a negated Circle, a
  * Circle round the pole, a Galactic Circle and a Box in a CmpFrame with a

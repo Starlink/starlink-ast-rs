@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* unitnorm_probe -- read a native-text Mapping from a file, run one point
  * through its inverse transform, and print the result.
  *

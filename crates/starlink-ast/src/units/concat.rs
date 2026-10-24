@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tree concatenation. Mirrors C `ConcatTree` (`unit.c`:1022-1124) and
 //! the helper `ReplaceNode` (`unit.c`:4570-4651).
 //!

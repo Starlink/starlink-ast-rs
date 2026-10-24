@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A CmpFrame template's MatchEnd and that of its components, checked
 //! against the C library.
 //!

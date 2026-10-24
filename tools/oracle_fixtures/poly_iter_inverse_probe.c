@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* poly_iter_inverse_probe -- capture the iterative inverse of PolyMaps that
  * have no inverse coefficients (polymap.c Transform with IterInverse set):
  * the initial guess from the linear truncation (LinearGuess), Newton-Raphson

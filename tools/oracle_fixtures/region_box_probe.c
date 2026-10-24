@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_box_probe -- capture which test points a Box contains (box.c
  * Transform): a Box in an ICRS SkyFrame whose corner wraps through RA 0,
  * whose extent C takes as the axis distance from centre to corner (Cache);

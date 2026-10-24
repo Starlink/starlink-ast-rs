@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FITS-WCS encoder pipeline.
 //!
 //! Converts an AST FrameSet into FITS header cards by:

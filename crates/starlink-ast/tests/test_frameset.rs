@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Rust equivalent of reference/starlink-ast/ast_tester/testframeset.c
 //! Covers: construction, add_frame, mapping composition, Frame/Mapping delegation,
 //! integrity, remove_frame, remap_frame, set_base/set_current, convert, invert.

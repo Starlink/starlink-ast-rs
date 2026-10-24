@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Whole-axis kernels: non-finite inputs and outputs longer than the input.
 
 use starlink_ast::constants::BAD_VALUE;

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_moc_text_probe -- capture the MOC string, JSON and data forms of
  * a Moc (moc.c): MOCs read from string and JSON text with astAddMocString
  * (each combination mode, negated, with MaxOrder given, found from the

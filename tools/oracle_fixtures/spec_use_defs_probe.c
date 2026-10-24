@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* spec_use_defs_probe -- capture what UseDefs=0 changes in a SpecFrame,
  * DSBSpecFrame and TimeFrame. A conversion that needs an attribute which has
  * not been set is refused with AST__NOVAL: the StdOfRest of both SpecFrames,

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Decompose a FrameSet mapping into FITS-WCS linear components.
 //!
 //! The decomposition extracts: CRPIX (reference pixel shift), a rotation/scale

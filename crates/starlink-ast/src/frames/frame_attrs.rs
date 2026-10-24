@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The attributes C's Frame class stores for a whole Frame (frame.c), shared
 //! by every Rust Frame class, and the Frame class's part of the Native dump.
 //!

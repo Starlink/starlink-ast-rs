@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for the Ellipse region implementation.
 //!
 //! Covers: construction with semi_axes and angle, point inside/outside/boundary

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for RateMap — differential mapping (Jacobian element).
 //!
 //! Ported from reference/starlink-ast/ast_tester concepts and the

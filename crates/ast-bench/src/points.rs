@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Choose oracle rows for a timing run of N points.
 
 use starlink_ast::constants::BAD_VALUE;

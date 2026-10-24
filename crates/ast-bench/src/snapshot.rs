@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Committed records of Rust/C timings (`docs/perf/`), and the advisory
 //! warning when a ratio has got worse than the latest record's.
 

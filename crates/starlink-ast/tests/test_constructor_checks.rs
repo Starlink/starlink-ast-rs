@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Mappings refuse the arguments C's constructors and `Add` methods refuse,
 //! with C's error codes.
 

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Keyword-card NATIVE encoding decoder.
 //!
 //! Translates `BEGAST_xx` / `ENDAST_xx` / `ISA_xx` / `<NAME>_xx` FITS keyword cards

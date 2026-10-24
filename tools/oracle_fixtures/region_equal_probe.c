@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_equal_probe -- capture astEqual and astOverlap for pairs of
  * Regions that region.c Equal tells apart by more than their current
  * Frames: a Box whose Unit was changed adaptively (base Frame in m,

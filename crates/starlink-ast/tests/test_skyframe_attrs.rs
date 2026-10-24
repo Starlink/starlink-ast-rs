@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Every attribute of a SkyFrame, checked against the C library.
 //!
 //! The expected values come from `skyframe_attrs_oracle/cases.rs`, which

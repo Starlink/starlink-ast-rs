@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Shared data and internal geometry trait for all Region implementations.
 //!
 //! Every concrete region struct embeds a [`RegionData`] that stores the

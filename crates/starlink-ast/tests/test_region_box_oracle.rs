@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Box membership against the C library (box.c `Cache` and `Transform`): a
 //! Box in an ICRS SkyFrame whose corner wraps through RA 0, which C sizes by
 //! the axis distance from center to corner, and a Box of zero width on one

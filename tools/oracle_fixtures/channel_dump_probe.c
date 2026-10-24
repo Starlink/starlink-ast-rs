@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* channel_dump_probe -- capture the native dumps of Channels, MocChans and
  * FitsChans (channel.c, mocchan.c and fitschan.c Dump): with every
  * attribute unset, with each set (Comment, Full, Indent, ReportLevel, Skip

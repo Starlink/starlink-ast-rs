@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Data-driven simplification regression tests.
 //!
 //! Reads `fixtures/simplify/cases.txt` -- the same manifest the upstream C

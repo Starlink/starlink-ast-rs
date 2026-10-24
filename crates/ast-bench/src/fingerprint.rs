@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! What a timing depends on besides the code: the machine, the operating
 //! system, the compilers and the build profile. Absolute times are only
 //! comparable between runs with the same fingerprint.

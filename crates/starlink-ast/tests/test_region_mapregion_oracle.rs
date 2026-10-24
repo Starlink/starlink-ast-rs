@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `astMapRegion`, protected and public, against the C library: the
 //! protected form (region.c `MapRegion`, the port's `reg_map_region`) given
 //! an Interval with a BAD limit and a Mapping that drops an axis, which C

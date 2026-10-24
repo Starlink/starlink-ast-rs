@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* new_unit_probe -- capture what setting or clearing an axis Unit does to
  * the Label, Symbol and Format of that axis (frame.c SetUnit, ClearUnit and
  * NewUnit): with ActiveUnit set, a set Label and Symbol are rewritten for the

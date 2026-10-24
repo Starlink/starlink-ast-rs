@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Bounding-box search for a Mapping over a constrained input region.
 //!
 //! Line-by-line port of `MapBox` and helpers (`SpecialBounds`,

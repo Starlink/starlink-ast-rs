@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* cmp_match_end_probe -- capture astFindFrame with a CmpFrame template of
  * two one-axis Frames against a four-axis Frame, varying the MatchEnd and
  * MaxAxes of the template and of its first component, and the MinAxes and

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* specflux_primary_probe -- capture what a SpecFluxFrame inherits from
  * CmpFrame: its System is "Compound" (cmpframe.c GetSystem), and
  * PrimaryFrame descends into its SpecFrame and FluxFrame, so a SpecFrame

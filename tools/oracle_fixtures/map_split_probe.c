@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* map_split_probe -- capture astMapSplit for each Mapping class that
  * overrides it, at a partial selection, a full permuted selection, an index
  * out of range, an index of 0, a repeated index and no index at all. The base MapSplit

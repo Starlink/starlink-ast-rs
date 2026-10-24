@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The Epoch of a TimeFrame with only its TimeOrigin set, checked against
 //! the C library.
 //!

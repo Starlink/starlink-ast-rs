@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* equal_probe -- capture astEqual for Mappings whose Equal takes account of
  * the Invert flag in class-specific ways: a WinMap (winmap.c Equal compares
  * the stored terms first, then the applied ones), a SelectorMap (number of

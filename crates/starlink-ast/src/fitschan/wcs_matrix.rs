@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Construction of the pixel-to-IWC (Intermediate World Coordinates) mapping.
 //!
 //! This module builds the linear (and optionally distorted) mapping from

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Entry storage: the AST type codes, the scalar-or-vector payload, and
 //! the per-entry bookkeeping C keeps in `struct AstMapEntry`.
 

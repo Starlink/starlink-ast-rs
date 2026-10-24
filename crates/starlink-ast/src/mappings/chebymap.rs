@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Chebyshev polynomial transformation mapping.
 //!
 //! A `ChebyMap` is similar to a [`PolyMap`] but uses Chebyshev polynomial

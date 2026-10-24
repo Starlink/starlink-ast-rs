@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Interval region: axis-aligned bounds on one or more axes of a Frame.
 //!
 //! An Interval represents upper and/or lower limits on one or more axes.

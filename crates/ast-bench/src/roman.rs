@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The Roman benchmark: `perf/bench_simd.c` from Starlink/ast pull request 51
 //! (<https://github.com/Starlink/ast/pull/51>), repeated on the Rust engine
 //! and, with the `c-oracle` feature, the C one.

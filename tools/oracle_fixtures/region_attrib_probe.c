@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_attrib_probe -- capture the dumps of Regions after a Frame
  * attribute is set or cleared through them (region.c SetAttrib and
  * ClearAttrib): through the FrameSet, remapping the Region, when it is

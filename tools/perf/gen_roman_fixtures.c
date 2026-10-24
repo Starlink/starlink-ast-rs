@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* Write the Mappings of the Roman benchmark, as C's own Native dumps.
 
      gen_roman_fixtures <output directory>

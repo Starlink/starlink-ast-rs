@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Phase 0 of the benchmarking design
 //! (`docs/superpowers/specs/2026-10-15-transform-benchmarking-design.md`):
 //! for every transform-oracle section the port must make the same calls into

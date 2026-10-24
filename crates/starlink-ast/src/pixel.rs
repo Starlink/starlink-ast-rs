@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The pixel types the array functions accept.
 //!
 //! Each array function (resampling, rebinning, outlining, ...) is one generic function bounded by [`PixelValue`].

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* allow_simplify_probe -- capture how a restricted simplification uses the
  * AllowSimplify flag. A CmpMap with RestrictedSimplify set nominates only
  * the components that have AllowSimplify set (cmpmap.c Simplify), and when a

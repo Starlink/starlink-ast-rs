@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The `#[doc(alias = "…")]` attributes in a Rust source file.
 //!
 //! The alias gate compares them with the documentation ledger, so the name

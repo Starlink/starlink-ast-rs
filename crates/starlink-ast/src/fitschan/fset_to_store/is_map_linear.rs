@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of `fitschan.c::IsMapLinear` (fitschan.c:19405).
 //!
 //! Tests whether a specified output of a mapping is a linear function

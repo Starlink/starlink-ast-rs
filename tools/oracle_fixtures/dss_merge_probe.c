@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* dss_merge_probe -- capture the plate centre of the DssMap that a DssMap
  * and a preceding WinMap merge into. C's DssMap MapMerge rebuilds the DssMap
  * from the FITS cards astDssFits writes (dssmap.c), which hold the plate

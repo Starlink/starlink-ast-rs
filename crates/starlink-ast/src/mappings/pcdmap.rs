@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! 2-D pincushion/barrel distortion mapping.
 //!
 //! A [`PcdMap`] transforms 2-dimensional positions to correct for the

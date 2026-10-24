@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* attr_test_clear_probe -- capture what C's astTest reports and what C's
  * dump writes for Mapping attributes that are set to their default value
  * and for ones that are set and then cleared. A set attribute is written

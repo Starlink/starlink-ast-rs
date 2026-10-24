@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! C ABI shim — **not yet implemented**.
 //!
 //! When built, this crate becomes the `cdylib` exporting the symbols of

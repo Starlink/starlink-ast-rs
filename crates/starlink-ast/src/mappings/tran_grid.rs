@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Transforming every position of a regular grid.
 //!
 //! Backs [`Mapping::tran_grid`], a port of C `mapping.c` `TranGrid` and its

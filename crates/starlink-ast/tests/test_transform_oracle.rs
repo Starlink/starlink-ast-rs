@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Investigative transform-output oracle checker.
 //!
 //! Ported from the C `check_transform_oracle` / `transform_oracle_util`

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Shared helpers for the integration test binaries.
 //!
 //! Each area program that needs these declares `mod common;` once in its

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for CmpMap (compound mapping) and composition methods.
 //!
 //! Ancestor: behavior derived from the C AST CmpMap documentation and

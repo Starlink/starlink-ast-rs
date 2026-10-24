@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! 2-D pixel to equatorial sky mapping via a Digitized Sky Survey plate solution.
 //!
 //! See [`DssMap`].

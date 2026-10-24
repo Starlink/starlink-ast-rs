@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Enumerating the steps of a C seam body from the source.
 //!
 //! AST's house style precedes every step inside a function body with a comment

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Benchmark: LSST FrameSet forward/inverse transform performance.
 //!
 //! Loads the lsst.ast fixture, transforms 1, 10_000, and 100_000 points,

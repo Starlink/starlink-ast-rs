@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Reading FITS-WCS headers whose axes use the `-TAB` algorithm of
 //! FITS-WCS paper III, against C (fitschan.c `TabMapping`): the look-up
 //! tables the FrameSet uses, the errors, the tables left in the FitsChan,

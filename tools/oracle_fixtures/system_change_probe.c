@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* system_change_probe -- capture what setting or clearing the System does
  * to a SpecFrame, TimeFrame or FluxFrame whose Label, Symbol, Title and Unit
  * were set (specframe.c, timeframe.c, fluxframe.c SetSystem and

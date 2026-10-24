@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! [`MocChan`] — a Channel that reads and writes MOCs as text.
 //!
 //! It reads and writes [`Moc`] objects in the string or JSON serialization

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* sky_convert_probe -- capture the Mapping astConvert finds between two
  * SkyFrames (skyframe.c Match, SubFrame, MakeSkyMapping), for every pair of
  * celestial coordinate systems, under a range of alignment systems, with

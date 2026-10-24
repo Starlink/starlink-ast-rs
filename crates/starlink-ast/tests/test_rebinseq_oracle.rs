@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `mappings::rebin_seq` against sequences of calls to C's
 //! `astRebinSeq<X>` for every pixel type it exists for: each sequence starts
 //! with `rebin_init` and ends with `rebin_end`, some with a last call that

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FrameSet Variants subsystem, ported from `ast_tester/testframeset.c`
 //! (errors 1-39): AddVariant (rename and with-Mapping), the Variant
 //! get/set/clear/test attribute, AllVariants, MirrorVariants, the per-variant

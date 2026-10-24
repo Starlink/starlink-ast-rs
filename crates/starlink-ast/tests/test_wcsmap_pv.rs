@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `WcsMap::get_pv` gives the values C's `astGetPV` gives (wcsmap.c
 //! `GetPV`): the defaults of unset latitude parameters, the longitude
 //! parameters 0 to 2 defaulted from the native reference point except for

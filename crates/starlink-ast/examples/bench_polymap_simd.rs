@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Sweep PolyMap forward-eval performance across point counts, comparing
 //! the scalar path against the cross-lane SIMD prototype.
 //!

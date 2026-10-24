@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Rebuild a `PolyMap` with each input axis pre-scaled.
 //!
 //! Mirrors C `fitschan.c::ScalePolyInputs` (~26899). Returns a new

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* mapping_bad_probe -- capture how NormMaps, ShiftMaps and MatrixMaps
  * treat bad values: a NormMap normalises every point, so a SkyFrame still
  * wraps the longitude of a point whose latitude is bad (normmap.c

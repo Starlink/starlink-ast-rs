@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Graphics plugin backends (`Grf`, `Grf3d`) — **not yet implemented**.
 //!
 //! When built, this crate provides the PLplot, SVG and logging backends behind

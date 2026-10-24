@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Compilation test: verifies trait signatures are coherent and Region: Frame + Mapping works.
 
 use starlink_ast::coords::{PointSet, Points, PointsMut};

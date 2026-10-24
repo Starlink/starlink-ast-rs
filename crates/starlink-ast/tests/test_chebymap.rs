@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for ChebyMap — Chebyshev polynomial transformation.
 //!
 //! Ported from C's testchebymap.c and the Step 6 design spec.

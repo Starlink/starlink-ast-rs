@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Safe Rust wrappers for the vendored wcslib projection functions.
 //!
 //! The C wcslib library is compiled from `vendor/wcslib/{proj,tpn,wcstrig,ast_memory_stub}.c`

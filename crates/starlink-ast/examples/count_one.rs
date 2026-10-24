@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Transform one transform-oracle section twice and print the library calls
 //! the second (steady-state) call makes, with the `call-counts` feature:
 //!

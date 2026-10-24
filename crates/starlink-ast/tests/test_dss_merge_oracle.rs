@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The plate center of the DssMap a DssMap and a preceding WinMap merge
 //! into, bit for bit against C's. C rebuilds the merged DssMap from the FITS
 //! cards `astDssFits` writes (dssmap.c MapMerge), which hold the plate center

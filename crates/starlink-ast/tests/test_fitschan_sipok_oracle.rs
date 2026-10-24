@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FitsChan's SipOK attribute against the C library: a FrameSet with SIP
 //! distortion, read from `wcsconv/inputs/sip.head`, written with every
 //! encoding and SipOK unset, false and true. Only FITS-WCS writes SIP

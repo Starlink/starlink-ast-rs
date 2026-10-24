@@ -1,3 +1,6 @@
+# Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
 """Take IsSimp cards from a freshly generated reference, values from the old one.
 
 Some references are stale in their IsSimp cards and, separately, were captured

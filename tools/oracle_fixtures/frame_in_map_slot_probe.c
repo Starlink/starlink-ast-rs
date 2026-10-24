@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* Write the two dumps that bound what a Frame may stand in for.
  *
  * frame_in_map_slot.ast is a FrameSet whose Map<n> slot holds a bare CmpFrame.

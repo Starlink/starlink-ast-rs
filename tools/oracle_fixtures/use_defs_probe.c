@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* use_defs_probe -- capture the UseDefs attribute of Frames: its default of
  * 1, the default a CmpFrame takes from its first component and a FrameSet
  * from its current Frame (cmpframe.c, frameset.c GetUseDefs), and the

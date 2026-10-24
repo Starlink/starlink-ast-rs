@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Supplementary native-text round-trip check for every Mapping class.
 //!
 //! The authoritative serializer test is

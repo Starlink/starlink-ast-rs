@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Top-level orchestration for `astUnitMapper_`. Mirrors C
 //! `astUnitMapper_` (`unit.c`:5238-5732) and its helper
 //! `MakeMapping` (`unit.c`:3227-3371).

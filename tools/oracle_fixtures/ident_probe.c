@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* ident_probe -- capture how Objects write and read Ident, the Object
  * attribute every AST Object has (object.c). Dump writes it in the Object
  * part of the description, ahead of an "IsA Object" line, whenever it is

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Converting a card's value to the type a caller asks for: C's `CnvType`
 //! (fitschan.c), used by the `astGetFits<X>` getters.
 

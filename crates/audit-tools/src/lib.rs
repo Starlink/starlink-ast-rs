@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Source citations for the `MapMerge` / `Simplify` audit checklists.
 //!
 //! A checklist row cites a source line, and a line number rots as the file

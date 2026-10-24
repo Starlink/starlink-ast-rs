@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! NormMaps, ShiftMaps and MatrixMaps treat bad values as C does: a NormMap
 //! normalizes every point, so a SkyFrame wraps the longitude of a point whose
 //! latitude is bad (normmap.c `Transform`); a bad shift makes its axis bad

@@ -1,3 +1,6 @@
+# Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
 import merge_card_hunks as m
 
 OLD = ("NIN_A   =                    2 / Number of input coordinates\n"

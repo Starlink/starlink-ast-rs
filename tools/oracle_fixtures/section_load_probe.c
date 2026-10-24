@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* section_load_probe -- capture what astRead makes of hand-written Native
  * descriptions that place an item in the part of the description belonging
  * to a class other than the one that reads it. Each loader reads its items

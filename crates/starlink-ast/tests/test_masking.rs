@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Integration tests for the generic mask function.
 //!
 //! Covers: inside/outside masking, return count, non-identity mapping,

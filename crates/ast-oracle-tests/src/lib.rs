@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Test tier 4: live comparison against the C library.
 //!
 //! The C library is loaded at runtime through `ast_bench::c_engine`, built by

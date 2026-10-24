@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A SkyFrame holding plain Axis objects, as `astLoadFrame` gives one read
 //! from a description with no `Ax<n>` objects (frame.c:15227), behaves as
 //! C's does: Format, Unit, formatting and unformatting come from the plain

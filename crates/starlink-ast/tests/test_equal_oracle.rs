@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Mapping equality against C's `astEqual` where the classes treat the
 //! Invert flag in their own ways: a WinMap compares its stored terms first
 //! and its applied ones only when the Invert flags differ (winmap.c Equal);

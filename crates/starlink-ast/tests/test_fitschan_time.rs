@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FitsChan DTAI/DUT1 (time-offset attribute) integration tests.
 //!
 //! Covers the `WcsMapFrm` DUT1/DTAI stamping (fitschan.c:38012-38021) onto

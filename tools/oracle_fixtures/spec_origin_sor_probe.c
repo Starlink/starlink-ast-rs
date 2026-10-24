@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* spec_origin_sor_probe -- capture how a SpecOrigin and AlignSpecOffset take
  * part in a change of StdOfRest. SetStdOfRest re-expresses a set SpecOrigin
  * in the new rest frame by converting with astConvert on the Frame itself,

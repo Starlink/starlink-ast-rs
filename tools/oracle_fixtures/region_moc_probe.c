@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_moc_probe -- capture the Moc class core (moc.c): Mocs built cell by
  * cell with astAddCell (OR, XOR and AND, at several orders), one whose
  * MaxOrder needs 8 byte values; for each, its dump and that dump read back,

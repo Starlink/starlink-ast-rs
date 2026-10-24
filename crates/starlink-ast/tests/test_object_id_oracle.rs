@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! ID, the Object attribute every AST Object has, against C's (object.c):
 //! written first in the Object part of a dump whenever it is set, even
 //! blank, and read back. A clone does not inherit it, as C's `astCopy` does

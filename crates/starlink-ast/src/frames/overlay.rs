@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The Frame-class part of C's `astOverlay` (frame.c:8513), which every
 //! class's Overlay starts from, and the Axis objects it overlays.
 //!

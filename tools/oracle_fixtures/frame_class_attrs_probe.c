@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* frame_class_attrs_probe -- capture the Frame-class attributes of every
  * Frame class as the C library reports them: each class's defaults, and the
  * value and astTest result after each attribute is set on its own, including

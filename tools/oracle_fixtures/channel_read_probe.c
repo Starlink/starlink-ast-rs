@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* channel_read_probe -- capture how a Channel reads Objects from its
  * source (channel.c Read, GetNextData, InputTextItem and ClearValues): one
  * Object per astRead, the next starting where the last stopped; with Skip

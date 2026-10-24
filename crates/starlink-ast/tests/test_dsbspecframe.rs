@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! DSBSpecFrame integration tests.
 //!
 //! Covers: construction, attribute defaults, sideband derivation from IF sign,

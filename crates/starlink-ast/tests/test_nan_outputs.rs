@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! No transformation gives a NaN output: a bad output is always `BAD_VALUE`,
 //! and a NaN input is taken to be bad (the design rule in CLAUDE.md). C does
 //! the same when the `AST_REPLACE_NAN` environment variable is `1`, which

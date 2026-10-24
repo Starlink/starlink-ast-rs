@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitstable_probe -- capture how a FitsTable (fitstable.c) behaves: adding
  * columns, creating a FitsTable from a FITS header, column null values,
  * column sizes, getting and putting whole columns, getting and putting the

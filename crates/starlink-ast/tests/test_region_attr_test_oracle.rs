@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Whether the Region attributes Negated, Adaptive and RegionFS are set,
 //! against the C library (region.c `TestNegated`, `TestAdaptive` and
 //! `TestRegionFS`): after construction, negation, setting, clearing, reading

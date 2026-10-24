@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* remove_regions_probe -- capture what astRemoveRegions makes of Mappings
  * that hold Regions: each class removes them from its own components
  * (cmpmap.c, tranmap.c, ratemap.c, normmap.c, cmpframe.c, region.c

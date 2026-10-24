@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* lutmap_forward_probe -- capture the forward transformation of LutMaps,
  * bit for bit, at inputs that exercise the interpolation (lutmap.c
  * Transform): between nodes with an increment that is not a power of two,

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Acceptance tests for [`dyn Mapping::transform_nan_protocol`].
 //!
 //! Sketch validation: the public NaN-as-bad entry must produce results

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_coupled_probe -- capture how a FITS-WCS write describes axes
  * that each depend on both pixel axes, so that IsMapLinear (fitschan.c)
  * cannot split the axis off the Mapping. It then holds the other output at

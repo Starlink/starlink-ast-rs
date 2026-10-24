@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! CmpRegion construction, membership, mesh and dump against the C library
 //! (cmpregion.c `astInitCmpRegion`, `Transform`, `RegBaseMesh`, `Dump`,
 //! `Load`): an FK5 Circle ANDed with a Galactic Box, which the constructor

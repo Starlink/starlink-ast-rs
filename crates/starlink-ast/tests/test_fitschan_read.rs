@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FITS read-path Frame and Axis attribute plumbing.
 //!
 //! Each test here isolates one `WcsCelestial` / `WcsMapFrm` attribute

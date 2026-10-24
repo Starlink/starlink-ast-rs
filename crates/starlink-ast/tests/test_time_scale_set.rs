@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Which TimeScale, System and Unit settings a TimeFrame rejects, and the
 //! TimeOrigin that results otherwise, checked against the C library.
 //!

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! How a FITS-WCS write describes axis descriptions with different numbers
 //! of axes, against C: `WcsFromStore` (fitschan.c) bounds its per-axis
 //! loops, for each version, by WCSAXES if the version has one, and otherwise

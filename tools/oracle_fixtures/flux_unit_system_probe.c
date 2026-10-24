@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* flux_unit_system_probe -- capture FluxFrame behaviour when the System is
  * not set and follows from the Unit (fluxframe.c GetSystem): the Title, which
  * states the SpecVal in the density system's units, and a conversion to a

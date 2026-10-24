@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! KeyMap serialization: hand-built round trips, the one real C-generated
 //! KeyMap in the fixture corpus, and the `MapSz` C oracle.
 //!

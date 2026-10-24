@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The attributes C's Axis class stores for one axis of a Frame (axis.c):
 //! Label, Symbol, Unit, Digits, Format, Direction, Top and Bottom.
 //!

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_stc_probe -- capture StcResourceProfile (stc.c, stcresourceprofile.c):
  * dumps of a plain, a negated and a sky Stc whose AstroCoords Error Region is
  * given in another SkyFrame (astInitStc and MakeAstroCoordsKeyMap remap and

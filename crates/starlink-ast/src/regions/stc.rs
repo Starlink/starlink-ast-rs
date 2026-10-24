@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The IVOA Space-Time-Coordinates (STC) Regions (stc.c and its subclasses).
 //!
 //! An Stc wraps another Region, which it encapsulates, and a list of

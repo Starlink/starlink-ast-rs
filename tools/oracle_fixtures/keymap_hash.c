@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* keymap_hash — dump the MapSz card a freshly built C KeyMap carries for
  * a set of key populations, so the Rust MapSz arithmetic can be checked
  * against the oracle. HashFun is static, so MapSz is the observable. */

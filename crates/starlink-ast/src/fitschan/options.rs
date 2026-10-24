@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The attribute settings a new FitsChan takes from the `FITSCHAN_OPTIONS`
 //! environment variable (object.c `astEnvSet`, `VSet` and the `SetAttrib`
 //! of the FitsChan, Channel and Object classes).

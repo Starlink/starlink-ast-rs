@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Pratt parser for MathMap expressions.
 //!
 //! Converts a token stream into a compiled expression (opcodes + constants).

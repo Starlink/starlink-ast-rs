@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for SelectorMap.
 //!
 //! Ancestor: C AST SelectorMap (selectormap.c). The Rust API uses the

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Extraction of FITS-WCS keywords from a CardList into a FitsStore.
 //!
 //! This module implements the first phase of the FITS-WCS decoding pipeline:

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The part every Channel shares: C's Channel class part.
 //!
 //! A Channel's source and sink are held through shared handles, so a clone

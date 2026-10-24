@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* Minimal grf/grf3d stubs — probe never plots; satisfy the linker only. */
 int astGAttr(int a, double b, double *c, int d){(void)a;(void)b;(void)c;(void)d;return 0;}
 int astGBBuf(void){return 0;}

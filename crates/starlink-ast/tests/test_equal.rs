@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for the `equal` method on Mapping and Frame types.
 //!
 //! Covers identity equality, value equality, inequality on field

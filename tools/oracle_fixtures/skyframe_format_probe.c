@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* skyframe_format_probe -- capture how the C library formats SkyFrame axis
  * values, which Unit, Format and NormUnit it reports for them, and how it
  * dumps a SkyFrame carrying those attributes.

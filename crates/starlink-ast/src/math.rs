@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The floating-point library functions `starlink-ast` calls, routed through one
 //! place so the `call-counts` feature can count them by their C names. The
 //! bare `f64` methods are banned elsewhere in this crate by `clippy.toml`.

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* tran_definedness_probe -- capture which directions of a Mapping C
  * defines, and whether transforming in each direction is an error, for
  * Mappings whose definedness depends on more than their coefficients: a

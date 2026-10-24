@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* min_max_axes_probe -- capture MinAxes and MaxAxes after sequences of
  * settings (frame.c DefaultMinAxes, DefaultMaxAxes, ConsistentMinAxes,
  * ConsistentMaxAxes, and the cmpframe.c GetMinAxes / GetMaxAxes defaults),

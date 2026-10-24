@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! PointList region: a discrete collection of points in a Frame.
 //!
 //! A [`PointList`] represents a Region which is a collection of discrete

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Native text format renderer: Node tree -> text.
 //!
 //! Converts a [`Node`] tree back to AST's plain-text "Native" serialization

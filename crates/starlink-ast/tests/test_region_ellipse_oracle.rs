@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Ellipse membership against the C library (ellipse.c `Transform`, with its
 //! axes from `CalcPars`): a three-point Ellipse whose second point is not the
 //! end of its secondary axis, and an Ellipse in an ICRS SkyFrame over a grid,

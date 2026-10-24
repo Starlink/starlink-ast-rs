@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Where a FluxFrame Unit that fits no flux system is reported, checked
 //! against the C library.
 //!

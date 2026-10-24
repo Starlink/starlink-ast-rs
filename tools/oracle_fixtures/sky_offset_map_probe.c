@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* sky_offset_map_probe -- capture the Mapping astSkyOffsetMap returns for
  * SkyFrames with and without an offset coordinate system: its class, and
  * three points transformed forward and inverse.

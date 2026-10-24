@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for LutMap — 1-D lookup table mapping.
 //!
 //! Ported from C's testlutmap.c and the Step 6 design spec.

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FITS-IRAF encoding reader/writer.
 //!
 //! IRAF-style WCS headers use the CD matrix (`CDi_j`) directly rather than

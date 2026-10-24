@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_nulltran_probe -- capture astTransform of a NullRegion
  * (nullregion.c Transform): a negated NullRegion, before and after the
  * protected astMapRegion through a ZoomMap of 2, and an un-negated one,

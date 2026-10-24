@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* sky_geometry_probe -- capture what astResolve and astIntersect return on a
  * SkyFrame, which works on great circles (skyframe.c Resolve, Intersect),
  * for an unpermuted and a permuted SkyFrame, including bad inputs and the

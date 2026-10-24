@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_alt_naxes_probe -- capture how a FITS-WCS write describes axis
  * descriptions with different numbers of axes. WcsFromStore (fitschan.c)
  * bounds its per-axis loops, for each version, by WCSAXES if the version

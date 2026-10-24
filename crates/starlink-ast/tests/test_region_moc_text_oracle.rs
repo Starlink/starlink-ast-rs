@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The MOC string, JSON and data forms of a Moc against the C library
 //! (moc.c `AddMocString`, `astAddMocText`, `GetMocString`, `astGetMocText`,
 //! `AddMocData`, `GetMocData`, `GetMocHeader`): MOCs read from string and

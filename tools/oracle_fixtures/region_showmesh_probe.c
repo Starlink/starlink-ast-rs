@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_showmesh_probe -- capture astShowMesh (region.c ShowMesh): the
  * table of current-Frame boundary mesh points it writes to standard output,
  * with and without a title, unformatted (C's "%g") and formatted by the axis

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Channel integration tests — port of reference/starlink-ast/ast_tester/testchannel.c
 //!
 //! Tests the Channel system: NativeChannel with StringSink/StringSource,

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Mapping between grid coordinates in different HEALPix projections.
 //!
 //! An `XphMap` maps between grid coordinates within different types of

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_object_probe -- capture the Object part of Region dumps. A Region
  * keeps its own Ident, written before the Frame proxy (object.c Dump),
  * while UseDefs set through it goes to the encapsulated Frame and is

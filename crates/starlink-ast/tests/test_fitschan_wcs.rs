@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FitsChan WCS decoder integration tests — Phase 2.
 //!
 //! Verifies that FitsChan with FitsWcs encoding can read FITS headers and

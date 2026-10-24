@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! How a FITS-WCS write describes axes that each depend on both pixel axes,
 //! against C: `IsMapLinear` (fitschan.c) cannot split such an axis off the
 //! Mapping, so it holds the other output at its value where `astMapBox`

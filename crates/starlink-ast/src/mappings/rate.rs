@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Numeric rate-of-change computation via adaptive finite differences.
 //!
 //! Based on the algorithm in C `mapping.c` (lines 8859–9152 and 1255–1386).

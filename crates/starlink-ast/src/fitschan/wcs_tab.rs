@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Reading axes described by the `-TAB` algorithm of FITS-WCS paper III,
 //! whose world coordinates are looked up in a FITS binary table.
 //!

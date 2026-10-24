@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A Box tests each axis value through its Frame's Axis objects, as C's
 //! does with `astAxIn` (box.c:4268), so on a sky axis a value is moved by
 //! whole turns into the Box's range, and a Box that crosses RA=0 contains

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* overlay_probe -- capture the attributes of the Frames that astFindFrame
  * and astPickAxes produce, which come from C's astOverlay (frame.c:8513 and
  * each class's Overlay): the target is overlaid onto the result first, then

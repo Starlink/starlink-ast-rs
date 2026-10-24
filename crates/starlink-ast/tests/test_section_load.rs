@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Each class reads its items only from its own part of a Native
 //! description, as C's loaders do through `astReadClassData` (channel.c):
 //! an item placed in another class's part, between a different pair of

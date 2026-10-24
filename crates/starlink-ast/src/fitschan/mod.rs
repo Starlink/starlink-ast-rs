@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FitsChan — FITS header I/O for AST objects.
 //!
 //! A [`FitsChan`] stores a sequence of FITS header cards and provides the

@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
 # The Rust fixture tree must be a byte-identical copy of the upstream
 # ast_tester/fixtures/ tree at the current submodule pin.
 #

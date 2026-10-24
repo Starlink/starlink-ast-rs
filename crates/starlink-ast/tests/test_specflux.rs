@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! SpecFluxFrame: its SpecVal, conversions between flux and spectral
 //! systems with permuted axes and logarithmic units, and equality.
 //!

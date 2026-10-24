@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of `fitschan.c::MakeIntWorld` (~line 21689).
 //!
 //! Receives an assembled `pixel→IWC` mapping and extracts the

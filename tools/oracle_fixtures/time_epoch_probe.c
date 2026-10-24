@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* time_epoch_probe -- capture the Epoch a TimeFrame gives when only its
  * TimeOrigin is set. C's GetEpoch (timeframe.c:2480) converts the origin to
  * a TDB MJD. For UT1, GMST, LAST and LMST it first maps the origin to UT1,

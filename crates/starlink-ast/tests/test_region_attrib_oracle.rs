@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Frame attributes set and cleared through a Region, against the C
 //! library (region.c `SetAttrib` and `ClearAttrib`).
 //!

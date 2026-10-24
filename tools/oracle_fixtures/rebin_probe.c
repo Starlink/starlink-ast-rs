@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* rebin_probe -- capture astRebin<X> (mapping.c) for every data type it
  * exists for (D, F, I, B, UB) and every spreading scheme: nearest, linear
  * and the 1-d kernels. 1-D, 2-D and 3-D grids, linear and non-linear

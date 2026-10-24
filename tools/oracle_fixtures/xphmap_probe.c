@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* xphmap_probe -- capture the forward and inverse transformations of an
  * XphMap of each projection type, bit for bit (xphmap.c Transform), over a
  * half-pixel grid that covers the whole HEALPix layout at order 1, so every

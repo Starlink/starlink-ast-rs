@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Every native fixture read through a Channel, as C reads it: the status of
 //! each read and the warnings it leaves for items no class loader reads
 //! (channel.c `ClearValues`). C reads every fixture written by the C library

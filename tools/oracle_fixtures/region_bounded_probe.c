@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_bounded_probe -- capture whether Regions are bounded, and their
  * bounding boxes, where those depend on a class's own GetBounded or
  * RegBaseBox: a PointList, which inherits region.c GetBounded, so a negated

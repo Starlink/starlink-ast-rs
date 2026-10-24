@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Ident, the Object attribute every AST Object has, written and read as
 //! C writes and reads it: in the Object part of a description whenever it
 //! is set, even blank, and read only from that part. A KeyMap holds one

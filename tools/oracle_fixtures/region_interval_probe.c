@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_interval_probe -- capture Interval membership, Bounded and mesh
  * (interval.c Transform, GetBounded, RegBaseMesh): a slice of zero width
  * on one axis, bounded (C hands it to the equivalent Box) and unbounded (C

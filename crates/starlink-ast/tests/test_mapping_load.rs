@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Mappings whose dumps leave values out read back as C's do: a PermMap
 //! constant or a diagonal MatrixMap element that is bad is written unset and
 //! reads back as bad (permmap.c, matrixmap.c Dump and Load), and the

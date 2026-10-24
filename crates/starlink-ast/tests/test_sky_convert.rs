@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The Mapping `convert_to` finds between two SkyFrames, checked against the
 //! C library for every pair of celestial coordinate systems.
 //!

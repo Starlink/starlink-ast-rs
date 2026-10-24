@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Shared helpers for cross-type Region parallel merges.
 //!
 //! `Interval` and `Box` can absorb a neighboring `NullRegion` or

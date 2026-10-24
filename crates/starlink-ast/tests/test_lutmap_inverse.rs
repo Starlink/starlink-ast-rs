@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The inverse transformation of a LutMap matches C's (lutmap.c
 //! `Transform`) exactly, for tables with bad entries, flat runs, either
 //! direction and both interpolation methods, at the table values, between

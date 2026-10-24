@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of `fitschan.c::SkyPole` (~29399).
 //!
 //! Sets `LONPOLE` and `LATPOLE` keyword values in the [`FitsStore`]

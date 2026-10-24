@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Channel I/O abstraction for reading and writing AST objects.
 //!
 //! A [`Channel`] connects a [`Source`] (text line supplier) and a [`Sink`]

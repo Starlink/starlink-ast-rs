@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* spline_inverse_probe -- capture the forward and iterative inverse
  * transformations of the SplineMap in testsplinemap_c.c, bit for bit: the
  * spline fitted by SciPy in fixtures/programs/testsplinemap/2dspline_c.dat,

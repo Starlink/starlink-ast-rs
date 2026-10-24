@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `Mapping::tran_grid` over the Mappings of `testtrangrid.c`.
 //!
 //! C ancestor: `reference/starlink-ast/ast_tester/testtrangrid.c`. Each

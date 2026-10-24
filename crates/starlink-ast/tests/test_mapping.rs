@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Mapping-level tests for the record that a Mapping has been simplified.
 //!
 //! Ancestor: `reference/starlink-ast/ast_tester/testmapping.c` — the

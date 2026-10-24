@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Intermediate storage for extracted FITS WCS keywords.
 //!
 //! [`FitsStore`] holds all the FITS-WCS keyword values extracted from a

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! ActiveUnit unit adaptation in SubFrame/Match (frame.c:11062-11108).
 
 use starlink_ast::frames::{BasicFrameBuilder, Frame};

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* picked_skyaxis_probe -- capture what C reports for a Frame made by picking
  * axes out of a SkyFrame with astPickAxes: the picked axes stay SkyAxis
  * objects, with the attributes SkyFrame's SubFrame sets on them explicitly

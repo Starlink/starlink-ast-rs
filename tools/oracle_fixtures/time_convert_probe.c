@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* time_convert_probe -- capture the Mapping astConvert finds between two
  * TimeFrames (timeframe.c Match, SubFrame, MakeTimeMapping, MakeMap).
  *

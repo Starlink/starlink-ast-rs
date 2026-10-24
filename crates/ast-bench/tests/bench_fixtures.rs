@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The bench fixtures are not in starlink-ast's transform-oracle gate (they are
 //! not in `ast_tester` yet), so this test holds the port to C's recorded
 //! outputs for them, with the golden tolerance of

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Circle region: a circular (or spherical-cap) area within a Frame.
 //!
 //! A Circle is defined by a center point and a radius (specified as a

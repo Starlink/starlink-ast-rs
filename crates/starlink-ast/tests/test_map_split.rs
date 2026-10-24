@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for the C-faithful map-split algorithm.
 //!
 //! These exercise the protected, **0-based** `Mapping::map_split_zero_based`

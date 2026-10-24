@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschanerrors_table -- print the bad-header table of testfitschanerrors.c
  * as Rust source, so the Rust port runs exactly C's cases.
  *

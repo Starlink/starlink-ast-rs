@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Celestial axis decoder for FITS-WCS.
 //!
 //! If celestial axes are present in the [`FitsStore`], this module builds the

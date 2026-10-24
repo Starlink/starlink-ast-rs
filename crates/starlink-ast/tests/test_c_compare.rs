@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The comparison the C-oracle tests make between the port and C values
 //! captured on another platform (`common::within_libm_rounding`).
 

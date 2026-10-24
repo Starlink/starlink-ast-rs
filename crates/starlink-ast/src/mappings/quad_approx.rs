@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Quadratic least-squares fit to a 2-input Mapping.
 //!
 //! Backs [`Mapping::quad_approx`], a port of C `mapping.c` `QuadApprox`

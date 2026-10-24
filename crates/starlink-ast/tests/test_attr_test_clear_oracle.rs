@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Mapping attributes set to their default and set then cleared: the port's
 //! `test_*` methods and dumps against C's `astTest` and C's dump.
 //!

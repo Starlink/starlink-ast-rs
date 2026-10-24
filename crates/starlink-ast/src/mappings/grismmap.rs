@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! 1-D spectral dispersion mapping (grism/grating/prism).
 //!
 //! See [`GrismMap`].

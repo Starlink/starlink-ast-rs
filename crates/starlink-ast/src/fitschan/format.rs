@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The formatting of floating point values in FITS header cards.
 //!
 //! A value is written to the requested number of significant digits, a zero

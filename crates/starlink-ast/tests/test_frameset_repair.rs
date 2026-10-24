@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tests for FrameSet behaviors ported from frameset.c: RemoveFrame
 //! node preservation, Base/Current reset defaults, current-frame
 //! delegation of Frame methods, Simplify returning a FrameSet, and

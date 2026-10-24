@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FitsTables: FITS binary tables, held as a Table of column data and a
 //! FitsChan of header cards.
 //!

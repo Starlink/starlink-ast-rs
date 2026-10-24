@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The audit checklists' citations have to still designate what they claim.
 //!
 //! A row cites a source line and, once the file is repaired, the name of the

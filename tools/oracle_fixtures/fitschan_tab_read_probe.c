@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_tab_read_probe -- capture how a FitsChan (fitschan.c) reads
  * FITS-WCS headers that describe axes with the "-TAB" algorithm of
  * FITS-WCS paper III: the look-up tables the FrameSet uses, the errors,

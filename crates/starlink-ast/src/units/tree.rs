@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `UnitNode` tree representation. Mirrors the `UnitNode` struct +
 //! `Oper` enum in `reference/starlink-ast/src/unit.c` (~150-188).
 

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_convex_probe -- capture astConvex<X> (polygon.c MAKE_CONVEX,
  * ConvexHull, FindBoxEdge, PartHull): the Polygon C makes round the pixels
  * of a 2-D array that pass a comparison with a value, for each comparison,

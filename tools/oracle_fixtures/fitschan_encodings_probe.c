@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_encodings_probe -- capture what each FITS encoding writes for a
  * set of headers: each header is read into a FrameSet, which is written
  * back to the same FitsChan with each encoding in turn. Each encoding's

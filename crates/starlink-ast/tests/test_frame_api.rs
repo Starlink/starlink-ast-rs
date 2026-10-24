@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! SpecFrame `ref_pos` and FluxFrame `density_system` / `density_unit`,
 //! checked against C's `astGetRefPos`, `astGetDensitySystem` and
 //! `astGetDensityUnit`. `TimeFrame::current_time` is checked inside the

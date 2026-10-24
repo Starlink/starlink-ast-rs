@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! How many pixel and WCS axes a FITS-WCS read gives, against C: the pixel
 //! axes are counted from the highest CRPIX index in the primary or any
 //! alternate axis description (fitschan.c `FitsToStore`), whatever NAXIS

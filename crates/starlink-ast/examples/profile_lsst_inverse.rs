@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Focused profiling target: run the simplified LSST inverse for many seconds
 //! so a sampling profiler (`samply record cargo run --release --example
 //! profile_lsst_inverse`) sees the hot loop, not bench setup.

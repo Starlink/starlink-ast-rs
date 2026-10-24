@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Masking data grids with Regions: see [`mask`].
 
 // C: `astMask<X>`. A Region class masks a grid through

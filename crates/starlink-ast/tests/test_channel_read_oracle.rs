@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A Channel's reads against C's (channel.c `Read`, `ReadClassData`,
 //! `GetNextData` and `ClearValues`): one Object per read, the next starting
 //! where the last stopped; with Skip set anything before a `Begin` ignored,

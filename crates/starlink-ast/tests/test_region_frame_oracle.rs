@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The Frame methods a Region forwards to the current Frame of its FrameSet
 //! (region.c `Offset2`, `Resolve`, `AxDistance`, `AxOffset`,
 //! `SystemString`, `PickAxes`, and `SubFrame` through `astConvert`), against

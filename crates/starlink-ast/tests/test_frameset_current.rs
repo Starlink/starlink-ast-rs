@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A FrameSet's Current attribute is set, cleared and written as C's is:
 //! unset until a Frame is added or Current is set, written commented out
 //! while unset, cleared when the current Frame is removed, and renumbered

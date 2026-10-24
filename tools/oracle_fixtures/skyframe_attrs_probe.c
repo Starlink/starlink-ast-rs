@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* skyframe_attrs_probe -- capture every SkyFrame attribute as the C library
  * reports it, for each setting applied to a default SkyFrame, together with
  * the Native dump of each: the SkyFrame's own attributes (System,

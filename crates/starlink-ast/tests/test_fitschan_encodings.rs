@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Integration tests for alternative FITS WCS encodings.
 //!
 //! Tests encoding auto-detection (guess) and read for all supported formats:

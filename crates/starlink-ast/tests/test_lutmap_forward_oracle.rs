@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! LutMap's forward transformation against C's, bit for bit: between nodes
 //! with an increment that is not a power of two, beyond either end, on the
 //! last node beside a bad entry, and at half increments for

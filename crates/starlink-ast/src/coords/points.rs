@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Borrowed per-axis views of point coordinates.
 //!
 //! A view holds one slice per axis, all of the same length, the layout C's

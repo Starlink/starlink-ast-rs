@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* class_attrs_probe -- capture the class-specific attributes of TimeFrame,
  * SpecFrame, DSBSpecFrame and FluxFrame as the C library reports them: each
  * class's defaults, the value and astTest result of every attribute after

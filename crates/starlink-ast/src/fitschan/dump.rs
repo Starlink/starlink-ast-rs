@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A FitsChan's dump and loader (fitschan.c `Dump` and `astLoadFitsChan`):
 //! its attributes, then every card, used ones included, with its name, type,
 //! flags, value and comment, then the KeyMap of FitsTables the `-TAB`

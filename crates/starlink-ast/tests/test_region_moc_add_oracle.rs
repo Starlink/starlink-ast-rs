@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `Moc::add_region` and `Moc::add_pixel_mask` against the C library
 //! (moc.c `AddRegion`, `AddPixelMask<X>`): Circles, a Polygon, a negated
 //! Circle, a Circle round the pole, a Galactic Circle and a Box in a

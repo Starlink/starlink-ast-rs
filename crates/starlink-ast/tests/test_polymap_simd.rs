@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Correctness verification for the cross-lane SIMD PolyMap forward eval.
 //!
 //! Confirms that `PolyMap::forward_simd_2d_into` produces bit-identical

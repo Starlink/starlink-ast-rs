@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* Write the ast-bench fixtures: one plain Mapping per class, as C's own
    Native dump, and bench.oracle recording C's transform of points sampled
    over each fixture's own domain, in gen_transform_oracle's format.

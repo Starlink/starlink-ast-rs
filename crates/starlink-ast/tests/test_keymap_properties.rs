@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Property tests for `KeyMap`.
 //!
 //! The two invariants that make the `HashMap`-backed storage safe: a dump is

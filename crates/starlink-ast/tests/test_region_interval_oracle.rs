@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Interval membership, Bounded and boundary mesh against the C library
 //! (interval.c `Transform`, `GetBounded`, `RegBaseMesh`): an Interval that
 //! is equivalent to a Box is tested, bounded and meshed as that Box; one

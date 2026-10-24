@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! String → `UnitNode` tree parser. Mirrors `CleanExp`, `MakeTree`,
 //! `CreateTree`, `SplitUnit`, and `ConStart` in
 //! `reference/starlink-ast/src/unit.c`. The parsing algorithm is the

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! AZEL conversions whose LAST comes from the caches C keeps: the LAST
 //! each SkyFrame extrapolates for Epoch changes under 0.4 day, and the
 //! table of LAST values already computed, which interpolates between

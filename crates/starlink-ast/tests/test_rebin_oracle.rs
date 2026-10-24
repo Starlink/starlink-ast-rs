@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `mappings::rebin` against C's `astRebin<X>` for every pixel type it
 //! exists for and every spreading scheme: 1-D, 2-D and 3-D grids, linear
 //! and non-linear Mappings, linear fits, subdivision, simplified and blocked

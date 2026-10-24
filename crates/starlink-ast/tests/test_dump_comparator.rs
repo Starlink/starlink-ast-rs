@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The comparator the simplify regression and the wcsconv harness use for
 //! dumps: byte-equal except for numbers within a tolerance, so that what it
 //! lets through is only last-bit numeric drift.

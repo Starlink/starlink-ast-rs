@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of `fitschan.c::SpectralAxes` (~30050).
 //!
 //! Identifies any spectral axis in the FrameSet's current frame,

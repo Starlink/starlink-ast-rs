@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `CmpRegion::reg_cmp_region_list` against the C library's protected
 //! `astCmpRegionList` (cmpregion.c `CmpRegionList` and `XORCheck`): nested
 //! ANDs and ORs, an OR containing an AND, an XOR, an OR containing an XOR,

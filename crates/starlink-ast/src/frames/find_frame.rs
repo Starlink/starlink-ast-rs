@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `astFindFrame` / `astMatch` / `astSubFrame` port (frame.c:3735, 7073, 10838).
 //!
 //! The triplet answers "is there a coordinate system reachable from

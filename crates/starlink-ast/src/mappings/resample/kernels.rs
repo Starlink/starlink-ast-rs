@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The 1-d kernels of mapping.c (`Sinc`, `SincCos`, `SincGauss`,
 //! `SincSinc`, `Somb`, `SombCos` and `Gauss`) and `J1Bessel`, which `Somb`
 //! and `SombCos` use, shared by resampling and rebinning.

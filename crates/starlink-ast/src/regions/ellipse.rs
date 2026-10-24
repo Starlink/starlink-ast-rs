@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Ellipse region: a rotated elliptical area within a 2-D Frame.
 //!
 //! An [`Ellipse`] is defined by a center point, the half-lengths of its

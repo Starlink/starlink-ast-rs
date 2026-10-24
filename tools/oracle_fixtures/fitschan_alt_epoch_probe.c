@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_alt_epoch_probe -- capture where a FITS-WCS write takes MJD-OBS
  * and DATE-OBS from when the axis descriptions have different epochs.
  * SkySys (fitschan.c) stores the date of observation only for the primary

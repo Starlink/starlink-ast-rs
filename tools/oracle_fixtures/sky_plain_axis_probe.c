@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* sky_plain_axis_probe -- capture how a SkyFrame behaves when it holds plain
  * Axis objects, as astLoadFrame gives it for a description with no Ax<n>
  * objects (frame.c:15227). The SkyFrame's own methods still answer Label,

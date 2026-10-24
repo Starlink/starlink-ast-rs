@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_mask_probe -- capture astMask8D (region.c Mask<X>, and pointlist.c
  * Mask<X> for a PointList) for Regions masked inside and outside on small
  * grids, one larger than the Region's bounding box: with no Mapping, through a ZoomMap from the Region's Frame to the

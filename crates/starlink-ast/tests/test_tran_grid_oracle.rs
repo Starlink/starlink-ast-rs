@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `Mapping::tran_grid` and `Mapping::quad_approx` against C's `astTranGrid`
 //! and `astQuadApprox` (mapping.c).
 //!

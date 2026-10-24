@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_mapregion_probe -- capture astMapRegion, protected and public: the
  * protected form (region.c MapRegion) given an Interval whose defining
  * points include a BAD limit and a Mapping that drops an axis, where C

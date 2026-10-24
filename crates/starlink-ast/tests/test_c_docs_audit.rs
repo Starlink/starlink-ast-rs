@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Gates for the C documentation audit
 //! (`docs/superpowers/specs/2026-10-19-c-docs-audit-design.md`).
 

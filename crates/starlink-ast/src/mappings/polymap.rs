@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! N-dimensional polynomial transformation mapping.
 
 use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};

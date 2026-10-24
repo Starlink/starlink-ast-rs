@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tree comparison. Mirrors C `CmpTree` (`unit.c`:568-672).
 //!
 //! Returns 0 when two trees are equivalent. Non-zero values are

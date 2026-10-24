@@ -1,3 +1,6 @@
+# Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
 """Classify every simplify reference against a fresh capture from the pinned C.
 
 Card-only drift means the reference predates a library change and must be

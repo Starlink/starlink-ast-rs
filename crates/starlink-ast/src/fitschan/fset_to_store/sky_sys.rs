@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of `fitschan.c::SkySys` (~29599) and `IsSkyOff` (~20222).
 //!
 //! `is_sky_off` classifies a Frame as offset/non-offset based on its

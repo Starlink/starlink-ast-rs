@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* report_probe -- capture what a Mapping with its Report attribute set
  * writes when astTran1 or astTran2 transforms points (mapping.c
  * ReportPoints), and how Report is dumped. A Mapping writes each value as

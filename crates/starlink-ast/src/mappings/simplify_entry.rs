@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The one way into a per-class simplification.
 //!
 //! C has a single public entry, `astSimplify_` (`mapping.c:24755`), which

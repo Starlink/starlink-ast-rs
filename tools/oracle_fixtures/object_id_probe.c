@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* object_id_probe -- capture how Objects write and read ID, the Object
  * attribute every AST Object has (object.c). Dump writes it first in the
  * Object part of the description whenever it is set, even when blank;

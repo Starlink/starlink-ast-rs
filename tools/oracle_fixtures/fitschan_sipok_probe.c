@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_sipok_probe -- capture how the SipOK attribute and the encoding
  * decide whether a FrameSet with SIP distortion is written with SIP
  * coefficients, with a linear approximation, or not at all.

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! What setting or clearing the System does to the other attributes of a
 //! SpecFrame, TimeFrame or FluxFrame, checked against the C library.
 //!

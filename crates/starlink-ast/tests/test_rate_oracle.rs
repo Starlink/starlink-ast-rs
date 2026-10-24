@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Rates of change from classes that delegate to a component's `rate`,
 //! against C's `astRate`: a RateMap asks its Mapping's rate at every point,
 //! bad inputs included (ratemap.c Transform); a TranMap its forward

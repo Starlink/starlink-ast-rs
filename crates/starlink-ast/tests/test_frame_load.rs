@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Loading SpecFrames and TimeFrames from Native dumps reads the
 //! Frame-class attributes as C's `astLoadFrame` does, and the observer
 //! position under the names older versions of AST wrote.

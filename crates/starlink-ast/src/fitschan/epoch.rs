@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The date of observation a foreign read gives its Frames: C's
 //! `ChooseEpoch`, `TimeSysToAst` and `TDBConv` (fitschan.c:6272, 34887,
 //! 33894).

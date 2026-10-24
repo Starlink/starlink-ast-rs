@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // All wrappers are pub(crate) and will be consumed by SlaMap, SkyFrame,
 // etc.  Until those land, suppress dead-code warnings.
 #![allow(dead_code)]

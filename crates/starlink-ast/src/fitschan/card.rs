@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FITS header card parsing and formatting.
 //!
 //! Implements the FITS standard 80-character header card format, supporting

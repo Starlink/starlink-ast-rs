@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* frameset_current_probe -- capture how a FrameSet's Current attribute is
  * set, cleared and written. Current is unset until astAddFrame or
  * astSetCurrent sets it, and an unset Current is the last Frame

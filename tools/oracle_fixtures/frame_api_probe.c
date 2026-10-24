@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* frame_api_probe -- capture three small Frame-class functions:
  * astCurrentTime (timeframe.c), which converts the clock reading, whole
  * UTC seconds since 1970, to a TimeFrame's axis; astGetRefPos

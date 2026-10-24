@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* selectormap_dump_probe -- write C's dump of a SelectorMap of two Circles
  * in one Frame. C omits the Frame from the second Region (selectormap.c
  * Dump clears RegionFS), since the first Region's Frame is the Frame of

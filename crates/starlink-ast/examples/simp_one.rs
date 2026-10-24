@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Simplify one native-format Mapping fixture and print the result.
 //!
 //! Usage: `cargo run -p starlink-ast --example simp_one -- <path-to-.map>`

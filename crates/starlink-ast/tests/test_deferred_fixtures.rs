@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The one place that accounts for the simplify corpus's unported classes.
 //!
 //! Upstream and the port share one fixture tree and one manifest, so a fixture

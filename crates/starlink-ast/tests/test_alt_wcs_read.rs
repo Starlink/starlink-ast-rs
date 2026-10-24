@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Reader-side tests for FITS-WCS alternate-plane support.
 
 use starlink_ast::AnyObject;

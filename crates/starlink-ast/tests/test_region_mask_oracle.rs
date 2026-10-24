@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `mask` against the C library's `astMask8D` (region.c `Mask<X>`, and
 //! pointlist.c `Mask<X>` for a PointList): which pixels of a grid are set,
 //! and the count returned, masking inside and outside, with no Mapping and

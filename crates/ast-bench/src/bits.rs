@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A hash of the output bits of every corpus transform, so a change that
 //! must not alter results can be checked against a base commit exactly.
 //!

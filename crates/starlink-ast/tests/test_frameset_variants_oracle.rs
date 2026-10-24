@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The dumps of FrameSets whose current Frame has variants, against C's, for
 //! a current Frame of each kind: a Frame, a SkyFrame, a SpecFrame and a
 //! CmpFrame, and a Frame with Digits set, whose value the FrameSet's own

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Port of `fitschan.c::CelestialAxes` (~4890).
 //!
 //! Identifies the celestial pair of axes in the FrameSet's current

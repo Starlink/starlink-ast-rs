@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Compare the current build with a base commit, both timed on this machine
 //! in the same session, alternating, so no saved baseline is needed.
 

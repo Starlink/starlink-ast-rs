@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* time_scale_set_probe -- capture which TimeFrame settings C rejects, and
  * the TimeOrigin that results otherwise. SetTimeScale raises AST__ATTIN for
  * a timescale other than TT on a BEPOCH TimeFrame, and OriginScale raises

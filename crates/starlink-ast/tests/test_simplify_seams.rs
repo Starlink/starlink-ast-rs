@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Which classes may implement the per-class simplify seam.
 //!
 //! C overrides the `Simplify` vtab slot in 11 of this port's classes. For every

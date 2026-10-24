@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tree inversion. Mirrors C `InvertTree` (`unit.c`:2516-2685).
 //!
 //! Given a forward tree (assumed to have been simplified with

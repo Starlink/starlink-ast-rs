@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The `Report` Mapping attribute: `tran1` and `tran2` write the effect of
 //! each transformation to the thread's report writer, as C's `astTran1` and
 //! `astTran2` print it (mapping.c `ReportPoints` and the FrameSet and Region

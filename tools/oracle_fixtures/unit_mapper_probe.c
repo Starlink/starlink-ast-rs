@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* unit_mapper_probe -- capture the scale factors AST derives from unit
  * strings, and how it combines them when it simplifies a chain of
  * ZoomMaps.

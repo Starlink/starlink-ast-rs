@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The Object-class `ID` attribute.
 
 /// The `ID` attribute of an object: a string identifying it, unset by

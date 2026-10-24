@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Benchmark cases: an oracle section of a fixture, named by a set file.
 
 //! Benchmark cases: an oracle section of a fixture, named by a set file.

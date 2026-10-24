@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_labels_probe -- capture the axis Labels a FITS-WCS read gives.
  * WcsOthers (fitschan.c) labels each axis no other function claims with its
  * CNAME, else with the comment of its CTYPE card, else with its CTYPE

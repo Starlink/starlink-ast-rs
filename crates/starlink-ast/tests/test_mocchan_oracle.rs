@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `MocChan` against C's MocChan (mocchan.c): the lines written for Mocs in
 //! string and JSON form at several `MocLineLen` values, including lengths
 //! too short for a value; the Moc read from text split across lines, JSON,

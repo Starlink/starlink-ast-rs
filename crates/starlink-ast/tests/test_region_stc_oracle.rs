@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `StcResourceProfile` against the C library (stc.c, stcresourceprofile.c):
 //! the dumps of a plain, a negated and a sky Stc whose AstroCoords Error
 //! Region is given in another SkyFrame, of an Stc made from an Stc whose

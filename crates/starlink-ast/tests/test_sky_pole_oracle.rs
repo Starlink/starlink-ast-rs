@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A FITS-WCS write gives the LONPOLE and LATPOLE C gives (fitschan.c
 //! `SkyPole`): a projection wcsmap.c `IsZenithal` counts as zenithal writes
 //! only the pole its WcsMap was given, and any other has the pole worked out

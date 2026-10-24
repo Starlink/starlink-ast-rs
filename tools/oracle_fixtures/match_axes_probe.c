@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* match_axes_probe -- capture what astMatchAxes( frm1, frm2, axes ) returns
  * for every pair from a fixed list of Frames, so that each class's
  * MatchAxesX (frame.c, skyframe.c, cmpframe.c, frameset.c, region.c) is

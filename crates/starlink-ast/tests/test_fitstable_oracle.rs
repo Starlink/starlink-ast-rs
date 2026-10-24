@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! FitsTables against C (fitstable.c): adding columns, creating a FitsTable
 //! from a FITS header, column null values and sizes, getting and putting
 //! whole columns, getting and putting the header, copying, and the native

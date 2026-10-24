@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Rewrite a checklist's citations into `file:line (fn name)` form.
 //!
 //! Reports every row it cannot anchor instead of relocating it. A citation that

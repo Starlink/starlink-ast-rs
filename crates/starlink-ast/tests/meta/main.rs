@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Integration tests: Errors, PointSet, trait coverage, audit and ledger gates, and benchmarks.
 //!
 //! Each module is one test file in the parent directory, built into this one
@@ -41,6 +44,8 @@ mod test_mapmerge_audit;
 mod test_nan_protocol;
 #[path = "../test_simplify_regression.rs"]
 mod test_simplify_regression;
+#[path = "../test_source_headers.rs"]
+mod test_source_headers;
 #[path = "../test_tracing_feature.rs"]
 mod test_tracing_feature;
 #[path = "../test_transform_memory.rs"]

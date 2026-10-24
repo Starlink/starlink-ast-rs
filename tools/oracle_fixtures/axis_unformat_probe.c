@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* axis_unformat_probe -- capture astUnformat on a plain Frame axis for a
  * corpus of strings. C's AxisUnformat (axis.c:1335) reads the value with
  * sscanf "%lf %n", counting trailing white space, and otherwise accepts the

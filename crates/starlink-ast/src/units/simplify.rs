@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Tree simplification, constant folding, and substitution of
 //! derived-unit definitions. Mirrors `RemakeTree`, `FixConstants`,
 //! `InvertConstants`, and the simplification passes in

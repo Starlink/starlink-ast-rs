@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Core simplification engine for mapping composition trees.
 //!
 //! This module implements the flatten/merge/reconstruct pipeline that

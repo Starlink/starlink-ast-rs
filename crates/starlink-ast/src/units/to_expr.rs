@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Format a `UnitNode` tree as an algebraic expression. Mirrors C
 //! `MakeExp` (`unit.c`:2860) in two of its three output styles, selected
 //! in C by the `mathmap` argument:

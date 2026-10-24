@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! NullRegion membership against the C library (nullregion.c `Transform`):
 //! a negated NullRegion passes every point through as given, BAD axes and
 //! all, before and after mapping through a ZoomMap, as it inherits Frame's

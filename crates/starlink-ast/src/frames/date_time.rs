@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Frame-level date/time parsing helpers.
 //!
 //! [`read_date_time`] ports `astReadDateTime` (frame.c:8892): it parses a

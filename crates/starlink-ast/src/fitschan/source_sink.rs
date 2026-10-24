@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A FitsChan's source and sink: C's source and sink functions, and the
 //! `SourceFile` and `SinkFile` attributes (fitschan.c `ReadFromSource`,
 //! `ReadFits`, `WriteToSink`, `WriteFits`, `ShowFits`, `SetSourceFile` and

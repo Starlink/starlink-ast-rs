@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `Polygon::downsize` and `Polygon::outline` against the C library's
 //! `astDownsize` (polygon.c `Downsize`, `DownsizePoly` and `FindMax`) and
 //! `astOutline8<X>` (polygon.c `MAKE_OUTLINE`, `FindInsidePoint`, `TraceEdge`

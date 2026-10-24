@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Authorship of the user guide's chapters, from `git blame` on SUN/211.
 //!
 //! Each guide chapter is ported from a range of lines of `sun_master.tex` and

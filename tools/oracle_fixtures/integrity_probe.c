@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* integrity_probe -- capture how a FrameSet keeps its integrity when an
  * attribute of its current Frame is changed through the FrameSet
  * (frameset.c RecordIntegrity / RestoreIntegrity), for every Frame class.

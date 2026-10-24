@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_cmplist_probe -- capture the protected astCmpRegionList
  * (cmpregion.c CmpRegionList and XORCheck): the operator and Regions it
  * lists for nested ANDs, nested ORs, an XOR, an OR containing an XOR, and

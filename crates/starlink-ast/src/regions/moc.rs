@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Moc: a region of the sky made of HEALPix cells, as the IVOA MOC
 //! (Multi-Order Coverage) recommendation describes one (moc.c).
 //!

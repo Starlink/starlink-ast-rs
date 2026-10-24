@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* rebinseq_probe -- capture sequences of astRebinSeq<X> calls (mapping.c)
  * for every data type it exists for (D, F, I, B, UB): the first call of
  * each sequence sets AST__REBININIT and the last AST__REBINEND, and some

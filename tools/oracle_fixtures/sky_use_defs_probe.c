@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* sky_use_defs_probe -- capture what UseDefs=0 changes in a SkyFrame. The
  * default Title leaves out an Equinox or Epoch that has not been set
  * (skyframe.c GetTitle), and MakeSkyMapping refuses a conversion step that

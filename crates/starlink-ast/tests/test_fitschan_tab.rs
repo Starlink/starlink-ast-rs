@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Writing and reading FITS-WCS headers that use the `-TAB` algorithm,
 //! ported from `testtabspectrum`, `checktab` and `checktab2` in
 //! `reference/starlink-ast/ast_tester/testfitschan.c`.

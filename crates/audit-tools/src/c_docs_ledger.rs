@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The C documentation audit ledger (`docs/audits/c-docs/ledger.tsv`).
 //!
 //! One row per documentation header in the C library.

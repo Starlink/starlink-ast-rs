@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Borrowed per-axis views of points.
 
 use starlink_ast::coords::{PointBuf, Points, PointsMut};

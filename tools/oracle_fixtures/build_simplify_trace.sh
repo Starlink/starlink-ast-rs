@@ -1,4 +1,7 @@
 #!/bin/sh
+# Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
 # Build a copy of the reference C library that traces the simplify machinery,
 # plus a gen_simp driver, so the port's route through a Mapping can be diffed
 # against C's.

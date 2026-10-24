@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `MocChan`: writing Mocs as text and reading them back.
 //!
 //! C ancestor: `reference/starlink-ast/ast_tester/testmocchan.c`. A Moc of

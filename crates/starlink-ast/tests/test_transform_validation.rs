@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Every Mapping's transformation makes the checks C's base-class
 //! `Transform` makes before any class transforms a point (mapping.c
 //! `Transform`): an undefined direction is `AST__TRNND`, an input with the

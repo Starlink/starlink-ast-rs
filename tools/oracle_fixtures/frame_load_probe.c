@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* frame_load_probe -- capture what astRead makes of hand-written Native
  * Frame descriptions: the per-axis items Lbl<n>, Sym<n>, Uni<n>, Fmt<n>,
  * Dig<n>, Dir<n>, Top<n> and Bot<n> that astLoadFrame applies to the Axis

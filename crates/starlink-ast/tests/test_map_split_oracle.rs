@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `map_split` against C's `astMapSplit` for every class that overrides it:
 //! a partial selection, a full permuted one, an index out of range, an index
 //! of 0 and a repeated index. The base MapSplit and the classes that call it

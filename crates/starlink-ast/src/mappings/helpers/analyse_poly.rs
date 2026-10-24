@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Decompose a 2-in/2-out PolyMap into shift / canonical / matrix.
 //!
 //! Mirrors C `fitschan.c::AnalysePoly` (~line 4174). Given a 2-in/2-out

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_overlap_probe -- capture astOverlap codes for pairs of Regions
  * that exercise the per-class dispatch of region.c Overlap/OverlapX: an
  * Interval unbounded along one axis against Boxes that miss, cross and lie

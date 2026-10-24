@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `Region::show_mesh_text` against the C library's `astShowMesh` (region.c
 //! `ShowMesh`): the table of current-Frame boundary mesh points, with and
 //! without a title, unformatted and formatted by the axis Format, for a

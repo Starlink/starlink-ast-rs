@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 // Until SkyFrame lands (Task 4), these functions are only exercised by
 // tests.  Suppress the dead-code lint at the module level.
 #![allow(dead_code)]

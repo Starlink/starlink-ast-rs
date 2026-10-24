@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Peak memory of bulk transforms, counted by a global allocator per thread.
 //!
 //! A series CmpMap holds the result of its first component while the second

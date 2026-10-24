@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! A Channel's reader: one Object at a time from a source of text lines, as
 //! channel.c `Read`, `ReadClassData`, `GetNextData`, `InputTextItem` and
 //! `ClearValues` read it.

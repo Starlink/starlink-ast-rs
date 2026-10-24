@@ -35,3 +35,7 @@ __pycache__/
 
 # Agents
 .claude
+
+# Probe programs built from tools/oracle_fixtures/*.c
+/tools/oracle_fixtures/*_probe
+/tools/oracle_fixtures/fitschanerrors_table

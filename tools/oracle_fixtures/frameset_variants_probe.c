@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* frameset_variants_probe -- capture the dumps of FrameSets whose current
  * Frame has variants (astAddVariant), for a current Frame of each kind:
  * a Frame, a SkyFrame, a SpecFrame and a CmpFrame, and a Frame with Digits

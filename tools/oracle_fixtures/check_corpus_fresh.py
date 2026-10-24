@@ -1,3 +1,6 @@
+# Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
 """Classify every NATIVE-family wcsconv reference against the pinned C oracle.
 
 The `native` encoding writes FITS cards and the `ast` encoding writes indented

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Inverse of `SimplifyTree`'s standardization passes — used by
 //! `MakeExp` to make the formatted expression more natural for human
 //! readers (e.g. turning `(A**-1)*B` back into `B/A`). Mirrors C

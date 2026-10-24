@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_tables_probe -- capture how a FitsChan (fitschan.c) holds
  * FitsTables: astPutTable, astPutTables, astGetTables, astRemoveTables,
  * and the tables in a copy, an emptied FitsChan and the native dump.

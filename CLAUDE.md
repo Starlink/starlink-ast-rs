@@ -188,6 +188,12 @@ on those grounds; do not re-prototype it without new motivation.
 - Rust 2024 edition. MSRV pinned in `rust-toolchain.toml`.
 - Lints: `#![warn(missing_docs)]` on all public items in `starlink-ast`.
   CI enables `RUSTFLAGS="-D warnings"`.
+- Every source file we own (`.rs`, `.c`, `.h`, `.py`, `.sh`) opens with
+  two comment lines, `Copyright <year> Association of Universities for
+  Research in Astronomy (AURA)` and `SPDX-License-Identifier:
+  LGPL-3.0-or-later`, after the shebang if there is one.
+  `test_source_headers` enforces it; the generated `cases.rs` files are
+  exempt, their copyright being the probe's.
 - `cargo fmt` is enforced. `cargo clippy --workspace -- -D warnings`
   is a CI gate.
 - C99 is the language used in `crates/starlink-ast/vendor/`. Don't add C++ to vendored

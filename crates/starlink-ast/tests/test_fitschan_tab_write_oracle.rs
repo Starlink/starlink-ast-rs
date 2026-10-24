@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Writing FrameSets whose axes need the `-TAB` algorithm of FITS-WCS paper
 //! III, against C (fitschan.c `IsMapTab1D`, `IsMapTab2D`, `AdaptLut`): the
 //! header cards, the look-up tables left in the FitsChan, and the FrameSet

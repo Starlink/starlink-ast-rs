@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `astOverlap` codes against the C library for Region pairs that exercise
 //! the per-class dispatch of region.c `Overlap` and `OverlapX`: an Interval
 //! unbounded on three sides against Boxes beside, across and inside it,

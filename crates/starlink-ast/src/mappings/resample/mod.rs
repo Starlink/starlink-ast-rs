@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Resampling a gridded array through a Mapping.
 //!
 //! Each output pixel's center is taken back through the Mapping's inverse to

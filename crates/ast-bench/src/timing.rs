@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Time a transform: repeat it until a time budget is filled and report the
 //! median and minimum time per point.
 

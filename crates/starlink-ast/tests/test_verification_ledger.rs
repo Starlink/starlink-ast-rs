@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! One place that knows every way a gate in this crate can be relaxed.
 //!
 //! Relaxations accumulate quietly: a named exclusion list here, a manifest

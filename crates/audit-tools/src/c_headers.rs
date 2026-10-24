@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The public documentation headers of the C library.
 //!
 //! Each class, function and attribute the C library documents has a comment

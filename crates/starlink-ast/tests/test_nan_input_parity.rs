@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Verify that scalar and SIMD PolyMap paths treat f64::NAN inputs
 //! identically: both should produce BAD_VALUE outputs, per the
 //! CLAUDE.md contract ("inputs accept f64::NAN; outputs always use

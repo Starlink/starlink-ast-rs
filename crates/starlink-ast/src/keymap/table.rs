@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The parts of C's chained bucket table that a `HashMap`-backed KeyMap
 //! still needs: the hash function, the trailing-space-insensitive key
 //! comparison, key normalization, and the arithmetic that reconstructs

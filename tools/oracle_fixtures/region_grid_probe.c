@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* region_grid_probe -- capture the interior grids astGetRegionMesh returns
  * (surface unset) and the boundary mesh of a Prism. A Box makes its grid
  * with its base Frame's astFrameGrid (box.c RegBaseGrid); any other Region

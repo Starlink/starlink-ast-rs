@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* table_probe -- capture how a Table (table.c) behaves: adding, removing
  * and querying columns and parameters, putting and getting cell values,
  * removing and purging rows, its read-only attributes, and its native dump.

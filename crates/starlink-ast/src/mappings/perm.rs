@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Axis permutation/selection mapping.
 //!
 //! `PermMap` selects, reorders, or assigns constant values to axes.  The

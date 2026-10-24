@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! The Moc class core against the C library (moc.c): Mocs built cell by cell
 //! with `add_cell` (OR, XOR and AND, at several orders), one whose MaxOrder
 //! needs 8 byte values, and an empty one; for each, its dump and that dump

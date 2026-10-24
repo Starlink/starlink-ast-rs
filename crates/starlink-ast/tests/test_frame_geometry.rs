@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Frame geometry/axis method family — Cartesian base implementations
 //! ported from frame.c (Offset2:8228, Intersect:6243, AxAngle:1324,
 //! AxDistance:1466, AxOffset:1744, Resolve:9429, ResolvePoints:9588).

@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* fitschan_cursor_probe -- capture how a FitsChan's card functions use and
  * move the current card: astPutFits, astPutCards, astFindFits, astDelFits,
  * astEmptyFits, the astGetFits<X> and astSetFits<X> families, astRead and

@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `ConvertValue`: the KeyMap type-conversion matrix.
 //!
 //! Every `map_get`, `map_get_1` and `map_get_elem` call routes through

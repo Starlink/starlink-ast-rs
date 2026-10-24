@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Polygon boundary meshes against the C library (polygon.c `RegBaseMesh`):
 //! a quadrilateral in an ICRS SkyFrame, whose mesh follows great circles,
 //! and a Cartesian square and triangle.

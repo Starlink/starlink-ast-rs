@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! `get_region_disc` against the C library (region.c `GetRegionDisc`, which
 //! no Region class overrides): a disc in the current Frame enclosing the
 //! un-negated Region's boundary mesh, found in a local system on the sky,

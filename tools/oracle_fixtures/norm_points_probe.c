@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* norm_points_probe -- capture astNormPoints, which normalises a set of
  * points through the Frame's astNormalPoints method (frame.c), and the
  * boundary mesh astGetRegionMesh returns, which it normalises in the same

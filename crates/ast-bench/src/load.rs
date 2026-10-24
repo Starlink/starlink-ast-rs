@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Load an oracle fixture as the transform-oracle gate does
 //! (`crates/starlink-ast/tests/test_transform_oracle.rs`, `load_fixture`).
 

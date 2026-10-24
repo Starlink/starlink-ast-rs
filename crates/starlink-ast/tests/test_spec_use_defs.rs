@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! What UseDefs=0 changes in a SpecFrame, DSBSpecFrame and TimeFrame,
 //! checked against the C library.
 //!

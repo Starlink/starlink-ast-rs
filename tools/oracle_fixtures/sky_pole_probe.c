@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* sky_pole_probe -- capture the LONPOLE and LATPOLE that a FITS-WCS write
  * gives for celestial projections that wcsmap.c IsZenithal does and does
  * not count as zenithal (fitschan.c SkyPole): a zenithal projection writes

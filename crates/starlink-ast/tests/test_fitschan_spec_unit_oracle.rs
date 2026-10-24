@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! How a FITS-WCS write describes a spectral axis, against C's
 //! `SpectralAxes` (fitschan.c): the default reference value is the middle of
 //! the spectral range when the size of the spectral pixel axis is known and

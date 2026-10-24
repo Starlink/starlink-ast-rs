@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Every native fixture read through a Channel and written with Full = 1,
 //! against C's text. With Full = 1 C writes every value a class's Dump
 //! writes (channel.c `Use`): set values, and unset ones as comments, both

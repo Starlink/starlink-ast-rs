@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! DSS (Digitized Sky Survey) plate solution encoding reader/writer.
 //!
 //! DSS encoding stores plate-solution keywords from digitized photographic

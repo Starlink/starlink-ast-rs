@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Faithful port of C `winmap.c::MapMerge` and its swap helpers.
 //!
 //! This implements [`WinMap`](super::winmap::WinMap)'s per-class

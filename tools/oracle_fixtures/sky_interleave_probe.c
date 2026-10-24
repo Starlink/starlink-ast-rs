@@ -1,3 +1,6 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
 /* sky_interleave_probe -- capture astFindFrame with a SkyFrame template
  * against a CmpFrame of two SkyFrames whose axes are interleaved. C's
  * SkyFrame Match takes the first SkyFrame axis, then searches the remaining

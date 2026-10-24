@@ -1,3 +1,6 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 //! Frame `Format` / `Unformat` tests — printf-style formatting with the
 //! `Digits` attribute and the C `astUnformat` whitespace/error contract
 //! (frame.c:4260, axis.c:626 / 1284).
