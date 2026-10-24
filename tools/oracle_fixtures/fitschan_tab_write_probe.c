@@ -18,9 +18,9 @@
  * The FrameSet written is printed as a native dump, which the Rust test
  * reads to write the same FrameSet.
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_tab_write_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_tab_write_oracle/cases.rs:
  *
- *   ./fitschan_tab_write_probe > ../../crates/ast-core/tests/fitschan_tab_write_oracle/cases.rs
+ *   ./fitschan_tab_write_probe > ../../crates/starlink-ast/tests/fitschan_tab_write_oracle/cases.rs
  */
 #include <math.h>
 #include <stdio.h>

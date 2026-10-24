@@ -2,7 +2,7 @@
  * SkyFrames with and without an offset coordinate system: its class, and
  * three points transformed forward and inverse.
  * The values are copied into `sky_offset_map_follows_the_c_library` in
- * crates/ast-core/tests/test_skyframe.rs.
+ * crates/starlink-ast/tests/test_skyframe.rs.
  */
 #include <stdio.h>
 #include "ast.h"

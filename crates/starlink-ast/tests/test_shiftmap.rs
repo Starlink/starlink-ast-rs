@@ -1,0 +1,79 @@
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
+use starlink_ast::mappings::{Mapping, ShiftMap};
+
+#[test]
+fn shift_map_dimensions() {
+    let m = ShiftMap::new([1.0, 2.0, 3.0]);
+    assert_eq!(m.nin(), 3);
+    assert_eq!(m.nout(), 3);
+}
+
+#[test]
+fn shift_map_forward() {
+    let m = ShiftMap::new([10.0, 20.0]);
+    let pts = PointSet::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    let out = m.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0), &[11.0, 22.0]);
+    assert_eq!(out.point(1), &[13.0, 24.0]);
+}
+
+#[test]
+fn shift_map_inverse() {
+    let m = ShiftMap::new([10.0, 20.0]);
+    let pts = PointSet::from_rows([[11.0, 22.0]]);
+    let out = m.transform(&pts, false).unwrap();
+    assert_eq!(out.point(0), &[1.0, 2.0]);
+}
+
+#[test]
+fn shift_map_bad_value() {
+    let m = ShiftMap::new([1.0, 2.0]);
+    let pts = PointSet::from_rows([[f64::NAN, 5.0]]);
+    let out = m.transform(&pts, true).unwrap();
+    // Per-axis BAD: only the bad axis is blanked
+    assert_eq!(out.point(0)[0], BAD_VALUE);
+    assert_eq!(out.point(0)[1], 7.0);
+}
+
+#[test]
+fn shift_map_simplified_zero() {
+    let m = ShiftMap::new([0.0, 0.0]);
+    let s = <dyn Mapping>::simplify(&m).unwrap();
+    let pts = PointSet::from_rows([[5.0, 6.0]]);
+    let out = s.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0), &[5.0, 6.0]);
+}
+
+#[test]
+fn shift_map_rate() {
+    let m = ShiftMap::new([10.0, 20.0]);
+    let r = m.rate(&[1.0, 1.0], 1, 1).unwrap();
+    assert!((r - 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn shift_rate_analytical() {
+    let sm = ShiftMap::new([10.0, 20.0]);
+    assert_eq!(sm.rate(&[1.0, 2.0], 1, 1).unwrap(), 1.0);
+    assert_eq!(sm.rate(&[1.0, 2.0], 1, 2).unwrap(), 0.0);
+    assert_eq!(sm.rate(&[1.0, 2.0], 2, 2).unwrap(), 1.0);
+    assert_eq!(sm.rate(&[1.0, 2.0], 2, 1).unwrap(), 0.0);
+}
+
+#[test]
+fn shift_bad_per_axis() {
+    let sm = ShiftMap::new([10.0, 20.0, 30.0]);
+    let pts = PointSet::from_rows([[1.0, BAD_VALUE, 3.0]]);
+    let out = sm.transform(&pts, true).unwrap();
+    assert_eq!(out.point(0)[0], 11.0);
+    assert_eq!(out.point(0)[1], BAD_VALUE);
+    assert_eq!(out.point(0)[2], 33.0);
+
+    // Inverse
+    let pts_inv = PointSet::from_rows([[BAD_VALUE, 25.0, 33.0]]);
+    let out_inv = sm.transform(&pts_inv, false).unwrap();
+    assert_eq!(out_inv.point(0)[0], BAD_VALUE);
+    assert_eq!(out_inv.point(0)[1], 5.0);
+    assert_eq!(out_inv.point(0)[2], 3.0);
+}

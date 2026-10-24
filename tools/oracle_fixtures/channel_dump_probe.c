@@ -15,9 +15,9 @@
  * Each case is also dumped with Full set to 1, which writes every unset
  * value (channel.c Use).
  *
- * Prints Rust source for crates/ast-core/tests/channel_dump_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/channel_dump_oracle/cases.rs:
  *
- *   ./channel_dump_probe > ../../crates/ast-core/tests/channel_dump_oracle/cases.rs
+ *   ./channel_dump_probe > ../../crates/starlink-ast/tests/channel_dump_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

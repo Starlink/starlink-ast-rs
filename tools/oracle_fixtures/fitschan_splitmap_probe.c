@@ -5,9 +5,9 @@
  * celestial values the WcsMap of a TAN header with those values at its
  * reference point. For each, the value astWrite returns and the cards.
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_splitmap_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_splitmap_oracle/cases.rs:
  *
- *   ./fitschan_splitmap_probe > ../../crates/ast-core/tests/fitschan_splitmap_oracle/cases.rs
+ *   ./fitschan_splitmap_probe > ../../crates/starlink-ast/tests/fitschan_splitmap_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

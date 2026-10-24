@@ -6,9 +6,9 @@
  * through 0 when tested by the equivalent Box; an Interval excluding every
  * axis; and the boundary mesh of a bounded and an unbounded Interval.
  *
- * Prints Rust source for crates/ast-core/tests/region_interval_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_interval_oracle/cases.rs:
  *
- *   ./region_interval_probe > ../../crates/ast-core/tests/region_interval_oracle/cases.rs
+ *   ./region_interval_probe > ../../crates/starlink-ast/tests/region_interval_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

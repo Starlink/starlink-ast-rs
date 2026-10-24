@@ -14,7 +14,7 @@
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")/../.." && pwd)
-ours=$here/crates/ast-core/tests/fixtures
+ours=$here/crates/starlink-ast/tests/fixtures
 theirs=$here/reference/starlink-ast/ast_tester/fixtures
 
 if [[ ! -d $theirs ]]; then

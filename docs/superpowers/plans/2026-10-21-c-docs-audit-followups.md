@@ -8,20 +8,20 @@
 Each gap is fixed the way C does it, read from `reference/starlink-ast/src/` and confirmed with a C-oracle probe where the source alone does not settle it.
 The Rust API is unreleased: where C can raise an error the Rust returns `AstResult`, and signature changes ripple through the call sites in the same commit.
 
-**Tech Stack:** Rust 2024 (`ast-core`, `audit-tools`), the reference C library for probes.
+**Tech Stack:** Rust 2024 (`starlink-ast`, `audit-tools`), the reference C library for probes.
 
 **Spec:** `docs/superpowers/specs/2026-10-19-c-docs-audit-design.md` (the audit that found these), and `docs/superpowers/specs/2026-04-20-rust-port-design.md` (API shape).
 
 ## Global Constraints
 
 - Port C faithfully: read the C code path, including macros; no heuristics, no tolerances C lacks (CLAUDE.md "Stop signals").
-- Every behavior fix: a test that fails first, using the public API, in the area test program that owns the class (`crates/ast-core/tests/<area>/main.rs`); then the fix; each gap in its own commit.
+- Every behavior fix: a test that fails first, using the public API, in the area test program that owns the class (`crates/starlink-ast/tests/<area>/main.rs`); then the fix; each gap in its own commit.
 - Before claiming C's behavior where the source is ambiguous, run a C-oracle probe (`docs/issues/c-oracle-probe-recipe.md`; library at `reference/starlink-ast/build/libast.dylib`; build in the scratchpad, with `AST_REPLACE_NAN=1` where NaN outputs matter).
 - A closed gap's `PLAN.md` §2 row is removed in the commit that closes it; a gap found not to be one gets its row rewritten with the evidence.
 - New public items get rustdoc that stands on its own for the Rust, `#[doc(alias)]` with the C name and a ledger row in `docs/audits/c-docs/ledger.tsv` where a C header maps to them; no C line numbers or internal C names in rendered docs; public C names only in `# See also`.
-- No `unsafe` raw pointers; no `Arc`, `Mutex` or `Sync` in `ast-core`; the SkyFrame setter hot path stays O(1), allocation-free and lock-free.
+- No `unsafe` raw pointers; no `Arc`, `Mutex` or `Sync` in `starlink-ast`; the SkyFrame setter hot path stays O(1), allocation-free and lock-free.
 - One sentence per line in prose and new rustdoc; American spelling.
-- Verification per code commit: the failing test, then the area test program, `--test meta`, and `cargo clippy --workspace --all-targets -- -D warnings` with and without `--features ast-bench/c-oracle`. Docs-only commits: the doc build with `RUSTDOCFLAGS="-D warnings"` and `cargo test -p ast-core --test meta test_c_docs_audit::`. One full `cargo test -p ast-core` at the end of the plan.
+- Verification per code commit: the failing test, then the area test program, `--test meta`, and `cargo clippy --workspace --all-targets -- -D warnings` with and without `--features ast-bench/c-oracle`. Docs-only commits: the doc build with `RUSTDOCFLAGS="-D warnings"` and `cargo test -p starlink-ast --test meta test_c_docs_audit::`. One full `cargo test -p starlink-ast` at the end of the plan.
 - Commit through the clean-env wrapper so hooks run; re-add files the re-anchor hook rewrites.
 
 ## Review Focus

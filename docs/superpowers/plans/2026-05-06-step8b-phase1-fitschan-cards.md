@@ -14,19 +14,19 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/fitschan/mod.rs` | FitsChan struct, Channel impl, public API, Encoding enum |
-| `crates/ast-core/src/fitschan/card.rs` | FitsCard, FitsValue enum, parse/format 80-char cards |
-| `crates/ast-core/src/fitschan/card_list.rs` | CardList (Vec-based collection with position tracking) |
-| `crates/ast-core/src/fitschan/format.rs` | FITS double formatter (nine-run/zero-run trimming) |
-| `crates/ast-core/src/lib.rs` | Add `pub mod fitschan;` and re-exports |
-| `crates/ast-core/tests/test_fitschan.rs` | FitsChan integration tests |
+| `crates/starlink-ast/src/fitschan/mod.rs` | FitsChan struct, Channel impl, public API, Encoding enum |
+| `crates/starlink-ast/src/fitschan/card.rs` | FitsCard, FitsValue enum, parse/format 80-char cards |
+| `crates/starlink-ast/src/fitschan/card_list.rs` | CardList (Vec-based collection with position tracking) |
+| `crates/starlink-ast/src/fitschan/format.rs` | FITS double formatter (nine-run/zero-run trimming) |
+| `crates/starlink-ast/src/lib.rs` | Add `pub mod fitschan;` and re-exports |
+| `crates/starlink-ast/tests/test_fitschan.rs` | FitsChan integration tests |
 
 ---
 
 ### Task 1: FitsValue and FitsCard (Parsing)
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/card.rs`
+- Create: `crates/starlink-ast/src/fitschan/card.rs`
 
 Implement the FITS card data model — parsing 80-character FITS
 header cards into structured data. Study `fitschan.c` `CnvType`
@@ -125,7 +125,7 @@ git commit -m "Add FitsCard and FitsValue: FITS header card parsing/formatting"
 ### Task 2: CardList (Collection)
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/card_list.rs`
+- Create: `crates/starlink-ast/src/fitschan/card_list.rs`
 
 Ordered collection of FITS cards with position tracking and
 search capabilities.
@@ -206,7 +206,7 @@ git commit -m "Add CardList: FITS header card collection with search/iteration"
 ### Task 3: FITS Double Formatter
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/format.rs`
+- Create: `crates/starlink-ast/src/fitschan/format.rs`
 
 The specialized FITS double formatter with nine-run/zero-run
 trimming. Study `RoundFString` in `fitschan.c` line 26266.
@@ -253,8 +253,8 @@ git commit -m "Add FITS double formatter with nine-run/zero-run trimming"
 ### Task 4: FitsChan Struct and Public API
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/mod.rs`
-- Modify: `crates/ast-core/src/lib.rs`
+- Create: `crates/starlink-ast/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/lib.rs`
 
 The main FitsChan struct with public card manipulation API.
 
@@ -378,7 +378,7 @@ git commit -m "Add FitsChan struct with public card API and Channel trait (Nativ
 ### Task 5: Integration Tests
 
 **Files:**
-- Create: `crates/ast-core/tests/test_fitschan.rs`
+- Create: `crates/starlink-ast/tests/test_fitschan.rs`
 
 - [ ] **Step 1: Write tests**
 
@@ -395,7 +395,7 @@ Tests covering:
 - Parse real FITS headers: load sip.head fixture, verify keywords
 
 Copy `reference/starlink-ast/ast_tester/sip.head` to
-`crates/ast-core/tests/fixtures/fits/headers/sip.head`.
+`crates/starlink-ast/tests/fixtures/fits/headers/sip.head`.
 
 - [ ] **Step 2: Run and commit**
 
@@ -416,7 +416,7 @@ git commit -m "Add FitsChan integration tests"
 ## Verification Checklist
 
 1. `cargo build --workspace` — compiles
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. FitsCard parses all FITS value types (int, float, string, logical, comment)
 5. FitsCard formats back to valid 80-char cards

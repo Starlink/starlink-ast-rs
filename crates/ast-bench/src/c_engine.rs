@@ -3,7 +3,7 @@
 //!
 //! The library is opened with libloading's default flags, which on Unix
 //! include `RTLD_LOCAL`, so its copies of PAL and ERFA stay private and cannot
-//! clash with the ones compiled into `ast-core`.
+//! clash with the ones compiled into `starlink-ast`.
 
 use std::collections::BTreeMap;
 use std::ffi::{CString, c_char, c_int, c_void};
@@ -324,7 +324,7 @@ mod tests {
         m.tran(s.forward, n, s.nin, &s.inputs.concat(), s.nout, &mut out)
             .unwrap();
         // The oracle was captured on another platform, so allow the golden
-        // tolerance of crates/ast-core/tests/test_transform_oracle.rs.
+        // tolerance of crates/starlink-ast/tests/test_transform_oracle.rs.
         for (got, want) in out.iter().zip(s.outputs.concat()) {
             assert!(
                 (got - want).abs() <= 1e-7 + 1e-7 * want.abs(),

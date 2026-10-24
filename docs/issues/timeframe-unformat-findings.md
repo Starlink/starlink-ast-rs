@@ -147,7 +147,7 @@ The port now mirrors C:
   `clear_system` clears Unit/TimeScale when leaving Besselian epoch.
 
 Verified bit-for-bit against the reference C library on both construction
-orders. Tests in `crates/ast-core/tests/test_timeframe.rs`:
+orders. Tests in `crates/starlink-ast/tests/test_timeframe.rs`:
 `test_set_timescale_reexpresses_time_origin`,
 `test_set_system_reexpresses_time_origin`, `test_unformat_b_prefix_uses_tt`
 (origin=2005 in UTC), and `test_unformat_b_prefix_origin_then_timescale`

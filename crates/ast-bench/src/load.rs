@@ -1,11 +1,11 @@
 //! Load an oracle fixture as the transform-oracle gate does
-//! (`crates/ast-core/tests/test_transform_oracle.rs`, `load_fixture`).
+//! (`crates/starlink-ast/tests/test_transform_oracle.rs`, `load_fixture`).
 
 use std::path::Path;
 
-use ast_core::AnyObject;
-use ast_core::channel::Channel;
-use ast_core::fitschan::FitsChan;
+use starlink_ast::AnyObject;
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::FitsChan;
 
 /// A loaded oracle fixture.
 pub enum Loaded {
@@ -16,7 +16,7 @@ pub enum Loaded {
 }
 
 /// Fixtures the port refuses to load, with the reason; mirrors
-/// `DEFERRED_LOAD` in `crates/ast-core/tests/test_transform_oracle.rs`.
+/// `DEFERRED_LOAD` in `crates/starlink-ast/tests/test_transform_oracle.rs`.
 pub const DEFERRED_LOAD: &[(&str, &str)] = &[(
     "serialisation/frame_in_map_slot.ast",
     "CmpFrame in a Map<n> slot, refused",
@@ -46,7 +46,7 @@ fn load_raw(root: &Path, relpath: &str) -> Result<Loaded, String> {
             .map_err(|e| format!("read {relpath}: {e}"))?
             .ok_or_else(|| format!("FitsChan read returned None: {relpath}"))?
     } else {
-        ast_core::from_native_string_with(&text, &intra_registry())
+        starlink_ast::from_native_string_with(&text, &intra_registry())
             .map_err(|e| format!("from_native_string {relpath}: {e}"))?
     };
     if obj.as_mapping().is_some() {
@@ -60,8 +60,8 @@ fn load_raw(root: &Path, relpath: &str) -> Result<Loaded, String> {
 }
 
 /// The registry of IntraMap transformations the corpus fixtures name.
-pub fn intra_registry() -> ast_core::mappings::IntraRegistry {
-    let mut registry = ast_core::mappings::IntraRegistry::new();
+pub fn intra_registry() -> starlink_ast::mappings::IntraRegistry {
+    let mut registry = starlink_ast::mappings::IntraRegistry::new();
     for t in test_intra_transforms() {
         registry
             .register(t)
@@ -70,7 +70,7 @@ pub fn intra_registry() -> ast_core::mappings::IntraRegistry {
     registry
 }
 
-// Mirrors `crates/ast-core/tests/common/mod.rs` (`TestIntraTran`,
+// Mirrors `crates/starlink-ast/tests/common/mod.rs` (`TestIntraTran`,
 // `test_intra_transforms`).
 /// The identity transformation the C test programs register for IntraMap
 /// fixtures (`TestIntraTran` in `ast_tester/simplify.c`, `roundtrip.c` and
@@ -78,11 +78,11 @@ pub fn intra_registry() -> ast_core::mappings::IntraRegistry {
 /// the same index, bad where there is none.
 struct TestIntraTran {
     name: &'static str,
-    flags: ast_core::mappings::IntraFlags,
+    flags: starlink_ast::mappings::IntraFlags,
     purpose: &'static str,
 }
 
-impl ast_core::mappings::IntraTransform for TestIntraTran {
+impl starlink_ast::mappings::IntraTransform for TestIntraTran {
     fn name(&self) -> &str {
         self.name
     }
@@ -92,7 +92,7 @@ impl ast_core::mappings::IntraTransform for TestIntraTran {
     fn nout(&self) -> Option<usize> {
         Some(1)
     }
-    fn flags(&self) -> ast_core::mappings::IntraFlags {
+    fn flags(&self) -> starlink_ast::mappings::IntraFlags {
         self.flags
     }
     fn purpose(&self) -> &str {
@@ -106,18 +106,18 @@ impl ast_core::mappings::IntraTransform for TestIntraTran {
     }
     fn transform(
         &self,
-        _map: &ast_core::mappings::IntraMap,
-        input: &ast_core::coords::Points<'_>,
+        _map: &starlink_ast::mappings::IntraMap,
+        input: &starlink_ast::coords::Points<'_>,
         _forward: bool,
-        out: &mut ast_core::coords::PointsMut<'_>,
-    ) -> ast_core::error::AstResult<()> {
+        out: &mut starlink_ast::coords::PointsMut<'_>,
+    ) -> starlink_ast::error::AstResult<()> {
         for ip in 0..input.npoint() {
             let row = input.point(ip);
             for (ic, v) in out.point_mut(ip).iter_mut().enumerate() {
                 *v = row
                     .get(ic)
                     .copied()
-                    .unwrap_or(ast_core::constants::BAD_VALUE);
+                    .unwrap_or(starlink_ast::constants::BAD_VALUE);
             }
         }
         Ok(())
@@ -126,8 +126,8 @@ impl ast_core::mappings::IntraTransform for TestIntraTran {
 
 /// The four transformations the C test programs register for the IntraMap
 /// simplify fixtures, with the same names, flags and descriptions.
-fn test_intra_transforms() -> Vec<std::sync::Arc<dyn ast_core::mappings::IntraTransform>> {
-    use ast_core::mappings::IntraFlags;
+fn test_intra_transforms() -> Vec<std::sync::Arc<dyn starlink_ast::mappings::IntraTransform>> {
+    use starlink_ast::mappings::IntraFlags;
     let both = IntraFlags {
         simp_fi: true,
         simp_if: true,
@@ -167,7 +167,7 @@ fn test_intra_transforms() -> Vec<std::sync::Arc<dyn ast_core::mappings::IntraTr
             name,
             flags,
             purpose,
-        }) as std::sync::Arc<dyn ast_core::mappings::IntraTransform>
+        }) as std::sync::Arc<dyn starlink_ast::mappings::IntraTransform>
     })
     .collect()
 }

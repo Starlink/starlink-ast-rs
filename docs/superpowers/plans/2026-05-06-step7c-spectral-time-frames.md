@@ -14,27 +14,27 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/pal.rs` | Add ~8 new PAL wrappers (dat, pvobs, rvgalc, rvlg, rvlsrd, rvlsrk, gmst, eqeqx) |
-| `crates/ast-core/src/mappings/specmap.rs` | SpecMap + SpecCvtType (34 conversions) |
-| `crates/ast-core/src/mappings/timemap.rs` | TimeMap + TimeCvtType (27 conversions) |
-| `crates/ast-core/src/mappings/mod.rs` | Re-exports |
-| `crates/ast-core/src/frames/specframe.rs` | SpecFrame + SpecSystem + StdOfRest |
-| `crates/ast-core/src/frames/timeframe.rs` | TimeFrame + TimeSystem + TimeScale |
-| `crates/ast-core/src/frames/fluxframe.rs` | FluxFrame + FluxSystem |
-| `crates/ast-core/src/frames/specfluxframe.rs` | SpecFluxFrame (compound) |
-| `crates/ast-core/src/frames/mod.rs` | Re-exports |
-| `crates/ast-core/src/serial/mod.rs` | Dispatch updates for all 6 types |
-| `crates/ast-core/tests/test_specmap.rs` | SpecMap tests |
-| `crates/ast-core/tests/test_timemap.rs` | TimeMap tests |
-| `crates/ast-core/tests/test_specframe.rs` | SpecFrame tests (ported from testspecframe.c) |
-| `crates/ast-core/tests/test_timeframe.rs` | TimeFrame tests (ported from testtime.c) |
+| `crates/starlink-ast/src/pal.rs` | Add ~8 new PAL wrappers (dat, pvobs, rvgalc, rvlg, rvlsrd, rvlsrk, gmst, eqeqx) |
+| `crates/starlink-ast/src/mappings/specmap.rs` | SpecMap + SpecCvtType (34 conversions) |
+| `crates/starlink-ast/src/mappings/timemap.rs` | TimeMap + TimeCvtType (27 conversions) |
+| `crates/starlink-ast/src/mappings/mod.rs` | Re-exports |
+| `crates/starlink-ast/src/frames/specframe.rs` | SpecFrame + SpecSystem + StdOfRest |
+| `crates/starlink-ast/src/frames/timeframe.rs` | TimeFrame + TimeSystem + TimeScale |
+| `crates/starlink-ast/src/frames/fluxframe.rs` | FluxFrame + FluxSystem |
+| `crates/starlink-ast/src/frames/specfluxframe.rs` | SpecFluxFrame (compound) |
+| `crates/starlink-ast/src/frames/mod.rs` | Re-exports |
+| `crates/starlink-ast/src/serial/mod.rs` | Dispatch updates for all 6 types |
+| `crates/starlink-ast/tests/test_specmap.rs` | SpecMap tests |
+| `crates/starlink-ast/tests/test_timemap.rs` | TimeMap tests |
+| `crates/starlink-ast/tests/test_specframe.rs` | SpecFrame tests (ported from testspecframe.c) |
+| `crates/starlink-ast/tests/test_timeframe.rs` | TimeFrame tests (ported from testtime.c) |
 
 ---
 
 ### Task 1: PAL Additions
 
 **Files:**
-- Modify: `crates/ast-core/src/pal.rs`
+- Modify: `crates/starlink-ast/src/pal.rs`
 
 Add the PAL wrappers needed for SpecMap and TimeMap. Follow the
 existing pattern in pal.rs (extern "C" declaration + safe wrapper).
@@ -88,7 +88,7 @@ Add tests for the new functions:
 - [ ] **Step 3: Verify and commit**
 
 ```bash
-git add crates/ast-core/src/pal.rs
+git add crates/starlink-ast/src/pal.rs
 git commit -m "Add PAL wrappers for spectral/time conversions (dat, gmst, eqeqx, pvobs, rvgalc, rvlg, rvlsrd, rvlsrk)"
 ```
 
@@ -97,10 +97,10 @@ git commit -m "Add PAL wrappers for spectral/time conversions (dat, gmst, eqeqx,
 ### Task 2: SpecMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/specmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Create: `crates/ast-core/tests/test_specmap.rs`
+- Create: `crates/starlink-ast/src/mappings/specmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Create: `crates/starlink-ast/tests/test_specmap.rs`
 
 SpecMap is a 1D Mapping chaining spectral conversions. Follows
 the SlaMap pattern exactly. Study the C implementation at
@@ -148,10 +148,10 @@ Test known conversions:
 ### Task 3: TimeMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/timemap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Create: `crates/ast-core/tests/test_timemap.rs`
+- Create: `crates/starlink-ast/src/mappings/timemap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Create: `crates/starlink-ast/tests/test_timemap.rs`
 
 TimeMap is a 1D Mapping chaining time conversions. Same pattern
 as SlaMap/SpecMap. Study `reference/starlink-ast/src/timemap.c`
@@ -194,10 +194,10 @@ Class `"TimeMap"`. Attributes: `Ntime`, `Time1`..`TimeN`,
 ### Task 4: SpecFrame
 
 **Files:**
-- Create: `crates/ast-core/src/frames/specframe.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Create: `crates/ast-core/tests/test_specframe.rs`
+- Create: `crates/starlink-ast/src/frames/specframe.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Create: `crates/starlink-ast/tests/test_specframe.rs`
 
 1-axis Frame for spectral coordinates. Follows SkyFrame pattern.
 
@@ -237,10 +237,10 @@ Class `"SpecFrame"`. Keywords: `SoR`, `AlSoR`, `RefRA`, `RefDec`,
 ### Task 5: TimeFrame
 
 **Files:**
-- Create: `crates/ast-core/src/frames/timeframe.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Create: `crates/ast-core/tests/test_timeframe.rs`
+- Create: `crates/starlink-ast/src/frames/timeframe.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Create: `crates/starlink-ast/tests/test_timeframe.rs`
 
 1-axis Frame for time coordinates. Follows SkyFrame pattern.
 
@@ -274,10 +274,10 @@ Class `"TimeFrame"`. Keywords: `TmScl`, `ATmScl`, `TmOrg`, `LTOff`.
 ### Task 6: FluxFrame and SpecFluxFrame
 
 **Files:**
-- Create: `crates/ast-core/src/frames/fluxframe.rs`
-- Create: `crates/ast-core/src/frames/specfluxframe.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
+- Create: `crates/starlink-ast/src/frames/fluxframe.rs`
+- Create: `crates/starlink-ast/src/frames/specfluxframe.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
 
 - [ ] **Step 1: Create fluxframe.rs**
 
@@ -309,8 +309,8 @@ Serialization class `"SpecFluxFrame"`.
 ### Task 7: Simplification and Final Verification
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/specmap.rs` (try_merge)
-- Modify: `crates/ast-core/src/mappings/timemap.rs` (try_merge)
+- Modify: `crates/starlink-ast/src/mappings/specmap.rs` (try_merge)
+- Modify: `crates/starlink-ast/src/mappings/timemap.rs` (try_merge)
 
 - [ ] **Step 1: Add try_merge for SpecMap and TimeMap**
 
@@ -333,7 +333,7 @@ to missing types).
 ## Verification Checklist
 
 1. `cargo build --workspace` — compiles
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. `cargo fmt --all -- --check` — clean
 5. SpecMap: all 34 conversion types work, round-trip freq↔wavelength

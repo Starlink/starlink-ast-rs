@@ -23,7 +23,7 @@ are mutated. Also implement `Frame::convert()` for BasicFrame.
 ## Module Structure
 
 ```
-crates/ast-core/src/frames/
+crates/starlink-ast/src/frames/
 ├── mod.rs           # Frame trait (updated with convert()) + re-exports
 ├── basic.rs         # BasicFrame (updated: add convert() impl)
 ├── cmpframe.rs      # CmpFrame (updated: add convert() impl)

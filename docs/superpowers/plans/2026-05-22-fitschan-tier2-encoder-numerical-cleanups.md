@@ -37,9 +37,9 @@ These are the policy our Rust port must mirror.
 
 ## File structure
 
-- **Modify:** `crates/ast-core/src/fitschan/wcs_write.rs` — add `clean_store_residue(store: &mut FitsStore)` helper plus wire it into `store_from_frameset` near the end (before/after `identify_axes`, depending on which sets the final CRVAL).
-- **Modify:** `crates/ast-core/src/fitschan/wcs_decompose.rs` — extend `split_cd` to also return cleaned CD by applying the 1e-7 PC snap and re-multiplying. Or: add a separate `split_cd_with_snap` if API stability matters. Or: leave `split_cd` alone and snap PC inside `clean_store_residue` after a temporary split.
-- **Modify:** `crates/ast-core/src/fitschan/enc_aips.rs` — delete the CROTA snap branch (`if crota.abs() < 1e-9 { crota = 0.0; }`) and surrounding paragraph of comment (lines ~252-272).
+- **Modify:** `crates/starlink-ast/src/fitschan/wcs_write.rs` — add `clean_store_residue(store: &mut FitsStore)` helper plus wire it into `store_from_frameset` near the end (before/after `identify_axes`, depending on which sets the final CRVAL).
+- **Modify:** `crates/starlink-ast/src/fitschan/wcs_decompose.rs` — extend `split_cd` to also return cleaned CD by applying the 1e-7 PC snap and re-multiplying. Or: add a separate `split_cd_with_snap` if API stability matters. Or: leave `split_cd` alone and snap PC inside `clean_store_residue` after a temporary split.
+- **Modify:** `crates/starlink-ast/src/fitschan/enc_aips.rs` — delete the CROTA snap branch (`if crota.abs() < 1e-9 { crota = 0.0; }`) and surrounding paragraph of comment (lines ~252-272).
 
 ---
 
@@ -57,14 +57,14 @@ If any threshold needs to change, document why with a citation to the C source l
 ## Task 1: Failing integration probes
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_fitschan_wcs.rs`
+- Modify: `crates/starlink-ast/tests/test_fitschan_wcs.rs`
 
 The wcsconv tests already exercise the full path. We need direct unit-level tests that exercise the cleanup logic in isolation. But before that, we want to confirm the current wcsconv state and pin which fixtures the cleanup unblocks.
 
 - [ ] **Step 1: Capture current wcsconv state**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|gappt|ukirt-dtai|galactic-tan_fits-iraf|sin-plain_fits-iraf|fk4-aips_fits-iraf|fits-pc-altgal|pixel-shear"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|gappt|ukirt-dtai|galactic-tan_fits-iraf|sin-plain_fits-iraf|fk4-aips_fits-iraf|fits-pc-altgal|pixel-shear"
 ```
 
 Expected (current): `=== wcsconv results: 110 passed, 82 failed, 0 skipped (of 192 total) ===` and seven category-F failures with 1e-14/1e-15 residue patterns.
@@ -73,7 +73,7 @@ Record this baseline in your scratch notes; you'll re-run the same command at th
 
 - [ ] **Step 2: Add focused unit tests for each of the three cleanups**
 
-Append to `crates/ast-core/tests/test_fitschan_wcs.rs`:
+Append to `crates/starlink-ast/tests/test_fitschan_wcs.rs`:
 
 ```rust
 #[cfg(test)]
@@ -101,13 +101,13 @@ mod cleanup_tests {
 ## Task 2: PC near-zero snap on CD matrix
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_decompose.rs` OR `wcs_write.rs` (location decision below)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_decompose.rs` OR `wcs_write.rs` (location decision below)
 
 The C library's `SplitMat` (line 33141) factors CD into (CDELT, PC) and applies `if (fabs(*a) < 1.E-7) *a = 0.0;` to each PC element. Mirror this. We choose to add the snap as a NEW helper rather than modifying the existing `split_cd` so that `split_cd`'s contract (pure decomposition) stays clean.
 
 - [ ] **Step 1: Write the failing test**
 
-Add a unit test in `crates/ast-core/src/fitschan/wcs_decompose.rs::tests`:
+Add a unit test in `crates/starlink-ast/src/fitschan/wcs_decompose.rs::tests`:
 
 ```rust
     #[test]
@@ -203,7 +203,7 @@ pub(crate) fn clean_cd_residue(cd: &Array2<f64>) -> Array2<f64> {
 - [ ] **Step 3: Run the unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_decompose -- --nocapture
+cargo test -p starlink-ast --lib fitschan::wcs_decompose -- --nocapture
 ```
 
 Expected: existing tests pass + 2 new ones.
@@ -212,13 +212,13 @@ Expected: existing tests pass + 2 new ones.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_decompose.rs
+git add crates/starlink-ast/src/fitschan/wcs_decompose.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): add clean_cd_residue helper mirroring SplitMat 1e-7 snap
 
@@ -244,13 +244,13 @@ EOF
 ## Task 3: CRVAL near-zero snap
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 C library's `WcsFromStore` line 2939-2958 sets CRVAL to 0 when `|crval| < sqrt(DBL_EPSILON · cdelt²)`, where cdelt² is the squared row magnitude of the PC matrix scaled by CDELT. For our purposes, cdelt² = `Σ_j CD[i][j]²` (the row magnitude of CD before splitting).
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `crates/ast-core/src/fitschan/wcs_write.rs::tests` (or create the mod tests block if missing):
+Add to `crates/starlink-ast/src/fitschan/wcs_write.rs::tests` (or create the mod tests block if missing):
 
 ```rust
     #[test]
@@ -306,7 +306,7 @@ fn snap_crval_residue(crval: &[f64], cd: &ndarray::Array2<f64>) -> Vec<f64> {
 - [ ] **Step 3: Run the unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_write -- --nocapture
+cargo test -p starlink-ast --lib fitschan::wcs_write -- --nocapture
 ```
 
 Expected: existing tests pass + 2 new ones.
@@ -315,13 +315,13 @@ Expected: existing tests pass + 2 new ones.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write.rs
+git add crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): add snap_crval_residue helper
 
@@ -343,7 +343,7 @@ EOF
 ## Task 4: CRPIX micro-pixel rounding
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 C library's `WcsFromStore` line 2961-2968: `floor(crpix * 1e6 + 0.5) * 1e-6`. Quantizes to the nearest millionth of a pixel.
 
@@ -396,7 +396,7 @@ Note: `(x * 1.0e6 + 0.5).floor()` is the C library's idiom for "round to nearest
 - [ ] **Step 3: Run the unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_write -- --nocapture
+cargo test -p starlink-ast --lib fitschan::wcs_write -- --nocapture
 ```
 
 Expected: 2 new tests pass.
@@ -405,13 +405,13 @@ Expected: 2 new tests pass.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write.rs
+git add crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): add round_crpix_to_micropixel helper
 
@@ -431,7 +431,7 @@ EOF
 ## Task 5: Wire all three cleanups into store_from_frameset
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 Add a `clean_store_residue` umbrella function that applies all three cleanups, and call it at the end of `store_from_frameset`.
 
@@ -520,7 +520,7 @@ Replace with:
 - [ ] **Step 3: Run the wcsconv suite — confirm category-F tests pass**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|gappt|ukirt-dtai|galactic-tan_fits-iraf|sin-plain_fits-iraf|fk4-aips_fits-iraf|fits-pc-altgal|pixel-shear"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|gappt|ukirt-dtai|galactic-tan_fits-iraf|sin-plain_fits-iraf|fk4-aips_fits-iraf|fits-pc-altgal|pixel-shear"
 ```
 
 Expected: pass count up by ~6-7. The seven category-F failures should turn green:
@@ -537,12 +537,12 @@ If any still fails: read the diff, see what's still residue-y. The CROTA snap in
 - [ ] **Step 4: Run existing FitsChan tests for regression**
 
 ```bash
-cargo test -p ast-core --test test_fitschan
-cargo test -p ast-core --test test_fitschan_encodings
-cargo test -p ast-core --test test_fitschan_wcs
-cargo test -p ast-core --test test_fitschan_wcs_write
-cargo test -p ast-core --test test_fitschan_native_keyword
-cargo test -p ast-core --test test_simplify_regression
+cargo test -p starlink-ast --test test_fitschan
+cargo test -p starlink-ast --test test_fitschan_encodings
+cargo test -p starlink-ast --test test_fitschan_wcs
+cargo test -p starlink-ast --test test_fitschan_wcs_write
+cargo test -p starlink-ast --test test_fitschan_native_keyword
+cargo test -p starlink-ast --test test_simplify_regression
 ```
 
 All must remain green. Particular attention: tests that assert exact CD/CRVAL/CRPIX values may now produce slightly different (cleaner) values; if they fail, the test expectations need updating to match the new cleaner output (which is the right answer per the C library).
@@ -551,13 +551,13 @@ All must remain green. Particular attention: tests that assert exact CD/CRVAL/CR
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write.rs
+git add crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 fix(fitschan): apply C-library encoder numerical cleanups in store_from_frameset
 
@@ -594,14 +594,14 @@ EOF
 ## Task 6: Delete the CROTA snap workaround
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_aips.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_aips.rs`
 
 The 1e-9° CROTA snap at `enc_aips.rs:266-270` is now subsumed by the generic CD/PC cleanup applied upstream in `clean_store_residue`. Delete it together with the long explanatory comment.
 
 - [ ] **Step 1: Locate the block**
 
 ```bash
-grep -n "Snap rotations\|crota.abs() < 1e-9" crates/ast-core/src/fitschan/enc_aips.rs
+grep -n "Snap rotations\|crota.abs() < 1e-9" crates/starlink-ast/src/fitschan/enc_aips.rs
 ```
 
 Around line 252-272.
@@ -609,7 +609,7 @@ Around line 252-272.
 - [ ] **Step 2: Inspect the actual current shape**
 
 ```bash
-sed -n '240,275p' crates/ast-core/src/fitschan/enc_aips.rs
+sed -n '240,275p' crates/starlink-ast/src/fitschan/enc_aips.rs
 ```
 
 Identify the exact range to delete. Note: the comment explaining the simplifier-gap workaround spans many lines and goes too. The remaining code after deletion should be just the bare CROTA computation:
@@ -629,7 +629,7 @@ Identify the exact range to delete. Note: the comment explaining the simplifier-
 Replace the entire snap-related block (comment + if-branch + computation) with the bare version above. Verify by:
 
 ```bash
-grep -n "1e-9\|Snap rotations\|simplifier gap" crates/ast-core/src/fitschan/enc_aips.rs
+grep -n "1e-9\|Snap rotations\|simplifier gap" crates/starlink-ast/src/fitschan/enc_aips.rs
 ```
 
 — no matches expected.
@@ -637,7 +637,7 @@ grep -n "1e-9\|Snap rotations\|simplifier gap" crates/ast-core/src/fitschan/enc_
 - [ ] **Step 4: Run the FITS-AIPS wcsconv tests**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "fits-aips"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "fits-aips"
 ```
 
 The AIPS pass count should hold or rise. If any AIPS test now fails with a tiny CROTA residue, the upstream cleanup is incomplete — return to Task 5's logic.
@@ -645,7 +645,7 @@ The AIPS pass count should hold or rise. If any AIPS test now fails with a tiny 
 - [ ] **Step 5: Run the wcsconv suite for the global pass count**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: same count or higher than after Task 5 (deleting dead code shouldn't change anything; if it does, the upstream cleanup didn't cover all the cases the snap was covering).
@@ -653,7 +653,7 @@ Expected: same count or higher than after Task 5 (deleting dead code shouldn't c
 - [ ] **Step 6: Run the FITS-AIPS unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_aips -- --nocapture
+cargo test -p starlink-ast --lib fitschan::enc_aips -- --nocapture
 ```
 
 All green.
@@ -662,13 +662,13 @@ All green.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_aips.rs
+git add crates/starlink-ast/src/fitschan/enc_aips.rs
 git commit -m "$(cat <<'EOF'
 refactor(fitschan): remove CROTA snap-to-zero workaround
 
@@ -695,7 +695,7 @@ EOF
 - [ ] **Step 1: Run the full wcsconv suite**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: 110 → ~117 (close to the +7 estimate). `pixel-shear_fits-aips++` may resolve fully or partially depending on whether its only issue was the CRVAL residue.

@@ -10,15 +10,15 @@ That carrier difference is the root cause of the SlaMap oracle failures: it disc
 This plan replaces the vector carrier with a faithful scalar carrier that mirrors C's `Transform` switch arm-for-arm, folding in the two known math bugs (the `ECLEQ`/`EQECL` precession factor and the `AMP` `palMappa` argument order) as arms of that switch.
 Each behavior is locked by a public-API unit test, and the existing `test_transform_oracle` harness is extended with a non-`#[ignore]` SlaMap gate carrying a shrinking exclusion list (mirroring `NATIVE_READ_EXCLUDED`).
 
-**Tech Stack:** Rust 2024, `ast-core` crate. PAL conversions via the crate-internal `pal` FFI module (`crates/ast-core/src/pal.rs`). C ground truth: `reference/starlink-ast/src/slamap.c`. Oracle fixtures: `crates/ast-core/tests/fixtures/oracle/*.oracle`.
+**Tech Stack:** Rust 2024, `starlink-ast` crate. PAL conversions via the crate-internal `pal` FFI module (`crates/starlink-ast/src/pal.rs`). C ground truth: `reference/starlink-ast/src/slamap.c`. Oracle fixtures: `crates/starlink-ast/tests/fixtures/oracle/*.oracle`.
 
 ## Global Constraints
 
 - **C-fidelity is the rule.** Every arm mirrors C control flow directly (`reference/starlink-ast/src/slamap.c` `Transform`, ~line 3540). No compute-then-check tolerance heuristics without asking the human first. Where C uses a heuristic, replicate it and comment that it mirrors C.
 - **Port ALL C logic.** Lack of test coverage is never a reason to skip a C branch. C logic beats existing diverged Rust — the vector carrier is discarded, not patched.
 - **`AST__BAD` = `BAD_VALUE` = `-f64::MAX`** (bit-identical to C). Inputs may be `f64::NAN`; outputs always use `BAD_VALUE`. `is_bad(v)` (`= v == BAD_VALUE || !v.is_finite()`) treats NaN as bad, matching C's `== AST__BAD` guard once NaN is excluded upstream.
-- **Public Rust API only in tests** (`ast_core::mappings::{SlaMap, SlaCvtType, Mapping}`, `ast_core::coords::PointSet`, `ast_core::constants::BAD_VALUE`). No private modules. Step-level helpers cannot be unit-tested directly; test through `SlaMap::transform`.
-- **Fixtures must work with the submodule absent** — the oracle corpus is already vendored under `crates/ast-core/tests/fixtures/oracle/`. Never symlink from `reference/`.
+- **Public Rust API only in tests** (`starlink_ast::mappings::{SlaMap, SlaCvtType, Mapping}`, `starlink_ast::coords::PointSet`, `starlink_ast::constants::BAD_VALUE`). No private modules. Step-level helpers cannot be unit-tested directly; test through `SlaMap::transform`.
+- **Fixtures must work with the submodule absent** — the oracle corpus is already vendored under `crates/starlink-ast/tests/fixtures/oracle/`. Never symlink from `reference/`.
 - **Comments describe the code as it is today** — no references to prior bugs, plans, the vector carrier, or "was previously". State what C does and why.
 - **C-oracle golden values come from a C probe** linked against the repo's own `libast.so` at `reference/starlink-ast/build-ast/libast.so` (recipe: `docs/issues/c-oracle-probe-recipe.md`; mind the conda-RPATH trap). Never invent a golden value.
 - **Formatting/lint gate before every commit:** `cargo fmt` and clippy clean. Clippy under the conda/rustup mismatch uses the documented workaround (isolated `CARGO_TARGET_DIR` + `RUSTC` override); commit with `--no-verify` only if the pre-commit clippy hook hits the E0514 quirk, after verifying clippy passes under the workaround.
@@ -53,12 +53,12 @@ The `MAP`/`AMP` arms consume a star-independent `amprms[21]` array from `palMapp
 
 ## File Structure
 
-- `crates/ast-core/src/mappings/slamap.rs` — the SlaMap implementation. Rewrite sites:
+- `crates/starlink-ast/src/mappings/slamap.rs` — the SlaMap implementation. Rewrite sites:
   - `apply_step_forward` (~line 936) and `apply_step_inverse` (~line 1089): the `[f64; 3]`-vector step functions. Replaced by scalar functions carrying `(alpha, delta)` — signature `fn apply_step_forward(cvt: &SlaConversion, alpha: f64, delta: f64, forward: bool, amprms: Option<&[f64; 21]>) -> (f64, f64)` (see Task 1 for the exact shape). The matrix arms do the `dcs2c`/matmul/`dcc2s`/`dranrm` round-trip internally.
   - `transform_into` (~line 1176): the per-point loop. Rewritten to carry scalar `(alpha, delta)`, apply the per-step bad-args guard and the `TRAN_ARRAY` axis-coupling, and drop the single end-of-chain `dcc2s`.
   - `transform_into_nan` (~line 1239): the NaN fast-path override. Removed — SlaMap's per-step work (matrix + `atan2` in `dranrm`, `palMappa`, trig) is not the branchless-polynomial case the fast path targets, and C's per-step axis-coupling must run. Deleting the override delegates to the trait default, which calls `transform_into` (whose `is_bad` gate already treats NaN as bad).
-- `crates/ast-core/tests/test_slamap.rs` — public-API unit tests. Gets new tests locking each behavior (matrix-op `[0, 2π)` longitude, off-J2000 `EQECL` golden, `R2H`/`H2R` raw-longitude preservation, `AMP`∘`MAP` round-trip, bad-arg propagation).
-- `crates/ast-core/tests/test_transform_oracle.rs` — the oracle harness. Gets a new `#[test]` (not `#[ignore]`) `slamap_sections_match_oracle` gate with a `SLAMAP_ORACLE_EXCLUDED` list, plus a helper to run only SlaMap sections.
+- `crates/starlink-ast/tests/test_slamap.rs` — public-API unit tests. Gets new tests locking each behavior (matrix-op `[0, 2π)` longitude, off-J2000 `EQECL` golden, `R2H`/`H2R` raw-longitude preservation, `AMP`∘`MAP` round-trip, bad-arg propagation).
+- `crates/starlink-ast/tests/test_transform_oracle.rs` — the oracle harness. Gets a new `#[test]` (not `#[ignore]`) `slamap_sections_match_oracle` gate with a `SLAMAP_ORACLE_EXCLUDED` list, plus a helper to run only SlaMap sections.
 
 The `transform_oracle_report` `#[ignore]` investigative test is left untouched — it still measures the whole corpus. The new gate asserts only on SlaMap sections.
 
@@ -78,11 +78,11 @@ It mirrors `slamap.c` `Transform` arm-for-arm: the bad-args guard, the `TRAN_ARR
 It keeps the existing `MAP | AMP` `mappa_cache` argument order (Task 2 fixes `AMP`).
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/slamap.rs` — replace `apply_step_forward` (~936), `apply_step_inverse` (~1089), rewrite the `transform_into` loop (~1176), delete `transform_into_nan` (~1239).
-- Test: `crates/ast-core/tests/test_slamap.rs`.
+- Modify: `crates/starlink-ast/src/mappings/slamap.rs` — replace `apply_step_forward` (~936), `apply_step_inverse` (~1089), rewrite the `transform_into` loop (~1176), delete `transform_into_nan` (~1239).
+- Test: `crates/starlink-ast/tests/test_slamap.rs`.
 
 **Interfaces:**
-- Consumes (all `pub(crate)` in `crates/ast-core/src/pal.rs`, already exposed): `pal::dcs2c(a, b) -> [f64; 3]`, `pal::dcc2s(v: &[f64; 3]) -> (f64, f64)`, `pal::dmxv(dm, va) -> [f64; 3]`, `pal::dimxv(dm, va) -> [f64; 3]`, `pal::dmxm(a, b) -> [[f64; 3]; 3]`, `pal::prec(ep0, ep1) -> [[f64; 3]; 3]`, `pal::prebn(ep0, ep1) -> [[f64; 3]; 3]`, `pal::ecmat(date) -> [[f64; 3]; 3]`, `pal::epj(date) -> f64`, `pal::dranrm(angle) -> f64`, `pal::deuler(order, a, b, c) -> [[f64; 3]; 3]`, `pal::mappa(eq, date) -> [f64; 21]`, `pal::mapqkz`, `pal::ampqk`, `pal::galeq`/`eqgal`/`galsup`/`supgal`/`fk45z`/`fk54z`/`fk5hz`/`hfk5z`/`addet`/`subet` (all already used by the current arms). The `SlaCvtType::nargs()` method (`slamap.rs:86`) gives the bad-args guard its `nargs` count. `SlaConversion { cvt_type, args }` (`slamap.rs:330`). `de2h_with_aberration` / `dh2e_with_aberration` / `stp_convert` helpers (already in the file).
+- Consumes (all `pub(crate)` in `crates/starlink-ast/src/pal.rs`, already exposed): `pal::dcs2c(a, b) -> [f64; 3]`, `pal::dcc2s(v: &[f64; 3]) -> (f64, f64)`, `pal::dmxv(dm, va) -> [f64; 3]`, `pal::dimxv(dm, va) -> [f64; 3]`, `pal::dmxm(a, b) -> [[f64; 3]; 3]`, `pal::prec(ep0, ep1) -> [[f64; 3]; 3]`, `pal::prebn(ep0, ep1) -> [[f64; 3]; 3]`, `pal::ecmat(date) -> [[f64; 3]; 3]`, `pal::epj(date) -> f64`, `pal::dranrm(angle) -> f64`, `pal::deuler(order, a, b, c) -> [[f64; 3]; 3]`, `pal::mappa(eq, date) -> [f64; 21]`, `pal::mapqkz`, `pal::ampqk`, `pal::galeq`/`eqgal`/`galsup`/`supgal`/`fk45z`/`fk54z`/`fk5hz`/`hfk5z`/`addet`/`subet` (all already used by the current arms). The `SlaCvtType::nargs()` method (`slamap.rs:86`) gives the bad-args guard its `nargs` count. `SlaConversion { cvt_type, args }` (`slamap.rs:330`). `de2h_with_aberration` / `dh2e_with_aberration` / `stp_convert` helpers (already in the file).
 - Produces: a scalar step-dispatch and a `transform_into` that reproduces C's `Transform` byte-for-byte in control flow. `apply_step_forward` / `apply_step_inverse` change signature from `([f64;3]) -> [f64;3]` to `(alpha, delta, forward, amprms) -> (f64, f64)` (or two functions keyed on `forward` — implementer's choice, mirroring the existing forward/inverse split). No other file consumes these functions (verified: only `transform_into` / `transform_into_nan` call them).
 
 - [ ] **Step 1: Write the failing tests**
@@ -197,7 +197,7 @@ Build a tiny C program linked against `reference/starlink-ast/build-ast/libast.s
 Construct an `AstSlaMap` with a single `EQECL` step at `args = {55197.0}`, transform the single point `(ra, dec) = (83 deg, 22 deg)` in radians forward, and print both output coordinates to full `%.17g` precision.
 Substitute the two printed numbers for `GOLDEN_LON` / `GOLDEN_LAT` in `eqecl_matches_c_off_j2000`.
 
-Run: `cargo test -p ast-core --test test_slamap r2h_h2r_preserves_raw_longitude matrix_op_longitude_is_normalized_to_0_2pi eqecl_matches_c_off_j2000 bad_arg_propagates_to_bad_output bad_and_nan_input_produce_bad_output`
+Run: `cargo test -p starlink-ast --test test_slamap r2h_h2r_preserves_raw_longitude matrix_op_longitude_is_normalized_to_0_2pi eqecl_matches_c_off_j2000 bad_arg_propagates_to_bad_output bad_and_nan_input_produce_bad_output`
 
 Expected: FAIL. The vector carrier normalizes `R2H`∘`H2R` output into `(-pi, pi]` (so `-1000` is lost); it never applies `palDranrm` after `PREC` (so a negative longitude stays negative); it uses `ecmat` alone for `EQECL` (so the off-J2000 value is wrong); and it has no bad-args guard (so a bad `EQECL` date yields NaN/garbage, not `BAD_VALUE`). At least one assertion in each of the first four tests fails; `bad_and_nan_input_produce_bad_output` may already pass (the vector path's `is_bad` gate handles bad inputs) — that is fine, it guards the rewrite.
 
@@ -344,7 +344,7 @@ This is faithful — C runs the same per-step bad-checks in both directions — 
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `cargo test -p ast-core --test test_slamap`
+Run: `cargo test -p starlink-ast --test test_slamap`
 Expected: PASS (all) — the five new tests plus every pre-existing SlaMap test.
 The pre-existing J2000.0-dated tests still pass because `prec(2000, 2000)` is the identity and `dranrm` is a no-op on already-in-range longitudes.
 
@@ -353,7 +353,7 @@ The pre-existing J2000.0-dated tests still pass because `prec(2000, 2000)` is th
 Run `cargo fmt` and clippy (workaround per Global Constraints) first.
 
 ```bash
-git add crates/ast-core/src/mappings/slamap.rs crates/ast-core/tests/test_slamap.rs
+git add crates/starlink-ast/src/mappings/slamap.rs crates/starlink-ast/tests/test_slamap.rs
 git commit -m "fix(slamap): carry scalar (alpha,delta) through transform like C
 
 Port slamap.c Transform faithfully: carry scalar longitude/latitude
@@ -373,8 +373,8 @@ The history note at slamap.c:79 records this exact fix.
 The `mappa_cache` closure calls `pal::mappa(cvt.args[0], cvt.args[1])` for **both** `Map` and `Amp`, so `Amp` swaps its epoch and equinox.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/slamap.rs` — the `mappa_cache` closure in `transform_into` (only one closure now, after Task 1 deleted `transform_into_nan`).
-- Test: `crates/ast-core/tests/test_slamap.rs`.
+- Modify: `crates/starlink-ast/src/mappings/slamap.rs` — the `mappa_cache` closure in `transform_into` (only one closure now, after Task 1 deleted `transform_into_nan`).
+- Test: `crates/starlink-ast/tests/test_slamap.rs`.
 
 **Interfaces:**
 - Consumes: `pal::mappa(eq: f64, date: f64) -> [f64; 21]`.
@@ -408,7 +408,7 @@ fn amp_map_round_trip() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_slamap amp_map_round_trip`
+Run: `cargo test -p starlink-ast --test test_slamap amp_map_round_trip`
 Expected: FAIL — `AMP` caches `mappa(date, eq)` (args swapped) while `MAP` caches `mappa(eq, date)`, so the two `amprms` arrays differ and the steps do not cancel; the output diverges from the input by the equinox/epoch mismatch.
 
 - [ ] **Step 3: Write the fix**
@@ -428,10 +428,10 @@ In the `mappa_cache` closure in `transform_into`, split the `Map | Amp` arm into
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p ast-core --test test_slamap amp_map_round_trip`
+Run: `cargo test -p starlink-ast --test test_slamap amp_map_round_trip`
 Expected: PASS.
 
-Run: `cargo test -p ast-core --test test_slamap`
+Run: `cargo test -p starlink-ast --test test_slamap`
 Expected: PASS (all) — confirms no regression.
 
 - [ ] **Step 5: Commit**
@@ -439,7 +439,7 @@ Expected: PASS (all) — confirms no regression.
 Run `cargo fmt` and clippy first.
 
 ```bash
-git add crates/ast-core/src/mappings/slamap.rs crates/ast-core/tests/test_slamap.rs
+git add crates/starlink-ast/src/mappings/slamap.rs crates/starlink-ast/tests/test_slamap.rs
 git commit -m "fix(slamap): correct palMappa argument order for AMP
 
 AMP args are (DATE, EQ) so palMappa takes (eq=args[1], ep=args[0]);
@@ -456,7 +456,7 @@ Add a non-`#[ignore]` test that runs only the SlaMap-family oracle sections and 
 After Tasks 1-2 the list should be empty or hold only a small, documented residue; the list only ever shrinks.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs` — add the gate test and a SlaMap-section helper. Leave `transform_oracle_report` (the `#[ignore]` investigative test) untouched.
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs` — add the gate test and a SlaMap-section helper. Leave `transform_oracle_report` (the `#[ignore]` investigative test) untouched.
 
 **Interfaces:**
 - Consumes: `run_oracle(oracle_text: &str, overrides: &Overrides) -> Vec<SectionReport>`, `parse_overrides(text: &str) -> Overrides`, `SectionReport { relpath: String, forward: bool, outcome: Outcome }`, `enum Outcome { Pass, LoadFail(String), Skipped(String), SkippedByOverride(String), Arity(String), Mismatch(Vec<AxisMiss>) }`. The oracle dir is `concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle")`; the SlaMap sections all live in `simplify_fixtures.oracle`.
@@ -467,7 +467,7 @@ After Tasks 1-2 the list should be empty or hold only a small, documented residu
 Regenerate the report and inspect the SlaMap-family sections:
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle -- --ignored --nocapture transform_oracle_report
+cargo test -p starlink-ast --test test_transform_oracle -- --ignored --nocapture transform_oracle_report
 python3 - <<'PY'
 import json
 d = json.load(open('target/transform_oracle_report.json'))
@@ -564,11 +564,11 @@ fn slamap_sections_match_oracle() {
 
 - [ ] **Step 3: Run the gate to verify it passes**
 
-Run: `cargo test -p ast-core --test test_transform_oracle slamap_sections_match_oracle`
+Run: `cargo test -p starlink-ast --test test_transform_oracle slamap_sections_match_oracle`
 Expected: PASS — every SlaMap section either matches C or is explicitly excluded with a reason, and no excluded section secretly passes.
 
 Run the whole oracle test file to confirm no collateral breakage:
-Run: `cargo test -p ast-core --test test_transform_oracle`
+Run: `cargo test -p starlink-ast --test test_transform_oracle`
 Expected: PASS (all non-`#[ignore]` tests).
 
 - [ ] **Step 4: Commit**
@@ -576,7 +576,7 @@ Expected: PASS (all non-`#[ignore]` tests).
 Run `cargo fmt` and clippy first.
 
 ```bash
-git add crates/ast-core/tests/test_transform_oracle.rs
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test(slamap): gate SlaMap oracle sections against C
 
 Add slamap_sections_match_oracle: asserts every *sla* simplify-corpus

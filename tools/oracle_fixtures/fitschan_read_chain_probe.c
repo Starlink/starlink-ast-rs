@@ -13,9 +13,9 @@
  * For each header: "! <status>" or "= none" if the read gives no FrameSet,
  * and otherwise its native dump.
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_read_chain_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_read_chain_oracle/cases.rs:
  *
- *   ./fitschan_read_chain_probe > ../../crates/ast-core/tests/fitschan_read_chain_oracle/cases.rs
+ *   ./fitschan_read_chain_probe > ../../crates/starlink-ast/tests/fitschan_read_chain_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

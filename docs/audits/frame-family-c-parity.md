@@ -3,7 +3,7 @@
 Date: 2026-10-05.
 Scope: `Frame`, `Axis`, `SkyAxis`, `SkyFrame`, `SpecFrame`, `DSBSpecFrame`, `TimeFrame`, `FluxFrame`, `SpecFluxFrame`, `CmpFrame`, and `FrameSet` in its role as a `Frame`.
 Regions are out of scope (see `region-*.md` in this directory).
-`ast-capi` is out of scope: it is unstarted, so no string-attribute dispatch (`astGet`/`astSet` by name) exists for any class.
+`starlink-ast-capi` is out of scope: it is unstarted, so no string-attribute dispatch (`astGet`/`astSet` by name) exists for any class.
 
 C line numbers refer to the `reference/starlink-ast` checkout in the working tree on this date (the submodule showed local modifications).
 Rust line numbers refer to branch `tickets/DM-54793` at `7a32e13`.
@@ -13,7 +13,7 @@ Rust line numbers refer to branch `tickets/DM-54793` at `7a32e13`.
 1. Every `vtab->X = X` assignment in each class's C source was listed and mapped onto a Rust trait method, inherent method, or "no counterpart".
 2. Every C `GetAttrib` attribute name was checked for typed get/set/test/clear accessors in Rust.
 3. Each C method with a Rust counterpart was compared by reading both implementations, in four class groups.
-4. Most HIGH findings were confirmed with paired probes: a C program linked against the built reference `libast`, and a scratch Rust crate depending on `ast-core`, run on the same inputs.
+4. Most HIGH findings were confirmed with paired probes: a C program linked against the built reference `libast`, and a scratch Rust crate depending on `starlink-ast`, run on the same inputs.
 5. The findings marked **re-verified** below were additionally checked by reading the code a second time, independently of the group audit.
 
 Findings marked UNVERIFIED were established by reading only, and say what would settle them.
@@ -197,7 +197,7 @@ The hot path is clean: `set_epoch_mjd` (skyframe.rs:415) and `set_sky_ref_is` (:
 | CF-2 | LOW | cmpframe.c:7582 | none (`regions/mod.rs:1440` is Mapping-only) | `RemoveRegions` has no CmpFrame form. This follows from PLAN §9.6 (CmpFrame is not a Mapping). | CmpFrame with a Region component inside a FrameSet. |
 
 C restores integrity only on the string-attribute path (`astVSet` frameset.c:11933-11941, `ClearAttrib` :2663-2671), not in the `MAKE_SET` forwards (:322, :562).
-When `ast-capi` lands, its dispatch must route through the integrity routine.
+When `starlink-ast-capi` lands, its dispatch must route through the integrity routine.
 
 ### Native load (cross-class)
 
@@ -226,7 +226,7 @@ A KeyMap does not read or write Ident at all; that is a separate gap.
 
 | ID | Rating | C | Rust | Finding | Exposed by |
 |---|---|---|---|---|---|
-| XC-1 | MED | skyframe.c:4606-4689, 10129, 11145 (VerifyMSMAttrs); specframe.c:2116, 5668; dsbspecframe.c:2333; timeframe.c:6398 | none (`rg -i usedefs crates/ast-core/src` finds only a comment) | UseDefs is absent. With UseDefs=0, C refuses alignments that rely on a defaulted Epoch, Equinox, RestFreq and so on, and uses it in the default SkyFrame Title. Rust always behaves as UseDefs=1. This is an Object-level attribute, so the design needs a ruling on where it lives, as there is no Object trait. | `convert` with UseDefs=0 and Epoch unset should fail. |
+| XC-1 | MED | skyframe.c:4606-4689, 10129, 11145 (VerifyMSMAttrs); specframe.c:2116, 5668; dsbspecframe.c:2333; timeframe.c:6398 | none (`rg -i usedefs crates/starlink-ast/src` finds only a comment) | UseDefs is absent. With UseDefs=0, C refuses alignments that rely on a defaulted Epoch, Equinox, RestFreq and so on, and uses it in the default SkyFrame Title. Rust always behaves as UseDefs=1. This is an Object-level attribute, so the design needs a ruling on where it lives, as there is no Object trait. | `convert` with UseDefs=0 and Epoch unset should fail. |
 
 ## C methods with no Rust counterpart
 
@@ -261,4 +261,4 @@ These entries should be corrected when the findings above are filed:
 ## Probe sources
 
 The paired C and Rust probes are in the session scratchpad and are not committed.
-To make any finding a regression test, port the probe's inputs and C output into a `crates/ast-core/tests/` oracle case, following `docs/issues/c-oracle-probe-recipe.md`.
+To make any finding a regression test, port the probe's inputs and C output into a `crates/starlink-ast/tests/` oracle case, following `docs/issues/c-oracle-probe-recipe.md`.

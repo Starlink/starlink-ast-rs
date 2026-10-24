@@ -24,7 +24,7 @@ dumps.
 
 ## What holds it
 
-Measured on 2026-09-03: `cargo test -p ast-core` is 3384 passed, 0 failed, 1
+Measured on 2026-09-03: `cargo test -p starlink-ast` is 3384 passed, 0 failed, 1
 ignored across 101 result lines, with `cargo fmt --all -- --check` clean and
 `cargo clippy --workspace --all-targets -- -D warnings` silent.
 The one ignored test is `transform_oracle_report`, an investigative reporter run
@@ -72,7 +72,7 @@ executes **zero tests**, and `ast-ffi-tests` likewise: both crates are
 documented placeholders (`PLAN.md` §7).
 No test in this repository executes C code and compares the result live.
 Every C comparison in the table above is against frozen corpora committed under
-`crates/ast-core/tests/fixtures/`, captured from the pinned oracle.
+`crates/starlink-ast/tests/fixtures/`, captured from the pinned oracle.
 A recording cannot notice when the thing it recorded changes, which is why the
 corpus-freshness scripts under `tools/oracle_fixtures/` exist and why moving the
 pin is a planned operation rather than a bump.
@@ -111,7 +111,7 @@ row lands on a trait method a generic driver dispatches to.
 
 ## What is excluded, and why each is not a hole
 
-Transcribed from `LEDGER` in `crates/ast-core/tests/test_verification_ledger.rs`,
+Transcribed from `LEDGER` in `crates/starlink-ast/tests/test_verification_ledger.rs`,
 which is the authority; the counts are asserted there.
 
 | Source | Marker | Count | What it is |

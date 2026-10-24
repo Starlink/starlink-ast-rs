@@ -61,9 +61,9 @@
  * After each operation it prints the result and the state: Card, Ncard,
  * Nkey, CardType, CardName and CardComm, then every card astFindFits
  * returns from the start, and the error if one stops it, as Rust source for
- * crates/ast-core/tests/fitschan_cursor_oracle/cases.rs:
+ * crates/starlink-ast/tests/fitschan_cursor_oracle/cases.rs:
  *
- *   ./fitschan_cursor_probe > ../../crates/ast-core/tests/fitschan_cursor_oracle/cases.rs
+ *   ./fitschan_cursor_probe > ../../crates/starlink-ast/tests/fitschan_cursor_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

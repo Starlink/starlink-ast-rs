@@ -3,13 +3,13 @@
  * from the FITS cards astDssFits writes (dssmap.c), which hold the plate
  * centre as sexagesimal hours or degrees, minutes and seconds, so the merged
  * centre is the original after that round trip. The input is
- * crates/ast-core/tests/fixtures/simplify/dssmap_winmap_absorb.map with its
+ * crates/starlink-ast/tests/fixtures/simplify/dssmap_winmap_absorb.map with its
  * PltRA and PltDec replaced.
  *
  * Run from tools/oracle_fixtures; prints Rust source for
- * crates/ast-core/tests/dss_merge_oracle/cases.rs:
+ * crates/starlink-ast/tests/dss_merge_oracle/cases.rs:
  *
- *   ./dss_merge_probe > ../../crates/ast-core/tests/dss_merge_oracle/cases.rs
+ *   ./dss_merge_probe > ../../crates/starlink-ast/tests/dss_merge_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,7 +95,7 @@ static void emit( const char *ra, const char *dec ) {
 
 int main( void ) {
    int status = 0;
-   FILE *f = fopen( "../../crates/ast-core/tests/fixtures/simplify/dssmap_winmap_absorb.map", "r" );
+   FILE *f = fopen( "../../crates/starlink-ast/tests/fixtures/simplify/dssmap_winmap_absorb.map", "r" );
    size_t n;
    astWatch( &status );
    if( !f ) {

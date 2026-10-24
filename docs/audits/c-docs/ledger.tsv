@@ -309,7 +309,7 @@ function	astNullRegion	nullregion.c	NullRegionBuilder::new		yes
 class	Object	object.c	AnyObject		yes	No common base trait: AnyObject holds any object and documents what all share
 function	astAnnul	object.c		c-api-only	yes	Handle management; an owned value is dropped
 function	astClear	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed clear_ method
-function	astClone	object.c		c-api-only	yes	Handle management; no shared objects or reference counts in ast-core
+function	astClone	object.c		c-api-only	yes	Handle management; no shared objects or reference counts in starlink-ast
 function	astCopy	object.c	AnyObject		yes	Clone on every class is the deep copy; alias on AnyObject, as an impl Clone cannot carry one
 function	astDelete	object.c		c-api-only	yes	Handle management; an owned value is dropped
 function	astGet<X>	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed getter
@@ -327,8 +327,8 @@ attribute	Class	object.c	AnyObject::class_name		yes
 attribute	ID	object.c	Mapping::id; Frame::id; KeyMap::id; NativeChannel::id; MocChan::id; FitsChan::id		yes	Table and FitsTable read it through their KeyMap
 attribute	Ident	object.c	Mapping::ident; Frame::ident; KeyMap::ident; NativeChannel::ident; MocChan::ident; FitsChan::ident		yes	Table and FitsTable read it through their KeyMap
 attribute	UseDefs	object.c	Frame::use_defs		yes	Only Frames expose it, the only classes C lets it affect; a FitsChan keeps one set through FITSCHAN_OPTIONS for its dump
-attribute	Nobject	object.c		c-api-only	yes	A count of live objects per class; ast-core keeps no object registry, so only the C interface can count its handles
-attribute	ObjSize	object.c		not-ported	yes	No in-memory size of an object; nothing in ast-core needs it (PLAN.md §7)
+attribute	Nobject	object.c		c-api-only	yes	A count of live objects per class; starlink-ast keeps no object registry, so only the C interface can count its handles
+attribute	ObjSize	object.c		not-ported	yes	No in-memory size of an object; nothing in starlink-ast needs it (PLAN.md §7)
 attribute	RefCount	object.c		c-api-only	yes	Handle reference count; owned values have none
 function	astIsA<Class>	object.c	AnyObject::as_mapping; AnyObject::as_frame; AnyObject::as_region		yes	A plain Frame is not a Mapping (sibling traits), where astIsAMapping is true for any Frame
 function	astActiveObjects	object.c		c-api-only	yes	Handle bookkeeping

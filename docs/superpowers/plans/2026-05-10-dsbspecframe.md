@@ -6,7 +6,7 @@
 
 **Architecture:** Composition-based: `DSBSpecFrame` wraps a `SpecFrame` and implements the `Frame` trait by delegation, overriding `convert`, `map_from`, `snapshot`, and `equal`. Sideband conversions use `WinMap` reflections around the LO frequency, sandwiched between topocentric-frequency mappings built via `SpecFrame::make_spec_mapping`.
 
-**Tech Stack:** Rust 2024, ast-core crate (frames module). Depends on existing `SpecFrame`, `WinMap`, `CmpMap`, `UnitMap`, `SpecMap`.
+**Tech Stack:** Rust 2024, starlink-ast crate (frames module). Depends on existing `SpecFrame`, `WinMap`, `CmpMap`, `UnitMap`, `SpecMap`.
 
 **Spec:** `docs/superpowers/specs/2026-05-10-dsbspecframe-design.md`
 
@@ -16,23 +16,23 @@
 
 | Action | Path | Responsibility |
 |--------|------|----------------|
-| Create | `crates/ast-core/src/frames/dsbspecframe.rs` | DSBSpecFrame struct, SideBand enum, public API, Frame impl, sideband conversion, Serializable impl |
-| Modify | `crates/ast-core/src/frames/mod.rs` | Add `mod dsbspecframe` and `pub use` |
-| Modify | `crates/ast-core/src/frames/specframe.rs` | Promote `make_spec_mapping` to `pub(crate)` |
-| Modify | `crates/ast-core/src/serial/mod.rs` | Add DSBSpecFrame to `frame_from_node`, `any_object_from_node`, `any_object_to_node`, `AnyObject` enum + match arms |
-| Create | `crates/ast-core/tests/test_dsbspecframe.rs` | Integration tests: attributes, sideband conversion, alignment, serialization |
-| Create | `crates/ast-core/tests/fixtures/jan-dsb.ast` | Fixture: serialized DSBSpecFrame from reference repo |
+| Create | `crates/starlink-ast/src/frames/dsbspecframe.rs` | DSBSpecFrame struct, SideBand enum, public API, Frame impl, sideband conversion, Serializable impl |
+| Modify | `crates/starlink-ast/src/frames/mod.rs` | Add `mod dsbspecframe` and `pub use` |
+| Modify | `crates/starlink-ast/src/frames/specframe.rs` | Promote `make_spec_mapping` to `pub(crate)` |
+| Modify | `crates/starlink-ast/src/serial/mod.rs` | Add DSBSpecFrame to `frame_from_node`, `any_object_from_node`, `any_object_to_node`, `AnyObject` enum + match arms |
+| Create | `crates/starlink-ast/tests/test_dsbspecframe.rs` | Integration tests: attributes, sideband conversion, alignment, serialization |
+| Create | `crates/starlink-ast/tests/fixtures/jan-dsb.ast` | Fixture: serialized DSBSpecFrame from reference repo |
 
 ---
 
 ### Task 1: Promote `make_spec_mapping` to `pub(crate)`
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/specframe.rs:715`
+- Modify: `crates/starlink-ast/src/frames/specframe.rs:715`
 
 - [ ] **Step 1: Change `make_spec_mapping` visibility**
 
-In `crates/ast-core/src/frames/specframe.rs`, change the method signature from private to `pub(crate)`:
+In `crates/starlink-ast/src/frames/specframe.rs`, change the method signature from private to `pub(crate)`:
 
 ```rust
     pub(crate) fn make_spec_mapping(&self, result: &SpecFrame) -> AstResult<DynMapping> {
@@ -40,13 +40,13 @@ In `crates/ast-core/src/frames/specframe.rs`, change the method signature from p
 
 - [ ] **Step 2: Verify compilation**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: compiles cleanly, no public API change.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/specframe.rs
+git add crates/starlink-ast/src/frames/specframe.rs
 git commit -m "Promote SpecFrame::make_spec_mapping to pub(crate)
 
 DSBSpecFrame needs to call this to build its parent alignment
@@ -62,17 +62,17 @@ Co-Authored-By: SLAC AI"
 ### Task 2: SideBand Enum and DSBSpecFrame Struct
 
 **Files:**
-- Create: `crates/ast-core/src/frames/dsbspecframe.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs`
+- Create: `crates/starlink-ast/src/frames/dsbspecframe.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
 
 - [ ] **Step 1: Write the test for construction and attribute defaults**
 
-Create `crates/ast-core/tests/test_dsbspecframe.rs`:
+Create `crates/starlink-ast/tests/test_dsbspecframe.rs`:
 
 ```rust
 //! DSBSpecFrame integration tests.
 
-use ast_core::frames::{DSBSpecFrame, SideBand, SpecSystem};
+use starlink_ast::frames::{DSBSpecFrame, SideBand, SpecSystem};
 
 #[test]
 fn construction_defaults() {
@@ -113,12 +113,12 @@ fn explicit_sideband_overrides_default() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe`
 Expected: FAIL — `DSBSpecFrame` and `SideBand` not found.
 
 - [ ] **Step 3: Create the dsbspecframe module with struct and basic API**
 
-Create `crates/ast-core/src/frames/dsbspecframe.rs`:
+Create `crates/starlink-ast/src/frames/dsbspecframe.rs`:
 
 ```rust
 //! The dual-sideband spectral coordinate frame (DSBSpecFrame).
@@ -313,7 +313,7 @@ impl DSBSpecFrame {
 
 - [ ] **Step 4: Register in mod.rs**
 
-Add to `crates/ast-core/src/frames/mod.rs` after the `specframe` line:
+Add to `crates/starlink-ast/src/frames/mod.rs` after the `specframe` line:
 
 ```rust
 mod dsbspecframe;
@@ -327,18 +327,18 @@ pub use dsbspecframe::{DSBSpecFrame, SideBand};
 
 - [ ] **Step 5: Run tests**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe`
 Expected: All 3 tests pass.
 
 - [ ] **Step 6: Run clippy and fmt**
 
-Run: `cargo fmt -p ast-core && cargo clippy -p ast-core -- -D warnings`
+Run: `cargo fmt -p starlink-ast && cargo clippy -p starlink-ast -- -D warnings`
 Expected: clean.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/dsbspecframe.rs crates/ast-core/src/frames/mod.rs crates/ast-core/tests/test_dsbspecframe.rs
+git add crates/starlink-ast/src/frames/dsbspecframe.rs crates/starlink-ast/src/frames/mod.rs crates/starlink-ast/tests/test_dsbspecframe.rs
 git commit -m "Add DSBSpecFrame struct with SideBand enum and basic attributes
 
 Composition-based design wrapping SpecFrame. Includes construction,
@@ -354,17 +354,17 @@ Co-Authored-By: SLAC AI"
 ### Task 3: LO Frequency Computation and Sideband Conversion Mappings
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/dsbspecframe.rs`
-- Modify: `crates/ast-core/tests/test_dsbspecframe.rs`
+- Modify: `crates/starlink-ast/src/frames/dsbspecframe.rs`
+- Modify: `crates/starlink-ast/tests/test_dsbspecframe.rs`
 
 - [ ] **Step 1: Write the test for LO frequency and sideband conversion**
 
-Append to `crates/ast-core/tests/test_dsbspecframe.rs`:
+Append to `crates/starlink-ast/tests/test_dsbspecframe.rs`:
 
 ```rust
-use ast_core::coords::PointSet;
-use ast_core::frames::Frame;
-use ast_core::mappings::Mapping;
+use starlink_ast::coords::PointSet;
+use starlink_ast::frames::Frame;
+use starlink_ast::mappings::Mapping;
 
 #[test]
 fn lo_frequency() {
@@ -460,12 +460,12 @@ fn lo_offset_mapping() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe`
 Expected: FAIL — `lo_freq`, `to_lsb_mapping`, `to_usb_mapping`, `to_lo_mapping` not found.
 
 - [ ] **Step 3: Implement sideband conversion**
 
-Add to `crates/ast-core/src/frames/dsbspecframe.rs`:
+Add to `crates/starlink-ast/src/frames/dsbspecframe.rs`:
 
 ```rust
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -612,18 +612,18 @@ impl DSBSpecFrame {
 
 - [ ] **Step 5: Run tests**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe`
 Expected: All tests pass (including the new sideband conversion tests).
 
 - [ ] **Step 6: Run clippy and fmt**
 
-Run: `cargo fmt -p ast-core && cargo clippy -p ast-core -- -D warnings`
+Run: `cargo fmt -p starlink-ast && cargo clippy -p starlink-ast -- -D warnings`
 Expected: clean.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/dsbspecframe.rs crates/ast-core/tests/test_dsbspecframe.rs
+git add crates/starlink-ast/src/frames/dsbspecframe.rs crates/starlink-ast/tests/test_dsbspecframe.rs
 git commit -m "Add sideband conversion mappings to DSBSpecFrame
 
 Implements to_usb_mapping, to_lsb_mapping, to_lo_mapping using
@@ -640,15 +640,15 @@ Co-Authored-By: SLAC AI"
 ### Task 4: Frame Trait Implementation
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/dsbspecframe.rs`
-- Modify: `crates/ast-core/tests/test_dsbspecframe.rs`
+- Modify: `crates/starlink-ast/src/frames/dsbspecframe.rs`
+- Modify: `crates/starlink-ast/tests/test_dsbspecframe.rs`
 
 - [ ] **Step 1: Write the test for Frame trait methods and conversion**
 
-Append to `crates/ast-core/tests/test_dsbspecframe.rs`:
+Append to `crates/starlink-ast/tests/test_dsbspecframe.rs`:
 
 ```rust
-use ast_core::frames::FrameSet;
+use starlink_ast::frames::FrameSet;
 
 #[test]
 fn frame_trait_basics() {
@@ -737,7 +737,7 @@ fn convert_dsb_to_specframe() {
     from.set_ifr(4.0e9);
     from.set_sideband(SideBand::USB);
 
-    let to = ast_core::frames::SpecFrame::new(SpecSystem::Freq);
+    let to = starlink_ast::frames::SpecFrame::new(SpecSystem::Freq);
 
     let fs = from.convert(&to, &[]).unwrap().unwrap();
     let mapping = fs.get_mapping(FrameRef::Base, FrameRef::Current).unwrap();
@@ -750,12 +750,12 @@ fn convert_dsb_to_specframe() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe`
 Expected: FAIL — `Frame` not implemented for `DSBSpecFrame`.
 
 - [ ] **Step 3: Implement the Frame trait**
 
-Add to `crates/ast-core/src/frames/dsbspecframe.rs`:
+Add to `crates/starlink-ast/src/frames/dsbspecframe.rs`:
 
 ```rust
 use crate::frames::{DynFrame, Frame, FrameRef, FrameSet};
@@ -903,18 +903,18 @@ impl DSBSpecFrame {
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe`
 Expected: All tests pass.
 
 - [ ] **Step 5: Run clippy and fmt**
 
-Run: `cargo fmt -p ast-core && cargo clippy -p ast-core -- -D warnings`
+Run: `cargo fmt -p starlink-ast && cargo clippy -p starlink-ast -- -D warnings`
 Expected: clean.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/dsbspecframe.rs crates/ast-core/tests/test_dsbspecframe.rs
+git add crates/starlink-ast/src/frames/dsbspecframe.rs crates/starlink-ast/tests/test_dsbspecframe.rs
 git commit -m "Implement Frame trait for DSBSpecFrame
 
 Includes convert (sideband-aware and plain alignment), map_from
@@ -931,12 +931,12 @@ Co-Authored-By: SLAC AI"
 ### Task 5: ImagFreq Computation
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/dsbspecframe.rs`
-- Modify: `crates/ast-core/tests/test_dsbspecframe.rs`
+- Modify: `crates/starlink-ast/src/frames/dsbspecframe.rs`
+- Modify: `crates/starlink-ast/tests/test_dsbspecframe.rs`
 
 - [ ] **Step 1: Write the test**
 
-Append to `crates/ast-core/tests/test_dsbspecframe.rs`:
+Append to `crates/starlink-ast/tests/test_dsbspecframe.rs`:
 
 ```rust
 #[test]
@@ -966,12 +966,12 @@ fn imag_freq_no_rest_freq() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe -- imag_freq`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe -- imag_freq`
 Expected: FAIL — `imag_freq` not found.
 
 - [ ] **Step 3: Implement imag_freq**
 
-Add to `crates/ast-core/src/frames/dsbspecframe.rs`:
+Add to `crates/starlink-ast/src/frames/dsbspecframe.rs`:
 
 ```rust
 use crate::coords::PointSet;
@@ -1027,13 +1027,13 @@ impl DSBSpecFrame {
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe -- imag_freq`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe -- imag_freq`
 Expected: Both tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/dsbspecframe.rs crates/ast-core/tests/test_dsbspecframe.rs
+git add crates/starlink-ast/src/frames/dsbspecframe.rs crates/starlink-ast/tests/test_dsbspecframe.rs
 git commit -m "Add DSBSpecFrame::imag_freq() computation
 
 Computes the image-sideband frequency corresponding to the rest
@@ -1049,16 +1049,16 @@ Co-Authored-By: SLAC AI"
 ### Task 6: Serialization (Serializable trait)
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/dsbspecframe.rs`
-- Modify: `crates/ast-core/tests/test_dsbspecframe.rs`
-- Create: `crates/ast-core/tests/fixtures/jan-dsb.ast`
+- Modify: `crates/starlink-ast/src/frames/dsbspecframe.rs`
+- Modify: `crates/starlink-ast/tests/test_dsbspecframe.rs`
+- Create: `crates/starlink-ast/tests/fixtures/jan-dsb.ast`
 
 - [ ] **Step 1: Write the test for serialization round-trip**
 
-Append to `crates/ast-core/tests/test_dsbspecframe.rs`:
+Append to `crates/starlink-ast/tests/test_dsbspecframe.rs`:
 
 ```rust
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use starlink_ast::{AnyObject, from_native_string, to_native_string};
 
 #[test]
 fn serialization_round_trip() {
@@ -1105,7 +1105,7 @@ fn deserialize_fixture() {
 
 - [ ] **Step 2: Create the fixture file**
 
-Create `crates/ast-core/tests/fixtures/jan-dsb.ast` extracted from the reference:
+Create `crates/starlink-ast/tests/fixtures/jan-dsb.ast` extracted from the reference:
 
 ```
  Begin DSBSpecFrame 	# Dual sideband spectral axis
@@ -1133,12 +1133,12 @@ Create `crates/ast-core/tests/fixtures/jan-dsb.ast` extracted from the reference
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe -- serial`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe -- serial`
 Expected: FAIL — `AnyObject::DSBSpecFrame` variant doesn't exist.
 
 - [ ] **Step 4: Implement Serializable trait**
 
-Add to `crates/ast-core/src/frames/dsbspecframe.rs`:
+Add to `crates/starlink-ast/src/frames/dsbspecframe.rs`:
 
 ```rust
 use crate::serial::{Node, NodeValue, Serializable};
@@ -1268,7 +1268,7 @@ impl Serializable for DSBSpecFrame {
 
 - [ ] **Step 5: Register DSBSpecFrame in `serial/mod.rs`**
 
-In `crates/ast-core/src/serial/mod.rs`:
+In `crates/starlink-ast/src/serial/mod.rs`:
 
 1. Add to the `AnyObject` enum:
 ```rust
@@ -1318,18 +1318,18 @@ use crate::frames::DSBSpecFrame;
 
 - [ ] **Step 6: Run tests**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe`
 Expected: All tests pass including serialization round-trip and fixture deserialization.
 
 - [ ] **Step 7: Run clippy and fmt**
 
-Run: `cargo fmt -p ast-core && cargo clippy -p ast-core -- -D warnings`
+Run: `cargo fmt -p starlink-ast && cargo clippy -p starlink-ast -- -D warnings`
 Expected: clean.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/dsbspecframe.rs crates/ast-core/src/serial/mod.rs crates/ast-core/tests/test_dsbspecframe.rs crates/ast-core/tests/fixtures/jan-dsb.ast
+git add crates/starlink-ast/src/frames/dsbspecframe.rs crates/starlink-ast/src/serial/mod.rs crates/starlink-ast/tests/test_dsbspecframe.rs crates/starlink-ast/tests/fixtures/jan-dsb.ast
 git commit -m "Add DSBSpecFrame serialization and AnyObject registration
 
 Implements Serializable trait (to_node/from_node), registers in
@@ -1346,12 +1346,12 @@ Co-Authored-By: SLAC AI"
 ### Task 7: Label Override and Domain
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/dsbspecframe.rs`
-- Modify: `crates/ast-core/tests/test_dsbspecframe.rs`
+- Modify: `crates/starlink-ast/src/frames/dsbspecframe.rs`
+- Modify: `crates/starlink-ast/tests/test_dsbspecframe.rs`
 
 - [ ] **Step 1: Write the test**
 
-Append to `crates/ast-core/tests/test_dsbspecframe.rs`:
+Append to `crates/starlink-ast/tests/test_dsbspecframe.rs`:
 
 ```rust
 #[test]
@@ -1372,7 +1372,7 @@ fn default_domain_is_dsbspectrum() {
 
 The `DSBSpecFrame::new()` already sets `spec.set_domain("DSBSPECTRUM")` (from Task 2). This test should already pass. Run to confirm:
 
-Run: `cargo test -p ast-core --test test_dsbspecframe -- default_domain`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe -- default_domain`
 Expected: PASS.
 
 - [ ] **Step 3: Commit (if any label-related changes were needed)**
@@ -1384,18 +1384,18 @@ If the domain test passes without changes, skip this commit. If label override l
 ### Task 8: Full Test Suite — FrameSet Integrity and testframeset Port
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_dsbspecframe.rs`
+- Modify: `crates/starlink-ast/tests/test_dsbspecframe.rs`
 
 - [ ] **Step 1: Write FrameSet integrity test**
 
-Append to `crates/ast-core/tests/test_dsbspecframe.rs`:
+Append to `crates/starlink-ast/tests/test_dsbspecframe.rs`:
 
 ```rust
 #[test]
 fn frameset_integrity_sideband_change() {
     // When SideBand is changed through a FrameSet, the internal
     // mapping should update to reflect the sideband flip.
-    use ast_core::mappings::UnitMap;
+    use starlink_ast::mappings::UnitMap;
 
     let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
     dsb.set_dsb_centre(220.0e9);
@@ -1435,7 +1435,7 @@ fn frameset_integrity_sideband_change() {
 
 - [ ] **Step 2: Write alignment test matching testframeset.c patterns**
 
-Append to `crates/ast-core/tests/test_dsbspecframe.rs`:
+Append to `crates/starlink-ast/tests/test_dsbspecframe.rs`:
 
 ```rust
 #[test]
@@ -1510,18 +1510,18 @@ fn alignment_dsb_to_dsb_different_lo() {
 
 - [ ] **Step 3: Run tests**
 
-Run: `cargo test -p ast-core --test test_dsbspecframe`
+Run: `cargo test -p starlink-ast --test test_dsbspecframe`
 Expected: All tests pass.
 
 - [ ] **Step 4: Run clippy and fmt**
 
-Run: `cargo fmt -p ast-core && cargo clippy -p ast-core -- -D warnings`
+Run: `cargo fmt -p starlink-ast && cargo clippy -p starlink-ast -- -D warnings`
 Expected: clean.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_dsbspecframe.rs
+git add crates/starlink-ast/tests/test_dsbspecframe.rs
 git commit -m "Add FrameSet integrity and alignment tests for DSBSpecFrame
 
 Tests sideband change propagation through FrameSet, alignment
@@ -1539,9 +1539,9 @@ Co-Authored-By: SLAC AI"
 **Files:**
 - Potentially any file from previous tasks.
 
-- [ ] **Step 1: Run the full ast-core test suite**
+- [ ] **Step 1: Run the full starlink-ast test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: All existing tests still pass. No regressions from the DSBSpecFrame additions.
 
 - [ ] **Step 2: Run clippy on the whole workspace**

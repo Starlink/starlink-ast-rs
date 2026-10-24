@@ -33,7 +33,7 @@ Work top to bottom; each entry cites the detailed section.
     - **`astMtrRot`/`astMtrMult` — FIXED** (`MatrixMap::mtr_rot`/`mtr_mult`; `tests/test_matrixmap.rs`). The fitschan rotation-construction unwind is deferred — it uses a CCW convention that already matches C and the literal CW `astMtrRot` sequence flips a pole longitude sign (6i).
     - **SkyFrame Epoch-FK4 default + Bottom/Top — FIXED** (B1950 for FK4/FK4-no-E; latitude axis clamps ±π/2; `tests/test_skyframe.rs`).
     - **CmpFrame per-axis Direction routing + Title/epoch revisit — FIXED** (Direction routes to the owning component; Title default & epoch/obs forwarding confirmed already-correct; `tests/test_cmpframe.rs`). Settable per-axis Label/Symbol/Unit/Format accessors remain a follow-up (no failing behavior).
-    - **DSBSpecFrame capi unit conversions — typed methods added** (`dsb_centre_cur`/`set_dsb_centre_cur`, `if_ghz`/`set_if_ghz`, `imag_freq_ghz`; the ast-capi DSBSpecFrame string dispatch that calls them does not exist yet).
+    - **DSBSpecFrame capi unit conversions — typed methods added** (`dsb_centre_cur`/`set_dsb_centre_cur`, `if_ghz`/`set_if_ghz`, `imag_freq_ghz`; the starlink-ast-capi DSBSpecFrame string dispatch that calls them does not exist yet).
     - **TimeFrame — FIXED 2026-06-13**: bare-number Format `%1.7G`, the full `iso`/`iso.N`/`iso.NT` calendar Format and the 7-format date/time Unformat (via the now-exposed vendored pal calendar wrappers `pal::djcl`/`cldj`/`dd2tf`/`dtf2d` + a `read_date_time` port of `astReadDateTime`), per-instance Unit (with `make_map` unit bracketing) and Format storage, the `Date/Time`/`Date` axis-label override, and Epoch-from-TimeOrigin (TimeOrigin→TDB MJD) all landed and oracle-matched (`testtime.c` errors 26-34; native dump byte-identical for `unit=s,format=iso.2`). A suspected Besselian-epoch `astUnformat` "C bug" was later withdrawn (FIXED 2026-06-25): it was a missing `TimeOrigin` re-expression in the Rust port (C `OriginScale`/`OriginSystem`), now added on `set_system`/`set_timescale`/`clear_*`; see `c-library-quirks.md` (RESOLVED) and `timeframe-unformat-findings.md`. The GetTitle "offset from <date>" Title default is also ported and oracle byte-matched. Remaining 6f work is Plot-only (`Gap`/`Centre`/`Abbrev`/`Fields`). Tests: `tests/test_timeframe.rs`, `date_time` unit tests.
     - **FluxFrame `MakeFluxMapping` — FIXED** (oracle-verified). **CmpMap chain-rule `rate` — RESOLVED (no change needed) 2026-06-13**: instrumented the C oracle and found C's chain-rule `Rate` override is *defined but never installed* (`cmpmap.c:892` comments out `mapping->Rate = Rate`), so C uses whole-map numeric differentiation — exactly what Rust's `numeric_rate` already does (oracle-confirmed bit-identical: dsbydx `-2.11061140544971257e8` in both). The earlier "AIPS card mark/sweep bug" was a misdiagnosis: there is no card-sweep bug; both libraries recompute CDELT3 ≈ 999.99999888, both fail `astEQUAL` vs the input 1000.0, both correctly rewrite the comment to "Pixel size". Porting the override would *diverge* from C. Logged in `c-library-quirks.md`; `cmpmap.rs::rate` keeps `numeric_rate` with a note. **SpecFluxFrame `MakeSFMapping`** — FIXED 2026-06-14 (section 1): the full cross-system (spec, flux) conversion is ported and oracle-verified against `testspecflux.c`.
 11. **Re-verify the 2026-05-08 mapping audit** (section 4) — several items are confirmed fixed (2.1, 2.2, 2.4, 2.5, 3.11, 4.1-4.3, 4.8-4.9, 5.1 partially; 2.3 half-fixed, see 6l); strike the stale ones and fold survivors into the simplify backlog (6g pairwise-protocol note).
@@ -173,7 +173,7 @@ Compared `frame.c`/`axis.c` against `frames/mod.rs`, `frames/basic.rs`, `frames/
      AlignSystem / diurnal-aberration path now matches C), so the fitschan
      CLASS encoder's `convert_to` calls flow through the generic driver
      with byte-exact WCS output (the wcsconv regression suite is unchanged).
-  Acceptance gate: `crates/ast-core/tests/test_convert.rs` (ported from
+  Acceptance gate: `crates/starlink-ast/tests/test_convert.rs` (ported from
   `testconvert.c`).
   **Only `FrameSet` and the `Region` classes still override `convert_to`,
   by design** — they legitimately delegate to the current/encapsulated
@@ -213,7 +213,7 @@ Compared `frame.c`/`axis.c` against `frames/mod.rs`, `frames/basic.rs`, `frames/
   C `astUnformat` (`frame.c:11819` → `axis.c:1284`, `sscanf("%lf %n")`) returns nread=0 *without raising an error* on parse failure, counts leading and trailing whitespace in nread, and recognizes the `<bad>` token. `BasicFrame::unformat` already matched this; the gap was that `SpecFrame`/`FluxFrame` carried hand-rolled `unformat` overrides (dropping trailing whitespace from nread, not handling `<bad>`) even though **C does not override Unformat for either class** (no `static int Unformat` in specframe.c/fluxframe.c — they inherit the base). Fixed by mirroring C's inheritance: the shared base contract is now a free fn `basic::axis_unformat`, the `Frame` trait carries a default `unformat` (validate axis → `axis_unformat`), and the spurious overrides in `specframe.rs`/`fluxframe.rs`/`dsbspecframe.rs` were deleted so all four inherit it (`SpecFluxFrame` keeps its CmpFrame-inherited per-axis routing override, cmpframe.c:10041). `CmpFrame`/`TimeFrame`/`SkyFrame` keep their genuine C overrides. Oracle-verified against the built reference libast for all five classes: `"  12.5  "`→(12.5, 8), `"<bad>"`/`" < b a d > "`→(BAD, 5/11), `"12.5xyz"`→(12.5, 4), unparseable→(BAD, 0). Tests: `tests/test_specframe.rs`, `tests/test_fluxframe.rs`, `tests/test_dsbspecframe.rs`.
 
 - **[MED] Frame — geometry/axis method family** — **FIXED 2026-06-11.**
-  The Cartesian base implementations now exist as `Frame` trait methods in `crates/ast-core/src/frames/mod.rs`: `offset2`, `intersect`, `ax_distance`, `ax_offset`, `ax_angle`, `ax_norm`, `resolve`, `resolve_points` (with the signed 2-D perpendicular component), `match_axes`/`match_axes_x`, `is_unit_frame`, and `norm_box` (base no-op). `ax_angle` mirrors the C stale-loop-index quirk bit-for-bit (logged in `docs/issues/c-library-quirks.md`); `match_axes` was oracle-confirmed against `astMatchAxes` (CmpFrame(Spec,Sky) → `[2,3]`).
+  The Cartesian base implementations now exist as `Frame` trait methods in `crates/starlink-ast/src/frames/mod.rs`: `offset2`, `intersect`, `ax_distance`, `ax_offset`, `ax_angle`, `ax_norm`, `resolve`, `resolve_points` (with the signed 2-D perpendicular component), `match_axes`/`match_axes_x`, `is_unit_frame`, and `norm_box` (base no-op). `ax_angle` mirrors the C stale-loop-index quirk bit-for-bit (logged in `docs/issues/c-library-quirks.md`); `match_axes` was oracle-confirmed against `astMatchAxes` (CmpFrame(Spec,Sky) → `[2,3]`).
   Still deferred: `NormalPoints`/`NormPoints` (PointSet-batch Norm; no current core consumer), the SkyFrame `norm_box` `reg` argument (great-circle `offset2`, `resolve` and `intersect` are ported; the last two closed 2026-09-30) with the C `reg` Mapping argument — `norm_box` will gain the `reg` parameter when that override lands), and the capi shims for all of these.
   SkyFrame is supposed to override several of these (`skyframe.c`), so the base implementations are prerequisites for the SkyFrame audit items.
 
@@ -256,7 +256,7 @@ Compared `mapping.c` against `mappings/mod.rs`, `rate.rs`, `map_box.rs`, `linear
 
 - **[FIXED] Mapping — `IsSimple` attribute.**
   The flag previously named `do_not_simplify` *was* C's `IsSimple` (set only by `simplify()`, serialized as the `IsSimp` token, round-tripped through `from_node`). Two corrections landed: it is renamed `has_been_simplified` so the field reads as "this mapping is already the simplified form" rather than "may not be simplified"; and `invert()` now clears it, mirroring C's `astSetInvert`/`astClearInvert` clearing `IsSimple` (oracle-confirmed 1→0 on invert) so the inverse re-simplifies. Deserialization restores the raw `Invert` and `IsSimp` fields independently — every mapping `from_node` applies `invert()` *before* restoring `has_been_simplified`, so loading a dump preserves the stored flag instead of having the live `invert()` reset it.
-  `astDecompose` (splitting a compound mapping into its two components) remains deferred — it is an ast-capi-layer public surface with no current Rust-core consumer; add it there when one appears. `Report` (debug tracing) likewise stays unported.
+  `astDecompose` (splitting a compound mapping into its two components) remains deferred — it is an starlink-ast-capi-layer public surface with no current Rust-core consumer; add it there when one appears. `Report` (debug tracing) likewise stays unported.
 
 ## 6b. Detailed findings: FrameSet (audited 2026-06-10)
 
@@ -276,7 +276,7 @@ The node-graph core (BFS path finding with per-edge inversion, `remap_frame` + `
 
 - **[HIGH] FrameSet — `simplified()` type-degrades to a bare mapping.** *(FIXED 2026-06-11.)*
   C `FrameSet::Simplify` (`frameset.c:10111`) returns a *copy of the FrameSet* with each internal edge mapping individually simplified (honoring the stored per-edge invert flags); Rust returns the composed base→current mapping, discarding the FrameSet.
-  ast-capi `astSimplify` on a FrameSet must hand back a FrameSet (pyast/DS9 rely on it).
+  starlink-ast-capi `astSimplify` on a FrameSet must hand back a FrameSet (pyast/DS9 rely on it).
 
 - **[MED] FrameSet — `remove_frame` base/current reset diverges.** *(FIXED 2026-06-11: Current resets to the last frame; set-state is not tracked persistently, so the default is applied at removal time rather than dynamically.)*
   C clears the attribute when the removed frame *was* base/current so the default applies (Base default = 1, Current default = **nframe, the last frame** — `frameset.c:5091-5150`), and decrements set values above the removed index.
@@ -386,7 +386,7 @@ Confirmed divergences:
   - `dsb_centre_cur()` / `set_dsb_centre_cur()` — Dsbcenter in the current spectral System, via the inverse / forward of `to_topo_mapping()` (the Rust `TopoMap` analogue; mirrors C `astGetAttrib`/`astSetAttrib` for "Dsbcenter").
   - `if_ghz()` / `set_if_ghz()` and `imag_freq_ghz()` — the GHz external representation of IF / ImagFreq.
   The raw `dsb_centre()` / `ifr()` getters now document that their unit is **topocentric Hz**. Tests: `tests/test_dsbspecframe.rs` (round-trip on a topocentric frame; non-topocentric frame shows the expected velocity shift, matching the C oracle's `30 GHz → 29.997 GHz`).
-  **Still TODO:** the ast-capi string-attribute dispatch for DSBSpecFrame does not exist yet (no DSBSpecFrame surface in `ast-capi`); when it lands, `astGetC("DSBCentre")` / `astGetC("IF")` / `astGetC("ImagFreq")` should call these typed methods for byte-exact parity.
+  **Still TODO:** the starlink-ast-capi string-attribute dispatch for DSBSpecFrame does not exist yet (no DSBSpecFrame surface in `starlink-ast-capi`); when it lands, `astGetC("DSBCentre")` / `astGetC("IF")` / `astGetC("ImagFreq")` should call these typed methods for byte-exact parity.
 
 - **[LOW] DSBSpecFrame — Domain is explicitly set instead of defaulted.** — **ALREADY CORRECT (verified 2026-06-14).**
   The finding was stale: `DSBSpecFrame::new` does *not* set Domain; `domain()` returns "DSBSPECTRUM" only as a default (mirroring C `GetDomain`, dsbspecframe.c:531) and `test_domain()` stays false until Domain is explicitly set. Oracle-verified against the built reference libast (default Domain="DSBSPECTRUM", TestDomain=0; after set, TestDomain=1). Regression test added: `tests/test_dsbspecframe.rs::domain_default_is_unset`.
@@ -400,7 +400,7 @@ The numerical TDB↔UTC drift questions are already tracked in `docs/issues/time
 - **[MED] TimeFrame — iso-date Format/Unformat.** *(FIXED 2026-06-13.)*
   C overrides `Format`/`Unformat` so that `Format="iso.N[T]"` renders and parses calendar date strings (`timeframe.c` Format:1597 / Unformat:6062 / DateFormat:813). Fully ported:
   - The bare-number default routes through `axis_format::format_value("%1.7G", …)` (7 significant digits).
-  - The vendored pal calendar helpers `palDjcl`/`palCldj`/`palDd2tf`/`palDtf2d` are exposed in `crates/ast-core/src/pal.rs` as `djcl`/`cldj`/`dd2tf`/`dtf2d` (C retained and wrapped, not reimplemented).
+  - The vendored pal calendar helpers `palDjcl`/`palCldj`/`palDd2tf`/`palDtf2d` are exposed in `crates/starlink-ast/src/pal.rs` as `djcl`/`cldj`/`dd2tf`/`dtf2d` (C retained and wrapped, not reimplemented).
   - `frames/date_time.rs::read_date_time` ports `astReadDateTime` (frame.c:8892): B/J epochs, decimal years (IAU-1984), MJD, JD, and Gregorian dates with named months / `-`/`/`/`:`/space / `T` separators / decimal-day or h:m:s fractions.
   - `TimeFrame` gained per-instance Unit and Format storage; `make_map` mirrors C `MakeMap` (timeframe.c:3505) with `unit_mapper` bracketing so `unit=s` etc. convert correctly; `date_format`/`value_to_mjd`/`mjd_to_value` drive the iso Format/Unformat; the axis label becomes `Date/Time`/`Date` under a date Format.
   - Oracle-matched against `testtime.c` errors 26-34 and a byte-identical native dump for `unit=s,format=iso.2`.
@@ -501,7 +501,7 @@ This family gets a near-clean bill of health:
 Remaining items, all already recorded elsewhere: the WcsMap `Unknown`→CAR placeholder and DSS-FitsChan construction gap (section 1), and the SphMap fixture analysis doc.
 
 - **[LOW] WcsMap — NatLat/NatLon/PVMax accessors absent.**
-  C exposes them as read-only attributes (`wcsmap.c:765-769`); the underlying values are reachable via `wcslib.rs::reference_point`, so this is an ast-capi surface gap rather than missing functionality.
+  C exposes them as read-only attributes (`wcsmap.c:765-769`); the underlying values are reachable via `wcslib.rs::reference_point`, so this is an starlink-ast-capi surface gap rather than missing functionality.
 
 ## 6k. Detailed findings: spectral/time maps (audited 2026-06-10)
 

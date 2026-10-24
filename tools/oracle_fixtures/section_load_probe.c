@@ -7,9 +7,9 @@
  * that misplaces an item has a companion placing it where its class reads
  * it.
  *
- * Prints Rust source for crates/ast-core/tests/section_load_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/section_load_oracle/cases.rs:
  *
- *   ./section_load_probe > ../../crates/ast-core/tests/section_load_oracle/cases.rs
+ *   ./section_load_probe > ../../crates/starlink-ast/tests/section_load_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Scaffold the `starlink-astrs` Rust workspace so that `cargo build` and `cargo test -p ast-core` pass, with vendored C compilation and ErrorCode generation working.
+**Goal:** Scaffold the `starlink-astrs` Rust workspace so that `cargo build` and `cargo test -p starlink-ast` pass, with vendored C compilation and ErrorCode generation working.
 
-**Architecture:** A Cargo workspace with 6 crates. `ast-core` uses a `build.rs` that compiles vendored PAL+ERFA (via the existing `palwrap.c` single-TU wrapper) and wcslib (3 files directly), and generates a Rust `ErrorCode` enum from `ast_err.msg`. Submodule-dependent crates are excluded from default-members.
+**Architecture:** A Cargo workspace with 6 crates. `starlink-ast` uses a `build.rs` that compiles vendored PAL+ERFA (via the existing `palwrap.c` single-TU wrapper) and wcslib (3 files directly), and generates a Rust `ErrorCode` enum from `ast_err.msg`. Submodule-dependent crates are excluded from default-members.
 
 **Tech Stack:** Rust 2024 edition, `cc` crate for C compilation, GitHub Actions CI.
 
@@ -16,19 +16,19 @@
 |------|---------------|
 | `Cargo.toml` | Workspace root; defines members and default-members |
 | `rust-toolchain.toml` | Pins stable channel |
-| `crates/ast-core/Cargo.toml` | Library crate with `cc` build-dependency |
-| `crates/ast-core/build.rs` | Compiles vendor C; generates `error_codes.rs` |
-| `crates/ast-core/src/lib.rs` | Crate root; declares `error` module |
-| `crates/ast-core/src/error.rs` | `AstError`, `AstResult`; includes generated enum |
-| `crates/ast-capi/Cargo.toml` | cdylib + staticlib; depends on ast-core |
-| `crates/ast-capi/src/lib.rs` | Placeholder |
-| `crates/ast-plugins/Cargo.toml` | Depends on ast-core |
+| `crates/starlink-ast/Cargo.toml` | Library crate with `cc` build-dependency |
+| `crates/starlink-ast/build.rs` | Compiles vendor C; generates `error_codes.rs` |
+| `crates/starlink-ast/src/lib.rs` | Crate root; declares `error` module |
+| `crates/starlink-ast/src/error.rs` | `AstError`, `AstResult`; includes generated enum |
+| `crates/starlink-ast-capi/Cargo.toml` | cdylib + staticlib; depends on starlink-ast |
+| `crates/starlink-ast-capi/src/lib.rs` | Placeholder |
+| `crates/ast-plugins/Cargo.toml` | Depends on starlink-ast |
 | `crates/ast-plugins/src/lib.rs` | Placeholder |
-| `crates/ast-ffi-tests/Cargo.toml` | Depends on ast-capi |
+| `crates/ast-ffi-tests/Cargo.toml` | Depends on starlink-ast-capi |
 | `crates/ast-ffi-tests/src/lib.rs` | Placeholder |
-| `crates/ast-oracle-tests/Cargo.toml` | Depends on ast-core |
+| `crates/ast-oracle-tests/Cargo.toml` | Depends on starlink-ast |
 | `crates/ast-oracle-tests/src/lib.rs` | Placeholder |
-| `crates/ast-oracle-bench/Cargo.toml` | Depends on criterion + ast-core |
+| `crates/ast-oracle-bench/Cargo.toml` | Depends on criterion + starlink-ast |
 | `crates/ast-oracle-bench/src/lib.rs` | Placeholder |
 | `vendor/pal/` | Copied PAL sources |
 | `vendor/erfa/` | Copied ERFA sources |
@@ -142,8 +142,8 @@ Create `Cargo.toml`:
 [workspace]
 members = ["crates/*"]
 default-members = [
-    "crates/ast-core",
-    "crates/ast-capi",
+    "crates/starlink-ast",
+    "crates/starlink-ast-capi",
     "crates/ast-plugins",
 ]
 resolver = "2"
@@ -152,7 +152,7 @@ resolver = "2"
 edition = "2024"
 rust-version = "1.85"
 license = "LGPL-3.0-or-later"
-repository = "https://github.com/lsst-dm/starlink-astrs"
+repository = "https://github.com/lsst-dm/starlink-ast-rs"
 
 [workspace.dependencies]
 cc = "1"
@@ -176,25 +176,25 @@ git commit -m "Add workspace Cargo.toml and rust-toolchain.toml"
 
 ---
 
-### Task 3: Create ast-core Crate Skeleton
+### Task 3: Create starlink-ast Crate Skeleton
 
 **Files:**
-- Create: `crates/ast-core/Cargo.toml`
-- Create: `crates/ast-core/src/lib.rs`
+- Create: `crates/starlink-ast/Cargo.toml`
+- Create: `crates/starlink-ast/src/lib.rs`
 
 - [ ] **Step 1: Create crate directory**
 
 ```bash
-mkdir -p crates/ast-core/src
+mkdir -p crates/starlink-ast/src
 ```
 
-- [ ] **Step 2: Create ast-core Cargo.toml**
+- [ ] **Step 2: Create starlink-ast Cargo.toml**
 
-Create `crates/ast-core/Cargo.toml`:
+Create `crates/starlink-ast/Cargo.toml`:
 
 ```toml
 [package]
-name = "ast-core"
+name = "starlink-ast"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -207,7 +207,7 @@ cc.workspace = true
 
 - [ ] **Step 3: Create placeholder lib.rs**
 
-Create `crates/ast-core/src/lib.rs`:
+Create `crates/starlink-ast/src/lib.rs`:
 
 ```rust
 #![warn(missing_docs)]
@@ -219,7 +219,7 @@ pub mod error;
 
 - [ ] **Step 4: Create placeholder error.rs**
 
-Create `crates/ast-core/src/error.rs`:
+Create `crates/starlink-ast/src/error.rs`:
 
 ```rust
 //! Error types for the AST library.
@@ -270,20 +270,20 @@ pub type AstResult<T> = Result<T, AstError>;
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/
-git commit -m "Add ast-core crate skeleton with error module"
+git add crates/starlink-ast/
+git commit -m "Add starlink-ast crate skeleton with error module"
 ```
 
 ---
 
-### Task 4: Write ast-core build.rs
+### Task 4: Write starlink-ast build.rs
 
 **Files:**
-- Create: `crates/ast-core/build.rs`
+- Create: `crates/starlink-ast/build.rs`
 
 - [ ] **Step 1: Write build.rs**
 
-Create `crates/ast-core/build.rs`:
+Create `crates/starlink-ast/build.rs`:
 
 ```rust
 use std::env;
@@ -497,7 +497,7 @@ fn to_pascal_case(name: &str) -> String {
 - [ ] **Step 2: Verify it compiles**
 
 ```bash
-cargo build -p ast-core
+cargo build -p starlink-ast
 ```
 
 Expected: successful build producing `libast_pal_erfa.a`, `libast_wcslib.a`, and the `error_codes.rs` generated file.
@@ -505,7 +505,7 @@ Expected: successful build producing `libast_pal_erfa.a`, `libast_wcslib.a`, and
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/build.rs
+git add crates/starlink-ast/build.rs
 git commit -m "Add build.rs: vendor C compilation and ErrorCode generation"
 ```
 
@@ -514,14 +514,14 @@ git commit -m "Add build.rs: vendor C compilation and ErrorCode generation"
 ### Task 5: Add Smoke Test for ErrorCode
 
 **Files:**
-- Create: `crates/ast-core/tests/error_codes.rs`
+- Create: `crates/starlink-ast/tests/error_codes.rs`
 
 - [ ] **Step 1: Write the test**
 
-Create `crates/ast-core/tests/error_codes.rs`:
+Create `crates/starlink-ast/tests/error_codes.rs`:
 
 ```rust
-use ast_core::error::ErrorCode;
+use starlink_ast::error::ErrorCode;
 
 #[test]
 fn atger_has_correct_raw_value() {
@@ -561,7 +561,7 @@ fn error_code_3dfset_accessible() {
 - [ ] **Step 2: Run the tests**
 
 ```bash
-cargo test -p ast-core
+cargo test -p starlink-ast
 ```
 
 Expected: all tests pass.
@@ -569,28 +569,28 @@ Expected: all tests pass.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/
+git add crates/starlink-ast/tests/
 git commit -m "Add smoke tests for ErrorCode generation"
 ```
 
 ---
 
-### Task 6: Create Stub Crates (ast-capi, ast-plugins, ast-ffi-tests, ast-oracle-tests, ast-oracle-bench)
+### Task 6: Create Stub Crates (starlink-ast-capi, ast-plugins, ast-ffi-tests, ast-oracle-tests, ast-oracle-bench)
 
 **Files:**
-- Create: `crates/ast-capi/Cargo.toml`, `crates/ast-capi/src/lib.rs`
+- Create: `crates/starlink-ast-capi/Cargo.toml`, `crates/starlink-ast-capi/src/lib.rs`
 - Create: `crates/ast-plugins/Cargo.toml`, `crates/ast-plugins/src/lib.rs`
 - Create: `crates/ast-ffi-tests/Cargo.toml`, `crates/ast-ffi-tests/src/lib.rs`
 - Create: `crates/ast-oracle-tests/Cargo.toml`, `crates/ast-oracle-tests/src/lib.rs`
 - Create: `crates/ast-oracle-bench/Cargo.toml`, `crates/ast-oracle-bench/src/lib.rs`
 
-- [ ] **Step 1: Create ast-capi**
+- [ ] **Step 1: Create starlink-ast-capi**
 
-Create `crates/ast-capi/Cargo.toml`:
+Create `crates/starlink-ast-capi/Cargo.toml`:
 
 ```toml
 [package]
-name = "ast-capi"
+name = "starlink-ast-capi"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -601,10 +601,10 @@ description = "C-ABI compatible shim for the Rust AST library"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-ast-core = { path = "../ast-core" }
+starlink-ast = { path = "../starlink-ast" }
 ```
 
-Create `crates/ast-capi/src/lib.rs`:
+Create `crates/starlink-ast-capi/src/lib.rs`:
 
 ```rust
 #![allow(missing_docs)]
@@ -624,7 +624,7 @@ license.workspace = true
 description = "Graphics and I/O plugin backends for the AST library"
 
 [dependencies]
-ast-core = { path = "../ast-core" }
+starlink-ast = { path = "../starlink-ast" }
 ```
 
 Create `crates/ast-plugins/src/lib.rs`:
@@ -649,7 +649,7 @@ license.workspace = true
 description = "FFI parity tests: C ast_tester programs against Rust-built libast"
 
 [dependencies]
-ast-capi = { path = "../ast-capi" }
+starlink-ast-capi = { path = "../starlink-ast-capi" }
 ```
 
 Create `crates/ast-ffi-tests/src/lib.rs`:
@@ -669,10 +669,10 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Oracle correctness tests: Rust ast-core vs reference C libast"
+description = "Oracle correctness tests: Rust starlink-ast vs reference C libast"
 
 [dependencies]
-ast-core = { path = "../ast-core" }
+starlink-ast = { path = "../starlink-ast" }
 ```
 
 Create `crates/ast-oracle-tests/src/lib.rs`:
@@ -692,10 +692,10 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Performance benchmarks: Rust ast-core vs reference C libast"
+description = "Performance benchmarks: Rust starlink-ast vs reference C libast"
 
 [dependencies]
-ast-core = { path = "../ast-core" }
+starlink-ast = { path = "../starlink-ast" }
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
@@ -715,11 +715,11 @@ Create `crates/ast-oracle-bench/src/lib.rs`:
 cargo build --workspace
 ```
 
-Expected: all 6 crates compile successfully. Note: `ast-capi` produces a cdylib
+Expected: all 6 crates compile successfully. Note: `starlink-ast-capi` produces a cdylib
 which will have unresolved symbols at this point (that's expected for a placeholder).
 
 If the cdylib link fails due to no exported symbols, add a dummy export to
-`crates/ast-capi/src/lib.rs`:
+`crates/starlink-ast-capi/src/lib.rs`:
 
 ```rust
 #![allow(missing_docs)]
@@ -733,8 +733,8 @@ pub extern "C" fn ast_version() -> i32 {
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-capi/ crates/ast-plugins/ crates/ast-ffi-tests/ crates/ast-oracle-tests/ crates/ast-oracle-bench/
-git commit -m "Add stub crates: ast-capi, ast-plugins, ast-ffi-tests, ast-oracle-tests, ast-oracle-bench"
+git add crates/starlink-ast-capi/ crates/ast-plugins/ crates/ast-ffi-tests/ crates/ast-oracle-tests/ crates/ast-oracle-bench/
+git commit -m "Add stub crates: starlink-ast-capi, ast-plugins, ast-ffi-tests, ast-oracle-tests, ast-oracle-bench"
 ```
 
 ---
@@ -751,7 +751,7 @@ Create `vendor/README.md`:
 ```markdown
 # Vendored C Dependencies
 
-C sources compiled by `ast-core`'s `build.rs`. These are owned by this
+C sources compiled by `starlink-ast`'s `build.rs`. These are owned by this
 repository — they do not come from the reference submodule at build time.
 
 ## Source
@@ -814,7 +814,7 @@ Macro definitions renaming `eraXxx` → `astEraXxx` to avoid symbol clashes.
 
 ## ast_err.msg
 
-Starlink message file defining AST error codes. Parsed by `ast-core`'s
+Starlink message file defining AST error codes. Parsed by `starlink-ast`'s
 `build.rs` to generate the Rust `ErrorCode` enum with MESSGEN-compatible
 numeric values.
 
@@ -869,7 +869,7 @@ jobs:
         run: cargo build --workspace
 
       - name: Test
-        run: cargo test -p ast-core
+        run: cargo test -p starlink-ast
 
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
@@ -908,7 +908,7 @@ Add to the existing `.gitignore`:
 
 ```bash
 cargo build --workspace
-cargo test -p ast-core
+cargo test -p starlink-ast
 cargo clippy --workspace -- -D warnings
 cargo fmt --all -- --check
 ```
@@ -929,7 +929,7 @@ git commit -m "Update .gitignore for C build artifacts"
 After all tasks are complete, verify:
 
 1. `cargo build --workspace` — all 6 crates compile
-2. `cargo test -p ast-core` — error code smoke tests pass
+2. `cargo test -p starlink-ast` — error code smoke tests pass
 3. `cargo clippy --workspace -- -D warnings` — no warnings
 4. `cargo fmt --all -- --check` — properly formatted
 5. `vendor/README.md` exists with provenance info

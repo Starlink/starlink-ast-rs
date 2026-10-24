@@ -6,7 +6,7 @@
 
 **Architecture:** Each mapping follows the established pattern: struct with fields + `impl Mapping` trait + `impl Serializable` trait + serialization dispatch wiring + simplify regression fixtures enabled. Transform logic is ported from the C reference (`reference/starlink-ast/src/<name>.c`).
 
-**Tech Stack:** Rust 2024, `logos` crate (MathMap only), `ndarray` (existing dep), `ast-core` crate.
+**Tech Stack:** Rust 2024, `logos` crate (MathMap only), `ndarray` (existing dep), `starlink-ast` crate.
 
 ---
 
@@ -16,14 +16,14 @@ Each mapping creates/modifies these files:
 
 | Per-mapping | Path |
 |---|---|
-| Implementation | `crates/ast-core/src/mappings/<name>.rs` |
-| Module export | `crates/ast-core/src/mappings/mod.rs` (add `mod` + `pub use`) |
-| Serialization dispatch | `crates/ast-core/src/serial/mod.rs` (two dispatch arms) |
-| Unit test | `crates/ast-core/tests/test_<name>.rs` |
-| Simplify manifest | `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt` (enable entries) |
+| Implementation | `crates/starlink-ast/src/mappings/<name>.rs` |
+| Module export | `crates/starlink-ast/src/mappings/mod.rs` (add `mod` + `pub use`) |
+| Serialization dispatch | `crates/starlink-ast/src/serial/mod.rs` (two dispatch arms) |
+| Unit test | `crates/starlink-ast/tests/test_<name>.rs` |
+| Simplify manifest | `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt` (enable entries) |
 
 Cross-cutting (once):
-- `crates/ast-core/Cargo.toml` — add `logos` dependency (Phase 5 only)
+- `crates/starlink-ast/Cargo.toml` — add `logos` dependency (Phase 5 only)
 
 ---
 
@@ -32,7 +32,7 @@ Cross-cutting (once):
 For every mapping, the implementor MUST study:
 1. **C source:** `reference/starlink-ast/src/<name>.c` — the `Transform`, `Equal`, `MapMerge`, and `Dump`/`Load` functions define the behavior.
 2. **C header:** `reference/starlink-ast/src/<name>.h` — struct definition and attribute list.
-3. **Existing Rust patterns:** `crates/ast-core/src/mappings/zoom.rs` (simple), `sphmap.rs` (with try_merge), `cmpmap.rs` (wrapper with child mappings).
+3. **Existing Rust patterns:** `crates/starlink-ast/src/mappings/zoom.rs` (simple), `sphmap.rs` (with try_merge), `cmpmap.rs` (wrapper with child mappings).
 4. **Simplify fixtures:** The `.map` and `.simp` files in `tests/fixtures/native/reference/simplify_fixtures/` — these define the expected input→output for simplification.
 
 ---
@@ -40,17 +40,17 @@ For every mapping, the implementor MUST study:
 ## Task 1: PcdMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/pcdmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
-- Create: `crates/ast-core/tests/test_pcdmap.rs`
+- Create: `crates/starlink-ast/src/mappings/pcdmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
+- Create: `crates/starlink-ast/tests/test_pcdmap.rs`
 
 **C reference:** `reference/starlink-ast/src/pcdmap.c`
 
 - [ ] **Step 1: Create PcdMap struct and constructor**
 
-Create `crates/ast-core/src/mappings/pcdmap.rs`. Study the C struct in `pcdmap.h` (lines 217-236) for fields. The struct needs:
+Create `crates/starlink-ast/src/mappings/pcdmap.rs`. Study the C struct in `pcdmap.h` (lines 217-236) for fields. The struct needs:
 
 ```rust
 #[derive(Debug, Clone)]
@@ -110,11 +110,11 @@ Use `node.push_double()` / `node.get_double()` matching exact token names from C
 
 - [ ] **Step 7: Wire into serialization dispatch**
 
-In `crates/ast-core/src/serial/mod.rs`:
+In `crates/starlink-ast/src/serial/mod.rs`:
 - Add `"PcdMap" => Ok(Box::new(PcdMap::from_node(node)?))` to `mapping_from_node`
 - Add downcast arm `if let Some(m) = self.as_any().downcast_ref::<PcdMap>() { return m.to_node(); }` to `MappingToNode`
 
-In `crates/ast-core/src/mappings/mod.rs`:
+In `crates/starlink-ast/src/mappings/mod.rs`:
 - Add `mod pcdmap; pub use pcdmap::PcdMap;`
 
 - [ ] **Step 8: Add use statements to serial/mod.rs**
@@ -123,7 +123,7 @@ Add `use crate::mappings::PcdMap;` to the imports in `serial/mod.rs`.
 
 - [ ] **Step 9: Write unit tests**
 
-Create `crates/ast-core/tests/test_pcdmap.rs`. Port tests from `reference/starlink-ast/ast_tester/testpcdmap.c` if it exists, or write:
+Create `crates/starlink-ast/tests/test_pcdmap.rs`. Port tests from `reference/starlink-ast/ast_tester/testpcdmap.c` if it exists, or write:
 - Construction with various disc values
 - Forward transform on known points (compare with hand-computed values)
 - Inverse transform roundtrip (forward then inverse ≈ identity)
@@ -144,14 +144,14 @@ In `simplify_tests.txt`, the following entries reference PcdMap and should now p
 - `neg_pcd_nonpcd_neighbour`
 - `neg_pcd_nonswappable_between`
 
-Verify: `cargo test -p ast-core --test test_simplify_regression`
+Verify: `cargo test -p starlink-ast --test test_simplify_regression`
 
 - [ ] **Step 11: Run cargo fmt and clippy, commit**
 
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-cargo test -p ast-core
+cargo test -p starlink-ast
 git add -A && git commit -m "feat: implement PcdMap (2D pincushion/barrel distortion)"
 ```
 
@@ -160,11 +160,11 @@ git add -A && git commit -m "feat: implement PcdMap (2D pincushion/barrel distor
 ## Task 2: GrismMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/grismmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
-- Create: `crates/ast-core/tests/test_grismmap.rs`
+- Create: `crates/starlink-ast/src/mappings/grismmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
+- Create: `crates/starlink-ast/tests/test_grismmap.rs`
 
 **C reference:** `reference/starlink-ast/src/grismmap.c`
 
@@ -251,11 +251,11 @@ Enable in `simplify_tests.txt`:
 ## Task 3: UnitNormMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/unitnormmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
-- Create: `crates/ast-core/tests/test_unitnormmap.rs`
+- Create: `crates/starlink-ast/src/mappings/unitnormmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
+- Create: `crates/starlink-ast/tests/test_unitnormmap.rs`
 
 **C reference:** `reference/starlink-ast/src/unitnormmap.c`
 
@@ -329,11 +329,11 @@ Enable:
 ## Task 4: TranMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/tranmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
-- Create: `crates/ast-core/tests/test_tranmap.rs`
+- Create: `crates/starlink-ast/src/mappings/tranmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
+- Create: `crates/starlink-ast/tests/test_tranmap.rs`
 
 **C reference:** `reference/starlink-ast/src/tranmap.c`
 
@@ -405,11 +405,11 @@ Enable:
 ## Task 5: RateMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/ratemap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
-- Create: `crates/ast-core/tests/test_ratemap.rs`
+- Create: `crates/starlink-ast/src/mappings/ratemap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
+- Create: `crates/starlink-ast/tests/test_ratemap.rs`
 
 **C reference:** `reference/starlink-ast/src/ratemap.c`
 
@@ -477,11 +477,11 @@ Enable:
 ## Task 6: SplineMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/splinemap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
-- Create: `crates/ast-core/tests/test_splinemap.rs`
+- Create: `crates/starlink-ast/src/mappings/splinemap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
+- Create: `crates/starlink-ast/tests/test_splinemap.rs`
 
 **C reference:** `reference/starlink-ast/src/splinemap.c`
 
@@ -554,10 +554,10 @@ Enable:
 ## Task 7: DssMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/dssmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Create: `crates/ast-core/tests/test_dssmap.rs`
+- Create: `crates/starlink-ast/src/mappings/dssmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Create: `crates/starlink-ast/tests/test_dssmap.rs`
 
 **C reference:** `reference/starlink-ast/src/dssmap.c`
 
@@ -623,11 +623,11 @@ Study `Dump`/`Load` in `dssmap.c`. DssMap stores its parameters as a set of FITS
 ## Task 8: NormMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/normmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
-- Create: `crates/ast-core/tests/test_normmap.rs`
+- Create: `crates/starlink-ast/src/mappings/normmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
+- Create: `crates/starlink-ast/tests/test_normmap.rs`
 
 **C reference:** `reference/starlink-ast/src/normmap.c`
 
@@ -697,17 +697,17 @@ Enable:
 ## Task 9: MathMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/mathmap/mod.rs`
-- Create: `crates/ast-core/src/mappings/mathmap/token.rs`
-- Create: `crates/ast-core/src/mappings/mathmap/parser.rs`
-- Create: `crates/ast-core/src/mappings/mathmap/compiler.rs`
-- Create: `crates/ast-core/src/mappings/mathmap/evaluator.rs`
-- Create: `crates/ast-core/src/mappings/mathmap/rng.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Modify: `crates/ast-core/Cargo.toml` (add `logos`)
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
-- Create: `crates/ast-core/tests/test_mathmap.rs`
+- Create: `crates/starlink-ast/src/mappings/mathmap/mod.rs`
+- Create: `crates/starlink-ast/src/mappings/mathmap/token.rs`
+- Create: `crates/starlink-ast/src/mappings/mathmap/parser.rs`
+- Create: `crates/starlink-ast/src/mappings/mathmap/compiler.rs`
+- Create: `crates/starlink-ast/src/mappings/mathmap/evaluator.rs`
+- Create: `crates/starlink-ast/src/mappings/mathmap/rng.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/Cargo.toml` (add `logos`)
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
+- Create: `crates/starlink-ast/tests/test_mathmap.rs`
 
 **C reference:** `reference/starlink-ast/src/mathmap.c` (7,424 lines)
 
@@ -715,14 +715,14 @@ This is decomposed into sub-steps because of its size.
 
 - [ ] **Step 1: Add logos dependency**
 
-In `crates/ast-core/Cargo.toml`, add:
+In `crates/starlink-ast/Cargo.toml`, add:
 ```toml
 logos = "0.16"
 ```
 
 - [ ] **Step 2: Create module structure**
 
-Create `crates/ast-core/src/mappings/mathmap/` directory with `mod.rs` and sub-modules. In parent `mod.rs` add:
+Create `crates/starlink-ast/src/mappings/mathmap/` directory with `mod.rs` and sub-modules. In parent `mod.rs` add:
 ```rust
 mod mathmap;
 pub use mathmap::MathMap;
@@ -901,7 +901,7 @@ Enable:
 
 After all 9 tasks are complete:
 
-- [ ] **Run full simplify regression suite:** `cargo test -p ast-core --test test_simplify_regression`
-- [ ] **Run wcsconv tests:** `cargo test -p ast-core --test test_wcsconv` — verify that tests requiring GrismMap/MathMap now pass
+- [ ] **Run full simplify regression suite:** `cargo test -p starlink-ast --test test_simplify_regression`
+- [ ] **Run wcsconv tests:** `cargo test -p starlink-ast --test test_wcsconv` — verify that tests requiring GrismMap/MathMap now pass
 - [ ] **Run full test suite:** `cargo test --workspace`
 - [ ] **Run clippy:** `cargo clippy --workspace -- -D warnings`

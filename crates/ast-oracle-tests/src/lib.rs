@@ -8,6 +8,6 @@
 //! The rest of the design (bit-exact and bounded-ULP comparison of live
 //! outputs, property-based pipelines) is not implemented; until it is, output
 //! comparison against C is against the frozen corpora under
-//! `crates/ast-core/tests/fixtures/`. See `PLAN.md` §7.
+//! `crates/starlink-ast/tests/fixtures/`. See `PLAN.md` §7.
 
 #![allow(missing_docs)]

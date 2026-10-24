@@ -11,9 +11,9 @@
  * FrameSet is written to a FitsChan holding NAXIS1 and NAXIS2. For each:
  * the value astWrite returns and the cards written.
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_alt_epoch_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_alt_epoch_oracle/cases.rs:
  *
- *   ./fitschan_alt_epoch_probe > ../../crates/ast-core/tests/fitschan_alt_epoch_oracle/cases.rs
+ *   ./fitschan_alt_epoch_probe > ../../crates/starlink-ast/tests/fitschan_alt_epoch_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

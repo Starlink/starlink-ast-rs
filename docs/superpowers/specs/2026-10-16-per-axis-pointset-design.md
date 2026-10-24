@@ -73,7 +73,7 @@ A separate Python package over the Rust library is planned; it is out of scope h
   Both are zero-copy.
 - Views have `point(i) -> PointBuf`, and `PointsMut` has `set_point(i, &[f64])`.
   These are permanent API for code that is not a bulk kernel (Regions, FrameSet, the per-point fallbacks of classes not yet rewritten) and for tests.
-- `smallvec` is a new dependency of `ast-core`.
+- `smallvec` is a new dependency of `starlink-ast`.
 
 ### The `Mapping` trait
 
@@ -93,7 +93,7 @@ A separate Python package over the Rust library is planned; it is out of scope h
 
 ### The C shim
 
-`ast-capi` is still a stub, so nothing is wired in this change.
+`starlink-ast-capi` is still a stub, so nothing is wired in this change.
 When `astTranN`, `astTran2` and `astTranP` are written, they build `Points` over `in + coord * indim` (or the per-axis pointers) and `PointsMut` over the output arrays, then call `transform_into`.
 
 C does not document in-place transforms, and no C source passes the same PointSet as input and output.
@@ -128,7 +128,7 @@ Each Mapping keeps its current per-point logic, reading each point with the view
 The 51 `view()` and `view_mut()` uses, mostly matrix arithmetic, are each checked for the flipped orientation, not only recompiled.
 
 This stage cannot be split by class, because the trait signature changes everywhere at once.
-Its gate is correctness: the full `ast-core` suite, `ast-oracle-tests` (bit or ULP against C) and the simplify corpus.
+Its gate is correctness: the full `starlink-ast` suite, `ast-oracle-tests` (bit or ULP against C) and the simplify corpus.
 CI runs neither of the last two, so they run by hand on this stage.
 Speed is recorded but not expected to change much.
 
@@ -164,7 +164,7 @@ The rule in `CLAUDE.md`'s bulk-transform section still applies to anything beyon
 Rev 34 of `2026-04-20-rust-port-design.md`:
 
 - `PointSet` is one contiguous array per axis, shape `(ncoord, npoint)`.
-- The statement that a row-major `Array2` lets `ast-capi` hand buffers to C without a copy is withdrawn; it was false for every C transform entry, all of which take per-axis arrays.
+- The statement that a row-major `Array2` lets `starlink-ast-capi` hand buffers to C without a copy is withdrawn; it was false for every C transform entry, all of which take per-axis arrays.
 - `transform_into` takes `Points` and `PointsMut`, and the C shim builds them over caller memory without copying.
 
 ## As built
@@ -186,7 +186,7 @@ Where the code differs from the design above:
 
 ## Out of scope
 
-- Writing `ast-capi`'s transform entry points.
+- Writing `starlink-ast-capi`'s transform entry points.
 - The planned Python package.
 - Explicit SIMD; the open C pull request adding SIMD is the comparison point for that later.
 - Redesigning the NaN protocol's boundary copy.

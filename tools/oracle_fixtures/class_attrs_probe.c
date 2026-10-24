@@ -14,9 +14,9 @@
  * SpecOrigin, SpecVal and TimeOrigin in the Frame's current units. Several
  * settings may be given, separated by ";".
  *
- * Prints Rust source for crates/ast-core/tests/class_attrs_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/class_attrs_oracle/cases.rs:
  *
- *   ./class_attrs_probe > ../../crates/ast-core/tests/class_attrs_oracle/cases.rs
+ *   ./class_attrs_probe > ../../crates/starlink-ast/tests/class_attrs_oracle/cases.rs
  */
 #include <float.h>
 #include <stdio.h>
@@ -145,7 +145,7 @@ int main( void ) {
            "// Each value is printed with 17 digits so that it reads back exactly.\n"
            "#![allow(clippy::excessive_precision)]\n\n"
            "#[allow(unused_imports)]\n"
-           "use ast_core::constants::BAD_VALUE as BAD;\n\n"
+           "use starlink_ast::constants::BAD_VALUE as BAD;\n\n"
            "/// An attribute value as C reports it.\n"
            "#[derive(Debug, Clone, Copy, PartialEq)]\n"
            "pub enum V {\n    S(&'static str),\n    I(i32),\n    D(f64),\n}\n\n"

@@ -17,7 +17,7 @@ reads each fixture, writes it back via `to_native_string`, and compares byte-for
 Build: `cmake -B build -DAST_C_STANDARD=11 && cmake --build build --target gen_native_fixtures`
 Run: `./build/ast_tester/gen_native_fixtures <output_dir> <ast_tester_dir>`
 
-Fixtures live in: `crates/ast-core/tests/fixtures/native/generated/`
+Fixtures live in: `crates/starlink-ast/tests/fixtures/native/generated/`
 
 ## Remaining 3 failures
 

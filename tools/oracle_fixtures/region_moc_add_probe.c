@@ -14,9 +14,9 @@
  * covers the sky several times over, and a Region added with MaxOrder 0
  * reads out of bounds.
  *
- * Prints Rust source for crates/ast-core/tests/region_moc_add_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_moc_add_oracle/cases.rs:
  *
- *   ./region_moc_add_probe > ../../crates/ast-core/tests/region_moc_add_oracle/cases.rs
+ *   ./region_moc_add_probe > ../../crates/starlink-ast/tests/region_moc_add_oracle/cases.rs
  */
 #include <stdint.h>
 #include <stdio.h>

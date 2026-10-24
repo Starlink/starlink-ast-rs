@@ -62,7 +62,7 @@ gate is ambiguous.
 - Move the `CDjjjiii` scan inside the `Encoding::FitsIraf` guard; invert the
   `cdjjjiii_consumed_without_translation_for_non_iraf_encoding` unit test.
 - Copy the 69 changed `.native` files and `gappt.fits-wcs` into
-  `crates/ast-core/tests/fixtures/wcsconv/expected/`.
+  `crates/starlink-ast/tests/fixtures/wcsconv/expected/`.
 
 The `WcsNative` PermMap-invert fix (`f54ff1b7`) needs no code: the port's shape
 was already the corrected one.
@@ -95,10 +95,10 @@ Placement of the `IsSimp` card becomes a property of the Mapping tree alone.
 
 | C test | Rust home |
 |---|---|
-| `testmapping.c`: `testequaldumpstable`, `testsimplevsinvert`, `testsimplevsinvertdump`, `testmutationclearssimple`, `testselfsimplifyafterset` | new `crates/ast-core/tests/test_mapping.rs` |
-| `testfitschan.c`: `testgrismorder` | `crates/ast-core/tests/test_grismmap.rs` |
-| `testkeymap.c`: nine new functions | extend `crates/ast-core/tests/test_keymap.rs` |
-| `testimmutable.c` (new file, 239 lines) | **not portable** — `AST__IMMUT` guards a reference-counted sharing condition that owned values cannot construct. Belongs to `ast-capi`. |
+| `testmapping.c`: `testequaldumpstable`, `testsimplevsinvert`, `testsimplevsinvertdump`, `testmutationclearssimple`, `testselfsimplifyafterset` | new `crates/starlink-ast/tests/test_mapping.rs` |
+| `testfitschan.c`: `testgrismorder` | `crates/starlink-ast/tests/test_grismmap.rs` |
+| `testkeymap.c`: nine new functions | extend `crates/starlink-ast/tests/test_keymap.rs` |
+| `testimmutable.c` (new file, 239 lines) | **not portable** — `AST__IMMUT` guards a reference-counted sharing condition that owned values cannot construct. Belongs to `starlink-ast-capi`. |
 
 ### 4. KeyMap conformance
 
@@ -126,13 +126,13 @@ rejection, `astMapGetElem<X>` on an undefined entry, `astMapRename` refusal,
 - `CmpMap` `InvA`/`InvB` (quirk entry at `:203`). Not fixed in this range. The
   local commits `0a46009`…`62f949d` record why it is blocked on `IsSimp`;
   re-assess after commit 2 lands, but do not widen this sync to cover it.
-- `ast-capi` work implied by `AST__IMMUT`. The crate is unstarted.
+- `starlink-ast-capi` work implied by `AST__IMMUT`. The crate is unstarted.
 - `grf_log` SvgX/SvgY rounding and `serpens.svg` (`72f09a2e`). No Rust plotting
   backend consumes it yet.
 
 ## Outcome
 
-Four commits. 97 fixtures copied byte-identical. `cargo test -p ast-core`:
+Four commits. 97 fixtures copied byte-identical. `cargo test -p starlink-ast`:
 3310 passed, 0 failed; clippy clean.
 
 Where the plan was wrong, and what it cost:

@@ -13,9 +13,9 @@
  * indexes out of bounds, and the mesh depends on the platform's qsort. Each
  * Moc is also dumped with Full set to 1, which writes every unset value.
  *
- * Prints Rust source for crates/ast-core/tests/region_moc_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_moc_oracle/cases.rs:
  *
- *   ./region_moc_probe > ../../crates/ast-core/tests/region_moc_oracle/cases.rs
+ *   ./region_moc_probe > ../../crates/starlink-ast/tests/region_moc_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

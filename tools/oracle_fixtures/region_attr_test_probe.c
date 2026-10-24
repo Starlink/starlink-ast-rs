@@ -6,9 +6,9 @@
  *
  * Also the dump of a Box whose Adaptive attribute is set to 0.
  *
- * Prints Rust source for crates/ast-core/tests/region_attr_test_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_attr_test_oracle/cases.rs:
  *
- *   ./region_attr_test_probe > ../../crates/ast-core/tests/region_attr_test_oracle/cases.rs
+ *   ./region_attr_test_probe > ../../crates/starlink-ast/tests/region_attr_test_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

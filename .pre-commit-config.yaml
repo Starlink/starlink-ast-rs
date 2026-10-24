@@ -19,7 +19,7 @@
 exclude: |
   (?x)^(
     vendor/.*|
-    crates/ast-core/tests/fixtures/.*|
+    crates/starlink-ast/tests/fixtures/.*|
     reference/.*
   )$
 
@@ -117,5 +117,5 @@ repos:
         name: re-anchor audit citations
         entry: bash -c 'cargo run -q -p audit-tools --bin reanchor-citations -- --rust-only --warn-stuck --write docs/audits/mapmerge/*.md'
         language: system
-        files: ^crates/ast-core/src/.*\.rs$
+        files: ^crates/starlink-ast/src/.*\.rs$
         pass_filenames: false

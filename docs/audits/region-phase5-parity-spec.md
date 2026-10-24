@@ -48,7 +48,7 @@ Fixtures are generated on the C side and replayed on the Rust side:
    then run it from `ast_tester/` so output lands in
    `ast_tester/simplify_fixtures/`.
 3. Copy the new `.map` / `.simp` pair into
-   `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`
+   `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/`
    (fixtures must be committed — tier-1 runs with the submodule absent).
 4. `test_simplify_regression.rs` auto-discovers the pair and replays it:
    read `.map`, `astSimplify`, compare structure (`equal()`) and serialization
@@ -124,7 +124,7 @@ the more direct validation is a dedicated pick-axes round-trip. Two fixtures:
 
 Because these validate a type-preservation property that `astSimplify` may or
 may not surface for a given construction, ALSO add a direct Rust unit test in
-`crates/ast-core/tests/test_regions.rs` calling `pick_axes` on a permuted-axis
+`crates/starlink-ast/tests/test_regions.rs` calling `pick_axes` on a permuted-axis
 Circle and asserting the result downcasts to a Region — the fixture confirms C's
 answer, the unit test asserts the Rust API contract.
 
@@ -527,7 +527,7 @@ All seven steps landed in this order, each its own commit with the full
 regression gate (simplify regression + byte-exact corpus failure-set diff +
 lib/wcsconv/frameset/test_regions + fmt + clippy) and its C fixtures generated
 and committed into
-`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`.
+`crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/`.
 
 1. **RB-PICK** (`f62a41f`) — base copy-on-permutation + CmpRegion/Prism overrides
    + doc fix. No uncertainty interaction.

@@ -10,9 +10,9 @@
  * than of the Object: the unset RefCnt and Nobj of each Object part
  * (object.c Dump). It needs frameset.c as fixed upstream at 5ac21af5.
  *
- * Prints Rust source for crates/ast-core/tests/frameset_variants_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/frameset_variants_oracle/cases.rs:
  *
- *   ./frameset_variants_probe > ../../crates/ast-core/tests/frameset_variants_oracle/cases.rs
+ *   ./frameset_variants_probe > ../../crates/starlink-ast/tests/frameset_variants_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

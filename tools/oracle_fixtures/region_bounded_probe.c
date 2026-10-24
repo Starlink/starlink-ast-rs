@@ -8,9 +8,9 @@
  * whose pointlist.c RegBaseBox measures from the first point with
  * astAxDistance, and whose default uncertainty is built from that box.
  *
- * Prints Rust source for crates/ast-core/tests/region_bounded_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_bounded_oracle/cases.rs:
  *
- *   ./region_bounded_probe > ../../crates/ast-core/tests/region_bounded_oracle/cases.rs
+ *   ./region_bounded_probe > ../../crates/starlink-ast/tests/region_bounded_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

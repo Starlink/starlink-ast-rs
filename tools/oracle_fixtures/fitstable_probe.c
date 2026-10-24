@@ -44,9 +44,9 @@
  * After each operation: "= " and its result, or "! " and the error status,
  * which is then cleared; then any dump lines, each prefixed by "|".
  *
- * Prints Rust source for crates/ast-core/tests/fitstable_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitstable_oracle/cases.rs:
  *
- *   ./fitstable_probe > ../../crates/ast-core/tests/fitstable_oracle/cases.rs
+ *   ./fitstable_probe > ../../crates/starlink-ast/tests/fitstable_oracle/cases.rs
  */
 #include <math.h>
 #include <stdint.h>

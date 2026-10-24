@@ -6,30 +6,30 @@
 
 **Architecture:** Per-mapping fixes organized into 10 dependency-ordered phases. Each phase produces correct, tested code that subsequent phases rely on. The approach follows the C reference implementations closely (per project memory: port all C logic completely, follow C algorithmic approaches).
 
-**Tech Stack:** Rust 2024, ndarray, ast-core crate. Tests use `cargo test -p ast-core`.
+**Tech Stack:** Rust 2024, ndarray, starlink-ast crate. Tests use `cargo test -p starlink-ast`.
 
 **Key files reference:**
-- Source: `crates/ast-core/src/mappings/{helpers,matrix,winmap,zoom,shift,perm,slamap,timemap,specmap,sphmap,wcsmap,lutmap,polymap,chebymap,cmpmap,unit,simplify,rate}.rs`
-- Tests: `crates/ast-core/tests/test_{matrixmap,winmap,zoommap,shiftmap,permmap,slamap,timemap,sphmap,wcsmap,lutmap,simplify_regression,equal}.rs`
+- Source: `crates/starlink-ast/src/mappings/{helpers,matrix,winmap,zoom,shift,perm,slamap,timemap,specmap,sphmap,wcsmap,lutmap,polymap,chebymap,cmpmap,unit,simplify,rate}.rs`
+- Tests: `crates/starlink-ast/tests/test_{matrixmap,winmap,zoommap,shiftmap,permmap,slamap,timemap,sphmap,wcsmap,lutmap,simplify_regression,equal}.rs`
 
 ---
 
 ## Task 1: Per-axis BAD handling — ZoomMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/zoom.rs:81-95`
-- Test: `crates/ast-core/tests/test_zoommap.rs`
+- Modify: `crates/starlink-ast/src/mappings/zoom.rs:81-95`
+- Test: `crates/starlink-ast/tests/test_zoommap.rs`
 
 - [ ] **Step 1: Write test for per-axis BAD handling**
 
-Add to `crates/ast-core/tests/test_zoommap.rs`:
+Add to `crates/starlink-ast/tests/test_zoommap.rs`:
 
 ```rust
 #[test]
 fn zoom_bad_per_axis() {
-    use ast_core::constants::BAD_VALUE;
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, ZoomMap};
+    use starlink_ast::constants::BAD_VALUE;
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, ZoomMap};
 
     let zm = ZoomMap::new(3, 2.0).unwrap();
     // Only axis 1 is BAD; axes 0 and 2 should still compute.
@@ -50,12 +50,12 @@ fn zoom_bad_per_axis() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_zoommap zoom_bad_per_axis`
+Run: `cargo test -p starlink-ast --test test_zoommap zoom_bad_per_axis`
 Expected: FAIL — axis 0 returns BAD_VALUE when it should be 2.0.
 
 - [ ] **Step 3: Fix ZoomMap transform_into**
 
-In `crates/ast-core/src/mappings/zoom.rs`, replace lines 81-95:
+In `crates/starlink-ast/src/mappings/zoom.rs`, replace lines 81-95:
 
 ```rust
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
@@ -74,13 +74,13 @@ In `crates/ast-core/src/mappings/zoom.rs`, replace lines 81-95:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --test test_zoommap zoom_bad_per_axis`
+Run: `cargo test -p starlink-ast --test test_zoommap zoom_bad_per_axis`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/zoom.rs crates/ast-core/tests/test_zoommap.rs
+git add crates/starlink-ast/src/mappings/zoom.rs crates/starlink-ast/tests/test_zoommap.rs
 git commit -m "Fix ZoomMap per-axis BAD handling
 
 Each axis is now checked independently — BAD on one axis no longer
@@ -92,19 +92,19 @@ blanks all outputs. Matches C zoommap.c:1616-1624."
 ## Task 2: Per-axis BAD handling — ShiftMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/shift.rs:73-88`
-- Test: `crates/ast-core/tests/test_shiftmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/shift.rs:73-88`
+- Test: `crates/starlink-ast/tests/test_shiftmap.rs`
 
 - [ ] **Step 1: Write test for per-axis BAD handling**
 
-Add to `crates/ast-core/tests/test_shiftmap.rs`:
+Add to `crates/starlink-ast/tests/test_shiftmap.rs`:
 
 ```rust
 #[test]
 fn shift_bad_per_axis() {
-    use ast_core::constants::BAD_VALUE;
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, ShiftMap};
+    use starlink_ast::constants::BAD_VALUE;
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, ShiftMap};
 
     let sm = ShiftMap::new(&[10.0, 20.0, 30.0]);
     let pts = PointSet::from_rows([[1.0, BAD_VALUE, 3.0]]);
@@ -124,12 +124,12 @@ fn shift_bad_per_axis() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_shiftmap shift_bad_per_axis`
+Run: `cargo test -p starlink-ast --test test_shiftmap shift_bad_per_axis`
 Expected: FAIL
 
 - [ ] **Step 3: Fix ShiftMap transform_into**
 
-In `crates/ast-core/src/mappings/shift.rs`, replace lines 73-88:
+In `crates/starlink-ast/src/mappings/shift.rs`, replace lines 73-88:
 
 ```rust
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
@@ -148,13 +148,13 @@ In `crates/ast-core/src/mappings/shift.rs`, replace lines 73-88:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --test test_shiftmap shift_bad_per_axis`
+Run: `cargo test -p starlink-ast --test test_shiftmap shift_bad_per_axis`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/shift.rs crates/ast-core/tests/test_shiftmap.rs
+git add crates/starlink-ast/src/mappings/shift.rs crates/starlink-ast/tests/test_shiftmap.rs
 git commit -m "Fix ShiftMap per-axis BAD handling
 
 Each axis checked independently. Matches C shiftmap.c:1039-1065."
@@ -165,19 +165,19 @@ Each axis checked independently. Matches C shiftmap.c:1039-1065."
 ## Task 3: Per-axis BAD handling — WinMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/winmap.rs:163-194`
-- Test: `crates/ast-core/tests/test_winmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/winmap.rs:163-194`
+- Test: `crates/starlink-ast/tests/test_winmap.rs`
 
 - [ ] **Step 1: Write test for per-axis BAD handling**
 
-Add to `crates/ast-core/tests/test_winmap.rs`:
+Add to `crates/starlink-ast/tests/test_winmap.rs`:
 
 ```rust
 #[test]
 fn winmap_bad_per_axis() {
-    use ast_core::constants::BAD_VALUE;
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, WinMap};
+    use starlink_ast::constants::BAD_VALUE;
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, WinMap};
 
     let wm = WinMap::new(&[1.0, 2.0, 3.0], &[2.0, 3.0, 4.0]).unwrap();
     // Axis 1 is BAD
@@ -199,12 +199,12 @@ fn winmap_bad_per_axis() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_winmap winmap_bad_per_axis`
+Run: `cargo test -p starlink-ast --test test_winmap winmap_bad_per_axis`
 Expected: FAIL
 
 - [ ] **Step 3: Fix WinMap transform_into**
 
-In `crates/ast-core/src/mappings/winmap.rs`, replace lines 163-194:
+In `crates/starlink-ast/src/mappings/winmap.rs`, replace lines 163-194:
 
 ```rust
     fn transform_into(&self, pts: &PointSet, forward: bool, out: &mut PointSet) -> AstResult<()> {
@@ -240,13 +240,13 @@ In `crates/ast-core/src/mappings/winmap.rs`, replace lines 163-194:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --test test_winmap winmap_bad_per_axis`
+Run: `cargo test -p starlink-ast --test test_winmap winmap_bad_per_axis`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/winmap.rs crates/ast-core/tests/test_winmap.rs
+git add crates/starlink-ast/src/mappings/winmap.rs crates/starlink-ast/tests/test_winmap.rs
 git commit -m "Fix WinMap per-axis BAD handling
 
 Each axis checked independently. Matches C winmap.c:2494-2547."
@@ -257,19 +257,19 @@ Each axis checked independently. Matches C winmap.c:2494-2547."
 ## Task 4: Per-axis BAD handling — MatrixMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/matrix.rs:93-109`
-- Test: `crates/ast-core/tests/test_matrixmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs:93-109`
+- Test: `crates/starlink-ast/tests/test_matrixmap.rs`
 
 - [ ] **Step 1: Write test for per-axis BAD handling**
 
-Add to `crates/ast-core/tests/test_matrixmap.rs`:
+Add to `crates/starlink-ast/tests/test_matrixmap.rs`:
 
 ```rust
 #[test]
 fn matrix_bad_per_axis_zero_coeff() {
-    use ast_core::constants::BAD_VALUE;
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, MatrixMap};
+    use starlink_ast::constants::BAD_VALUE;
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, MatrixMap};
     use ndarray::array;
 
     // 2x3 matrix where row 0 has a zero coefficient on input 1.
@@ -288,8 +288,8 @@ fn matrix_bad_per_axis_zero_coeff() {
 
 #[test]
 fn matrix_bad_all_good_input() {
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, MatrixMap};
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, MatrixMap};
     use ndarray::array;
 
     // Normal case: no BAD values, ensure still works.
@@ -304,12 +304,12 @@ fn matrix_bad_all_good_input() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_matrixmap matrix_bad_per_axis`
+Run: `cargo test -p starlink-ast --test test_matrixmap matrix_bad_per_axis`
 Expected: FAIL — output[0] is BAD_VALUE when it should be 13.0.
 
 - [ ] **Step 3: Fix MatrixMap apply_matrix**
 
-In `crates/ast-core/src/mappings/matrix.rs`, replace `apply_matrix` (lines 93-109):
+In `crates/starlink-ast/src/mappings/matrix.rs`, replace `apply_matrix` (lines 93-109):
 
 ```rust
     fn apply_matrix(m: &Array2<f64>, pts: &PointSet, out: &mut PointSet) {
@@ -339,13 +339,13 @@ In `crates/ast-core/src/mappings/matrix.rs`, replace `apply_matrix` (lines 93-10
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p ast-core --test test_matrixmap`
+Run: `cargo test -p starlink-ast --test test_matrixmap`
 Expected: PASS (both new tests and existing tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/matrix.rs crates/ast-core/tests/test_matrixmap.rs
+git add crates/starlink-ast/src/mappings/matrix.rs crates/starlink-ast/tests/test_matrixmap.rs
 git commit -m "Fix MatrixMap per-axis BAD handling
 
 Zero coefficients now mask BAD inputs: if matrix[row,col]==0 and
@@ -358,19 +358,19 @@ propagate BAD. Matches C matrixmap.c:5173-5203."
 ## Task 5: Per-axis BAD handling — PermMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/perm.rs:139-157`
-- Test: `crates/ast-core/tests/test_permmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/perm.rs:139-157`
+- Test: `crates/starlink-ast/tests/test_permmap.rs`
 
 - [ ] **Step 1: Write test for per-axis BAD handling**
 
-Add to `crates/ast-core/tests/test_permmap.rs`:
+Add to `crates/starlink-ast/tests/test_permmap.rs`:
 
 ```rust
 #[test]
 fn perm_bad_per_axis() {
-    use ast_core::constants::BAD_VALUE;
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, PermMap};
+    use starlink_ast::constants::BAD_VALUE;
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, PermMap};
 
     // outperm: [2, -1, 1] => out[0]=in[1], out[1]=const[0], out[2]=in[0]
     // inperm: [3, 1, 0]   => inv: out[0]=in[2], out[1]=in[0], out[2]=BAD
@@ -388,12 +388,12 @@ fn perm_bad_per_axis() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_permmap perm_bad_per_axis`
+Run: `cargo test -p starlink-ast --test test_permmap perm_bad_per_axis`
 Expected: FAIL — all outputs are BAD_VALUE.
 
 - [ ] **Step 3: Fix PermMap apply_perm**
 
-In `crates/ast-core/src/mappings/perm.rs`, replace `apply_perm` (lines 139-157):
+In `crates/starlink-ast/src/mappings/perm.rs`, replace `apply_perm` (lines 139-157):
 
 ```rust
     fn apply_perm(perm: &[i64], constants: &[f64], pts: &PointSet, out: &mut PointSet) {
@@ -416,13 +416,13 @@ In `crates/ast-core/src/mappings/perm.rs`, replace `apply_perm` (lines 139-157):
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p ast-core --test test_permmap`
+Run: `cargo test -p starlink-ast --test test_permmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/perm.rs crates/ast-core/tests/test_permmap.rs
+git add crates/starlink-ast/src/mappings/perm.rs crates/starlink-ast/tests/test_permmap.rs
 git commit -m "Fix PermMap per-axis BAD handling
 
 Only the selected source axis is checked for BAD; constants are
@@ -434,17 +434,17 @@ assigned unconditionally. Matches C permmap.c:1963-1999."
 ## Task 6: WcsMap parameter comparison in equal() and try_merge()
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/wcsmap.rs:370-402`
-- Test: `crates/ast-core/tests/test_wcsmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/wcsmap.rs:370-402`
+- Test: `crates/starlink-ast/tests/test_wcsmap.rs`
 
 - [ ] **Step 1: Write tests for parameter comparison**
 
-Add to `crates/ast-core/tests/test_wcsmap.rs`:
+Add to `crates/starlink-ast/tests/test_wcsmap.rs`:
 
 ```rust
 #[test]
 fn wcsmap_equal_different_params() {
-    use ast_core::mappings::{Mapping, WcsMap, WcsProjection};
+    use starlink_ast::mappings::{Mapping, WcsMap, WcsProjection};
 
     let mut w1 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
     let mut w2 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
@@ -460,7 +460,7 @@ fn wcsmap_equal_different_params() {
 
 #[test]
 fn wcsmap_no_cancel_different_params() {
-    use ast_core::mappings::{Mapping, WcsMap, WcsProjection};
+    use starlink_ast::mappings::{Mapping, WcsMap, WcsProjection};
 
     let mut w1 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
     let mut w2 = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
@@ -474,12 +474,12 @@ fn wcsmap_no_cancel_different_params() {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p ast-core --test test_wcsmap wcsmap_equal_different_params wcsmap_no_cancel_different_params`
+Run: `cargo test -p starlink-ast --test test_wcsmap wcsmap_equal_different_params wcsmap_no_cancel_different_params`
 Expected: FAIL — currently ignores PV params.
 
 - [ ] **Step 3: Add parameter comparison method to WcsMap**
 
-Add a private helper method and update `equal()` and `try_merge()` in `crates/ast-core/src/mappings/wcsmap.rs`:
+Add a private helper method and update `equal()` and `try_merge()` in `crates/starlink-ast/src/mappings/wcsmap.rs`:
 
 ```rust
 impl WcsMap {
@@ -511,13 +511,13 @@ Update `try_merge()` cancellation check to add `&& self.params_equal(other_wcs)`
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p ast-core --test test_wcsmap`
+Run: `cargo test -p starlink-ast --test test_wcsmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/wcsmap.rs crates/ast-core/tests/test_wcsmap.rs
+git add crates/starlink-ast/src/mappings/wcsmap.rs crates/starlink-ast/tests/test_wcsmap.rs
 git commit -m "WcsMap: compare PV parameters in equal() and try_merge()
 
 Two WcsMaps with different projection parameters now correctly
@@ -530,19 +530,19 @@ and wcsmap.c:1515-1547."
 ## Task 7: LutMap flat-section inverse returns BAD
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/lutmap.rs:269`
-- Test: `crates/ast-core/tests/test_lutmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/lutmap.rs:269`
+- Test: `crates/starlink-ast/tests/test_lutmap.rs`
 
 - [ ] **Step 1: Write test for flat-section inverse**
 
-Add to `crates/ast-core/tests/test_lutmap.rs`:
+Add to `crates/starlink-ast/tests/test_lutmap.rs`:
 
 ```rust
 #[test]
 fn lutmap_flat_section_inverse_returns_bad() {
-    use ast_core::constants::BAD_VALUE;
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{LutInterp, LutMap, Mapping};
+    use starlink_ast::constants::BAD_VALUE;
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{LutInterp, LutMap, Mapping};
 
     // LUT with a flat section: [0.0, 1.0, 1.0, 1.0, 2.0]
     // At input values corresponding to indices 1-3, output is constant 1.0.
@@ -558,12 +558,12 @@ fn lutmap_flat_section_inverse_returns_bad() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_lutmap lutmap_flat_section_inverse_returns_bad`
+Run: `cargo test -p starlink-ast --test test_lutmap lutmap_flat_section_inverse_returns_bad`
 Expected: FAIL — returns midpoint instead of BAD.
 
 - [ ] **Step 3: Fix the flat-section case**
 
-In `crates/ast-core/src/mappings/lutmap.rs`, replace the `dv == 0.0` block (around line 264):
+In `crates/starlink-ast/src/mappings/lutmap.rs`, replace the `dv == 0.0` block (around line 264):
 
 ```rust
         if dv == 0.0 {
@@ -573,13 +573,13 @@ In `crates/ast-core/src/mappings/lutmap.rs`, replace the `dv == 0.0` block (arou
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p ast-core --test test_lutmap`
+Run: `cargo test -p starlink-ast --test test_lutmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/lutmap.rs crates/ast-core/tests/test_lutmap.rs
+git add crates/starlink-ast/src/mappings/lutmap.rs crates/starlink-ast/tests/test_lutmap.rs
 git commit -m "LutMap: return BAD for flat-section inverse
 
 When multiple LUT entries have the same value, the inverse is
@@ -592,17 +592,17 @@ Matches C lutmap.c:1669-1679."
 ## Task 8: CmpMap canonical equality
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/cmpmap.rs` (the `equal()` method)
-- Test: `crates/ast-core/tests/test_equal.rs`
+- Modify: `crates/starlink-ast/src/mappings/cmpmap.rs` (the `equal()` method)
+- Test: `crates/starlink-ast/tests/test_equal.rs`
 
 - [ ] **Step 1: Write test for associativity-independent equality**
 
-Add to `crates/ast-core/tests/test_equal.rs`:
+Add to `crates/starlink-ast/tests/test_equal.rs`:
 
 ```rust
 #[test]
 fn cmpmap_equal_different_tree_structure() {
-    use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
+    use starlink_ast::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
 
     // (A ; (B ; C)) vs ((A ; B) ; C) — same effective pipeline.
     let a = ShiftMap::new(&[1.0, 2.0]);
@@ -639,12 +639,12 @@ fn cmpmap_equal_different_tree_structure() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_equal cmpmap_equal_different_tree`
+Run: `cargo test -p starlink-ast --test test_equal cmpmap_equal_different_tree`
 Expected: FAIL
 
 - [ ] **Step 3: Implement canonical equality for CmpMap**
 
-In `crates/ast-core/src/mappings/cmpmap.rs`, update the `equal()` method to flatten both CmpMaps and compare component-by-component:
+In `crates/starlink-ast/src/mappings/cmpmap.rs`, update the `equal()` method to flatten both CmpMaps and compare component-by-component:
 
 ```rust
     fn equal(&self, other: &dyn Mapping) -> bool {
@@ -682,13 +682,13 @@ Add `use super::simplify::flatten;` to imports if not present.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p ast-core --test test_equal`
+Run: `cargo test -p starlink-ast --test test_equal`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/cmpmap.rs crates/ast-core/tests/test_equal.rs
+git add crates/starlink-ast/src/mappings/cmpmap.rs crates/starlink-ast/tests/test_equal.rs
 git commit -m "CmpMap: canonical equality via flattened component comparison
 
 (A;(B;C)) now equals ((A;B);C). Matches C cmpmap.c:291-425."
@@ -699,17 +699,17 @@ git commit -m "CmpMap: canonical equality via flattened component comparison
 ## Task 9: MatrixMap equality with inversion and storage normalization
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/matrix.rs:290-315`
-- Test: `crates/ast-core/tests/test_equal.rs`
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs:290-315`
+- Test: `crates/starlink-ast/tests/test_equal.rs`
 
 - [ ] **Step 1: Write test for cross-inversion equality**
 
-Add to `crates/ast-core/tests/test_equal.rs`:
+Add to `crates/starlink-ast/tests/test_equal.rs`:
 
 ```rust
 #[test]
 fn matrixmap_equal_cross_inversion() {
-    use ast_core::mappings::{Mapping, MatrixMap};
+    use starlink_ast::mappings::{Mapping, MatrixMap};
     use ndarray::array;
 
     // Matrix M and its inverse M_inv with opposite invert flags should be equal.
@@ -734,12 +734,12 @@ fn matrixmap_equal_cross_inversion() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_equal matrixmap_equal_cross_inversion`
+Run: `cargo test -p starlink-ast --test test_equal matrixmap_equal_cross_inversion`
 Expected: FAIL — current code rejects different invert flags.
 
 - [ ] **Step 3: Fix MatrixMap equal()**
 
-In `crates/ast-core/src/mappings/matrix.rs`, replace the `equal()` method:
+In `crates/starlink-ast/src/mappings/matrix.rs`, replace the `equal()` method:
 
 ```rust
     fn equal(&self, other: &dyn Mapping) -> bool {
@@ -775,13 +775,13 @@ In `crates/ast-core/src/mappings/matrix.rs`, replace the `equal()` method:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p ast-core --test test_equal && cargo test -p ast-core --test test_matrixmap`
+Run: `cargo test -p starlink-ast --test test_equal && cargo test -p starlink-ast --test test_matrixmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/matrix.rs crates/ast-core/tests/test_equal.rs
+git add crates/starlink-ast/src/mappings/matrix.rs crates/starlink-ast/tests/test_equal.rs
 git commit -m "MatrixMap: compare effective forward matrix in equal()
 
 Resolves invert flag before comparing. A MatrixMap storing the
@@ -794,17 +794,17 @@ Matches C matrixmap.c:827-955."
 ## Task 10: PermMap equality with inversion resolution
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/perm.rs:415-430`
-- Test: `crates/ast-core/tests/test_equal.rs`
+- Modify: `crates/starlink-ast/src/mappings/perm.rs:415-430`
+- Test: `crates/starlink-ast/tests/test_equal.rs`
 
 - [ ] **Step 1: Write test for cross-inversion PermMap equality**
 
-Add to `crates/ast-core/tests/test_equal.rs`:
+Add to `crates/starlink-ast/tests/test_equal.rs`:
 
 ```rust
 #[test]
 fn permmap_equal_cross_inversion() {
-    use ast_core::mappings::{Mapping, PermMap};
+    use starlink_ast::mappings::{Mapping, PermMap};
 
     // A PermMap and its inverted version (swapped inperm/outperm) should be equal.
     let pm1 = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
@@ -827,12 +827,12 @@ fn permmap_equal_cross_inversion() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_equal permmap_equal_cross_inversion`
+Run: `cargo test -p starlink-ast --test test_equal permmap_equal_cross_inversion`
 Expected: FAIL
 
 - [ ] **Step 3: Fix PermMap equal()**
 
-In `crates/ast-core/src/mappings/perm.rs`, replace the `equal()` method:
+In `crates/starlink-ast/src/mappings/perm.rs`, replace the `equal()` method:
 
 ```rust
     fn equal(&self, other: &dyn Mapping) -> bool {
@@ -869,13 +869,13 @@ In `crates/ast-core/src/mappings/perm.rs`, replace the `equal()` method:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_equal && cargo test -p ast-core --test test_permmap`
+Run: `cargo test -p starlink-ast --test test_equal && cargo test -p starlink-ast --test test_permmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/perm.rs crates/ast-core/tests/test_equal.rs
+git add crates/starlink-ast/src/mappings/perm.rs crates/starlink-ast/tests/test_equal.rs
 git commit -m "PermMap: resolve invert flag in equal()
 
 Compares effective permutations rather than raw arrays.
@@ -887,17 +887,17 @@ Matches C permmap.c:314-393."
 ## Task 11: WinMap cross-inversion equality
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/winmap.rs:201-221`
-- Test: `crates/ast-core/tests/test_equal.rs`
+- Modify: `crates/starlink-ast/src/mappings/winmap.rs:201-221`
+- Test: `crates/starlink-ast/tests/test_equal.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_equal.rs`:
+Add to `crates/starlink-ast/tests/test_equal.rs`:
 
 ```rust
 #[test]
 fn winmap_equal_cross_inversion() {
-    use ast_core::mappings::{Mapping, WinMap};
+    use starlink_ast::mappings::{Mapping, WinMap};
 
     // Forward: out = 2 + 3*x. Inverse: out = (x-2)/3 = -2/3 + (1/3)*x.
     let wm1 = WinMap::new(&[2.0], &[3.0]).unwrap();
@@ -914,12 +914,12 @@ fn winmap_equal_cross_inversion() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_equal winmap_equal_cross_inversion`
+Run: `cargo test -p starlink-ast --test test_equal winmap_equal_cross_inversion`
 Expected: FAIL
 
 - [ ] **Step 3: Fix WinMap equal()**
 
-In `crates/ast-core/src/mappings/winmap.rs`, replace the `equal()` method:
+In `crates/starlink-ast/src/mappings/winmap.rs`, replace the `equal()` method:
 
 ```rust
     fn equal(&self, other: &dyn Mapping) -> bool {
@@ -939,13 +939,13 @@ In `crates/ast-core/src/mappings/winmap.rs`, replace the `equal()` method:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_equal && cargo test -p ast-core --test test_winmap`
+Run: `cargo test -p starlink-ast --test test_equal && cargo test -p starlink-ast --test test_winmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/winmap.rs crates/ast-core/tests/test_equal.rs
+git add crates/starlink-ast/src/mappings/winmap.rs crates/starlink-ast/tests/test_equal.rs
 git commit -m "WinMap: compare effective terms in equal()
 
 Resolves inversion before comparison. Matches C winmap.c:576-599."
@@ -956,17 +956,17 @@ Resolves inversion before comparison. Matches C winmap.c:576-599."
 ## Task 12: SlaMap step concatenation and simplification
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/slamap.rs:1074-1105`
-- Test: `crates/ast-core/tests/test_slamap.rs`
+- Modify: `crates/starlink-ast/src/mappings/slamap.rs:1074-1105`
+- Test: `crates/starlink-ast/tests/test_slamap.rs`
 
 - [ ] **Step 1: Write test for step concatenation**
 
-Add to `crates/ast-core/tests/test_slamap.rs`:
+Add to `crates/starlink-ast/tests/test_slamap.rs`:
 
 ```rust
 #[test]
 fn slamap_merge_concatenates_steps() {
-    use ast_core::mappings::{Mapping, SlaCvtType, SlaMap};
+    use starlink_ast::mappings::{Mapping, SlaCvtType, SlaMap};
 
     // Two SlaMaps: one with FK4->FK5, one with precession.
     let mut sla1 = SlaMap::new();
@@ -981,7 +981,7 @@ fn slamap_merge_concatenates_steps() {
 
 #[test]
 fn slamap_merge_cancels_inverse_pairs() {
-    use ast_core::mappings::{Mapping, SlaCvtType, SlaMap, UnitMap};
+    use starlink_ast::mappings::{Mapping, SlaCvtType, SlaMap, UnitMap};
 
     // Prec(2000,2010) followed by inverted Prec(2000,2010) should cancel.
     let mut sla1 = SlaMap::new();
@@ -997,7 +997,7 @@ fn slamap_merge_cancels_inverse_pairs() {
 
 #[test]
 fn slamap_merge_combines_precession() {
-    use ast_core::mappings::{Mapping, SlaCvtType, SlaMap};
+    use starlink_ast::mappings::{Mapping, SlaCvtType, SlaMap};
 
     // Prec(2000,2010) + Prec(2010,2020) should merge to Prec(2000,2020).
     let mut sla1 = SlaMap::new();
@@ -1015,12 +1015,12 @@ fn slamap_merge_combines_precession() {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p ast-core --test test_slamap slamap_merge`
+Run: `cargo test -p starlink-ast --test test_slamap slamap_merge`
 Expected: FAIL
 
 - [ ] **Step 3: Implement SlaMap step normalization and simplification**
 
-Port the SpecMap pattern to SlaMap. In `crates/ast-core/src/mappings/slamap.rs`, add helper functions and replace `try_merge`:
+Port the SpecMap pattern to SlaMap. In `crates/starlink-ast/src/mappings/slamap.rs`, add helper functions and replace `try_merge`:
 
 ```rust
 /// Get the inverse conversion type for a given SlaMap conversion.
@@ -1174,13 +1174,13 @@ Then replace `try_merge`:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_slamap`
+Run: `cargo test -p starlink-ast --test test_slamap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/slamap.rs crates/ast-core/tests/test_slamap.rs
+git add crates/starlink-ast/src/mappings/slamap.rs crates/starlink-ast/tests/test_slamap.rs
 git commit -m "SlaMap: implement step concatenation and simplification
 
 Adjacent SlaMaps now merge by concatenating step lists and
@@ -1193,17 +1193,17 @@ Follows the SpecMap pattern. Matches C slamap.c:2706-3194."
 ## Task 13: TimeMap step concatenation and simplification
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/timemap.rs:1066-1104`
-- Test: `crates/ast-core/tests/test_timemap.rs`
+- Modify: `crates/starlink-ast/src/mappings/timemap.rs:1066-1104`
+- Test: `crates/starlink-ast/tests/test_timemap.rs`
 
 - [ ] **Step 1: Write tests**
 
-Add to `crates/ast-core/tests/test_timemap.rs`:
+Add to `crates/starlink-ast/tests/test_timemap.rs`:
 
 ```rust
 #[test]
 fn timemap_merge_concatenates() {
-    use ast_core::mappings::{Mapping, TimeCvtType, TimeMap};
+    use starlink_ast::mappings::{Mapping, TimeCvtType, TimeMap};
 
     let mut tm1 = TimeMap::new();
     tm1.add(TimeCvtType::MjdToMjd, &[0.0, 51544.5]);
@@ -1216,7 +1216,7 @@ fn timemap_merge_concatenates() {
 
 #[test]
 fn timemap_merge_cancels_inverse() {
-    use ast_core::mappings::{Mapping, TimeCvtType, TimeMap, UnitMap};
+    use starlink_ast::mappings::{Mapping, TimeCvtType, TimeMap, UnitMap};
 
     let mut tm1 = TimeMap::new();
     tm1.add(TimeCvtType::TaiToUtc, &[]);
@@ -1231,7 +1231,7 @@ fn timemap_merge_cancels_inverse() {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p ast-core --test test_timemap timemap_merge`
+Run: `cargo test -p starlink-ast --test test_timemap timemap_merge`
 Expected: FAIL
 
 - [ ] **Step 3: Implement TimeMap step concatenation**
@@ -1242,13 +1242,13 @@ The implementation follows the same structure as SlaMap (Task 12) — normalize,
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_timemap`
+Run: `cargo test -p starlink-ast --test test_timemap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/timemap.rs crates/ast-core/tests/test_timemap.rs
+git add crates/starlink-ast/src/mappings/timemap.rs crates/starlink-ast/tests/test_timemap.rs
 git commit -m "TimeMap: implement step concatenation and simplification
 
 Adjacent TimeMaps merge by concatenating step lists with inverse pair
@@ -1260,17 +1260,17 @@ cancellation and no-effect step elimination. Matches C timemap.c:2099-2428."
 ## Task 14: SphMap relaxed cancellation conditions
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/sphmap.rs:195-223`
-- Test: `crates/ast-core/tests/test_sphmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/sphmap.rs:195-223`
+- Test: `crates/starlink-ast/tests/test_sphmap.rs`
 
 - [ ] **Step 1: Write tests for relaxed cancellation**
 
-Add to `crates/ast-core/tests/test_sphmap.rs`:
+Add to `crates/starlink-ast/tests/test_sphmap.rs`:
 
 ```rust
 #[test]
 fn sphmap_inv_fwd_cancels_without_unit_radius() {
-    use ast_core::mappings::{Mapping, SphMap, UnitMap};
+    use starlink_ast::mappings::{Mapping, SphMap, UnitMap};
 
     // Inverse (sph->cart) followed by forward (cart->sph) should cancel
     // even without UnitRadius — palDcs2c always produces unit vectors.
@@ -1285,7 +1285,7 @@ fn sphmap_inv_fwd_cancels_without_unit_radius() {
 
 #[test]
 fn sphmap_fwd_inv_needs_unit_radius_on_first() {
-    use ast_core::mappings::{Mapping, SphMap, UnitMap};
+    use starlink_ast::mappings::{Mapping, SphMap, UnitMap};
 
     // Forward (cart->sph) then inverse (sph->cart).
     // Requires UnitRadius on the first (forward) map only.
@@ -1305,12 +1305,12 @@ fn sphmap_fwd_inv_needs_unit_radius_on_first() {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p ast-core --test test_sphmap sphmap_inv_fwd_cancels sphmap_fwd_inv_needs`
+Run: `cargo test -p starlink-ast --test test_sphmap sphmap_inv_fwd_cancels sphmap_fwd_inv_needs`
 Expected: FAIL
 
 - [ ] **Step 3: Fix SphMap try_merge**
 
-In `crates/ast-core/src/mappings/sphmap.rs`, replace `try_merge`:
+In `crates/starlink-ast/src/mappings/sphmap.rs`, replace `try_merge`:
 
 ```rust
     fn try_merge(
@@ -1353,13 +1353,13 @@ In `crates/ast-core/src/mappings/sphmap.rs`, replace `try_merge`:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_sphmap`
+Run: `cargo test -p starlink-ast --test test_sphmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/sphmap.rs crates/ast-core/tests/test_sphmap.rs
+git add crates/starlink-ast/src/mappings/sphmap.rs crates/starlink-ast/tests/test_sphmap.rs
 git commit -m "SphMap: relax cancellation conditions
 
 Inverse→forward cancels with only PolarLong equality check (no
@@ -1372,19 +1372,19 @@ first map only. Matches C sphmap.c:748-761."
 ## Task 15: Analytical rate() for UnitMap, ZoomMap, ShiftMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/unit.rs:65-67`
-- Modify: `crates/ast-core/src/mappings/zoom.rs:106-108`
-- Modify: `crates/ast-core/src/mappings/shift.rs:98-100`
-- Test: `crates/ast-core/tests/test_unitmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/unit.rs:65-67`
+- Modify: `crates/starlink-ast/src/mappings/zoom.rs:106-108`
+- Modify: `crates/starlink-ast/src/mappings/shift.rs:98-100`
+- Test: `crates/starlink-ast/tests/test_unitmap.rs`
 
 - [ ] **Step 1: Write tests for analytical rates**
 
-Add to `crates/ast-core/tests/test_unitmap.rs` (or create a new `test_rate.rs`):
+Add to `crates/starlink-ast/tests/test_unitmap.rs` (or create a new `test_rate.rs`):
 
 ```rust
 #[test]
 fn unit_rate_analytical() {
-    use ast_core::mappings::{Mapping, UnitMap};
+    use starlink_ast::mappings::{Mapping, UnitMap};
     let u = UnitMap::new(3);
     assert_eq!(u.rate(&[1.0, 2.0, 3.0], 1, 1).unwrap(), 1.0);
     assert_eq!(u.rate(&[1.0, 2.0, 3.0], 1, 2).unwrap(), 0.0);
@@ -1393,7 +1393,7 @@ fn unit_rate_analytical() {
 
 #[test]
 fn zoom_rate_analytical() {
-    use ast_core::mappings::{Mapping, ZoomMap};
+    use starlink_ast::mappings::{Mapping, ZoomMap};
     let zm = ZoomMap::new(2, 3.0).unwrap();
     assert_eq!(zm.rate(&[1.0, 2.0], 1, 1).unwrap(), 3.0);
     assert_eq!(zm.rate(&[1.0, 2.0], 1, 2).unwrap(), 0.0);
@@ -1406,7 +1406,7 @@ fn zoom_rate_analytical() {
 
 #[test]
 fn shift_rate_analytical() {
-    use ast_core::mappings::{Mapping, ShiftMap};
+    use starlink_ast::mappings::{Mapping, ShiftMap};
     let sm = ShiftMap::new(&[10.0, 20.0]);
     assert_eq!(sm.rate(&[1.0, 2.0], 1, 1).unwrap(), 1.0);
     assert_eq!(sm.rate(&[1.0, 2.0], 1, 2).unwrap(), 0.0);
@@ -1415,19 +1415,19 @@ fn shift_rate_analytical() {
 
 - [ ] **Step 2: Run tests (they pass via numeric_rate but we want analytical)**
 
-Run: `cargo test -p ast-core --test test_unitmap unit_rate`
+Run: `cargo test -p starlink-ast --test test_unitmap unit_rate`
 Expected: PASS (numerically correct, but inefficient)
 
 - [ ] **Step 3: Replace numeric_rate with analytical implementations**
 
-In `crates/ast-core/src/mappings/unit.rs`:
+In `crates/starlink-ast/src/mappings/unit.rs`:
 ```rust
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         Ok(if ax1 == ax2 { 1.0 } else { 0.0 })
     }
 ```
 
-In `crates/ast-core/src/mappings/zoom.rs`:
+In `crates/starlink-ast/src/mappings/zoom.rs`:
 ```rust
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         if ax1 != ax2 {
@@ -1438,7 +1438,7 @@ In `crates/ast-core/src/mappings/zoom.rs`:
     }
 ```
 
-In `crates/ast-core/src/mappings/shift.rs`:
+In `crates/starlink-ast/src/mappings/shift.rs`:
 ```rust
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         Ok(if ax1 == ax2 { 1.0 } else { 0.0 })
@@ -1447,7 +1447,7 @@ In `crates/ast-core/src/mappings/shift.rs`:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_unitmap && cargo test -p ast-core --test test_zoommap && cargo test -p ast-core --test test_shiftmap`
+Run: `cargo test -p starlink-ast --test test_unitmap && cargo test -p starlink-ast --test test_zoommap && cargo test -p starlink-ast --test test_shiftmap`
 Expected: PASS
 
 - [ ] **Step 5: Remove unused numeric_rate imports**
@@ -1457,7 +1457,7 @@ Remove `use super::rate::numeric_rate;` from `unit.rs`, `zoom.rs`, `shift.rs` if
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/unit.rs crates/ast-core/src/mappings/zoom.rs crates/ast-core/src/mappings/shift.rs crates/ast-core/tests/test_unitmap.rs
+git add crates/starlink-ast/src/mappings/unit.rs crates/starlink-ast/src/mappings/zoom.rs crates/starlink-ast/src/mappings/shift.rs crates/starlink-ast/tests/test_unitmap.rs
 git commit -m "Analytical rate() for UnitMap, ZoomMap, ShiftMap
 
 Bypass numeric_rate() with known O(1) analytical values.
@@ -1470,18 +1470,18 @@ ZoomMap: rate=factor (or 1/factor if inverted)."
 ## Task 16: Analytical rate() for MatrixMap and PermMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/matrix.rs:286-288`
-- Modify: `crates/ast-core/src/mappings/perm.rs:302-304`
-- Test: `crates/ast-core/tests/test_matrixmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs:286-288`
+- Modify: `crates/starlink-ast/src/mappings/perm.rs:302-304`
+- Test: `crates/starlink-ast/tests/test_matrixmap.rs`
 
 - [ ] **Step 1: Write tests**
 
-Add to `crates/ast-core/tests/test_matrixmap.rs`:
+Add to `crates/starlink-ast/tests/test_matrixmap.rs`:
 
 ```rust
 #[test]
 fn matrix_rate_analytical() {
-    use ast_core::mappings::{Mapping, MatrixMap};
+    use starlink_ast::mappings::{Mapping, MatrixMap};
     use ndarray::array;
 
     let m = array![[1.0, 2.0], [3.0, 4.0]];
@@ -1494,12 +1494,12 @@ fn matrix_rate_analytical() {
 }
 ```
 
-Add to `crates/ast-core/tests/test_permmap.rs`:
+Add to `crates/starlink-ast/tests/test_permmap.rs`:
 
 ```rust
 #[test]
 fn perm_rate_analytical() {
-    use ast_core::mappings::{Mapping, PermMap};
+    use starlink_ast::mappings::{Mapping, PermMap};
 
     // outperm: [2, 1] => out[0]=in[1], out[1]=in[0]
     let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
@@ -1512,12 +1512,12 @@ fn perm_rate_analytical() {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_matrixmap matrix_rate && cargo test -p ast-core --test test_permmap perm_rate`
+Run: `cargo test -p starlink-ast --test test_matrixmap matrix_rate && cargo test -p starlink-ast --test test_permmap perm_rate`
 Expected: Currently pass via numeric approximation.
 
 - [ ] **Step 3: Implement analytical rate()**
 
-In `crates/ast-core/src/mappings/matrix.rs`:
+In `crates/starlink-ast/src/mappings/matrix.rs`:
 ```rust
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         // Effective forward matrix element at [ax1-1, ax2-1].
@@ -1539,7 +1539,7 @@ In `crates/ast-core/src/mappings/matrix.rs`:
     }
 ```
 
-In `crates/ast-core/src/mappings/perm.rs`:
+In `crates/starlink-ast/src/mappings/perm.rs`:
 ```rust
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         let perm = if self.inverted { &self.inperm } else { &self.outperm };
@@ -1554,13 +1554,13 @@ In `crates/ast-core/src/mappings/perm.rs`:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_matrixmap && cargo test -p ast-core --test test_permmap`
+Run: `cargo test -p starlink-ast --test test_matrixmap && cargo test -p starlink-ast --test test_permmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/matrix.rs crates/ast-core/src/mappings/perm.rs crates/ast-core/tests/test_matrixmap.rs crates/ast-core/tests/test_permmap.rs
+git add crates/starlink-ast/src/mappings/matrix.rs crates/starlink-ast/src/mappings/perm.rs crates/starlink-ast/tests/test_matrixmap.rs crates/starlink-ast/tests/test_permmap.rs
 git commit -m "Analytical rate() for MatrixMap and PermMap
 
 MatrixMap returns the effective forward matrix element.
@@ -1572,18 +1572,18 @@ PermMap returns 1.0 if the output reads from the queried input, else 0.0."
 ## Task 17: MatrixMap × PermMap merge
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/matrix.rs` (add case in `try_merge`)
-- Test: `crates/ast-core/tests/test_matrixmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs` (add case in `try_merge`)
+- Test: `crates/starlink-ast/tests/test_matrixmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_matrixmap.rs`:
+Add to `crates/starlink-ast/tests/test_matrixmap.rs`:
 
 ```rust
 #[test]
 fn matrix_merge_with_permmap() {
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, MatrixMap, PermMap};
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, MatrixMap, PermMap};
     use ndarray::array;
 
     // Matrix [[1,2],[3,4]] followed by PermMap that swaps outputs.
@@ -1605,12 +1605,12 @@ fn matrix_merge_with_permmap() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_matrixmap matrix_merge_with_permmap`
+Run: `cargo test -p starlink-ast --test test_matrixmap matrix_merge_with_permmap`
 Expected: FAIL — returns None.
 
 - [ ] **Step 3: Add PermMap case to MatrixMap try_merge**
 
-In `crates/ast-core/src/mappings/matrix.rs`, add after the ZoomMap case in `try_merge`:
+In `crates/starlink-ast/src/mappings/matrix.rs`, add after the ZoomMap case in `try_merge`:
 
 ```rust
         // MatrixMap + PermMap → MatrixMap (permuted rows/columns).
@@ -1649,13 +1649,13 @@ Add `use ndarray::Array2;` if not already imported.
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_matrixmap`
+Run: `cargo test -p starlink-ast --test test_matrixmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/matrix.rs crates/ast-core/tests/test_matrixmap.rs
+git add crates/starlink-ast/src/mappings/matrix.rs crates/starlink-ast/tests/test_matrixmap.rs
 git commit -m "MatrixMap: merge with adjacent PermMap
 
 Converts PermMap to permutation matrix and multiplies.
@@ -1667,18 +1667,18 @@ Matches C matrixmap.c:2608 (MatPerm)."
 ## Task 18: Diagonal MatrixMap × WinMap merge
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/matrix.rs` (add case in `try_merge`)
-- Test: `crates/ast-core/tests/test_matrixmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs` (add case in `try_merge`)
+- Test: `crates/starlink-ast/tests/test_matrixmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_matrixmap.rs`:
+Add to `crates/starlink-ast/tests/test_matrixmap.rs`:
 
 ```rust
 #[test]
 fn diagonal_matrix_merge_with_winmap() {
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, MatrixMap, WinMap};
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, MatrixMap, WinMap};
     use ndarray::array;
 
     // Diagonal matrix [2,3] followed by WinMap shift=[1,1] scale=[1,1]
@@ -1701,12 +1701,12 @@ fn diagonal_matrix_merge_with_winmap() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_matrixmap diagonal_matrix_merge_with_winmap`
+Run: `cargo test -p starlink-ast --test test_matrixmap diagonal_matrix_merge_with_winmap`
 Expected: FAIL
 
 - [ ] **Step 3: Add WinMap case to MatrixMap try_merge**
 
-In `crates/ast-core/src/mappings/matrix.rs`, add to `try_merge`:
+In `crates/starlink-ast/src/mappings/matrix.rs`, add to `try_merge`:
 
 ```rust
         // Diagonal MatrixMap + WinMap → WinMap (absorb diagonal scales).
@@ -1742,13 +1742,13 @@ Add `use super::winmap::winmap_effective_params;` or make that function `pub(cra
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_matrixmap`
+Run: `cargo test -p starlink-ast --test test_matrixmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/matrix.rs crates/ast-core/tests/test_matrixmap.rs
+git add crates/starlink-ast/src/mappings/matrix.rs crates/starlink-ast/tests/test_matrixmap.rs
 git commit -m "MatrixMap: merge diagonal with adjacent WinMap
 
 Absorbs per-axis diagonal scales into WinMap scale factors.
@@ -1760,18 +1760,18 @@ Matches C matrixmap.c:3230 (MatWin2)."
 ## Task 19: WinMap parallel merging
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/winmap.rs:231` (the `!series` path)
-- Test: `crates/ast-core/tests/test_winmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/winmap.rs:231` (the `!series` path)
+- Test: `crates/starlink-ast/tests/test_winmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_winmap.rs`:
+Add to `crates/starlink-ast/tests/test_winmap.rs`:
 
 ```rust
 #[test]
 fn winmap_parallel_merge() {
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{CmpMap, Composition, Mapping, WinMap};
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{CmpMap, Composition, Mapping, WinMap};
 
     let w1 = WinMap::new(&[1.0, 2.0], &[3.0, 4.0]).unwrap();
     let w2 = WinMap::new(&[5.0], &[6.0]).unwrap();
@@ -1796,12 +1796,12 @@ fn winmap_parallel_merge() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_winmap winmap_parallel_merge`
+Run: `cargo test -p starlink-ast --test test_winmap winmap_parallel_merge`
 Expected: FAIL
 
 - [ ] **Step 3: Implement parallel merge in WinMap try_merge**
 
-In `crates/ast-core/src/mappings/winmap.rs`, replace the `if !series { return None; }` block:
+In `crates/starlink-ast/src/mappings/winmap.rs`, replace the `if !series { return None; }` block:
 
 ```rust
         if !series {
@@ -1820,13 +1820,13 @@ In `crates/ast-core/src/mappings/winmap.rs`, replace the `if !series { return No
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_winmap`
+Run: `cargo test -p starlink-ast --test test_winmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/winmap.rs crates/ast-core/tests/test_winmap.rs
+git add crates/starlink-ast/src/mappings/winmap.rs crates/starlink-ast/tests/test_winmap.rs
 git commit -m "WinMap: implement parallel merging
 
 Adjacent parallel WinMaps (and WinMap+ZoomMap, WinMap+ShiftMap)
@@ -1838,18 +1838,18 @@ merge by concatenating axis terms. Matches C winmap.c:1697-1813."
 ## Task 20: WinMap + diagonal MatrixMap series merge
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/winmap.rs` (`extract_linear_params`)
-- Test: `crates/ast-core/tests/test_winmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/winmap.rs` (`extract_linear_params`)
+- Test: `crates/starlink-ast/tests/test_winmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_winmap.rs`:
+Add to `crates/starlink-ast/tests/test_winmap.rs`:
 
 ```rust
 #[test]
 fn winmap_merge_with_diagonal_matrix() {
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, MatrixMap, WinMap};
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, MatrixMap, WinMap};
     use ndarray::array;
 
     // WinMap [shift=1, scale=2] followed by diagonal MatrixMap [3, 0; 0, 4]
@@ -1871,12 +1871,12 @@ fn winmap_merge_with_diagonal_matrix() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_winmap winmap_merge_with_diagonal_matrix`
+Run: `cargo test -p starlink-ast --test test_winmap winmap_merge_with_diagonal_matrix`
 Expected: FAIL
 
 - [ ] **Step 3: Extend extract_linear_params to recognize diagonal MatrixMap**
 
-In `crates/ast-core/src/mappings/winmap.rs`, add to `extract_linear_params`:
+In `crates/starlink-ast/src/mappings/winmap.rs`, add to `extract_linear_params`:
 
 ```rust
     if let Some(mm) = mapping.as_any().downcast_ref::<MatrixMap>() {
@@ -1899,13 +1899,13 @@ This requires adding public accessor methods `forward_matrix()` and `inverse_mat
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_winmap`
+Run: `cargo test -p starlink-ast --test test_winmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/winmap.rs crates/ast-core/src/mappings/matrix.rs crates/ast-core/tests/test_winmap.rs
+git add crates/starlink-ast/src/mappings/winmap.rs crates/starlink-ast/src/mappings/matrix.rs crates/starlink-ast/tests/test_winmap.rs
 git commit -m "WinMap: merge with diagonal MatrixMap in series
 
 Extends extract_linear_params to recognize diagonal MatrixMap,
@@ -1918,17 +1918,17 @@ Matches C winmap.c:1164-1229."
 ## Task 21: WinMap self-simplification to ShiftMap/MatrixMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/winmap.rs:197-199`
-- Test: `crates/ast-core/tests/test_winmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/winmap.rs:197-199`
+- Test: `crates/starlink-ast/tests/test_winmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_winmap.rs`:
+Add to `crates/starlink-ast/tests/test_winmap.rs`:
 
 ```rust
 #[test]
 fn winmap_simplifies_to_shiftmap() {
-    use ast_core::mappings::{Mapping, ShiftMap, WinMap};
+    use starlink_ast::mappings::{Mapping, ShiftMap, WinMap};
 
     // All scales = 1.0 → should simplify to ShiftMap
     let wm = WinMap::new(&[3.0, 5.0], &[1.0, 1.0]).unwrap();
@@ -1938,7 +1938,7 @@ fn winmap_simplifies_to_shiftmap() {
 
 #[test]
 fn winmap_simplifies_to_zoommap() {
-    use ast_core::mappings::{Mapping, WinMap, ZoomMap};
+    use starlink_ast::mappings::{Mapping, WinMap, ZoomMap};
 
     // All shifts = 0.0, uniform scale → should simplify to ZoomMap
     let wm = WinMap::new(&[0.0, 0.0], &[4.0, 4.0]).unwrap();
@@ -1949,12 +1949,12 @@ fn winmap_simplifies_to_zoommap() {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p ast-core --test test_winmap winmap_simplifies`
+Run: `cargo test -p starlink-ast --test test_winmap winmap_simplifies`
 Expected: FAIL — `simplified()` returns self.
 
 - [ ] **Step 3: Implement WinMap simplified()**
 
-In `crates/ast-core/src/mappings/winmap.rs`, replace `simplified()`:
+In `crates/starlink-ast/src/mappings/winmap.rs`, replace `simplified()`:
 
 ```rust
     fn simplified(&self) -> AstResult<DynMapping> {
@@ -1991,13 +1991,13 @@ In `crates/ast-core/src/mappings/winmap.rs`, replace `simplified()`:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_winmap`
+Run: `cargo test -p starlink-ast --test test_winmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/winmap.rs crates/ast-core/tests/test_winmap.rs
+git add crates/starlink-ast/src/mappings/winmap.rs crates/starlink-ast/tests/test_winmap.rs
 git commit -m "WinMap: self-simplify to ShiftMap/ZoomMap/UnitMap
 
 All-unity-scale WinMap → ShiftMap. All-zero-shift uniform-scale
@@ -2010,17 +2010,17 @@ with different partner types. Matches C winmap.c:1082-1131."
 ## Task 22: SpecMap unconditional adjacent merge
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/specmap.rs:1164`
-- Test: `crates/ast-core/tests/test_specmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/specmap.rs:1164`
+- Test: `crates/starlink-ast/tests/test_specmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_specmap.rs`:
+Add to `crates/starlink-ast/tests/test_specmap.rs`:
 
 ```rust
 #[test]
 fn specmap_always_merges_adjacent() {
-    use ast_core::mappings::{Mapping, SpecCvtType, SpecMap};
+    use starlink_ast::mappings::{Mapping, SpecCvtType, SpecMap};
 
     // Two SpecMaps with non-cancelling steps should still merge.
     let mut sm1 = SpecMap::new();
@@ -2037,12 +2037,12 @@ fn specmap_always_merges_adjacent() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_specmap specmap_always_merges`
+Run: `cargo test -p starlink-ast --test test_specmap specmap_always_merges`
 Expected: FAIL — current code only merges if simplification occurs.
 
 - [ ] **Step 3: Fix SpecMap try_merge to always merge**
 
-In `crates/ast-core/src/mappings/specmap.rs`, change the `try_merge` logic. Replace:
+In `crates/starlink-ast/src/mappings/specmap.rs`, change the `try_merge` logic. Replace:
 
 ```rust
         if !simplify_steps(&mut steps) {
@@ -2060,13 +2060,13 @@ With:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_specmap`
+Run: `cargo test -p starlink-ast --test test_specmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/specmap.rs crates/ast-core/tests/test_specmap.rs
+git add crates/starlink-ast/src/mappings/specmap.rs crates/starlink-ast/tests/test_specmap.rs
 git commit -m "SpecMap: always merge adjacent SpecMaps
 
 Concatenate step lists even when no cancellation occurs. Enables
@@ -2079,18 +2079,18 @@ Matches C specmap.c:2259-2288."
 ## Task 23: ZoomMap parallel merge → diagonal MatrixMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/zoom.rs` (`try_merge`)
-- Test: `crates/ast-core/tests/test_zoommap.rs`
+- Modify: `crates/starlink-ast/src/mappings/zoom.rs` (`try_merge`)
+- Test: `crates/starlink-ast/tests/test_zoommap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_zoommap.rs`:
+Add to `crates/starlink-ast/tests/test_zoommap.rs`:
 
 ```rust
 #[test]
 fn zoom_parallel_merge_to_matrix() {
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, MatrixMap, ZoomMap};
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, MatrixMap, ZoomMap};
 
     let z1 = ZoomMap::new(1, 2.0).unwrap();
     let z2 = ZoomMap::new(1, 3.0).unwrap();
@@ -2110,7 +2110,7 @@ fn zoom_parallel_merge_to_matrix() {
 
 #[test]
 fn zoom_parallel_merge_same_factor() {
-    use ast_core::mappings::{Mapping, ZoomMap};
+    use starlink_ast::mappings::{Mapping, ZoomMap};
 
     let z1 = ZoomMap::new(2, 5.0).unwrap();
     let z2 = ZoomMap::new(1, 5.0).unwrap();
@@ -2126,12 +2126,12 @@ fn zoom_parallel_merge_same_factor() {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p ast-core --test test_zoommap zoom_parallel`
+Run: `cargo test -p starlink-ast --test test_zoommap zoom_parallel`
 Expected: FAIL
 
 - [ ] **Step 3: Add parallel merge to ZoomMap try_merge**
 
-In `crates/ast-core/src/mappings/zoom.rs`, update `try_merge` (currently returns None for `!series`):
+In `crates/starlink-ast/src/mappings/zoom.rs`, update `try_merge` (currently returns None for `!series`):
 
 ```rust
     fn try_merge(
@@ -2170,13 +2170,13 @@ In `crates/ast-core/src/mappings/zoom.rs`, update `try_merge` (currently returns
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_zoommap`
+Run: `cargo test -p starlink-ast --test test_zoommap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/zoom.rs crates/ast-core/tests/test_zoommap.rs
+git add crates/starlink-ast/src/mappings/zoom.rs crates/starlink-ast/tests/test_zoommap.rs
 git commit -m "ZoomMap: parallel merge → diagonal MatrixMap
 
 Same factor → wider ZoomMap. Different factors → diagonal MatrixMap.
@@ -2188,17 +2188,17 @@ Matches C zoommap.c:823-938."
 ## Task 24: PermMap simplified() checks inperm
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/perm.rs:287-299`
-- Test: `crates/ast-core/tests/test_permmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/perm.rs:287-299`
+- Test: `crates/starlink-ast/tests/test_permmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_permmap.rs`:
+Add to `crates/starlink-ast/tests/test_permmap.rs`:
 
 ```rust
 #[test]
 fn perm_simplified_checks_both_perms() {
-    use ast_core::mappings::{Mapping, PermMap, UnitMap};
+    use starlink_ast::mappings::{Mapping, PermMap, UnitMap};
 
     // Identity outperm but non-identity inperm → NOT a UnitMap.
     let pm = PermMap::new(&[2, 1], &[1, 2], &[]).unwrap();
@@ -2214,12 +2214,12 @@ fn perm_simplified_checks_both_perms() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_permmap perm_simplified_checks_both`
+Run: `cargo test -p starlink-ast --test test_permmap perm_simplified_checks_both`
 Expected: FAIL — first assert fails (incorrectly simplifies to UnitMap).
 
 - [ ] **Step 3: Fix PermMap simplified()**
 
-In `crates/ast-core/src/mappings/perm.rs`, replace `simplified()`:
+In `crates/starlink-ast/src/mappings/perm.rs`, replace `simplified()`:
 
 ```rust
     fn simplified(&self) -> AstResult<DynMapping> {
@@ -2237,13 +2237,13 @@ In `crates/ast-core/src/mappings/perm.rs`, replace `simplified()`:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_permmap`
+Run: `cargo test -p starlink-ast --test test_permmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/perm.rs crates/ast-core/tests/test_permmap.rs
+git add crates/starlink-ast/src/mappings/perm.rs crates/starlink-ast/tests/test_permmap.rs
 git commit -m "PermMap: simplified() checks both inperm and outperm
 
 Prevents incorrect simplification to UnitMap when only outperm is
@@ -2255,17 +2255,17 @@ identity but inperm is not. Matches C permmap.c:1283-1333."
 ## Task 25: MatrixMap full→diagonal self-simplification
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/matrix.rs:187-213`
-- Test: `crates/ast-core/tests/test_matrixmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs:187-213`
+- Test: `crates/starlink-ast/tests/test_matrixmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_matrixmap.rs`:
+Add to `crates/starlink-ast/tests/test_matrixmap.rs`:
 
 ```rust
 #[test]
 fn matrix_full_to_diagonal_simplification() {
-    use ast_core::mappings::{Mapping, MatrixMap, ZoomMap};
+    use starlink_ast::mappings::{Mapping, MatrixMap, ZoomMap};
     use ndarray::array;
 
     // A full matrix that happens to be diagonal with non-uniform elements.
@@ -2283,7 +2283,7 @@ fn matrix_full_to_diagonal_simplification() {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_matrixmap matrix_full_to_diagonal`
+Run: `cargo test -p starlink-ast --test test_matrixmap matrix_full_to_diagonal`
 Expected: PASS (the uniform diagonal case already works).
 
 This is already handled. The existing `simplified()` already converts uniform diagonal to ZoomMap and identity to UnitMap. The non-uniform diagonal case stays as MatrixMap (which is correct for now — the internal form optimization is Task 25b below for performance, not correctness). Mark complete.
@@ -2297,18 +2297,18 @@ If tests pass, this task is already complete. Move to next task.
 ## Task 26: PermMap parallel merge
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/perm.rs:306-313`
-- Test: `crates/ast-core/tests/test_permmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/perm.rs:306-313`
+- Test: `crates/starlink-ast/tests/test_permmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_permmap.rs`:
+Add to `crates/starlink-ast/tests/test_permmap.rs`:
 
 ```rust
 #[test]
 fn perm_parallel_merge() {
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{Mapping, PermMap};
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{Mapping, PermMap};
 
     // PermMap [2,1] parallel with PermMap [1] → PermMap [2,1,3]
     let p1 = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
@@ -2331,12 +2331,12 @@ fn perm_parallel_merge() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_permmap perm_parallel_merge`
+Run: `cargo test -p starlink-ast --test test_permmap perm_parallel_merge`
 Expected: FAIL
 
 - [ ] **Step 3: Add parallel merge to PermMap try_merge**
 
-In `crates/ast-core/src/mappings/perm.rs`, change `if !series { return None; }` to:
+In `crates/starlink-ast/src/mappings/perm.rs`, change `if !series { return None; }` to:
 
 ```rust
         if !series {
@@ -2412,13 +2412,13 @@ In `crates/ast-core/src/mappings/perm.rs`, change `if !series { return None; }` 
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_permmap`
+Run: `cargo test -p starlink-ast --test test_permmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/perm.rs crates/ast-core/tests/test_permmap.rs
+git add crates/starlink-ast/src/mappings/perm.rs crates/starlink-ast/tests/test_permmap.rs
 git commit -m "PermMap: implement parallel merge
 
 Offset-adjusts indices and concatenates into a single larger PermMap.
@@ -2430,17 +2430,17 @@ Matches C permmap.c:1088-1280."
 ## Task 27: LutMap inverse self-cancellation
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/lutmap.rs`
-- Test: `crates/ast-core/tests/test_lutmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/lutmap.rs`
+- Test: `crates/starlink-ast/tests/test_lutmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_lutmap.rs`:
+Add to `crates/starlink-ast/tests/test_lutmap.rs`:
 
 ```rust
 #[test]
 fn lutmap_cancels_with_inverse() {
-    use ast_core::mappings::{LutInterp, LutMap, Mapping, UnitMap};
+    use starlink_ast::mappings::{LutInterp, LutMap, Mapping, UnitMap};
 
     let lut = vec![0.0, 1.0, 4.0, 9.0, 16.0];
     let lm = LutMap::new(&lut, 0.0, 1.0, LutInterp::Linear).unwrap();
@@ -2454,12 +2454,12 @@ fn lutmap_cancels_with_inverse() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_lutmap lutmap_cancels`
+Run: `cargo test -p starlink-ast --test test_lutmap lutmap_cancels`
 Expected: FAIL — no `try_merge` override.
 
 - [ ] **Step 3: Implement LutMap try_merge**
 
-Add to `crates/ast-core/src/mappings/lutmap.rs` in the `Mapping` impl:
+Add to `crates/starlink-ast/src/mappings/lutmap.rs` in the `Mapping` impl:
 
 ```rust
     fn try_merge(
@@ -2495,13 +2495,13 @@ Add to `crates/ast-core/src/mappings/lutmap.rs` in the `Mapping` impl:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_lutmap`
+Run: `cargo test -p starlink-ast --test test_lutmap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/lutmap.rs crates/ast-core/tests/test_lutmap.rs
+git add crates/starlink-ast/src/mappings/lutmap.rs crates/starlink-ast/tests/test_lutmap.rs
 git commit -m "LutMap: implement try_merge for inverse self-cancellation
 
 Same LUT in opposite directions cancels to UnitMap.
@@ -2513,7 +2513,7 @@ Matches C lutmap.c:1174-1232."
 ## Task 28: SlaMap palMappa hoisting
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/slamap.rs` (around line 790)
+- Modify: `crates/starlink-ast/src/mappings/slamap.rs` (around line 790)
 - Test: (performance — verify correctness via existing tests)
 
 - [ ] **Step 1: Identify the per-point palMappa call**
@@ -2528,13 +2528,13 @@ The C reference (`slamap.c:242-246`) caches this in a static variable per SlaMap
 
 - [ ] **Step 3: Run existing tests to verify no regression**
 
-Run: `cargo test -p ast-core --test test_slamap`
+Run: `cargo test -p starlink-ast --test test_slamap`
 Expected: PASS (same results, just faster)
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/slamap.rs
+git add crates/starlink-ast/src/mappings/slamap.rs
 git commit -m "SlaMap: hoist palMappa outside per-point loop
 
 Compute star-independent parameters once per transform_into call
@@ -2546,17 +2546,17 @@ rather than per point. Matches C slamap.c:242-246 caching pattern."
 ## Task 29: CmpMap re-expansion after merge
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs:102-175`
-- Test: `crates/ast-core/tests/test_simplify_regression.rs`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs:102-175`
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs`
 
 - [ ] **Step 1: Write test for re-expansion**
 
-Add to `crates/ast-core/tests/test_simplify_regression.rs`:
+Add to `crates/starlink-ast/tests/test_simplify_regression.rs`:
 
 ```rust
 #[test]
 fn cmpmap_re_expands_after_merge() {
-    use ast_core::mappings::{Mapping, ShiftMap, WinMap, ZoomMap, CmpMap, Composition, UnitMap};
+    use starlink_ast::mappings::{Mapping, ShiftMap, WinMap, ZoomMap, CmpMap, Composition, UnitMap};
 
     // A ; B ; C where merging A;B produces a WinMap, which should then
     // merge with C. Without re-expansion, the merged result (WinMap)
@@ -2577,12 +2577,12 @@ fn cmpmap_re_expands_after_merge() {
 
 - [ ] **Step 2: Run test**
 
-Run: `cargo test -p ast-core --test test_simplify_regression cmpmap_re_expands`
+Run: `cargo test -p starlink-ast --test test_simplify_regression cmpmap_re_expands`
 Expected: This likely already passes due to flattening. If it does, write a test that specifically exercises the re-expansion case where a merge produces a CmpMap of matching composition.
 
 - [ ] **Step 3: Implement re-expansion in merge_loop**
 
-In `crates/ast-core/src/mappings/simplify.rs`, after a successful merge at line 127, check if the merged result is a CmpMap of the matching composition kind. If so, flatten it and splice its children into the list at position `i`:
+In `crates/starlink-ast/src/mappings/simplify.rs`, after a successful merge at line 127, check if the merged result is a CmpMap of the matching composition kind. If so, flatten it and splice its children into the list at position `i`:
 
 ```rust
             if let Some(m) = merged {
@@ -2611,13 +2611,13 @@ In `crates/ast-core/src/mappings/simplify.rs`, after a successful merge at line 
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_simplify_regression`
+Run: `cargo test -p starlink-ast --test test_simplify_regression`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/simplify.rs crates/ast-core/tests/test_simplify_regression.rs
+git add crates/starlink-ast/src/mappings/simplify.rs crates/starlink-ast/tests/test_simplify_regression.rs
 git commit -m "CmpMap simplification: re-expand merged CmpMaps
 
 When a merge produces a CmpMap of matching composition, expand its
@@ -2630,17 +2630,17 @@ Matches C cmpmap.c:1471-1525 (Strategy A)."
 ## Task 30: PolyMap coefficient consolidation
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/polymap.rs` (`simplified()`)
-- Test: `crates/ast-core/tests/test_polymap.rs`
+- Modify: `crates/starlink-ast/src/mappings/polymap.rs` (`simplified()`)
+- Test: `crates/starlink-ast/tests/test_polymap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_polymap.rs`:
+Add to `crates/starlink-ast/tests/test_polymap.rs`:
 
 ```rust
 #[test]
 fn polymap_consolidates_duplicate_terms() {
-    use ast_core::mappings::{Mapping, PolyMap, PolyTerm};
+    use starlink_ast::mappings::{Mapping, PolyMap, PolyTerm};
 
     // Two terms with the same power combination: 2*x + 3*x → 5*x
     let terms = vec![
@@ -2651,7 +2651,7 @@ fn polymap_consolidates_duplicate_terms() {
     let s = pm.simplified().unwrap();
 
     // Verify it produces the correct result (5*x).
-    use ast_core::coords::PointSet;
+    use starlink_ast::coords::PointSet;
     let pts = PointSet::from_rows([[7.0]]);
     let out = s.transform(&pts, true).unwrap();
     assert_eq!(out.point(0)[0], 35.0);
@@ -2660,13 +2660,13 @@ fn polymap_consolidates_duplicate_terms() {
 
 - [ ] **Step 2: Run test**
 
-Run: `cargo test -p ast-core --test test_polymap polymap_consolidates`
+Run: `cargo test -p starlink-ast --test test_polymap polymap_consolidates`
 Expected: May pass (sum gives correct answer even without consolidation). Write a test that checks the number of terms instead:
 
 ```rust
 #[test]
 fn polymap_removes_zero_terms() {
-    use ast_core::mappings::{Mapping, PolyMap, PolyTerm};
+    use starlink_ast::mappings::{Mapping, PolyMap, PolyTerm};
 
     // Two terms that cancel: 2*x + (-2)*x → 0 → should simplify
     let terms = vec![
@@ -2676,7 +2676,7 @@ fn polymap_removes_zero_terms() {
     let pm = PolyMap::new(1, 1, &terms, &[]).unwrap();
     let s = pm.simplified().unwrap();
 
-    use ast_core::coords::PointSet;
+    use starlink_ast::coords::PointSet;
     let pts = PointSet::from_rows([[7.0]]);
     let out = s.transform(&pts, true).unwrap();
     assert_eq!(out.point(0)[0], 0.0);
@@ -2685,7 +2685,7 @@ fn polymap_removes_zero_terms() {
 
 - [ ] **Step 3: Implement PolyMap simplified()**
 
-In `crates/ast-core/src/mappings/polymap.rs`, replace the no-op `simplified()`:
+In `crates/starlink-ast/src/mappings/polymap.rs`, replace the no-op `simplified()`:
 
 ```rust
     fn simplified(&self) -> AstResult<DynMapping> {
@@ -2717,13 +2717,13 @@ In `crates/ast-core/src/mappings/polymap.rs`, replace the no-op `simplified()`:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_polymap`
+Run: `cargo test -p starlink-ast --test test_polymap`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/polymap.rs crates/ast-core/tests/test_polymap.rs
+git add crates/starlink-ast/src/mappings/polymap.rs crates/starlink-ast/tests/test_polymap.rs
 git commit -m "PolyMap: consolidate duplicate terms in simplified()
 
 Merges terms with identical power combinations by summing coefficients
@@ -2735,20 +2735,20 @@ and removes zero-valued terms. Matches C polymap.c:3606-3717."
 ## Task 31: LutMap Inf handling
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/helpers.rs:6`
-- Modify: `crates/ast-core/src/mappings/lutmap.rs` (constructor)
-- Test: `crates/ast-core/tests/test_lutmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/helpers.rs:6`
+- Modify: `crates/starlink-ast/src/mappings/lutmap.rs` (constructor)
+- Test: `crates/starlink-ast/tests/test_lutmap.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_lutmap.rs`:
+Add to `crates/starlink-ast/tests/test_lutmap.rs`:
 
 ```rust
 #[test]
 fn lutmap_treats_inf_as_bad() {
-    use ast_core::constants::BAD_VALUE;
-    use ast_core::coords::PointSet;
-    use ast_core::mappings::{LutInterp, LutMap, Mapping};
+    use starlink_ast::constants::BAD_VALUE;
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::mappings::{LutInterp, LutMap, Mapping};
 
     let pts = PointSet::from_rows([[f64::INFINITY]]);
     let lut = vec![0.0, 1.0, 2.0, 3.0];
@@ -2759,7 +2759,7 @@ fn lutmap_treats_inf_as_bad() {
 
 #[test]
 fn is_bad_catches_inf() {
-    use ast_core::mappings::helpers::is_bad;
+    use starlink_ast::mappings::helpers::is_bad;
     assert!(is_bad(f64::INFINITY));
     assert!(is_bad(f64::NEG_INFINITY));
 }
@@ -2767,12 +2767,12 @@ fn is_bad_catches_inf() {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p ast-core --test test_lutmap lutmap_treats_inf`
+Run: `cargo test -p starlink-ast --test test_lutmap lutmap_treats_inf`
 Expected: FAIL
 
 - [ ] **Step 3: Fix is_bad to catch Inf**
 
-In `crates/ast-core/src/mappings/helpers.rs`:
+In `crates/starlink-ast/src/mappings/helpers.rs`:
 
 ```rust
 #[inline]
@@ -2785,13 +2785,13 @@ This replaces `v.is_nan()` with `!v.is_finite()` which catches both NaN and Inf.
 
 - [ ] **Step 4: Run full test suite to check for regressions**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: PASS (no regressions — Inf was never a valid coordinate)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/helpers.rs crates/ast-core/tests/test_lutmap.rs
+git add crates/starlink-ast/src/mappings/helpers.rs crates/starlink-ast/tests/test_lutmap.rs
 git commit -m "is_bad: catch Inf values as well as NaN
 
 Extend is_bad() to treat ±Infinity as BAD. No valid astronomical
@@ -2803,18 +2803,18 @@ coordinate should be Inf."
 ## Task 32: DoNotSimplify / Ident guard
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/mod.rs` (Mapping trait)
+- Modify: `crates/starlink-ast/src/mappings/mod.rs` (Mapping trait)
 - Modify: All mapping struct definitions (add field)
-- Test: `crates/ast-core/tests/test_simplify_regression.rs`
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs`
 
 - [ ] **Step 1: Write test**
 
-Add to `crates/ast-core/tests/test_simplify_regression.rs`:
+Add to `crates/starlink-ast/tests/test_simplify_regression.rs`:
 
 ```rust
 #[test]
 fn do_not_simplify_prevents_merge() {
-    use ast_core::mappings::{Mapping, ZoomMap, CmpMap, Composition};
+    use starlink_ast::mappings::{Mapping, ZoomMap, CmpMap, Composition};
 
     let mut z1 = ZoomMap::new(2, 3.0).unwrap();
     z1.set_do_not_simplify(true);
@@ -2854,13 +2854,13 @@ if list[i].0.do_not_simplify() || list[i+1].0.do_not_simplify() {
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/
+git add crates/starlink-ast/src/mappings/
 git commit -m "Add DoNotSimplify guard to Mapping trait
 
 When set, prevents simplified() from reducing and try_merge from
@@ -2872,16 +2872,16 @@ consuming the mapping. Protects user-tagged mappings from optimization."
 ## Task 33: map_split on Mapping trait
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/mod.rs` (add trait method)
-- Modify: `crates/ast-core/src/mappings/{cmpmap,perm,winmap,zoom,shift,unit,matrix}.rs`
-- Test: `crates/ast-core/tests/test_simplify_regression.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs` (add trait method)
+- Modify: `crates/starlink-ast/src/mappings/{cmpmap,perm,winmap,zoom,shift,unit,matrix}.rs`
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs`
 
 - [ ] **Step 1: Write test**
 
 ```rust
 #[test]
 fn map_split_parallel_cmpmap() {
-    use ast_core::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
+    use starlink_ast::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
 
     let z = ZoomMap::new(2, 3.0).unwrap();
     let s = ShiftMap::new(&[1.0]);
@@ -2896,7 +2896,7 @@ fn map_split_parallel_cmpmap() {
 
 - [ ] **Step 2: Add trait method**
 
-In `crates/ast-core/src/mappings/mod.rs`, add to the `Mapping` trait:
+In `crates/starlink-ast/src/mappings/mod.rs`, add to the `Mapping` trait:
 
 ```rust
     /// Split this mapping to extract the sub-mapping producing a given
@@ -2915,13 +2915,13 @@ Implement `map_split` for CmpMap (parallel decomposition), PermMap, WinMap, Zoom
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/
+git add crates/starlink-ast/src/mappings/
 git commit -m "Implement map_split on Mapping trait
 
 Extracts sub-mappings for a given output axis range. Implemented for
@@ -2934,15 +2934,15 @@ diagonal MatrixMap. Used by CmpMap simplification, Region, FrameSet."
 ## Task 34: WcsMap NatLat/NatLon attributes
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/wcsmap.rs`
-- Test: `crates/ast-core/tests/test_wcsmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/wcsmap.rs`
+- Test: `crates/starlink-ast/tests/test_wcsmap.rs`
 
 - [ ] **Step 1: Write test**
 
 ```rust
 #[test]
 fn wcsmap_natlat_natlon() {
-    use ast_core::mappings::{WcsMap, WcsProjection};
+    use starlink_ast::mappings::{WcsMap, WcsProjection};
 
     let wcs = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
     // TAN projection: native latitude of fiducial = 90° = π/2
@@ -2960,13 +2960,13 @@ Add `nat_lat()` and `nat_lon()` methods to `WcsMap` that query the underlying `P
 
 - [ ] **Step 3: Run tests**
 
-Run: `cargo test -p ast-core --test test_wcsmap wcsmap_natlat`
+Run: `cargo test -p starlink-ast --test test_wcsmap wcsmap_natlat`
 Expected: PASS
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/wcsmap.rs crates/ast-core/tests/test_wcsmap.rs
+git add crates/starlink-ast/src/mappings/wcsmap.rs crates/starlink-ast/tests/test_wcsmap.rs
 git commit -m "WcsMap: add NatLat/NatLon attribute accessors
 
 Needed by FitsChan for FITS-WCS header generation."
@@ -3029,8 +3029,8 @@ Add form field (Full/Diagonal/Unit), specialize transform paths.
 
 After Tasks 1–34 are complete:
 
-- [ ] Run full test suite: `cargo test -p ast-core`
+- [ ] Run full test suite: `cargo test -p starlink-ast`
 - [ ] Run clippy: `cargo clippy --workspace -- -D warnings`
-- [ ] Run simplify regression: `cargo test -p ast-core --test test_simplify_regression`
-- [ ] Run wcsconv tests: `cargo test -p ast-core --test test_wcsconv`
+- [ ] Run simplify regression: `cargo test -p starlink-ast --test test_simplify_regression`
+- [ ] Run wcsconv tests: `cargo test -p starlink-ast --test test_wcsconv`
 - [ ] If submodule available: `cargo test -p ast-oracle-tests`

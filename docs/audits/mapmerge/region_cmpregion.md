@@ -1,7 +1,7 @@
 # `Simplify` / `GetDefUnc` audit — CmpRegion
 
 C source: reference/starlink-ast/src/cmpregion.c
-Rust: crates/ast-core/src/regions/cmpregion.rs
+Rust: crates/starlink-ast/src/regions/cmpregion.rs
 Audited: 2026-09-03 against pin 3e60abaa
 Citations: verified against pin 3b9dc639
 Extension points: classified

@@ -14,38 +14,38 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/serial/mod.rs` | `Serializable` trait, `AnyObject` enum, public API (`to_native_string`, `from_native_string`), dispatch functions |
-| `crates/ast-core/src/serial/node.rs` | `Node`, `NodeItem`, `NodeValue` types + helper methods |
-| `crates/ast-core/src/serial/native_read.rs` | Native text → `Node` tree parser |
-| `crates/ast-core/src/serial/native_write.rs` | `Node` tree → Native text renderer + `format_double_g` |
-| `crates/ast-core/src/mappings/unit.rs` | Add `Serializable` impl for UnitMap |
-| `crates/ast-core/src/mappings/zoom.rs` | Add `Serializable` impl for ZoomMap |
-| `crates/ast-core/src/mappings/shift.rs` | Add `Serializable` impl for ShiftMap |
-| `crates/ast-core/src/mappings/matrix.rs` | Add `Serializable` impl for MatrixMap |
-| `crates/ast-core/src/mappings/perm.rs` | Add `Serializable` impl for PermMap |
-| `crates/ast-core/src/mappings/cmpmap.rs` | Add `Serializable` impl for CmpMap |
-| `crates/ast-core/src/frames/basic.rs` | Add `Serializable` impl for BasicFrame |
-| `crates/ast-core/src/frames/cmpframe.rs` | Add `Serializable` impl for CmpFrame |
-| `crates/ast-core/src/frames/frameset.rs` | Add `Serializable` impl for FrameSet |
-| `crates/ast-core/src/lib.rs` | Add `pub mod serial;` and re-exports |
-| `crates/ast-core/tests/test_serialisation.rs` | Node, Serializable, and round-trip tests |
-| `crates/ast-core/tests/test_native_format.rs` | Native parser/renderer tests + byte-exact round-trip |
-| `crates/ast-core/tests/test_native_parse_reference.rs` | Parse-only tests on reference .ast/.map files |
+| `crates/starlink-ast/src/serial/mod.rs` | `Serializable` trait, `AnyObject` enum, public API (`to_native_string`, `from_native_string`), dispatch functions |
+| `crates/starlink-ast/src/serial/node.rs` | `Node`, `NodeItem`, `NodeValue` types + helper methods |
+| `crates/starlink-ast/src/serial/native_read.rs` | Native text → `Node` tree parser |
+| `crates/starlink-ast/src/serial/native_write.rs` | `Node` tree → Native text renderer + `format_double_g` |
+| `crates/starlink-ast/src/mappings/unit.rs` | Add `Serializable` impl for UnitMap |
+| `crates/starlink-ast/src/mappings/zoom.rs` | Add `Serializable` impl for ZoomMap |
+| `crates/starlink-ast/src/mappings/shift.rs` | Add `Serializable` impl for ShiftMap |
+| `crates/starlink-ast/src/mappings/matrix.rs` | Add `Serializable` impl for MatrixMap |
+| `crates/starlink-ast/src/mappings/perm.rs` | Add `Serializable` impl for PermMap |
+| `crates/starlink-ast/src/mappings/cmpmap.rs` | Add `Serializable` impl for CmpMap |
+| `crates/starlink-ast/src/frames/basic.rs` | Add `Serializable` impl for BasicFrame |
+| `crates/starlink-ast/src/frames/cmpframe.rs` | Add `Serializable` impl for CmpFrame |
+| `crates/starlink-ast/src/frames/frameset.rs` | Add `Serializable` impl for FrameSet |
+| `crates/starlink-ast/src/lib.rs` | Add `pub mod serial;` and re-exports |
+| `crates/starlink-ast/tests/test_serialisation.rs` | Node, Serializable, and round-trip tests |
+| `crates/starlink-ast/tests/test_native_format.rs` | Native parser/renderer tests + byte-exact round-trip |
+| `crates/starlink-ast/tests/test_native_parse_reference.rs` | Parse-only tests on reference .ast/.map files |
 | `crates/ast-ffi-tests/src/bin/generate_fixtures.rs` | C program that generates .ast fixtures via astToString |
-| `crates/ast-core/tests/fixtures/native/` | Directory tree for fixture files |
+| `crates/starlink-ast/tests/fixtures/native/` | Directory tree for fixture files |
 
 ---
 
 ### Task 1: Node Types and Serializable Trait
 
 **Files:**
-- Create: `crates/ast-core/src/serial/mod.rs`
-- Create: `crates/ast-core/src/serial/node.rs`
-- Modify: `crates/ast-core/src/lib.rs`
+- Create: `crates/starlink-ast/src/serial/mod.rs`
+- Create: `crates/starlink-ast/src/serial/node.rs`
+- Modify: `crates/starlink-ast/src/lib.rs`
 
 - [ ] **Step 1: Create serial/node.rs with Node, NodeItem, NodeValue**
 
-Create `crates/ast-core/src/serial/node.rs`:
+Create `crates/starlink-ast/src/serial/node.rs`:
 
 ```rust
 //! The Node tree — intermediate representation for serialisation.
@@ -212,7 +212,7 @@ impl fmt::Display for Node {
 
 - [ ] **Step 2: Create serial/mod.rs with Serializable trait**
 
-Create `crates/ast-core/src/serial/mod.rs`:
+Create `crates/starlink-ast/src/serial/mod.rs`:
 
 ```rust
 //! Serialisation: Node tree, Serializable trait, and Native format.
@@ -242,13 +242,13 @@ pub(crate) trait Serializable {
 
 - [ ] **Step 3: Create stub files for native_read and native_write**
 
-Create `crates/ast-core/src/serial/native_read.rs`:
+Create `crates/starlink-ast/src/serial/native_read.rs`:
 
 ```rust
 //! Native text format parser: text → Node tree.
 ```
 
-Create `crates/ast-core/src/serial/native_write.rs`:
+Create `crates/starlink-ast/src/serial/native_write.rs`:
 
 ```rust
 //! Native text format renderer: Node tree → text.
@@ -256,7 +256,7 @@ Create `crates/ast-core/src/serial/native_write.rs`:
 
 - [ ] **Step 4: Add serial module to lib.rs**
 
-In `crates/ast-core/src/lib.rs`, add:
+In `crates/starlink-ast/src/lib.rs`, add:
 
 ```rust
 pub(crate) mod serial;
@@ -264,13 +264,13 @@ pub(crate) mod serial;
 
 - [ ] **Step 5: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/serial/ crates/ast-core/src/lib.rs
+git add crates/starlink-ast/src/serial/ crates/starlink-ast/src/lib.rs
 git commit -m "Add serial module: Node types and Serializable trait"
 ```
 
@@ -279,7 +279,7 @@ git commit -m "Add serial module: Node types and Serializable trait"
 ### Task 2: Native Text Parser
 
 **Files:**
-- Modify: `crates/ast-core/src/serial/native_read.rs`
+- Modify: `crates/starlink-ast/src/serial/native_read.rs`
 
 The parser is line-oriented: reads `Begin`/`End` blocks, parses
 `Key = Value` pairs, handles `IsA` markers, commented defaults,
@@ -288,7 +288,7 @@ Native text, regardless of class name.
 
 - [ ] **Step 1: Implement native_read**
 
-Write `crates/ast-core/src/serial/native_read.rs`:
+Write `crates/starlink-ast/src/serial/native_read.rs`:
 
 ```rust
 //! Native text format parser: text → Node tree.
@@ -507,13 +507,13 @@ fn parse_scalar_value(s: &str) -> NodeValue {
 
 - [ ] **Step 2: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/src/serial/native_read.rs
+git add crates/starlink-ast/src/serial/native_read.rs
 git commit -m "Add Native text parser (text → Node tree)"
 ```
 
@@ -522,7 +522,7 @@ git commit -m "Add Native text parser (text → Node tree)"
 ### Task 3: Native Text Renderer and Float Formatting
 
 **Files:**
-- Modify: `crates/ast-core/src/serial/native_write.rs`
+- Modify: `crates/starlink-ast/src/serial/native_write.rs`
 
 - [ ] **Step 1: Implement format_double_g helper**
 
@@ -531,7 +531,7 @@ default float formatting doesn't match C's `%g` (which switches
 between `%f` and `%e` notation and trims trailing zeros). We need
 a faithful reproduction.
 
-In `crates/ast-core/src/serial/native_write.rs`:
+In `crates/starlink-ast/src/serial/native_write.rs`:
 
 ```rust
 //! Native text format renderer: Node tree → text.
@@ -725,13 +725,13 @@ fn format_value(value: &NodeValue) -> String {
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/serial/native_write.rs
+git add crates/starlink-ast/src/serial/native_write.rs
 git commit -m "Add Native text renderer (Node tree → text) with C-compatible float formatting"
 ```
 
@@ -740,13 +740,13 @@ git commit -m "Add Native text renderer (Node tree → text) with C-compatible f
 ### Task 4: Mapping Serialization (UnitMap, ZoomMap, ShiftMap, MatrixMap, PermMap, CmpMap)
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/unit.rs`
-- Modify: `crates/ast-core/src/mappings/zoom.rs`
-- Modify: `crates/ast-core/src/mappings/shift.rs`
-- Modify: `crates/ast-core/src/mappings/matrix.rs`
-- Modify: `crates/ast-core/src/mappings/perm.rs`
-- Modify: `crates/ast-core/src/mappings/cmpmap.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/src/mappings/unit.rs`
+- Modify: `crates/starlink-ast/src/mappings/zoom.rs`
+- Modify: `crates/starlink-ast/src/mappings/shift.rs`
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs`
+- Modify: `crates/starlink-ast/src/mappings/perm.rs`
+- Modify: `crates/starlink-ast/src/mappings/cmpmap.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
 
 Each mapping implements `Serializable` in its own file (where it has
 access to private fields). The `serial` module provides a dispatch
@@ -758,7 +758,7 @@ module provides the shared logic.
 
 - [ ] **Step 1: Add mapping serialization helpers to serial/mod.rs**
 
-Add to `crates/ast-core/src/serial/mod.rs`:
+Add to `crates/starlink-ast/src/serial/mod.rs`:
 
 ```rust
 use crate::mappings::{DynMapping, Mapping};
@@ -817,7 +817,7 @@ pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
 
 - [ ] **Step 2: Implement Serializable for UnitMap**
 
-Add to `crates/ast-core/src/mappings/unit.rs`:
+Add to `crates/starlink-ast/src/mappings/unit.rs`:
 
 ```rust
 use crate::serial::{self, Node, Serializable};
@@ -847,7 +847,7 @@ impl Serializable for UnitMap {
 
 - [ ] **Step 3: Implement Serializable for ZoomMap**
 
-Add to `crates/ast-core/src/mappings/zoom.rs`:
+Add to `crates/starlink-ast/src/mappings/zoom.rs`:
 
 ```rust
 use crate::serial::{self, Node, Serializable};
@@ -879,7 +879,7 @@ impl Serializable for ZoomMap {
 
 - [ ] **Step 4: Implement Serializable for ShiftMap**
 
-Add to `crates/ast-core/src/mappings/shift.rs`:
+Add to `crates/starlink-ast/src/mappings/shift.rs`:
 
 ```rust
 use crate::serial::{self, Node, Serializable};
@@ -922,7 +922,7 @@ impl Serializable for ShiftMap {
 
 - [ ] **Step 5: Implement Serializable for MatrixMap**
 
-Add to `crates/ast-core/src/mappings/matrix.rs`:
+Add to `crates/starlink-ast/src/mappings/matrix.rs`:
 
 ```rust
 use crate::serial::{self, Node, Serializable};
@@ -1001,7 +1001,7 @@ impl Serializable for MatrixMap {
 
 - [ ] **Step 6: Implement Serializable for PermMap**
 
-Add to `crates/ast-core/src/mappings/perm.rs`:
+Add to `crates/starlink-ast/src/mappings/perm.rs`:
 
 ```rust
 use crate::serial::{self, Node, NodeValue, Serializable};
@@ -1100,7 +1100,7 @@ impl Serializable for PermMap {
 
 - [ ] **Step 7: Implement Serializable for CmpMap**
 
-Add to `crates/ast-core/src/mappings/cmpmap.rs`:
+Add to `crates/starlink-ast/src/mappings/cmpmap.rs`:
 
 ```rust
 use crate::serial::{self, Node, Serializable};
@@ -1229,7 +1229,7 @@ impl FrameToNode for dyn crate::frames::Frame {
 
 This requires `Frame` to also implement `AsAny`. Add that as a
 supertrait of `Frame` (similar to how `Mapping` already has it).
-In `crates/ast-core/src/frames/mod.rs`:
+In `crates/starlink-ast/src/frames/mod.rs`:
 
 ```rust
 use crate::mappings::AsAny;
@@ -1243,13 +1243,13 @@ for all `T: Any`, and `BasicFrame`, `CmpFrame`, `FrameSet` are all
 
 - [ ] **Step 8: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/ crates/ast-core/src/serial/ crates/ast-core/src/frames/mod.rs
+git add crates/starlink-ast/src/mappings/ crates/starlink-ast/src/serial/ crates/starlink-ast/src/frames/mod.rs
 git commit -m "Add Serializable impls for all Mapping types"
 ```
 
@@ -1258,9 +1258,9 @@ git commit -m "Add Serializable impls for all Mapping types"
 ### Task 5: Frame Serialization (BasicFrame, CmpFrame, Axis)
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/basic.rs`
-- Modify: `crates/ast-core/src/frames/cmpframe.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/src/frames/basic.rs`
+- Modify: `crates/starlink-ast/src/frames/cmpframe.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
 
 - [ ] **Step 1: Add frame serialization helpers to serial/mod.rs**
 
@@ -1292,7 +1292,7 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
 
 - [ ] **Step 2: Implement Serializable for BasicFrame**
 
-Add to `crates/ast-core/src/frames/basic.rs`:
+Add to `crates/starlink-ast/src/frames/basic.rs`:
 
 ```rust
 use crate::serial::{self, Node, NodeValue, Serializable};
@@ -1442,7 +1442,7 @@ impl Serializable for BasicFrame {
 
 - [ ] **Step 3: Implement Serializable for CmpFrame**
 
-Add to `crates/ast-core/src/frames/cmpframe.rs`:
+Add to `crates/starlink-ast/src/frames/cmpframe.rs`:
 
 ```rust
 use crate::serial::{self, Node, Serializable, MappingToNode, FrameToNode};
@@ -1485,13 +1485,13 @@ impl Serializable for CmpFrame {
 
 - [ ] **Step 4: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/ crates/ast-core/src/serial/
+git add crates/starlink-ast/src/frames/ crates/starlink-ast/src/serial/
 git commit -m "Add Serializable impls for BasicFrame and CmpFrame"
 ```
 
@@ -1500,7 +1500,7 @@ git commit -m "Add Serializable impls for BasicFrame and CmpFrame"
 ### Task 6: FrameSet Serialization
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/frameset.rs`
+- Modify: `crates/starlink-ast/src/frames/frameset.rs`
 
 FrameSet serialization is the most complex: it must encode the graph
 structure as frame objects, mapping objects, node-to-frame indices,
@@ -1508,7 +1508,7 @@ and node links.
 
 - [ ] **Step 1: Implement Serializable for FrameSet**
 
-Add to `crates/ast-core/src/frames/frameset.rs`:
+Add to `crates/starlink-ast/src/frames/frameset.rs`:
 
 ```rust
 use crate::serial::{self, Node, Serializable, MappingToNode, FrameToNode};
@@ -1638,13 +1638,13 @@ impl Serializable for FrameSet {
 
 - [ ] **Step 2: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/frameset.rs
+git add crates/starlink-ast/src/frames/frameset.rs
 git commit -m "Add Serializable impl for FrameSet"
 ```
 
@@ -1653,12 +1653,12 @@ git commit -m "Add Serializable impl for FrameSet"
 ### Task 7: AnyObject Enum and Public API
 
 **Files:**
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Modify: `crates/ast-core/src/lib.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/src/lib.rs`
 
 - [ ] **Step 1: Add AnyObject and public functions**
 
-Add to `crates/ast-core/src/serial/mod.rs`:
+Add to `crates/starlink-ast/src/serial/mod.rs`:
 
 ```rust
 use crate::frames::{BasicFrame, CmpFrame, FrameSet};
@@ -1764,7 +1764,7 @@ pub fn from_native_string(s: &str) -> AstResult<AnyObject> {
 
 - [ ] **Step 2: Re-export public API from lib.rs**
 
-In `crates/ast-core/src/lib.rs`, change `pub(crate) mod serial;`
+In `crates/starlink-ast/src/lib.rs`, change `pub(crate) mod serial;`
 to `pub mod serial;` and add re-exports as needed. Or keep the
 module private and re-export just the public items:
 
@@ -1775,13 +1775,13 @@ pub use serial::{to_native_string, from_native_string, AnyObject};
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/serial/ crates/ast-core/src/lib.rs
+git add crates/starlink-ast/src/serial/ crates/starlink-ast/src/lib.rs
 git commit -m "Add AnyObject enum and public to_native_string/from_native_string API"
 ```
 
@@ -1790,14 +1790,14 @@ git commit -m "Add AnyObject enum and public to_native_string/from_native_string
 ### Task 8: Serialization Unit Tests (Tier A)
 
 **Files:**
-- Create: `crates/ast-core/tests/test_serialisation.rs`
+- Create: `crates/starlink-ast/tests/test_serialisation.rs`
 
 Tests: Node construction/access, to_node/from_node round-trip for
 all 9 types.
 
 - [ ] **Step 1: Write test_serialisation.rs**
 
-Create `crates/ast-core/tests/test_serialisation.rs` with tests
+Create `crates/starlink-ast/tests/test_serialisation.rs` with tests
 for:
 
 - `Node::new`, `push_int`, `push_double`, `push_string`, `push_object`,
@@ -1815,13 +1815,13 @@ the patterns in `test_frameset.rs` and `test_zoommap.rs`.
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_serialisation`
+Run: `cargo test -p starlink-ast --test test_serialisation`
 Expected: all pass
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_serialisation.rs
+git add crates/starlink-ast/tests/test_serialisation.rs
 git commit -m "Add serialisation unit tests (Tier A): Node API and to_node/from_node round-trips"
 ```
 
@@ -1831,10 +1831,10 @@ git commit -m "Add serialisation unit tests (Tier A): Node API and to_node/from_
 
 **Files:**
 - Create: `crates/ast-ffi-tests/src/bin/generate_fixtures.rs`
-- Create: `crates/ast-core/tests/fixtures/native/mappings/` (directory)
-- Create: `crates/ast-core/tests/fixtures/native/frames/` (directory)
-- Create: `crates/ast-core/tests/fixtures/native/framesets/` (directory)
-- Create: `crates/ast-core/tests/test_native_format.rs`
+- Create: `crates/starlink-ast/tests/fixtures/native/mappings/` (directory)
+- Create: `crates/starlink-ast/tests/fixtures/native/frames/` (directory)
+- Create: `crates/starlink-ast/tests/fixtures/native/framesets/` (directory)
+- Create: `crates/starlink-ast/tests/test_native_format.rs`
 
 - [ ] **Step 1: Write C fixture generator**
 
@@ -1859,14 +1859,14 @@ The generator should create:
 
 ```bash
 # Run fixture generator (exact command depends on build setup)
-# Copy output files to crates/ast-core/tests/fixtures/native/
-git add crates/ast-core/tests/fixtures/native/
+# Copy output files to crates/starlink-ast/tests/fixtures/native/
+git add crates/starlink-ast/tests/fixtures/native/
 git commit -m "Add C-generated Native format fixtures for byte-exact round-trip tests"
 ```
 
 - [ ] **Step 3: Write byte-exact round-trip tests**
 
-Create `crates/ast-core/tests/test_native_format.rs` with tests
+Create `crates/starlink-ast/tests/test_native_format.rs` with tests
 that:
 - Read each fixture file → parse to Node → render back → diff
   against original (byte-exact).
@@ -1875,13 +1875,13 @@ that:
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_native_format`
+Run: `cargo test -p starlink-ast --test test_native_format`
 Expected: all pass
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_native_format.rs
+git add crates/starlink-ast/tests/test_native_format.rs
 git commit -m "Add byte-exact Native format round-trip tests (Tier B)"
 ```
 
@@ -1890,25 +1890,25 @@ git commit -m "Add byte-exact Native format round-trip tests (Tier B)"
 ### Task 10: Parse-Only Reference Tests (Tier C)
 
 **Files:**
-- Create: `crates/ast-core/tests/fixtures/native/reference/` (directory)
-- Create: `crates/ast-core/tests/test_native_parse_reference.rs`
+- Create: `crates/starlink-ast/tests/fixtures/native/reference/` (directory)
+- Create: `crates/starlink-ast/tests/test_native_parse_reference.rs`
 
 - [ ] **Step 1: Copy selected reference fixtures**
 
 Copy a selection of `.ast` and `.map` files from
 `reference/starlink-ast/ast_tester/` into
-`crates/ast-core/tests/fixtures/native/reference/`:
+`crates/starlink-ast/tests/fixtures/native/reference/`:
 
 ```bash
-cp reference/starlink-ast/ast_tester/splittest1.ast crates/ast-core/tests/fixtures/native/reference/
-cp reference/starlink-ast/ast_tester/degen1.ast crates/ast-core/tests/fixtures/native/reference/
-cp reference/starlink-ast/ast_tester/brad.map crates/ast-core/tests/fixtures/native/reference/
-cp reference/starlink-ast/ast_tester/specflux.ast crates/ast-core/tests/fixtures/native/reference/
+cp reference/starlink-ast/ast_tester/splittest1.ast crates/starlink-ast/tests/fixtures/native/reference/
+cp reference/starlink-ast/ast_tester/degen1.ast crates/starlink-ast/tests/fixtures/native/reference/
+cp reference/starlink-ast/ast_tester/brad.map crates/starlink-ast/tests/fixtures/native/reference/
+cp reference/starlink-ast/ast_tester/specflux.ast crates/starlink-ast/tests/fixtures/native/reference/
 ```
 
 - [ ] **Step 2: Write parse-only tests**
 
-Create `crates/ast-core/tests/test_native_parse_reference.rs` with
+Create `crates/starlink-ast/tests/test_native_parse_reference.rs` with
 tests that:
 - Parse each reference fixture into a Node tree.
 - Verify parsing succeeds.
@@ -1920,13 +1920,13 @@ No `from_node` — these files contain types not yet implemented.
 
 - [ ] **Step 3: Run tests**
 
-Run: `cargo test -p ast-core --test test_native_parse_reference`
+Run: `cargo test -p starlink-ast --test test_native_parse_reference`
 Expected: all pass
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/tests/fixtures/native/reference/ crates/ast-core/tests/test_native_parse_reference.rs
+git add crates/starlink-ast/tests/fixtures/native/reference/ crates/starlink-ast/tests/test_native_parse_reference.rs
 git commit -m "Add parse-only tests for reference .ast/.map fixtures (Tier C)"
 ```
 
@@ -1949,7 +1949,7 @@ If issues, run `cargo fmt --all`.
 
 - [ ] **Step 3: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 - [ ] **Step 4: Commit fixes if any**
@@ -1966,7 +1966,7 @@ git commit -m "Fix clippy and fmt issues in serialisation implementation"
 After all tasks are complete:
 
 1. `cargo build --workspace` — all crates compile
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. `cargo fmt --all -- --check` — clean
 5. Node tree can represent any Native-format AST object

@@ -37,4 +37,4 @@ The columns are tab separated, after a header line.
 
 ## Gates
 
-`crates/ast-core/tests/test_c_docs_audit.rs` checks that every header has exactly one row, that reviewed rows are well formed, and that the count of unreviewed rows never rises.
+`crates/starlink-ast/tests/test_c_docs_audit.rs` checks that every header has exactly one row, that reviewed rows are well formed, and that the count of unreviewed rows never rises.

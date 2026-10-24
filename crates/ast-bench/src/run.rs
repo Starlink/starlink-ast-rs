@@ -4,10 +4,10 @@
 
 use std::time::Duration;
 
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::{PointSet, Points, PointsMut};
-use ast_core::error::AstResult;
-use ast_core::mappings::Mapping;
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::{PointSet, Points, PointsMut};
+use starlink_ast::error::AstResult;
+use starlink_ast::mappings::Mapping;
 
 use crate::cases::Case;
 use crate::load::{Loaded, load_fixture};
@@ -26,11 +26,11 @@ pub enum Engines {
     Both,
 }
 
-/// An error if this build counts library calls (`ast-core`'s `call-counts`
+/// An error if this build counts library calls (`starlink-ast`'s `call-counts`
 /// feature, which `ast-oracle-tests` enables): timing it would measure the
 /// counters.
 pub fn check_not_counting() -> Result<(), String> {
-    if ast_core::CALL_COUNTS_ENABLED {
+    if starlink_ast::CALL_COUNTS_ENABLED {
         return Err(
             "this build counts library calls (call-counts); build ast-bench on its own".into(),
         );
@@ -161,7 +161,8 @@ pub fn run_set_with(
             // them: any conversion the port needs is inside the timing.
             let mut cols_out = vec![0.0; s.nout * n];
             let mut time_cols = || -> Result<(), String> {
-                let fail = |e: ast_core::error::AstError| format!("{} {dir} N={n}: {e}", s.relpath);
+                let fail =
+                    |e: starlink_ast::error::AstError| format!("{} {dir} N={n}: {e}", s.relpath);
                 let input = Points::new(columns.chunks_exact(n)).map_err(fail)?;
                 let out = PointsMut::new(cols_out.chunks_exact_mut(n)).map_err(fail)?;
                 map.transform_into(input, s.forward, out).map_err(fail)

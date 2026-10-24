@@ -14,20 +14,20 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/frames/mod.rs` | Frame trait (add convert method) + re-exports |
-| `crates/ast-core/src/frames/basic.rs` | BasicFrame (add convert impl) |
-| `crates/ast-core/src/frames/cmpframe.rs` | CmpFrame (add convert impl) |
-| `crates/ast-core/src/frames/frameset.rs` | FrameSet + FrameRef + graph internals |
-| `crates/ast-core/tests/test_frameset.rs` | FrameSet tests (equiv. to testframeset.c) |
+| `crates/starlink-ast/src/frames/mod.rs` | Frame trait (add convert method) + re-exports |
+| `crates/starlink-ast/src/frames/basic.rs` | BasicFrame (add convert impl) |
+| `crates/starlink-ast/src/frames/cmpframe.rs` | CmpFrame (add convert impl) |
+| `crates/starlink-ast/src/frames/frameset.rs` | FrameSet + FrameRef + graph internals |
+| `crates/starlink-ast/tests/test_frameset.rs` | FrameSet tests (equiv. to testframeset.c) |
 
 ---
 
 ### Task 1: Add convert() to Frame Trait
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/mod.rs`
-- Modify: `crates/ast-core/src/frames/basic.rs`
-- Modify: `crates/ast-core/src/frames/cmpframe.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
+- Modify: `crates/starlink-ast/src/frames/basic.rs`
+- Modify: `crates/starlink-ast/src/frames/cmpframe.rs`
 
 This task adds `convert()` to the Frame trait. Since FrameSet doesn't exist yet,
 the BasicFrame and CmpFrame implementations will construct a minimal FrameSet-like
@@ -48,12 +48,12 @@ add `convert()` to the trait in Task 6 once FrameSet exists.
 ### Task 1: FrameSet Core Structure and Basic Operations
 
 **Files:**
-- Create: `crates/ast-core/src/frames/frameset.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs`
+- Create: `crates/starlink-ast/src/frames/frameset.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
 
 - [ ] **Step 1: Create frameset.rs with struct, FrameRef, and basic operations**
 
-Create `crates/ast-core/src/frames/frameset.rs`:
+Create `crates/starlink-ast/src/frames/frameset.rs`:
 
 ```rust
 //! FrameSet — a set of Frames connected by Mappings.
@@ -468,7 +468,7 @@ impl fmt::Debug for FrameSet {
 
 - [ ] **Step 2: Update frames/mod.rs**
 
-Add to `crates/ast-core/src/frames/mod.rs`:
+Add to `crates/starlink-ast/src/frames/mod.rs`:
 
 ```rust
 mod frameset;
@@ -477,13 +477,13 @@ pub use frameset::{FrameRef, FrameSet};
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success (FrameSet doesn't impl Frame or Mapping yet, that's next)
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/
+git add crates/starlink-ast/src/frames/
 git commit -m "Add FrameSet core: graph storage, path finding, add_frame, integrity"
 ```
 
@@ -492,7 +492,7 @@ git commit -m "Add FrameSet core: graph storage, path finding, add_frame, integr
 ### Task 2: Frame and Mapping Trait Impls for FrameSet
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/frameset.rs`
+- Modify: `crates/starlink-ast/src/frames/frameset.rs`
 
 - [ ] **Step 1: Add Frame impl for FrameSet**
 
@@ -595,13 +595,13 @@ impl Mapping for FrameSet {
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/frameset.rs
+git add crates/starlink-ast/src/frames/frameset.rs
 git commit -m "Add Frame and Mapping trait impls for FrameSet"
 ```
 
@@ -610,15 +610,15 @@ git commit -m "Add Frame and Mapping trait impls for FrameSet"
 ### Task 3: Add convert() to Frame Trait
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/mod.rs`
-- Modify: `crates/ast-core/src/frames/basic.rs`
-- Modify: `crates/ast-core/src/frames/cmpframe.rs`
-- Modify: `crates/ast-core/src/frames/frameset.rs`
-- Modify: `crates/ast-core/tests/traits_compile.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
+- Modify: `crates/starlink-ast/src/frames/basic.rs`
+- Modify: `crates/starlink-ast/src/frames/cmpframe.rs`
+- Modify: `crates/starlink-ast/src/frames/frameset.rs`
+- Modify: `crates/starlink-ast/tests/traits_compile.rs`
 
 - [ ] **Step 1: Add convert() to Frame trait**
 
-In `crates/ast-core/src/frames/mod.rs`, add to the trait:
+In `crates/starlink-ast/src/frames/mod.rs`, add to the trait:
 
 ```rust
     /// Find a mapping to convert coordinates from this frame to `to`.
@@ -631,7 +631,7 @@ In `crates/ast-core/src/frames/mod.rs`, add to the trait:
 
 - [ ] **Step 2: Implement convert() on BasicFrame**
 
-In `crates/ast-core/src/frames/basic.rs`, add to the `impl Frame for BasicFrame`:
+In `crates/starlink-ast/src/frames/basic.rs`, add to the `impl Frame for BasicFrame`:
 
 ```rust
 fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
@@ -653,7 +653,7 @@ Add necessary imports: `use super::{FrameRef, FrameSet};`
 
 - [ ] **Step 3: Implement convert() on CmpFrame**
 
-In `crates/ast-core/src/frames/cmpframe.rs`, add to `impl Frame for CmpFrame`:
+In `crates/starlink-ast/src/frames/cmpframe.rs`, add to `impl Frame for CmpFrame`:
 
 ```rust
 fn convert(&self, to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<FrameSet>> {
@@ -675,7 +675,7 @@ Add necessary imports: `use super::{FrameRef, FrameSet};`
 
 - [ ] **Step 4: Implement convert() on FrameSet**
 
-In `crates/ast-core/src/frames/frameset.rs`, add to `impl Frame for FrameSet`:
+In `crates/starlink-ast/src/frames/frameset.rs`, add to `impl Frame for FrameSet`:
 
 ```rust
 fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet>> {
@@ -685,23 +685,23 @@ fn convert(&self, to: &dyn Frame, domains: &[&str]) -> AstResult<Option<FrameSet
 
 - [ ] **Step 5: Update traits_compile.rs**
 
-Add `convert()` to the DummyRegion's Frame impl in `crates/ast-core/tests/traits_compile.rs`:
+Add `convert()` to the DummyRegion's Frame impl in `crates/starlink-ast/tests/traits_compile.rs`:
 
 ```rust
-fn convert(&self, _to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<ast_core::frames::FrameSet>> {
+fn convert(&self, _to: &dyn Frame, _domains: &[&str]) -> AstResult<Option<starlink_ast::frames::FrameSet>> {
     Ok(None)
 }
 ```
 
 - [ ] **Step 6: Verify it compiles and tests pass**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/ crates/ast-core/tests/traits_compile.rs
+git add crates/starlink-ast/src/frames/ crates/starlink-ast/tests/traits_compile.rs
 git commit -m "Add convert() to Frame trait; implement for BasicFrame and CmpFrame"
 ```
 
@@ -710,20 +710,20 @@ git commit -m "Add convert() to Frame trait; implement for BasicFrame and CmpFra
 ### Task 4: FrameSet Tests
 
 **Files:**
-- Create: `crates/ast-core/tests/test_frameset.rs`
+- Create: `crates/starlink-ast/tests/test_frameset.rs`
 
 - [ ] **Step 1: Write comprehensive FrameSet tests**
 
-Create `crates/ast-core/tests/test_frameset.rs`:
+Create `crates/starlink-ast/tests/test_frameset.rs`:
 
 ```rust
 //! Rust equivalent of reference/starlink-ast/ast_tester/testframeset.c
 //! Covers: construction, add_frame, mapping, Frame/Mapping delegation,
 //! integrity, remove_frame, remap_frame, set_base/set_current, convert.
 
-use ast_core::coords::PointSet;
-use ast_core::frames::{BasicFrame, Frame, FrameRef, FrameSet};
-use ast_core::mappings::{DynMapping, Mapping, ShiftMap, UnitMap, ZoomMap};
+use starlink_ast::coords::PointSet;
+use starlink_ast::frames::{BasicFrame, Frame, FrameRef, FrameSet};
+use starlink_ast::mappings::{DynMapping, Mapping, ShiftMap, UnitMap, ZoomMap};
 
 fn make_frame(naxes: usize, domain: &str) -> Box<dyn Frame> {
     let mut f = BasicFrame::builder(naxes).build().unwrap();
@@ -968,13 +968,13 @@ fn frameset_invert() {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_frameset`
+Run: `cargo test -p starlink-ast --test test_frameset`
 Expected: all tests pass
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_frameset.rs
+git add crates/starlink-ast/tests/test_frameset.rs
 git commit -m "Add FrameSet tests (equivalent to testframeset.c)"
 ```
 
@@ -997,7 +997,7 @@ If issues, run `cargo fmt --all`.
 
 - [ ] **Step 3: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 - [ ] **Step 4: Commit fixes if any**
@@ -1014,7 +1014,7 @@ git commit -m "Fix clippy and fmt issues in FrameSet implementation"
 After all tasks are complete:
 
 1. `cargo build --workspace` — all crates compile
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. `cargo fmt --all -- --check` — clean
 5. FrameSet graph supports linear chains and tree topologies

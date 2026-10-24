@@ -14,11 +14,11 @@ The C library encodes "is this an alt plane" by storing per-version data in 27-e
 
 ## File structure
 
-- **Modify:** `crates/ast-core/src/frames/mod.rs` — add `domain()` and `ident()` default methods to `Frame` trait (return `""` by default).
-- **Modify:** `crates/ast-core/src/frames/basic.rs` — override `domain()` and `ident()` to expose the existing fields.
-- **Modify:** `crates/ast-core/src/frames/skyframe.rs`, `specframe.rs`, `cmpframe.rs`, etc. — same overrides where the field exists. Default `""` is fine for frames that don't carry the attribute.
-- **Modify:** `crates/ast-core/src/fitschan/wcs_write.rs` — split `encode_wcs` so it produces (primary store, Vec<(char, FitsStore)>) and writes both. Add helper `frames_with_version_letters(fs) -> Vec<(usize, char)>` mirroring fitschan.c:12266-12324 logic.
-- **Modify:** `crates/ast-core/src/fitschan/wcs_write.rs::write_store_to_cards` — add a `s: char` parameter that suffixes axis-indexed keywords. `' '` means primary (no suffix); `'A'`-`'Z'` is alt.
+- **Modify:** `crates/starlink-ast/src/frames/mod.rs` — add `domain()` and `ident()` default methods to `Frame` trait (return `""` by default).
+- **Modify:** `crates/starlink-ast/src/frames/basic.rs` — override `domain()` and `ident()` to expose the existing fields.
+- **Modify:** `crates/starlink-ast/src/frames/skyframe.rs`, `specframe.rs`, `cmpframe.rs`, etc. — same overrides where the field exists. Default `""` is fine for frames that don't carry the attribute.
+- **Modify:** `crates/starlink-ast/src/fitschan/wcs_write.rs` — split `encode_wcs` so it produces (primary store, Vec<(char, FitsStore)>) and writes both. Add helper `frames_with_version_letters(fs) -> Vec<(usize, char)>` mirroring fitschan.c:12266-12324 logic.
+- **Modify:** `crates/starlink-ast/src/fitschan/wcs_write.rs::write_store_to_cards` — add a `s: char` parameter that suffixes axis-indexed keywords. `' '` means primary (no suffix); `'A'`-`'Z'` is alt.
 - **Modify:** Per-encoder write paths (`enc_iraf.rs`, `enc_pc.rs`, `enc_aips.rs`, `enc_class.rs`) — same `s: char` parameter. Or accept that alt planes only apply to FITS-WCS encoding (the C library does the same — `AddVersion` is only called from `FitsFromStore`, not from `IRAFFromStore` etc.). **Decision: only FITS-WCS emits alt planes** (Task 5 confirms this from the C source).
 - **Add:** A new pub(crate) struct `AltPlane { letter: char, frame_name: String, store: FitsStore }` in `wcs_write.rs`.
 
@@ -88,13 +88,13 @@ Estimate: **+5 to +7** wcsconv passes.
 ## Task 1: Add `domain()` and `ident()` to the Frame trait
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/mod.rs`
-- Modify: `crates/ast-core/src/frames/basic.rs`
-- Modify: `crates/ast-core/src/frames/skyframe.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
+- Modify: `crates/starlink-ast/src/frames/basic.rs`
+- Modify: `crates/starlink-ast/src/frames/skyframe.rs`
 
 - [ ] **Step 1: Add the trait methods**
 
-In `crates/ast-core/src/frames/mod.rs`, find the `Frame` trait (around line 37). Add after the existing default methods:
+In `crates/starlink-ast/src/frames/mod.rs`, find the `Frame` trait (around line 37). Add after the existing default methods:
 
 ```rust
     /// Frame domain, e.g. "GRID", "PIXEL", "SKY", "IWC". Empty string if unset.
@@ -126,8 +126,8 @@ Same pattern in `skyframe.rs` (around line 244 has the existing inherent `domain
 - [ ] **Step 4: Build & test**
 
 ```bash
-cargo build -p ast-core
-cargo test -p ast-core --lib frames -- --nocapture
+cargo build -p starlink-ast
+cargo test -p starlink-ast --lib frames -- --nocapture
 ```
 
 If any frame implementation fails to compile (because the trait now requires `domain` / `ident` and the type doesn't have a sensible source), it can fall through to the trait default `""`. The trait defaults already handle this — concrete types only override when they have a real value to expose.
@@ -136,13 +136,13 @@ If any frame implementation fails to compile (because the trait now requires `do
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/
+git add crates/starlink-ast/src/frames/
 git commit -m "$(cat <<'EOF'
 feat(frames): add domain() and ident() to Frame trait
 
@@ -164,7 +164,7 @@ EOF
 ## Task 2: Frame-to-version-letter assignment helper
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 Mirrors the loop in fitschan.c:12266-12324. Returns a list of `(frame_idx, version_letter)` pairs for non-base/non-current frames.
 
@@ -273,7 +273,7 @@ pub(crate) fn frames_with_version_letters(fs: &FrameSet) -> Vec<(usize, char)> {
 - [ ] **Step 3: Run unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_write::tests::frames_with_version_letters
+cargo test -p starlink-ast --lib fitschan::wcs_write::tests::frames_with_version_letters
 ```
 
 3 tests pass.
@@ -281,7 +281,7 @@ cargo test -p ast-core --lib fitschan::wcs_write::tests::frames_with_version_let
 - [ ] **Step 4: Clippy / fmt clean. Commit.**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write.rs crates/ast-core/src/frames/frameset.rs
+git add crates/starlink-ast/src/fitschan/wcs_write.rs crates/starlink-ast/src/frames/frameset.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): assign FITS alt-plane version letters per FrameSet frame
 
@@ -301,7 +301,7 @@ EOF
 ## Task 3: Compute one FitsStore per alt plane
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 The current `store_from_frameset` builds the (base → current) plane. We need a generalized version that takes a target frame index.
 
@@ -373,7 +373,7 @@ pub(crate) struct AltPlane {
 - [ ] **Step 3: Verify build + existing tests still pass**
 
 ```bash
-cargo build -p ast-core
+cargo build -p starlink-ast
 cargo test --workspace 2>&1 | grep -cE "FAILED"
 ```
 
@@ -388,7 +388,7 @@ cargo test --workspace 2>&1 | grep -cE "FAILED"
         let text = std::fs::read_to_string(
             "tests/fixtures/wcsconv/inputs/timj.ast"
         ).expect("read timj.ast");
-        let obj = ast_core::from_native_string(&text).expect("parse");
+        let obj = starlink_ast::from_native_string(&text).expect("parse");
         let fs = match obj {
             AnyObject::FrameSet(fs) => fs,
             _ => panic!("expected FrameSet"),
@@ -407,10 +407,10 @@ cargo test --workspace 2>&1 | grep -cE "FAILED"
 - [ ] **Step 5: Run + commit**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_write::tests::store_from_frameset_with_alts
+cargo test -p starlink-ast --lib fitschan::wcs_write::tests::store_from_frameset_with_alts
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_write.rs
+cargo clippy -p starlink-ast -- -D warnings
+git add crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): compute FitsStore per alt-WCS plane
 
@@ -435,7 +435,7 @@ EOF
 ## Task 4: Suffix-aware encoder write path
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 Add an `s: char` parameter to `write_store_to_cards` (`' '` for primary, `'A'`-`'Z'` for alt). Suffix every axis-indexed key.
 
@@ -514,7 +514,7 @@ The existing call site (in `encode_wcs`) becomes `write_store_to_cards(&primary_
 - [ ] **Step 4: Build + run regression**
 
 ```bash
-cargo build -p ast-core
+cargo build -p starlink-ast
 cargo test --workspace 2>&1 | grep -cE "FAILED"
 ```
 
@@ -523,7 +523,7 @@ The primary-plane behavior must be unchanged. All currently-passing tests stay g
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write.rs
+git add crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 refactor(fitschan): add version-letter parameter to write_store_to_cards
 
@@ -547,7 +547,7 @@ EOF
 ## Task 5: Wire alt planes into encode_wcs
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 - [ ] **Step 1: Update `encode_wcs`**
 
@@ -572,7 +572,7 @@ Ok(())
 - [ ] **Step 2: Run the timj_fits-wcs test**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|timj_fits-wcs|multi-wcs|cname_fits-wcs"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|timj_fits-wcs|multi-wcs|cname_fits-wcs"
 ```
 
 Expected: `timj_fits-wcs` passes (or at least the alt-plane card lines now present). May reveal additional issues (e.g. `cname_fits-wcs` requires CNAME emission, separate work).
@@ -588,8 +588,8 @@ Must be 0. Existing passing tests must not regress.
 - [ ] **Step 4: Run pure-FITS-WCS tests**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_wcs
-cargo test -p ast-core --test test_fitschan_wcs_write
+cargo test -p starlink-ast --test test_fitschan_wcs
+cargo test -p starlink-ast --test test_fitschan_wcs_write
 ```
 
 Must remain green.
@@ -597,7 +597,7 @@ Must remain green.
 - [ ] **Step 5: Clippy / fmt clean. Commit.**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write.rs
+git add crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): emit FITS-WCS alt-WCS planes for non-primary frames
 
@@ -629,7 +629,7 @@ EOF
 - [ ] **Step 1: Wcsconv state**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: 116 → ~120-123 (depending on which tests cleanly turn green vs which still need other category work).
@@ -637,7 +637,7 @@ Expected: 116 → ~120-123 (depending on which tests cleanly turn green vs which
 - [ ] **Step 2: Specific cluster check**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "timj_fits-wcs|multi-wcs|cname_fits-wcs|tan-pv0|date-z"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "timj_fits-wcs|multi-wcs|cname_fits-wcs|tan-pv0|date-z"
 ```
 
 Capture which still fail and why. Some may need read-side DATE-OBS plumbing or CNAME work — track for follow-up.

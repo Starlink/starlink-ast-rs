@@ -5,9 +5,9 @@
  * spherical one; and astGetRegionPoints, which gives the defining points in
  * the current Frame, for a mapped Box.
  *
- * Prints Rust source for crates/ast-core/tests/region_frame_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_frame_oracle/cases.rs:
  *
- *   ./region_frame_probe > ../../crates/ast-core/tests/region_frame_oracle/cases.rs
+ *   ./region_frame_probe > ../../crates/starlink-ast/tests/region_frame_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

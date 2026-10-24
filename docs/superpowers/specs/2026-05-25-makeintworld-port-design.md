@@ -73,7 +73,7 @@ Already ported and used: `find_basis_vectors`, `fit_line`, `fit_line_cd`, `fit_o
 ### Module layout
 
 ```
-crates/ast-core/src/fitschan/
+crates/starlink-ast/src/fitschan/
 ├── wcs_keywords/                    # NEW
 │   ├── mod.rs                       # re-exports + fset_to_store entry
 │   ├── celestial_axes.rs            # ~700 LoC
@@ -89,7 +89,7 @@ crates/ast-core/src/fitschan/
 │                                    #   (already ported; drop #[allow(dead_code)])
 └── wcs_write.rs                     # ~1000 LoC removed; thin shim into wcs_keywords
 
-crates/ast-core/src/mappings/
+crates/starlink-ast/src/mappings/
 └── helpers/                         # cross-class Mapping helpers
     ├── linear_approx.rs             # NEW — astLinearApprox port
     ├── analyse_poly.rs              # NEW — AnalysePoly port
@@ -334,7 +334,7 @@ For `celestial_axes` / `spectral_axes` / `other_axes`, the wcsconv suite is itse
 
 ### wcsconv gate
 
-Final check at end of branch: `cargo test -p ast-core --test test_wcsconv` shows every numeric-value-failing test now passes. Out-of-scope failures (encoding, ordering, formatting) are still red and explicitly classified.
+Final check at end of branch: `cargo test -p starlink-ast --test test_wcsconv` shows every numeric-value-failing test now passes. Out-of-scope failures (encoding, ordering, formatting) are still red and explicitly classified.
 
 ### Mid-port debugging
 

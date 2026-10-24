@@ -7,9 +7,9 @@
  * Each case is a Mapping, the attributes tested, the dump, and the dump of
  * the Mapping read back from it, which differs where a loader sets an
  * attribute the dump left unset. Prints Rust
- * source for crates/ast-core/tests/attr_test_clear_oracle/cases.rs:
+ * source for crates/starlink-ast/tests/attr_test_clear_oracle/cases.rs:
  *
- *   ./attr_test_clear_probe > ../../crates/ast-core/tests/attr_test_clear_oracle/cases.rs
+ *   ./attr_test_clear_probe > ../../crates/starlink-ast/tests/attr_test_clear_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

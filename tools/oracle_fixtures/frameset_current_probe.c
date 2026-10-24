@@ -5,9 +5,9 @@
  * unset one commented out. astRemoveFrame clears a set Current when the
  * current Frame is removed, and renumbers it when an earlier one is.
  *
- * Prints Rust source for crates/ast-core/tests/frameset_current_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/frameset_current_oracle/cases.rs:
  *
- *   ./frameset_current_probe > ../../crates/ast-core/tests/frameset_current_oracle/cases.rs
+ *   ./frameset_current_probe > ../../crates/starlink-ast/tests/frameset_current_oracle/cases.rs
  */
 #include <stdio.h>
 #include "ast.h"

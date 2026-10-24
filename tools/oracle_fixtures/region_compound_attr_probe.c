@@ -8,9 +8,9 @@
  * of the components' for a Prism (prism.c GetFillFactor).
  *
  * Prints Rust source for
- * crates/ast-core/tests/region_compound_attr_oracle/cases.rs:
+ * crates/starlink-ast/tests/region_compound_attr_oracle/cases.rs:
  *
- *   ./region_compound_attr_probe > ../../crates/ast-core/tests/region_compound_attr_oracle/cases.rs
+ *   ./region_compound_attr_probe > ../../crates/starlink-ast/tests/region_compound_attr_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

@@ -321,7 +321,7 @@ result.
 Regenerating produced a diff in exactly two files, `neg_time_5arg_mismatch.map`
 and `time_5arg_cancel.map`, both a one-ULP change to `Time1f` — the
 ERFA-computed geodetic-to-geocentric value that
-`crates/ast-core/tests/test_serialisation.rs:1122` and
+`crates/starlink-ast/tests/test_serialisation.rs:1122` and
 `simplify_tests.txt:308` already name as the canonical platform drift in this
 corpus. TimeMap is not one of the ten affected classes, and a guard on when a
 flag is cleared cannot alter a computed double. That is numeric drift captured
@@ -461,13 +461,13 @@ The 24 committed fixtures are in the Rust repo. Copy them in as the reference th
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 mkdir -p reference/starlink-ast/ast_tester/fixtures/serialisation
-cp crates/ast-core/tests/fixtures/native/generated/*.ast \
+cp crates/starlink-ast/tests/fixtures/native/generated/*.ast \
    reference/starlink-ast/ast_tester/fixtures/serialisation/
-cp crates/ast-core/tests/fixtures/dssmap/c_dssmap.ast \
-   crates/ast-core/tests/fixtures/frameset/c_variants.ast \
-   crates/ast-core/tests/fixtures/jan-dsb.ast \
-   crates/ast-core/tests/fixtures/frame_in_map_slot.ast \
-   crates/ast-core/tests/fixtures/region_in_cmpframe.ast \
+cp crates/starlink-ast/tests/fixtures/dssmap/c_dssmap.ast \
+   crates/starlink-ast/tests/fixtures/frameset/c_variants.ast \
+   crates/starlink-ast/tests/fixtures/jan-dsb.ast \
+   crates/starlink-ast/tests/fixtures/frame_in_map_slot.ast \
+   crates/starlink-ast/tests/fixtures/region_in_cmpframe.ast \
    reference/starlink-ast/ast_tester/fixtures/serialisation/
 # specflux.ast duplicates wcsconv/inputs/specflux.ast byte-for-byte
 rm reference/starlink-ast/ast_tester/fixtures/serialisation/specflux.ast
@@ -712,7 +712,7 @@ ls ast_tester/fixtures/wcsconv/framesets | wc -l
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-diff -r crates/ast-core/tests/fixtures/native/reference/frameset_fixtures \
+diff -r crates/starlink-ast/tests/fixtures/native/reference/frameset_fixtures \
         reference/starlink-ast/ast_tester/fixtures/wcsconv/framesets
 ```
 
@@ -772,7 +772,7 @@ and the expected outputs are FITS-encoded.
 
 ## Task 5: `gen_keymap_mapsz` and `oracle/keymap_mapsz.txt`
 
-The Rust port compares its `MapSz` card emission against a C capture currently living at `crates/ast-core/tests/fixtures/keymap/mapsz_oracle.txt`. Moving the probe here makes that capture reproducible.
+The Rust port compares its `MapSz` card emission against a C capture currently living at `crates/starlink-ast/tests/fixtures/keymap/mapsz_oracle.txt`. Moving the probe here makes that capture reproducible.
 
 **Files:**
 - Create: `ast_tester/gen_keymap_mapsz.c`, `ast_tester/fixtures/oracle/keymap_mapsz.txt`
@@ -786,8 +786,8 @@ The Rust port compares its `MapSz` card emission against a C capture currently l
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-sed -n '285,320p' crates/ast-core/tests/test_keymap_serial.rs
-head -5 crates/ast-core/tests/fixtures/keymap/mapsz_oracle.txt
+sed -n '285,320p' crates/starlink-ast/tests/test_keymap_serial.rs
+head -5 crates/starlink-ast/tests/fixtures/keymap/mapsz_oracle.txt
 ```
 
 The Rust parser's doc comment states the format is the probe's `printf`. Reproduce exactly that, field for field.
@@ -797,7 +797,7 @@ The Rust parser's doc comment states the format is the probe's `printf`. Reprodu
 Create `ast_tester/gen_keymap_mapsz.c`. Build KeyMaps across the size range the committed capture covers, dump each through a `Channel`, and print one line per case in the recorded format. Read the committed file to recover the case list — it is the specification for this program:
 
 ```bash
-cat /sdf/home/t/timj/WORK/starlink-astrs/crates/ast-core/tests/fixtures/keymap/mapsz_oracle.txt
+cat /sdf/home/t/timj/WORK/starlink-astrs/crates/starlink-ast/tests/fixtures/keymap/mapsz_oracle.txt
 ```
 
 - [ ] **Step 3: Register the cmake target**
@@ -817,7 +817,7 @@ cd reference/starlink-ast
 cmake --build build --target gen_keymap_mapsz -j
 ./build/ast_tester/gen_keymap_mapsz > ast_tester/fixtures/oracle/keymap_mapsz.txt
 diff ast_tester/fixtures/oracle/keymap_mapsz.txt \
-     ../../crates/ast-core/tests/fixtures/keymap/mapsz_oracle.txt
+     ../../crates/starlink-ast/tests/fixtures/keymap/mapsz_oracle.txt
 ```
 
 Expected: no output.
@@ -852,7 +852,7 @@ an uncommitted program."
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-S=crates/ast-core/tests/fixtures/native/reference
+S=crates/starlink-ast/tests/fixtures/native/reference
 U=reference/starlink-ast/ast_tester/fixtures/simplify
 comm -13 <(ls $U | sort) <(ls $S/simplify_fixtures | sort) | grep -v '\.rt$' > /tmp/new_fixtures.txt
 wc -l /tmp/new_fixtures.txt          # expect 46
@@ -921,7 +921,7 @@ Copy the rows from the Rust manifest, rewriting the paths to the shared form and
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-grep -v '^#\|^$' crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt \
+grep -v '^#\|^$' crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt \
  | awk -F'|' '{n=$1; gsub(/^ +| +$/,"",n); print n"|"$0}' \
  | grep -F -f <(sed 's/^/|/;s/$/|/' /tmp/new_stems.txt | tr -d '|' | sed 's/^/^/;s/$/|/') \
  | cut -d'|' -f2-
@@ -1031,7 +1031,7 @@ Expected: roughly 213 lines and about 15 KB — the size of `rigby.simp`. The Ru
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-R=crates/ast-core/tests/fixtures
+R=crates/starlink-ast/tests/fixtures
 U=reference/starlink-ast/ast_tester/fixtures
 cp $R/wcsconv/expected/offset-sref.native $U/wcsconv/expected/offset-sref.native
 cp $R/fits/headers/pc-sparse.head $U/wcsconv/inputs/pc-sparse-naxis.head
@@ -1057,7 +1057,7 @@ offset-sref_native | wcsconv/inputs/offset-sref.ast | wcsconv/expected/offset-sr
 Confirm the input path and attributes against the source row before committing:
 
 ```bash
-grep 'offset-sref' /sdf/home/t/timj/WORK/starlink-astrs/crates/ast-core/tests/fixtures/wcsconv/wcsconv_tests.txt
+grep 'offset-sref' /sdf/home/t/timj/WORK/starlink-astrs/crates/starlink-ast/tests/fixtures/wcsconv/wcsconv_tests.txt
 ```
 
 - [ ] **Step 4: Configure and run**

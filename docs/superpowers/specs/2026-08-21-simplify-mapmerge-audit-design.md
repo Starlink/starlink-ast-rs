@@ -119,7 +119,7 @@ Every fixture whose simplified result was a Region or a SwitchMap therefore
 skipped both checks silently.
 
 Fixed in `050fbef`: both now call `AnyObject::from_mapping`, one authority in
-`ast-core` that is the exact inverse of `AnyObject::as_mapping`, and an
+`starlink-ast` that is the exact inverse of `AnyObject::as_mapping`, and an
 uncovered class is a counted failure in the harness and a panic in the region
 test.
 Turning the gate on exposed eleven byte failures and seven additional `IsSimp`
@@ -191,7 +191,7 @@ clears the red without pretending the defect is fixed.
 
 Card-only differences are platform-independent, so this machine is a valid
 capture host.
-Write each regenerated file to both `crates/ast-core/tests/fixtures/wcsconv/expected/`
+Write each regenerated file to both `crates/starlink-ast/tests/fixtures/wcsconv/expected/`
 and `reference/starlink-ast/ast_tester/`, in one commit, so the upstream PR is
 a clean subset.
 
@@ -265,13 +265,13 @@ bare `TODO`.
 
 ### Enforcement
 
-`crates/ast-core/tests/test_mapmerge_audit.rs`:
+`crates/starlink-ast/tests/test_mapmerge_audit.rs`:
 
 - every Rust mapping class that implements `map_merge` or overrides
   `simplified` has a checklist file;
 - every row in every checklist has a verdict from the closed set;
 - every `gap` verdict names a `PLAN.md` row that exists;
-- the class list is derived by scanning `crates/ast-core/src/mappings/`, so a
+- the class list is derived by scanning `crates/starlink-ast/src/mappings/`, so a
   new class without a checklist fails.
 
 This is the same pattern as `test_verification_ledger.rs`, which caught two

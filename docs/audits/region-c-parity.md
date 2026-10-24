@@ -4,11 +4,11 @@ Date: 2026-10-08.
 Scope: the Region base class (`region.c`) and the nine ported Region classes (Box, Circle, Ellipse, Polygon, Interval, PointList, NullRegion, CmpRegion, Prism), their attributes, methods and per-class extension points.
 `MapMerge` and `Simplify` are out of scope: each class's are audited in `docs/audits/mapmerge/region_*.md` and `docs/reports/2026-09-03-simplify-parity-final.md`.
 `Moc` and the `Stc*` classes were out of scope because they were not ported; this audit was started because porting `StcResourceProfile` needed Region seams the port did not have. `StcResourceProfile`, the other Stc classes and the core of `Moc` have since landed (see Progress).
-`ast-capi` is out of scope: no string-attribute dispatch exists, so C's `GetAttrib`, `SetAttrib`, `TestAttrib` and `ClearAttrib` overrides have no counterpart by design, but the typed accessor for every attribute is in scope.
+`starlink-ast-capi` is out of scope: no string-attribute dispatch exists, so C's `GetAttrib`, `SetAttrib`, `TestAttrib` and `ClearAttrib` overrides have no counterpart by design, but the typed accessor for every attribute is in scope.
 Plot-only methods (`RegTrace`, `RegSplit`, `BndMesh`) are listed as gated.
 
 The audit was made against C on branch `u/timj/norm-unit` at `436f069f` and Rust at `d250706f`.
-Line numbers are re-anchored as the code changes, so they refer to the current `reference/starlink-ast` checkout (relative to `src/`) and the current `crates/ast-core/src/`; a finding describes the code as it was when audited unless the Progress table says it is fixed.
+Line numbers are re-anchored as the code changes, so they refer to the current `reference/starlink-ast` checkout (relative to `src/`) and the current `crates/starlink-ast/src/`; a finding describes the code as it was when audited unless the Progress table says it is fixed.
 These older Region audits are superseded by this one, and the status of each of their findings is in the last section of Appendices A and B: `region-base.md`, `region-box-interval-pointlist.md`, `region-circle-ellipse-polygon-null.md`, `region-cmpregion-prism.md`, `region-synthesis-plan.md` and `region-class-coverage-audit.md`.
 The last of these recorded `RegSetAttrib`/`RegClearAttrib` and the transform direction as matching C; neither did.
 
@@ -16,7 +16,7 @@ The last of these recorded `RegSetAttrib`/`RegClearAttrib` and the transform dir
 
 1. Every `vtab->X = X` assignment in `region.c` and in each class's C source, every attribute, and every public function was listed and mapped onto a Rust trait method, helper, inherent method, or "no counterpart", and classified as ceremony or architecture (a method a generic driver dispatches per class).
 2. Each C method with a Rust counterpart was compared by reading both implementations, in two groups: the base class, then the nine classes.
-3. Every HIGH finding was run through paired probes: a C program linked against the built reference `libast`, and a scratch Rust program depending on `ast-core`, given the same inputs (Appendix C).
+3. Every HIGH finding was run through paired probes: a C program linked against the built reference `libast`, and a scratch Rust program depending on `starlink-ast`, given the same inputs (Appendix C).
    Thirteen were confirmed, two partly, and one (PL-1) not, and is withdrawn.
 
 Ratings: HIGH means wrong membership or coordinates, a panic, hang or stack overflow, or silent data loss.

@@ -8,9 +8,9 @@
  * specframe.c SubFrame). A SpecFrame Title leaves out a RestFreq that has
  * not been set (specframe.c GetTitle).
  *
- * Prints Rust source for crates/ast-core/tests/spec_use_defs_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/spec_use_defs_oracle/cases.rs:
  *
- *   ./spec_use_defs_probe > ../../crates/ast-core/tests/spec_use_defs_oracle/cases.rs
+ *   ./spec_use_defs_probe > ../../crates/starlink-ast/tests/spec_use_defs_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

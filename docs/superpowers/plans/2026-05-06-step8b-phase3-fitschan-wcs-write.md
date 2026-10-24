@@ -14,18 +14,18 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/fitschan/wcs_write.rs` | Main encoder: FrameSet → FitsStore → CardList |
-| `crates/ast-core/src/fitschan/wcs_decompose.rs` | Decompose FrameSet mapping into linear + non-linear parts |
-| `crates/ast-core/src/fitschan/mod.rs` | Wire `write()` for `Encoding::FitsWcs` |
-| `crates/ast-core/src/frames/cmpframe.rs` | Add public accessors for child frames |
-| `crates/ast-core/tests/test_fitschan_wcs_write.rs` | Integration tests for WCS write |
+| `crates/starlink-ast/src/fitschan/wcs_write.rs` | Main encoder: FrameSet → FitsStore → CardList |
+| `crates/starlink-ast/src/fitschan/wcs_decompose.rs` | Decompose FrameSet mapping into linear + non-linear parts |
+| `crates/starlink-ast/src/fitschan/mod.rs` | Wire `write()` for `Encoding::FitsWcs` |
+| `crates/starlink-ast/src/frames/cmpframe.rs` | Add public accessors for child frames |
+| `crates/starlink-ast/tests/test_fitschan_wcs_write.rs` | Integration tests for WCS write |
 
 ---
 
 ### Task 1: Add CmpFrame Public Accessors
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/cmpframe.rs`
+- Modify: `crates/starlink-ast/src/frames/cmpframe.rs`
 
 The encoder needs to inspect the current frame of a FrameSet to identify celestial/spectral sub-frames. CmpFrame's `frame1`/`frame2` fields are currently private with no public accessors.
 
@@ -47,7 +47,7 @@ Add these methods to the `impl CmpFrame` block (after the existing `naxes1` meth
 
 - [ ] **Step 2: Verify compilation**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: compiles cleanly
 
 - [ ] **Step 3: Commit**
@@ -57,7 +57,7 @@ Expected: compiles cleanly
 ### Task 2: Mapping Decomposition Module
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_decompose.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_decompose.rs`
 
 The encoder must decompose the FrameSet's base→current mapping into a linear transformation (expressible as CRPIX + PC×CDELT or CD matrix). This mirrors the C `MakeIntWorld` function. For Phase 3, we support the common case where the mapping IS linear (or composed of linear mappings like WinMap, MatrixMap, ZoomMap).
 
@@ -259,13 +259,13 @@ mod tests {
 
 - [ ] **Step 5: Register the module in mod.rs and verify**
 
-Add to `crates/ast-core/src/fitschan/mod.rs`:
+Add to `crates/starlink-ast/src/fitschan/mod.rs`:
 ```rust
 #[allow(dead_code)]
 pub(crate) mod wcs_decompose;
 ```
 
-Run: `cargo test -p ast-core -- wcs_decompose`
+Run: `cargo test -p starlink-ast -- wcs_decompose`
 Expected: all 4 tests pass
 
 - [ ] **Step 6: Commit**
@@ -275,7 +275,7 @@ Expected: all 4 tests pass
 ### Task 3: FitsStore Population from FrameSet
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 The main encoder logic: given a FrameSet, identify axis types, decompose the mapping, and populate a FitsStore. Then write the FitsStore contents as FITS cards.
 
@@ -559,7 +559,7 @@ fn specsys_string(sor: StdOfRest) -> String {
 
 - [ ] **Step 5: Verify compilation**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: compiles (with dead_code warnings acceptable at this stage)
 
 - [ ] **Step 6: Commit**
@@ -569,7 +569,7 @@ Expected: compiles (with dead_code warnings acceptable at this stage)
 ### Task 4: Write FitsStore to FITS Cards
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 Implement `write_store_to_cards` which takes a populated FitsStore and writes the corresponding FITS keyword cards. This mirrors the C `WcsFromStore` function.
 
@@ -710,7 +710,7 @@ fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
 
 The `write_store_to_cards` function uses `cards.set_float(...)` etc. We need to add these convenience methods to `CardList`. Check if they already exist; if not, add them.
 
-Add to `crates/ast-core/src/fitschan/card_list.rs`:
+Add to `crates/starlink-ast/src/fitschan/card_list.rs`:
 
 ```rust
     /// Set an integer keyword value (append or overwrite).
@@ -749,7 +749,7 @@ Add to `crates/ast-core/src/fitschan/card_list.rs`:
 
 - [ ] **Step 3: Verify compilation**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: compiles
 
 - [ ] **Step 4: Commit**
@@ -759,7 +759,7 @@ Expected: compiles
 ### Task 5: Wire into FitsChan::write()
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 - [ ] **Step 1: Add wcs_write module declaration**
 
@@ -807,7 +807,7 @@ Replace the `write()` method's match arm for non-Native encodings. In `mod.rs`, 
 
 - [ ] **Step 3: Verify compilation**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: compiles
 
 - [ ] **Step 4: Commit**
@@ -817,7 +817,7 @@ Expected: compiles
 ### Task 6: Integration Tests
 
 **Files:**
-- Create: `crates/ast-core/tests/test_fitschan_wcs_write.rs`
+- Create: `crates/starlink-ast/tests/test_fitschan_wcs_write.rs`
 
 - [ ] **Step 1: Write round-trip test (read → write → read)**
 
@@ -827,9 +827,9 @@ Expected: compiles
 //! Verifies that FitsChan with FitsWcs encoding can write FrameSets as
 //! FITS headers and that the written headers round-trip correctly.
 
-use ast_core::AnyObject;
-use ast_core::channel::Channel;
-use ast_core::fitschan::{Encoding, FitsChan};
+use starlink_ast::AnyObject;
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::{Encoding, FitsChan};
 
 /// Minimal 2D TAN header for testing.
 const MINIMAL_TAN_HEADER: &str = "\
@@ -927,7 +927,7 @@ fn round_trip_read_write_read() {
     let m1 = obj1.as_mapping().unwrap();
     let m2 = obj2.as_mapping().unwrap();
 
-    use ast_core::coords::PointSet;
+    use starlink_ast::coords::PointSet;
     let pts = PointSet::from_rows([[1.0, 1.0]]);
     let out1 = m1.transform(&pts, true).unwrap();
     let out2 = m2.transform(&pts, true).unwrap();
@@ -996,7 +996,7 @@ fn write_spectral_round_trip() {
     fc2.rewind();
     let obj2 = fc2.read().unwrap().unwrap();
 
-    use ast_core::coords::PointSet;
+    use starlink_ast::coords::PointSet;
     let m1 = obj1.as_mapping().unwrap();
     let m2 = obj2.as_mapping().unwrap();
 
@@ -1017,7 +1017,7 @@ fn write_spectral_round_trip() {
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_fitschan_wcs_write`
+Run: `cargo test -p starlink-ast --test test_fitschan_wcs_write`
 Expected: all tests pass
 
 - [ ] **Step 5: Commit**
@@ -1028,12 +1028,12 @@ Expected: all tests pass
 
 - [ ] **Step 1: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass (including existing Phase 2 tests)
 
 - [ ] **Step 2: Run clippy and fmt**
 
-Run: `cargo clippy -p ast-core -- -D warnings && cargo fmt --check -p ast-core`
+Run: `cargo clippy -p starlink-ast -- -D warnings && cargo fmt --check -p starlink-ast`
 Expected: clean
 
 - [ ] **Step 3: Commit if any fixes were needed**
@@ -1043,7 +1043,7 @@ Expected: clean
 ## Verification Checklist
 
 1. `cargo build --workspace` — compiles
-2. `cargo test -p ast-core` — all tests pass (Phase 2 + Phase 3)
+2. `cargo test -p starlink-ast` — all tests pass (Phase 2 + Phase 3)
 3. FitsChan with FitsWcs encoding can write a FrameSet to FITS cards
 4. Written cards contain CRPIX, CRVAL, CTYPE, CD/CDELT+PC keywords
 5. Celestial FrameSets produce correct RADESYS and projection codes

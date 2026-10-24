@@ -14,23 +14,23 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/frames/mod.rs` | Frame trait + DynFrame + re-exports |
-| `crates/ast-core/src/frames/basic.rs` | BasicFrame + BasicFrameBuilder |
-| `crates/ast-core/src/frames/cmpframe.rs` | CmpFrame |
-| `crates/ast-core/tests/test_basicframe.rs` | BasicFrame tests (equiv. to testframe.c) |
-| `crates/ast-core/tests/test_cmpframe.rs` | CmpFrame tests (equiv. to testcmpframe.c) |
+| `crates/starlink-ast/src/frames/mod.rs` | Frame trait + DynFrame + re-exports |
+| `crates/starlink-ast/src/frames/basic.rs` | BasicFrame + BasicFrameBuilder |
+| `crates/starlink-ast/src/frames/cmpframe.rs` | CmpFrame |
+| `crates/starlink-ast/tests/test_basicframe.rs` | BasicFrame tests (equiv. to testframe.c) |
+| `crates/starlink-ast/tests/test_cmpframe.rs` | CmpFrame tests (equiv. to testcmpframe.c) |
 
 ---
 
 ### Task 1: BasicFrame Structure and Builder
 
 **Files:**
-- Create: `crates/ast-core/src/frames/basic.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs`
+- Create: `crates/starlink-ast/src/frames/basic.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
 
 - [ ] **Step 1: Create basic.rs with struct and builder**
 
-Create `crates/ast-core/src/frames/basic.rs`:
+Create `crates/starlink-ast/src/frames/basic.rs`:
 
 ```rust
 //! Generic N-axis Cartesian coordinate frame.
@@ -546,7 +546,7 @@ impl Frame for BasicFrame {
 
 - [ ] **Step 2: Update frames/mod.rs**
 
-Replace `crates/ast-core/src/frames/mod.rs`:
+Replace `crates/starlink-ast/src/frames/mod.rs`:
 
 ```rust
 //! The Frame trait and associated types.
@@ -601,13 +601,13 @@ pub trait Frame: Send {
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/
+git add crates/starlink-ast/src/frames/
 git commit -m "Add BasicFrame with per-axis attributes and Euclidean geometry"
 ```
 
@@ -616,19 +616,19 @@ git commit -m "Add BasicFrame with per-axis attributes and Euclidean geometry"
 ### Task 2: BasicFrame Tests
 
 **Files:**
-- Create: `crates/ast-core/tests/test_basicframe.rs`
+- Create: `crates/starlink-ast/tests/test_basicframe.rs`
 
 - [ ] **Step 1: Write BasicFrame tests**
 
-Create `crates/ast-core/tests/test_basicframe.rs`:
+Create `crates/starlink-ast/tests/test_basicframe.rs`:
 
 ```rust
 //! Rust equivalent of reference/starlink-ast/ast_tester/testframe.c
 //! Covers: construction, per-axis attributes, Euclidean geometry, format/unformat.
 
-use ast_core::constants::BAD_VALUE;
-use ast_core::frames::{BasicFrame, Frame};
-use ast_core::mappings::Mapping;
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::frames::{BasicFrame, Frame};
+use starlink_ast::mappings::Mapping;
 
 #[test]
 fn builder_basic() {
@@ -847,13 +847,13 @@ fn bottom_top_defaults() {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_basicframe`
+Run: `cargo test -p starlink-ast --test test_basicframe`
 Expected: all tests pass
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_basicframe.rs
+git add crates/starlink-ast/tests/test_basicframe.rs
 git commit -m "Add BasicFrame tests (equivalent to testframe.c)"
 ```
 
@@ -862,12 +862,12 @@ git commit -m "Add BasicFrame tests (equivalent to testframe.c)"
 ### Task 3: CmpFrame
 
 **Files:**
-- Create: `crates/ast-core/src/frames/cmpframe.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs`
+- Create: `crates/starlink-ast/src/frames/cmpframe.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
 
 - [ ] **Step 1: Create cmpframe.rs**
 
-Create `crates/ast-core/src/frames/cmpframe.rs`:
+Create `crates/starlink-ast/src/frames/cmpframe.rs`:
 
 ```rust
 //! Compound frame combining two child frames.
@@ -1041,13 +1041,13 @@ pub use cmpframe::CmpFrame;
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/
+git add crates/starlink-ast/src/frames/
 git commit -m "Add CmpFrame (compound frame with two children)"
 ```
 
@@ -1056,18 +1056,18 @@ git commit -m "Add CmpFrame (compound frame with two children)"
 ### Task 4: CmpFrame Tests
 
 **Files:**
-- Create: `crates/ast-core/tests/test_cmpframe.rs`
+- Create: `crates/starlink-ast/tests/test_cmpframe.rs`
 
 - [ ] **Step 1: Write CmpFrame tests**
 
-Create `crates/ast-core/tests/test_cmpframe.rs`:
+Create `crates/starlink-ast/tests/test_cmpframe.rs`:
 
 ```rust
 //! Rust equivalent of reference/starlink-ast/ast_tester/testcmpframe.c
 //! Covers: axis concatenation, routing, geometry, format/unformat delegation.
 
-use ast_core::constants::BAD_VALUE;
-use ast_core::frames::{BasicFrame, CmpFrame, Frame};
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::frames::{BasicFrame, CmpFrame, Frame};
 
 fn make_2d_frame(label1: &str, label2: &str) -> Box<dyn Frame> {
     let mut f = BasicFrame::builder(2).build().unwrap();
@@ -1189,13 +1189,13 @@ fn cmpframe_angle() {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_cmpframe`
+Run: `cargo test -p starlink-ast --test test_cmpframe`
 Expected: all tests pass
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_cmpframe.rs
+git add crates/starlink-ast/tests/test_cmpframe.rs
 git commit -m "Add CmpFrame tests (equivalent to testcmpframe.c)"
 ```
 
@@ -1218,7 +1218,7 @@ If issues, run `cargo fmt --all`.
 
 - [ ] **Step 3: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 - [ ] **Step 4: Commit fixes if any**
@@ -1235,7 +1235,7 @@ git commit -m "Fix clippy and fmt issues in frame implementations"
 After all tasks are complete:
 
 1. `cargo build --workspace` — all crates compile
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. `cargo fmt --all -- --check` — clean
 5. `BasicFrame::builder(n).build()` works

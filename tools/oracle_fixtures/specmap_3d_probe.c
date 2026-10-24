@@ -4,9 +4,9 @@
  * forward and inverse transformations of points that include bad values;
  * the last cases are the dumps of what astSimplify makes of SpecMap runs.
  *
- * Prints Rust source for crates/ast-core/tests/specmap_3d_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/specmap_3d_oracle/cases.rs:
  *
- *   ./specmap_3d_probe > ../../crates/ast-core/tests/specmap_3d_oracle/cases.rs
+ *   ./specmap_3d_probe > ../../crates/starlink-ast/tests/specmap_3d_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

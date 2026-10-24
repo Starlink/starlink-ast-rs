@@ -26,7 +26,7 @@ configuration attributes.
 ## Module Structure
 
 ```
-crates/ast-core/src/channel/
+crates/starlink-ast/src/channel/
 ├── mod.rs          # Channel trait, ChannelConfig, Source/Sink traits
 ├── native.rs       # NativeChannel implementation
 ├── source_sink.rs  # StringSource, StringSink, FileSource, FileSink

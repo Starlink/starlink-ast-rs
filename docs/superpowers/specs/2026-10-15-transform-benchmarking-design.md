@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-15
 **Status:** draft for review
-**Supersedes:** the hand-run sweep in `crates/ast-core/examples/bench_per_class.rs` and `crates/ast-core/tests/bench_per_class_c.c`, and the placeholder `ast-oracle-bench` crate.
+**Supersedes:** the hand-run sweep in `crates/starlink-ast/examples/bench_per_class.rs` and `crates/starlink-ast/tests/bench_per_class_c.c`, and the placeholder `ast-oracle-bench` crate.
 
 ## Purpose
 
@@ -48,11 +48,11 @@ A compiler fusing `sin` and `cos` into `sincos` is a timing matter, visible in P
 
 ### Rust side
 
-- A `call-counts` cargo feature on `ast-core`.
-- PAL and ERFA calls are counted at the single boundary in `crates/ast-core/src/pal.rs`, and wcslib calls in `crates/ast-core/src/wcslib.rs`: one counting wrapper per function.
+- A `call-counts` cargo feature on `starlink-ast`.
+- PAL and ERFA calls are counted at the single boundary in `crates/starlink-ast/src/pal.rs`, and wcslib calls in `crates/starlink-ast/src/wcslib.rs`: one counting wrapper per function.
 - A new internal `math` module provides `sin`, `cos`, and the rest of the list above.
   Each is an `#[inline(always)]` pass-through, incrementing a thread-local counter only under `call-counts`.
-- `clippy.toml` gains `disallowed-methods` entries for the corresponding `f64` methods, so new code in `ast-core` cannot bypass the counters.
+- `clippy.toml` gains `disallowed-methods` entries for the corresponding `f64` methods, so new code in `starlink-ast` cannot bypass the counters.
   The existing ~190 call sites are converted once, mechanically.
 - Without the feature the wrappers compile to the bare call, so normal builds pay nothing.
 
@@ -83,10 +83,10 @@ Criterion's saved baselines are not aware of machine fingerprints, it cannot int
 ### Engines
 
 - **Rust** is always present.
-  The harness core depends only on fixtures and oracles committed in this repository (`crates/ast-core/tests/fixtures/` and `crates/ast-bench/fixtures/`), so it builds and runs without the submodule.
+  The harness core depends only on fixtures and oracles committed in this repository (`crates/starlink-ast/tests/fixtures/` and `crates/ast-bench/fixtures/`), so it builds and runs without the submodule.
 - **C** sits behind a `c-oracle` cargo feature and is selected with `--engine rust|c|both`.
   `tools/perf/build_c_bench_lib.sh` builds libast from the submodule as a shared library with pinned flags (`-O3 -ffp-contract=off`) into `target/perf/c/`.
-  The harness loads it at runtime with `libloading`, in its own namespace, so its PAL and ERFA symbols cannot clash with the copies compiled into `ast-core`.
+  The harness loads it at runtime with `libloading`, in its own namespace, so its PAL and ERFA symbols cannot clash with the copies compiled into `starlink-ast`.
   The FFI surface is the handful of calls the harness needs: `astFromString` or an equivalent `astChannel` read, `astTranN`, `astGetI`, `astAnnul`, status handling.
   The loader is a library module of `ast-bench` behind `c-oracle`; Phase 0's test in `ast-oracle-tests` uses the same module to load the counting build, so there is one way of reaching C.
 
@@ -130,7 +130,7 @@ The existing single-Mapping fixtures were chosen to exercise the simplifier, and
 - About 25 `.map` files, one per Mapping class, in `crates/ast-bench/fixtures/`.
   Each is the simplest *realistic* instance: a 2-D ZoomMap, a TAN WcsMap, a degree-3 PolyMap with an inverse, a 3×3 MatrixMap, and so on.
 - They are not added to `ast_tester` now; that is a later, separate C pull request.
-  They cannot live under `crates/ast-core/tests/fixtures/`, because `tools/fixtures/check_mirror.sh` requires that tree to equal `ast_tester/fixtures` exactly.
+  They cannot live under `crates/starlink-ast/tests/fixtures/`, because `tools/fixtures/check_mirror.sh` requires that tree to equal `ast_tester/fixtures` exactly.
 - `tools/perf/gen_bench_fixtures.c`, built against the submodule's libast, writes the fixtures, so they are C's own dumps.
   The same program writes `crates/ast-bench/fixtures/bench.oracle` in `gen_transform_oracle`'s format, using its helpers from `transform_oracle_util.c` (`oracle_sample_points`, `oracle_format_double`), so C chooses the points and records the outputs.
   It cannot simply run `gen_transform_oracle`, which samples every Native dump over [-1000, 1000]: a TimeMap needs MJDs, a LutMap its table range, a WcsMap small angles.
@@ -207,7 +207,7 @@ A case it flags joins a curated set with its reason.
 - Optimizations, each its own change: the prototype's faster PolyMap (`../starlink-astrs-proto`), the `PointSet` row-major layout hypothesis in `PLAN.md`, moving BAD checks out of inner loops by substituting NaN internally.
 - Counting trig called directly in non-vendored code at a finer grain (per call site, via `tracing`), if Phase 0 shows a mismatch the per-function totals cannot place.
 - Modern wcslib's vectorized projection routines, compared with the 20-year-old vendored copy.
-- SIMD on both sides, once the C library's SIMD work (https://github.com/Starlink/ast/pull/51) lands: build a C engine from it and compare with `ast-bench run --engine both`; `examples/bench_polymap_simd.rs` and `ast-core`'s `simd-eval` feature are kept for this.
+- SIMD on both sides, once the C library's SIMD work (https://github.com/Starlink/ast/pull/51) lands: build a C engine from it and compare with `ast-bench run --engine both`; `examples/bench_polymap_simd.rs` and `starlink-ast`'s `simd-eval` feature are kept for this.
 - A `linux-x86_64` snapshot.
 - `compare --base` as a pull-request CI job, once Rust has reached parity; running both builds in one job makes it usable on noisy shared runners.
 - Backporting `compare --base` to the C library, so C gets the same regression gate.

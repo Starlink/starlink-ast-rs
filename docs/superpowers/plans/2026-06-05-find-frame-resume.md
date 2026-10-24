@@ -50,7 +50,7 @@ Each commit is a focused, self-contained port. Tests added per class.
 ### Task 8 — CmpFrame::Match + SubFrame (Overlay + helpers landed)
 
 **Landed already (2026-06-05):**
-- `apply_template_overlay()` dispatcher in `crates/ast-core/src/frames/find_frame.rs` — single template-side polymorphism point. CmpFrame templates route through C's `CmpFrame::Overlay` algorithm; everything else falls through to `result.overlay_template()`. `default_sub_frame()` now uses this dispatcher, so SkyFrame/SpecFrame/BasicFrame results inherit attributes from CmpFrame templates correctly.
+- `apply_template_overlay()` dispatcher in `crates/starlink-ast/src/frames/find_frame.rs` — single template-side polymorphism point. CmpFrame templates route through C's `CmpFrame::Overlay` algorithm; everything else falls through to `result.overlay_template()`. `default_sub_frame()` now uses this dispatcher, so SkyFrame/SpecFrame/BasicFrame results inherit attributes from CmpFrame templates correctly.
 - `gen_axis_selection()`, `add_extra_axes()`, `renumber_axes()`, `good_perm()`, `part_match()` — all in `cmpframe.rs` as `pub(crate)` helpers, gated `#[allow(dead_code)]` until `CmpFrame::Match` lands.
 - `CmpFrame::perm()` public accessor (mirrors `astGetPerm`).
 - 16 cmpframe tests (overlay + helpers + 2 part_match smoke tests).
@@ -96,7 +96,7 @@ Each commit is a focused, self-contained port. Tests added per class.
 3. **Then port `Match`** — its body is mostly orchestration over the helpers, plus the Permute-axis-monotonicity check.
 4. **Then `SubFrame`** — similar shape to Match's case branches but builds a Mapping + result Frame.
 5. **Then `Overlay`** — straightforward two-path implementation.
-6. **Tests** at the end of `crates/ast-core/src/frames/cmpframe.rs::mod tests`:
+6. **Tests** at the end of `crates/starlink-ast/src/frames/cmpframe.rs::mod tests`:
    - `cmpframe_overlay_template_copies_domain`
    - `cmpframe_sub_frame_identity` (target_axes = [0..n-1] → UnitMap)
    - `cmpframe_match_against_cmpframe_template` (CmpFrame ↔ CmpFrame parallel match)
@@ -104,11 +104,11 @@ Each commit is a focused, self-contained port. Tests added per class.
    - `cmpframe_match_with_default_max_axes_fails` (same target, default MaxAxes=2 → None).
 7. **Important note:** the parent agent killed two CmpFrame subagents earlier in this thread because they stalled in research. **Do this inline, not via subagent.** Subagents on tasks this large stall before writing code.
 
-**File scope for Task 8:** `crates/ast-core/src/frames/cmpframe.rs` only. Helpers stay private to that file.
+**File scope for Task 8:** `crates/starlink-ast/src/frames/cmpframe.rs` only. Helpers stay private to that file.
 
 **An important Rust-vs-C detail:** the existing Rust `CmpFrame` has a `perm: Vec<usize>` field that tracks an external→internal axis permutation, set non-trivially by `perm_axes`. The C port stores this via `astGetPerm`. The Match/SubFrame logic must respect this — see how `route_axis(axis)` (at line 119 in cmpframe.rs) maps external 1-based axis to internal child + local axis.
 
-**Helpers needed from FrameSet:** `mapping_base_to_current()` does **not** exist on FrameSet today; it has `mapping(FrameRef::Base, FrameRef::Current)` or similar. Check `crates/ast-core/src/frames/frameset.rs` for the available mapping-extraction API before depending on a method name. The `find_frame_template` override below assumed `mapping_base_to_current()` — that was a my-mistake; use whatever the actual API is.
+**Helpers needed from FrameSet:** `mapping_base_to_current()` does **not** exist on FrameSet today; it has `mapping(FrameRef::Base, FrameRef::Current)` or similar. Check `crates/starlink-ast/src/frames/frameset.rs` for the available mapping-extraction API before depending on a method name. The `find_frame_template` override below assumed `mapping_base_to_current()` — that was a my-mistake; use whatever the actual API is.
 
 **Override `CmpFrame::find_frame_template`** (probably the simplest route to making `template = SkyFrame, target = CmpFrame` work even before full PartMatch lands): walk components and call `template.find_frame_template(component, domainlist)` for each, prefixing the component's base→full PermMap. This is **not what C does** structurally (C has the full PartMatch path inside SkyFrame::Match via astPrimaryFrame), but it gives the same answer for typical fixtures and unblocks Task 11. Document it as an interim shortcut with a TODO referencing skyframe.c:6759-6803 / specframe.c:3143-3155 for the proper fix.
 
@@ -116,7 +116,7 @@ Each commit is a focused, self-contained port. Tests added per class.
 
 **C source:** `reference/starlink-ast/src/fluxframe.c` — search for `static int Match`, `static int SubFrame`, `static void Overlay`. FluxFrame is 1-axis; structure mirrors SpecFrame's.
 
-**Approach:** Look at `crates/ast-core/src/frames/fluxframe.rs` for existing storage. Add `*_set` flags + `test_*` accessors for any Flux-specific attributes (System, AlignSystem, RefValue, etc.) following the SpecFrame template (commit `4edf007`). Wire `match_template`, `sub_frame`, `overlay_template`, `pick_axes_snapshot` through the existing `convert()` infrastructure.
+**Approach:** Look at `crates/starlink-ast/src/frames/fluxframe.rs` for existing storage. Add `*_set` flags + `test_*` accessors for any Flux-specific attributes (System, AlignSystem, RefValue, etc.) following the SpecFrame template (commit `4edf007`). Wire `match_template`, `sub_frame`, `overlay_template`, `pick_axes_snapshot` through the existing `convert()` infrastructure.
 
 ### Task 9b — SpecFluxFrame::Match + SubFrame + Overlay
 
@@ -175,13 +175,13 @@ fn find_frame_template(&self, template: &dyn Frame, domainlist: &str)
 
 **C source:** `reference/starlink-ast/ast_tester/testconvert.c` (237 lines, 51 numbered error assertions).
 
-**Output:** `crates/ast-core/tests/test_convert_findframe.rs`. Mirror each `astError(AST__INTER, "Error N\n")` site with a Rust `assert!(...)` that names the same error number in its message.
+**Output:** `crates/starlink-ast/tests/test_convert_findframe.rs`. Mirror each `astError(AST__INTER, "Error N\n")` site with a Rust `assert!(...)` that names the same error number in its message.
 
 The test will fail many assertions until Tasks 8 and 10 land — mark `#[ignore]` initially, remove the ignore once enough of the surface works.
 
 ### Task 11 — Wire find_frame into FITS-CLASS encoder
 
-**Files:** `crates/ast-core/src/fitschan/wcs_write/mod.rs` (add `encode_class` entry), `crates/ast-core/src/fitschan/enc_class.rs` (port `CLASSFromStore`), `crates/ast-core/src/fitschan/mod.rs` (switch FitsClass dispatch).
+**Files:** `crates/starlink-ast/src/fitschan/wcs_write/mod.rs` (add `encode_class` entry), `crates/starlink-ast/src/fitschan/enc_class.rs` (port `CLASSFromStore`), `crates/starlink-ast/src/fitschan/mod.rs` (switch FitsClass dispatch).
 
 **C source:** `reference/starlink-ast/src/fitschan.c:6411-7394` (~975 lines; full `CLASSFromStore`). Three sub-tasks per the original plan: spatial-axis adjust, spectral CRVAL conversion via SpecFrame, AZIMUTH/ELEVATIO via SkyFrame Az/El.
 
@@ -212,12 +212,12 @@ less /tmp/cmpframe_subframe.c
 less /tmp/cmpframe_overlay.c
 
 # Existing Rust:
-less crates/ast-core/src/frames/cmpframe.rs
+less crates/starlink-ast/src/frames/cmpframe.rs
 
 # Sanity check baselines:
-cargo test -p ast-core --lib 2>&1 | tail -3
-cargo test -p ast-core --test test_find_frame 2>&1 | tail -3
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --lib 2>&1 | tail -3
+cargo test -p starlink-ast --test test_find_frame 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 
 After each substantive code change, run the full test triple plus `cargo clippy --workspace -- -D warnings` and `cargo fmt`. Commit per discrete fix.

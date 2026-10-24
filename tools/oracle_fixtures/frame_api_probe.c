@@ -8,9 +8,9 @@
  * astCurrentTime reads the clock, so the probe records the second it read,
  * repeating the calls until the clock did not tick during them.
  *
- * Prints Rust source for crates/ast-core/tests/frame_api_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/frame_api_oracle/cases.rs:
  *
- *   ./frame_api_probe > ../../crates/ast-core/tests/frame_api_oracle/cases.rs
+ *   ./frame_api_probe > ../../crates/starlink-ast/tests/frame_api_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

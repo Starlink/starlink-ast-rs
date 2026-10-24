@@ -6,14 +6,14 @@
 
 **Architecture:** The seam structure is already C's after `84cd3ba..25a5094`: `<dyn Mapping>::simplify` is `astSimplify_`, `Mapping::simplified` is the `Simplify` vtab slot with one possible caller enforced by a capability token, and `Mapping::map_merge` is `MapMerge`. What remains is arithmetic inside those seams — two substitutes for C's identity test, a depth cap and a structural hash where C compares with `astEqual`, a swap hung off the wrong nominee, three unported per-class bodies, two unported guards, one missing gate, one dead rewrite, and a convention applied nowhere.
 
-**Tech Stack:** Rust 2024 (`ast-core`), C99 (`reference/starlink-ast` at pin `07fbe2dc`, built with cmake), the `tracing` feature for the port-side simplify trace, `tools/oracle_fixtures/build_simplify_trace.sh` for C's.
+**Tech Stack:** Rust 2024 (`starlink-ast`), C99 (`reference/starlink-ast` at pin `07fbe2dc`, built with cmake), the `tracing` feature for the port-side simplify trace, `tools/oracle_fixtures/build_simplify_trace.sh` for C's.
 
 **Spec:** [`docs/superpowers/specs/2026-08-24-simplify-parity-closeout-design.md`](../specs/2026-08-24-simplify-parity-closeout-design.md)
 
 ## Global Constraints
 
-- The oracle is `reference/starlink-ast` at pin `07fbe2dc`, built with cmake. Never reach into it from `ast-core`'s `build.rs`.
-- **Never hand-edit a `.simp` or `.map` reference.** Every fixture comes from `ast_tester/gen_simplify_fixtures.c` built against the pinned C, copied into both `reference/starlink-ast/ast_tester/simplify_fixtures/` and `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/` so the trees stay byte-identical. There is no exception: even Task 9's `ReSimp`/`AlSimp` fixture is generated, by defining `astCLASS` in the generator so the protected flag macros (`mapping.h:469-481`, inside the `#if defined(astCLASS)` block at `:415`) become reachable — the recipe in `docs/issues/c-oracle-probe-recipe.md`.
+- The oracle is `reference/starlink-ast` at pin `07fbe2dc`, built with cmake. Never reach into it from `starlink-ast`'s `build.rs`.
+- **Never hand-edit a `.simp` or `.map` reference.** Every fixture comes from `ast_tester/gen_simplify_fixtures.c` built against the pinned C, copied into both `reference/starlink-ast/ast_tester/simplify_fixtures/` and `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/` so the trees stay byte-identical. There is no exception: even Task 9's `ReSimp`/`AlSimp` fixture is generated, by defining `astCLASS` in the generator so the protected flag macros (`mapping.h:469-481`, inside the `#if defined(astCLASS)` block at `:415`) become reachable — the recipe in `docs/issues/c-oracle-probe-recipe.md`.
 - `cargo fmt` is enforced; `cargo clippy --workspace -- -D warnings` and `cargo doc` are pre-commit hooks. Every task ends green on all three. A public doc comment may not link to a private item.
 - Clippy needs the isolated target dir or the hook fails with `E0514`:
   ```bash
@@ -24,8 +24,8 @@
 - Comments describe the code as it is today. No references to plans, history, or previous mistakes.
 - **No tolerance, threshold or iteration count without an analogue in the C source.** Two tasks here exist to delete one; neither may introduce another.
 - Never loosen a negative-control fixture to make a positive case pass. Two or three broken in a row means the rule being added is not C's rule.
-- **`ISSIMP_DISAGREEMENTS`, `ISSIMP_PLACEMENT_LICENSED` and `SERIAL_UNGATED` in `crates/ast-core/tests/test_simplify_regression.rs` are this work's audit trail.** Every movement in any of them is explained in the commit that causes it. Do not relax any of them.
-- Every relaxation count is mirrored in `crates/ast-core/tests/test_verification_ledger.rs` and `PLAN.md` §6, updated together.
+- **`ISSIMP_DISAGREEMENTS`, `ISSIMP_PLACEMENT_LICENSED` and `SERIAL_UNGATED` in `crates/starlink-ast/tests/test_simplify_regression.rs` are this work's audit trail.** Every movement in any of them is explained in the commit that causes it. Do not relax any of them.
+- Every relaxation count is mirrored in `crates/starlink-ast/tests/test_verification_ledger.rs` and `PLAN.md` §6, updated together.
 - **Every task that closes a gap re-verdicts its audit rows in the same commit.** `test_mapmerge_audit` fails if a `gap:` verdict names a PLAN.md section that no longer exists, so a closure that edits `PLAN.md` without editing `docs/audits/mapmerge/` either breaks the gate or leaves the record claiming work that is done.
 - Commit with `git commit --fixup` when amending earlier work in this plan.
 
@@ -47,7 +47,7 @@ Task 8 sits between the waves deliberately. Task 3 needs a changed-flag out of `
 ## File Structure
 
 ```
-crates/ast-core/
+crates/starlink-ast/
 ├── src/mappings/
 │   ├── simplify.rs          # Tasks 3, 4, 5, 9 — the driver
 │   ├── simplify_entry.rs    # Tasks 1, 8, 10 — the gate
@@ -79,7 +79,7 @@ reference/starlink-ast/ast_tester/gen_simplify_fixtures.c   # Tasks 4-7, 9-12
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 D=${TMPDIR:-/tmp}/ast-trace3
-FIX=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_specmap_02.map
+FIX=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_specmap_02.map
 AST_TRACE=1 $D/gen_simp $FIX /dev/null 2> /tmp/c.txt
 cargo run -q --features tracing --example simp_one -- $FIX 2>&1 >/dev/null \
   | sed 's/\x1b\[[0-9;]*m//g' > /tmp/p.txt
@@ -97,9 +97,9 @@ Build the C side once with `tools/oracle_fixtures/build_simplify_trace.sh`. C's 
 `astSimplify_` adds no algorithm to the slot it dispatches to. The port's entry adds two tree rewrites, and one of them is measured dead.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify_entry.rs`
-- Modify: `crates/ast-core/src/mappings/simplify.rs` (drop `PublicSimplifyGuard` if it has no other user)
-- Modify: `crates/ast-core/src/mappings/cmpmap.rs` (drop `narrow_unit_scale_winmap_children` if it has no other caller)
+- Modify: `crates/starlink-ast/src/mappings/simplify_entry.rs`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs` (drop `PublicSimplifyGuard` if it has no other user)
+- Modify: `crates/starlink-ast/src/mappings/cmpmap.rs` (drop `narrow_unit_scale_winmap_children` if it has no other caller)
 - Modify: `PLAN.md` §10.22
 
 **Interfaces:**
@@ -110,8 +110,8 @@ Build the C side once with `tools/oracle_fixtures/build_simplify_trace.sh`. C's 
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-rg -n 'narrow_unit_scale_winmap_children' crates/ast-core
-rg -n 'is_outermost|PublicSimplifyGuard|PUBLIC_SIMPLIFY_DEPTH' crates/ast-core
+rg -n 'narrow_unit_scale_winmap_children' crates/starlink-ast
+rg -n 'is_outermost|PublicSimplifyGuard|PUBLIC_SIMPLIFY_DEPTH' crates/starlink-ast
 ```
 
 Expected: the narrowing is defined in `cmpmap.rs` and called once, in `simplify_entry.rs`. If `is_outermost()` has a second reader, it stays and only the call goes; say which reader in the commit.
@@ -119,9 +119,9 @@ Expected: the narrowing is defined in `cmpmap.rs` and called once, in `simplify_
 - [ ] **Step 2: Record the baseline**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 
 Expected: `0`, the 453-fixture line with no failures, `194 passed`.
@@ -155,9 +155,9 @@ Re-run step 2's three commands. Expected: identical. If anything moved, the call
 Mark §10.22's second bullet closed with what step 5 measured, and leave the first bullet — `normalize_unitmap_children` stays, and §10.22 stays open for it.
 
 ```bash
-cargo clippy -p ast-core --all-targets -- -D warnings
-cargo clippy -p ast-core --all-targets --features tracing -- -D warnings
-git add crates/ast-core PLAN.md
+cargo clippy -p starlink-ast --all-targets -- -D warnings
+cargo clippy -p starlink-ast --all-targets --features tracing -- -D warnings
+git add crates/starlink-ast PLAN.md
 git commit -m "simplify: drop the entry-point WinMap narrowing
 
 astSimplify_ short-circuits on the IsSimple bit, calls the per-class slot and
@@ -176,7 +176,7 @@ Expected: `0` failures, `194 passed`.
 ## Task 2: Fix the unbounded-axis guard in the default uncertainty
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/mod.rs`
+- Modify: `crates/starlink-ast/src/regions/mod.rs`
 - Modify: `docs/audits/mapmerge/region_mod.md`, `PLAN.md` §10.12
 
 **Interfaces:**
@@ -187,8 +187,8 @@ Expected: `0` failures, `194 passed`.
 
 ```bash
 sed -n '3556,3576p' reference/starlink-ast/src/region.c
-rg -n 'fn default_bounding_box_unc' -A 24 crates/ast-core/src/regions/mod.rs
-rg -n 'f64::MAX' crates/ast-core/src/regions/interval.rs | head -8
+rg -n 'fn default_bounding_box_unc' -A 24 crates/starlink-ast/src/regions/mod.rs
+rg -n 'f64::MAX' crates/starlink-ast/src/regions/interval.rs | head -8
 ```
 
 C zeroes both bounds on any axis whose bound is `±DBL_MAX` (`region.c:3564`). The port tests `!is_bad(ubnd[i]) && !is_bad(lbnd[i])`, and `is_bad` is `v == BAD_VALUE || !v.is_finite()`. `BAD_VALUE` is `-f64::MAX`, so an unbounded *lower* bound is caught by accident and an unbounded *upper* bound — finite, not `BAD_VALUE` — is not. `interval.rs:160-163` already has the right test: `lbnd[i].abs() == f64::MAX`.
@@ -210,7 +210,7 @@ Build a Region whose `reg_base_box2` reports `lbnd = [0.0]`, `ubnd = [f64::MAX]`
 
 - [ ] **Step 3: Run to verify it fails**
 
-Run: `cargo test -p ast-core --lib unbounded_above -- --nocapture`
+Run: `cargo test -p starlink-ast --lib unbounded_above -- --nocapture`
 Expected: FAIL, with a half-width around `9.0e301`.
 
 - [ ] **Step 4: Fix the guard**
@@ -228,9 +228,9 @@ Keep whatever `is_bad` handling the surrounding code needs for genuinely bad val
 - [ ] **Step 5: Verify, re-verdict, commit**
 
 ```bash
-cargo test -p ast-core --lib unbounded_above
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --lib unbounded_above
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 
 Expected: PASS, `0`, `194 passed`. The corpus should not move: every Region that can be unbounded overrides `get_def_unc`, which is why this was latent.
@@ -238,7 +238,7 @@ Expected: PASS, `0`, `194 passed`. The corpus should not move: every Region that
 Change `region_mod.md` row 33 from `gap: PLAN.md §10.12` to `ported` with the `regions/mod.rs` site, and mark §10.12 FIXED.
 
 ```bash
-git add crates/ast-core docs PLAN.md
+git add crates/starlink-ast docs PLAN.md
 git commit -m "regions: zero the default uncertainty on an axis unbounded above
 
 C zeroes both bounds of the default uncertainty Box on any axis whose bound is
@@ -254,8 +254,8 @@ branch and got a half-width of 9e301."
 C's parallel-CmpMaps-in-series branch simplifies in exactly one place and decides whether the restructure was worth anything with a two-term identity test. The port simplifies in three places and decides with a leaf-count threshold. **Both substitutes come out in the same commit** — measured separately they trade one gap for another.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs`
-- Modify: `crates/ast-core/tests/test_simplify_regression.rs`, `test_verification_ledger.rs`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs`
+- Modify: `crates/starlink-ast/tests/test_simplify_regression.rs`, `test_verification_ledger.rs`
 - Modify: `docs/audits/mapmerge/cmpmap.md`, `PLAN.md` §6 and §10.3
 
 **Interfaces:**
@@ -281,10 +281,10 @@ C's ordering here was wrong until upstream `4f2fc0ed` — the annul preceded the
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 for f in cap_specmap_02 cap_cmpmap_01 cap_cmpmap_04 cmpmap_parallel_series_dim_mismatch rigby; do
-  R=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/$f.simp
+  R=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/$f.simp
   printf "%-40s C_IsSimp=%s\n" "$f" "$(grep -c 'IsSimp' $R 2>/dev/null)"
 done
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
 ```
 
 Write the five counts down. They are the whole verification for this task: the target must reach C's count and the other four must not leave theirs.
@@ -341,7 +341,7 @@ Take `changed` from `simplify_mapping_reporting_change(series_box.as_ref())` at 
 Delete `pre_len` and whatever computes it if nothing else reads it. **`pre_len` is the stop-signal-1 constant this task exists to remove** — grep for any other use before deleting:
 
 ```bash
-rg -n 'pre_len' crates/ast-core/src/mappings/simplify.rs
+rg -n 'pre_len' crates/starlink-ast/src/mappings/simplify.rs
 ```
 
 - [ ] **Step 5: Delete the per-member simplify**
@@ -363,7 +363,7 @@ Note what goes with them: `unwrap_or_else(|_| Box::new(UnitMap::new(1)))` was sw
 - [ ] **Step 6: Run the five fixtures**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 \
   | grep -E "^Simplify regression|equal\(\)|left:|right:"
 ```
 
@@ -390,7 +390,7 @@ Run the measurement recipe. Expected direction: the port's 153 falls toward C's 
 Delete `cap_specmap_02` from `ISSIMP_PLACEMENT_LICENSED` in `test_simplify_regression.rs`, which empties the array. Delete it from `ISSIMP_DISAGREEMENTS` if it is there too. Then:
 
 ```bash
-cargo test -p ast-core --test test_verification_ledger
+cargo test -p starlink-ast --test test_verification_ledger
 ```
 
 Set every count the failure names in `test_verification_ledger.rs` and `PLAN.md` §6 in the same edit. An empty `ISSIMP_PLACEMENT_LICENSED` should read `0` in the ledger, not be deleted — the array staying present with zero entries is what keeps the next license visible.
@@ -398,12 +398,12 @@ Set every count the failure names in `test_verification_ledger.rs` and `PLAN.md`
 - [ ] **Step 9: Full verification, re-verdict, commit**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep "test result"
-cargo test -p ast-core --test test_simplify_seams 2>&1 | grep "test result"
-cargo clippy -p ast-core --all-targets -- -D warnings
-cargo clippy -p ast-core --all-targets --features tracing -- -D warnings
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_simplify_seams 2>&1 | grep "test result"
+cargo clippy -p starlink-ast --all-targets -- -D warnings
+cargo clippy -p starlink-ast --all-targets --features tracing -- -D warnings
 ```
 
 Expected: `0` failures, `194 passed`, and both seam tests green.
@@ -411,7 +411,7 @@ Expected: `0` failures, `194 passed`, and both seam tests green.
 Re-verdict `cmpmap.md` rows 22, 23 and 26 to `ported` with the new sites, and rewrite its "Rows 22, 23 and 26 — two extra simplifications in one branch" prose section to say what the identity test now does. Update `PLAN.md` §10.3 with step 7's numbers and the pin they were taken at; if the counts now agree, mark it FIXED and say so.
 
 ```bash
-git add crates/ast-core PLAN.md docs
+git add crates/starlink-ast PLAN.md docs
 git commit -m "simplify: port C's identity test for the parallel-in-series restructure
 
 C combines each dimension-matched pair with CombineMaps(..., 0, ...) --
@@ -436,9 +436,9 @@ Expected: `0` failures, `194 passed`, `ISSIMP_PLACEMENT_LICENSED` empty.
 Two constants with no C analogue sit in `SimplifyGuard::enter` (`simplify.rs:182`): a recursion-depth cap of ten, and a structural hash standing in for C's `astEqual`. Both decline simplifications C performs — the cap past ten levels, the hash on a collision. `Mapping::equal` (`mappings/mod.rs:336`) is a required trait method, so C's test is available verbatim.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs`
 - Modify: `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`
-- Add: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_deep_nest_zoom.{map,simp}` (generated)
+- Add: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_deep_nest_zoom.{map,simp}` (generated)
 - Modify: `PLAN.md` §10.19, `docs/audits/mapmerge/cmpmap.md`
 
 **Interfaces:**
@@ -482,7 +482,7 @@ Nesting depth is not leaf count: `astCmpMap( acc, z, … )` puts the accumulated
 ```bash
 tools/oracle_fixtures/build_simplify_trace.sh   # rebuilds the generator against the pin
 D=$(ls -d /lscratch/timj/*simplify* 2>/dev/null | head -1)
-$D/gen_simp && grep -c . crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_deep_nest_zoom.simp
+$D/gen_simp && grep -c . crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_deep_nest_zoom.simp
 ```
 
 Confirm the `.simp` is a single `ZoomMap` — if C also returns the nest, this fixture proves nothing and the cap needs a different exposure. Do not proceed to step 3 on a fixture that does not discriminate.
@@ -490,7 +490,7 @@ Confirm the `.simp` is a single `ZoomMap` — if C also returns the nest, this f
 - [ ] **Step 3: Confirm the fixture fails at HEAD**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -A5 cap_deep_nest_zoom
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -A5 cap_deep_nest_zoom
 ```
 
 Expected: a failure, showing the port returning a nest where C returns a ZoomMap. **If it passes at HEAD, the cap is not what limits this case** — instrument `SimplifyGuard::enter` with an `eprintln!` on the refusal path and find out what depth the engine actually reaches before saying anything about the cap.
@@ -541,10 +541,10 @@ Removing the cap means a genuine non-terminating recursion becomes a stack overf
 - [ ] **Step 5: Verify, both directions**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep "test result"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
 ```
 
 Expected: `cap_deep_nest_zoom` green, `194 passed`, `0` suites failing.
@@ -556,7 +556,7 @@ Expected: `cap_deep_nest_zoom` green, `194 passed`, `0` suites failing.
 `equal` on a large CmpMap tree is O(tree) where the hash was O(tree) too, but with no memoization and a `clone_box` per push. The stack is at most the nesting depth, so this is not a hot-path structure — but confirm rather than assume:
 
 ```bash
-cargo run --release --example bench_per_class -p ast-core 2>&1 | tail -30
+cargo run --release --example bench_per_class -p starlink-ast 2>&1 | tail -30
 ```
 
 Compare with `docs/issues/mapping-perf-vs-c-oracle.md` (snapshot 2026-05-19). Simplify is not on the SCUBA-2 per-time-slice path, so a few percent here costs nothing; a factor would mean the clone is landing somewhere unexpected.
@@ -566,7 +566,7 @@ Compare with `docs/issues/mapping-perf-vs-c-oracle.md` (snapshot 2026-05-19). Si
 Rewrite §10.19's first half — the cap and the hash — as FIXED, keeping the description of what they got wrong and naming `cap_deep_nest_zoom` as the fixture that now covers the depth half. Say plainly that the collision half has no fixture: it is closed by construction (the port now runs C's own test) rather than by demonstration. Re-verdict the `cmpmap.md` rows covering the recursion guard to `ported`.
 
 ```bash
-git add crates/ast-core tools PLAN.md docs
+git add crates/starlink-ast tools PLAN.md docs
 git commit -m "simplify: port C's astEqual recursion stack, drop the depth cap
 
 C detects a Mapping already being simplified higher up the stack by comparing
@@ -589,9 +589,9 @@ Closes PLAN.md §10.19's first entry."
 The arithmetic is already C's; the trigger is the opposite element. C runs the swap when the **parallel CmpMap** is nominated and the PermMap is its **lower** neighbor (`cmpmap.c:1826-1841`); `permmap.c` never mentions `CmpMap`. The port runs it when the **PermMap** is nominated and looks at its upper neighbor (`simplify.rs:1136-1148`).
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs`
 - Modify: `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`
-- Add: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_cmpperm_resume.{map,simp}` (generated)
+- Add: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_cmpperm_resume.{map,simp}` (generated)
 - Modify: `PLAN.md` §10.4, `docs/audits/mapmerge/cmpmap.md`, `docs/audits/mapmerge/permmap.md`
 
 **Interfaces:**
@@ -628,7 +628,7 @@ Compose it with `astCmpMap( …, 1, "" )` chained in series, the inner parallel 
 
 ```bash
 $D/gen_simp
-cat crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_cmpperm_resume.simp
+cat crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_cmpperm_resume.simp
 ```
 
 Read the `.simp`. **If C's output is a single Mapping with no PermMap left, the fixture does not discriminate** — both resume orders converge. Vary the axis permutation so one merge is possible and the other is not, and regenerate. Note in the commit which variant discriminated; a fixture that cannot fail is the H10 hazard.
@@ -636,7 +636,7 @@ Read the `.simp`. **If C's output is a single Mapping with no PermMap left, the 
 - [ ] **Step 3: Confirm the current failure, and its shape**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -A20 cap_cmpperm_resume
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -A20 cap_cmpperm_resume
 ```
 
 Record whether the port differs in the Mapping or only in the `IsSimp` cards. Both count — §10.4's prediction is that the difference is structural, not numeric, so an `astEqual`-equal tree with different cards is exactly the expected failure and must not be waved through.
@@ -674,9 +674,9 @@ Drop the `is::<PermMap>() == false` line — it is implied by the CmpMap downcas
 - [ ] **Step 5: Verify**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 
 Expected: `cap_cmpperm_resume` green and nothing else moved — every existing `[PermMap, parallel CmpMap]` fixture is reached from either side, so they should be indifferent to this change. **A fixture that regresses here means it was depending on the port's resume point**, which is the H2 hazard surfacing exactly where §10.4 predicted; diff its trace against C rather than restoring the old trigger.
@@ -686,7 +686,7 @@ Expected: `cap_cmpperm_resume` green and nothing else moved — every existing `
 `cmpmap.md`'s swap rows move to `ported` citing `simplify.rs`'s new site; `permmap.md`'s rows for the swap become `n/a: C runs this from CmpMap::MapMerge (cmpmap.c:1816); permmap.c has no CmpMap branch`. Mark §10.4 FIXED, naming the fixture.
 
 ```bash
-git add crates/ast-core tools PLAN.md docs
+git add crates/starlink-ast tools PLAN.md docs
 git commit -m "simplify: run the CmpMap/PermMap swap from C's nominee
 
 C swaps a parallel CmpMap in front of an adjacent PermMap when the CmpMap is
@@ -708,9 +708,9 @@ cap_cmpperm_resume covers it. Closes PLAN.md §10.4."
 `chebymap.c` defines no `MapMerge`, so a ChebyMap's is PolyMap's whole body. The port's `ChebyMap` has no `map_merge` and takes the trait default, reaching none of it. Port the coefficient consolidation (`polymap.c:3624-3745`); do **not** port the linear replacement (`polymap.c:3747-3875`), which is a C defect already settled on the oracle and recorded in `docs/issues/c-library-quirks.md`.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/polymap.rs`, `crates/ast-core/src/mappings/chebymap.rs`
+- Modify: `crates/starlink-ast/src/mappings/polymap.rs`, `crates/starlink-ast/src/mappings/chebymap.rs`
 - Modify: `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`
-- Add: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_cheby_consolidate.{map,simp}` (generated)
+- Add: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_cheby_consolidate.{map,simp}` (generated)
 - Modify: `PLAN.md` §10.2, `docs/audits/mapmerge/chebymap.md`
 
 **Interfaces:**
@@ -748,8 +748,8 @@ Extract the closure and the two `consolidate` calls (`polymap.rs:840-864`) into:
 Nothing about `PolyMap`'s behavior may change here. Verify before touching ChebyMap:
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E "^Simplify regression"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -E "^Simplify regression"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 
 Expected: identical to HEAD. This is a pure extraction; commit it separately if it helps keep the ChebyMap diff readable.
@@ -801,7 +801,7 @@ There is no ChebyMap test inside PolyMap's body and no PolyMap test inside Cheby
 `chebymap.rs:454-460`'s `simplified()` was removed by the seam realignment, but check the module doc for a sentence saying ChebyMap does not simplify:
 
 ```bash
-rg -n 'simplif' crates/ast-core/src/mappings/chebymap.rs | head
+rg -n 'simplif' crates/starlink-ast/src/mappings/chebymap.rs | head
 ```
 
 Anything asserting the class has no reduction is now false. Rewrite it to name what the class does and does not port, citing `polymap.c:3624-3745` and `:3747-3875`.
@@ -820,7 +820,7 @@ Two terms, coefficients `1.5` and `2.5` on the same `T_2` power vector, plus one
 
 ```bash
 $D/gen_simp
-grep -c 'CF' crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_cheby_consolidate.{map,simp}
+grep -c 'CF' crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_cheby_consolidate.{map,simp}
 ```
 
 Expected: fewer `CF` cards in the `.simp` than the `.map`. **If the counts match, C did not consolidate** — check the powers really are identical across the two terms, and that the ChebyMap was reached as a nominee rather than short-circuited by `IsSimple`.
@@ -828,15 +828,15 @@ Expected: fewer `CF` cards in the `.simp` than the `.map`. **If the counts match
 - [ ] **Step 6: Verify and commit**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep "test result"
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
 ```
 
 Re-verdict `chebymap.md` rows 4 to 8 and 12 to `ported`, citing `chebymap.rs`'s new `map_merge` and `polymap.rs`'s `consolidated_terms`. Rows 9, 10 and 11 keep their `divergence:` verdicts unchanged — this task does not touch them, and their reason (the lost domain scaling) is unaffected. Rewrite §10.2 to say the consolidation half is FIXED and the linear half stays a recorded divergence, keeping the oracle reproduction paragraph as it stands.
 
 ```bash
-git add crates/ast-core tools PLAN.md docs
+git add crates/starlink-ast tools PLAN.md docs
 git commit -m "chebymap: port PolyMap's coefficient consolidation
 
 C defines no chebymap.c::MapMerge, so a ChebyMap's is PolyMap's whole body
@@ -859,9 +859,9 @@ cap_cheby_consolidate covers the ported half. Closes PLAN.md §10.2."
 `box.c:3719-3882` builds the current-Frame Region axis by axis from a PermMap's permutation arrays and constants. `box_region.rs` contains no reference to `PermMap` and goes straight to the generic best-fitting-Box path (`box_region.rs:1539-1566`). What that path cannot produce is a constant-valued axis, an unbounded axis, or a result that is an `Interval` or a `NullRegion` rather than a `Box` — a class-of-result gap.
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/box_region.rs`
+- Modify: `crates/starlink-ast/src/regions/box_region.rs`
 - Modify: `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`
-- Add: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_box_permmap_const.{map,simp}` and `cap_box_permmap_bad.{map,simp}` (generated)
+- Add: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_box_permmap_const.{map,simp}` and `cap_box_permmap_bad.{map,simp}` (generated)
 - Modify: `PLAN.md` §10.13, `docs/audits/mapmerge/region_box_region.md`
 
 **Interfaces:**
@@ -880,7 +880,7 @@ Enumerate the five cases as C orders them before writing any Rust — an output 
 - [ ] **Step 2: Confirm where the branch goes**
 
 ```bash
-sed -n '1471,1545p' crates/ast-core/src/regions/box_region.rs
+sed -n '1471,1545p' crates/starlink-ast/src/regions/box_region.rs
 ```
 
 C runs the PermMap branch before the generic path. Place it the same way: after the base-to-current Mapping is in hand and before the mesh fit at `:1539`. It must be a downcast on that Mapping, not on anything the mesh path computed.
@@ -900,7 +900,7 @@ Build each as a Box whose FrameSet carries the PermMap, exactly as `normmap_fram
 
 ```bash
 $D/gen_simp
-head -30 crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_box_permmap_const.map
+head -30 crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_box_permmap_const.map
 ```
 
 **`astBox` resolves its FrameSet to the current Frame at construction** (§10.17). If the `.map` already holds the sliced Box, the fixture has the same defect as `normmap_frame_simplifies` and proves nothing. In that case build the Box in its base Frame and add the PermMap with `astAddFrame` *after* construction, then dump — and record in the commit which construction was needed, because the next fixture over a Region FrameSet will hit this too.
@@ -908,7 +908,7 @@ head -30 crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_b
 Confirm the `.simp` classes:
 
 ```bash
-grep -m1 'Begin ' crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_box_permmap_{const,bad}.simp
+grep -m1 'Begin ' crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_box_permmap_{const,bad}.simp
 ```
 
 Expected: `Box` (equal limits on the pinned axis) for the first, `Interval` for the second. If both say `Box`, C is not taking the branch and the fixtures need the missing-bound case instead.
@@ -935,9 +935,9 @@ Take the five cases in C's order. Two rules to hold to:
 - [ ] **Step 5: Verify**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
-cargo test -p ast-core --test test_regions 2>&1 | grep "test result"
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
+cargo test -p starlink-ast --test test_regions 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
 ```
 
 Expected: both new fixtures green, nothing else moved. A plain axis permutation was already handled by the mesh fit, so those fixtures must keep passing — **if one changes class from `Box` to `Interval`, the new branch is claiming an axis is unbounded when it is not**; check the missing-bound test against C's, which reads the *Box's* bound, not the transformed one.
@@ -947,7 +947,7 @@ Expected: both new fixtures green, nothing else moved. A plain axis permutation 
 `region_box_region.md` rows 16 to 24 to `ported`. Mark §10.13 FIXED, naming both fixtures and saying which construction the generator needed.
 
 ```bash
-git add crates/ast-core tools PLAN.md docs
+git add crates/starlink-ast tools PLAN.md docs
 git commit -m "box: port the PermMap simplification branch
 
 box.c:3719-3882 builds the current-Frame Region axis by axis when the
@@ -969,7 +969,7 @@ Closes PLAN.md §10.13."
 C's `Simplify` returns `astClone( this )` when nothing reduced, and both generic drivers test the returned pointer against the input to decide whether anything happened. An owned-value port has no pointer to compare, and three places now stand in for that test with something weaker: `FrameSet::simplified` (`frameset.rs:1598`) returns its working copy unconditionally, `cmp_map_merge`'s head branch (`simplify.rs:846`) compares structural hashes, and Task 3's flag is threaded by hand through one function. One signature change replaces all three.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/mod.rs`, `simplify_entry.rs`, `simplify.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`, `simplify_entry.rs`, `simplify.rs`
 - Modify: the eleven `simplified` implementors: `cmpmap.rs`, `frames/frameset.rs`, and the nine Region classes
 - Modify: `docs/superpowers/specs/2026-04-20-rust-port-design.md` (revision history)
 - Modify: `PLAN.md` §10.17, `docs/audits/mapmerge/frame_frameset.md`
@@ -1025,7 +1025,7 @@ The stamp, the two flag clears and `normalize_unitmap_children` all stay where t
 - [ ] **Step 4: Update the eleven implementors, one commit each is fine**
 
 ```bash
-rg -n 'fn simplified' crates/ast-core/src | cat
+rg -n 'fn simplified' crates/starlink-ast/src | cat
 ```
 
 Twelve hits: the trait default plus the eleven keeper classes. For each, the question is what C's counterpart returns when nothing reduced:
@@ -1045,7 +1045,7 @@ Twelve hits: the trait default plus the eleven keeper classes. For each, the que
 Add `simplify_reporting_change` beside `simplify` in `simplify_entry`, returning `AstResult<Option<DynMapping>>` with the same body minus the `None`-to-clone conversion, and have `simplify` delegate to it. Then delete `mapping_fingerprint` (`simplify.rs:93`) and the `SIMPLIFY_REBUILT` thread-local if nothing else reads them:
 
 ```bash
-rg -n 'mapping_fingerprint|SIMPLIFY_REBUILT' crates/ast-core/src | cat
+rg -n 'mapping_fingerprint|SIMPLIFY_REBUILT' crates/starlink-ast/src | cat
 ```
 
 Both were introduced to approximate this test; leaving either behind leaves two answers to one question.
@@ -1062,7 +1062,7 @@ A FrameSet whose edges are all already simple, simplified and dumped: C's output
 
 ```bash
 $D/gen_simp
-diff crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_frameset_nochange.{map,simp}
+diff crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_frameset_nochange.{map,simp}
 ```
 
 Expected: the `.simp` differs from the `.map` only in `IsSimp`. That difference is the whole fixture — a `.simp` byte-identical to the `.map` would mean C did not stamp, and a `.simp` with a second `Begin FrameSet` would mean it rebuilt.
@@ -1074,19 +1074,19 @@ Expected: the `.simp` differs from the `.map` only in `IsSimp`. That difference 
 - [ ] **Step 8: Verify, re-verdict, commit**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
-cargo test -p ast-core --test test_simplify_seams 2>&1 | grep "test result"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo test -p ast-capi 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
+cargo test -p starlink-ast --test test_simplify_seams 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast-capi 2>&1 | grep "test result"
 ```
 
-`ast-capi` is in the list because `astSimplify` crosses the FFI boundary; the shim must keep returning a handle in the nothing-changed case rather than a null.
+`starlink-ast-capi` is in the list because `astSimplify` crosses the FFI boundary; the shim must keep returning a handle in the nothing-changed case rather than a null.
 
 Re-verdict `frame_frameset.md` rows 10, 12 and 14 to `ported`. §10.17 keeps its NormMap half open (Task 12) — edit it to say which rows closed here and leave the rest, rather than marking the section FIXED.
 
 ```bash
-git add crates/ast-core PLAN.md docs
+git add crates/starlink-ast PLAN.md docs
 git commit -m "simplify: let the per-class Simplify seam report no change
 
 C's Simplify returns astClone(this) when nothing reduced, and its generic
@@ -1110,9 +1110,9 @@ PLAN.md §10.17's four rows; the NormMap row needs the Frame-level seam."
 Three of C's restricted-mode steps have no counterpart in the port: the `simpler` reset (`cmpmap.c:3530`), the `AllowSimplify` clears (`cmpmap.c:3692`, `mapping.c:24788`), and the base driver's own eligibility gate (`mapping.c:16853-16855`). All three are small; the work is the fixture, which is also the first thing in this plan to exercise the mode at all.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs`, `simplify_entry.rs`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs`, `simplify_entry.rs`
 - Modify: `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`
-- Add: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_restricted_inverted.{map,simp}` (generated)
+- Add: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_restricted_inverted.{map,simp}` (generated)
 - Modify: `PLAN.md` §10.20, `docs/audits/mapmerge/cmpmap.md`
 
 **Interfaces:**
@@ -1164,7 +1164,7 @@ Then the fixture:
 
 ```bash
 D=$(ls -d /lscratch/timj/*simplify* 2>/dev/null | head -1); $D/gen_simp
-cd crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+cd crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
 grep -c 'AlSimp' cap_restricted_inverted.map cap_restricted_inverted.simp
 grep -c 'IsSimp' cap_restricted_inverted.simp
 grep -c 'ReSimp' cap_restricted_inverted.simp
@@ -1178,7 +1178,7 @@ Expected: `AlSimp` present in the `.map` and absent from the `.simp`; no `IsSimp
 - [ ] **Step 2: Confirm the port fails**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -A15 cap_restricted_inverted
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -A15 cap_restricted_inverted
 ```
 
 Expected: a restructured, right-associated tree where C returns the input shape. If it passes at HEAD, the inverted CmpMap is not reaching `decomposition_is_simpler` — check that `astInvert` on the inner CmpMap really survived into the dump as an `Invert 1` card.
@@ -1198,7 +1198,7 @@ Expected: a restructured, right-associated tree where C returns the input shape.
 `restricted` is already in scope at that point — it is what selects `merge_loop_restricted`. Confirm rather than assume:
 
 ```bash
-rg -n 'restricted' crates/ast-core/src/mappings/simplify.rs | sed -n '1,40p'
+rg -n 'restricted' crates/starlink-ast/src/mappings/simplify.rs | sed -n '1,40p'
 ```
 
 - [ ] **Step 4: Clear `AllowSimplify` at both of C's sites**
@@ -1254,9 +1254,9 @@ Then fix the stale claim in the trait doc: `mappings/mod.rs:594` already says "C
 - [ ] **Step 6: Verify and commit**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep "test result"
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
 ```
 
 Expected: `cap_restricted_inverted` green, nothing else moved — nothing else in the corpus enters the mode, which is the point of §10.20 and also the reason a regression here would be surprising enough to investigate rather than absorb.
@@ -1264,7 +1264,7 @@ Expected: `cap_restricted_inverted` green, nothing else moved — nothing else i
 Re-verdict `cmpmap.md` rows 50 and 70 to `ported` and rewrite its "Rows 50 and 70" prose section. Mark §10.20 FIXED, naming the fixture and recording which of its three assertions the generated pair actually supports (step 1).
 
 ```bash
-git add crates/ast-core reference/starlink-ast PLAN.md docs
+git add crates/starlink-ast reference/starlink-ast PLAN.md docs
 git commit -m "simplify: port the three restricted-mode steps
 
 Under a restricted simplify C discards the decomposition's simpler flag, since
@@ -1293,9 +1293,9 @@ C gates simplification on a per-class protected method with two generic callers 
 The port has the attribute on the Frame side already — `Frame::ident` (`frames/mod.rs:258`) with per-class storage and `Ident` cards read back at each `from_node` — and nothing on the Mapping side.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/mod.rs`, `simplify_entry.rs`, `simplify.rs` (`flatten`)
-- Modify: `crates/ast-core/src/mappings/cmpmap.rs`, `zoom.rs` and the remaining Mapping classes' structs
-- Modify: `crates/ast-core/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`, `simplify_entry.rs`, `simplify.rs` (`flatten`)
+- Modify: `crates/starlink-ast/src/mappings/cmpmap.rs`, `zoom.rs` and the remaining Mapping classes' structs
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
 - Modify: `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`
 - Add: `cap_ident_cmpmap.{map,simp}`, `cap_ident_frame.{map,simp}` (generated)
 - Modify: `PLAN.md` §10.21, `docs/audits/mapmerge/cmpmap.md`, `docs/superpowers/specs/2026-04-20-rust-port-design.md`
@@ -1346,13 +1346,13 @@ Two facts to hold on to. The gate is *before* the `IsSimple` short-circuit or af
 Override `do_not_simplify` to `false` in `FrameSet` and every Region class — those are the port's Mapping-implementing Frames, and they are exactly the set C's `Frame` override covers.
 
 ```bash
-rg -ln 'impl Mapping for' crates/ast-core/src/regions crates/ast-core/src/frames | cat
+rg -ln 'impl Mapping for' crates/starlink-ast/src/regions crates/starlink-ast/src/frames | cat
 ```
 
 - [ ] **Step 3: Storage, all 26 Mapping classes**
 
 ```bash
-rg -l 'simplified: SimplifiedRecord' crates/ast-core/src | cat
+rg -l 'simplified: SimplifiedRecord' crates/starlink-ast/src | cat
 ```
 
 Twenty-six classes hold the `IsSimple` record; `Ident` goes beside it in each, as `ident: String` (empty when unset, matching `Frame::ident`'s `&str` return and avoiding an `Option` the Frame side does not have). Add the two overrides per class in the same edit — a class with the field and no accessor is worse than neither, because `do_not_simplify` would then read the default and silently return `false`.
@@ -1364,13 +1364,13 @@ Do it in one commit, not twenty-six: it is one mechanical change, and split acro
 C writes `Ident` for every Object. Check what the port's Mapping writer does today:
 
 ```bash
-rg -n 'Ident' crates/ast-core/src/serial/mod.rs
+rg -n 'Ident' crates/starlink-ast/src/serial/mod.rs
 ```
 
 `:774` is the *inherited-Frame-block* filter — it drops an encapsulated frame's `Ident`/`ID` from a Region dump, which is a different rule and must stay. What is missing is the Mapping-level write and read. Add both, and confirm against C which classes emit the card and with what comment text; the round-trip corpus is the check:
 
 ```bash
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | grep "test result"
 ```
 
 - [ ] **Step 5: Both call sites**
@@ -1401,7 +1401,7 @@ The second fixture is the negative control and matters more than the first: it i
 
 ```bash
 $D/gen_simp
-grep -c 'Begin CmpMap' crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_ident_cmpmap.{map,simp}
+grep -c 'Begin CmpMap' crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_ident_cmpmap.{map,simp}
 ```
 
 Expected: equal counts — C did not collapse it.
@@ -1409,10 +1409,10 @@ Expected: equal counts — C did not collapse it.
 - [ ] **Step 7: Verify, amend the spec, commit**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | grep "test result"
 ```
 
 The round-trip corpus is the one to watch: a new card written for every Mapping changes every dump that has an `Ident` set, and nothing in the corpus should have one. **If a `.simp` gains an `Ident` card, the writer is emitting it unset** — compare against C's `astDump` behavior for an unset Object attribute, which writes nothing.
@@ -1420,7 +1420,7 @@ The round-trip corpus is the one to watch: a new card written for every Mapping 
 Add a revision to `2026-04-20-rust-port-design.md` recording that `Ident` is Mapping-level private bookkeeping with a `do_not_simplify` consumer, which is the private-`Object`-super-trait concern the spec anticipates at `:390-396` arriving as trait methods rather than a super-trait. Mark §10.21 FIXED, naming both fixtures.
 
 ```bash
-git add crates/ast-core reference/starlink-ast PLAN.md docs
+git add crates/starlink-ast reference/starlink-ast PLAN.md docs
 git commit -m "mappings: port astDoNotSimplify and the Ident it reads
 
 C refuses to simplify or decompose a Mapping whose Ident is set: astSimplify_
@@ -1445,8 +1445,8 @@ Closes PLAN.md §10.21."
 `Polygon::simplified` (`polygon.rs:1095-1149`) transforms the vertices and adopts the result unconditionally. C guards it twice and takes the uncertainty from a different Frame. Three separate defects with three separate fixtures; the bend check needs an attribute the port does not have.
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/polygon.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs` (the `SimpVT` card)
+- Modify: `crates/starlink-ast/src/regions/polygon.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs` (the `SimpVT` card)
 - Modify: `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`
 - Add: `cap_poly_bad_vertex.{map,simp}`, `cap_poly_unc_frame.{map,simp}`, `cap_poly_bent_edges.{map,simp}` (generated)
 - Modify: `PLAN.md` §10.18, `docs/audits/mapmerge/region_polygon.md`
@@ -1527,7 +1527,7 @@ For the third, the uncertainty has to be small enough that `astRegPins` rejects 
 ```bash
 $D/gen_simp
 for f in cap_poly_bad_vertex cap_poly_unc_frame cap_poly_bent_edges; do
-  echo "== $f"; diff crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/$f.{map,simp} | head -8
+  echo "== $f"; diff crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/$f.{map,simp} | head -8
 done
 ```
 
@@ -1536,10 +1536,10 @@ Expected: the first and third show only an `IsSimp` difference (C kept the origi
 - [ ] **Step 7: Verify and commit**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep "test result"
-cargo test -p ast-core --test test_regions 2>&1 | grep "test result"
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_regions 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
 ```
 
 The uncertainty change is the one with corpus reach — every simplified Polygon with an explicit uncertainty now writes a different `Unc` block. **A `wcsconv` or round-trip regression here is a real finding**, not fixture noise: it means the corpus contained a Polygon whose uncertainty was being written in the wrong Frame all along, and the right response is to regenerate nothing and read the diff.
@@ -1547,7 +1547,7 @@ The uncertainty change is the one with corpus reach — every simplified Polygon
 Re-verdict `region_polygon.md` rows 7, 11, 12 and 13 to `ported`. Mark §10.18 FIXED, naming all three fixtures and the uncertainty value the bend check needed.
 
 ```bash
-git add crates/ast-core reference/starlink-ast PLAN.md docs
+git add crates/starlink-ast reference/starlink-ast PLAN.md docs
 git commit -m "polygon: port both simplification guards and the uncertainty Frame
 
 polygon.c:5379-5437 transforms the vertices and guards the result twice: it
@@ -1575,11 +1575,11 @@ C's `MapMerge` for NormMap opens by simplifying the encapsulated Frame and rebui
 The branch cannot be reached by adding it alone. `astSimplify( map->frame )` is a Frame-level call, and the reason it can return a *different* Frame is that `CmpFrame` overrides the slot to simplify its components and rebuild (`cmpframe.c:9018-9034`), as does every Region. In the port, `FrameSet` is the only type under `frames/` that implements `Mapping` (`frameset.rs:1561`), so `CmpFrame` has nothing to override and there is no `astSimplify` for a NormMap to call. This task is the seam first, the branch second.
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/mod.rs`, `cmpframe.rs`, `frameset.rs`
-- Modify: `crates/ast-core/src/regions/mod.rs` and the nine Region classes
-- Modify: `crates/ast-core/src/mappings/normmap.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`, `cmpframe.rs`, `frameset.rs`
+- Modify: `crates/starlink-ast/src/regions/mod.rs` and the nine Region classes
+- Modify: `crates/starlink-ast/src/mappings/normmap.rs`
 - Modify: `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`
-- Add: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_normmap_cmpframe.{map,simp}` (generated)
+- Add: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_normmap_cmpframe.{map,simp}` (generated)
 - Modify: `PLAN.md` §10.17, `docs/audits/mapmerge/normmap.md`, `frame_frameset.md`, `docs/superpowers/specs/2026-04-20-rust-port-design.md`
 
 **Interfaces:**
@@ -1645,7 +1645,7 @@ For the nine Region classes and `FrameSet`, the override delegates to the Mappin
 `as_dyn_frame` is a downcast ladder over the concrete Frame-implementing types, or a `Region`-side helper if one already exists — check before writing a new one:
 
 ```bash
-rg -n 'fn as_dyn_frame|-> Option<DynFrame>' crates/ast-core/src | head
+rg -n 'fn as_dyn_frame|-> Option<DynFrame>' crates/starlink-ast/src | head
 ```
 
 The identity part of the `None` decision is Task 8's: if `simplify` returned the input unchanged, `simplify_frame` must return `None`, not `Some(clone)`. Use `simplify_reporting_change` (Task 8) rather than comparing with `equal`, which would be a second answer to a question Task 8 already answered.
@@ -1692,7 +1692,7 @@ Delete `normmap_frame_simplifies` and its `.map`/`.simp` in the same commit, wit
 
 ```bash
 $D/gen_simp
-diff crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_normmap_cmpframe.{map,simp}
+diff crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_normmap_cmpframe.{map,simp}
 ```
 
 Expected: a changed Frame block inside the NormMap. If the two are identical, the CmpFrame's component did not reduce and the fixture is the Box trap again in a new shape — change the component, do not proceed.
@@ -1700,11 +1700,11 @@ Expected: a changed Frame block inside the NormMap. If the two are identical, th
 - [ ] **Step 5: Verify and commit**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
-cargo test -p ast-core --test test_regions 2>&1 | grep "test result"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-capi 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|FAILED"
+cargo test -p starlink-ast --test test_regions 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast-capi 2>&1 | grep "test result"
 ```
 
 The new trait method has a default, so nothing outside the overriding classes changes behavior — but `CmpFrame::simplify_frame` is now reachable from any NormMap over a CmpFrame, and `wcsconv` has those.
@@ -1712,7 +1712,7 @@ The new trait method has a default, so nothing outside the overriding classes ch
 Re-verdict `normmap.md`'s Frame-simplify row to `ported` and correct the row that recorded both halves as ported on one downcast. Close `frame_frameset.md`'s remaining NormMap row (Task 8 closed 10/12/14). Mark §10.17 FIXED, naming the seam as well as the branch, and add a spec revision recording that `Frame` gained a simplify seam with `Mapping`'s `Option` convention.
 
 ```bash
-git add crates/ast-core reference/starlink-ast PLAN.md docs
+git add crates/starlink-ast reference/starlink-ast PLAN.md docs
 git commit -m "normmap: simplify the encapsulated Frame, via a new Frame-level seam
 
 normmap.c:619-631 is the first thing C's MapMerge does: astSimplify the
@@ -1745,8 +1745,8 @@ Upstream `e40e71b4` added the rule that a setter whose value feeds the first par
 C's comment is the specification and it is worth quoting in the commit: nothing else reads the records, a Mapping is offered to `astMapMerge` by its neighbors whatever it holds, and discarding when in doubt is safe because the records can only ever suppress a simplification, never make one wrong.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/mathmap/mod.rs`, `polymap.rs`, `splinemap.rs`, `sphmap.rs`, `wcsmap.rs`, `perm.rs`, `lutmap.rs`
-- Add: `crates/ast-core/tests/test_clear_on_set.rs`
+- Modify: `crates/starlink-ast/src/mappings/mathmap/mod.rs`, `polymap.rs`, `splinemap.rs`, `sphmap.rs`, `wcsmap.rs`, `perm.rs`, `lutmap.rs`
+- Add: `crates/starlink-ast/tests/test_clear_on_set.rs`
 - Modify: `PLAN.md` §9.2
 
 **Interfaces:**
@@ -1770,8 +1770,8 @@ Fourteen of the attributes §9.2 lists have a setter today:
 Five have no setter in the port: `ZoomMap::Zoom`, `LutMap::LutEpsilon`, `PcdMap::Disco`, `IntraMap::IntraFlag`, and GrismMap's macro-form set (`grismmap.c:165,255`). Re-run the inventory rather than trusting this table — a setter may have landed since:
 
 ```bash
-for s in set_zoom set_lut_epsilon set_disco set_intra_flag; do printf '%-18s ' "$s"; rg -c "fn $s\b" crates/ast-core/src -g '*.rs' || echo none; done
-rg -n 'pub fn set_' crates/ast-core/src/mappings/grismmap.rs
+for s in set_zoom set_lut_epsilon set_disco set_intra_flag; do printf '%-18s ' "$s"; rg -c "fn $s\b" crates/starlink-ast/src -g '*.rs' || echo none; done
+rg -n 'pub fn set_' crates/starlink-ast/src/mappings/grismmap.rs
 ```
 
 - [ ] **Step 2: One line per setter**
@@ -1811,7 +1811,7 @@ fn setting_polar_long_clears_the_simplified_record() {
 `has_been_simplified` is the reader; check its visibility from an integration test before writing fourteen cases against it, and if it is `pub(crate)` put the test under `src/` as a unit-test module instead of `tests/`:
 
 ```bash
-rg -n 'fn has_been_simplified' crates/ast-core/src/mappings/mod.rs
+rg -n 'fn has_been_simplified' crates/starlink-ast/src/mappings/mod.rs
 ```
 
 Then confirm C agrees for one representative class, with a probe rather than by reading alone — `astIsSimple` is protected, so use the `astCLASS` recipe in `docs/issues/c-oracle-probe-recipe.md`:
@@ -1829,9 +1829,9 @@ Expected: `1` then `0`. Record the probe in the recipe doc — it is the only ev
 - [ ] **Step 4: Verify and commit**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | grep "test result"
 ```
 
 Clearing a record can only enable a simplification the port previously declined, so a corpus change here means a fixture was relying on a stale record — read it, do not regenerate it.
@@ -1839,7 +1839,7 @@ Clearing a record can only enable a simplification the port previously declined,
 Mark §9.2 FIXED for the fourteen and leave a row naming the five attributes with no setter, stating that the rule applies when the setter lands. That row is the plan's one deliberately open item; state it as such rather than marking the section closed.
 
 ```bash
-git add crates/ast-core PLAN.md docs
+git add crates/starlink-ast PLAN.md docs
 git commit -m "mappings: discard the simplified records on a MapMerge-feeding set
 
 mapping.h:449-460: a setter whose value feeds the first part of that class's own
@@ -1869,7 +1869,7 @@ Each task re-verdicts its own audit rows and marks its own PLAN section, so this
 - Modify: `PLAN.md` (§6, §9.4, §10.4, §10.20, the closeout index)
 - Modify: `docs/audits/mapmerge/README.md`
 - Modify: `reference/starlink-ast/ast_tester/simplify_fixtures.oracle`
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures.oracle`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures.oracle`
 - Modify: `docs/issues/c-library-quirks.md`
 
 - [ ] **Step 1: The two stale citations**
@@ -1884,7 +1884,7 @@ Both sections are closed by this plan (Tasks 9 and 5), so the fix is to the clos
 ```bash
 rg -o 'simplify\.rs:[0-9]+' PLAN.md | sort -u | while read -r ref; do
   n=${ref##*:}
-  printf '%-20s %s\n' "$ref" "$(sed -n "${n}p" crates/ast-core/src/mappings/simplify.rs | cut -c1-60)"
+  printf '%-20s %s\n' "$ref" "$(sed -n "${n}p" crates/starlink-ast/src/mappings/simplify.rs | cut -c1-60)"
 done
 ```
 
@@ -1907,16 +1907,16 @@ Then take only the new sections from `/tmp/simplify_fixtures.oracle` into the co
 
 ```bash
 git diff --stat reference/starlink-ast/ast_tester/simplify_fixtures.oracle
-cargo test -p ast-core --test test_transform_oracle 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_transform_oracle 2>&1 | grep "test result"
 ```
 
 Expected: additions and the one deletion, no modifications to existing sections. **A modified existing section means a transform changed** — that is a finding about one of Tasks 1-13, not an oracle to update. Stop and identify which task moved it.
 
-Copy the same file into `crates/ast-core/tests/fixtures/native/reference/` so the two trees stay byte-identical, and check:
+Copy the same file into `crates/starlink-ast/tests/fixtures/native/reference/` so the two trees stay byte-identical, and check:
 
 ```bash
 diff reference/starlink-ast/ast_tester/simplify_fixtures.oracle \
-     crates/ast-core/tests/fixtures/native/reference/simplify_fixtures.oracle && echo identical
+     crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures.oracle && echo identical
 ```
 
 - [ ] **Step 3: The counts**
@@ -1926,7 +1926,7 @@ Three numbers are stated in prose and must match the files:
 ```bash
 rg -c 'gap:' docs/audits/mapmerge/*.md | rg -v ':0$'
 rg -o 'gap: PLAN\.md §[0-9.]+' docs/audits/mapmerge/*.md | sed 's/.*§/§/' | sort -u
-ls crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/*.map | wc -l
+ls crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/*.map | wc -l
 ```
 
 Update `docs/audits/mapmerge/README.md`'s gap count and section list, and `test_simplify_regression`'s expected fixture count if it carries one. Then §6's relaxation tally: this plan adds two recorded divergences (ChebyMap's unported linear half, Task 6; Polygon's axis-1 `ok` asymmetry, Task 11) and removes none. Both need a `docs/issues/c-library-quirks.md` entry if Tasks 6 and 11 did not add one — check, and add it here if not, since a divergence recorded only in a commit message is not recorded.
@@ -1937,9 +1937,9 @@ Add the closeout row to `PLAN.md`'s index pointing at this plan and the spec, li
 
 ```bash
 cargo test --workspace 2>&1 | grep -E "^test result" | sort | uniq -c
-cargo test -p ast-core --test test_verification_ledger 2>&1 | grep "test result"
-cargo test -p ast-core --test test_mapmerge_audit 2>&1 | grep "test result"
-cargo test -p ast-core --test test_simplify_seams 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_verification_ledger 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_mapmerge_audit 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_simplify_seams 2>&1 | grep "test result"
 ```
 
 All four must be green with no exclusions added anywhere. Then fmt and clippy under the toolchain workaround from Global Constraints, and commit.

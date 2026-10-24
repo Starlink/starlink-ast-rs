@@ -15,17 +15,17 @@
 | File | Responsibility |
 |------|---------------|
 | `Cargo.toml` (workspace root) | Add `levenberg-marquardt` workspace dependency |
-| `crates/ast-core/Cargo.toml` | Add `levenberg-marquardt` dependency |
-| `crates/ast-core/src/mappings/winmap.rs` | WinMap struct, Mapping impl, Serializable impl |
-| `crates/ast-core/src/mappings/lutmap.rs` | LutMap + LutInterp, Mapping impl, Serializable impl |
-| `crates/ast-core/src/mappings/polymap.rs` | PolyMap + PolyTerm, Mapping impl, Serializable impl, LM inverse |
-| `crates/ast-core/src/mappings/chebymap.rs` | ChebyMap (wraps PolyMap), Mapping impl, Serializable impl |
-| `crates/ast-core/src/mappings/mod.rs` | Add new modules and re-exports |
-| `crates/ast-core/src/serial/mod.rs` | Update all dispatch points for 4 new types |
-| `crates/ast-core/tests/test_winmap.rs` | WinMap tests |
-| `crates/ast-core/tests/test_lutmap.rs` | LutMap tests |
-| `crates/ast-core/tests/test_polymap.rs` | PolyMap tests |
-| `crates/ast-core/tests/test_chebymap.rs` | ChebyMap tests |
+| `crates/starlink-ast/Cargo.toml` | Add `levenberg-marquardt` dependency |
+| `crates/starlink-ast/src/mappings/winmap.rs` | WinMap struct, Mapping impl, Serializable impl |
+| `crates/starlink-ast/src/mappings/lutmap.rs` | LutMap + LutInterp, Mapping impl, Serializable impl |
+| `crates/starlink-ast/src/mappings/polymap.rs` | PolyMap + PolyTerm, Mapping impl, Serializable impl, LM inverse |
+| `crates/starlink-ast/src/mappings/chebymap.rs` | ChebyMap (wraps PolyMap), Mapping impl, Serializable impl |
+| `crates/starlink-ast/src/mappings/mod.rs` | Add new modules and re-exports |
+| `crates/starlink-ast/src/serial/mod.rs` | Update all dispatch points for 4 new types |
+| `crates/starlink-ast/tests/test_winmap.rs` | WinMap tests |
+| `crates/starlink-ast/tests/test_lutmap.rs` | LutMap tests |
+| `crates/starlink-ast/tests/test_polymap.rs` | PolyMap tests |
+| `crates/starlink-ast/tests/test_chebymap.rs` | ChebyMap tests |
 
 ---
 
@@ -33,7 +33,7 @@
 
 **Files:**
 - Modify: `Cargo.toml` (workspace root)
-- Modify: `crates/ast-core/Cargo.toml`
+- Modify: `crates/starlink-ast/Cargo.toml`
 
 - [ ] **Step 1: Add workspace dependency**
 
@@ -43,9 +43,9 @@ In the workspace root `Cargo.toml`, add to `[workspace.dependencies]`:
 levenberg-marquardt = "0.15"
 ```
 
-- [ ] **Step 2: Add to ast-core**
+- [ ] **Step 2: Add to starlink-ast**
 
-In `crates/ast-core/Cargo.toml`, add to `[dependencies]`:
+In `crates/starlink-ast/Cargo.toml`, add to `[dependencies]`:
 
 ```toml
 levenberg-marquardt = { workspace = true }
@@ -57,13 +57,13 @@ it directly.
 
 - [ ] **Step 3: Verify build**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success (the dependency is pulled but not yet used)
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add Cargo.toml crates/ast-core/Cargo.toml Cargo.lock
+git add Cargo.toml crates/starlink-ast/Cargo.toml Cargo.lock
 git commit -m "Add levenberg-marquardt dependency for PolyMap iterative inverse"
 ```
 
@@ -72,15 +72,15 @@ git commit -m "Add levenberg-marquardt dependency for PolyMap iterative inverse"
 ### Task 2: WinMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/winmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Create: `crates/ast-core/tests/test_winmap.rs`
+- Create: `crates/starlink-ast/src/mappings/winmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/tests/test_winmap.rs`
 
 WinMap is a per-axis linear transformation: `out[i] = shift[i] + scale[i] * in[i]`.
 
 - [ ] **Step 1: Create winmap.rs with struct and constructors**
 
-Create `crates/ast-core/src/mappings/winmap.rs`:
+Create `crates/starlink-ast/src/mappings/winmap.rs`:
 
 ```rust
 //! WinMap — per-axis linear (shift + scale) transformation.
@@ -294,7 +294,7 @@ impl Serializable for WinMap {
 
 - [ ] **Step 4: Add to mappings/mod.rs**
 
-Add to `crates/ast-core/src/mappings/mod.rs`:
+Add to `crates/starlink-ast/src/mappings/mod.rs`:
 
 ```rust
 mod winmap;
@@ -303,7 +303,7 @@ pub use winmap::WinMap;
 
 - [ ] **Step 5: Update serial dispatch**
 
-In `crates/ast-core/src/serial/mod.rs`, add WinMap to:
+In `crates/starlink-ast/src/serial/mod.rs`, add WinMap to:
 - `use` imports
 - `mapping_from_node`: `"WinMap" => Ok(Box::new(WinMap::from_node(node)?))`
 - `MappingToNode for dyn Mapping`: downcast branch for WinMap
@@ -314,7 +314,7 @@ In `crates/ast-core/src/serial/mod.rs`, add WinMap to:
 
 - [ ] **Step 6: Write tests**
 
-Create `crates/ast-core/tests/test_winmap.rs` with tests for:
+Create `crates/starlink-ast/tests/test_winmap.rs` with tests for:
 - Forward transform with known shifts/scales
 - Inverse transform
 - `from_corners` constructor
@@ -325,11 +325,11 @@ Create `crates/ast-core/tests/test_winmap.rs` with tests for:
 
 - [ ] **Step 7: Verify and commit**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 ```bash
-git add crates/ast-core/src/mappings/ crates/ast-core/src/serial/mod.rs crates/ast-core/tests/test_winmap.rs
+git add crates/starlink-ast/src/mappings/ crates/starlink-ast/src/serial/mod.rs crates/starlink-ast/tests/test_winmap.rs
 git commit -m "Add WinMap (per-axis linear mapping)"
 ```
 
@@ -338,16 +338,16 @@ git commit -m "Add WinMap (per-axis linear mapping)"
 ### Task 3: LutMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/lutmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Create: `crates/ast-core/tests/test_lutmap.rs`
+- Create: `crates/starlink-ast/src/mappings/lutmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/tests/test_lutmap.rs`
 
 LutMap is a 1D lookup table mapping with linear or nearest-neighbor
 interpolation. Always nin = nout = 1.
 
 - [ ] **Step 1: Create lutmap.rs with struct, LutInterp, and constructor**
 
-Create `crates/ast-core/src/mappings/lutmap.rs`:
+Create `crates/starlink-ast/src/mappings/lutmap.rs`:
 
 The `LutMap` struct holds:
 - `lut: Vec<f64>` — table values
@@ -392,7 +392,7 @@ Same pattern as WinMap — add module, re-export, update all dispatch points.
 
 - [ ] **Step 5: Write tests**
 
-Create `crates/ast-core/tests/test_lutmap.rs` (from `testlutmap.c`):
+Create `crates/starlink-ast/tests/test_lutmap.rs` (from `testlutmap.c`):
 - Linear interpolation between entries
 - Extrapolation at boundaries
 - Nearest-neighbor mode
@@ -404,11 +404,11 @@ Create `crates/ast-core/tests/test_lutmap.rs` (from `testlutmap.c`):
 
 - [ ] **Step 6: Verify and commit**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 ```bash
-git add crates/ast-core/src/mappings/ crates/ast-core/src/serial/mod.rs crates/ast-core/tests/test_lutmap.rs
+git add crates/starlink-ast/src/mappings/ crates/starlink-ast/src/serial/mod.rs crates/starlink-ast/tests/test_lutmap.rs
 git commit -m "Add LutMap (1D lookup table mapping)"
 ```
 
@@ -417,16 +417,16 @@ git commit -m "Add LutMap (1D lookup table mapping)"
 ### Task 4: PolyMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/polymap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Create: `crates/ast-core/tests/test_polymap.rs`
+- Create: `crates/starlink-ast/src/mappings/polymap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/tests/test_polymap.rs`
 
 PolyMap evaluates N-D polynomial transformations with optional
 Levenberg-Marquardt inverse fitting.
 
 - [ ] **Step 1: Create polymap.rs with PolyTerm, PolyMap struct, and constructor**
 
-Create `crates/ast-core/src/mappings/polymap.rs`:
+Create `crates/starlink-ast/src/mappings/polymap.rs`:
 
 ```rust
 /// A single polynomial term: coeff * x0^p0 * x1^p1 * ... * xN^pN.
@@ -504,7 +504,7 @@ update all dispatch points.
 
 - [ ] **Step 7: Write tests**
 
-Create `crates/ast-core/tests/test_polymap.rs` (from `testpolymap.c`):
+Create `crates/starlink-ast/tests/test_polymap.rs` (from `testpolymap.c`):
 - Simple 1D polynomial (y = 2x^2 + 3x + 1)
 - 2D → 2D polynomial
 - Explicit inverse and verify round-trip accuracy
@@ -515,11 +515,11 @@ Create `crates/ast-core/tests/test_polymap.rs` (from `testpolymap.c`):
 
 - [ ] **Step 8: Verify and commit**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 ```bash
-git add Cargo.lock crates/ast-core/src/mappings/ crates/ast-core/src/serial/mod.rs crates/ast-core/tests/test_polymap.rs
+git add Cargo.lock crates/starlink-ast/src/mappings/ crates/starlink-ast/src/serial/mod.rs crates/starlink-ast/tests/test_polymap.rs
 git commit -m "Add PolyMap (N-D polynomial mapping with LM inverse)"
 ```
 
@@ -528,9 +528,9 @@ git commit -m "Add PolyMap (N-D polynomial mapping with LM inverse)"
 ### Task 5: ChebyMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/chebymap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Create: `crates/ast-core/tests/test_chebymap.rs`
+- Create: `crates/starlink-ast/src/mappings/chebymap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/tests/test_chebymap.rs`
 
 ChebyMap wraps PolyMap with Chebyshev polynomial basis and domain
 normalization to [-1, 1].
@@ -595,7 +595,7 @@ Add module, re-export `ChebyMap`, update all dispatch points.
 
 - [ ] **Step 6: Write tests**
 
-Create `crates/ast-core/tests/test_chebymap.rs` (from `testchebymap.c`):
+Create `crates/starlink-ast/tests/test_chebymap.rs` (from `testchebymap.c`):
 - 1D constant function (T_0 = 1)
 - 1D quadratic in Chebyshev basis
 - 2D with mixed powers
@@ -605,11 +605,11 @@ Create `crates/ast-core/tests/test_chebymap.rs` (from `testchebymap.c`):
 
 - [ ] **Step 7: Verify and commit**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 ```bash
-git add crates/ast-core/src/mappings/ crates/ast-core/src/serial/mod.rs crates/ast-core/tests/test_chebymap.rs
+git add crates/starlink-ast/src/mappings/ crates/starlink-ast/src/serial/mod.rs crates/starlink-ast/tests/test_chebymap.rs
 git commit -m "Add ChebyMap (Chebyshev polynomial mapping)"
 ```
 
@@ -632,7 +632,7 @@ If issues, run `cargo fmt --all`.
 
 - [ ] **Step 3: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 - [ ] **Step 4: Verify the dispatch is complete**
@@ -659,7 +659,7 @@ git commit -m "Fix clippy and fmt issues in Step 6 mappings"
 After all tasks are complete:
 
 1. `cargo build --workspace` — compiles
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. `cargo fmt --all -- --check` — clean
 5. WinMap: forward/inverse transforms correct, from_corners works

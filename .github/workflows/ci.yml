@@ -55,7 +55,7 @@ jobs:
         # --no-fail-fast so one run reports every failing test binary: a
         # platform-specific failure in an early binary would otherwise hide
         # whatever the later ones would have said on that platform.
-        run: cargo test -p ast-core --no-fail-fast
+        run: cargo test -p starlink-ast --no-fail-fast
 
       - name: Benchmark harness tests
         # Rust engine only: needs neither the submodule nor a C build.

@@ -4,9 +4,9 @@
  * template finds the spectral axis of a SpecFluxFrame, alone or inside a
  * CmpFrame (cmpframe.c PrimaryFrame).
  *
- * Prints Rust source for crates/ast-core/tests/specflux_primary_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/specflux_primary_oracle/cases.rs:
  *
- *   ./specflux_primary_probe > ../../crates/ast-core/tests/specflux_primary_oracle/cases.rs
+ *   ./specflux_primary_probe > ../../crates/starlink-ast/tests/specflux_primary_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

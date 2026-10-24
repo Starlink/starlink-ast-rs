@@ -5,9 +5,9 @@
  * unset parameter without a default, and AST__AXIIN for an invalid axis or
  * parameter index.
  *
- * Prints Rust source for crates/ast-core/tests/wcsmap_pv_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/wcsmap_pv_oracle/cases.rs:
  *
- *   ./wcsmap_pv_probe > ../../crates/ast-core/tests/wcsmap_pv_oracle/cases.rs
+ *   ./wcsmap_pv_probe > ../../crates/starlink-ast/tests/wcsmap_pv_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

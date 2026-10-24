@@ -1,7 +1,7 @@
 # User guide from SUN/211: design
 
 **Status:** implemented, 2026-10-23.
-**Scope:** the narrative chapters of SUN/211 (`reference/starlink-ast/sun_master.tex`), ported into `ast-core`'s rustdoc as the `ast_core::guide` module, with Rust examples as doctests and links to the Rust API.
+**Scope:** the narrative chapters of SUN/211 (`reference/starlink-ast/sun_master.tex`), ported into `starlink-ast`'s rustdoc as the `starlink_ast::guide` module, with Rust examples as doctests and links to the Rust API.
 
 ## Context
 
@@ -23,7 +23,7 @@ The words change only where they make no sense for Rust.
 1. **The guide reads as SUN/211 does.**
    Chapters, sections and prose follow the LaTeX in order; wording is changed only where the C wording is wrong or meaningless for Rust.
 2. **Examples are Rust, and they run.**
-   Each C example that is kept becomes a Rust doctest, so it compiles and runs under `cargo test -p ast-core` in CI.
+   Each C example that is kept becomes a Rust doctest, so it compiles and runs under `cargo test -p starlink-ast` in CI.
 3. **Names link to the API.**
    Classes, methods and attributes the text names are intra-doc links to the Rust items, so the guide and the item docs filled in by the C audit form one set of documentation.
 4. **C appears only where it matters.**
@@ -71,7 +71,7 @@ In SUN/211's order:
 | Reading and writing STC-S descriptions (StcsChans) | dropped |
 | Creating Your Own Private Mappings (IntraMaps) | ported, around the Rust `IntraTransform` and `Channel::register_intra` |
 | Producing Graphical Output (Plots) | dropped |
-| Compiling and Linking Software that Uses AST | replaced by a short section on adding `ast-core` with Cargo |
+| Compiling and Linking Software that Uses AST | replaced by a short section on adding `starlink-ast` with Cargo |
 | The AST Class Hierarchy | dropped (rustdoc) |
 | AST Function / Routine / Attribute / Class Descriptions | dropped (rustdoc) |
 | UNIX Command Descriptions | dropped |
@@ -123,7 +123,7 @@ A real bug (the Rust computes or prints something C would not) is fixed in the p
 A missing public API (the example cannot be written without something the Rust library does not offer) stops the work on that example, and the options are discussed with the user before anything is added.
 Class-membership tests are not missing: `Frame` has the public `AsAny` supertrait, so `frame.as_any().is::<SkyFrame>()` or `downcast_ref::<SkyFrame>()` replaces `astIsASkyFrame`, and `AnyObject` has `as_mapping` / `as_frame` / `as_region` and `TryFrom`.
 `is::<T>()` matches the exact type only, where `astIsA<Class>` is also true for subclasses (a DSBSpecFrame is a SpecFrame); where SUN/211 relies on that, the Rust example tests each type it means.
-Examples that read a file use a fixture already in `crates/ast-core/tests/fixtures/` or inline the FITS header as a string.
+Examples that read a file use a fixture already in `crates/starlink-ast/tests/fixtures/` or inline the FITS header as a string.
 
 **Links.**
 Every class, method, attribute accessor and trait the text names is an intra-doc link.
@@ -135,8 +135,8 @@ C function names may appear only in the introduction and where a difference from
 
 ## Shape
 
-- `crates/ast-core/src/guide/mod.rs` declares `pub mod guide` (in `lib.rs`), with the guide's table of contents as its module doc.
-- One submodule per chapter, each with no items and its text in `crates/ast-core/src/guide/<chapter>.md`, declared in `guide/mod.rs` with `chapter!(<chapter>)`.
+- `crates/starlink-ast/src/guide/mod.rs` declares `pub mod guide` (in `lib.rs`), with the guide's table of contents as its module doc.
+- One submodule per chapter, each with no items and its text in `crates/starlink-ast/src/guide/<chapter>.md`, declared in `guide/mod.rs` with `chapter!(<chapter>)`.
   The build script copies each chapter to `$OUT_DIR/guide/` with its figure links inlined (below), and the module documentation is that copy.
   Plain Markdown files keep a later move to mdBook a copy.
 - Cross-references between sections (`\label` / `\htmlref` in the LaTeX) become intra-doc links to the chapter module and, where needed, its heading anchor.
@@ -145,7 +145,7 @@ C function names may appear only in the introduction and where a difference from
 
 **Figures** (Claude's call).
 The SUN/211 figures are PDFs in `reference/starlink-ast/sun211_figures/`.
-Those for kept chapters (mapping, series, parallel, complex, frames, cmpframe, frameset, simpexamp, dsbspec1–3, fsexample, fsconvert, fsalign, fsremap, fsmerge) are converted to SVG and committed under `crates/ast-core/src/guide/figures/`, and referred to from the chapter Markdown as ordinary images, `![caption](figures/<name>.svg)`.
+Those for kept chapters (mapping, series, parallel, complex, frames, cmpframe, frameset, simpexamp, dsbspec1–3, fsexample, fsconvert, fsalign, fsremap, fsmerge) are converted to SVG and committed under `crates/starlink-ast/src/guide/figures/`, and referred to from the chapter Markdown as ordinary images, `![caption](figures/<name>.svg)`.
 The build script replaces each such link with a `data:` URI holding the SVG, so the figures render without the submodule and without hosting, and the ids inside one SVG cannot collide with another's.
 The front-page and Plot figures are dropped.
 If a converted figure shows C-only content (C function names in a box, for example), it is redrawn or dropped rather than shipped wrong.
@@ -157,7 +157,7 @@ The notice appears in the introduction chapter, which is the guide's front page 
 
 ## Provenance and upstream drift
 
-`crates/ast-core/src/guide/README.md` (not rendered; Claude's call) records the `sun_master.tex` version the guide was ported from (its `\stardocversion` and the submodule commit) and a table of every LaTeX `\section` and `\subsection` with its fate: the guide chapter and heading it became, or dropped, or merged into another.
+`crates/starlink-ast/src/guide/README.md` (not rendered; Claude's call) records the `sun_master.tex` version the guide was ported from (its `\stardocversion` and the submodule commit) and a table of every LaTeX `\section` and `\subsection` with its fate: the guide chapter and heading it became, or dropped, or merged into another.
 On an upstream sync, `git diff <recorded commit>..<new pin> -- sun_master.tex` shows the changed sections, and the table says where each lives in the guide.
 No automated freshness gate is added.
 
@@ -180,7 +180,7 @@ Commits with no SUN/211 prose (the Cargo section, the guide skeleton, figures, R
 
 ## Phases
 
-Each phase lands with `cargo test -p ast-core` (including the doctests), `cargo doc --workspace --no-deps`, clippy and fmt green.
+Each phase lands with `cargo test -p starlink-ast` (including the doctests), `cargo doc --workspace --no-deps`, clippy and fmt green.
 
 1. **Skeleton:** `guide` module, introduction (with the port note), the Cargo section, and Overview of AST Concepts.
 2. **Objects and Mappings:** How To…, Object Primer, Mappings, CmpMaps.

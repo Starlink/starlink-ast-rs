@@ -9,14 +9,14 @@ Because the native-serialization round-trip and the simplifier are already prove
 The 29 mismatches collapse to **12 distinct root causes**, each a specific unported C branch.
 This plan ports each branch faithfully, one task per root cause, and each fix simultaneously clears the fixture's entry in the parallel `NATIVE_READ_EXCLUDED` FITS-read-fidelity list (`test_wcsconv.rs:72`) — the two exclusion lists shrink together, as the Phase 4 reconciliation established.
 
-**Tech Stack:** Rust 2024, `ast-core` crate. C ground truth: `reference/starlink-ast/src/{fitschan,wcsmap,matrixmap,mapping}.c`. Oracle fixtures: `crates/ast-core/tests/fixtures/oracle/headers.oracle` (the `.head` corpus) + `crates/ast-core/tests/fixtures/wcsconv/inputs/*.head`. Reference build for probes: `reference/starlink-ast/build-ast/libast.so`.
+**Tech Stack:** Rust 2024, `starlink-ast` crate. C ground truth: `reference/starlink-ast/src/{fitschan,wcsmap,matrixmap,mapping}.c`. Oracle fixtures: `crates/starlink-ast/tests/fixtures/oracle/headers.oracle` (the `.head` corpus) + `crates/starlink-ast/tests/fixtures/wcsconv/inputs/*.head`. Reference build for probes: `reference/starlink-ast/build-ast/libast.so`.
 
 ## Global Constraints
 
 - **C-fidelity is the rule.** Every fix mirrors C control flow directly. No compute-then-check tolerance heuristics without asking the human first. Where C uses a heuristic, replicate it and comment that it mirrors C. C logic beats existing diverged Rust — where a Rust comment justifies a divergence from C (e.g. `wcs_read.rs:594-604`), the divergence is the bug; discard it and match C after confirming with a probe.
 - **Port ALL C logic.** Lack of test coverage is never a reason to skip a C branch. A fixture that "only" needs one branch still gets the whole branch ported.
 - **`AST__BAD` = `BAD_VALUE` = `-f64::MAX`** (bit-identical to C). Inputs may be `f64::NAN`; outputs always use `BAD_VALUE`. A transform-oracle `got=-1.797693e308` means Rust produced BAD where C produced finite.
-- **Public Rust API only in tests.** No private modules from `ast-core` in `tests/`. Read-path behavior is tested through `FitsChan::from_header(text)?.read()` (needs `use ast_core::Channel`).
+- **Public Rust API only in tests.** No private modules from `starlink-ast` in `tests/`. Read-path behavior is tested through `FitsChan::from_header(text)?.read()` (needs `use starlink_ast::Channel`).
 - **Fixtures must work with the submodule absent** — the oracle corpus and the `wcsconv/inputs/*.head` headers are already vendored. Never symlink from `reference/`.
 - **Comments describe the code as it is today** — no references to prior bugs, plans, "was previously", or the Phase number. State what C does and why, citing the C source location.
 - **C-oracle golden values and object shapes come from the repo's own `libast.so`** at `reference/starlink-ast/build-ast/libast.so` (recipe: `docs/issues/c-oracle-probe-recipe.md`; mind the conda-RPATH trap — the stale conda `libast.so` wins by default and must be overridden). Never invent a golden value or an "expected" object shape.
@@ -59,18 +59,18 @@ Root causes A2, A3, C2, C4 also clear `NATIVE_READ_EXCLUDED` entries beyond thei
 
 ## File Structure
 
-- `crates/ast-core/src/fitschan/wcs_celestial.rs` — celestial read path. Modified by A1 (LONPOLE default), A2 (System=Unknown), A3 (CAR-linear branch), B1 (CarLin threading), C1 (DUT1 ×86400).
-- `crates/ast-core/src/fitschan/fits_store.rs` — CTYPE recognition. Modified by A2 (generic longitude/latitude predicates), A3 (no-projection-code detection).
-- `crates/ast-core/src/fitschan/wcs_spectral.rs` — spectral read path. Modified by B2 (`log_wcs`), B3 (`grism_spec_wcs`).
-- `crates/ast-core/src/fitschan/wcs_keywords.rs` — keyword extraction. Modified by C2 (version-letter SREF reads).
-- `crates/ast-core/src/fitschan/spec_trans.rs` — SpecTrans translations. Modified by C3 (`GetUsedPolyTan` port).
-- `crates/ast-core/src/fitschan/wcs_read.rs` — FrameSet assembly / TidyOffsets. Modified by C4 (SkyRefIs through FrameSet).
-- `crates/ast-core/src/fitschan/mod.rs` — the `FitsChan` struct. Modified by B1 (new `carlin` field + setter).
-- `crates/ast-core/src/mappings/rate.rs` — the `Rate`/`FindGradient` finite-difference kernel. Modified by C5 (numeric parity audit).
-- `crates/ast-core/src/fitschan/wcs_matrix.rs` and `crates/ast-core/src/mappings/matrix.rs` — pixel→IWC matrix pipeline and MatrixMap inverse. Modified by C6 (inverse-undefined for near-singular matrices).
-- `crates/ast-core/tests/test_transform_oracle.rs` — the oracle harness. Gets the `HEAD_ORACLE_EXCLUDED` gate (Task 1), which each fix task then shrinks. `transform_oracle_report` (the `#[ignore]` investigative test) is left untouched.
-- `crates/ast-core/tests/test_wcsconv.rs` — the FITS-read-fidelity test. Its `NATIVE_READ_EXCLUDED` list is shrunk by each fix task.
-- `crates/ast-core/tests/test_fitschan_wcs.rs` (the existing FitsChan WCS read-path test module; the sibling `test_fitschan.rs`, `test_alt_wcs_read.rs`, and `test_dsbspecframe_read.rs` cover related read paths) — gets a public-API read test per fix locking the corrected object shape/attribute.
+- `crates/starlink-ast/src/fitschan/wcs_celestial.rs` — celestial read path. Modified by A1 (LONPOLE default), A2 (System=Unknown), A3 (CAR-linear branch), B1 (CarLin threading), C1 (DUT1 ×86400).
+- `crates/starlink-ast/src/fitschan/fits_store.rs` — CTYPE recognition. Modified by A2 (generic longitude/latitude predicates), A3 (no-projection-code detection).
+- `crates/starlink-ast/src/fitschan/wcs_spectral.rs` — spectral read path. Modified by B2 (`log_wcs`), B3 (`grism_spec_wcs`).
+- `crates/starlink-ast/src/fitschan/wcs_keywords.rs` — keyword extraction. Modified by C2 (version-letter SREF reads).
+- `crates/starlink-ast/src/fitschan/spec_trans.rs` — SpecTrans translations. Modified by C3 (`GetUsedPolyTan` port).
+- `crates/starlink-ast/src/fitschan/wcs_read.rs` — FrameSet assembly / TidyOffsets. Modified by C4 (SkyRefIs through FrameSet).
+- `crates/starlink-ast/src/fitschan/mod.rs` — the `FitsChan` struct. Modified by B1 (new `carlin` field + setter).
+- `crates/starlink-ast/src/mappings/rate.rs` — the `Rate`/`FindGradient` finite-difference kernel. Modified by C5 (numeric parity audit).
+- `crates/starlink-ast/src/fitschan/wcs_matrix.rs` and `crates/starlink-ast/src/mappings/matrix.rs` — pixel→IWC matrix pipeline and MatrixMap inverse. Modified by C6 (inverse-undefined for near-singular matrices).
+- `crates/starlink-ast/tests/test_transform_oracle.rs` — the oracle harness. Gets the `HEAD_ORACLE_EXCLUDED` gate (Task 1), which each fix task then shrinks. `transform_oracle_report` (the `#[ignore]` investigative test) is left untouched.
+- `crates/starlink-ast/tests/test_wcsconv.rs` — the FITS-read-fidelity test. Its `NATIVE_READ_EXCLUDED` list is shrunk by each fix task.
+- `crates/starlink-ast/tests/test_fitschan_wcs.rs` (the existing FitsChan WCS read-path test module; the sibling `test_fitschan.rs`, `test_alt_wcs_read.rs`, and `test_dsbspecframe_read.rs` cover related read paths) — gets a public-API read test per fix locking the corrected object shape/attribute.
 
 ## Task sequence rationale
 
@@ -101,7 +101,7 @@ Mirror the committed `SLAMAP_ORACLE_EXCLUDED` gate (`test_transform_oracle.rs:11
 Start with all 29 failing section-directions excluded; every later task removes its rows.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs` (add the gate below the SlaMap gate, ~line 1310)
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs` (add the gate below the SlaMap gate, ~line 1310)
 
 **Interfaces:**
 - Consumes: `run_oracle(&str, &Overrides) -> Vec<SectionReport>`, `parse_overrides(&str) -> Overrides`, `SectionReport { relpath, forward, outcome }`, `enum Outcome`, `describe_outcome(&Outcome) -> String` — all already in this file.
@@ -112,7 +112,7 @@ Start with all 29 failing section-directions excluded; every later task removes 
 Run the investigative report and read the head-fixture failures:
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle -- --ignored --nocapture
+cargo test -p starlink-ast --test test_transform_oracle -- --ignored --nocapture
 python3 -c "import json; d=json.load(open('target/transform_oracle_report.json')); \
 print(sorted((s['relpath'], s['forward']) for s in d['sections'] \
 if s['relpath'].endswith('.head') and s['status'] not in ('pass','skipped','skipped-override')))"
@@ -260,7 +260,7 @@ fn head_sections_match_oracle() {
 - [ ] **Step 4: Run the gate; set the floor to the observed count**
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle -- --nocapture
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle -- --nocapture
 ```
 
 If it fails on the floor assertion, it prints the `checked` count; set `HEAD_SECTION_FLOOR` to that number.
@@ -271,7 +271,7 @@ If any `unexpected_failures` appear, a head-fixture failure was missed in Step 1
 
 ```bash
 cargo fmt
-git add crates/ast-core/tests/test_transform_oracle.rs
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test: gate .head oracle sections with shrinking exclusion list
 
 Generated with AI
@@ -288,8 +288,8 @@ The write path already divides by SPD symmetrically (`fitschan.c:3033` `astGetDu
 **Fixture cleared:** serpens (fwd+inv). **NATIVE_READ_EXCLUDED:** `serpens_native`.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:320-322`
-- Test: `crates/ast-core/tests/test_fitschan_wcs.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs:320-322`
+- Test: `crates/starlink-ast/tests/test_fitschan_wcs.rs`
 
 **Interfaces:**
 - Consumes: `store.dut1: Option<f64>`, `SkyFrame::set_dut1(f64)`, `SkyFrame::dut1() -> f64`.
@@ -300,10 +300,10 @@ The write path already divides by SPD symmetrically (`fitschan.c:3033` `astGetDu
 Load `serpens.head` through the public read path and assert the SkyFrame's Dut1 is the header value × 86400. First read the header to get the raw DUT1 value:
 
 ```bash
-grep -i "DUT1" crates/ast-core/tests/fixtures/wcsconv/inputs/serpens.head
+grep -i "DUT1" crates/starlink-ast/tests/fixtures/wcsconv/inputs/serpens.head
 ```
 
-Then, in the FitsChan read-path test module (use `ast_core::Channel`), decode and assert. Get the exact expected value from the C oracle probe if the header value is not obvious, but Dut1_days × 86400 is the invariant. Write the test to read the raw value from the fixture and compare against `frame.dut1()`:
+Then, in the FitsChan read-path test module (use `starlink_ast::Channel`), decode and assert. Get the exact expected value from the C oracle probe if the header value is not obvious, but Dut1_days × 86400 is the invariant. Write the test to read the raw value from the fixture and compare against `frame.dut1()`:
 
 ```rust
 #[test]
@@ -313,7 +313,7 @@ fn serpens_dut1_is_seconds() {
         "/tests/fixtures/wcsconv/inputs/serpens.head"
     ))
     .unwrap();
-    let obj = ast_core::FitsChan::from_header(&text).unwrap().read().unwrap();
+    let obj = starlink_ast::FitsChan::from_header(&text).unwrap().read().unwrap();
     // Navigate to the SkyFrame and read Dut1 (seconds). The header stores
     // DUT1 in days; the SkyFrame attribute is seconds, so the decoded value
     // is header_days * 86400. Replace EXPECTED with header_value * 86400.0.
@@ -327,7 +327,7 @@ The implementer fills `EXPECTED` from the fixture's DUT1 card × 86400 and the S
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core serpens_dut1_is_seconds
+cargo test -p starlink-ast serpens_dut1_is_seconds
 ```
 
 Expected: FAIL — Rust sets Dut1 to the raw day value, so `sky.dut1()` is 86400× too small.
@@ -344,12 +344,12 @@ In `wcs_celestial.rs:320-322`:
     }
 ```
 
-Confirm the SPD constant's location (`grep -rn "const SPD\|SPD:" crates/ast-core/src`); if `pal::SPD` is not exposed, inline `86_400.0` with a comment citing `fitschan.c:38017`.
+Confirm the SPD constant's location (`grep -rn "const SPD\|SPD:" crates/starlink-ast/src`); if `pal::SPD` is not exposed, inline `86_400.0` with a comment citing `fitschan.c:38017`.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core serpens_dut1_is_seconds
+cargo test -p starlink-ast serpens_dut1_is_seconds
 ```
 
 Expected: PASS.
@@ -359,8 +359,8 @@ Expected: PASS.
 Remove the two `serpens.head` rows from `HEAD_ORACLE_EXCLUDED` and the `serpens_native` row from `NATIVE_READ_EXCLUDED`:
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
-cargo test -p ast-core --test test_wcsconv
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle
+cargo test -p starlink-ast --test test_wcsconv
 ```
 
 Expected: both PASS. The gate confirms serpens now matches C; the wcsconv test confirms the native card output is byte-exact.
@@ -369,7 +369,7 @@ Expected: both PASS. The gate confirms serpens now matches C; the wcsconv test c
 
 ```bash
 cargo fmt
-git add crates/ast-core/src/fitschan/wcs_celestial.rs crates/ast-core/tests/
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs crates/starlink-ast/tests/
 git commit -m "fitschan: read DUT1 in seconds (x SPD) matching C
 
 Generated with AI
@@ -386,7 +386,7 @@ The helper `key_for(prefix, axis: Option<usize>, s: char) -> String` (`wcs_keywo
 **Fixtures cleared:** tidy-offsets, tidy-pole, skyref-alt (fwd+inv each). **NATIVE_READ_EXCLUDED:** `tidy-offsets_native`, `tidy-pole_native`, `skyref-alt_native`, and the shared-branch entries `axref_native`, `degen-wcsaxes_native`, `rfval_native`, `scp_native`, `sip-alt_native`, `zpx_native` (all `SREF1`/`SREF2` reasons).
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs:266-270`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs:266-270`
 - Test: the FitsChan read-path test module
 
 **Interfaces:**
@@ -395,7 +395,7 @@ The helper `key_for(prefix, axis: Option<usize>, s: char) -> String` (`wcs_keywo
 
 - [ ] **Step 1: Write the failing read test**
 
-Pick an alt-plane fixture that carries `SREF1A`/`SREFIS A` (confirm with `grep -i "SREF" crates/ast-core/tests/fixtures/wcsconv/inputs/skyref-alt.head`). Assert the alt SkyFrame's SkyRef and SkyRefIs come from the `A`-suffixed cards, not the primary:
+Pick an alt-plane fixture that carries `SREF1A`/`SREFIS A` (confirm with `grep -i "SREF" crates/starlink-ast/tests/fixtures/wcsconv/inputs/skyref-alt.head`). Assert the alt SkyFrame's SkyRef and SkyRefIs come from the `A`-suffixed cards, not the primary:
 
 ```rust
 #[test]
@@ -405,7 +405,7 @@ fn skyref_alt_reads_versioned_sref() {
         "/tests/fixtures/wcsconv/inputs/skyref-alt.head"
     ))
     .unwrap();
-    let obj = ast_core::FitsChan::from_header(&text).unwrap().read().unwrap();
+    let obj = starlink_ast::FitsChan::from_header(&text).unwrap().read().unwrap();
     // Navigate to the alt-plane SkyFrame and assert SkyRef(1)/SkyRef(2) and
     // SkyRefIs equal the SREF1A/SREF2A/SREFIS-A card values (from the probe
     // or the fixture), not the primary SREF1/SREF2.
@@ -416,7 +416,7 @@ fn skyref_alt_reads_versioned_sref() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core skyref_alt_reads_versioned_sref
+cargo test -p starlink-ast skyref_alt_reads_versioned_sref
 ```
 
 Expected: FAIL — the alt plane reads the primary SREF (or BAD) because the version letter is ignored.
@@ -439,7 +439,7 @@ Confirm `key_for` renders `SREFIS`/`SREF1`/`SREFP1` for the primary (`s == ' '`)
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core skyref_alt_reads_versioned_sref
+cargo test -p starlink-ast skyref_alt_reads_versioned_sref
 ```
 
 Expected: PASS.
@@ -450,8 +450,8 @@ Remove the six `HEAD_ORACLE_EXCLUDED` rows (tidy-offsets ×2, tidy-pole ×2, sky
 If any of the shared-branch native cases still differ, its residual reason is a *different* root cause — restore only that one row with an updated reason and note it for a later task; do not restore a SREF reason.
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
-cargo test -p ast-core --test test_wcsconv
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle
+cargo test -p starlink-ast --test test_wcsconv
 ```
 
 Expected: both PASS.
@@ -460,7 +460,7 @@ Expected: both PASS.
 
 ```bash
 cargo fmt
-git add crates/ast-core/src/fitschan/wcs_keywords.rs crates/ast-core/tests/
+git add crates/starlink-ast/src/fitschan/wcs_keywords.rs crates/starlink-ast/tests/
 git commit -m "fitschan: read SREFIS/SREF/SREFP with alt-plane version letter
 
 Generated with AI
@@ -478,7 +478,7 @@ C never hard-defaults LONPOLE to 180 before `WcsNatPole` — it passes `AST__BAD
 **Fixtures cleared:** gls, ait-highlatpole (fwd+inv each). **NATIVE_READ_EXCLUDED:** `gls_native`, `ait-highlatpole_native`.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:563` and `:664-671`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs:563` and `:664-671`
 - Test: the FitsChan read-path test module
 
 **Interfaces:**
@@ -487,7 +487,7 @@ C never hard-defaults LONPOLE to 180 before `WcsNatPole` — it passes `AST__BAD
 
 - [ ] **Step 1: Write the failing read test**
 
-Confirm gls.head has no LONPOLE card (`grep -i "LONPOLE" crates/ast-core/tests/fixtures/wcsconv/inputs/gls.head` → empty).
+Confirm gls.head has no LONPOLE card (`grep -i "LONPOLE" crates/starlink-ast/tests/fixtures/wcsconv/inputs/gls.head` → empty).
 Decode gls.head and transform a pixel through the FrameSet, asserting the output matches the C oracle golden for that fixture.
 Get the golden from the existing oracle report (the gls section in `headers.oracle` carries the reference outputs) or a probe:
 
@@ -499,7 +499,7 @@ fn gls_lonpole_default_matches_c() {
         "/tests/fixtures/wcsconv/inputs/gls.head"
     ))
     .unwrap();
-    let obj = ast_core::FitsChan::from_header(&text).unwrap().read().unwrap();
+    let obj = starlink_ast::FitsChan::from_header(&text).unwrap().read().unwrap();
     // Transform a mid-frame pixel forward and assert (lon, lat) match the C
     // oracle golden for gls.head (from headers.oracle / probe), tol 1e-9.
     // ... transform + asserts filled from a sibling celestial read test.
@@ -509,7 +509,7 @@ fn gls_lonpole_default_matches_c() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core gls_lonpole_default_matches_c
+cargo test -p starlink-ast gls_lonpole_default_matches_c
 ```
 
 Expected: FAIL — the forced-180 pole mirrors the transform for this θ0=0 projection.
@@ -544,13 +544,13 @@ Any other use of the old `lonpole: f64` binding between 563 and 671 must be upda
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core gls_lonpole_default_matches_c
+cargo test -p starlink-ast gls_lonpole_default_matches_c
 ```
 
 Expected: PASS. Also spot-check a projection that DOES default LONPOLE to 180 (a zenithal TAN fixture) still passes, to confirm no regression:
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle
 ```
 
 - [ ] **Step 5: Shrink both exclusion lists and verify the gates**
@@ -558,8 +558,8 @@ cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
 Remove the four `HEAD_ORACLE_EXCLUDED` rows (gls ×2, ait-highlatpole ×2) and the two `NATIVE_READ_EXCLUDED` rows (`gls_native`, `ait-highlatpole_native`).
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
-cargo test -p ast-core --test test_wcsconv
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle
+cargo test -p starlink-ast --test test_wcsconv
 ```
 
 Expected: both PASS.
@@ -568,7 +568,7 @@ Expected: both PASS.
 
 ```bash
 cargo fmt
-git add crates/ast-core/src/fitschan/wcs_celestial.rs crates/ast-core/tests/
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs crates/starlink-ast/tests/
 git commit -m "fitschan: let WcsNatPole resolve the LONPOLE default
 
 Generated with AI
@@ -587,8 +587,8 @@ The Rust `is_longitude_ctype`/`is_latitude_ctype` (`fits_store.rs:273-298`) hard
 **Fixtures cleared:** unknown-cel, unknown-cel2 (fwd+inv each). **NATIVE_READ_EXCLUDED:** `unknown-cel_native`, `unknown-cel2_native`.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/fits_store.rs:273-298`
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs` (System classification — set `System=Unknown` when the CTYPE matches only the generic family)
+- Modify: `crates/starlink-ast/src/fitschan/fits_store.rs:273-298`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs` (System classification — set `System=Unknown` when the CTYPE matches only the generic family)
 - Test: the FitsChan read-path test module
 
 **Interfaces:**
@@ -597,7 +597,7 @@ The Rust `is_longitude_ctype`/`is_latitude_ctype` (`fits_store.rs:273-298`) hard
 
 - [ ] **Step 1: Write the failing read test**
 
-Confirm the CTYPEs (`grep -i "CTYPE" crates/ast-core/tests/fixtures/wcsconv/inputs/unknown-cel.head`).
+Confirm the CTYPEs (`grep -i "CTYPE" crates/starlink-ast/tests/fixtures/wcsconv/inputs/unknown-cel.head`).
 Assert the decoded object is a SkyFrame with `System=Unknown` (or C's exact reported system for that fixture — read it from the oracle / probe) and that a forward transform matches the C golden:
 
 ```rust
@@ -608,7 +608,7 @@ fn unknown_cel_builds_unknown_skyframe() {
         "/tests/fixtures/wcsconv/inputs/unknown-cel.head"
     ))
     .unwrap();
-    let obj = ast_core::FitsChan::from_header(&text).unwrap().read().unwrap();
+    let obj = starlink_ast::FitsChan::from_header(&text).unwrap().read().unwrap();
     // Assert a SkyFrame is present with System=Unknown, and a mid-frame
     // pixel transforms to the C oracle golden (tol 1e-9).
     // ... extraction + asserts from a sibling celestial read test + probe.
@@ -618,7 +618,7 @@ fn unknown_cel_builds_unknown_skyframe() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core unknown_cel_builds_unknown_skyframe
+cargo test -p starlink-ast unknown_cel_builds_unknown_skyframe
 ```
 
 Expected: FAIL — the axis is not recognized as celestial, so no SkyFrame is built.
@@ -667,13 +667,13 @@ Note the `OFLN`/`OFLT`/`HLON`/`SLON`/... prefixes are subsumed by `xLON`/`xLAT`;
 - [ ] **Step 4: Apply the System=Unknown classification**
 
 In `wcs_celestial.rs`, where the SkyFrame's System is chosen from the CTYPE prefix, add the C branch that classifies an unrecognized celestial family as `System=Unknown` (find the existing match on RA/GLON/ELON... and add the fallthrough).
-Confirm the exact C system string with `grep -n "Unknown\|UNKNOWN\|astSetSystem" reference/starlink-ast/src/fitschan.c` around the SkyFrame construction, and that the Rust `SkyFrame` System enum has an `Unknown` variant (`grep -n "enum.*System\|Unknown" crates/ast-core/src/frames/skyframe.rs`); if it does not, this step also adds the variant faithfully.
+Confirm the exact C system string with `grep -n "Unknown\|UNKNOWN\|astSetSystem" reference/starlink-ast/src/fitschan.c` around the SkyFrame construction, and that the Rust `SkyFrame` System enum has an `Unknown` variant (`grep -n "enum.*System\|Unknown" crates/starlink-ast/src/frames/skyframe.rs`); if it does not, this step also adds the variant faithfully.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core unknown_cel_builds_unknown_skyframe
-cargo test -p ast-core   # full crate: recognition change is broad, confirm no regression
+cargo test -p starlink-ast unknown_cel_builds_unknown_skyframe
+cargo test -p starlink-ast   # full crate: recognition change is broad, confirm no regression
 ```
 
 Expected: PASS, and no other read test regresses.
@@ -683,8 +683,8 @@ Expected: PASS, and no other read test regresses.
 Remove the four `HEAD_ORACLE_EXCLUDED` rows (unknown-cel ×2, unknown-cel2 ×2) and the two `NATIVE_READ_EXCLUDED` rows (`unknown-cel_native`, `unknown-cel2_native`).
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
-cargo test -p ast-core --test test_wcsconv
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle
+cargo test -p starlink-ast --test test_wcsconv
 ```
 
 Expected: both PASS.
@@ -693,7 +693,7 @@ Expected: both PASS.
 
 ```bash
 cargo fmt
-git add crates/ast-core/src/fitschan/fits_store.rs crates/ast-core/src/fitschan/wcs_celestial.rs crates/ast-core/tests/
+git add crates/starlink-ast/src/fitschan/fits_store.rs crates/starlink-ast/src/fitschan/wcs_celestial.rs crates/starlink-ast/tests/
 git commit -m "fitschan: recognise generic xLON/xLAT/xyLN/xyLT celestial CTYPEs
 
 Generated with AI
@@ -709,7 +709,7 @@ The Rust spectral reader falls through the `else` arm at `wcs_spectral.rs:208-21
 **Fixture cleared:** freq-log (inv). **NATIVE_READ_EXCLUDED:** `freq-log_native`.
 
 **Files:**
-- Create/Modify: `crates/ast-core/src/fitschan/wcs_spectral.rs` — add `fn log_wcs(crval: f64) -> Option<DynMapping>` and dispatch to it from the `else` arm when `algcode == "-LOG"`.
+- Create/Modify: `crates/starlink-ast/src/fitschan/wcs_spectral.rs` — add `fn log_wcs(crval: f64) -> Option<DynMapping>` and dispatch to it from the `else` arm when `algcode == "-LOG"`.
 - Test: the FitsChan read-path test module
 
 **Interfaces:**
@@ -718,7 +718,7 @@ The Rust spectral reader falls through the `else` arm at `wcs_spectral.rs:208-21
 
 - [ ] **Step 1: Write the failing read test**
 
-Confirm freq-log.head has a `-LOG` CTYPE (`grep -i "CTYPE" crates/ast-core/tests/fixtures/wcsconv/inputs/freq-log.head`).
+Confirm freq-log.head has a `-LOG` CTYPE (`grep -i "CTYPE" crates/starlink-ast/tests/fixtures/wcsconv/inputs/freq-log.head`).
 Assert the inverse transform (S → w) matches the C log golden:
 
 ```rust
@@ -729,7 +729,7 @@ fn freq_log_builds_log_mapping() {
         "/tests/fixtures/wcsconv/inputs/freq-log.head"
     ))
     .unwrap();
-    let obj = ast_core::FitsChan::from_header(&text).unwrap().read().unwrap();
+    let obj = starlink_ast::FitsChan::from_header(&text).unwrap().read().unwrap();
     // Transform a spectral coordinate through the inverse and assert it
     // equals Sr*log(S/Sr) with Sr=CRVAL, matching the C oracle golden (1e-9).
     // ... extraction + asserts from a sibling spectral read test + probe.
@@ -739,7 +739,7 @@ fn freq_log_builds_log_mapping() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core freq_log_builds_log_mapping
+cargo test -p starlink-ast freq_log_builds_log_mapping
 ```
 
 Expected: FAIL — the linear ShiftMap gives the wrong inverse.
@@ -786,7 +786,7 @@ Then wire the dispatch in the `else` arm at `wcs_spectral.rs:208-213`:
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core freq_log_builds_log_mapping
+cargo test -p starlink-ast freq_log_builds_log_mapping
 ```
 
 Expected: PASS.
@@ -796,8 +796,8 @@ Expected: PASS.
 Remove the `freq-log.head` (false) row from `HEAD_ORACLE_EXCLUDED` and the `freq-log_native` row from `NATIVE_READ_EXCLUDED`.
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
-cargo test -p ast-core --test test_wcsconv
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle
+cargo test -p starlink-ast --test test_wcsconv
 ```
 
 Expected: both PASS.
@@ -806,7 +806,7 @@ Expected: both PASS.
 
 ```bash
 cargo fmt
-git add crates/ast-core/src/fitschan/wcs_spectral.rs crates/ast-core/tests/
+git add crates/starlink-ast/src/fitschan/wcs_spectral.rs crates/starlink-ast/tests/
 git commit -m "fitschan: port LogWcs for -LOG spectral axes
 
 Generated with AI
@@ -828,7 +828,7 @@ The Rust reader falls through the `else` arm and emits a linear ShiftMap, so `gr
 **Fixture cleared:** grism (inv). **NATIVE_READ_EXCLUDED:** `grism_native`.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_spectral.rs` — add `fn grism_spec_wcs(algcode: &str, store, axis, specfrm) -> AstResult<Option<DynMapping>>` and dispatch from the `else` arm for `-GRI`/`-GRA`.
+- Modify: `crates/starlink-ast/src/fitschan/wcs_spectral.rs` — add `fn grism_spec_wcs(algcode: &str, store, axis, specfrm) -> AstResult<Option<DynMapping>>` and dispatch from the `else` arm for `-GRI`/`-GRA`.
 - Test: the FitsChan read-path test module
 
 **Interfaces:**
@@ -837,7 +837,7 @@ The Rust reader falls through the `else` arm and emits a linear ShiftMap, so `gr
 
 - [ ] **Step 1: Write the failing read test**
 
-Confirm grism.head CTYPE and PV cards (`grep -iE "CTYPE|PV" crates/ast-core/tests/fixtures/wcsconv/inputs/grism.head`).
+Confirm grism.head CTYPE and PV cards (`grep -iE "CTYPE|PV" crates/starlink-ast/tests/fixtures/wcsconv/inputs/grism.head`).
 Assert the inverse transform matches the C grism golden:
 
 ```rust
@@ -848,7 +848,7 @@ fn grism_builds_grism_mapping() {
         "/tests/fixtures/wcsconv/inputs/grism.head"
     ))
     .unwrap();
-    let obj = ast_core::FitsChan::from_header(&text).unwrap().read().unwrap();
+    let obj = starlink_ast::FitsChan::from_header(&text).unwrap().read().unwrap();
     // Transform a spectral coordinate through the inverse and assert it
     // matches the C oracle golden for grism.head (tol 1e-9).
     // ... extraction + asserts from a sibling spectral read test + probe.
@@ -858,7 +858,7 @@ fn grism_builds_grism_mapping() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core grism_builds_grism_mapping
+cargo test -p starlink-ast grism_builds_grism_mapping
 ```
 
 Expected: FAIL — the linear ShiftMap gives the wrong transform.
@@ -934,7 +934,7 @@ fn grism_spec_wcs(
 }
 ```
 
-The accessor names (`store.pv_at`, `CmpMap::new` signature and its series flag, whether `SpecSystem::Airwave` exists) must be confirmed against the codebase and adjusted — the algorithm is fixed by C, only the Rust spelling varies. Confirm `DD2R` (π/180) is available (`grep -rn "DD2R\|const.*deg2rad" crates/ast-core/src`); reuse the existing constant, do not redefine.
+The accessor names (`store.pv_at`, `CmpMap::new` signature and its series flag, whether `SpecSystem::Airwave` exists) must be confirmed against the codebase and adjusted — the algorithm is fixed by C, only the Rust spelling varies. Confirm `DD2R` (π/180) is available (`grep -rn "DD2R\|const.*deg2rad" crates/starlink-ast/src`); reuse the existing constant, do not redefine.
 Wire the dispatch in the `else` arm before the final catch-all:
 
 ```rust
@@ -951,7 +951,7 @@ Wire the dispatch in the `else` arm before the final catch-all:
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core grism_builds_grism_mapping
+cargo test -p starlink-ast grism_builds_grism_mapping
 ```
 
 Expected: PASS.
@@ -961,8 +961,8 @@ Expected: PASS.
 Remove the `grism.head` (false) row from `HEAD_ORACLE_EXCLUDED` and the `grism_native` row from `NATIVE_READ_EXCLUDED`.
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
-cargo test -p ast-core --test test_wcsconv
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle
+cargo test -p starlink-ast --test test_wcsconv
 ```
 
 Expected: both PASS.
@@ -971,7 +971,7 @@ Expected: both PASS.
 
 ```bash
 cargo fmt
-git add crates/ast-core/src/fitschan/wcs_spectral.rs crates/ast-core/tests/
+git add crates/starlink-ast/src/fitschan/wcs_spectral.rs crates/starlink-ast/tests/
 git commit -m "fitschan: port GrismSpecWcs for -GRI/-GRA grism axes
 
 Generated with AI
@@ -989,7 +989,7 @@ The Rust `translate_tpv_and_polytan_to_tpn` (`spec_trans.rs:640-661`) handles on
 **Fixture cleared:** tan-polytan (fwd+inv). **NATIVE_READ_EXCLUDED:** `tan-polytan_native`.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs:640-662`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs:640-662`
 - Test: the FitsChan read-path test module
 
 **Interfaces:**
@@ -998,7 +998,7 @@ The Rust `translate_tpv_and_polytan_to_tpn` (`spec_trans.rs:640-661`) handles on
 
 - [ ] **Step 1: Write the failing read test**
 
-Confirm tan-polytan.head is TAN with PV distortion (`grep -iE "CTYPE|PV" crates/ast-core/tests/fixtures/wcsconv/inputs/tan-polytan.head`).
+Confirm tan-polytan.head is TAN with PV distortion (`grep -iE "CTYPE|PV" crates/starlink-ast/tests/fixtures/wcsconv/inputs/tan-polytan.head`).
 Assert the decoded projection is TPN (distorted), verifiable by a forward transform matching the C oracle golden:
 
 ```rust
@@ -1009,7 +1009,7 @@ fn tan_polytan_promotes_to_tpn() {
         "/tests/fixtures/wcsconv/inputs/tan-polytan.head"
     ))
     .unwrap();
-    let obj = ast_core::FitsChan::from_header(&text).unwrap().read().unwrap();
+    let obj = starlink_ast::FitsChan::from_header(&text).unwrap().read().unwrap();
     // Transform a mid-frame pixel forward; assert it matches the C oracle
     // golden for tan-polytan.head (the TPN distortion moves the output away
     // from the plain-TAN result), tol 1e-9.
@@ -1020,7 +1020,7 @@ fn tan_polytan_promotes_to_tpn() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core tan_polytan_promotes_to_tpn
+cargo test -p starlink-ast tan_polytan_promotes_to_tpn
 ```
 
 Expected: FAIL — the plain-TAN projection ignores the PV distortion.
@@ -1094,7 +1094,7 @@ Then in `translate_tpv_and_polytan_to_tpn`, replace the omitted-branch comment (
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core tan_polytan_promotes_to_tpn
+cargo test -p starlink-ast tan_polytan_promotes_to_tpn
 ```
 
 Expected: PASS.
@@ -1105,8 +1105,8 @@ Remove the two `tan-polytan.head` rows from `HEAD_ORACLE_EXCLUDED` and the `tan-
 If `tan-polytan_native` still differs, the zero-coefficient PV-delete branch (fitschan.c:14133-14145) matters for the written cards — port it and re-run.
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
-cargo test -p ast-core --test test_wcsconv
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle
+cargo test -p starlink-ast --test test_wcsconv
 ```
 
 Expected: both PASS.
@@ -1115,7 +1115,7 @@ Expected: both PASS.
 
 ```bash
 cargo fmt
-git add crates/ast-core/src/fitschan/spec_trans.rs crates/ast-core/tests/
+git add crates/starlink-ast/src/fitschan/spec_trans.rs crates/starlink-ast/tests/
 git commit -m "fitschan: auto-detect distorted TAN (PolyTan=-1) -> TPN
 
 Generated with AI
@@ -1134,7 +1134,7 @@ This task ports the `carlin`-implied path for the *no-projection-code* case (the
 **Fixture cleared:** class-noproj (fwd+inv). **NATIVE_READ_EXCLUDED:** `class-noproj_native`.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:118-131` (detect no-proj-code celestial and take the CAR-linear branch)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs:118-131` (detect no-proj-code celestial and take the CAR-linear branch)
 - Test: the FitsChan read-path test module
 
 **Interfaces:**
@@ -1143,7 +1143,7 @@ This task ports the `carlin`-implied path for the *no-projection-code* case (the
 
 - [ ] **Step 1: Write the failing read test**
 
-Confirm class-noproj.head has short CTYPEs (`grep -i "CTYPE" crates/ast-core/tests/fixtures/wcsconv/inputs/class-noproj.head` → `RA--`/`DEC-` with no projection suffix).
+Confirm class-noproj.head has short CTYPEs (`grep -i "CTYPE" crates/starlink-ast/tests/fixtures/wcsconv/inputs/class-noproj.head` → `RA--`/`DEC-` with no projection suffix).
 Assert the decoded object is a celestial SkyFrame and a mid-frame pixel transforms linearly to the C golden:
 
 ```rust
@@ -1154,7 +1154,7 @@ fn class_noproj_builds_car_linear() {
         "/tests/fixtures/wcsconv/inputs/class-noproj.head"
     ))
     .unwrap();
-    let obj = ast_core::FitsChan::from_header(&text).unwrap().read().unwrap();
+    let obj = starlink_ast::FitsChan::from_header(&text).unwrap().read().unwrap();
     // Assert a SkyFrame is present and a mid-frame pixel maps to the C oracle
     // golden for class-noproj.head (linear CAR: IWC + CRVAL), tol 1e-9.
     // ... extraction + asserts from a sibling celestial read test + probe.
@@ -1164,7 +1164,7 @@ fn class_noproj_builds_car_linear() {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core class_noproj_builds_car_linear
+cargo test -p starlink-ast class_noproj_builds_car_linear
 ```
 
 Expected: FAIL — `projection_code` returns None so no celestial frame is built.
@@ -1226,8 +1226,8 @@ Confirm the exact CmpMap/WinMap ordering against C (`map1` degrees→radians zoo
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core class_noproj_builds_car_linear
-cargo test -p ast-core   # recognition/build change is broad; confirm no regression
+cargo test -p starlink-ast class_noproj_builds_car_linear
+cargo test -p starlink-ast   # recognition/build change is broad; confirm no regression
 ```
 
 Expected: PASS, no regression.
@@ -1237,8 +1237,8 @@ Expected: PASS, no regression.
 Remove the two `class-noproj.head` rows from `HEAD_ORACLE_EXCLUDED` and the `class-noproj_native` row from `NATIVE_READ_EXCLUDED`.
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle
-cargo test -p ast-core --test test_wcsconv
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle
+cargo test -p starlink-ast --test test_wcsconv
 ```
 
 Expected: both PASS.
@@ -1247,7 +1247,7 @@ Expected: both PASS.
 
 ```bash
 cargo fmt
-git add crates/ast-core/src/fitschan/wcs_celestial.rs crates/ast-core/tests/
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs crates/starlink-ast/tests/
 git commit -m "fitschan: CAR-linear branch for celestial CTYPE with no projection code
 
 Generated with AI
@@ -1267,16 +1267,16 @@ The wcsconv manifest supplies `carlin=1` for car4 (`wcsconv_tests.txt:35`), so i
 **Fixture cleared:** car4 (fwd+inv). **NATIVE_READ_EXCLUDED:** `car4_native` (and it must not regress `car1_native`/`car2_native`, which are already excluded for a *different* reason — `SREF1: CAR fiducial longitude` — and also carry `carlin=1`).
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs` — add `carlin: Option<bool>` field (mirroring `-1`→unset), a `set_carlin`/getter, initialize in `new()` and `from_header()`.
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs` — thread `carlin` into `build_celestial_with_def_b1950` and take the CAR-linear branch (reusing Task 9's `build_car_linear_mapping`) when `latprj == CAR && carlin`.
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs` — pass `carlin` through `decode_wcs_with_def_b1950` (mirror the `def_b1950` threading).
-- Modify (if the gate requires): `crates/ast-core/tests/test_transform_oracle.rs` — apply `CarLin=1` for car4 in `load_fixture`.
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs` — add `carlin: Option<bool>` field (mirroring `-1`→unset), a `set_carlin`/getter, initialize in `new()` and `from_header()`.
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs` — thread `carlin` into `build_celestial_with_def_b1950` and take the CAR-linear branch (reusing Task 9's `build_car_linear_mapping`) when `latprj == CAR && carlin`.
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs` — pass `carlin` through `decode_wcs_with_def_b1950` (mirror the `def_b1950` threading).
+- Modify (if the gate requires): `crates/starlink-ast/tests/test_transform_oracle.rs` — apply `CarLin=1` for car4 in `load_fixture`.
 - Test: the FitsChan read-path test module
 
 **Interfaces:**
 - Consumes: `build_car_linear_mapping(store, lon_axis, lat_axis)` from Task 9 (A3) — the shared CAR-linear builder (WcsMap(WCSBAD) + WinMap adding CRVALₙ·DD2R). Task 9 MUST land before Task 10.
 - Consumes: `def_b1950` threading pattern (`build_celestial_with_def_b1950` / `decode_wcs_with_def_b1950`) as the template for a second threaded parameter.
-- Produces: `FitsChan::set_carlin(&mut self, on: bool)` typed setter (per [[feedback_typed_setters_no_string_layer]] — no string attribute layer in ast-core).
+- Produces: `FitsChan::set_carlin(&mut self, on: bool)` typed setter (per [[feedback_typed_setters_no_string_layer]] — no string attribute layer in starlink-ast).
 
 - [ ] **Step 1: C-oracle probe to close the investigation gate**
 
@@ -1315,7 +1315,7 @@ fn car4_carlin_produces_linear_car() {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cargo test -p ast-core car4_carlin_produces_linear_car -- --nocapture`
+Run: `cargo test -p starlink-ast car4_carlin_produces_linear_car -- --nocapture`
 Expected: FAIL — outputs are the full spherical CAR projection, not linear.
 
 - [ ] **Step 4: Add the `carlin` field + setter and thread it**
@@ -1341,7 +1341,7 @@ if (matches!(proj, WcsProjection::Car) && carlin) || matches!(proj, WcsProjectio
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cargo test -p ast-core car4_carlin_produces_linear_car`
+Run: `cargo test -p starlink-ast car4_carlin_produces_linear_car`
 Expected: PASS.
 
 - [ ] **Step 6: (only if Step 1 gate requires) apply CarLin=1 in the transform-oracle harness for car4**
@@ -1353,9 +1353,9 @@ In `load_fixture` (`test_transform_oracle.rs:196`), after building the FitsChan 
 Remove `car4_native` from `NATIVE_READ_EXCLUDED` (`test_wcsconv.rs`). Remove car4 from `HEAD_ORACLE_EXCLUDED` (Task 1). Run:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv car4 -- --nocapture
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle -- --ignored --nocapture
+cargo test -p starlink-ast --test test_wcsconv
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv car4 -- --nocapture
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle -- --ignored --nocapture
 ```
 
 Expected: car4 native byte-exact; car4 transform-oracle fwd+inv pass; no stale-exclusion failure. car1/car2 still excluded (different reason) and unregressed.
@@ -1363,8 +1363,8 @@ Expected: car4 native byte-exact; car4 transform-oracle fwd+inv pass; no stale-e
 - [ ] **Step 8: Format, clippy, commit**
 
 ```bash
-cargo fmt -p ast-core
-cargo clippy -p ast-core --tests -- -D warnings   # isolated target dir + RUSTC override per reference_clippy_toolchain_mismatch
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --tests -- -D warnings   # isolated target dir + RUSTC override per reference_clippy_toolchain_mismatch
 git add -A && git commit -m "fitschan: CarLin attribute treats coded -CAR as linear (car4)
 
 Generated with AI
@@ -1394,7 +1394,7 @@ Record the finding. Two outcomes:
 **Fixture cleared:** skyref (fwd+inv). **NATIVE_READ_EXCLUDED:** `skyref_native`. **Must not regress:** tidy-offsets, tidy-pole, skyref-alt (Task 3), and any absolute/offset FrameSet fixture.
 
 **Files:**
-- Modify (outcome-dependent): `crates/ast-core/src/fitschan/wcs_read.rs:593-607` — either the `apply_skyrefis` call site (through-FrameSet vs direct) or the upstream offset-matrix builder.
+- Modify (outcome-dependent): `crates/starlink-ast/src/fitschan/wcs_read.rs:593-607` — either the `apply_skyrefis` call site (through-FrameSet vs direct) or the upstream offset-matrix builder.
 - Test: transform-oracle head gate + a targeted read-path test asserting skyref's pixel→sky Mapping matches the C golden.
 
 **Interfaces:**
@@ -1403,7 +1403,7 @@ Record the finding. Two outcomes:
 
 - [ ] **Step 1: C-oracle probe (investigation gate above). Record the outcome in a comment on the fix.**
 - [ ] **Step 2: Write the failing test** — read skyref.head, transform the golden's offset-region input points, assert against the skyref golden in `headers.oracle`. Fails on the M0 drift.
-- [ ] **Step 3: Run to verify it fails.** `cargo test -p ast-core skyref_offset_mapping -- --nocapture` → FAIL.
+- [ ] **Step 3: Run to verify it fails.** `cargo test -p starlink-ast skyref_offset_mapping -- --nocapture` → FAIL.
 - [ ] **Step 4: Apply the outcome-dependent fix** (through-FrameSet SkyRefIs, or upstream offset-matrix correction). Rewrite the `wcs_read.rs:593-604` comment to match the corrected behavior — describe the code as it is today, no history.
 - [ ] **Step 5: Run to verify it passes**, and run Task 3's fixtures (tidy-offsets/tidy-pole/skyref-alt) to confirm no regression.
 - [ ] **Step 6: Shrink both exclusion lists, run both gates** (`test_wcsconv` for `skyref_native`; `head_sections_match_oracle`).
@@ -1420,7 +1420,7 @@ freq-wav and wave-f2w are bucketed `SFT1`/`SREF2` in `test_wcsconv.rs` — the S
 **Fixtures cleared:** freq-wav, wave-f2w (fwd+inv). **NATIVE_READ_EXCLUDED:** `freq_wav_native` (`SFT1`), `wave_f2w_native` (`SREF2`).
 
 **Files:**
-- Modify (outcome-dependent): `crates/ast-core/src/fitschan/wcs_spectral.rs` — the `nonlin_spec_wcs` linearization (rate/shift construction) around line 257-320, OR the `astRate` seed/step if the probe points at the derivative itself.
+- Modify (outcome-dependent): `crates/starlink-ast/src/fitschan/wcs_spectral.rs` — the `nonlin_spec_wcs` linearization (rate/shift construction) around line 257-320, OR the `astRate` seed/step if the probe points at the derivative itself.
 - Test: transform-oracle head gate + targeted spectral read-path test.
 
 **Interfaces:**
@@ -1448,7 +1448,7 @@ crota-3d is bucketed `INV: matrix inverse` in `test_wcsconv.rs` — the forward 
 **Fixture cleared:** crota-3d (fwd+inv). **NATIVE_READ_EXCLUDED:** `crota_3d_native`.
 
 **Files:**
-- Modify (outcome-dependent): `crates/ast-core/src/mappings/matrix.rs` (inverse computation / singularity flag), OR `crates/ast-core/src/fitschan/wcs_read.rs` / the CD→MatrixMap builder (third-axis coupling).
+- Modify (outcome-dependent): `crates/starlink-ast/src/mappings/matrix.rs` (inverse computation / singularity flag), OR `crates/starlink-ast/src/fitschan/wcs_read.rs` / the CD→MatrixMap builder (third-axis coupling).
 - Test: transform-oracle head gate + targeted inverse-transform test.
 
 **Interfaces:**
@@ -1482,8 +1482,8 @@ C does not use an outer sandwich. In `WcsNative` (`reference/starlink-ast/src/fi
 **Fixture cleared:** serpens (fwd+inv) from `HEAD_ORACLE_EXCLUDED` (the `C1x` rows added in Task 2). This task does NOT clear `serpens_native` — that is Task 15.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:398-405` (remove outer sandwich) and `551-696` (route swap inside the rotation, build WcsMap/rotation on physical lon/lat indices).
-- Test: `crates/ast-core/tests/test_fitschan_wcs.rs` (targeted swapped-axis forward-transform assertion) + the head oracle gate.
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs:398-405` (remove outer sandwich) and `551-696` (route swap inside the rotation, build WcsMap/rotation on physical lon/lat indices).
+- Test: `crates/starlink-ast/tests/test_fitschan_wcs.rs` (targeted swapped-axis forward-transform assertion) + the head oracle gate.
 
 **Interfaces:**
 - Consumes: `FitsChan::from_header(&str)`, `Channel::read`, the `Mapping` transform API, the swapped-axis fields already parsed into the celestial store (`lon_axis`, `lat_axis`).
@@ -1491,10 +1491,10 @@ C does not use an outer sandwich. In `WcsNative` (`reference/starlink-ast/src/fi
 
 - [ ] **Step 1: C-oracle probe (gate above)** — dump C's serpens pixel→sky chain via the repo `libast.so`; record the PermMap placement and the WcsMap physical axis indices in the report.
 - [ ] **Step 2: Write the failing test** — in `test_fitschan_wcs.rs`, read serpens.head, run the *forward* transform on pixel `(150.0, 120.0)`, assert the sky result is `(0.018049750, -1.440691695)` (RA, DEC in radians) to ≤1e-6. Currently returns `(-0.021491650, 1.460209855)`.
-- [ ] **Step 3: Run to verify it fails** — `cargo test -p ast-core --test test_fitschan_wcs serpens_swapped_axis_transform`.
+- [ ] **Step 3: Run to verify it fails** — `cargo test -p starlink-ast --test test_fitschan_wcs serpens_swapped_axis_transform`.
 - [ ] **Step 4: Apply the faithful fix** — mirror `WcsNative` (swap inside the rotation, physical-axis WcsMap); delete the outer PermMap sandwich. No heuristics.
 - [ ] **Step 5: Run to verify it passes**; confirm the non-swapped controls `tan-rotated`/`tan-cdmatrix` and all other celestial head fixtures still transform exactly (no regression).
-- [ ] **Step 6: Shrink the head gate** — remove the two `serpens.head` `C1x` rows from `HEAD_ORACLE_EXCLUDED`; run `cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle -- --ignored --nocapture`. Leave `serpens_native` in `NATIVE_READ_EXCLUDED` (Task 15 owns it).
+- [ ] **Step 6: Shrink the head gate** — remove the two `serpens.head` `C1x` rows from `HEAD_ORACLE_EXCLUDED`; run `cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle -- --ignored --nocapture`. Leave `serpens_native` in `NATIVE_READ_EXCLUDED` (Task 15 owns it).
 - [ ] **Step 7: Format, clippy, commit** — `"fitschan: route swapped celestial axes inside the rotation like C WcsNative (serpens)"` (+ AI trailer).
 
 ---
@@ -1520,8 +1520,8 @@ For a *diagonal* CD, C itself collapses the whole block to a WinMap (`expected/s
 **Fixture cleared:** `serpens_native` from `NATIVE_READ_EXCLUDED`.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/matrix.rs` (MatrixMap×MatrixMap / MatrixMap×zoom `map_merge` fusion) and/or `crates/ast-core/src/mappings/winmap.rs` (CRPIX ShiftMap narrowing / not absorbing the shift into the deg2rad WinMap). The read-path builders (`wcs_matrix.rs`, `wcs_celestial.rs`) are the *source* of the nodes but the fix is in how the simplifier combines them — match C's order there.
-- Test: `crates/ast-core/tests/test_wcsconv.rs` native gate + a targeted `.native`-shape assertion.
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs` (MatrixMap×MatrixMap / MatrixMap×zoom `map_merge` fusion) and/or `crates/starlink-ast/src/mappings/winmap.rs` (CRPIX ShiftMap narrowing / not absorbing the shift into the deg2rad WinMap). The read-path builders (`wcs_matrix.rs`, `wcs_celestial.rs`) are the *source* of the nodes but the fix is in how the simplifier combines them — match C's order there.
+- Test: `crates/starlink-ast/tests/test_wcsconv.rs` native gate + a targeted `.native`-shape assertion.
 
 **Interfaces:**
 - Consumes: MatrixMap `map_merge` ([[project_matrixmap_mapmerge_port]]), WinMap→ShiftMap narrowing (`winmap.rs:264/277`), the native serializer (`to_native_string`).
@@ -1531,8 +1531,8 @@ For a *diagonal* CD, C itself collapses the whole block to a WinMap (`expected/s
 - [ ] **Step 2: Write the failing test** — assert serpens's `.native` (or `to_native_string`) pixel→IWC block begins with a `ShiftMap` node (SFT == −CRPIX) followed by a single `MatrixMap` whose `M0 == CD[0][0]·(π/180)`. Fails on the current MatrixMap+WinMap shape.
 - [ ] **Step 3: Run to verify it fails.**
 - [ ] **Step 4: Apply the faithful fix** — fuse deg2rad into the CD MatrixMap and keep CRPIX as a leading ShiftMap, mirroring C's `map_merge` order. No serpens special-case, no tolerance heuristic.
-- [ ] **Step 5: Run to verify it passes**; run the *full* `cargo test -p ast-core --test test_wcsconv` and confirm no other native fixture regressed (diagonal-CD WinMap collapse, sao-tan, tan-rotated, tan-cdmatrix, every off-diagonal-CD celestial read).
-- [ ] **Step 6: Shrink `NATIVE_READ_EXCLUDED`** — remove `serpens_native`; run `cargo test -p ast-core --test test_wcsconv`.
+- [ ] **Step 5: Run to verify it passes**; run the *full* `cargo test -p starlink-ast --test test_wcsconv` and confirm no other native fixture regressed (diagonal-CD WinMap collapse, sao-tan, tan-rotated, tan-cdmatrix, every off-diagonal-CD celestial read).
+- [ ] **Step 6: Shrink `NATIVE_READ_EXCLUDED`** — remove `serpens_native`; run `cargo test -p starlink-ast --test test_wcsconv`.
 - [ ] **Step 7: Format, clippy, commit** — `"simplify: fuse deg2rad into CD MatrixMap and keep CRPIX ShiftMap like C (serpens)"` (+ AI trailer).
 
 ---
@@ -1543,7 +1543,7 @@ When Tasks 1-15 are all committed and both gates are green with empty Phase-4-ow
 
 - [ ] `HEAD_ORACLE_EXCLUDED` contains no Phase-4 rows (only rows owned by other phases, if any remain).
 - [ ] Every Phase-4 fixture removed from `NATIVE_READ_EXCLUDED`.
-- [ ] Run the full head section gate: `cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle -- --ignored --nocapture` — passes with `checked >= HEAD_SECTION_FLOOR`.
-- [ ] Run the full native read-fidelity suite: `cargo test -p ast-core --test test_wcsconv` — green.
+- [ ] Run the full head section gate: `cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle -- --ignored --nocapture` — passes with `checked >= HEAD_SECTION_FLOOR`.
+- [ ] Run the full native read-fidelity suite: `cargo test -p starlink-ast --test test_wcsconv` — green.
 - [ ] Update `PLAN.md` and the design spec's Phase 4 status to DONE.
 - [ ] Record a project memory summarizing the 14 root causes fixed (C1 DUT1, C1x swapped-axis routing, C1y off-diagonal-CD deg2rad fusion, plus A1-A3/B1-B3/C2-C6) and the two-gate pattern, linking [[project_phase4_reconciliation]].

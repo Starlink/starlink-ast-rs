@@ -30,7 +30,7 @@ MathMap (expression evaluator) is deferred to a later step.
 ## Module Structure
 
 ```
-crates/ast-core/src/mappings/
+crates/starlink-ast/src/mappings/
 ├── winmap.rs       # WinMap
 ├── lutmap.rs       # LutMap + LutInterp enum
 ├── polymap.rs      # PolyMap + PolyTerm
@@ -296,7 +296,7 @@ iterative inverse fitting.
 # In workspace Cargo.toml [workspace.dependencies]
 levenberg-marquardt = "0.14"
 
-# In ast-core Cargo.toml [dependencies]
+# In starlink-ast Cargo.toml [dependencies]
 levenberg-marquardt = { workspace = true }
 ```
 

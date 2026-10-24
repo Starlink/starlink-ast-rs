@@ -5,7 +5,7 @@ ast_counts.h is prepended to every src/*.c file of a counting build.  It
 includes the PAL, ERFA and libm headers first (all include-guarded, so the
 file's own later includes are no-ops), then redefines each PAL, ERFA and
 counted libm function as a call that first counts itself under its C symbol
-name.  The names match ast-core's `call-counts` keys.
+name.  The names match starlink-ast's `call-counts` keys.
 
     gen_count_header.py <copy of reference/starlink-ast>
 """

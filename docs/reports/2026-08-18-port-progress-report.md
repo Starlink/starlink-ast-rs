@@ -40,13 +40,13 @@ Regions, the full `Frame` base class, spectral and time frames, and `KeyMap` hav
 
 What has not started is the thing the design exists for.
 The stated goal is binary ABI compatibility: existing applications — pyast, the Starlink suite, DS9 — link against the Rust build with no source change.
-`ast-capi/src/lib.rs` is a one-line comment.
+`starlink-ast-capi/src/lib.rs` is a one-line comment.
 Everything verified so far is verified through the Rust API; no C program has ever linked this library.
 
 | Measure | Value |
 |---|---|
 | Commits | 1,087 (2026-04-27 → 2026-08-08, 53 active days) |
-| `ast-core` source | **67,277 code lines** of production code across 144 files (82,025 including inline `#[cfg(test)]` tests; 120,466 total lines) |
+| `starlink-ast` source | **67,277 code lines** of production code across 144 files (82,025 including inline `#[cfg(test)]` tests; 120,466 total lines) |
 | C reference `src/` | **184,817 code lines** across 163 `.c` files (499,874 total; 263,063 comment, 52.6%) |
 | Port vs C, whole library | 36% by production code volume |
 | Port vs C, subsystems with a Rust counterpart | 57% by production code volume (66,432 vs 116,845) |
@@ -337,7 +337,7 @@ Two were not, and one strength was lost.
 | Regions | Stubs. 605 Rust lines against ~44,000 C. No base class, no uncertainty regions, no `astMapRegion`; `BoxRegion::overlap()` returned a hardcoded `4`. | Nine classes, 8,379 code lines of production code. Mesh-based and geometric overlap, uncertainty machinery, great-circle sky geometry, `astRegPins`, masking. One geodesic-mesh gap remains open. | **Answered** |
 | Declared quality gates | `#![deny(clippy::all)]` declared and red: 87 findings, ~49 genuine. A gate that does not hold. | `-D warnings` workspace-wide, clippy and fmt enforced in CI on both Linux and macOS, green. | **Answered** |
 | Test posture | 369 tests; a plain `cargo test` ran exactly one live-oracle comparison; simplify parity tests gated behind 16 minutes of C recompilation; one harness compared the Rust reader against the Rust writer and so could not falsify either. | 3,280 tests, all running by default, all reading frozen C output. No gated-because-slow tier. Every relaxation is a named entry in a source list with a recorded reason. | **Answered** |
-| The C ABI | 454 `astrs_*` entry points over `u64` handles. Not `ast.h`-compatible and no reference counting — the assessment called it "a test harness, not an ABI" — but it existed and worked. | `ast-capi/src/lib.rs` is one comment line. No exported symbols, no header, no `astClone`/`astAnnul`, no `catch_unwind` boundary. `ast-plugins`, `ast-ffi-tests` and `ast-oracle-tests` are likewise empty. | **Lost** |
+| The C ABI | 454 `astrs_*` entry points over `u64` handles. Not `ast.h`-compatible and no reference counting — the assessment called it "a test harness, not an ABI" — but it existed and worked. | `starlink-ast-capi/src/lib.rs` is one comment line. No exported symbols, no header, no `astClone`/`astAnnul`, no `catch_unwind` boundary. `ast-plugins`, `ast-ffi-tests` and `ast-oracle-tests` are likewise empty. | **Lost** |
 | Performance | The prototype's headline result and strongest argument: 15–20% faster than C on bulk transforms, 1.5× on a full 4096² inverse grid, 3–8.5× on single points, with no vectorization at all. | The small-N win holds — all 24 benchmarked variants beat C at N=16. At N=100k the picture inverts for cheap mappings: PermMap forward 42× slower, WinMap 6.6–7.6×, ShiftMap 5.7–7.6×, diagonal MatrixMap 5.5×, SlaMap 3.9×, WcsMap TAN forward 4.2×. PolyMap — the LSST and SCUBA-2 workhorse — is still 1.5× *faster* than C. | **Regressed** |
 
 ### Three things worth saying plainly about the performance row
@@ -348,7 +348,7 @@ The regressions are on mappings whose entire body is two arithmetic operations, 
 
 **But the gate that was supposed to catch this does not exist.**
 `CLAUDE.md` states that tier-5 oracle benches fail CI if Rust is more than 10% slower than C on these paths.
-`crates/ast-oracle-bench/benches/oracle.rs` is a six-line criterion placeholder, and CI runs `build`, `test -p ast-core`, `clippy` and `fmt` — no benchmark at all.
+`crates/ast-oracle-bench/benches/oracle.rs` is a six-line criterion placeholder, and CI runs `build`, `test -p starlink-ast`, `clippy` and `fmt` — no benchmark at all.
 The only performance data is a hand-run snapshot dated 2026-05-19, three months stale, and none of its optimization targets has been actioned.
 
 **One hypothesis worth testing before optimizing class by class.**
@@ -368,7 +368,7 @@ Three are empty crates.
 |---|---|---|---|
 | 1 · Idiomatic Rust | The public Rust API behaves, and serves as worked examples. | 3,280 tests across 90 integration binaries plus 1,110 unit tests and 13 doctests. Zero failures. One ignored test, and it is the investigative oracle report, not a skipped assertion. | **Green** |
 | 2 · Byte-exact regression | Rust output is byte-identical to C's on a real corpus. | 427 simplify fixtures byte-exact (7 with string comparison waived); 194 wcsconv round-trip cases with the exclusion list empty and gated; 18 native round-trip corpora; 1,606 transform-oracle sections behind three asserting tests plus a proof that the partition covers the corpus. | **Green** |
-| 3 · C tests vs Rust libast | The real `ast_tester` programs link the Rust library and pass. | `crates/ast-ffi-tests/src/lib.rs` contains one attribute line. Nothing to run, because `ast-capi` exports nothing. | **Not started** |
+| 3 · C tests vs Rust libast | The real `ast_tester` programs link the Rust library and pass. | `crates/ast-ffi-tests/src/lib.rs` contains one attribute line. Nothing to run, because `starlink-ast-capi` exports nothing. | **Not started** |
 | 4 · Bit/ULP oracle | Rust and C linked into one binary and compared value by value. | Same: an empty crate. | **Not started** |
 | 5 · Performance gate | Criterion benches fail CI if Rust regresses more than 10% on the hot path. | A six-line placeholder benchmark. Not wired into CI. | **Not started** |
 
@@ -525,7 +525,7 @@ documents and in §4 above.
 It was accurate for everything it covered, but three areas of outstanding work were absent from it entirely, and one was recorded in a form that had gone stale.
 Those have been added:
 
-- **A new section 7, "Delivery-step work not yet started"**, covering the `ast-capi` C-ABI shim, tiers 3/4/5, `ast-plugins`, and the wcslib port — with the tier table making explicit that the two strongest verification tiers are blocked on the shim.
+- **A new section 7, "Delivery-step work not yet started"**, covering the `starlink-ast-capi` C-ABI shim, tiers 3/4/5, `ast-plugins`, and the wcslib port — with the tier table making explicit that the two strongest verification tiers are blocked on the shim.
 - **A new section 8, "Pending upstream sync"**, recording the four output-changing C fixes on `u/timj/misc-bugs`, the two the port currently mirrors, and the regeneration order required when the pin moves.
 - **A verification-posture ledger** in section 6, counting the relaxations (8 astequal, 5 aliasing-licensed, 2 oracle overrides, 7 string-compare waivers) so the total cannot grow silently.
 - **The performance row in section 2** updated from "SNAPSHOT, opt targets unactioned" to name the missing CI gate as the tracked item, since the absence of the gate is the actionable part.

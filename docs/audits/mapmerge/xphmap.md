@@ -1,7 +1,7 @@
 # `MapMerge` audit — XphMap
 
 C source: reference/starlink-ast/src/xphmap.c
-Rust: crates/ast-core/src/mappings/xphmap.rs
+Rust: crates/starlink-ast/src/mappings/xphmap.rs
 Audited: 2026-10-07 against pin 3b9dc639
 Citations: verified against pin 3b9dc639
 Extension points: classified

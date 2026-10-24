@@ -8,7 +8,7 @@
  *
  * Prints one line per step: the step name and the three points
  * transformed, each with 17 digits. The values are pinned in
- * crates/ast-core/tests/test_sky_last.rs.
+ * crates/starlink-ast/tests/test_sky_last.rs.
  */
 #include <stdio.h>
 #include "ast.h"

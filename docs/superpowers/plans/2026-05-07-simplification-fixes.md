@@ -6,7 +6,7 @@
 
 **Architecture:** Five independent fixes targeting the `try_merge` methods of SpecMap and PermMap, adding missing SlaMap conversion types, handling blank WcsMap projection types, and fixing a CmpMap inversion bug. Each fix is verified by the existing data-driven test harness.
 
-**Tech Stack:** Rust (ast-core crate), PAL astrometry library (vendored C), test harness at `crates/ast-core/tests/test_simplify_regression.rs`
+**Tech Stack:** Rust (starlink-ast crate), PAL astrometry library (vendored C), test harness at `crates/starlink-ast/tests/test_simplify_regression.rs`
 
 ---
 
@@ -14,26 +14,26 @@
 
 | File | Role |
 |------|------|
-| `crates/ast-core/src/mappings/specmap.rs` | SpecMap step merging (Task 1) |
-| `crates/ast-core/src/mappings/perm.rs` | PermMap series composition (Task 2) |
-| `crates/ast-core/src/mappings/slamap.rs` | New SlaMap conversion types (Task 3) |
-| `crates/ast-core/src/mappings/wcsmap.rs` | WcsMap blank projection handling (Task 4) |
-| `crates/ast-core/src/wcslib.rs` | Add `WcsProjection::Unknown` variant (Task 4) |
-| `crates/ast-core/src/mappings/cmpmap.rs` | CmpMap inversion bug fix (Task 5) |
+| `crates/starlink-ast/src/mappings/specmap.rs` | SpecMap step merging (Task 1) |
+| `crates/starlink-ast/src/mappings/perm.rs` | PermMap series composition (Task 2) |
+| `crates/starlink-ast/src/mappings/slamap.rs` | New SlaMap conversion types (Task 3) |
+| `crates/starlink-ast/src/mappings/wcsmap.rs` | WcsMap blank projection handling (Task 4) |
+| `crates/starlink-ast/src/wcslib.rs` | Add `WcsProjection::Unknown` variant (Task 4) |
+| `crates/starlink-ast/src/mappings/cmpmap.rs` | CmpMap inversion bug fix (Task 5) |
 
 ---
 
 ### Task 1: SpecMap Step Merging
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/specmap.rs` (the `try_merge` method and add helper)
-- Test: existing `crates/ast-core/tests/test_simplify_regression.rs` (spec_inverse_cancel, spec_partial_cancel)
+- Modify: `crates/starlink-ast/src/mappings/specmap.rs` (the `try_merge` method and add helper)
+- Test: existing `crates/starlink-ast/tests/test_simplify_regression.rs` (spec_inverse_cancel, spec_partial_cancel)
 
 **Context:** The C library's `specmap.c:MapMerge` (lines 2280-2580) merges adjacent SpecMaps by: collecting all steps into a flat list, inverting step codes when a SpecMap is inverted, then cancelling adjacent inverse pairs. Our `SpecCvtType::inverse()` already exists. We need to add `nargs_to_compare()` and rewrite `try_merge`.
 
 - [ ] **Step 1: Add `nargs_to_compare` helper to `SpecCvtType`**
 
-In `crates/ast-core/src/mappings/specmap.rs`, add this method to the `impl SpecCvtType` block (after the existing `inverse()` method around line 310):
+In `crates/starlink-ast/src/mappings/specmap.rs`, add this method to the `impl SpecCvtType` block (after the existing `inverse()` method around line 310):
 
 ```rust
     /// Number of user-supplied args that must match for cancellation.
@@ -182,20 +182,20 @@ Check top of specmap.rs — `BAD_VALUE` is already imported via `use crate::cons
 
 - [ ] **Step 7: Run the simplify regression tests**
 
-Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|not-yet"`
+Run: `cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|not-yet"`
 
 Expected: The "not-yet-simplified" list should no longer include `spec_inverse_cancel` or `spec_partial_cancel`. Should show `1 not-yet-simplified` (just `perm_bad_propagation`).
 
 - [ ] **Step 8: Run full test suite to check for regressions**
 
-Run: `cargo test -p ast-core 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast 2>&1 | tail -5`
 
 Expected: All tests pass.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/specmap.rs
+git add crates/starlink-ast/src/mappings/specmap.rs
 git commit -m "$(cat <<'EOF'
 Implement SpecMap step merging in try_merge
 
@@ -216,14 +216,14 @@ EOF
 ### Task 2: PermMap Series Composition
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/perm.rs` (the `try_merge` method)
-- Test: existing `crates/ast-core/tests/test_simplify_regression.rs` (perm_bad_propagation)
+- Modify: `crates/starlink-ast/src/mappings/perm.rs` (the `try_merge` method)
+- Test: existing `crates/starlink-ast/tests/test_simplify_regression.rs` (perm_bad_propagation)
 
 **Context:** The test `perm_bad_propagation` chains `PermMap([1,0],[1,2])` → `PermMap([2,1],[1,2])`. The first maps output 1 from input 1, output 2 is BAD. The second swaps axes. Expected result: output 1 is BAD (from first's output 2), output 2 is input 1 (from first's output 1). Convention: `outperm[i]` with i=0-based index, value j: j>0 means "from input j (1-based)", j=0 means BAD, j<0 means constant.
 
 - [ ] **Step 1: Add a helper function for composing permutation arrays**
 
-Add this free function in `crates/ast-core/src/mappings/perm.rs` above `impl Mapping for PermMap`:
+Add this free function in `crates/starlink-ast/src/mappings/perm.rs` above `impl Mapping for PermMap`:
 
 ```rust
 /// Compose two permutation arrays in series.
@@ -408,20 +408,20 @@ Check the imports at the top of `perm.rs`. It already has `use super::helpers::{
 
 - [ ] **Step 4: Run the simplify regression tests**
 
-Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|not-yet"`
+Run: `cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|not-yet"`
 
 Expected: Should show `0 not-yet-simplified`. `perm_bad_propagation` is now fully simplified.
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cargo test -p ast-core 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast 2>&1 | tail -5`
 
 Expected: All tests pass.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/perm.rs
+git add crates/starlink-ast/src/mappings/perm.rs
 git commit -m "$(cat <<'EOF'
 Implement PermMap series composition in try_merge
 
@@ -441,7 +441,7 @@ EOF
 ### Task 3: Missing SlaMap Conversion Types
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/slamap.rs`
+- Modify: `crates/starlink-ast/src/mappings/slamap.rs`
 - Test: existing regression harness (sla_j2000_cancel, sla_helioecl_cancel, sla_azel_cancel, sla_hpc_cancel, sla_hpr_cancel, neg_sla_4arg_mismatch)
 
 **Context:** The C library has 10 additional SlaMap conversion types (5 pairs) that the Rust port doesn't implement yet. The simplify test fixtures use these types. The tests only need the types to parse and transform correctly — the simplification logic (inverse cancellation via `try_merge`) is already generic and will work once the types are recognized.
@@ -450,7 +450,7 @@ EOF
 
 - [ ] **Step 1: Add enum variants**
 
-In `crates/ast-core/src/mappings/slamap.rs`, add these variants to the `SlaCvtType` enum after `H2r = 28`:
+In `crates/starlink-ast/src/mappings/slamap.rs`, add these variants to the `SlaCvtType` enum after `H2r = 28`:
 
 ```rust
     /// Helioprojective-Cartesian to equatorial.
@@ -579,14 +579,14 @@ Each transform operates on (RA, DEC) pairs in radians, converting to direction c
 
 - [ ] **Step 8: Run the simplify regression tests**
 
-Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|skipped"`
+Run: `cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|skipped"`
 
 Expected: Should show +6 more passed (from 156 to 162), skipped reduced from 74 to 68.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/slamap.rs
+git add crates/starlink-ast/src/mappings/slamap.rs
 git commit -m "$(cat <<'EOF'
 Add missing SlaMap conversion types for solar/ecliptic coordinates
 
@@ -607,13 +607,13 @@ EOF
 ### Task 4: WcsMap Blank Projection Type
 
 **Files:**
-- Modify: `crates/ast-core/src/wcslib.rs` (add `Unknown` variant to `WcsProjection`)
-- Modify: `crates/ast-core/src/mappings/wcsmap.rs` (handle Unknown in `from_node`, `simplified`, `transform`)
+- Modify: `crates/starlink-ast/src/wcslib.rs` (add `Unknown` variant to `WcsProjection`)
+- Modify: `crates/starlink-ast/src/mappings/wcsmap.rs` (handle Unknown in `from_node`, `simplified`, `transform`)
 - Test: existing regression harness (wcsmap_bad_to_unit)
 
 - [ ] **Step 1: Add `Unknown` variant to `WcsProjection`**
 
-In `crates/ast-core/src/wcslib.rs`, add at the end of the `WcsProjection` enum:
+In `crates/starlink-ast/src/wcslib.rs`, add at the end of the `WcsProjection` enum:
 
 ```rust
     /// Unknown/invalid projection (simplifies to UnitMap).
@@ -629,7 +629,7 @@ Update `from_code()` — do NOT add Unknown there; it should only be created via
 
 - [ ] **Step 2: Handle blank projection type in `WcsMap::from_node`**
 
-In `crates/ast-core/src/mappings/wcsmap.rs`, find the `from_node` method. Currently it does something like:
+In `crates/starlink-ast/src/mappings/wcsmap.rs`, find the `from_node` method. Currently it does something like:
 
 ```rust
 let type_str = node.get_string("Type", "");
@@ -682,20 +682,20 @@ if self.proj == WcsProjection::Unknown {
 
 - [ ] **Step 5: Run the simplify regression tests**
 
-Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|skipped"`
+Run: `cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|skipped"`
 
 Expected: +1 more passed (wcsmap_bad_to_unit), skipped reduced by 1.
 
 - [ ] **Step 6: Run full test suite**
 
-Run: `cargo test -p ast-core 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast 2>&1 | tail -5`
 
 Expected: All tests pass.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/wcslib.rs crates/ast-core/src/mappings/wcsmap.rs
+git add crates/starlink-ast/src/wcslib.rs crates/starlink-ast/src/mappings/wcsmap.rs
 git commit -m "$(cat <<'EOF'
 Handle blank/unknown WcsMap projection type gracefully
 
@@ -715,7 +715,7 @@ EOF
 ### Task 5: rigby CmpMap Inversion Bug
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/cmpmap.rs` (or other file depending on investigation)
+- Modify: `crates/starlink-ast/src/mappings/cmpmap.rs` (or other file depending on investigation)
 - Test: existing regression harness (rigby)
 
 **Context:** The `rigby.map` fixture has a deeply nested CmpMap tree. When transformed forward, it hits "MatrixMap inverse is not defined (non-square or singular matrix)" even though all matrices in the file ARE square and non-singular. The CmpMap code at `cmpmap.rs:88-97` handles series inversion by calling `self.second.transform(pts, false)` then `self.first.transform(&mid, false)`. The `InvA/InvB` flags are handled in `from_node` by setting each child's `is_inverted()` flag. The `effective_forward` method XORs the mapping's own `inverted` flag with the caller's `forward` parameter.
@@ -724,7 +724,7 @@ The bug is likely in how nested inversion composes through a chain of CmpMaps wh
 
 - [ ] **Step 1: Write a focused unit test that reproduces the rigby failure**
 
-Create a unit test in `crates/ast-core/src/mappings/cmpmap.rs` (or as an integration test) that loads `rigby.map` and attempts to transform:
+Create a unit test in `crates/starlink-ast/src/mappings/cmpmap.rs` (or as an integration test) that loads `rigby.map` and attempts to transform:
 
 ```rust
 #[test]
@@ -744,7 +744,7 @@ fn rigby_transform_forward() {
 
 - [ ] **Step 2: Run the test to confirm the failure**
 
-Run: `cargo test -p ast-core rigby_transform_forward -- --nocapture`
+Run: `cargo test -p starlink-ast rigby_transform_forward -- --nocapture`
 
 Expected: FAIL with "MatrixMap inverse is not defined"
 
@@ -768,26 +768,26 @@ Based on investigation, apply the fix. Likely scenarios:
 
 - [ ] **Step 5: Run the focused test**
 
-Run: `cargo test -p ast-core rigby_transform_forward -- --nocapture`
+Run: `cargo test -p starlink-ast rigby_transform_forward -- --nocapture`
 
 Expected: PASS
 
 - [ ] **Step 6: Run the simplify regression tests**
 
-Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|skipped"`
+Run: `cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|skipped"`
 
 Expected: +1 more passed (rigby).
 
 - [ ] **Step 7: Run full test suite**
 
-Run: `cargo test -p ast-core 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast 2>&1 | tail -5`
 
 Expected: All tests pass.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/cmpmap.rs
+git add crates/starlink-ast/src/mappings/cmpmap.rs
 git commit -m "$(cat <<'EOF'
 Fix CmpMap inversion handling for nested InvA/InvB with PermMaps
 
@@ -807,7 +807,7 @@ EOF
 After all 5 tasks are complete:
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|skipped|failed|not-yet"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "passed|skipped|failed|not-yet"
 ```
 
 Expected output:

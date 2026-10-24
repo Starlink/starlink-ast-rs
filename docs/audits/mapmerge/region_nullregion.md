@@ -1,7 +1,7 @@
 # `Simplify` / `MapMerge` / `GetDefUnc` audit — NullRegion
 
 C source: reference/starlink-ast/src/nullregion.c
-Rust: crates/ast-core/src/regions/nullregion.rs
+Rust: crates/starlink-ast/src/regions/nullregion.rs
 Audited: 2026-09-02 against pin 3e60abaa
 Citations: verified against pin 3b9dc639
 Extension points: classified

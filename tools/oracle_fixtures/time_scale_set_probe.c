@@ -12,9 +12,9 @@
  * setting or "clear" to clear the TimeScale, and prints the error name or
  * the resulting System, TimeScale, Unit and TimeOrigin.
  *
- * Prints Rust source for crates/ast-core/tests/time_scale_set_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/time_scale_set_oracle/cases.rs:
  *
- *   ./time_scale_set_probe > ../../crates/ast-core/tests/time_scale_set_oracle/cases.rs
+ *   ./time_scale_set_probe > ../../crates/starlink-ast/tests/time_scale_set_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

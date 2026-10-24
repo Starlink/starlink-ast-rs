@@ -1,0 +1,10 @@
+[package]
+name = "starlink-ast-capi"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "C ABI shim for the Starlink AST library"
+
+[lints]
+workspace = true

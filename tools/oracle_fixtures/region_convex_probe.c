@@ -5,9 +5,9 @@
  * convention (starpix) that puts them at half-integers, for a float and an
  * int array, for a single selected pixel and for none.
  *
- * Prints Rust source for crates/ast-core/tests/region_convex_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_convex_oracle/cases.rs:
  *
- *   ./region_convex_probe > ../../crates/ast-core/tests/region_convex_oracle/cases.rs
+ *   ./region_convex_probe > ../../crates/starlink-ast/tests/region_convex_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

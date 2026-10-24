@@ -6,7 +6,7 @@
 
 **Architecture:** Capture the offending pre-simplify mappings from the failing wcsconv cases, generate canonical post-simplify references via the C oracle binary, add them to the existing manifest-driven simplify regression harness as expected-failure fixtures, then iterate `Mapping::simplify` until they pass. Remove the encoder-side workaround as the final commit.
 
-**Tech Stack:** Rust 2024, existing `Mapping::simplify` infrastructure (`crates/ast-core/src/mappings/simplify.rs`, `crates/ast-core/src/mappings/cmpmap.rs`), existing simplify regression harness (`crates/ast-core/tests/test_simplify_regression.rs` + `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`). C oracle binary at `reference/starlink-ast/build/ast_tester/simplify`.
+**Tech Stack:** Rust 2024, existing `Mapping::simplify` infrastructure (`crates/starlink-ast/src/mappings/simplify.rs`, `crates/starlink-ast/src/mappings/cmpmap.rs`), existing simplify regression harness (`crates/starlink-ast/tests/test_simplify_regression.rs` + `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/`). C oracle binary at `reference/starlink-ast/build/ast_tester/simplify`.
 
 ---
 
@@ -24,7 +24,7 @@ The `cmpmap_nested_inverse_cancel` fixture (commit `768b6e9`) was hand-crafted a
 | `fits-pc-altgal_fits-wcs` | `CD1_2 = 4.174478E-15` |
 | `pixel-shear_fits-aips++` | `CRVAL1 = -7.1054274E-14` |
 
-The encoder-side workaround in `enc_aips` (`crates/ast-core/src/fitschan/enc_aips.rs:266-270`) snaps CROTA values below 1e-9° to zero. This is fragile and only papers over the FITS-AIPS / FITS-AIPS++ paths; the FITS-WCS / FITS-IRAF / FITS-PC paths emit the residue as CD/CRVAL cards directly.
+The encoder-side workaround in `enc_aips` (`crates/starlink-ast/src/fitschan/enc_aips.rs:266-270`) snaps CROTA values below 1e-9° to zero. This is fragile and only papers over the FITS-AIPS / FITS-AIPS++ paths; the FITS-WCS / FITS-IRAF / FITS-PC paths emit the residue as CD/CRVAL cards directly.
 
 The actual residue source lives somewhere in the wcsconv-specific composition path, not in the abstract `cmpmap_nested_inverse_cancel` fixture. Task 1 captures the actual offender and Task 2 generates its canonical simplification.
 
@@ -32,11 +32,11 @@ The actual residue source lives somewhere in the wcsconv-specific composition pa
 
 ## File structure
 
-- **Diagnostic-only (deleted before final commit):** A scratch test in `crates/ast-core/tests/diag_capture_simplify_input.rs` that reproduces the wcsconv read+pre-simplify path for `gappt_fits-wcs` and writes the captured mapping to disk. Used in Task 1, deleted in Task 7.
-- **Create:** `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_<name>_iwc_residue.{map,simp}` — one pair per distinct simplifier failure mode.
-- **Modify:** `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt` — register the new fixtures.
-- **Modify:** `crates/ast-core/src/mappings/simplify.rs` and/or `crates/ast-core/src/mappings/cmpmap.rs` — close the deep-traversal gap.
-- **Modify (delete code):** `crates/ast-core/src/fitschan/enc_aips.rs` — remove the CROTA snap branch.
+- **Diagnostic-only (deleted before final commit):** A scratch test in `crates/starlink-ast/tests/diag_capture_simplify_input.rs` that reproduces the wcsconv read+pre-simplify path for `gappt_fits-wcs` and writes the captured mapping to disk. Used in Task 1, deleted in Task 7.
+- **Create:** `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_<name>_iwc_residue.{map,simp}` — one pair per distinct simplifier failure mode.
+- **Modify:** `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt` — register the new fixtures.
+- **Modify:** `crates/starlink-ast/src/mappings/simplify.rs` and/or `crates/starlink-ast/src/mappings/cmpmap.rs` — close the deep-traversal gap.
+- **Modify (delete code):** `crates/starlink-ast/src/fitschan/enc_aips.rs` — remove the CROTA snap branch.
 
 ---
 
@@ -51,21 +51,21 @@ If the C oracle's output looks unexpected to you, READ THE C SOURCE in `referenc
 ## Task 1: Capture the offending pre-simplify mapping
 
 **Files:**
-- Create: `crates/ast-core/tests/diag_capture_simplify_input.rs` (scratch, deleted in Task 7)
+- Create: `crates/starlink-ast/tests/diag_capture_simplify_input.rs` (scratch, deleted in Task 7)
 
 The wcsconv path runs `Mapping::simplify` somewhere in `wcs_write::store_from_frameset`. We need the mapping it sees before the simplify call.
 
 - [ ] **Step 1: Locate the simplify call site**
 
 ```bash
-grep -n "simplify\|simplified" crates/ast-core/src/fitschan/wcs_write.rs
+grep -n "simplify\|simplified" crates/starlink-ast/src/fitschan/wcs_write.rs
 ```
 
 Identify each `.simplify()` invocation. For each, note the variable being simplified — typically `pixel_to_world` and/or `pixel_to_iwc`.
 
 - [ ] **Step 2: Add a diagnostic test that captures input and output**
 
-Create `crates/ast-core/tests/diag_capture_simplify_input.rs`:
+Create `crates/starlink-ast/tests/diag_capture_simplify_input.rs`:
 
 ```rust
 //! SCRATCH diagnostic — captures the pre-simplify and post-simplify
@@ -74,11 +74,11 @@ Create `crates/ast-core/tests/diag_capture_simplify_input.rs`:
 
 use std::path::PathBuf;
 
-use ast_core::AnyObject;
-use ast_core::channel::Channel;
-use ast_core::fitschan::{Encoding, FitsChan};
-use ast_core::serial::native_write::render_native;
-use ast_core::serial::any_object_to_node;
+use starlink_ast::AnyObject;
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::{Encoding, FitsChan};
+use starlink_ast::serial::native_write::render_native;
+use starlink_ast::serial::any_object_to_node;
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -115,14 +115,14 @@ fn capture_gappt_pre_simplify_mapping() {
 }
 ```
 
-If `mapping.clone_box()` doesn't exist, find the appropriate clone method on `dyn Mapping`. If `any_object_to_node` requires an `AnyObject` variant we don't have for raw mappings, build the FrameSet's full pixel→world mapping by other means — what matters is capturing some serializable representation of the mapping handed to `simplify`. Check what's on `dyn Mapping`: `grep -n "pub fn" crates/ast-core/src/mappings/mod.rs | head -20`.
+If `mapping.clone_box()` doesn't exist, find the appropriate clone method on `dyn Mapping`. If `any_object_to_node` requires an `AnyObject` variant we don't have for raw mappings, build the FrameSet's full pixel→world mapping by other means — what matters is capturing some serializable representation of the mapping handed to `simplify`. Check what's on `dyn Mapping`: `grep -n "pub fn" crates/starlink-ast/src/mappings/mod.rs | head -20`.
 
 If you cannot dump a `dyn Mapping` directly, fall back to: dump the entire FrameSet via the existing `to_native_string` path, then in Task 2 hand-extract the pixel-to-world mapping from the FrameSet.
 
 - [ ] **Step 3: Run the diagnostic**
 
 ```bash
-cargo test -p ast-core --test diag_capture_simplify_input -- --ignored --nocapture
+cargo test -p starlink-ast --test diag_capture_simplify_input -- --ignored --nocapture
 ```
 
 Should produce `/tmp/gappt_pre_simplify.map` and `/tmp/gappt_post_simplify_rust.map`. Inspect both:
@@ -137,14 +137,14 @@ Confirm the file is non-empty native AST text starting with `Begin CmpMap` (or `
 - [ ] **Step 4: Choose the canonical fixture name**
 
 Name: `wcsconv_gappt_iwc_residue` (descriptive, traceable to the source). The captured `.map` and the to-be-generated `.simp` will live at:
-- `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.map`
-- `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp`
+- `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.map`
+- `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp`
 
 - [ ] **Step 5: Move the captured `.map` into place**
 
 ```bash
 mv /tmp/gappt_pre_simplify.map \
-   crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.map
+   crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.map
 ```
 
 Don't commit yet — Task 2 generates the `.simp` reference and they commit together.
@@ -156,16 +156,16 @@ Don't commit yet — Task 2 generates the `.simp` reference and they commit toge
 ## Task 2: Generate the C-oracle reference and register the fixture
 
 **Files:**
-- Create: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp`
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
+- Create: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
 
 - [ ] **Step 1: Generate the .simp reference via the C oracle binary**
 
 ```bash
 LD_LIBRARY_PATH=reference/starlink-ast/build \
   reference/starlink-ast/build/ast_tester/simplify \
-  crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.map \
-  crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp
+  crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.map \
+  crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp
 ```
 
 If the binary requires `DYLD_LIBRARY_PATH` instead (macOS) or different invocation, adjust. To learn its calling convention, run with no arguments and read the usage line.
@@ -173,14 +173,14 @@ If the binary requires `DYLD_LIBRARY_PATH` instead (macOS) or different invocati
 - [ ] **Step 2: Inspect the output**
 
 ```bash
-head -40 crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp
+head -40 crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp
 ```
 
 The expected shape: a much-simpler mapping (often `UnitMap` or a very short CmpMap) with no 1e-14 residues. If the .simp is identical to the .map (no simplification happened), the C oracle ALSO doesn't simplify this — meaning our residue is real and the C oracle gets to the same residue but the C *encoder* handles it elsewhere (this would falsify the K diagnosis). In that case, STOP and report findings; the fix may need to move to the encoder, not the simplifier.
 
 - [ ] **Step 3: Register the fixture in the manifest**
 
-Append to `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`:
+Append to `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`:
 
 ```
 wcsconv_gappt_iwc_residue | simplify_fixtures/wcsconv_gappt_iwc_residue.map | simplify_fixtures/wcsconv_gappt_iwc_residue.simp |
@@ -191,7 +191,7 @@ wcsconv_gappt_iwc_residue | simplify_fixtures/wcsconv_gappt_iwc_residue.map | si
 - [ ] **Step 4: Run the simplify regression — confirm it FAILS**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "wcsconv_gappt|Simplify regression"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "wcsconv_gappt|Simplify regression"
 ```
 
 Expected: the new fixture appears under `equal()`, `transform`, or `serialization` failures (or all three). If it passes immediately, the fixture isn't exercising any gap — re-examine the captured `.map`.
@@ -199,9 +199,9 @@ Expected: the new fixture appears under `equal()`, `transform`, or `serializatio
 - [ ] **Step 5: Commit the fixture pair as expected-failure**
 
 ```bash
-git add crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.map \
-        crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp \
-        crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt
+git add crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.map \
+        crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp \
+        crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt
 git commit -m "$(cat <<'EOF'
 test(simplify): expected-failure fixture for gappt_fits-wcs IWC residue
 
@@ -223,7 +223,7 @@ EOF
 The simplify regression harness must NOT hard-panic on this failure (it tracks `transform_failures` separately and only panics on those). Verify:
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression
+cargo test -p starlink-ast --test test_simplify_regression
 ```
 
 The test should still report `ok` in the test result line (the harness reports failures via stderr but doesn't panic unless transform-equivalence fails). If the harness panics, you may need to mark the new fixture with a known-failure flag — check the manifest comment at the top of `simplify_tests.txt` for any flag mechanism. If none exists, add one (e.g. a fourth field `expected_to_fail` parsed alongside `skip_string_compare`) and update the harness in `test_simplify_regression.rs` to report-but-not-panic when set.
@@ -238,7 +238,7 @@ The test should still report `ok` in the test result line (the harness reports f
 
 ```bash
 diff /tmp/gappt_post_simplify_rust.map \
-     crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp
+     crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/wcsconv_gappt_iwc_residue.simp
 ```
 
 The diff shows the structural gap. Common patterns:
@@ -266,7 +266,7 @@ Read the actual implementation (the function is large — `~1500 lines`) until y
 - [ ] **Step 3: Locate the equivalent Rust path**
 
 ```bash
-grep -n "simplify\|fn simplified\|MapMerge" crates/ast-core/src/mappings/cmpmap.rs crates/ast-core/src/mappings/simplify.rs | head -20
+grep -n "simplify\|fn simplified\|MapMerge" crates/starlink-ast/src/mappings/cmpmap.rs crates/starlink-ast/src/mappings/simplify.rs | head -20
 ```
 
 Read the existing implementation. Identify which step is missing.
@@ -287,7 +287,7 @@ This isn't a deliverable file — it goes in the next commit message body. But t
 ## Task 4: Implement the closure
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs` and/or `crates/ast-core/src/mappings/cmpmap.rs` (whichever the gap analysis points to)
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs` and/or `crates/starlink-ast/src/mappings/cmpmap.rs` (whichever the gap analysis points to)
 
 The exact change depends on Task 3's diagnosis. Common shapes:
 
@@ -314,7 +314,7 @@ Make the minimal change identified in Task 3. Don't rewrite the whole simplifier
 - [ ] **Step 3: Run the simplify regression — confirm the fixture passes**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "wcsconv_gappt|Simplify regression"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "wcsconv_gappt|Simplify regression"
 ```
 
 `wcsconv_gappt_iwc_residue` should no longer appear in any failure list.
@@ -322,10 +322,10 @@ cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | gre
 - [ ] **Step 4: Run all simplify tests for regression**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression
-cargo test -p ast-core --lib mappings::cmpmap
-cargo test -p ast-core --lib mappings::simplify
-cargo test -p ast-core --test test_native_roundtrip_all
+cargo test -p starlink-ast --test test_simplify_regression
+cargo test -p starlink-ast --lib mappings::cmpmap
+cargo test -p starlink-ast --lib mappings::simplify
+cargo test -p starlink-ast --test test_native_roundtrip_all
 ```
 
 All must remain green.
@@ -333,7 +333,7 @@ All must remain green.
 - [ ] **Step 5: Run the wcsconv suite — confirm gappt now passes**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|gappt"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|gappt"
 ```
 
 Expected: pass count up by at least 1 (gappt_fits-wcs); `gappt` should no longer appear in failure list.
@@ -348,7 +348,7 @@ cargo clippy --workspace -- -D warnings
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/simplify.rs crates/ast-core/src/mappings/cmpmap.rs
+git add crates/starlink-ast/src/mappings/simplify.rs crates/starlink-ast/src/mappings/cmpmap.rs
 git commit -m "$(cat <<'EOF'
 fix(simplify): close <specific gap from Task 3 diagnosis>
 
@@ -377,7 +377,7 @@ The gappt fix may close some or all of the other category-F failures. Check whet
 - [ ] **Step 1: Check current wcsconv state**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "ukirt-dtai|galactic-tan|sin-plain|fk4-aips|fits-pc-altgal|pixel-shear"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "ukirt-dtai|galactic-tan|sin-plain|fk4-aips|fits-pc-altgal|pixel-shear"
 ```
 
 - [ ] **Step 2: For each still-failing case in category F**
@@ -394,7 +394,7 @@ Repeat the workflow:
 - [ ] **Step 3: Final wcsconv check**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: 110 → 116 (or close — `pixel-shear_fits-aips++` may have additional content failures beyond the residue).
@@ -410,14 +410,14 @@ If a fix in Task 4 covered all remaining cases without further code changes, ski
 ## Task 6: Delete the encoder-side workaround
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_aips.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_aips.rs`
 
 With the simplifier residue gone, the CROTA snap is dead code.
 
 - [ ] **Step 1: Locate the snap**
 
 ```bash
-grep -n "Snap rotations\|crota.abs() < 1e-9" crates/ast-core/src/fitschan/enc_aips.rs
+grep -n "Snap rotations\|crota.abs() < 1e-9" crates/starlink-ast/src/fitschan/enc_aips.rs
 ```
 
 Around line 252-272. Look at the surrounding comment block (lines 244-265) too — the long explanatory comment about the simplifier gap also goes.
@@ -454,7 +454,7 @@ Replace with:
 - [ ] **Step 3: Run all FITS-AIPS tests**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|fits-aips"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|fits-aips"
 ```
 
 The pass count should hold or rise. Specifically, no fits-aips fixture that was previously passing should now fail with a tiny CROTA residue — if any does, the simplifier closure is incomplete and you need to return to Task 4/5.
@@ -477,7 +477,7 @@ cargo clippy --workspace -- -D warnings
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_aips.rs
+git add crates/starlink-ast/src/fitschan/enc_aips.rs
 git commit -m "$(cat <<'EOF'
 refactor(fitschan): remove CROTA snap-to-zero workaround
 
@@ -501,12 +501,12 @@ EOF
 ## Task 7: Cleanup and final verification
 
 **Files:**
-- Delete: `crates/ast-core/tests/diag_capture_simplify_input.rs`
+- Delete: `crates/starlink-ast/tests/diag_capture_simplify_input.rs`
 
 - [ ] **Step 1: Delete the diagnostic test file**
 
 ```bash
-rm crates/ast-core/tests/diag_capture_simplify_input.rs
+rm crates/starlink-ast/tests/diag_capture_simplify_input.rs
 ```
 
 - [ ] **Step 2: Run the full workspace test suite**
@@ -520,7 +520,7 @@ No failures expected.
 - [ ] **Step 3: Final wcsconv check**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: 110 → ≥116 (close to the +7 estimate; pixel-shear may stay red if the residue isn't its only issue).
@@ -528,7 +528,7 @@ Expected: 110 → ≥116 (close to the +7 estimate; pixel-shear may stay red if 
 - [ ] **Step 4: Confirm the existing `cmpmap_nested_inverse_cancel` fixture still passes** (it's the regression guard for this work)
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "cmpmap_nested|Simplify regression"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "cmpmap_nested|Simplify regression"
 ```
 
 `cmpmap_nested_inverse_cancel` should pass without any expected-failure marker. If we added a `expected_to_fail` flag to the manifest in Task 2, ensure no fixture still carries it.
@@ -543,7 +543,7 @@ cargo clippy --workspace -- -D warnings
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/tests/diag_capture_simplify_input.rs
+git add crates/starlink-ast/tests/diag_capture_simplify_input.rs
 git commit -m "$(cat <<'EOF'
 chore(simplify): remove K-tier diagnostic capture test
 

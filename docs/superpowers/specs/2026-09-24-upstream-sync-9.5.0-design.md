@@ -37,7 +37,7 @@ makes the inversions verifiable rather than asserted.
 2. Every upstream regression test covering those fixes has a Rust counterpart,
    or a PLAN.md row naming what blocks it.
 3. `tools/fixtures/check_mirror.sh` passes.
-4. `cargo test -p ast-core` passes, including the two citation gates that the
+4. `cargo test -p starlink-ast` passes, including the two citation gates that the
    pin move currently breaks.
 5. The simplify and transform-oracle corpora are verified fresh, by
    `check_simplify_fresh.sh` and `check_corpus_fresh.sh`.
@@ -50,7 +50,7 @@ makes the inversions verifiable rather than asserted.
 
 Verified, not assumed:
 
-- `cargo test -p ast-core`: 1143 passed, 2 failed.
+- `cargo test -p starlink-ast`: 1143 passed, 2 failed.
   Both failures are in `test_audit_citations`, from C line numbers moving under
   the new pin, and are item D below.
 - `tools/fixtures/check_mirror.sh`: fails, with the drift listed in item C.
@@ -358,7 +358,7 @@ structure does not decay the way the flat list did.
 
 ### H. Record the `NormUnit` gap in PLAN.md
 
-`NormUnit` is absent from the port: no `norm_unit` anywhere in `ast-core`.
+`NormUnit` is absent from the port: no `norm_unit` anywhere in `starlink-ast`.
 
 Upstream reworked it across three commits in this range — `89bf58e2` (Axis falls
 back to the unnormalized Unit when it cannot be normalized), `d4a55144` (Frame
@@ -447,7 +447,7 @@ accessors `astSetFitsCF` / `CI` / `CN` / `T` / `K`.
 
 And `-TAB` is not one algorithm but three unported things: `Table`, `FitsTable`,
 and the algorithm itself (`AdaptLut`, `PutTable`, `IsMapTab1D` / `2D`).
-`crates/ast-core/src/` has no `table` module and 3 `-TAB` mentions repo-wide.
+`crates/starlink-ast/src/` has no `table` module and 3 `-TAB` mentions repo-wide.
 `PLAN.md` §3 already records the FitsTable blocker correctly; §5's two rows
 should defer to it rather than implying `-TAB` is the last step.
 

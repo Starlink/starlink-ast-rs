@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (or subagent-driven-development) to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** Make all 64 newly-imported `astSimplify` fixtures (from the 50c2b21b sync) pass in `crates/ast-core/tests/test_simplify_regression.rs` — the core goal of the port is that these fixtures pass.
+**Goal:** Make all 64 newly-imported `astSimplify` fixtures (from the 50c2b21b sync) pass in `crates/starlink-ast/tests/test_simplify_regression.rs` — the core goal of the port is that these fixtures pass.
 
 **Architecture:** Fixes grouped by root cause discovered in a four-bucket parallel investigation (region, selectormap/switchmap, general-mapping-merge, spec/sla/time). Ordered so shared prerequisites and foundational simplifier bugs land first; downstream normal-form fixtures are re-measured after the foundations. Each root cause is verified against the C oracle at `reference/starlink-ast/build-ast/` and ported by mirroring C control flow (no heuristics, no shortcuts).
 
-**Tech Stack:** Rust 2024, `cargo test -p ast-core`, reference C `libast` (cmake) for oracle reproducers.
+**Tech Stack:** Rust 2024, `cargo test -p starlink-ast`, reference C `libast` (cmake) for oracle reproducers.
 
 **Prior context:** This is the Task 13 continuation of `docs/superpowers/plans/2026-07-13-upstream-quirk-sync.md`. Group A (quirk fixes) and Group B (fixture import + manifest + harness) are already committed. All 64 failures are newly-imported fixtures — zero regressions of pre-existing tests.
 
@@ -80,7 +80,7 @@ every fix task, run BOTH tests and record the delta for each.
 6. **C1** — largest missing piece (WcsMap::map_merge).
 7. **D1 last** — re-measure; several likely resolve once S1/S2/E1 land.
 
-After every task: run the full simplify regression and record the pass-count delta; run the full `cargo test -p ast-core` to guard against regressions.
+After every task: run the full simplify regression and record the pass-count delta; run the full `cargo test -p starlink-ast` to guard against regressions.
 
 ---
 
@@ -89,11 +89,11 @@ After every task: run the full simplify regression and record the pass-count del
 **Root cause:** C `astLoadRegion` (region.c:13593-13603) builds a default dummy FrameSet (`astFrame(naxpt||1)`, ident `ASTREGION-DUMMY`, `regionfs=0`) when a nested region is dumped without `Frm`/`FrmSet`; the parent compound loader (SelectorMap:1788-1795, and Prism/CmpRegion/Box-uncertainty) re-associates the real frame via `astSetRegFS`/`astRegDummyFS`. Rust's `read_region_base` errors instead.
 
 **Files:**
-- Modify: `crates/ast-core/src/serial/mod.rs` (`read_region_base` / `read_region_data`, ~lines 716-753)
-- Modify: `crates/ast-core/src/regions/mod.rs` (Region model — add a dummy-FS marker + `set_region_fs`-equivalent)
-- Modify: `crates/ast-core/src/mappings/selectormap.rs` (`from_node`, ~393-431)
-- Modify: region/compound loaders that embed child regions: `crates/ast-core/src/regions/{prism,cmpregion}.rs`, and Box/Interval/etc. uncertainty (`Unc =`) deserialization
-- Test: `crates/ast-core/tests/test_simplify_regression.rs` (driver)
+- Modify: `crates/starlink-ast/src/serial/mod.rs` (`read_region_base` / `read_region_data`, ~lines 716-753)
+- Modify: `crates/starlink-ast/src/regions/mod.rs` (Region model — add a dummy-FS marker + `set_region_fs`-equivalent)
+- Modify: `crates/starlink-ast/src/mappings/selectormap.rs` (`from_node`, ~393-431)
+- Modify: region/compound loaders that embed child regions: `crates/starlink-ast/src/regions/{prism,cmpregion}.rs`, and Box/Interval/etc. uncertainty (`Unc =`) deserialization
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs` (driver)
 
 **Interfaces:**
 - Produces: a way to load a `Region` whose node has neither `Frm` nor `FrmSet` (synthesize a dummy `BasicFrame` of `naxpt` axes, flagged dummy), and a `set_region_frame`-style internal method the compound loaders call to overlay the real frame.
@@ -103,7 +103,7 @@ After every task: run the full simplify regression and record the pass-count del
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | sed -n '/parse-skipped/,/equal() failures/p'
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | sed -n '/parse-skipped/,/equal() failures/p'
 ```
 Expected: lists the 17 parse-skips. Confirm (via a scratch test, deleted after) that region-containing ones fail with `Region: missing Frm and FrmSet`.
 
@@ -113,11 +113,11 @@ Read `reference/starlink-ast/src/region.c:13562-13603` (Load), `:8814-8876` (`Re
 
 - [ ] **Step 3: Add a dummy-FS representation to the Region model**
 
-In `crates/ast-core/src/regions/mod.rs` (or the shared region base struct), add an internal flag marking a region as carrying a dummy FrameSet, plus an internal `set_region_fs(&mut self, fs)` that replaces the dummy frame with the real one and clears the flag. Mirror C's `astRegDummyFS`/`astSetRegFS` semantics. Keep it `pub(crate)` — not public API.
+In `crates/starlink-ast/src/regions/mod.rs` (or the shared region base struct), add an internal flag marking a region as carrying a dummy FrameSet, plus an internal `set_region_fs(&mut self, fs)` that replaces the dummy frame with the real one and clears the flag. Mirror C's `astRegDummyFS`/`astSetRegFS` semantics. Keep it `pub(crate)` — not public API.
 
 - [ ] **Step 4: Make `read_region_base` synthesize the dummy FS instead of erroring**
 
-In `crates/ast-core/src/serial/mod.rs`, in the branch where neither `FrmSet` nor `Frm` is present, build a default `BasicFrame` with `naxpt` axes (from the loaded PointSet's ncoord, falling back to 1), wrap it as the region's FrameSet, and set the dummy flag — rather than returning `Err(Lderr)`.
+In `crates/starlink-ast/src/serial/mod.rs`, in the branch where neither `FrmSet` nor `Frm` is present, build a default `BasicFrame` with `naxpt` axes (from the loaded PointSet's ncoord, falling back to 1), wrap it as the region's FrameSet, and set the dummy flag — rather than returning `Err(Lderr)`.
 
 - [ ] **Step 5: Re-associate in compound loaders**
 
@@ -127,14 +127,14 @@ In `selectormap.rs::from_node` (and Prism/CmpRegion loaders that embed multiple 
 
 Run:
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "Simplify regression:|parse"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "Simplify regression:|parse"
 ```
 Expected: the parse-skip count drops (target 0 for region/selectormap fixtures; the 16 IntraMap/XphMap remain BLOCKED in the manifest and don't count). Some of these fixtures may now surface as equal/transform failures handled by R1/R2/W1 — that's expected.
 
 - [ ] **Step 7: Full suite + fmt + clippy + commit**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -cE "test result: FAILED"   # expect no NEW non-simplify failures
+cargo test -p starlink-ast 2>&1 | grep -cE "test result: FAILED"   # expect no NEW non-simplify failures
 cargo fmt && cargo clippy --workspace -- -D warnings
 git add -A && git commit  # message: "serial: load frame-less child regions via dummy FrameSet (match C)"
 ```
@@ -146,8 +146,8 @@ git add -A && git commit  # message: "serial: load frame-less child regions via 
 **Root cause:** Rust uses `has_been_simplified()` (C `IsSimple`) as a hard merge barrier in `default_map_merge` and per-class merges. In C these are distinct bits: `IsSimple` only short-circuits top-level `astSimplify_` (mapping.c:24740); the merge barrier is `Frozen`, cleared on every component at merge-loop entry (cmpmap.c:3538) and set only when `PatternCheck` detects oscillation (cmpmap.c:3608).
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs` (merge guards at ~483, 546-557, 695; the merge loop / `ctx` bookkeeping)
-- Modify: `crates/ast-core/src/mappings/mod.rs` or wherever the mapping carries the `has_been_simplified`/frozen state
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs` (merge guards at ~483, 546-557, 695; the merge loop / `ctx` bookkeeping)
+- Modify: `crates/starlink-ast/src/mappings/mod.rs` or wherever the mapping carries the `has_been_simplified`/frozen state
 - Test: rewrite `has_been_simplified_prevents_merge` and the second-mapping variant in `test_simplify_regression.rs:380-427` (they encode the wrong assumption; re-derive from the oracle)
 
 **Interfaces:**
@@ -176,8 +176,8 @@ Rewrite `has_been_simplified_prevents_merge` and `..second_mapping..` (test_simp
 - [ ] **Step 6: Run affected fixtures + full suite**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
-cargo test -p ast-core 2>&1 | grep -cE "test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
+cargo test -p starlink-ast 2>&1 | grep -cE "test result: FAILED"
 ```
 Expected: timemap_05/07, slamap_05 clear; overall simplify pass-count rises. No non-simplify regressions.
 
@@ -190,8 +190,8 @@ Expected: timemap_05/07, slamap_05 clear; overall simplify pass-count rises. No 
 **Root cause:** C `SpecMap::MapMerge` (specmap.c:2089, condition d at :2570) replaces an inverted SpecMap component with a forward one (steps reversed, codes swapped via `SWAP_CODES`), clearing the invert flag — even without a same-class neighbor. Rust's SpecMap has only `try_merge` (needs a SpecMap neighbor) + `simplified` (self), so a lone inverted component survives as `InvA=1` with un-flipped codes. Same for SlaMap/TimeMap.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/specmap.rs`, `slamap.rs`, `timemap.rs` — add a per-class `map_merge`
-- Modify: `crates/ast-core/src/mappings/simplify.rs` — dispatch to the new per-class `map_merge`
+- Modify: `crates/starlink-ast/src/mappings/specmap.rs`, `slamap.rs`, `timemap.rs` — add a per-class `map_merge`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs` — dispatch to the new per-class `map_merge`
 
 **Interfaces:**
 - Consumes: existing `normalized_steps` / `sla_normalized_steps` / `time_normalized_steps` helpers.
@@ -226,7 +226,7 @@ Expected: specmap_05/07/08/10/13, slamap_03 clear (equal + serialization). No re
 **Root cause:** `SpecCvtType::arg_descriptions()` (specmap.rs:204-260) returns wrong description slices for the `UsF2Hl`/`HlF2Us` group (should be 4 entries: Velocity, RA, DEC, correction — specmap.c:1167-1190) and the `ByF2Hl`/`HlF2By` group (should be with the Geocentric UT1-epoch group, not the 2-arg LSRK set — specmap.c:1252-1275). `nargs`/`szargs` are already correct.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/specmap.rs:204-260` (`arg_descriptions`)
+- Modify: `crates/starlink-ast/src/mappings/specmap.rs:204-260` (`arg_descriptions`)
 
 - [ ] **Step 1: Read C `CvtString` cases** `USF2HL`, `GEF2HL`, `BYF2HL` at specmap.c:1167-1275; record the exact comment strings.
 
@@ -247,7 +247,7 @@ Expected: specmap_invert_normalize, specmap_06 clear (serialization); specmap_03
 **Root cause:** C freezes a pure-shift WinMap into a `ShiftMap` as the final deferred step (winmap.c:1817-1857). Rust's `winmap_merge.rs:394-402` does this only when the WinMap is the nominated map; residual pure-shift WinMap leaves inside a settled CmpMap stay `WinMap`. `equal()` tolerates it but serialization emits the wrong class.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/winmap_merge.rs` (~394-402), possibly `winmap.rs::simplified` (257-303) and `simplify.rs:245-256` (`defer_winmap`)
+- Modify: `crates/starlink-ast/src/mappings/winmap_merge.rs` (~394-402), possibly `winmap.rs::simplified` (257-303) and `simplify.rs:245-256` (`defer_winmap`)
 
 - [ ] **Step 1: Read C winmap.c:1817-1857** (`isshift` → `astShiftMap`, `result==-1` guard).
 
@@ -268,8 +268,8 @@ Expected: winmap_01, unitmap_01, unitnormmap_winmap_inv_refused, unitnormmap_fwd
 **Root cause (a):** C refuses to convert a constant LutMap to a WinMap — guard `if(b1 != b2)` at lutmap.c:1150 (first ≠ last LUT value). Rust (lutmap.rs:563-594) computes slope 0 and emits `WinMap(scale=0)`. **(b):** PermMap unpaired output — C encodes as *bad* (0), Rust as a *constant* ref (-1) (perm.rs merge path).
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/lutmap.rs:563-594`
-- Modify: `crates/ast-core/src/mappings/perm.rs` (merge/simplify path)
+- Modify: `crates/starlink-ast/src/mappings/lutmap.rs:563-594`
+- Modify: `crates/starlink-ast/src/mappings/perm.rs` (merge/simplify path)
 
 - [ ] **Step 1: LutMap — add the `lut[0] != lut[n-1]` guard** before the WinMap conversion (mirror lutmap.c:1150). Oracle: neg_lut_constant reference == unchanged LutMap.
 
@@ -288,7 +288,7 @@ Expected: winmap_01, unitmap_01, unitnormmap_winmap_inv_refused, unitnormmap_fwd
 **Root cause:** (a) `SwitchMap::equal` (switchmap.rs:525-559) returns false when invert flags differ, comparing raw stored selectors; C `Equal` (switchmap.c:300-354) compares *effective* (invert-resolved) selectors/routes via `GetSelector`/`GetRoute`. (b) `SwitchMap::transform` inverted-direction logic (switchmap.rs:404-522) yields all-BAD for an inverted map; C applies `astInvert` to the resolved selector/route (switchmap.c:508-512, 597).
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/switchmap.rs` (`equal` 525-559; `transform` 404-522; `route_effective_forward` 296-306; `selector_effective_forward` 308-323; `get_selector`/`get_selector_inv` 279-294)
+- Modify: `crates/starlink-ast/src/mappings/switchmap.rs` (`equal` 525-559; `transform` 404-522; `route_effective_forward` 296-306; `selector_effective_forward` 308-323; `get_selector`/`get_selector_inv` 279-294)
 
 - [ ] **Step 1: Read C** switchmap.c `Equal` (300-354), `GetRoute` (429-520), `GetSelector` (525-601), `Transform` (1592-1817).
 
@@ -309,7 +309,7 @@ Expected: winmap_01, unitmap_01, unitnormmap_winmap_inv_refused, unitnormmap_fwd
 **Root cause:** C `MergeInterval` (interval.c:1224-1660) / `MergeBox` (box.c:1658+) merge parallel regions of different classes (Interval+NullRegion negated, Interval+PointList, Box+NullRegion, …) into one higher-D region over a CmpFrame. Rust's `Interval::try_merge`/`BoxRegion::try_merge` only downcast to their own type. (Requires P1 first — inputs carry frame-less `Unc` sub-regions.)
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/interval.rs:690-727` (`try_merge`), `box_region.rs:713-749`
+- Modify: `crates/starlink-ast/src/regions/interval.rs:690-727` (`try_merge`), `box_region.rs:713-749`
 
 - [ ] **Step 1: Read C** interval.c `MergeInterval` (1224-1660, esp. bound construction 1354-1522, uncertainty→Prism 1547-1573), box.c `MergeBox` (1658+).
 
@@ -330,7 +330,7 @@ Expected: winmap_01, unitmap_01, unitnormmap_winmap_inv_refused, unitnormmap_fwd
 **Root cause:** NullRegion, PointList, CmpRegion define no `try_merge` → trait default returns None; parallel same-class merges (into a CmpFrame) don't happen. C: nullregion.c `MergeNullRegion` (571+), pointlist.c `MapMerge` (972+).
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/nullregion.rs`, `pointlist.rs` (add `try_merge`)
+- Modify: `crates/starlink-ast/src/regions/nullregion.rs`, `pointlist.rs` (add `try_merge`)
 
 - [ ] **Step 1: Read C** nullregion.c:571+, pointlist.c:972+.
 - [ ] **Step 2: Add `NullRegion::try_merge`** (parallel same-class → single higher-D NullRegion over CmpFrame; nullregion_merge_tail is a 3-way nest).
@@ -345,7 +345,7 @@ Expected: winmap_01, unitmap_01, unitnormmap_winmap_inv_refused, unitnormmap_fwd
 **Root cause:** Rust `Interval::simplified` (interval.rs:649-673) transforms the two bound-points through base→current and rebuilds an axis-aligned Interval — wrong under a shear (non-axis-aligned). C `Interval::Simplify` (interval.c:3101-3400) builds a base-frame box (with fill-ins for half-infinite limits), round-trips corners to enclose both, clamps to the original limits, `astMapRegion`s into the current frame, `astSimplify`s that, and substitutes only if it reduced to Box/Interval/NullRegion. This is a "no corner cuts" case — replace the heuristic with the C algorithm.
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/interval.rs:649-673` (`simplified`)
+- Modify: `crates/starlink-ast/src/regions/interval.rs:649-673` (`simplified`)
 
 - [ ] **Step 1: Read C** interval.c:3101-3400 (esp. 3216-3360: box build, corner round-trip, limit clamp, MapRegion + resimplify + substitution guard).
 - [ ] **Step 2: Oracle** interval_remapped_simplify (shear M=[[1,1],[0,1]]): reference == input `.map` (external region unchanged); Rust currently produces all-BAD. interval_halfinf_simplify exercises missing-limit fill-in.
@@ -360,7 +360,7 @@ Expected: winmap_01, unitmap_01, unitnormmap_winmap_inv_refused, unitnormmap_fwd
 **Root cause:** WinMap↔MatrixMap swap ordering differs (winmap.c:1220-1231, WinMat ~2793 + deferred narrowing). winmap_swap_to_zoom, cap_zoommap_01. (After S1.)
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/winmap_merge.rs:176-260` (`try_swap`/`WinMat`), `:421` (`try_direct_merge`)
+- Modify: `crates/starlink-ast/src/mappings/winmap_merge.rs:176-260` (`try_swap`/`WinMat`), `:421` (`try_direct_merge`)
 
 - [ ] **Step 1: Read C** winmap.c WinMat/WinDiagMat swap (1220-1231, ~2793).
 - [ ] **Step 2: Oracle** winmap_swap_to_zoom → `MatrixMap[1,1;0,1] ; WinMap(shift=2,1 scale=2,2)`.
@@ -375,7 +375,7 @@ Expected: winmap_01, unitmap_01, unitnormmap_winmap_inv_refused, unitnormmap_fwd
 **Root cause:** (a) invert-flag placement in the CmpMap tree differs (cmpmap.c:1191 `simpler`); (b) two ShiftMaps flanking a MatrixMap should fuse (matrixmap.c); (c) `ReSimp`/`AlSimp` restricted-simplify attributes are parsed but unimplemented in Rust. cap_cmpmap_01-04, matrixmap_02, zoommap_01.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/cmpmap.rs:818-841` (`equal`/flatten), `simplify.rs:279-298` (`decomposition_is_simpler`), `matrix_merge.rs` (shift-through-matrix)
+- Modify: `crates/starlink-ast/src/mappings/cmpmap.rs:818-841` (`equal`/flatten), `simplify.rs:279-298` (`decomposition_is_simpler`), `matrix_merge.rs` (shift-through-matrix)
 - Modify: wherever `ReSimp`/`AlSimp` should gate simplification (currently ignored)
 
 - [ ] **Step 1: Read C** cmpmap.c invert normalization (1191, MapList), matrixmap.c shift-through-matrix, and the `ReSimp`/`AlSimp` (restricted-simplify) semantics in mapping.c/cmpmap.c.
@@ -393,8 +393,8 @@ Expected: winmap_01, unitmap_01, unitnormmap_winmap_inv_refused, unitnormmap_fwd
 **Root cause:** WcsMap has no `map_merge` → `default_map_merge` can't cancel a WcsMap against its inverse across parallel structure, nor swap WcsMap/diagonal-Matrix through a PermMap (rewriting injected constants). matrixmap_01, winmap_02, wcsmap_01. Largest piece.
 
 **Files:**
-- Create/Modify: `crates/ast-core/src/mappings/wcsmap.rs` (add `map_merge`)
-- Modify: `crates/ast-core/src/mappings/simplify.rs` (dispatch; PermMap-const-swap at ~1130-1400 for the WcsMap+diagonal-Matrix case)
+- Create/Modify: `crates/starlink-ast/src/mappings/wcsmap.rs` (add `map_merge`)
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs` (dispatch; PermMap-const-swap at ~1130-1400 for the WcsMap+diagonal-Matrix case)
 
 - [ ] **Step 1: Read C** wcsmap.c MapMerge (~900-1010): self-inverse → UnitMap cancellation, WcsMap↔PermMap swap; constant transform mirrors cmpmap.c:1929-1949.
 - [ ] **Step 2: Oracle** matrixmap_01 → single 3-axis WinMap (WcsMap TAN/TAN⁻¹ pair annihilates, flanking linear maps fuse); wcsmap_01 → `PermMap ; MatrixMap(full) ; CmpMap(...)` with rotated PermMap constants.
@@ -421,8 +421,8 @@ Expected: winmap_01, unitmap_01, unitnormmap_winmap_inv_refused, unitnormmap_fwd
 
 ## Task FINAL: Full green + verification
 
-- [ ] **Step 1:** `cargo test -p ast-core --test test_simplify_regression -- --nocapture` → `0 equal(), 0 transform, 0 serialization, 0 other failures`; only skips are the 16 BLOCKED IntraMap/XphMap (parse-skip) and 0 file-absent.
-- [ ] **Step 2:** `cargo test -p ast-core` → all green. `cargo test -p ast-core --test '*-regression'` and `test_wcsconv` → green.
+- [ ] **Step 1:** `cargo test -p starlink-ast --test test_simplify_regression -- --nocapture` → `0 equal(), 0 transform, 0 serialization, 0 other failures`; only skips are the 16 BLOCKED IntraMap/XphMap (parse-skip) and 0 file-absent.
+- [ ] **Step 2:** `cargo test -p starlink-ast` → all green. `cargo test -p starlink-ast --test '*-regression'` and `test_wcsconv` → green.
 - [ ] **Step 3:** `cargo build --workspace`, `cargo fmt --check`, `cargo clippy --workspace -- -D warnings` → clean.
 - [ ] **Step 4:** Update `docs/issues/c-library-quirks.md` / PLAN.md if any fix revealed a new quirk or completed a tracked item.
 

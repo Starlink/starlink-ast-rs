@@ -9,9 +9,9 @@
  * accepts the four-axis target. Each case gives the permutation applied to the
  * CmpFrame(A, B) and the template's output for the input point, or None.
  *
- * Prints Rust source for crates/ast-core/tests/sky_interleave_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/sky_interleave_oracle/cases.rs:
  *
- *   ./sky_interleave_probe > ../../crates/ast-core/tests/sky_interleave_oracle/cases.rs
+ *   ./sky_interleave_probe > ../../crates/starlink-ast/tests/sky_interleave_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

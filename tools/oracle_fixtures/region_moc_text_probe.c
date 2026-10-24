@@ -12,9 +12,9 @@
  * text and data. It needs moc.c as fixed upstream in 7beab7b1 and
  * 7d06331e.
  *
- * Prints Rust source for crates/ast-core/tests/region_moc_text_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_moc_text_oracle/cases.rs:
  *
- *   ./region_moc_text_probe > ../../crates/ast-core/tests/region_moc_text_oracle/cases.rs
+ *   ./region_moc_text_probe > ../../crates/starlink-ast/tests/region_moc_text_oracle/cases.rs
  */
 #include <stdint.h>
 #include <stdio.h>

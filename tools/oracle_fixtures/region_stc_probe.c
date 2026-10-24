@@ -15,9 +15,9 @@
  * with its comment, so that dump can differ from the first. Each is also
  * dumped with Full set to 1, which writes every unset value.
  *
- * Prints Rust source for crates/ast-core/tests/region_stc_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_stc_oracle/cases.rs:
  *
- *   ./region_stc_probe > ../../crates/ast-core/tests/region_stc_oracle/cases.rs
+ *   ./region_stc_probe > ../../crates/starlink-ast/tests/region_stc_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

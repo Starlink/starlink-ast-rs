@@ -4,7 +4,7 @@ Date: 2026-05-20
 
 ## Goal
 
-Drive `cargo test -p ast-core --test test_simplify_regression` to **0 failures
+Drive `cargo test -p starlink-ast --test test_simplify_regression` to **0 failures
 and 0 skipped** entries in `simplify_tests.txt`, modulo IntraMap (out of scope —
 see §4).
 
@@ -30,8 +30,8 @@ series; PRs land in the order C → A → B (smallest, most isolated first).
 
 | Fixture | Why it fails | Fix |
 |---|---|---|
-| `matrix_full_to_diagonal` | `MatrixMap::simplified` collapses to `UnitMap` / `ZoomMap` but does not switch a `Form="Full"` matrix whose off-diagonals are zero to `Form="Diagonal"`. | Extend `MatrixMap::simplified` (`crates/ast-core/src/mappings/matrix.rs:333`) so that, when the stored form is `Full` and `is_diagonal(&self.matrix)` holds (and the inverse, if present, is also diagonal), it returns a clone of `self` with `form` and `inv_form` set to `MatrixForm::Diagonal`. The numeric content is unchanged; only the storage form switches. |
-| `grism_zoom_inv_merge` | The merge math is correct (`GrmWR = 5000 × 0.5 = 2500`), but `GrismMap::merge_with_zoom` constructs the result via `GrismMap::new`, which marks **all eight** attributes as explicit-set. The C reference only marks the **three attributes that the merge math touched** (`GrmNRP`, `GrmWR`, `GrmG`) as explicit; the others retain the default-flagged status from the source GrismMap. | Modify `merge_with_zoom` (`crates/ast-core/src/mappings/grismmap.rs:233`) to construct the result by `clone()`-ing `self` (which copies the existing `set_flags`) and then writing the three modified scalars while flipping only `set_flags.{nrp, wave_r, g}` to `true`. `GrmNR`, `GrmAlp`, `GrmM`, `GrmEps`, `GrmTh` keep their original explicit/default state. |
+| `matrix_full_to_diagonal` | `MatrixMap::simplified` collapses to `UnitMap` / `ZoomMap` but does not switch a `Form="Full"` matrix whose off-diagonals are zero to `Form="Diagonal"`. | Extend `MatrixMap::simplified` (`crates/starlink-ast/src/mappings/matrix.rs:333`) so that, when the stored form is `Full` and `is_diagonal(&self.matrix)` holds (and the inverse, if present, is also diagonal), it returns a clone of `self` with `form` and `inv_form` set to `MatrixForm::Diagonal`. The numeric content is unchanged; only the storage form switches. |
+| `grism_zoom_inv_merge` | The merge math is correct (`GrmWR = 5000 × 0.5 = 2500`), but `GrismMap::merge_with_zoom` constructs the result via `GrismMap::new`, which marks **all eight** attributes as explicit-set. The C reference only marks the **three attributes that the merge math touched** (`GrmNRP`, `GrmWR`, `GrmG`) as explicit; the others retain the default-flagged status from the source GrismMap. | Modify `merge_with_zoom` (`crates/starlink-ast/src/mappings/grismmap.rs:233`) to construct the result by `clone()`-ing `self` (which copies the existing `set_flags`) and then writing the three modified scalars while flipping only `set_flags.{nrp, wave_r, g}` to `true`. `GrmNR`, `GrmAlp`, `GrmM`, `GrmEps`, `GrmTh` keep their original explicit/default state. |
 | `unit_parallel_invert_clear` | A parallel CmpMap with `InvB=1` and a `UnitMap` with `Invert=1` in `MapB` is structurally a no-op double-inversion of a UnitMap. Our `flatten` strips the inner `Invert=1` and sets `effective_inv=true` instead; reconstruct then emits the parallel CmpMap with `InvB=1` flag, while the C reference output has no `InvB` and a UnitMap with `Invert=1`. Transform output is identical; only serialization differs. | In `simplify::reconstruct` (parallel branch), when an entry's `effective_inv` is true *and* the entry is `is::<UnitMap>()` (UnitMap is self-inverse), restore the inversion onto the leaf by calling `entry.invert()` and emit it with no external inv. This produces a UnitMap with internal `Invert=1` and no parent `InvB=1` — byte-equal to the C reference. The same idea applies symmetrically for the `MapA` side. |
 
 ### Group A — CmpMap structural simplifications (5 fixtures)
@@ -71,7 +71,7 @@ C reference produces a single 2-D Box on a `CmpFrame`.
 
 | Fixture | Required rule |
 |---|---|
-| `interval_self_simplify` | A 2-D `Interval` with all bounds finite and `lbnd[i] <= ubnd[i]` is exactly a `Box`. Extend `Interval::simplified` (`crates/ast-core/src/regions/interval.rs:610`): when `effective_bounds` returns no `BAD_VALUE` entries, build a `BoxRegion` from the same bounds on the same frame, copy region attributes (`negated`, `closed=true`, `adaptive`, `mesh_size`, `fill_factor`, uncertainty, `IsSimp=true`), and return that. Otherwise return self unchanged. |
+| `interval_self_simplify` | A 2-D `Interval` with all bounds finite and `lbnd[i] <= ubnd[i]` is exactly a `Box`. Extend `Interval::simplified` (`crates/starlink-ast/src/regions/interval.rs:610`): when `effective_bounds` returns no `BAD_VALUE` entries, build a `BoxRegion` from the same bounds on the same frame, copy region attributes (`negated`, `closed=true`, `adaptive`, `mesh_size`, `fill_factor`, uncertainty, `IsSimp=true`), and return that. Otherwise return self unchanged. |
 | `box_parallel_merge` (correctness) | Implement `BoxRegion::try_merge` for the parallel case. Given two `BoxRegion`s `A` (1-D) and `B` (1-D) under a parallel CmpMap: build a `CmpFrame` from the two frames, concatenate the defining points (`A` has `npoint × naxes_A`, `B` has `npoint × naxes_B` — the C library uses `npoint=2` by convention; concatenate the columns), and return a new `BoxRegion` on that CmpFrame with the combined points. Domain becomes `"CMP"` (from `CmpFrame` defaults). The series case returns `None`. |
 | `interval_parallel_merge` (correctness) | Implement `Interval::try_merge` for the parallel case. The C reference's behavior: when both intervals have all bounds finite, the merged region is reclassified to `BoxRegion` (matching the `interval_self_simplify` rule applied to the merged region). When any bound is infinite, the merged region must remain an `Interval`; if both are intervals, build a 2-D Interval on a CmpFrame. |
 
@@ -83,7 +83,7 @@ that C uses; check `box.c:MapMerge` (`reference/starlink-ast/src/box.c`) and
 `interval.c:MapMerge` for the exact semantics.
 
 `CmpFrame` exists; constructor signature can be confirmed via `grep -nE 'pub
-fn new' crates/ast-core/src/frames/cmpframe.rs`.
+fn new' crates/starlink-ast/src/frames/cmpframe.rs`.
 
 ## Architecture & rationale
 
@@ -91,11 +91,11 @@ fn new' crates/ast-core/src/frames/cmpframe.rs`.
 
 | Group | Files touched |
 |---|---|
-| C | `crates/ast-core/src/mappings/matrix.rs`, `grismmap.rs`, `simplify.rs` |
-| A | `crates/ast-core/src/mappings/simplify.rs` (merge_loop, reconstruct, try_swap_permmap_parallel) |
-| B | `crates/ast-core/src/regions/box_region.rs`, `interval.rs` (new `try_merge` impls) |
+| C | `crates/starlink-ast/src/mappings/matrix.rs`, `grismmap.rs`, `simplify.rs` |
+| A | `crates/starlink-ast/src/mappings/simplify.rs` (merge_loop, reconstruct, try_swap_permmap_parallel) |
+| B | `crates/starlink-ast/src/regions/box_region.rs`, `interval.rs` (new `try_merge` impls) |
 
-No new modules, no public API changes, no ABI change in `ast-capi`.
+No new modules, no public API changes, no ABI change in `starlink-ast-capi`.
 
 ### Why per-class `try_merge` for regions
 
@@ -148,7 +148,7 @@ that SCUBA-2 hits.
   ...` / `fix(regions): ...`) so bisect stays useful.
 - After each commit, the simplify-regression suite is re-run; the
   per-failure list in this spec serves as the acceptance checklist.
-- Existing passing tests must not regress (`cargo test -p ast-core` —
+- Existing passing tests must not regress (`cargo test -p starlink-ast` —
   full tier-1 suite).
 - `cargo fmt` + `cargo clippy --workspace -- -D warnings` before each
   commit (per project memory `feedback_format_clippy.md`).
@@ -156,7 +156,7 @@ that SCUBA-2 hits.
 ## Acceptance criteria
 
 ```
-cargo test -p ast-core --test test_simplify_regression
+cargo test -p starlink-ast --test test_simplify_regression
 # →
 # Simplify regression: 247 passed, 0 skipped,
 #   0 equal() failures, 0 transform failures, 0 serialization failures, 0 other failures
@@ -172,11 +172,11 @@ manifest per §4.)
   (`MapMerge`), `reference/starlink-ast/src/interval.c` (`MapMerge`,
   `Simplify`), `reference/starlink-ast/src/matrixmap.c` (form switching),
   `reference/starlink-ast/src/grismmap.c` (`MapMerge` with ZoomMap).
-- Rust starting point: `crates/ast-core/src/mappings/simplify.rs:181` (`flatten`),
+- Rust starting point: `crates/starlink-ast/src/mappings/simplify.rs:181` (`flatten`),
   `:246` (`merge_loop`), `:1563` (`try_swap_permmap_parallel`),
   `:1882` (`try_merge_zoom_before_inv_grism`).
-- Test harness: `crates/ast-core/tests/test_simplify_regression.rs`.
-- Fixture manifest: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`.
+- Test harness: `crates/starlink-ast/tests/test_simplify_regression.rs`.
+- Fixture manifest: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`.
 - Prior simplify-fix design: `docs/superpower/specs/2026-05-07-simplification-fixes-design.md`
   (this spec is its successor; the 2026-05-07 work landed the bulk of
   simplification, and we now close the residual edge cases).

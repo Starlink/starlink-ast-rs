@@ -6,9 +6,9 @@
  * widest gap between them (skyframe.c NormalPoints). A CmpFrame hands each
  * component its own axes, and a FrameSet its current Frame.
  *
- * Prints Rust source for crates/ast-core/tests/norm_points_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/norm_points_oracle/cases.rs:
  *
- *   ./norm_points_probe > ../../crates/ast-core/tests/norm_points_oracle/cases.rs
+ *   ./norm_points_probe > ../../crates/starlink-ast/tests/norm_points_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

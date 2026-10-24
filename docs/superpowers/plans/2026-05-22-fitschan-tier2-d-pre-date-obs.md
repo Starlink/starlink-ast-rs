@@ -18,10 +18,10 @@ The C library convention for the format is at fitschan.c:3667-3681: cutoff at MJ
 
 ## File structure
 
-- **Modify:** `crates/ast-core/src/fitschan/fits_store.rs` — add `dateobs: Option<String>` field.
-- **Modify:** `crates/ast-core/src/fitschan/wcs_write.rs` — add Meeus `mjd_to_gregorian` / `mjd_to_date_str` helpers; add TT-to-UTC conversion in MJD-OBS computation; populate `store.dateobs`; emit DATE-OBS card in `write_store_to_cards` (used by FITS-WCS, IRAF, PC).
-- **Modify:** `crates/ast-core/src/fitschan/enc_aips.rs` — emit DATE-OBS card in both AIPS and AIPS++ write paths after MJD-OBS / EPOCH.
-- **Modify:** `crates/ast-core/src/fitschan/enc_class.rs` — emit DATE-OBS card in CLASS write path.
+- **Modify:** `crates/starlink-ast/src/fitschan/fits_store.rs` — add `dateobs: Option<String>` field.
+- **Modify:** `crates/starlink-ast/src/fitschan/wcs_write.rs` — add Meeus `mjd_to_gregorian` / `mjd_to_date_str` helpers; add TT-to-UTC conversion in MJD-OBS computation; populate `store.dateobs`; emit DATE-OBS card in `write_store_to_cards` (used by FITS-WCS, IRAF, PC).
+- **Modify:** `crates/starlink-ast/src/fitschan/enc_aips.rs` — emit DATE-OBS card in both AIPS and AIPS++ write paths after MJD-OBS / EPOCH.
+- **Modify:** `crates/starlink-ast/src/fitschan/enc_class.rs` — emit DATE-OBS card in CLASS write path.
 - (No change needed in `enc_dss.rs`; DSS doesn't use DATE-OBS.)
 
 ---
@@ -108,7 +108,7 @@ Estimate: **+5 to +8** wcsconv passes, depending on whether other downstream iss
 ## Task 1: Add the FitsStore field
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/fits_store.rs`
+- Modify: `crates/starlink-ast/src/fitschan/fits_store.rs`
 
 - [ ] **Step 1: Add the field**
 
@@ -133,7 +133,7 @@ Find `FitsStore::new` (around line 84). After `mjdobs: None,` add `dateobs: None
 - [ ] **Step 3: Verify build**
 
 ```bash
-cargo build -p ast-core
+cargo build -p starlink-ast
 ```
 
 Should succeed; the field is unused but `Option<String>::None` doesn't trigger dead_code (the field is `pub`).
@@ -143,7 +143,7 @@ If clippy with `--tests` flags `dateobs` as never-read, add `#[allow(dead_code)]
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/fits_store.rs
+git add crates/starlink-ast/src/fitschan/fits_store.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): add dateobs field to FitsStore
 
@@ -163,7 +163,7 @@ EOF
 ## Task 2: Calendar conversion helpers
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 Add `mjd_to_gregorian` and `mjd_to_date_str` helpers using Meeus's algorithm. Pure Rust; no PAL FFI.
 
@@ -320,7 +320,7 @@ fn mjd_to_date_str(mjd: f64) -> String {
 - [ ] **Step 3: Run unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_write -- --nocapture
+cargo test -p starlink-ast --lib fitschan::wcs_write -- --nocapture
 ```
 
 Expected: 7 new tests pass.
@@ -331,7 +331,7 @@ If `mjd_to_date_str_modern_with_ms_precision` fails because of accumulated float
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 Both `mjd_to_gregorian` and `mjd_to_date_str` are not yet called from production code (Task 3 wires them). If clippy flags dead_code, add `#[allow(dead_code)]` with a comment "called from populate_celestial in Task 3"; remove in Task 3.
@@ -339,7 +339,7 @@ Both `mjd_to_gregorian` and `mjd_to_date_str` are not yet called from production
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write.rs
+git add crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): add MJD->Gregorian calendar helpers for DATE-OBS
 
@@ -364,14 +364,14 @@ EOF
 ## Task 3: TT → UTC conversion in MJD-OBS population
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 `populate_celestial` currently stores `sky.epoch_mjd()` (TT) directly. The C library stores UTC. Convert in `populate_celestial`.
 
 - [ ] **Step 1: Locate the existing MJD-OBS population**
 
 ```bash
-grep -n "store.mjdobs\|epoch_mjd\|sky.epoch" crates/ast-core/src/fitschan/wcs_write.rs
+grep -n "store.mjdobs\|epoch_mjd\|sky.epoch" crates/starlink-ast/src/fitschan/wcs_write.rs
 ```
 
 Around line 640-655, you should find:
@@ -443,7 +443,7 @@ with:
 - [ ] **Step 5: Run the wcsconv suite — observe the change**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: pass count may not change yet — DATE-OBS is now in `store.dateobs` but no encoder emits it. Tasks 4-6 wire it.
@@ -453,7 +453,7 @@ Expected: pass count may not change yet — DATE-OBS is now in `store.dateobs` b
 - [ ] **Step 6: Run unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_write -- --nocapture
+cargo test -p starlink-ast --lib fitschan::wcs_write -- --nocapture
 ```
 
 All previously-passing tests must still pass.
@@ -462,13 +462,13 @@ All previously-passing tests must still pass.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write.rs
+git add crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 fix(fitschan): convert epoch from TT to UTC for MJD-OBS
 
@@ -493,14 +493,14 @@ EOF
 ## Task 4: Emit DATE-OBS in write_store_to_cards (FITS-WCS, IRAF, PC)
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 `write_store_to_cards` is the shared write path used by FITS-WCS (default), FITS-IRAF (via `enc_iraf::write_to_cards`), and FITS-PC (via `enc_pc::write_to_cards`). Emit DATE-OBS here right after MJD-OBS.
 
 - [ ] **Step 1: Locate the MJD-OBS emission**
 
 ```bash
-grep -n "MJD-OBS\|mjdobs" crates/ast-core/src/fitschan/wcs_write.rs
+grep -n "MJD-OBS\|mjdobs" crates/starlink-ast/src/fitschan/wcs_write.rs
 ```
 
 Around line 791 you should find:
@@ -526,7 +526,7 @@ Around line 791 you should find:
 - [ ] **Step 3: Run wcsconv — confirm tests turn green**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|date-z|ncp_fits-iraf|sin-plain_fits-iraf|fk4-aips_fits-iraf|timj_fits-iraf|ukirt-dtai|wave-1d_fits-iraf"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|date-z|ncp_fits-iraf|sin-plain_fits-iraf|fk4-aips_fits-iraf|timj_fits-iraf|ukirt-dtai|wave-1d_fits-iraf"
 ```
 
 Expected: pass count goes up by 2-4 (FITS-WCS / IRAF / PC tests with DATE-OBS as the only remaining blocker). FITS-AIPS tests still need Task 5; CLASS still needs Task 6.
@@ -534,10 +534,10 @@ Expected: pass count goes up by 2-4 (FITS-WCS / IRAF / PC tests with DATE-OBS as
 - [ ] **Step 4: Run regression**
 
 ```bash
-cargo test -p ast-core --test test_fitschan
-cargo test -p ast-core --test test_fitschan_encodings
-cargo test -p ast-core --test test_fitschan_wcs
-cargo test -p ast-core --test test_fitschan_wcs_write
+cargo test -p starlink-ast --test test_fitschan
+cargo test -p starlink-ast --test test_fitschan_encodings
+cargo test -p starlink-ast --test test_fitschan_wcs
+cargo test -p starlink-ast --test test_fitschan_wcs_write
 ```
 
 All green.
@@ -546,13 +546,13 @@ All green.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write.rs
+git add crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): emit DATE-OBS in FITS-WCS / IRAF / PC encoders
 
@@ -574,14 +574,14 @@ EOF
 ## Task 5: Emit DATE-OBS in enc_aips (AIPS, AIPS++)
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_aips.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_aips.rs`
 
 The AIPS encoder uses EPOCH instead of MJD-OBS, and the AIPS++ encoder uses both MJD-OBS and EQUINOX. Both should emit DATE-OBS.
 
 - [ ] **Step 1: Locate the AIPS write path's MJD-OBS or EPOCH emission**
 
 ```bash
-grep -n "MJD-OBS\|EPOCH\|set_float\(\"EPOCH\|set_float\(\"MJD" crates/ast-core/src/fitschan/enc_aips.rs
+grep -n "MJD-OBS\|EPOCH\|set_float\(\"EPOCH\|set_float\(\"MJD" crates/starlink-ast/src/fitschan/enc_aips.rs
 ```
 
 Identify both `write_to_cards` (plain AIPS) and `write_to_cards_pp` (AIPS++) paths.
@@ -609,7 +609,7 @@ Same pattern in `write_to_cards_pp`. Look for the corresponding MJD-OBS line and
 - [ ] **Step 4: Run wcsconv — confirm AIPS tests turn green**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|sin-plain_fits-aips|ncp_fits-aips|fk4-aips_fits-aips|timj_fits-aips"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|sin-plain_fits-aips|ncp_fits-aips|fk4-aips_fits-aips|timj_fits-aips"
 ```
 
 Expected: pass count rises by 2-3.
@@ -617,7 +617,7 @@ Expected: pass count rises by 2-3.
 - [ ] **Step 5: Run AIPS unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_aips -- --nocapture
+cargo test -p starlink-ast --lib fitschan::enc_aips -- --nocapture
 ```
 
 All green.
@@ -626,13 +626,13 @@ All green.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_aips.rs
+git add crates/starlink-ast/src/fitschan/enc_aips.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): emit DATE-OBS in AIPS / AIPS++ encoders
 
@@ -652,14 +652,14 @@ EOF
 ## Task 6: Emit DATE-OBS in enc_class
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_class.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_class.rs`
 
 CLASS-format headers also use DATE-OBS. The `class-arc_fits-class` test expects it.
 
 - [ ] **Step 1: Locate the CLASS write path's MJD-OBS or RESTFREQ emission**
 
 ```bash
-grep -n "MJD-OBS\|set_float\(\"MJD\|fn write_to_cards" crates/ast-core/src/fitschan/enc_class.rs
+grep -n "MJD-OBS\|set_float\(\"MJD\|fn write_to_cards" crates/starlink-ast/src/fitschan/enc_class.rs
 ```
 
 - [ ] **Step 2: Emit DATE-OBS**
@@ -669,7 +669,7 @@ In `write_to_cards`, find the MJD-OBS card emission and append DATE-OBS in the s
 - [ ] **Step 3: Run wcsconv**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|class-arc"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "wcsconv results|class-arc"
 ```
 
 Expected: pass count rises by ≤1 (`class-arc_fits-class` may have other downstream issues).
@@ -677,7 +677,7 @@ Expected: pass count rises by ≤1 (`class-arc_fits-class` may have other downst
 - [ ] **Step 4: Run CLASS unit tests + workspace**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_class -- --nocapture
+cargo test -p starlink-ast --lib fitschan::enc_class -- --nocapture
 cargo test --workspace 2>&1 | grep -cE "FAILED"
 ```
 
@@ -687,13 +687,13 @@ All green; zero workspace failures.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_class.rs
+git add crates/starlink-ast/src/fitschan/enc_class.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): emit DATE-OBS in CLASS encoder
 
@@ -716,7 +716,7 @@ EOF
 - [ ] **Step 1: Final wcsconv state**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: 112 → ~117-119 (≥+5 from DATE-OBS-blocked tests turning green).
@@ -724,7 +724,7 @@ Expected: 112 → ~117-119 (≥+5 from DATE-OBS-blocked tests turning green).
 - [ ] **Step 2: Capture which tests turned green**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "DATE-OBS|MJD-OBS"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "DATE-OBS|MJD-OBS"
 ```
 
 Expected: zero or very few residual DATE-OBS / MJD-OBS lines (only those blocked by other category-D issues).

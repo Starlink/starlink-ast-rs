@@ -28,9 +28,9 @@
  * After each operation: "= " and its result, or "! " and the error status,
  * which is then cleared; then any dump lines, each prefixed by "|".
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_tables_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_tables_oracle/cases.rs:
  *
- *   ./fitschan_tables_probe > ../../crates/ast-core/tests/fitschan_tables_oracle/cases.rs
+ *   ./fitschan_tables_probe > ../../crates/starlink-ast/tests/fitschan_tables_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

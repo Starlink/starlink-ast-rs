@@ -13,9 +13,9 @@
  * of the hole (so the search crosses it), from an inside pixel outside the
  * array (so the spiral search finds one), and for an int array.
  *
- * Prints Rust source for crates/ast-core/tests/region_outline_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_outline_oracle/cases.rs:
  *
- *   ./region_outline_probe > ../../crates/ast-core/tests/region_outline_oracle/cases.rs
+ *   ./region_outline_probe > ../../crates/starlink-ast/tests/region_outline_oracle/cases.rs
  */
 #include <math.h>
 #include <stdio.h>

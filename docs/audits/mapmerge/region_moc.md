@@ -1,7 +1,7 @@
 # `Simplify` / `GetDefUnc` audit — Moc
 
 C source: reference/starlink-ast/src/moc.c
-Rust: crates/ast-core/src/regions/moc.rs
+Rust: crates/starlink-ast/src/regions/moc.rs
 Audited: 2026-10-09 against pin c95aa801
 Citations: verified against pin 3b9dc639
 Extension points: classified

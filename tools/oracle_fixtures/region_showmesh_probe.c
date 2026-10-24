@@ -6,9 +6,9 @@
  * Format, a Box whose values need "%g"'s exponent form, and a Circle whose
  * base->current Mapping is a ZoomMap.
  *
- * Prints Rust source for crates/ast-core/tests/region_showmesh_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_showmesh_oracle/cases.rs:
  *
- *   ./region_showmesh_probe > ../../crates/ast-core/tests/region_showmesh_oracle/cases.rs
+ *   ./region_showmesh_probe > ../../crates/starlink-ast/tests/region_showmesh_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

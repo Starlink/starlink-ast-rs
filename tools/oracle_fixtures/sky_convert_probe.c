@@ -10,9 +10,9 @@
  * which take the stored values (MJD, radians) directly, so the Rust test
  * sets exactly the same values.
  *
- * Prints Rust source for crates/ast-core/tests/sky_convert_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/sky_convert_oracle/cases.rs:
  *
- *   ./sky_convert_probe > ../../crates/ast-core/tests/sky_convert_oracle/cases.rs
+ *   ./sky_convert_probe > ../../crates/starlink-ast/tests/sky_convert_oracle/cases.rs
  */
 #include <float.h>
 #include <stdio.h>
@@ -89,7 +89,7 @@ int main( void ) {
            "// Each value is printed with 17 digits so that it reads back exactly.\n"
            "#![allow(clippy::excessive_precision, clippy::approx_constant)]\n\n"
            "#[allow(unused_imports)]\n"
-           "use ast_core::constants::BAD_VALUE as BAD;\n\n"
+           "use starlink_ast::constants::BAD_VALUE as BAD;\n\n"
            "/// `[epoch MJD, equinox MJD, obslat rad, obslon rad]` of the source\n"
            "/// (\"from\") Frame, per configuration.\n"
            "pub const FROM_PROPS: [[f64; 4]; 2] = [" );

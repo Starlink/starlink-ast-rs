@@ -10,9 +10,9 @@
  * added to the outer CmpMap and "AlSimp = 1" to the chosen components,
  * read back and simplified.
  *
- * Prints Rust source for crates/ast-core/tests/allow_simplify_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/allow_simplify_oracle/cases.rs:
  *
- *   ./allow_simplify_probe > ../../crates/ast-core/tests/allow_simplify_oracle/cases.rs
+ *   ./allow_simplify_probe > ../../crates/starlink-ast/tests/allow_simplify_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

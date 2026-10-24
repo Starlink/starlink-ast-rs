@@ -60,6 +60,15 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
 /// The submodule holding the pinned C source.
 const SUBMODULE: &str = "reference/starlink-ast";
 
+/// The library crate's directory, and the one it had before it was renamed
+/// from `ast-core` on 2026-10-24.
+///
+/// A row written before the rename has its baseline in a tree that holds the
+/// cited file under the old directory, so a file that is not at `CRATE_DIR` in
+/// a baseline is read at `EARLIER_CRATE_DIR` instead.
+const CRATE_DIR: &str = "crates/starlink-ast/";
+const EARLIER_CRATE_DIR: &str = "crates/ast-core/";
+
 /// The commit that wrote each line of `path` as it stands in the working
 /// tree, 1-based, from `git blame`.
 ///
@@ -191,7 +200,8 @@ impl Sources {
     /// line map between them.
     ///
     /// For a file inside the submodule `rev` is a pin and the text comes from the
-    /// submodule; for one in the superproject it is a superproject commit.
+    /// submodule; for one in the superproject it is a superproject commit, and
+    /// the file is read at the directory the crate had in that commit.
     fn load(&mut self, root: &Path, path: &Path, rev: &str) -> Option<()> {
         let key = (path.to_path_buf(), rev.to_string());
         if self.maps.contains_key(&key) {
@@ -212,7 +222,13 @@ impl Sources {
             }
             Err(_) => {
                 let rel = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
-                git(root, &["show", &format!("{rev}:{rel}")])?
+                git(root, &["show", &format!("{rev}:{rel}")]).or_else(|| {
+                    let inner = rel.strip_prefix(CRATE_DIR)?;
+                    git(
+                        root,
+                        &["show", &format!("{rev}:{EARLIER_CRATE_DIR}{inner}")],
+                    )
+                })?
             }
         };
         let map = line_map(

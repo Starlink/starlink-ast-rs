@@ -41,7 +41,7 @@ Verified facts:
    `parallel(SlaMap_Hfk5z, Unit) ; parallel(Unit_2, ShiftMap_1) ;
    parallel(SlaMap_Fk5hz, Unit)` pattern — see the
    `parallel_in_series_with_blocking_delta` test in
-   `crates/ast-core/src/mappings/simplify.rs`.  It cancels the
+   `crates/starlink-ast/src/mappings/simplify.rs`.  It cancels the
    SlaMap pair and merges the entire chain to a single 3-axis
    ShiftMap.
 2. **The FrameSet integrity port is correct.**  Commit `8576be7`
@@ -154,8 +154,8 @@ already be N-axis.  Audit and adjust:
 Run the full test suite after each step:
 
 ```bash
-cargo test -p ast-core --lib                  # 908 tests
-cargo test -p ast-core --test test_wcsconv    # 192 tests (currently 181 passing)
+cargo test -p starlink-ast --lib                  # 908 tests
+cargo test -p starlink-ast --test test_wcsconv    # 192 tests (currently 181 passing)
 cargo test --workspace
 ```
 

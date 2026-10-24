@@ -2,10 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Port the narrative chapters of SUN/211 into `ast_core::guide` as rustdoc Markdown chapters with Rust doctests and intra-doc links.
+**Goal:** Port the narrative chapters of SUN/211 into `starlink_ast::guide` as rustdoc Markdown chapters with Rust doctests and intra-doc links.
 
-**Architecture:** One item-less submodule per chapter under `crates/ast-core/src/guide/`, each pulling its text from a sibling `.md` file with `#![doc = include_str!(...)]`.
-Examples are doctests run by `cargo test -p ast-core --doc`; links are checked by the denied rustdoc lint group; C internals are kept out by the existing rendered-docs gate in `test_c_docs_audit.rs`.
+**Architecture:** One item-less submodule per chapter under `crates/starlink-ast/src/guide/`, each pulling its text from a sibling `.md` file with `#![doc = include_str!(...)]`.
+Examples are doctests run by `cargo test -p starlink-ast --doc`; links are checked by the denied rustdoc lint group; C internals are kept out by the existing rendered-docs gate in `test_c_docs_audit.rs`.
 A small `audit-tools` binary computes each chapter's authorship from `git blame` so commit credit is mechanical.
 
 **Tech Stack:** Rust 2024, rustdoc (Markdown, intra-doc links, doctests), `audit-tools` crate, `git blame`, Ghostscript / `rsvg-convert` for figures.
@@ -27,7 +27,7 @@ A small `audit-tools` binary computes each chapter's authorship from `git blame`
 - Copyright line on the Introduction: `Copyright (C) 2026 East Asian Observatory and AURA`.
 - Chapter commit authorship: share = fraction of the chapter's non-blank, non-comment C-edition lines `git blame -w -M -C` attributes to the person; credited if ≥ 10%; larger share is `--author`, the other a `Co-authored-by:` trailer. Identities: `David Berry <davidstuartberry@gmail.com>`, `Rodney Warren-Smith <rfws@star.rl.ac.uk>`. Trailers precede the AI attribution lines. Non-prose commits use the normal author.
 - A real port bug found by an example: fix in the port, separate commit, normal author. A missing public API: **stop and ask the user** before adding anything.
-- Every commit: `cargo fmt --all -- --check`, `cargo clippy --workspace -- -D warnings`, `cargo doc --workspace --no-deps`, `cargo test -p ast-core` green.
+- Every commit: `cargo fmt --all -- --check`, `cargo clippy --workspace -- -D warnings`, `cargo doc --workspace --no-deps`, `cargo test -p starlink-ast` green.
 
 ## Review Focus
 
@@ -42,7 +42,7 @@ A small `audit-tools` binary computes each chapter's authorship from `git blame`
 ## File Structure
 
 ```
-crates/ast-core/src/guide/
+crates/starlink-ast/src/guide/
 ├── mod.rs              # module doc = table of contents; declares chapter mods
 ├── README.md           # NOT rendered: source pin, section→chapter table, authorship table
 ├── intro.md            # Introduction + copyright
@@ -68,7 +68,7 @@ crates/ast-core/src/guide/
 └── figures/*.svg       # converted SUN/211 figures
 crates/audit-tools/src/guide_authors.rs       # blame-share computation (lib)
 crates/audit-tools/src/bin/guide-authors.rs   # CLI over it
-crates/ast-core/tests/test_guide.rs           # guide gates (in meta program)
+crates/starlink-ast/tests/test_guide.rs           # guide gates (in meta program)
 ```
 
 `mod.rs` declares, in this order: `intro, cargo, concepts, howto, objects, mappings, cmpmaps, frames, skyframes, specframes, timeframes, cmpframes, conversions, framesets, frameset_ops, channels, fitschans, foreign_fits, intramaps, fits_wcs`.
@@ -80,21 +80,21 @@ A chapter not yet ported is not declared (no placeholder pages).
 Every chapter task follows these steps; the task lists only what differs.
 
 - [ ] **A. Extract.** `perl reference/starlink-ast/selectfc reference/starlink-ast/sun_master.tex | sed -n '<start>,<end>p'` is the C-edition text to port; the line ranges in each task are of the *unfiltered* file, so find the section by its `\section` heading in the filtered output.
-- [ ] **B. Port the prose** into `crates/ast-core/src/guide/<name>.md` following Global Constraints. LaTeX → Markdown: `\section` → `#`, `\subsection` → `##`, `\subsubsection` → `###`; `\htmlref{text}{label}` / `\ref` → intra-doc link to the chapter module (`[text](crate::guide::frames)`) or heading anchor (`crate::guide::frames#the-domain-attribute`); `\textit`/`\emph` → `*…*`; `\verb`/`\texttt` → backticks; `\begin{terminalv}` → fenced code. Add each `\label` to the README section table.
-- [ ] **C. Port each kept example** to a ` ```rust ` doctest using only public API (`use ast_core::…`), ending in `Ok::<(), ast_core::error::AstError>(())` when it uses `?`. Replace printed output with `assert_eq!` on the value SUN/211 shows. Where the Rust value differs: if C would produce SUN/211's value, it is a port bug → stop the chapter, fix in a separate normal-author commit (with a test in the area program), resume. If an example needs an API that does not exist → **stop and ask the user**.
+- [ ] **B. Port the prose** into `crates/starlink-ast/src/guide/<name>.md` following Global Constraints. LaTeX → Markdown: `\section` → `#`, `\subsection` → `##`, `\subsubsection` → `###`; `\htmlref{text}{label}` / `\ref` → intra-doc link to the chapter module (`[text](crate::guide::frames)`) or heading anchor (`crate::guide::frames#the-domain-attribute`); `\textit`/`\emph` → `*…*`; `\verb`/`\texttt` → backticks; `\begin{terminalv}` → fenced code. Add each `\label` to the README section table.
+- [ ] **C. Port each kept example** to a ` ```rust ` doctest using only public API (`use starlink_ast::…`), ending in `Ok::<(), starlink_ast::error::AstError>(())` when it uses `?`. Replace printed output with `assert_eq!` on the value SUN/211 shows. Where the Rust value differs: if C would produce SUN/211's value, it is a port bug → stop the chapter, fix in a separate normal-author commit (with a test in the area program), resume. If an example needs an API that does not exist → **stop and ask the user**.
 - [ ] **D. Declare** the chapter in `guide/mod.rs` and add its line to the table of contents in the module doc.
   Set the fate of each of the chapter's rows in the README section table (a Markdown table `| line | title | fate |`), and lower `GUIDE_SECTIONS_PENDING` by the number resolved.
   If the chapter uses figures, convert them first by Task 2's step F1, in its own commit.
 - [ ] **E. Verify:**
-  - `cargo test -p ast-core --doc guide` → all pass.
-  - `cargo doc -p ast-core --no-deps` → no warnings.
-  - `cargo test -p ast-core --test meta test_guide:: test_c_docs_audit::` → pass.
-  - `rg -n '\bast[A-Z]\w+|\.c\b|\bC\b' crates/ast-core/src/guide/<name>.md` → every hit is justified (a stated difference from C), else reword.
+  - `cargo test -p starlink-ast --doc guide` → all pass.
+  - `cargo doc -p starlink-ast --no-deps` → no warnings.
+  - `cargo test -p starlink-ast --test meta test_guide:: test_c_docs_audit::` → pass.
+  - `rg -n '\bast[A-Z]\w+|\.c\b|\bC\b' crates/starlink-ast/src/guide/<name>.md` → every hit is justified (a stated difference from C), else reword.
 - [ ] **F. Authorship.** `cargo run -q -p audit-tools --bin guide-authors -- <start> <end>` prints `author` / `co-author` lines; record them in the README authorship table.
 - [ ] **G. Commit** with fmt/clippy run first:
 
 ```bash
-git add crates/ast-core/src/guide/
+git add crates/starlink-ast/src/guide/
 git commit --author="<author line from F>" -m "guide: <chapter title>
 
 Ported from SUN/211.
@@ -112,9 +112,9 @@ Co-Authored-By: SLAC AI"
 **Files:**
 - Create: `crates/audit-tools/src/guide_authors.rs`, `crates/audit-tools/src/bin/guide-authors.rs`
 - Modify: `crates/audit-tools/src/lib.rs` (add `pub mod guide_authors;`)
-- Create: `crates/ast-core/src/guide/{mod.rs,README.md,intro.md,cargo.md}`
-- Modify: `crates/ast-core/src/lib.rs` (add `pub mod guide;` in sorted position; its doc comes from `guide/mod.rs`)
-- Create: `crates/ast-core/tests/test_guide.rs`; Modify: `crates/ast-core/tests/meta/main.rs` (add `#[path = "../test_guide.rs"] mod test_guide;` in sorted position)
+- Create: `crates/starlink-ast/src/guide/{mod.rs,README.md,intro.md,cargo.md}`
+- Modify: `crates/starlink-ast/src/lib.rs` (add `pub mod guide;` in sorted position; its doc comes from `guide/mod.rs`)
+- Create: `crates/starlink-ast/tests/test_guide.rs`; Modify: `crates/starlink-ast/tests/meta/main.rs` (add `#[path = "../test_guide.rs"] mod test_guide;` in sorted position)
 
 **Interfaces:**
 - Produces: `audit_tools::guide_authors::shares(blame_porcelain: &str, start: usize, end: usize) -> Vec<(String, f64)>` (author name → share 0..1, sorted descending); `audit_tools::guide_authors::credit(shares: &[(String, f64)]) -> (Option<String>, Option<String>)` (author identity, co-author identity, using the two identities from Global Constraints, threshold 0.10). The CLI `guide-authors <start> <end>` runs `git -C reference/starlink-ast blame -w -M -C --line-porcelain sun_master.tex`, applies `selectfc` semantics (lines inside `f+`…`f-` excluded; marker lines excluded), skips blank lines and lines whose first non-space char is `%`, and prints `author: Name <email>` and, if any, `co-author: Name <email>`. Unknown blame names (not Berry/Warren-Smith) count toward the denominator but are never credited. Names match by surname: `Berry` → David, `Warren-Smith` → Rodney.
@@ -156,7 +156,7 @@ fn other_authors_dilute_but_are_not_credited() {
 - [ ] **Step 4:** `cargo test -p audit-tools guide_authors` → PASS. Sanity: `cargo run -q -p audit-tools --bin guide-authors -- 9246 9384` (CmpFrames) prints only `author: David Berry <davidstuartberry@gmail.com>`.
 - [ ] **Step 5: Write failing gates in `test_guide.rs`**
 
-Four `#[test]` functions in `test_guide.rs` (module doc: `//! Gates on the user guide in ast_core::guide.`), each a hard assert:
+Four `#[test]` functions in `test_guide.rs` (module doc: `//! Gates on the user guide in starlink_ast::guide.`), each a hard assert:
 
 | Test | Asserts |
 |---|---|
@@ -165,16 +165,16 @@ Four `#[test]` functions in `test_guide.rs` (module doc: `//! Gates on the user 
 | `intro_carries_the_copyright` | `intro.md` contains `Copyright (C) 2026 East Asian Observatory and AURA` |
 | `readme_records_every_section` | every row of `guide/sections.tsv` has a README section-table row with the same line number, and its fate is a guide link, `dropped`, `merged into <guide link>`, or `pending`; the number of `pending` rows equals `GUIDE_SECTIONS_PENDING` |
 
-The submodule is absent in CI, so the section list is committed as `crates/ast-core/src/guide/sections.tsv` (`line<TAB>level<TAB>title`, the C-edition `\section` / `\subsection` headings between lines 97 and 18621, generated in Step 6).
+The submodule is absent in CI, so the section list is committed as `crates/starlink-ast/src/guide/sections.tsv` (`line<TAB>level<TAB>title`, the C-edition `\section` / `\subsection` headings between lines 97 and 18621, generated in Step 6).
 `GUIDE_SECTIONS_PENDING` is a `const usize` in `test_guide.rs` that may only go down; register it in `test_verification_ledger.rs` and `PLAN.md` §6, as `C_CITATIONS_UNCLEANED` is. Every chapter task lowers it by the rows it resolves.
 
 - [ ] **Step 6:** Generate `sections.tsv` (a one-off `perl selectfc | rg -n` pipeline; record the command in README) and write `README.md` with: source pin (`\stardocversion` resolved from `reference/starlink-ast/component.xml` or the latest `211.x` in the release notes — 211.34 — plus submodule commit `c6c60753`), the regeneration command, the section table (all rows `pending` except those this task resolves), and an empty authorship table.
 - [ ] **Step 7:** Mark as `dropped` now: Release Notes and all reference sections (17868–18054), Plot (16797–17651), XmlChan (15289–15423), StcsChan (15424–15437), and in How To… the three Plot recipes (2138, 2409, 2466) and "Producing Graphical Output" (681). Set `GUIDE_SECTIONS_PENDING` to the remaining count.
-- [ ] **Step 8:** `cargo test -p ast-core --test meta test_guide::` → FAIL only on `every_chapter_file_is_declared` / `intro_carries_the_copyright` (no files yet).
+- [ ] **Step 8:** `cargo test -p starlink-ast --test meta test_guide::` → FAIL only on `every_chapter_file_is_declared` / `intro_carries_the_copyright` (no files yet).
 - [ ] **Step 9: Write `mod.rs`, `intro.md`, `cargo.md`.**
   - `mod.rs` module doc: title `# The AST user guide`, one paragraph saying the guide explains the library's concepts and the API docs describe each item, then the table of contents (links to each declared chapter).
   - `intro.md`: port lines 97–285 (What Problems…, Other Design Objectives, What Does "AST" Stand For?) per the procedure. Add, at the top after the title, a short paragraph: this crate is a Rust port of the Starlink AST library; this guide is adapted from SUN/211, the guide to the C library, by Rodney Warren-Smith and David Berry; and the copyright line. Remove references to Fortran and to the C/Fortran editions except in that paragraph.
-  - `cargo.md`: title `# Using AST from Cargo`; a `[dependencies] ast-core = …` snippet (a `toml` fence, not a doctest), a sentence that the vendored C (PAL, ERFA, WCSLIB) is built by the crate's build script with a C compiler and needs nothing installed, and one doctest that builds a `SkyFrame` and formats a coordinate. Normal author (no SUN/211 prose).
+  - `cargo.md`: title `# Using AST from Cargo`; a `[dependencies] starlink-ast = …` snippet (a `toml` fence, not a doctest), a sentence that the vendored C (PAL, ERFA, WCSLIB) is built by the crate's build script with a C compiler and needs nothing installed, and one doctest that builds a `SkyFrame` and formats a coordinate. Normal author (no SUN/211 prose).
   - Resolve README rows for 97–285 and 17652–17867 (`replaced by guide::cargo`).
 - [ ] **Step 10:** Run procedure step E. Expected: all pass.
 - [ ] **Step 11: Commit in two:** (a) tooling, gates, `mod.rs`, `README.md`, `sections.tsv`, `cargo.md`, ledger registration — normal author; (b) `intro.md` — authorship from `guide-authors 97 285`.
@@ -187,7 +187,7 @@ Figures `mapping`, `series`, `parallel`, `complex`, `frames`, `cmpframe`, `frame
 
 - [ ] **F1. Figures** (normal author, own commit). Conversion is a one-off; the converter is not a project dependency.
   - Get `pdftocairo` into a scratch env: `conda create -y -p <scratch>/poppler -c conda-forge poppler`.
-  - For each figure the chapter uses: `<scratch>/poppler/bin/pdftocairo -svg reference/starlink-ast/sun211_figures/<n>.pdf crates/ast-core/src/guide/figures/<n>.svg`.
+  - For each figure the chapter uses: `<scratch>/poppler/bin/pdftocairo -svg reference/starlink-ast/sun211_figures/<n>.pdf crates/starlink-ast/src/guide/figures/<n>.svg`.
   - Embed by inlining: in the chapter Markdown, the figure is included as raw HTML via a `<figure>` wrapper containing the SVG text. rustdoc passes raw HTML through, and `include_str!` cannot splice into Markdown, so paste the SVG body (strip the XML prolog) between `<figure>` and a `<figcaption>` carrying the LaTeX caption. If one SVG exceeds 200 KiB, run it through `rsvg-convert -f svg` to flatten it and retry; if still over, drop the figure and record it in README.
   - Render each SVG (`rsvg-convert -f png`) and look at it: drop any figure that shows C-only content (C function names, pointer arrows labelled with C calls) and record it in README.
   - Record the conversion commands in README.
@@ -198,7 +198,7 @@ Figures `mapping`, `series`, `parallel`, `complex`, `frames`, `cmpframe`, `frame
 Lines 750–2586 → `howto.md`.
 Drop "Obtain and Install AST" (point to `guide::cargo` instead — mark `merged into guide::cargo`), "Build an AST Program" (same), and the three Plot recipes.
 "Structure an AST Program": rewrite around `fn main() -> AstResult<()>` and `?`; drop `astBegin`/`astEnd`.
-"Read a WCS Calibration from a Dataset" and later recipes: inline a FITS header as a string read through `FitsChan` (use a header from `crates/ast-core/tests/fixtures/` that SUN/211's example matches, else write the cards SUN/211 shows).
+"Read a WCS Calibration from a Dataset" and later recipes: inline a FITS header as a string read through `FitsChan` (use a header from `crates/starlink-ast/tests/fixtures/` that SUN/211's example matches, else write the cards SUN/211 shows).
 "Test if a WCS is a Celestial/Spectral Coordinate System": use `fs.frame(FrameRef::Current)?.as_any().is::<SkyFrame>()`; the spectral recipe tests `SpecFrame` **or** `DSBSpecFrame` (Review Focus 1) with a doctest that asserts a DSBSpecFrame passes.
 "Display AST Data": `show()`.
 
@@ -220,7 +220,7 @@ Three chapters, three commits.
 
 Five chapters, five commits.
 
-`frames.md` (5565–7588). "Using a Frame as a Mapping" (5642) is the **one** place the Frame/Mapping difference is stated: say that in the C library a Frame can be used as a Mapping (a unit transformation on its axes), that in Rust `Frame` and `Mapping` are separate traits so it cannot, and show a doctest using `UnitMap::new(frame.naxes())` instead. Note that FrameSets and Regions implement both. Check `rg -n "used as a Mapping|is not a Mapping" crates/ast-core/src/guide` returns only this file before committing (Review Focus 3).
+`frames.md` (5565–7588). "Using a Frame as a Mapping" (5642) is the **one** place the Frame/Mapping difference is stated: say that in the C library a Frame can be used as a Mapping (a unit transformation on its axes), that in Rust `Frame` and `Mapping` are separate traits so it cannot, and show a doctest using `UnitMap::new(frame.naxes())` instead. Note that FrameSets and Regions implement both. Check `rg -n "used as a Mapping|is not a Mapping" crates/starlink-ast/src/guide` returns only this file before committing (Review Focus 3).
 `skyframes.md` (7589–8282), `specframes.md` (8283–9094, figures `dsbspec1–3`), `timeframes.md` (9095–9245), `cmpframes.md` (9246–9384).
 
 - [ ] Procedure A–G for each chapter.
@@ -239,7 +239,7 @@ Three chapters, three commits.
 
 Three chapters, three commits.
 
-`channels.md` (12012–13268): `Channel`, `NativeChannel`, `Source` / `Sink`, `StringSource` / `StringSink`, `FileSource` / `FileSink`. "Source and sink functions" → the `Source` / `Sink` traits. "Reading Objects from Files" uses a fixture under `crates/ast-core/tests/fixtures/` via `include_str!("../../tests/fixtures/…")` and a `StringSource`, so the doctest needs no files at run time.
+`channels.md` (12012–13268): `Channel`, `NativeChannel`, `Source` / `Sink`, `StringSource` / `StringSink`, `FileSource` / `FileSink`. "Source and sink functions" → the `Source` / `Sink` traits. "Reading Objects from Files" uses a fixture under `crates/starlink-ast/tests/fixtures/` via `include_str!("../../tests/fixtures/…")` and a `StringSource`, so the doctest needs no files at run time.
 `fitschans.md` (13269–14474) and `foreign_fits.md` (14475–15288): headers inline as strings.
 
 - [ ] Procedure A–G for each chapter.
@@ -256,6 +256,6 @@ Three chapters, three commits.
 
 Then, normal author:
 - [ ] `GUIDE_SECTIONS_PENDING` is 0; set it so and update `test_verification_ledger.rs` and `PLAN.md` §6.
-- [ ] Add a `PLAN.md` row recording that the guide is done, with the source pin, and a line in `CLAUDE.md`'s upstream sync protocol: "On a pin move, `git diff <guide pin>..<new pin> -- sun_master.tex` and port changed sections listed in `crates/ast-core/src/guide/README.md`."
+- [ ] Add a `PLAN.md` row recording that the guide is done, with the source pin, and a line in `CLAUDE.md`'s upstream sync protocol: "On a pin move, `git diff <guide pin>..<new pin> -- sun_master.tex` and port changed sections listed in `crates/starlink-ast/src/guide/README.md`."
 - [ ] Update the spec's Status line to `implemented`.
-- [ ] Full gate: fmt, clippy, `cargo doc --workspace --no-deps`, `cargo test -p ast-core` → green. Commit.
+- [ ] Full gate: fmt, clippy, `cargo doc --workspace --no-deps`, `cargo test -p starlink-ast` → green. Commit.

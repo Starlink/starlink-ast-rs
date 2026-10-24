@@ -34,7 +34,7 @@ store, and the algorithm (`AdaptLut`, `IsMapTab1D` / `2D`, `TabOK`,
 `ForceTab`), recorded in the `PLAN.md` §3 Table / FitsTable row.
 
 This document catalogs C `fitschan.c` logic that is not yet ported
-to the Rust `crates/ast-core/src/fitschan/` tree.
+to the Rust `crates/starlink-ast/src/fitschan/` tree.
 Companion to the existing
 [`fset_to_store-port-gaps.md`](fset_to_store-port-gaps.md), which
 covers the `fset_to_store/` writer-side branches in detail; this
@@ -74,7 +74,7 @@ The wcsconv corpus has no header with a repeated WCS keyword, which is why 194 b
 
 ### DSS — non-linear plate solution
 
-**File:** `crates/ast-core/src/fitschan/enc_dss.rs`
+**File:** `crates/starlink-ast/src/fitschan/enc_dss.rs`
 **C reference:** `DSSToStore` (fitschan.c:9160+) and `DSSFromStore`.
 
 Rust `read_from_cards` only reads `AMDX1`/`AMDY1` (linear plate scale)
@@ -90,7 +90,7 @@ plate distortion.
 **Action:** port `DSSToStore` and `DSSFromStore` faithfully.
 Requires the underlying `DssMap` Rust class to have its full
 plate-solution form (it currently exists at
-`crates/ast-core/src/mappings/dssmap.rs` — verify whether it
+`crates/starlink-ast/src/mappings/dssmap.rs` — verify whether it
 covers the polynomial path).
 
 ---
@@ -130,7 +130,7 @@ TPN-encoded headers, run as part of `SpecTrans`.
 Rust has no SAO-format support; SAO-encoded headers cannot
 currently be read.
 
-**Action:** port `SAOTrans` into `crates/ast-core/src/fitschan/spec_trans.rs`.
+**Action:** port `SAOTrans` into `crates/starlink-ast/src/fitschan/spec_trans.rs`.
 Add a SAO test fixture
 (WCSTools' `imhead`/`platepos` output is the canonical source).
 
@@ -138,7 +138,7 @@ Add a SAO test fixture
 
 ### DSBSpecFrame setup from FITS-CLASS
 
-**File:** `crates/ast-core/src/fitschan/wcs_spectral.rs`
+**File:** `crates/starlink-ast/src/fitschan/wcs_spectral.rs`
 **C reference:** `DSBSetUp` (fitschan.c:9024+) called from
 `WcsSpectral`.
 
@@ -166,7 +166,7 @@ SpecFrame construction.
 
 ### TELESCOP-gated `DTAI` keyword
 
-**File:** `crates/ast-core/src/fitschan/wcs_keywords.rs:231`
+**File:** `crates/starlink-ast/src/fitschan/wcs_keywords.rs:231`
 **C reference:** `WcsFcRead` (fitschan.c:36295+) DTAI branch.
 
 C only reads `DTAI` when `TELESCOP` matches `JCMT*` or `UKIRT*`,
@@ -198,7 +198,7 @@ It is read in `wcs_keywords.rs` and written after `CUNIT{i}` in
 
 ### `Warn` / `ASTWARN` card emission
 
-**File:** scattered (e.g. `crates/ast-core/src/fitschan/spec_trans.rs:135, 679`).
+**File:** scattered (e.g. `crates/starlink-ast/src/fitschan/spec_trans.rs:135, 679`).
 **C reference:** `Warn` (fitschan.c) and the `Warnings` attribute
 machinery.
 
@@ -224,7 +224,7 @@ Wire it into the call sites where the comments say "we silently leave".
 
 ### Axis count of a foreign-encoding header
 
-**File:** `crates/ast-core/src/fitschan/enc_aips.rs` (and `enc_pc.rs`, `enc_iraf.rs`).
+**File:** `crates/starlink-ast/src/fitschan/enc_aips.rs` (and `enc_pc.rs`, `enc_iraf.rs`).
 **C reference:** `FitsToStore` (fitschan.c:11611-11634).
 
 C reads every foreign encoding other than DSS through `SpecTrans` and `WcsToStore`, then counts the axes as the highest index of any primary or alternate CRPIX keyword.
@@ -272,7 +272,7 @@ Rust currently models 5.
 | `AltAxes` | yes | no | controls alt-plane axis ordering |
 
 The wcsconv test harness
-(`crates/ast-core/tests/test_wcsconv.rs:160-178`) explicitly
+(`crates/starlink-ast/tests/test_wcsconv.rs:160-178`) explicitly
 notes "carlin, sipreplace, sipok -- not yet supported.".
 Several fixtures pass these attributes through the manifest;
 they're silently ignored.
@@ -290,7 +290,7 @@ attribute gaps.
 ## Public API gaps
 
 These C public functions have no Rust counterpart in
-`crates/ast-core/src/fitschan/mod.rs`:
+`crates/starlink-ast/src/fitschan/mod.rs`:
 
 | C function | Purpose | Rust |
 |---|---|---|

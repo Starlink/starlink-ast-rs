@@ -9,9 +9,9 @@
  * For each header: "! <status>" or "= none" if the read gives no FrameSet,
  * and otherwise, for each Frame, its Domain and then the Label of each axis.
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_labels_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_labels_oracle/cases.rs:
  *
- *   ./fitschan_labels_probe > ../../crates/ast-core/tests/fitschan_labels_oracle/cases.rs
+ *   ./fitschan_labels_probe > ../../crates/starlink-ast/tests/fitschan_labels_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

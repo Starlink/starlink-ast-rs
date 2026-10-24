@@ -238,7 +238,7 @@ fn default_label(&self) -> String {
 
 ## Testing Strategy
 
-### File 1: `crates/ast-core/tests/dsbspecframe.rs`
+### File 1: `crates/starlink-ast/tests/dsbspecframe.rs`
 
 Standalone integration test:
 - Construction and attribute defaults

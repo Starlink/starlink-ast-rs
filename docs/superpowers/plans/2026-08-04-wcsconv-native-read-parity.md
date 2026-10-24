@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Empty `NATIVE_READ_EXCLUDED` in `crates/ast-core/tests/test_wcsconv.rs`, so all 192 wcsconv fixture cases are compared against their C-generated reference with no exclusions, and make the 24 deferred C-oracle simplify fixtures visible in test output and `PLAN.md`.
+**Goal:** Empty `NATIVE_READ_EXCLUDED` in `crates/starlink-ast/tests/test_wcsconv.rs`, so all 192 wcsconv fixture cases are compared against their C-generated reference with no exclusions, and make the 24 deferred C-oracle simplify fixtures visible in test output and `PLAN.md`.
 
 **Architecture:** Thirteen independent work units, one per diagnosed root cause, each landing as its own commit that ends by re-measuring and removing the now-passing entries from `NATIVE_READ_EXCLUDED`. Units are ordered cheapest-first across three tiers: writer/harness fixes (U1-U4, U12, U13), narrow reader fixes (U5, U6, U10, U11), then the deeper read-path port work (U7, U8, U9). Two further deliverables are independent of all thirteen: a test-harness rule that licenses the one documented C aliasing difference (U4), and a deferred-fixture walker plus `PLAN.md` section (D3).
 
@@ -14,7 +14,7 @@ Measurement during planning split two of the spec's original groupings: `car6` a
 
 These apply to every task in this plan. A task's requirements implicitly include this section.
 
-- **No fixture edits to make a test pass.** Files under `crates/ast-core/tests/fixtures/wcsconv/expected/` are C-generated ground truth. A fixture that looks wrong is a finding to investigate and record, not to overwrite. The only sanctioned regeneration is a documented C-behavior question settled by an oracle probe.
+- **No fixture edits to make a test pass.** Files under `crates/starlink-ast/tests/fixtures/wcsconv/expected/` are C-generated ground truth. A fixture that looks wrong is a finding to investigate and record, not to overwrite. The only sanctioned regeneration is a documented C-behavior question settled by an oracle probe.
 - **Port C, do not approximate it.** When C's control flow is available, mirror it. Do not substitute a heuristic or a tolerance constant for logic C did not need. If the C code itself uses a heuristic, port it and say so in a comment.
 - **Comments describe the code, not its history.** No references to this plan, to previous attempts, or to what used to be there.
 - **One sentence per line** in Markdown prose. American English spelling.
@@ -36,11 +36,11 @@ Every unit ends with the same measurement, and the measurement — not a target 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 # 1. Included cases must stay green.
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 # 2. Real count across every native case.
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 # 3. Per-case first diffs, to decide which entries to delete.
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 \
   | grep -A3 "^---- wcsconv_cases"
 ```
 
@@ -115,13 +115,13 @@ Its first diff is an ASTWARN block we emit that C does not emit at all, so it is
 `car6.head` line 1 is the bare text `FITS headers in CHIPASS_Equ.fits:`, whose 8-column name field is `FITS hea` — a name containing a space.
 C `CheckFitsName` (fitschan.c:6072-6095) loops over the name, and on the first non-`isFits` character branches three ways: `== '='` reports an error, `< ' '` warns "illegal non-printing character", `> ' '` warns "illegal character".
 A space is none of the three, so C falls off the `if`/`else if` chain, `break`s, and issues **no warning**.
-`check_fits_name` (`crates/ast-core/src/fitschan/card.rs:57-61`) has no `> ' '` guard on its final arm, so a space reaches the "illegal character" message and we emit a four-card ASTWARN block C never wrote.
+`check_fits_name` (`crates/starlink-ast/src/fitschan/card.rs:57-61`) has no `> ' '` guard on its final arm, so a space reaches the "illegal character" message and we emit a four-card ASTWARN block C never wrote.
 Verified during planning: adding the guard makes `car6_native` byte-exact with no other change.
 
 **`projp_pv` → U13, its own cause.**
 It is not a card-doubling case.
 Our output tail is `NAXIS1`, `NAXIS2`, `END`; the reference tail is `NAXIS1`, `NAXIS2`, `PROJP0`, `PROJP1`, `PROJP2` — we delete three PROJP cards C retains.
-`translate_projp` (`crates/ast-core/src/fitschan/spec_trans.rs:1717-1776`) diverges from C (fitschan.c:31578-31631) twice: its `!use_projp` branch calls `delete_consumed` on each PROJP card (C never deletes them), and its translate branch omits C's `encoding == FITSPC_ENCODING || encoding == FITSIRAF_ENCODING` gate on the `PV<axlat>_<i>` write.
+`translate_projp` (`crates/starlink-ast/src/fitschan/spec_trans.rs:1717-1776`) diverges from C (fitschan.c:31578-31631) twice: its `!use_projp` branch calls `delete_consumed` on each PROJP card (C never deletes them), and its translate branch omits C's `encoding == FITSPC_ENCODING || encoding == FITSIRAF_ENCODING` gate on the `PV<axlat>_<i>` write.
 
 U1 therefore targets exactly two cases, `specflux` and `timeplot` — the only two showing the exact-doubling signature (55 vs 27, 67 vs 33).
 U7's eight cases are unchanged from the spec.
@@ -133,7 +133,7 @@ U4 evaluates whether `cd_cross` is the same licensed difference; if it is not, i
 
 **The spec's cause-3 paragraph names the wrong mechanism.**
 It says C pads short string values to 8 columns and we do not.
-`format_string_value` (`crates/ast-core/src/fitschan/card.rs:703-724`) already pads to 8, matching C `EncodeValue`.
+`format_string_value` (`crates/starlink-ast/src/fitschan/card.rs:703-724`) already pads to 8, matching C `EncodeValue`.
 The actual defect is on the *parse* side: `card.rs:562-563` calls `trim_end()` on every string value, where C (fitschan.c:15439-15448, plus the `MAKE_FGET` macro at ~15408) strips trailing spaces only when the value is 8 characters or fewer.
 `tnx.head`'s `RA` value is 18 characters, so C preserves its padding and we destroy it.
 U3 fixes the parse side.
@@ -159,27 +159,27 @@ Files created by this plan:
 
 | File | Responsibility |
 |---|---|
-| `crates/ast-core/tests/test_deferred_fixtures.rs` | D3: walk `simplify_fixtures_unsupported/`, require every subdirectory to be registered in a `DEFERRED_CLASSES` table, print the file count on every run. |
+| `crates/starlink-ast/tests/test_deferred_fixtures.rs` | D3: walk `simplify_fixtures_unsupported/`, require every subdirectory to be registered in a `DEFERRED_CLASSES` table, print the file count on every run. |
 
 Files modified, grouped by the unit that owns the change:
 
 | File | Units | What changes |
 |---|---|---|
-| `crates/ast-core/src/fitschan/mod.rs` | U1 | Native read arm calls the consumption finisher, as the FITS arms already do. |
-| `crates/ast-core/src/fitschan/enc_native.rs` | U2 | Gains `un_pre_quote` and applies it on the read path (sub-fix A); `pre_quote` becomes C's integrated truncation-and-quote loop (sub-fix B). |
-| `crates/ast-core/src/fitschan/card.rs` | U3, U12 | String-value trailing-space stripping becomes conditional on length ≤ 8; `check_fits_name`'s illegal-character arm gains C's `> ' '` guard. |
-| `crates/ast-core/src/fitschan/card.rs` (visibility only) | U2 | `FITS_CARD_LEN` and `FITS_NAME_LEN` become `pub(super)` so `enc_native` can use them instead of redefining them. |
-| `crates/ast-core/tests/common/mod.rs` | U4 | Gains `is_aliasing_tag_card`, and absorbs `strip_is_simp` from `test_simplify_regression.rs`. |
-| `crates/ast-core/tests/test_simplify_regression.rs` | U4 | Uses the shared helper instead of its private copy. |
-| `crates/ast-core/tests/test_wcsconv.rs` | Task 0b, U1-U13 | Gains the stale-entry gate and the `force_comparison` parameter (Task 0b) and the licensed-difference rule (U4); `NATIVE_READ_EXCLUDED` shrinks in every unit. |
-| `crates/ast-core/src/fitschan/fits_store.rs` | U5 | Gains `axref` and `rfval` axis-indexed fields. |
-| `crates/ast-core/src/fitschan/wcs_keywords.rs` | U5, U6 | Reads AXREF/RFVAL; gates DTAI on `TELESCOP`. |
-| `crates/ast-core/src/fitschan/wcs_celestial.rs` | U5, U6, U8, U9 | RFVAL/AXREF fiducial override; celestial-axis recognition; the CAR/`carlin` object shape. |
-| `crates/ast-core/src/fitschan/wcs_read.rs` | U6, U10, U11 | Top-level Frame time attributes; `TidyOffsets` clear-Ident pass; alt-plane spectral reference position. |
-| `crates/ast-core/src/fitschan/card_list.rs` | U7 | `push_astwarn` inserts before the current card and restores the position. |
-| `crates/ast-core/src/fitschan/spec_trans.rs` | U9, U13 | MSX-CAR translation gated on the new `CarLin` attribute; `translate_projp` stops deleting PROJP cards and regains C's encoding gate. |
-| `crates/ast-core/src/frames/*.rs` | U10 | `Ident` emission and clearing on the frame classes that read `Ident` but never write it. |
-| `crates/ast-core/tests/fixtures/wcsconv/expected/azel.native` | U6 | The plan's only fixture regeneration: stale relative to the reference C's `DateObs` fractional-seconds fix. Justified in Task 8 sub-task B. |
+| `crates/starlink-ast/src/fitschan/mod.rs` | U1 | Native read arm calls the consumption finisher, as the FITS arms already do. |
+| `crates/starlink-ast/src/fitschan/enc_native.rs` | U2 | Gains `un_pre_quote` and applies it on the read path (sub-fix A); `pre_quote` becomes C's integrated truncation-and-quote loop (sub-fix B). |
+| `crates/starlink-ast/src/fitschan/card.rs` | U3, U12 | String-value trailing-space stripping becomes conditional on length ≤ 8; `check_fits_name`'s illegal-character arm gains C's `> ' '` guard. |
+| `crates/starlink-ast/src/fitschan/card.rs` (visibility only) | U2 | `FITS_CARD_LEN` and `FITS_NAME_LEN` become `pub(super)` so `enc_native` can use them instead of redefining them. |
+| `crates/starlink-ast/tests/common/mod.rs` | U4 | Gains `is_aliasing_tag_card`, and absorbs `strip_is_simp` from `test_simplify_regression.rs`. |
+| `crates/starlink-ast/tests/test_simplify_regression.rs` | U4 | Uses the shared helper instead of its private copy. |
+| `crates/starlink-ast/tests/test_wcsconv.rs` | Task 0b, U1-U13 | Gains the stale-entry gate and the `force_comparison` parameter (Task 0b) and the licensed-difference rule (U4); `NATIVE_READ_EXCLUDED` shrinks in every unit. |
+| `crates/starlink-ast/src/fitschan/fits_store.rs` | U5 | Gains `axref` and `rfval` axis-indexed fields. |
+| `crates/starlink-ast/src/fitschan/wcs_keywords.rs` | U5, U6 | Reads AXREF/RFVAL; gates DTAI on `TELESCOP`. |
+| `crates/starlink-ast/src/fitschan/wcs_celestial.rs` | U5, U6, U8, U9 | RFVAL/AXREF fiducial override; celestial-axis recognition; the CAR/`carlin` object shape. |
+| `crates/starlink-ast/src/fitschan/wcs_read.rs` | U6, U10, U11 | Top-level Frame time attributes; `TidyOffsets` clear-Ident pass; alt-plane spectral reference position. |
+| `crates/starlink-ast/src/fitschan/card_list.rs` | U7 | `push_astwarn` inserts before the current card and restores the position. |
+| `crates/starlink-ast/src/fitschan/spec_trans.rs` | U9, U13 | MSX-CAR translation gated on the new `CarLin` attribute; `translate_projp` stops deleting PROJP cards and regains C's encoding gate. |
+| `crates/starlink-ast/src/frames/*.rs` | U10 | `Ident` emission and clearing on the frame classes that read `Ident` but never write it. |
+| `crates/starlink-ast/tests/fixtures/wcsconv/expected/azel.native` | U6 | The plan's only fixture regeneration: stale relative to the reference C's `DateObs` fractional-seconds fix. Justified in Task 8 sub-task B. |
 | `docs/issues/c-library-quirks.md` | U4 | Notes that the harness now absorbs the aliasing quirk. |
 | `docs/issues/fitschan-c-port-gaps.md` | U7, U8, U9 | Existing gap catalog, updated as gaps close. |
 | `PLAN.md` | D3, final | Deferred-fixture section; FitsChan row updated. |
@@ -332,11 +332,11 @@ worker who deletes the wrong entry — or forgets to delete a right one — find
 out only at Task 15.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (new `#[test] fn native_read_excluded_entries_still_fail`, placed immediately after `run_named_case` at `:425-444` and before the `include!` at `:446`; plus the `run_test_case` split in step 3)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (new `#[test] fn native_read_excluded_entries_still_fail`, placed immediately after `run_named_case` at `:425-444` and before the `include!` at `:446`; plus the `run_test_case` split in step 3)
 
 **Interfaces:**
 - Consumes: `run_test_case(case: &TestCase) -> Result<(), String>` (`:268`), `parse_manifest() -> Vec<TestCase>` (`:146`), `fixtures_dir() -> PathBuf` (`:59`), `NATIVE_READ_EXCLUDED: &[(&str, &str)]` (`:74`).
-- Produces: a test named `native_read_excluded_entries_still_fail`. Every later task's re-measure step can rely on `cargo test -p ast-core --test test_wcsconv` failing when an entry has gone stale, so "delete the now-passing entries" becomes a checked instruction rather than an unchecked one.
+- Produces: a test named `native_read_excluded_entries_still_fail`. Every later task's re-measure step can rely on `cargo test -p starlink-ast --test test_wcsconv` failing when an entry has gone stale, so "delete the now-passing entries" becomes a checked instruction rather than an unchecked one.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -345,7 +345,7 @@ every name in `NATIVE_READ_EXCLUDED` must still differ from its reference.
 It fails when an entry starts passing, which is exactly the signal each task
 needs.
 
-Add to `crates/ast-core/tests/test_wcsconv.rs`, after `run_named_case`:
+Add to `crates/starlink-ast/tests/test_wcsconv.rs`, after `run_named_case`:
 
 ```rust
 /// Every `NATIVE_READ_EXCLUDED` entry must still fail. An entry that has
@@ -396,7 +396,7 @@ fn native_read_excluded_entries_still_fail() {
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_wcsconv native_read_excluded_entries_still_fail
+cargo test -p starlink-ast --test test_wcsconv native_read_excluded_entries_still_fail
 ```
 Expected: FAIL to *compile* — `cannot find function `run_with_comparison_forced``.
 That is the failing state for this step; the helper is step 3.
@@ -408,7 +408,7 @@ The new test needs the same bypass without setting a process-wide environment
 variable from inside a test binary that runs cases in parallel.
 Split the environment read out of the decision.
 
-Replace the `native_excluded` computation at `crates/ast-core/tests/test_wcsconv.rs:354-356`:
+Replace the `native_excluded` computation at `crates/starlink-ast/tests/test_wcsconv.rs:354-356`:
 
 ```rust
     let native_excluded = !std::env::var("WCSCONV_NO_EXCLUDE").is_ok_and(|v| !v.is_empty())
@@ -450,7 +450,7 @@ The body that followed the old signature becomes `run_case`'s body unchanged.
 
 Run:
 ```bash
-cargo test -p ast-core --test test_wcsconv native_read_excluded_entries_still_fail 2>&1 | tail -20
+cargo test -p starlink-ast --test test_wcsconv native_read_excluded_entries_still_fail 2>&1 | tail -20
 ```
 Expected: PASS at this point in the plan — all 45 entries genuinely still
 fail, which is what the gate asserts.
@@ -467,12 +467,12 @@ confirm it fails:
 # aitoff_native is not excluded and passes today.
 python3 - <<'EOF'
 import re, pathlib
-p = pathlib.Path("crates/ast-core/tests/test_wcsconv.rs")
+p = pathlib.Path("crates/starlink-ast/tests/test_wcsconv.rs")
 t = p.read_text()
 t = t.replace('    ("alt-spectral_native"', '    ("aitoff_native", "TEMPORARY"),\n    ("alt-spectral_native"', 1)
 p.write_text(t)
 EOF
-cargo test -p ast-core --test test_wcsconv native_read_excluded_entries_still_fail 2>&1 | tail -10
+cargo test -p starlink-ast --test test_wcsconv native_read_excluded_entries_still_fail 2>&1 | tail -10
 ```
 Expected: FAIL with
 `NATIVE_READ_EXCLUDED entries now pass — delete them:` and
@@ -483,11 +483,11 @@ Then remove the temporary line and re-run to confirm it is green again:
 ```bash
 python3 - <<'EOF'
 import pathlib
-p = pathlib.Path("crates/ast-core/tests/test_wcsconv.rs")
+p = pathlib.Path("crates/starlink-ast/tests/test_wcsconv.rs")
 t = p.read_text().replace('    ("aitoff_native", "TEMPORARY"),\n', '', 1)
 p.write_text(t)
 EOF
-cargo test -p ast-core --test test_wcsconv native_read_excluded_entries_still_fail 2>&1 | tail -5
+cargo test -p starlink-ast --test test_wcsconv native_read_excluded_entries_still_fail 2>&1 | tail -5
 ```
 Expected: PASS.
 
@@ -495,7 +495,7 @@ Expected: PASS.
 
 Run:
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 Expected: **193 passed, 0 failed** — the 192 generated cases plus this gate.
 
@@ -512,7 +512,7 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "tests: fail when a NATIVE_READ_EXCLUDED entry has started passing"
 ```
 
@@ -525,9 +525,9 @@ git -c core.hooksPath=/dev/null commit -m "tests: fail when a NATIVE_READ_EXCLUD
 One case, one guard, and the cheapest fix in the plan.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/card.rs:45-64` (`check_fits_name`)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (remove the `car6_native` entry)
-- Test: `crates/ast-core/src/fitschan/card.rs` (the existing `mod tests`, near `check_fits_name_legal` at ~1174)
+- Modify: `crates/starlink-ast/src/fitschan/card.rs:45-64` (`check_fits_name`)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (remove the `car6_native` entry)
+- Test: `crates/starlink-ast/src/fitschan/card.rs` (the existing `mod tests`, near `check_fits_name_legal` at ~1174)
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
@@ -535,7 +535,7 @@ One case, one guard, and the cheapest fix in the plan.
 
 - [ ] **Step 1: Write the failing test**
 
-Add to the `mod tests` block in `crates/ast-core/src/fitschan/card.rs`, immediately after `check_fits_name_legal`:
+Add to the `mod tests` block in `crates/starlink-ast/src/fitschan/card.rs`, immediately after `check_fits_name_legal`:
 
 ```rust
 #[test]
@@ -553,7 +553,7 @@ fn check_fits_name_space_is_not_reported() {
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --lib check_fits_name_space_is_not_reported
+cargo test -p starlink-ast --lib check_fits_name_space_is_not_reported
 ```
 Expected: FAIL — `assertion `left == right` failed`, left is `Some("The FITS keyword name ('FITS hea') contains an illegal character (' ').")`, right is `None`.
 
@@ -578,7 +578,7 @@ In `check_fits_name`, replace the final `return Some(format!(...))` arm with a g
 
 Run:
 ```bash
-cargo test -p ast-core --lib check_fits_name
+cargo test -p starlink-ast --lib check_fits_name
 ```
 Expected: PASS, all `check_fits_name*` tests green.
 
@@ -586,12 +586,12 @@ Expected: PASS, all `check_fits_name*` tests green.
 
 Run:
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv car6_native 2>&1 | tail -5
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv car6_native 2>&1 | tail -5
 ```
 Expected: the first stays at 192 passed, 0 failed; the second reports `car6_native ... ok`.
 
-Then delete this line from `NATIVE_READ_EXCLUDED` in `crates/ast-core/tests/test_wcsconv.rs`:
+Then delete this line from `NATIVE_READ_EXCLUDED` in `crates/starlink-ast/tests/test_wcsconv.rs`:
 
 ```rust
     ("car6_native", "FITS: card-level"),
@@ -601,8 +601,8 @@ Then delete this line from `NATIVE_READ_EXCLUDED` in `crates/ast-core/tests/test
 
 Run:
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-cargo test -p ast-core --test test_fitschan 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_fitschan 2>&1 | tail -3
 ```
 Expected: 192 passed, 0 failed; `test_fitschan` unchanged.
 
@@ -613,7 +613,7 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/card.rs crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/card.rs crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: a space in a keyword name is not a badkeyname warning (car6)"
 ```
 
@@ -622,9 +622,9 @@ git -c core.hooksPath=/dev/null commit -m "fitschan: a space in a keyword name i
 ### Task 2 (U3): Strip trailing spaces only from values of 8 characters or fewer
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/card.rs:562-563` (in `parse_string_value`)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (remove the `tnx_native` and `tnx-cheb_native` entries)
-- Test: `crates/ast-core/src/fitschan/card.rs` (the existing `mod tests`)
+- Modify: `crates/starlink-ast/src/fitschan/card.rs:562-563` (in `parse_string_value`)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (remove the `tnx_native` and `tnx-cheb_native` entries)
+- Test: `crates/starlink-ast/src/fitschan/card.rs` (the existing `mod tests`)
 
 **Interfaces:**
 - Consumes: nothing.
@@ -632,7 +632,7 @@ git -c core.hooksPath=/dev/null commit -m "fitschan: a space in a keyword name i
 
 - [ ] **Step 1: Write the failing test**
 
-Add to the `mod tests` block in `crates/ast-core/src/fitschan/card.rs`:
+Add to the `mod tests` block in `crates/starlink-ast/src/fitschan/card.rs`:
 
 ```rust
 #[test]
@@ -667,7 +667,7 @@ Check `FitsCard::parse`'s exact name and visibility in the file before writing t
 
 Run:
 ```bash
-cargo test -p ast-core --lib parse_string_value_keeps_padding_on_long_values
+cargo test -p starlink-ast --lib parse_string_value_keeps_padding_on_long_values
 ```
 Expected: FAIL — got `String("07:21:44.00")`, expected `String("07:21:44.00       ")`.
 
@@ -700,7 +700,7 @@ with:
 
 Run:
 ```bash
-cargo test -p ast-core --lib parse_string_value
+cargo test -p starlink-ast --lib parse_string_value
 ```
 Expected: PASS, both tests green.
 
@@ -708,7 +708,7 @@ Expected: PASS, both tests green.
 
 Run:
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv tnx 2>&1 | tail -6
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv tnx 2>&1 | tail -6
 ```
 Expected: `tnx_native ... ok` and `tnx_cheb_native ... ok`.
 
@@ -724,10 +724,10 @@ Then delete these lines from `NATIVE_READ_EXCLUDED`:
 This change touches every string-value parse in the library, so the whole FITS corpus must be re-run:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-cargo test -p ast-core --test test_fitschan 2>&1 | tail -3
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -3
-cargo test -p ast-core 2>&1 | tail -5
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_fitschan 2>&1 | tail -3
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -3
+cargo test -p starlink-ast 2>&1 | tail -5
 ```
 Expected: 192 passed for wcsconv; every other suite at its existing count with 0 failures.
 If a `test_fitschan` case now fails on a padded value, read the C behavior for that keyword before touching the new code — the ≤8 rule is C's, so a failure here is a second, different bug.
@@ -739,7 +739,7 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/card.rs crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/card.rs crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: keep trailing spaces on string values longer than 8 characters"
 ```
 
@@ -748,9 +748,9 @@ git -c core.hooksPath=/dev/null commit -m "fitschan: keep trailing spaces on str
 ### Task 3 (U13): PROJP cards are retained, and PV is written only for FITS-PC and FITS-IRAF
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs:1717-1776` (`translate_projp`)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (remove the `projp-pv_native` entry)
-- Test: `crates/ast-core/tests/test_fitschan_spec_trans.rs` if it exists; otherwise add a `#[cfg(test)] mod tests` case in `spec_trans.rs` alongside the existing ones
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs:1717-1776` (`translate_projp`)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (remove the `projp-pv_native` entry)
+- Test: `crates/starlink-ast/tests/test_fitschan_spec_trans.rs` if it exists; otherwise add a `#[cfg(test)] mod tests` case in `spec_trans.rs` alongside the existing ones
 
 **Interfaces:**
 - Consumes: nothing.
@@ -806,7 +806,7 @@ Put this in whichever test file already drives `FitsChan::from_header` + `read` 
 
 Run:
 ```bash
-cargo test -p ast-core translate_projp_retains_source_cards
+cargo test -p starlink-ast translate_projp_retains_source_cards
 ```
 Expected: FAIL — `PROJP0 should survive the read`.
 
@@ -844,7 +844,7 @@ Do not delete `from`; the loop no longer calls `delete_consumed` at all.
 
 Run:
 ```bash
-cargo test -p ast-core translate_projp
+cargo test -p starlink-ast translate_projp
 ```
 Expected: PASS.
 
@@ -853,7 +853,7 @@ Expected: PASS.
 The three sibling `projp*` cases are U7's, and they must not regress:
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv projp 2>&1 | tail -12
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv projp 2>&1 | tail -12
 ```
 Expected: `projp_pv_native ... ok`.
 The other three (`projp_native`, `projp_nopv0_native`, `projp_pv0only_native`) still fail on their ASTWARN-position diff at line 133 — that is U7's, unchanged.
@@ -870,8 +870,8 @@ Then delete this line from `NATIVE_READ_EXCLUDED`:
 The encoding gate changes what those two encodings see:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-cargo test -p ast-core --test test_fitschan 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_fitschan 2>&1 | tail -3
 ```
 Expected: 192 passed, 0 failed; `test_fitschan` unchanged.
 
@@ -882,7 +882,7 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/spec_trans.rs crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: retain PROJP cards and gate the PV translation on encoding like C"
 ```
 
@@ -921,11 +921,11 @@ Everything from `BEGAST` through the matching `ENDAST` is read with `skip = 0`
 (`channel.c:2815` passes 0) and therefore marked.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/card_list.rs` (add `mark_at`, `mark_com_block`)
-- Modify: `crates/ast-core/src/fitschan/enc_native.rs` (add `native_span`)
-- Modify: `crates/ast-core/src/fitschan/mod.rs:657-675` (the `Encoding::Native` read arm)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs`
-- Test: `crates/ast-core/tests/test_fitschan_native_keyword.rs`
+- Modify: `crates/starlink-ast/src/fitschan/card_list.rs` (add `mark_at`, `mark_com_block`)
+- Modify: `crates/starlink-ast/src/fitschan/enc_native.rs` (add `native_span`)
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs:657-675` (the `Encoding::Native` read arm)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs`
+- Test: `crates/starlink-ast/tests/test_fitschan_native_keyword.rs`
 
 **Interfaces:**
 - Consumes: `CardList::fix_used(promote: bool, remove: bool)` (card_list.rs:288) — the
@@ -938,7 +938,7 @@ Everything from `BEGAST` through the matching `ENDAST` is read with `skip = 0`
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `crates/ast-core/tests/test_fitschan_native_keyword.rs`:
+Add to `crates/starlink-ast/tests/test_fitschan_native_keyword.rs`:
 
 ```rust
 /// A successful NATIVE read consumes the cards it read, as C `Read` does by
@@ -968,13 +968,13 @@ exact expectation.
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --test test_fitschan_native_keyword native_read_consumes_its_cards`
+Run: `cargo test -p starlink-ast --test test_fitschan_native_keyword native_read_consumes_its_cards`
 Expected: FAIL with `specflux.head: cards left after a NATIVE read`,
 left `27`, right `0`.
 
 - [ ] **Step 3: Add the two `CardList` primitives**
 
-In `crates/ast-core/src/fitschan/card_list.rs`, next to `mark_card`:
+In `crates/starlink-ast/src/fitschan/card_list.rs`, next to `mark_card`:
 
 ```rust
     /// Mark the card at `index` as provisionally consumed, mirroring C
@@ -1032,7 +1032,7 @@ Collapse the two `del` bindings into one when transcribing — the delimiter is
 
 - [ ] **Step 4: Add `native_span` to the decoder**
 
-In `crates/ast-core/src/fitschan/enc_native.rs`, next to `has_keyword_native`:
+In `crates/starlink-ast/src/fitschan/enc_native.rs`, next to `has_keyword_native`:
 
 ```rust
 /// Index range of the first complete top-level object in a keyword-card
@@ -1072,7 +1072,7 @@ pub(crate) fn native_span(cards: &CardList) -> Option<(usize, usize)> {
 
 - [ ] **Step 5: Consume the span in the read arm**
 
-In `crates/ast-core/src/fitschan/mod.rs`, in the `Encoding::Native` arm, after
+In `crates/starlink-ast/src/fitschan/mod.rs`, in the `Encoding::Native` arm, after
 `let obj = serial::any_object_from_node(&node)?;` and before `Ok(Some(obj))`:
 
 ```rust
@@ -1098,13 +1098,13 @@ it, and no fixture reaches it (all four keyword-card inputs satisfy
 
 - [ ] **Step 6: Run the test to verify it passes**
 
-Run: `cargo test -p ast-core --test test_fitschan_native_keyword`
+Run: `cargo test -p starlink-ast --test test_fitschan_native_keyword`
 Expected: PASS, 5 tests.
 
 - [ ] **Step 7: Re-measure and shrink the exclusion list**
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | grep -E "specflux|timeplot"
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep -E "specflux|timeplot"
 ```
 Expected: both absent from the failure list.
 
@@ -1123,12 +1123,12 @@ as misdiagnosed, and neither has anything to do with a flux or time frame.
 Deleting cards on read changes what every downstream write sees:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-cargo test -p ast-core --test test_fitschan 2>&1 | tail -3
-cargo test -p ast-core --test test_fitschan_encodings 2>&1 | tail -3
-cargo test -p ast-core --test test_channel 2>&1 | tail -3
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -3
-cargo test -p ast-core 2>&1 | tail -5
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_fitschan 2>&1 | tail -3
+cargo test -p starlink-ast --test test_fitschan_encodings 2>&1 | tail -3
+cargo test -p starlink-ast --test test_channel 2>&1 | tail -3
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -3
+cargo test -p starlink-ast 2>&1 | tail -5
 ```
 Expected: 192 passed / 0 failed on wcsconv; every other suite unchanged.
 
@@ -1145,11 +1145,11 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/card_list.rs \
-        crates/ast-core/src/fitschan/enc_native.rs \
-        crates/ast-core/src/fitschan/mod.rs \
-        crates/ast-core/tests/test_fitschan_native_keyword.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/card_list.rs \
+        crates/starlink-ast/src/fitschan/enc_native.rs \
+        crates/starlink-ast/src/fitschan/mod.rs \
+        crates/starlink-ast/tests/test_fitschan_native_keyword.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: a native read consumes its cards and banner blocks like C FixUsed"
 ```
 
@@ -1222,11 +1222,11 @@ Two things this task must NOT change:
   ordering; it is C's behavior, not a bug to route around.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_native.rs` (add `un_pre_quote`; apply
+- Modify: `crates/starlink-ast/src/fitschan/enc_native.rs` (add `un_pre_quote`; apply
   it in `expect_class_name`, `format_value`'s string arm via the caller, and
   `format_value_with_continues`)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs`
-- Test: `crates/ast-core/src/fitschan/enc_native.rs` (`mod tests`)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs`
+- Test: `crates/starlink-ast/src/fitschan/enc_native.rs` (`mod tests`)
 
 **Interfaces:**
 - Consumes: `chr_len` (enc_native.rs:605) — C `ChrLen`, already present.
@@ -1234,7 +1234,7 @@ Two things this task must NOT change:
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `mod tests` in `crates/ast-core/src/fitschan/enc_native.rs`:
+Add to `mod tests` in `crates/starlink-ast/src/fitschan/enc_native.rs`:
 
 ```rust
     #[test]
@@ -1272,7 +1272,7 @@ be `title`.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p ast-core --lib fitschan::enc_native`
+Run: `cargo test -p starlink-ast --lib fitschan::enc_native`
 Expected: FAIL — `un_pre_quote` is not defined (compile error), and once it is
 defined the second test fails with the joined value carrying literal `"`
 characters: `Title = "first pixel at (1"",1)     """`.
@@ -1342,13 +1342,13 @@ ampersand, not a run of them.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cargo test -p ast-core --lib fitschan::enc_native`
+Run: `cargo test -p starlink-ast --lib fitschan::enc_native`
 Expected: PASS.
 
 - [ ] **Step 6: Re-measure and shrink the exclusion list**
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | grep -E "polco"
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep -E "polco"
 ```
 Expected: neither `polco_native` nor `polco2_native` in the failure list.
 
@@ -1368,10 +1368,10 @@ Match the reason strings against the file before deleting.
 regression check on this change:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv timj 2>&1 | tail -3
-cargo test -p ast-core --test test_fitschan_native_keyword 2>&1 | tail -3
-cargo test -p ast-core --test test_channel 2>&1 | tail -3
-cargo test -p ast-core 2>&1 | tail -5
+cargo test -p starlink-ast --test test_wcsconv timj 2>&1 | tail -3
+cargo test -p starlink-ast --test test_fitschan_native_keyword 2>&1 | tail -3
+cargo test -p starlink-ast --test test_channel 2>&1 | tail -3
+cargo test -p starlink-ast 2>&1 | tail -5
 ```
 Expected: all pass.
 
@@ -1382,7 +1382,7 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/enc_native.rs crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/enc_native.rs crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: UnPreQuote native card values as C FindAst does"
 ```
 
@@ -1423,8 +1423,8 @@ Port it anyway: the read side now round-trips C exactly, and leaving the write
 side as a reconstruction means the pair no longer agrees on the boundary cases.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_native.rs:605-632` (`pre_quote`, and `chr_len` stays as it is)
-- Test: `crates/ast-core/src/fitschan/enc_native.rs` (the existing `mod tests`)
+- Modify: `crates/starlink-ast/src/fitschan/enc_native.rs:605-632` (`pre_quote`, and `chr_len` stays as it is)
+- Test: `crates/starlink-ast/src/fitschan/enc_native.rs` (the existing `mod tests`)
 
 **Interfaces:**
 - Consumes: `un_pre_quote` from sub-fix A, for the round-trip test.
@@ -1479,7 +1479,7 @@ Add to `mod tests` in `enc_native.rs`:
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --lib fitschan::enc_native::tests::pre_quote 2>&1 | tail -20
+cargo test -p starlink-ast --lib fitschan::enc_native::tests::pre_quote 2>&1 | tail -20
 ```
 Expected: `pre_quote_empty_value_is_two_double_quotes` fails (`""` vs `"\"\""`),
 `pre_quote_truncates_at_the_fits_value_limit` fails (no truncation), and the
@@ -1562,7 +1562,7 @@ Two details that are easy to get wrong, both visible in the C:
 
 Run:
 ```bash
-cargo test -p ast-core --lib fitschan::enc_native 2>&1 | tail -5
+cargo test -p starlink-ast --lib fitschan::enc_native 2>&1 | tail -5
 ```
 Expected: PASS, including every pre-existing `enc_native` test.
 
@@ -1572,10 +1572,10 @@ The whole native corpus goes through `pre_quote`, so this is the check that the
 port is a true refactor for every value that occurs in practice:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -3
-cargo test -p ast-core --test test_serialisation 2>&1 | tail -3
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -3
+cargo test -p starlink-ast --test test_serialisation 2>&1 | tail -3
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -3
 ```
 Expected: all unchanged — 192 generated wcsconv cases green, the 24 + 139 + 719
 round-trips still byte-exact, simplify 427.
@@ -1592,7 +1592,7 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/enc_native.rs
+git add crates/starlink-ast/src/fitschan/enc_native.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: port PreQuote's accommodation loop instead of reconstructing its rule"
 ```
 
@@ -1628,9 +1628,9 @@ removing every `ISSIMP`/`INVERT` card removes the whole of the affected
 numbering and leaves every other keyword's `_A`/`_B`/`_C` run untouched.
 
 **Files:**
-- Modify: `crates/ast-core/tests/common/mod.rs` (add the shared predicate)
-- Modify: `crates/ast-core/tests/test_simplify_regression.rs:113-119` (use the shared helper)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (apply the rule; drop four entries)
+- Modify: `crates/starlink-ast/tests/common/mod.rs` (add the shared predicate)
+- Modify: `crates/starlink-ast/tests/test_simplify_regression.rs:113-119` (use the shared helper)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (apply the rule; drop four entries)
 - Modify: `docs/issues/c-library-quirks.md`
 - Modify: `docs/superpowers/specs/2026-08-04-wcsconv-native-read-parity-design.md`
 
@@ -1646,10 +1646,10 @@ numbering and leaves every other keyword's `_A`/`_B`/`_C` run untouched.
 for f in wave-f2w vopt-f2w cd-cross serpens; do
   echo "=== $f"
   cargo run -q --example wcsconv_debug \
-    crates/ast-core/tests/fixtures/wcsconv/inputs/$f.head native 2>/dev/null \
+    crates/starlink-ast/tests/fixtures/wcsconv/inputs/$f.head native 2>/dev/null \
     | tail -n +2 | sed 's/ *$//' | grep -v '^$' | grep -v '^END' > /tmp/$f.got.txt
   diff <(grep -vE '^(ISSIMP|INVERT)_' /tmp/$f.got.txt | tr -s ' ') \
-       <(sed 's/ *$//' crates/ast-core/tests/fixtures/wcsconv/expected/$f.native \
+       <(sed 's/ *$//' crates/starlink-ast/tests/fixtures/wcsconv/expected/$f.native \
          | grep -v '^ *$' | grep -v '^END' | grep -vE '^(ISSIMP|INVERT)_' | tr -s ' ')
 done
 ```
@@ -1683,13 +1683,13 @@ list is what the previous measurement recorded, not necessarily the above.
 
 - [ ] **Step 3: Run to verify they fail**
 
-Run: `cargo test -p ast-core --test test_wcsconv 2>&1 | grep -E "serpens|wave.f2w|vopt.f2w|cd.cross"`
+Run: `cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep -E "serpens|wave.f2w|vopt.f2w|cd.cross"`
 Expected: four failures, at `serpens` line 99, `wave-f2w` line 108,
 `vopt-f2w` line 109, `cd-cross` line 129.
 
 - [ ] **Step 4: Add the shared helper**
 
-In `crates/ast-core/tests/common/mod.rs`:
+In `crates/starlink-ast/tests/common/mod.rs`:
 
 ```rust
 /// True for a keyword-card line holding a `IsSimp` or `Invert` tag
@@ -1716,7 +1716,7 @@ harness). Replace the private copy with `common::strip_is_simp`.
 
 - [ ] **Step 5: Apply the rule in the wcsconv harness**
 
-In `crates/ast-core/tests/test_wcsconv.rs`, next to `NATIVE_READ_EXCLUDED`:
+In `crates/starlink-ast/tests/test_wcsconv.rs`, next to `NATIVE_READ_EXCLUDED`:
 
 ```rust
 /// Cases whose only difference from the C reference is where an `IsSimp` or
@@ -1762,8 +1762,8 @@ vectors are filtered and where, not to be transcribed literally:
 - [ ] **Step 6: Run to verify they pass**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -3
 ```
 Expected: 192 passed, 0 failed; the simplify regression unchanged at
 427 passed.
@@ -1771,7 +1771,7 @@ Expected: 192 passed, 0 failed; the simplify regression unchanged at
 Also confirm the rule is narrow: it must not silence anything else.
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 Expected: the failure count drops by exactly four from the pre-task number.
 
@@ -1802,9 +1802,9 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/tests/common/mod.rs \
-        crates/ast-core/tests/test_simplify_regression.rs \
-        crates/ast-core/tests/test_wcsconv.rs \
+git add crates/starlink-ast/tests/common/mod.rs \
+        crates/starlink-ast/tests/test_simplify_regression.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs \
         docs/issues/c-library-quirks.md \
         docs/superpowers/specs/2026-08-04-wcsconv-native-read-parity-design.md
 git -c core.hooksPath=/dev/null commit -m "test: license the C IsSimp/Invert aliasing difference in the wcsconv harness"
@@ -1850,15 +1850,15 @@ C has `double ***axref` as a real `FitsStore` member (fitschan.c:1728) with `Mat
 Mirror that split rather than flattening both into the store.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/fits_store.rs:99-101` (add `axref` beside `skyref`/`skyrefp`), `:185-186` (initialize it in `new`)
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs:263-268` (read `AXREF<i>` in the SREF loop)
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:718-733` (the `ref_pos` computation), and `:80-98` (`CelestialResult`)
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs:248-289` (`set_sky_ref_from_celestial`, to honor the ungated AXREF path)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (delete two `NATIVE_READ_EXCLUDED` entries)
-- Test: `crates/ast-core/src/fitschan/wcs_celestial.rs` (unit test in the existing `mod tests`)
+- Modify: `crates/starlink-ast/src/fitschan/fits_store.rs:99-101` (add `axref` beside `skyref`/`skyrefp`), `:185-186` (initialize it in `new`)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs:263-268` (read `AXREF<i>` in the SREF loop)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs:718-733` (the `ref_pos` computation), and `:80-98` (`CelestialResult`)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs:248-289` (`set_sky_ref_from_celestial`, to honor the ungated AXREF path)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (delete two `NATIVE_READ_EXCLUDED` entries)
+- Test: `crates/starlink-ast/src/fitschan/wcs_celestial.rs` (unit test in the existing `mod tests`)
 
 **Interfaces:**
-- Consumes: `FitsStore` (`crates/ast-core/src/fitschan/fits_store.rs`), `key_for` (`wcs_keywords.rs:18`), `CardList::get_float_marked` / `get_float`.
+- Consumes: `FitsStore` (`crates/starlink-ast/src/fitschan/fits_store.rs`), `key_for` (`wcs_keywords.rs:18`), `CardList::get_float_marked` / `get_float`.
 - Produces:
 
 ```rust
@@ -1883,15 +1883,15 @@ pub ref_pos_forced: bool,
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv rfval_native 2>&1 | grep -E 'SREF1_A|SREF2_A'
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv axref_native 2>&1 | grep -E 'SREF1_A|SREF2_A'
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv rfval_native 2>&1 | grep -E 'SREF1_A|SREF2_A'
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv axref_native 2>&1 | grep -E 'SREF1_A|SREF2_A'
 ```
 
 Expected: each prints a `got SREF1_A = 2.0943951023931953` against `exp SREF1_A = 2.0856684561332237`.
 
 - [ ] **Step 2: Write the failing test**
 
-Append to the `mod tests` block at the end of `crates/ast-core/src/fitschan/wcs_celestial.rs`.
+Append to the `mod tests` block at the end of `crates/starlink-ast/src/fitschan/wcs_celestial.rs`.
 The existing tests there build a `FitsStore` by hand and call `build_celestial`; follow that shape.
 
 ```rust
@@ -1942,14 +1942,14 @@ The existing tests there build a `FitsStore` by hand and call `build_celestial`;
 - [ ] **Step 3: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_celestial::tests::axref 2>&1 | tail -20
+cargo test -p starlink-ast --lib fitschan::wcs_celestial::tests::axref 2>&1 | tail -20
 ```
 
 Expected: FAIL — `no field 'axref' on type 'FitsStore'` and `no field 'ref_pos_forced'`.
 
 - [ ] **Step 4: Add the `axref` field to `FitsStore`**
 
-In `crates/ast-core/src/fitschan/fits_store.rs`, after the `skyrefp` declaration (line 101):
+In `crates/starlink-ast/src/fitschan/fits_store.rs`, after the `skyrefp` declaration (line 101):
 
 ```rust
     /// `AXREF<i>` values in degrees, indexed by 0-based FITS axis. Written by
@@ -1967,7 +1967,7 @@ and in `new` (beside `skyrefp: vec![None; naxis]` at line 186):
 
 - [ ] **Step 5: Read `AXREF<i>` in `extract_wcs_keywords`**
 
-In `crates/ast-core/src/fitschan/wcs_keywords.rs`, extend the existing SREF loop (lines 263-268) with a third line:
+In `crates/starlink-ast/src/fitschan/wcs_keywords.rs`, extend the existing SREF loop (lines 263-268) with a third line:
 
 ```rust
         store.axref[i] = cards.get_float_marked(&key_for("AXREF", Some(axis_num), s));
@@ -2033,7 +2033,7 @@ Finally set `ref_pos_forced` in the two `CelestialResult` constructions and retu
 
 - [ ] **Step 7: Honor `ref_pos_forced` in `set_sky_ref_from_celestial`**
 
-`crates/ast-core/src/fitschan/wcs_read.rs:248` currently returns early on `sky.test_sky_ref(0)` and on the three offset domains.
+`crates/starlink-ast/src/fitschan/wcs_read.rs:248` currently returns early on `sky.test_sky_ref(0)` and on the three offset domains.
 C's AXREF path runs after and outside that gate, so pass the flag in and skip the gate when it is set:
 
 ```rust
@@ -2072,7 +2072,7 @@ Update the call site at line 105 to pass the flag captured from `celestial`, alo
 - [ ] **Step 8: Run the unit tests to verify they pass**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_celestial 2>&1 | tail -5
+cargo test -p starlink-ast --lib fitschan::wcs_celestial 2>&1 | tail -5
 ```
 
 Expected: PASS, including the two new tests.
@@ -2080,19 +2080,19 @@ Expected: PASS, including the two new tests.
 - [ ] **Step 9: Re-measure and delete the two entries**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 
 `axref.head` also carries an alt-A plane (`CTYPE1A`, `CRVAL1A=120.000`, `AXREF1A=119.500`, `AXREF2A=30.500`) whose expected output has its own `FRM3_A` / `BEGAST_H='SkyFrame'` / `IDENT_B='A'` block, so the alt-plane call site at `wcs_read.rs:465` must be wired too — if `axref` still differs after the primary plane is fixed, that is the reason.
 
-Delete the `rfval` and `axref` rows from `NATIVE_READ_EXCLUDED` in `crates/ast-core/tests/test_wcsconv.rs` once both are byte-exact.
+Delete the `rfval` and `axref` rows from `NATIVE_READ_EXCLUDED` in `crates/starlink-ast/tests/test_wcsconv.rs` once both are byte-exact.
 
 - [ ] **Step 10: Run the read-path regression breadth**
 
 ```bash
-cargo test -p ast-core --test test_fitschan 2>&1 | tail -3
-cargo test -p ast-core --test test_transform_oracle head_sections 2>&1 | tail -5
+cargo test -p starlink-ast --test test_fitschan 2>&1 | tail -3
+cargo test -p starlink-ast --test test_transform_oracle head_sections 2>&1 | tail -5
 ```
 
 `HEAD_ORACLE_EXCLUDED` is empty and must stay empty.
@@ -2104,11 +2104,11 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/fits_store.rs \
-        crates/ast-core/src/fitschan/wcs_keywords.rs \
-        crates/ast-core/src/fitschan/wcs_celestial.rs \
-        crates/ast-core/src/fitschan/wcs_read.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/fits_store.rs \
+        crates/starlink-ast/src/fitschan/wcs_keywords.rs \
+        crates/starlink-ast/src/fitschan/wcs_celestial.rs \
+        crates/starlink-ast/src/fitschan/wcs_read.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: honor RFVAL and AXREF for the sky reference position (rfval, axref)"
 ```
 
@@ -2153,10 +2153,10 @@ The comment above line 247 argues the gate does not matter because the card surv
 Fix both; `multi-wcs-spec` exercises the gate's true branch, and the regression suites cover the false branch.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs:243-248` (gate the DTAI read on `TELESCOP`)
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs` (set DUT1/DTAI on the world Frame beside the existing `set_frame_ident(world_frame.as_mut(), " ")` call)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (delete the `multi-wcs-spec` entry)
-- Create: `crates/ast-core/tests/test_fitschan_time.rs` (new file — no time-attribute FitsChan test file exists today)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs:243-248` (gate the DTAI read on `TELESCOP`)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs` (set DUT1/DTAI on the world Frame beside the existing `set_frame_ident(world_frame.as_mut(), " ")` call)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (delete the `multi-wcs-spec` entry)
+- Create: `crates/starlink-ast/tests/test_fitschan_time.rs` (new file — no time-attribute FitsChan test file exists today)
 
 **Interfaces:**
 - Consumes: `FitsStore::dtai` / `::dut1`, `set_frame_ident` (`wcs_read.rs:663`), `Frame::set_dtai` / `set_dut1`.
@@ -2175,14 +2175,14 @@ fn set_frame_time_offsets(frame: &mut dyn Frame, dut1: Option<f64>, dtai: Option
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv multi_wcs_spec_native 2>&1 | grep -E 'DTAI|AXP1'
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv multi_wcs_spec_native 2>&1 | grep -E 'DTAI|AXP1'
 ```
 
 Expected: `got AXP1_A = 3` against `exp DTAI_A = 37.0`.
 
 - [ ] **Step 2: Write the failing test**
 
-Create `crates/ast-core/tests/test_fitschan_time.rs`:
+Create `crates/starlink-ast/tests/test_fitschan_time.rs`:
 
 ```rust
 //! FITS time-attribute reading: `DTAI` / `DUT1` placement and the
@@ -2193,7 +2193,7 @@ Create `crates/ast-core/tests/test_fitschan_time.rs`:
 //! top-level world Frame (fitschan.c:38013-38021) in addition to whatever
 //! the celestial decoder does to the SkyFrame.
 
-use ast_core::fitschan::{FitsChan, Encoding};
+use starlink_ast::fitschan::{FitsChan, Encoding};
 
 fn chan_from(lines: &[&str]) -> FitsChan {
     let mut fc = FitsChan::new();
@@ -2253,19 +2253,19 @@ fn dtai_is_ignored_when_telescop_is_absent() {
 }
 ```
 
-If `Frame::dtai()` returns `f64` with a "not set" sentinel rather than `Option<f64>`, use the corresponding `test_dtai()` predicate instead and assert on that — check the accessor's real signature in `crates/ast-core/src/frames/` before writing the assertions, and adjust all three tests consistently.
+If `Frame::dtai()` returns `f64` with a "not set" sentinel rather than `Option<f64>`, use the corresponding `test_dtai()` predicate instead and assert on that — check the accessor's real signature in `crates/starlink-ast/src/frames/` before writing the assertions, and adjust all three tests consistently.
 
 - [ ] **Step 3: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_time 2>&1 | tail -20
+cargo test -p starlink-ast --test test_fitschan_time 2>&1 | tail -20
 ```
 
 Expected: `dtai_is_read_for_jcmt_and_set_on_the_world_frame` FAILS (no `Dtai` on the world Frame); the two negative tests also FAIL (we read `DTAI` unconditionally).
 
 - [ ] **Step 4: Gate the DTAI read on `TELESCOP`**
 
-Replace `crates/ast-core/src/fitschan/wcs_keywords.rs:243-248` with:
+Replace `crates/starlink-ast/src/fitschan/wcs_keywords.rs:243-248` with:
 
 ```rust
     // Observation-global TAI/UT1 offsets — mark=0 (C WcsFcRead: DUT1 line
@@ -2287,7 +2287,7 @@ Confirm `get_string` returns the FITS string value with trailing blanks already 
 
 - [ ] **Step 5: Set both offsets on the world Frame**
 
-Add the helper to `crates/ast-core/src/fitschan/wcs_read.rs`, next to `set_frame_ident` (line 663):
+Add the helper to `crates/starlink-ast/src/fitschan/wcs_read.rs`, next to `set_frame_ident` (line 663):
 
 ```rust
 /// Apply the observation-global time offsets to `frame`, mirroring C
@@ -2304,7 +2304,7 @@ fn set_frame_time_offsets(frame: &mut dyn Frame, dut1: Option<f64>, dtai: Option
 ```
 
 `set_frame_ident` (line 663) downcasts over the concrete frame classes because `Ident` is not on the `Frame` trait.
-If `set_dut1` / `set_dtai` are likewise not on the trait, mirror `set_frame_ident`'s dispatch shape exactly — including its `CmpFrame` recursion — rather than inventing a second pattern; check `crates/ast-core/src/frames/mod.rs` for which of the two applies before writing the body.
+If `set_dut1` / `set_dtai` are likewise not on the trait, mirror `set_frame_ident`'s dispatch shape exactly — including its `CmpFrame` recursion — rather than inventing a second pattern; check `crates/starlink-ast/src/frames/mod.rs` for which of the two applies before writing the body.
 
 Call it immediately after the existing `set_frame_ident(world_frame.as_mut(), " ")` in `decode_wcs_inner`, matching C's ordering (`astSetIdent` at fitschan.c:38010, the offsets at :37884-37892):
 
@@ -2317,7 +2317,7 @@ Leave `wcs_celestial.rs:362-368` alone — C sets the offsets on the SkyFrame *a
 - [ ] **Step 6: Run the tests to verify they pass**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_time 2>&1 | tail -5
+cargo test -p starlink-ast --test test_fitschan_time 2>&1 | tail -5
 ```
 
 Expected: 3 passed.
@@ -2325,8 +2325,8 @@ Expected: 3 passed.
 - [ ] **Step 7: Re-measure and delete the entry**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 
 Delete the `multi-wcs-spec` row from `NATIVE_READ_EXCLUDED` once it is byte-exact.
@@ -2339,10 +2339,10 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_keywords.rs \
-        crates/ast-core/src/fitschan/wcs_read.rs \
-        crates/ast-core/tests/test_fitschan_time.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/wcs_keywords.rs \
+        crates/starlink-ast/src/fitschan/wcs_read.rs \
+        crates/starlink-ast/tests/test_fitschan_time.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: gate DTAI on TELESCOP and set time offsets on the world Frame (multi-wcs-spec)"
 ```
 
@@ -2370,7 +2370,7 @@ Probe result — the current reference C agrees with us, not with the fixture:
 
 ```bash
 R=$PWD/reference/starlink-ast/build
-F=$PWD/crates/ast-core/tests/fixtures/wcsconv
+F=$PWD/crates/starlink-ast/tests/fixtures/wcsconv
 LD_LIBRARY_PATH= $R/ast_tester/wcsconverter \
   $F/inputs/azel.head native /tmp/azel.native "FitsDigits=17"
 diff /tmp/azel.native $F/expected/azel.native
@@ -2399,7 +2399,7 @@ If `wcsconverter` is missing or older than `reference/starlink-ast/src/fitschan.
 - [ ] **Step 2: Re-run the whole-corpus staleness check**
 
 ```bash
-W=$PWD; R=$W/reference/starlink-ast/build; F=$W/crates/ast-core/tests/fixtures/wcsconv
+W=$PWD; R=$W/reference/starlink-ast/build; F=$W/crates/starlink-ast/tests/fixtures/wcsconv
 while IFS='|' read -r name input expected enc attrs _; do
   name=$(echo "$name" | tr -d ' '); enc=$(echo "$enc" | tr -d ' ')
   [ "$enc" = native ] || continue
@@ -2422,11 +2422,11 @@ Expected: exactly one `STALE` line, for `azel_native`.
 - [ ] **Step 3: Regenerate only `azel.native`**
 
 ```bash
-W=$PWD; R=$W/reference/starlink-ast/build; F=$W/crates/ast-core/tests/fixtures/wcsconv
+W=$PWD; R=$W/reference/starlink-ast/build; F=$W/crates/starlink-ast/tests/fixtures/wcsconv
 LD_LIBRARY_PATH= $R/ast_tester/wcsconverter \
   "$F/inputs/azel.head" native "$F/expected/azel.native" "FitsDigits=17"
-git diff --stat crates/ast-core/tests/fixtures/wcsconv/expected/azel.native
-git diff crates/ast-core/tests/fixtures/wcsconv/expected/azel.native
+git diff --stat crates/starlink-ast/tests/fixtures/wcsconv/expected/azel.native
+git diff crates/starlink-ast/tests/fixtures/wcsconv/expected/azel.native
 ```
 
 Expected: a one-line diff, `EPOCH_A` only.
@@ -2457,8 +2457,8 @@ HEAD; the port needed no change.
 - [ ] **Step 5: Re-measure and delete the entry**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv azel 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv azel 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 
 `azel_native` should now pass on the 4-ULP NATIVE tolerance (our `…5657` against the regenerated `…5655`).
@@ -2467,8 +2467,8 @@ Delete the `azel` row from `NATIVE_READ_EXCLUDED`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/tests/fixtures/wcsconv/expected/azel.native \
-        crates/ast-core/tests/test_wcsconv.rs \
+git add crates/starlink-ast/tests/fixtures/wcsconv/expected/azel.native \
+        crates/starlink-ast/tests/test_wcsconv.rs \
         docs/issues/c-library-quirks.md
 git -c core.hooksPath=/dev/null commit -m "test: regenerate azel.native after the C DateObs fractional-seconds fix"
 ```
@@ -2501,23 +2501,23 @@ These are two independent sub-fixes in opposite directions — do them as two co
 Verify the premise before writing the fix — if these two fixtures produce a plain `SpecFrame` and the missing `IDENT_A` has another cause, re-measure and re-diagnose rather than adding a speculative arm:
 
 ```bash
-cargo run -p ast-core --example wcsconv_debug -- \
-  crates/ast-core/tests/fixtures/wcsconv/inputs/class-spec-hel.head \
+cargo run -p starlink-ast --example wcsconv_debug -- \
+  crates/starlink-ast/tests/fixtures/wcsconv/inputs/class-spec-hel.head \
   native fitsdigits=17 2>&1 | grep -nE 'BEGAST|IDENT|DSB' | head -20
 ```
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs:663-690` (`set_frame_ident`)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs`
-- Test: `crates/ast-core/tests/test_fitschan_ident.rs` (create)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs:663-690` (`set_frame_ident`)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs`
+- Test: `crates/starlink-ast/tests/test_fitschan_ident.rs` (create)
 
 **Interfaces:**
-- Consumes: `set_frame_ident` (`wcs_read.rs:663`), `DSBSpecFrame` (`crates/ast-core/src/frames/`).
+- Consumes: `set_frame_ident` (`wcs_read.rs:663`), `DSBSpecFrame` (`crates/starlink-ast/src/frames/`).
 - Produces: no new API — one added match arm.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `crates/ast-core/tests/test_fitschan_ident.rs`:
+Create `crates/starlink-ast/tests/test_fitschan_ident.rs`:
 
 ```rust
 //! `Ident` set-ness on Frames built by a FITS read.
@@ -2532,7 +2532,7 @@ fn native_dump(head: &str) -> String {
     // Mirrors the wcsconv harness: read the .head, write NATIVE to a fresh
     // chan at the harness's FitsDigits.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/wcsconv/inputs");
-    ast_core::tests_support::head_to_native(&dir.join(head), 17)
+    starlink_ast::tests_support::head_to_native(&dir.join(head), 17)
         .expect("read and write should succeed")
 }
 
@@ -2547,21 +2547,21 @@ fn dsb_spectral_world_frame_gets_ident() {
 }
 ```
 
-`ast_core::tests_support::head_to_native` is a placeholder for whatever the existing harness helper is called.
-Before writing this test, find the real one — `crates/ast-core/tests/common/mod.rs` and the `wcsconv_debug` example both already turn a `.head` into a NATIVE dump.
+`starlink_ast::tests_support::head_to_native` is a placeholder for whatever the existing harness helper is called.
+Before writing this test, find the real one — `crates/starlink-ast/tests/common/mod.rs` and the `wcsconv_debug` example both already turn a `.head` into a NATIVE dump.
 Use that helper and drop the invented path; if only the example has it, drive the assertion through `FitsChan` directly the way `test_fitschan_time.rs` does in Task 8.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_ident 2>&1 | tail -20
+cargo test -p starlink-ast --test test_fitschan_ident 2>&1 | tail -20
 ```
 
 Expected: FAIL — no `IDENT_A` line in the dump.
 
 - [ ] **Step 3: Add the `DSBSpecFrame` arm**
 
-In `crates/ast-core/src/fitschan/wcs_read.rs`, add an arm to `set_frame_ident` beside the existing `SpecFrame` one, following the same downcast shape:
+In `crates/starlink-ast/src/fitschan/wcs_read.rs`, add an arm to `set_frame_ident` beside the existing `SpecFrame` one, following the same downcast shape:
 
 ```rust
     if let Some(f) = frame.as_any_mut().downcast_mut::<DSBSpecFrame>() {
@@ -2577,7 +2577,7 @@ If the list is longer than the six arms present, add the missing ones in the sam
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_ident 2>&1 | tail -5
+cargo test -p starlink-ast --test test_fitschan_ident 2>&1 | tail -5
 ```
 
 Expected: PASS.
@@ -2585,8 +2585,8 @@ Expected: PASS.
 - [ ] **Step 5: Re-measure**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 
 Delete the `class-hel` and `class-spec` rows from `NATIVE_READ_EXCLUDED` once byte-exact.
@@ -2599,9 +2599,9 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_read.rs \
-        crates/ast-core/tests/test_fitschan_ident.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/wcs_read.rs \
+        crates/starlink-ast/tests/test_fitschan_ident.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: set Ident on every world-Frame class a read can build (class-hel, class-spec)"
 ```
 
@@ -2618,9 +2618,9 @@ sed -n '34480,34500p;34550,34570p' reference/starlink-ast/src/fitschan.c
 ```
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs:625-658` (`tidy_offsets` pass 2)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs`
-- Test: `crates/ast-core/tests/test_fitschan_ident.rs` (append)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs:625-658` (`tidy_offsets` pass 2)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs`
+- Test: `crates/starlink-ast/tests/test_fitschan_ident.rs` (append)
 
 **Interfaces:**
 - Consumes: `tidy_offsets` (`wcs_read.rs`), `set_frame_ident` (`:663`).
@@ -2635,7 +2635,7 @@ fn clear_frame_ident_and_domain(frame: &mut dyn Frame);
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `crates/ast-core/tests/test_fitschan_ident.rs`, using the same dump helper Step 1 of sub-fix A settled on:
+Append to `crates/starlink-ast/tests/test_fitschan_ident.rs`, using the same dump helper Step 1 of sub-fix A settled on:
 
 ```rust
 #[test]
@@ -2653,20 +2653,20 @@ Confirm the input filename against the manifest first:
 
 ```bash
 grep -E 'tidy-offsets|tidy-pole' \
-  crates/ast-core/tests/fixtures/wcsconv/wcsconv_tests.txt
+  crates/starlink-ast/tests/fixtures/wcsconv/wcsconv_tests.txt
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_ident tidy_offsets 2>&1 | tail -20
+cargo test -p starlink-ast --test test_fitschan_ident tidy_offsets 2>&1 | tail -20
 ```
 
 Expected: FAIL — `IDENT_A` present.
 
 - [ ] **Step 3: Add the clearing pass**
 
-Add the helper next to `set_frame_ident` in `crates/ast-core/src/fitschan/wcs_read.rs`, mirroring its downcast dispatch:
+Add the helper next to `set_frame_ident` in `crates/starlink-ast/src/fitschan/wcs_read.rs`, mirroring its downcast dispatch:
 
 ```rust
 /// Clear `Ident` and `Domain` on `frame`, mirroring the pass C `TidyOffsets`
@@ -2681,12 +2681,12 @@ and call it from `tidy_offsets` pass 2 at the point C does, on the Frame C clear
 Do not clear unconditionally at the top of the pass: C's call sits inside the branch that actually removes a Frame, so a header where pass 2 finds nothing to remove keeps its `Ident`.
 `class-hel` / `class-spec` from sub-fix A rely on that — if both fixtures regress after this commit, the call is outside its branch.
 
-If `clear_ident` / `clear_domain` do not exist on the frame classes, add them beside the existing setters, following the attribute-clearing pattern already used elsewhere in `crates/ast-core/src/frames/`.
+If `clear_ident` / `clear_domain` do not exist on the frame classes, add them beside the existing setters, following the attribute-clearing pattern already used elsewhere in `crates/starlink-ast/src/frames/`.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_ident 2>&1 | tail -5
+cargo test -p starlink-ast --test test_fitschan_ident 2>&1 | tail -5
 ```
 
 Expected: both tests pass — the sub-fix A test must stay green.
@@ -2694,8 +2694,8 @@ Expected: both tests pass — the sub-fix A test must stay green.
 - [ ] **Step 5: Re-measure**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 
 Delete the `tidy-offsets` and `tidy-pole` rows once byte-exact.
@@ -2707,10 +2707,10 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_read.rs \
-        crates/ast-core/src/frames \
-        crates/ast-core/tests/test_fitschan_ident.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/wcs_read.rs \
+        crates/starlink-ast/src/frames \
+        crates/starlink-ast/tests/test_fitschan_ident.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: TidyOffsets clears Ident and Domain on retained Frames (tidy-offsets, tidy-pole)"
 ```
 
@@ -2741,7 +2741,7 @@ So the fix is wiring, not new capability: `alt_ref_pos` is computed and then not
 Confirm that reading before changing anything — if `alt_ref_pos` is in fact consumed and the values are merely wrong, this is a different fix and the task needs re-diagnosing:
 
 ```bash
-grep -n 'alt_ref_pos' crates/ast-core/src/fitschan/wcs_read.rs
+grep -n 'alt_ref_pos' crates/starlink-ast/src/fitschan/wcs_read.rs
 ```
 
 C reaches this through `MakeFitsFrameSet` / `WcsMapFrm` per alt-plane version letter, applying the same reference position to each plane's spectral frame.
@@ -2749,9 +2749,9 @@ There is a relevant changelog entry near it (fitschan.c:1348-1352): C temporaril
 The port passes `f64` values directly rather than round-tripping through a formatted string, so it has no equivalent step — but the expected value `3.1527470058218849` carries 17 significant digits, so any formatting round-trip introduced here would break it.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs:440-500` (the alt-plane branch)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs`
-- Test: `crates/ast-core/tests/test_fitschan_ident.rs` (append; it is the read-path dump test file by then) or a new `test_fitschan_specref.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs:440-500` (the alt-plane branch)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs`
+- Test: `crates/starlink-ast/tests/test_fitschan_ident.rs` (append; it is the read-path dump test file by then) or a new `test_fitschan_specref.rs`
 
 **Interfaces:**
 - Consumes: `set_spec_ref_from_celestial` (`wcs_read.rs:186`), `set_spec_ref_pos` (`:342`), `alt_ref_pos` (`:467`).
@@ -2761,10 +2761,10 @@ The port passes `f64` values directly rather than round-tripping through a forma
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv fits_pc_alt_native 2>&1 \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv fits_pc_alt_native 2>&1 \
   | grep -E 'REFRA|REFDEC|UWAVE'
 grep -nE 'REFRA|REFDEC|BEGAST' \
-  crates/ast-core/tests/fixtures/wcsconv/expected/fits-pc-alt.native | head -20
+  crates/starlink-ast/tests/fixtures/wcsconv/expected/fits-pc-alt.native | head -20
 ```
 
 The second command shows which `BEGAST_*` block owns `REFRA_B`, confirming it is the alt plane's SpecFrame and not a second spectral axis on the primary.
@@ -2786,14 +2786,14 @@ fn alt_plane_spec_frame_gets_the_celestial_reference_position() {
 - [ ] **Step 3: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_ident alt_plane 2>&1 | tail -20
+cargo test -p starlink-ast --test test_fitschan_ident alt_plane 2>&1 | tail -20
 ```
 
 Expected: FAIL — no `REFRA_B` line.
 
 - [ ] **Step 4: Carry `alt_ref_pos` onto the alt plane's spectral frame**
 
-In the alt-plane branch of `crates/ast-core/src/fitschan/wcs_read.rs` (around lines 467-470), call the existing helper on the alt-plane frame, at the point the primary plane calls it (step 9 of `decode_wcs_inner`, line 114).
+In the alt-plane branch of `crates/starlink-ast/src/fitschan/wcs_read.rs` (around lines 467-470), call the existing helper on the alt-plane frame, at the point the primary plane calls it (step 9 of `decode_wcs_inner`, line 114).
 Reuse `set_spec_ref_pos` (`:342`) — it already handles `SpecFrame`, `DSBSpecFrame` and `CmpFrame` recursion — rather than adding a parallel path.
 
 Pass the `f64` radian values straight through.
@@ -2802,7 +2802,7 @@ Do not format-and-reparse: C only does that because its `astSetC`-style path for
 - [ ] **Step 5: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_ident 2>&1 | tail -5
+cargo test -p starlink-ast --test test_fitschan_ident 2>&1 | tail -5
 ```
 
 Expected: PASS, with the earlier tests in the file still green.
@@ -2810,8 +2810,8 @@ Expected: PASS, with the earlier tests in the file still green.
 - [ ] **Step 6: Re-measure and delete the entries**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 
 Delete the `fits-pc-alt` and `fits-pc-unit` rows once byte-exact.
@@ -2821,9 +2821,9 @@ If only one clears, the remaining case has a second diff further down; update it
 - [ ] **Step 7: Run the read-path regression breadth**
 
 ```bash
-cargo test -p ast-core --test test_fitschan 2>&1 | tail -3
-cargo test -p ast-core --test test_transform_oracle head_sections 2>&1 | tail -5
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -3
+cargo test -p starlink-ast --test test_fitschan 2>&1 | tail -3
+cargo test -p starlink-ast --test test_transform_oracle head_sections 2>&1 | tail -5
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -3
 ```
 
 - [ ] **Step 8: Commit**
@@ -2833,9 +2833,9 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_read.rs \
-        crates/ast-core/tests/test_fitschan_ident.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/wcs_read.rs \
+        crates/starlink-ast/tests/test_fitschan_ident.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: carry the celestial reference position onto the alt-plane SpecFrame (fits-pc-alt, fits-pc-unit)"
 ```
 
@@ -2922,7 +2922,7 @@ So consecutive warnings chain into a growing run of blocks with no special-casin
 
 The spec frames cause 7 as purely a positioning bug.
 Measurement says it is positioning *plus* two missing warning texts.
-`grep -n 'not used by\|is not legal' crates/ast-core/src/` returns nothing: neither C's `badpv` text nor its `badctype` text is anywhere in the port.
+`grep -n 'not used by\|is not legal' crates/starlink-ast/src/` returns nothing: neither C's `badpv` text nor its `badctype` text is anywhere in the port.
 The only warning the port generates is the `badcel` text at `wcs_celestial.rs:259-269`, and that one is already byte-correct — which is why `unknown-cel`/`unknown-cel2` carry the exclusion reason "card insertion position not yet reproduced" while the other six read "warning card".
 
 So the eight cases split by what they need:
@@ -2959,8 +2959,8 @@ Our current dedup checks only the first line and calls it a match, which is loos
 `projp` is the case that shows why C needs the adjacency requirement: two blocks whose *first* lines differ but whose *second* lines are both `'projections.'`.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/card_list.rs:60-96` (`push_astwarn`)
-- Test: `crates/ast-core/src/fitschan/card_list.rs` (new `mod tests` cases; the file has none yet, so add the module at the end)
+- Modify: `crates/starlink-ast/src/fitschan/card_list.rs:60-96` (`push_astwarn`)
+- Test: `crates/starlink-ast/src/fitschan/card_list.rs` (new `mod tests` cases; the file has none yet, so add the module at the end)
 
 **Interfaces:**
 - Consumes: `wrap_warning_text` (`card.rs:102`), `FitsCard`, `FitsValue`, `CardFlags`, `self.position`.
@@ -2968,7 +2968,7 @@ Our current dedup checks only the first line and calls it a match, which is loos
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `crates/ast-core/src/fitschan/card_list.rs`:
+Append to `crates/starlink-ast/src/fitschan/card_list.rs`:
 
 ```rust
 #[cfg(test)]
@@ -3113,7 +3113,7 @@ mod tests {
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --lib fitschan::card_list 2>&1 | tail -20
+cargo test -p starlink-ast --lib fitschan::card_list 2>&1 | tail -20
 ```
 
 Expected: `push_astwarn_inserts_before_the_current_card`,
@@ -3123,7 +3123,7 @@ The two dedup-position tests may already pass.
 
 - [ ] **Step 3: Rewrite `push_astwarn`**
 
-Replace the body at `crates/ast-core/src/fitschan/card_list.rs:60-96` with:
+Replace the body at `crates/starlink-ast/src/fitschan/card_list.rs:60-96` with:
 
 ```rust
     /// Insert a block of `ASTWARN` comment cards holding `text` in front of the
@@ -3197,7 +3197,7 @@ Replace the body at `crates/ast-core/src/fitschan/card_list.rs:60-96` with:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-cargo test -p ast-core --lib fitschan::card_list 2>&1 | tail -10
+cargo test -p starlink-ast --lib fitschan::card_list 2>&1 | tail -10
 ```
 
 Expected: all five PASS.
@@ -3212,9 +3212,9 @@ appended with `push`, which ignores `position`, so a `push_astwarn` that
 splices at `position` would land the block at the wrong place.
 
 ```bash
-cargo test -p ast-core --test test_wcsconv car6 2>&1 | tail -5
-cargo test -p ast-core --lib fitschan 2>&1 | tail -5
-cargo test -p ast-core --test test_fitschan 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv car6 2>&1 | tail -5
+cargo test -p starlink-ast --lib fitschan 2>&1 | tail -5
+cargo test -p starlink-ast --test test_fitschan 2>&1 | tail -3
 ```
 
 If any illegal-keyword-name case regresses, the fix is in the *caller*, not in
@@ -3231,7 +3231,7 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/card_list.rs crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/card_list.rs crates/starlink-ast/src/fitschan/mod.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: insert ASTWARN cards in front of the current card, with C's block dedup"
 ```
 
@@ -3274,11 +3274,11 @@ cursor to the `push_astwarn` calls. The reads happen on the `trans` list
 position has to be carried across.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/card_list.rs` (add a cursor-moving float getter next to `find_next`, `:152-161`)
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs:205-210` (read `NAXIS<i>` through it) and its `extract_wcs_keywords_with_alts` signature
-- Modify: `crates/ast-core/src/fitschan/mod.rs:676-769` (set the warning position before pushing, in all six foreign-encoding arms)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (delete eight `NATIVE_READ_EXCLUDED` entries)
-- Test: `crates/ast-core/tests/test_fitschan_astwarn.rs` (new)
+- Modify: `crates/starlink-ast/src/fitschan/card_list.rs` (add a cursor-moving float getter next to `find_next`, `:152-161`)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs:205-210` (read `NAXIS<i>` through it) and its `extract_wcs_keywords_with_alts` signature
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs:676-769` (set the warning position before pushing, in all six foreign-encoding arms)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (delete eight `NATIVE_READ_EXCLUDED` entries)
+- Test: `crates/starlink-ast/tests/test_fitschan_astwarn.rs` (new)
 
 **Interfaces:**
 - Consumes: `CardList::find_next` (`card_list.rs:152`) as the model, `CardList::position` / `set_position`, `push_astwarn` from sub-fix A.
@@ -3311,7 +3311,7 @@ and threading it separately would let the two drift.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `crates/ast-core/tests/test_fitschan_astwarn.rs`:
+Create `crates/starlink-ast/tests/test_fitschan_astwarn.rs`:
 
 ```rust
 //! ASTWARN card placement on the FITS read path.
@@ -3322,8 +3322,8 @@ Create `crates/ast-core/tests/test_fitschan_astwarn.rs`:
 //! path that goes through `astGetFits<X>` rather than `GetValue`, and so the
 //! only one that leaves the card cursor moved.
 
-use ast_core::channels::Channel;
-use ast_core::fitschan::FitsChan;
+use starlink_ast::channels::Channel;
+use starlink_ast::fitschan::FitsChan;
 
 fn chan_from(header: &str) -> FitsChan {
     let mut fc = FitsChan::new();
@@ -3396,7 +3396,7 @@ introducing their own warning texts.
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_astwarn 2>&1 | tail -20
+cargo test -p starlink-ast --test test_fitschan_astwarn 2>&1 | tail -20
 ```
 
 Expected: FAIL, reporting the ASTWARN block after `NAXIS2` (the append
@@ -3404,7 +3404,7 @@ position sub-fix A leaves it at when nothing has moved the cursor).
 
 - [ ] **Step 3: Add the cursor-moving getter**
 
-In `crates/ast-core/src/fitschan/card_list.rs`, next to `find_next` (`:152`):
+In `crates/starlink-ast/src/fitschan/card_list.rs`, next to `find_next` (`:152`):
 
 ```rust
     /// Search forward from the current position for `keyword`, wrapping to the
@@ -3448,7 +3448,7 @@ In `crates/ast-core/src/fitschan/card_list.rs`, next to `find_next` (`:152`):
 
 - [ ] **Step 4: Read `NAXIS<i>` through it**
 
-In `crates/ast-core/src/fitschan/wcs_keywords.rs`, change the signature of
+In `crates/starlink-ast/src/fitschan/wcs_keywords.rs`, change the signature of
 `extract_wcs_keywords_with_alts` (and the `extract_wcs_keywords` it wraps, if
 that is a separate function) from `cards: &CardList` to
 `cards: &mut CardList`, then replace line 209:
@@ -3467,7 +3467,7 @@ move the cursor — matching C, where they all route through `GetValue`.
 
 - [ ] **Step 5: Carry the cursor to the warning push**
 
-In `crates/ast-core/src/fitschan/mod.rs`, each of the six foreign-encoding
+In `crates/starlink-ast/src/fitschan/mod.rs`, each of the six foreign-encoding
 arms reads keywords off `trans` but pushes warnings onto `self.cards`. Make
 `trans` mutable, and set the warning position from it before pushing. For the
 `FitsWcs` arm (`:676-699`):
@@ -3524,7 +3524,7 @@ position call before its `push_astwarn` loop.
 - [ ] **Step 6: Run the new test to verify it passes**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_astwarn 2>&1 | tail -10
+cargo test -p starlink-ast --test test_fitschan_astwarn 2>&1 | tail -10
 ```
 
 Expected: PASS.
@@ -3535,7 +3535,7 @@ Expected: PASS.
 for c in unknown-cel unknown-cel2; do
   n=$(echo "$c" | tr - _)
   printf '%-16s ' "$c"
-  WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv "${n}_native" 2>&1 \
+  WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv "${n}_native" 2>&1 \
     | grep -E 'differs|test result' | head -2 | tr '\n' ' '
   echo
 done
@@ -3553,7 +3553,7 @@ evidence that position is fixed and text is what remains.
 
 - [ ] **Step 8: Remove the two exclusion entries**
 
-Delete from `NATIVE_READ_EXCLUDED` in `crates/ast-core/tests/test_wcsconv.rs`
+Delete from `NATIVE_READ_EXCLUDED` in `crates/starlink-ast/tests/test_wcsconv.rs`
 the `unknown-cel_native` and `unknown-cel2_native` entries.
 Leave the six `ASTWARN: warning card` entries — sub-fixes C and D remove them.
 
@@ -3563,12 +3563,12 @@ The changed code is on the shared read path and touches card ordering, so run
 every corpus that consumes it.
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-cargo test -p ast-core --test test_fitschan 2>&1 | tail -3
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -3
-cargo test -p ast-core --test test_transform_oracle head_sections 2>&1 | tail -5
-cargo test -p ast-core 2>&1 | grep -E 'test result' | tail -20
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_fitschan 2>&1 | tail -3
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -3
+cargo test -p starlink-ast --test test_transform_oracle head_sections 2>&1 | tail -5
+cargo test -p starlink-ast 2>&1 | grep -E 'test result' | tail -20
 ```
 
 Expected: `test_wcsconv` stays at 192 passed with no failures, and the
@@ -3582,11 +3582,11 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/card_list.rs \
-        crates/ast-core/src/fitschan/wcs_keywords.rs \
-        crates/ast-core/src/fitschan/mod.rs \
-        crates/ast-core/tests/test_fitschan_astwarn.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/card_list.rs \
+        crates/starlink-ast/src/fitschan/wcs_keywords.rs \
+        crates/starlink-ast/src/fitschan/mod.rs \
+        crates/starlink-ast/tests/test_fitschan_astwarn.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: NAXISn read leaves the card cursor moved, placing ASTWARN cards as C does (unknown-cel, unknown-cel2)"
 ```
 
@@ -3687,11 +3687,11 @@ per-projection limit at all, so out-of-range PVs are silently stored and
 That divergence is what this sub-fix closes; the warning falls out of it.
 
 **Files:**
-- Modify: `crates/ast-core/src/wcslib.rs` (add the two `PrjInfo` limit columns to `WcsProjection`, next to `description` at `:135`)
-- Modify: `crates/ast-core/src/mappings/wcsmap.rs` (add `pv_max`; make `set_pv` enforce it)
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:136-151` (single ascending loop, warn on overflow)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (delete three exclusion entries)
-- Test: `crates/ast-core/src/wcslib.rs` (limit table), `crates/ast-core/src/mappings/wcsmap.rs` (`pv_max`, `set_pv` rejection), `crates/ast-core/tests/test_fitschan_astwarn.rs` (the warning text)
+- Modify: `crates/starlink-ast/src/wcslib.rs` (add the two `PrjInfo` limit columns to `WcsProjection`, next to `description` at `:135`)
+- Modify: `crates/starlink-ast/src/mappings/wcsmap.rs` (add `pv_max`; make `set_pv` enforce it)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs:136-151` (single ascending loop, warn on overflow)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (delete three exclusion entries)
+- Test: `crates/starlink-ast/src/wcslib.rs` (limit table), `crates/starlink-ast/src/mappings/wcsmap.rs` (`pv_max`, `set_pv` rejection), `crates/starlink-ast/tests/test_fitschan_astwarn.rs` (the warning text)
 
 **Interfaces:**
 - Consumes: `WcsProjection` (`wcslib.rs:28`), `WcsMap::set_pv` / `get_pv` / `projection` (`wcsmap.rs:208`, `:264`, `:256`), `FitsStore::pv` (`fits_store.rs`), `CelestialResult::warnings` (`wcs_celestial.rs:97`), `push_astwarn` from sub-fixes A and B.
@@ -3730,7 +3730,7 @@ That means the caller can no longer discard the result with `let _ =`; the
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `crates/ast-core/src/wcslib.rs`'s test module:
+Add to `crates/starlink-ast/src/wcslib.rs`'s test module:
 
 ```rust
     /// The `mxpar` / `mxpar2` columns of C's `PrjInfo` table
@@ -3766,7 +3766,7 @@ Add to `crates/ast-core/src/wcslib.rs`'s test module:
 `WCSLIB_MXPAR` is 100 (`vendor/wcslib/proj.h:59`, mirrored at
 `wcslib.rs:324`), so the largest legal index is 99.
 
-Add to `crates/ast-core/src/mappings/wcsmap.rs`'s test module:
+Add to `crates/starlink-ast/src/mappings/wcsmap.rs`'s test module:
 
 ```rust
     /// `astGetPVMax` reports the longitude axis's limit from `mxpar2` and the
@@ -3797,7 +3797,7 @@ Add to `crates/ast-core/src/mappings/wcsmap.rs`'s test module:
     }
 ```
 
-Add to `crates/ast-core/tests/test_fitschan_astwarn.rs`:
+Add to `crates/starlink-ast/tests/test_fitschan_astwarn.rs`:
 
 ```rust
 /// `projp`-shaped: PROJP0/1/2 translate to PV2_0/PV2_1/PV2_2, but `-TAN`
@@ -3865,9 +3865,9 @@ actually is; the assertion on the values is the part that matters.
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-cargo test -p ast-core --lib wcslib 2>&1 | tail -10
-cargo test -p ast-core --lib wcsmap 2>&1 | tail -10
-cargo test -p ast-core --test test_fitschan_astwarn 2>&1 | tail -20
+cargo test -p starlink-ast --lib wcslib 2>&1 | tail -10
+cargo test -p starlink-ast --lib wcsmap 2>&1 | tail -10
+cargo test -p starlink-ast --test test_fitschan_astwarn 2>&1 | tail -20
 ```
 
 Expected: `pv_limits_match_the_c_projection_table`, `pv_max_is_per_axis` and
@@ -3877,7 +3877,7 @@ FAILS with an empty warning list.
 
 - [ ] **Step 3: Add the two limit columns**
 
-In `crates/ast-core/src/wcslib.rs`, after `description` (`:172`):
+In `crates/starlink-ast/src/wcslib.rs`, after `description` (`:172`):
 
 ```rust
     /// Largest legal `m` in `PVi_m` on the *latitude* axis.
@@ -3921,7 +3921,7 @@ adding a projection variant later is a compile error rather than a silent 0.
 
 - [ ] **Step 4: Add `WcsMap::pv_max` and enforce it in `set_pv`**
 
-In `crates/ast-core/src/mappings/wcsmap.rs`, after `projection` (`:256-258`):
+In `crates/starlink-ast/src/mappings/wcsmap.rs`, after `projection` (`:256-258`):
 
 ```rust
     /// Largest legal projection-parameter index for a 1-based axis index, or
@@ -3977,12 +3977,12 @@ per-projection limit. C `SetPV` (wcsmap.c:3884-3890) checks
 The existing axis-range block below it becomes redundant — `pv_max` performs
 the same validation — so fold the two together rather than leaving both.
 Keep `MXPAR` if other code uses it; check with
-`grep -n 'MXPAR' crates/ast-core/src/mappings/wcsmap.rs` and remove the const
+`grep -n 'MXPAR' crates/starlink-ast/src/mappings/wcsmap.rs` and remove the const
 if this was its only use.
 
 - [ ] **Step 5: Rewrite the celestial PV loop as C's single ascending pass**
 
-Replace `crates/ast-core/src/fitschan/wcs_celestial.rs:136-151` with:
+Replace `crates/starlink-ast/src/fitschan/wcs_celestial.rs:136-151` with:
 
 ```rust
     // Store the supplied PVi_m projection parameters on the WcsMap, warning
@@ -4032,9 +4032,9 @@ call order, and `badpv` fires first.
 - [ ] **Step 6: Run the tests to verify they pass**
 
 ```bash
-cargo test -p ast-core --lib wcslib 2>&1 | tail -5
-cargo test -p ast-core --lib wcsmap 2>&1 | tail -5
-cargo test -p ast-core --test test_fitschan_astwarn 2>&1 | tail -5
+cargo test -p starlink-ast --lib wcslib 2>&1 | tail -5
+cargo test -p starlink-ast --lib wcsmap 2>&1 | tail -5
+cargo test -p starlink-ast --test test_fitschan_astwarn 2>&1 | tail -5
 ```
 
 Expected: all PASS.
@@ -4045,7 +4045,7 @@ Expected: all PASS.
 for c in projp projp-nopv0 projp-pv0only; do
   n=$(echo "$c" | tr - _)
   printf '%-16s ' "$c"
-  WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv "${n}_native" 2>&1 \
+  WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv "${n}_native" 2>&1 \
     | grep -E 'differs|line count|test result' | head -2 | tr '\n' ' '
   echo
 done
@@ -4070,11 +4070,11 @@ own reason (WcsMap shape, first diff at line 70), but its *first diff must not
 move backwards*: re-measure it and record the result.
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv tan_zeropv_native 2>&1 \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv tan_zeropv_native 2>&1 \
   | grep -E 'differs|line count' | head -3
-cargo test -p ast-core --test test_wcsconv zpn 2>&1 | tail -3
-cargo test -p ast-core --test test_wcsconv tpn 2>&1 | tail -3
-cargo test -p ast-core --lib mappings::wcsmap 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv zpn 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv tpn 2>&1 | tail -3
+cargo test -p starlink-ast --lib mappings::wcsmap 2>&1 | tail -3
 ```
 
 `ZPN` and `TPN` are the projections whose limits are `WCSLIB_MXPAR - 1`, so
@@ -4088,10 +4088,10 @@ entries from `NATIVE_READ_EXCLUDED`.
 - [ ] **Step 10: Verify the two-sided gate**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-cargo test -p ast-core --test test_transform_oracle head_sections 2>&1 | tail -5
-cargo test -p ast-core 2>&1 | grep -E 'test result' | tail -20
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_transform_oracle head_sections 2>&1 | tail -5
+cargo test -p starlink-ast 2>&1 | grep -E 'test result' | tail -20
 ```
 
 Expected: 192 passed, and 5 fewer `WCSCONV_NO_EXCLUDE=1` failures than the 45
@@ -4104,11 +4104,11 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/wcslib.rs \
-        crates/ast-core/src/mappings/wcsmap.rs \
-        crates/ast-core/src/fitschan/wcs_celestial.rs \
-        crates/ast-core/tests/test_fitschan_astwarn.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/wcslib.rs \
+        crates/starlink-ast/src/mappings/wcsmap.rs \
+        crates/starlink-ast/src/fitschan/wcs_celestial.rs \
+        crates/starlink-ast/tests/test_fitschan_astwarn.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "wcsmap: enforce the projection's per-axis PV limit and warn on unusable PVi_m (projp x3)"
 ```
 
@@ -4194,10 +4194,10 @@ construction, which is the faithful shape: C's `astError` exists because C
 cannot prove exhaustiveness.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_spectral.rs` (`SpectralResult` gains `warnings`; `nonlin_spec_wcs` returns them; `build_spectral` propagates)
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs:48-51` (collect spectral warnings after celestial ones)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (delete three exclusion entries)
-- Test: `crates/ast-core/tests/test_fitschan_astwarn.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_spectral.rs` (`SpectralResult` gains `warnings`; `nonlin_spec_wcs` returns them; `build_spectral` propagates)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs:48-51` (collect spectral warnings after celestial ones)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (delete three exclusion entries)
+- Test: `crates/starlink-ast/tests/test_fitschan_astwarn.rs`
 
 **Interfaces:**
 - Consumes: `SpecSystem::as_str` (`specframe.rs:48`), `SpecFrame::system` (`specframe.rs:406`), `CelestialResult::warnings` as the pattern, `push_astwarn` from sub-fixes A and B.
@@ -4228,7 +4228,7 @@ fn nonlin_spec_wcs(
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `crates/ast-core/tests/test_fitschan_astwarn.rs`:
+Add to `crates/starlink-ast/tests/test_fitschan_astwarn.rs`:
 
 ```rust
 /// `awav-a2f`-shaped: an air-wavelength axis whose algorithm code says the
@@ -4283,14 +4283,14 @@ exercise, because no `badcel` header is 1-axis.
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_astwarn 2>&1 | tail -20
+cargo test -p starlink-ast --test test_fitschan_astwarn 2>&1 | tail -20
 ```
 
 Expected: FAIL with an empty warning list.
 
 - [ ] **Step 3: Emit the warning in `nonlin_spec_wcs`**
 
-In `crates/ast-core/src/fitschan/wcs_spectral.rs`, change `nonlin_spec_wcs`'s
+In `crates/starlink-ast/src/fitschan/wcs_spectral.rs`, change `nonlin_spec_wcs`'s
 return type to `AstResult<Option<(DynMapping, Vec<String>)>>` and add, just
 before the final `Ok(Some(...))`:
 
@@ -4353,11 +4353,11 @@ site (`:204-212`):
 and set `warnings` on the returned `SpectralResult`.
 Every other construction site of `SpectralResult` gets
 `warnings: Vec::new()`; find them with
-`grep -n 'SpectralResult {' crates/ast-core/src/fitschan/`.
+`grep -n 'SpectralResult {' crates/starlink-ast/src/fitschan/`.
 
 - [ ] **Step 5: Collect them in `wcs_read`**
 
-Replace `crates/ast-core/src/fitschan/wcs_read.rs:48-51` with:
+Replace `crates/starlink-ast/src/fitschan/wcs_read.rs:48-51` with:
 
 ```rust
     // Warnings in C's generation order: `WcsCelestial` runs before
@@ -4379,7 +4379,7 @@ Check the local holding the spectral result's name at that point in
 - [ ] **Step 6: Run the test to verify it passes**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_astwarn 2>&1 | tail -5
+cargo test -p starlink-ast --test test_fitschan_astwarn 2>&1 | tail -5
 ```
 
 Expected: PASS.
@@ -4390,7 +4390,7 @@ Expected: PASS.
 for c in awav-a2f freq-f2w wave-w2f; do
   n=$(echo "$c" | tr - _)
   printf '%-12s ' "$c"
-  WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv "${n}_native" 2>&1 \
+  WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv "${n}_native" 2>&1 \
     | grep -E 'differs|line count|test result' | head -2 | tr '\n' ' '
   echo
 done
@@ -4405,13 +4405,13 @@ Expected: all three report `test result: ok`.
 A spurious `badctype` on any of them would be a wrong `pc` table.
 
 ```bash
-grep -l 'CTYPE1  = .[A-Z]\{4\}-[A-Z]2[A-Z]' crates/ast-core/tests/fixtures/wcsconv/inputs/*.head \
+grep -l 'CTYPE1  = .[A-Z]\{4\}-[A-Z]2[A-Z]' crates/starlink-ast/tests/fixtures/wcsconv/inputs/*.head \
   | while read f; do
       c=$(basename "$f" .head)
       printf '%-14s expects ASTWARN: ' "$c"
-      grep -c ASTWARN "crates/ast-core/tests/fixtures/wcsconv/expected/$c.native" 2>/dev/null || echo 0
+      grep -c ASTWARN "crates/starlink-ast/tests/fixtures/wcsconv/expected/$c.native" 2>/dev/null || echo 0
     done
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 
 Every case whose expected file has 0 `ASTWARN` cards must still produce none.
@@ -4430,12 +4430,12 @@ U7 touches the shared read and write paths, so this is where the spec's full
 regression list runs.
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-cargo test -p ast-core --test test_fitschan 2>&1 | tail -3
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -3
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -3
-cargo test -p ast-core --test test_transform_oracle head_sections 2>&1 | tail -5
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_fitschan 2>&1 | tail -3
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -3
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -3
+cargo test -p starlink-ast --test test_transform_oracle head_sections 2>&1 | tail -5
 cargo test --workspace 2>&1 | grep -E 'test result|error' | tail -30
 ```
 
@@ -4450,10 +4450,10 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_spectral.rs \
-        crates/ast-core/src/fitschan/wcs_read.rs \
-        crates/ast-core/tests/test_fitschan_astwarn.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/wcs_spectral.rs \
+        crates/starlink-ast/src/fitschan/wcs_read.rs \
+        crates/starlink-ast/tests/test_fitschan_astwarn.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: warn when a spectral -X2P algorithm code disagrees with the axis system (3 cases)"
 ```
 
@@ -4471,7 +4471,7 @@ The spec (cause 8) says:
 
 That is wrong.
 The frame *classes* already match C in all ten cases.
-Measured with `crates/ast-core/examples/wcsconv_debug.rs`, whose stderr
+Measured with `crates/starlink-ast/examples/wcsconv_debug.rs`, whose stderr
 prints one line per frame (`Frame i: domain= ident= sys=`, plus
 `test_epoch=`/`test_equinox=`/`sky_ref_is=` for SkyFrames and a `dump_sub`
 recursion for CmpFrames):
@@ -4608,9 +4608,9 @@ value, so it must not fire here. `grep -c ASTWARN` on each expected file
 must print `0`.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:308-360`
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (remove 3 exclusion entries)
-- Create: `crates/ast-core/tests/test_fitschan_read.rs` (new file; Task 12
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs:308-360`
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (remove 3 exclusion entries)
+- Create: `crates/starlink-ast/tests/test_fitschan_read.rs` (new file; Task 12
   sub-fixes B, D and E append to it)
 
 **Interfaces:**
@@ -4627,7 +4627,7 @@ must print `0`.
 - [ ] **Step 1: Confirm the three expected files carry no ASTWARN**
 
 ```bash
-cd /sdf/home/t/timj/WORK/starlink-astrs/crates/ast-core/tests/fixtures/wcsconv
+cd /sdf/home/t/timj/WORK/starlink-astrs/crates/starlink-ast/tests/fixtures/wcsconv
 for f in multi-wcs offset-sky offset-sky-pole; do
   printf '%-18s ASTWARN=%s EPOCH=%s\n' "$f" \
     "$(grep -c ASTWARN expected/$f.native)" \
@@ -4641,7 +4641,7 @@ fire and this sub-fix must emit it too.
 
 - [ ] **Step 2: Write the failing test**
 
-`crates/ast-core/tests/test_fitschan_read.rs` does not exist yet — this
+`crates/starlink-ast/tests/test_fitschan_read.rs` does not exist yet — this
 sub-fix creates it, and sub-fixes B, D and E append to it. Start with the
 module header and imports:
 
@@ -4652,10 +4652,10 @@ module header and imports:
 //! decision that a wcsconv fixture exercises only indirectly, so a
 //! failure names the attribute rather than a serialised card.
 
-use ast_core::AnyObject;
-use ast_core::channel::Channel;
-use ast_core::fitschan::{Encoding, FitsChan};
-use ast_core::frames::{Frame, SkyFrame, SkySystem};
+use starlink_ast::AnyObject;
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::{Encoding, FitsChan};
+use starlink_ast::frames::{Frame, SkyFrame, SkySystem};
 ```
 
 Add trait and type imports as later sub-fixes need them; `Channel` is what
@@ -4717,7 +4717,7 @@ fn galactic_header_takes_its_epoch_from_equinox() {
 Run:
 
 ```bash
-cargo test -p ast-core --test test_fitschan_read \
+cargo test -p starlink-ast --test test_fitschan_read \
   galactic_header_takes_its_epoch_from_equinox -- --nocapture
 ```
 
@@ -4726,7 +4726,7 @@ because `eq_year` was `None` for Galactic.
 
 - [ ] **Step 4: Split the guarded and unguarded values**
 
-In `crates/ast-core/src/fitschan/wcs_celestial.rs`, replace the `eq_year`
+In `crates/starlink-ast/src/fitschan/wcs_celestial.rs`, replace the `eq_year`
 binding with two bindings. The raw equinox and the FK4/FK5 default both
 become system-independent; only the *use* for Equinox stays guarded:
 
@@ -4767,7 +4767,7 @@ Then change the Epoch fallback arm to read the unguarded value:
 Run:
 
 ```bash
-cargo test -p ast-core --test test_fitschan_read \
+cargo test -p starlink-ast --test test_fitschan_read \
   galactic_header_takes_its_epoch_from_equinox
 ```
 
@@ -4777,7 +4777,7 @@ Expected: PASS.
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 \
   | grep -E 'multi-wcs|offset-sky|^test result'
 ```
 
@@ -4789,15 +4789,15 @@ re-measure protocol working, not a failure.
 
 - [ ] **Step 7: Remove the exclusion entries for whichever cases are now byte-exact**
 
-In `crates/ast-core/tests/test_wcsconv.rs`, delete the
+In `crates/starlink-ast/tests/test_wcsconv.rs`, delete the
 `NATIVE_READ_EXCLUDED` rows for each case that is now fully clean. Do not
 delete a row whose case still has any diff.
 
 - [ ] **Step 8: Run the full wcsconv suite both ways**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv
+cargo test -p starlink-ast --test test_wcsconv
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv
 ```
 
 Expected: first run 192 passed; second run down by however many entries
@@ -4806,9 +4806,9 @@ step 7 removed.
 - [ ] **Step 9: Regression sweep — this changes what the reader builds**
 
 ```bash
-cargo test -p ast-core --test test_fitschan
-cargo test -p ast-core --test 'test_fitschan*'
-cargo test -p ast-core --test test_transform_oracle head_sections
+cargo test -p starlink-ast --test test_fitschan
+cargo test -p starlink-ast --test 'test_fitschan*'
+cargo test -p starlink-ast --test test_transform_oracle head_sections
 ```
 
 Expected: 66 `test_fitschan*` tests still pass; `HEAD_ORACLE_EXCLUDED`
@@ -4823,9 +4823,9 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_celestial.rs \
-        crates/ast-core/tests/test_fitschan_read.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs \
+        crates/starlink-ast/tests/test_fitschan_read.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: Epoch falls back to EQUINOX for every sky system, not just equatorial (3 cases)"
 ```
 
@@ -4905,10 +4905,10 @@ leaves the SkyFrame's system-derived default label in place
 `store.cname[axis]` is `Some`.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs` (after the
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs` (after the
   `set_projection` call at `:276-277`, before the equinox block at `:280`)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (remove 1 exclusion entry)
-- Test: `crates/ast-core/tests/test_fitschan_read.rs`
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (remove 1 exclusion entry)
+- Test: `crates/starlink-ast/tests/test_fitschan_read.rs`
 
 **Interfaces:**
 - Consumes: `FitsStore::cname: Vec<Option<String>>`;
@@ -4919,7 +4919,7 @@ leaves the SkyFrame's system-derived default label in place
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `crates/ast-core/tests/test_fitschan_read.rs`:
+Add to `crates/starlink-ast/tests/test_fitschan_read.rs`:
 
 ```rust
 /// CNAME<i> supplies the axis Label on a celestial frame, exactly as it
@@ -5007,8 +5007,8 @@ capitalization.
 Run:
 
 ```bash
-cargo test -p ast-core --test test_fitschan_read cname -- --nocapture
-cargo test -p ast-core --test test_fitschan_read absent_cname
+cargo test -p starlink-ast --test test_fitschan_read cname -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_read absent_cname
 ```
 
 Expected: `cname_supplies_skyframe_axis_labels` FAILS on
@@ -5052,7 +5052,7 @@ line in the commit message.
 - [ ] **Step 4: Run both tests to verify they pass**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_read cname
+cargo test -p starlink-ast --test test_fitschan_read cname
 ```
 
 Expected: both PASS.
@@ -5060,7 +5060,7 @@ Expected: both PASS.
 - [ ] **Step 5: Re-measure `cname`**
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 \
   | grep -E 'cname|^test result'
 ```
 
@@ -5072,9 +5072,9 @@ appears, record it and keep the exclusion entry.
 - [ ] **Step 7: Regression sweep**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv
-cargo test -p ast-core --test 'test_fitschan*'
-cargo test -p ast-core --test test_transform_oracle head_sections
+cargo test -p starlink-ast --test test_wcsconv
+cargo test -p starlink-ast --test 'test_fitschan*'
+cargo test -p starlink-ast --test test_transform_oracle head_sections
 ```
 
 Expected: 192 passed; 66 `test_fitschan*`; `HEAD_ORACLE_EXCLUDED` still
@@ -5087,9 +5087,9 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_celestial.rs \
-        crates/ast-core/tests/test_fitschan_read.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs \
+        crates/starlink-ast/tests/test_fitschan_read.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: CNAME supplies the SkyFrame axis Label on the celestial read path (cname)"
 ```
 
@@ -5201,12 +5201,12 @@ passes and must keep passing.
    `CLASSFromStore`.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_class.rs:74` (drop the call),
+- Modify: `crates/starlink-ast/src/fitschan/enc_class.rs:74` (drop the call),
   `:327-347` (delete `translate_class_projection_read`)
-- Possibly modify: `crates/ast-core/src/fitschan/spec_trans.rs:1459-1514`
+- Possibly modify: `crates/starlink-ast/src/fitschan/spec_trans.rs:1459-1514`
   (`translate_ncp_gls` — only if step 1 shows the re-derived `prj` bites)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (remove 1 exclusion entry)
-- Create: `crates/ast-core/tests/test_fitschan_class.rs` (new file; no `test_fitschan_class.rs` exists today — the existing FitsChan tests are `test_fitschan.rs`, `test_fitschan_encodings.rs`, `test_fitschan_native_keyword.rs`, `test_fitschan_wcs.rs` and `test_fitschan_wcs_write.rs`)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (remove 1 exclusion entry)
+- Create: `crates/starlink-ast/tests/test_fitschan_class.rs` (new file; no `test_fitschan_class.rs` exists today — the existing FitsChan tests are `test_fitschan.rs`, `test_fitschan_encodings.rs`, `test_fitschan_native_keyword.rs`, `test_fitschan_wcs.rs` and `test_fitschan_wcs_write.rs`)
 
 **Interfaces:**
 - Consumes: `WcsProjection::description()` (`wcslib.rs:137`),
@@ -5223,11 +5223,11 @@ from it, for both fixtures:
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo build -p ast-core --example wcsconv_debug
+cargo build -p starlink-ast --example wcsconv_debug
 BIN=$(find target* -name 'wcsconv_debug' -type f | head -1)
 for f in class-noproj gls atf; do
   echo "=== $f"
-  "$BIN" crates/ast-core/tests/fixtures/wcsconv/inputs/$f.head native 2>&1 \
+  "$BIN" crates/starlink-ast/tests/fixtures/wcsconv/inputs/$f.head native 2>&1 \
     | grep -iE 'PROJ|ctype'
 done
 ```
@@ -5242,7 +5242,7 @@ translations' interaction and needs its own justification.
 
 - [ ] **Step 2: Write the failing test**
 
-Create `crates/ast-core/tests/test_fitschan_class.rs` with this header and
+Create `crates/starlink-ast/tests/test_fitschan_class.rs` with this header and
 these two tests:
 
 ```rust
@@ -5252,10 +5252,10 @@ these two tests:
 //! handling differs from the FITS-WCS path: a blank projection code is
 //! rewritten rather than rejected.
 
-use ast_core::AnyObject;
-use ast_core::channel::Channel;
-use ast_core::fitschan::{Encoding, FitsChan};
-use ast_core::frames::{CmpFrame, Frame, SkyFrame};
+use starlink_ast::AnyObject;
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::{Encoding, FitsChan};
+use starlink_ast::frames::{CmpFrame, Frame, SkyFrame};
 ```
 
 then:
@@ -5358,7 +5358,7 @@ components rather than assuming the SkyFrame is first keeps the helper valid
 whichever order `enc_class.rs` composes the CmpFrame in.
 
 Confirm `CmpFrame`'s component accessor names before writing `frame1()` /
-`frame2()` — `grep -n 'pub fn frame' crates/ast-core/src/frames/cmpframe.rs`.
+`frame2()` — `grep -n 'pub fn frame' crates/starlink-ast/src/frames/cmpframe.rs`.
 
 `SkyFrame::projection` (`skyframe.rs:613`) returns `Option<&str>`, hence the
 `Some(...)` on the right-hand side of both assertions — an unset Projection is
@@ -5368,7 +5368,7 @@ distinguishing when a test fails.
 - [ ] **Step 3: Run both tests to verify the first fails**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_class gls -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_class gls -- --nocapture
 ```
 
 Expected: `blank_class_projection_keeps_the_gls_description` FAILS with
@@ -5378,7 +5378,7 @@ that the fix does not break the explicit-GLS side.
 
 - [ ] **Step 4: Delete the read-side CLASS projection translation**
 
-In `crates/ast-core/src/fitschan/enc_class.rs`, change `:72-75` from:
+In `crates/starlink-ast/src/fitschan/enc_class.rs`, change `:72-75` from:
 
 ```rust
         // CTYPE — translate CLASS-specific projection codes
@@ -5408,7 +5408,7 @@ and delete the `translate_class_projection_read` function
 - [ ] **Step 5: Run both tests to verify they pass**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_class gls
+cargo test -p starlink-ast --test test_fitschan_class gls
 ```
 
 Expected: both PASS. If `explicit_gls_projection_becomes_sfl` now fails,
@@ -5420,7 +5420,7 @@ fitschan.c:31251-31274.
 - [ ] **Step 6: Re-measure `class-noproj`, and check the two projection fixtures**
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 \
   | grep -E 'class-noproj|class_noproj|gls_native|atf_native|^test result'
 ```
 
@@ -5435,9 +5435,9 @@ deleted function was also handling.
 - [ ] **Step 8: Regression sweep**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv
-cargo test -p ast-core --test 'test_fitschan*'
-cargo test -p ast-core --test test_transform_oracle head_sections
+cargo test -p starlink-ast --test test_wcsconv
+cargo test -p starlink-ast --test 'test_fitschan*'
+cargo test -p starlink-ast --test test_transform_oracle head_sections
 ```
 
 Expected: 192 passed; 66 `test_fitschan*`; `HEAD_ORACLE_EXCLUDED` still
@@ -5451,10 +5451,10 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/enc_class.rs \
-        crates/ast-core/src/fitschan/spec_trans.rs \
-        crates/ast-core/tests/test_fitschan_class.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/enc_class.rs \
+        crates/starlink-ast/src/fitschan/spec_trans.rs \
+        crates/starlink-ast/tests/test_fitschan_class.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: let SpecTrans own the CLASS projection rewrite so a blank code keeps the GLS description (class-noproj)"
 ```
 
@@ -5528,7 +5528,7 @@ block in every expected `.native` file carries an active `SYSTEM` card —
 there is not one exception in 139 files:
 
 ```bash
-cd crates/ast-core/tests/fixtures/wcsconv/expected
+cd crates/starlink-ast/tests/fixtures/wcsconv/expected
 awk '/^BEGAST[A-Z_]*= .SkyFrame/{inblk=1;sys=0}
      inblk&&/^SYSTEM[A-Z_0-9]*=/{sys=1}
      /^ENDAST[A-Z_]*= .SkyFrame/{if(inblk&&!sys)print FILENAME" NR="NR; inblk=0}' *.native
@@ -5596,10 +5596,10 @@ So no write-path change is expected — but the five ICRS fixtures have
 `fits-wcs` rows as well as `native` rows, and those rows are the guard.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:215`
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (remove 3 exclusion
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs:215`
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (remove 3 exclusion
   entries: `origin_native`, `sip-alt_native`, `alt-spectral_native`)
-- Test: `crates/ast-core/tests/test_fitschan_read.rs`
+- Test: `crates/starlink-ast/tests/test_fitschan_read.rs`
 
 **Interfaces:**
 - Consumes: `SkyFrame::new(system: SkySystem) -> SkyFrame`
@@ -5612,7 +5612,7 @@ So no write-path change is expected — but the five ICRS fixtures have
 - [ ] **Step 1: Confirm the corpus-wide invariant before writing code**
 
 ```bash
-cd /sdf/home/t/timj/WORK/starlink-astrs/crates/ast-core/tests/fixtures/wcsconv/expected
+cd /sdf/home/t/timj/WORK/starlink-astrs/crates/starlink-ast/tests/fixtures/wcsconv/expected
 awk '/^BEGAST[A-Z_]*= .SkyFrame/{inblk=1;sys=0}
      inblk&&/^SYSTEM[A-Z_0-9]*=/{sys=1}
      /^ENDAST[A-Z_]*= .SkyFrame/{if(inblk&&!sys)print FILENAME" NR="NR; inblk=0}' *.native
@@ -5627,7 +5627,7 @@ not universal and the unconditional `set_system` is the wrong fix.
 
 - [ ] **Step 2: Write the failing test**
 
-Add to `crates/ast-core/tests/test_fitschan_read.rs`:
+Add to `crates/starlink-ast/tests/test_fitschan_read.rs`:
 
 ```rust
 /// C `WcsSkyFrame` builds every SkyFrame from an explicit attribute
@@ -5725,9 +5725,9 @@ fn unset_system_still_leaves_system_unset() {
 - [ ] **Step 3: Run the tests to verify the first one fails**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_read \
+cargo test -p starlink-ast --test test_fitschan_read \
   fits_read_sets_system -- --nocapture
-cargo test -p ast-core --test test_fitschan_read unset_system_still
+cargo test -p starlink-ast --test test_fitschan_read unset_system_still
 ```
 
 Expected: `fits_read_sets_system_even_when_the_value_is_the_icrs_default`
@@ -5737,7 +5737,7 @@ FAILS on the `assert!(sky.test_system(), ...)` line;
 
 - [ ] **Step 4: Set System explicitly at the reader's construction site**
 
-In `crates/ast-core/src/fitschan/wcs_celestial.rs`, replace line 215:
+In `crates/starlink-ast/src/fitschan/wcs_celestial.rs`, replace line 215:
 
 ```rust
     let mut sky_frame = SkyFrame::new(system);
@@ -5761,9 +5761,9 @@ with:
 - [ ] **Step 5: Run the tests to verify they pass**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_read \
+cargo test -p starlink-ast --test test_fitschan_read \
   fits_read_sets_system
-cargo test -p ast-core --test test_fitschan_read unset_system_still
+cargo test -p starlink-ast --test test_fitschan_read unset_system_still
 ```
 
 Expected: all three PASS.
@@ -5772,7 +5772,7 @@ Expected: all three PASS.
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv \
   -- origin_native sip_alt_native alt_spectral_native --nocapture 2>&1 \
   | grep -E "^(test |first diff|line count)" | head -40
 ```
@@ -5790,7 +5790,7 @@ The write path reads `test_system` at `fset_to_store/mod.rs:414`, so these
 are the rows that would catch a regression:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- \
+cargo test -p starlink-ast --test test_wcsconv -- \
   origin sip_alt alt_spectral axref multi_wcs --nocapture 2>&1 | tail -20
 ```
 
@@ -5802,7 +5802,7 @@ is now restoring a System it previously left alone — compare against C
 
 - [ ] **Step 8: Remove the now-passing exclusion entries**
 
-In `crates/ast-core/tests/test_wcsconv.rs`, delete the entries that step 6
+In `crates/starlink-ast/tests/test_wcsconv.rs`, delete the entries that step 6
 showed byte-exact:
 
 ```rust
@@ -5819,10 +5819,10 @@ stale text.
 - [ ] **Step 9: Regression sweep**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv
-cargo test -p ast-core --test 'test_fitschan*'
-cargo test -p ast-core --test test_transform_oracle head_sections
-cargo test -p ast-core --test test_native_roundtrip_all
+cargo test -p starlink-ast --test test_wcsconv
+cargo test -p starlink-ast --test 'test_fitschan*'
+cargo test -p starlink-ast --test test_transform_oracle head_sections
+cargo test -p starlink-ast --test test_native_roundtrip_all
 ```
 
 Expected: 192 passed; the `test_fitschan*` set green (the CLASS
@@ -5839,9 +5839,9 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_celestial.rs \
-        crates/ast-core/tests/test_fitschan_read.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs \
+        crates/starlink-ast/tests/test_fitschan_read.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: the FITS reader sets System on every SkyFrame it builds, ICRS included (origin, sip-alt)"
 ```
 
@@ -6006,11 +6006,11 @@ every case in this corpus has a single unclassified axis, so the join is
 only ever exercised in its one-element form. Port it as a join.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs:826-843`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs:826-843`
   (`seed_linear_frame`)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (remove 2 exclusion
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (remove 2 exclusion
   entries: `unknown-spec_native`, `axes-swap_native`)
-- Test: `crates/ast-core/tests/test_fitschan_read.rs`
+- Test: `crates/starlink-ast/tests/test_fitschan_read.rs`
 
 **Interfaces:**
 - Consumes: `BasicFrameBuilder::domain(self, domain: &str) -> Self`
@@ -6022,7 +6022,7 @@ only ever exercised in its one-element form. Port it as a join.
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `crates/ast-core/tests/test_fitschan_read.rs`:
+Add to `crates/starlink-ast/tests/test_fitschan_read.rs`:
 
 ```rust
 /// C `WcsOthers` gives the leftover plain Frame a Domain built from the
@@ -6135,7 +6135,7 @@ CDELT1  =                  0.1
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_read \
+cargo test -p starlink-ast --test test_fitschan_read \
   -- unclassified_axis_domain no_ctype_leaves two_unclassified log_suffix \
   --nocapture
 ```
@@ -6148,7 +6148,7 @@ PASSES already (we never set a Domain at all).
 
 - [ ] **Step 3: Add the `newdom` builder**
 
-In `crates/ast-core/src/fitschan/wcs_read.rs`, above `seed_linear_frame`:
+In `crates/starlink-ast/src/fitschan/wcs_read.rs`, above `seed_linear_frame`:
 
 ```rust
 /// Build the Domain for the Frame holding the axes no class stage claimed.
@@ -6197,7 +6197,7 @@ In `seed_linear_frame`, after the per-axis loop and before `build()`:
 - [ ] **Step 5: Run the tests to verify they pass**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_read \
+cargo test -p starlink-ast --test test_fitschan_read \
   -- unclassified_axis_domain no_ctype_leaves two_unclassified log_suffix
 ```
 
@@ -6206,7 +6206,7 @@ Expected: all four PASS.
 - [ ] **Step 6: Re-measure the two target cases**
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv \
   -- unknown_spec_native axes_swap_native --nocapture 2>&1 \
   | grep -E "^(test |first diff|line count)" | head -20
 ```
@@ -6217,7 +6217,7 @@ that in the output rather than assuming it:
 
 ```bash
 grep -n "SKY-SPECTRUM" \
-  crates/ast-core/tests/fixtures/wcsconv/expected/axes-swap.native
+  crates/starlink-ast/tests/fixtures/wcsconv/expected/axes-swap.native
 ```
 
 - [ ] **Step 7: Confirm no WCSNAME leaks into the AIPS pixel outputs**
@@ -6232,14 +6232,14 @@ contain no WCSNAME code) or in Rust (`enc_aips.rs` has its own
 mentions it). Verify rather than trust:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- \
+cargo test -p starlink-ast --test test_wcsconv -- \
   pixel_1d pixel_2d pixel_rotated pixel_shear freq_pixel3d --nocapture 2>&1 \
   | tail -20
 grep -c WCSNAME \
-  crates/ast-core/tests/fixtures/wcsconv/expected/pixel-2d.fits-aips \
-  crates/ast-core/tests/fixtures/wcsconv/expected/pixel-2d.fits-aips++ \
-  crates/ast-core/tests/fixtures/wcsconv/expected/pixel-1d.fits-aips \
-  crates/ast-core/tests/fixtures/wcsconv/expected/freq-pixel3d.fits-aips
+  crates/starlink-ast/tests/fixtures/wcsconv/expected/pixel-2d.fits-aips \
+  crates/starlink-ast/tests/fixtures/wcsconv/expected/pixel-2d.fits-aips++ \
+  crates/starlink-ast/tests/fixtures/wcsconv/expected/pixel-1d.fits-aips \
+  crates/starlink-ast/tests/fixtures/wcsconv/expected/freq-pixel3d.fits-aips
 ```
 
 Expected: all rows pass, and every `grep -c` reports `0`. If a WCSNAME card
@@ -6249,7 +6249,7 @@ Domain.
 
 - [ ] **Step 8: Remove the now-passing exclusion entries**
 
-In `crates/ast-core/tests/test_wcsconv.rs`, delete:
+In `crates/starlink-ast/tests/test_wcsconv.rs`, delete:
 
 ```rust
     ("unknown-spec_native", "DOMAIN_B: domain"),
@@ -6259,11 +6259,11 @@ In `crates/ast-core/tests/test_wcsconv.rs`, delete:
 - [ ] **Step 9: Regression sweep**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv
-cargo test -p ast-core --test 'test_fitschan*'
-cargo test -p ast-core --test test_transform_oracle head_sections
-cargo test -p ast-core --test test_native_roundtrip_all
-cargo test -p ast-core --test test_simplify_regression
+cargo test -p starlink-ast --test test_wcsconv
+cargo test -p starlink-ast --test 'test_fitschan*'
+cargo test -p starlink-ast --test test_transform_oracle head_sections
+cargo test -p starlink-ast --test test_native_roundtrip_all
+cargo test -p starlink-ast --test test_simplify_regression
 ```
 
 Expected: 192 passed; `test_fitschan*` green; `HEAD_ORACLE_EXCLUDED` still
@@ -6279,9 +6279,9 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_read.rs \
-        crates/ast-core/tests/test_fitschan_read.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/wcs_read.rs \
+        crates/starlink-ast/tests/test_fitschan_read.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: build the leftover Frame's Domain from unclassified CTYPEs like C WcsOthers (unknown-spec, axes-swap)"
 ```
 
@@ -6583,13 +6583,13 @@ CTYPE projection and `carlin` unset must still take the linear branch.
    describe the gate once it exists.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs` — `car_lin: bool` field beside `sip_replace` (`:107`), both defaults (`:125`, `:143`), `set_car_lin` beside `set_sip_replace` (`:471-473`), and `primary.car_lin` / alts-loop assignment at the three arms that set store flags (`:689/691`, `:709/711`, `:723/725`)
-- Modify: `crates/ast-core/src/fitschan/fits_store.rs` — `pub car_lin: bool` beside `sip_replace` (`:26`) and its `false` initializer (`:156`)
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs` — `spec_trans` / `spec_trans_inplace` take `car_lin`; `translate_msx_car` gated on `!car_lin`; the doc comment at `:1057-1065` rewritten
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs:592-741` — the linear-CAR branch in `build_iwc_to_sky_mapping`
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` — honor `carlin` in `load_input` (`:240-265`), drop the `// carlin, sipok -- not yet supported.` note at `:303`, delete the `car1_native` / `car2_native` / `car4_native` entries from `NATIVE_READ_EXCLUDED` (`:83-85`)
-- Modify: `crates/ast-core/examples/wcsconv_debug.rs:21-29` — honor `carlin` so the re-measure step can reproduce a case by hand
-- Test: `crates/ast-core/tests/test_fitschan_wcs.rs` (new tests beside `sip_read_sipreplace_off_keeps_supplied_inverse`, `:331`)
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs` — `car_lin: bool` field beside `sip_replace` (`:107`), both defaults (`:125`, `:143`), `set_car_lin` beside `set_sip_replace` (`:471-473`), and `primary.car_lin` / alts-loop assignment at the three arms that set store flags (`:689/691`, `:709/711`, `:723/725`)
+- Modify: `crates/starlink-ast/src/fitschan/fits_store.rs` — `pub car_lin: bool` beside `sip_replace` (`:26`) and its `false` initializer (`:156`)
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs` — `spec_trans` / `spec_trans_inplace` take `car_lin`; `translate_msx_car` gated on `!car_lin`; the doc comment at `:1057-1065` rewritten
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs:592-741` — the linear-CAR branch in `build_iwc_to_sky_mapping`
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` — honor `carlin` in `load_input` (`:240-265`), drop the `// carlin, sipok -- not yet supported.` note at `:303`, delete the `car1_native` / `car2_native` / `car4_native` entries from `NATIVE_READ_EXCLUDED` (`:83-85`)
+- Modify: `crates/starlink-ast/examples/wcsconv_debug.rs:21-29` — honor `carlin` so the re-measure step can reproduce a case by hand
+- Test: `crates/starlink-ast/tests/test_fitschan_wcs.rs` (new tests beside `sip_read_sipreplace_off_keeps_supplied_inverse`, `:331`)
 
 **Interfaces:**
 - Consumes: `WcsMap::new(ncoord, WcsProjection::Unknown, lonax, latax)` (`wcsmap.rs:125`, whose `Unknown` early-return at `:156-176` is exactly C's `astWcsMap(naxes, AST__WCSBAD, …)`); `WcsMap::simplified` (`:699`, which collapses `Unknown` to `UnitMap`); `WinMap::from_corners` (`winmap.rs:82`); `CmpMap::new` + `Composition::Series`; `FitsStore::crval`.
@@ -6645,9 +6645,9 @@ get the wrong one.
 
 - [ ] **Step 1: Write the failing test — the linear-CAR mapping is one WinMap**
 
-Append to `crates/ast-core/tests/test_fitschan_wcs.rs`. The file's existing
+Append to `crates/starlink-ast/tests/test_fitschan_wcs.rs`. The file's existing
 imports (`:1-10`) already cover `AnyObject`, `FitsChan`, `FrameRef` and
-`Frame`; add `ast_core::mappings::WinMap` and `ast_core::to_native_string` at
+`Frame`; add `starlink_ast::mappings::WinMap` and `starlink_ast::to_native_string` at
 the top of the test body rather than the file header, matching
 `render_mapping`'s local-import style in `test_simplify_regression.rs:1149`.
 
@@ -6659,7 +6659,7 @@ fn carlin_car_header_yields_a_single_winmap() {
     // WcsNative. The unknown-projection WcsMap collapses to a UnitMap on
     // simplify, so the whole pixel-to-sky chain reduces to one WinMap with
     // scale = CDELT*d2r and shift = CRVAL*d2r - CRPIX*CDELT*d2r.
-    use ast_core::mappings::WinMap;
+    use starlink_ast::mappings::WinMap;
 
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -6685,8 +6685,8 @@ fn carlin_car_header_yields_a_single_winmap() {
 
     // Transform the reference pixel: it must land on CRVAL in radians.
     let d2r = std::f64::consts::PI / 180.0;
-    let pix = ast_core::coords::PointSet::from_columns(&[&[1.0_f64], &[1.0_f64]]).unwrap();
-    let sky = ast_core::mappings::Mapping::transform(win, &pix, true).unwrap();
+    let pix = starlink_ast::coords::PointSet::from_columns(&[&[1.0_f64], &[1.0_f64]]).unwrap();
+    let sky = starlink_ast::mappings::Mapping::transform(win, &pix, true).unwrap();
     assert!(
         (sky.point(0)[0] - 185.0 * d2r).abs() < 1e-12,
         "lon at CRPIX: got {}, want {}",
@@ -6701,8 +6701,8 @@ fn carlin_car_header_yields_a_single_winmap() {
     );
 
     // One pixel along each axis must move by exactly CDELT*d2r.
-    let pix2 = ast_core::coords::PointSet::from_columns(&[&[2.0_f64], &[2.0_f64]]).unwrap();
-    let sky2 = ast_core::mappings::Mapping::transform(win, &pix2, true).unwrap();
+    let pix2 = starlink_ast::coords::PointSet::from_columns(&[&[2.0_f64], &[2.0_f64]]).unwrap();
+    let sky2 = starlink_ast::mappings::Mapping::transform(win, &pix2, true).unwrap();
     assert!(
         (sky2.point(0)[0] - sky.point(0)[0] - -0.125 * d2r).abs() < 1e-15,
         "lon step: got {}",
@@ -6736,7 +6736,7 @@ fn carlin_off_car_header_keeps_the_spherical_projection() {
         .mapping(FrameRef::Base, FrameRef::Current)
         .expect("base-to-current mapping");
     assert!(
-        map.as_any().downcast_ref::<ast_core::mappings::WinMap>().is_none(),
+        map.as_any().downcast_ref::<starlink_ast::mappings::WinMap>().is_none(),
         "CarLin off must not collapse to a bare WinMap"
     );
 }
@@ -6746,7 +6746,7 @@ fn carlin_keeps_the_cartesian_projection_description() {
     // C passes the real `prj` (AST__CAR) to WcsSkyFrame (fitschan.c:36206),
     // not the AST__WCSBAD substitute given to astWcsMap, so the SkyFrame's
     // Projection is still "Cartesian".
-    use ast_core::frames::SkyFrame;
+    use starlink_ast::frames::SkyFrame;
 
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -6772,7 +6772,7 @@ fn carlin_keeps_the_cartesian_projection_description() {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_wcs carlin
+cargo test -p starlink-ast --test test_fitschan_wcs carlin
 ```
 
 Expected: all three FAIL to compile — `set_car_lin` does not exist.
@@ -6781,7 +6781,7 @@ method.
 
 - [ ] **Step 3: Add the `CarLin` attribute to `FitsChan` and `FitsStore`**
 
-In `crates/ast-core/src/fitschan/mod.rs`, beside `sip_replace` at `:107`:
+In `crates/starlink-ast/src/fitschan/mod.rs`, beside `sip_replace` at `:107`:
 
 ```rust
     car_lin: bool,
@@ -6809,7 +6809,7 @@ C's internal `carlin` is tri-state (`-1` = unset) only so `astTestCarLin` can
 tell "unset" from "set to 0"; nothing in the library reads that test, so a
 `bool` is a complete port. Do not add an `Option<bool>`.
 
-In `crates/ast-core/src/fitschan/fits_store.rs`, beside `sip_replace` at
+In `crates/starlink-ast/src/fitschan/fits_store.rs`, beside `sip_replace` at
 `:26`:
 
 ```rust
@@ -6839,7 +6839,7 @@ own fixtures.
 - [ ] **Step 4: Thread `car_lin` through `spec_trans` and gate the MSX wrap**
 
 Change both entry points in
-`crates/ast-core/src/fitschan/spec_trans.rs:40` and `:49`:
+`crates/starlink-ast/src/fitschan/spec_trans.rs:40` and `:49`:
 
 ```rust
 pub(crate) fn spec_trans(cards: &CardList, encoding: Encoding, car_lin: bool) -> CardList {
@@ -6923,14 +6923,14 @@ its existing assertions with `false` threaded through:
 - [ ] **Step 6: Run it to see the gate test fail, then pass**
 
 ```bash
-cargo test -p ast-core --lib fitschan::spec_trans::tests::carlin_suppresses_the_msx_car_wrap
+cargo test -p starlink-ast --lib fitschan::spec_trans::tests::carlin_suppresses_the_msx_car_wrap
 ```
 
 Expected before Step 4: compile failure (arity). After Step 4: PASS.
 Run the whole module to catch a threading mistake:
 
 ```bash
-cargo test -p ast-core --lib fitschan::spec_trans
+cargo test -p starlink-ast --lib fitschan::spec_trans
 ```
 
 - [ ] **Step 7: Port C's linear-CAR branch in `wcs_celestial.rs`**
@@ -7015,7 +7015,7 @@ clone at `:634`, insert:
 ```
 
 The `proj` binding the condition reads is `WcsMap::projection()`
-(`crates/ast-core/src/mappings/wcsmap.rs:256`), whose signature is
+(`crates/starlink-ast/src/mappings/wcsmap.rs:256`), whose signature is
 
 ```rust
     pub fn projection(&self) -> WcsProjection
@@ -7089,7 +7089,7 @@ mutate the FitsChan's `CarLin`.
 - [ ] **Step 9: Run the tests to verify they pass**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_wcs carlin
+cargo test -p starlink-ast --test test_fitschan_wcs carlin
 ```
 
 Expected: `carlin_car_header_yields_a_single_winmap`,
@@ -7098,7 +7098,7 @@ Expected: `carlin_car_header_yields_a_single_winmap`,
 
 - [ ] **Step 10: Honor `carlin` in the harness and the debug example**
 
-`crates/ast-core/tests/test_wcsconv.rs`, in `load_input`'s attribute loop
+`crates/starlink-ast/tests/test_wcsconv.rs`, in `load_input`'s attribute loop
 (`:250-258`):
 
 ```rust
@@ -7115,13 +7115,13 @@ Expected: `carlin_car_header_yields_a_single_winmap`,
 Delete `carlin` from the `// carlin, sipok -- not yet supported.` note at
 `:303`, leaving `sipok`.
 
-Mirror the same match in `crates/ast-core/examples/wcsconv_debug.rs:21-29`,
+Mirror the same match in `crates/starlink-ast/examples/wcsconv_debug.rs:21-29`,
 so a case can be reproduced by hand during the re-measure step.
 
 - [ ] **Step 11: Re-measure the three cases**
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 \
   | grep -E "car1_native|car2_native|car4_native"
 ```
 
@@ -7145,11 +7145,11 @@ Delete from `NATIVE_READ_EXCLUDED` (`test_wcsconv.rs:83-85`):
 This changes what the reader builds, so the transform oracle is in scope:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv
-cargo test -p ast-core --test 'test_fitschan*'
-cargo test -p ast-core --test test_simplify_regression
-cargo test -p ast-core
+cargo test -p starlink-ast --test test_wcsconv
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv
+cargo test -p starlink-ast --test 'test_fitschan*'
+cargo test -p starlink-ast --test test_simplify_regression
+cargo test -p starlink-ast
 ```
 
 `HEAD_ORACLE_EXCLUDED` is empty and must stay empty. The Phase 4
@@ -7164,13 +7164,13 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/mod.rs \
-        crates/ast-core/src/fitschan/fits_store.rs \
-        crates/ast-core/src/fitschan/spec_trans.rs \
-        crates/ast-core/src/fitschan/wcs_celestial.rs \
-        crates/ast-core/tests/test_fitschan_wcs.rs \
-        crates/ast-core/tests/test_wcsconv.rs \
-        crates/ast-core/examples/wcsconv_debug.rs
+git add crates/starlink-ast/src/fitschan/mod.rs \
+        crates/starlink-ast/src/fitschan/fits_store.rs \
+        crates/starlink-ast/src/fitschan/spec_trans.rs \
+        crates/starlink-ast/src/fitschan/wcs_celestial.rs \
+        crates/starlink-ast/tests/test_fitschan_wcs.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs \
+        crates/starlink-ast/examples/wcsconv_debug.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: port the CarLin attribute and C's linear-CAR read branch (car1, car2, car4)"
 ```
 
@@ -7311,13 +7311,13 @@ The warning text has to reach the *original* chan, not the `SpecTrans` copy
 out-parameter down to it — see "Where the warning must land" under Step 3.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs:592-673` (`get_used_poly_tan`: `warnings` out-parameter, two `warnings.push` calls, two stale comments removed)
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs:686-716` (`translate_tpv_and_polytan_to_tpn`: same out-parameter, passed through)
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs:40-49` (`spec_trans` / `spec_trans_inplace`: same out-parameter)
-- Modify: `crates/ast-core/src/fitschan/mod.rs` (push the returned warnings alongside the celestial ones)
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs:606`, `:649` (two `spec_trans_inplace` callers pass a discarded `Vec`)
-- Modify: `crates/ast-core/tests/test_wcsconv.rs` (delete the `tan-zeropv_native` entry, `:119`)
-- Test: `crates/ast-core/tests/test_fitschan_astwarn.rs` (created by Task 11 sub-fix B)
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs:592-673` (`get_used_poly_tan`: `warnings` out-parameter, two `warnings.push` calls, two stale comments removed)
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs:686-716` (`translate_tpv_and_polytan_to_tpn`: same out-parameter, passed through)
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs:40-49` (`spec_trans` / `spec_trans_inplace`: same out-parameter)
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs` (push the returned warnings alongside the celestial ones)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs:606`, `:649` (two `spec_trans_inplace` callers pass a discarded `Vec`)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs` (delete the `tan-zeropv_native` entry, `:119`)
+- Test: `crates/starlink-ast/tests/test_fitschan_astwarn.rs` (created by Task 11 sub-fix B)
 
 **Interfaces:**
 - Consumes: `CardList::push_astwarn` (Task 11 sub-fix A), `CardList::delete`, `WcsMap::pv_max` and the `set_pv` rejection warning (Task 11 sub-fix C), `spec_trans`'s signature as Task 13 sub-fix A left it (`car_lin` already added).
@@ -7325,7 +7325,7 @@ out-parameter down to it — see "Where the warning must land" under Step 3.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `crates/ast-core/tests/test_fitschan_astwarn.rs`:
+Append to `crates/starlink-ast/tests/test_fitschan_astwarn.rs`:
 
 ```rust
 #[test]
@@ -7394,7 +7394,7 @@ fixtures are C-generated ground truth and must not be modified.
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_astwarn zero
+cargo test -p starlink-ast --test test_fitschan_astwarn zero
 ```
 
 Expected: `all_zero_longitude_pv_warns_and_demotes_to_plain_tan` and
@@ -7407,7 +7407,7 @@ card is produced, so `warns` is empty.
 under "Where the warning must land" below before editing the two stub bodies,
 so the function compiles as you go.
 
-In `crates/ast-core/src/fitschan/spec_trans.rs`, replace the latitude stub
+In `crates/starlink-ast/src/fitschan/spec_trans.rs`, replace the latitude stub
 (`:641-644`):
 
 ```rust
@@ -7543,7 +7543,7 @@ from `trans`. Only the warning crosses back.
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_astwarn zero
+cargo test -p starlink-ast --test test_fitschan_astwarn zero
 ```
 
 Expected: both PASS.
@@ -7551,7 +7551,7 @@ Expected: both PASS.
 - [ ] **Step 5: Re-measure**
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 \
   | grep tan-zeropv
 ```
 
@@ -7573,10 +7573,10 @@ Delete from `NATIVE_READ_EXCLUDED` (`test_wcsconv.rs:119`):
 - [ ] **Step 7: Regression sweep**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv
-cargo test -p ast-core --test 'test_fitschan*'
-cargo test -p ast-core
+cargo test -p starlink-ast --test test_wcsconv
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv
+cargo test -p starlink-ast --test 'test_fitschan*'
+cargo test -p starlink-ast
 ```
 
 - [ ] **Step 8: Commit**
@@ -7586,9 +7586,9 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/spec_trans.rs \
-        crates/ast-core/tests/test_fitschan_astwarn.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs \
+        crates/starlink-ast/tests/test_fitschan_astwarn.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "fitschan: emit GetUsedPolyTan's badpv warnings for an all-zero PV axis (tan-zeropv)"
 ```
 
@@ -7692,7 +7692,7 @@ C has four distinct direct-merge helpers, dispatched by neighbor class
 ```
 
 The Rust side has **no `win_diag_mat` function at all** —
-`grep -n 'win_diag_mat\|WinDiagMat' crates/ast-core/src/mappings/winmap_merge.rs`
+`grep -n 'win_diag_mat\|WinDiagMat' crates/starlink-ast/src/mappings/winmap_merge.rs`
 returns three comment matches (`:23`, `:657`, `:674`) and no code.
 All four branches funnel through one generic helper,
 `merge_linear_pair` (`winmap_merge.rs:653-690`), whose only per-class
@@ -7742,10 +7742,10 @@ one narrows to a `ZoomMap` and is directly mergeable.
 That is the matrix whose `d2r` ends up in C's WinMap scales.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/winmap_merge.rs` (add the
+- Modify: `crates/starlink-ast/src/mappings/winmap_merge.rs` (add the
   `WinDiagMat` path, or fix `swap_pair`'s simplify — determined by Step 1)
-- Test: `crates/ast-core/tests/test_winmap.rs`
-- Modify: `crates/ast-core/tests/test_wcsconv.rs:143` (remove the exclusion)
+- Test: `crates/starlink-ast/tests/test_winmap.rs`
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs:143` (remove the exclusion)
 - Probe (throwaway, restored at the end):
   `reference/starlink-ast/src/cmpmap.c`
 
@@ -7785,7 +7785,7 @@ Then run the C converter over both fixtures and capture the traces:
 
 ```bash
 R=$PWD/reference/starlink-ast/build-ast
-cd crates/ast-core/tests/fixtures/wcsconv
+cd crates/starlink-ast/tests/fixtures/wcsconv
 LD_LIBRARY_PATH= <wcsconverter> inputs/serpens.head native /tmp/serpens.c.native \
   'FitsDigits=17' 2> /tmp/serpens.nom
 LD_LIBRARY_PATH= <wcsconverter> inputs/zpx.head native /tmp/zpx.c.native \
@@ -7803,7 +7803,7 @@ leaf sequence — the same pattern
 `test_winmap.rs::offdiagonal_cd_chain_fuses_deg2rad_into_the_matrixmap`
 (`test_winmap.rs:371-437`) already uses.
 
-Append to `crates/ast-core/tests/test_winmap.rs`:
+Append to `crates/starlink-ast/tests/test_winmap.rs`:
 
 ```rust
 /// A CRPIX WinMap followed by an off-diagonal CD matrix whose row norms are
@@ -7863,7 +7863,7 @@ neighboring tests in the same file use — copy them verbatim from
 - [ ] **Step 3: Run it to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_winmap nonuniform_cd_chain
+cargo test -p starlink-ast --test test_winmap nonuniform_cd_chain
 ```
 
 Expected: FAIL, with `classes` reported as `["ShiftMap", "MatrixMap", "WcsMap"]`
@@ -7887,7 +7887,7 @@ If neither candidate explains the trace, stop and record the trace in
 - [ ] **Step 5: Run both WinMap tests**
 
 ```bash
-cargo test -p ast-core --test test_winmap
+cargo test -p starlink-ast --test test_winmap
 ```
 
 Expected: PASS, including
@@ -7899,7 +7899,7 @@ wrong; go back to Step 4.
 - [ ] **Step 6: Re-measure — expect a *changed* diff, not a pass**
 
 ```bash
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 \
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 \
   | grep -A3 zpx
 ```
 
@@ -7937,11 +7937,11 @@ Expected: no output from the second command.
 widest sweep in the plan:
 
 ```bash
-cargo test -p ast-core --test test_winmap
-cargo test -p ast-core --test test_simplify_regression
-cargo test -p ast-core --test test_wcsconv
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv
-cargo test -p ast-core
+cargo test -p starlink-ast --test test_winmap
+cargo test -p starlink-ast --test test_simplify_regression
+cargo test -p starlink-ast --test test_wcsconv
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv
+cargo test -p starlink-ast
 ```
 
 Expected: the simplify regression stays at 427 passed, and the three
@@ -7954,9 +7954,9 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/mappings/winmap_merge.rs \
-        crates/ast-core/tests/test_winmap.rs \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/src/mappings/winmap_merge.rs \
+        crates/starlink-ast/tests/test_winmap.rs \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "winmap: match C's direct-merge path for a non-uniform diagonal MatrixMap (zpx)"
 ```
 
@@ -7974,7 +7974,7 @@ Twenty-four fixtures imported from upstream `ast_tester/simplify_fixtures/`
 are staged out of reach *by directory*:
 
 ```
-crates/ast-core/tests/fixtures/native/reference/simplify_fixtures_unsupported/
+crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures_unsupported/
 ├── README.md
 ├── intramap/            13 files   (IntraMap unported)
 ├── stcresourceprofile/   2 files   (StcResourceProfile unported)
@@ -7997,7 +7997,7 @@ there and no test would notice.
 separate from the 45.
 
 **A second, smaller finding.**
-`crates/ast-core/tests/fixtures/wcsconv/inputs/offset-sref.head` is one of the
+`crates/starlink-ast/tests/fixtures/wcsconv/inputs/offset-sref.head` is one of the
 132 C `ast_tester` `.head` fixtures.
 It has no row in `wcsconv_tests.txt` and no `expected/offset-sref.native`.
 Its only consumer is `fixtures/oracle/headers.oracle:3410,3436`, read by
@@ -8009,10 +8009,10 @@ is exactly the shape Task 7 (U5) and Task 12 (U8) sub-fix D touch — worth
 having as a gate.
 
 **Files:**
-- Create: `crates/ast-core/tests/test_deferred_fixtures.rs`
+- Create: `crates/starlink-ast/tests/test_deferred_fixtures.rs`
 - Modify: `PLAN.md` (new section under "4. Serialization / FITS / round-trip")
-- Modify: `crates/ast-core/tests/fixtures/wcsconv/wcsconv_tests.txt` (one row)
-- Create: `crates/ast-core/tests/fixtures/wcsconv/expected/offset-sref.native`
+- Modify: `crates/starlink-ast/tests/fixtures/wcsconv/wcsconv_tests.txt` (one row)
+- Create: `crates/starlink-ast/tests/fixtures/wcsconv/expected/offset-sref.native`
   (generated by the C converter, not hand-written)
 
 **Interfaces:**
@@ -8022,7 +8022,7 @@ having as a gate.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `crates/ast-core/tests/test_deferred_fixtures.rs`:
+Create `crates/starlink-ast/tests/test_deferred_fixtures.rs`:
 
 ```rust
 //! Registry for simplify fixtures staged out of reach because they
@@ -8108,7 +8108,7 @@ fn deferred_fixtures_are_all_registered() {
 - [ ] **Step 2: Run it to verify it passes, and that the count prints**
 
 ```bash
-cargo test -p ast-core --test test_deferred_fixtures -- --nocapture
+cargo test -p starlink-ast --test test_deferred_fixtures -- --nocapture
 ```
 
 Expected: PASS, with the summary lines visible:
@@ -8125,16 +8125,16 @@ deferred simplify fixtures: 24 files across 3 unported classes
 The test's value is the failure it produces, so prove it:
 
 ```bash
-mkdir crates/ast-core/tests/fixtures/native/reference/simplify_fixtures_unsupported/probe
-cargo test -p ast-core --test test_deferred_fixtures
+mkdir crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures_unsupported/probe
+cargo test -p starlink-ast --test test_deferred_fixtures
 ```
 
 Expected: FAIL, naming `probe` in the assertion message.
 Then remove it and confirm green again:
 
 ```bash
-rmdir crates/ast-core/tests/fixtures/native/reference/simplify_fixtures_unsupported/probe
-cargo test -p ast-core --test test_deferred_fixtures
+rmdir crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures_unsupported/probe
+cargo test -p starlink-ast --test test_deferred_fixtures
 ```
 
 - [ ] **Step 4: Add the `PLAN.md` section**
@@ -8146,9 +8146,9 @@ Insert after the `fset_to_store` row's `-TAB` blocker paragraph in section 4
 ### Deferred C-oracle simplify fixtures
 
 Twenty-four fixtures from upstream `ast_tester/simplify_fixtures/` are staged
-in `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures_unsupported/`
+in `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures_unsupported/`
 because they exercise classes the port has not implemented. They are counted
-and enforced by `crates/ast-core/tests/test_deferred_fixtures.rs`, which fails
+and enforced by `crates/starlink-ast/tests/test_deferred_fixtures.rs`, which fails
 if a subdirectory is added without a matching `DEFERRED_CLASSES` row.
 
 | Subdirectory | Unported class | Files | Blocks |
@@ -8166,7 +8166,7 @@ Confirm the case counts against the fixture names before committing —
 a negative control:
 
 ```bash
-ls crates/ast-core/tests/fixtures/native/reference/simplify_fixtures_unsupported/*/
+ls crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures_unsupported/*/
 ```
 
 - [ ] **Step 5: Commit the registry**
@@ -8176,7 +8176,7 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/tests/test_deferred_fixtures.rs PLAN.md
+git add crates/starlink-ast/tests/test_deferred_fixtures.rs PLAN.md
 git -c core.hooksPath=/dev/null commit -m "tests: count and enforce the 24 deferred simplify fixtures"
 ```
 
@@ -8188,7 +8188,7 @@ Build the reference library with cmake (never autotools) and run its
 
 ```bash
 cmake --build reference/starlink-ast/build-ast -j8
-cd crates/ast-core/tests/fixtures/wcsconv
+cd crates/starlink-ast/tests/fixtures/wcsconv
 LD_LIBRARY_PATH= <path-to-wcsconverter> \
   inputs/offset-sref.head native expected/offset-sref.native 'FitsDigits=17'
 head -20 expected/offset-sref.native
@@ -8200,7 +8200,7 @@ the ≤4-ULP comparator has nothing to compare.
 
 - [ ] **Step 7: Add the manifest row**
 
-Append to `crates/ast-core/tests/fixtures/wcsconv/wcsconv_tests.txt`, matching
+Append to `crates/starlink-ast/tests/fixtures/wcsconv/wcsconv_tests.txt`, matching
 the surrounding column alignment:
 
 ```
@@ -8210,7 +8210,7 @@ offset-sref_native  | offset-sref.head                | offset-sref.native | nat
 - [ ] **Step 8: Run it and record the outcome honestly**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -20
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -20
 ```
 
 The corpus goes from 192 to 193 cases.
@@ -8231,9 +8231,9 @@ regenerating the expected file to match our output.
 - [ ] **Step 9: Commit the new case**
 
 ```bash
-git add crates/ast-core/tests/fixtures/wcsconv/expected/offset-sref.native \
-        crates/ast-core/tests/fixtures/wcsconv/wcsconv_tests.txt \
-        crates/ast-core/tests/test_wcsconv.rs
+git add crates/starlink-ast/tests/fixtures/wcsconv/expected/offset-sref.native \
+        crates/starlink-ast/tests/fixtures/wcsconv/wcsconv_tests.txt \
+        crates/starlink-ast/tests/test_wcsconv.rs
 git -c core.hooksPath=/dev/null commit -m "tests: exercise the imported offset-sref.head wcsconv fixture"
 ```
 
@@ -8263,7 +8263,7 @@ Over an empty list that gate is vacuous — it iterates nothing — which is
 correct and is why it is not the proof.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_wcsconv.rs:63-146` (`NATIVE_READ_EXCLUDED` → empty slice; doc comment rewritten)
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs:63-146` (`NATIVE_READ_EXCLUDED` → empty slice; doc comment rewritten)
 - Modify: `PLAN.md` (FitsChan row in section 4)
 
 **Interfaces:**
@@ -8274,7 +8274,7 @@ correct and is why it is not the proof.
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-grep -c '^    (' crates/ast-core/tests/test_wcsconv.rs
+grep -c '^    (' crates/starlink-ast/tests/test_wcsconv.rs
 ```
 
 Expected: `0` — but the grep also matches the multi-line entries' opening
@@ -8323,8 +8323,8 @@ whether or not the list has entries, and the `native_excluded` computation at
 - [ ] **Step 3: Run both ways and compare the counts**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
-WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
+WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -3
 ```
 
 Expected: both report `194 passed; 0 failed` — the 192 generated cases from the
@@ -8363,7 +8363,7 @@ comparison.
 
 ```bash
 git submodule update --init reference/starlink-ast
-cargo test -p ast-core --test test_transform_oracle -- --ignored 2>&1 | tail -20
+cargo test -p starlink-ast --test test_transform_oracle -- --ignored 2>&1 | tail -20
 ```
 
 `HEAD_ORACLE_EXCLUDED` is an empty slice today and must still be empty.
@@ -8389,7 +8389,7 @@ cargo fmt --all
 CARGO_TARGET_DIR=target-clippy RUSTC=$HOME/.cargo/bin/rustc \
   PATH=$HOME/.cargo/bin:$PATH \
   cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/tests/test_wcsconv.rs PLAN.md
+git add crates/starlink-ast/tests/test_wcsconv.rs PLAN.md
 git -c core.hooksPath=/dev/null commit -m "tests: every wcsconv case is compared — NATIVE_READ_EXCLUDED is empty
 
 194 passed / 0 failed both with and without WCSCONV_NO_EXCLUDE=1; the

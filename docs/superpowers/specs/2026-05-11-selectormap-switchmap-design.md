@@ -249,12 +249,12 @@ Copy from `reference/starlink-ast/ast_tester/simplify_fixtures/`:
 ## File Layout
 
 ```
-crates/ast-core/src/mappings/
+crates/starlink-ast/src/mappings/
 ├── selectormap.rs          # SelectorMap struct, builder, Mapping impl
 ├── switchmap.rs            # SwitchMap struct, Mapping impl
 └── mod.rs                  # Add pub mod + re-exports
 
-crates/ast-core/tests/
+crates/starlink-ast/tests/
 ├── switchmap.rs            # Integration test (ported from C)
 └── fixtures/
     ├── selectormap_inverse_cancel.map

@@ -17,8 +17,8 @@ use std::path::Path;
 use ast_bench::c_engine::{CEngine, Variant};
 use ast_bench::load::{Loaded, load_fixture};
 use ast_bench::oracle::{CORE_FIXTURES, CORE_ORACLES, parse_oracle};
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
 
 /// C moves the PointList's own uncertainty Region to each list point and
 /// back again, and rebuilds its Box cache after each move; the port moves a
@@ -306,12 +306,12 @@ fn run_survey() -> Survey {
                 errors.push(format!("{k}: rust transform: {e}"));
                 continue;
             }
-            ast_core::call_counts::reset();
+            starlink_ast::call_counts::reset();
             if let Err(e) = map.transform_into(pts.as_points(), s.forward, out.as_points_mut()) {
                 errors.push(format!("{k}: rust transform: {e}"));
                 continue;
             }
-            let rust = ast_core::call_counts::snapshot();
+            let rust = starlink_ast::call_counts::snapshot();
 
             let cm = match c.load(root, &s.relpath) {
                 Ok(m) => m,

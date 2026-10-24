@@ -4,9 +4,9 @@
  * FluxFrame in FLXDN, which reads SpecVal in the same units
  * (fluxframe.c:1235 GetDensitySystem).
  *
- * Prints Rust source for crates/ast-core/tests/flux_unit_system_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/flux_unit_system_oracle/cases.rs:
  *
- *   ./flux_unit_system_probe > ../../crates/ast-core/tests/flux_unit_system_oracle/cases.rs
+ *   ./flux_unit_system_probe > ../../crates/starlink-ast/tests/flux_unit_system_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

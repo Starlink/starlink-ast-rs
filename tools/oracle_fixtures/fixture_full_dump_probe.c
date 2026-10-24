@@ -6,8 +6,8 @@
  * in full (frame.c Dump).
  *
  * With no argument, prints Rust source for
- * crates/ast-core/tests/fixture_full_dump_oracle/cases.rs, run from
- * crates/ast-core/tests/fixtures, giving for each fixture that reads
+ * crates/starlink-ast/tests/fixture_full_dump_oracle/cases.rs, run from
+ * crates/starlink-ast/tests/fixtures, giving for each fixture that reads
  * without error the FNV-1a 64-bit hash of the text written (each line
  * followed by a newline, the Objects one after another):
  *

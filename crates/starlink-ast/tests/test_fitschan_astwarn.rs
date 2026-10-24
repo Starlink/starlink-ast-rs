@@ -1,0 +1,451 @@
+//! ASTWARN card placement on the FITS read path.
+//!
+//! C `Warn` (fitschan.c:35119) inserts its cards in front of the current
+//! card, and the current card during a read is the last `NAXIS<i>` keyword
+//! `DistortMaps` looked up (fitschan.c:8903-8907) — the only read on that
+//! path that goes through `astGetFits<X>` rather than `GetValue`, and so the
+//! only one that leaves the card cursor moved.
+
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::FitsChan;
+
+/// The string value of every `ASTWARN` card, in order.
+fn astwarn_values(fc: &FitsChan) -> Vec<String> {
+    fc.to_header()
+        .unwrap()
+        .lines()
+        .filter(|l| l.starts_with("ASTWARN"))
+        .map(|l| {
+            // `KEYWORD = 'value'` — take what is between the first pair of
+            // quotes, keeping the trailing spaces C's wrapping produces.
+            let start = l.find('\'').expect("ASTWARN card holds a string") + 1;
+            let end = start + l[start..].find('\'').expect("closing quote");
+            l[start..end].to_string()
+        })
+        .collect()
+}
+
+/// The keyword of every card in the chan, in order.
+fn keywords(fc: &FitsChan) -> Vec<String> {
+    fc.to_header()
+        .unwrap()
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.chars().take(8).collect::<String>().trim().to_string())
+        .collect()
+}
+
+/// A 2-axis header with an unrecognized celestial system: the port already
+/// generates the `badcel` warning text (`wcs_celestial.rs`) for this, so it
+/// isolates card *position* from text generation. C parks its cursor on
+/// `NAXIS2` here, so the block lands between `NAXIS1` and `NAXIS2`.
+///
+/// Same shape as the `unknown-cel` fixture header
+/// (`tests/fixtures/wcsconv/inputs/unknown-cel.head`).
+const TWO_AXIS_BADCEL: &str = "\
+NAXIS1  =                  100 / length of data axis 1
+NAXIS2  =                  100 / length of data axis 2
+CTYPE1  = 'XLON-TAN'           / Unknown longitude axis
+CTYPE2  = 'XLAT-TAN'           / Unknown latitude axis
+CRVAL1  =                180.0
+CRVAL2  =                 45.0
+CRPIX1  =                 50.0
+CRPIX2  =                 50.0
+CDELT1  =                 -0.1
+CDELT2  =                  0.1
+";
+
+#[test]
+fn astwarn_block_precedes_the_last_naxis_card_for_two_axes() {
+    let mut fc = FitsChan::from_header(TWO_AXIS_BADCEL).expect("header parses");
+    let _ = fc.read().expect("read succeeds");
+    let kws = keywords(&fc);
+
+    let first_warn = kws
+        .iter()
+        .position(|k| k == "ASTWARN")
+        .unwrap_or_else(|| panic!("a badcel ASTWARN block is expected, got {kws:?}"));
+    let naxis1 = kws.iter().position(|k| k == "NAXIS1").expect("NAXIS1");
+    let naxis2 = kws.iter().position(|k| k == "NAXIS2").expect("NAXIS2");
+    assert!(
+        naxis1 < first_warn && first_warn < naxis2,
+        "ASTWARN block must sit between NAXIS1 and NAXIS2, got {kws:?}"
+    );
+}
+
+/// `projp`-shaped: `PROJP0/1/2` translate to `PV2_0/PV2_1/PV2_2`, but `-TAN`
+/// accepts only `PV2_0`. C warns once per unusable parameter, latitude axis
+/// before longitude at each index, in ascending `m` order.
+///
+/// Same shape as the `projp` fixture header
+/// (`tests/fixtures/wcsconv/inputs/projp.head`).
+const TWO_AXIS_BADPV: &str = "\
+NAXIS1  =                  512 / length of data axis 1
+NAXIS2  =                  512 / length of data axis 2
+CTYPE1  = 'RA---TAN'           / Gnomonic projection
+CTYPE2  = 'DEC--TAN'           / Gnomonic projection
+CRVAL1  =              180.000 / Reference RA (deg)
+CRVAL2  =               45.000 / Reference Dec (deg)
+CRPIX1  =              256.500 / Reference pixel on axis 1
+CRPIX2  =              256.500 / Reference pixel on axis 2
+CD1_1   =        -8.3332205E-4 / CD matrix
+CD1_2   =                  0.0 / CD matrix
+CD2_1   =                  0.0 / CD matrix
+CD2_2   =        0.00083332205 / CD matrix
+RADECSYS= 'FK5     '           / Old-style reference frame keyword
+EQUINOX =               2000.0 / Equinox
+PROJP0  =                  0.0 / Legacy projection parameter 0
+PROJP1  =                  0.0 / Legacy projection parameter 1
+PROJP2  =                  0.0 / Legacy projection parameter 2
+LONGPOLE=              180.000 / Native longitude of celestial pole
+";
+
+#[test]
+fn badpv_warning_names_each_unusable_parameter_in_ascending_order() {
+    let mut fc = FitsChan::from_header(TWO_AXIS_BADPV).expect("header parses");
+    let _ = fc.read().expect("read succeeds");
+    // Text and wrapping copied from `expected/projp.native:134-141`, including
+    // the trailing space where C's 60-character wrap breaks the line.
+    assert_eq!(
+        astwarn_values(&fc),
+        vec![
+            "        ",
+            "Projection parameter PV2_1 found, but is not used by -TAN ",
+            "projections.",
+            "        ",
+            "        ",
+            "Projection parameter PV2_2 found, but is not used by -TAN ",
+            "projections.",
+            "        ",
+        ]
+    );
+}
+
+/// `awav-a2f`-shaped: an air-wavelength axis whose algorithm code says the
+/// values are expressed as frequency. C keeps the mapping — it interprets the
+/// illegal `P` character correctly — and warns.
+///
+/// Same shape as the `awav-a2f` fixture header
+/// (`tests/fixtures/wcsconv/inputs/awav-a2f.head`).
+const ONE_AXIS_BADCTYPE: &str = "\
+SIMPLE  =                    T / Fits standard
+BITPIX  =                  -32 / Bits per pixel
+NAXIS   =                    1 / Number of dimensions
+NAXIS1  =                 1024 / Length of axis
+CTYPE1  = 'AWAV-A2F'           / Air wavelength sampled, expressed as frequency
+CRVAL1  =            5.000E-07 / Reference air wavelength (metres)
+CRPIX1  =              512.500 / Reference pixel
+CDELT1  =            1.000E-10 / Wavelength increment (metres)
+CUNIT1  = 'm       '           / Axis units
+RESTFRQ =           5.996E+14  / Rest frequency (Hz)
+SPECSYS = 'BARYCENT'           / Spectral reference frame
+";
+
+#[test]
+fn badctype_warning_names_the_legal_ctype_and_precedes_naxis1() {
+    let mut fc = FitsChan::from_header(ONE_AXIS_BADCTYPE).expect("header parses");
+    let _ = fc.read().expect("read succeeds");
+    // Text and wrapping copied from `expected/awav-a2f.native:52-55`.
+    assert_eq!(
+        astwarn_values(&fc),
+        vec![
+            "        ",
+            "The spectral CTYPE value AWAV-A2F is not legal - using ",
+            "AWAV-A2A instead.",
+            "        ",
+        ]
+    );
+
+    // A 1-axis header parks C's card cursor on NAXIS1, so the block precedes
+    // it rather than sitting between two NAXIS cards.
+    let kws = keywords(&fc);
+    let first_warn = kws.iter().position(|k| k == "ASTWARN").expect("ASTWARN");
+    let naxis1 = kws.iter().position(|k| k == "NAXIS1").expect("NAXIS1");
+    assert!(
+        first_warn < naxis1,
+        "ASTWARN block must precede NAXIS1, got {kws:?}"
+    );
+}
+
+/// The `tan-zeropv` fixture header: a `-TAN` projection carrying `PVi_m`
+/// distortion coefficients that are all zero on the longitude axis.
+fn tan_zeropv_header() -> String {
+    std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/wcsconv/inputs/tan-zeropv.head",
+    ))
+    .expect("tan-zeropv.head should be readable")
+}
+
+#[test]
+fn all_zero_longitude_pv_warns_and_demotes_to_plain_tan() {
+    // C `GetUsedPolyTan` (fitschan.c:14167-14176): the latitude axis has a
+    // non-zero coefficient (PV2_1 = 1.0) so it passes, and the longitude check
+    // in the `else` branch then finds every coefficient zero, which raises
+    // `badpv`, keeps the standard TAN convention and deletes the longitude PVs.
+    let mut fc = FitsChan::from_header(&tan_zeropv_header()).expect("header parses");
+    let _ = fc.read().expect("read succeeds").expect("an object");
+
+    let warns = astwarn_values(&fc);
+    assert!(
+        warns.iter().any(|w| w.contains("longitude axis are zero")),
+        "expected the longitude-axis badpv warning, got: {warns:#?}"
+    );
+    assert!(
+        !warns.iter().any(|w| w.contains("latitude axis are zero")),
+        "the latitude axis has PV2_1 = 1.0 and must not warn: {warns:#?}"
+    );
+}
+
+#[test]
+fn all_zero_latitude_pv_warns_about_the_latitude_axis() {
+    // The other side of the same branch: zero every latitude coefficient and C
+    // reports the latitude axis instead, never reaching the longitude check
+    // (fitschan.c:14126-14135). The header is edited in memory — the fixture on
+    // disk is C-generated ground truth.
+    let text = tan_zeropv_header()
+        .replace(
+            "PV2_1   =                  1.0",
+            "PV2_1   =                  0.0",
+        )
+        .replace(
+            "PV2_2   =            0.0001000",
+            "PV2_2   =            0.0000000",
+        );
+
+    let mut fc = FitsChan::from_header(&text).expect("header parses");
+    let _ = fc.read().expect("read succeeds").expect("an object");
+
+    let warns = astwarn_values(&fc);
+    assert!(
+        warns.iter().any(|w| w.contains("latitude axis are zero")),
+        "expected the latitude-axis badpv warning, got: {warns:#?}"
+    );
+}
+
+// ===========================================================================
+// The astWarnings KeyMap view
+// ===========================================================================
+
+#[test]
+fn warnings_keymap_mirrors_c_astwarnings() {
+    // C `astWarnings` (channel.c:1582) builds a fresh KeyMap keyed
+    // `Warning_1`, `Warning_2`, … in issue order, one string entry per
+    // warning, and returns NULL when none were issued.
+    use starlink_ast::AstType;
+
+    let mut fc = FitsChan::from_header(&tan_zeropv_header()).expect("header parses");
+    let _ = fc.read().expect("read succeeds").expect("an object");
+
+    let texts = fc.warning_texts().to_vec();
+    assert!(
+        !texts.is_empty(),
+        "tan-zeropv.head must raise at least one warning"
+    );
+
+    let map = fc.warnings().expect("warnings were issued, so not None");
+    assert_eq!(map.map_size(), texts.len(), "one entry per warning");
+
+    for (i, text) in texts.iter().enumerate() {
+        let key = format!("Warning_{}", i + 1);
+        assert_eq!(
+            map.map_type(&key).expect("key present"),
+            AstType::String,
+            "{key} must be a string entry"
+        );
+        assert_eq!(
+            map.get_0c(&key).expect("readable").as_deref(),
+            Some(text.as_str()),
+            "{key} must carry the warning text in issue order"
+        );
+    }
+
+    // Keys are 1-based, so there is no Warning_0 and no entry past the count.
+    assert_eq!(map.get_0c("Warning_0").expect("readable"), None);
+    let past_end = format!("Warning_{}", texts.len() + 1);
+    assert_eq!(map.get_0c(&past_end).expect("readable"), None);
+}
+
+#[test]
+fn report_level_zero_keeps_astwarn_cards_but_records_no_warnings() {
+    // A C-oracle probe (`astPutFits` of `BAD!KEY = 1` with Warnings set to
+    // BadKeyName) gives two warnings and four ASTWARN cards by default, and
+    // with ReportLevel 0 or -1 no warnings (`astWarnings` returns NULL) but
+    // the same four cards; ReportLevel 2 gives the default's.
+    let count = |report_level: Option<i32>| {
+        let mut fc = FitsChan::new().unwrap();
+        if let Some(level) = report_level {
+            fc.config_mut().set_report_level(level);
+        }
+        fc.set_warning_conditions("BadKeyName").unwrap();
+        fc.put_fits("BAD!KEY = 1", false).unwrap();
+        (
+            fc.warnings().map(|map| map.map_size()),
+            astwarn_values(&fc).len(),
+        )
+    };
+    assert_eq!(count(None), (Some(2), 4));
+    assert_eq!(count(Some(0)), (None, 4));
+    assert_eq!(count(Some(2)), (Some(2), 4));
+    assert_eq!(count(Some(-1)), (None, 4));
+}
+
+// ---------------------------------------------------------------------------
+// Strict
+// ---------------------------------------------------------------------------
+
+use starlink_ast::error::ErrorCode;
+
+/// A FitsChan with Warnings `conditions` and Strict set.
+fn strict_chan(conditions: &str) -> FitsChan {
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_warning_conditions(conditions).unwrap();
+    fc.config_mut().set_strict(true);
+    fc
+}
+
+/// With Strict set, a warning the Warnings attribute names is an error at
+/// the point it is raised, and nothing of it is stored.
+// C probe: astPutFits of "BAD!KEY = 1" with Warnings=BadKeyName and
+// Strict=1 fails with AST__BADIN and stores no card; with ReportLevel=0 it
+// stores the ASTWARN block and the card, and with Clean=1 the card alone.
+#[test]
+fn strict_put_fits_warning_is_an_error() {
+    let card = "BAD!KEY =                    1";
+    let mut fc = strict_chan("BadKeyName");
+    let e = fc.put_fits(card, false).unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Badin);
+    assert_eq!(
+        e.message(),
+        "astPutFits(FitsChan): The FITS keyword name ('BAD!KEY') contains an illegal \
+         character ('!')."
+    );
+    assert_eq!(fc.ncard().unwrap(), 0);
+    assert!(fc.warning_texts().is_empty());
+
+    let mut fc = strict_chan("BadKeyName");
+    fc.config_mut().set_report_level(0);
+    fc.put_fits(card, false).unwrap();
+    assert_eq!(fc.ncard().unwrap(), 5);
+
+    let mut fc = strict_chan("BadKeyName");
+    fc.set_clean(true);
+    fc.put_fits(card, false).unwrap();
+    assert_eq!(fc.ncard().unwrap(), 1);
+}
+
+/// A FITS-WCS header with no EQUINOX, which a read warns of under the
+/// `noequinox` condition.
+const NO_EQUINOX: [&str; 12] = [
+    "NAXIS   =                    2",
+    "NAXIS1  =                  100",
+    "NAXIS2  =                  100",
+    "CTYPE1  = 'RA---TAN'",
+    "CTYPE2  = 'DEC--TAN'",
+    "CRPIX1  =                   50",
+    "CRPIX2  =                   50",
+    "CRVAL1  =                   10",
+    "CRVAL2  =                   20",
+    "CDELT1  =               -0.001",
+    "CDELT2  =                0.001",
+    "RADECSYS= 'FK5'",
+];
+
+/// With Strict set a read that warns fails, leaving the cards as they were
+/// and the FitsChan rewound.
+// C probe: the read of NO_EQUINOX with Warnings=noequinox gives an object
+// and an ASTWARN block; with Strict=1 too it fails with AST__BADIN, the 12
+// cards unchanged, Card 1 and no warnings; with ReportLevel=0 as well it
+// succeeds as without Strict.
+#[test]
+fn strict_read_warning_is_an_error() {
+    let mut fc = strict_chan("noequinox");
+    for card in NO_EQUINOX {
+        fc.put_fits(card, false).unwrap();
+    }
+    fc.clear_card().unwrap();
+    let before = fc.to_header().unwrap();
+    let e = fc.read().unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Badin);
+    assert_eq!(
+        e.message(),
+        "astRead(FitsChan): The original FITS header did not specify the reference \
+         equinox. A default value of J2000 was assumed."
+    );
+    assert_eq!(fc.to_header().unwrap(), before);
+    assert_eq!(fc.card().unwrap(), 1);
+    assert!(fc.warning_texts().is_empty());
+
+    let mut fc = strict_chan("noequinox");
+    fc.config_mut().set_report_level(0);
+    for card in NO_EQUINOX {
+        fc.put_fits(card, false).unwrap();
+    }
+    fc.clear_card().unwrap();
+    assert!(fc.read().unwrap().is_some());
+    assert_eq!(fc.ncard().unwrap(), 7);
+}
+
+/// With Strict set a write that warns fails and leaves the cards as they
+/// were.
+// C probe: writing the FrameSet read from this TAN header, which has an
+// MJD-OBS, to a FITS-WCS FitsChan holding TIMESYS = 'ET', with
+// Warnings=badval, stores a badval ASTWARN block; with Strict=1 astWrite
+// returns 0 with AST__BADIN and the FitsChan holds only its TIMESYS card.
+// C's Write passes FsetToStore its method and class names in the wrong
+// order, so the error names the method "FitsChan".
+#[test]
+fn strict_write_warning_is_an_error() {
+    let mut fc = FitsChan::new().unwrap();
+    for card in &NO_EQUINOX[..11] {
+        fc.put_fits(card, false).unwrap();
+    }
+    fc.put_fits("EQUINOX =                 2000", false)
+        .unwrap();
+    fc.put_fits("MJD-OBS =                55000", false)
+        .unwrap();
+    fc.clear_card().unwrap();
+    let obj = fc.read().unwrap().unwrap();
+
+    let mut out = strict_chan("badval");
+    out.set_encoding(starlink_ast::Encoding::FitsWcs);
+    out.put_fits("TIMESYS = 'ET'", false).unwrap();
+    out.clear_card().unwrap();
+    let before = out.to_header().unwrap();
+    let e = out.write(&obj).unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Badin);
+    assert_eq!(
+        e.message(),
+        "FitsChan(FitsChan): The original FITS header contained a value of ET for keyword \
+         TIMESYS. TT will be used instead."
+    );
+    assert_eq!(out.to_header().unwrap(), before);
+}
+
+/// A warning raised as the read sweeps the WCS cards is an error there too.
+// C probe: NO_EQUINOX with CRVAL1 = 'abc', read with Warnings=badval, gives
+// an object and a badval ASTWARN block in front of CRVAL1; with Strict=1
+// the read fails with AST__BADIN, the 12 cards unchanged and Card 1.
+#[test]
+fn strict_sweep_warning_is_an_error() {
+    let mut fc = strict_chan("badval");
+    for card in NO_EQUINOX {
+        let card = if card.starts_with("CRVAL1") {
+            "CRVAL1  = 'abc'"
+        } else {
+            card
+        };
+        fc.put_fits(card, false).unwrap();
+    }
+    fc.clear_card().unwrap();
+    let before = fc.to_header().unwrap();
+    let e = fc.read().unwrap_err();
+    assert_eq!(e.code(), ErrorCode::Badin);
+    assert_eq!(
+        e.message(),
+        "astRead(FitsChan): The original FITS header contained a value for keyword CRVAL1 \
+         which could not be converted to a floating point number."
+    );
+    assert_eq!(fc.to_header().unwrap(), before);
+    assert_eq!(fc.card().unwrap(), 1);
+}

@@ -1,4 +1,4 @@
-# starlink-astrs — Developer Guide for Claude
+# starlink-ast-rs — Developer Guide for Claude
 
 ## What is this?
 
@@ -18,16 +18,16 @@ authoritative when they disagree.
 ## Repository layout
 
 ```
-starlink-astrs/
+starlink-ast-rs/
 ├── Cargo.toml                 # workspace root
 ├── crates/
-│   ├── ast-core/              # pure-Rust idiomatic API (rlib)
-│   ├── ast-capi/              # cdylib; re-exports ast.h symbols
+│   ├── starlink-ast/          # pure-Rust idiomatic API (rlib)
+│   ├── starlink-ast-capi/     # cdylib; re-exports ast.h symbols
 │   ├── ast-plugins/           # Grf / Grf3d backends (PLplot, SVG, logging)
-│   ├── ast-ffi-tests/         # builds ast-capi, runs C ast_tester programs
-│   ├── ast-oracle-tests/      # links ast-core + reference libast.a
+│   ├── ast-ffi-tests/         # builds starlink-ast-capi, runs C ast_tester programs
+│   ├── ast-oracle-tests/      # links starlink-ast + reference libast.a
 │   └── ast-bench/             # transform benchmarks: Rust, optionally vs C
-├── vendor/                    # C source we own and build into ast-core
+├── vendor/                    # C source we own and build into starlink-ast
 │   ├── pal/                   # AST's pal fork (build with cc)
 │   ├── erfa/                  # AST's erfa fork (build with cc)
 │   ├── wcslib/                # AST's wcslib fork; deleted at step 6a
@@ -54,7 +54,7 @@ Two principles:
    the fixture-mirror check. **CI runs neither tier.** The workflow
    has two jobs: `fixture-mirror`, which initialises the submodule and
    diffs the fixture trees, and `test`, which runs tier-1 / tier-2
-   (`cargo test -p ast-core`) plus clippy, fmt and docs without it.
+   (`cargo test -p starlink-ast`) plus clippy, fmt and docs without it.
    The design (`2026-04-20-rust-port-design.md` step 0) calls for a
    nightly job running tiers 3 and 4; it has not been created, so
    those tiers are run by hand only.
@@ -63,8 +63,8 @@ Two principles:
 
 ```shell
 cargo build                                  # everything, no submodule needed
-cargo test -p ast-core                       # tier 1: idiomatic Rust tests
-cargo test -p ast-core --test meta test_simplify_regression::  # tier 2: native-format, byte-exact but for last-bit numeric drift
+cargo test -p starlink-ast                   # tier 1: idiomatic Rust tests
+cargo test -p starlink-ast --test meta test_simplify_regression::  # tier 2: native-format, byte-exact but for last-bit numeric drift
 
 # Tiers requiring the submodule:
 git submodule update --init reference/starlink-ast
@@ -76,10 +76,10 @@ cargo run --release -p ast-bench -- help     # tier 5: transform benchmarks
 Useful flags during development:
 
 ```shell
-cargo test -p ast-core --features tracing    # emit AstError and simplify
-                                             # events as tracing events; see
-                                             # "Debugging the simplifier"
-cargo +nightly miri test -p ast-core         # ub check on hot paths
+cargo test -p starlink-ast --features tracing     # emit AstError and simplify
+                                                  # events as tracing events; see
+                                                  # "Debugging the simplifier"
+cargo +nightly miri test -p starlink-ast          # ub check on hot paths
 ```
 
 ## Architecture (compressed)
@@ -109,8 +109,8 @@ The full design is in the spec; key load-bearing facts:
   hatch that bypasses integrity.
 - **Errors**: `AstResult<T> = Result<T, AstError>`. `ErrorCode` enum
   generated from `vendor/ast_err.msg` (or `reference/.../ast_err.msg`)
-  by `ast-core`'s `build.rs`.
-- **CFFI**: handles in `ast-capi` are `Arc<RefCell<AnyObject>>` over
+  by `starlink-ast`'s `build.rs`.
+- **CFFI**: handles in `starlink-ast-capi` are `Arc<RefCell<AnyObject>>` over
   a closed `enum AnyObject { … }`. `astClone` / `astAnnul` /
   `astBegin` / `astEnd` / `astExempt` / `astSetPutErr` /
   `astStatus` all preserved exactly.
@@ -185,15 +185,15 @@ on those grounds; do not re-prototype it without new motivation.
 ## Code style
 
 - Rust 2024 edition. MSRV pinned in `rust-toolchain.toml`.
-- Lints: `#![warn(missing_docs)]` on all public items in `ast-core`.
+- Lints: `#![warn(missing_docs)]` on all public items in `starlink-ast`.
   CI enables `RUSTFLAGS="-D warnings"`.
 - `cargo fmt` is enforced. `cargo clippy --workspace -- -D warnings`
   is a CI gate.
 - C99 is the language used in `vendor/`. Don't add C++ to vendored
   sources; if you need to wrap C++ for a plugin, do it in a separate
   crate.
-- `unsafe` is allowed in `ast-capi` (the entire crate is FFI) and in
-  the private vendored-C FFI module of `ast-core`. Anywhere else,
+- `unsafe` is allowed in `starlink-ast-capi` (the entire crate is FFI) and in
+  the private vendored-C FFI module of `starlink-ast`. Anywhere else,
   `unsafe` requires a justifying comment and review.
 - Public item names: AST attribute names → snake_case (`SkyRefIs` →
   `set_sky_ref_is`). Class names stay PascalCase (`PolyMap`,
@@ -266,13 +266,13 @@ added at a call site, stop and port C's conversion function instead (H8).
 ### Debugging the simplifier: trace both sides, never add prints
 
 The simplifier already has permanent instrumentation on both sides; use it before reading code or adding `eprintln!`.
-The port emits `tracing` events on the target `ast::simplify` under the `tracing` feature (`simplify::trace` in `crates/ast-core/src/mappings/simplify.rs`), and `tools/oracle_fixtures/build_simplify_trace.sh` builds a C library that emits the same events with the same fields.
+The port emits `tracing` events on the target `ast::simplify` under the `tracing` feature (`simplify::trace` in `crates/starlink-ast/src/mappings/simplify.rs`), and `tools/oracle_fixtures/build_simplify_trace.sh` builds a C library that emits the same events with the same fields.
 They cover every nomination, its result, the whole merge list at each step with each entry's direction, stored `Invert` and `IsSimple` tag, skips, freezes, and the CmpMap head's simplify and split.
 
 ```shell
 ./tools/oracle_fixtures/build_simplify_trace.sh <scratch>/ast-trace
 AST_TRACE=1 <scratch>/ast-trace/gen_simp in.map /dev/null 2> c.txt
-cargo run -q -p ast-core --features tracing --example simp_one -- in.map 2> port.txt >/dev/null
+cargo run -q -p starlink-ast --features tracing --example simp_one -- in.map 2> port.txt >/dev/null
 ```
 
 `tools/oracle_fixtures/README.md` ("Diffing the port against C") has the two-line filter that makes the streams diff line for line; the first differing `MERGE-LIST` is usually the answer.
@@ -284,7 +284,7 @@ The pattern is identical regardless of which trait it implements.
 Use an existing concrete class as the template (e.g. `ZoomMap` once
 it lands).
 
-1. Create `crates/ast-core/src/{mappings,frames,regions}/<name>.rs`.
+1. Create `crates/starlink-ast/src/{mappings,frames,regions}/<name>.rs`.
 2. Define the struct with `&mut self` setters for attributes; use a
    `<Name>Builder` for construction. Strongly typed accessors per
    attribute. Axis-indexed attributes take `axis: usize` (1-based).
@@ -292,16 +292,16 @@ it lands).
 4. Implement the private `Serializable` trait (`to_node` /
    `from_node`) — without this, the class can't round-trip through a
    `Channel`.
-5. Add the variant to `enum AnyObject` in `ast-capi` (this also
+5. Add the variant to `enum AnyObject` in `starlink-ast-capi` (this also
    unlocks the Channel-write dispatch).
-6. Write the corresponding C-ABI shim in `ast-capi` — usually one
+6. Write the corresponding C-ABI shim in `starlink-ast-capi` — usually one
    `#[no_mangle] extern "C" fn` per public method, plus the
    constructor.
-7. Add a Rust test under `crates/ast-core/tests/` ported from the
+7. Add a Rust test under `crates/starlink-ast/tests/` ported from the
    matching `reference/starlink-ast/ast_tester/test<name>.c`, and add
    it to its area's test program (see "Porting a test" below).
    Copy any reference fixtures into
-   `crates/ast-core/tests/fixtures/`.
+   `crates/starlink-ast/tests/fixtures/`.
 8. Mark the test ported in `PLAN.md`'s "C → Rust test migration"
    tracker.
 9. Give each public item mapped from a C header its `#[doc(alias)]` and
@@ -333,25 +333,25 @@ same commit range:
 
 1. Read `reference/starlink-ast/ast_tester/<test>.c` to understand
    what it covers.
-2. Create `crates/ast-core/tests/<test>.rs` with a header comment
+2. Create `crates/starlink-ast/tests/<test>.rs` with a header comment
    recording the C ancestor's path and any idiomatic Rust
    divergences, and add it as a module to the area program it belongs
-   to, `crates/ast-core/tests/<area>/main.rs`. The package sets
+   to, `crates/starlink-ast/tests/<area>/main.rs`. The package sets
    `autotests = false` because one test program per file made the suite
-   take most of an hour (each program links all of ast-core, and macOS
+   take most of an hour (each program links all of starlink-ast, and macOS
    scans each new program on its first run); `test_area_membership`
    fails for a file no area program names. Run one file's tests with
-   `cargo test -p ast-core --test <area> <test>::`.
+   `cargo test -p starlink-ast --test <area> <test>::`.
 3. Use the **public Rust API only** (no private modules from
-   `ast-core`). The Rust test should also serve as a worked example
+   `starlink-ast`). The Rust test should also serve as a worked example
    for users.
 4. Copy any reference fixtures the C test reads (`*.head`, `*.ast`,
    `*.native`, `*.simp`, `*.fits-*`, etc.) into
-   `crates/ast-core/tests/fixtures/`. Don't symlink to the submodule
+   `crates/starlink-ast/tests/fixtures/`. Don't symlink to the submodule
    — fixtures must work with the submodule absent.
 5. For the three regression harnesses (`wcsconverter`, `simplify`,
    plot/grid smoke), don't reinvent — port to a Rust binary under
-   `crates/ast-core/tests/` and drive with the same fixture set as
+   `crates/starlink-ast/tests/` and drive with the same fixture set as
    the C harness.
 6. Update `PLAN.md`.
 
@@ -377,12 +377,12 @@ repo could, and the one that survived longest hid a real defect (H10–H11).
 - **Before documenting a gate, run it.** A declared gate that does not
   hold is worse than no gate, because it stops anyone looking (H12).
 
-## Modifying `ast-capi` (CFFI shim) — extra care
+## Modifying `starlink-ast-capi` (CFFI shim) — extra care
 
 The C ABI is **frozen**. Existing applications must keep linking.
 
 - Don't change any function signature in
-  `crates/ast-capi/include/ast.h` without a deliberate ABI bump and
+  `crates/starlink-ast-capi/include/ast.h` without a deliberate ABI bump and
   spec update. The two CI checks (libclang prototype extraction vs
   `nm` on the cdylib; cbindgen view vs the hand-written header)
   catch unintentional drift.
@@ -402,15 +402,15 @@ The C ABI is **frozen**. Existing applications must keep linking.
 | Anti-pattern | Why |
 |---|---|
 | Adding `Sync` to a concrete class | Hot paths are explicitly lock-free; `Sync` invites locks |
-| Using `Arc<T>` in `ast-core` for non-plugin types | Owned values + `&mut self` is the rule |
+| Using `Arc<T>` in `starlink-ast` for non-plugin types | Owned values + `&mut self` is the rule |
 | Using `Mutex` / `RwLock` inside `SkyFrame` (or any Frame attribute setter) | Regresses the SCUBA-2 hot path |
 | Using `f64::NAN` as the canonical bad-value sentinel in outputs | `BAD_VALUE` (= `-f64::MAX`) is the contract; `NaN` is accepted on input only |
 | 0-based axis arguments | All axis indices are 1-based throughout the public API |
-| String-typed `get_attr(name)` / `set_fmt(spec)` in `ast-core` | These exist only in `ast-capi` for the C-ABI dispatch path |
+| String-typed `get_attr(name)` / `set_fmt(spec)` in `starlink-ast` | These exist only in `starlink-ast-capi` for the C-ABI dispatch path |
 | `Mul` / `BitOr` operator overloading for mapping composition | Use `then` / `alongside` verbs only — readability |
-| Reaching into `reference/starlink-ast/` from `ast-core`'s `build.rs` | The everyday build must not depend on the submodule |
+| Reaching into `reference/starlink-ast/` from `starlink-ast`'s `build.rs` | The everyday build must not depend on the submodule |
 | Rewriting `vendor/wcslib/` in C | The Rust port is step 6a; keep the C source unchanged until then |
-| Symlinking test fixtures from `reference/starlink-ast/ast_tester/` | Fixtures must be committed into `crates/ast-core/tests/fixtures/` so tier-1 works without the submodule |
+| Symlinking test fixtures from `reference/starlink-ast/ast_tester/` | Fixtures must be committed into `crates/starlink-ast/tests/fixtures/` so tier-1 works without the submodule |
 | Hand-editing `ast_err.h` | Generated from `ast_err.msg` by `build.rs` |
 | Collapsing a per-class `MapMerge` / `RegPins` / `SubFrame` into one central `match` | These are C's extension points, not boilerplate — see "Before porting a class" |
 | Adding a tolerance or iteration count that has no analogue in the C source | Stop signal 1; the CRPIX ladder cost a week |
@@ -439,7 +439,7 @@ The C ABI is **frozen**. Existing applications must keep linking.
   the values, which is what `tools/oracle_fixtures/merge_card_hunks.py` does.
   Regenerate in the same commit range as the pin move.
   Also run `tools/oracle_fixtures/check_c_headers_fresh.sh`; a new C documentation header needs a row in `docs/audits/c-docs/ledger.tsv`, and a header whose body changed (its `digest` column differs) needs its row re-reviewed against the new C text and the Rust docs updated to match.
-  The user guide in `ast_core::guide` is ported from `sun_master.tex` at the commit recorded in `crates/ast-core/src/guide/README.md`; run `git -C reference/starlink-ast diff <that commit>..<new pin> -- sun_master.tex`, port each changed section into the guide chapter the README names for it, and record the new commit.
+  The user guide in `starlink_ast::guide` is ported from `sun_master.tex` at the commit recorded in `crates/starlink-ast/src/guide/README.md`; run `git -C reference/starlink-ast diff <that commit>..<new pin> -- sun_master.tex`, port each changed section into the guide chapter the README names for it, and record the new commit.
 - **Design spec** (authoritative for API shape and the reasoning behind it):
   [`docs/superpowers/specs/2026-04-20-rust-port-design.md`](docs/superpowers/specs/2026-04-20-rust-port-design.md).
   This is *the* overarching port design — the one document that fixes the

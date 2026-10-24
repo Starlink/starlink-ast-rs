@@ -23,9 +23,9 @@
  * the scale factor is compared bit-for-bit without depending on the
  * Mapping class.
  *
- * Prints Rust source for crates/ast-core/tests/unit_mapper_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/unit_mapper_oracle/cases.rs:
  *
- *   ./unit_mapper_probe > ../../crates/ast-core/tests/unit_mapper_oracle/cases.rs
+ *   ./unit_mapper_probe > ../../crates/starlink-ast/tests/unit_mapper_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

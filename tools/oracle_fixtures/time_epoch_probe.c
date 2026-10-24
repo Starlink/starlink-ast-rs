@@ -9,9 +9,9 @@
  * reports an error. A BEPOCH TimeFrame is given only the TT timescale,
  * the one C accepts for it.
  *
- * Prints Rust source for crates/ast-core/tests/time_epoch_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/time_epoch_oracle/cases.rs:
  *
- *   ./time_epoch_probe > ../../crates/ast-core/tests/time_epoch_oracle/cases.rs
+ *   ./time_epoch_probe > ../../crates/starlink-ast/tests/time_epoch_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

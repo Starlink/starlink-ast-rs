@@ -61,7 +61,7 @@ magnitude larger, `>= ~1e-6`).
 ## What we consume, unchanged
 
 Vendor these files from submodule `3a3c3e51` into
-`crates/ast-core/tests/fixtures/oracle/`:
+`crates/starlink-ast/tests/fixtures/oracle/`:
 
 | File | Sections | Fixtures | Corpus |
 | --- | --- | --- | --- |
@@ -80,7 +80,7 @@ The oracle format (from the C design doc):
 - File header comment records the tolerances (informational).
 
 The fixture files the oracle names are already present in the Rust tree
-(`crates/ast-core/tests/fixtures/`): all 676 `.map`/`.simp` stems, 129 of
+(`crates/starlink-ast/tests/fixtures/`): all 676 `.map`/`.simp` stems, 129 of
 130 `.head`, and 8 of 11 `.ast`.
 
 ### Missing fixtures
@@ -91,12 +91,12 @@ Four oracle-referenced fixtures are not yet vendored into the Rust tree:
 All four use only classes that are already ported (verified from their
 `Begin <Class>` tokens), so they load through the Rust API.
 
-Policy: **vendor all four** into `crates/ast-core/tests/fixtures/` so
+Policy: **vendor all four** into `crates/starlink-ast/tests/fixtures/` so
 oracle coverage is 100%, consistent with the project rule that fixtures
 must be committed and work with the submodule absent.
 
 General rule for vendoring any fixture: check whether it also belongs in a
-test manifest (`crates/ast-core/tests/fixtures/wcsconv/wcsconv_tests.txt`,
+test manifest (`crates/starlink-ast/tests/fixtures/wcsconv/wcsconv_tests.txt`,
 `.../native/reference/simplify_tests.txt`) and add it there so the general
 tests exercise it too.
 For these specific four: verified that none appears in any C test manifest
@@ -109,17 +109,17 @@ fixture, not `sparse.ast`.)
 ## Architecture
 
 One `#[ignore]` integration test:
-`crates/ast-core/tests/test_transform_oracle.rs`.
+`crates/starlink-ast/tests/test_transform_oracle.rs`.
 
-- Excluded from the normal `cargo test -p ast-core` run and from CI by the
+- Excluded from the normal `cargo test -p starlink-ast` run and from CI by the
   `#[ignore]` attribute.
 - Run on demand:
-  `cargo test -p ast-core --test test_transform_oracle -- --ignored --nocapture`.
+  `cargo test -p starlink-ast --test test_transform_oracle -- --ignored --nocapture`.
 - Prints a human summary to stdout and writes a machine-readable JSON
   report to `target/transform_oracle_report.json`.
 
 Rationale: the project convention (CLAUDE.md) is that regression harnesses
-live under `crates/ast-core/tests/` and drive the same fixture set as the C
+live under `crates/starlink-ast/tests/` and drive the same fixture set as the C
 harness, using the public Rust API only.
 `#[ignore]` gives the "not part of the normal suite" property the
 investigative phase needs, and flipping it to a gate later is a localized
@@ -134,7 +134,7 @@ The test uses the public API exclusively:
 - `Mapping::{transform, nin, nout, has_inverse}`.
 - `PointSet::{from_rows, point, npoint, ncoord}`.
 - `Frame::norm` for angular-axis detection.
-- `BAD_VALUE` from `ast_core::constants`.
+- `BAD_VALUE` from `starlink_ast::constants`.
 
 ## Checker logic
 
@@ -328,14 +328,14 @@ the normal suite:
 
 ## File-by-file plan
 
-- `crates/ast-core/tests/fixtures/oracle/{simplify_fixtures,headers,framesets}.oracle`
+- `crates/starlink-ast/tests/fixtures/oracle/{simplify_fixtures,headers,framesets}.oracle`
   — vendored, unchanged, from `3a3c3e51`.
-- `crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt`
+- `crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt`
   — vendored, unchanged.
-- `crates/ast-core/tests/fixtures/{...}/offset-sref.head`,
+- `crates/starlink-ast/tests/fixtures/{...}/offset-sref.head`,
   `plot3d-test1.ast`, `sparse.ast`, `stcschan-test1-doc3.ast`
   — vendored into the locations matching their corpus.
-- `crates/ast-core/tests/test_transform_oracle.rs`
+- `crates/starlink-ast/tests/test_transform_oracle.rs`
   — the `#[ignore]` investigative test plus the (non-ignored) selftest
   units; parser, loader, comparison primitives, the four checks, section
   pairing, overrides, and report emission.

@@ -16,7 +16,7 @@ It is a useful reference for API shape but not a basis for the port: it hand-rol
 
 ## Goals
 
-1. Port `keymap.c` to `crates/ast-core/src/keymap/` — entry storage, `ConvertValue`, all supported type codes, `SortBy`, and a `Serializable` round-trip that is byte-exact against the C reference for the fixtures we hold, `MapSz` excepted.
+1. Port `keymap.c` to `crates/starlink-ast/src/keymap/` — entry storage, `ConvertValue`, all supported type codes, `SortBy`, and a `Serializable` round-trip that is byte-exact against the C reference for the fixtures we hold, `MapSz` excepted.
 2. Add `AnyObject::KeyMap` so KeyMaps deserialize from and serialize into `.ast` files.
 3. Port `ast_tester/testkeymap.c` and `ast_tester/testobjectkeymap.c`.
 4. Shape the struct so `Table` and `FitsTable` can embed it later without redesign.
@@ -25,7 +25,7 @@ It is a useful reference for API shape but not a basis for the port: it hand-rol
 
 - `Table` / `FitsTable` (`table.h:98` embeds `AstKeyMap` by value; designed-for, not built).
 - The Object-associated retained KeyMap (`object.c:1736`, `object.c:2480`).
-- The C-ABI shim. `crates/ast-capi/src/lib.rs` is a one-line stub; there is nothing to extend yet.
+- The C-ABI shim. `crates/starlink-ast-capi/src/lib.rs` is a one-line stub; there is nothing to extend yet.
 - Patching the C library. Three C bugs are recorded below and in `docs/issues/c-library-quirks.md`; the C patches are a separate follow-up.
 - Deciding whether the `Channel` subclasses carry `KeyMap` or `Node`. See "Deferred decisions".
 
@@ -98,7 +98,7 @@ Rust's value is a function of the entry set. The consequences:
 ### Oracle comparison ignores the `MapSz` card
 
 Because C's value is history-dependent and ours is content-dependent, byte comparison against C output excludes the `MapSz` card from both sides.
-This follows the established precedent for `ISSIMP<xx>` — `common::is_issimp_tag_card` and `ISSIMP_PLACEMENT_LICENSED` in `crates/ast-core/tests/test_wcsconv.rs` — and is licensed the same way: per-card, named, and documented, not a blanket tolerance. (That helper covered `INVERT<xx>` too until the `f6762005` sync, where the upstream `WcsNative` fix made the port's `Invert` shape the correct one.)
+This follows the established precedent for `ISSIMP<xx>` — `common::is_issimp_tag_card` and `ISSIMP_PLACEMENT_LICENSED` in `crates/starlink-ast/tests/test_wcsconv.rs` — and is licensed the same way: per-card, named, and documented, not a blanket tolerance. (That helper covered `INVERT<xx>` too until the `f6762005` sync, where the upstream `WcsNative` fix made the port's `Invert` shape the correct one.)
 Every other card, `MemCnt` included, is compared byte-exactly.
 
 `HashFun` is still ported verbatim; we write no hash algorithm of our own, and `MapSz` fidelity is not traded away.
@@ -281,7 +281,7 @@ Rust's `map_iterate` returns `Option<&str>` from a bounded index into the ordere
 
 Only two files in this repository contain KeyMaps:
 
-- `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures_unsupported/stcresourceprofile/cap_timemap_02.simp` — `KyCas = 1`, `MapSz = 16`, `MemCnt = 11`
+- `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures_unsupported/stcresourceprofile/cap_timemap_02.simp` — `KyCas = 1`, `MapSz = 16`, `MemCnt = 11`
 - `.../cap_timemap_02.map` — `MapSz = 16`, `MemCnt = 8`, no `KyCas`
 
 Both hold the same four keys (`Size`, `Name`, `Resolution`, `Error`) which hash to buckets 0/6/9/15 — monotonic, no collision, so Bug 1 does not currently bite them.
@@ -372,7 +372,7 @@ That is 46 typed accessors, plus `put_u` (`astMapPutU_`, `keymap.c:11378`) for
 undefined entries and `get_0c`'s hand-written C counterpart `astMapGetC_`
 (`keymap.c:11311`), whose buffer-lifetime contract Rust does not need.
 1:1 with the C source, so the port is auditable against it line by line.
-This matches the repo's existing typed-setter convention: no string-typed `get_attr(name)` layer in `ast-core`.
+This matches the repo's existing typed-setter convention: no string-typed `get_attr(name)` layer in `starlink-ast`.
 
 Also ported:
 
@@ -396,7 +396,7 @@ Every code KeyMap needs is already generated from `ast_err.msg`: `Mpger`, `Mpker
 
 ## Section D: Serialization
 
-`KeyMap` implements the existing `pub(crate) trait Serializable` (`crates/ast-core/src/serial/mod.rs:28`), replacing the prototype's hand-rolled emitter.
+`KeyMap` implements the existing `pub(crate) trait Serializable` (`crates/starlink-ast/src/serial/mod.rs:28`), replacing the prototype's hand-rolled emitter.
 
 `to_node` mirrors `Dump` (`keymap.c:10480`):
 
@@ -420,7 +420,7 @@ Nothing is lost by ignoring it: C's only use for it is presizing the table it is
 ## Section E: Module layout
 
 ```
-crates/ast-core/src/keymap/
+crates/starlink-ast/src/keymap/
 ├── mod.rs        # pub struct KeyMap, attributes, public typed methods
 ├── entry.rs      # MapEntry, EntryValue, Scalar1D, type codes
 ├── table.rs      # HashFun, KeyCmp, ConvertKey, and the dump-time
@@ -434,12 +434,12 @@ Following the multi-file pattern already used by `regions/`.
 
 ## Section F: Testing
 
-- **`crates/ast-core/tests/test_keymap.rs`** — full port of `ast_tester/testkeymap.c` (1419 lines), including:
+- **`crates/starlink-ast/tests/test_keymap.rs`** — full port of `ast_tester/testkeymap.c` (1419 lines), including:
   - `testsorting()` across all six explicit modes, and its assertion that re-putting a value moves the entry under `AgeDown` but not under `KeyAgeDown`;
   - the `KeyCase` cases — `map_key(0) == "FREDS"` under `KeyCase=0`, `"fReDs"` found, `" fReDs"` not found (leading space is significant, trailing is not);
   - the `map_len_c` expectations 4 / 0 / 5;
   - the `ConvertValue` conversion cases the C test exercises.
-- **`crates/ast-core/tests/test_objectkeymap.rs`** — port of `ast_tester/testobjectkeymap.c` (190 lines).
+- **`crates/starlink-ast/tests/test_objectkeymap.rs`** — port of `ast_tester/testobjectkeymap.c` (190 lines).
 - **Round-trip property tests** asserting the two properties C lacks:
   - **idempotence** — `dump(read(dump(km))) == dump(km)`;
   - **insertion-order independence** — two KeyMaps built from the same entries in different orders dump identically.
@@ -467,7 +467,7 @@ The observation that motivated the question is correct — the base C `Channel` 
 So it is a per-subclass algorithm decision, not a container substitution.
 
 **`Channel::warnings` signature.**
-`crates/ast-core/src/channel/mod.rs:71` declares `fn warnings(&self) -> &[String]`, where `docs/superpower/specs/2026-04-20-rust-port-design.md:412` specifies `Option<&KeyMap>`.
+`crates/starlink-ast/src/channel/mod.rs:71` declares `fn warnings(&self) -> &[String]`, where `docs/superpower/specs/2026-04-20-rust-port-design.md:412` specifies `Option<&KeyMap>`.
 The Rust code is right and the spec is amended: C stores warnings internally as a string array and `astWarnings` (`channel.c:1690-1709`) only materializes a throwaway KeyMap at the API boundary:
 
 ```c
@@ -492,7 +492,7 @@ Returning `&[String]` exposes the same information without the allocation.
 
 ## Success criteria
 
-- `KeyMap` ported to `crates/ast-core/src/keymap/`, storing entries in a `HashMap`, with `ConvertValue`, all ten supported types, and `SortBy`.
+- `KeyMap` ported to `crates/starlink-ast/src/keymap/`, storing entries in a `HashMap`, with `ConvertValue`, all ten supported types, and `SortBy`.
 - `MapSz` computed at dump time and matching C's value on the probed key sets and `SizeGuess` combinations; the card excluded from oracle byte comparison with its reason recorded.
 - `AnyObject::KeyMap` wired into both serialization dispatch functions.
 - `testkeymap.c` and `testobjectkeymap.c` ported and green.

@@ -1,7 +1,7 @@
 # `Simplify` audit — Polygon
 
 C source: reference/starlink-ast/src/polygon.c
-Rust: crates/ast-core/src/regions/polygon.rs
+Rust: crates/starlink-ast/src/regions/polygon.rs
 Audited: 2026-08-24 against pin 07fbe2dc
 Citations: verified against pin 3b9dc639
 Extension points: classified

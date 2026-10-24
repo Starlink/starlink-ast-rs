@@ -3,7 +3,7 @@
  * Dump clears RegionFS), since the first Region's Frame is the Frame of
  * them all.
  *
- *   ./selectormap_dump_probe > ../../crates/ast-core/tests/selectormap_oracle/two_regions.ast
+ *   ./selectormap_dump_probe > ../../crates/starlink-ast/tests/selectormap_oracle/two_regions.ast
  */
 #include <stdio.h>
 #include "ast.h"

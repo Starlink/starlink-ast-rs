@@ -14,20 +14,20 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/frames/skyaxis.rs` | SkyAxis struct, HMS/DMS format/unformat |
-| `crates/ast-core/src/frames/sky_convert.rs` | make_sky_mapping pipeline builder, system conversion chains |
-| `crates/ast-core/src/frames/skyframe.rs` | SkyFrame struct, SkySystem, SkyRefIs, Frame trait impl, Serializable |
-| `crates/ast-core/src/frames/mod.rs` | Frame trait additions (observer attrs, system), re-exports |
-| `crates/ast-core/src/serial/mod.rs` | Dispatch updates for SkyFrame |
-| `crates/ast-core/tests/test_skyframe.rs` | SkyFrame tests |
+| `crates/starlink-ast/src/frames/skyaxis.rs` | SkyAxis struct, HMS/DMS format/unformat |
+| `crates/starlink-ast/src/frames/sky_convert.rs` | make_sky_mapping pipeline builder, system conversion chains |
+| `crates/starlink-ast/src/frames/skyframe.rs` | SkyFrame struct, SkySystem, SkyRefIs, Frame trait impl, Serializable |
+| `crates/starlink-ast/src/frames/mod.rs` | Frame trait additions (observer attrs, system), re-exports |
+| `crates/starlink-ast/src/serial/mod.rs` | Dispatch updates for SkyFrame |
+| `crates/starlink-ast/tests/test_skyframe.rs` | SkyFrame tests |
 
 ---
 
 ### Task 1: SkyAxis — Sexagesimal Formatting
 
 **Files:**
-- Create: `crates/ast-core/src/frames/skyaxis.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs` (add module declaration)
+- Create: `crates/starlink-ast/src/frames/skyaxis.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs` (add module declaration)
 
 SkyAxis is the per-axis helper for sky coordinate formatting. It
 can be built and tested independently before SkyFrame exists.
@@ -109,7 +109,7 @@ Parse patterns:
 
 - [ ] **Step 4: Add module to frames/mod.rs**
 
-Add `pub(crate) mod skyaxis;` to `crates/ast-core/src/frames/mod.rs`.
+Add `pub(crate) mod skyaxis;` to `crates/starlink-ast/src/frames/mod.rs`.
 
 - [ ] **Step 5: Write unit tests in skyaxis.rs**
 
@@ -125,10 +125,10 @@ Add `#[cfg(test)]` module with tests:
 
 - [ ] **Step 6: Verify and commit**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 
 ```bash
-git add crates/ast-core/src/frames/skyaxis.rs crates/ast-core/src/frames/mod.rs
+git add crates/starlink-ast/src/frames/skyaxis.rs crates/starlink-ast/src/frames/mod.rs
 git commit -m "Add SkyAxis with HMS/DMS sexagesimal formatting"
 ```
 
@@ -137,16 +137,16 @@ git commit -m "Add SkyAxis with HMS/DMS sexagesimal formatting"
 ### Task 2: Frame Trait Additions
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/mod.rs`
-- Modify: `crates/ast-core/src/frames/basic.rs`
-- Modify: `crates/ast-core/src/frames/cmpframe.rs`
-- Modify: `crates/ast-core/src/frames/frameset.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
+- Modify: `crates/starlink-ast/src/frames/basic.rs`
+- Modify: `crates/starlink-ast/src/frames/cmpframe.rs`
+- Modify: `crates/starlink-ast/src/frames/frameset.rs`
 
 Add observer attributes and system accessor to the Frame trait.
 
 - [ ] **Step 1: Add default methods to Frame trait**
 
-In `crates/ast-core/src/frames/mod.rs`, add to the Frame trait:
+In `crates/starlink-ast/src/frames/mod.rs`, add to the Frame trait:
 
 ```rust
 pub trait Frame: AsAny + Send + fmt::Debug {
@@ -172,7 +172,7 @@ don't need changes. FrameSet must delegate to current frame.
 
 - [ ] **Step 2: Update FrameSet to delegate new methods**
 
-In `crates/ast-core/src/frames/frameset.rs`, add to the
+In `crates/starlink-ast/src/frames/frameset.rs`, add to the
 `impl Frame for FrameSet` block:
 
 ```rust
@@ -186,10 +186,10 @@ fn system_string(&self) -> Option<&str> { self.current().system_string() }
 
 - [ ] **Step 3: Verify and commit**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 
 ```bash
-git add crates/ast-core/src/frames/
+git add crates/starlink-ast/src/frames/
 git commit -m "Add observer attributes and system_string to Frame trait"
 ```
 
@@ -198,8 +198,8 @@ git commit -m "Add observer attributes and system_string to Frame trait"
 ### Task 3: Sky Conversion Pipeline (make_sky_mapping)
 
 **Files:**
-- Create: `crates/ast-core/src/frames/sky_convert.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs` (add module)
+- Create: `crates/starlink-ast/src/frames/sky_convert.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs` (add module)
 
 This is the core logic that builds SlaMap chains for coordinate
 system conversion. It can be tested independently using SlaMap
@@ -323,7 +323,7 @@ Tests in `#[cfg(test)]` module of sky_convert.rs:
 - [ ] **Step 6: Verify and commit**
 
 ```bash
-git add crates/ast-core/src/frames/sky_convert.rs crates/ast-core/src/frames/mod.rs
+git add crates/starlink-ast/src/frames/sky_convert.rs crates/starlink-ast/src/frames/mod.rs
 git commit -m "Add make_sky_mapping: SlaMap pipeline for coordinate system conversion"
 ```
 
@@ -332,8 +332,8 @@ git commit -m "Add make_sky_mapping: SlaMap pipeline for coordinate system conve
 ### Task 4: SkyFrame Struct and Basic Frame Impl
 
 **Files:**
-- Create: `crates/ast-core/src/frames/skyframe.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs`
+- Create: `crates/starlink-ast/src/frames/skyframe.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
 
 SkyFrame struct with all attributes, constructor, setters, and the
 Frame trait implementation (spherical geometry, formatting, norm,
@@ -420,7 +420,7 @@ pub use skyframe::SkyFrame;
 - [ ] **Step 5: Verify and commit**
 
 ```bash
-git add crates/ast-core/src/frames/
+git add crates/starlink-ast/src/frames/
 git commit -m "Add SkyFrame struct with Frame trait implementation"
 ```
 
@@ -429,8 +429,8 @@ git commit -m "Add SkyFrame struct with Frame trait implementation"
 ### Task 5: SkyFrame Serialization and Dispatch
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/skyframe.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/src/frames/skyframe.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
 
 - [ ] **Step 1: Implement Serializable for SkyFrame**
 
@@ -467,7 +467,7 @@ In `serial/mod.rs`:
 - [ ] **Step 4: Verify and commit**
 
 ```bash
-git add crates/ast-core/src/frames/ crates/ast-core/src/serial/mod.rs
+git add crates/starlink-ast/src/frames/ crates/starlink-ast/src/serial/mod.rs
 git commit -m "Add SkyFrame serialisation and dispatch"
 ```
 
@@ -476,8 +476,8 @@ git commit -m "Add SkyFrame serialisation and dispatch"
 ### Task 6: Offset Coordinate Rotation
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/sky_convert.rs`
-- Modify: `crates/ast-core/src/frames/skyframe.rs`
+- Modify: `crates/starlink-ast/src/frames/sky_convert.rs`
+- Modify: `crates/starlink-ast/src/frames/skyframe.rs`
 
 When `sky_ref_is != Ignored`, SkyFrame prepends/appends a rotation
 to the conversion mapping.
@@ -523,7 +523,7 @@ append the target's offset rotation to the pipeline.
 - [ ] **Step 4: Verify and commit**
 
 ```bash
-git add crates/ast-core/src/frames/
+git add crates/starlink-ast/src/frames/
 git commit -m "Add offset coordinate rotation support for SkyFrame"
 ```
 
@@ -532,7 +532,7 @@ git commit -m "Add offset coordinate rotation support for SkyFrame"
 ### Task 7: Comprehensive SkyFrame Tests
 
 **Files:**
-- Create: `crates/ast-core/tests/test_skyframe.rs`
+- Create: `crates/starlink-ast/tests/test_skyframe.rs`
 
 - [ ] **Step 1: Write test file**
 
@@ -580,13 +580,13 @@ Comprehensive tests covering:
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_skyframe`
+Run: `cargo test -p starlink-ast --test test_skyframe`
 Expected: all pass
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_skyframe.rs
+git add crates/starlink-ast/tests/test_skyframe.rs
 git commit -m "Add comprehensive SkyFrame tests"
 ```
 
@@ -604,7 +604,7 @@ Run: `cargo fmt --all -- --check`
 
 - [ ] **Step 3: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 - [ ] **Step 4: Verify dispatch completeness**
@@ -618,7 +618,7 @@ Verify SkyFrame appears in all dispatch points.
 ## Verification Checklist
 
 1. `cargo build --workspace` — compiles
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. `cargo fmt --all -- --check` — clean
 5. SkyFrame construction with all 12 systems

@@ -3,7 +3,7 @@
 #include "proj.h"
 
 /*
- * astSizeOf_ for the ast-core FFI build of wcslib.
+ * astSizeOf_ for the starlink-ast FFI build of wcslib.
  *
  * In the full AST library astSizeOf_ returns the allocated byte size of a
  * memory block tracked by AST's memory subsystem.  Its only caller in this
@@ -12,7 +12,7 @@
  *     plen = astSizeOf( prj->p )/sizeof( double );
  *
  * and scans prj->p[plen-1 .. 0] for the highest nonzero polynomial
- * coefficient.  ast-core always backs prj->p and prj->p2 with a
+ * coefficient.  starlink-ast always backs prj->p and prj->p2 with a
  * (WCSLIB_MXPAR + 1)-length double buffer (PRJ_PARAM_SLOTS in wcslib.rs),
  * matching the reference library, which allocates mxpar + 1 doubles per axis
  * (wcsmap.c:5862) so that index mxpar itself is addressable.  Reporting that

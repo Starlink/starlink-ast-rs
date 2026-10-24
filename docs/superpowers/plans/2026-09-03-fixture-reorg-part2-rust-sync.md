@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `crates/ast-core/tests/fixtures/` a byte-identical mirror of the upstream `ast_tester/fixtures/` tree, repoint every consumer at the shared paths and manifests, and land the three behavioral changes the regenerated oracle now expects.
+**Goal:** Make `crates/starlink-ast/tests/fixtures/` a byte-identical mirror of the upstream `ast_tester/fixtures/` tree, repoint every consumer at the shared paths and manifests, and land the three behavioral changes the regenerated oracle now expects.
 
 **Architecture:** The oracle section keys become full fixture-root-relative paths, which collapses a five-directory search with a basename fallback into one `join`. The two Rust-only manifests are deleted in favor of upstream's `cases.txt`. Two Rust-only expectations that cannot live in a shared tree — the fixtures the port cannot load, and the one dump the reader refuses — become named lists in Rust source instead of directory boundaries. Three behavioral gaps close: a one-ULP WCS boundary clamp, a `CmpMap::Equal` recursion guard, and un-mirroring a C loader defect that upstream has now fixed.
 
@@ -26,30 +26,30 @@
 ## File Structure
 
 **Replaced wholesale (Task 2):**
-- `crates/ast-core/tests/fixtures/` — every file, from the submodule
+- `crates/starlink-ast/tests/fixtures/` — every file, from the submodule
 
 **Created:**
 - `tools/fixtures/check_mirror.sh` — the one command that proves the trees match
 
 **Modified — the transform-oracle harness (Tasks 3, 7):**
-- `crates/ast-core/tests/test_transform_oracle.rs` — `resolve_fixture`, three section predicates, three floors, the FMA substitution table, the framesets section-count assertion
+- `crates/starlink-ast/tests/test_transform_oracle.rs` — `resolve_fixture`, three section predicates, three floors, the FMA substitution table, the framesets section-count assertion
 
 **Modified — the manifest consumers (Task 4):**
-- `crates/ast-core/tests/test_wcsconv.rs:58,114` — manifest path and row parsing
-- `crates/ast-core/tests/test_simplify_regression.rs` — manifest path and row parsing
-- `crates/ast-core/tests/test_verification_ledger.rs:174` — manifest paths and derived counts
+- `crates/starlink-ast/tests/test_wcsconv.rs:58,114` — manifest path and row parsing
+- `crates/starlink-ast/tests/test_simplify_regression.rs` — manifest path and row parsing
+- `crates/starlink-ast/tests/test_verification_ledger.rs:174` — manifest paths and derived counts
 
 **Modified — the round-trip sweeps (Task 5):**
-- `crates/ast-core/tests/test_serialisation.rs:1124,1181,1267,1323` — the `.rt` lookup and three corpus paths
-- `crates/ast-core/tests/test_deferred_fixtures.rs` — rewritten from a directory registry to a named-fixture registry that asserts the load actually fails
+- `crates/starlink-ast/tests/test_serialisation.rs:1124,1181,1267,1323` — the `.rt` lookup and three corpus paths
+- `crates/starlink-ast/tests/test_deferred_fixtures.rs` — rewritten from a directory registry to a named-fixture registry that asserts the load actually fails
 
 **Modified — library source (Tasks 7, 8, 9):**
-- `crates/ast-core/src/mappings/wcsmap.rs:708` — the one-ULP clamp
-- `crates/ast-core/src/mappings/cmpmap.rs` — the `Equal` guard
-- `crates/ast-core/src/mappings/{zoom,pcdmap,mathmap/mod,perm,lutmap,sphmap,polymap,splinemap,grismmap}.rs` — un-mirror the loader clear
+- `crates/starlink-ast/src/mappings/wcsmap.rs:708` — the one-ULP clamp
+- `crates/starlink-ast/src/mappings/cmpmap.rs` — the `Equal` guard
+- `crates/starlink-ast/src/mappings/{zoom,pcdmap,mathmap/mod,perm,lutmap,sphmap,polymap,splinemap,grismmap}.rs` — un-mirror the loader clear
 
 **Deleted:**
-- `crates/ast-core/tests/fixtures/native/`, `fits/`, `dssmap/`, `frameset/`, `keymap/` and the three root `.ast` files (absorbed into the mirrored tree)
+- `crates/starlink-ast/tests/fixtures/native/`, `fits/`, `dssmap/`, `frameset/`, `keymap/` and the three root `.ast` files (absorbed into the mirrored tree)
 - `tools/oracle_fixtures/gen_roundtrip_refs.sh`, `tools/oracle_fixtures/ast2ast.c`, `tools/oracle_fixtures/head2ast.c`
 
 ---
@@ -94,7 +94,7 @@ Write the classification to `/tmp/drift_classification.txt`, one line per case. 
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-diff <(grep '^\[' crates/ast-core/tests/fixtures/oracle/framesets.oracle | sed 's/^\[//;s/  .*//;s|.*/||' | sort) \
+diff <(grep '^\[' crates/starlink-ast/tests/fixtures/oracle/framesets.oracle | sed 's/^\[//;s/  .*//;s|.*/||' | sort) \
      <(grep '^\[' reference/starlink-ast/ast_tester/fixtures/oracle/framesets.oracle | sed 's/^\[//;s/  .*//;s|.*/||' | sort)
 ```
 
@@ -112,8 +112,8 @@ git commit -q reference/starlink-ast -m "$(printf 'ref: move the pin to the reor
 ## Task 2: Mirror the fixture tree, and gate it
 
 **Files:**
-- Delete: `crates/ast-core/tests/fixtures/` (entirely)
-- Create: `crates/ast-core/tests/fixtures/` (copied), `tools/fixtures/check_mirror.sh`
+- Delete: `crates/starlink-ast/tests/fixtures/` (entirely)
+- Create: `crates/starlink-ast/tests/fixtures/` (copied), `tools/fixtures/check_mirror.sh`
 
 **Interfaces:**
 - Consumes: Task 1's pin.
@@ -140,7 +140,7 @@ cat > tools/fixtures/check_mirror.sh <<'SH'
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")/../.." && pwd)
-ours=$here/crates/ast-core/tests/fixtures
+ours=$here/crates/starlink-ast/tests/fixtures
 theirs=$here/reference/starlink-ast/ast_tester/fixtures
 
 if [[ ! -d $theirs ]]; then
@@ -170,11 +170,11 @@ Expected: exit 1, with a long list of differences. That list is the work of Step
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-git rm -r -q --cached crates/ast-core/tests/fixtures
-rm -rf crates/ast-core/tests/fixtures
-cp -a reference/starlink-ast/ast_tester/fixtures crates/ast-core/tests/fixtures
-find crates/ast-core/tests/fixtures -name '*.rt' -delete   # expect 0; Part 1 never created them
-git add crates/ast-core/tests/fixtures
+git rm -r -q --cached crates/starlink-ast/tests/fixtures
+rm -rf crates/starlink-ast/tests/fixtures
+cp -a reference/starlink-ast/ast_tester/fixtures crates/starlink-ast/tests/fixtures
+find crates/starlink-ast/tests/fixtures -name '*.rt' -delete   # expect 0; Part 1 never created them
+git add crates/starlink-ast/tests/fixtures
 ```
 
 `cp -a` rather than a selective copy is deliberate: `plot/expected/` is copied although nothing reads it until the Plot port, because that is what makes the gate a single recursive diff with no exclusion list (spec §2).
@@ -195,10 +195,10 @@ Add it to the nightly workflow that already runs `git submodule update --init re
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-git add tools/fixtures/check_mirror.sh crates/ast-core/tests/fixtures .github
+git add tools/fixtures/check_mirror.sh crates/starlink-ast/tests/fixtures .github
 git commit -q -m "test: mirror the upstream fixture tree, and gate the mirror
 
-crates/ast-core/tests/fixtures is now a byte-identical copy of the upstream
+crates/starlink-ast/tests/fixtures is now a byte-identical copy of the upstream
 ast_tester/fixtures tree, and check_mirror.sh is one recursive diff that
 catches both an upstream fixture we failed to copy and a local fixture that
 was never upstreamed. plot/expected/ is copied although unused until the Plot
@@ -216,7 +216,7 @@ The build being broken mid-range is stated rather than hidden. Tasks 3–6 repoi
 Upstream's oracle headers now name full fixture-root-relative paths, so the five-candidate search with a basename fallback is not merely unnecessary but wrong: `car1.head` through `car5.head` exist in both `wcsconv/inputs/` and `programs/joye_car_headers/`, and a basename fallback picks whichever directory comes first in the list.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs`
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs`
 
 **Interfaces:**
 - Consumes: Task 2's mirrored tree.
@@ -224,7 +224,7 @@ Upstream's oracle headers now name full fixture-root-relative paths, so the five
 
 - [ ] **Step 1: Write the failing test — a duplicated basename must resolve by path**
 
-Add to the `resolve_tests` module in `crates/ast-core/tests/test_transform_oracle.rs`:
+Add to the `resolve_tests` module in `crates/starlink-ast/tests/test_transform_oracle.rs`:
 
 ```rust
 /// Upstream holds `car1.head` in two directories with different contents.
@@ -256,7 +256,7 @@ fn bare_basename_does_not_resolve() {
 - [ ] **Step 2: Run it to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle resolve_tests -- --nocapture
+cargo test -p starlink-ast --test test_transform_oracle resolve_tests -- --nocapture
 ```
 
 Expected: FAIL. `bare_basename_does_not_resolve` fails because the current fallback resolves it, and the whole test binary may not compile until Step 3 if the old `DIRS` paths no longer exist.
@@ -286,7 +286,7 @@ Delete the `DIRS` constant and the `never_resolves_into_generated` test — the 
 Then recompute the three floors and the framesets section count from the mirrored oracles rather than guessing:
 
 ```bash
-cd /sdf/home/t/timj/WORK/starlink-astrs/crates/ast-core/tests/fixtures/oracle
+cd /sdf/home/t/timj/WORK/starlink-astrs/crates/starlink-ast/tests/fixtures/oracle
 echo -n "HEAD_SECTION_FLOOR = "; grep -c '^\[.*\.head ' headers.oracle
 echo -n "framesets sections = "; grep -c '^\[' framesets.oracle
 echo -n "all sections       = "; grep -ch '^\[' *.oracle | paste -sd+ | bc
@@ -300,10 +300,10 @@ Set `HEAD_SECTION_FLOOR`, `SLAMAP_SECTION_FLOOR` and `SIMPLIFY_SECTION_FLOOR` to
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_transform_oracle resolve_tests
-cargo test -p ast-core --test test_transform_oracle every_oracle_section_is_gated
-cargo fmt && cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_transform_oracle.rs
+cargo test -p starlink-ast --test test_transform_oracle resolve_tests
+cargo test -p starlink-ast --test test_transform_oracle every_oracle_section_is_gated
+cargo fmt && cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -q -m "test(oracle): resolve fixtures by path, not basename
 
 Oracle section headers now name full fixture-root-relative paths, so the
@@ -323,7 +323,7 @@ exclusion lists are empty and stay empty."
 ## Task 4: Read the shared manifests
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_wcsconv.rs`, `crates/ast-core/tests/test_simplify_regression.rs`, `crates/ast-core/tests/test_verification_ledger.rs`
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs`, `crates/starlink-ast/tests/test_simplify_regression.rs`, `crates/starlink-ast/tests/test_verification_ledger.rs`
 
 **Interfaces:**
 - Consumes: Task 2's `fixtures/{simplify,wcsconv}/cases.txt`.
@@ -331,7 +331,7 @@ exclusion lists are empty and stay empty."
 
 - [ ] **Step 1: Write the failing test — the manifest is the shared one**
 
-Add to `crates/ast-core/tests/test_wcsconv.rs`:
+Add to `crates/starlink-ast/tests/test_wcsconv.rs`:
 
 ```rust
 /// The manifest is upstream's, read from the shared tree, so a case added
@@ -356,7 +356,7 @@ and the analogous test in `test_simplify_regression.rs` asserting every row's in
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv manifest_is_the_shared_upstream_one
+cargo test -p starlink-ast --test test_wcsconv manifest_is_the_shared_upstream_one
 ```
 
 Expected: FAIL — the harness still reads `wcsconv/wcsconv_tests.txt`, which no longer exists, so this is a read error rather than an assertion failure.
@@ -408,7 +408,7 @@ In `test_simplify_regression.rs`, repoint the manifest to `fixtures/simplify/cas
 `test_verification_ledger.rs:174` reads both manifests by path. Repoint them, then recompute every derived count from the new manifests instead of editing the numbers by guess:
 
 ```bash
-cd /sdf/home/t/timj/WORK/starlink-astrs/crates/ast-core/tests/fixtures
+cd /sdf/home/t/timj/WORK/starlink-astrs/crates/starlink-ast/tests/fixtures
 echo -n "simplify rows: "; grep -vc '^#\|^$' simplify/cases.txt
 echo -n "wcsconv rows:  "; grep -vc '^#\|^$' wcsconv/cases.txt
 echo -n "negative fixtures stripping IsSimp: "
@@ -423,11 +423,11 @@ Part 1's Tasks 9 and 10 re-audited those flag counts down from 165 and 108, so t
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -20
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -20
-cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -20
-cargo fmt && cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_wcsconv.rs crates/ast-core/tests/test_simplify_regression.rs crates/ast-core/tests/test_verification_ledger.rs
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -20
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -20
+cargo test -p starlink-ast --test test_verification_ledger 2>&1 | tail -20
+cargo fmt && cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_wcsconv.rs crates/starlink-ast/tests/test_simplify_regression.rs crates/starlink-ast/tests/test_verification_ledger.rs
 git commit -q -m "test: read the shared upstream case manifests
 
 Both harnesses now read fixtures/{simplify,wcsconv}/cases.txt from the
@@ -449,7 +449,7 @@ Expect `test_wcsconv` to have failures at this point from the FITS-read path, no
 The `.rt` override existed only because C could not read back the `IsSimp` card it wrote. Part 1 Task 1 fixed that, so the override has no reason to exist and the round-trip becomes a clean identity over every corpus. Separately, the fixtures the port cannot load move from a directory boundary to a named list — a directory would encode a Rust-only fact as a property of a shared tree (spec §2.2).
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_serialisation.rs`, `crates/ast-core/tests/test_deferred_fixtures.rs`, `crates/ast-core/tests/test_native_roundtrip_all.rs`
+- Modify: `crates/starlink-ast/tests/test_serialisation.rs`, `crates/starlink-ast/tests/test_deferred_fixtures.rs`, `crates/starlink-ast/tests/test_native_roundtrip_all.rs`
 
 **Interfaces:**
 - Consumes: Task 2's mirrored tree.
@@ -457,7 +457,7 @@ The `.rt` override existed only because C could not read back the `IsSimp` card 
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/ast-core/tests/test_deferred_fixtures.rs`, replace the file's contents with a registry keyed on fixture names, and — the part today's version lacks — an assertion that each one actually fails to load:
+In `crates/starlink-ast/tests/test_deferred_fixtures.rs`, replace the file's contents with a registry keyed on fixture names, and — the part today's version lacks — an assertion that each one actually fails to load:
 
 ```rust
 //! Registry for the simplify fixtures this port cannot read.
@@ -528,7 +528,7 @@ fn every_deferred_fixture_still_fails_to_load() {
     let mut now_loading = Vec::new();
     for (file, reason) in SIMPLIFY_DEFERRED {
         let text = std::fs::read_to_string(dir.join(file)).unwrap();
-        if ast_core::from_native_string(&text).is_ok() {
+        if starlink_ast::from_native_string(&text).is_ok() {
             now_loading.push((*file, *reason));
         }
     }
@@ -544,14 +544,14 @@ fn every_deferred_fixture_still_fails_to_load() {
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_deferred_fixtures
+cargo test -p starlink-ast --test test_deferred_fixtures
 ```
 
 Expected: FAIL to compile or FAIL on `every_deferred_fixture_exists`, because the old file references the deleted `simplify_fixtures_unsupported` directory.
 
 - [ ] **Step 3: Repoint the three sweeps and delete the `.rt` lookup**
 
-In `crates/ast-core/tests/test_serialisation.rs`, delete this block from `native_round_trip_fixture` (around line 1135) along with the comment above it:
+In `crates/starlink-ast/tests/test_serialisation.rs`, delete this block from `native_round_trip_fixture` (around line 1135) along with the comment above it:
 
 ```rust
     let rt = path.with_extension(format!(
@@ -597,9 +597,9 @@ Have the `serialisation/` sweep skip the one dump the reader is required to refu
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_deferred_fixtures
-cargo test -p ast-core --test test_serialisation 2>&1 | tail -25
-cargo test -p ast-core --test test_frame_in_map_slot 2>&1 | tail -10
+cargo test -p starlink-ast --test test_deferred_fixtures
+cargo test -p starlink-ast --test test_serialisation 2>&1 | tail -25
+cargo test -p starlink-ast --test test_frame_in_map_slot 2>&1 | tail -10
 ```
 
 Expected: `test_deferred_fixtures` passes. The simplify corpus sweep **fails on 43 fixtures** — with the override gone, the port still mirrors C's old loader behavior and drops the `IsSimp` card. That is the expected intermediate failure named in the Global Constraints; Task 9 closes it. Do not restore the override or add an exclusion.
@@ -608,8 +608,8 @@ Expected: `test_deferred_fixtures` passes. The simplify corpus sweep **fails on 
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt && cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_serialisation.rs crates/ast-core/tests/test_deferred_fixtures.rs crates/ast-core/tests/test_native_roundtrip_all.rs
+cargo fmt && cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_serialisation.rs crates/starlink-ast/tests/test_deferred_fixtures.rs crates/starlink-ast/tests/test_native_roundtrip_all.rs
 git commit -q -m "test(serial): drop the readback override, repoint the corpora
 
 The 43 .rt files blessed a C defect that upstream has now fixed, so the
@@ -629,7 +629,7 @@ loader defect. Task 9 un-mirrors it."
 ## Task 6: Path literals, tooling, and the deleted generators
 
 **Files:**
-- Modify: ~31 test files, `crates/ast-core/build.rs`, three examples, four `src/` doc comments, `tools/oracle_fixtures/check_corpus_fresh.{sh,py}`, `check_simplify_fresh.{sh,py}`, `gen_frameset_fixtures.sh`, `tools/oracle_fixtures/README.md`
+- Modify: ~31 test files, `crates/starlink-ast/build.rs`, three examples, four `src/` doc comments, `tools/oracle_fixtures/check_corpus_fresh.{sh,py}`, `check_simplify_fresh.{sh,py}`, `gen_frameset_fixtures.sh`, `tools/oracle_fixtures/README.md`
 - Delete: `tools/oracle_fixtures/gen_roundtrip_refs.sh`, `tools/oracle_fixtures/ast2ast.c`, `tools/oracle_fixtures/head2ast.c`
 
 **Interfaces:**
@@ -681,7 +681,7 @@ git rm -q tools/oracle_fixtures/gen_roundtrip_refs.sh tools/oracle_fixtures/ast2
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --no-run 2>&1 | tail -20
+cargo test -p starlink-ast --no-run 2>&1 | tail -20
 rg -n 'native/reference|native/generated|simplify_fixtures|frameset_fixtures|wcsconv_tests|simplify_tests' crates tools --glob '!target/**' | grep -v '^Binary'
 ```
 
@@ -709,8 +709,8 @@ target."
 A WinMap used by a FITS CAR mapping evaluates `-0.5 degree + 181 * 0.5 degree` as exactly 90 degrees when the compiler contracts the multiply and add into an FMA, and as one representable double above 90 when it does not. Upstream `460efce3` clamps rather than letting a WCS's validity depend on the compiler. Rust does not contract — rustc has no `-ffp-contract=fast` equivalent on by default, and fusion comes only from an explicit `f64::mul_add` — so this port behaves like the non-FMA C build and must adopt the clamp. See spec §5 R4.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/wcsmap.rs:708`
-- Test: `crates/ast-core/tests/test_wcsmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/wcsmap.rs:708`
+- Test: `crates/starlink-ast/tests/test_wcsmap.rs`
 
 **Interfaces:**
 - Consumes: Task 3's rekeyed gates.
@@ -718,7 +718,7 @@ A WinMap used by a FITS CAR mapping evaluates `-0.5 degree + 181 * 0.5 degree` a
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `crates/ast-core/tests/test_wcsmap.rs`:
+Add to `crates/starlink-ast/tests/test_wcsmap.rs`:
 
 ```rust
 /// The corner pixel of an all-sky CAR header lands one representable double
@@ -731,13 +731,13 @@ Add to `crates/ast-core/tests/test_wcsmap.rs`:
 #[test]
 fn car_corner_pixel_is_not_bad() {
     let text = include_str!("fixtures/wcsconv/inputs/car6.head");
-    let mut fc = ast_core::fitschan::FitsChan::from_header(text).unwrap();
+    let mut fc = starlink_ast::fitschan::FitsChan::from_header(text).unwrap();
     let obj = fc.read().unwrap().expect("car6.head reads");
-    let map: &dyn ast_core::mappings::Mapping = mapping_of(&obj);
+    let map: &dyn starlink_ast::mappings::Mapping = mapping_of(&obj);
 
     let (lon, lat) = transform_point(map, 5401.0, 1741.0);
     assert!(
-        lon != ast_core::constants::BAD_VALUE && lat != ast_core::constants::BAD_VALUE,
+        lon != starlink_ast::constants::BAD_VALUE && lat != starlink_ast::constants::BAD_VALUE,
         "corner pixel came back BAD: ({lon}, {lat})"
     );
     assert!((lon - 0.0).abs() < 1e-12, "longitude {lon} != 0");
@@ -750,14 +750,14 @@ Use whichever helper the file already has for extracting a `Mapping` from a read
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_wcsmap car_corner_pixel_is_not_bad
+cargo test -p starlink-ast --test test_wcsmap car_corner_pixel_is_not_bad
 ```
 
 Expected: FAIL with both values `BAD`.
 
 - [ ] **Step 3: Port the clamp**
 
-In `crates/ast-core/src/mappings/wcsmap.rs`, replace the inverse-direction acceptance test at lines 708-709:
+In `crates/starlink-ast/src/mappings/wcsmap.rs`, replace the inverse-direction acceptance test at lines 708-709:
 
 ```rust
                         if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))
@@ -813,8 +813,8 @@ This is the faithful port. Do not substitute `f64::mul_add` in the CAR expressio
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_wcsmap car_corner_pixel_is_not_bad
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle 2>&1 | tail -20
+cargo test -p starlink-ast --test test_wcsmap car_corner_pixel_is_not_bad
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle 2>&1 | tail -20
 ```
 
 Expected: the unit test passes, and `head_sections_match_oracle` no longer reports `car6.head` or `CHIPASS_Equ.head`. `HEAD_ORACLE_EXCLUDED` stays empty.
@@ -823,8 +823,8 @@ Expected: the unit test passes, and `head_sections_match_oracle` no longer repor
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt && cargo clippy -p ast-core -- -D warnings
-git add crates/ast-core/src/mappings/wcsmap.rs crates/ast-core/tests/test_wcsmap.rs
+cargo fmt && cargo clippy -p starlink-ast -- -D warnings
+git add crates/starlink-ast/src/mappings/wcsmap.rs crates/starlink-ast/tests/test_wcsmap.rs
 git commit -q -m "wcsmap: absorb a one-ULP error at the coordinate limits
 
 Port of upstream 460efce3. A WinMap used by a FITS CAR mapping evaluates
@@ -844,8 +844,8 @@ what the C source does, and it guards inputs FMA would not rescue."
 `astMapList` refuses to expand a CmpMap for which `astDoNotSimplify` is true (`cmpmap.c:1154`), returning a list holding a clone of the CmpMap itself. An `Equal` that decomposes both operands and compares element by element therefore calls `astEqual` on the same pair again and recurses until the stack is exhausted — reachable by any CmpMap carrying an `Ident`. `MapSplit` already guards the identical hazard at `cmpmap.c:2555`. Upstream fixed `Equal` in `16ed5d37` and `0f797ae7`, both already in the pin; the port and the two new C tests are this task.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/cmpmap.rs`
-- Test: `crates/ast-core/tests/test_cmpmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/cmpmap.rs`
+- Test: `crates/starlink-ast/tests/test_cmpmap.rs`
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
@@ -864,7 +864,7 @@ The guard is deliberately narrow: it fires only when *both* decompositions retur
 
 - [ ] **Step 2: Write the two failing tests, ported from `testmapping.c`**
 
-Add to `crates/ast-core/tests/test_cmpmap.rs`:
+Add to `crates/starlink-ast/tests/test_cmpmap.rs`:
 
 ```rust
 /// Ported from `testprotectedcmpequal` (`ast_tester/testmapping.c`).
@@ -919,24 +919,24 @@ Adjust the constructor and accessor names to this crate's actual API — check `
 - [ ] **Step 3: Run to verify they fail**
 
 ```bash
-cargo test -p ast-core --test test_cmpmap protected_cmpmap -- --nocapture
+cargo test -p starlink-ast --test test_cmpmap protected_cmpmap -- --nocapture
 ```
 
 Expected: the first test either fails or overflows the stack. A stack overflow *is* the failure this task fixes; if the port already guards it, the test passes and you should confirm the guard is genuinely present rather than assuming the hazard is unreachable here.
 
 - [ ] **Step 4: Port the guard**
 
-In `crates/ast-core/src/mappings/cmpmap.rs`'s `equal`, take the same test `MapSplit` takes, and when both decompositions returned the CmpMap itself, compare the component Mappings directly with the `Invert` flags they held at construction temporarily re-instated. That descends into strictly smaller Mappings and terminates. Mirror C's structure rather than inventing a Rust-shaped equivalent — the point of the guard is that it fires in exactly one case, and a restructured version will not.
+In `crates/starlink-ast/src/mappings/cmpmap.rs`'s `equal`, take the same test `MapSplit` takes, and when both decompositions returned the CmpMap itself, compare the component Mappings directly with the `Invert` flags they held at construction temporarily re-instated. That descends into strictly smaller Mappings and terminates. Mirror C's structure rather than inventing a Rust-shaped equivalent — the point of the guard is that it fires in exactly one case, and a restructured version will not.
 
 - [ ] **Step 5: Run the suite and commit**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_cmpmap
-cargo test -p ast-core --test test_equal
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -10
-cargo fmt && cargo clippy -p ast-core -- -D warnings
-git add crates/ast-core/src/mappings/cmpmap.rs crates/ast-core/tests/test_cmpmap.rs
+cargo test -p starlink-ast --test test_cmpmap
+cargo test -p starlink-ast --test test_equal
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -10
+cargo fmt && cargo clippy -p starlink-ast -- -D warnings
+git add crates/starlink-ast/src/mappings/cmpmap.rs crates/starlink-ast/tests/test_cmpmap.rs
 git commit -q -m "cmpmap: stop equal recursing when MapList declines to decompose
 
 Port of upstream 16ed5d37 and 0f797ae7. astMapList refuses to expand a
@@ -971,7 +971,7 @@ That final `set_zoom(raw)` is a no-op in value terms — the object was construc
 Part 1 fixed ten classes in C, so these mirrors are now bugs — the case `CLAUDE.md`'s sync protocol warns about, where a faithful mirror becomes a defect the moment upstream fixes the original. `docs/issues/c-library-quirks.md` names the ten `from_node` sites and the seven fixtures that pin them.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/{zoom,perm,lutmap,sphmap,pcdmap,mathmap/mod,polymap,splinemap,wcsmap,grismmap}.rs`, `docs/issues/c-library-quirks.md`
+- Modify: `crates/starlink-ast/src/mappings/{zoom,perm,lutmap,sphmap,pcdmap,mathmap/mod,polymap,splinemap,wcsmap,grismmap}.rs`, `docs/issues/c-library-quirks.md`
 - Test: the Task 5 sweep is the test
 
 **Interfaces:**
@@ -982,7 +982,7 @@ Part 1 fixed ten classes in C, so these mirrors are now bugs — the case `CLAUD
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_serialisation native_byte_exact_round_trip_simplify_corpus 2>&1 | grep -c 'FAIL:'
+cargo test -p starlink-ast --test test_serialisation native_byte_exact_round_trip_simplify_corpus 2>&1 | grep -c 'FAIL:'
 ```
 
 Expected: 43. A different number means Part 1's fix or Task 5's repoint changed the population, and you need to know which before editing ten files.
@@ -993,7 +993,7 @@ The quirks entry lists them: `ZoomMap`, `MathMap`, `LutMap` (`LutInterp` and `Lu
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-rg -n 'discards the simplified|clear-on-set' crates/ast-core/src/mappings --glob '*.rs'
+rg -n 'discards the simplified|clear-on-set' crates/starlink-ast/src/mappings --glob '*.rs'
 ```
 
 - [ ] **Step 3: Delete the re-application at each site**
@@ -1018,9 +1018,9 @@ Do **not** keep `wcsmap.rs`'s mirror. An earlier draft of this plan said to, on 
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_serialisation 2>&1 | tail -15
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -10
-cargo test -p ast-core --test test_transform_oracle 2>&1 | tail -15
+cargo test -p starlink-ast --test test_serialisation 2>&1 | tail -15
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -10
+cargo test -p starlink-ast --test test_transform_oracle 2>&1 | tail -15
 ```
 
 Expected: all pass. The seven fixtures the quirks entry names as pinning the mirror are the ones to watch: `grism_zoom_merge`, `grism_zoom_inv_merge`, `pcd_swap_zoom_simplifies`, `pcd_unit_series_merge`, `cefit_circle_conformal`, `cefit_circle_nonconformal_keep`, and `cap_poly_bent_edges` as the control — the last carries no `SimpFI` / `SimpIF` / `Seeded` card, so it routed nothing and must be unaffected by this change either way.
@@ -1034,7 +1034,7 @@ Move "The `IsSimp` card does not survive being read back, for twelve classes" to
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 cargo fmt && cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/mappings docs/issues/c-library-quirks.md
+git add crates/starlink-ast/src/mappings docs/issues/c-library-quirks.md
 git commit -q -m "serial: stop re-applying attributes to mirror C's IsSimp loss
 
 from_node builds a complete Node tree and constructs each object in one shot,
@@ -1062,8 +1062,8 @@ Closes the 43 round-trip failures that the deleted .rt overrides were hiding."
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core 2>&1 | tail -30
-cargo test -p ast-core --test '*-regression' 2>&1 | tail -10
+cargo test -p starlink-ast 2>&1 | tail -30
+cargo test -p starlink-ast --test '*-regression' 2>&1 | tail -10
 ./tools/fixtures/check_mirror.sh
 cargo test -p ast-ffi-tests 2>&1 | tail -10
 cargo test -p ast-oracle-tests 2>&1 | tail -10
@@ -1075,9 +1075,9 @@ Expected: all green. Record the counts — they go in the commit message and in 
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-rg -n 'ORACLE_EXCLUDED|NATIVE_READ_EXCLUDED|SIMPLIFY_DEFERRED|FRAME_IN_MAP_SLOT_UNDECIDED' crates/ast-core/tests --glob '*.rs' | grep 'const'
-cargo test -p ast-core --test test_transform_oracle every_oracle_section_is_gated -- --nocapture
-cargo test -p ast-core --test test_verification_ledger -- --nocapture 2>&1 | tail -25
+rg -n 'ORACLE_EXCLUDED|NATIVE_READ_EXCLUDED|SIMPLIFY_DEFERRED|FRAME_IN_MAP_SLOT_UNDECIDED' crates/starlink-ast/tests --glob '*.rs' | grep 'const'
+cargo test -p starlink-ast --test test_transform_oracle every_oracle_section_is_gated -- --nocapture
+cargo test -p starlink-ast --test test_verification_ledger -- --nocapture 2>&1 | tail -25
 ```
 
 The three oracle exclusion lists must still be empty, `every_oracle_section_is_gated` must still prove the three predicates partition the corpus, and the ledger's totals must match what Task 4 recorded. A list that grew during this work is a license someone took without arguing for it.

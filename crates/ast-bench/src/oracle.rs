@@ -1,13 +1,16 @@
 //! Read the committed transform oracles.
 //!
-//! The parser mirrors `crates/ast-core/tests/test_transform_oracle.rs`
+//! The parser mirrors `crates/starlink-ast/tests/test_transform_oracle.rs`
 //! (`Section`, `parse_double`, `parse_oracle`), which integration-test code
 //! cannot share.
 
-use ast_core::constants::BAD_VALUE;
+use starlink_ast::constants::BAD_VALUE;
 
 /// The fixture tree mirrored from `ast_tester/fixtures`.
-pub const CORE_FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../ast-core/tests/fixtures");
+pub const CORE_FIXTURES: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../starlink-ast/tests/fixtures"
+);
 
 /// The fixtures written for benchmarking, one plain Mapping per class
 /// (`tools/perf/gen_bench_fixtures.c`).
@@ -130,7 +133,7 @@ mod tests {
             let text = std::fs::read_to_string(format!("{CORE_FIXTURES}/oracle/{name}")).unwrap();
             total += parse_oracle(&text).unwrap().len();
         }
-        // The total `every_oracle_section_is_gated` asserts in ast-core.
+        // The total `every_oracle_section_is_gated` asserts in starlink-ast.
         assert_eq!(total, 2261);
     }
 

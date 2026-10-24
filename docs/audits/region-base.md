@@ -2,7 +2,7 @@
 
 Scope: the base `Region` class and the shared region infrastructure in the
 Rust port. C reference is `reference/starlink-ast/src/region.c`; Rust is
-`crates/ast-core/src/regions/{mod.rs,data.rs,overlap.rs,merge_util.rs,masking.rs}`
+`crates/starlink-ast/src/regions/{mod.rs,data.rs,overlap.rs,merge_util.rs,masking.rs}`
 plus the per-class hooks those files drive.
 
 Status legend:

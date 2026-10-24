@@ -6,21 +6,21 @@
 
 **Architecture:** The port's two-level structure already matches C's. `simplify()`, an inherent method on `dyn Mapping` at `mappings/mod.rs:568`, is `astSimplify_`; the trait method `simplified()` is the `Simplify` vtab slot; `map_merge()` is `MapMerge`. The defect is not the shape, it is that **155 call sites call `simplified()` directly** where C's slot has exactly one caller. Each bypasses the gate in both directions: it can fail to record a reduction, and it can re-reduce something C returns untouched. This plan makes the bypass a **compile error** by giving `simplified()` a parameter only `simplify()` can construct, works the resulting error list, then moves the 25 per-class `simplified()` bodies that correspond to nothing in C into their class's `map_merge`.
 
-**Tech Stack:** Rust 2024 (`ast-core`), C99 (`reference/starlink-ast` at pin `8d4f526f`, built with cmake), the `tracing` feature for the port-side simplify trace.
+**Tech Stack:** Rust 2024 (`starlink-ast`), C99 (`reference/starlink-ast` at pin `8d4f526f`, built with cmake), the `tracing` feature for the port-side simplify trace.
 
 **Spec:** [`docs/superpowers/specs/2026-08-23-simplify-seam-realignment.md`](../specs/2026-08-23-simplify-seam-realignment.md)
 
 ## Global Constraints
 
-- The oracle is `reference/starlink-ast` at pin `8d4f526f`, built with cmake. Never reach into it from `ast-core`'s `build.rs`.
-- **Never hand-edit a `.simp` or `.map` reference.** Every fixture comes from `ast_tester/gen_simplify_fixtures.c` built against the pinned C, copied into both `reference/starlink-ast/ast_tester/simplify_fixtures/` and `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/` so the trees stay byte-identical.
+- The oracle is `reference/starlink-ast` at pin `8d4f526f`, built with cmake. Never reach into it from `starlink-ast`'s `build.rs`.
+- **Never hand-edit a `.simp` or `.map` reference.** Every fixture comes from `ast_tester/gen_simplify_fixtures.c` built against the pinned C, copied into both `reference/starlink-ast/ast_tester/simplify_fixtures/` and `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/` so the trees stay byte-identical.
 - `cargo fmt` is enforced; `cargo clippy --workspace -- -D warnings` and `cargo doc` are pre-commit hooks. Every task ends green on all three. A public doc comment may not link to a private item.
 - Prose in Markdown is one sentence per line. American English.
 - Comments describe the code as it is today. No references to plans, history, or previous mistakes.
 - No tolerance, threshold or iteration count without an analogue in the C source.
 - Never loosen a negative-control fixture to make a positive case pass.
-- **`ISSIMP_DISAGREEMENTS` and `SERIAL_UNGATED` in `crates/ast-core/tests/test_simplify_regression.rs` are this work's audit trail.** Every movement in either is explained in the commit that causes it. Do not relax either gate.
-- Every relaxation count is mirrored in `crates/ast-core/tests/test_verification_ledger.rs` and `PLAN.md` §6, updated together.
+- **`ISSIMP_DISAGREEMENTS` and `SERIAL_UNGATED` in `crates/starlink-ast/tests/test_simplify_regression.rs` are this work's audit trail.** Every movement in either is explained in the commit that causes it. Do not relax either gate.
+- Every relaxation count is mirrored in `crates/starlink-ast/tests/test_verification_ledger.rs` and `PLAN.md` §6, updated together.
 - Commit with `git commit --fixup` when amending earlier work in this plan.
 
 ## The problem, stated once
@@ -41,9 +41,9 @@ does not mirror is the discipline.
 
 ```
                         simplified()   simplify()
-crates/ast-core/src           65            8
-crates/ast-core/tests         88           28
-crates/ast-core/examples       2            0
+crates/starlink-ast/src           65            8
+crates/starlink-ast/tests         88           28
+crates/starlink-ast/examples       2            0
 ```
 
 Every one of those 155 `simplified()` calls skips the gate, and it matters in both
@@ -66,7 +66,7 @@ crate-private. It can be made *uncallable* by giving it a parameter whose type
 only one module can construct:
 
 ```rust
-// crates/ast-core/src/mappings/simplify_entry.rs
+// crates/starlink-ast/src/mappings/simplify_entry.rs
 pub struct ViaSimplify(());
 ```
 
@@ -118,13 +118,13 @@ it the one C's vtab gives it.
 
 | file | responsibility after this plan |
 |---|---|
-| `crates/ast-core/src/mappings/simplify_entry.rs` | new leaf module. Holds `ViaSimplify` and the `impl dyn Mapping` block containing `simplify()`. Nothing else may live here, or the token stops being exclusive. |
-| `crates/ast-core/src/mappings/mod.rs` | `simplified()` takes `ViaSimplify` and gains C's base body as its default. The `simplify()` block moves out to `simplify_entry`. |
-| `crates/ast-core/src/mappings/simplify.rs` | adds `base_simplify`, C's base `Simplify`. Merge core otherwise unchanged. |
-| `crates/ast-core/src/{frames,regions,fitschan}/**` and the merge core | 65 call sites resolved, each to `simplify()` or to a justified `simplified(ViaSimplify)` — but only 11 files can even write the latter, so in practice all become `simplify()`. |
-| `crates/ast-core/tests/**`, `examples/**` | 90 call sites become `simplify()`. |
-| `crates/ast-core/src/mappings/<class>.rs` × 25 | `simplified()` deleted, body folded into that class's `map_merge`. |
-| `crates/ast-core/tests/test_simplify_seams.rs` | new. Holds the keeper list, derived from the C source. The single-caller rule needs no test — it is a compile error. |
+| `crates/starlink-ast/src/mappings/simplify_entry.rs` | new leaf module. Holds `ViaSimplify` and the `impl dyn Mapping` block containing `simplify()`. Nothing else may live here, or the token stops being exclusive. |
+| `crates/starlink-ast/src/mappings/mod.rs` | `simplified()` takes `ViaSimplify` and gains C's base body as its default. The `simplify()` block moves out to `simplify_entry`. |
+| `crates/starlink-ast/src/mappings/simplify.rs` | adds `base_simplify`, C's base `Simplify`. Merge core otherwise unchanged. |
+| `crates/starlink-ast/src/{frames,regions,fitschan}/**` and the merge core | 65 call sites resolved, each to `simplify()` or to a justified `simplified(ViaSimplify)` — but only 11 files can even write the latter, so in practice all become `simplify()`. |
+| `crates/starlink-ast/tests/**`, `examples/**` | 90 call sites become `simplify()`. |
+| `crates/starlink-ast/src/mappings/<class>.rs` × 25 | `simplified()` deleted, body folded into that class's `map_merge`. |
+| `crates/starlink-ast/tests/test_simplify_seams.rs` | new. Holds the keeper list, derived from the C source. The single-caller rule needs no test — it is a compile error. |
 | `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c` | gains the characterization fixtures Task 3 needs. Goes upstream. |
 
 ---
@@ -132,8 +132,8 @@ it the one C's vtab gives it.
 ## Task 1: Make bypassing the gate a compile error
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/simplify_entry.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/src/mappings/simplify_entry.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
 - Modify: every file the compiler names — expect ~40 across `src`, `tests` and `examples`
 
 **Interfaces:**
@@ -144,10 +144,10 @@ it the one C's vtab gives it.
 
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 \
   | grep -E "^Simplify regression|left:"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-rg -n --color never '\.simplified\(\)' crates/ast-core | grep -cv 'fn simplified'
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+rg -n --color never '\.simplified\(\)' crates/starlink-ast | grep -cv 'fn simplified'
 ```
 
 Paste all three. Every later comparison is against them, and the last is the size
@@ -155,7 +155,7 @@ of the error list to expect.
 
 - [x] **Step 2: Create the leaf module with the token**
 
-Create `crates/ast-core/src/mappings/simplify_entry.rs`:
+Create `crates/starlink-ast/src/mappings/simplify_entry.rs`:
 
 ```rust
 //! The one way into a per-class simplification.
@@ -201,7 +201,7 @@ impl dyn Mapping {
 ```
 
 Move the whole existing `impl dyn Mapping { … }` block from
-`crates/ast-core/src/mappings/mod.rs:568` into this file verbatim, then change
+`crates/starlink-ast/src/mappings/mod.rs:568` into this file verbatim, then change
 its one `self.simplified()` call to `self.simplified(ViaSimplify(()))`. If that
 block holds methods other than `simplify()`, leave those behind in `mod.rs` in
 their own `impl dyn Mapping` block — this file must contain only the entry point.
@@ -215,7 +215,7 @@ pub use simplify_entry::ViaSimplify;
 
 - [x] **Step 3: Give the trait method the parameter**
 
-In `crates/ast-core/src/mappings/mod.rs`, change line 282's declaration to:
+In `crates/starlink-ast/src/mappings/mod.rs`, change line 282's declaration to:
 
 ```rust
     /// Reduce this Mapping without the `IsSimple` gate — C's `Simplify` vtab
@@ -237,8 +237,8 @@ Leave it a required method for now; Task 5 gives it a default.
 - [x] **Step 4: Build, and read the error list**
 
 ```bash
-cargo build -p ast-core 2>&1 | grep -E "^error" | sort | uniq -c | sort -rn | head
-cargo build -p ast-core 2>&1 | grep -E '^\s+--> ' | awk '{print $2}' | cut -d: -f1 | sort | uniq -c | sort -rn
+cargo build -p starlink-ast 2>&1 | grep -E "^error" | sort | uniq -c | sort -rn | head
+cargo build -p starlink-ast 2>&1 | grep -E '^\s+--> ' | awk '{print $2}' | cut -d: -f1 | sort | uniq -c | sort -rn
 ```
 
 Expected: two error kinds — "this method takes 1 argument but 0 were supplied"
@@ -285,10 +285,10 @@ ungated path, it can no longer do so, and that is worth a note in the commit.
 - [x] **Step 7: Compare against the baseline**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 \
   | grep -E "^Simplify regression|equal\(\)|left:|right:"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
 ```
 
 The corpus **will** move, and that is the task working. Three cases:
@@ -303,7 +303,7 @@ The corpus **will** move, and that is the task working. Three cases:
 
 ```bash
 D=${TMPDIR:-/tmp}/ast-trace3
-FIX=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/<name>.map
+FIX=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/<name>.map
 AST_TRACE=1 $D/gen_simp $FIX /dev/null 2> /tmp/c.txt
 cargo run -q --features tracing --example simp_one -- $FIX 2> /tmp/p.txt >/dev/null
 grep -E 'SIMPLIFY-ENTER|SIMPLIFY-WALLED' /tmp/c.txt | sed 's/^ *//' | head -30
@@ -319,17 +319,17 @@ call that set it, not at the class that read it.
 
 - [x] **Step 8: Update the ledger, PLAN.md and the checklists**
 
-Run `cargo test -p ast-core --test test_verification_ledger`, set every count its
+Run `cargo test -p starlink-ast --test test_verification_ledger`, set every count its
 failure names, and update `PLAN.md` §6 in the same edit. In
 `docs/audits/mapmerge/`, repoint any row whose Rust site was a converted call.
 
 - [x] **Step 9: Verify and commit**
 
 ```bash
-cargo clippy -p ast-core --all-targets -- -D warnings
-cargo clippy -p ast-core --all-targets --features tracing -- -D warnings
-cargo doc -p ast-core --no-deps 2>&1 | grep -cE "^error"
-git add crates/ast-core PLAN.md docs
+cargo clippy -p starlink-ast --all-targets -- -D warnings
+cargo clippy -p starlink-ast --all-targets --features tracing -- -D warnings
+cargo doc -p starlink-ast --no-deps 2>&1 | grep -cE "^error"
+git add crates/starlink-ast PLAN.md docs
 git commit -m "simplify: make bypassing the IsSimple gate a compile error
 
 C has one public entry, astSimplify_, which short-circuits on the IsSimple bit,
@@ -358,7 +358,7 @@ Expected: `0` failures, no warnings either way, `0` doc errors.
 ## Task 2: The keeper-list gate
 
 **Files:**
-- Create: `crates/ast-core/tests/test_simplify_seams.rs`
+- Create: `crates/starlink-ast/tests/test_simplify_seams.rs`
 - Modify: `docs/audits/mapmerge/README.md`
 
 **Interfaces:**
@@ -367,7 +367,7 @@ Expected: `0` failures, no warnings either way, `0` doc errors.
 
 - [x] **Step 1: Write the failing test**
 
-Create `crates/ast-core/tests/test_simplify_seams.rs`:
+Create `crates/starlink-ast/tests/test_simplify_seams.rs`:
 
 ```rust
 //! Which classes may implement the per-class simplify seam.
@@ -455,13 +455,13 @@ fn only_c_simplify_classes_implement_simplified() {
 
 - [x] **Step 2: Run it to verify it fails and names the right set**
 
-Run: `cargo test -p ast-core --test test_simplify_seams -- --ignored --nocapture`
+Run: `cargo test -p starlink-ast --test test_simplify_seams -- --ignored --nocapture`
 
 Expected: FAIL listing 25 paths from `mappings/chebymap.rs` to
 `mappings/zoom.rs`, and nothing under `regions/` or `frames/`.
 
 If a Region or `frames/frameset.rs` appears, the keeper list has a typo: paths are
-relative to `crates/ast-core/src` and `box_region.rs` keeps its suffix. If the
+relative to `crates/starlink-ast/src` and `box_region.rs` keeps its suffix. If the
 list is empty, the `text.contains` pattern does not match Task 1's actual
 signature — print one impl and align the string.
 
@@ -480,7 +480,7 @@ and the base `Simplify` reaches it by nominating the Mapping in a list of one
 
 So a row whose Rust site is a `simplified()` body, in a class whose C counterpart
 does not override the slot, is not `ported`: it is in a seam C does not have.
-`crates/ast-core/tests/test_simplify_seams.rs` holds the list of 11.
+`crates/starlink-ast/tests/test_simplify_seams.rs` holds the list of 11.
 
 The companion rule — that nothing but `simplify()` reaches the seam — is enforced
 by the compiler, not by a checklist: `simplified()` takes a `ViaSimplify` and
@@ -490,9 +490,9 @@ only `mappings::simplify_entry` can construct one.
 - [x] **Step 4: Verify and commit**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo clippy -p ast-core --all-targets -- -D warnings
-git add crates/ast-core/tests/test_simplify_seams.rs docs/audits/mapmerge/README.md
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo clippy -p starlink-ast --all-targets -- -D warnings
+git add crates/starlink-ast/tests/test_simplify_seams.rs docs/audits/mapmerge/README.md
 git commit -m "test: hold the list of classes that may implement the simplify seam
 
 C overrides the Simplify vtab slot in 11 of this port's classes and in none of
@@ -514,7 +514,7 @@ Five classes keep a reduction in `simplified()` that no fixture reaches, because
 **Files:**
 - Modify: `reference/starlink-ast/ast_tester/gen_simplify_fixtures.c`
 - Create: fixture pairs under both `simplify_fixtures/` trees
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, `test_verification_ledger.rs`, `PLAN.md`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`, `test_verification_ledger.rs`, `PLAN.md`
 
 **Interfaces:**
 - Consumes: Task 1, so the counts are the post-gate ones.
@@ -525,7 +525,7 @@ Five classes keep a reduction in `simplified()` that no fixture reaches, because
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
 for c in chebymap mathmap sphmap unitnormmap wcsmap; do
-  f=$(ls crates/ast-core/src/mappings/$c.rs crates/ast-core/src/mappings/$c/mod.rs 2>/dev/null | head -1)
+  f=$(ls crates/starlink-ast/src/mappings/$c.rs crates/starlink-ast/src/mappings/$c/mod.rs 2>/dev/null | head -1)
   printf "%-12s map_merge=%s reaches_simplified=%s\n" "$c" \
     "$(grep -c 'fn map_merge(' $f)" \
     "$(grep -cE 'self_reduce_map_merge|try_self_reduce' $f)"
@@ -539,7 +539,7 @@ class; drop any that now reads non-zero and say so in the commit.
 
 ```bash
 for c in chebymap mathmap sphmap unitnormmap wcsmap; do
-  f=$(ls crates/ast-core/src/mappings/$c.rs crates/ast-core/src/mappings/$c/mod.rs 2>/dev/null | head -1)
+  f=$(ls crates/starlink-ast/src/mappings/$c.rs crates/starlink-ast/src/mappings/$c/mod.rs 2>/dev/null | head -1)
   echo "=== $c ==="; rg -n --color never 'fn simplified' -A 30 "$f" | head -34
 done
 ```
@@ -611,12 +611,12 @@ belongs in Task 5's delete-outright bucket. Record it and drop the pair.
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
 U=reference/starlink-ast/ast_tester/simplify_fixtures
-F=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+F=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
 cp $U/cheby_linear_lone_reduce.map $U/cheby_linear_lone_reduce.simp $F/
 cp $U/neg_cheby_quadratic_no_reduce.map $F/
 ```
 
-Append to `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`:
+Append to `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`:
 
 ```
 # Reductions that live only in a class's simplified() and that no other fixture
@@ -628,7 +628,7 @@ neg_cheby_quadratic_no_reduce | simplify_fixtures/neg_cheby_quadratic_no_reduce.
 
 - [x] **Step 6: Run, and license the expected failures**
 
-Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|equal\(\)" -A 4`
+Run: `cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|equal\(\)" -A 4`
 
 New positives may fail — that is the point, and each is a gap Task 5 closes. For
 each, add a `SERIAL_UNGATED` entry with the reason
@@ -638,12 +638,12 @@ it.
 - [x] **Step 7: Ledger, PLAN.md, verify, commit**
 
 ```bash
-cargo test -p ast-core --test test_verification_ledger   # read the new count
+cargo test -p starlink-ast --test test_verification_ledger   # read the new count
 # set it in test_verification_ledger.rs and PLAN.md §6 together, then:
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo clippy -p ast-core --all-targets -- -D warnings
-git add crates/ast-core/tests reference/starlink-ast PLAN.md
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo clippy -p starlink-ast --all-targets -- -D warnings
+git add crates/starlink-ast/tests reference/starlink-ast PLAN.md
 git commit -m "test(simplify): characterise the reductions that live only in simplified()
 
 Five classes keep a reduction their map_merge never consults, so no fixture
@@ -659,7 +659,7 @@ Expected: `0` failures, `194 passed`.
 ## Task 4: Give ChebyMap the `map_merge` C gives it
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/chebymap.rs`
+- Modify: `crates/starlink-ast/src/mappings/chebymap.rs`
 - Modify: `docs/audits/mapmerge/chebymap.md`, `PLAN.md`
 
 **Interfaces:**
@@ -679,7 +679,7 @@ defines its own, port that instead of delegating and say so.
 
 - [x] **Step 2: Read PolyMap's `map_merge`**
 
-Run: `rg -n --color never 'fn map_merge' -A 40 crates/ast-core/src/mappings/polymap.rs | head -44`
+Run: `rg -n --color never 'fn map_merge' -A 40 crates/starlink-ast/src/mappings/polymap.rs | head -44`
 
 Note whether the body reads `PolyMap`-only fields. If it does, step 5 needs a
 `PolyMap` view; if it only uses `&dyn Mapping` methods, it can take `self`.
@@ -725,7 +725,7 @@ assertion is the part that matters.
 
 - [x] **Step 4: Run to verify it fails**
 
-Run: `cargo test -p ast-core --lib linear_chebymap_reduces -- --nocapture`
+Run: `cargo test -p starlink-ast --lib linear_chebymap_reduces -- --nocapture`
 Expected: FAIL — still a `ChebyMap`, because it has no `map_merge` and takes the
 trait default, which only tries the neighbors.
 
@@ -763,7 +763,7 @@ and call `self.as_polymap_view().map_merge(ctx, where_, series)`.
 
 - [x] **Step 6: Run to verify it passes**
 
-Run: `cargo test -p ast-core --lib linear_chebymap_reduces -- --nocapture`
+Run: `cargo test -p starlink-ast --lib linear_chebymap_reduces -- --nocapture`
 Expected: PASS.
 
 - [x] **Step 7: Run the corpus**
@@ -777,7 +777,7 @@ The delegation added at step 5 was reverted, the finding recorded in
 dropped (`85519b4`).
 ChebyMap therefore has no `map_merge`, and Task 5B left it on the trait default.
 
-Run: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|equal\(\)|left:"`
+Run: `cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression|equal\(\)|left:"`
 
 Expected: `cheby_linear_lone_reduce` passes, its Task 3 `SERIAL_UNGATED` entry
 goes, and the control still passes.
@@ -803,10 +803,10 @@ Change `chebymap.md` rows 4 to 12 from `gap: PLAN.md §10.2` to `ported` with th
 `PLAN.md` §10.2 accordingly.
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo clippy -p ast-core --all-targets -- -D warnings
-git add crates/ast-core PLAN.md docs
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo clippy -p starlink-ast --all-targets -- -D warnings
+git add crates/starlink-ast PLAN.md docs
 git commit -m "simplify(chebymap): reach PolyMap's MapMerge, as C's vtab does
 
 chebymap.c fills no MapMerge slot; polymap.c:2439 is the only place it is
@@ -822,8 +822,8 @@ Expected: `0` failures, `194 passed`.
 ## Task 5: Add C's base `Simplify`, then move the 24 bodies
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs`, `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/mappings/<class>.rs` × 24, one per commit
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs`, `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/mappings/<class>.rs` × 24, one per commit
 - Modify: `docs/audits/mapmerge/<class>.md` × 24
 
 **Interfaces:**
@@ -879,7 +879,7 @@ Append to `simplify.rs`'s `#[cfg(test)] mod tests`:
 
 - [x] **Step A3: Run to verify it fails**
 
-Run: `cargo test -p ast-core --lib base_simplify -- --nocapture`
+Run: `cargo test -p starlink-ast --lib base_simplify -- --nocapture`
 Expected: FAIL to compile, `cannot find function base_simplify`.
 
 - [x] **Step A4: Write the driver**
@@ -920,18 +920,18 @@ pub(crate) fn base_simplify(this: &dyn Mapping) -> AstResult<DynMapping> {
 ```
 
 If `MergeCtx` has no `from_single` or `is_frozen(usize)`, read its impl
-(`rg -n 'impl MergeCtx' -A 40 crates/ast-core/src/mappings/simplify.rs`) and use
+(`rg -n 'impl MergeCtx' -A 40 crates/starlink-ast/src/mappings/simplify.rs`) and use
 what it has. The shape — one element, loop, break on growth or no change — must
 not change.
 
 - [x] **Step A5: Run to verify it passes**
 
-Run: `cargo test -p ast-core --lib base_simplify -- --nocapture`
+Run: `cargo test -p starlink-ast --lib base_simplify -- --nocapture`
 Expected: PASS, both.
 
 - [x] **Step A6: Give the trait method a default**
 
-In `crates/ast-core/src/mappings/mod.rs`, add a body to the declaration Task 1
+In `crates/starlink-ast/src/mappings/mod.rs`, add a body to the declaration Task 1
 step 3 wrote:
 
 ```rust
@@ -952,10 +952,10 @@ class as the compiler demands:
 - [x] **Step A7: Verify nothing moved, then commit**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo clippy -p ast-core --all-targets -- -D warnings
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo clippy -p starlink-ast --all-targets -- -D warnings
 ```
 
 Expected: `0`, the same counts as before this part, `194 passed`. Every class
@@ -964,7 +964,7 @@ be unchanged. **A change means some class was already missing an override.** Fin
 it before continuing.
 
 ```bash
-git add crates/ast-core/src
+git add crates/starlink-ast/src
 git commit -m "simplify: add C's base Simplify as the simplified() default
 
 C's base Simplify (mapping.c:16752) builds a one-element Mapping list and calls
@@ -1039,7 +1039,7 @@ through `self_reduce_map_merge`, and `simplified()` orients the child to
 
 ```bash
 c=zoom   # the class being moved
-f=crates/ast-core/src/mappings/$c.rs
+f=crates/starlink-ast/src/mappings/$c.rs
 rg -n --color never 'fn simplified' -A 40 $f | head -44
 rg -n --color never 'fn map_merge' -A 12 $f | head -16
 ```
@@ -1050,7 +1050,7 @@ reduction goes at the top of that helper; if inline, at the top of the body.
 - [x] **Step B2: Record the baseline**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 \
   | grep -E "^Simplify regression|left:"
 ```
 
@@ -1067,9 +1067,9 @@ confirming `map_merge` reaches the same logic through `self_reduce_map_merge` or
 - [x] **Step B4: Compare against the baseline**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 \
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 \
   | grep -E "^Simplify regression|equal\(\)|left:|right:"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 
 Expected: identical to B2, and `194 passed`.
@@ -1085,7 +1085,7 @@ Expected: identical to B2, and `194 passed`.
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
 D=${TMPDIR:-/tmp}/ast-trace3
-FIX=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/<name>.map
+FIX=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/<name>.map
 AST_TRACE=1 $D/gen_simp $FIX /dev/null 2> /tmp/c.txt
 cargo run -q --features tracing --example simp_one -- $FIX 2> /tmp/p.txt >/dev/null
 grep MAPMERGE /tmp/c.txt | sed 's/^ *//' | awk '{print $2, $4, $5}' > /tmp/cm.txt
@@ -1105,8 +1105,8 @@ because the reduction was unreachable becomes `ported`.
 - [x] **Step B6: Commit**
 
 ```bash
-cargo clippy -p ast-core --all-targets -- -D warnings
-git add crates/ast-core/src/mappings/$c.rs docs/audits/mapmerge/$c.md
+cargo clippy -p starlink-ast --all-targets -- -D warnings
+git add crates/starlink-ast/src/mappings/$c.rs docs/audits/mapmerge/$c.md
 git commit -m "simplify($c): move the reduction into map_merge
 
 C keeps every reduction for this class in MapMerge -- $c.c has no Simplify
@@ -1123,7 +1123,7 @@ Repeat B1 to B6 for each of the 24, in group order.
 ## Task 6: Turn the gate on and close the entries
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_simplify_seams.rs`
+- Modify: `crates/starlink-ast/tests/test_simplify_seams.rs`
 - Modify: `PLAN.md`, `docs/superpowers/specs/2026-08-23-simplify-seam-realignment.md`
 
 **Interfaces:**
@@ -1134,7 +1134,7 @@ Repeat B1 to B6 for each of the 24, in group order.
 
 ```bash
 # delete the #[ignore = …] attribute, then:
-cargo test -p ast-core --test test_simplify_seams -- --nocapture
+cargo test -p starlink-ast --test test_simplify_seams -- --nocapture
 ```
 
 Expected: PASS.
@@ -1156,7 +1156,7 @@ before Task 1, so both sides have moved.
 ```bash
 cd /Users/timj/work/lsst/starlink-astrs
 D=${TMPDIR:-/tmp}/ast-trace3
-FIX=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_specmap_02.map
+FIX=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_specmap_02.map
 AST_TRACE=1 $D/gen_simp $FIX /dev/null 2> /tmp/c.txt
 cargo run -q --features tracing --example simp_one -- $FIX 2>&1 >/dev/null \
   | sed 's/\x1b\[[0-9;]*m//g' > /tmp/p.txt
@@ -1187,13 +1187,13 @@ capability token, which two earlier drafts of the plan said it was not.
 - [x] **Step 5: Full verification and commit**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -cE "^test result: FAILED"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
-cargo clippy -p ast-core --all-targets -- -D warnings
-cargo clippy -p ast-core --all-targets --features tracing -- -D warnings
-cargo doc -p ast-core --no-deps 2>&1 | grep -cE "^error"
-git add crates/ast-core PLAN.md docs
+cargo test -p starlink-ast 2>&1 | grep -cE "^test result: FAILED"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "^Simplify regression"
+cargo clippy -p starlink-ast --all-targets -- -D warnings
+cargo clippy -p starlink-ast --all-targets --features tracing -- -D warnings
+cargo doc -p starlink-ast --no-deps 2>&1 | grep -cE "^error"
+git add crates/starlink-ast PLAN.md docs
 git commit -m "test: require the simplify seams to match C's
 
 One way to simplify a Mapping, as C has, and the compiler enforces it: the

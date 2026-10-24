@@ -18,9 +18,9 @@
  * Each error is recorded as the status C is left holding, which for a pair
  * of astError calls is the second one's.
  *
- * Prints Rust source for crates/ast-core/tests/region_errors_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_errors_oracle/cases.rs:
  *
- *   ./region_errors_probe > ../../crates/ast-core/tests/region_errors_oracle/cases.rs
+ *   ./region_errors_probe > ../../crates/starlink-ast/tests/region_errors_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

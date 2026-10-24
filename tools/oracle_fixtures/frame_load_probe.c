@@ -4,9 +4,9 @@
  * object it has read (frame.c:15226), a Frame with no axes, and an
  * unrecognised System or AlignSystem (AST__ATTIN, frame.c:15392).
  *
- * Prints Rust source for crates/ast-core/tests/frame_load_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/frame_load_oracle/cases.rs:
  *
- *   ./frame_load_probe > ../../crates/ast-core/tests/frame_load_oracle/cases.rs
+ *   ./frame_load_probe > ../../crates/starlink-ast/tests/frame_load_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

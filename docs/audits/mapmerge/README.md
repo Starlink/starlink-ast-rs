@@ -1,10 +1,10 @@
 # `MapMerge` / `Simplify` audit checklists
 
 One file per class, named for its Rust module: `shift.md` audits
-`crates/ast-core/src/mappings/shift.rs`.
+`crates/starlink-ast/src/mappings/shift.rs`.
 Region modules take a `region_` prefix, so `region_interval.md` audits
-`crates/ast-core/src/regions/interval.rs`; Frame modules take a `frame_` prefix,
-so `frame_frameset.md` audits `crates/ast-core/src/frames/frameset.rs`.
+`crates/starlink-ast/src/regions/interval.rs`; Frame modules take a `frame_` prefix,
+so `frame_frameset.md` audits `crates/starlink-ast/src/frames/frameset.rs`.
 
 Each row is one of C's own comment-delimited steps in that class's `MapMerge`
 or `Simplify` body.
@@ -15,7 +15,7 @@ typically 5 to 20 rows per class, never line by line.
 
 ```
 C source: reference/starlink-ast/src/<file>.c
-Rust: crates/ast-core/src/<dir>/<module>.rs
+Rust: crates/starlink-ast/src/<dir>/<module>.rs
 Audited: YYYY-MM-DD against pin <sha>
 Citations: verified against pin <sha>
 Extension points: classified
@@ -52,7 +52,7 @@ item at the line, which is not always the item the row means.
 `anchor-citations` only appends a missing `(fn …)`; it never moves a number.
 
 Moving a number is the other tool's job: for Rust citations on every commit
-that changes `ast-core`'s sources, and for C citations at a pin move.
+that changes `starlink-ast`'s sources, and for C citations at a pin move.
 The `reanchor-citations` pre-commit hook runs it with `--rust-only --warn-stuck
 --write` over every checklist, so an edit that shifts cited Rust lines rewrites
 the checklists that cite them and stops the commit for them to be added.
@@ -62,13 +62,15 @@ diffs each cited line's own baseline against the source now — `git blame` name
 the commit that wrote the row, and that commit's tree, or the submodule pin it
 recorded, is what the citation was written against — and follows a line the diff
 carried through unchanged onto where it landed.
+A Rust baseline older than 2026-10-24 holds the file under `crates/ast-core`, the
+crate's earlier name, and the tool reads it there.
 A line the diff replaced or deleted it refuses and reports, because the content
 the row describes is no longer there: re-anchor that row against the code it now
 describes rather than remapping its number, and check whether the prose around it
 described a C behavior the pin move changed.
 Run it once against the tree the numbers belong to; against an already-relocated
 tree its baselines are the wrong side of the move.
-Re-state the pin in `REPAIRED` in `crates/ast-core/tests/test_audit_citations.rs`
+Re-state the pin in `REPAIRED` in `crates/starlink-ast/tests/test_audit_citations.rs`
 and in every `Citations:` marker in the same change as the re-anchors.
 
 ## The extension-point column
@@ -151,12 +153,12 @@ The heading is for comment blocks that name no step at all.
 The list is derived from the source tree, not written down here, so a new class
 cannot arrive without one.
 
-- Every module under `crates/ast-core/src/mappings/` that is not in the test's
+- Every module under `crates/starlink-ast/src/mappings/` that is not in the test's
   helper list.
-- Every module under `crates/ast-core/src/regions/` that overrides one of this
+- Every module under `crates/starlink-ast/src/regions/` that overrides one of this
   audit's Region seams — `map_merge`, `simplify_remapped`, `get_def_unc` or
   `simplified` — plus `mod`, which carries the generic `Region::Simplify` driver.
-- Every module under `crates/ast-core/src/frames/` that overrides `simplified`.
+- Every module under `crates/starlink-ast/src/frames/` that overrides `simplified`.
   A Frame class may also implement `Mapping`; `FrameSet` does, and C gives it a
   `Simplify` body of its own (`frameset.c:10134`).
 
@@ -188,7 +190,7 @@ and the base `Simplify` reaches it by nominating the Mapping in a list of one
 
 So a row whose Rust site is a `simplified()` body, in a class whose C counterpart
 does not override the slot, is not `ported`: it is in a seam C does not have.
-`crates/ast-core/tests/test_simplify_seams.rs` holds the list of 11.
+`crates/starlink-ast/tests/test_simplify_seams.rs` holds the list of 11.
 
 The companion rule — that nothing but `simplify()` reaches the seam — is enforced
 by the compiler, not by a checklist: `simplified()` takes a `ViaSimplify` and

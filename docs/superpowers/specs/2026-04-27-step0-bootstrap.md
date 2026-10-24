@@ -11,9 +11,9 @@ infrastructure that all subsequent implementation steps build on.
 1. Workspace `Cargo.toml` with all 6 crates as members.
 2. Vendored C sources (`pal/`, `erfa/`, `wcslib/`, `palwrap.c`,
    `pal2ast.h`, `erfa2ast.h`, `ast_err.msg`) copied into `vendor/`.
-3. `ast-core`'s `build.rs` compiles vendored C and generates the
+3. `starlink-ast`'s `build.rs` compiles vendored C and generates the
    `ErrorCode` enum from `ast_err.msg`.
-4. All crates compile; `cargo test -p ast-core` passes a trivial
+4. All crates compile; `cargo test -p starlink-ast` passes a trivial
    smoke test.
 5. CI via GitHub Actions (build/test/clippy/fmt on PRs).
 6. `vendor/README.md` with provenance documentation.
@@ -26,26 +26,26 @@ starlink-astrs/
 ├── rust-toolchain.toml           # channel = "stable"
 ├── .gitignore                    # /target, *.o, etc.
 ├── crates/
-│   ├── ast-core/
+│   ├── starlink-ast/
 │   │   ├── Cargo.toml            # [lib], build-dep: cc
 │   │   ├── build.rs              # compiles vendor C; generates ErrorCode
 │   │   └── src/
 │   │       ├── lib.rs            # re-exports error module
 │   │       └── error.rs          # AstError, AstResult, include! generated enum
-│   ├── ast-capi/
-│   │   ├── Cargo.toml            # crate-type = ["cdylib", "staticlib"], dep: ast-core
+│   ├── starlink-ast-capi/
+│   │   ├── Cargo.toml            # crate-type = ["cdylib", "staticlib"], dep: starlink-ast
 │   │   └── src/lib.rs            # placeholder
 │   ├── ast-plugins/
-│   │   ├── Cargo.toml            # dep: ast-core
+│   │   ├── Cargo.toml            # dep: starlink-ast
 │   │   └── src/lib.rs            # placeholder
 │   ├── ast-ffi-tests/
-│   │   ├── Cargo.toml            # dev-dep: ast-capi
+│   │   ├── Cargo.toml            # dev-dep: starlink-ast-capi
 │   │   └── src/lib.rs            # placeholder
 │   ├── ast-oracle-tests/
-│   │   ├── Cargo.toml            # dev-dep: ast-core
+│   │   ├── Cargo.toml            # dev-dep: starlink-ast
 │   │   └── src/lib.rs            # placeholder
 │   └── ast-oracle-bench/
-│       ├── Cargo.toml            # dep: criterion, ast-core
+│       ├── Cargo.toml            # dep: criterion, starlink-ast
 │       └── src/lib.rs            # placeholder
 ├── vendor/
 │   ├── pal/                      # from reference/starlink-ast/pal/
@@ -70,8 +70,8 @@ so the everyday build works without the submodule:
 [workspace]
 members = ["crates/*"]
 default-members = [
-    "crates/ast-core",
-    "crates/ast-capi",
+    "crates/starlink-ast",
+    "crates/starlink-ast-capi",
     "crates/ast-plugins",
 ]
 ```
@@ -87,7 +87,7 @@ The original C library compiles all PAL and ERFA sources through a
 single translation unit (`palwrap.c`) that `#include`s every `.c`
 file after applying symbol-renaming macros. We replicate this exactly.
 
-Paths are relative to the `crates/ast-core/` manifest directory (the
+Paths are relative to the `crates/starlink-ast/` manifest directory (the
 `cc` crate resolves relative to `CARGO_MANIFEST_DIR`):
 
 ```rust
@@ -168,7 +168,7 @@ Plus:
 ### Usage in Rust
 
 ```rust
-use ast_core::error::{AstError, AstResult, ErrorCode};
+use starlink_ast::error::{AstError, AstResult, ErrorCode};
 
 // Raising
 return Err(AstError::new(ErrorCode::Atger, "failed to get attribute Foo"));
@@ -205,12 +205,12 @@ Single GitHub Actions workflow (`.github/workflows/ci.yml`):
 1. Checkout (no submodules)
 2. Install stable Rust via `dtolnay/rust-toolchain`
 3. `cargo build --workspace`
-4. `cargo test -p ast-core`
+4. `cargo test -p starlink-ast`
 5. `cargo clippy --workspace -- -D warnings`
 6. `cargo fmt --all -- --check`
 
 A nightly parity-test job (submodule-dependent) will be added when
-`ast-capi` and `ast-ffi-tests` have content to test.
+`starlink-ast-capi` and `ast-ffi-tests` have content to test.
 
 ## rust-toolchain.toml
 
@@ -237,6 +237,6 @@ Records for each copied directory:
 
 - No trait definitions (`Mapping`, `Frame`, `Region`) — deferred to Step 1
 - No coordinate array types (`PointSet`, `PointList`) — Step 1
-- No CFFI symbols in `ast-capi` — Step 1+
+- No CFFI symbols in `starlink-ast-capi` — Step 1+
 - No nightly CI job for parity tests — added when there's content
 - No `cminpack` — replaced by `levenberg-marquardt` crate (later step)

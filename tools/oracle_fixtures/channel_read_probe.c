@@ -10,9 +10,9 @@
  * Object read (or "" for none), the status, and the warnings the read left
  * in the Channel.
  *
- * Prints Rust source for crates/ast-core/tests/channel_read_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/channel_read_oracle/cases.rs:
  *
- *   ./channel_read_probe 2>/dev/null > ../../crates/ast-core/tests/channel_read_oracle/cases.rs
+ *   ./channel_read_probe 2>/dev/null > ../../crates/starlink-ast/tests/channel_read_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

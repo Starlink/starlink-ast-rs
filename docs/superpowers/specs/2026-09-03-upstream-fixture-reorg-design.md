@@ -41,12 +41,12 @@ recursive diff, with the comparison policy meaning the same thing on both sides.
 
 ## 2. Target hierarchy
 
-`crates/ast-core/tests/fixtures/` becomes a verbatim copy of
+`crates/starlink-ast/tests/fixtures/` becomes a verbatim copy of
 `reference/starlink-ast/ast_tester/fixtures/`.
 Nothing Rust-local survives outside it.
 
 ```
-ast_tester/fixtures/                    ==  crates/ast-core/tests/fixtures/
+ast_tester/fixtures/                    ==  crates/starlink-ast/tests/fixtures/
   simplify/          .map / .simp + cases.txt
   wcsconv/
     inputs/  expected/  cases.txt
@@ -409,7 +409,7 @@ range honest.
 ## 6. The mirror gate
 
 `tools/fixtures/check_mirror.sh` does a recursive diff of
-`crates/ast-core/tests/fixtures/` against
+`crates/starlink-ast/tests/fixtures/` against
 `reference/starlink-ast/ast_tester/fixtures/` at the current pin and requires
 empty output.
 It catches both directions — an upstream fixture we failed to copy, and a local

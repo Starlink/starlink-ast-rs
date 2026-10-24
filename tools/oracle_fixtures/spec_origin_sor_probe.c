@@ -14,9 +14,9 @@
  * to a copy whose StdOfRest is HELIO, printing the converted value, or None
  * when no conversion is found, or the error.
  *
- * Prints Rust source for crates/ast-core/tests/spec_origin_sor_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/spec_origin_sor_oracle/cases.rs:
  *
- *   ./spec_origin_sor_probe > ../../crates/ast-core/tests/spec_origin_sor_oracle/cases.rs
+ *   ./spec_origin_sor_probe > ../../crates/starlink-ast/tests/spec_origin_sor_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

@@ -2,14 +2,14 @@
  * decide whether a FrameSet with SIP distortion is written with SIP
  * coefficients, with a linear approximation, or not at all.
  *
- * It reads crates/ast-core/tests/fixtures/wcsconv/inputs/sip.head with
+ * It reads crates/starlink-ast/tests/fixtures/wcsconv/inputs/sip.head with
  * SipReplace=0 (so the inverse coefficients are those of the header, not a
  * refit), then writes the FrameSet to a new FitsChan with each encoding and
  * SipOK unset, 0 and 1, recording astWrite's return value and every card,
  * as Rust source for
- * crates/ast-core/tests/fitschan_sipok_oracle/cases.rs:
+ * crates/starlink-ast/tests/fitschan_sipok_oracle/cases.rs:
  *
- *   ./fitschan_sipok_probe > ../../crates/ast-core/tests/fitschan_sipok_oracle/cases.rs
+ *   ./fitschan_sipok_probe > ../../crates/starlink-ast/tests/fitschan_sipok_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>
@@ -39,7 +39,7 @@ int main( void ) {
 
    astWatch( &status );
    in = astFitsChan( NULL, NULL, "SipReplace=0" );
-   f = fopen( "../../crates/ast-core/tests/fixtures/wcsconv/inputs/sip.head", "r" );
+   f = fopen( "../../crates/starlink-ast/tests/fixtures/wcsconv/inputs/sip.head", "r" );
    if( !f ) return 1;
    while( fgets( line, sizeof line, f ) ) {
       line[ strcspn( line, "\n" ) ] = 0;

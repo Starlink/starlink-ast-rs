@@ -14,21 +14,21 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/fitschan/fits_store.rs` | FitsStore intermediate structure |
-| `crates/ast-core/src/fitschan/wcs_read.rs` | Main decoder: FitsStore → FrameSet pipeline |
-| `crates/ast-core/src/fitschan/wcs_keywords.rs` | Extract keywords from CardList → FitsStore |
-| `crates/ast-core/src/fitschan/wcs_celestial.rs` | Celestial axis detection + SkyFrame construction |
-| `crates/ast-core/src/fitschan/wcs_spectral.rs` | Spectral axis detection + SpecFrame construction |
-| `crates/ast-core/src/fitschan/wcs_matrix.rs` | PC/CD/CDELT matrix extraction |
-| `crates/ast-core/src/fitschan/mod.rs` | Update FitsChan::read() for FitsWcs encoding |
-| `crates/ast-core/tests/test_fitschan_wcs.rs` | WCS decoder integration tests |
+| `crates/starlink-ast/src/fitschan/fits_store.rs` | FitsStore intermediate structure |
+| `crates/starlink-ast/src/fitschan/wcs_read.rs` | Main decoder: FitsStore → FrameSet pipeline |
+| `crates/starlink-ast/src/fitschan/wcs_keywords.rs` | Extract keywords from CardList → FitsStore |
+| `crates/starlink-ast/src/fitschan/wcs_celestial.rs` | Celestial axis detection + SkyFrame construction |
+| `crates/starlink-ast/src/fitschan/wcs_spectral.rs` | Spectral axis detection + SpecFrame construction |
+| `crates/starlink-ast/src/fitschan/wcs_matrix.rs` | PC/CD/CDELT matrix extraction |
+| `crates/starlink-ast/src/fitschan/mod.rs` | Update FitsChan::read() for FitsWcs encoding |
+| `crates/starlink-ast/tests/test_fitschan_wcs.rs` | WCS decoder integration tests |
 
 ---
 
 ### Task 1: FitsStore Intermediate Structure
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/fits_store.rs`
+- Create: `crates/starlink-ast/src/fitschan/fits_store.rs`
 
 The FitsStore holds extracted WCS keywords in a structured form,
 independent of encoding. Study the C code's usage pattern.
@@ -91,7 +91,7 @@ impl FitsStore {
 ### Task 2: Keyword Extraction (CardList → FitsStore)
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_keywords.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_keywords.rs`
 
 Extract FITS WCS keywords from the CardList into a FitsStore.
 Study the C `WcsFromStore()` function.
@@ -137,7 +137,7 @@ Test with the sip.head fixture:
 ### Task 3: WCS Matrix Operations
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_matrix.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_matrix.rs`
 
 Build the pixel-to-intermediate-world transformation matrix from
 PC/CD/CDELT keywords.
@@ -177,7 +177,7 @@ Algorithm:
 ### Task 4: Celestial Axis Decoder
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_celestial.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_celestial.rs`
 
 Detect celestial axes from CTYPE and build the IWC → sky mapping
 (WcsMap projection + SkyFrame).
@@ -231,7 +231,7 @@ fn parse_ctype(ctype: &str) -> (&str, Option<&str>);
 ### Task 5: Spectral Axis Decoder
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_spectral.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_spectral.rs`
 
 Detect spectral axes and build SpecFrame.
 
@@ -262,8 +262,8 @@ For the spectral axis:
 ### Task 6: Main Decoder (FitsStore → FrameSet)
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_read.rs`
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_read.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 Compose the full pipeline: FitsStore → FrameSet.
 
@@ -313,7 +313,7 @@ Encoding::FitsWcs => {
 ### Task 7: Integration Tests with Real Headers
 
 **Files:**
-- Create: `crates/ast-core/tests/test_fitschan_wcs.rs`
+- Create: `crates/starlink-ast/tests/test_fitschan_wcs.rs`
 
 - [ ] **Step 1: Write tests using sip.head and minimal headers**
 
@@ -338,7 +338,7 @@ Tests:
 ## Verification Checklist
 
 1. `cargo build --workspace` — compiles
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. FitsChan with FitsWcs encoding produces a FrameSet from FITS headers
 4. FrameSet has pixel frame (base) and sky frame (current)
 5. Transform maps reference pixel to reference sky position

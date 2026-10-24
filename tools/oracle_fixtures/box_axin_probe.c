@@ -5,9 +5,9 @@
  * both sides of it. A Box in a plain Frame, and one in a CmpFrame with a
  * SkyFrame component, are included.
  *
- * Prints Rust source for crates/ast-core/tests/box_axin_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/box_axin_oracle/cases.rs:
  *
- *   ./box_axin_probe > ../../crates/ast-core/tests/box_axin_oracle/cases.rs
+ *   ./box_axin_probe > ../../crates/starlink-ast/tests/box_axin_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

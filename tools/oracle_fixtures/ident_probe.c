@@ -5,9 +5,9 @@
  * a Frame and a Region each have a blank Ident set through the protected
  * astSetIdent, since astSet would store "Ident=" as a single space.
  *
- * Prints Rust source for crates/ast-core/tests/ident_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/ident_oracle/cases.rs:
  *
- *   ./ident_probe > ../../crates/ast-core/tests/ident_oracle/cases.rs
+ *   ./ident_probe > ../../crates/starlink-ast/tests/ident_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

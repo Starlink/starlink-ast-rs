@@ -7,8 +7,8 @@
 ChebyMap after `53e052d` — full 24/24 coverage)
 **Host:** Apple M4 Max, macOS 25.5
 **Branch:** tickets/DM-54793
-**Source data:** `cargo run --release --example bench_per_class -p ast-core`
-paired with the C oracle (`crates/ast-core/tests/bench_per_class_c.c`)
+**Source data:** `cargo run --release --example bench_per_class -p starlink-ast`
+paired with the C oracle (`crates/starlink-ast/tests/bench_per_class_c.c`)
 linking `reference/starlink-ast/build-ast/libast.dylib`.
 
 ## Scope
@@ -220,13 +220,13 @@ than load-bearing.
 
 ```shell
 # 1. Rust side
-cargo run --release --example bench_per_class -p ast-core > /tmp/rust.tsv
+cargo run --release --example bench_per_class -p starlink-ast > /tmp/rust.tsv
 
 # 2. C oracle. Since 9.5.0 the satellite libraries are separate, so each
 #    must be named; the rpath forces the repo build over any conda libast
 #    on the loader path. On macOS add -I/-L /opt/homebrew for libyaml and
 #    use DYLD_LIBRARY_PATH in place of the rpath flags.
-cc -O2 -o /tmp/bench_per_class_c crates/ast-core/tests/bench_per_class_c.c \
+cc -O2 -o /tmp/bench_per_class_c crates/starlink-ast/tests/bench_per_class_c.c \
    -I reference/starlink-ast/build-ast -I reference/starlink-ast \
    -L reference/starlink-ast/build-ast \
    -Wl,-rpath,$PWD/reference/starlink-ast/build-ast -Wl,--disable-new-dtags \

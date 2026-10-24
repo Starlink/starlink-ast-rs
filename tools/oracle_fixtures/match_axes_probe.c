@@ -3,16 +3,16 @@
  * MatchAxesX (frame.c, skyframe.c, cmpframe.c, frameset.c, region.c) is
  * exercised as frm2 against each kind of frm1.
  *
- * Prints Rust source for crates/ast-core/tests/match_axes_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/match_axes_oracle/cases.rs:
  *
- *   ./match_axes_probe > ../../crates/ast-core/tests/match_axes_oracle/cases.rs
+ *   ./match_axes_probe > ../../crates/starlink-ast/tests/match_axes_oracle/cases.rs
  */
 #include <stdio.h>
 #include "ast.h"
 
 #define NFRAME 13
 
-/* The Frames, by index; frame() in crates/ast-core/tests/test_match_axes.rs
+/* The Frames, by index; frame() in crates/starlink-ast/tests/test_match_axes.rs
    builds the same list. */
 static AstFrame *make( int i ) {
    int perm2[ 2 ] = { 2, 1 };

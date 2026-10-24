@@ -15,9 +15,9 @@
  * of the box, a MathMap whose second output is bad everywhere, a box of
  * zero width, and a Mapping with one input.
  *
- * Prints Rust source for crates/ast-core/tests/tran_grid_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/tran_grid_oracle/cases.rs:
  *
- *   AST_REPLACE_NAN=1 ./tran_grid_probe > ../../crates/ast-core/tests/tran_grid_oracle/cases.rs
+ *   AST_REPLACE_NAN=1 ./tran_grid_probe > ../../crates/starlink-ast/tests/tran_grid_oracle/cases.rs
  */
 #include <stdint.h>
 #include <stdio.h>

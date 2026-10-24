@@ -8,7 +8,7 @@
 Then the new view types land, `PointSet` storage flips to `(ncoord, npoint)`, and the `Mapping` trait takes views; both of those changes keep every result bit-identical.
 Last, six cheap kernels and CmpMap are rewritten as loops down whole axes, each gated on bits and on `ast-bench compare --base`.
 
-**Tech Stack:** Rust 2024, ndarray 0.16, smallvec 1 (new dependency of `ast-core`, already in `Cargo.lock`), `ast-bench`.
+**Tech Stack:** Rust 2024, ndarray 0.16, smallvec 1 (new dependency of `starlink-ast`, already in `Cargo.lock`), `ast-bench`.
 
 **Spec:** `docs/superpowers/specs/2026-10-16-per-axis-pointset-design.md`
 
@@ -36,11 +36,11 @@ Last, six cheap kernels and CmpMap are rewritten as loops down whole axes, each 
 ## File Structure
 
 - Create `crates/ast-bench/src/bits.rs`: hashes of every corpus transform's output bits, and their comparison with a base commit.
-- Create `crates/ast-core/src/coords/points.rs`: `PointBuf`, `Points`, `PointsMut`, `PointShape`.
-- Create `crates/ast-core/tests/points.rs` (in the `meta` area): view tests.
-- Modify `crates/ast-core/src/coords/pointset.rs`: storage flip and new accessors.
-- Modify `crates/ast-core/src/mappings/mod.rs`: the trait, `validate_transform`, `tran1`, `tran2`, `transform_nan_protocol`.
-- Modify every file that implements `transform_into` (41 in `ast-core/src`), every `point_mut` caller (121 sites) and every `view()` / `view_mut()` caller (51 sites).
+- Create `crates/starlink-ast/src/coords/points.rs`: `PointBuf`, `Points`, `PointsMut`, `PointShape`.
+- Create `crates/starlink-ast/tests/points.rs` (in the `meta` area): view tests.
+- Modify `crates/starlink-ast/src/coords/pointset.rs`: storage flip and new accessors.
+- Modify `crates/starlink-ast/src/mappings/mod.rs`: the trait, `validate_transform`, `tran1`, `tran2`, `transform_nan_protocol`.
+- Modify every file that implements `transform_into` (41 in `starlink-ast/src`), every `point_mut` caller (121 sites) and every `view()` / `view_mut()` caller (51 sites).
 - Modify `crates/ast-bench/src/{run.rs,report.rs,main.rs,base.rs,lib.rs}` and `crates/ast-bench/README.md`.
 
 ---
@@ -113,7 +113,7 @@ Expected: compile errors, `diff_bits`, `case_bits`, `BITS_N` not found.
 
 use std::collections::BTreeMap;
 
-use ast_core::coords::PointSet;
+use starlink_ast::coords::PointSet;
 
 use crate::cases::Case;
 use crate::load::{Loaded, load_fixture};
@@ -276,7 +276,7 @@ and the dispatch arm `Some("bits") => bits(&args[1..]),`.
 Run: `$S/cg.sh cargo test -q -p ast-bench`
 Expected: all pass, including the four new ones.
 
-- [ ] **Step 6: Negative control.** Temporarily change `ZoomMap::transform_into`'s `v * scale` to `v * scale * (1.0 + f64::EPSILON)` in `crates/ast-core/src/mappings/zoom.rs`, commit nothing, and run `$S/cg.sh cargo run -q --release -p ast-bench -- bits --base HEAD`.
+- [ ] **Step 6: Negative control.** Temporarily change `ZoomMap::transform_into`'s `v * scale` to `v * scale * (1.0 + f64::EPSILON)` in `crates/starlink-ast/src/mappings/zoom.rs`, commit nothing, and run `$S/cg.sh cargo run -q --release -p ast-bench -- bits --base HEAD`.
 Expected: exit status 1 and `bits differ:` lines naming `zoommap_2d.map`.
 Revert the change and run it again.
 Expected: `every transform's output bits match HEAD`, exit status 0.
@@ -371,7 +371,7 @@ Expected: the run test fails with `["rust"]` against `["rust", "rust-cols"]`; th
             // them: any conversion the port needs is inside the timing.
             let mut cols_out = vec![0.0; s.nout * n];
             let mut time_cols = || -> Result<(), String> {
-                let fail = |e: ast_core::error::AstError| format!("{} {dir} N={n}: {e}", s.relpath);
+                let fail = |e: starlink_ast::error::AstError| format!("{} {dir} N={n}: {e}", s.relpath);
                 let axes: Vec<&[f64]> = columns.chunks_exact(n).collect();
                 let pts = PointSet::from_columns(&axes).map_err(fail)?;
                 let mut o = PointSet::zeros(n, s.nout);
@@ -398,7 +398,7 @@ and make the engine table:
                 ),
 ```
 
-If `ast_core::error::AstError` is not the public path, use the path `crates/ast-core/src/lib.rs` re-exports.
+If `starlink_ast::error::AstError` is not the public path, use the path `crates/starlink-ast/src/lib.rs` re-exports.
 In `report.rs`, make the per-key value a triple `(rust, cols, c)`, match `"rust"`, `"rust-cols"` and `"c"` explicitly (any other engine name is a programming error: `unreachable!("unknown engine {other}")`), and print header `"case", "dir", "n", "rust ns/pt", "cols ns/pt", "c ns/pt", "rust/c"` with one more `{:>12}` cell.
 `snapshot.rs` filters by exact engine name already, so its ratios are unaffected.
 
@@ -429,17 +429,17 @@ Then save fresh local baselines, since the rows changed: `$S/cg.sh cargo run -q 
 ### Task 3: `PointBuf`, `Points` and `PointsMut`
 
 **Files:**
-- Create: `crates/ast-core/src/coords/points.rs`, `crates/ast-core/tests/points.rs`
-- Modify: `crates/ast-core/src/coords/mod.rs`, `crates/ast-core/Cargo.toml`, `Cargo.toml` (workspace dependency), `crates/ast-core/tests/meta/main.rs`
+- Create: `crates/starlink-ast/src/coords/points.rs`, `crates/starlink-ast/tests/points.rs`
+- Modify: `crates/starlink-ast/src/coords/mod.rs`, `crates/starlink-ast/Cargo.toml`, `Cargo.toml` (workspace dependency), `crates/starlink-ast/tests/meta/main.rs`
 
 **Interfaces:**
-- Produces, all re-exported from `ast_core::coords`: `INLINE_AXES: usize = 8`; `PointBuf`; `Points<'a>`; `PointsMut<'a>`; `pub(crate) trait PointShape { fn npoint(&self) -> usize; fn ncoord(&self) -> usize; }`.
+- Produces, all re-exported from `starlink_ast::coords`: `INLINE_AXES: usize = 8`; `PointBuf`; `Points<'a>`; `PointsMut<'a>`; `pub(crate) trait PointShape { fn npoint(&self) -> usize; fn ncoord(&self) -> usize; }`.
 - `Points<'a>`: `new(impl IntoIterator<Item = &'a [f64]>) -> AstResult<Self>`, `from_strided(&'a [f64], ncoord, npoint, stride) -> AstResult<Self>`, `pub(crate) from_parts(SmallVec<[&'a [f64]; INLINE_AXES]>, npoint) -> Self`, `npoint()`, `ncoord()`, `axis(j) -> &'a [f64]`, `point(i) -> PointBuf`, `points(Range<usize>) -> Points<'a>`, `axes(Range<usize>) -> Points<'a>`.
 - `PointsMut<'a>`: `new(impl IntoIterator<Item = &'a mut [f64]>) -> AstResult<Self>`, `from_strided(&'a mut [f64], ncoord, npoint, stride) -> AstResult<Self>`, `pub(crate) from_parts(..)`, `npoint()`, `ncoord()`, `axis(j) -> &[f64]`, `axis_mut(j) -> &mut [f64]`, `point(i) -> PointBuf`, `set_point(i, &[f64])`, `copy_from(&Points<'_>)`, `as_points(&self) -> Points<'_>`, `reborrow(&mut self) -> PointsMut<'_>`, `points_mut(&mut self, Range<usize>) -> PointsMut<'_>`, `split_axes_at(self, k) -> (PointsMut<'a>, PointsMut<'a>)`.
 
-- [ ] **Step 1: Add the dependency.** In the workspace `Cargo.toml` `[workspace.dependencies]` add `smallvec = "1"`; in `crates/ast-core/Cargo.toml` `[dependencies]` add `smallvec.workspace = true`.
+- [ ] **Step 1: Add the dependency.** In the workspace `Cargo.toml` `[workspace.dependencies]` add `smallvec = "1"`; in `crates/starlink-ast/Cargo.toml` `[dependencies]` add `smallvec.workspace = true`.
 
-- [ ] **Step 2: Write the failing tests** in `crates/ast-core/tests/points.rs` and add to `crates/ast-core/tests/meta/main.rs`:
+- [ ] **Step 2: Write the failing tests** in `crates/starlink-ast/tests/points.rs` and add to `crates/starlink-ast/tests/meta/main.rs`:
 
 ```rust
 #[path = "../points.rs"]
@@ -449,8 +449,8 @@ mod points;
 ```rust
 //! Borrowed per-axis views of points.
 
-use ast_core::coords::{PointBuf, Points, PointsMut};
-use ast_core::error::ErrorCode;
+use starlink_ast::coords::{PointBuf, Points, PointsMut};
+use starlink_ast::error::ErrorCode;
 
 #[test]
 fn a_view_over_columns_reads_points_and_axes() {
@@ -554,10 +554,10 @@ fn point_bufs_compare_with_slices_arrays_and_vectors() {
 
 - [ ] **Step 3: Run them to see them fail**
 
-Run: `$S/cg.sh cargo test -q -p ast-core --test meta points::`
-Expected: compile errors, `Points`, `PointsMut`, `PointBuf` not found in `ast_core::coords`.
+Run: `$S/cg.sh cargo test -q -p starlink-ast --test meta points::`
+Expected: compile errors, `Points`, `PointsMut`, `PointBuf` not found in `starlink_ast::coords`.
 
-- [ ] **Step 4: Implement `crates/ast-core/src/coords/points.rs`**
+- [ ] **Step 4: Implement `crates/starlink-ast/src/coords/points.rs`**
 
 ```rust
 //! Borrowed per-axis views of point coordinates.
@@ -893,7 +893,7 @@ If `ErrorCode::Dimin` is spelled differently in the generated enum, use the vari
 
 - [ ] **Step 5: Run the tests**
 
-Run: `$S/cg.sh cargo test -q -p ast-core --test meta points::`
+Run: `$S/cg.sh cargo test -q -p starlink-ast --test meta points::`
 Expected: 12 passed.
 
 - [ ] **Step 6: fmt, clippy, commit** with message `Add per-axis point views: Points, PointsMut, PointBuf`.
@@ -903,9 +903,9 @@ Expected: 12 passed.
 ### Task 4: Flip `PointSet` to one array per axis
 
 **Files:**
-- Modify: `crates/ast-core/src/coords/pointset.rs`
-- Modify every `point_mut` caller: `crates/ast-core/src/frames/{cmpframe.rs,mod.rs,skyframe.rs}`, `crates/ast-core/src/mappings/{dssmap,grismmap,linear_approx,lutmap,map_box,matrix,normmap,pcdmap,perm,polymap,quad_approx,ratemap,selectormap,shift,slamap,specmap,sphmap,splinemap,switchmap,timemap,unitnormmap,wcsmap,winmap,xphmap,zoom}.rs`, `crates/ast-core/src/mappings/mathmap/mod.rs`, `crates/ast-core/src/regions/{box_region,circle,cmpregion,data,ellipse,interval,moc,mod,nullregion,overlap,pointlist,polygon,prism,stc}.rs`, `crates/ast-bench/src/load.rs`, and the tests `crates/ast-core/tests/{common/mod.rs,pointset.rs,test_box_region.rs,test_circle.rs,test_intramap.rs,test_polymap.rs,test_transform_memory.rs}`.
-- Modify every `view()` / `view_mut()` / `from_ndarray` / `into_ndarray` caller: `crates/ast-core/src/fitschan/fset_to_store/world_axes.rs`, `crates/ast-core/src/fitschan/wcs_decompose.rs`, `crates/ast-core/src/mappings/{cmpmap,dssmap,lutmap,mod,polymap_simd,polymap,ratemap,selectormap,specmap,splinemap,switchmap,timemap,tran_grid,unit,unitnormmap}.rs`, `crates/ast-core/src/mappings/{mathmap,rebin,resample}/mod.rs`, `crates/ast-core/tests/{pointset.rs,test_trangrid.rs}`.
+- Modify: `crates/starlink-ast/src/coords/pointset.rs`
+- Modify every `point_mut` caller: `crates/starlink-ast/src/frames/{cmpframe.rs,mod.rs,skyframe.rs}`, `crates/starlink-ast/src/mappings/{dssmap,grismmap,linear_approx,lutmap,map_box,matrix,normmap,pcdmap,perm,polymap,quad_approx,ratemap,selectormap,shift,slamap,specmap,sphmap,splinemap,switchmap,timemap,unitnormmap,wcsmap,winmap,xphmap,zoom}.rs`, `crates/starlink-ast/src/mappings/mathmap/mod.rs`, `crates/starlink-ast/src/regions/{box_region,circle,cmpregion,data,ellipse,interval,moc,mod,nullregion,overlap,pointlist,polygon,prism,stc}.rs`, `crates/ast-bench/src/load.rs`, and the tests `crates/starlink-ast/tests/{common/mod.rs,pointset.rs,test_box_region.rs,test_circle.rs,test_intramap.rs,test_polymap.rs,test_transform_memory.rs}`.
+- Modify every `view()` / `view_mut()` / `from_ndarray` / `into_ndarray` caller: `crates/starlink-ast/src/fitschan/fset_to_store/world_axes.rs`, `crates/starlink-ast/src/fitschan/wcs_decompose.rs`, `crates/starlink-ast/src/mappings/{cmpmap,dssmap,lutmap,mod,polymap_simd,polymap,ratemap,selectormap,specmap,splinemap,switchmap,timemap,tran_grid,unit,unitnormmap}.rs`, `crates/starlink-ast/src/mappings/{mathmap,rebin,resample}/mod.rs`, `crates/starlink-ast/tests/{pointset.rs,test_trangrid.rs}`.
 - Any other compile error the flip exposes, including `crates/ast-oracle-tests/tests/call_count_parity.rs`.
 
 **Interfaces:**
@@ -913,7 +913,7 @@ Expected: 12 passed.
 - Produces on `PointSet`: `point(i) -> PointBuf`, `set_point(i, &[f64])`, `axis(j) -> &[f64]`, `axis_mut(j) -> &mut [f64]`, `axis_iter(j)`, `as_points() -> Points<'_>`, `as_points_mut() -> PointsMut<'_>`, `from_points(&Points<'_>) -> PointSet`; `view()`, `view_mut()`, `from_ndarray`, `into_ndarray` with shape `(ncoord, npoint)`; `point_mut` removed.
 - The `Mapping` trait is unchanged in this task.
 
-- [ ] **Step 1: Update the PointSet tests first.** In `crates/ast-core/tests/pointset.rs`, replace `point_mut_modifies_in_place` with:
+- [ ] **Step 1: Update the PointSet tests first.** In `crates/starlink-ast/tests/pointset.rs`, replace `point_mut_modifies_in_place` with:
 
 ```rust
 #[test]
@@ -953,7 +953,7 @@ Fix the file's other `view()` uses for the `(ncoord, npoint)` shape.
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `$S/cg.sh cargo test -q -p ast-core --test meta pointset::`
+Run: `$S/cg.sh cargo test -q -p starlink-ast --test meta pointset::`
 Expected: compile errors, `set_point`, `axis`, `as_points`, `from_points` not found.
 
 - [ ] **Step 3: Rewrite `pointset.rs`.** Storage is `Array2<f64>` of shape `(ncoord, npoint)` in standard layout:
@@ -1116,7 +1116,7 @@ impl PointShape for PointSet {
 
 Keep the existing doc comments where a method's meaning is unchanged; rewrite the type's and `view`'s.
 
-- [ ] **Step 4: Fix every caller until `$S/cg.sh cargo build --workspace --all-targets` and `$S/cg.sh cargo build -p ast-core --all-targets --features simd-eval` succeed.** Three `point_mut` patterns cover the call sites:
+- [ ] **Step 4: Fix every caller until `$S/cg.sh cargo build --workspace --all-targets` and `$S/cg.sh cargo build -p starlink-ast --all-targets --features simd-eval` succeed.** Three `point_mut` patterns cover the call sites:
 
 ```rust
 // A whole point copied in:
@@ -1143,7 +1143,7 @@ In `test_transform_memory.rs`, `points()` becomes `pts.set_point(i, &[i as f64, 
 
 - [ ] **Step 5: Run the suites**
 
-Run, each separately: `$S/suite.sh`, `$S/cg.sh cargo test -q -p ast-bench`, `$S/cg.sh cargo test -q -p ast-core --features simd-eval --lib`
+Run, each separately: `$S/suite.sh`, `$S/cg.sh cargo test -q -p ast-bench`, `$S/cg.sh cargo test -q -p starlink-ast --features simd-eval --lib`
 Expected: every area green with the same pass counts as before the task (mappings 1024 passed 1 ignored, fitschan 355, domain_frames 298, plus the new pointset tests in meta).
 
 - [ ] **Step 6: The bit gate and the oracle tier**
@@ -1156,16 +1156,16 @@ Expected: the same result as at T1 (run it at T1 first if not already known, and
 - [ ] **Step 7: Record speed (not gated).** `$S/cg.sh cargo run -q --release -p ast-bench -- compare --set bench --base T1`; put the slowest five rows in the ledger.
 A slowdown here is expected for kernels that now copy each point; Tasks 6 to 9 recover it.
 
-- [ ] **Step 8: fmt, clippy (both feature sets, plus `--features simd-eval` on ast-core), commit** with message `PointSet: one contiguous array per axis`.
+- [ ] **Step 8: fmt, clippy (both feature sets, plus `--features simd-eval` on starlink-ast), commit** with message `PointSet: one contiguous array per axis`.
 
 ---
 
 ### Task 5: Transforms take views
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/mod.rs` (trait, `validate_transform`, `tran1`, `tran2`, `transform_nan_protocol`)
-- Modify: the 41 files in `ast-core/src` that implement `transform_into` (listed by `rg -l "fn transform_into\b" crates/ast-core/src`), every caller of `transform_into` / `transform_into_nan` (37 in src, 5 in tests, 3 elsewhere), `crates/ast-core/tests/traits_compile.rs`, `crates/ast-bench/src/run.rs`
-- Test: `crates/ast-core/tests/points.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs` (trait, `validate_transform`, `tran1`, `tran2`, `transform_nan_protocol`)
+- Modify: the 41 files in `starlink-ast/src` that implement `transform_into` (listed by `rg -l "fn transform_into\b" crates/starlink-ast/src`), every caller of `transform_into` / `transform_into_nan` (37 in src, 5 in tests, 3 elsewhere), `crates/starlink-ast/tests/traits_compile.rs`, `crates/ast-bench/src/run.rs`
+- Test: `crates/starlink-ast/tests/points.rs`
 
 **Interfaces:**
 - Consumes: Task 3's views and Task 4's `PointSet::{as_points, as_points_mut, from_points}`.
@@ -1175,11 +1175,11 @@ A slowdown here is expected for kernels that now copy each point; Tasks 6 to 9 r
   - `fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet>` (provided)
   - `pub(crate) fn validate_transform<M: Mapping + ?Sized>(map: &M, pts: &impl PointShape, forward: bool, out: Option<&dyn PointShape>) -> AstResult<()>`
 
-- [ ] **Step 1: Write the failing tests** at the end of `crates/ast-core/tests/points.rs`:
+- [ ] **Step 1: Write the failing tests** at the end of `crates/starlink-ast/tests/points.rs`:
 
 ```rust
-use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, ZoomMap};
+use starlink_ast::coords::PointSet;
+use starlink_ast::mappings::{Mapping, ZoomMap};
 
 #[test]
 fn a_transform_can_write_into_a_callers_trann_buffers() {
@@ -1224,10 +1224,10 @@ fn a_transform_of_no_points_still_checks_the_axes() {
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `$S/cg.sh cargo test -q -p ast-core --test meta points::`
+Run: `$S/cg.sh cargo test -q -p starlink-ast --test meta points::`
 Expected: compile errors, `transform_into` expects `&PointSet`.
 
-- [ ] **Step 3: Change the trait and `validate_transform`** in `crates/ast-core/src/mappings/mod.rs`:
+- [ ] **Step 3: Change the trait and `validate_transform`** in `crates/starlink-ast/src/mappings/mod.rs`:
 
 ```rust
     /// Transform a set of points.
@@ -1309,7 +1309,7 @@ In `crates/ast-bench/src/run.rs`, `time_rust` passes `pts.as_points()` and `rust
 
 ```rust
             let mut time_cols = || -> Result<(), String> {
-                let fail = |e: ast_core::error::AstError| format!("{} {dir} N={n}: {e}", s.relpath);
+                let fail = |e: starlink_ast::error::AstError| format!("{} {dir} N={n}: {e}", s.relpath);
                 let input = Points::new(columns.chunks_exact(n)).map_err(fail)?;
                 let out = PointsMut::new(cols_out.chunks_exact_mut(n)).map_err(fail)?;
                 map.transform_into(input, s.forward, out).map_err(fail)
@@ -1318,7 +1318,7 @@ In `crates/ast-bench/src/run.rs`, `time_rust` passes `pts.as_points()` and `rust
 
 - [ ] **Step 5: Run the tests**
 
-Run, separately: `$S/cg.sh cargo test -q -p ast-core --test meta points::`, `$S/suite.sh`, `$S/cg.sh cargo test -q -p ast-bench`
+Run, separately: `$S/cg.sh cargo test -q -p starlink-ast --test meta points::`, `$S/suite.sh`, `$S/cg.sh cargo test -q -p ast-bench`
 Expected: the three new tests pass; every area has the same pass counts as at the end of Task 4.
 
 - [ ] **Step 6: Bits and oracle tier**
@@ -1337,21 +1337,21 @@ Expected: as at T1.
 ### Task 6: ZoomMap, ShiftMap and UnitMap kernels
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/zoom.rs`, `crates/ast-core/src/mappings/shift.rs`, `crates/ast-core/src/mappings/unit.rs`
-- Test: `crates/ast-core/tests/test_bulk_kernels.rs` (new, in the `mappings` area)
+- Modify: `crates/starlink-ast/src/mappings/zoom.rs`, `crates/starlink-ast/src/mappings/shift.rs`, `crates/starlink-ast/src/mappings/unit.rs`
+- Test: `crates/starlink-ast/tests/test_bulk_kernels.rs` (new, in the `mappings` area)
 
 **Interfaces:**
 - Consumes: Task 5's trait.
 - Produces: no new API; one commit per class.
 
-- [ ] **Step 1: Write the tests** in `crates/ast-core/tests/test_bulk_kernels.rs`, and add `#[path = "../test_bulk_kernels.rs"] mod test_bulk_kernels;` to `crates/ast-core/tests/mappings/main.rs`:
+- [ ] **Step 1: Write the tests** in `crates/starlink-ast/tests/test_bulk_kernels.rs`, and add `#[path = "../test_bulk_kernels.rs"] mod test_bulk_kernels;` to `crates/starlink-ast/tests/mappings/main.rs`:
 
 ```rust
 //! Whole-axis kernels: non-finite inputs and oversized outputs.
 
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::{Points, PointsMut};
-use ast_core::mappings::{Mapping, ShiftMap, UnitMap, ZoomMap};
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::{Points, PointsMut};
+use starlink_ast::mappings::{Mapping, ShiftMap, UnitMap, ZoomMap};
 
 /// Every non-finite input is bad: BAD, NaN, and both infinities.
 const ODD: [f64; 5] = [BAD_VALUE, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 2.0];
@@ -1405,12 +1405,12 @@ fn unitmap_kernel() {
 }
 ```
 
-Adjust the constructors to their real signatures (`rg -n "pub fn new" crates/ast-core/src/mappings/{zoom,shift,unit}.rs`).
+Adjust the constructors to their real signatures (`rg -n "pub fn new" crates/starlink-ast/src/mappings/{zoom,shift,unit}.rs`).
 These tests pin behavior and pass before the rewrite; they are the regression check for it.
 
 - [ ] **Step 2: Run them**
 
-Run: `$S/cg.sh cargo test -q -p ast-core --test mappings test_bulk_kernels::`
+Run: `$S/cg.sh cargo test -q -p starlink-ast --test mappings test_bulk_kernels::`
 Expected: 3 passed.
 If `unitmap_kernel` fails, the current UnitMap behavior differs from the comment; take the current behavior as truth, fix the test, and note it in the ledger.
 
@@ -1434,7 +1434,7 @@ If `unitmap_kernel` fails, the current UnitMap behavior differs from the comment
 `transform_into_nan` is the same loop with `*o = v * scale;`.
 
 - [ ] **Step 4: Gate and commit ZoomMap.**
-Run: `$S/cg.sh cargo test -q -p ast-core --test mappings`, then `bits --base T1` (expect match), then `$S/cg.sh cargo run -q --release -p ast-bench -- compare --set bench --base HEAD`.
+Run: `$S/cg.sh cargo test -q -p starlink-ast --test mappings`, then `bits --base T1` (expect match), then `$S/cg.sh cargo run -q --release -p ast-bench -- compare --set bench --base HEAD`.
 Expected: no slowdown; `zoommap_2d.map` faster at N≥100000. If any row is slower, stop and find out why before committing.
 Commit `ZoomMap: whole-axis kernel` with the N=1000000 `rust` and `rust-cols` figures before and after in the message.
 
@@ -1488,8 +1488,8 @@ Gate and commit as in Step 4 (`UnitMap: whole-axis kernel`).
 ### Task 7: WinMap and PermMap kernels
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/winmap.rs`, `crates/ast-core/src/mappings/perm.rs`
-- Test: `crates/ast-core/tests/test_bulk_kernels.rs`
+- Modify: `crates/starlink-ast/src/mappings/winmap.rs`, `crates/starlink-ast/src/mappings/perm.rs`
+- Test: `crates/starlink-ast/tests/test_bulk_kernels.rs`
 
 **Interfaces:**
 - Consumes: `run` and `assert_bad_then` from Task 6's test file.
@@ -1497,7 +1497,7 @@ Gate and commit as in Step 4 (`UnitMap: whole-axis kernel`).
 - [ ] **Step 1: Add the tests** to `test_bulk_kernels.rs`:
 
 ```rust
-use ast_core::mappings::{PermMap, WinMap};
+use starlink_ast::mappings::{PermMap, WinMap};
 
 #[test]
 fn winmap_kernel() {
@@ -1526,7 +1526,7 @@ Adjust the constructors to their real signatures.
 
 - [ ] **Step 2: Run them**
 
-Run: `$S/cg.sh cargo test -q -p ast-core --test mappings test_bulk_kernels::`
+Run: `$S/cg.sh cargo test -q -p starlink-ast --test mappings test_bulk_kernels::`
 Expected: 5 passed.
 
 - [ ] **Step 3: Rewrite WinMap**
@@ -1604,13 +1604,13 @@ Gate and commit `PermMap: whole-axis kernel` as in Step 3.
 ### Task 8: MatrixMap kernel
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/matrix.rs`
-- Test: `crates/ast-core/tests/test_bulk_kernels.rs`
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs`
+- Test: `crates/starlink-ast/tests/test_bulk_kernels.rs`
 
 - [ ] **Step 1: Add the tests**
 
 ```rust
-use ast_core::mappings::MatrixMap;
+use starlink_ast::mappings::MatrixMap;
 
 #[test]
 fn diagonal_matrixmap_kernel() {
@@ -1663,7 +1663,7 @@ Adjust the constructors to their real names and argument order.
 
 - [ ] **Step 2: Run them**
 
-Run: `$S/cg.sh cargo test -q -p ast-core --test mappings test_bulk_kernels::`
+Run: `$S/cg.sh cargo test -q -p starlink-ast --test mappings test_bulk_kernels::`
 Expected: 8 passed.
 
 - [ ] **Step 3: Rewrite `apply_matrix`**
@@ -1747,13 +1747,13 @@ Update both callers to pass `&input` and `&mut out`.
 ### Task 9: CmpMap without copies
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/cmpmap.rs`
-- Test: `crates/ast-core/tests/test_bulk_kernels.rs`, `crates/ast-core/tests/test_transform_memory.rs` (unchanged; must still pass)
+- Modify: `crates/starlink-ast/src/mappings/cmpmap.rs`
+- Test: `crates/starlink-ast/tests/test_bulk_kernels.rs`, `crates/starlink-ast/tests/test_transform_memory.rs` (unchanged; must still pass)
 
 - [ ] **Step 1: Add the tests**
 
 ```rust
-use ast_core::mappings::{CmpMap, Composition};
+use starlink_ast::mappings::{CmpMap, Composition};
 
 #[test]
 fn a_parallel_cmpmap_splits_its_output_at_the_first_childs_output_count() {
@@ -1806,11 +1806,11 @@ fn a_series_cmpmap_of_no_points_still_checks_its_stages() {
 }
 ```
 
-Adjust constructors as needed; if the third test's chosen PermMap has a defined inverse, pick any Mapping whose inverse C leaves undefined (`rg -n "tran_inverse" crates/ast-core/src/mappings/perm.rs`).
+Adjust constructors as needed; if the third test's chosen PermMap has a defined inverse, pick any Mapping whose inverse C leaves undefined (`rg -n "tran_inverse" crates/starlink-ast/src/mappings/perm.rs`).
 
 - [ ] **Step 2: Run them**
 
-Run: `$S/cg.sh cargo test -q -p ast-core --test mappings test_bulk_kernels::`
+Run: `$S/cg.sh cargo test -q -p starlink-ast --test mappings test_bulk_kernels::`
 Expected: 11 passed (these pin current behavior).
 
 - [ ] **Step 3: Rewrite the parallel paths**
@@ -1858,7 +1858,7 @@ Delete `series_transform`, `series_transform_batches`, `batch_of`, and CmpMap's 
 
 - [ ] **Step 5: Gate**
 
-Run: `$S/cg.sh cargo test -q -p ast-core --test mappings test_bulk_kernels::`, `$S/cg.sh cargo test -q -p ast-core --test meta test_transform_memory::`, `$S/suite.sh`, `bits --base T1`, `compare --set bench --base HEAD`, `compare --set framesets --base HEAD`.
+Run: `$S/cg.sh cargo test -q -p starlink-ast --test mappings test_bulk_kernels::`, `$S/cg.sh cargo test -q -p starlink-ast --test meta test_transform_memory::`, `$S/suite.sh`, `bits --base T1`, `compare --set bench --base HEAD`, `compare --set framesets --base HEAD`.
 Expected: all green; bits match; `cmpmap_parallel` and `cmpmap_series` faster, nothing slower.
 
 - [ ] **Step 6: Commit** `CmpMap: split and batch views instead of copying` with the before and after figures.
@@ -1875,7 +1875,7 @@ Expected: all green; bits match; `cmpmap_parallel` and `cmpmap_series` faster, n
 
 - [ ] **Step 2: Summarize.** Add to `docs/perf/README.md` a section "After per-axis views" with the table of `rust`, `rust-cols` and `c` at N=1000000 for the seven rewritten classes against the 2026-10-16 figures, and the five worst remaining ratios.
 
-- [ ] **Step 3: Amend the port design (rev 7).** In `2026-04-20-rust-port-design.md`: add a revision-history entry; change the `PointSet` sketch to `(ncoord, npoint)`, one contiguous array per axis; replace "`Array2<f64>` owns its data as a contiguous row-major `Vec<f64>` which `ast-capi` can hand to C without copy" with the statement that `transform_into` takes `Points` and `PointsMut`, which the C shim builds over the caller's per-axis arrays without copying, as C's `TranN` does with `astSetPoints`; and change the transform signature sketch.
+- [ ] **Step 3: Amend the port design (rev 7).** In `2026-04-20-rust-port-design.md`: add a revision-history entry; change the `PointSet` sketch to `(ncoord, npoint)`, one contiguous array per axis; replace "`Array2<f64>` owns its data as a contiguous row-major `Vec<f64>` which `starlink-ast-capi` can hand to C without copy" with the statement that `transform_into` takes `Points` and `PointsMut`, which the C shim builds over the caller's per-axis arrays without copying, as C's `TranN` does with `astSetPoints`; and change the transform signature sketch.
 
 - [ ] **Step 4: CLAUDE.md.** In "Bulk-transform optimization", replace the description of "the default per-point loop pattern" with: kernels loop down whole axes of a `Points` view into a `PointsMut` view, testing `is_bad` per value; a per-point loop through `point(i)` and `set_point` is for code that is not a bulk kernel.
 Add `ast-bench bits --base <ref>` to the performance-gate paragraph as the check for changes that must not alter results.

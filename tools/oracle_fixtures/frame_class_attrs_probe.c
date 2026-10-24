@@ -4,9 +4,9 @@
  * what a CmpFrame's first component, a FrameSet's current Frame and a
  * Region's Frame then report.
  *
- * Prints Rust source for crates/ast-core/tests/frame_class_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/frame_class_oracle/cases.rs:
  *
- *   ./frame_class_attrs_probe > ../../crates/ast-core/tests/frame_class_oracle/cases.rs
+ *   ./frame_class_attrs_probe > ../../crates/starlink-ast/tests/frame_class_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>
@@ -125,7 +125,7 @@ int main( void ) {
            "// the C library at the submodule pin. Do not edit.\n\n"
            "// Each value is printed with 17 digits so that it reads back exactly.\n"
            "#![allow(clippy::excessive_precision)]\n\n"
-           "use ast_core::constants::BAD_VALUE as BAD;\n\n"
+           "use starlink_ast::constants::BAD_VALUE as BAD;\n\n"
            "/// An attribute value as C reports it.\n"
            "#[derive(Debug, Clone, Copy, PartialEq)]\n"
            "pub enum V {\n    S(&'static str),\n    I(i32),\n    D(f64),\n}\n\n"

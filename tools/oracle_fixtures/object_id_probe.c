@@ -9,9 +9,9 @@
  * where it copies it (astCopy); copies; and simplified Mappings. Each is
  * dumped, read back and dumped again.
  *
- * Prints Rust source for crates/ast-core/tests/object_id_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/object_id_oracle/cases.rs:
  *
- *   ./object_id_probe > ../../crates/ast-core/tests/object_id_oracle/cases.rs
+ *   ./object_id_probe > ../../crates/starlink-ast/tests/object_id_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

@@ -5,9 +5,9 @@
  * points; Boxes whose points differ within and beyond pointset.c Equal's
  * default accuracy; and a Box against its negation.
  *
- * Prints Rust source for crates/ast-core/tests/region_equal_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_equal_oracle/cases.rs:
  *
- *   ./region_equal_probe > ../../crates/ast-core/tests/region_equal_oracle/cases.rs
+ *   ./region_equal_probe > ../../crates/starlink-ast/tests/region_equal_oracle/cases.rs
  */
 #include <stdio.h>
 #include "ast.h"

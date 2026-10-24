@@ -1,7 +1,7 @@
 # `MapMerge` audit — TimeMap
 
 C source: reference/starlink-ast/src/timemap.c
-Rust: crates/ast-core/src/mappings/timemap.rs
+Rust: crates/starlink-ast/src/mappings/timemap.rs
 Audited: 2026-09-02 against pin 3e60abaa
 Citations: verified against pin 3b9dc639
 Extension points: classified

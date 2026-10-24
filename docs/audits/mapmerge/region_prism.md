@@ -1,7 +1,7 @@
 # `Simplify` / `GetDefUnc` audit — Prism
 
 C source: reference/starlink-ast/src/prism.c
-Rust: crates/ast-core/src/regions/prism.rs
+Rust: crates/starlink-ast/src/regions/prism.rs
 Audited: 2026-09-03 against pin 3e60abaa
 Citations: verified against pin 3b9dc639
 Extension points: classified

@@ -19,9 +19,9 @@
  * With AST__USEBAD, pixels with k mod 17 = 3 are bad, as are variances
  * with k mod 19 = 5. The bad value is 120. Output arrays start as 77.
  *
- * Prints Rust source for crates/ast-core/tests/resample_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/resample_oracle/cases.rs:
  *
- *   AST_REPLACE_NAN=1 ./resample_probe > ../../crates/ast-core/tests/resample_oracle/cases.rs
+ *   AST_REPLACE_NAN=1 ./resample_probe > ../../crates/starlink-ast/tests/resample_oracle/cases.rs
  */
 /* The input values are formed as the port forms them, without fused
    multiply-adds. */

@@ -1,7 +1,7 @@
 # `MapMerge` / `Simplify` audit — Box
 
 C source: reference/starlink-ast/src/box.c
-Rust: crates/ast-core/src/regions/box_region.rs
+Rust: crates/starlink-ast/src/regions/box_region.rs
 Audited: 2026-09-03 against pin 3e60abaa
 Citations: verified against pin 3b9dc639
 Extension points: classified
@@ -259,7 +259,7 @@ one; `docs/issues/c-library-quirks.md` carries the history.
 the constant, NullRegion and non-bidirectional exits, and
 `cap_box_permmap_null_first` gates the accumulation by putting the outside
 constant first, where an assignment would lose it. The four
-`simplify_permmap_slice_*` cases in `crates/ast-core/tests/test_box_region.rs`
+`simplify_permmap_slice_*` cases in `crates/starlink-ast/tests/test_box_region.rs`
 port upstream's `checkBoxPermMapSlices`. The unbounded exit has no
 oracle fixture, because `astMapRegion` refuses to build a Region whose forward
 transformation gives a bad axis value (`region.c:5563 (fn MapRegion)`), so it is

@@ -13,9 +13,9 @@
  * whether setting IterInverse to 1 raised one (always false for a class
  * without that attribute).
  *
- * Prints Rust source for crates/ast-core/tests/tran_definedness_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/tran_definedness_oracle/cases.rs:
  *
- *   ./tran_definedness_probe > ../../crates/ast-core/tests/tran_definedness_oracle/cases.rs
+ *   ./tran_definedness_probe > ../../crates/starlink-ast/tests/tran_definedness_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

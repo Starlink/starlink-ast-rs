@@ -7,9 +7,9 @@
  * through a ZoomMap by the protected astMapRegion, which leaves its current
  * Frame different from its base Frame.
  *
- * Prints Rust source for crates/ast-core/tests/region_ellipsepars_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_ellipsepars_oracle/cases.rs:
  *
- *   ./region_ellipsepars_probe > ../../crates/ast-core/tests/region_ellipsepars_oracle/cases.rs
+ *   ./region_ellipsepars_probe > ../../crates/starlink-ast/tests/region_ellipsepars_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

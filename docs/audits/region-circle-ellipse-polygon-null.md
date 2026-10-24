@@ -3,7 +3,7 @@
 Read-only audit of the pure-Rust port against the C reference. Scope:
 `circle`, `ellipse`, `polygon`, `nullregion`. Every claim cites C
 `reference/starlink-ast/src/<f>.c` and Rust
-`crates/ast-core/src/regions/<f>.rs`.
+`crates/starlink-ast/src/regions/<f>.rs`.
 
 Status legend:
 - **PORTED** — faithful control-flow-equivalent port.

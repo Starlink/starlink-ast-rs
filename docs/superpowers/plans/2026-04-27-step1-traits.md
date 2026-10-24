@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Define the core public API surface of ast-core: Mapping/Frame/Region traits, expanded error model, PointSet, PointList struct, and BAD_VALUE constant.
+**Goal:** Define the core public API surface of starlink-ast: Mapping/Frame/Region traits, expanded error model, PointSet, PointList struct, and BAD_VALUE constant.
 
 **Architecture:** Directory-per-trait module structure. Traits have full method signatures with unimplemented bodies. PointSet is backed by ndarray::Array2<f64>. PointList is a struct wrapping DynFrame + PointSet (no trait impls yet).
 
@@ -15,19 +15,19 @@
 | File | Responsibility |
 |------|---------------|
 | `Cargo.toml` (workspace) | Add ndarray to workspace deps |
-| `crates/ast-core/Cargo.toml` | Add ndarray dependency |
-| `crates/ast-core/src/lib.rs` | Declare all modules |
-| `crates/ast-core/src/constants.rs` | BAD_VALUE constant |
-| `crates/ast-core/src/error.rs` | Expanded AstError with context, track_caller |
-| `crates/ast-core/src/mappings/mod.rs` | trait Mapping + DynMapping |
-| `crates/ast-core/src/frames/mod.rs` | trait Frame + DynFrame |
-| `crates/ast-core/src/regions/mod.rs` | trait Region + DynRegion + Overlap |
-| `crates/ast-core/src/coords/mod.rs` | Re-exports PointSet, PointList |
-| `crates/ast-core/src/coords/pointset.rs` | PointSet implementation |
-| `crates/ast-core/src/coords/pointlist.rs` | PointList struct (no trait impls) |
-| `crates/ast-core/tests/error_model.rs` | Tests for expanded AstError |
-| `crates/ast-core/tests/pointset.rs` | Tests for PointSet |
-| `crates/ast-core/tests/traits_compile.rs` | Compilation test for trait coherence |
+| `crates/starlink-ast/Cargo.toml` | Add ndarray dependency |
+| `crates/starlink-ast/src/lib.rs` | Declare all modules |
+| `crates/starlink-ast/src/constants.rs` | BAD_VALUE constant |
+| `crates/starlink-ast/src/error.rs` | Expanded AstError with context, track_caller |
+| `crates/starlink-ast/src/mappings/mod.rs` | trait Mapping + DynMapping |
+| `crates/starlink-ast/src/frames/mod.rs` | trait Frame + DynFrame |
+| `crates/starlink-ast/src/regions/mod.rs` | trait Region + DynRegion + Overlap |
+| `crates/starlink-ast/src/coords/mod.rs` | Re-exports PointSet, PointList |
+| `crates/starlink-ast/src/coords/pointset.rs` | PointSet implementation |
+| `crates/starlink-ast/src/coords/pointlist.rs` | PointList struct (no trait impls) |
+| `crates/starlink-ast/tests/error_model.rs` | Tests for expanded AstError |
+| `crates/starlink-ast/tests/pointset.rs` | Tests for PointSet |
+| `crates/starlink-ast/tests/traits_compile.rs` | Compilation test for trait coherence |
 
 ---
 
@@ -35,9 +35,9 @@
 
 **Files:**
 - Modify: `Cargo.toml` (workspace root)
-- Modify: `crates/ast-core/Cargo.toml`
-- Create: `crates/ast-core/src/constants.rs`
-- Modify: `crates/ast-core/src/lib.rs`
+- Modify: `crates/starlink-ast/Cargo.toml`
+- Create: `crates/starlink-ast/src/constants.rs`
+- Modify: `crates/starlink-ast/src/lib.rs`
 
 - [ ] **Step 1: Add ndarray to workspace dependencies**
 
@@ -49,13 +49,13 @@ cc = "1"
 ndarray = "0.16"
 ```
 
-- [ ] **Step 2: Add ndarray to ast-core's dependencies**
+- [ ] **Step 2: Add ndarray to starlink-ast's dependencies**
 
-Edit `crates/ast-core/Cargo.toml` — add a `[dependencies]` section:
+Edit `crates/starlink-ast/Cargo.toml` — add a `[dependencies]` section:
 
 ```toml
 [package]
-name = "ast-core"
+name = "starlink-ast"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -71,7 +71,7 @@ cc.workspace = true
 
 - [ ] **Step 3: Create constants module**
 
-Create `crates/ast-core/src/constants.rs`:
+Create `crates/starlink-ast/src/constants.rs`:
 
 ```rust
 //! Library-wide constants.
@@ -86,7 +86,7 @@ pub const BAD_VALUE: f64 = -f64::MAX;
 
 - [ ] **Step 4: Update lib.rs to declare constants module**
 
-Edit `crates/ast-core/src/lib.rs`:
+Edit `crates/starlink-ast/src/lib.rs`:
 
 ```rust
 #![warn(missing_docs)]
@@ -99,13 +99,13 @@ pub mod error;
 
 - [ ] **Step 5: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Cargo.toml crates/ast-core/Cargo.toml crates/ast-core/src/constants.rs crates/ast-core/src/lib.rs
+git add Cargo.toml crates/starlink-ast/Cargo.toml crates/starlink-ast/src/constants.rs crates/starlink-ast/src/lib.rs
 git commit -m "Add ndarray dependency and constants module (BAD_VALUE)"
 ```
 
@@ -114,15 +114,15 @@ git commit -m "Add ndarray dependency and constants module (BAD_VALUE)"
 ### Task 2: Expand Error Model
 
 **Files:**
-- Modify: `crates/ast-core/src/error.rs`
-- Create: `crates/ast-core/tests/error_model.rs`
+- Modify: `crates/starlink-ast/src/error.rs`
+- Create: `crates/starlink-ast/tests/error_model.rs`
 
 - [ ] **Step 1: Write tests for expanded error model**
 
-Create `crates/ast-core/tests/error_model.rs`:
+Create `crates/starlink-ast/tests/error_model.rs`:
 
 ```rust
-use ast_core::error::{AstError, ErrorCode};
+use starlink_ast::error::{AstError, ErrorCode};
 
 #[test]
 fn new_error_has_empty_context() {
@@ -168,12 +168,12 @@ fn new_has_no_location() {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p ast-core --test error_model`
+Run: `cargo test -p starlink-ast --test error_model`
 Expected: compilation failure (no `context()`, `with_context()`, `new_tracked()`, `source_location()`)
 
 - [ ] **Step 3: Implement expanded error model**
 
-Replace `crates/ast-core/src/error.rs` with:
+Replace `crates/starlink-ast/src/error.rs` with:
 
 ```rust
 //! Error types for the AST library.
@@ -259,18 +259,18 @@ pub type AstResult<T> = Result<T, AstError>;
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p ast-core --test error_model`
+Run: `cargo test -p starlink-ast --test error_model`
 Expected: all 5 tests pass
 
 - [ ] **Step 5: Verify existing error_codes tests still pass**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass (error_codes + error_model)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/error.rs crates/ast-core/tests/error_model.rs
+git add crates/starlink-ast/src/error.rs crates/starlink-ast/tests/error_model.rs
 git commit -m "Expand AstError: context stack, source_location, track_caller"
 ```
 
@@ -279,18 +279,18 @@ git commit -m "Expand AstError: context stack, source_location, track_caller"
 ### Task 3: Define Mapping Trait
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/lib.rs`
+- Create: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/lib.rs`
 
 - [ ] **Step 1: Create mappings directory**
 
 ```bash
-mkdir -p crates/ast-core/src/mappings
+mkdir -p crates/starlink-ast/src/mappings
 ```
 
 - [ ] **Step 2: Write the Mapping trait**
 
-Create `crates/ast-core/src/mappings/mod.rs`:
+Create `crates/starlink-ast/src/mappings/mod.rs`:
 
 ```rust
 //! The Mapping trait and associated types.
@@ -353,7 +353,7 @@ pub trait Mapping: Send {
 
 - [ ] **Step 3: Update lib.rs**
 
-Edit `crates/ast-core/src/lib.rs`:
+Edit `crates/starlink-ast/src/lib.rs`:
 
 ```rust
 #![warn(missing_docs)]
@@ -415,10 +415,10 @@ pub mod mappings;
 - [ ] **Step 4: Create coords module (PointSet only for now)**
 
 ```bash
-mkdir -p crates/ast-core/src/coords
+mkdir -p crates/starlink-ast/src/coords
 ```
 
-Create `crates/ast-core/src/coords/mod.rs`:
+Create `crates/starlink-ast/src/coords/mod.rs`:
 
 ```rust
 //! Coordinate array types.
@@ -428,7 +428,7 @@ mod pointset;
 pub use pointset::PointSet;
 ```
 
-Create `crates/ast-core/src/coords/pointset.rs`:
+Create `crates/starlink-ast/src/coords/pointset.rs`:
 
 ```rust
 //! Frame-unaware coordinate block.
@@ -558,13 +558,13 @@ impl PointSet {
 
 - [ ] **Step 5: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/ crates/ast-core/src/coords/ crates/ast-core/src/lib.rs
+git add crates/starlink-ast/src/mappings/ crates/starlink-ast/src/coords/ crates/starlink-ast/src/lib.rs
 git commit -m "Add Mapping trait and PointSet (ndarray-backed coordinate block)"
 ```
 
@@ -573,18 +573,18 @@ git commit -m "Add Mapping trait and PointSet (ndarray-backed coordinate block)"
 ### Task 4: Define Frame Trait
 
 **Files:**
-- Create: `crates/ast-core/src/frames/mod.rs`
-- Modify: `crates/ast-core/src/lib.rs`
+- Create: `crates/starlink-ast/src/frames/mod.rs`
+- Modify: `crates/starlink-ast/src/lib.rs`
 
 - [ ] **Step 1: Create frames directory**
 
 ```bash
-mkdir -p crates/ast-core/src/frames
+mkdir -p crates/starlink-ast/src/frames
 ```
 
 - [ ] **Step 2: Write the Frame trait**
 
-Create `crates/ast-core/src/frames/mod.rs`:
+Create `crates/starlink-ast/src/frames/mod.rs`:
 
 ```rust
 //! The Frame trait and associated types.
@@ -641,7 +641,7 @@ pub trait Frame: Send {
 
 - [ ] **Step 3: Add frames module to lib.rs**
 
-Edit `crates/ast-core/src/lib.rs`:
+Edit `crates/starlink-ast/src/lib.rs`:
 
 ```rust
 #![warn(missing_docs)]
@@ -657,13 +657,13 @@ pub mod mappings;
 
 - [ ] **Step 4: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/ crates/ast-core/src/lib.rs
+git add crates/starlink-ast/src/frames/ crates/starlink-ast/src/lib.rs
 git commit -m "Add Frame trait with integrity support methods"
 ```
 
@@ -672,18 +672,18 @@ git commit -m "Add Frame trait with integrity support methods"
 ### Task 5: Define Region Trait
 
 **Files:**
-- Create: `crates/ast-core/src/regions/mod.rs`
-- Modify: `crates/ast-core/src/lib.rs`
+- Create: `crates/starlink-ast/src/regions/mod.rs`
+- Modify: `crates/starlink-ast/src/lib.rs`
 
 - [ ] **Step 1: Create regions directory**
 
 ```bash
-mkdir -p crates/ast-core/src/regions
+mkdir -p crates/starlink-ast/src/regions
 ```
 
 - [ ] **Step 2: Write the Region trait**
 
-Create `crates/ast-core/src/regions/mod.rs`:
+Create `crates/starlink-ast/src/regions/mod.rs`:
 
 ```rust
 //! The Region trait and associated types.
@@ -728,7 +728,7 @@ pub trait Region: Frame + Mapping {
 
 - [ ] **Step 3: Add regions module to lib.rs**
 
-Edit `crates/ast-core/src/lib.rs`:
+Edit `crates/starlink-ast/src/lib.rs`:
 
 ```rust
 #![warn(missing_docs)]
@@ -745,13 +745,13 @@ pub mod regions;
 
 - [ ] **Step 4: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/regions/ crates/ast-core/src/lib.rs
+git add crates/starlink-ast/src/regions/ crates/starlink-ast/src/lib.rs
 git commit -m "Add Region trait (inherits Frame + Mapping) and Overlap enum"
 ```
 
@@ -760,12 +760,12 @@ git commit -m "Add Region trait (inherits Frame + Mapping) and Overlap enum"
 ### Task 6: Add PointList Struct
 
 **Files:**
-- Create: `crates/ast-core/src/coords/pointlist.rs`
-- Modify: `crates/ast-core/src/coords/mod.rs`
+- Create: `crates/starlink-ast/src/coords/pointlist.rs`
+- Modify: `crates/starlink-ast/src/coords/mod.rs`
 
 - [ ] **Step 1: Write PointList**
 
-Create `crates/ast-core/src/coords/pointlist.rs`:
+Create `crates/starlink-ast/src/coords/pointlist.rs`:
 
 ```rust
 //! Frame-aware point collection.
@@ -818,7 +818,7 @@ impl PointList {
 
 - [ ] **Step 2: Update coords/mod.rs to export PointList**
 
-Edit `crates/ast-core/src/coords/mod.rs`:
+Edit `crates/starlink-ast/src/coords/mod.rs`:
 
 ```rust
 //! Coordinate array types.
@@ -832,7 +832,7 @@ pub use pointset::PointSet;
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success. Note: `PointList` has a `Debug` derive which requires
 `DynFrame` (i.e. `Box<dyn Frame>`) to implement `Debug`. Since `Frame: Send`
 doesn't require `Debug`, we need the `PointList` to use manual Debug or
@@ -859,7 +859,7 @@ If the build fails due to Debug, apply this fix.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/coords/
+git add crates/starlink-ast/src/coords/
 git commit -m "Add PointList struct (frame-aware coordinate collection)"
 ```
 
@@ -868,15 +868,15 @@ git commit -m "Add PointList struct (frame-aware coordinate collection)"
 ### Task 7: Add PointSet Tests
 
 **Files:**
-- Create: `crates/ast-core/tests/pointset.rs`
+- Create: `crates/starlink-ast/tests/pointset.rs`
 
 - [ ] **Step 1: Write PointSet tests**
 
-Create `crates/ast-core/tests/pointset.rs`:
+Create `crates/starlink-ast/tests/pointset.rs`:
 
 ```rust
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
 
 #[test]
 fn zeros_creates_correct_shape() {
@@ -957,13 +957,13 @@ fn bad_value_constant() {
 
 - [ ] **Step 2: Run the tests**
 
-Run: `cargo test -p ast-core --test pointset`
+Run: `cargo test -p starlink-ast --test pointset`
 Expected: all tests pass
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/pointset.rs
+git add crates/starlink-ast/tests/pointset.rs
 git commit -m "Add PointSet and BAD_VALUE tests"
 ```
 
@@ -972,23 +972,23 @@ git commit -m "Add PointSet and BAD_VALUE tests"
 ### Task 8: Trait Compilation Test
 
 **Files:**
-- Create: `crates/ast-core/tests/traits_compile.rs`
+- Create: `crates/starlink-ast/tests/traits_compile.rs`
 
 - [ ] **Step 1: Write compilation test**
 
 This test verifies that the trait definitions are coherent: you can define
 a struct implementing all three traits, and `Region: Frame + Mapping` compiles.
 
-Create `crates/ast-core/tests/traits_compile.rs`:
+Create `crates/starlink-ast/tests/traits_compile.rs`:
 
 ```rust
 //! Compilation test: verifies trait signatures are coherent and Region: Frame + Mapping works.
 
-use ast_core::coords::PointSet;
-use ast_core::error::{AstError, AstResult, ErrorCode};
-use ast_core::frames::{DynFrame, Frame};
-use ast_core::mappings::{DynMapping, Mapping};
-use ast_core::regions::{DynRegion, Overlap, Region};
+use starlink_ast::coords::PointSet;
+use starlink_ast::error::{AstError, AstResult, ErrorCode};
+use starlink_ast::frames::{DynFrame, Frame};
+use starlink_ast::mappings::{DynMapping, Mapping};
+use starlink_ast::regions::{DynRegion, Overlap, Region};
 
 /// A dummy type that implements all three traits, proving they're coherent.
 struct DummyRegion;
@@ -1081,13 +1081,13 @@ fn dyn_types_are_send() {
 
 - [ ] **Step 2: Run the test**
 
-Run: `cargo test -p ast-core --test traits_compile`
+Run: `cargo test -p starlink-ast --test traits_compile`
 Expected: all 3 tests pass
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/traits_compile.rs
+git add crates/starlink-ast/tests/traits_compile.rs
 git commit -m "Add trait compilation tests verifying coherence and object safety"
 ```
 
@@ -1112,7 +1112,7 @@ If there are formatting issues, run `cargo fmt --all` to fix.
 
 - [ ] **Step 3: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass (error_codes, error_model, pointset, traits_compile)
 
 - [ ] **Step 4: Commit any fixes**
@@ -1131,7 +1131,7 @@ git commit -m "Fix clippy and fmt issues"
 After all tasks are complete, verify:
 
 1. `cargo build --workspace` — all crates compile
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. `cargo fmt --all -- --check` — clean
 5. Module structure matches the spec layout

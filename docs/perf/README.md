@@ -19,7 +19,7 @@ Absolute times belong to that machine; the Rust/C ratios travel better, but libm
 | `2026-10-19-macos-aarch64-bench.tsv` | `69c40996` | The `bench` set after the SplineMap, LutMap and PolyMap block kernels and the default NaN path: Rust/C geometric mean 0.09 at N=1, 0.33 at N=100 and 0.84 at N=1 000 000; `lsst` 0.39 forward and 0.44 inverse. Load average 6.5 to 7.6. |
 | `2026-10-19-macos-aarch64-framesets.tsv` | `69c40996` | The first record of the `framesets` set, at the same commit and load. |
 
-The pre-Phase-0 run uses that commit's `ast-core` with the current `ast-bench` harness, built in a git worktree, since the harness did not exist yet; it uses no `ast-core` API newer than that commit.
+The pre-Phase-0 run uses that commit's `starlink-ast` with the current `ast-bench` harness, built in a git worktree, since the harness did not exist yet; it uses no `starlink-ast` API newer than that commit.
 
 Both runs alternated pre, post, pre, post on a quiet machine, and each row is the run with the lower median; the same build agreed with itself across the two rounds to within about 5% (5th to 95th percentile).
 The post-Phase-0 record shows one regression the fixes introduced, SpecMap's forward transform at large N (2.9 to 4.2 ns per point), which the next record addresses: SpecMap's forward transform at large N drops to 2.5 ns per point, while its single-point call rises from 9.6 to 13.5 ns (C takes 537 ns).

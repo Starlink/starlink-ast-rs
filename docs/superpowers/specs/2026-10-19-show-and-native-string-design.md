@@ -9,7 +9,7 @@ This is the first of three pieces of documentation work, done in this order:
 
 1. This change, so that the documentation has a real Rust item for each of the three C functions.
 2. An audit of the C source's documentation headers (68 class, 283 function and 227 attribute descriptions), moving their content into the Rust item docs, with a test-checked ledger mapping every header to a Rust item or a reason.
-3. A user guide adapted from SUN/211 (the C edition of `sun_master.tex`) as `ast_core::guide`, rustdoc modules whose examples run as doctests.
+3. A user guide adapted from SUN/211 (the C edition of `sun_master.tex`) as `starlink_ast::guide`, rustdoc modules whose examples run as doctests.
 
 Each gets its own spec.
 
@@ -52,7 +52,7 @@ pub fn to_native_string(&self) -> AstResult<String>;
 
 ### The free function `to_native_string` is removed
 
-`ast_core::to_native_string(&AnyObject)` writes the `show`-style text under the `astToString` name.
+`starlink_ast::to_native_string(&AnyObject)` writes the `show`-style text under the `astToString` name.
 It is removed rather than changed, and its callers move to the method:
 
 - Callers that want the compact form call `.to_native_string()`.
@@ -62,7 +62,7 @@ About 100 test files and 2 examples call it, so this is a large mechanical chang
 
 ### Reading back
 
-`ast_core::from_native_string(&str) -> AstResult<AnyObject>` and `from_native_string_with(&str, &IntraRegistry)` stay free functions.
+`starlink_ast::from_native_string(&str) -> AstResult<AnyObject>` and `from_native_string_with(&str, &IntraRegistry)` stay free functions.
 The class is not known until the text is read, which is the same situation as `Channel::read`, and `AnyObject` is how the port already represents that.
 They read either form: the compact text from `to_native_string` and the commented text from `show`.
 

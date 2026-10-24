@@ -3,9 +3,9 @@
  * great circles, and a Cartesian square and triangle, whose edges get
  * 1 + (int)(len*mp) points each.
  *
- * Prints Rust source for crates/ast-core/tests/region_polygon_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_polygon_oracle/cases.rs:
  *
- *   ./region_polygon_probe > ../../crates/ast-core/tests/region_polygon_oracle/cases.rs
+ *   ./region_polygon_probe > ../../crates/starlink-ast/tests/region_polygon_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

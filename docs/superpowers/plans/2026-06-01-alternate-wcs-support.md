@@ -6,7 +6,7 @@
 
 **Architecture:** Six commit groups landing the read side first, then writer plumbing, then per-encoder retrofits, then DTAI/DUT1 storage + wcsconv validation. The native-format round-trip is the per-group integration check; the wcsconv harness is the final gate. Each group leaves the build green; some groups may leave a small number of formerly-passing fixtures temporarily red until a downstream group lands the matching encoder change.
 
-**Tech Stack:** Rust 2024, ndarray, existing FitsChan / FitsStore / FrameSet / Channel infrastructure. C reference at `reference/starlink-ast/src/fitschan.c`. Tests use `cargo test -p ast-core --test test_wcsconv`.
+**Tech Stack:** Rust 2024, ndarray, existing FitsChan / FitsStore / FrameSet / Channel infrastructure. C reference at `reference/starlink-ast/src/fitschan.c`. Tests use `cargo test -p starlink-ast --test test_wcsconv`.
 
 **Spec:** `docs/superpower/specs/2026-06-01-alternate-wcs-support-design.md` (commit `ba4a9a2`). Read it first.
 
@@ -17,7 +17,7 @@
 1. **Match C structure.** The reader produces a FrameSet with `Lnk{i}=1` for every alt frame (parent = base node). The writer's per-letter loop processes alt planes in alphabetical order. Last-plane-wins for global cards.
 2. **Primary-fallback on read.** Per-axis keys for an alt plane fall back to the matching primary key when absent. Mirrors C `GetItem(store, axis, m, s)` which returns the `s=' '` value when the requested `s` slot is empty.
 3. **Bit-exact emission required.** Every per-axis card in the alt plane must match C `wcsconverter` output byte-for-byte. The native intermediate (`to_native_string` → `parse_native`) round-trips losslessly.
-4. **No new placeholders.** Each commit group leaves the codebase compileable with `cargo fmt`, `cargo clippy --workspace -- -D warnings`, and `cargo test -p ast-core` (allowing for the documented temporary red fixtures inside groups 4–5; group 6 finalizes).
+4. **No new placeholders.** Each commit group leaves the codebase compileable with `cargo fmt`, `cargo clippy --workspace -- -D warnings`, and `cargo test -p starlink-ast` (allowing for the documented temporary red fixtures inside groups 4–5; group 6 finalizes).
 5. **Don't change the FrameSet integrity contract.** `add_frame(FrameRef::Base, ...)` stores the supplied mapping verbatim; the writer's `mapping(...)` call simplifies on retrieval. Both behaviors match today's primary-frame path; alt frames go through the same path.
 
 ---
@@ -27,13 +27,13 @@
 ### Files created
 
 ```
-crates/ast-core/src/fitschan/wcs_keywords/
+crates/starlink-ast/src/fitschan/wcs_keywords/
 └── alt_planes.rs                    # detect_alt_letters, primary fallback (Group 2)
 
-crates/ast-core/src/fitschan/wcs_write/
+crates/starlink-ast/src/fitschan/wcs_write/
 └── plane_stores.rs                  # PlaneStore, collect_plane_stores (Group 4)
 
-crates/ast-core/tests/
+crates/starlink-ast/tests/
 ├── test_alt_wcs_read.rs             # multi-WCS read-side fixture tests (Group 3)
 └── test_alt_wcs_round_trip.rs       # native + per-encoder round-trip (Group 5)
 ```
@@ -41,7 +41,7 @@ crates/ast-core/tests/
 ### Files modified
 
 ```
-crates/ast-core/src/frames/
+crates/starlink-ast/src/frames/
 ├── basic.rs                         # set_ident (Group 1)
 ├── skyframe.rs                      # set_ident (Group 1)
 ├── specframe.rs                     # set_ident (Group 1)
@@ -50,7 +50,7 @@ crates/ast-core/src/frames/
 ├── fluxframe.rs                     # set_ident (Group 1)
 └── specfluxframe.rs                 # set_ident (Group 1) — if it has Ident
 
-crates/ast-core/src/fitschan/
+crates/starlink-ast/src/fitschan/
 ├── wcs_keywords.rs                  # extract_wcs_keywords gains s: char (Group 2)
 ├── wcs_read.rs                      # decode_wcs_with_alts (Group 3)
 ├── wcs_celestial.rs                 # alt-plane Equinox/Epoch defaults (Group 3)
@@ -71,7 +71,7 @@ crates/ast-core/src/fitschan/
 ### Files deleted
 
 ```
-crates/ast-core/src/fitschan/wcs_write.rs
+crates/starlink-ast/src/fitschan/wcs_write.rs
 └── _legacy_store_from_frameset_to    # body + private helpers (Group 5)
 ```
 
@@ -102,12 +102,12 @@ When in doubt about a specific keyword's per-version behavior, search `fitschan.
 ### Task 1.1: BasicFrame::set_ident
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/basic.rs`
+- Modify: `crates/starlink-ast/src/frames/basic.rs`
 
 - [ ] **Step 1: Locate the existing `ident()` getter**
 
 ```bash
-grep -n "fn ident\b\|ident: Option" crates/ast-core/src/frames/basic.rs
+grep -n "fn ident\b\|ident: Option" crates/starlink-ast/src/frames/basic.rs
 ```
 
 Expected: getter at ~line 237 returning `&str`; field `ident: Option<String>` at ~line 34.
@@ -145,7 +145,7 @@ In the existing `#[cfg(test)] mod tests` block at the bottom of `basic.rs`, add:
 - [ ] **Step 4: Run the test**
 
 ```bash
-cargo test -p ast-core --lib frames::basic::tests::set_ident_round_trip
+cargo test -p starlink-ast --lib frames::basic::tests::set_ident_round_trip
 ```
 
 Expected: PASS.
@@ -153,7 +153,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/basic.rs
+git add crates/starlink-ast/src/frames/basic.rs
 git commit -m "$(cat <<'EOF'
 frames/basic: add set_ident setter
 
@@ -170,7 +170,7 @@ EOF
 ### Task 1.2: SkyFrame::set_ident
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/skyframe.rs`
+- Modify: `crates/starlink-ast/src/frames/skyframe.rs`
 
 - [ ] **Step 1: Add `set_ident`**
 
@@ -204,7 +204,7 @@ In the existing `#[cfg(test)] mod tests` block, add:
 - [ ] **Step 3: Run the test**
 
 ```bash
-cargo test -p ast-core --lib frames::skyframe::tests::skyframe_set_ident_round_trip
+cargo test -p starlink-ast --lib frames::skyframe::tests::skyframe_set_ident_round_trip
 ```
 
 Expected: PASS.
@@ -212,7 +212,7 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/skyframe.rs
+git add crates/starlink-ast/src/frames/skyframe.rs
 git commit -m "$(cat <<'EOF'
 frames/skyframe: add set_ident setter
 
@@ -228,14 +228,14 @@ EOF
 Same pattern for SpecFrame, TimeFrame, CmpFrame, FluxFrame. Each step is the same shape as 1.1/1.2; the only thing that changes is which file's `ident()` getter the new setter sits next to.
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/specframe.rs`
-- Modify: `crates/ast-core/src/frames/timeframe.rs`
-- Modify: `crates/ast-core/src/frames/cmpframe.rs`
-- Modify: `crates/ast-core/src/frames/fluxframe.rs`
+- Modify: `crates/starlink-ast/src/frames/specframe.rs`
+- Modify: `crates/starlink-ast/src/frames/timeframe.rs`
+- Modify: `crates/starlink-ast/src/frames/cmpframe.rs`
+- Modify: `crates/starlink-ast/src/frames/fluxframe.rs`
 
 - [ ] **Step 1: Add `set_ident` to SpecFrame**
 
-In `crates/ast-core/src/frames/specframe.rs`, find the existing `ident: Option<String>` field and the `ident()` getter (use `grep -n "fn ident\b" crates/ast-core/src/frames/specframe.rs`). Add adjacent:
+In `crates/starlink-ast/src/frames/specframe.rs`, find the existing `ident: Option<String>` field and the `ident()` getter (use `grep -n "fn ident\b" crates/starlink-ast/src/frames/specframe.rs`). Add adjacent:
 
 ```rust
     /// Set the frame identification string. Mirrors `astSetIdent`.
@@ -247,7 +247,7 @@ In `crates/ast-core/src/frames/specframe.rs`, find the existing `ident: Option<S
 
 - [ ] **Step 2: Add `set_ident` to TimeFrame**
 
-In `crates/ast-core/src/frames/timeframe.rs`, same shape:
+In `crates/starlink-ast/src/frames/timeframe.rs`, same shape:
 
 ```rust
     /// Set the frame identification string. Mirrors `astSetIdent`.
@@ -259,7 +259,7 @@ In `crates/ast-core/src/frames/timeframe.rs`, same shape:
 
 - [ ] **Step 3: Add `set_ident` to CmpFrame**
 
-In `crates/ast-core/src/frames/cmpframe.rs`:
+In `crates/starlink-ast/src/frames/cmpframe.rs`:
 
 ```rust
     /// Set the frame identification string. Mirrors `astSetIdent`.
@@ -271,7 +271,7 @@ In `crates/ast-core/src/frames/cmpframe.rs`:
 
 - [ ] **Step 4: Add `set_ident` to FluxFrame**
 
-In `crates/ast-core/src/frames/fluxframe.rs`:
+In `crates/starlink-ast/src/frames/fluxframe.rs`:
 
 ```rust
     /// Set the frame identification string. Mirrors `astSetIdent`.
@@ -285,12 +285,12 @@ In `crates/ast-core/src/frames/fluxframe.rs`:
 
 ```bash
 grep -L "pub fn set_ident" \
-  crates/ast-core/src/frames/basic.rs \
-  crates/ast-core/src/frames/skyframe.rs \
-  crates/ast-core/src/frames/specframe.rs \
-  crates/ast-core/src/frames/timeframe.rs \
-  crates/ast-core/src/frames/cmpframe.rs \
-  crates/ast-core/src/frames/fluxframe.rs
+  crates/starlink-ast/src/frames/basic.rs \
+  crates/starlink-ast/src/frames/skyframe.rs \
+  crates/starlink-ast/src/frames/specframe.rs \
+  crates/starlink-ast/src/frames/timeframe.rs \
+  crates/starlink-ast/src/frames/cmpframe.rs \
+  crates/starlink-ast/src/frames/fluxframe.rs
 ```
 
 Expected: empty output (every file contains `pub fn set_ident`).
@@ -298,7 +298,7 @@ Expected: empty output (every file contains `pub fn set_ident`).
 - [ ] **Step 6: Build**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
+cargo build -p starlink-ast 2>&1 | tail -3
 ```
 
 Expected: clean build.
@@ -306,7 +306,7 @@ Expected: clean build.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/specframe.rs crates/ast-core/src/frames/timeframe.rs crates/ast-core/src/frames/cmpframe.rs crates/ast-core/src/frames/fluxframe.rs
+git add crates/starlink-ast/src/frames/specframe.rs crates/starlink-ast/src/frames/timeframe.rs crates/starlink-ast/src/frames/cmpframe.rs crates/starlink-ast/src/frames/fluxframe.rs
 git commit -m "$(cat <<'EOF'
 frames: add set_ident on Spec/Time/Cmp/Flux frames
 
@@ -322,8 +322,8 @@ EOF
 - [ ] **Step 1: Format + clippy**
 
 ```bash
-cargo fmt -p ast-core
-cargo clippy -p ast-core --all-targets -- -D warnings 2>&1 | tail -3
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --all-targets -- -D warnings 2>&1 | tail -3
 ```
 
 Expected: clean.
@@ -331,7 +331,7 @@ Expected: clean.
 - [ ] **Step 2: Full test suite still green**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -E "test result|FAILED" | head -5
+cargo test -p starlink-ast 2>&1 | grep -E "test result|FAILED" | head -5
 ```
 
 Expected: all `ok` lines, no `FAILED`.
@@ -358,7 +358,7 @@ EOF
 ### Task 2.1: Add `key_for` helper + `s: char` parameter
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs`
 
 **C reference:** `fitschan.c` `FormatKey` (search `static char *FormatKey`); semantics: `if (s == ' ' || s == 0) return base; else return base+s`.
 
@@ -421,7 +421,7 @@ In the existing `#[cfg(test)] mod tests` at the bottom of `wcs_keywords.rs`, add
 - [ ] **Step 3: Run the new tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_keywords::tests::key_for_ 2>&1 | tail -10
+cargo test -p starlink-ast --lib fitschan::wcs_keywords::tests::key_for_ 2>&1 | tail -10
 ```
 
 Expected: 3 PASSes.
@@ -477,7 +477,7 @@ For 2-index keys (CD/PC), inside the `for j in 0..naxis` loop:
 
 - [ ] **Step 5: Update existing call sites**
 
-`extract_wcs_keywords` is currently called by `FitsChan::read` (in `mod.rs`) — locate via `grep -n "extract_wcs_keywords" crates/ast-core/src/fitschan/mod.rs`. Update the caller to pass `' '`:
+`extract_wcs_keywords` is currently called by `FitsChan::read` (in `mod.rs`) — locate via `grep -n "extract_wcs_keywords" crates/starlink-ast/src/fitschan/mod.rs`. Update the caller to pass `' '`:
 
 ```rust
             Encoding::FitsWcs => {
@@ -491,8 +491,8 @@ Also update test-only callers inside `wcs_keywords.rs` itself (search `extract_w
 - [ ] **Step 6: Build + run lib tests**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
-cargo test -p ast-core --lib fitschan::wcs_keywords 2>&1 | tail -5
+cargo build -p starlink-ast 2>&1 | tail -3
+cargo test -p starlink-ast --lib fitschan::wcs_keywords 2>&1 | tail -5
 ```
 
 Expected: clean build; existing tests still pass.
@@ -500,7 +500,7 @@ Expected: clean build; existing tests still pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords.rs crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/wcs_keywords.rs crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_keywords: thread s: char through extract_wcs_keywords
 
@@ -522,7 +522,7 @@ EOF
 ### Task 2.2: Detect alt-version letters from a CardList
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs`
 
 **C reference:** `fitschan.c::WcsFromStore` walks `s = ' '` then `s = 'A'..'Z'` and tests whether any axis-indexed key for that `s` exists in the store. We do the equivalent at the card level.
 
@@ -582,7 +582,7 @@ In the tests block at the bottom of `wcs_keywords.rs`:
 - [ ] **Step 3: Run tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_keywords::tests::detect_alt_letters 2>&1 | tail -10
+cargo test -p starlink-ast --lib fitschan::wcs_keywords::tests::detect_alt_letters 2>&1 | tail -10
 ```
 
 Expected: 2 PASSes.
@@ -590,7 +590,7 @@ Expected: 2 PASSes.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords.rs
+git add crates/starlink-ast/src/fitschan/wcs_keywords.rs
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_keywords: detect_alt_letters discovery helper
 
@@ -608,7 +608,7 @@ EOF
 ### Task 2.3: `extract_wcs_keywords_with_alts`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs`
 
 - [ ] **Step 1: Add the multi-plane entry point**
 
@@ -675,7 +675,7 @@ Add to the tests block:
 - [ ] **Step 3: Run the test**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_keywords::tests::extract_with_alts_reads_two_planes 2>&1 | tail -10
+cargo test -p starlink-ast --lib fitschan::wcs_keywords::tests::extract_with_alts_reads_two_planes 2>&1 | tail -10
 ```
 
 Expected: PASS.
@@ -683,7 +683,7 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords.rs
+git add crates/starlink-ast/src/fitschan/wcs_keywords.rs
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_keywords: extract_wcs_keywords_with_alts
 
@@ -704,9 +704,9 @@ EOF
 - [ ] **Step 1: fmt + clippy + full test suite**
 
 ```bash
-cargo fmt -p ast-core
-cargo clippy -p ast-core --all-targets -- -D warnings 2>&1 | tail -3
-cargo test -p ast-core 2>&1 | grep -E "test result|FAILED" | tail -10
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --all-targets -- -D warnings 2>&1 | tail -3
+cargo test -p starlink-ast 2>&1 | grep -E "test result|FAILED" | tail -10
 ```
 
 Expected: clean clippy; all tests `ok`.
@@ -732,7 +732,7 @@ EOF
 ### Task 3.1: Alt SkyFrame default Equinox/Epoch
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs`
 
 **C reference:** `fitschan.c::WcsSkyFrame` (39008-39320). The branch we need is at 39172-39180 (NORADEC + DefB1950 fallback) and 39214-39222 (nomjd-obs → mjdobs = eqmjd).
 
@@ -741,7 +741,7 @@ The Rust `build_celestial` function already handles RADESYS / EQUINOX / MJD-OBS 
 - [ ] **Step 1: Locate the `build_celestial` body**
 
 ```bash
-grep -n "fn build_celestial\b\|fn determine_sky_system\|sky_frame.set_epoch\b" crates/ast-core/src/fitschan/wcs_celestial.rs
+grep -n "fn build_celestial\b\|fn determine_sky_system\|sky_frame.set_epoch\b" crates/starlink-ast/src/fitschan/wcs_celestial.rs
 ```
 
 - [ ] **Step 2: Add a helper that mirrors C's NORADEC fallback**
@@ -814,7 +814,7 @@ In the tests block at the bottom of `wcs_celestial.rs`:
 - [ ] **Step 5: Run the test**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_celestial::tests::alt_galactic_no_radesys_no_equinox_falls_back_to_b1950 2>&1 | tail -10
+cargo test -p starlink-ast --lib fitschan::wcs_celestial::tests::alt_galactic_no_radesys_no_equinox_falls_back_to_b1950 2>&1 | tail -10
 ```
 
 Expected: PASS.
@@ -822,7 +822,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_celestial.rs
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_celestial: apply WcsSkyFrame NORADEC+DefB1950 fallback
 
@@ -843,12 +843,12 @@ EOF
 ### Task 3.2: `decode_wcs_with_alts`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs`
 
 - [ ] **Step 1: Inspect the existing `decode_wcs`**
 
 ```bash
-grep -n "pub.*fn decode_wcs\b\|fn build_world_frame\|fn build_iwc_to_world" crates/ast-core/src/fitschan/wcs_read.rs
+grep -n "pub.*fn decode_wcs\b\|fn build_world_frame\|fn build_iwc_to_world" crates/starlink-ast/src/fitschan/wcs_read.rs
 ```
 
 The existing `decode_wcs(store) -> AstResult<AnyObject>` returns an `AnyObject::FrameSet`. We need to keep it (used by the FITS-CLASS / DSS / FITS-AIPS reader paths via `FitsChan::read`) while adding a sibling that consumes a `(primary, Vec<(char, FitsStore)>)` pair.
@@ -929,12 +929,12 @@ fn set_frame_ident(frame: &mut dyn crate::frames::Frame, ident: &str) {
 - [ ] **Step 3: Verify `Frame::as_any_mut` exists**
 
 ```bash
-grep -n "as_any_mut\|fn as_any_mut" crates/ast-core/src/frames/mod.rs
+grep -n "as_any_mut\|fn as_any_mut" crates/starlink-ast/src/frames/mod.rs
 ```
 
 If `as_any_mut` is not on the Frame trait yet, add it next to the existing `as_any` (search `fn as_any\b` in `frames/mod.rs` and the per-Frame `impl Frame for X` blocks):
 
-In `crates/ast-core/src/frames/mod.rs`, on the `Frame` trait:
+In `crates/starlink-ast/src/frames/mod.rs`, on the `Frame` trait:
 
 ```rust
     /// Mutable `&mut dyn Any` accessor.
@@ -954,22 +954,22 @@ In every `impl Frame for X { ... }` block (basic.rs, skyframe.rs, specframe.rs, 
 - [ ] **Step 4: Build**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
+cargo build -p starlink-ast 2>&1 | tail -3
 ```
 
 Expected: clean. (Compiler will tell you about any missing `as_any_mut` impl; add the four-line stub to the file it complains about.)
 
 - [ ] **Step 5: Add a small integration test**
 
-Create `crates/ast-core/tests/test_alt_wcs_read.rs`:
+Create `crates/starlink-ast/tests/test_alt_wcs_read.rs`:
 
 ```rust
 //! Reader-side tests for FITS-WCS alternate-plane support.
 
-use ast_core::AnyObject;
-use ast_core::channel::Channel;
-use ast_core::fitschan::FitsChan;
-use ast_core::frames::FrameRef;
+use starlink_ast::AnyObject;
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::FitsChan;
+use starlink_ast::frames::FrameRef;
 
 const FITS_PC_GAL_HEAD: &str = "\
 NAXIS1  =                  100 / Spatial axis
@@ -1071,7 +1071,7 @@ fn fits_wcs_multi_reads_into_three_frame_frameset() {
 - [ ] **Step 6: Run the test**
 
 ```bash
-cargo test -p ast-core --test test_alt_wcs_read 2>&1 | tail -5
+cargo test -p starlink-ast --test test_alt_wcs_read 2>&1 | tail -5
 ```
 
 Expected: PASS once Task 3.3 wires `decode_wcs_with_alts` into `FitsChan::read`. Until then, the test will fail because `FitsChan::read` still calls the primary-only `decode_wcs`. Mark this step as expected-fail-until-3.3 and move on.
@@ -1079,7 +1079,7 @@ Expected: PASS once Task 3.3 wires `decode_wcs_with_alts` into `FitsChan::read`.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_read.rs crates/ast-core/src/frames/mod.rs crates/ast-core/src/frames/basic.rs crates/ast-core/src/frames/skyframe.rs crates/ast-core/src/frames/specframe.rs crates/ast-core/src/frames/timeframe.rs crates/ast-core/src/frames/cmpframe.rs crates/ast-core/src/frames/fluxframe.rs crates/ast-core/src/frames/frameset.rs crates/ast-core/tests/test_alt_wcs_read.rs
+git add crates/starlink-ast/src/fitschan/wcs_read.rs crates/starlink-ast/src/frames/mod.rs crates/starlink-ast/src/frames/basic.rs crates/starlink-ast/src/frames/skyframe.rs crates/starlink-ast/src/frames/specframe.rs crates/starlink-ast/src/frames/timeframe.rs crates/starlink-ast/src/frames/cmpframe.rs crates/starlink-ast/src/frames/fluxframe.rs crates/starlink-ast/src/frames/frameset.rs crates/starlink-ast/tests/test_alt_wcs_read.rs
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_read: decode_wcs_with_alts builds alt frames
 
@@ -1100,7 +1100,7 @@ EOF
 ### Task 3.3: Wire `decode_wcs_with_alts` into FitsChan::read
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 - [ ] **Step 1: Update the FITS-WCS read branch**
 
@@ -1136,7 +1136,7 @@ The other FITS-style encodings (`FitsPc`, `FitsIraf`, `FitsAips`, `FitsAipsPP`, 
 - [ ] **Step 2: Run the read-side integration test**
 
 ```bash
-cargo test -p ast-core --test test_alt_wcs_read 2>&1 | tail -10
+cargo test -p starlink-ast --test test_alt_wcs_read 2>&1 | tail -10
 ```
 
 Expected: PASS.
@@ -1144,7 +1144,7 @@ Expected: PASS.
 - [ ] **Step 3: Run the full lib + integration suite**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -E "test result|FAILED" | tail -5
+cargo test -p starlink-ast 2>&1 | grep -E "test result|FAILED" | tail -5
 ```
 
 Expected: every test result line `ok`. If any fixture turns red, capture which.
@@ -1152,7 +1152,7 @@ Expected: every test result line `ok`. If any fixture turns red, capture which.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "$(cat <<'EOF'
 fitschan: FITS-WCS read uses decode_wcs_with_alts
 
@@ -1172,16 +1172,16 @@ EOF
 ### Task 3.4: Native round-trip parity
 
 **Files:**
-- New file: `crates/ast-core/tests/test_alt_wcs_round_trip.rs`
+- New file: `crates/starlink-ast/tests/test_alt_wcs_round_trip.rs`
 
 - [ ] **Step 1: Add a native-round-trip test**
 
 ```rust
 //! Round-trip tests for FITS-WCS alternate planes.
 
-use ast_core::channel::Channel;
-use ast_core::fitschan::FitsChan;
-use ast_core::{from_native_string, to_native_string, AnyObject};
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::FitsChan;
+use starlink_ast::{from_native_string, to_native_string, AnyObject};
 
 const FITS_WCS_MULTI: &str = include_str!("fixtures/wcsconv/inputs/multi-wcs.head");
 
@@ -1215,7 +1215,7 @@ fn fits_wcs_multi_native_round_trip_preserves_alt() {
 - [ ] **Step 2: Verify the fixture is present**
 
 ```bash
-ls crates/ast-core/tests/fixtures/wcsconv/inputs/multi-wcs.head
+ls crates/starlink-ast/tests/fixtures/wcsconv/inputs/multi-wcs.head
 ```
 
 Expected: file exists. (If not, copy from `reference/starlink-ast/ast_tester/multi-wcs.head` — see CLAUDE.md re fixtures committed under `tests/fixtures/`.)
@@ -1223,7 +1223,7 @@ Expected: file exists. (If not, copy from `reference/starlink-ast/ast_tester/mul
 - [ ] **Step 3: Run the round-trip test**
 
 ```bash
-cargo test -p ast-core --test test_alt_wcs_round_trip 2>&1 | tail -10
+cargo test -p starlink-ast --test test_alt_wcs_round_trip 2>&1 | tail -10
 ```
 
 Expected: PASS.
@@ -1231,7 +1231,7 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_alt_wcs_round_trip.rs
+git add crates/starlink-ast/tests/test_alt_wcs_round_trip.rs
 git commit -m "$(cat <<'EOF'
 tests: native round-trip for FITS-WCS alt planes
 
@@ -1247,9 +1247,9 @@ EOF
 - [ ] **Step 1: fmt + clippy + full tests**
 
 ```bash
-cargo fmt -p ast-core
-cargo clippy -p ast-core --all-targets -- -D warnings 2>&1 | tail -3
-cargo test -p ast-core 2>&1 | grep -E "test result|FAILED" | tail -10
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --all-targets -- -D warnings 2>&1 | tail -3
+cargo test -p starlink-ast 2>&1 | grep -E "test result|FAILED" | tail -10
 ```
 
 Expected: clippy clean; all tests `ok`.
@@ -1257,7 +1257,7 @@ Expected: clippy clean; all tests `ok`.
 - [ ] **Step 2: Capture wcsconv state**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Record the count. The reader change alone may move some fixtures from a "wrong CTYPE" failure to a "wrong CTYPE on a different line" failure — that's expected; group 5 lands the writer. If the count regresses by more than ~5, investigate before continuing.
@@ -1286,10 +1286,10 @@ EOF
 ### Task 4.1: Thread `s` through `fset_to_store`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/fset_to_store/mod.rs`
-- Modify: `crates/ast-core/src/fitschan/fset_to_store/celestial_axes.rs`
-- Modify: `crates/ast-core/src/fitschan/fset_to_store/spectral_axes.rs`
-- Modify: `crates/ast-core/src/fitschan/fset_to_store/other_axes.rs`
+- Modify: `crates/starlink-ast/src/fitschan/fset_to_store/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/fset_to_store/celestial_axes.rs`
+- Modify: `crates/starlink-ast/src/fitschan/fset_to_store/spectral_axes.rs`
+- Modify: `crates/starlink-ast/src/fitschan/fset_to_store/other_axes.rs`
 
 **C reference:** `fitschan.c::AddVersion` takes `char s` and threads it to every call (`SetItem(... s ...)`).
 
@@ -1321,7 +1321,7 @@ pub(crate) fn fset_to_store(
 Find every literal `s: ' '` or `' '` passed to a callee inside `fset_to_store`'s body (these will be calls to `celestial_axes(...)`, `spectral_axes(...)`, `other_axes(...)`):
 
 ```bash
-grep -n "s: ' '" crates/ast-core/src/fitschan/fset_to_store/mod.rs
+grep -n "s: ' '" crates/starlink-ast/src/fitschan/fset_to_store/mod.rs
 ```
 
 For each match, replace `s: ' '` with `s,` (using shorthand field init). Example before:
@@ -1357,11 +1357,11 @@ Apply the same change to the `spectral_axes` and `other_axes` blocks. Step (b) o
 - [ ] **Step 3: Update existing call sites**
 
 ```bash
-grep -rn "fset_to_store(" crates/ast-core/src/ | head
+grep -rn "fset_to_store(" crates/starlink-ast/src/ | head
 ```
 
 Likely callers:
-- `crates/ast-core/src/fitschan/wcs_write.rs::store_from_frameset_to`
+- `crates/starlink-ast/src/fitschan/wcs_write.rs::store_from_frameset_to`
 
 Update each call to pass `' '` for now (alt-plane callers will be added in Task 4.3):
 
@@ -1376,7 +1376,7 @@ Search for `fset_to_store(` calls inside the `#[cfg(test)] mod tests` block at t
 - [ ] **Step 5: Build**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
+cargo build -p starlink-ast 2>&1 | tail -3
 ```
 
 Expected: clean.
@@ -1384,7 +1384,7 @@ Expected: clean.
 - [ ] **Step 6: Tests**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -E "test result|FAILED" | tail -5
+cargo test -p starlink-ast 2>&1 | grep -E "test result|FAILED" | tail -5
 ```
 
 Expected: all `ok`. (Behavior is unchanged — every call site passes `' '`.)
@@ -1392,7 +1392,7 @@ Expected: all `ok`. (Behavior is unchanged — every call site passes `' '`.)
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/fset_to_store/mod.rs crates/ast-core/src/fitschan/wcs_write.rs
+git add crates/starlink-ast/src/fitschan/fset_to_store/mod.rs crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 fitschan/fset_to_store: thread s: char through fset_to_store
 
@@ -1410,30 +1410,30 @@ EOF
 ### Task 4.2: Move plane-letter assignment + helper into `wcs_write.rs::plane_stores`
 
 **Files:**
-- New file: `crates/ast-core/src/fitschan/wcs_write/plane_stores.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs` (split the file)
-- Modify: `crates/ast-core/src/fitschan/mod.rs` (add `wcs_write` mod path if `wcs_write` becomes a directory)
+- New file: `crates/starlink-ast/src/fitschan/wcs_write/plane_stores.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs` (split the file)
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs` (add `wcs_write` mod path if `wcs_write` becomes a directory)
 
 **Note:** `wcs_write.rs` is currently a single file. To add a sibling `plane_stores.rs` cleanly, convert `wcs_write.rs` into a directory `wcs_write/` containing `mod.rs` (the existing content) plus `plane_stores.rs`.
 
 - [ ] **Step 1: Move `wcs_write.rs` to `wcs_write/mod.rs`**
 
 ```bash
-mkdir -p crates/ast-core/src/fitschan/wcs_write
-git mv crates/ast-core/src/fitschan/wcs_write.rs crates/ast-core/src/fitschan/wcs_write/mod.rs
+mkdir -p crates/starlink-ast/src/fitschan/wcs_write
+git mv crates/starlink-ast/src/fitschan/wcs_write.rs crates/starlink-ast/src/fitschan/wcs_write/mod.rs
 ```
 
 - [ ] **Step 2: Build to confirm the rename works**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
+cargo build -p starlink-ast 2>&1 | tail -3
 ```
 
 Expected: clean.
 
 - [ ] **Step 3: Add `plane_stores.rs`**
 
-Create `crates/ast-core/src/fitschan/wcs_write/plane_stores.rs`:
+Create `crates/starlink-ast/src/fitschan/wcs_write/plane_stores.rs`:
 
 ```rust
 //! Per-plane FitsStore collection for FITS-WCS encoders.
@@ -1500,7 +1500,7 @@ pub(crate) fn collect_plane_stores(
 
 - [ ] **Step 4: Wire the new module**
 
-In `crates/ast-core/src/fitschan/wcs_write/mod.rs` (the file you just renamed), add at the very top of the file (after the existing module-level `//!` doc comment):
+In `crates/starlink-ast/src/fitschan/wcs_write/mod.rs` (the file you just renamed), add at the very top of the file (after the existing module-level `//!` doc comment):
 
 ```rust
 mod plane_stores;
@@ -1510,7 +1510,7 @@ pub(crate) use plane_stores::{collect_plane_stores, PlaneStore};
 - [ ] **Step 5: Build**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
+cargo build -p starlink-ast 2>&1 | tail -3
 ```
 
 Expected: clean.
@@ -1565,7 +1565,7 @@ mod tests {
 - [ ] **Step 7: Run the new tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_write::plane_stores 2>&1 | tail -10
+cargo test -p starlink-ast --lib fitschan::wcs_write::plane_stores 2>&1 | tail -10
 ```
 
 Expected: 2 PASSes.
@@ -1573,7 +1573,7 @@ Expected: 2 PASSes.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write/
+git add crates/starlink-ast/src/fitschan/wcs_write/
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_write: collect_plane_stores helper
 
@@ -1598,9 +1598,9 @@ EOF
 - [ ] **Step 1: fmt + clippy + full tests**
 
 ```bash
-cargo fmt -p ast-core
-cargo clippy -p ast-core --all-targets -- -D warnings 2>&1 | tail -3
-cargo test -p ast-core 2>&1 | grep -E "test result|FAILED" | tail -10
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --all-targets -- -D warnings 2>&1 | tail -3
+cargo test -p starlink-ast 2>&1 | grep -E "test result|FAILED" | tail -10
 ```
 
 Expected: clippy clean; all tests `ok`. wcsconv pass count is unchanged (no encoder yet uses `collect_plane_stores`).
@@ -1629,14 +1629,14 @@ EOF
 ### Task 5.1: Re-shape `wcs_write::write_store_to_cards` global emission
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write/mod.rs`
 
 `encode_wcs` already loops over alt planes (via `store_from_frameset_with_alts`). The global keywords (MJD-OBS, OBSGEO-{X,Y,Z}, TIMESYS) are currently emitted from the **primary** store. Switch them to the alphabetically-last plane.
 
 - [ ] **Step 1: Find the global-keyword emission path**
 
 ```bash
-grep -n "MJD-OBS\|OBSGEO-X\|TIMESYS" crates/ast-core/src/fitschan/wcs_write/mod.rs | head -20
+grep -n "MJD-OBS\|OBSGEO-X\|TIMESYS" crates/starlink-ast/src/fitschan/wcs_write/mod.rs | head -20
 ```
 
 Identify the helper that emits `MJD-OBS` from the FitsStore. It will be inside `write_store_to_cards` or a sibling helper called from the FITS-WCS write path.
@@ -1784,7 +1784,7 @@ Move the per-axis body of the existing `write_store_to_cards` into `write_store_
 - [ ] **Step 4: Build**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -5
+cargo build -p starlink-ast 2>&1 | tail -5
 ```
 
 Expected: clean. (Compiler will tell you about any unused `write_store_to_cards` or symbol clashes.)
@@ -1792,7 +1792,7 @@ Expected: clean. (Compiler will tell you about any unused `write_store_to_cards`
 - [ ] **Step 5: Run wcsconv**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: pass count goes up. Specifically, `fits-pc-gal_fits-pc` is still red (PC encoder hasn't been retrofitted yet — Task 5.2 lands that), but `multi-wcs_fits-wcs` and `fits-pc-altgal_fits-wcs` and similar should advance significantly because the FITS-WCS encoder now sees the multi-frame FrameSet and emits both planes correctly with the right global MJD-OBS.
@@ -1800,7 +1800,7 @@ Expected: pass count goes up. Specifically, `fits-pc-gal_fits-pc` is still red (
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write/mod.rs
+git add crates/starlink-ast/src/fitschan/wcs_write/mod.rs
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_write: encode_wcs uses collect_plane_stores; global last-wins
 
@@ -1822,14 +1822,14 @@ EOF
 ### Task 5.2: Retrofit `enc_pc::write_to_cards`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_pc.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_write/mod.rs` (encoder dispatcher)
+- Modify: `crates/starlink-ast/src/fitschan/enc_pc.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write/mod.rs` (encoder dispatcher)
 
 The non-FITS-WCS encoders go through `encode_wcs_to_store(obj, cards, dim, writer)`. Their `writer` callback consumes a single `&FitsStore`. The retrofit gives the dispatcher a per-plane variant.
 
 - [ ] **Step 1: Add a per-plane writer signature**
 
-In `crates/ast-core/src/fitschan/wcs_write/mod.rs`, after the existing `encode_wcs_to_store`, add:
+In `crates/starlink-ast/src/fitschan/wcs_write/mod.rs`, after the existing `encode_wcs_to_store`, add:
 
 ```rust
 /// Variant of `encode_wcs_to_store` that drives a per-plane writer.
@@ -1870,7 +1870,7 @@ The `is_last` flag tells the encoder when to emit the observation-global cards (
 
 - [ ] **Step 2: Update `enc_pc::write_to_cards` signature**
 
-In `crates/ast-core/src/fitschan/enc_pc.rs`, change:
+In `crates/starlink-ast/src/fitschan/enc_pc.rs`, change:
 
 ```rust
 pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResult<()> {
@@ -1908,7 +1908,7 @@ For the global keys (MJD-OBS, OBSGEO-X/Y/Z, TIMESYS, DATE-OBS), guard each emit 
 
 - [ ] **Step 3: Update the FitsChan dispatch**
 
-In `crates/ast-core/src/fitschan/mod.rs`, the FITS-PC write arm:
+In `crates/starlink-ast/src/fitschan/mod.rs`, the FITS-PC write arm:
 
 ```rust
                     Encoding::FitsPc => wcs_write::encode_wcs_to_store(
@@ -1942,7 +1942,7 @@ Search `enc_pc::write_to_cards` calls inside the `#[cfg(test)] mod tests` block 
 - [ ] **Step 5: Build**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
+cargo build -p starlink-ast 2>&1 | tail -3
 ```
 
 Expected: clean.
@@ -1950,7 +1950,7 @@ Expected: clean.
 - [ ] **Step 6: Run wcsconv**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: `fits-pc-gal_fits-pc` and `fits-pc-altgal_*` advance. Pass count goes up.
@@ -1958,7 +1958,7 @@ Expected: `fits-pc-gal_fits-pc` and `fits-pc-altgal_*` advance. Pass count goes 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_pc.rs crates/ast-core/src/fitschan/wcs_write/mod.rs crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/enc_pc.rs crates/starlink-ast/src/fitschan/wcs_write/mod.rs crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "$(cat <<'EOF'
 fitschan/enc_pc: per-plane FITS-PC writer
 
@@ -1977,8 +1977,8 @@ EOF
 ### Task 5.3: Retrofit `enc_iraf::write_to_cards`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_iraf.rs`
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_iraf.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 Same shape as Task 5.2. Walk through every `format!("...{i}")` keyword construction in `enc_iraf.rs` and route through `key_for` / `key_for_2`. Guard global emission on `is_last`. Switch the FitsChan dispatch to `encode_wcs_per_plane`.
 
@@ -2016,7 +2016,7 @@ Wrap both blocks in `if is_last { ... }`.
 
 - [ ] **Step 3: Switch the FitsChan dispatch**
 
-In `crates/ast-core/src/fitschan/mod.rs`:
+In `crates/starlink-ast/src/fitschan/mod.rs`:
 
 ```rust
                     Encoding::FitsIraf => wcs_write::encode_wcs_per_plane(
@@ -2035,13 +2035,13 @@ Add `, ' ', true` to every test-only `write_to_cards` call.
 - [ ] **Step 5: Build**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
+cargo build -p starlink-ast 2>&1 | tail -3
 ```
 
 - [ ] **Step 6: Run wcsconv**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: `*_fits-iraf` fixtures advance.
@@ -2049,7 +2049,7 @@ Expected: `*_fits-iraf` fixtures advance.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_iraf.rs crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/enc_iraf.rs crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "$(cat <<'EOF'
 fitschan/enc_iraf: per-plane FITS-IRAF writer
 
@@ -2063,8 +2063,8 @@ EOF
 ### Task 5.4: Retrofit `enc_aips::write_to_cards` and `write_to_cards_pp`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_aips.rs`
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_aips.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 Both AIPS variants take the same `(store, cards)` shape today. Apply the same retrofit to each.
 
@@ -2120,8 +2120,8 @@ Add `, ' ', true` to every test-only call.
 - [ ] **Step 5: Build + wcsconv**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo build -p starlink-ast 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: `*_fits-aips` and `*_fits-aips++` fixtures advance.
@@ -2129,7 +2129,7 @@ Expected: `*_fits-aips` and `*_fits-aips++` fixtures advance.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_aips.rs crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/enc_aips.rs crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "$(cat <<'EOF'
 fitschan/enc_aips: per-plane FITS-AIPS / FITS-AIPS++ writers
 
@@ -2143,8 +2143,8 @@ EOF
 ### Task 5.5: Retrofit `enc_class::write_to_cards`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_class.rs`
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_class.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 Same retrofit pattern.
 
@@ -2182,14 +2182,14 @@ Add `, ' ', true`.
 - [ ] **Step 4: Build + wcsconv**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo build -p starlink-ast 2>&1 | tail -3
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_class.rs crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/enc_class.rs crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "$(cat <<'EOF'
 fitschan/enc_class: per-plane FITS-CLASS writer
 
@@ -2203,12 +2203,12 @@ EOF
 ### Task 5.6: Delete legacy `_legacy_store_from_frameset_to`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write/mod.rs`
 
 - [ ] **Step 1: Confirm zero callers**
 
 ```bash
-grep -n "_legacy_store_from_frameset_to" crates/ast-core/src/
+grep -n "_legacy_store_from_frameset_to" crates/starlink-ast/src/
 ```
 
 Expected: only the definition site. If anything else references it, investigate before deleting.
@@ -2227,9 +2227,9 @@ The Group 7 plan in `2026-05-25-makeintworld-port.md::Group 7 Task 7.2` already 
 - [ ] **Step 3: Build + clippy + tests**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
-cargo clippy -p ast-core --all-targets -- -D warnings 2>&1 | tail -3
-cargo test -p ast-core 2>&1 | grep -E "test result|FAILED" | tail -5
+cargo build -p starlink-ast 2>&1 | tail -3
+cargo clippy -p starlink-ast --all-targets -- -D warnings 2>&1 | tail -3
+cargo test -p starlink-ast 2>&1 | grep -E "test result|FAILED" | tail -5
 ```
 
 Expected: clean clippy, all tests `ok`.
@@ -2237,7 +2237,7 @@ Expected: clean clippy, all tests `ok`.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_write/mod.rs
+git add crates/starlink-ast/src/fitschan/wcs_write/mod.rs
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_write: delete legacy CRPIX/CD extraction helpers
 
@@ -2258,9 +2258,9 @@ EOF
 - [ ] **Step 1: fmt + clippy + full tests**
 
 ```bash
-cargo fmt -p ast-core
-cargo clippy -p ast-core --all-targets -- -D warnings 2>&1 | tail -3
-cargo test -p ast-core 2>&1 | grep -E "test result|FAILED" | tail -10
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --all-targets -- -D warnings 2>&1 | tail -3
+cargo test -p starlink-ast 2>&1 | grep -E "test result|FAILED" | tail -10
 ```
 
 Expected: clippy clean; all non-wcsconv tests `ok`.
@@ -2268,7 +2268,7 @@ Expected: clippy clean; all non-wcsconv tests `ok`.
 - [ ] **Step 2: Capture wcsconv state**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results" | tee /tmp/wcsconv_after_g5.txt
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results" | tee /tmp/wcsconv_after_g5.txt
 ```
 
 Record the count. Group 6 will walk the residuals.
@@ -2299,11 +2299,11 @@ EOF
 ### Task 6.1: Add `dtai` / `dut1` to FitsStore
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/fits_store.rs`
+- Modify: `crates/starlink-ast/src/fitschan/fits_store.rs`
 
 - [ ] **Step 1: Add the fields**
 
-In `crates/ast-core/src/fitschan/fits_store.rs`, near the existing `mjdobs` / `timesys` fields (around line 46):
+In `crates/starlink-ast/src/fitschan/fits_store.rs`, near the existing `mjdobs` / `timesys` fields (around line 46):
 
 ```rust
     /// TAI - UTC offset (seconds). Mirrors the FITS DTAI keyword.
@@ -2343,7 +2343,7 @@ Add a doc-comment block on `mjdobs` (and the other globals) explaining the alt-p
 - [ ] **Step 2: Build**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
+cargo build -p starlink-ast 2>&1 | tail -3
 ```
 
 Expected: clean.
@@ -2351,7 +2351,7 @@ Expected: clean.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/fits_store.rs
+git add crates/starlink-ast/src/fitschan/fits_store.rs
 git commit -m "$(cat <<'EOF'
 fitschan/fits_store: add dtai / dut1 globals
 
@@ -2369,12 +2369,12 @@ EOF
 ### Task 6.2: Wire DTAI/DUT1 read
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs`
 
 - [ ] **Step 1: Read DTAI / DUT1 in `extract_wcs_keywords`**
 
-In `crates/ast-core/src/fitschan/wcs_keywords.rs`, locate the scalar-keyword block in `extract_wcs_keywords` (after `read_epoch_into_store`). Add:
+In `crates/starlink-ast/src/fitschan/wcs_keywords.rs`, locate the scalar-keyword block in `extract_wcs_keywords` (after `read_epoch_into_store`). Add:
 
 ```rust
     store.dtai = lookup_with_fallback(cards, "DTAI", None, s, |c, k| c.get_float(k));
@@ -2385,7 +2385,7 @@ In `crates/ast-core/src/fitschan/wcs_keywords.rs`, locate the scalar-keyword blo
 
 - [ ] **Step 2: Stamp DTAI / DUT1 onto the SkyFrame in `build_celestial`**
 
-In `crates/ast-core/src/fitschan/wcs_celestial.rs`, find the block where `set_epoch` / `set_equinox` are called on `sky_frame`. After those, add:
+In `crates/starlink-ast/src/fitschan/wcs_celestial.rs`, find the block where `set_epoch` / `set_equinox` are called on `sky_frame`. After those, add:
 
 ```rust
     if let Some(dtai) = store.dtai {
@@ -2396,7 +2396,7 @@ In `crates/ast-core/src/fitschan/wcs_celestial.rs`, find the block where `set_ep
     }
 ```
 
-(`SkyFrame::set_dtai` / `set_dut1` already exist — see `crates/ast-core/src/frames/skyframe.rs:440` and `:445`.)
+(`SkyFrame::set_dtai` / `set_dut1` already exist — see `crates/starlink-ast/src/frames/skyframe.rs:440` and `:445`.)
 
 - [ ] **Step 3: Add a unit test**
 
@@ -2429,7 +2429,7 @@ In `wcs_celestial.rs` tests:
 - [ ] **Step 4: Run**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_celestial::tests::dtai_dut1_round_trip_into_skyframe 2>&1 | tail -5
+cargo test -p starlink-ast --lib fitschan::wcs_celestial::tests::dtai_dut1_round_trip_into_skyframe 2>&1 | tail -5
 ```
 
 Expected: PASS.
@@ -2437,7 +2437,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords.rs crates/ast-core/src/fitschan/wcs_celestial.rs
+git add crates/starlink-ast/src/fitschan/wcs_keywords.rs crates/starlink-ast/src/fitschan/wcs_celestial.rs
 git commit -m "$(cat <<'EOF'
 fitschan: read DTAI / DUT1 from header into SkyFrame
 
@@ -2451,16 +2451,16 @@ EOF
 ### Task 6.3: Wire DTAI/DUT1 write (per encoder)
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/fset_to_store/sky_sys.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_write/mod.rs`
-- Modify: `crates/ast-core/src/fitschan/enc_pc.rs`
-- Modify: `crates/ast-core/src/fitschan/enc_iraf.rs`
-- Modify: `crates/ast-core/src/fitschan/enc_aips.rs`
-- Modify: `crates/ast-core/src/fitschan/enc_class.rs`
+- Modify: `crates/starlink-ast/src/fitschan/fset_to_store/sky_sys.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_pc.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_iraf.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_aips.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_class.rs`
 
 - [ ] **Step 1: Populate `store.dtai` / `store.dut1` inside `sky_sys`**
 
-In `crates/ast-core/src/fitschan/fset_to_store/sky_sys.rs`, find the section that writes `MJD-OBS` (search `store.mjdobs = Some`). Add:
+In `crates/starlink-ast/src/fitschan/fset_to_store/sky_sys.rs`, find the section that writes `MJD-OBS` (search `store.mjdobs = Some`). Add:
 
 ```rust
     if let Some(dtai) = skyfrm.dtai() {
@@ -2473,7 +2473,7 @@ In `crates/ast-core/src/fitschan/fset_to_store/sky_sys.rs`, find the section tha
 
 - [ ] **Step 2: Emit DTAI / DUT1 in `write_store_global_cards`**
 
-In `crates/ast-core/src/fitschan/wcs_write/mod.rs::write_store_global_cards`, after the `TIMESYS` emission:
+In `crates/starlink-ast/src/fitschan/wcs_write/mod.rs::write_store_global_cards`, after the `TIMESYS` emission:
 
 ```rust
     if let Some(dtai) = store.dtai {
@@ -2491,8 +2491,8 @@ In each of `enc_pc.rs`, `enc_iraf.rs`, `enc_aips.rs` (both variants), `enc_class
 - [ ] **Step 4: Build + tests**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -3
-cargo test -p ast-core 2>&1 | grep -E "test result|FAILED" | tail -5
+cargo build -p starlink-ast 2>&1 | tail -3
+cargo test -p starlink-ast 2>&1 | grep -E "test result|FAILED" | tail -5
 ```
 
 Expected: clean.
@@ -2500,7 +2500,7 @@ Expected: clean.
 - [ ] **Step 5: Run wcsconv**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Record the new count.
@@ -2508,7 +2508,7 @@ Record the new count.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/
+git add crates/starlink-ast/src/fitschan/
 git commit -m "$(cat <<'EOF'
 fitschan: emit DTAI / DUT1 globals per last-plane-wins rule
 
@@ -2527,7 +2527,7 @@ EOF
 - [ ] **Step 1: Capture the residual list**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 \
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 \
   | grep -E "differs:|line count|write:" > /tmp/wcsconv_residuals.txt
 wc -l /tmp/wcsconv_residuals.txt
 ```
@@ -2548,7 +2548,7 @@ For every fixture classified as bucket A:
 - [ ] **Step 1: Run the failing fixture in isolation**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -B0 -A2 "<fixture_name>" | head -10
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -B0 -A2 "<fixture_name>" | head -10
 ```
 
 - [ ] **Step 2: Build a tiny C oracle for the same input**
@@ -2576,7 +2576,7 @@ In every case the fix is to read the C source for the diverging step and verify 
 - [ ] **Step 6: Re-run the full wcsconv suite**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: pass count goes up by 1 (the fixture you fixed) and no other fixture regresses.
@@ -2603,9 +2603,9 @@ Repeat steps 1-7 for every bucket-A residual.
 - [ ] **Step 1: Final fmt + clippy + full test suite**
 
 ```bash
-cargo fmt -p ast-core
+cargo fmt -p starlink-ast
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -3
-cargo test -p ast-core 2>&1 | grep -E "test result|FAILED"
+cargo test -p starlink-ast 2>&1 | grep -E "test result|FAILED"
 ```
 
 Expected: every test result `ok`. Any FAILED is a regression to investigate.
@@ -2613,7 +2613,7 @@ Expected: every test result `ok`. Any FAILED is a regression to investigate.
 - [ ] **Step 2: Final wcsconv check**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: pass count ≥ 170/192.

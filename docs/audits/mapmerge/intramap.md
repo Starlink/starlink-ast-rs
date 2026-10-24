@@ -1,7 +1,7 @@
 # `MapMerge` audit — IntraMap
 
 C source: reference/starlink-ast/src/intramap.c
-Rust: crates/ast-core/src/mappings/intramap.rs
+Rust: crates/starlink-ast/src/mappings/intramap.rs
 Audited: 2026-10-08 against pin 3b9dc639
 Citations: verified against pin 3b9dc639
 Extension points: classified

@@ -1,6 +1,6 @@
 # C test coverage audit
 
-An audit, on 2026-10-14, of every test program in `reference/starlink-ast/ast_tester/` against the Rust tests in `crates/ast-core/tests/`.
+An audit, on 2026-10-14, of every test program in `reference/starlink-ast/ast_tester/` against the Rust tests in `crates/starlink-ast/tests/`.
 A C check counts as covered when a Rust test, or an oracle case replaying C, exercises the same behavior; where the values differ, the entry says so.
 `testfitschan.c` was audited separately and its gaps are in [`testfitschan-coverage.md`](testfitschan-coverage.md).
 
@@ -30,7 +30,7 @@ A C check counts as covered when a Rust test, or an oracle case replaying C, exe
 | `testratemap.c` | ported (`test_ratemap.rs`) |
 | `testresimp.c` | ported |
 | `testunitnormmap.c` | ported |
-| `testzoommap.c` | ported, apart from the `AST__IMMUT` checks, which belong to `ast-capi` |
+| `testzoommap.c` | ported, apart from the `AST__IMMUT` checks, which belong to `starlink-ast-capi` |
 | `testmapping.c` | ported, apart from a no-op `Invert` set, which a toggling `invert()` cannot express |
 | `testregions.c` | all 30 functions covered; `checkEllipse` Errors 15-17 are a recorded gap |
 | `testregionmasking.c` | ported (`test_region_masking.rs`) |

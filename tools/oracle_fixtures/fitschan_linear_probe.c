@@ -9,9 +9,9 @@
  * "y = a*x + e*x*x" or "y = a*exp(b*x)", and is written with NAXIS1 set.
  * For each: the value astWrite returns and the cards written.
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_linear_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_linear_oracle/cases.rs:
  *
- *   ./fitschan_linear_probe > ../../crates/ast-core/tests/fitschan_linear_oracle/cases.rs
+ *   ./fitschan_linear_probe > ../../crates/starlink-ast/tests/fitschan_linear_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

@@ -3,9 +3,9 @@
  * while UseDefs set through it goes to the encapsulated Frame and is
  * written in that Frame's dump (region.c SetAttrib, GetUseDefs).
  *
- * Prints Rust source for crates/ast-core/tests/region_object_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_object_oracle/cases.rs:
  *
- *   ./region_object_probe > ../../crates/ast-core/tests/region_object_oracle/cases.rs
+ *   ./region_object_probe > ../../crates/starlink-ast/tests/region_object_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

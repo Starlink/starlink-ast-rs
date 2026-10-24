@@ -57,8 +57,8 @@ Out of scope: porting IntraMap, XphMap or StcResourceProfile; the
 
 Measured, not asserted:
 
-- `cargo test -p ast-core --test test_wcsconv` → 192 passed, 0 failed.
-- `WCSCONV_NO_EXCLUDE=1 cargo test -p ast-core --test test_wcsconv` → the
+- `cargo test -p starlink-ast --test test_wcsconv` → 192 passed, 0 failed.
+- `WCSCONV_NO_EXCLUDE=1 cargo test -p starlink-ast --test test_wcsconv` → the
   **same** 192 passed, 0 failed.
   With an empty list the environment variable is a no-op, and that equality
   is the proof the list is genuinely empty rather than merely deleted.
@@ -446,7 +446,7 @@ U4 and D3 are independent of all code units.
 
 ## Verification
 
-**Per unit.** `cargo test -p ast-core --test test_wcsconv` must stay
+**Per unit.** `cargo test -p starlink-ast --test test_wcsconv` must stay
 192/192 — a unit that fixes excluded cases must not break included ones.
 Then `WCSCONV_NO_EXCLUDE=1` for the real count, then remove the now-passing
 entries.

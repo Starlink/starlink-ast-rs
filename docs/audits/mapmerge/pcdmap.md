@@ -1,7 +1,7 @@
 # `MapMerge` audit — PcdMap
 
 C source: reference/starlink-ast/src/pcdmap.c
-Rust: crates/ast-core/src/mappings/pcdmap.rs
+Rust: crates/starlink-ast/src/mappings/pcdmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
 Citations: verified against pin 3b9dc639
 Extension points: classified
@@ -167,7 +167,7 @@ list actually applies has to be formed explicitly
 with a cleared Invert flag so it holds that factor directly. The port does the
 same in `mappings/simplify.rs:3267 (fn pcd_swap_pair)`, gated by
 `pcdmap_swap_past_an_inverted_zoommap_preserves_the_transformation` in
-`crates/ast-core/tests/test_pcdmap.rs`. C read the stored factor raw until
+`crates/starlink-ast/tests/test_pcdmap.rs`. C read the stored factor raw until
 `3a4a2a7b`; `docs/issues/c-library-quirks.md` carries the history.
 
 ## Row 38 — declining in parallel is a step, not an omission

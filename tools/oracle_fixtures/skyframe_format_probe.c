@@ -2,9 +2,9 @@
  * values, which Unit, Format and NormUnit it reports for them, and how it
  * dumps a SkyFrame carrying those attributes.
  *
- * Prints Rust source for crates/ast-core/tests/skyframe_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/skyframe_oracle/cases.rs:
  *
- *   ./skyframe_format_probe > ../../crates/ast-core/tests/skyframe_oracle/cases.rs
+ *   ./skyframe_format_probe > ../../crates/starlink-ast/tests/skyframe_oracle/cases.rs
  *
  * Each case names a System and an attribute setting string for astSet, which
  * the Rust test applies through the public SkyFrame API.

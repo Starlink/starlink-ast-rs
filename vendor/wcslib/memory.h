@@ -1,13 +1,13 @@
 #ifndef MEMORY_INCLUDED
 #define MEMORY_INCLUDED
 /*
- * Minimal stub for standalone wcslib compilation within ast-core.
+ * Minimal stub for standalone wcslib compilation within starlink-ast.
  *
  * proj.c calls astSizeOf(ptr) to find the allocated length of the
  * dynamic p/p2 arrays in prjprm. In the full AST library this is a
  * macro expanding to astSizeOf_(ptr, &status). Here we provide a
  * declaration that satisfies the compiler; the actual implementation
- * will be linked from ast-core's Rust/C infrastructure at a later step.
+ * will be linked from starlink-ast's Rust/C infrastructure at a later step.
  */
 #include <stddef.h>
 

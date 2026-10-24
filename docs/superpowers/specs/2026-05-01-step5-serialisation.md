@@ -29,7 +29,7 @@ deferred to later steps.
 ## Module Structure
 
 ```
-crates/ast-core/src/serial/
+crates/starlink-ast/src/serial/
 ├── mod.rs          # Serializable trait, dispatch functions, re-exports
 ├── node.rs         # Node, NodeValue types
 ├── native_read.rs  # Native text → Node tree
@@ -116,7 +116,7 @@ the design spec prescribes for `Channel::read` and the CFFI handle
 registry, pulled forward):
 
 ```rust
-// Public, in ast-core/src/serial/mod.rs (re-exported from lib.rs)
+// Public, in starlink-ast/src/serial/mod.rs (re-exported from lib.rs)
 
 /// A type-erased AST object for serialisation round-trips.
 ///
@@ -436,7 +436,7 @@ constructs and parses Axis child Nodes from its per-axis storage.
 ## Test Fixtures
 
 ```
-crates/ast-core/tests/fixtures/
+crates/starlink-ast/tests/fixtures/
 └── native/
     ├── mappings/          # C-generated for byte-exact round-trip
     │   ├── unitmap.ast

@@ -12,9 +12,9 @@
  * axes of each Frame and the current Frame's position for pixel
  * (2, 3, 4, ...).
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_axis_count_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_axis_count_oracle/cases.rs:
  *
- *   ./fitschan_axis_count_probe > ../../crates/ast-core/tests/fitschan_axis_count_oracle/cases.rs
+ *   ./fitschan_axis_count_probe > ../../crates/starlink-ast/tests/fitschan_axis_count_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

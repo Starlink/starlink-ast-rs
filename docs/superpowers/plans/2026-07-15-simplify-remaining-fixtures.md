@@ -12,11 +12,11 @@
 
 Run these to reproduce:
 ```
-cargo test -p ast-core --test test_simplify_regression simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
 # => 407 passed, 4 equal() failures, 0 transform failures, 6 serialization failures
-cargo test -p ast-core --lib 2>&1 | grep "test result"                 # 999 passed
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"   # 192 passed
-cargo test -p ast-core --test test_serialisation native_byte_exact_round_trip_simplify_fixtures -- --nocapture 2>&1 | grep byte-exact  # 649/677
+cargo test -p starlink-ast --lib 2>&1 | grep "test result"                 # 999 passed
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"   # 192 passed
+cargo test -p starlink-ast --test test_serialisation native_byte_exact_round_trip_simplify_fixtures -- --nocapture 2>&1 | grep byte-exact  # 649/677
 ```
 The `simplify_regression` test now PASSES (it hard-panics only on transform/other
 failures; equal + serialization mismatches are reported but non-fatal). Do NOT
@@ -34,13 +34,13 @@ The engine was rewritten this cycle to be C-faithful: `flatten` (=`astMapList`)
 /freeze (=`cmpmap.c::Simplify`) → `reconstruct` (=reverse `astCmpMap` rebuild).
 All 10 legacy whole-list swap helpers were folded into per-class `map_merge`
 (WinMap/CmpMap/PermMap/WcsMap/PcdMap/GrismMap/SphMap) and the stall-loop scaffold
-deleted (commit `0b31272`). Key files: `crates/ast-core/src/mappings/simplify.rs`
+deleted (commit `0b31272`). Key files: `crates/starlink-ast/src/mappings/simplify.rs`
 (engine, MergeCtx, flatten, reconstruct, per-class *_map_merge free fns),
 `winmap_merge.rs`, `matrix_merge.rs`, and per-class `map_merge` in each class file.
 
 ## Tooling (reuse every task)
 
-**Dump got-vs-want** — append to `crates/ast-core/tests/test_simplify_regression.rs`
+**Dump got-vs-want** — append to `crates/starlink-ast/tests/test_simplify_regression.rs`
 (REMOVE before finishing; it uses the in-file helpers `from_native_string`,
 `mapping_to_native_string`):
 ```rust
@@ -53,7 +53,7 @@ deleted (commit `0b31272`). Key files: `crates/ast-core/src/mappings/simplify.rs
     std::fs::write(format!("/tmp/{name}.want"), std::fs::read_to_string(dir.join(format!("{name}.simp"))).unwrap()).unwrap();
 }
 ```
-`F=cap_cmpmap_01 cargo test -p ast-core --test test_simplify_regression dbg_dump -- --ignored --nocapture` then `diff /tmp/cap_cmpmap_01.got /tmp/cap_cmpmap_01.want`.
+`F=cap_cmpmap_01 cargo test -p starlink-ast --test test_simplify_regression dbg_dump -- --ignored --nocapture` then `diff /tmp/cap_cmpmap_01.got /tmp/cap_cmpmap_01.want`.
 For region fixtures (parse as objects, compare via equal()): build a ref via
 `from_native_string(.simp).into_mapping()` and print `s.equal(refm.as_ref())`.
 
@@ -167,7 +167,7 @@ COUPLED to this: they sit inside a TranMap inverse subtree that C keeps inverted
 (C's `tranmap.c` MapMerge, lines 826-861, sets each component to its snapshot
 `invert1`/`invert2`, astSimplify's at that orientation, and builds
 `astTranMap(smap_f, smap_i)` keeping the result orientation). Our
-`TranMap::simplified` (`crates/ast-core/src/mappings/tranmap.rs:264`) instead
+`TranMap::simplified` (`crates/starlink-ast/src/mappings/tranmap.rs:264`) instead
 calls `self.map1.simplified()`/`self.map2.simplified()` on the RAW stored maps
 (ignoring `inv_a`/`inv_b`), which normalizes the inverted branch to forward.
 
@@ -367,7 +367,7 @@ PermMap fixtures verified passing.
 **Fixtures:** cap_slamap_02 (Box → Prism), cap_interval_01 (Prism regrouping,
 Box+Interval+NullRegion), cap_pointlist_02 (Prism, Interval+PointList),
 cap_slamap_07 (CmpRegion, Box+Circle). These are Region objects with their own
-`simplified()` in `crates/ast-core/src/regions/`; they do NOT route through the
+`simplified()` in `crates/starlink-ast/src/regions/`; they do NOT route through the
 CmpMap engine.
 
 **Root cause:** all need `astConvertToPrism` (reference/starlink-ast/src/prism.c:232):
@@ -401,12 +401,12 @@ Substantial; do as its own plan after Groups 1-4.
 
 ## Verification after every commit
 ```
-cargo test -p ast-core --test test_simplify_regression simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
-cargo test -p ast-core --test test_serialisation native_byte_exact_round_trip_simplify_fixtures -- --nocapture 2>&1 | grep byte-exact
-cargo test -p ast-core --lib 2>&1 | grep "test result"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo clippy -p ast-core --lib 2>&1 | grep -E "warning|error"   # must be empty
-cargo fmt -p ast-core
+cargo test -p starlink-ast --test test_simplify_regression simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
+cargo test -p starlink-ast --test test_serialisation native_byte_exact_round_trip_simplify_fixtures -- --nocapture 2>&1 | grep byte-exact
+cargo test -p starlink-ast --lib 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo clippy -p starlink-ast --lib 2>&1 | grep -E "warning|error"   # must be empty
+cargo fmt -p starlink-ast
 ```
 Success = 0 equal, 0 transform, 0 serialization failures on simplify fixtures;
 byte-exact round-trip 677/677 for non-region fixtures; 407→ all passing; 999 lib;

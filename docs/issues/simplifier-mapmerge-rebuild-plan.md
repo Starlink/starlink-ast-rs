@@ -27,7 +27,7 @@ In progress.
   The legacy global swap helpers remain as a temporary stall-handler
   fallback (retired into per-class `map_merge` in Phases 2-5), guarded by a
   `MAX_STALL_ROUNDS` bound that is removed in Phase 5. Behavior-neutral by
-  construction and verified byte-for-byte: the full ast-core suite stays
+  construction and verified byte-for-byte: the full starlink-ast suite stays
   green and instrumentation confirms neither the `pattern_check` freeze nor
   the stall cap ever fires on the corpus.
 - **Phases 2-5 — not started.** Resume from Phase 2 (WinMap `map_merge`,
@@ -35,7 +35,7 @@ In progress.
 
 ## Why this exists
 
-The Rust simplifier (`crates/ast-core/src/mappings/simplify.rs`) was grown
+The Rust simplifier (`crates/starlink-ast/src/mappings/simplify.rs`) was grown
 opportunistically: individual C simplification behaviors were reimplemented as
 standalone helper functions (`try_swap_winmap_past_matrixmap`,
 `try_swap_wcsmap_past_permmap`, `try_distribute_winmap_into_parallel`, …) as
@@ -160,7 +160,7 @@ The ones that carry real series/parallel rewrite logic for our fixtures:
 
 ## Current Rust architecture (what we have)
 
-`crates/ast-core/src/mappings/simplify.rs` (~4300 lines):
+`crates/starlink-ast/src/mappings/simplify.rs` (~4300 lines):
 
 - `flatten` (181) ≈ `astMapList`; returns `(map, effective_inv, orig_inv)`.
 - `decomposition_is_simpler` (248) ≈ the `simpler` flag.
@@ -193,7 +193,7 @@ The ones that carry real series/parallel rewrite logic for our fixtures:
 
 ## Worked example: `rigby` (the canonical failure)
 
-Fixture: `crates/ast-core/tests/fixtures/native/reference/rigby.{map,simp}`,
+Fixture: `crates/starlink-ast/tests/fixtures/native/reference/rigby.{map,simp}`,
 listed in `simplify_tests.txt` (currently `skip_string_compare = yes`).
 
 Symptom: Rust's simplified celestial WinMap keeps `Scl1 = 0.99999999997788802`
@@ -237,7 +237,7 @@ as the "direct merge" step).
 
 - Freeze the current behavior as the baseline: the 437 `.map`/`.simp` +
   139 `.ast` + 24 generated round-trip fixtures, the `simplify_tests.txt`
-  regression (correctness via `equal()` + transform), and the full `ast-core`
+  regression (correctness via `equal()` + transform), and the full `starlink-ast`
   suite must stay green at every step.
 - Add a `MapMerge` trait method to `Mapping`:
   `fn map_merge(&self, ctx: &mut MergeCtx, where_: usize, series: bool) -> Option<usize>`
@@ -333,7 +333,7 @@ Port `winmap.c::MapMerge` faithfully into `WinMap::map_merge`:
   `MapList` 1004), `winmap.c` (`MapMerge` 884, `WinMat` 2793, `WinWin` 3888,
   `WinPerm` 2973, `WinWcs` 3833, `WinZoom` 4117), `matrixmap.c` (`MapMerge`,
   `MatMat`/`MatZoom`/`MatPerm`/`MatWin2`/`MatWin`/`CanSwap` ~294-331).
-- Rust: `crates/ast-core/src/mappings/simplify.rs`, per-class `try_merge` in
+- Rust: `crates/starlink-ast/src/mappings/simplify.rs`, per-class `try_merge` in
   `mappings/*.rs`.
 - Related: `c-library-quirks.md`, `native-roundtrip-simplify-gaps.md`,
   `simplify-serialization-gaps.md`, `simplifier-winmap-inverted-merge-bug.md`.

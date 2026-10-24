@@ -10,9 +10,9 @@
  * so C turns NaN outputs into AST__BAD (pointset.c ReplaceNaN), as the
  * port always does.
  *
- * Prints Rust source for crates/ast-core/tests/poly_bad_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/poly_bad_oracle/cases.rs:
  *
- *   ./poly_bad_probe > ../../crates/ast-core/tests/poly_bad_oracle/cases.rs
+ *   ./poly_bad_probe > ../../crates/starlink-ast/tests/poly_bad_oracle/cases.rs
  */
 #include <math.h>
 #include <stdio.h>

@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Drive `cargo test -p ast-core --test test_simplify_regression` to **0 failures, 0 skipped** by closing the 11 unique failing fixtures and removing the IntraMap-blocked entry. Each fix lands as its own commit so bisect stays useful.
+**Goal:** Drive `cargo test -p starlink-ast --test test_simplify_regression` to **0 failures, 0 skipped** by closing the 11 unique failing fixtures and removing the IntraMap-blocked entry. Each fix lands as its own commit so bisect stays useful.
 
 **Architecture:** Three independent groups of fixes — (C) per-class normalizations in `MatrixMap`, `GrismMap`, and the simplify reconstruct path; (A) CmpMap structural rewrites in `simplify.rs` (inverse cancellation, inversion distribution, PermMap-parallel constant-component replacement); (B) per-class `try_merge` impls on `BoxRegion` / `Interval` plus an Interval→Box reclassification in `Interval::simplified`. No new modules, no public API changes, no ABI changes.
 
-**Tech Stack:** Rust 2024, `ast-core`, `ndarray`, native AST serialization. C reference: `reference/starlink-ast/src/{cmpmap,box,interval,matrixmap,grismmap}.c`.
+**Tech Stack:** Rust 2024, `starlink-ast`, `ndarray`, native AST serialization. C reference: `reference/starlink-ast/src/{cmpmap,box,interval,matrixmap,grismmap}.c`.
 
 **Spec:** [`docs/superpower/specs/2026-05-20-simplify-residual-fixes-design.md`](../specs/2026-05-20-simplify-residual-fixes-design.md).
 
@@ -14,8 +14,8 @@
 
 ## Conventions used in this plan
 
-- **Run regression for one fixture:** `cargo test -p ast-core --test test_simplify_regression -- --nocapture` and grep for the fixture name. The harness is data-driven; isolating a single fixture means inspecting the printed failure list.
-- **Per-class focused unit tests** live in `crates/ast-core/tests/test_<class>.rs` (e.g. `test_matrixmap.rs`). Each task writes a focused unit test that mirrors the symptom of one fixture; this is the TDD failing-test step.
+- **Run regression for one fixture:** `cargo test -p starlink-ast --test test_simplify_regression -- --nocapture` and grep for the fixture name. The harness is data-driven; isolating a single fixture means inspecting the printed failure list.
+- **Per-class focused unit tests** live in `crates/starlink-ast/tests/test_<class>.rs` (e.g. `test_matrixmap.rs`). Each task writes a focused unit test that mirrors the symptom of one fixture; this is the TDD failing-test step.
 - **Pre-commit checks:** every commit must pass `cargo fmt --all -- --check` and `cargo clippy --workspace -- -D warnings` (project memory: `feedback_format_clippy.md`).
 - **Commit message style:** match recent history, e.g. `fix(simplify): SwitchMap top-level inversion-fold + ULP-tolerant compare`.
 
@@ -28,22 +28,22 @@ These are localized, small, isolated. Land them first.
 ### Task C1: `MatrixMap` Full→Diagonal storage form switch
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/matrix.rs:333` (`MatrixMap::simplified`)
-- Test: `crates/ast-core/tests/test_matrixmap.rs` (append a new `#[test]` fn)
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs:333` (`MatrixMap::simplified`)
+- Test: `crates/starlink-ast/tests/test_matrixmap.rs` (append a new `#[test]` fn)
 
 **Symptom:** Fixture `matrix_full_to_diagonal` parses a MatrixMap with `Form="Full"` whose off-diagonals are zero. C reference simplifies it to the same numeric matrix re-stored as `Form="Diagonal"`. Our `simplified()` only collapses to `UnitMap` / `ZoomMap`; it leaves the form as `Full`, so serialization diverges.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `crates/ast-core/tests/test_matrixmap.rs`:
+Append to `crates/starlink-ast/tests/test_matrixmap.rs`:
 
 ```rust
 #[test]
 fn simplified_switches_full_to_diagonal_when_offdiagonals_are_zero() {
-    use ast_core::mappings::{MatrixMap, Mapping};
-    use ast_core::{from_native_string, to_native_string, AnyObject};
+    use starlink_ast::mappings::{MatrixMap, Mapping};
+    use starlink_ast::{from_native_string, to_native_string, AnyObject};
 
-    // Same fixture as crates/ast-core/tests/fixtures/native/reference/
+    // Same fixture as crates/starlink-ast/tests/fixtures/native/reference/
     // simplify_fixtures/matrix_full_to_diagonal.map (Form="Full" with
     // off-diagonals == 0).
     let src = r#" Begin MatrixMap
@@ -78,14 +78,14 @@ fn simplified_switches_full_to_diagonal_when_offdiagonals_are_zero() {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_matrixmap simplified_switches_full_to_diagonal -- --nocapture
+cargo test -p starlink-ast --test test_matrixmap simplified_switches_full_to_diagonal -- --nocapture
 ```
 
 Expected: FAIL with `expected Diagonal form after simplify, got: ... Form = "Full" ...`.
 
 - [ ] **Step 3: Add the form switch in `MatrixMap::simplified`**
 
-In `crates/ast-core/src/mappings/matrix.rs`, modify the body of `fn simplified` (currently starting at line 333). After the existing identity / uniform-diagonal-→-ZoomMap block — and before the final `Ok(Box::new(self.clone()))` fallback — add:
+In `crates/starlink-ast/src/mappings/matrix.rs`, modify the body of `fn simplified` (currently starting at line 333). After the existing identity / uniform-diagonal-→-ZoomMap block — and before the final `Ok(Box::new(self.clone()))` fallback — add:
 
 ```rust
 // Full-form matrix whose off-diagonals are all zero re-stores as
@@ -110,7 +110,7 @@ if matches!(self.form, MatrixForm::Full) && nrows == ncols && is_diagonal(&self.
 - [ ] **Step 4: Verify the unit test passes**
 
 ```bash
-cargo test -p ast-core --test test_matrixmap simplified_switches_full_to_diagonal -- --nocapture
+cargo test -p starlink-ast --test test_matrixmap simplified_switches_full_to_diagonal -- --nocapture
 ```
 
 Expected: PASS.
@@ -118,7 +118,7 @@ Expected: PASS.
 - [ ] **Step 5: Verify the regression fixture passes**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "matrix_full_to_diagonal|Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "matrix_full_to_diagonal|Simplify regression:"
 ```
 
 Expected: `matrix_full_to_diagonal` no longer appears in the serialization-failure list. The summary line should show one fewer failure than before.
@@ -128,7 +128,7 @@ Expected: `matrix_full_to_diagonal` no longer appears in the serialization-failu
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/mappings/matrix.rs crates/ast-core/tests/test_matrixmap.rs
+git add crates/starlink-ast/src/mappings/matrix.rs crates/starlink-ast/tests/test_matrixmap.rs
 git commit -m "$(cat <<'EOF'
 fix(matrix): MatrixMap::simplified switches Full→Diagonal when off-diagonals are zero
 
@@ -153,20 +153,20 @@ EOF
 ### Task C2: `GrismMap::merge_with_zoom` selective explicit-flag preservation
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/grismmap.rs:233` (`merge_with_zoom`)
-- Test: `crates/ast-core/tests/test_grismmap.rs` (append a new `#[test]` fn)
+- Modify: `crates/starlink-ast/src/mappings/grismmap.rs:233` (`merge_with_zoom`)
+- Test: `crates/starlink-ast/tests/test_grismmap.rs` (append a new `#[test]` fn)
 
 **Symptom:** Fixture `grism_zoom_inv_merge` already produces the right numeric result (`GrmWR = 5000 × 0.5 = 2500`) — all transforms agree. The serialization fails because `merge_with_zoom` constructs the result via `GrismMap::new`, which marks all eight attributes explicit. The C reference only marks the three the merge math touched (`GrmNRP`, `GrmWR`, `GrmG`) explicit; the rest preserve the source's explicit/default state.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `crates/ast-core/tests/test_grismmap.rs`:
+Append to `crates/starlink-ast/tests/test_grismmap.rs`:
 
 ```rust
 #[test]
 fn merge_with_zoom_preserves_explicit_flags_for_unchanged_attrs() {
-    use ast_core::mappings::GrismMap;
-    use ast_core::{to_native_string, AnyObject};
+    use starlink_ast::mappings::GrismMap;
+    use starlink_ast::{to_native_string, AnyObject};
 
     // Default GrismMap (all attrs at defaults). In a fixture parsed
     // from disk, all flags would be "default-flagged"; we approximate
@@ -198,7 +198,7 @@ fn merge_with_zoom_preserves_explicit_flags_for_unchanged_attrs() {
 - [ ] **Step 2: Run test to verify it passes today (baseline)**
 
 ```bash
-cargo test -p ast-core --test test_grismmap merge_with_zoom_preserves_explicit -- --nocapture
+cargo test -p starlink-ast --test test_grismmap merge_with_zoom_preserves_explicit -- --nocapture
 ```
 
 Expected: PASS (baseline — current code marks all flags explicit). The real failing case is the regression fixture; we need a focused way to run *just that fixture* before/after the fix.
@@ -206,14 +206,14 @@ Expected: PASS (baseline — current code marks all flags explicit). The real fa
 - [ ] **Step 3: Confirm the failing regression fixture**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep grism_zoom_inv_merge
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep grism_zoom_inv_merge
 ```
 
 Expected: `grism_zoom_inv_merge` appears in the serialization-failure list.
 
 - [ ] **Step 4: Implement the fix in `merge_with_zoom`**
 
-Replace the body of `merge_with_zoom` in `crates/ast-core/src/mappings/grismmap.rs` (currently lines 233-262) with:
+Replace the body of `merge_with_zoom` in `crates/starlink-ast/src/mappings/grismmap.rs` (currently lines 233-262) with:
 
 ```rust
 pub(crate) fn merge_with_zoom(
@@ -251,7 +251,7 @@ pub(crate) fn merge_with_zoom(
 - [ ] **Step 5: Verify the regression fixture now passes**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "grism_zoom_inv_merge|Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "grism_zoom_inv_merge|Simplify regression:"
 ```
 
 Expected: `grism_zoom_inv_merge` no longer in any failure list; summary shows one fewer serialization failure.
@@ -259,7 +259,7 @@ Expected: `grism_zoom_inv_merge` no longer in any failure list; summary shows on
 - [ ] **Step 6: Verify no GrismMap unit test regressed**
 
 ```bash
-cargo test -p ast-core --test test_grismmap -- --nocapture
+cargo test -p starlink-ast --test test_grismmap -- --nocapture
 ```
 
 Expected: all PASS.
@@ -269,7 +269,7 @@ Expected: all PASS.
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/mappings/grismmap.rs crates/ast-core/tests/test_grismmap.rs
+git add crates/starlink-ast/src/mappings/grismmap.rs crates/starlink-ast/tests/test_grismmap.rs
 git commit -m "$(cat <<'EOF'
 fix(grism): merge_with_zoom preserves source explicit-flags for unchanged attrs
 
@@ -292,8 +292,8 @@ EOF
 ### Task C3: Drop redundant outer `InvB`/`InvA` in parallel CmpMap with UnitMap leaf
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs:2381` (`reconstruct`)
-- Test: `crates/ast-core/tests/test_simplify_regression.rs` (no new test — fixture is already there)
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs:2381` (`reconstruct`)
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs` (no new test — fixture is already there)
 
 **Symptom:** Fixture `unit_parallel_invert_clear`. Source: parallel CmpMap with `InvB=1` and a `UnitMap` with `Invert=1` as MapB. Our `flatten` strips the inner `Invert=1` and bubbles to `effective_inv=true` on the (UnitMap, true) entry. `reconstruct` then re-emits the parallel CmpMap with `InvB=1`. The C reference output drops the `InvB` and instead leaves the inner UnitMap with `Invert=1`.
 
@@ -302,14 +302,14 @@ A `UnitMap` with `Invert=1` and a `UnitMap` with no flag are observationally ide
 - [ ] **Step 1: Confirm the failing fixture before the change**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep unit_parallel_invert_clear
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep unit_parallel_invert_clear
 ```
 
 Expected: appears in both equal-failure and serialization-failure lists.
 
 - [ ] **Step 2: Read the current `reconstruct` body**
 
-Skim `crates/ast-core/src/mappings/simplify.rs:2381` to understand the existing parallel-list reconstruction (it walks the list pairwise and folds into a parallel `CmpMap` chain, applying `effective_inv` via per-entry inversion or via the parent's `InvA`/`InvB` flags). Identify the spot where the per-entry inv flag is consumed.
+Skim `crates/starlink-ast/src/mappings/simplify.rs:2381` to understand the existing parallel-list reconstruction (it walks the list pairwise and folds into a parallel `CmpMap` chain, applying `effective_inv` via per-entry inversion or via the parent's `InvA`/`InvB` flags). Identify the spot where the per-entry inv flag is consumed.
 
 - [ ] **Step 3: Add the UnitMap normalization pass before reconstruct returns**
 
@@ -335,7 +335,7 @@ if !series {
 - [ ] **Step 4: Verify the fixture now passes**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "unit_parallel_invert_clear|Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "unit_parallel_invert_clear|Simplify regression:"
 ```
 
 Expected: `unit_parallel_invert_clear` no longer in any failure list; summary shows one fewer equal failure and one fewer serialization failure.
@@ -343,7 +343,7 @@ Expected: `unit_parallel_invert_clear` no longer in any failure list; summary sh
 - [ ] **Step 5: Run the full simplify suite to confirm no other regression**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -25
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -25
 ```
 
 Expected: previous count of 9 equal / 10 serial failures has dropped by exactly 1 each (so 8 / 9 now). No new fixtures appear in any failure list.
@@ -353,7 +353,7 @@ Expected: previous count of 9 equal / 10 serial failures has dropped by exactly 
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/mappings/simplify.rs
+git add crates/starlink-ast/src/mappings/simplify.rs
 git commit -m "$(cat <<'EOF'
 fix(simplify): parallel reconstruct pushes effective_inv onto UnitMap leaves
 
@@ -382,8 +382,8 @@ After Group C lands, 8 fixtures remain failing. Group A targets the 5 CmpMap str
 ### Task A1: Detect inverse-pair cancellation `(M, false)` + `(M, true)` in `merge_loop`
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs:268-310` (the `merged = …` expression inside `merge_loop`)
-- Test: extend a focused unit test in `crates/ast-core/tests/test_cmpmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs:268-310` (the `merged = …` expression inside `merge_loop`)
+- Test: extend a focused unit test in `crates/starlink-ast/tests/test_cmpmap.rs`
 
 **Symptom:** Fixtures `cmpmap_nested_inverse_cancel` and `cmpmap_parallel_in_series_merge`. After `flatten`, the series list contains adjacent `(X, false)` then `(X, true)` (and analogously for the parallel-in-series case). Each `try_merge` is called with `(self_inv, other_inv) = (false, true)`. For MatrixMap the existing `try_merge` body computes `b·a` correctly; for MathMap and similar, `try_merge` does *not* recognize the inverse-cancellation case, so the pair survives.
 
@@ -391,12 +391,12 @@ The fix is to add a generic equality-based cancellation as a fallback **before**
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `crates/ast-core/tests/test_cmpmap.rs`:
+Append to `crates/starlink-ast/tests/test_cmpmap.rs`:
 
 ```rust
 #[test]
 fn series_inverse_pair_of_mathmaps_cancels_to_unitmap() {
-    use ast_core::mappings::{CmpMap, Composition, MathMap, Mapping, UnitMap, DynMapping};
+    use starlink_ast::mappings::{CmpMap, Composition, MathMap, Mapping, UnitMap, DynMapping};
 
     let mut m_fwd = MathMap::new(1, 1, &["y=2*x"], &["x=0.5*y"]).unwrap();
     m_fwd.set_simp_fi(true);
@@ -422,19 +422,19 @@ fn series_inverse_pair_of_mathmaps_cancels_to_unitmap() {
 }
 ```
 
-(`DynMapping` is the existing `pub type DynMapping = Box<dyn Mapping>` re-exported from `ast_core::mappings`. Verify by `grep -nE 'pub type DynMapping' crates/ast-core/src/mappings/mod.rs`.)
+(`DynMapping` is the existing `pub type DynMapping = Box<dyn Mapping>` re-exported from `starlink_ast::mappings`. Verify by `grep -nE 'pub type DynMapping' crates/starlink-ast/src/mappings/mod.rs`.)
 
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_cmpmap series_inverse_pair_of_mathmaps_cancels_to_unitmap -- --nocapture
+cargo test -p starlink-ast --test test_cmpmap series_inverse_pair_of_mathmaps_cancels_to_unitmap -- --nocapture
 ```
 
 Expected: FAIL with "expected UnitMap, got CmpMap" (or similar).
 
 - [ ] **Step 3: Add the generic inverse-cancellation pass in merge_loop**
 
-In `crates/ast-core/src/mappings/simplify.rs`, the existing `merge_loop` (line 246) computes `merged` from `m1.try_merge(...)` followed by an `or_else` reverse-merge fallback (lines 268-311). Insert a *prepended* generic-cancellation check **before** the call to `try_merge`. Concretely, replace lines 268-311 (the entire `let merged = { … }` block) with:
+In `crates/starlink-ast/src/mappings/simplify.rs`, the existing `merge_loop` (line 246) computes `merged` from `m1.try_merge(...)` followed by an `or_else` reverse-merge fallback (lines 268-311). Insert a *prepended* generic-cancellation check **before** the call to `try_merge`. Concretely, replace lines 268-311 (the entire `let merged = { … }` block) with:
 
 ```rust
 let merged = {
@@ -491,7 +491,7 @@ let merged = {
 - [ ] **Step 4: Verify the unit test passes**
 
 ```bash
-cargo test -p ast-core --test test_cmpmap series_inverse_pair_of_mathmaps_cancels_to_unitmap -- --nocapture
+cargo test -p starlink-ast --test test_cmpmap series_inverse_pair_of_mathmaps_cancels_to_unitmap -- --nocapture
 ```
 
 Expected: PASS.
@@ -499,7 +499,7 @@ Expected: PASS.
 - [ ] **Step 5: Verify the two fixtures pass**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "cmpmap_nested_inverse_cancel|cmpmap_parallel_in_series_merge|Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "cmpmap_nested_inverse_cancel|cmpmap_parallel_in_series_merge|Simplify regression:"
 ```
 
 Expected: both fixtures gone from the equal-failure and serialization-failure lists; summary line shows two fewer equal failures and two fewer serial failures.
@@ -507,7 +507,7 @@ Expected: both fixtures gone from the equal-failure and serialization-failure li
 - [ ] **Step 6: Run the wider simplify suite to catch regressions**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -25
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -25
 ```
 
 Expected: no new failures appear; passing count went up by 2.
@@ -517,7 +517,7 @@ Expected: no new failures appear; passing count went up by 2.
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/mappings/simplify.rs crates/ast-core/tests/test_cmpmap.rs
+git add crates/starlink-ast/src/mappings/simplify.rs crates/starlink-ast/tests/test_cmpmap.rs
 git commit -m "$(cat <<'EOF'
 fix(simplify): generic inverse-pair cancellation in merge_loop
 
@@ -543,8 +543,8 @@ EOF
 ### Task A2: Distribute parallel-CmpMap inversion into children during reconstruct
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs:2381` (`reconstruct`, parallel branch)
-- Test: extend `crates/ast-core/tests/test_cmpmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs:2381` (`reconstruct`, parallel branch)
+- Test: extend `crates/starlink-ast/tests/test_cmpmap.rs`
 
 **Symptom:** Fixture `cmpmap_series_in_parallel_inverted`. Source: parallel CmpMap with outer `InvA=1`; MapA is a series-CmpMap of `(MathMap_2x, MathMap_2x)`. Expected output: same structure, but the outer `InvA=1` is gone and the inner series-CmpMap stores `InvA=InvB=1` (the inversion was *pushed inside*).
 
@@ -552,13 +552,13 @@ Our reconstruct currently emits the outer `InvA=1` because `flatten` cannot recu
 
 - [ ] **Step 1: Write the failing test**
 
-`CmpMap`'s `inv_a` / `inv_b` / `first` / `second` accessors are `pub(crate)` (see `crates/ast-core/src/mappings/cmpmap.rs:101`), so integration tests cannot inspect the structure directly. Instead, drive the test through the data-driven simplify-regression harness using a one-line addition to `simplify_tests.txt` plus the existing `cmpmap_series_in_parallel_inverted.{map,simp}` fixture, OR assert on the native-string serialization. The latter is more focused — append to `crates/ast-core/tests/test_cmpmap.rs`:
+`CmpMap`'s `inv_a` / `inv_b` / `first` / `second` accessors are `pub(crate)` (see `crates/starlink-ast/src/mappings/cmpmap.rs:101`), so integration tests cannot inspect the structure directly. Instead, drive the test through the data-driven simplify-regression harness using a one-line addition to `simplify_tests.txt` plus the existing `cmpmap_series_in_parallel_inverted.{map,simp}` fixture, OR assert on the native-string serialization. The latter is more focused — append to `crates/starlink-ast/tests/test_cmpmap.rs`:
 
 ```rust
 #[test]
 fn parallel_outer_inversion_is_pushed_into_series_child() {
-    use ast_core::{from_native_string, to_native_string, AnyObject};
-    use ast_core::mappings::Mapping;
+    use starlink_ast::{from_native_string, to_native_string, AnyObject};
+    use starlink_ast::mappings::Mapping;
 
     // Same shape as simplify_fixtures/cmpmap_series_in_parallel_inverted.map.
     let src = std::fs::read_to_string(
@@ -570,7 +570,7 @@ fn parallel_outer_inversion_is_pushed_into_series_child() {
 
     // Re-serialise and check: the outer parallel CmpMap must NOT have
     // InvA=1; the inner series CmpMap MUST have InvA=1 and InvB=1.
-    let dyn_cmp = simp.as_any().downcast_ref::<ast_core::mappings::CmpMap>()
+    let dyn_cmp = simp.as_any().downcast_ref::<starlink_ast::mappings::CmpMap>()
         .expect("expected outer CmpMap");
     let s = to_native_string(&AnyObject::CmpMap(dyn_cmp.clone())).unwrap();
 
@@ -591,7 +591,7 @@ A simpler and more honest approach: rely on the regression harness as the failin
 So this task may skip the unit-test step and instead use:
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep cmpmap_series_in_parallel_inverted
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep cmpmap_series_in_parallel_inverted
 ```
 
 as the "failing test" indicator. Proceed directly to Step 3 (the implementation).
@@ -599,14 +599,14 @@ as the "failing test" indicator. Proceed directly to Step 3 (the implementation)
 - [ ] **Step 2: Run the regression to verify the fixture currently fails**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep cmpmap_series_in_parallel_inverted
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep cmpmap_series_in_parallel_inverted
 ```
 
 Expected: appears in equal-failure and serialization-failure lists.
 
 - [ ] **Step 3: Implement the inversion-push in `reconstruct`**
 
-In `crates/ast-core/src/mappings/simplify.rs:2381`, inside the parallel branch of `reconstruct`, before assembling the final `CmpMap` chain, walk `list` and for any entry whose `effective_inv == true` and whose mapping is a `CmpMap`, *invert the child in place* (which for `CmpMap` flips its internal `inv_a` / `inv_b` flags rather than the external bool). Then clear the entry's `effective_inv`.
+In `crates/starlink-ast/src/mappings/simplify.rs:2381`, inside the parallel branch of `reconstruct`, before assembling the final `CmpMap` chain, walk `list` and for any entry whose `effective_inv == true` and whose mapping is a `CmpMap`, *invert the child in place* (which for `CmpMap` flips its internal `inv_a` / `inv_b` flags rather than the external bool). Then clear the entry's `effective_inv`.
 
 ```rust
 if !series {
@@ -630,7 +630,7 @@ if !series {
 - [ ] **Step 4: Verify the regression fixture passes**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "cmpmap_series_in_parallel_inverted|Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "cmpmap_series_in_parallel_inverted|Simplify regression:"
 ```
 
 Expected: fixture removed from both failure lists; summary shows one less equal failure and one less serial failure.
@@ -638,7 +638,7 @@ Expected: fixture removed from both failure lists; summary shows one less equal 
 - [ ] **Step 5: Run the wider simplify suite to catch regressions**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -25
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -25
 ```
 
 Expected: no new failures; pass count up by 1.
@@ -648,7 +648,7 @@ Expected: no new failures; pass count up by 1.
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/mappings/simplify.rs crates/ast-core/src/mappings/cmpmap.rs
+git add crates/starlink-ast/src/mappings/simplify.rs crates/starlink-ast/src/mappings/cmpmap.rs
 git commit -m "$(cat <<'EOF'
 fix(simplify): push parallel-CmpMap effective_inv into CmpMap children
 
@@ -672,8 +672,8 @@ EOF
 ### Task A3: PermMap-with-aconstants — replace consumed component with UnitMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs:1813-1830` (`try_swap_permmap_parallel_at`, post-swap CmpMap construction)
-- Test: extend `crates/ast-core/tests/test_cmpmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs:1813-1830` (`try_swap_permmap_parallel_at`, post-swap CmpMap construction)
+- Test: extend `crates/starlink-ast/tests/test_cmpmap.rs`
 
 **Symptom:** Fixture `cmpmap_perm_swap_aconstants`. Source: PermMap (Out=(-1,1), Con=[99]) in series with parallel(MathMap_2x, MathMap_3x). Expected output: parallel(MathMap_3x, **UnitMap**) followed by PermMap with `Con=[99, 198]`.
 
@@ -682,7 +682,7 @@ Our `try_swap_permmap_parallel_at` already transforms the constant 99 through Ma
 - [ ] **Step 1: Confirm the failing fixture (test driven by harness)**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep cmpmap_perm_swap_aconstants
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep cmpmap_perm_swap_aconstants
 ```
 
 Expected: appears in equal-failure and serialization-failure lists.
@@ -691,7 +691,7 @@ Expected: appears in equal-failure and serialization-failure lists.
 
 - [ ] **Step 2: Replace consumed component with UnitMap in the swap construction**
 
-In `crates/ast-core/src/mappings/simplify.rs`, replace lines 1813-1830 (the post-swap CmpMap construction in `try_swap_permmap_parallel_at`) with:
+In `crates/starlink-ast/src/mappings/simplify.rs`, replace lines 1813-1830 (the post-swap CmpMap construction in `try_swap_permmap_parallel_at`) with:
 
 ```rust
 let nout_a = effective_nout(par_list[0].0.as_ref(), par_list[0].1);
@@ -738,7 +738,7 @@ let new_a: DynMapping = if aconstants {
 - [ ] **Step 3: Verify the regression fixture passes**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "cmpmap_perm_swap_aconstants|Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "cmpmap_perm_swap_aconstants|Simplify regression:"
 ```
 
 Expected: fixture gone from both failure lists.
@@ -746,7 +746,7 @@ Expected: fixture gone from both failure lists.
 - [ ] **Step 4: Run the wider simplify suite to catch regressions**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -25
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -25
 ```
 
 Expected: no new failures; pass count up by 1.
@@ -756,7 +756,7 @@ Expected: no new failures; pass count up by 1.
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/mappings/simplify.rs
+git add crates/starlink-ast/src/mappings/simplify.rs
 git commit -m "$(cat <<'EOF'
 fix(simplify): PermMap-parallel swap replaces consumed branch with UnitMap
 
@@ -790,7 +790,7 @@ EOF
 - [ ] **Step 1: Verify the fixture passes after A3**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep cmpmap_perm_swap_bconstants
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep cmpmap_perm_swap_bconstants
 ```
 
 Expected: fixture is **not** present in any failure list (A3's substitution at lines 1813-1830 handles `bconstants` symmetrically because both `new_a` and `new_b` substitution branches are added in the same task).
@@ -806,7 +806,7 @@ If A3 alone fixed both fixtures, this task is done — no commit. If diagnosis r
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/mappings/simplify.rs
+git add crates/starlink-ast/src/mappings/simplify.rs
 git commit -m "$(cat <<'EOF'
 fix(simplify): mirror UnitMap substitution onto bconstants branch
 
@@ -826,21 +826,21 @@ After Groups C+A land, 3 region fixtures remain. These need new `try_merge` impl
 ### Task B1: `Interval::simplified` reclassifies finite-bounded intervals to `BoxRegion`
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/interval.rs:610` (`simplified`)
-- Test: extend `crates/ast-core/tests/test_interval.rs`
+- Modify: `crates/starlink-ast/src/regions/interval.rs:610` (`simplified`)
+- Test: extend `crates/starlink-ast/tests/test_interval.rs`
 
 **Symptom:** Fixture `interval_self_simplify`. A 2-D `Interval` with all bounds finite and `lbnd[i] <= ubnd[i]` is mathematically a `BoxRegion`; the C reference reclassifies it. Our `Interval::simplified` only remaps defining points to the current frame and returns an Interval.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `crates/ast-core/tests/test_interval.rs`:
+Append to `crates/starlink-ast/tests/test_interval.rs`:
 
 ```rust
 #[test]
 fn finite_bounded_interval_simplifies_to_boxregion() {
-    use ast_core::frames::BasicFrameBuilder;
-    use ast_core::mappings::Mapping;
-    use ast_core::regions::{BoxRegion, IntervalBuilder};
+    use starlink_ast::frames::BasicFrameBuilder;
+    use starlink_ast::mappings::Mapping;
+    use starlink_ast::regions::{BoxRegion, IntervalBuilder};
 
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let interval = IntervalBuilder::new(frame, vec![0.0, 0.0], vec![10.0, 10.0])
@@ -857,14 +857,14 @@ fn finite_bounded_interval_simplifies_to_boxregion() {
 - [ ] **Step 2: Run the test — expect FAIL**
 
 ```bash
-cargo test -p ast-core --test test_interval finite_bounded_interval_simplifies_to_boxregion -- --nocapture
+cargo test -p starlink-ast --test test_interval finite_bounded_interval_simplifies_to_boxregion -- --nocapture
 ```
 
 Expected: FAIL (still an Interval).
 
 - [ ] **Step 3: Implement reclassification**
 
-The existing `Interval::simplified` body (currently `crates/ast-core/src/regions/interval.rs:610-...`) only handles the FrameSet remap path. Insert the Box-reclassification at the top of the function, *before* the existing remap path. The full replacement:
+The existing `Interval::simplified` body (currently `crates/starlink-ast/src/regions/interval.rs:610-...`) only handles the FrameSet remap path. Insert the Box-reclassification at the top of the function, *before* the existing remap path. The full replacement:
 
 ```rust
 fn simplified(&self) -> AstResult<DynMapping> {
@@ -887,7 +887,7 @@ fn simplified(&self) -> AstResult<DynMapping> {
         box_region.set_closed(true);
         // Preserve region-level attributes from self (matches what
         // box.c does on construction). Adjust to RegionData fields
-        // present in crates/ast-core/src/regions/data.rs:
+        // present in crates/starlink-ast/src/regions/data.rs:
         let dst = box_region.region_data_mut();
         let src = &self.data;
         dst.negated = src.negated;
@@ -926,12 +926,12 @@ fn simplified(&self) -> AstResult<DynMapping> {
 }
 ```
 
-(`region_data_mut`, `clone_box`, the `RegionData` field names, and the precise constructor shapes need to be confirmed against the actual files. The shape above mirrors `BoxRegion::simplified` at `crates/ast-core/src/regions/box_region.rs:667-693` — copy that body verbatim and add the Box-reclassification preamble.)
+(`region_data_mut`, `clone_box`, the `RegionData` field names, and the precise constructor shapes need to be confirmed against the actual files. The shape above mirrors `BoxRegion::simplified` at `crates/starlink-ast/src/regions/box_region.rs:667-693` — copy that body verbatim and add the Box-reclassification preamble.)
 
 - [ ] **Step 4: Verify the unit test passes**
 
 ```bash
-cargo test -p ast-core --test test_interval finite_bounded_interval_simplifies_to_boxregion -- --nocapture
+cargo test -p starlink-ast --test test_interval finite_bounded_interval_simplifies_to_boxregion -- --nocapture
 ```
 
 Expected: PASS.
@@ -939,7 +939,7 @@ Expected: PASS.
 - [ ] **Step 5: Verify the regression fixture passes**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "interval_self_simplify|Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "interval_self_simplify|Simplify regression:"
 ```
 
 Expected: fixture gone from both failure lists.
@@ -947,9 +947,9 @@ Expected: fixture gone from both failure lists.
 - [ ] **Step 6: Run the wider simplify and region suites**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -25
-cargo test -p ast-core --test test_interval -- --nocapture
-cargo test -p ast-core --test test_box_region -- --nocapture
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -25
+cargo test -p starlink-ast --test test_interval -- --nocapture
+cargo test -p starlink-ast --test test_box_region -- --nocapture
 ```
 
 Expected: no new failures.
@@ -959,7 +959,7 @@ Expected: no new failures.
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/regions/interval.rs crates/ast-core/tests/test_interval.rs
+git add crates/starlink-ast/src/regions/interval.rs crates/starlink-ast/tests/test_interval.rs
 git commit -m "$(cat <<'EOF'
 fix(regions): Interval::simplified reclassifies finite-bounded interval to BoxRegion
 
@@ -982,8 +982,8 @@ EOF
 ### Task B2: `BoxRegion::try_merge` for parallel CmpMap
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/box_region.rs` (add `try_merge` to the `Mapping` impl block, around line 700)
-- Test: extend `crates/ast-core/tests/test_box_region.rs`
+- Modify: `crates/starlink-ast/src/regions/box_region.rs` (add `try_merge` to the `Mapping` impl block, around line 700)
+- Test: extend `crates/starlink-ast/tests/test_box_region.rs`
 
 **Symptom:** Fixture `box_parallel_merge`. Two 1-D BoxRegions in a parallel CmpMap. C reference produces a single 2-D BoxRegion on a `CmpFrame`. Our simplifier returns the original parallel CmpMap unchanged, **and the transform output differs** (the parallel CmpMap acts as identity on points, while a 2-D BoxRegion-as-Mapping has different in/out dimensions in the C model).
 
@@ -991,14 +991,14 @@ C reference: `reference/starlink-ast/src/box.c:MapMerge`. Construct a `CmpFrame`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `crates/ast-core/tests/test_box_region.rs`:
+Append to `crates/starlink-ast/tests/test_box_region.rs`:
 
 ```rust
 #[test]
 fn parallel_two_boxes_merges_to_2d_box_on_cmpframe() {
-    use ast_core::frames::{BasicFrameBuilder, Frame};
-    use ast_core::mappings::{CmpMap, Composition, DynMapping, Mapping};
-    use ast_core::regions::{BoxRegion, BoxRegionBuilder};
+    use starlink_ast::frames::{BasicFrameBuilder, Frame};
+    use starlink_ast::mappings::{CmpMap, Composition, DynMapping, Mapping};
+    use starlink_ast::regions::{BoxRegion, BoxRegionBuilder};
 
     let f1 = BasicFrameBuilder::new(1).build().unwrap();
     let b1 = BoxRegionBuilder::from_bounds(f1, &[5.0], &[10.0]).unwrap().build().unwrap();
@@ -1025,14 +1025,14 @@ fn parallel_two_boxes_merges_to_2d_box_on_cmpframe() {
 - [ ] **Step 2: Run the test — expect FAIL**
 
 ```bash
-cargo test -p ast-core --test test_box_region parallel_two_boxes_merges_to_2d_box_on_cmpframe -- --nocapture
+cargo test -p starlink-ast --test test_box_region parallel_two_boxes_merges_to_2d_box_on_cmpframe -- --nocapture
 ```
 
 Expected: FAIL (still a CmpMap).
 
 - [ ] **Step 3: Add `try_merge` to `BoxRegion`'s `Mapping` impl**
 
-In `crates/ast-core/src/regions/box_region.rs`, inside `impl Mapping for BoxRegion`, add (after `simplified`):
+In `crates/starlink-ast/src/regions/box_region.rs`, inside `impl Mapping for BoxRegion`, add (after `simplified`):
 
 ```rust
 fn try_merge(
@@ -1078,12 +1078,12 @@ fn try_merge(
 }
 ```
 
-Imports needed at the top of the file: `use super::BoxRegionBuilder;` (already in scope inside `regions` mod) — confirm by reading the existing imports in `box_region.rs`. The `region_data_mut` accessor exists at `crates/ast-core/src/regions/box_region.rs:195`.
+Imports needed at the top of the file: `use super::BoxRegionBuilder;` (already in scope inside `regions` mod) — confirm by reading the existing imports in `box_region.rs`. The `region_data_mut` accessor exists at `crates/starlink-ast/src/regions/box_region.rs:195`.
 
 - [ ] **Step 4: Verify the unit test passes**
 
 ```bash
-cargo test -p ast-core --test test_box_region parallel_two_boxes_merges_to_2d_box_on_cmpframe -- --nocapture
+cargo test -p starlink-ast --test test_box_region parallel_two_boxes_merges_to_2d_box_on_cmpframe -- --nocapture
 ```
 
 Expected: PASS.
@@ -1091,7 +1091,7 @@ Expected: PASS.
 - [ ] **Step 5: Verify the regression fixture passes (transform + serial)**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "box_parallel_merge|Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "box_parallel_merge|Simplify regression:"
 ```
 
 Expected: `box_parallel_merge` gone from equal-failure, transform-failure, and serial-failure lists.
@@ -1099,9 +1099,9 @@ Expected: `box_parallel_merge` gone from equal-failure, transform-failure, and s
 - [ ] **Step 6: Run the wider region + simplify suites**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -25
-cargo test -p ast-core --test test_box_region -- --nocapture
-cargo test -p ast-core --test test_regions -- --nocapture
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -25
+cargo test -p starlink-ast --test test_box_region -- --nocapture
+cargo test -p starlink-ast --test test_regions -- --nocapture
 ```
 
 Expected: no new failures; transform-failure count drops by 1.
@@ -1111,7 +1111,7 @@ Expected: no new failures; transform-failure count drops by 1.
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/regions/box_region.rs crates/ast-core/tests/test_box_region.rs
+git add crates/starlink-ast/src/regions/box_region.rs crates/starlink-ast/tests/test_box_region.rs
 git commit -m "$(cat <<'EOF'
 fix(regions): BoxRegion::try_merge fuses parallel two-Box CmpMap into 2-D Box
 
@@ -1136,21 +1136,21 @@ EOF
 ### Task B3: `Interval::try_merge` for parallel CmpMap (with reclassification to Box)
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/interval.rs` (add `try_merge`)
-- Test: extend `crates/ast-core/tests/test_interval.rs`
+- Modify: `crates/starlink-ast/src/regions/interval.rs` (add `try_merge`)
+- Test: extend `crates/starlink-ast/tests/test_interval.rs`
 
 **Symptom:** Fixture `interval_parallel_merge`. Two 1-D Intervals (both finite-bounded) in a parallel CmpMap. C reference: build a 2-D Interval on a CmpFrame, then (since all bounds finite) reclassify to a 2-D BoxRegion (`Closed=1`). Equivalent: the merged region passes through the B1 reclassification rule.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `crates/ast-core/tests/test_interval.rs`:
+Append to `crates/starlink-ast/tests/test_interval.rs`:
 
 ```rust
 #[test]
 fn parallel_two_finite_intervals_merges_to_2d_box() {
-    use ast_core::frames::BasicFrameBuilder;
-    use ast_core::mappings::{CmpMap, Composition, DynMapping, Mapping};
-    use ast_core::regions::{BoxRegion, IntervalBuilder};
+    use starlink_ast::frames::BasicFrameBuilder;
+    use starlink_ast::mappings::{CmpMap, Composition, DynMapping, Mapping};
+    use starlink_ast::regions::{BoxRegion, IntervalBuilder};
 
     let i1 = IntervalBuilder::new(
         BasicFrameBuilder::new(1).build().unwrap(),
@@ -1177,14 +1177,14 @@ fn parallel_two_finite_intervals_merges_to_2d_box() {
 - [ ] **Step 2: Run the test — expect FAIL**
 
 ```bash
-cargo test -p ast-core --test test_interval parallel_two_finite_intervals_merges_to_2d_box -- --nocapture
+cargo test -p starlink-ast --test test_interval parallel_two_finite_intervals_merges_to_2d_box -- --nocapture
 ```
 
 Expected: FAIL.
 
 - [ ] **Step 3: Add `try_merge` to `Interval`'s `Mapping` impl**
 
-In `crates/ast-core/src/regions/interval.rs`, inside `impl Mapping for Interval`, add (after `simplified`):
+In `crates/starlink-ast/src/regions/interval.rs`, inside `impl Mapping for Interval`, add (after `simplified`):
 
 ```rust
 fn try_merge(
@@ -1221,7 +1221,7 @@ fn try_merge(
 - [ ] **Step 4: Verify the unit test passes**
 
 ```bash
-cargo test -p ast-core --test test_interval parallel_two_finite_intervals_merges_to_2d_box -- --nocapture
+cargo test -p starlink-ast --test test_interval parallel_two_finite_intervals_merges_to_2d_box -- --nocapture
 ```
 
 Expected: PASS.
@@ -1229,7 +1229,7 @@ Expected: PASS.
 - [ ] **Step 5: Verify the regression fixture passes (transform + serial)**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep -E "interval_parallel_merge|Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep -E "interval_parallel_merge|Simplify regression:"
 ```
 
 Expected: fixture gone from equal-failure, transform-failure, and serial-failure lists.
@@ -1237,9 +1237,9 @@ Expected: fixture gone from equal-failure, transform-failure, and serial-failure
 - [ ] **Step 6: Run the wider simplify + region suites**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -25
-cargo test -p ast-core --test test_interval -- --nocapture
-cargo test -p ast-core --test test_regions -- --nocapture
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -25
+cargo test -p starlink-ast --test test_interval -- --nocapture
+cargo test -p starlink-ast --test test_regions -- --nocapture
 ```
 
 Expected: no new failures; transform-failure count goes to 0.
@@ -1249,7 +1249,7 @@ Expected: no new failures; transform-failure count goes to 0.
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/src/regions/interval.rs crates/ast-core/tests/test_interval.rs
+git add crates/starlink-ast/src/regions/interval.rs crates/starlink-ast/tests/test_interval.rs
 git commit -m "$(cat <<'EOF'
 fix(regions): Interval::try_merge fuses parallel two-Interval CmpMap
 
@@ -1274,13 +1274,13 @@ EOF
 ### Task Z: Remove the `intramap_inverse_cancel` entry from the manifest
 
 **Files:**
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
 
 **Symptom:** Per the spec (§"Out of scope"), IntraMap is not yet ported. Removing this entry brings `skipped` to 0 without coupling the work to a multi-week feature.
 
 - [ ] **Step 1: Edit the manifest**
 
-In `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, find the line:
+In `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`, find the line:
 
 ```
 intramap_inverse_cancel | simplify_fixtures/intramap_inverse_cancel.map | simplify_fixtures/intramap_inverse_cancel.simp |
@@ -1296,7 +1296,7 @@ Replace it with:
 - [ ] **Step 2: Run the regression**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -10
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -10
 ```
 
 Expected:
@@ -1313,7 +1313,7 @@ Simplify regression: 246 passed, 0 skipped,
 ```bash
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
-git add crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt
+git add crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt
 git commit -m "$(cat <<'EOF'
 test(simplify): comment out intramap_inverse_cancel until IntraMap is ported
 
@@ -1337,7 +1337,7 @@ EOF
 - [ ] **Step 1: Full simplify regression — all green**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -5
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -5
 ```
 
 Expected:
@@ -1349,10 +1349,10 @@ Simplify regression: 246 passed, 0 skipped,
 test result: ok. 1 passed; 0 failed; ...
 ```
 
-- [ ] **Step 2: Full ast-core test suite — no regressions**
+- [ ] **Step 2: Full starlink-ast test suite — no regressions**
 
 ```bash
-cargo test -p ast-core 2>&1 | tail -10
+cargo test -p starlink-ast 2>&1 | tail -10
 ```
 
 Expected: all PASS.

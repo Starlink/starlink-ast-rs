@@ -14,17 +14,17 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/tests/test_wcsconv.rs` | Data-driven test harness with one test per manifest entry |
-| `crates/ast-core/tests/fixtures/wcsconv/wcsconv_tests.txt` | Test manifest (copied from reference) |
-| `crates/ast-core/tests/fixtures/wcsconv/inputs/` | Input files (.head, .ast, .fits-*) |
-| `crates/ast-core/tests/fixtures/wcsconv/expected/` | Expected output files |
+| `crates/starlink-ast/tests/test_wcsconv.rs` | Data-driven test harness with one test per manifest entry |
+| `crates/starlink-ast/tests/fixtures/wcsconv/wcsconv_tests.txt` | Test manifest (copied from reference) |
+| `crates/starlink-ast/tests/fixtures/wcsconv/inputs/` | Input files (.head, .ast, .fits-*) |
+| `crates/starlink-ast/tests/fixtures/wcsconv/expected/` | Expected output files |
 
 ---
 
 ### Task 1: Copy Test Fixtures
 
 **Files:**
-- Create: `crates/ast-core/tests/fixtures/wcsconv/` directory structure
+- Create: `crates/starlink-ast/tests/fixtures/wcsconv/` directory structure
 - Copy: manifest + all referenced input and expected files
 
 The manifest references ~192 unique input files and ~192 expected output files. Many inputs are shared across tests (e.g., `timj.ast` is used 5 times with different output encodings).
@@ -32,10 +32,10 @@ The manifest references ~192 unique input files and ~192 expected output files. 
 - [ ] **Step 1: Create directory structure and copy manifest**
 
 ```bash
-mkdir -p crates/ast-core/tests/fixtures/wcsconv/inputs
-mkdir -p crates/ast-core/tests/fixtures/wcsconv/expected
+mkdir -p crates/starlink-ast/tests/fixtures/wcsconv/inputs
+mkdir -p crates/starlink-ast/tests/fixtures/wcsconv/expected
 cp reference/starlink-ast/ast_tester/wcsconv_tests.txt \
-   crates/ast-core/tests/fixtures/wcsconv/
+   crates/starlink-ast/tests/fixtures/wcsconv/
 ```
 
 - [ ] **Step 2: Copy all input files referenced in the manifest**
@@ -47,7 +47,7 @@ grep -v "^#" reference/starlink-ast/ast_tester/wcsconv_tests.txt | \
   grep -v "^$" | cut -d'|' -f2 | tr -d ' ' | sort -u | \
   while read f; do
     cp "reference/starlink-ast/ast_tester/$f" \
-       "crates/ast-core/tests/fixtures/wcsconv/inputs/" 2>/dev/null || true
+       "crates/starlink-ast/tests/fixtures/wcsconv/inputs/" 2>/dev/null || true
   done
 ```
 
@@ -60,15 +60,15 @@ grep -v "^#" reference/starlink-ast/ast_tester/wcsconv_tests.txt | \
   grep -v "^$" | cut -d'|' -f3 | tr -d ' ' | sort -u | \
   while read f; do
     cp "reference/starlink-ast/ast_tester/$f" \
-       "crates/ast-core/tests/fixtures/wcsconv/expected/" 2>/dev/null || true
+       "crates/starlink-ast/tests/fixtures/wcsconv/expected/" 2>/dev/null || true
   done
 ```
 
 - [ ] **Step 4: Verify file counts**
 
 ```bash
-ls crates/ast-core/tests/fixtures/wcsconv/inputs/ | wc -l
-ls crates/ast-core/tests/fixtures/wcsconv/expected/ | wc -l
+ls crates/starlink-ast/tests/fixtures/wcsconv/inputs/ | wc -l
+ls crates/starlink-ast/tests/fixtures/wcsconv/expected/ | wc -l
 ```
 
 Expected: ~180+ input files, ~180+ expected files.
@@ -80,7 +80,7 @@ Expected: ~180+ input files, ~180+ expected files.
 ### Task 2: Manifest Parser
 
 **Files:**
-- Create: `crates/ast-core/tests/test_wcsconv.rs`
+- Create: `crates/starlink-ast/tests/test_wcsconv.rs`
 
 Parse the pipe-delimited manifest into test case structs.
 
@@ -95,8 +95,8 @@ Parse the pipe-delimited manifest into test case structs.
 
 use std::path::PathBuf;
 
-use ast_core::channel::Channel;
-use ast_core::fitschan::{Encoding, FitsChan};
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::{Encoding, FitsChan};
 
 /// A single test case from the manifest.
 #[derive(Debug, Clone)]
@@ -331,7 +331,7 @@ fn wcsconv_regression_suite() {
 
 - [ ] **Step 4: Verify it compiles and runs**
 
-Run: `cargo test -p ast-core --test test_wcsconv -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_wcsconv -- --nocapture`
 Expected: compiles, runs the harness. Some tests may fail if encoding support is incomplete, but it should not panic on infrastructure issues.
 
 - [ ] **Step 5: Commit**
@@ -341,7 +341,7 @@ Expected: compiles, runs the harness. Some tests may fail if encoding support is
 ### Task 3: Improve Harness — String Comparison Mode
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_wcsconv.rs`
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs`
 
 Add string-exact comparison for the 85 cases that require it.
 
@@ -372,7 +372,7 @@ Better approach: add a `pub fn to_header(&self) -> String` method to FitsChan th
 
 - [ ] **Step 2: Add to_header() method to FitsChan**
 
-Add to `crates/ast-core/src/fitschan/mod.rs` in the FitsChan impl block:
+Add to `crates/starlink-ast/src/fitschan/mod.rs` in the FitsChan impl block:
 
 ```rust
     /// Format all stored cards as a FITS header string.
@@ -433,7 +433,7 @@ Update `run_test_case` to compare output against expected when `!case.skip_strin
 
 - [ ] **Step 4: Run and check results**
 
-Run: `cargo test -p ast-core --test test_wcsconv -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_wcsconv -- --nocapture`
 Expected: passes for supported cases, reports failures for unsupported ones.
 
 - [ ] **Step 5: Commit**
@@ -443,15 +443,15 @@ Expected: passes for supported cases, reports failures for unsupported ones.
 ### Task 4: Transform Equivalence Comparison
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_wcsconv.rs`
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs`
 
 For cases with `skip_string_compare=yes`, verify that reading the output back produces a FrameSet whose transforms agree with the original.
 
 - [ ] **Step 1: Add transform comparison**
 
 ```rust
-use ast_core::coords::PointSet;
-use ast_core::AnyObject;
+use starlink_ast::coords::PointSet;
+use starlink_ast::AnyObject;
 
 /// Compare two FrameSets by checking that their transforms agree at sample points.
 fn transforms_agree(obj1: &AnyObject, obj2: &AnyObject, tol: f64) -> Result<(), String> {
@@ -532,7 +532,7 @@ After the write succeeds, read the output back and compare transforms:
 
 - [ ] **Step 3: Run and assess**
 
-Run: `cargo test -p ast-core --test test_wcsconv -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_wcsconv -- --nocapture`
 
 - [ ] **Step 4: Commit**
 
@@ -541,7 +541,7 @@ Run: `cargo test -p ast-core --test test_wcsconv -- --nocapture`
 ### Task 5: Handle Native Input (.ast files)
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_wcsconv.rs`
+- Modify: `crates/starlink-ast/tests/test_wcsconv.rs`
 
 The 14 `.ast` input files contain AST Native text format (not wrapped in COMMENT cards). The FitsChan reader expects Native text in COMMENT cards. For `.ast` inputs, we need to either:
 - Wrap the text in COMMENT cards and read via FitsChan(Native), or
@@ -552,7 +552,7 @@ The 14 `.ast` input files contain AST Native text format (not wrapped in COMMENT
 ```rust
 /// Load an AST object from a .ast file (native text format, not in COMMENT cards).
 fn load_from_ast_file(text: &str) -> Result<AnyObject, String> {
-    use ast_core::serial;
+    use starlink_ast::serial;
 
     let node = serial::native_read::parse_native(text)
         .map_err(|e| format!("parse_native failed: {e}"))?;
@@ -605,15 +605,15 @@ fn encoding_from_str(s: &str) -> Option<Encoding> {
 ### Task 6: Expose native_read/native_write for tests
 
 **Files:**
-- Modify: `crates/ast-core/src/serial/mod.rs` (if needed — check visibility)
+- Modify: `crates/starlink-ast/src/serial/mod.rs` (if needed — check visibility)
 
 The `serial::native_read::parse_native` and `serial::any_object_from_node` functions need to be accessible from integration tests. Check if they're already public.
 
 - [ ] **Step 1: Verify visibility**
 
-Check if `ast_core::serial::native_read::parse_native` and `ast_core::serial::any_object_from_node` are accessible from integration tests (they should be if `serial` module is `pub`).
+Check if `starlink_ast::serial::native_read::parse_native` and `starlink_ast::serial::any_object_from_node` are accessible from integration tests (they should be if `serial` module is `pub`).
 
-Run: `cargo build -p ast-core --test test_wcsconv`
+Run: `cargo build -p starlink-ast --test test_wcsconv`
 
 If it fails with visibility errors, add `pub use` re-exports as needed.
 
@@ -625,18 +625,18 @@ If it fails with visibility errors, add `pub use` re-exports as needed.
 
 - [ ] **Step 1: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all existing tests pass; wcsconv harness runs
 
 - [ ] **Step 2: Run wcsconv specifically and report pass rate**
 
-Run: `cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | tail -20`
+Run: `cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | tail -20`
 
 Report: X passed, Y failed, Z skipped. This establishes the baseline. Failures are expected for cases requiring features not yet implemented (e.g., complex FrameSets with 4+ frames, PolyMap SIP round-trips, -TAB, etc.)
 
 - [ ] **Step 3: Clippy and fmt**
 
-Run: `cargo clippy -p ast-core -- -D warnings && cargo fmt --check -p ast-core`
+Run: `cargo clippy -p starlink-ast -- -D warnings && cargo fmt --check -p starlink-ast`
 
 - [ ] **Step 4: Commit**
 
@@ -645,7 +645,7 @@ Run: `cargo clippy -p ast-core -- -D warnings && cargo fmt --check -p ast-core`
 ## Verification Checklist
 
 1. `cargo build --workspace` — compiles
-2. `cargo test -p ast-core` — all tests pass (harness runs without panicking)
+2. `cargo test -p starlink-ast` — all tests pass (harness runs without panicking)
 3. Manifest parser correctly reads all 192 test cases
 4. `.head` inputs are read via FitsChan with appropriate encoding
 5. `.ast` inputs are read via native parser directly

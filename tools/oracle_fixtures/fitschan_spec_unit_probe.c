@@ -8,9 +8,9 @@
  * spectral axis, and writes it to a FitsChan holding the given NAXIS cards.
  * For each: the value astWrite returns and the cards written.
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_spec_unit_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_spec_unit_oracle/cases.rs:
  *
- *   ./fitschan_spec_unit_probe > ../../crates/ast-core/tests/fitschan_spec_unit_oracle/cases.rs
+ *   ./fitschan_spec_unit_probe > ../../crates/starlink-ast/tests/fitschan_spec_unit_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

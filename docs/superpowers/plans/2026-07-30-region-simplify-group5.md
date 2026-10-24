@@ -108,7 +108,7 @@ current result.
 
 ### A verification
 ```
-cargo test -p ast-core --test test_simplify_regression simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
 ```
 Expect `cap_slamap_02`, `cap_interval_01`, `cap_pointlist_02` to drop off the
 `equal()` failure list, `cap_pointlist_01` (and all other region fixtures) still
@@ -145,7 +145,7 @@ All required primitives exist: `overlap` (per class), `is_bounded`
 
 ### B verification
 ```
-cargo test -p ast-core --test test_simplify_regression simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
+cargo test -p starlink-ast --test test_simplify_regression simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
 ```
 Expect `cap_slamap_07` to drop off; 0 `equal()` failures overall.
 
@@ -153,17 +153,17 @@ Expect `cap_slamap_07` to drop off; 0 `equal()` failures overall.
 
 ## Files to modify
 
-- `crates/ast-core/src/regions/mod.rs` — add `reg_base_pick_axes` + region
+- `crates/starlink-ast/src/regions/mod.rs` — add `reg_base_pick_axes` + region
   `pick_axes` to the `Region` trait (default `None`); `reg_overlay` helper.
-- `crates/ast-core/src/regions/box_region.rs` — `reg_base_pick_axes`;
+- `crates/starlink-ast/src/regions/box_region.rs` — `reg_base_pick_axes`;
   `convert_to_prism`; wire into `simplified`.
-- `crates/ast-core/src/regions/interval.rs`,
-  `crates/ast-core/src/regions/pointlist.rs`,
-  `crates/ast-core/src/regions/nullregion.rs` — `reg_base_pick_axes` overrides.
-- `crates/ast-core/src/regions/prism.rs` — real `simplified` (A1).
-- `crates/ast-core/src/regions/cmpregion.rs` — real `simplified` (B).
-- `crates/ast-core/src/regions/data.rs` — shared helpers if warranted.
-- Possibly `crates/ast-core/src/regions/circle.rs` / `ellipse.rs` / `polygon.rs`
+- `crates/starlink-ast/src/regions/interval.rs`,
+  `crates/starlink-ast/src/regions/pointlist.rs`,
+  `crates/starlink-ast/src/regions/nullregion.rs` — `reg_base_pick_axes` overrides.
+- `crates/starlink-ast/src/regions/prism.rs` — real `simplified` (A1).
+- `crates/starlink-ast/src/regions/cmpregion.rs` — real `simplified` (B).
+- `crates/starlink-ast/src/regions/data.rs` — shared helpers if warranted.
+- Possibly `crates/starlink-ast/src/regions/circle.rs` / `ellipse.rs` / `polygon.rs`
   only if the default trait method needs an explicit `None` override.
 
 No `.rs` file carries a C-style prologue history block; the vendored C in
@@ -183,14 +183,14 @@ No `.rs` file carries a C-style prologue history block; the vendored C in
 ## Full regression gate (run after each sub-project commit)
 
 ```
-cargo test -p ast-core --test test_simplify_regression simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
-cargo test -p ast-core --test test_serialisation 2>&1 | grep -iE "byte-exact|test result"
-cargo test -p ast-core --lib 2>&1 | grep "test result"
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
-cargo test -p ast-core --test test_frameset 2>&1 | grep "test result"
-cargo test -p ast-core --test test_regions 2>&1 | grep "test result"
-CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy cargo clippy -p ast-core --lib 2>&1 | grep -E "warning|error"   # must be empty
-cargo fmt -p ast-core
+cargo test -p starlink-ast --test test_simplify_regression simplify_regression -- --nocapture 2>&1 | grep "Simplify regression:"
+cargo test -p starlink-ast --test test_serialisation 2>&1 | grep -iE "byte-exact|test result"
+cargo test -p starlink-ast --lib 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_frameset 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_regions 2>&1 | grep "test result"
+CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy cargo clippy -p starlink-ast --lib 2>&1 | grep -E "warning|error"   # must be empty
+cargo fmt -p starlink-ast
 ```
 
 Success criteria:

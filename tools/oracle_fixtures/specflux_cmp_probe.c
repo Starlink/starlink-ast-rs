@@ -3,9 +3,9 @@
  * SpecFluxFrame, and matching a SpecFluxFrame template against a CmpFrame
  * of a SpecFrame and a FluxFrame.
  *
- * Prints Rust source for crates/ast-core/tests/specflux_cmp_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/specflux_cmp_oracle/cases.rs:
  *
- *   ./specflux_cmp_probe > ../../crates/ast-core/tests/specflux_cmp_oracle/cases.rs
+ *   ./specflux_cmp_probe > ../../crates/starlink-ast/tests/specflux_cmp_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

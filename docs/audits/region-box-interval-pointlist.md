@@ -3,8 +3,8 @@
 Scope: the "sliceable geometry" region classes that support `RegBasePick`.
 
 - C reference: `reference/starlink-ast/src/{box,interval,pointlist}.c`
-- Rust: `crates/ast-core/src/regions/{box_region,interval,pointlist}.rs`
-- Shared Rust infrastructure: `crates/ast-core/src/regions/{data,overlap,merge_util}.rs`
+- Rust: `crates/starlink-ast/src/regions/{box_region,interval,pointlist}.rs`
+- Shared Rust infrastructure: `crates/starlink-ast/src/regions/{data,overlap,merge_util}.rs`
 
 Status legend: **PORTED** (faithful) | **STUB** | **HEURISTIC** | **MISSING-BRANCH**
 (main path ported, sub-branches omitted) | **ABSENT**.

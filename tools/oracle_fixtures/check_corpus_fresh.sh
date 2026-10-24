@@ -27,4 +27,4 @@ if [ ! -x "$DEST/wcsconverter" ]; then
 fi
 
 exec python3 "$HERE/tools/oracle_fixtures/check_corpus_fresh.py" \
-   "$HERE/crates/ast-core/tests/fixtures" "$DEST/wcsconverter" "$DEST/work"
+   "$HERE/crates/starlink-ast/tests/fixtures" "$DEST/wcsconverter" "$DEST/work"

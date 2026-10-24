@@ -17,17 +17,17 @@ One entry is not here because part of it is still open, and it stays in
 
 The row as it stood when it was opened:
 
-| `NormUnit` — the one unported Frame attribute | its own spec, not yet written | OPEN — no `norm_unit` anywhere in `ast-core`, while all 15 Frame-level attributes and 9 of the 10 per-axis attributes are ported, so this is a bounded gap rather than an audit. C derives it from the Unit the Frame reports (`frame.c:13125 (fn GetNormUnit)`), with the normalize-or-return-unchanged policy in the internal `astNormUnit` (`unit.c:5936`) shared by `axis.c` and `frame.c`, and SkyAxis returning a sexagesimal description unchanged (`skyaxis.c:3095 (fn GetAxisNormUnit)`) because it describes axis values rather than being a unit expression. Upstream reworked all three in `89bf58e2`, `d4a55144` and `51ab0542`. **What would expose it**: a test asserting the documented relationship — `NormUnit` equals `Unit` when no simplification is possible and a simplification of it otherwise — across a default `Frame`, both `SkyFrame` axes, a `SpecFrame` and a `TimeFrame`. Asserting the individual strings instead is how the C defect survived eleven years, because the strings recorded what the library returned rather than what the attribute documents. Nothing fails on account of the gap today, which is why it is written down |
+| `NormUnit` — the one unported Frame attribute | its own spec, not yet written | OPEN — no `norm_unit` anywhere in `starlink-ast`, while all 15 Frame-level attributes and 9 of the 10 per-axis attributes are ported, so this is a bounded gap rather than an audit. C derives it from the Unit the Frame reports (`frame.c:13125 (fn GetNormUnit)`), with the normalize-or-return-unchanged policy in the internal `astNormUnit` (`unit.c:5936`) shared by `axis.c` and `frame.c`, and SkyAxis returning a sexagesimal description unchanged (`skyaxis.c:3095 (fn GetAxisNormUnit)`) because it describes axis values rather than being a unit expression. Upstream reworked all three in `89bf58e2`, `d4a55144` and `51ab0542`. **What would expose it**: a test asserting the documented relationship — `NormUnit` equals `Unit` when no simplification is possible and a simplification of it otherwise — across a default `Frame`, both `SkyFrame` axes, a `SpecFrame` and a `TimeFrame`. Asserting the individual strings instead is how the C defect survived eleven years, because the strings recorded what the library returned rather than what the attribute documents. Nothing fails on account of the gap today, which is why it is written down |
 
-Closed by `Frame::norm_unit` (`crates/ast-core/src/frames/mod.rs`), which
+Closed by `Frame::norm_unit` (`crates/starlink-ast/src/frames/mod.rs`), which
 normalizes the Unit the Frame reports, as `astGetNormUnit` (`frame.c:13149`)
 does since upstream `d4a55144`, and `SkyFrame::norm_unit`, which returns a Unit
 that describes the axis values unchanged, as `SkyAxis::GetAxisNormUnit`
 (`skyaxis.c:3095`) does since `51ab0542`.
 The normalizer itself was not in the port: `astUnitNormaliser`, the
-`mathmap = 2` style of `MakeExp` and `ModifyPrefix` are in `crates/ast-core/src/units/`.
+`mathmap = 2` style of `MakeExp` and `ModifyPrefix` are in `crates/starlink-ast/src/units/`.
 
-The test the row asked for is in `crates/ast-core/tests/test_frame.rs`: the
+The test the row asked for is in `crates/starlink-ast/tests/test_frame.rs`: the
 relationship across a default Frame, both SkyFrame axes, a SpecFrame and a
 TimeFrame, plus a table of 46 `(Unit, NormUnit)` pairs captured from the C
 library.
@@ -62,7 +62,7 @@ copied across byte-identical.
 | `EncodeFloat` justification fixed (`68bcb7db`) | Mirror removed |
 | Duplicate-keyword consumption (`6301311f`) | Mirror removed; the write-side sweep gained the matching rule so the newly-surviving MJD-OBS reaches the output |
 | `CDjjjiii` consumption (`fd92f9d2`) | Mirror removed |
-| Mapping immutability (`AST__IMMUT`) | Not applicable to `ast-core`; the work belongs to `ast-capi`. `testimmutable.c` is deferred with that reason |
+| Mapping immutability (`AST__IMMUT`) | Not applicable to `starlink-ast`; the work belongs to `starlink-ast-capi`. `testimmutable.c` is deferred with that reason |
 | Discard the simplified record on mutation (`6a4bc292`, `b2de3a33`) | Ported for the six classes with a settable attribute here; the other five have no `&mut self` setter, so the stale record cannot be constructed |
 | KeyMap dumps in key order (`890707a8`) | Already the port's design; now gated |
 | KeyMap: four mirrored defects (`6d114495`, `a76964c7`, `b7135abc`, `f444583f`, `d8edc072`) | All un-mirrored — see the commit and the quirk entries |
@@ -140,7 +140,7 @@ for anything else — from inside an `if let Some(..)` that guarded *both* the
 byte comparison and the `IsSimp` count check. Every fixture whose simplified
 result was a Region or a SwitchMap therefore skipped both, silently.
 
-Both now call `AnyObject::from_mapping`, one authority in `ast-core` that is
+Both now call `AnyObject::from_mapping`, one authority in `starlink-ast` that is
 the exact inverse of `AnyObject::as_mapping`, and an uncovered class is a
 counted failure in the harness and a panic in the region test. Never a skip.
 
@@ -269,7 +269,7 @@ and `cap_poly_bent_edges` — whose MathMap carries no `SimpFI` / `SimpIF` /
 `Seeded` card, so `TestSimpFI` is false and nothing is routed — is the control
 that keeps its card (§9.1).
 
-The direct half is gated by `crates/ast-core/tests/test_clear_on_set.rs`: a case
+The direct half is gated by `crates/starlink-ast/tests/test_clear_on_set.rs`: a case
 per setter, plus `record_survives_invert_and_back`, which pins an operation C
 does *not* cover (`mapping.h:424-437`) so the other assertions cannot pass on a
 port that never records anything, plus `load_discards_the_record_for_every_clear_on_set_class`,
@@ -380,7 +380,7 @@ as W3.
 All 37 checklists in `docs/audits/mapmerge/` are anchored against pin `3e60abaa`
 and declare `Citations: verified against pin 3e60abaa` and
 `Extension points: classified`.
-Six gates in `crates/ast-core/tests/test_audit_citations.rs` hold it: each
+Six gates in `crates/starlink-ast/tests/test_audit_citations.rs` hold it: each
 citation resolves to exactly one file, names the item it claims, every
 architecture row lands on a trait method, and every C step comment inside a cited
 body is covered by a row or named under `Uncited C steps:`.
@@ -955,7 +955,7 @@ would have been wrong in the other direction: C takes the bounded branch for
 `lbnd[i] == +DBL_MAX`.
 
 The gate is `an_axis_unbounded_above_gets_a_zero_width_default_uncertainty` in
-`crates/ast-core/tests/test_regions.rs`, which builds a one-axis `Interval` with
+`crates/starlink-ast/tests/test_regions.rs`, which builds a one-axis `Interval` with
 no upper limit, confirms `reg_base_box2` reports `+f64::MAX` for it, and asserts
 both default-uncertainty bounds are zero. Before the fix it measured a half-width
 of about 9e307; the guard is wrong on its own terms whether or not a Region using
@@ -1206,7 +1206,7 @@ the module comment records why the order is load-bearing.
 components and rebuild (`cmpframe.c:9018-9034`), `FrameSet` override it
 (`frameset.c:10111`) and every Region override it. The port had no Frame-level
 simplify at all: `FrameSet` was the only type under
-`crates/ast-core/src/frames/` implementing `Mapping`, so `CmpFrame` had nothing
+`crates/starlink-ast/src/frames/` implementing `Mapping`, so `CmpFrame` had nothing
 to override. `Frame::simplify_frame` (`frames/mod.rs:240`) is the port of the
 slot, with the `Option` convention `Mapping::simplified` uses — `None` is what C
 signals by handing back the pointer it was given, which is `normmap.c:626`'s
@@ -1391,7 +1391,7 @@ list after every strip (§10.3).
 
 What they would have got wrong: under a restricted simplify a UnitMap that does
 not carry `AllowSimplify` is never nominated, so C cannot strip it, while neither
-outer strip consulted the flag. Nothing in `ast-core` sets `RestrictedSimplify`
+outer strip consulted the flag. Nothing in `starlink-ast` sets `RestrictedSimplify`
 except reading a `ReSimp` card (`cmpmap.rs:1034`), and nothing sets
 `AllowSimplify` except reading an `AlSimp` card (`serial/mod.rs:160`), so that
 case had no fixture in either direction until the three restricted-mode pairs of
@@ -1715,7 +1715,7 @@ than by the reciprocal. Upstream fixed that in `3a4a2a7b` at AST 9.5.0, and the
 mirror was inverted with the sync — `pcd_swap_pair` now takes the reciprocal when
 the neighbor's list flag is set, gated by
 `pcdmap_swap_past_an_inverted_zoommap_preserves_the_transformation` in
-`crates/ast-core/tests/test_pcdmap.rs` and by the `pcd_inverted_zoom_swap`
+`crates/starlink-ast/tests/test_pcdmap.rs` and by the `pcd_inverted_zoom_swap`
 simplify fixture. `docs/issues/c-library-quirks.md` carries the history.
 
 ---

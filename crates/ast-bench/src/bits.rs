@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use ast_core::coords::PointSet;
+use starlink_ast::coords::PointSet;
 
 use crate::cases::Case;
 use crate::load::{Loaded, load_fixture};

@@ -9,7 +9,7 @@ Override `FrameSet::find_frame_template` to iterate over its internal frames in 
 
 **Relationship to `astConvert`:** In C, `astConvert(target, source)` and `astFindFrame(target, template)` share most of their machinery — both call into per-class `astMatch`/`astSubFrame` to build the conversion Mapping. The Rust port already has `Frame::convert(self, to)` (used as `astConvert`) but with a per-class implementation that bypasses the `Match`/`SubFrame` trampoline. After this port lands, both `astConvert` (Rust `convert`) and `astFindFrame` (Rust `find_frame_template`) should route through the same `match_template` / `sub_frame` plumbing — keeping them in lockstep with C semantics. This avoids the existing risk where `convert` and `find_frame_template` could disagree on what counts as a "match".
 
-**Tech Stack:** Pure Rust, using existing `Frame`, `FrameSet`, `Mapping`, `CmpMap`, `PermMap`, `UnitMap`, `SkyFrame`, `SpecFrame`, `CmpFrame`, `BasicFrame`, `FluxFrame` types in `crates/ast-core/src/frames/` and `crates/ast-core/src/mappings/`.
+**Tech Stack:** Pure Rust, using existing `Frame`, `FrameSet`, `Mapping`, `CmpMap`, `PermMap`, `UnitMap`, `SkyFrame`, `SpecFrame`, `CmpFrame`, `BasicFrame`, `FluxFrame` types in `crates/starlink-ast/src/frames/` and `crates/starlink-ast/src/mappings/`.
 
 ---
 
@@ -58,7 +58,7 @@ Tasks 1-2 add scaffolding (attributes + signatures) without breaking the existin
 
 ## Test strategy
 
-Each Match/SubFrame implementation gets focused unit tests under `crates/ast-core/src/frames/<class>.rs`'s `#[cfg(test)] mod tests`:
+Each Match/SubFrame implementation gets focused unit tests under `crates/starlink-ast/src/frames/<class>.rs`'s `#[cfg(test)] mod tests`:
 
 - BasicFrame: domain match, axis cardinality, MatchEnd permutation.
 - SkyFrame: `Permute=0` template against permuted target, system override, equinox override.
@@ -75,36 +75,36 @@ Each Match/SubFrame implementation gets focused unit tests under `crates/ast-cor
 - `astFindFrame(cf, sf)` failing (target=CmpFrame, template=SkyFrame): without setting the template's MaxAxes/MinAxes (errors 45-46), the cardinality check rejects the 3-axis target.
 - Domain-mismatch case at errors 51 (Frame{Domain=ARDAPP} target, SkyFrame{System=GAPPT} template).
 
-Port this test program to a Rust integration test (`crates/ast-core/tests/test_convert_findframe.rs`) early in the plan (Task 5) so each subsequent implementation can be validated against the canonical assertions.
+Port this test program to a Rust integration test (`crates/starlink-ast/tests/test_convert_findframe.rs`) early in the plan (Task 5) so each subsequent implementation can be validated against the canonical assertions.
 
 Integration tests:
-- `crates/ast-core/tests/test_convert_findframe.rs` (new): line-for-line port of `testconvert.c`'s 51 assertions.
-- `crates/ast-core/tests/test_find_frame.rs` (new): additional cases beyond `testconvert.c` for the FITS-CLASS use cases (find SpecFrame in a CmpFrame; find SkyFrame in a CmpFrame; find AZEL SkyFrame in a CmpFrame containing FK5 SkyFrame).
+- `crates/starlink-ast/tests/test_convert_findframe.rs` (new): line-for-line port of `testconvert.c`'s 51 assertions.
+- `crates/starlink-ast/tests/test_find_frame.rs` (new): additional cases beyond `testconvert.c` for the FITS-CLASS use cases (find SpecFrame in a CmpFrame; find SkyFrame in a CmpFrame; find AZEL SkyFrame in a CmpFrame containing FK5 SkyFrame).
 
 Regression tests:
-- `cargo test -p ast-core` — every existing test must still pass after each task. Lib tests currently 828 passing.
-- `cargo test -p ast-core --test test_wcsconv` — currently 173 passing. CLASS bucket (10 fixtures) lights up only after Task 11+.
+- `cargo test -p starlink-ast` — every existing test must still pass after each task. Lib tests currently 828 passing.
+- `cargo test -p starlink-ast --test test_wcsconv` — currently 173 passing. CLASS bucket (10 fixtures) lights up only after Task 11+.
 
 ## File structure
 
 Files to create:
 
-- `crates/ast-core/src/frames/find_frame.rs` — top-level `Frame::find_frame_template` default implementation, domain-list parser, helpers shared by per-class implementations.
+- `crates/starlink-ast/src/frames/find_frame.rs` — top-level `Frame::find_frame_template` default implementation, domain-list parser, helpers shared by per-class implementations.
 
 Files to modify:
 
-- `crates/ast-core/src/frames/mod.rs` — add `match_template`, `sub_frame`, `find_frame_template` to the `Frame` trait, with sensible defaults that delegate to `find_frame.rs`.
-- `crates/ast-core/src/frames/basic.rs` — add `match_template`, `sub_frame` impls.
-- `crates/ast-core/src/frames/skyframe.rs` — add `match_template`, `sub_frame` impls.
-- `crates/ast-core/src/frames/specframe.rs` — add `match_template`, `sub_frame` impls.
-- `crates/ast-core/src/frames/cmpframe.rs` — add `match_template`, `sub_frame` impls.
-- `crates/ast-core/src/frames/fluxframe.rs` — add `match_template`, `sub_frame` impls.
-- `crates/ast-core/src/frames/frameset.rs` — replace `find_frame` stub with the FrameSet override.
+- `crates/starlink-ast/src/frames/mod.rs` — add `match_template`, `sub_frame`, `find_frame_template` to the `Frame` trait, with sensible defaults that delegate to `find_frame.rs`.
+- `crates/starlink-ast/src/frames/basic.rs` — add `match_template`, `sub_frame` impls.
+- `crates/starlink-ast/src/frames/skyframe.rs` — add `match_template`, `sub_frame` impls.
+- `crates/starlink-ast/src/frames/specframe.rs` — add `match_template`, `sub_frame` impls.
+- `crates/starlink-ast/src/frames/cmpframe.rs` — add `match_template`, `sub_frame` impls.
+- `crates/starlink-ast/src/frames/fluxframe.rs` — add `match_template`, `sub_frame` impls.
+- `crates/starlink-ast/src/frames/frameset.rs` — replace `find_frame` stub with the FrameSet override.
 - Each Frame class: expose `MatchEnd`, `PreserveAxes`, `Permute`, `MinAxes`, `MaxAxes` if not already. (Most are already exposed for serialization.)
 
 Files NOT to modify in this plan:
 
-- Anything outside `crates/ast-core/src/frames/`. The CLASS encoder consumer comes in Task 11+ as a follow-up.
+- Anything outside `crates/starlink-ast/src/frames/`. The CLASS encoder consumer comes in Task 11+ as a follow-up.
 
 ---
 
@@ -115,17 +115,17 @@ C uses these five integer attributes (declared on the Frame base class) to contr
 Per-class overrides exist (e.g., SpecFrame defaults `Permute=0`).
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/basic.rs`
-- Modify: `crates/ast-core/src/frames/skyframe.rs`
-- Modify: `crates/ast-core/src/frames/specframe.rs`
-- Modify: `crates/ast-core/src/frames/cmpframe.rs`
-- Modify: `crates/ast-core/src/frames/fluxframe.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs` — add trait getter / setter signatures with defaults.
+- Modify: `crates/starlink-ast/src/frames/basic.rs`
+- Modify: `crates/starlink-ast/src/frames/skyframe.rs`
+- Modify: `crates/starlink-ast/src/frames/specframe.rs`
+- Modify: `crates/starlink-ast/src/frames/cmpframe.rs`
+- Modify: `crates/starlink-ast/src/frames/fluxframe.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs` — add trait getter / setter signatures with defaults.
 
 - [ ] **Step 1: Add Frame trait methods (with defaults)**
 
 ```rust
-// In crates/ast-core/src/frames/mod.rs, inside `pub trait Frame { ... }`.
+// In crates/starlink-ast/src/frames/mod.rs, inside `pub trait Frame { ... }`.
 
 /// Minimum acceptable target axis count when this Frame is used as
 /// a template. Default: `self.naxes()`.
@@ -199,7 +199,7 @@ Concretely:
 For each class:
 
 ```rust
-// Example for BasicFrame in crates/ast-core/src/frames/basic.rs.
+// Example for BasicFrame in crates/starlink-ast/src/frames/basic.rs.
 // Inside `pub struct BasicFrame { … }`:
     min_axes_opt: Option<usize>,
     max_axes_opt: Option<usize>,
@@ -225,8 +225,8 @@ Update `BasicFrame::new(...)` and any builders to default the new fields to `Non
 - [ ] **Step 3: Build & lib tests**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -10
-cargo test -p ast-core --lib 2>&1 | tail -3
+cargo build -p starlink-ast 2>&1 | tail -10
+cargo test -p starlink-ast --lib 2>&1 | tail -3
 ```
 
 Expected: 828 lib tests still passing. No new test logic — this task is plumbing.
@@ -234,7 +234,7 @@ Expected: 828 lib tests still passing. No new test logic — this task is plumbi
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/
+git add crates/starlink-ast/src/frames/
 git commit -m "frames: expose MinAxes/MaxAxes/MatchEnd/PreserveAxes/Permute attributes
 
 Adds the trait getters/setters required by the upcoming astMatch /
@@ -251,8 +251,8 @@ Co-Authored-By: SLAC AI"
 ### Task 2: `MatchResult` and `Frame` trait scaffolding
 
 **Files:**
-- Create: `crates/ast-core/src/frames/find_frame.rs`
-- Modify: `crates/ast-core/src/frames/mod.rs`
+- Create: `crates/starlink-ast/src/frames/find_frame.rs`
+- Modify: `crates/starlink-ast/src/frames/mod.rs`
 
 - [ ] **Step 1: Create `find_frame.rs` with the result struct**
 
@@ -300,7 +300,7 @@ pub(crate) type FindFrameResult = FrameSet;
 - [ ] **Step 2: Add Frame trait signatures**
 
 ```rust
-// Add to `pub trait Frame` in crates/ast-core/src/frames/mod.rs.
+// Add to `pub trait Frame` in crates/starlink-ast/src/frames/mod.rs.
 
 /// Match `target` against this template.
 ///
@@ -355,7 +355,7 @@ fn find_frame_template(
 }
 ```
 
-(Add `pub(crate) mod find_frame;` to `crates/ast-core/src/frames/mod.rs` near the existing module declarations.)
+(Add `pub(crate) mod find_frame;` to `crates/starlink-ast/src/frames/mod.rs` near the existing module declarations.)
 
 - [ ] **Step 3: Stub default impls returning `Ok(None)` for every concrete class so the crate compiles**
 
@@ -386,7 +386,7 @@ Apply to: BasicFrame, SkyFrame, SpecFrame, DsbSpecFrame, CmpFrame, FluxFrame, Sp
 - [ ] **Step 4: Add `default_find_frame` body in find_frame.rs**
 
 ```rust
-// In crates/ast-core/src/frames/find_frame.rs.
+// In crates/starlink-ast/src/frames/find_frame.rs.
 
 /// Default `find_frame_template` body — mirrors the public C
 /// `astFindFrame` (frame.c:3735) without the FrameSet override.
@@ -439,8 +439,8 @@ pub(crate) fn default_find_frame(
 - [ ] **Step 5: Build & lib tests**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -10
-cargo test -p ast-core --lib 2>&1 | tail -3
+cargo build -p starlink-ast 2>&1 | tail -10
+cargo test -p starlink-ast --lib 2>&1 | tail -3
 ```
 
 Expected: builds cleanly, 828 lib tests passing.
@@ -448,7 +448,7 @@ Expected: builds cleanly, 828 lib tests passing.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/frames/find_frame.rs crates/ast-core/src/frames/
+git add crates/starlink-ast/src/frames/find_frame.rs crates/starlink-ast/src/frames/
 git commit -m "frames: scaffold match_template / sub_frame / find_frame_template
 
 Adds the Frame trait surface for the upcoming astFindFrame port and
@@ -468,13 +468,13 @@ Co-Authored-By: SLAC AI"
 C's default `SubFrame` selects target axes via a `PermMap`, overlays template attributes via a copy + `astOverlay` call, and returns the (PermMap, result Frame) pair. The Rust port lives in `BasicFrame` because it's the no-frills fallback; CmpFrame and FrameSet have their own overrides (Tasks 8 and 10).
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/basic.rs` — replace stub `sub_frame` with full impl.
-- Modify: `crates/ast-core/src/frames/find_frame.rs` — add a `default_sub_frame` helper that the per-class impls reuse.
+- Modify: `crates/starlink-ast/src/frames/basic.rs` — replace stub `sub_frame` with full impl.
+- Modify: `crates/starlink-ast/src/frames/find_frame.rs` — add a `default_sub_frame` helper that the per-class impls reuse.
 
 - [ ] **Step 1: Write failing test for `BasicFrame::sub_frame`**
 
 ```rust
-// In crates/ast-core/src/frames/basic.rs, inside `mod tests`:
+// In crates/starlink-ast/src/frames/basic.rs, inside `mod tests`:
 
 #[test]
 fn sub_frame_select_2_of_3_axes() {
@@ -502,7 +502,7 @@ fn sub_frame_select_2_of_3_axes() {
 - [ ] **Step 2: Run test (FAIL — `sub_frame` is stubbed to Ok(None))**
 
 ```bash
-cargo test -p ast-core --lib basic::tests::sub_frame_select_2_of_3_axes
+cargo test -p starlink-ast --lib basic::tests::sub_frame_select_2_of_3_axes
 ```
 
 Expected: panic on `.unwrap().unwrap()` because the stub returns `Ok(None)`.
@@ -510,7 +510,7 @@ Expected: panic on `.unwrap().unwrap()` because the stub returns `Ok(None)`.
 - [ ] **Step 3: Implement `default_sub_frame` in find_frame.rs**
 
 ```rust
-// In crates/ast-core/src/frames/find_frame.rs.
+// In crates/starlink-ast/src/frames/find_frame.rs.
 
 use crate::mappings::{DynMapping, PermMap};
 
@@ -571,7 +571,7 @@ where
 - [ ] **Step 4: Add `pick_axes_snapshot` to the Frame trait**
 
 ```rust
-// In crates/ast-core/src/frames/mod.rs:
+// In crates/starlink-ast/src/frames/mod.rs:
 
 /// Snapshot this Frame, retaining only the axes listed in
 /// `target_axes`. `target_axes` entries of `-1` produce default axes
@@ -596,7 +596,7 @@ Override on each concrete class as the per-class `sub_frame` need arises.
 - [ ] **Step 5: Wire `BasicFrame::sub_frame` to call `default_sub_frame`**
 
 ```rust
-// In crates/ast-core/src/frames/basic.rs:
+// In crates/starlink-ast/src/frames/basic.rs:
 
 fn sub_frame(
     &self,
@@ -638,7 +638,7 @@ fn pick_axes_snapshot(&self, target_axes: &[i32]) -> AstResult<DynFrame> {
 - [ ] **Step 6: Run test — should pass now**
 
 ```bash
-cargo test -p ast-core --lib basic::tests::sub_frame_select_2_of_3_axes
+cargo test -p starlink-ast --lib basic::tests::sub_frame_select_2_of_3_axes
 ```
 
 Expected: PASS.
@@ -646,8 +646,8 @@ Expected: PASS.
 - [ ] **Step 7: Run full lib tests + commit**
 
 ```bash
-cargo test -p ast-core --lib 2>&1 | tail -3
-git add crates/ast-core/src/frames/basic.rs crates/ast-core/src/frames/find_frame.rs crates/ast-core/src/frames/mod.rs
+cargo test -p starlink-ast --lib 2>&1 | tail -3
+git add crates/starlink-ast/src/frames/basic.rs crates/starlink-ast/src/frames/find_frame.rs crates/starlink-ast/src/frames/mod.rs
 git commit -m "frames: port default Frame::SubFrame
 
 Mirrors frame.c:10838. Builds a PermMap selecting target axes and
@@ -667,13 +667,13 @@ Co-Authored-By: SLAC AI"
 The default `Match` checks axis-cardinality bounds, optionally checks Domain equality, then defers all axis-selection to `SubFrame`.
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/basic.rs` — replace stub `match_template` with full impl.
-- Modify: `crates/ast-core/src/frames/find_frame.rs` — add `default_match` helper.
+- Modify: `crates/starlink-ast/src/frames/basic.rs` — replace stub `match_template` with full impl.
+- Modify: `crates/starlink-ast/src/frames/find_frame.rs` — add `default_match` helper.
 
 - [ ] **Step 1: Write failing test**
 
 ```rust
-// In crates/ast-core/src/frames/basic.rs, inside `mod tests`:
+// In crates/starlink-ast/src/frames/basic.rs, inside `mod tests`:
 
 #[test]
 fn match_template_basic_2axes_2axes() {
@@ -707,7 +707,7 @@ fn match_template_basic_domain_mismatch() {
 - [ ] **Step 2: Run tests (FAIL)**
 
 ```bash
-cargo test -p ast-core --lib basic::tests::match_template
+cargo test -p starlink-ast --lib basic::tests::match_template
 ```
 
 Expected: all three fail (stub returns Ok(None)).
@@ -715,7 +715,7 @@ Expected: all three fail (stub returns Ok(None)).
 - [ ] **Step 3: Implement `default_match` in find_frame.rs**
 
 ```rust
-// Add to crates/ast-core/src/frames/find_frame.rs.
+// Add to crates/starlink-ast/src/frames/find_frame.rs.
 
 /// Default `match_template` body — mirrors C frame.c:7073.
 pub(crate) fn default_match(
@@ -795,9 +795,9 @@ fn match_template(
 - [ ] **Step 5: Run tests + commit**
 
 ```bash
-cargo test -p ast-core --lib basic::tests::match_template
-cargo test -p ast-core --lib 2>&1 | tail -3
-git add crates/ast-core/src/frames/basic.rs crates/ast-core/src/frames/find_frame.rs
+cargo test -p starlink-ast --lib basic::tests::match_template
+cargo test -p starlink-ast --lib 2>&1 | tail -3
+git add crates/starlink-ast/src/frames/basic.rs crates/starlink-ast/src/frames/find_frame.rs
 git commit -m "frames: port default Frame::Match
 
 Mirrors frame.c:7073: axis-cardinality + Domain check, then defers
@@ -813,15 +813,15 @@ Co-Authored-By: SLAC AI"
 ### Task 5: Top-level `find_frame_template` and integration test
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/find_frame.rs` — done in Task 2; verify default_find_frame works end-to-end.
-- Create: `crates/ast-core/tests/test_find_frame.rs`
+- Modify: `crates/starlink-ast/src/frames/find_frame.rs` — done in Task 2; verify default_find_frame works end-to-end.
+- Create: `crates/starlink-ast/tests/test_find_frame.rs`
 
 - [ ] **Step 1: Write integration test**
 
 ```rust
 //! astFindFrame end-to-end tests.
 
-use ast_core::frames::{BasicFrame, Frame};
+use starlink_ast::frames::{BasicFrame, Frame};
 
 #[test]
 fn find_frame_basic_self() {
@@ -880,7 +880,7 @@ fn find_frame_basic_domain_list_miss() {
 - [ ] **Step 2: Run tests**
 
 ```bash
-cargo test -p ast-core --test test_find_frame
+cargo test -p starlink-ast --test test_find_frame
 ```
 
 Expected: all PASS.
@@ -888,7 +888,7 @@ Expected: all PASS.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_find_frame.rs
+git add crates/starlink-ast/tests/test_find_frame.rs
 git commit -m "tests: add astFindFrame integration tests for BasicFrame
 
 Generated with AI
@@ -903,7 +903,7 @@ Co-Authored-By: SLAC AI"
 `reference/starlink-ast/ast_tester/testconvert.c` (237 lines, 51 numbered assertions) is the C library's canonical `astConvert` / `astFindFrame` test. Port it line-for-line to a Rust integration test so each downstream task validates against the same assertions.
 
 **Files:**
-- Create: `crates/ast-core/tests/test_convert_findframe.rs`
+- Create: `crates/starlink-ast/tests/test_convert_findframe.rs`
 
 - [ ] **Step 1: Write the integration test (template)**
 
@@ -913,7 +913,7 @@ Co-Authored-By: SLAC AI"
 //! 51 numbered assertions against `astConvert` and `astFindFrame`
 //! covering BasicFrame, SkyFrame, SpecFrame, and CmpFrame combinations.
 
-use ast_core::frames::{BasicFrame, CmpFrame, Frame, FrameRef, SkyFrame, SpecFrame, SkySystem};
+use starlink_ast::frames::{BasicFrame, CmpFrame, Frame, FrameRef, SkyFrame, SpecFrame, SkySystem};
 
 #[test]
 fn convert_findframe_full_suite() {
@@ -956,7 +956,7 @@ fn convert_findframe_full_suite() {
 - [ ] **Step 2: Run the test**
 
 ```bash
-cargo test -p ast-core --test test_convert_findframe
+cargo test -p starlink-ast --test test_convert_findframe
 ```
 
 Expected: at this point, many assertions will FAIL because Tasks 6-10 haven't landed. The test serves as a moving target: each Task 6+ commit should reduce the failure count.
@@ -964,7 +964,7 @@ Expected: at this point, many assertions will FAIL because Tasks 6-10 haven't la
 - [ ] **Step 3: Commit (with `#[ignore]` initially if it makes CI noisy)**
 
 ```bash
-git add crates/ast-core/tests/test_convert_findframe.rs
+git add crates/starlink-ast/tests/test_convert_findframe.rs
 git commit -m "tests: port ast_tester/testconvert.c (51 assertions, partial)
 
 Initial port — many assertions fail until astFindFrame / astSubFrame
@@ -989,12 +989,12 @@ C `SkyFrame::Match` (skyframe.c:6604) is significantly more involved than the de
 The `convert` infrastructure already exists — we just route SkyFrame::SubFrame through it.
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/skyframe.rs`
+- Modify: `crates/starlink-ast/src/frames/skyframe.rs`
 
 - [ ] **Step 1: Write failing test**
 
 ```rust
-// In crates/ast-core/src/frames/skyframe.rs, inside `mod tests`:
+// In crates/starlink-ast/src/frames/skyframe.rs, inside `mod tests`:
 
 #[test]
 fn match_template_skyframe_fk5_target_is_galactic() {
@@ -1024,13 +1024,13 @@ fn match_template_skyframe_against_basicframe_fails() {
 - [ ] **Step 2: Run tests (FAIL — stub returns Ok(None))**
 
 ```bash
-cargo test -p ast-core --lib skyframe::tests::match_template
+cargo test -p starlink-ast --lib skyframe::tests::match_template
 ```
 
 - [ ] **Step 3: Implement `SkyFrame::match_template` and `sub_frame`**
 
 ```rust
-// In crates/ast-core/src/frames/skyframe.rs, replace the stub impls:
+// In crates/starlink-ast/src/frames/skyframe.rs, replace the stub impls:
 
 fn match_template(
     &self,
@@ -1149,9 +1149,9 @@ The helper `overlay_sky_attributes`, `cmp_frame_match_with_sky_template`, `compo
 - [ ] **Step 4: Run tests + commit**
 
 ```bash
-cargo test -p ast-core --lib skyframe::tests::match_template
-cargo test -p ast-core --lib 2>&1 | tail -3
-git add crates/ast-core/src/frames/skyframe.rs crates/ast-core/src/frames/find_frame.rs
+cargo test -p starlink-ast --lib skyframe::tests::match_template
+cargo test -p starlink-ast --lib 2>&1 | tail -3
+git add crates/starlink-ast/src/frames/skyframe.rs crates/starlink-ast/src/frames/find_frame.rs
 git commit -m "frames: port SkyFrame::Match and SubFrame
 
 Mirrors skyframe.c:6604 (Match) and skyframe.c:9869 (SubFrame).
@@ -1169,7 +1169,7 @@ Co-Authored-By: SLAC AI"
 Same shape as SkyFrame, but for spectral systems. C source: specframe.c:2998 (Match), specframe.c:4705 (SubFrame). The existing Rust `SpecFrame::convert` already handles the spectral conversion via SpecMap chains; route SubFrame through it.
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/specframe.rs`
+- Modify: `crates/starlink-ast/src/frames/specframe.rs`
 
 - [ ] **Step 1-4: Same TDD shape as Task 6, with test fixtures using SpecFrame templates and targets in different rest-frames.**
 
@@ -1188,7 +1188,7 @@ C `CmpFrame::SubFrame` (cmpframe.c:9184) has two flavours:
 - Template is non-CmpFrame: identify which component the template applies to, recurse on that component, and graft a PermMap into the full CmpFrame axis space.
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/cmpframe.rs`
+- Modify: `crates/starlink-ast/src/frames/cmpframe.rs`
 
 - [ ] **Step 1: Write failing test**
 
@@ -1261,7 +1261,7 @@ TimeFrame is a 1-axis class. C: timeframe.c.
 C `FrameSet::FindFrame` (frameset.c:3790) is the integration point. It iterates the FrameSet's internal frames in priority order (current → base → others), calls `Frame::find_frame_template` on each, and prefixes the FrameSet's base→frame Mapping when a match is found.
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/frameset.rs`
+- Modify: `crates/starlink-ast/src/frames/frameset.rs`
 
 - [ ] **Step 1: Write failing test**
 
@@ -1348,9 +1348,9 @@ pub fn find_frame(
 - [ ] **Step 3: Run tests + commit**
 
 ```bash
-cargo test -p ast-core --lib frameset::tests::find_frame
-cargo test -p ast-core --test test_find_frame
-git add crates/ast-core/src/frames/frameset.rs
+cargo test -p starlink-ast --lib frameset::tests::find_frame
+cargo test -p starlink-ast --test test_find_frame
+git add crates/starlink-ast/src/frames/frameset.rs
 git commit -m "frames: implement FrameSet::find_frame override
 
 Mirrors frameset.c:3790. Iterates internal frames in current→base→
@@ -1368,9 +1368,9 @@ Co-Authored-By: SLAC AI"
 With the infrastructure in place, the CLASS encoder can now follow C `CLASSFromStore` line-for-line for the SpecFrame/SkyFrame conversions.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write/mod.rs` — add a `encode_class` entry point that takes the FrameSet directly.
-- Modify: `crates/ast-core/src/fitschan/enc_class.rs` — replace `write_to_cards` with a CLASS-aware version.
-- Modify: `crates/ast-core/src/fitschan/mod.rs` — switch the FitsClass dispatch to `encode_class`.
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write/mod.rs` — add a `encode_class` entry point that takes the FrameSet directly.
+- Modify: `crates/starlink-ast/src/fitschan/enc_class.rs` — replace `write_to_cards` with a CLASS-aware version.
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs` — switch the FitsClass dispatch to `encode_class`.
 
 - [ ] **Step 1: Add `encode_class` in wcs_write/mod.rs**
 
@@ -1468,14 +1468,14 @@ Each numbered step lands as a sub-step with its own focused test against an appr
 - [ ] **Step 4: Run wcsconv suite + commit**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- class --nocapture 2>&1 | tail -30
-cargo test -p ast-core 2>&1 | tail -5
+cargo test -p starlink-ast --test test_wcsconv -- class --nocapture 2>&1 | tail -30
+cargo test -p starlink-ast 2>&1 | tail -5
 ```
 
 Expected: at least the simpler CLASS fixtures pass (`class-sfl`, `class-ait`, `class-arc`, `class-gal`, `class-sin`, `class-write`, `class-olddate`); skyspec3d / jan_class may need additional follow-up.
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_class.rs crates/ast-core/src/fitschan/wcs_write/mod.rs crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/enc_class.rs crates/starlink-ast/src/fitschan/wcs_write/mod.rs crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "fitschan: port CLASSFromStore using astFindFrame infrastructure
 
 Replaces the placeholder enc_class write path with a line-for-line
@@ -1506,7 +1506,7 @@ The fixtures `skyspec3d_class_fits_class`, `jan_fits_class_ast`, `jan_fits_class
 `Region` (region.c) overrides `Match` and `SubFrame` to delegate to its encapsulated Frame plus its bounding contour. The overrides are needed for any AST consumer that treats a Region as a Frame for matching purposes (e.g., aligning two NDFs whose WCS frames are Regions).
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/mod.rs` (or wherever the Region trait/struct lives in the port).
+- Modify: `crates/starlink-ast/src/regions/mod.rs` (or wherever the Region trait/struct lives in the port).
 
 - [ ] **Step 1: Find the existing Region trait surface in Rust.**
 - [ ] **Step 2: Add `match_template`, `sub_frame`, `find_frame_template` overrides mirroring region.c.**

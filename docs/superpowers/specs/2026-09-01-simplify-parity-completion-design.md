@@ -28,7 +28,7 @@ At completion:
 
 - `SERIAL_UNGATED`, `NO_ISSIMP_CARD_UNGATED` and `ISSIMP_DISAGREEMENTS` are all empty.
 - The four `skip_string_compare` opt-outs in `simplify_tests.txt` are gone, so all 468 fixtures byte-compare.
-- Both entries in `crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt` are gone.
+- Both entries in `crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt` are gone.
 - Every audit row cites a line that exists at HEAD and carries an explicit granularity verdict.
 - The verification-posture ledger holds no non-zero relaxation other than the two approved exclusions.
 - `PLAN.md` sections 9.1, 9.2, 9.5, 9.6 and 10.3 close.
@@ -231,7 +231,7 @@ The port already mirrors the override, at `mappings/mod.rs:666` with `false` on 
 
 ### 5.1 The ledger is the ratchet
 
-`crates/ast-core/tests/test_verification_ledger.rs` already records every relaxation in the crate as `(test file, const name, count, reason)` and asserts two things: each relaxation is exactly the size the table says, and no relaxation exists outside the table.
+`crates/starlink-ast/tests/test_verification_ledger.rs` already records every relaxation in the crate as `(test file, const name, count, reason)` and asserts two things: each relaxation is exactly the size the table says, and no relaxation exists outside the table.
 Because the first assertion tests equality rather than an upper bound, a fix that lands without lowering its number fails the build, so a partial fix cannot pass quietly.
 No new instrument is needed; progress is those numbers falling.
 
@@ -273,7 +273,7 @@ Whatever a comparator normalizes becomes unfalsifiable, so any relaxation that s
 
 ### 6.1 One command decides it
 
-`cargo test -p ast-core` with all nine simplify-relevant binaries green — `test_simplify_regression`, `test_simplify_seams`, `test_regions`, `test_mapmerge_audit`, `test_verification_ledger`, `test_transform_oracle`, `test_serialisation`, `test_wcsconv`, `test_deferred_fixtures` — together with `cargo fmt --all -- --check` and `cargo clippy --workspace -- -D warnings`.
+`cargo test -p starlink-ast` with all nine simplify-relevant binaries green — `test_simplify_regression`, `test_simplify_seams`, `test_regions`, `test_mapmerge_audit`, `test_verification_ledger`, `test_transform_oracle`, `test_serialisation`, `test_wcsconv`, `test_deferred_fixtures` — together with `cargo fmt --all -- --check` and `cargo clippy --workspace -- -D warnings`.
 Nothing is reported done on a narrower run.
 
 ### 6.2 The ledger's final state
@@ -313,7 +313,7 @@ These are what catch a false pass, and neither is optional.
 ### 6.5 Performance is measured, not assumed
 
 Clusters 2 and 3 touch transform paths — the WinMap merge, the MatrixMap inverse, and the Region mesh — and there is no automated performance gate.
-`cargo run --release --example bench_per_class -p ast-core` runs against `docs/issues/mapping-perf-vs-c-oracle.md`, and the result is reported whichever way it goes.
+`cargo run --release --example bench_per_class -p starlink-ast` runs against `docs/issues/mapping-perf-vs-c-oracle.md`, and the result is reported whichever way it goes.
 
 ### 6.6 What done reports
 

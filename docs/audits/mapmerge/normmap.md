@@ -1,7 +1,7 @@
 # `MapMerge` audit — NormMap
 
 C source: reference/starlink-ast/src/normmap.c
-Rust: crates/ast-core/src/mappings/normmap.rs
+Rust: crates/starlink-ast/src/mappings/normmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
 Citations: verified against pin 3b9dc639
 Extension points: classified

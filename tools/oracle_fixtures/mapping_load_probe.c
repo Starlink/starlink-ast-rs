@@ -7,9 +7,9 @@
  * Each case is the dump read, the dump of what astRead makes of it, and the
  * forward transformation of some points by it.
  *
- * Prints Rust source for crates/ast-core/tests/mapping_load_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/mapping_load_oracle/cases.rs:
  *
- *   ./mapping_load_probe > ../../crates/ast-core/tests/mapping_load_oracle/cases.rs
+ *   ./mapping_load_probe > ../../crates/starlink-ast/tests/mapping_load_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

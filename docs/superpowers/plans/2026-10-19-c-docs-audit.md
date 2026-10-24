@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Map every public C documentation header to the Rust item that documents it (or a reason it has none), move the content a Rust user needs into `ast-core`'s rustdoc with C-name search aliases, and move C source citations out of the rendered docs — all held by gates that cannot pass without checking.
+**Goal:** Map every public C documentation header to the Rust item that documents it (or a reason it has none), move the content a Rust user needs into `starlink-ast`'s rustdoc with C-name search aliases, and move C source citations out of the rendered docs — all held by gates that cannot pass without checking.
 
-**Architecture:** `audit-tools` gains a C-header extractor and a ledger parser. Its output, `docs/audits/c-docs/c-headers.tsv`, and the hand-maintained `docs/audits/c-docs/ledger.tsv` are committed. One meta test file in `ast-core` holds the five gates: coverage, row form, alias placement, rendered-docs cleanliness, and a review ratchet. The documentation itself is then reviewed subsystem by subsystem with one fixed procedure.
+**Architecture:** `audit-tools` gains a C-header extractor and a ledger parser. Its output, `docs/audits/c-docs/c-headers.tsv`, and the hand-maintained `docs/audits/c-docs/ledger.tsv` are committed. One meta test file in `starlink-ast` holds the five gates: coverage, row form, alias placement, rendered-docs cleanliness, and a review ratchet. The documentation itself is then reviewed subsystem by subsystem with one fixed procedure.
 
-**Tech Stack:** Rust 2024 (`audit-tools`, `ast-core` meta tests), rustdoc HTML output, bash for the freshness script.
+**Tech Stack:** Rust 2024 (`audit-tools`, `starlink-ast` meta tests), rustdoc HTML output, bash for the freshness script.
 
 **Spec:** `docs/superpowers/specs/2026-10-19-c-docs-audit-design.md`
 
@@ -15,7 +15,7 @@
 - Headers in scope: `*class++`, `*++`, `*att++` and `c++` blocks in `reference/starlink-ast/src/*.c`; `f++` blocks excluded; inside a block only `*` and `c ` lines are read.
 - Ledger reasons are exactly `c-api-only`, `not-ported`, `merged`.
 - Every row with a Rust item has `#[doc(alias = "<alias>")]` on that item; an alias with no row fails.
-- No C file or line references and no internal C names (an `ast<Name>` not in `c-headers.tsv`) in rendered HTML under `ast_core/` (source-view pages under `src/` are not rendered docs and are not scanned).
+- No C file or line references and no internal C names (an `ast<Name>` not in `c-headers.tsv`) in rendered HTML under `starlink_ast/` (source-view pages under `src/` are not rendered docs and are not scanned).
 - Content rules are the spec's "Content rules" section, verbatim; the review procedure below applies them.
 - Docs describe the Rust code as it is; a C behavior the port lacks gets a ledger note and a `PLAN.md` row, never prose describing code that does not exist.
 - No skip modes: every gate fails hard; exclusions are named lists with reasons and companion tests.
@@ -45,7 +45,7 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
 6. **Record differences.** If the C header documents a default or behavior the port lacks, write the docs for the port, put the difference in `note`, and add a `PLAN.md` row naming what would expose it.
 7. **Move citations.** In every public item and public module doc in the Rust files touched, move C file/line references and internal C function names into `//` comments next to the code they describe.
 8. **Mark the row** `reviewed = yes`, lower `UNREVIEWED_ROWS` in `test_c_docs_audit.rs` to the new count, and remove any module from `C_CITATIONS_UNCLEANED` that is now clean.
-9. **Run the gates and the doc build:** `cargo test -p ast-core --test meta test_c_docs_audit::` and `RUSTDOCFLAGS="-D warnings" cargo doc -p ast-core --no-deps`.
+9. **Run the gates and the doc build:** `cargo test -p starlink-ast --test meta test_c_docs_audit::` and `RUSTDOCFLAGS="-D warnings" cargo doc -p starlink-ast --no-deps`.
 
 ---
 
@@ -241,8 +241,8 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
 - Modify: `crates/audit-tools/src/lib.rs`, `crates/audit-tools/src/bin/c-docs.rs` (add `init-ledger`)
 - Create: `docs/audits/c-docs/ledger.tsv`
 - Create: `docs/audits/c-docs/README.md`
-- Create: `crates/ast-core/tests/test_c_docs_audit.rs`
-- Modify: `crates/ast-core/tests/meta/main.rs`
+- Create: `crates/starlink-ast/tests/test_c_docs_audit.rs`
+- Modify: `crates/starlink-ast/tests/meta/main.rs`
 
 **Interfaces:**
 - Consumes: `parse_headers_tsv` (Task 1).
@@ -267,7 +267,7 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
 
   Write `docs/audits/c-docs/README.md` stating what the two files are, the column meanings, the three reasons, and that the procedure is in `docs/superpowers/plans/2026-10-19-c-docs-audit.md`.
 
-- [ ] **Step 2: Write the failing gates** in `crates/ast-core/tests/test_c_docs_audit.rs` and register it in `tests/meta/main.rs` (`#[path = "../test_c_docs_audit.rs"] mod test_c_docs_audit;`):
+- [ ] **Step 2: Write the failing gates** in `crates/starlink-ast/tests/test_c_docs_audit.rs` and register it in `tests/meta/main.rs` (`#[path = "../test_c_docs_audit.rs"] mod test_c_docs_audit;`):
 
   ```rust
   //! Gates for the C documentation audit
@@ -337,19 +337,19 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
   ```
 
 - [ ] **Step 3: Run them to verify they fail.**
-  Run: `cargo test -p ast-core --test meta test_c_docs_audit::`
+  Run: `cargo test -p starlink-ast --test meta test_c_docs_audit::`
   Expected: compile error, `parse_ledger` not found.
 
 - [ ] **Step 4: Implement `parse_ledger`** (reject a line with the wrong number of columns, an unknown `reviewed` value, or a non-empty `reason` outside the three, naming the line number), then set `UNREVIEWED_ROWS` to the count the ratchet test reports.
 
 - [ ] **Step 5: Run.**
-  Run: `cargo test -p ast-core --test meta test_c_docs_audit:: && cargo test -p audit-tools`
+  Run: `cargo test -p starlink-ast --test meta test_c_docs_audit:: && cargo test -p audit-tools`
   Expected: pass.
 
 - [ ] **Step 6: Commit.**
 
   ```sh
-  git add crates/audit-tools docs/audits/c-docs crates/ast-core/tests/test_c_docs_audit.rs crates/ast-core/tests/meta/main.rs
+  git add crates/audit-tools docs/audits/c-docs crates/starlink-ast/tests/test_c_docs_audit.rs crates/starlink-ast/tests/meta/main.rs
   git commit -m "Add the C documentation ledger and its coverage gates"
   ```
 
@@ -360,7 +360,7 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
 **Files:**
 - Create: `crates/audit-tools/src/doc_aliases.rs`
 - Modify: `crates/audit-tools/src/lib.rs`
-- Modify: `crates/ast-core/tests/test_c_docs_audit.rs`
+- Modify: `crates/starlink-ast/tests/test_c_docs_audit.rs`
 
 **Interfaces:**
 - Consumes: `enclosing_rust_block` (existing, `audit-tools/src/lib.rs`), `LedgerRow`.
@@ -434,7 +434,7 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
 - [ ] **Step 5: Add the gate** to `test_c_docs_audit.rs`:
 
   ```rust
-  /// Every alias in ast-core's source, as (alias, item, owner).
+  /// Every alias in starlink-ast's source, as (alias, item, owner).
   fn source_aliases() -> Vec<(String, String, String)> {
       let mut out = Vec::new();
       let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -482,12 +482,12 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
 
   Add `a_family_alias_on_each_member_passes` to `doc_aliases.rs`'s tests: two methods `map_get0_d` and `map_get0_i` under `impl KeyMap`, both with alias `astMapGet0`, both returned.
 
-- [ ] **Step 6: Run.** `cargo test -p ast-core --test meta test_c_docs_audit:: && cargo test -p audit-tools` → pass (no row has a Rust item yet, and the source has no aliases).
+- [ ] **Step 6: Run.** `cargo test -p starlink-ast --test meta test_c_docs_audit:: && cargo test -p audit-tools` → pass (no row has a Rust item yet, and the source has no aliases).
 
 - [ ] **Step 7: Commit.**
 
   ```sh
-  git add crates/audit-tools crates/ast-core/tests/test_c_docs_audit.rs
+  git add crates/audit-tools crates/starlink-ast/tests/test_c_docs_audit.rs
   git commit -m "Gate C-name aliases against the documentation ledger"
   ```
 
@@ -498,8 +498,8 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
 **Files:**
 - Create: `crates/audit-tools/src/rendered_docs.rs`
 - Modify: `crates/audit-tools/src/lib.rs`
-- Modify: `crates/ast-core/tests/test_c_docs_audit.rs`
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs` (one `LEDGER` row)
+- Modify: `crates/starlink-ast/tests/test_c_docs_audit.rs`
+- Modify: `crates/starlink-ast/tests/test_verification_ledger.rs` (one `LEDGER` row)
 - Modify: `PLAN.md` §6 (two rows)
 
 **Interfaces:**
@@ -535,7 +535,7 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
 
       #[test]
       fn markup_and_rust_names_are_not_text() {
-          let html = "<a href=\"permmap.c.html\" class=\"astx\">ast_core</a><p>AstError</p>";
+          let html = "<a href=\"permmap.c.html\" class=\"astx\">starlink_ast</a><p>AstError</p>";
           assert!(c_references(html, &public()).is_empty());
       }
   }
@@ -562,7 +562,7 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
       let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
       let target = manifest.join("../../target/c-docs-gate");
       let status = std::process::Command::new(env!("CARGO"))
-          .args(["doc", "-q", "-p", "ast-core", "--no-deps"])
+          .args(["doc", "-q", "-p", "starlink-ast", "--no-deps"])
           .env("CARGO_TARGET_DIR", &target)
           .current_dir(&manifest)
           .status()
@@ -583,10 +583,10 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
       );
       let docs = roots
           .into_iter()
-          .map(|d| d.join("ast_core"))
+          .map(|d| d.join("starlink_ast"))
           .filter(|d| d.is_dir())
           .max_by_key(|d| std::fs::metadata(d).and_then(|m| m.modified()).ok())
-          .expect("rendered ast_core docs");
+          .expect("rendered starlink_ast docs");
       let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
       let mut stack = vec![docs.clone()];
       while let Some(dir) = stack.pop() {
@@ -630,10 +630,10 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
   ```
 
   Each test runs `cargo doc`; the second run is incremental and quick.
-  `rendered_c_references` scans only `ast_core/`, so the source-view pages under `src/`, which show `//` comments, are never read.
+  `rendered_c_references` scans only `starlink_ast/`, so the source-view pages under `src/`, which show `//` comments, are never read.
 
 - [ ] **Step 6: Run it, then fill the list.**
-  Run: `cargo test -p ast-core --test meta test_c_docs_audit::rendered`
+  Run: `cargo test -p starlink-ast --test meta test_c_docs_audit::rendered`
   Expected: FAIL listing every module with C references.
   Set `C_CITATIONS_UNCLEANED` to one row per reported module, reason `"C source citations in public docs; cleaned in its subsystem's review task"`, and run again → pass.
 
@@ -655,12 +655,12 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
   Add a second §6 row for `UNREVIEWED_ROWS` (the ratchet), stating its current value and that it reaches zero at the end.
   (`count_entries` counts list consts; `UNREVIEWED_ROWS` is a number, so it is recorded in PLAN §6 and pinned by its own test rather than counted by the ledger.)
 
-- [ ] **Step 8: Run the meta suite.** `cargo test -p ast-core --test meta` → pass.
+- [ ] **Step 8: Run the meta suite.** `cargo test -p starlink-ast --test meta` → pass.
 
 - [ ] **Step 9: Commit.**
 
   ```sh
-  git add crates/audit-tools crates/ast-core/tests/test_c_docs_audit.rs crates/ast-core/tests/test_verification_ledger.rs PLAN.md
+  git add crates/audit-tools crates/starlink-ast/tests/test_c_docs_audit.rs crates/starlink-ast/tests/test_verification_ledger.rs PLAN.md
   git commit -m "Gate C references in the rendered documentation"
   ```
 
@@ -668,13 +668,13 @@ Tasks 5–9 each apply this procedure to a set of C files. For each C file in th
 
 ### Task 5: Review the Mapping classes
 
-**Files:** `crates/ast-core/src/mappings/*.rs`, `docs/audits/c-docs/ledger.tsv`, `crates/ast-core/tests/test_c_docs_audit.rs`, `PLAN.md` (gap rows only).
+**Files:** `crates/starlink-ast/src/mappings/*.rs`, `docs/audits/c-docs/ledger.tsv`, `crates/starlink-ast/tests/test_c_docs_audit.rs`, `PLAN.md` (gap rows only).
 
 **C files:** `mapping.c`, `cmpmap.c`, `unitmap.c`, `zoommap.c`, `shiftmap.c`, `matrixmap.c`, `permmap.c`, `winmap.c`, `lutmap.c`, `polymap.c`, `chebymap.c`, `wcsmap.c`, `slamap.c`, `specmap.c`, `timemap.c`, `pcdmap.c`, `grismmap.c`, `sphmap.c`, `unitnormmap.c`, `xphmap.c`, `intramap.c`, `tranmap.c`, `ratemap.c`, `mathmap.c`, `splinemap.c`, `dssmap.c`, `normmap.c`, `selectormap.c`, `switchmap.c`.
 
 - [ ] **Step 1:** Apply the row review procedure to each file, in the order listed, one commit per three to five files (`Document the <classes> from their C headers`).
 - [ ] **Step 2:** After the last file: every row of these files is `reviewed = yes`; `mappings` is out of `C_CITATIONS_UNCLEANED`; the ledger's count and PLAN §6 are updated.
-- [ ] **Step 3:** Run `cargo test -p ast-core && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && RUSTDOCFLAGS="-D warnings" cargo doc -p ast-core --no-deps`; all pass.
+- [ ] **Step 3:** Run `cargo test -p starlink-ast && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && RUSTDOCFLAGS="-D warnings" cargo doc -p starlink-ast --no-deps`; all pass.
 
 ---
 
@@ -729,4 +729,4 @@ awk -F'\t' 'NR>1 && $6=="no" {print $3}' docs/audits/c-docs/ledger.tsv | sort -u
 - [ ] **Step 1:** In `CLAUDE.md`'s upstream sync protocol, after `check_corpus_fresh.sh`, add: "Also run `tools/oracle_fixtures/check_c_headers_fresh.sh`; new or changed C documentation headers need ledger rows in `docs/audits/c-docs/ledger.tsv`."
 - [ ] **Step 2:** In `CLAUDE.md`'s "Adding a new Mapping / Frame / Region" list, add a step: "Give each public item mapped from a C header its `#[doc(alias)]` and ledger row; the C documentation gates in `test_c_docs_audit.rs` fail otherwise."
 - [ ] **Step 3:** Add a design-spec revision entry: every public item mapped from a C header carries a `#[doc(alias)]` with its C name, rendered docs carry no C source citations, and `docs/audits/c-docs/ledger.tsv` maps every C header; see `2026-10-19-c-docs-audit-design.md`.
-- [ ] **Step 4:** `cargo test -p ast-core --test meta` → pass; commit (`Record the C documentation audit in the working rules`).
+- [ ] **Step 4:** `cargo test -p starlink-ast --test meta` → pass; commit (`Record the C documentation audit in the working rules`).

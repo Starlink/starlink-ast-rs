@@ -7,7 +7,7 @@ It extends `PLAN.md` §7's "wcslib Rust port (step 6a)" row to ERFA and PAL, and
 ## Why
 
 `ast-bench roman` (`crates/ast-bench/README.md`, record `docs/perf/2026-10-18-macos-aarch64-roman.txt`) puts SphMap level with C at large N: 18 million points per second forward and 51 inverse on both engines.
-They are level because both run the same C for every point: the port calls `astPalDcc2s` and `astPalDcs2c` through FFI (`crates/ast-core/src/pal.rs`), which are ERFA's `eraC2s` (two `atan2` and a `sqrt`) and `eraS2c` (two `sin` and two `cos`).
+They are level because both run the same C for every point: the port calls `astPalDcc2s` and `astPalDcs2c` through FFI (`crates/starlink-ast/src/pal.rs`), which are ERFA's `eraC2s` (two `atan2` and a `sqrt`) and `eraS2c` (two `sin` and two `cos`).
 Almost all of the time is in the platform libm, one value at a time.
 [Starlink/ast pull request 51](https://github.com/Starlink/ast/pull/51) reports about 8x for SphMap from vector math functions (glibc's `libmvec` under `-ffast-math`), on x86-64 with AVX2.
 The same holds for every projection in WcsMap and for SlaMap's and SkyFrame's PAL and ERFA calls: per-point calls into C, mostly into libm.

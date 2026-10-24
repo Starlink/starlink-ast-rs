@@ -14,9 +14,9 @@
  * also the astMapBox results over the image for each output, which
  * IsMapLinear uses.
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_coupled_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_coupled_oracle/cases.rs:
  *
- *   ./fitschan_coupled_probe > ../../crates/ast-core/tests/fitschan_coupled_oracle/cases.rs
+ *   ./fitschan_coupled_probe > ../../crates/starlink-ast/tests/fitschan_coupled_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

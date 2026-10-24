@@ -10,9 +10,9 @@
  * template in the target and prints the converted point, None when no
  * conversion is found, or the error.
  *
- * Prints Rust source for crates/ast-core/tests/sky_use_defs_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/sky_use_defs_oracle/cases.rs:
  *
- *   ./sky_use_defs_probe > ../../crates/ast-core/tests/sky_use_defs_oracle/cases.rs
+ *   ./sky_use_defs_probe > ../../crates/starlink-ast/tests/sky_use_defs_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

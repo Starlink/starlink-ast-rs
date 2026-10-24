@@ -4,10 +4,11 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+publish = false
 description = "FFI parity tests: C ast_tester programs against Rust-built libast"
 
 [lints]
 workspace = true
 
 [dependencies]
-ast-capi = { path = "../ast-capi" }
+starlink-ast-capi = { path = "../starlink-ast-capi" }

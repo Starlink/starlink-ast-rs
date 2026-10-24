@@ -1,6 +1,6 @@
 # Vendored C Dependencies
 
-C sources compiled by `ast-core`'s `build.rs`. These are owned by this
+C sources compiled by `starlink-ast`'s `build.rs`. These are owned by this
 repository — they do not come from the reference submodule at build time.
 
 ## Source
@@ -66,7 +66,7 @@ Macro definitions renaming `eraXxx` → `astEraXxx` to avoid symbol clashes.
 
 ## ast_err.msg
 
-Starlink message file defining AST error codes. Parsed by `ast-core`'s
+Starlink message file defining AST error codes. Parsed by `starlink-ast`'s
 `build.rs` to generate the Rust `ErrorCode` enum with MESSGEN-compatible
 numeric values.
 

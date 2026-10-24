@@ -11,9 +11,9 @@
  * 0.5, whose base->current Mapping simplifies to a UnitMap, so the dump
  * (region.c Dump, which tests astRegMapping) writes only its Frame.
  *
- * Prints Rust source for crates/ast-core/tests/region_mapregion_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_mapregion_oracle/cases.rs:
  *
- *   ./region_mapregion_probe > ../../crates/ast-core/tests/region_mapregion_oracle/cases.rs
+ *   ./region_mapregion_probe > ../../crates/starlink-ast/tests/region_mapregion_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

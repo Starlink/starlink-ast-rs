@@ -4,18 +4,18 @@ Date: 2026-10-06.
 Scope: the `Mapping` base class and every Mapping subclass, their attributes and their methods.
 `MapMerge` and `Simplify` are out of scope: each class's are audited in `docs/audits/mapmerge/`.
 Frame and Region classes are out of scope here except where they act as Mappings (see `frame-family-c-parity.md` and `region-*.md`).
-`ast-capi` is out of scope: it is unstarted, so no string-attribute dispatch (`astGet`/`astSet` by name) exists for any class, and C's `GetAttrib`, `SetAttrib`, `TestAttrib` and `ClearAttrib` overrides have no counterpart by design.
+`starlink-ast-capi` is out of scope: it is unstarted, so no string-attribute dispatch (`astGet`/`astSet` by name) exists for any class, and C's `GetAttrib`, `SetAttrib`, `TestAttrib` and `ClearAttrib` overrides have no counterpart by design.
 `Report`, `AllowSimplify` and `RestrictedSimplify` were ported just before this audit and are not re-audited.
 
 C line numbers refer to the `reference/starlink-ast` checkout on branch `u/timj/norm-unit` at `7e1f74f4`, relative to `src/`.
-Rust line numbers refer to branch `tickets/DM-54793` at `39ed9e6a`, relative to `crates/ast-core/src/`.
+Rust line numbers refer to branch `tickets/DM-54793` at `39ed9e6a`, relative to `crates/starlink-ast/src/`.
 
 ## Method
 
 1. Every `vtab->X = X` assignment in each class's C source was listed and mapped onto a Rust trait method, inherent method, or "no counterpart".
 2. Every C attribute was checked for typed get/set/test/clear accessors in Rust.
 3. Each C method with a Rust counterpart was compared by reading both implementations, in two class groups: the base class and the thirteen linear or structural classes, then the thirteen polynomial, celestial, spectral and expression classes.
-4. Every HIGH finding but one (WC-1, which needs a FitsChan round trip) was then run through paired probes: a C program linked against the built reference `libast`, and a scratch Rust crate depending on `ast-core`, given the same inputs.
+4. Every HIGH finding but one (WC-1, which needs a FitsChan round trip) was then run through paired probes: a C program linked against the built reference `libast`, and a scratch Rust crate depending on `starlink-ast`, given the same inputs.
    Twelve were confirmed and one (PY-4) was not, and is downgraded.
 
 Findings marked UNVERIFIED were established by reading only, and say what would settle them.
@@ -114,13 +114,13 @@ They differ in the layout of the caller's arrays, not in what they compute:
 
 `astTranN` and `astTranP` exist in C because a C array does not carry its shape.
 A Rust `PointSet` is a two-dimensional array that does, so `transform` covers both layouts and the Rust API needs neither.
-The C ABI does need them: when `ast-capi` exports `astTranN` and `astTranP`, each must build a `PointSet` from its layout.
+The C ABI does need them: when `starlink-ast-capi` exports `astTranN` and `astTranP`, each must build a `PointSet` from its layout.
 
 Two consequences follow:
 
 - C reports a transformation only from the four array wrappers, `astTran1`, `astTran2`, `astTranN` and `astTranP`, when the Mapping's `Report` attribute is set (mapping.c), never from `astTransform`.
   The port's `transform` does not report either, which is faithful, so a Rust caller who wants the report uses `tran1` or `tran2`.
-  The `ast-capi` exports of all four must call `report_points` when `Report` is set.
+  The `starlink-ast-capi` exports of all four must call `report_points` when `Report` is set.
 - `astTranGrid` is a separate algorithm, not a layout: it transforms every position of a regular grid, approximating the Mapping by linear fits over sub-regions where that is accurate enough (`TranGridAdaptively`, `TranGridSection`, `TranGridWithBlocking`).
   The port has it as `Mapping::tran_grid` (`mappings/tran_grid.rs`), which returns a `PointSet` with a row per grid position.
 
@@ -136,7 +136,7 @@ C's base `Transform` (mapping.c:22333-22380), which every class's `Transform` ca
 | MB-1 | MED | mapping.c:22333-22380 (base `Transform`, reached by every class through `parent_transform`) | mappings/mod.rs:295,255; e.g. mappings/zoom.rs:126-138, mappings/cmpmap.rs:671 | `transform`/`transform_into` raise none of `AST__TRNND`, `AST__NCPIN`, `AST__NOPTS`, `AST__NOCTS`. A PointSet with the wrong `ncoord` is silently truncated or zero-filled (ZoomMap zips), or panics (CmpMap parallel slice). | `ZoomMap::new(2,2.0)` transform of a 1-coord PointSet: C NCPIN, Rust returns 2 coords with axis 2 = 0.0. `RateMap.transform(..., false)`: C TRNND, Rust all-BAD. |
 | MB-2 | MED | mapping.c:24815 (`astReplaceNaN(result)` in `astTransform_`); pointset.c:1614-1630 (`AST_REPLACE_NAN`) | mappings/unit.rs:67-69; mappings/normmap.rs:150-158 | C converts NaN outputs to AST__BAD only when the `AST_REPLACE_NAN` environment variable is `1`; by default it leaves them NaN (probed). The port's design makes every output use BAD (CLAUDE.md), which is C's `AST_REPLACE_NAN=1` behavior, but classes that copy values through leak NaN. Oracle probes for this should set `AST_REPLACE_NAN=1`. | `UnitMap::new(1).transform([[NaN]])`: C with `AST_REPLACE_NAN=1` BAD, Rust NaN. The same holds for NormMap with a NaN input. |
 | MB-3 | MED | mapping.c:8998-9015, 24733-24742 | mappings/rate.rs:32-33; mappings/winmap.rs:427; mappings/matrix.rs:851; mappings/unit.rs:82; mappings/zoom.rs:187 | `rate` does no `AST__AXIIN` validation of `ax1`/`ax2` and no `AST__NODEF` check that a forward transform exists. Axis 0 underflows `usize`, which panics in debug builds and indexes out of bounds in release. Out-of-range axes return 0.0 or the zoom factor silently. | `WinMap.rate(&at,0,0)`: Rust panics, C reports AXIIN. `ZoomMap(2).rate(&at,5,5)`: C AXIIN, Rust returns the factor. |
-| MB-4 | MED | mapping.c:1628 (base GetIsLinear = 0); overrides cmpmap.c:631, unitmap.c:342, zoommap.c:555, shiftmap.c:504, matrixmap.c:1424, winmap.c:880 | none | The public read-only `IsLinear` attribute has no counterpart. | `astGetI(map,"IsLinear")` cannot be served by ast-core. |
+| MB-4 | MED | mapping.c:1628 (base GetIsLinear = 0); overrides cmpmap.c:631, unitmap.c:342, zoommap.c:555, shiftmap.c:504, matrixmap.c:1424, winmap.c:880 | none | The public read-only `IsLinear` attribute has no counterpart. | `astGetI(map,"IsLinear")` cannot be served by starlink-ast. |
 | MB-5 | MED | mapping.c:25064-25075 (`astMapBoxId_` decrements `coord_out`) | mappings/mod.rs:596,551-559; mappings/map_box.rs:913 | `map_box` takes a 0-based `coord_out`, while `rate` and `map_split` take 1-based indices. That breaks the 1-based rule in CLAUDE.md, and a caller using public C numbering silently gets the next axis. | `map.map_box(.., true, 1)` returns the bounds of output 2. |
 | MB-6 | LOW | mapping.c:23269-23273, 6342-6352 | mappings/mod.rs:248-251 | `Invert` has only a toggle (`invert`) and a getter (`is_inverted`). There is no `set_invert`, `clear_invert` or `test_invert`. C `astInvert` clears and then sets only when needed, so `TestInvert` is 0 after a double inversion. | `astSetI(m,"Invert",1)`, `astTest(m,"Invert")`. |
 | MB-7 | LOW | mapping.c:23208 (`npoint < 0` only) | mappings/mod.rs:974 | `tran1`/`tran2` reject 0 points with `AST__NPTIN`, but C accepts `npoint == 0`. | `m.tran1(&[], true)`: C OK, Rust Err. |
@@ -404,8 +404,8 @@ FitsChan does not use it; the HPX and XPH FITS projections go through WcsMap and
 |---|---|---|
 | `astResample<X>` (4- and 8-byte, all data types), with `astUinterp`/`astUkern1` | Mapping | Image regridding, used by KAPPA, SMURF and pyast. `mappings::resample` has nearest and linear interpolation; the kernels follow (`docs/superpowers/plans/2026-10-09-resample-rebin.md`). |
 | `astRebin<X>`, `astRebinSeq<X>` | Mapping | Flux-conserving rebinning and SMURF map-making. Deferred in PLAN.md §7. |
-| `astTranN`, `astTranP` | Mapping | Not needed by the Rust API; `ast-capi` must provide them (see "The `astTran*` interfaces"). |
-| `astDecompose` | Mapping (base), CmpMap (cmpmap.c:881), TranMap (tranmap.c:368) | The component accessors are `pub(crate)` (mappings/cmpmap.rs:166-177, TranMap `map1`/`map2`), so `ast-capi` cannot implement it on the public API either; `docs/issues/frame-mapping-c-port-gaps.md` defers it to `ast-capi`. |
+| `astTranN`, `astTranP` | Mapping | Not needed by the Rust API; `starlink-ast-capi` must provide them (see "The `astTran*` interfaces"). |
+| `astDecompose` | Mapping (base), CmpMap (cmpmap.c:881), TranMap (tranmap.c:368) | The component accessors are `pub(crate)` (mappings/cmpmap.rs:166-177, TranMap `map1`/`map2`), so `starlink-ast-capi` cannot implement it on the public API either; `docs/issues/frame-mapping-c-port-gaps.md` defers it to `starlink-ast-capi`. |
 | `GetIsLinear` / `IsLinear` | Mapping, CmpMap, UnitMap, ZoomMap, ShiftMap, MatrixMap, WinMap, XphMap | MB-4. |
 | `SetInvert` / `ClearInvert` / `TestInvert` | Mapping | Only a toggle exists (MB-6). |
 | `RemoveRegions` overrides | TranMap, RateMap, NormMap | `regions::remove_regions` has arms only for Region, CmpMap and SwitchMap (TR-3, RM-3, NM-2). |
@@ -454,4 +454,4 @@ SlaMap, SpecMap, TimeMap, UnitNormMap, DssMap, CmpMap, TranMap, RateMap, NormMap
 
 The paired C and Rust probes are in the session scratchpad and are not committed.
 They covered PY-1, PY-2, PY-4, CH-1, WC-4, WC-5, SP-2, NM-1, MX-1, MX-2, PM-1, LM-1 and LM-2; for the load findings, the C probe wrote the dump and the Rust probe read it.
-To make any finding a regression test, port the probe's inputs and C output into a `crates/ast-core/tests/` oracle case, following `docs/issues/c-oracle-probe-recipe.md`.
+To make any finding a regression test, port the probe's inputs and C output into a `crates/starlink-ast/tests/` oracle case, following `docs/issues/c-oracle-probe-recipe.md`.

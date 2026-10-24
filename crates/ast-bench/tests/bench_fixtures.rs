@@ -1,15 +1,15 @@
-//! The bench fixtures are not in ast-core's transform-oracle gate (they are
+//! The bench fixtures are not in starlink-ast's transform-oracle gate (they are
 //! not in `ast_tester` yet), so this test holds the port to C's recorded
 //! outputs for them, with the golden tolerance of
-//! `crates/ast-core/tests/test_transform_oracle.rs`.
+//! `crates/starlink-ast/tests/test_transform_oracle.rs`.
 
 use std::path::Path;
 
 use ast_bench::load::{Loaded, load_fixture};
 use ast_bench::oracle::{BENCH_FIXTURES, BENCH_ORACLE, parse_oracle};
 use ast_bench::points::select_rows;
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
 
 const GOLDEN_RTOL: f64 = 1e-7;
 const GOLDEN_ATOL: f64 = 1e-7;

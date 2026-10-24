@@ -6,9 +6,9 @@
  * component's Invert (tranmap.c Equal restores the recorded orientation);
  * and WcsMaps whose projection parameters are set, unset or cleared.
  *
- * Prints Rust source for crates/ast-core/tests/equal_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/equal_oracle/cases.rs:
  *
- *   ./equal_probe > ../../crates/ast-core/tests/equal_oracle/cases.rs
+ *   ./equal_probe > ../../crates/starlink-ast/tests/equal_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

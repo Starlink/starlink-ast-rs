@@ -4,9 +4,9 @@
  * ClearSystem): the attributes with System-specific defaults are cleared,
  * and the Unit last used with the new System is restored, or cleared.
  *
- * Prints Rust source for crates/ast-core/tests/system_change_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/system_change_oracle/cases.rs:
  *
- *   ./system_change_probe > ../../crates/ast-core/tests/system_change_oracle/cases.rs
+ *   ./system_change_probe > ../../crates/starlink-ast/tests/system_change_oracle/cases.rs
  */
 #include <stdio.h>
 #include "ast.h"

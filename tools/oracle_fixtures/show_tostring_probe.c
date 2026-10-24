@@ -4,9 +4,9 @@
  * FrameSet), a class whose Rust type is named differently (a Box), and a
  * boxed AnyObject variant (a KeyMap).
  *
- * Prints Rust source for crates/ast-core/tests/show_tostring_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/show_tostring_oracle/cases.rs:
  *
- *   ./show_tostring_probe > ../../crates/ast-core/tests/show_tostring_oracle/cases.rs
+ *   ./show_tostring_probe > ../../crates/starlink-ast/tests/show_tostring_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,7 +76,7 @@ int main( void ) {
    emit( "zoommap_with_id", obj );
    obj = astAnnul( obj );
 
-   obj = read_fixture( "../../crates/ast-core/tests/fixtures/wcsconv/inputs/dss.ast" );
+   obj = read_fixture( "../../crates/starlink-ast/tests/fixtures/wcsconv/inputs/dss.ast" );
    emit( "frameset", obj );
    obj = astAnnul( obj );
 

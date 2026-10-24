@@ -4,9 +4,9 @@
  * inputs are each good table value, the midpoints between them, and values
  * beyond both ends of the table.
  *
- * Prints Rust source for crates/ast-core/tests/lutmap_inverse_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/lutmap_inverse_oracle/cases.rs:
  *
- *   ./lutmap_inverse_probe > ../../crates/ast-core/tests/lutmap_inverse_oracle/cases.rs
+ *   ./lutmap_inverse_probe > ../../crates/starlink-ast/tests/lutmap_inverse_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

@@ -4,9 +4,9 @@
  * maps into FK5, tested at FK5 positions and meshed; and the XOR of two
  * Boxes, which C makes from AND and OR and dumps as the two Boxes XORed.
  *
- * Prints Rust source for crates/ast-core/tests/region_cmpregion_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_cmpregion_oracle/cases.rs:
  *
- *   ./region_cmpregion_probe > ../../crates/ast-core/tests/region_cmpregion_oracle/cases.rs
+ *   ./region_cmpregion_probe > ../../crates/starlink-ast/tests/region_cmpregion_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

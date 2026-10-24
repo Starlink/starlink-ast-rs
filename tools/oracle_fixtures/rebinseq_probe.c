@@ -20,9 +20,9 @@
  * are bad, as are variances with j mod 19 = 5. The bad value is 120.
  * Output arrays start as 77, weights as 5 and the count as 9.
  *
- * Prints Rust source for crates/ast-core/tests/rebinseq_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/rebinseq_oracle/cases.rs:
  *
- *   AST_REPLACE_NAN=1 ./rebinseq_probe > ../../crates/ast-core/tests/rebinseq_oracle/cases.rs
+ *   AST_REPLACE_NAN=1 ./rebinseq_probe > ../../crates/starlink-ast/tests/rebinseq_oracle/cases.rs
  */
 /* The input values are formed as the port forms them, without fused
    multiply-adds. */

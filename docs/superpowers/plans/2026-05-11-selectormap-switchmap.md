@@ -6,25 +6,25 @@
 
 **Architecture:** SelectorMap holds `Vec<DynRegion>` and classifies points by region containment (forward-only, Nin→1). SwitchMap holds selector mappings + route mappings, dispatching point batches to the appropriate route. Both implement `Mapping` trait, `Serializable` trait, and participate in the simplification engine via `simplified()`/`try_merge()`.
 
-**Tech Stack:** Pure Rust, ast-core crate, existing `Mapping`/`Region` trait infrastructure, `Node`-based serialization.
+**Tech Stack:** Pure Rust, starlink-ast crate, existing `Mapping`/`Region` trait infrastructure, `Node`-based serialization.
 
 ---
 
 ## File Structure
 
 ```
-crates/ast-core/src/mappings/
+crates/starlink-ast/src/mappings/
 ├── selectormap.rs          # SelectorMap struct, builder, Mapping impl, Clone, Debug
 ├── switchmap.rs            # SwitchMap struct, Mapping impl, Clone, Debug
 └── mod.rs                  # (modify) Add pub mod + pub use for both
 
-crates/ast-core/src/serial/mod.rs  # (modify) Add Serializable impls, dispatch entries
+crates/starlink-ast/src/serial/mod.rs  # (modify) Add Serializable impls, dispatch entries
 
-crates/ast-core/src/regions/mod.rs # (modify) Extend remove_regions() for SwitchMap
+crates/starlink-ast/src/regions/mod.rs # (modify) Extend remove_regions() for SwitchMap
 
-crates/ast-core/src/mappings/simplify.rs # (modify) Add fingerprint support
+crates/starlink-ast/src/mappings/simplify.rs # (modify) Add fingerprint support
 
-crates/ast-core/tests/
+crates/starlink-ast/tests/
 ├── test_selectormap.rs     # Unit/integration tests for SelectorMap
 ├── test_switchmap.rs       # Port of testswitchmap.c
 └── fixtures/
@@ -43,13 +43,13 @@ crates/ast-core/tests/
 ### Task 1: SelectorMap struct, builder, and Mapping trait
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/selectormap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/src/mappings/selectormap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
 
 - [ ] **Step 1: Create selectormap.rs with struct, builder, and basic Mapping impl**
 
 ```rust
-// crates/ast-core/src/mappings/selectormap.rs
+// crates/starlink-ast/src/mappings/selectormap.rs
 use std::fmt;
 
 use crate::constants::BAD_VALUE;
@@ -407,7 +407,7 @@ impl Mapping for SelectorMap {
 
 - [ ] **Step 2: Add module declaration and re-export to mod.rs**
 
-Add to `crates/ast-core/src/mappings/mod.rs` after the `mathmap` line:
+Add to `crates/starlink-ast/src/mappings/mod.rs` after the `mathmap` line:
 
 ```rust
 mod selectormap;
@@ -416,13 +416,13 @@ pub use selectormap::{SelectorMap, SelectorMapBuilder};
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core 2>&1 | head -30`
+Run: `cargo build -p starlink-ast 2>&1 | head -30`
 Expected: Successful build (or only unrelated warnings).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/selectormap.rs crates/ast-core/src/mappings/mod.rs
+git add crates/starlink-ast/src/mappings/selectormap.rs crates/starlink-ast/src/mappings/mod.rs
 git commit -m "feat(mappings): add SelectorMap struct, builder, and Mapping impl"
 ```
 
@@ -431,21 +431,21 @@ git commit -m "feat(mappings): add SelectorMap struct, builder, and Mapping impl
 ### Task 2: SelectorMap unit tests
 
 **Files:**
-- Create: `crates/ast-core/tests/test_selectormap.rs`
+- Create: `crates/starlink-ast/tests/test_selectormap.rs`
 
 - [ ] **Step 1: Write basic SelectorMap tests**
 
 ```rust
-// crates/ast-core/tests/test_selectormap.rs
+// crates/starlink-ast/tests/test_selectormap.rs
 //! Tests for SelectorMap.
 //!
 //! Ancestor: C AST SelectorMap (selectormap.c) — tests region classification.
 
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
-use ast_core::frames::BasicFrame;
-use ast_core::mappings::{Mapping, SelectorMap, SelectorMapBuilder};
-use ast_core::regions::{BoxRegion, BoxRegionBuilder, Circle, CircleBuilder, DynRegion};
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
+use starlink_ast::frames::BasicFrame;
+use starlink_ast::mappings::{Mapping, SelectorMap, SelectorMapBuilder};
+use starlink_ast::regions::{BoxRegion, BoxRegionBuilder, Circle, CircleBuilder, DynRegion};
 
 fn make_2d_frame() -> BasicFrame {
     BasicFrame::new(2)
@@ -590,13 +590,13 @@ fn selectormap_inverse_returns_bad() {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_selectormap 2>&1 | tail -20`
+Run: `cargo test -p starlink-ast --test test_selectormap 2>&1 | tail -20`
 Expected: All tests pass.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_selectormap.rs
+git add crates/starlink-ast/tests/test_selectormap.rs
 git commit -m "test(mappings): add SelectorMap unit tests"
 ```
 
@@ -605,7 +605,7 @@ git commit -m "test(mappings): add SelectorMap unit tests"
 ### Task 3: SelectorMap serialization
 
 **Files:**
-- Modify: `crates/ast-core/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
 
 - [ ] **Step 1: Add Serializable impl for SelectorMap**
 
@@ -705,15 +705,15 @@ if let Some(m) = self.as_any().downcast_ref::<SelectorMap>() {
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core 2>&1 | head -20`
+Run: `cargo build -p starlink-ast 2>&1 | head -20`
 Expected: Successful build.
 
 - [ ] **Step 4: Add serialization round-trip test**
 
-Add to `crates/ast-core/tests/test_selectormap.rs`:
+Add to `crates/starlink-ast/tests/test_selectormap.rs`:
 
 ```rust
-use ast_core::serial::Channel;
+use starlink_ast::serial::Channel;
 
 #[test]
 fn selectormap_serialization_roundtrip() {
@@ -740,13 +740,13 @@ fn selectormap_serialization_roundtrip() {
 
 - [ ] **Step 5: Run tests**
 
-Run: `cargo test -p ast-core --test test_selectormap 2>&1 | tail -20`
+Run: `cargo test -p starlink-ast --test test_selectormap 2>&1 | tail -20`
 Expected: All tests pass including round-trip.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/serial/mod.rs crates/ast-core/tests/test_selectormap.rs
+git add crates/starlink-ast/src/serial/mod.rs crates/starlink-ast/tests/test_selectormap.rs
 git commit -m "feat(serial): add SelectorMap serialization and dispatch"
 ```
 
@@ -755,13 +755,13 @@ git commit -m "feat(serial): add SelectorMap serialization and dispatch"
 ### Task 4: SwitchMap struct and Mapping trait
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/switchmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/src/mappings/switchmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
 
 - [ ] **Step 1: Create switchmap.rs with struct and Mapping impl**
 
 ```rust
-// crates/ast-core/src/mappings/switchmap.rs
+// crates/starlink-ast/src/mappings/switchmap.rs
 use std::fmt;
 
 use crate::constants::BAD_VALUE;
@@ -1396,7 +1396,7 @@ impl Mapping for SwitchMap {
 
 - [ ] **Step 2: Add module declaration and re-export to mod.rs**
 
-Add to `crates/ast-core/src/mappings/mod.rs` after the `selectormap` line:
+Add to `crates/starlink-ast/src/mappings/mod.rs` after the `selectormap` line:
 
 ```rust
 mod switchmap;
@@ -1405,13 +1405,13 @@ pub use switchmap::SwitchMap;
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core 2>&1 | head -30`
+Run: `cargo build -p starlink-ast 2>&1 | head -30`
 Expected: Successful build.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/switchmap.rs crates/ast-core/src/mappings/mod.rs
+git add crates/starlink-ast/src/mappings/switchmap.rs crates/starlink-ast/src/mappings/mod.rs
 git commit -m "feat(mappings): add SwitchMap struct and Mapping impl"
 ```
 
@@ -1420,23 +1420,23 @@ git commit -m "feat(mappings): add SwitchMap struct and Mapping impl"
 ### Task 5: SwitchMap unit tests
 
 **Files:**
-- Create: `crates/ast-core/tests/test_switchmap.rs`
+- Create: `crates/starlink-ast/tests/test_switchmap.rs`
 
 - [ ] **Step 1: Write SwitchMap unit tests**
 
 ```rust
-// crates/ast-core/tests/test_switchmap.rs
+// crates/starlink-ast/tests/test_switchmap.rs
 //! Tests for SwitchMap.
 //!
 //! Ancestor: C AST testswitchmap.c — tests selector-based route dispatching.
 
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
-use ast_core::frames::BasicFrame;
-use ast_core::mappings::{
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
+use starlink_ast::frames::BasicFrame;
+use starlink_ast::mappings::{
     Mapping, SelectorMap, SelectorMapBuilder, ShiftMap, SwitchMap, UnitMap, WinMap, ZoomMap,
 };
-use ast_core::regions::{BoxRegion, BoxRegionBuilder, DynRegion};
+use starlink_ast::regions::{BoxRegion, BoxRegionBuilder, DynRegion};
 
 /// Create a SwitchMap with two routes:
 /// - Route 1 (x in [0,10]): WinMap scaling [0,10]→[0,100]
@@ -1553,13 +1553,13 @@ fn switchmap_equal() {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_switchmap 2>&1 | tail -20`
+Run: `cargo test -p starlink-ast --test test_switchmap 2>&1 | tail -20`
 Expected: All tests pass.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_switchmap.rs
+git add crates/starlink-ast/tests/test_switchmap.rs
 git commit -m "test(mappings): add SwitchMap unit tests"
 ```
 
@@ -1568,7 +1568,7 @@ git commit -m "test(mappings): add SwitchMap unit tests"
 ### Task 6: SwitchMap serialization
 
 **Files:**
-- Modify: `crates/ast-core/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
 
 - [ ] **Step 1: Add Serializable impl for SwitchMap**
 
@@ -1705,15 +1705,15 @@ if let Some(m) = self.as_any().downcast_ref::<SwitchMap>() {
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core 2>&1 | head -20`
+Run: `cargo build -p starlink-ast 2>&1 | head -20`
 Expected: Successful build.
 
 - [ ] **Step 4: Add serialization round-trip test**
 
-Add to `crates/ast-core/tests/test_switchmap.rs`:
+Add to `crates/starlink-ast/tests/test_switchmap.rs`:
 
 ```rust
-use ast_core::serial::Channel;
+use starlink_ast::serial::Channel;
 
 #[test]
 fn switchmap_serialization_roundtrip() {
@@ -1738,13 +1738,13 @@ fn switchmap_serialization_roundtrip() {
 
 - [ ] **Step 5: Run tests**
 
-Run: `cargo test -p ast-core --test test_switchmap 2>&1 | tail -20`
+Run: `cargo test -p starlink-ast --test test_switchmap 2>&1 | tail -20`
 Expected: All tests pass.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/serial/mod.rs crates/ast-core/tests/test_switchmap.rs
+git add crates/starlink-ast/src/serial/mod.rs crates/starlink-ast/tests/test_switchmap.rs
 git commit -m "feat(serial): add SwitchMap serialization and dispatch"
 ```
 
@@ -1753,11 +1753,11 @@ git commit -m "feat(serial): add SwitchMap serialization and dispatch"
 ### Task 7: Extend remove_regions() for SwitchMap
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/mod.rs`
+- Modify: `crates/starlink-ast/src/regions/mod.rs`
 
 - [ ] **Step 1: Add SwitchMap handling to remove_regions()**
 
-In `crates/ast-core/src/regions/mod.rs`, add after the `CmpMap` handling block and before the final `mapping.clone_box()` line:
+In `crates/starlink-ast/src/regions/mod.rs`, add after the `CmpMap` handling block and before the final `mapping.clone_box()` line:
 
 ```rust
 if let Some(sw) = mapping.as_any().downcast_ref::<crate::mappings::SwitchMap>() {
@@ -1792,15 +1792,15 @@ if let Some(sw) = mapping.as_any().downcast_ref::<crate::mappings::SwitchMap>() 
 
 - [ ] **Step 2: Verify it compiles**
 
-Run: `cargo build -p ast-core 2>&1 | head -20`
+Run: `cargo build -p starlink-ast 2>&1 | head -20`
 Expected: Successful build.
 
 - [ ] **Step 3: Add test for remove_regions with SwitchMap**
 
-Add to `crates/ast-core/tests/test_switchmap.rs`:
+Add to `crates/starlink-ast/tests/test_switchmap.rs`:
 
 ```rust
-use ast_core::regions::remove_regions;
+use starlink_ast::regions::remove_regions;
 
 #[test]
 fn switchmap_remove_regions() {
@@ -1816,13 +1816,13 @@ fn switchmap_remove_regions() {
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_switchmap -- switchmap_remove 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --test test_switchmap -- switchmap_remove 2>&1 | tail -10`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/regions/mod.rs crates/ast-core/tests/test_switchmap.rs
+git add crates/starlink-ast/src/regions/mod.rs crates/starlink-ast/tests/test_switchmap.rs
 git commit -m "feat(regions): extend remove_regions to handle SwitchMap"
 ```
 
@@ -1831,28 +1831,28 @@ git commit -m "feat(regions): extend remove_regions to handle SwitchMap"
 ### Task 8: Copy simplify fixtures and add fixture-based tests
 
 **Files:**
-- Create: `crates/ast-core/tests/fixtures/selectormap_inverse_cancel.map`
-- Create: `crates/ast-core/tests/fixtures/selectormap_inverse_cancel.simp`
-- Create: `crates/ast-core/tests/fixtures/switchmap_internal_simplify.map`
-- Create: `crates/ast-core/tests/fixtures/switchmap_internal_simplify.simp`
-- Create: `crates/ast-core/tests/fixtures/switchmap_inverse_cancel.map`
-- Create: `crates/ast-core/tests/fixtures/switchmap_inverse_cancel.simp`
-- Create: `crates/ast-core/tests/fixtures/switchmap_invert_normalize.map`
-- Create: `crates/ast-core/tests/fixtures/switchmap_invert_normalize.simp`
-- Modify: `crates/ast-core/tests/test_selectormap.rs`
-- Modify: `crates/ast-core/tests/test_switchmap.rs`
+- Create: `crates/starlink-ast/tests/fixtures/selectormap_inverse_cancel.map`
+- Create: `crates/starlink-ast/tests/fixtures/selectormap_inverse_cancel.simp`
+- Create: `crates/starlink-ast/tests/fixtures/switchmap_internal_simplify.map`
+- Create: `crates/starlink-ast/tests/fixtures/switchmap_internal_simplify.simp`
+- Create: `crates/starlink-ast/tests/fixtures/switchmap_inverse_cancel.map`
+- Create: `crates/starlink-ast/tests/fixtures/switchmap_inverse_cancel.simp`
+- Create: `crates/starlink-ast/tests/fixtures/switchmap_invert_normalize.map`
+- Create: `crates/starlink-ast/tests/fixtures/switchmap_invert_normalize.simp`
+- Modify: `crates/starlink-ast/tests/test_selectormap.rs`
+- Modify: `crates/starlink-ast/tests/test_switchmap.rs`
 
 - [ ] **Step 1: Copy fixture files from reference**
 
 ```bash
-cp reference/starlink-ast/ast_tester/simplify_fixtures/selectormap_inverse_cancel.map crates/ast-core/tests/fixtures/
-cp reference/starlink-ast/ast_tester/simplify_fixtures/selectormap_inverse_cancel.simp crates/ast-core/tests/fixtures/
-cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_internal_simplify.map crates/ast-core/tests/fixtures/
-cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_internal_simplify.simp crates/ast-core/tests/fixtures/
-cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_inverse_cancel.map crates/ast-core/tests/fixtures/
-cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_inverse_cancel.simp crates/ast-core/tests/fixtures/
-cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_invert_normalize.map crates/ast-core/tests/fixtures/
-cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_invert_normalize.simp crates/ast-core/tests/fixtures/
+cp reference/starlink-ast/ast_tester/simplify_fixtures/selectormap_inverse_cancel.map crates/starlink-ast/tests/fixtures/
+cp reference/starlink-ast/ast_tester/simplify_fixtures/selectormap_inverse_cancel.simp crates/starlink-ast/tests/fixtures/
+cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_internal_simplify.map crates/starlink-ast/tests/fixtures/
+cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_internal_simplify.simp crates/starlink-ast/tests/fixtures/
+cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_inverse_cancel.map crates/starlink-ast/tests/fixtures/
+cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_inverse_cancel.simp crates/starlink-ast/tests/fixtures/
+cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_invert_normalize.map crates/starlink-ast/tests/fixtures/
+cp reference/starlink-ast/ast_tester/simplify_fixtures/switchmap_invert_normalize.simp crates/starlink-ast/tests/fixtures/
 ```
 
 - [ ] **Step 2: Add simplify fixture tests to test_selectormap.rs**
@@ -1914,14 +1914,14 @@ fn switchmap_simplify_invert_normalize() {
 
 - [ ] **Step 4: Run fixture tests**
 
-Run: `cargo test -p ast-core --test test_selectormap --test test_switchmap -- simplify 2>&1 | tail -20`
+Run: `cargo test -p starlink-ast --test test_selectormap --test test_switchmap -- simplify 2>&1 | tail -20`
 Expected: All tests pass. If fixtures use classes not yet wired into deserialization, fix the dispatch entries.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/tests/fixtures/selectormap_* crates/ast-core/tests/fixtures/switchmap_*
-git add crates/ast-core/tests/test_selectormap.rs crates/ast-core/tests/test_switchmap.rs
+git add crates/starlink-ast/tests/fixtures/selectormap_* crates/starlink-ast/tests/fixtures/switchmap_*
+git add crates/starlink-ast/tests/test_selectormap.rs crates/starlink-ast/tests/test_switchmap.rs
 git commit -m "test(simplify): add SelectorMap and SwitchMap simplify fixture tests"
 ```
 
@@ -1930,11 +1930,11 @@ git commit -m "test(simplify): add SelectorMap and SwitchMap simplify fixture te
 ### Task 9: Add fingerprint support to simplify.rs
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs`
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs`
 
 - [ ] **Step 1: Add SwitchMap fingerprint to mapping_fingerprint()**
 
-In `crates/ast-core/src/mappings/simplify.rs`, add after the `TranMap` fingerprint block:
+In `crates/starlink-ast/src/mappings/simplify.rs`, add after the `TranMap` fingerprint block:
 
 ```rust
 use super::switchmap::SwitchMap;
@@ -1963,13 +1963,13 @@ if let Some(sel) = mapping.as_any().downcast_ref::<SelectorMap>() {
 
 - [ ] **Step 2: Verify it compiles and tests pass**
 
-Run: `cargo test -p ast-core 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast 2>&1 | tail -5`
 Expected: All tests pass.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/simplify.rs
+git add crates/starlink-ast/src/mappings/simplify.rs
 git commit -m "feat(simplify): add SwitchMap/SelectorMap fingerprinting for recursion guard"
 ```
 
@@ -1986,12 +1986,12 @@ Run: `cargo fmt --all`
 
 - [ ] **Step 2: Run cargo clippy**
 
-Run: `cargo clippy -p ast-core -- -D warnings 2>&1 | tail -20`
+Run: `cargo clippy -p starlink-ast -- -D warnings 2>&1 | tail -20`
 Expected: No errors. Fix any warnings.
 
 - [ ] **Step 3: Run full test suite**
 
-Run: `cargo test -p ast-core 2>&1 | tail -20`
+Run: `cargo test -p starlink-ast 2>&1 | tail -20`
 Expected: All tests pass.
 
 - [ ] **Step 4: Commit any formatting/clippy fixes**
@@ -2003,5 +2003,5 @@ git commit -m "style: apply fmt and clippy fixes for SelectorMap/SwitchMap"
 
 - [ ] **Step 5: Verify clean build one final time**
 
-Run: `cargo build -p ast-core && cargo test -p ast-core --test test_selectormap --test test_switchmap 2>&1 | tail -10`
+Run: `cargo build -p starlink-ast && cargo test -p starlink-ast --test test_selectormap --test test_switchmap 2>&1 | tail -10`
 Expected: Build clean, all new tests pass.

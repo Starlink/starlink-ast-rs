@@ -28,7 +28,7 @@ support:
 ## Module Structure
 
 ```
-crates/ast-core/src/
+crates/starlink-ast/src/
 ├── pal.rs              # Safe Rust wrappers for PAL C functions
 ├── wcslib.rs           # Safe Rust wrappers for wcslib C projections
 ├── mappings/
@@ -39,7 +39,7 @@ crates/ast-core/src/
 
 ## PAL FFI Wrapper
 
-`crates/ast-core/src/pal.rs` — `pub(crate)` module.
+`crates/starlink-ast/src/pal.rs` — `pub(crate)` module.
 
 Safe Rust functions wrapping the vendored C PAL library. The C
 library is already compiled by `build.rs` into `libast_pal_erfa.a`
@@ -137,7 +137,7 @@ pub(crate) fn dcs2c(a: f64, b: f64) -> [f64; 3] {
 
 ## wcslib FFI Wrapper
 
-`crates/ast-core/src/wcslib.rs` — `pub(crate)` module.
+`crates/starlink-ast/src/wcslib.rs` — `pub(crate)` module.
 
 Safe Rust wrappers for the vendored C wcslib projection library.
 The C code is compiled by `build.rs` into `libast_wcslib.a` (from
@@ -248,7 +248,7 @@ WcsMap will own it and is itself `Send` because it never shares the
 
 ## WcsMap
 
-`crates/ast-core/src/mappings/wcsmap.rs`
+`crates/starlink-ast/src/mappings/wcsmap.rs`
 
 A Mapping that applies a FITS-WCS sky projection. Transforms between
 native spherical coordinates (longitude, latitude) and projected
@@ -301,7 +301,7 @@ Class: `"WcsMap"`.
 
 ## SlaMap
 
-`crates/ast-core/src/mappings/slamap.rs`
+`crates/starlink-ast/src/mappings/slamap.rs`
 
 A Mapping that chains celestial coordinate system conversions. Each
 conversion step transforms direction cosines (3-vectors) using PAL

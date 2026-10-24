@@ -9,9 +9,9 @@
  * A setting of "PERM" swaps the two axes with astPermAxes; settings are
  * applied in order, separated by ";".
  *
- * Prints Rust source for crates/ast-core/tests/skyframe_attrs_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/skyframe_attrs_oracle/cases.rs:
  *
- *   ./skyframe_attrs_probe > ../../crates/ast-core/tests/skyframe_attrs_oracle/cases.rs
+ *   ./skyframe_attrs_probe > ../../crates/starlink-ast/tests/skyframe_attrs_oracle/cases.rs
  */
 #include <float.h>
 #include <stdio.h>
@@ -122,7 +122,7 @@ int main( void ) {
            "// Each value is printed with 17 digits so that it reads back exactly,\n"
            "// including the limits of a latitude axis, which C computes as pi/2.\n"
            "#![allow(clippy::excessive_precision, clippy::approx_constant)]\n\n"
-           "use ast_core::constants::BAD_VALUE as BAD;\n\n"
+           "use starlink_ast::constants::BAD_VALUE as BAD;\n\n"
            "/// An attribute value as C reports it.\n"
            "#[derive(Debug, Clone, Copy, PartialEq)]\n"
            "pub enum V {\n    S(&'static str),\n    I(i32),\n    D(f64),\n}\n\n"

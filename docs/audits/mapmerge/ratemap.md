@@ -1,7 +1,7 @@
 # `MapMerge` audit — RateMap
 
 C source: reference/starlink-ast/src/ratemap.c
-Rust: crates/ast-core/src/mappings/ratemap.rs
+Rust: crates/starlink-ast/src/mappings/ratemap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
 Citations: verified against pin 3b9dc639
 Extension points: classified

@@ -7,9 +7,9 @@
  * matching it, then lays the result out with each component's own MatchEnd
  * (cmpframe.c:6856, :6936).
  *
- * Prints Rust source for crates/ast-core/tests/cmp_match_end_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/cmp_match_end_oracle/cases.rs:
  *
- *   ./cmp_match_end_probe > ../../crates/ast-core/tests/cmp_match_end_oracle/cases.rs
+ *   ./cmp_match_end_probe > ../../crates/starlink-ast/tests/cmp_match_end_oracle/cases.rs
  */
 #include <stdio.h>
 #include "ast.h"

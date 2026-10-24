@@ -10,9 +10,9 @@
  * DSBCentre, ImagFreq, and two points converted from the upper to the lower
  * sideband with AlignSideBand set, each None where C reports an error.
  *
- * Prints Rust source for crates/ast-core/tests/dsb_topo_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/dsb_topo_oracle/cases.rs:
  *
- *   ./dsb_topo_probe > ../../crates/ast-core/tests/dsb_topo_oracle/cases.rs
+ *   ./dsb_topo_probe > ../../crates/starlink-ast/tests/dsb_topo_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

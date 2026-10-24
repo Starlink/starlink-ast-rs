@@ -20,7 +20,7 @@ with the 1-based get/set/test/clear pattern, and builder construction.
 ## Module Structure
 
 ```
-crates/ast-core/src/frames/
+crates/starlink-ast/src/frames/
 ├── mod.rs           # trait + DynFrame + re-exports
 ├── basic.rs         # BasicFrame + BasicFrameBuilder
 └── cmpframe.rs      # CmpFrame

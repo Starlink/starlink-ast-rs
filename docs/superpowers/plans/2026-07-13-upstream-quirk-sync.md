@@ -6,7 +6,7 @@
 
 **Architecture:** Two logical commit groups on the current branch `tickets/DM-54793`. Group A un-mirrors each fixed quirk (behavior + golden + doc + test, each quirk self-contained). Group B imports the new simplify corpus, tags unported-class fixtures, and fixes all supported-class failures.
 
-**Tech Stack:** Rust 2024, `cargo test -p ast-core`, reference C `libast` built with cmake for oracle verification.
+**Tech Stack:** Rust 2024, `cargo test -p starlink-ast`, reference C `libast` built with cmake for oracle verification.
 
 **Design spec:** `docs/superpowers/specs/2026-07-13-upstream-quirk-sync-design.md`
 
@@ -17,7 +17,7 @@
 - `#![warn(missing_docs)]` on public items; CI uses `RUSTFLAGS="-D warnings"`.
 - `AST__BAD` / `BAD_VALUE` = `-f64::MAX`; never use `NaN` as an output sentinel.
 - All axis indices are 1-based in the public Rust API.
-- Fixtures are committed into `crates/ast-core/tests/fixtures/`; never symlink to the submodule.
+- Fixtures are committed into `crates/starlink-ast/tests/fixtures/`; never symlink to the submodule.
 - `cargo`/`rustc` live in the `lsst-scipipe` conda bin — ensure it is on `PATH` (memory `reference_cargo_conda_env`); pre-commit hooks need it too.
 - Reference oracle `libast` is built with **cmake**, never autotools (memory `reference_oracle_build_cmake`).
 - Port C control flow directly; no heuristics, no corner-cutting. Re-derive each change from the actual upstream `src/*.c` diff, not the quirks-doc's proposed patch text (memories `feedback_port_all_c_logic`, `feedback_no_corner_cuts_on_c`, `feedback_c_first_then_idiomatic`).
@@ -79,9 +79,9 @@ Expected: `wcsconverter` binary built. This is the oracle for the regenerated FI
 **Upstream fix:** `409f1311`. **Quirk doc:** "SpecMap velocity routines cast RefRA/RefDec to float".
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/specmap.rs:600-644` (helpers `lsrk_vel`, `lsrd_vel`, `lg_vel`, `gal_vel` + the block comment above them)
-- Modify (goldens): `crates/ast-core/tests/fixtures/wcsconv/expected/class-arc.fits-class`, `class-olddate.fits-class`, `class-sin.fits-class`, `skyspec3d-class.fits-class`, `vrad-v2f.native`, `jan.ast`
-- Test: `crates/ast-core/tests/test_wcsconv.rs` (existing regression driver — no new test file)
+- Modify: `crates/starlink-ast/src/mappings/specmap.rs:600-644` (helpers `lsrk_vel`, `lsrd_vel`, `lg_vel`, `gal_vel` + the block comment above them)
+- Modify (goldens): `crates/starlink-ast/tests/fixtures/wcsconv/expected/class-arc.fits-class`, `class-olddate.fits-class`, `class-sin.fits-class`, `skyspec3d-class.fits-class`, `vrad-v2f.native`, `jan.ast`
+- Test: `crates/starlink-ast/tests/test_wcsconv.rs` (existing regression driver — no new test file)
 
 **Interfaces:**
 - Produces: `lsrk_vel(ra: f64, dec: f64) -> f64`, `lsrd_vel(ra, dec) -> f64`, `lg_vel(ra, dec) -> f64`, `gal_vel(ra, dec) -> f64` — signatures unchanged; only the body drops the `as f32 as f64` truncation.
@@ -91,13 +91,13 @@ Expected: `wcsconverter` binary built. This is the oracle for the regenerated FI
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-diff crates/ast-core/tests/fixtures/wcsconv/expected/class-arc.fits-class reference/starlink-ast/ast_tester/class-arc.fits-class
+diff crates/starlink-ast/tests/fixtures/wcsconv/expected/class-arc.fits-class reference/starlink-ast/ast_tester/class-arc.fits-class
 ```
 Expected: shows `VELO-LSR`/`VLSR` differ (`6876.2765` ours vs `6876.2752` upstream) — confirming our golden carries the old buggy value.
 
 - [ ] **Step 2: Edit the four helpers to pass f64 straight through**
 
-In `crates/ast-core/src/mappings/specmap.rs`, replace the four helper bodies:
+In `crates/starlink-ast/src/mappings/specmap.rs`, replace the four helper bodies:
 
 ```rust
 /// Velocity of the kinematic LSR away from the source (m/s, heliocentric).
@@ -150,13 +150,13 @@ Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 for f in class-arc.fits-class class-olddate.fits-class class-sin.fits-class skyspec3d-class.fits-class vrad-v2f.native jan.ast; do
-  cp "reference/starlink-ast/ast_tester/$f" "crates/ast-core/tests/fixtures/wcsconv/expected/$f"
+  cp "reference/starlink-ast/ast_tester/$f" "crates/starlink-ast/tests/fixtures/wcsconv/expected/$f"
 done
 ```
 Then verify each changed line is only the expected VELO-LSR/VLSR/velocity drift (not unrelated content):
 ```bash
-git diff --stat crates/ast-core/tests/fixtures/wcsconv/expected/
-git diff crates/ast-core/tests/fixtures/wcsconv/expected/class-arc.fits-class
+git diff --stat crates/starlink-ast/tests/fixtures/wcsconv/expected/
+git diff crates/starlink-ast/tests/fixtures/wcsconv/expected/class-arc.fits-class
 ```
 Expected: only spectral-velocity numeric fields changed.
 
@@ -164,7 +164,7 @@ Expected: only spectral-velocity numeric fields changed.
 
 Run:
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -20
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -20
 ```
 Expected: PASS — the class/jan/vrad fixtures now agree with the regenerated goldens.
 
@@ -174,7 +174,7 @@ Run:
 ```bash
 cargo fmt
 cargo clippy --workspace -- -D warnings 2>&1 | tail -5
-git add crates/ast-core/src/mappings/specmap.rs crates/ast-core/tests/fixtures/wcsconv/expected/
+git add crates/starlink-ast/src/mappings/specmap.rs crates/starlink-ast/tests/fixtures/wcsconv/expected/
 git commit -m "$(cat <<'EOF'
 specmap: drop f32 casts on RA/Dec in velocity helpers (match fixed C)
 
@@ -200,9 +200,9 @@ EOF
 **Background:** C now bumps the SkyFrame `Digits` to 20 before the `astFormat`/`astSetC` round-trip, making the string conversion effectively lossless. The Rust mirror deliberately reproduced the *lossy* default-precision round-trip. Match fixed C by using the full-precision `reflon`/`reflat` values directly (still normalized to AST's canonical ranges), which is what the Digits=20 round-trip yields.
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/fset_to_store/mod.rs:482-538`
-- Modify (golden): `crates/ast-core/tests/fixtures/wcsconv/expected/longslit.fits-wcs`
-- Test: `crates/ast-core/tests/test_wcsconv.rs` (existing driver)
+- Modify: `crates/starlink-ast/src/fitschan/fset_to_store/mod.rs:482-538`
+- Modify (golden): `crates/starlink-ast/tests/fixtures/wcsconv/expected/longslit.fits-wcs`
+- Test: `crates/starlink-ast/tests/test_wcsconv.rs` (existing driver)
 
 **Interfaces:**
 - Consumes: `reflon: f64`, `reflat: f64` (from the earlier `fid` binding at line 477); `normalise_ra`, `normalise_dec` from `crate::frames::skyaxis`.
@@ -213,13 +213,13 @@ EOF
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-diff crates/ast-core/tests/fixtures/wcsconv/expected/longslit.fits-wcs reference/starlink-ast/ast_tester/longslit.fits-wcs
+diff crates/starlink-ast/tests/fixtures/wcsconv/expected/longslit.fits-wcs reference/starlink-ast/ast_tester/longslit.fits-wcs
 ```
 Expected: `VELOSYS` differs (`-20038.807` ours vs `-20038.808` upstream).
 
 - [ ] **Step 2: Replace the lossy format/unformat block with full-precision normalize**
 
-In `crates/ast-core/src/fitschan/fset_to_store/mod.rs`, replace the block from the `// C uses \`astSetC(tfs, "RefRA"...` comment through the `let (reflon_quant, reflat_quant) = { ... };` binding (lines ~488-530) with:
+In `crates/starlink-ast/src/fitschan/fset_to_store/mod.rs`, replace the block from the `// C uses \`astSetC(tfs, "RefRA"...` comment through the `let (reflon_quant, reflat_quant) = { ... };` binding (lines ~488-530) with:
 
 ```rust
     // C uses `astSetC(tfs, "RefRA", astFormat(tfs, ilon, reflon))`, but
@@ -241,8 +241,8 @@ Leave the `owned.with_integrity(|cur| { ... set_ref_ra/set_ref_dec ... })?;` blo
 
 Run:
 ```bash
-cp reference/starlink-ast/ast_tester/longslit.fits-wcs crates/ast-core/tests/fixtures/wcsconv/expected/longslit.fits-wcs
-git diff crates/ast-core/tests/fixtures/wcsconv/expected/longslit.fits-wcs
+cp reference/starlink-ast/ast_tester/longslit.fits-wcs crates/starlink-ast/tests/fixtures/wcsconv/expected/longslit.fits-wcs
+git diff crates/starlink-ast/tests/fixtures/wcsconv/expected/longslit.fits-wcs
 ```
 Expected: only the `VELOSYS` line changed (`-20038.807` → `-20038.808`).
 
@@ -250,7 +250,7 @@ Expected: only the `VELOSYS` line changed (`-20038.807` → `-20038.808`).
 
 Run:
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -20
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -20
 ```
 Expected: PASS — `longslit` now agrees; no other fixture regressed.
 
@@ -260,7 +260,7 @@ Run:
 ```bash
 cargo fmt
 cargo clippy --workspace -- -D warnings 2>&1 | tail -5
-git add crates/ast-core/src/fitschan/fset_to_store/mod.rs crates/ast-core/tests/fixtures/wcsconv/expected/longslit.fits-wcs
+git add crates/starlink-ast/src/fitschan/fset_to_store/mod.rs crates/starlink-ast/tests/fixtures/wcsconv/expected/longslit.fits-wcs
 git commit -m "$(cat <<'EOF'
 fitschan: set RefRA/RefDec at full precision (match fixed C)
 
@@ -283,15 +283,15 @@ EOF
 **Upstream fix:** `da9ddb39`. **Quirk doc:** "astAxAngle nudge reads a stale loop index".
 
 **Files:**
-- Modify: `crates/ast-core/src/frames/mod.rs:670-676` (the `else if b[k] != 0.0` branch of `ax_angle`)
-- Modify (test): `crates/ast-core/tests/test_frame_geometry.rs:63-79` (`ax_angle_cartesian`)
+- Modify: `crates/starlink-ast/src/frames/mod.rs:670-676` (the `else if b[k] != 0.0` branch of `ax_angle`)
+- Modify (test): `crates/starlink-ast/tests/test_frame_geometry.rs:63-79` (`ax_angle_cartesian`)
 
 **Interfaces:**
 - Produces: `ax_angle(&self, a: &[f64], b: &[f64], axis: usize) -> AstResult<f64>` — signature unchanged; behavior corrected for the `a[axis-1]==0 && b[axis-1]!=0` case.
 
 - [ ] **Step 1: Update the existing test to the corrected (fixed-C) expectations**
 
-In `crates/ast-core/tests/test_frame_geometry.rs`, replace the `ax_angle_cartesian` body's first assertion and comment:
+In `crates/starlink-ast/tests/test_frame_geometry.rs`, replace the `ax_angle_cartesian` body's first assertion and comment:
 
 ```rust
 fn ax_angle_cartesian() {
@@ -320,13 +320,13 @@ Note on `ang1`: verify the exact oracle value in Step 4; the design expects a va
 
 Run:
 ```bash
-cargo test -p ast-core --test test_frame_geometry ax_angle_cartesian 2>&1 | tail -15
+cargo test -p starlink-ast --test test_frame_geometry ax_angle_cartesian 2>&1 | tail -15
 ```
 Expected: FAIL — current code returns `BAD_VALUE` for `ang1`.
 
 - [ ] **Step 3: Fix the branch in `ax_angle`**
 
-In `crates/ast-core/src/frames/mod.rs`, replace the `else if b[k] != 0.0` branch:
+In `crates/starlink-ast/src/frames/mod.rs`, replace the `else if b[k] != 0.0` branch:
 
 ```rust
         } else if b[k] != 0.0 {
@@ -343,7 +343,7 @@ Build a tiny probe or reuse `wcsconverter`? `ax_angle` has no wcsconverter path,
 
 Run:
 ```bash
-cargo test -p ast-core --test test_frame_geometry ax_angle_cartesian 2>&1 | tail -10
+cargo test -p starlink-ast --test test_frame_geometry ax_angle_cartesian 2>&1 | tail -10
 ```
 Expected: PASS.
 
@@ -353,7 +353,7 @@ Run:
 ```bash
 cargo fmt
 cargo clippy --workspace -- -D warnings 2>&1 | tail -5
-git add crates/ast-core/src/frames/mod.rs crates/ast-core/tests/test_frame_geometry.rs
+git add crates/starlink-ast/src/frames/mod.rs crates/starlink-ast/tests/test_frame_geometry.rs
 git commit -m "$(cat <<'EOF'
 frame: fix ax_angle stale loop index (match fixed C)
 
@@ -375,15 +375,15 @@ EOF
 **Upstream fix:** `e782c220`. **Quirk doc:** "astRate returns BAD at x0=0 for domain-restricted Mappings".
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/rate.rs:42-47` (the `h0` seed)
-- Modify (tests): `crates/ast-core/tests/test_chebymap.rs:770-796` (`chebymap_rate`), `crates/ast-core/tests/test_numeric_rate.rs:43-48` (`numeric_rate_at_zero`) and `:51-73` (`numeric_rate_tan_at_zero_matches_c_artifact`)
+- Modify: `crates/starlink-ast/src/mappings/rate.rs:42-47` (the `h0` seed)
+- Modify (tests): `crates/starlink-ast/tests/test_chebymap.rs:770-796` (`chebymap_rate`), `crates/starlink-ast/tests/test_numeric_rate.rs:43-48` (`numeric_rate_at_zero`) and `:51-73` (`numeric_rate_tan_at_zero_matches_c_artifact`)
 
 **Interfaces:**
 - Produces: `numeric_rate(mapping, at, ax1, ax2) -> AstResult<f64>` — unchanged signature; the zero-`x0` seed changes from `1.0` to `f64::EPSILON * 1e9`.
 
 - [ ] **Step 1: Update `chebymap_rate` to expect the true gradient at x0=0**
 
-In `crates/ast-core/tests/test_chebymap.rs`, replace the x=0 assertion block:
+In `crates/starlink-ast/tests/test_chebymap.rs`, replace the x=0 assertion block:
 
 ```rust
     // At x=0 the derivative of f(x)=x is 1.0. Upstream e782c220 seeds the
@@ -429,14 +429,14 @@ fn numeric_rate_tan_at_zero() {
 
 Run:
 ```bash
-cargo test -p ast-core --test test_chebymap chebymap_rate 2>&1 | tail -10
-cargo test -p ast-core --test test_numeric_rate numeric_rate_tan_at_zero 2>&1 | tail -10
+cargo test -p starlink-ast --test test_chebymap chebymap_rate 2>&1 | tail -10
+cargo test -p starlink-ast --test test_numeric_rate numeric_rate_tan_at_zero 2>&1 | tail -10
 ```
 Expected: FAIL — current code returns `BAD_VALUE` (chebymap) / the negative artifact (tan).
 
 - [ ] **Step 4: Fix the seed in `rate.rs`**
 
-In `crates/ast-core/src/mappings/rate.rs`, replace the `h0` seed:
+In `crates/starlink-ast/src/mappings/rate.rs`, replace the `h0` seed:
 
 ```rust
     // Initial interval size (mapping.c Rate, commit e782c220): a small
@@ -456,16 +456,16 @@ In `crates/ast-core/src/mappings/rate.rs`, replace the `h0` seed:
 
 Run:
 ```bash
-cargo test -p ast-core --test test_numeric_rate 2>&1 | tail -15
-cargo test -p ast-core --test test_chebymap 2>&1 | tail -15
+cargo test -p starlink-ast --test test_numeric_rate 2>&1 | tail -15
+cargo test -p starlink-ast --test test_chebymap 2>&1 | tail -15
 ```
-Expected: PASS. If any other test in these files asserted an x0=0 BAD/artifact value, update it to the true-gradient value in this same task (search: `grep -n "x0\|at_zero\|BAD" crates/ast-core/tests/test_numeric_rate.rs`).
+Expected: PASS. If any other test in these files asserted an x0=0 BAD/artifact value, update it to the true-gradient value in this same task (search: `grep -n "x0\|at_zero\|BAD" crates/starlink-ast/tests/test_numeric_rate.rs`).
 
-- [ ] **Step 6: Run the full ast-core test suite to catch downstream effects**
+- [ ] **Step 6: Run the full starlink-ast test suite to catch downstream effects**
 
 Run:
 ```bash
-cargo test -p ast-core 2>&1 | tail -25
+cargo test -p starlink-ast 2>&1 | tail -25
 ```
 Expected: PASS. The design notes FELO/VOPT spectral CDELT could shift by ~1e-7 in CmpMap rate paths — but that path uses whole-map numeric rate (Bucket 3, unchanged) so wcsconv should stay green. If a wcsconv fixture regresses here, STOP and raise it (it would mean a fixed-C golden also changed — check `reference/starlink-ast/ast_tester/` for that fixture).
 
@@ -475,7 +475,7 @@ Run:
 ```bash
 cargo fmt
 cargo clippy --workspace -- -D warnings 2>&1 | tail -5
-git add crates/ast-core/src/mappings/rate.rs crates/ast-core/tests/test_chebymap.rs crates/ast-core/tests/test_numeric_rate.rs
+git add crates/starlink-ast/src/mappings/rate.rs crates/starlink-ast/tests/test_chebymap.rs crates/starlink-ast/tests/test_numeric_rate.rs
 git commit -m "$(cat <<'EOF'
 mapping: fix astRate x0=0 seed for narrow-domain Mappings (match fixed C)
 
@@ -498,14 +498,14 @@ EOF
 **Upstream fix:** `c1a88658`. **Quirk doc:** "astRate zero-range confirmation reads a stale array slot".
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/rate.rs:99` and `:141` (the two zero-range confirmation branches)
+- Modify: `crates/starlink-ast/src/mappings/rate.rs:99` and `:141` (the two zero-range confirmation branches)
 
 **Interfaces:**
 - Produces: `numeric_rate(...)` — unchanged signature; the two `ranges[iin ± 1]` reads become `ranges[itop - 1]` / `ranges[ibot + 1]` (store indices).
 
 - [ ] **Step 1: Fix the upward-search branch (line ~99)**
 
-In `crates/ast-core/src/mappings/rate.rs`, replace:
+In `crates/starlink-ast/src/mappings/rate.rs`, replace:
 
 ```rust
         } else if range == 0.0 && ranges[iin - 1] == 0.0 {
@@ -538,7 +538,7 @@ Keep the existing `iret = ibot; break;` body; remove the old stale-slot comment.
 
 Run:
 ```bash
-grep -n "iin" crates/ast-core/src/mappings/rate.rs
+grep -n "iin" crates/starlink-ast/src/mappings/rate.rs
 ```
 Expected: `iin` still drives the `for` ranges. If the two edits leave `iin` unused inside a loop body, clippy would warn — the `for iin in ...` header still binds it for `h *= 4.0` iteration count, so it remains used. If clippy flags an unused binding, rename the loop header to `for _ in ...` only where truly unused (verify first).
 
@@ -546,9 +546,9 @@ Expected: `iin` still drives the `for` ranges. If the two edits leave `iin` unus
 
 Run:
 ```bash
-cargo test -p ast-core --test test_numeric_rate 2>&1 | tail -10
-cargo test -p ast-core --test test_chebymap 2>&1 | tail -10
-cargo test -p ast-core 2>&1 | tail -15
+cargo test -p starlink-ast --test test_numeric_rate 2>&1 | tail -10
+cargo test -p starlink-ast --test test_chebymap 2>&1 | tail -10
+cargo test -p starlink-ast 2>&1 | tail -15
 ```
 Expected: PASS. This branch is only reached for smooth Mappings where `iin`/store index coincide, so no test value should change; this is a latent-correctness alignment.
 
@@ -558,7 +558,7 @@ Run:
 ```bash
 cargo fmt
 cargo clippy --workspace -- -D warnings 2>&1 | tail -5
-git add crates/ast-core/src/mappings/rate.rs
+git add crates/starlink-ast/src/mappings/rate.rs
 git commit -m "$(cat <<'EOF'
 mapping: fix astRate zero-range stale-slot index (match fixed C)
 
@@ -580,15 +580,15 @@ EOF
 **Upstream fix:** `0fbd9cc3`. **Quirk doc:** "PermMap::Equal skips constant-value comparison for matching indices".
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/perm.rs:958-973` (the `entry_eq` closure)
-- Modify (test): `crates/ast-core/tests/test_permmap.rs:175-183` (`perm_equal_same_constant_index_ignores_value_quirk`)
+- Modify: `crates/starlink-ast/src/mappings/perm.rs:958-973` (the `entry_eq` closure)
+- Modify (test): `crates/starlink-ast/tests/test_permmap.rs:175-183` (`perm_equal_same_constant_index_ignores_value_quirk`)
 
 **Interfaces:**
 - Produces: `PermMap::equal(&self, other: &dyn Mapping) -> bool` — unchanged signature; two PermMaps feeding an axis from the same constant *index* now compare unequal if the stored *values* differ.
 
 - [ ] **Step 1: Rewrite the quirk test to the fixed-C expectation**
 
-In `crates/ast-core/tests/test_permmap.rs`, replace `perm_equal_same_constant_index_ignores_value_quirk` (name and body):
+In `crates/starlink-ast/tests/test_permmap.rs`, replace `perm_equal_same_constant_index_ignores_value_quirk` (name and body):
 
 ```rust
 #[test]
@@ -623,13 +623,13 @@ fn perm_equal_same_constant_index_same_value() {
 
 Run:
 ```bash
-cargo test -p ast-core --test test_permmap perm_equal 2>&1 | tail -15
+cargo test -p starlink-ast --test test_permmap perm_equal 2>&1 | tail -15
 ```
 Expected: FAIL on `perm_equal_same_constant_index_differing_values` (current code returns `true` via the `p1 == p2` short-circuit).
 
 - [ ] **Step 4: Fix the `entry_eq` closure**
 
-In `crates/ast-core/src/mappings/perm.rs`, replace the `entry_eq` closure so that whenever both entries are negative (constants) the referenced values are compared — even when `p1 == p2`. Mirror the fixed-C structure ("if either >= 0: unequal unless equal; else compare constant values"):
+In `crates/starlink-ast/src/mappings/perm.rs`, replace the `entry_eq` closure so that whenever both entries are negative (constants) the referenced values are compared — even when `p1 == p2`. Mirror the fixed-C structure ("if either >= 0: unequal unless equal; else compare constant values"):
 
 ```rust
         // Compare one input/output position. Mirrors fixed C
@@ -665,7 +665,7 @@ Ensure `BAD_VALUE` is in scope (it is imported at the top of `perm.rs` per the e
 
 Run:
 ```bash
-cargo test -p ast-core --test test_permmap 2>&1 | tail -15
+cargo test -p starlink-ast --test test_permmap 2>&1 | tail -15
 ```
 Expected: PASS (all four+new cases).
 
@@ -673,7 +673,7 @@ Expected: PASS (all four+new cases).
 
 Run:
 ```bash
-cargo test -p ast-core 2>&1 | tail -20
+cargo test -p starlink-ast 2>&1 | tail -20
 ```
 Expected: PASS. The fix makes `equal` stricter (fewer merges); if a simplify regression fixture relied on the over-merge it would now fail — if so, that fixture's `.simp` will have changed upstream too; STOP and reconcile against `reference/starlink-ast/ast_tester/simplify_fixtures/`.
 
@@ -683,7 +683,7 @@ Run:
 ```bash
 cargo fmt
 cargo clippy --workspace -- -D warnings 2>&1 | tail -5
-git add crates/ast-core/src/mappings/perm.rs crates/ast-core/tests/test_permmap.rs
+git add crates/starlink-ast/src/mappings/perm.rs crates/starlink-ast/tests/test_permmap.rs
 git commit -m "$(cat <<'EOF'
 permmap: compare constant values on matching negative indices (fixed C)
 
@@ -706,8 +706,8 @@ EOF
 **Upstream fix:** `8be504ac`. **Quirk doc:** "astDat inverse-direction divisor wrong in pre-1972 rubber-second era".
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/timemap.rs:701-731` (the pre-1972 inverse branches)
-- Test: `crates/ast-core/tests/test_timemap.rs` (add a round-trip test ported from `testtime.c`)
+- Modify: `crates/starlink-ast/src/mappings/timemap.rs:701-731` (the pre-1972 inverse branches)
+- Test: `crates/starlink-ast/tests/test_timemap.rs` (add a round-trip test ported from `testtime.c`)
 
 **Interfaces:**
 - Produces: `ast_dat` inverse branch — same signature; divisors change from the literal `1.0xxxx` forms to `(1.0 + b/SPD)`, and the 1966 branch intercept fixes `4.2131700` → `4.3131700`.
@@ -716,12 +716,12 @@ EOF
 
 `ast_dat` is private (`fn ast_dat` in `timemap.rs`, not `pub(crate)`), so the integration test cannot call it directly. Port the `testtime.c` cases at the public `TimeMap` level, reusing the existing `transform_one` helper and the `UtcToTai`/`TaiToUtc` conversions already used by `utc_tai_round_trip` in this file. `transform_one(&tm, val, forward)` transforms one MJD; construct the map with `TimeCvtType::UtcToTai` / `TimeCvtType::TaiToUtc` and args `[0.0, BAD_VALUE]` (BAD triggers the automatic DTAI lookup, i.e. the `ast_dat` path).
 
-Add to `crates/ast-core/tests/test_timemap.rs`:
+Add to `crates/starlink-ast/tests/test_timemap.rs`:
 
 ```rust
 #[test]
 fn utc_tai_roundtrip_pre1972_eras() {
-    use ast_core::constants::BAD_VALUE;
+    use starlink_ast::constants::BAD_VALUE;
     // Ported from testtime.c (commit 8be504ac): one UTC MJD inside each of
     // the 14 pre-1972 "rubber second" eras. A UTC->TAI->UTC round trip must
     // return to the start to ~1e-9 d, and TAI-UTC at the test point must
@@ -765,13 +765,13 @@ Verify the `transform_one` forward/`true` convention against the existing `tai_t
 
 Run:
 ```bash
-cargo test -p ast-core --test test_timemap utc_tai_roundtrip_pre1972_eras 2>&1 | tail -15
+cargo test -p starlink-ast --test test_timemap utc_tai_roundtrip_pre1972_eras 2>&1 | tail -15
 ```
 Expected: FAIL — the round trip leaks ~1.9e-6 d (>1e-9) and the 1966-era offset is off by ~0.1 s.
 
 - [ ] **Step 3: Fix the inverse divisors and the 1966 intercept**
 
-In `crates/ast-core/src/mappings/timemap.rs`, in the inverse branch (lines ~701-731), change every pre-1972 divisor from the literal form to `(1.0 + b/SPD)`, and fix the 1966 branch intercept. Concretely:
+In `crates/starlink-ast/src/mappings/timemap.rs`, in the inverse branch (lines ~701-731), change every pre-1972 divisor from the literal form to `(1.0 + b/SPD)`, and fix the 1966 branch intercept. Concretely:
 
 ```rust
         } else if mjd >= 39887.0 + (4.2131700 + (39887.0 - 39126.0) * 0.002592) / SPD {
@@ -811,7 +811,7 @@ Two substantive corrections vs the current code: (1) the 1966 branch second cons
 
 Run:
 ```bash
-cargo test -p ast-core --test test_timemap 2>&1 | tail -20
+cargo test -p starlink-ast --test test_timemap 2>&1 | tail -20
 ```
 Expected: PASS.
 
@@ -819,7 +819,7 @@ Expected: PASS.
 
 Run:
 ```bash
-cargo test -p ast-core 2>&1 | tail -20
+cargo test -p starlink-ast 2>&1 | tail -20
 ```
 Expected: PASS. wcsconv `fk4_aips_*` fixtures use MJD-OBS 40000 but the AIPS/IRAF writers do not re-emit MJD-OBS (mirrored in enc_aips/enc_iraf), so no golden should change. If one does, STOP and reconcile.
 
@@ -829,7 +829,7 @@ Run:
 ```bash
 cargo fmt
 cargo clippy --workspace -- -D warnings 2>&1 | tail -5
-git add crates/ast-core/src/mappings/timemap.rs crates/ast-core/tests/test_timemap.rs
+git add crates/starlink-ast/src/mappings/timemap.rs crates/starlink-ast/tests/test_timemap.rs
 git commit -m "$(cat <<'EOF'
 timemap: fix astDat pre-1972 inverse divisors and 1966 intercept (fixed C)
 
@@ -852,7 +852,7 @@ EOF
 Most Bucket-1 C-test assertions were ported inline with their fixes (Tasks 3, 4, 6, 7). This task adds the two that were verification-only and confirms coverage.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_permmap.rs` — already covered in Task 6. No-op here; verify.
+- Modify: `crates/starlink-ast/tests/test_permmap.rs` — already covered in Task 6. No-op here; verify.
 - Verify only: `test_frame_geometry.rs` (Task 3), `test_chebymap.rs`/`test_numeric_rate.rs` (Task 4), `test_timemap.rs` (Task 7).
 
 - [ ] **Step 1: Confirm each ported C assertion has a Rust counterpart**
@@ -860,10 +860,10 @@ Most Bucket-1 C-test assertions were ported inline with their fixes (Tasks 3, 4,
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-grep -l "ax_angle" crates/ast-core/tests/test_frame_geometry.rs
-grep -l "chebymap_rate\|numeric_rate_tan_at_zero" crates/ast-core/tests/test_chebymap.rs crates/ast-core/tests/test_numeric_rate.rs
-grep -l "perm_equal_same_constant_index" crates/ast-core/tests/test_permmap.rs
-grep -l "utc_tai_roundtrip_pre1972_eras" crates/ast-core/tests/test_timemap.rs
+grep -l "ax_angle" crates/starlink-ast/tests/test_frame_geometry.rs
+grep -l "chebymap_rate\|numeric_rate_tan_at_zero" crates/starlink-ast/tests/test_chebymap.rs crates/starlink-ast/tests/test_numeric_rate.rs
+grep -l "perm_equal_same_constant_index" crates/starlink-ast/tests/test_permmap.rs
+grep -l "utc_tai_roundtrip_pre1972_eras" crates/starlink-ast/tests/test_timemap.rs
 ```
 Expected: each grep prints its file — all four discrete C tests have Rust counterparts.
 
@@ -871,7 +871,7 @@ Expected: each grep prints its file — all four discrete C tests have Rust coun
 
 Run:
 ```bash
-cargo test -p ast-core --test test_frame_geometry --test test_chebymap --test test_numeric_rate --test test_permmap --test test_timemap 2>&1 | tail -20
+cargo test -p starlink-ast --test test_frame_geometry --test test_chebymap --test test_numeric_rate --test test_permmap --test test_timemap 2>&1 | tail -20
 ```
 Expected: PASS.
 
@@ -956,7 +956,7 @@ EOF
 ## Task 10: Import the new simplify fixtures (files only)
 
 **Files:**
-- Create: ~164 new `.map` + partner `.simp` files under `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`
+- Create: ~164 new `.map` + partner `.simp` files under `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/`
 
 **Interfaces:**
 - Produces: the fixture files on disk, ready for the manifest wiring in Task 11.
@@ -967,7 +967,7 @@ Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 SRC=reference/starlink-ast/ast_tester/simplify_fixtures
-DST=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+DST=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
 for f in "$SRC"/*.map "$SRC"/*.simp; do
   base=$(basename "$f")
   if [ ! -e "$DST/$base" ]; then cp "$f" "$DST/$base"; fi
@@ -978,9 +978,9 @@ done
 
 Run:
 ```bash
-echo "ours .map:  $(ls crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/*.map | wc -l)"
+echo "ours .map:  $(ls crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/*.map | wc -l)"
 echo "up   .map:  $(ls reference/starlink-ast/ast_tester/simplify_fixtures/*.map | wc -l)"
-echo "ours .simp: $(ls crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/*.simp | wc -l)"
+echo "ours .simp: $(ls crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/*.simp | wc -l)"
 echo "up   .simp: $(ls reference/starlink-ast/ast_tester/simplify_fixtures/*.simp | wc -l)"
 ```
 Expected: ours ≥ upstream for both (ours = upstream + our 6 local-only `neg_*` .map). `.map`: ours 425 vs up 419; `.simp`: ours 276 vs up 276 (adjust if local-only fixtures also have `.simp`).
@@ -989,7 +989,7 @@ Expected: ours ≥ upstream for both (ours = upstream + our 6 local-only `neg_*`
 
 Run:
 ```bash
-comm -23 <(ls crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/*.map | xargs -n1 basename | sort) <(ls reference/starlink-ast/ast_tester/simplify_fixtures/*.map | xargs -n1 basename | sort)
+comm -23 <(ls crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/*.map | xargs -n1 basename | sort) <(ls reference/starlink-ast/ast_tester/simplify_fixtures/*.map | xargs -n1 basename | sort)
 ```
 Expected: lists exactly the 6 `neg_*` fixtures (`neg_cmpmap_mode_mismatch`, `neg_cmpmap_neighbour_not_cmpmap`, `neg_poly_different_coeffs`, `neg_time_2arg_mismatch`, `neg_unitnormmap_nonunit_scale`, `neg_win_series_cmpmap_neighbour`).
 
@@ -997,7 +997,7 @@ Expected: lists exactly the 6 `neg_*` fixtures (`neg_cmpmap_mode_mismatch`, `neg
 
 Run:
 ```bash
-git add crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/
+git add crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/
 git commit -m "$(cat <<'EOF'
 test: import new astSimplify fixtures from upstream 50c2b21b
 
@@ -1016,7 +1016,7 @@ EOF
 ## Task 11: Wire the manifest + tag unported-class fixtures
 
 **Files:**
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
 
 **Interfaces:**
 - Consumes: the fixture files from Task 10.
@@ -1027,7 +1027,7 @@ EOF
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-grep -lE "IntraMap|XphMap" crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/*.map | xargs -n1 basename | sort
+grep -lE "IntraMap|XphMap" crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/*.map | xargs -n1 basename | sort
 ```
 Expected: 16 fixtures (15 new + any already present). Record this list — these get commented out in the manifest.
 
@@ -1038,7 +1038,7 @@ Take upstream's `simplify_tests.txt` as the base (it has the correct entries + s
 Generate it:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-DST=crates/ast-core/tests/fixtures/native/reference
+DST=crates/starlink-ast/tests/fixtures/native/reference
 # Fixtures to block (class not ported):
 grep -lE "IntraMap|XphMap" "$DST"/simplify_fixtures/*.map | xargs -n1 basename | sed 's/\.map$//' | sort > /tmp/blocked_names.txt
 wc -l /tmp/blocked_names.txt
@@ -1054,7 +1054,7 @@ Then hand-edit `simplify_tests.txt`: for each name in `/tmp/blocked_names.txt`, 
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-DST=crates/ast-core/tests/fixtures/native/reference
+DST=crates/starlink-ast/tests/fixtures/native/reference
 awk -F'|' '!/^#/ && NF>=3 { gsub(/ /,"",$2); print $2 }' "$DST/simplify_tests.txt" | while read p; do
   [ -e "$DST/$p" ] || echo "MISSING: $p"
 done
@@ -1065,7 +1065,7 @@ Expected: no `MISSING` lines (every non-commented entry points to a real file).
 
 Run:
 ```bash
-grep -c "BLOCKED" crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt
+grep -c "BLOCKED" crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt
 ```
 Expected: matches the count in `/tmp/blocked_names.txt`.
 
@@ -1073,7 +1073,7 @@ Expected: matches the count in `/tmp/blocked_names.txt`.
 
 Run:
 ```bash
-git add crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt
+git add crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt
 git commit -m "$(cat <<'EOF'
 test: wire new simplify fixtures into the regression manifest
 
@@ -1093,14 +1093,14 @@ EOF
 ## Task 12: Extend the harness to separate skip reasons
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_simplify_regression.rs` (the loop's skip accounting + the summary print)
+- Modify: `crates/starlink-ast/tests/test_simplify_regression.rs` (the loop's skip accounting + the summary print)
 
 **Interfaces:**
 - Produces: the summary line distinguishes `skipped: unported class` from `skipped: unexpected`.
 
 - [ ] **Step 1: Add a parse-failure vs missing-file distinction**
 
-In `crates/ast-core/tests/test_simplify_regression.rs`, replace the single `skipped` counter with two: `skipped_missing` (file absent — expected for any not-yet-imported entry) and `skipped_parse` (present but `from_native_string` failed — an unported class or a genuine parser gap). At each `skipped += 1;` site, use the appropriate counter based on whether the failure was "file not found" vs "parse error". The existing structure already separates the `!input_path.exists()` check (→ `skipped_missing`) from the `from_native_string(...)` `Err` arm (→ `skipped_parse`).
+In `crates/starlink-ast/tests/test_simplify_regression.rs`, replace the single `skipped` counter with two: `skipped_missing` (file absent — expected for any not-yet-imported entry) and `skipped_parse` (present but `from_native_string` failed — an unported class or a genuine parser gap). At each `skipped += 1;` site, use the appropriate counter based on whether the failure was "file not found" vs "parse error". The existing structure already separates the `!input_path.exists()` check (→ `skipped_missing`) from the `from_native_string(...)` `Err` arm (→ `skipped_parse`).
 
 - [ ] **Step 2: Collect the names of parse-skips for reporting**
 
@@ -1133,7 +1133,7 @@ Replace the summary `println!` to report both counters and list parse-skips:
 
 Run:
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -40
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -40
 ```
 Expected: compiles and runs; the summary shows the two skip categories. There will very likely be **failures** now (newly-wired supported-class fixtures) — that is expected and handled in Task 13. This step only validates the harness change compiles and the counters populate.
 
@@ -1143,7 +1143,7 @@ Run:
 ```bash
 cargo fmt
 cargo clippy --workspace -- -D warnings 2>&1 | tail -5
-git add crates/ast-core/tests/test_simplify_regression.rs
+git add crates/starlink-ast/tests/test_simplify_regression.rs
 git commit -m "$(cat <<'EOF'
 test: separate simplify skip reasons (file-absent vs parse/unported)
 
@@ -1166,15 +1166,15 @@ EOF
 This is the open-ended task. Per the design decision, **all** supported-class failures must pass before landing; unported-class (IntraMap/XphMap) fixtures stay BLOCKED in the manifest. If a supported-class failure reveals a genuinely large simplifier gap, STOP and raise it rather than silently skipping.
 
 **Files:**
-- Modify: whichever `crates/ast-core/src/mappings/*.rs` / `regions/*.rs` the failures implicate (unknown until Step 1).
-- Test: `crates/ast-core/tests/test_simplify_regression.rs` (driver; no per-fixture code).
+- Modify: whichever `crates/starlink-ast/src/mappings/*.rs` / `regions/*.rs` the failures implicate (unknown until Step 1).
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs` (driver; no per-fixture code).
 
 - [ ] **Step 1: Capture the full failure list**
 
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tee /tmp/simplify_run.txt | tail -60
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tee /tmp/simplify_run.txt | tail -60
 ```
 Read `/tmp/simplify_run.txt` and enumerate: equal() failures, transform failures, serialization mismatches, and parse-skips. Confirm every parse-skip is an IntraMap/XphMap BLOCKED fixture (if not, a supported fixture is failing to parse — a real parser gap to fix).
 
@@ -1199,7 +1199,7 @@ CEOF
 - [ ] **Step 3: Fix one root-cause group at a time (TDD-style)**
 
 For each group:
-1. Confirm the fixture fails: `cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | grep <fixture-name>`.
+1. Confirm the fixture fails: `cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | grep <fixture-name>`.
 2. Root-cause by comparing the Rust simplified output to the oracle's, mirroring C control flow in the implicated `map_merge` / `simplify` path (memories `feedback_c_logic_beats_existing_rust`, `feedback_no_corner_cuts_on_c`).
 3. Fix the Rust source.
 4. Re-run the specific fixture and the full regression to confirm no new breakage.
@@ -1217,7 +1217,7 @@ For each group:
 
 Run after each group:
 ```bash
-cargo test -p ast-core --test test_simplify_regression -- --nocapture 2>&1 | tail -30
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture 2>&1 | tail -30
 ```
 Expected end state: `0 equal() failures, 0 transform failures, 0 serialization failures, 0 other failures`; the only skips are file-absent (none, since all imported) and the BLOCKED IntraMap/XphMap parse-skips.
 
@@ -1231,12 +1231,12 @@ If any group turns out to be a large simplifier gap (e.g. a whole merge pathway 
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Full ast-core test suite**
+- [ ] **Step 1: Full starlink-ast test suite**
 
 Run:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core 2>&1 | tail -30
+cargo test -p starlink-ast 2>&1 | tail -30
 ```
 Expected: all green.
 
@@ -1244,8 +1244,8 @@ Expected: all green.
 
 Run:
 ```bash
-cargo test -p ast-core --test '*-regression' 2>&1 | tail -20
-cargo test -p ast-core --test test_wcsconv 2>&1 | tail -20
+cargo test -p starlink-ast --test '*-regression' 2>&1 | tail -20
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | tail -20
 ```
 Expected: all green (goldens updated in Tasks 1-2).
 

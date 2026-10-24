@@ -28,7 +28,7 @@ frames, analogous to SlaMap for SkyFrame.
 ## Module Structure
 
 ```
-crates/ast-core/src/
+crates/starlink-ast/src/
 ├── pal.rs                    # Add ~8 new PAL wrappers
 ├── mappings/
 │   ├── specmap.rs            # SpecMap + SpecCvtType (34 conversions)
@@ -280,7 +280,7 @@ as child objects.
 
 ## PAL Additions
 
-Add to `crates/ast-core/src/pal.rs`:
+Add to `crates/starlink-ast/src/pal.rs`:
 
 ```rust
 pub(crate) fn dat(mjd: f64) -> f64;        // TAI-UTC (leap seconds)

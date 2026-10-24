@@ -10,9 +10,9 @@
  * cases are marked "libc-dependent" in the generated file, and the port
  * follows strtod for them.
  *
- * Prints Rust source for crates/ast-core/tests/axis_unformat_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/axis_unformat_oracle/cases.rs:
  *
- *   ./axis_unformat_probe > ../../crates/ast-core/tests/axis_unformat_oracle/cases.rs
+ *   ./axis_unformat_probe > ../../crates/starlink-ast/tests/axis_unformat_oracle/cases.rs
  */
 #include <math.h>
 #include <stdio.h>

@@ -1,7 +1,7 @@
 # `Simplify` / `GetDefUnc` audit — Stc
 
 C source: reference/starlink-ast/src/stc.c
-Rust: crates/ast-core/src/regions/stc.rs
+Rust: crates/starlink-ast/src/regions/stc.rs
 Audited: 2026-10-09 against pin f24ee843
 Citations: verified against pin 3b9dc639
 Extension points: classified

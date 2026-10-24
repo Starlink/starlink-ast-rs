@@ -14,21 +14,21 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/channel/mod.rs` | Channel trait, ChannelConfig, Source/Sink traits, re-exports |
-| `crates/ast-core/src/channel/source_sink.rs` | StringSource, StringSink, FileSource, FileSink |
-| `crates/ast-core/src/channel/native.rs` | NativeChannel implementation |
-| `crates/ast-core/src/serial/native_write.rs` | Update renderer to accept config options |
-| `crates/ast-core/src/serial/mod.rs` | Refactor to_native_string/from_native_string as wrappers |
-| `crates/ast-core/src/lib.rs` | Add `pub mod channel;` and re-exports |
-| `crates/ast-core/tests/test_channel.rs` | Channel tests (port of testchannel.c) |
+| `crates/starlink-ast/src/channel/mod.rs` | Channel trait, ChannelConfig, Source/Sink traits, re-exports |
+| `crates/starlink-ast/src/channel/source_sink.rs` | StringSource, StringSink, FileSource, FileSink |
+| `crates/starlink-ast/src/channel/native.rs` | NativeChannel implementation |
+| `crates/starlink-ast/src/serial/native_write.rs` | Update renderer to accept config options |
+| `crates/starlink-ast/src/serial/mod.rs` | Refactor to_native_string/from_native_string as wrappers |
+| `crates/starlink-ast/src/lib.rs` | Add `pub mod channel;` and re-exports |
+| `crates/starlink-ast/tests/test_channel.rs` | Channel tests (port of testchannel.c) |
 
 ---
 
 ### Task 1: Channel Trait and ChannelConfig
 
 **Files:**
-- Create: `crates/ast-core/src/channel/mod.rs`
-- Modify: `crates/ast-core/src/lib.rs`
+- Create: `crates/starlink-ast/src/channel/mod.rs`
+- Modify: `crates/starlink-ast/src/lib.rs`
 
 Define the Channel trait, ChannelConfig struct, and Source/Sink traits.
 
@@ -122,12 +122,12 @@ Create empty `source_sink.rs` and `native.rs` with module doc comments.
 
 - [ ] **Step 4: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/channel/ crates/ast-core/src/lib.rs
+git add crates/starlink-ast/src/channel/ crates/starlink-ast/src/lib.rs
 git commit -m "Add Channel trait, ChannelConfig, Source/Sink traits"
 ```
 
@@ -136,7 +136,7 @@ git commit -m "Add Channel trait, ChannelConfig, Source/Sink traits"
 ### Task 2: Source/Sink Built-in Implementations
 
 **Files:**
-- Modify: `crates/ast-core/src/channel/source_sink.rs`
+- Modify: `crates/starlink-ast/src/channel/source_sink.rs`
 
 Implement StringSource, StringSink, FileSource, FileSink.
 
@@ -253,7 +253,7 @@ impl Drop for FileSink {
 - [ ] **Step 3: Verify and commit**
 
 ```bash
-git add crates/ast-core/src/channel/source_sink.rs
+git add crates/starlink-ast/src/channel/source_sink.rs
 git commit -m "Add StringSource, StringSink, FileSource, FileSink"
 ```
 
@@ -262,7 +262,7 @@ git commit -m "Add StringSource, StringSink, FileSource, FileSink"
 ### Task 3: NativeChannel Implementation
 
 **Files:**
-- Modify: `crates/ast-core/src/channel/native.rs`
+- Modify: `crates/starlink-ast/src/channel/native.rs`
 
 NativeChannel wraps our existing native_read/native_write with
 Source/Sink streaming I/O.
@@ -315,7 +315,7 @@ impl NativeChannel {
 - [ ] **Step 3: Verify and commit**
 
 ```bash
-git add crates/ast-core/src/channel/native.rs
+git add crates/starlink-ast/src/channel/native.rs
 git commit -m "Add NativeChannel: Channel impl for Native text format"
 ```
 
@@ -324,7 +324,7 @@ git commit -m "Add NativeChannel: Channel impl for Native text format"
 ### Task 4: Config-Aware Native Renderer
 
 **Files:**
-- Modify: `crates/ast-core/src/serial/native_write.rs`
+- Modify: `crates/starlink-ast/src/serial/native_write.rs`
 
 Update the renderer to accept config options (comment, full, indent).
 
@@ -367,7 +367,7 @@ All serialization tests should pass unchanged since
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/src/serial/native_write.rs
+git add crates/starlink-ast/src/serial/native_write.rs
 git commit -m "Add config-aware render_native_with_options"
 ```
 
@@ -376,7 +376,7 @@ git commit -m "Add config-aware render_native_with_options"
 ### Task 5: Refactor to_native_string/from_native_string
 
 **Files:**
-- Modify: `crates/ast-core/src/serial/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
 
 Make the existing public API thin wrappers around NativeChannel.
 
@@ -404,12 +404,12 @@ pub fn from_native_string(s: &str) -> AstResult<AnyObject> {
 - [ ] **Step 3: Verify ALL existing tests pass**
 
 This is critical — the refactoring must be transparent.
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/serial/mod.rs
+git add crates/starlink-ast/src/serial/mod.rs
 git commit -m "Refactor to_native_string/from_native_string as NativeChannel wrappers"
 ```
 
@@ -418,7 +418,7 @@ git commit -m "Refactor to_native_string/from_native_string as NativeChannel wra
 ### Task 6: Tests (port testchannel.c)
 
 **Files:**
-- Create: `crates/ast-core/tests/test_channel.rs`
+- Create: `crates/starlink-ast/tests/test_channel.rs`
 
 - [ ] **Step 1: Write Channel tests**
 
@@ -434,12 +434,12 @@ Tests covering:
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_channel`
+Run: `cargo test -p starlink-ast --test test_channel`
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_channel.rs
+git add crates/starlink-ast/tests/test_channel.rs
 git commit -m "Add Channel tests (port of testchannel.c)"
 ```
 
@@ -457,7 +457,7 @@ Run: `cargo fmt --all -- --check`
 
 - [ ] **Step 3: Full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 
 - [ ] **Step 4: Commit fixes if any**
 
@@ -466,7 +466,7 @@ Run: `cargo test -p ast-core`
 ## Verification Checklist
 
 1. `cargo build --workspace` — compiles
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. `cargo fmt --all -- --check` — clean
 5. Channel trait defined with read/write/warnings/config

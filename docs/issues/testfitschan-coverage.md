@@ -17,4 +17,4 @@ The checks listed as partly covered on 2026-10-13 are also there: 876, 880 and 8
 ## No Rust equivalent
 
 - **994-998**: Test of the read-only Ncard, Nkey, CardType and AllWarnings, and `astGetC(Class)` (C 2059-2076).
-  These go through C's string attribute path, which belongs to `ast-capi`; they are tier-3 checks.
+  These go through C's string attribute path, which belongs to `starlink-ast-capi`; they are tier-3 checks.

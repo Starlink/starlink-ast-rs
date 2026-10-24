@@ -18,7 +18,7 @@ validated against C at the transform-output level.
 
 ## The harness is the through-line
 
-`crates/ast-core/tests/test_transform_oracle.rs` reloads committed
+`crates/starlink-ast/tests/test_transform_oracle.rs` reloads committed
 C-generated `.oracle` fixtures through the Rust port, re-transforms the
 recorded inputs, and compares outputs to the C reference values (golden
 forward, golden inverse, equivalence, round-trip).
@@ -88,7 +88,7 @@ regressions.
 
 Root causes are confirmed against C source. All required `pal` FFI helpers
 (`prec`, `dmxm`, `epj`, `ecmat`, `dranrm`) are already exposed in
-`crates/ast-core/src/pal.rs`; no new FFI is needed.
+`crates/starlink-ast/src/pal.rs`; no new FFI is needed.
 
 **Fix A — ECLEQ/EQECL precession** (`slamap.rs:986-994`).
 The Rust code applies `ecmat(date)` alone, which is only correct at
@@ -156,7 +156,7 @@ read-path structural fixes.
 No `xphmap.rs` exists. Follow the CLAUDE.md "Adding a new Mapping" recipe:
 struct + builder, `Mapping` impl (transform ported faithfully from
 `xphmap.c`, reusing the existing `WcsProjection::Xph` FFI math where C does),
-`Serializable` (`from_node`/`to_node`), `AnyObject` variant, `ast-capi`
+`Serializable` (`from_node`/`to_node`), `AnyObject` variant, `starlink-ast-capi`
 C-ABI shim, and a ported test. The `neg_xph` fixtures are negated variants —
 same class, exercising the negation path.
 

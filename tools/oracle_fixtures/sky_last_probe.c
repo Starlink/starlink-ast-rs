@@ -9,9 +9,9 @@
  * take an MJD and radians, rather than through astSet, which would read
  * the observer position as a formatted angle.
  *
- * Prints Rust source for crates/ast-core/tests/sky_last_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/sky_last_oracle/cases.rs:
  *
- *   ./sky_last_probe > ../../crates/ast-core/tests/sky_last_oracle/cases.rs
+ *   ./sky_last_probe > ../../crates/starlink-ast/tests/sky_last_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

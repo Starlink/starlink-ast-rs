@@ -3,7 +3,7 @@
 Date: 2026-10-10.
 Scope: the FitsChan class (`fitschan.c`) as a Channel and as a store of FITS header cards: its attributes, its public functions, the Channel methods it overrides, and its life as an Object.
 The FITS encodings themselves (FITS-WCS, FITS-PC, FITS-IRAF, FITS-AIPS, FITS-AIPS++, FITS-CLASS, DSS, NATIVE) are out of scope except where an attribute controls them: their read and write paths are byte-compared against C by the 194 wcsconv cases (`tests/test_wcsconv.rs`) and cataloged in `docs/issues/fitschan-c-port-gaps.md` and `docs/issues/fset_to_store-port-gaps.md`.
-`ast-capi` is out of scope: no string-attribute dispatch exists, so the audit asks for a typed accessor for each attribute rather than C's `GetAttrib` and friends.
+`starlink-ast-capi` is out of scope: no string-attribute dispatch exists, so the audit asks for a typed accessor for each attribute rather than C's `GetAttrib` and friends.
 The four Channel-level gaps PLAN.md §5 deferred to this audit are included (CH-1 to CH-4).
 
 The audit was made against C on branch `u/timj/norm-unit` and Rust at `d8ce484e`.
@@ -144,7 +144,7 @@ The Rust functions with C counterparts are `put_fits`, `put_cards`, `find_fits`,
 
 ## Card functions
 
-The card functions the port has were compared with C by reading both and by paired probes: C programs linked against the reference build, and a scratch crate using only the public `ast_core` API, kept outside the repository.
+The card functions the port has were compared with C by reading both and by paired probes: C programs linked against the reference build, and a scratch crate using only the public `starlink_ast` API, kept outside the repository.
 The probes covered 31 card forms through `astPutFits`, cursor and overwrite sequences, `astPutCards`, `astFindFits` templates, 15 keywords through each of the four typed getters, the typed setters, 20 floating values at 9 FitsDigits and 2 FitsRounding settings, 9 headers for the encoding guess, and a FITS-WCS read followed by writes.
 With no `Card` accessor in the port (FA-1), its cursor was observed by inserting a marker card with `put_fits(…, false)` after each operation.
 Two HIGH findings (CA-1, CA-4) were re-checked by reading both sources after the probes.

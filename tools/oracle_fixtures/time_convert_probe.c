@@ -14,9 +14,9 @@
  * ObsLon and ObsLat are set with the protected setters, which take
  * radians; the other values are exactly representable.
  *
- * Prints Rust source for crates/ast-core/tests/time_convert_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/time_convert_oracle/cases.rs:
  *
- *   ./time_convert_probe > ../../crates/ast-core/tests/time_convert_oracle/cases.rs
+ *   ./time_convert_probe > ../../crates/starlink-ast/tests/time_convert_oracle/cases.rs
  */
 #include <float.h>
 #include <stdio.h>
@@ -100,7 +100,7 @@ int main( void ) {
            "// Each value is printed with 17 digits so that it reads back exactly.\n"
            "#![allow(clippy::excessive_precision, clippy::approx_constant)]\n\n"
            "#[allow(unused_imports)]\n"
-           "use ast_core::constants::BAD_VALUE as BAD;\n\n"
+           "use starlink_ast::constants::BAD_VALUE as BAD;\n\n"
            "/// `[obslon rad, obslat rad, Dut1 s, Dtai s, LTOffset h]` of the source\n"
            "/// and destination Frames in configurations 1-3.\n"
            "pub const PROPS: [[f64; 5]; 2] = [" );

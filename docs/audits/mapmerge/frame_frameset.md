@@ -1,7 +1,7 @@
 # `Simplify` audit — FrameSet
 
 C source: reference/starlink-ast/src/frameset.c
-Rust: crates/ast-core/src/frames/frameset.rs
+Rust: crates/starlink-ast/src/frames/frameset.rs
 Audited: 2026-09-03 against pin 3e60abaa
 Citations: verified against pin 3b9dc639
 Extension points: classified

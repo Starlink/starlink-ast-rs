@@ -1,7 +1,7 @@
 # FitsChan WCS-conversion roadmap (2026-05-21)
 
 A campaign-level design that catalogs every failing case in
-`cargo test -p ast-core --test test_wcsconv`, groups them by
+`cargo test -p starlink-ast --test test_wcsconv`, groups them by
 root cause, and orders the fixes so each tier unblocks the next.
 
 This roadmap supersedes the 2026-05-10 status snapshot
@@ -15,7 +15,7 @@ contract; per-tier plans own the diff-level details.
 ## Status as of writing
 
 ```
-cargo test -p ast-core --test test_wcsconv -- --nocapture | grep wcsconv
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture | grep wcsconv
 === wcsconv results: 104 passed, 88 failed, 0 skipped (of 192 total) ===
 ```
 
@@ -25,7 +25,7 @@ cargo test -p ast-core --test test_wcsconv -- --nocapture | grep wcsconv
 
 The goal is bit/string parity with the C library's
 `wcsconverter` reference output for every fixture in
-`crates/ast-core/tests/fixtures/wcsconv/`. The path to that
+`crates/starlink-ast/tests/fixtures/wcsconv/`. The path to that
 parity is "follow the C implementation" — when the existing
 Rust shape can't express what `fitschan.c` needs to do, we
 change the Rust shape rather than work around it. We do not
@@ -109,10 +109,10 @@ because earlier ones unblock later ones (or remove workarounds).
 
 ### Tier 1 — read-side blockers (~5 tests + unblocks others)
 
-- **A1.** Implement keyword-card NATIVE encoding (`enc_native.rs`). The C library detects this variant via "any keyword starting with BEGAST" (`fitschan.c::Read` line 25699) and routes through the inherited Channel reader using a keyword-card source function that reassembles `BEGAST_xx`/`ENDAST_xx`/data-keyword cards back into a `Begin Class … End Class` text stream. The Rust port currently only supports the COMMENT-card variant. Add a new `crates/ast-core/src/fitschan/enc_native.rs` mirroring the per-encoding pattern of `enc_aips.rs`/`enc_class.rs`/etc. that converts keyword-card NATIVE input to a native-text string; the existing `serial::native_read::parse_native` then takes over. Tests: `polco_native`, `polco2_native`, `specflux_native`, `timeplot_native`.
-- **A2.** Native parser — when WCSAXES and NAXIS both absent, infer axis count from highest CTYPEi index. Test: `car3_native`. Files: `crates/ast-core/src/fitschan/wcs_read.rs`.
+- **A1.** Implement keyword-card NATIVE encoding (`enc_native.rs`). The C library detects this variant via "any keyword starting with BEGAST" (`fitschan.c::Read` line 25699) and routes through the inherited Channel reader using a keyword-card source function that reassembles `BEGAST_xx`/`ENDAST_xx`/data-keyword cards back into a `Begin Class … End Class` text stream. The Rust port currently only supports the COMMENT-card variant. Add a new `crates/starlink-ast/src/fitschan/enc_native.rs` mirroring the per-encoding pattern of `enc_aips.rs`/`enc_class.rs`/etc. that converts keyword-card NATIVE input to a native-text string; the existing `serial::native_read::parse_native` then takes over. Tests: `polco_native`, `polco2_native`, `specflux_native`, `timeplot_native`.
+- **A2.** Native parser — when WCSAXES and NAXIS both absent, infer axis count from highest CTYPEi index. Test: `car3_native`. Files: `crates/starlink-ast/src/fitschan/wcs_read.rs`.
 - **A3.** axes-swap CmpMap dimension mismatch — investigate `wcs_read.rs::build_pixel_to_world` PermMap insertion when CTYPE order is permuted. Test: `axes-swap_native`.
-- **B1.** CLASS reader fallback when NAXIS absent. Tests: `jan_fits-class_ast`, `jan_fits-class-rt`. Files: `crates/ast-core/src/fitschan/enc_class.rs`.
+- **B1.** CLASS reader fallback when NAXIS absent. Tests: `jan_fits-class_ast`, `jan_fits-class-rt`. Files: `crates/starlink-ast/src/fitschan/enc_class.rs`.
 
 Estimated impact: 104 → ~112.
 
@@ -129,8 +129,8 @@ Estimated impact: 104 → ~112.
   `ukirt-dtai_fits-wcs`, `galactic-tan_fits-iraf`,
   `sin-plain_fits-iraf`, `fk4-aips_fits-iraf`,
   `fits-pc-altgal_fits-wcs`, `pixel-shear_fits-aips++`. Files:
-  `crates/ast-core/src/mappings/cmpmap.rs`,
-  `crates/ast-core/src/mappings/simplify.rs`. Removal: delete the CROTA
+  `crates/starlink-ast/src/mappings/cmpmap.rs`,
+  `crates/starlink-ast/src/mappings/simplify.rs`. Removal: delete the CROTA
   snap branch in `enc_aips::write_to_cards` once K passes.
 - **H1.** Alt-WCS plane emission. Mirror C library `FsetToStore` (`fitschan.c:12263-12353`): walk non-base/non-current frames, allocate version letters A–Z, call a new `add_version_to_store(store, frame, letter)` helper that mirrors the primary path. Plumb version letter through `populate_celestial` / `populate_spectral` / each encoder's `write_to_cards`. Cards emit after primary plane. Tests: `timj_*` (4), `cname_fits-wcs`, `multi-wcs_fits-wcs`, `multi-wcs-dup_fits-wcs`, `tan-pv0_fits-wcs`, `date-z_fits-wcs`. Files: `wcs_write.rs`, every `enc_*.rs`.
 - **D-pre.** DATE-OBS derivation from MJD-OBS. Add `dateobs: Option<String>` to `FitsStore`; in `populate_celestial` when `mjdobs` is set, also format ISO-8601 from MJD via PAL or pure-Rust calendar math; each encoder's `write_to_cards` emits DATE-OBS card after MJD-OBS. Prerequisite for parts of D. Tests: `sin-plain_fits-aips`, `ncp_fits-aips`, `fk4-aips_fits-aips`, `timj_fits-iraf`, `timj_fits-aips`, `date-z_fits-wcs`, plus partial credit for several others.
@@ -199,7 +199,7 @@ mis-handling and turn it into a tier-2 simplify fixture:
    the wcsconv path up to (but not including) the simplifier
    call, then `to_native_string` the mapping that's about to
    be simplified. Write it to
-   `crates/ast-core/tests/fixtures/simplify/<name>.map`.
+   `crates/starlink-ast/tests/fixtures/simplify/<name>.map`.
 2. **Generate the C oracle reference.** Run the C library's
    `simplify` binary on the captured `.map`:
    ```sh
@@ -211,14 +211,14 @@ mis-handling and turn it into a tier-2 simplify fixture:
    serialization. Commit both `.map` and `.simp` together with
    a commit message naming the wcsconv case they came from.
 3. **Wire it into the manifest.** Add an entry to
-   `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`:
+   `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`:
    ```
    <name> | simplify_fixtures/<name>.map | simplify_fixtures/<name>.simp |
    ```
    The existing manifest-driven harness picks it up
    automatically — no new Rust test code needed. Place the
    `.map` and `.simp` files under
-   `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`
+   `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/`
    alongside the existing focused-rule fixtures
    (`unit_series_elision`, `zoom_series_merge`, etc).
 4. **Develop K against the fixtures.** The tier-2 plan for K
@@ -283,22 +283,22 @@ Indicative; per-tier plans will own specifics.
 
 | Layer                  | File                                              |
 |------------------------|---------------------------------------------------|
-| FrameSet → FitsStore   | `crates/ast-core/src/fitschan/wcs_write.rs`       |
+| FrameSet → FitsStore   | `crates/starlink-ast/src/fitschan/wcs_write.rs`       |
 | Celestial decomposition| `wcs_write.rs::populate_celestial`, `wcs_celestial.rs` |
 | Spectral decomposition | `wcs_write.rs::populate_spectral`, `wcs_spectral.rs`, possibly new `wcs_spectral_decompose.rs` |
 | Distortion (SIP/TPV)   | new `wcs_sip.rs`                                  |
 | Per-encoder            | `enc_aips.rs`, `enc_iraf.rs`, `enc_pc.rs`, `enc_class.rs`, `enc_dss.rs` |
 | Card list / ordering   | `card_list.rs::put_or_append`, `mark_all_unused`, `sweep_unused_wcs` |
 | Format helpers         | `format.rs::format_fits_double`                   |
-| Native parser          | `crates/ast-core/src/serial/native_read.rs`       |
-| Simplifier (tier K)    | `crates/ast-core/src/mappings/cmpmap.rs`, `crates/ast-core/src/mappings/simplify.rs` |
+| Native parser          | `crates/starlink-ast/src/serial/native_read.rs`       |
+| Simplifier (tier K)    | `crates/starlink-ast/src/mappings/cmpmap.rs`, `crates/starlink-ast/src/mappings/simplify.rs` |
 
 ## Done criteria
 
-- `cargo test -p ast-core --test test_wcsconv` reports
+- `cargo test -p starlink-ast --test test_wcsconv` reports
   **192/192 passing**.
 - All five tier-1 read failures resolved.
-- `cargo test -p ast-core --test test_fitschan_wcs` and
+- `cargo test -p starlink-ast --test test_fitschan_wcs` and
   `test_fitschan_wcs_write` continue to pass.
 - `cargo test --workspace` is green.
 - No regression in `test_native_roundtrip_all` or any

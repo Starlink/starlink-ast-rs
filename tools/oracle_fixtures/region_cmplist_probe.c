@@ -6,9 +6,9 @@
  *
  * Circles A, B and C have radius 1 and centres (0,0), (3,0) and (6,0).
  *
- * Prints Rust source for crates/ast-core/tests/region_cmplist_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_cmplist_oracle/cases.rs:
  *
- *   ./region_cmplist_probe > ../../crates/ast-core/tests/region_cmplist_oracle/cases.rs
+ *   ./region_cmplist_probe > ../../crates/starlink-ast/tests/region_cmplist_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

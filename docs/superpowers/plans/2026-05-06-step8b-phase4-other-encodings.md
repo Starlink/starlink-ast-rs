@@ -14,22 +14,22 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/fitschan/guess_encoding.rs` | Auto-detect encoding from header keywords |
-| `crates/ast-core/src/fitschan/enc_iraf.rs` | FITS-IRAF read/write (CD matrix + RADECSYS) |
-| `crates/ast-core/src/fitschan/enc_pc.rs` | FITS-PC read/write (PCiiijjj 3-digit format) |
-| `crates/ast-core/src/fitschan/enc_aips.rs` | FITS-AIPS + FITS-AIPS++ read/write (CROTA, EPOCH, AIPS spectral) |
-| `crates/ast-core/src/fitschan/enc_class.rs` | FITS-CLASS read/write (DELTAV, VELO-LSR, offset freq) |
-| `crates/ast-core/src/fitschan/enc_dss.rs` | DSS read/write (PLTRAH, AMDX/Y polynomials) |
-| `crates/ast-core/src/fitschan/mod.rs` | Wire guess + all encodings into read()/write() |
-| `crates/ast-core/tests/test_fitschan_encodings.rs` | Integration tests for all encodings |
+| `crates/starlink-ast/src/fitschan/guess_encoding.rs` | Auto-detect encoding from header keywords |
+| `crates/starlink-ast/src/fitschan/enc_iraf.rs` | FITS-IRAF read/write (CD matrix + RADECSYS) |
+| `crates/starlink-ast/src/fitschan/enc_pc.rs` | FITS-PC read/write (PCiiijjj 3-digit format) |
+| `crates/starlink-ast/src/fitschan/enc_aips.rs` | FITS-AIPS + FITS-AIPS++ read/write (CROTA, EPOCH, AIPS spectral) |
+| `crates/starlink-ast/src/fitschan/enc_class.rs` | FITS-CLASS read/write (DELTAV, VELO-LSR, offset freq) |
+| `crates/starlink-ast/src/fitschan/enc_dss.rs` | DSS read/write (PLTRAH, AMDX/Y polynomials) |
+| `crates/starlink-ast/src/fitschan/mod.rs` | Wire guess + all encodings into read()/write() |
+| `crates/starlink-ast/tests/test_fitschan_encodings.rs` | Integration tests for all encodings |
 
 ---
 
 ### Task 1: Encoding Guess Dispatcher
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/guess_encoding.rs`
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Create: `crates/starlink-ast/src/fitschan/guess_encoding.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 The guess dispatcher examines FITS header cards and determines which WCS encoding they use. The algorithm matches the C `GetEncoding` function (fitschan.c line 12466). Priority order: Native → CLASS → AIPS/AIPS++ → DSS → PC(3-digit) → IRAF(3-digit) → IRAF(CD+RADECSYS) → WCS(CD) → PC(RADECSYS) → AIPS(CROTA) → WCS(CRVAL) → Native.
 
@@ -381,7 +381,7 @@ Add to `mod.rs`:
 pub(crate) mod guess_encoding;
 ```
 
-Run: `cargo test -p ast-core -- guess_encoding`
+Run: `cargo test -p starlink-ast -- guess_encoding`
 Expected: all 10 tests pass
 
 - [ ] **Step 3: Commit**
@@ -391,7 +391,7 @@ Expected: all 10 tests pass
 ### Task 2: FITS-IRAF Encoding (Read + Write)
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/enc_iraf.rs`
+- Create: `crates/starlink-ast/src/fitschan/enc_iraf.rs`
 
 FITS-IRAF uses `CDi_j` matrix (product of PC×CDELT), `RADECSYS` (misspelled), and older projection codes (NCP→SIN, GLS→SFL). On read, translate to standard FitsStore. On write, compute CD from PC×CDELT and use RADECSYS.
 
@@ -686,7 +686,7 @@ Add to `mod.rs`:
 pub(crate) mod enc_iraf;
 ```
 
-Run: `cargo test -p ast-core -- enc_iraf`
+Run: `cargo test -p starlink-ast -- enc_iraf`
 Expected: all tests pass
 
 - [ ] **Step 3: Commit**
@@ -696,7 +696,7 @@ Expected: all tests pass
 ### Task 3: FITS-PC Encoding (Read + Write)
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/enc_pc.rs`
+- Create: `crates/starlink-ast/src/fitschan/enc_pc.rs`
 
 FITS-PC uses 3-digit axis numbering (`PC001001` instead of `PC1_1`), keeps PC and CDELT separate, and uses `RADECSYS`. On read, parse the 3-digit keywords into standard FitsStore PC + CDELT. On write, format with 3-digit axes.
 
@@ -985,7 +985,7 @@ mod tests {
 ### Task 4: FITS-AIPS Encoding (Read + Write)
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/enc_aips.rs`
+- Create: `crates/starlink-ast/src/fitschan/enc_aips.rs`
 
 FITS-AIPS uses CROTA (rotation angle) instead of PC/CD matrix, EPOCH instead of EQUINOX, and AIPS-specific spectral CTYPE values ("VELO-LSR", "FREQ-HEL"). AIPS++ extends this with CD/PV parameters.
 
@@ -1411,7 +1411,7 @@ mod tests {
 ### Task 5: FITS-CLASS Encoding (Read + Write)
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/enc_class.rs`
+- Create: `crates/starlink-ast/src/fitschan/enc_class.rs`
 
 FITS-CLASS is used by the GILDAS/CLASS radio spectral survey software. It enforces 3 axes (2 spatial + 1 spectral), uses offset frequency (CRVAL3 is offset from RESTFREQ), requires VELO-LSR/DELTAV, and uses SPECSYS="SOURCE". On read, add RESTFREQ back to get absolute CRVAL. On write, subtract RESTFREQ.
 
@@ -1700,7 +1700,7 @@ mod tests {
 ### Task 6: DSS Encoding (Read + Write)
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/enc_dss.rs`
+- Create: `crates/starlink-ast/src/fitschan/enc_dss.rs`
 
 DSS (Digitized Sky Survey) uses plate solution keywords (PLTRAH/M/S, PLTDEC*, AMDX/Y polynomials, XPIXELSZ/YPIXELSZ, PPO3/PPO6, CNPIX). Always FK5 J2000, TAN projection, 2D only, no rotation.
 
@@ -1924,7 +1924,7 @@ mod tests {
 ### Task 7: Wire All Encodings into FitsChan
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 Wire the guess dispatcher and all encoding modules into the `read()` and `write()` methods.
 
@@ -2092,7 +2092,7 @@ Also make `store_from_frameset` `pub(crate)` if it isn't already.
 
 - [ ] **Step 6: Verify build**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: compiles
 
 - [ ] **Step 7: Commit**
@@ -2102,25 +2102,25 @@ Expected: compiles
 ### Task 8: Integration Tests
 
 **Files:**
-- Create: `crates/ast-core/tests/test_fitschan_encodings.rs`
-- Copy test fixtures from `reference/starlink-ast/ast_tester/` to `crates/ast-core/tests/fixtures/fits/headers/`
+- Create: `crates/starlink-ast/tests/test_fitschan_encodings.rs`
+- Copy test fixtures from `reference/starlink-ast/ast_tester/` to `crates/starlink-ast/tests/fixtures/fits/headers/`
 
 - [ ] **Step 1: Copy test fixtures**
 
 Copy these files:
-- `reference/starlink-ast/ast_tester/velo-aips.head` → `crates/ast-core/tests/fixtures/fits/headers/velo-aips.head`
-- `reference/starlink-ast/ast_tester/pc-sparse.head` → `crates/ast-core/tests/fixtures/fits/headers/pc-sparse.head`
-- `reference/starlink-ast/ast_tester/dss.dss` → `crates/ast-core/tests/fixtures/fits/headers/dss.dss`
-- `reference/starlink-ast/ast_tester/class-write.head` → `crates/ast-core/tests/fixtures/fits/headers/class-write.head`
-- `reference/starlink-ast/ast_tester/serpens.head` → `crates/ast-core/tests/fixtures/fits/headers/serpens.head`
+- `reference/starlink-ast/ast_tester/velo-aips.head` → `crates/starlink-ast/tests/fixtures/fits/headers/velo-aips.head`
+- `reference/starlink-ast/ast_tester/pc-sparse.head` → `crates/starlink-ast/tests/fixtures/fits/headers/pc-sparse.head`
+- `reference/starlink-ast/ast_tester/dss.dss` → `crates/starlink-ast/tests/fixtures/fits/headers/dss.dss`
+- `reference/starlink-ast/ast_tester/class-write.head` → `crates/starlink-ast/tests/fixtures/fits/headers/class-write.head`
+- `reference/starlink-ast/ast_tester/serpens.head` → `crates/starlink-ast/tests/fixtures/fits/headers/serpens.head`
 
 - [ ] **Step 2: Write integration tests**
 
 ```rust
 //! Integration tests for alternative FITS WCS encodings.
 
-use ast_core::channel::Channel;
-use ast_core::fitschan::{Encoding, FitsChan};
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::{Encoding, FitsChan};
 
 fn load_fixture(name: &str) -> String {
     std::fs::read_to_string(format!(
@@ -2222,7 +2222,7 @@ fn read_dss_produces_frameset() {
 
 - [ ] **Step 3: Run tests and fix issues**
 
-Run: `cargo test -p ast-core --test test_fitschan_encodings`
+Run: `cargo test -p starlink-ast --test test_fitschan_encodings`
 Expected: all tests pass
 
 - [ ] **Step 4: Commit**
@@ -2233,12 +2233,12 @@ Expected: all tests pass
 
 - [ ] **Step 1: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 - [ ] **Step 2: Clippy and fmt**
 
-Run: `cargo clippy -p ast-core -- -D warnings && cargo fmt --check -p ast-core`
+Run: `cargo clippy -p starlink-ast -- -D warnings && cargo fmt --check -p starlink-ast`
 Expected: clean
 
 - [ ] **Step 3: Fix any issues and commit**
@@ -2248,7 +2248,7 @@ Expected: clean
 ## Verification Checklist
 
 1. `cargo build --workspace` — compiles
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. Encoding auto-detection correctly identifies: Native, FITS-WCS, FITS-IRAF, FITS-PC, FITS-AIPS, FITS-AIPS++, FITS-CLASS, DSS
 4. Each encoding can read its fixture header into a FrameSet
 5. AIPS CROTA → PC matrix conversion is correct

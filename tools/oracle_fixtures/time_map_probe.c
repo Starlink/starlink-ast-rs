@@ -13,9 +13,9 @@
  * second grid is where rounding of a small correction added to a large
  * value shows.
  *
- * Prints Rust source for crates/ast-core/tests/time_map_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/time_map_oracle/cases.rs:
  *
- *   ./time_map_probe > ../../crates/ast-core/tests/time_map_oracle/cases.rs
+ *   ./time_map_probe > ../../crates/starlink-ast/tests/time_map_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>
@@ -127,7 +127,7 @@ int main( void ) {
            "// Each value is printed with 17 digits so that it reads back exactly.\n"
            "#![allow(clippy::excessive_precision, clippy::approx_constant)]\n\n"
            "#[allow(unused_imports)]\n"
-           "use ast_core::constants::BAD_VALUE as BAD;\n\n"
+           "use starlink_ast::constants::BAD_VALUE as BAD;\n\n"
            "/// `(case, step code, astTimeAdd arguments, input points, forward\n"
            "/// result, inverse result)`. The case is `off:<label>` when the\n"
            "/// points are offsets from the MJD offset in the arguments, and\n"

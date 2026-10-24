@@ -19,7 +19,7 @@ unimplemented mapping classes (out of scope here).
 
 ### Issue 1: SpecMap Step Merging (fixes spec_inverse_cancel, spec_partial_cancel)
 
-**File:** `crates/ast-core/src/mappings/specmap.rs`
+**File:** `crates/starlink-ast/src/mappings/specmap.rs`
 
 **Problem:** The current `try_merge` only handles whole-SpecMap inverse
 cancellation (two identical SpecMaps with opposite invert flags). It cannot:
@@ -65,7 +65,7 @@ args must match for cancellation (excluding the cached correction slot).
 
 ### Issue 2: PermMap Series Composition (fixes perm_bad_propagation)
 
-**File:** `crates/ast-core/src/mappings/perm.rs`
+**File:** `crates/starlink-ast/src/mappings/perm.rs`
 
 **Problem:** `try_merge` only handles exact inverse cancellation. Cannot
 compose two PermMaps' permutation arrays to produce a merged result.
@@ -109,7 +109,7 @@ from input j (1-based). j=0 means output is BAD. j<0 means output is constant
 
 ### Issue 3: Missing SlaMap Conversion Types (fixes 6 tests)
 
-**File:** `crates/ast-core/src/mappings/slamap.rs`
+**File:** `crates/starlink-ast/src/mappings/slamap.rs`
 
 **Tests fixed:** sla_j2000_cancel, sla_helioecl_cancel, sla_azel_cancel,
 sla_hpc_cancel, sla_hpr_cancel, neg_sla_4arg_mismatch
@@ -142,7 +142,7 @@ use solar coordinate geometry.
 
 ### Issue 4: WcsMap Blank Projection Type (fixes wcsmap_bad_to_unit)
 
-**File:** `crates/ast-core/src/mappings/wcsmap.rs`
+**File:** `crates/starlink-ast/src/mappings/wcsmap.rs`
 
 **Problem:** `wcsmap_bad_to_unit.map` contains a WcsMap with `Type = "   "`
 (blank/spaces). The parser rejects this. In C, this is valid — it creates a
@@ -157,7 +157,7 @@ WcsMap that simplifies to UnitMap.
 
 ### Issue 5: rigby MatrixMap Inverse Error
 
-**File:** `crates/ast-core/src/mappings/cmpmap.rs` (or `matrix.rs`)
+**File:** `crates/starlink-ast/src/mappings/cmpmap.rs` (or `matrix.rs`)
 
 **Problem:** The `rigby.map` fixture has a deeply nested CmpMap tree with
 `InvA=1` flags. The forward transform requires inverting sub-mappings. An
@@ -188,7 +188,7 @@ correctly through the nested CmpMap tree.
 
 Each fix is verified by running:
 ```shell
-cargo test -p ast-core --test test_simplify_regression -- --nocapture
+cargo test -p starlink-ast --test test_simplify_regression -- --nocapture
 ```
 
 **Starting state:** 156 passed (includes 3 not-yet-simplified), 74 skipped

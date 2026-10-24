@@ -4,7 +4,7 @@
 > every bucket classified here has been cleared. Retained as a record; no
 > outstanding work.
 
-Snapshot of remaining `cargo test -p ast-core --test test_wcsconv -- --include-ignored`
+Snapshot of remaining `cargo test -p starlink-ast --test test_wcsconv -- --include-ignored`
 failures on `tickets/DM-54793` after the SpecTrans port (166/192 passing).
 
 Cleared since the original 2026-06-02 snapshot:
@@ -253,7 +253,7 @@ against the `tickets/DM-54793` HEAD at commit `5522f6a`.
 To regenerate:
 
 ```
-cargo test -p ast-core --test wcsconv -- --include-ignored 2>&1 \
+cargo test -p starlink-ast --test wcsconv -- --include-ignored 2>&1 \
   | grep -E '^(test |FAIL)' \
   | tee /tmp/wcsconv_status.txt
 ```

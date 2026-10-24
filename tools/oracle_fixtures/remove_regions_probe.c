@@ -8,9 +8,9 @@
  * returns. A bare Region is not a case: C returns its Frame, and the port,
  * whose Frames are not Mappings, a UnitMap.
  *
- * Prints Rust source for crates/ast-core/tests/remove_regions_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/remove_regions_oracle/cases.rs:
  *
- *   ./remove_regions_probe > ../../crates/ast-core/tests/remove_regions_oracle/cases.rs
+ *   ./remove_regions_probe > ../../crates/starlink-ast/tests/remove_regions_oracle/cases.rs
  */
 #include <stdio.h>
 #include "ast.h"

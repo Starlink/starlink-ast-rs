@@ -402,7 +402,7 @@ and `Poisson()` functions.
 ##### Parser and Compilation Strategy
 
 **Dependencies:** `logos` (MIT/Apache-2.0) for tokenization via derive macro,
-added to `ast-core/Cargo.toml` only (used exclusively by the MathMap module).
+added to `starlink-ast/Cargo.toml` only (used exclusively by the MathMap module).
 No parser library — the parser is a handwritten Pratt (precedence-climbing)
 parser, which is the textbook fit for expression languages with many
 precedence levels.

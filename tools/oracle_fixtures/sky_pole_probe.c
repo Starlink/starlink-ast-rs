@@ -9,9 +9,9 @@
  * whose header C cannot read or write is printed with `false` as its last
  * field, and the port must fail it too.
  *
- * Prints Rust source for crates/ast-core/tests/sky_pole_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/sky_pole_oracle/cases.rs:
  *
- *   ./sky_pole_probe > ../../crates/ast-core/tests/sky_pole_oracle/cases.rs
+ *   ./sky_pole_probe > ../../crates/starlink-ast/tests/sky_pole_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

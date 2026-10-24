@@ -4,11 +4,12 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Oracle correctness tests: Rust ast-core vs reference C libast"
+publish = false
+description = "Oracle correctness tests: Rust starlink-ast vs reference C libast"
 
 [lints]
 workspace = true
 
 [dependencies]
-ast-core = { path = "../ast-core", features = ["call-counts"] }
+starlink-ast = { path = "../starlink-ast", features = ["call-counts"] }
 ast-bench = { path = "../ast-bench", features = ["c-oracle"] }

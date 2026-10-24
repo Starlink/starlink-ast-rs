@@ -10,9 +10,9 @@
  * needs pointlist.c from ba5a6199 or later, which ignores a point outside
  * the grid rather than writing beyond the array.
  *
- * Prints Rust source for crates/ast-core/tests/region_mask_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_mask_oracle/cases.rs:
  *
- *   ./region_mask_probe > ../../crates/ast-core/tests/region_mask_oracle/cases.rs
+ *   ./region_mask_probe > ../../crates/starlink-ast/tests/region_mask_oracle/cases.rs
  */
 #include <stdio.h>
 #include "ast.h"

@@ -9,9 +9,9 @@
  * System setting, sets Unit(1), and then reads each attribute, printing
  * its value or the error.
  *
- * Prints Rust source for crates/ast-core/tests/flux_badun_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/flux_badun_oracle/cases.rs:
  *
- *   ./flux_badun_probe > ../../crates/ast-core/tests/flux_badun_oracle/cases.rs
+ *   ./flux_badun_probe > ../../crates/starlink-ast/tests/flux_badun_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

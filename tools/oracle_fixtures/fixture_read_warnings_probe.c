@@ -6,8 +6,8 @@
  * and no error for the rest.
  *
  * Prints Rust source for
- * crates/ast-core/tests/fixture_read_warnings_oracle/cases.rs, run from
- * crates/ast-core/tests/fixtures:
+ * crates/starlink-ast/tests/fixture_read_warnings_oracle/cases.rs, run from
+ * crates/starlink-ast/tests/fixtures:
  *
  *   find . -type f \( -name '*.map' -o -name '*.simp' -o -name '*.ast' \
  *        -o -name '*.native' \) | sort | \

@@ -6,7 +6,7 @@ session left off without re-deriving the architecture.
 
 ## Headline numbers
 
-`cargo test -p ast-core --test test_wcsconv` reports
+`cargo test -p starlink-ast --test test_wcsconv` reports
 **104 passed / 88 failed / 192 total**.
 
 Started the session at 101/192 — the visible failure pattern
@@ -121,7 +121,7 @@ bisecting is easy.
 | `768b6e9` | New regression fixture `cmpmap_nested_inverse_cancel.{map,simp}` documenting the simplifier deep-traversal gap. Fails `equal()` and serialization checks; transform-equivalence still passes. | 0 |
 | `48c2438` | `[workspace.lints.rust] warnings = "deny"`. Local build now matches CI. | 0 |
 | `9fdd61a` | `[workspace.lints.clippy] all = "deny"` plus cargo aliases (`lint`, `lint-all`, `fmt-check`) and `rustfmt.toml` locking edition. | 0 |
-| `3411a56` | `.pre-commit-config.yaml` with file hygiene (excluding `vendor/`, `crates/ast-core/tests/fixtures/`, `reference/`), `cargo fmt --all`, `cargo clippy --workspace`. | 0 |
+| `3411a56` | `.pre-commit-config.yaml` with file hygiene (excluding `vendor/`, `crates/starlink-ast/tests/fixtures/`, `reference/`), `cargo fmt --all`, `cargo clippy --workspace`. | 0 |
 
 ## What's left (in rough priority order)
 
@@ -262,8 +262,8 @@ correlated.
 
 | Purpose | File |
 |---------|------|
-| Top-level encoder dispatch | `crates/ast-core/src/fitschan/mod.rs::write` (`write` impl on `Channel for FitsChan`) |
-| FrameSet → FitsStore (the meat) | `crates/ast-core/src/fitschan/wcs_write.rs::store_from_frameset` |
+| Top-level encoder dispatch | `crates/starlink-ast/src/fitschan/mod.rs::write` (`write` impl on `Channel for FitsChan`) |
+| FrameSet → FitsStore (the meat) | `crates/starlink-ast/src/fitschan/wcs_write.rs::store_from_frameset` |
 | pre-WcsMap / post-WcsMap split | `wcs_write.rs::split_pre_wcsmap`, `split_around_wcsmap` |
 | Algebraic CRPIX solve | `wcs_write.rs::solve_crpix_from_decomp` |
 | Fiducial CRVAL extraction | `wcs_write.rs::fiducial_crval` |
@@ -275,35 +275,35 @@ correlated.
 | Card position preservation | `card_list.rs::put_or_append` (used flag, comment preserve) |
 | Card list mark/sweep | `card_list.rs::mark_all_unused`, `sweep_unused_wcs` |
 | END card emission | `mod.rs::FitsChan::to_header` |
-| Test harness | `crates/ast-core/tests/test_wcsconv.rs` |
+| Test harness | `crates/starlink-ast/tests/test_wcsconv.rs` |
 
 ## How to resume
 
 ```sh
 git checkout tickets/DM-54793
-cargo test -p ast-core --test test_wcsconv -- --nocapture | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture | grep "wcsconv results"
 # expect: 104 passed, 88 failed, 0 skipped (of 192 total)
 ```
 
 To see the first three failures:
 
 ```sh
-cargo test -p ast-core --test test_wcsconv -- --nocapture | tail -30
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture | tail -30
 ```
 
 To dump full got vs expected for one named case, drop a
-small diagnostic test in `crates/ast-core/tests/diag_*.rs`:
+small diagnostic test in `crates/starlink-ast/tests/diag_*.rs`:
 
 ```rust
-use ast_core::channel::Channel;
-use ast_core::fitschan::{Encoding, FitsChan};
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::{Encoding, FitsChan};
 
 #[test]
 fn diag_one_case() {
     let text = std::fs::read_to_string(
-        "crates/ast-core/tests/fixtures/wcsconv/inputs/timj.ast",
+        "crates/starlink-ast/tests/fixtures/wcsconv/inputs/timj.ast",
     ).unwrap();
-    let obj = ast_core::from_native_string(&text).unwrap();
+    let obj = starlink_ast::from_native_string(&text).unwrap();
     let mut fc = FitsChan::new();
     fc.set_encoding(Encoding::FitsWcs);
     fc.set_fits_digits(8);
@@ -313,7 +313,7 @@ fn diag_one_case() {
 }
 ```
 
-Run with `cargo test -p ast-core --test diag_one_case -- --nocapture`.
+Run with `cargo test -p starlink-ast --test diag_one_case -- --nocapture`.
 Don't commit the diagnostic; use it for quick visibility.
 
 ## Reference (C library)

@@ -14,9 +14,9 @@
  * those a read consumed included, from a dump of the FitsChan
  * (fitschan.c Dump), which shows that a failed write keeps them.
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_encodings_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_encodings_oracle/cases.rs:
  *
- *   ./fitschan_encodings_probe > ../../crates/ast-core/tests/fitschan_encodings_oracle/cases.rs
+ *   ./fitschan_encodings_probe > ../../crates/starlink-ast/tests/fitschan_encodings_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

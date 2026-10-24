@@ -13,9 +13,9 @@
  * Digits(axis) has no such function, so it goes through the attribute
  * string, as it does in C.
  *
- * Prints Rust source for crates/ast-core/tests/frame_axis_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/frame_axis_oracle/cases.rs:
  *
- *   ./frame_axis_attrs_probe > ../../crates/ast-core/tests/frame_axis_oracle/cases.rs
+ *   ./frame_axis_attrs_probe > ../../crates/starlink-ast/tests/frame_axis_oracle/cases.rs
  */
 #include <float.h>
 #include <stdio.h>

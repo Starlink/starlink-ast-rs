@@ -11,9 +11,9 @@
  * The zero-width cases need box.c from d0853dcd or later, before which the
  * widening depended on whether the limits had been cached first.
  *
- * Prints Rust source for crates/ast-core/tests/region_box_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_box_oracle/cases.rs:
  *
- *   ./region_box_probe > ../../crates/ast-core/tests/region_box_oracle/cases.rs
+ *   ./region_box_probe > ../../crates/starlink-ast/tests/region_box_oracle/cases.rs
  */
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,7 +1,7 @@
 # `MapMerge` audit — TranMap
 
 C source: reference/starlink-ast/src/tranmap.c
-Rust: crates/ast-core/src/mappings/tranmap.rs
+Rust: crates/starlink-ast/src/mappings/tranmap.rs
 Audited: 2026-08-24 against pin d0346c0d
 Citations: verified against pin 3b9dc639
 Extension points: classified

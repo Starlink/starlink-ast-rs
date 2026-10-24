@@ -8,9 +8,9 @@
  * C writes the report to standard output, which also carries the generated
  * source, so each report is printed inside a Rust raw string.
  *
- * Prints Rust source for crates/ast-core/tests/report_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/report_oracle/cases.rs:
  *
- *   ./report_probe > ../../crates/ast-core/tests/report_oracle/cases.rs
+ *   ./report_probe > ../../crates/starlink-ast/tests/report_oracle/cases.rs
  */
 #include <stdio.h>
 #include "ast.h"

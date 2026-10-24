@@ -4,9 +4,9 @@
 
 **Goal:** Port the C oracle's full CRPIX/CD/CDELT extraction pipeline (`FsetToStore` → `CelestialAxes`/`SpectralAxes`/`OtherAxes` → `MakeIntWorld` → `SIPIntWorld` plus the Mapping primitives `astMapSplit`, `astLinearApprox`, `AnalysePoly`, `ScalePolyInputs`) so every wcsconv test that today fails on a numeric-value mismatch passes bytewise.
 
-**Architecture:** Replace the value-extraction half of `store_from_frameset_to` with a faithful Rust port of `FsetToStore`. The IWC mapping is *constructed* from chosen header values rather than extracted from the FrameSet's `pixel→world` chain — that's the structural fix for the ~µpixel CRPIX residual. New code lives under `crates/ast-core/src/fitschan/wcs_keywords/`. Mapping primitives go in `crates/ast-core/src/mappings/helpers/`. Eight commit groups; intermediate states allowed to fail tests.
+**Architecture:** Replace the value-extraction half of `store_from_frameset_to` with a faithful Rust port of `FsetToStore`. The IWC mapping is *constructed* from chosen header values rather than extracted from the FrameSet's `pixel→world` chain — that's the structural fix for the ~µpixel CRPIX residual. New code lives under `crates/starlink-ast/src/fitschan/wcs_keywords/`. Mapping primitives go in `crates/starlink-ast/src/mappings/helpers/`. Eight commit groups; intermediate states allowed to fail tests.
 
-**Tech Stack:** Rust 2024, ndarray, ast-core crate. C reference at `reference/starlink-ast/src/fitschan.c`. Tests use `cargo test -p ast-core`.
+**Tech Stack:** Rust 2024, ndarray, starlink-ast crate. C reference at `reference/starlink-ast/src/fitschan.c`. Tests use `cargo test -p starlink-ast`.
 
 **Spec:** `docs/superpower/specs/2026-05-25-makeintworld-port-design.md` (commit `53cc230`). Read it first.
 
@@ -27,7 +27,7 @@
 ### Files created
 
 ```
-crates/ast-core/src/fitschan/wcs_keywords/
+crates/starlink-ast/src/fitschan/wcs_keywords/
 ├── mod.rs                       # Public re-exports + fset_to_store entry
 ├── celestial_axes.rs            # ~700 LoC — CelestialAxes port + GetFiducialWCS + SkySys
 ├── spectral_axes.rs             # ~700 LoC — SpectralAxes port + algorithm-code helpers
@@ -39,7 +39,7 @@ crates/ast-core/src/fitschan/wcs_keywords/
 ├── sky_sys.rs                   # ~250 LoC — SkySys + IsSkyOff helpers
 └── (small helpers as needed)
 
-crates/ast-core/src/mappings/helpers/
+crates/starlink-ast/src/mappings/helpers/
 ├── linear_approx.rs             # ~250 LoC — astLinearApprox port
 ├── analyse_poly.rs              # ~350 LoC — AnalysePoly port
 └── scale_poly_inputs.rs         # ~80 LoC — ScalePolyInputs port
@@ -59,14 +59,14 @@ tools/oracle_fixtures/            # NEW directory at repo root
 ### Files modified (substantially)
 
 ```
-crates/ast-core/src/mappings/mod.rs      # New `Mapping::map_split` signature
-crates/ast-core/src/mappings/{cmpmap,matrix,perm,polymap,shift,unit,winmap,wcsmap,zoom}.rs
+crates/starlink-ast/src/mappings/mod.rs      # New `Mapping::map_split` signature
+crates/starlink-ast/src/mappings/{cmpmap,matrix,perm,polymap,shift,unit,winmap,wcsmap,zoom}.rs
                                           # New per-class `map_split` impls
-crates/ast-core/src/mappings/helpers/mod.rs  # Re-exports new helpers
-crates/ast-core/src/fitschan/mod.rs       # Add `wcs_keywords` submodule
-crates/ast-core/src/fitschan/wcs_write.rs # ~1000 LoC removed in Group 7
-crates/ast-core/src/fitschan/wcs_decompose.rs  # Drop #[allow(dead_code)] in Group 4
-crates/ast-core/tests/test_map_split.rs   # Rewritten to new semantics in Group 1
+crates/starlink-ast/src/mappings/helpers/mod.rs  # Re-exports new helpers
+crates/starlink-ast/src/fitschan/mod.rs       # Add `wcs_keywords` submodule
+crates/starlink-ast/src/fitschan/wcs_write.rs # ~1000 LoC removed in Group 7
+crates/starlink-ast/src/fitschan/wcs_decompose.rs  # Drop #[allow(dead_code)] in Group 4
+crates/starlink-ast/tests/test_map_split.rs   # Rewritten to new semantics in Group 1
 ```
 
 ### Files deleted
@@ -116,7 +116,7 @@ Expected: `libast.a`, `libast_err.a`, `libast_grf3d.a` present.
 - [ ] **Step 3: Run the wcsconv baseline**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
 ```
 
 Expected: `=== wcsconv results: 152 passed, 40 failed, 0 skipped (of 192 total) ===`
@@ -126,7 +126,7 @@ Record this baseline; the final commit must improve it for the numeric-value tes
 - [ ] **Step 4: Confirm `find_basis_vectors`, `fit_line`, `fit_ok`, `fit_line_cd` already exist**
 
 ```bash
-grep -c "pub(crate) fn find_basis_vectors\|pub(crate) fn fit_line\|fn fit_ok\|pub(crate) fn fit_line_cd" crates/ast-core/src/fitschan/wcs_decompose.rs
+grep -c "pub(crate) fn find_basis_vectors\|pub(crate) fn fit_line\|fn fit_ok\|pub(crate) fn fit_line_cd" crates/starlink-ast/src/fitschan/wcs_decompose.rs
 ```
 
 Expected: `4`
@@ -264,16 +264,16 @@ EOF
 ### Task 1.1: Reshape the trait method + UnitMap/ZoomMap/ShiftMap impls
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/mod.rs` (trait signature)
-- Modify: `crates/ast-core/src/mappings/unit.rs`
-- Modify: `crates/ast-core/src/mappings/zoom.rs`
-- Modify: `crates/ast-core/src/mappings/shift.rs`
-- Modify: `crates/ast-core/src/mappings/cmpmap.rs` (existing recursive callsites)
-- Test: `crates/ast-core/tests/test_map_split.rs` (rewrite)
+- Modify: `crates/starlink-ast/src/mappings/mod.rs` (trait signature)
+- Modify: `crates/starlink-ast/src/mappings/unit.rs`
+- Modify: `crates/starlink-ast/src/mappings/zoom.rs`
+- Modify: `crates/starlink-ast/src/mappings/shift.rs`
+- Modify: `crates/starlink-ast/src/mappings/cmpmap.rs` (existing recursive callsites)
+- Test: `crates/starlink-ast/tests/test_map_split.rs` (rewrite)
 
 - [ ] **Step 1: Update the trait signature in `mod.rs`**
 
-In `crates/ast-core/src/mappings/mod.rs:215-225`, replace the existing `map_split` method with:
+In `crates/starlink-ast/src/mappings/mod.rs:215-225`, replace the existing `map_split` method with:
 
 ```rust
     /// Split this mapping to produce a sub-mapping covering a chosen set of inputs.
@@ -329,14 +329,14 @@ In `crates/ast-core/src/mappings/mod.rs:215-225`, replace the existing `map_spli
 - [ ] **Step 2: Build to surface every callsite that won't compile yet**
 
 ```bash
-cargo build -p ast-core 2>&1 | grep -E "^error" | head -20
+cargo build -p starlink-ast 2>&1 | grep -E "^error" | head -20
 ```
 
 Expected: errors at every existing `.map_split(first_out, nout_wanted)` callsite. Note them; we'll fix all callers in this group.
 
 - [ ] **Step 3: Update CmpMap's internal recursion to call the new method**
 
-In `crates/ast-core/src/mappings/cmpmap.rs:541-590`, the existing `map_split` method recurses through children with the old signature. Rewrite the entire `map_split` impl as a port of `cmpmap.c::MapSplit` (cmpmap.c ~line 4163). Read that C function before writing — it handles series and parallel separately.
+In `crates/starlink-ast/src/mappings/cmpmap.rs:541-590`, the existing `map_split` method recurses through children with the old signature. Rewrite the entire `map_split` impl as a port of `cmpmap.c::MapSplit` (cmpmap.c ~line 4163). Read that C function before writing — it handles series and parallel separately.
 
 For series: split the second mapping by `in_axes` first, then split the first mapping by *those* output indices.
 
@@ -378,7 +378,7 @@ The agent fills the `todo!` bodies in Task 1.6 (CmpMap proper). For now this stu
 
 - [ ] **Step 4: UnitMap impl**
 
-In `crates/ast-core/src/mappings/unit.rs`, replace the existing `map_split` with:
+In `crates/starlink-ast/src/mappings/unit.rs`, replace the existing `map_split` with:
 
 ```rust
     fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
@@ -405,7 +405,7 @@ In `crates/ast-core/src/mappings/unit.rs`, replace the existing `map_split` with
 
 - [ ] **Step 5: ZoomMap impl**
 
-In `crates/ast-core/src/mappings/zoom.rs`, replace `map_split`:
+In `crates/starlink-ast/src/mappings/zoom.rs`, replace `map_split`:
 
 ```rust
     fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
@@ -428,7 +428,7 @@ In `crates/ast-core/src/mappings/zoom.rs`, replace `map_split`:
 
 - [ ] **Step 6: ShiftMap impl**
 
-In `crates/ast-core/src/mappings/shift.rs`, replace `map_split`:
+In `crates/starlink-ast/src/mappings/shift.rs`, replace `map_split`:
 
 ```rust
     fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
@@ -461,8 +461,8 @@ Replace the entire file content with tests exercising the new API. Include:
 //! `sub_map.transform(input[in_axes])` equals
 //! `original.transform(full_input)[out_axes]`.
 
-use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, ShiftMap, UnitMap, ZoomMap};
+use starlink_ast::coords::PointSet;
+use starlink_ast::mappings::{Mapping, ShiftMap, UnitMap, ZoomMap};
 
 #[test]
 fn unit_split_picks_chosen_axes() {
@@ -512,7 +512,7 @@ fn shift_split_picks_axis_offset() {
 - [ ] **Step 8: Run the tests**
 
 ```bash
-cargo test -p ast-core --test test_map_split
+cargo test -p starlink-ast --test test_map_split
 ```
 
 Expected: all tests added in Step 7 pass. Tests for unimplemented classes (CmpMap nontrivial, MatrixMap, etc.) are absent — they get added in their own tasks.
@@ -520,12 +520,12 @@ Expected: all tests added in Step 7 pass. Tests for unimplemented classes (CmpMa
 - [ ] **Step 9: Commit Task 1.1**
 
 ```bash
-git add crates/ast-core/src/mappings/mod.rs \
-        crates/ast-core/src/mappings/unit.rs \
-        crates/ast-core/src/mappings/zoom.rs \
-        crates/ast-core/src/mappings/shift.rs \
-        crates/ast-core/src/mappings/cmpmap.rs \
-        crates/ast-core/tests/test_map_split.rs
+git add crates/starlink-ast/src/mappings/mod.rs \
+        crates/starlink-ast/src/mappings/unit.rs \
+        crates/starlink-ast/src/mappings/zoom.rs \
+        crates/starlink-ast/src/mappings/shift.rs \
+        crates/starlink-ast/src/mappings/cmpmap.rs \
+        crates/starlink-ast/tests/test_map_split.rs
 git commit -m "$(cat <<'EOF'
 mappings: reshape map_split to mirror astMapSplit
 
@@ -553,19 +553,19 @@ EOF
 ### Task 1.2: WinMap impl
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/winmap.rs`
-- Test: `crates/ast-core/tests/test_map_split.rs` (append)
+- Modify: `crates/starlink-ast/src/mappings/winmap.rs`
+- Test: `crates/starlink-ast/tests/test_map_split.rs` (append)
 
 **C reference:** `winmap.c::MapSplit` ~line 254 / body around line 1100. WinMap stores per-axis (a, b) pairs; split picks the chosen axes' (a, b) and constructs a smaller WinMap.
 
 - [ ] **Step 1: Add the failing test**
 
-Append to `crates/ast-core/tests/test_map_split.rs`:
+Append to `crates/starlink-ast/tests/test_map_split.rs`:
 
 ```rust
 #[test]
 fn win_split_picks_chosen_axes() {
-    use ast_core::mappings::WinMap;
+    use starlink_ast::mappings::WinMap;
     // 3-axis WinMap: y_i = a_i + b_i * x_i
     let a = vec![1.0, 2.0, 3.0];
     let b = vec![10.0, 20.0, 30.0];
@@ -581,19 +581,19 @@ fn win_split_picks_chosen_axes() {
 }
 ```
 
-(If `WinMap::new_with_coeffs` doesn't exist, find the constructor that takes per-axis a/b and use it; or pass the equivalent two corner points. Read `crates/ast-core/src/mappings/winmap.rs` constructors.)
+(If `WinMap::new_with_coeffs` doesn't exist, find the constructor that takes per-axis a/b and use it; or pass the equivalent two corner points. Read `crates/starlink-ast/src/mappings/winmap.rs` constructors.)
 
 - [ ] **Step 2: Verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_map_split win_split
+cargo test -p starlink-ast --test test_map_split win_split
 ```
 
 Expected: FAIL — default impl rejects partial input selection.
 
 - [ ] **Step 3: Implement `map_split` on WinMap**
 
-In `crates/ast-core/src/mappings/winmap.rs`, add the method to its `impl Mapping for WinMap` block:
+In `crates/starlink-ast/src/mappings/winmap.rs`, add the method to its `impl Mapping for WinMap` block:
 
 ```rust
     fn map_split(&self, in_axes: &[usize]) -> Option<(Vec<usize>, DynMapping)> {
@@ -620,7 +620,7 @@ In `crates/ast-core/src/mappings/winmap.rs`, add the method to its `impl Mapping
 - [ ] **Step 4: Run test**
 
 ```bash
-cargo test -p ast-core --test test_map_split win_split
+cargo test -p starlink-ast --test test_map_split win_split
 ```
 
 Expected: PASS.
@@ -628,7 +628,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/winmap.rs crates/ast-core/tests/test_map_split.rs
+git add crates/starlink-ast/src/mappings/winmap.rs crates/starlink-ast/tests/test_map_split.rs
 git commit -m "mappings(winmap): map_split picks per-axis (a, b) coefficients
 
 Mirrors winmap.c::MapSplit. Adds the Mapping::map_split impl plus
@@ -643,19 +643,19 @@ Co-Authored-By: SLAC AI"
 ### Task 1.3: MatrixMap impl
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/matrix.rs`
-- Test: `crates/ast-core/tests/test_map_split.rs` (append)
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs`
+- Test: `crates/starlink-ast/tests/test_map_split.rs` (append)
 
 **C reference:** `matrixmap.c::MapSplit` ~line 306 / body further down. MatrixMap is `y = M * x` for a square matrix M. Split is only possible when the chosen input columns of M feed into a *disjoint* set of output rows — i.e., the off-block entries are zero.
 
 - [ ] **Step 1: Add the failing tests**
 
-Append to `crates/ast-core/tests/test_map_split.rs`:
+Append to `crates/starlink-ast/tests/test_map_split.rs`:
 
 ```rust
 #[test]
 fn matrix_split_diagonal_picks_axis() {
-    use ast_core::mappings::MatrixMap;
+    use starlink_ast::mappings::MatrixMap;
     use ndarray::array;
     // Diagonal — every axis splits cleanly.
     let m = array![[2.0_f64, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 5.0]];
@@ -668,7 +668,7 @@ fn matrix_split_diagonal_picks_axis() {
 
 #[test]
 fn matrix_split_block_diagonal() {
-    use ast_core::mappings::MatrixMap;
+    use starlink_ast::mappings::MatrixMap;
     use ndarray::array;
     // Block-diagonal — first 2 axes coupled, third independent.
     let m = array![
@@ -684,7 +684,7 @@ fn matrix_split_block_diagonal() {
 
 #[test]
 fn matrix_split_coupled_returns_none() {
-    use ast_core::mappings::MatrixMap;
+    use starlink_ast::mappings::MatrixMap;
     use ndarray::array;
     // Fully coupled: picking a subset of inputs is impossible.
     let m = array![[1.0_f64, 1.0], [1.0, 1.0]];
@@ -693,17 +693,17 @@ fn matrix_split_coupled_returns_none() {
 }
 ```
 
-(Replace `MatrixMap::new_full` with the actual constructor name from `crates/ast-core/src/mappings/matrix.rs`.)
+(Replace `MatrixMap::new_full` with the actual constructor name from `crates/starlink-ast/src/mappings/matrix.rs`.)
 
 - [ ] **Step 2: Verify failures**
 
 ```bash
-cargo test -p ast-core --test test_map_split matrix_split
+cargo test -p starlink-ast --test test_map_split matrix_split
 ```
 
 - [ ] **Step 3: Implement `map_split` on MatrixMap**
 
-In `crates/ast-core/src/mappings/matrix.rs`, port `matrixmap.c::MapSplit`. The algorithm:
+In `crates/starlink-ast/src/mappings/matrix.rs`, port `matrixmap.c::MapSplit`. The algorithm:
 
 1. For each output row `j`, compute `feeds[j]` = set of input columns where M[j][i] != 0.
 2. Let `kept_in = set(in_axes)`. An output `j` is "in scope" iff `feeds[j] ⊆ kept_in`.
@@ -764,7 +764,7 @@ In `crates/ast-core/src/mappings/matrix.rs`, port `matrixmap.c::MapSplit`. The a
 - [ ] **Step 4: Run tests**
 
 ```bash
-cargo test -p ast-core --test test_map_split matrix_split
+cargo test -p starlink-ast --test test_map_split matrix_split
 ```
 
 Expected: all 3 tests pass.
@@ -772,7 +772,7 @@ Expected: all 3 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/matrix.rs crates/ast-core/tests/test_map_split.rs
+git add crates/starlink-ast/src/mappings/matrix.rs crates/starlink-ast/tests/test_map_split.rs
 git commit -m "mappings(matrix): map_split block-diagonalises against chosen inputs
 
 Mirrors matrixmap.c::MapSplit — succeeds only when each output
@@ -788,8 +788,8 @@ Co-Authored-By: SLAC AI"
 ### Task 1.4: PermMap impl
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/perm.rs`
-- Test: `crates/ast-core/tests/test_map_split.rs` (append)
+- Modify: `crates/starlink-ast/src/mappings/perm.rs`
+- Test: `crates/starlink-ast/tests/test_map_split.rs` (append)
 
 **C reference:** `permmap.c::MapSplit` ~line 1438. PermMap permutes / drops / inserts axes via `inperm` and `outperm` arrays. Split picks outputs that depend on the kept inputs through the inverse permutation.
 
@@ -800,7 +800,7 @@ Append:
 ```rust
 #[test]
 fn perm_split_simple() {
-    use ast_core::mappings::PermMap;
+    use starlink_ast::mappings::PermMap;
     // Swap axes 0 and 1.
     let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
     let (outs, sub) = pm.map_split(&[1]).expect("split");
@@ -812,7 +812,7 @@ fn perm_split_simple() {
 
 #[test]
 fn perm_split_with_constants_returns_none() {
-    use ast_core::mappings::PermMap;
+    use starlink_ast::mappings::PermMap;
     // outperm has a negative entry → output is a constant; not splittable.
     let pm = PermMap::new(&[1], &[1, -1], &[42.0]).unwrap();
     assert!(pm.map_split(&[0]).is_none());
@@ -822,7 +822,7 @@ fn perm_split_with_constants_returns_none() {
 - [ ] **Step 2: Verify failures**
 
 ```bash
-cargo test -p ast-core --test test_map_split perm_split
+cargo test -p starlink-ast --test test_map_split perm_split
 ```
 
 - [ ] **Step 3: Implement**
@@ -898,8 +898,8 @@ Co-Authored-By: SLAC AI"
 ### Task 1.5: WcsMap impl
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/wcsmap.rs`
-- Test: `crates/ast-core/tests/test_map_split.rs` (append)
+- Modify: `crates/starlink-ast/src/mappings/wcsmap.rs`
+- Test: `crates/starlink-ast/tests/test_map_split.rs` (append)
 
 **C reference:** `wcsmap.c::MapSplit` ~line 808 / body around line 1730. WcsMap is 2-in/2-out (the projection's longitude/latitude pair plus pass-through for any extra axes — actually our WcsMap is strictly 2-in/2-out for the projection axes; we don't carry pass-through).
 
@@ -908,7 +908,7 @@ Co-Authored-By: SLAC AI"
 ```rust
 #[test]
 fn wcs_split_both_axes_succeeds() {
-    use ast_core::mappings::{WcsMap, WcsProjection};
+    use starlink_ast::mappings::{WcsMap, WcsProjection};
     let wm = WcsMap::new(WcsProjection::Tan, 2, 1, 2).unwrap();
     let (outs, sub) = wm.map_split(&[0, 1]).expect("split");
     assert_eq!(outs, vec![0, 1]);
@@ -917,7 +917,7 @@ fn wcs_split_both_axes_succeeds() {
 
 #[test]
 fn wcs_split_one_axis_returns_none() {
-    use ast_core::mappings::{WcsMap, WcsProjection};
+    use starlink_ast::mappings::{WcsMap, WcsProjection};
     let wm = WcsMap::new(WcsProjection::Tan, 2, 1, 2).unwrap();
     assert!(wm.map_split(&[0]).is_none());
     assert!(wm.map_split(&[1]).is_none());
@@ -968,8 +968,8 @@ Co-Authored-By: SLAC AI"
 ### Task 1.6: CmpMap series + parallel impls
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/cmpmap.rs`
-- Test: `crates/ast-core/tests/test_map_split.rs` (append)
+- Modify: `crates/starlink-ast/src/mappings/cmpmap.rs`
+- Test: `crates/starlink-ast/tests/test_map_split.rs` (append)
 
 **C reference:** `cmpmap.c::MapSplit` ~line 4163. The most complex of the per-class impls; about 250 lines of C.
 
@@ -980,7 +980,7 @@ This task replaces the `todo!()` stubs from Task 1.1's CmpMap update.
 ```rust
 #[test]
 fn cmpmap_parallel_split_per_child() {
-    use ast_core::mappings::{CmpMap, Composition, ShiftMap};
+    use starlink_ast::mappings::{CmpMap, Composition, ShiftMap};
     // Parallel of two ShiftMaps: axes 0,1 from first; 2,3 from second.
     let s1 = ShiftMap::new(vec![1.0, 2.0]);
     let s2 = ShiftMap::new(vec![10.0, 20.0]);
@@ -993,7 +993,7 @@ fn cmpmap_parallel_split_per_child() {
 
 #[test]
 fn cmpmap_series_split_threads_through() {
-    use ast_core::mappings::{CmpMap, Composition, ShiftMap, ZoomMap};
+    use starlink_ast::mappings::{CmpMap, Composition, ShiftMap, ZoomMap};
     // shift(3) → zoom(3, 5): linear chain, every axis independent.
     let s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
     let z = ZoomMap::new(3, 5.0).unwrap();
@@ -1083,13 +1083,13 @@ Read `cmpmap.c::MapSplit` lines ~4350-4450:
 - [ ] **Step 5: Run tests**
 
 ```bash
-cargo test -p ast-core --test test_map_split cmpmap
+cargo test -p starlink-ast --test test_map_split cmpmap
 ```
 
 - [ ] **Step 6: Run the FULL map_split test file to catch regressions**
 
 ```bash
-cargo test -p ast-core --test test_map_split
+cargo test -p starlink-ast --test test_map_split
 ```
 
 Expected: all tests pass.
@@ -1111,7 +1111,7 @@ Co-Authored-By: SLAC AI"
 ### Task 1.7: PolyMap default + remaining classes (TranMap, RateMap, NormMap)
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/{polymap,tranmap,ratemap,normmap}.rs` if needed.
+- Modify: `crates/starlink-ast/src/mappings/{polymap,tranmap,ratemap,normmap}.rs` if needed.
 
 **C references:**
 - `polymap.c` — no MapSplit override. Uses default (full-input only).
@@ -1126,7 +1126,7 @@ The default impl (added in Task 1.1) succeeds only when `in_axes.len() == nin()`
 ```rust
 #[test]
 fn polymap_split_full_input_only() {
-    use ast_core::mappings::{PolyMap, PolyTerm};
+    use starlink_ast::mappings::{PolyMap, PolyTerm};
     // Identity-ish PolyMap: y0 = x0, y1 = x1.
     let fwd = vec![
         PolyTerm { coeff: 1.0, output: 1, powers: vec![1, 0] },
@@ -1143,7 +1143,7 @@ fn polymap_split_full_input_only() {
 - [ ] **Step 2: Run, verify it passes (default impl handles this)**
 
 ```bash
-cargo test -p ast-core --test test_map_split polymap_split
+cargo test -p starlink-ast --test test_map_split polymap_split
 ```
 
 - [ ] **Step 3: Port TranMap, RateMap, NormMap impls**
@@ -1165,10 +1165,10 @@ Co-Authored-By: SLAC AI"
 
 ### Task 1.8: Group-1 finalization
 
-- [ ] **Step 1: Run full ast-core test suite**
+- [ ] **Step 1: Run full starlink-ast test suite**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -E "^test result|FAILED"
+cargo test -p starlink-ast 2>&1 | grep -E "^test result|FAILED"
 ```
 
 Expected: every test result is `ok`. If anything is FAILED, that's a regression to fix before committing the group.
@@ -1183,7 +1183,7 @@ cargo clippy --workspace -- -D warnings
 - [ ] **Step 3: Sanity-check the wcsconv suite is unchanged**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
 ```
 
 Expected: still `152 passed, 40 failed`. Group 1 changes the trait but doesn't yet wire anything new in.
@@ -1197,8 +1197,8 @@ Expected: still `152 passed, 40 failed`. Group 1 changes the trait but doesn't y
 ### Task 2.1: `linear_approx`
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/helpers/linear_approx.rs`
-- Modify: `crates/ast-core/src/mappings/helpers/mod.rs` (re-export)
+- Create: `crates/starlink-ast/src/mappings/helpers/linear_approx.rs`
+- Modify: `crates/starlink-ast/src/mappings/helpers/mod.rs` (re-export)
 - Create: `tools/oracle_fixtures/linear_approx.c`
 - Test: inside `linear_approx.rs`
 
@@ -1309,7 +1309,7 @@ int main(void) {
 
     /* Fixture 5: SIP-shape PolyMap from sip-3d header. */
     /* TODO: lift coefficients from
-     *   crates/ast-core/tests/fixtures/wcsconv/inputs/sip-3d.head
+     *   crates/starlink-ast/tests/fixtures/wcsconv/inputs/sip-3d.head
      * and capture LINEAR_APPROX_SIP_OVER_FULL_BOX. */
 
     astEnd;
@@ -1327,7 +1327,7 @@ cat /tmp/linear_approx_captured.rs
 cd ../..
 ```
 
-- [ ] **Step 4: Create `crates/ast-core/src/mappings/helpers/linear_approx.rs`**
+- [ ] **Step 4: Create `crates/starlink-ast/src/mappings/helpers/linear_approx.rs`**
 
 Skeleton with imports, a `LinearFit` struct, a public `linear_approx` function returning `Option<LinearFit>`, and a `#[cfg(test)] mod tests` block at the bottom containing the captured constants pasted from Step 3.
 
@@ -1444,7 +1444,7 @@ Read `mapping.c::astLinearApprox` and translate. The corner-sampling layout, the
 - [ ] **Step 6: Run tests**
 
 ```bash
-cargo test -p ast-core mappings::helpers::linear_approx
+cargo test -p starlink-ast mappings::helpers::linear_approx
 ```
 
 Expected: identity, shift_3d, tan_tiny pass; tan_too_large refuses (returns None).
@@ -1452,8 +1452,8 @@ Expected: identity, shift_3d, tan_tiny pass; tan_too_large refuses (returns None
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/helpers/linear_approx.rs \
-        crates/ast-core/src/mappings/helpers/mod.rs \
+git add crates/starlink-ast/src/mappings/helpers/linear_approx.rs \
+        crates/starlink-ast/src/mappings/helpers/mod.rs \
         tools/oracle_fixtures/linear_approx.c
 git commit -m "$(cat <<'EOF'
 mappings: port astLinearApprox
@@ -1477,8 +1477,8 @@ EOF
 ### Task 2.2: `analyse_poly`
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/helpers/analyse_poly.rs`
-- Modify: `crates/ast-core/src/mappings/helpers/mod.rs` (re-export)
+- Create: `crates/starlink-ast/src/mappings/helpers/analyse_poly.rs`
+- Modify: `crates/starlink-ast/src/mappings/helpers/mod.rs` (re-export)
 - Create: `tools/oracle_fixtures/analyse_poly.c`
 
 **C reference:** `fitschan.c::AnalysePoly` (search the file). Decomposes a 2-in/2-out PolyMap into `(ShiftMap, canonical_PolyMap, MatrixMap)` such that the composition matches the original.
@@ -1561,8 +1561,8 @@ mod tests {
 Same TDD loop as Task 2.1.
 
 ```bash
-git add crates/ast-core/src/mappings/helpers/analyse_poly.rs \
-        crates/ast-core/src/mappings/helpers/mod.rs \
+git add crates/starlink-ast/src/mappings/helpers/analyse_poly.rs \
+        crates/starlink-ast/src/mappings/helpers/mod.rs \
         tools/oracle_fixtures/analyse_poly.c
 git commit -m "mappings: port AnalysePoly
 
@@ -1579,8 +1579,8 @@ Co-Authored-By: SLAC AI"
 ### Task 2.3: `scale_poly_inputs`
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/helpers/scale_poly_inputs.rs`
-- Modify: `crates/ast-core/src/mappings/helpers/mod.rs` (re-export)
+- Create: `crates/starlink-ast/src/mappings/helpers/scale_poly_inputs.rs`
+- Modify: `crates/starlink-ast/src/mappings/helpers/mod.rs` (re-export)
 - Create: `tools/oracle_fixtures/scale_poly_inputs.c`
 
 **C reference:** `fitschan.c::ScalePolyInputs` (search). Rebuilds a PolyMap so its inputs are pre-scaled by `scales[i]` while producing the same outputs.
@@ -1615,7 +1615,7 @@ Co-Authored-By: SLAC AI"
 - [ ] **Step 1: Verify all helpers tests pass**
 
 ```bash
-cargo test -p ast-core mappings::helpers
+cargo test -p starlink-ast mappings::helpers
 ```
 
 - [ ] **Step 2: clippy + fmt**
@@ -1623,7 +1623,7 @@ cargo test -p ast-core mappings::helpers
 - [ ] **Step 3: Confirm wcsconv unchanged**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
 ```
 
 Expected: `152 passed, 40 failed`.
@@ -1637,8 +1637,8 @@ Expected: `152 passed, 40 failed`.
 ### Task 3.1: Create the submodule skeleton
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_keywords/mod.rs`
-- Modify: `crates/ast-core/src/fitschan/mod.rs` (declare `wcs_keywords`)
+- Create: `crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs` (declare `wcs_keywords`)
 
 - [ ] **Step 1: Create `wcs_keywords/mod.rs`**
 
@@ -1670,7 +1670,7 @@ pub(crate) use other_axes::other_axes;
 
 - [ ] **Step 2: Declare the submodule in `fitschan/mod.rs`**
 
-In `crates/ast-core/src/fitschan/mod.rs`, near the other submodule declarations, add:
+In `crates/starlink-ast/src/fitschan/mod.rs`, near the other submodule declarations, add:
 
 ```rust
 mod wcs_keywords;
@@ -1679,7 +1679,7 @@ mod wcs_keywords;
 - [ ] **Step 3: Build and confirm nothing breaks**
 
 ```bash
-cargo build -p ast-core 2>&1 | tail -5
+cargo build -p starlink-ast 2>&1 | tail -5
 ```
 
 Expected: clean build (Other_axes doesn't exist yet but mod.rs only references the submodule, not the function — but actually our mod.rs has `pub(crate) use other_axes::other_axes;` which WILL fail).
@@ -1689,8 +1689,8 @@ Adjust: comment out the `pub(crate) use` line until Task 3.2 lands.
 - [ ] **Step 4: Commit skeleton**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords/mod.rs \
-        crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs \
+        crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "fitschan: stand up wcs_keywords submodule skeleton
 
 Adds the home for the FsetToStore / MakeIntWorld port. Submodule
@@ -1706,8 +1706,8 @@ Co-Authored-By: SLAC AI"
 ### Task 3.2: Port `other_axes`
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_keywords/other_axes.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords/mod.rs` (uncomment re-export)
+- Create: `crates/starlink-ast/src/fitschan/wcs_keywords/other_axes.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs` (uncomment re-export)
 
 **C reference:** `fitschan.c::OtherAxes` @ line 24030. ~180 executable lines. Iterates over WCS frame axes that haven't been claimed by celestial or spectral, picks per-axis CRVAL (input override or `world(central_pixel)`), stores CTYPE/CUNIT/CRVAL, builds a `wcs→iwc` ShiftMap component for each axis.
 
@@ -1724,7 +1724,7 @@ Understand:
 
 - [ ] **Step 2: Sketch the Rust signature**
 
-In `crates/ast-core/src/fitschan/wcs_keywords/other_axes.rs`:
+In `crates/starlink-ast/src/fitschan/wcs_keywords/other_axes.rs`:
 
 ```rust
 //! Port of fitschan.c::OtherAxes (~line 24030).
@@ -1823,7 +1823,7 @@ mod tests {
 - [ ] **Step 4: Run the test, watch it fail**
 
 ```bash
-cargo test -p ast-core fitschan::wcs_keywords::other_axes
+cargo test -p starlink-ast fitschan::wcs_keywords::other_axes
 ```
 
 Expected: FAIL with `todo!()` panic or compile error if signatures don't quite match. Adjust signatures to match the actual `FitsStore` field names.
@@ -1845,7 +1845,7 @@ Read the C carefully — it has a few special cases (PIXEL frames, etc.) that ne
 - [ ] **Step 6: Run the test until it passes**
 
 ```bash
-cargo test -p ast-core fitschan::wcs_keywords::other_axes
+cargo test -p starlink-ast fitschan::wcs_keywords::other_axes
 ```
 
 - [ ] **Step 7: Add additional fixtures for non-trivial cases**
@@ -1861,8 +1861,8 @@ pub(crate) use other_axes::other_axes;
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords/other_axes.rs \
-        crates/ast-core/src/fitschan/wcs_keywords/mod.rs
+git add crates/starlink-ast/src/fitschan/wcs_keywords/other_axes.rs \
+        crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_keywords: port OtherAxes
 
@@ -1884,10 +1884,10 @@ EOF
 
 ### Task 3.3: Group-3 finalization
 
-- [ ] **Step 1: Run full ast-core test suite**
+- [ ] **Step 1: Run full starlink-ast test suite**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -E "^test result|FAILED"
+cargo test -p starlink-ast 2>&1 | grep -E "^test result|FAILED"
 ```
 
 Expected: every result `ok`. The new `other_axes` test passes; nothing else changes.
@@ -1897,7 +1897,7 @@ Expected: every result `ok`. The new `other_axes` test passes; nothing else chan
 - [ ] **Step 3: wcsconv baseline unchanged**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
 ```
 
 Expected: `152 passed, 40 failed`.
@@ -1911,8 +1911,8 @@ Expected: `152 passed, 40 failed`.
 ### Task 4.1: `orth_vector` + `orth_vector_set`
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_keywords/orth.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords/mod.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_keywords/orth.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs`
 
 **C reference:**
 - `fitschan.c::OrthVectorSet` ~line 23938.
@@ -1988,8 +1988,8 @@ mod tests {
 - [ ] **Step 4-7: TDD loop. Implement, run tests, commit.**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords/orth.rs \
-        crates/ast-core/src/fitschan/wcs_keywords/mod.rs \
+git add crates/starlink-ast/src/fitschan/wcs_keywords/orth.rs \
+        crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs \
         tools/oracle_fixtures/orth_vector_set.c
 git commit -m "fitschan/wcs_keywords: port OrthVectorSet + OrthVector
 
@@ -2005,8 +2005,8 @@ Co-Authored-By: SLAC AI"
 ### Task 4.2: `make_invertable`
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_keywords/invertable.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords/mod.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_keywords/invertable.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs`
 
 **C reference:** `fitschan.c::MakeInvertable` @ line 22314. ~30 lines. Patches a square CD matrix to be invertible by setting diagonal to 1 for inputs that have no effect on any output, when those inputs are degenerate (single-pixel) axes.
 
@@ -2062,14 +2062,14 @@ Co-Authored-By: SLAC AI"
 ### Task 4.3: Wire `find_basis_vectors` / `fit_line_cd` into the public path
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_decompose.rs` (drop `#[allow(dead_code)]`)
+- Modify: `crates/starlink-ast/src/fitschan/wcs_decompose.rs` (drop `#[allow(dead_code)]`)
 
 The helpers were ported in commit `1f9f3b7` and currently carry `#[allow(dead_code)]` on every public-crate item. With `make_int_world` about to use them, drop the markers.
 
 - [ ] **Step 1: Drop `#[allow(dead_code)]` markers**
 
 ```bash
-grep -n "#\[allow(dead_code)\]" crates/ast-core/src/fitschan/wcs_decompose.rs
+grep -n "#\[allow(dead_code)\]" crates/starlink-ast/src/fitschan/wcs_decompose.rs
 ```
 
 Remove every match. The helpers we keep:
@@ -2083,8 +2083,8 @@ Remove every match. The helpers we keep:
 - [ ] **Step 2: Build, tests still green**
 
 ```bash
-cargo build -p ast-core
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
+cargo build -p starlink-ast
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
 ```
 
 Note: build succeeds — but if `make_int_world` doesn't use these symbols yet, dead-code warnings reappear. Order this commit AFTER make_int_world's first compile (Task 4.4 step 4), or move the markers' removal into the make_int_world commit.
@@ -2094,9 +2094,9 @@ Better: skip this as a standalone commit; it's done as part of Task 4.4 below.
 ### Task 4.4: `make_int_world` body (no SIP branch)
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_keywords/make_int_world.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords/mod.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_decompose.rs` (drop `#[allow(dead_code)]`)
+- Create: `crates/starlink-ast/src/fitschan/wcs_keywords/make_int_world.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_decompose.rs` (drop `#[allow(dead_code)]`)
 
 **C reference:** `fitschan.c::MakeIntWorld` @ line 21689. ~300 executable lines. The SIP branch (lines 21882-21895 + 21999-22004) is wired up in Group 6 — for now, leave the call site as a `None` short-circuit and process every axis through FitLine.
 
@@ -2283,7 +2283,7 @@ Now that `make_int_world` uses `find_basis_vectors`, `fit_line_cd`, etc., the ma
 - [ ] **Step 6: Run tests**
 
 ```bash
-cargo test -p ast-core fitschan::wcs_keywords::make_int_world
+cargo test -p starlink-ast fitschan::wcs_keywords::make_int_world
 ```
 
 - [ ] **Step 7: Uncomment in `mod.rs`**
@@ -2300,9 +2300,9 @@ pub(crate) use other_axes::other_axes;
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords/make_int_world.rs \
-        crates/ast-core/src/fitschan/wcs_keywords/mod.rs \
-        crates/ast-core/src/fitschan/wcs_decompose.rs \
+git add crates/starlink-ast/src/fitschan/wcs_keywords/make_int_world.rs \
+        crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs \
+        crates/starlink-ast/src/fitschan/wcs_decompose.rs \
         tools/oracle_fixtures/make_int_world.c
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_keywords: port MakeIntWorld (no SIP branch)
@@ -2331,10 +2331,10 @@ EOF
 
 ### Task 4.5: Group-4 finalization
 
-- [ ] **Step 1: Full ast-core test run**
+- [ ] **Step 1: Full starlink-ast test run**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -E "^test result|FAILED"
+cargo test -p starlink-ast 2>&1 | grep -E "^test result|FAILED"
 ```
 
 Expected: every result `ok`.
@@ -2344,7 +2344,7 @@ Expected: every result `ok`.
 - [ ] **Step 3: wcsconv unchanged**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
 ```
 
 Expected: `152 passed, 40 failed`. New code is reachable from unit tests only.
@@ -2358,8 +2358,8 @@ Expected: `152 passed, 40 failed`. New code is reachable from unit tests only.
 ### Task 5.1: `is_sky_off` + `sky_sys` helpers
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_keywords/sky_sys.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords/mod.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_keywords/sky_sys.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs`
 
 **C reference:**
 - `fitschan.c::IsSkyOff` @ line 20222.
@@ -2439,7 +2439,7 @@ Co-Authored-By: SLAC AI"
 ### Task 5.2: `get_fiducial_wcs`
 
 **Files:**
-- Add to `crates/ast-core/src/fitschan/wcs_keywords/celestial_axes.rs` (created in Task 5.3).
+- Add to `crates/starlink-ast/src/fitschan/wcs_keywords/celestial_axes.rs` (created in Task 5.3).
 
 **C reference:** `fitschan.c::GetFiducialWCS` (search). Traces the WcsMap's native fiducial point through the post-Wcs chain to compute the celestial coordinate at IWC = (0, 0). This is the function whose absence causes the µpixel CRPIX residual today.
 
@@ -2474,8 +2474,8 @@ pub(super) fn get_fiducial_wcs(
 ### Task 5.3: `celestial_axes`
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_keywords/celestial_axes.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords/mod.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_keywords/celestial_axes.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs`
 
 **C reference:** `fitschan.c::CelestialAxes` @ line 4890. ~340 executable lines. Depends on `sky_sys`, `is_sky_off`, `get_fiducial_wcs` from Tasks 5.1-5.2.
 
@@ -2523,8 +2523,8 @@ EOF
 ### Task 5.4: `spectral_axes`
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_keywords/spectral_axes.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords/mod.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_keywords/spectral_axes.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs`
 
 **C reference:** `fitschan.c::SpectralAxes` @ line 30050. ~370 executable lines. Inspects the SpecMap chain to pick the FITS spectral algorithm code (`-FRQ`, `-VRD`, `-WAV`, `-OHL`, `-F2W`, `-V2F`, etc.), stores spec CTYPE/CUNIT/CRVAL/RESTFRQ/SPECSYS/VELOSYS, returns the wcs→iwc segment.
 
@@ -2567,8 +2567,8 @@ Same final-block as previous groups. Expected: `152 passed, 40 failed` (still no
 ### Task 6.1: `sip_int_world` body
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/wcs_keywords/sip_int_world.rs`
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords/mod.rs`
+- Create: `crates/starlink-ast/src/fitschan/wcs_keywords/sip_int_world.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs`
 
 **C reference:** `fitschan.c::SIPIntWorld` @ line 28495. ~300 executable lines.
 
@@ -2649,14 +2649,14 @@ Translate C section by section. Read the C carefully — there are several non-o
 - [ ] **Step 5: Run tests until they pass**
 
 ```bash
-cargo test -p ast-core fitschan::wcs_keywords::sip_int_world
+cargo test -p starlink-ast fitschan::wcs_keywords::sip_int_world
 ```
 
 - [ ] **Step 6: Commit Task 6.1**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords/sip_int_world.rs \
-        crates/ast-core/src/fitschan/wcs_keywords/mod.rs \
+git add crates/starlink-ast/src/fitschan/wcs_keywords/sip_int_world.rs \
+        crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs \
         tools/oracle_fixtures/sip_int_world.c
 git commit -m "$(cat <<'EOF'
 fitschan/wcs_keywords: port SIPIntWorld
@@ -2680,7 +2680,7 @@ EOF
 ### Task 6.2: Wire SIP branch into `make_int_world`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords/make_int_world.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords/make_int_world.rs`
 
 In Task 4.4 the SIP branch was left as a placeholder. Now flesh it out.
 
@@ -2771,7 +2771,7 @@ Same final-block as previous groups. wcsconv baseline still `152 / 40` (no integ
 ### Task 7.1: Implement `fset_to_store`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords/mod.rs`
 
 **C reference:** `fitschan.c::FsetToStore` @ line 12006. ~250 lines.
 
@@ -2860,7 +2860,7 @@ pub(crate) fn fset_to_store(
 
 - [ ] **Step 3: Wire into `store_from_frameset_to`**
 
-In `crates/ast-core/src/fitschan/wcs_write.rs`, replace the body of `store_from_frameset_to` with a single call:
+In `crates/starlink-ast/src/fitschan/wcs_write.rs`, replace the body of `store_from_frameset_to` with a single call:
 
 ```rust
 fn store_from_frameset_to(
@@ -2883,8 +2883,8 @@ fn store_from_frameset_to(
 - [ ] **Step 4: Build, observe wcsconv swing**
 
 ```bash
-cargo build -p ast-core
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
+cargo build -p starlink-ast
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
 ```
 
 Expected: significant swing in numbers. Many fixtures turn green (the numeric-value ones). A few may turn red on lines they previously passed (because the new path's CRVAL / CTYPE choice is bytewise different in some non-numeric way). Group 8 walks the residuals.
@@ -2913,7 +2913,7 @@ EOF
 ### Task 7.2: Delete legacy helpers
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 The new path doesn't call any of these. Remove them. Each is one or several functions in `wcs_write.rs`:
 
@@ -2932,7 +2932,7 @@ The new path doesn't call any of these. Remove them. Each is one or several func
 - [ ] **Step 1: Identify dead callers**
 
 ```bash
-cargo build -p ast-core 2>&1 | grep "never used\|never read\|dead_code" | head
+cargo build -p starlink-ast 2>&1 | grep "never used\|never read\|dead_code" | head
 ```
 
 For each warning, delete the function. Don't `#[allow(dead_code)]`.
@@ -2944,8 +2944,8 @@ These were temporary heuristics; in the new path the IWC mapping handles all thi
 - [ ] **Step 3: Re-run tests**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -E "^test result|FAILED" | head
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
+cargo test -p starlink-ast 2>&1 | grep -E "^test result|FAILED" | head
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
 ```
 
 - [ ] **Step 4: Commit Task 7.2**
@@ -2974,7 +2974,7 @@ EOF
 - [ ] **Step 2: Capture wcsconv swing**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "differs:" > /tmp/wcsconv_after_7.txt
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "differs:" > /tmp/wcsconv_after_7.txt
 wc -l /tmp/wcsconv_after_7.txt
 ```
 
@@ -2995,7 +2995,7 @@ Save this list — Group 8 walks it.
 For each test, run with `--nocapture` and capture the actual diff:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -A2 "differs:" > /tmp/wcsconv_diffs.txt
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -A2 "differs:" > /tmp/wcsconv_diffs.txt
 ```
 
 - [ ] **Step 2: Classify each failure into one of four buckets**
@@ -3016,7 +3016,7 @@ For each bucket-A failure, the workflow:
 - [ ] **Step 1: Identify the failing line**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 \
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 \
   | grep -B0 -A2 "<test_name>"
 ```
 
@@ -3044,7 +3044,7 @@ In every case the fix is to read the C source for the diverging step and verify 
 - [ ] **Step 6: Run the full wcsconv suite to ensure no regression**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
 ```
 
 - [ ] **Step 7: Commit the fix**
@@ -3095,7 +3095,7 @@ Co-Authored-By: SLAC AI"
 - [ ] **Step 1: Full test suite**
 
 ```bash
-cargo test -p ast-core 2>&1 | grep -E "^test result|FAILED"
+cargo test -p starlink-ast 2>&1 | grep -E "^test result|FAILED"
 ```
 
 Expected: every result `ok`. Any FAILED is a regression to investigate.
@@ -3105,7 +3105,7 @@ Expected: every result `ok`. Any FAILED is a regression to investigate.
 - [ ] **Step 3: Final wcsconv check**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "results:"
 ```
 
 Expected: every numeric-value-failing test now passes. Out-of-scope failures still red and classified.

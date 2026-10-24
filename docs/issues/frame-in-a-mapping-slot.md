@@ -23,13 +23,13 @@ The fixture below stays as the record of what C accepts and this port refuses.
 ## What is settled, and is not being asked
 
 A Region is a Frame *and* a Mapping in this port
-(`crates/ast-core/src/regions/mod.rs:93`), so both of these are read, written
+(`crates/starlink-ast/src/regions/mod.rs:93`), so both of these are read, written
 and byte-compared today:
 
 | Construct | Components | C | This port |
 |---|---|---|---|
 | `CmpFrame` holding Frames | Frames | accepted | accepted |
-| `CmpFrame` holding a Region | Frames — a Region is a Frame | accepted | accepted; `crates/ast-core/tests/fixtures/region_in_cmpframe.ast` |
+| `CmpFrame` holding a Region | Frames — a Region is a Frame | accepted | accepted; `crates/starlink-ast/tests/fixtures/region_in_cmpframe.ast` |
 | `CmpMap` holding a Region | Mappings — a Region is a Mapping | accepted | accepted, 33 fixtures |
 | `CmpFrame` holding a general Mapping | — | **rejected** | rejected |
 | `CmpMap` holding a bare Frame | Mappings — a bare Frame is a Mapping in C only | accepted | **rejected — the question** |
@@ -44,8 +44,8 @@ failing fixture so the refusal below cannot widen to catch it.
 (`cmpframe.h:301-302`) and `astCmpFrame_` calls `astCheckFrame` on both
 arguments (`cmpframe.c:10634-10635`). The asymmetry with `CmpMap` is C's, and
 the port reproduces it: `CmpFrame` holds two `DynFrame`
-(`crates/ast-core/src/frames/cmpframe.rs:25-26`), `CmpMap` two `DynMapping`
-(`crates/ast-core/src/mappings/cmpmap.rs:102-103`).
+(`crates/starlink-ast/src/frames/cmpframe.rs:25-26`), `CmpMap` two `DynMapping`
+(`crates/starlink-ast/src/mappings/cmpmap.rs:102-103`).
 
 ## Why C accepts it
 
@@ -65,19 +65,19 @@ installs a `DoNotSimplify` override returning zero, so a Frame with `Ident` set
 stays simplifiable as a Mapping where the base rule at `mapping.c:1152` would
 have blocked it.
 The port mirrors that override
-(`crates/ast-core/src/mappings/mod.rs:674`).
+(`crates/starlink-ast/src/mappings/mod.rs:674`).
 
 ## The artifact
 
-`crates/ast-core/tests/fixtures/frame_in_map_slot.ast` is a dump the C library
+`crates/starlink-ast/tests/fixtures/frame_in_map_slot.ast` is a dump the C library
 wrote: a FrameSet whose `Map3` slot holds `Begin CmpFrame`.
 `astAddFrame` accepted it, `astTran2` transformed through it, and the Channel
 dumped it without error.
-`crates/ast-core/tests/fixtures/region_in_cmpframe.ast` is the settled nesting
+`crates/starlink-ast/tests/fixtures/region_in_cmpframe.ast` is the settled nesting
 from the same probe, written by the same library run.
 Reproduce both with `tools/oracle_fixtures/frame_in_map_slot_probe.c`.
 
-`crates/ast-core/tests/test_frame_in_map_slot.rs` pins the refusal and keeps
+`crates/starlink-ast/tests/test_frame_in_map_slot.rs` pins the refusal and keeps
 it narrow.
 Its first test reads the FrameSet's `Map<n>` slots structurally, requires one to
 hold a Frame class, and requires the read to fail naming that class, so the
@@ -97,8 +97,8 @@ follows `cmpframe.c:8963`.
 Substituting a `UnitMap` is faithful rather than a shortcut, because it is the
 object C constructs at `frame.c:11806`, and the downcast that distinguishes the
 cases is already in the tree (`regions::any_as_region`,
-`crates/ast-core/src/regions/mod.rs:1340`, already applied to a Frame at
-`crates/ast-core/src/regions/data.rs:145`).
+`crates/starlink-ast/src/regions/mod.rs:1340`, already applied to a Frame at
+`crates/starlink-ast/src/regions/data.rs:145`).
 One further both-traits class alongside `FrameSet` and the nine Regions sits
 inside the existing design; the port design spec needs no amendment.
 

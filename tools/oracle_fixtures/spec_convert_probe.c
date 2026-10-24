@@ -13,9 +13,9 @@
  * Values that are not exactly representable in the attribute's units are
  * avoided, so the Rust test can set the same values through typed setters.
  *
- * Prints Rust source for crates/ast-core/tests/spec_convert_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/spec_convert_oracle/cases.rs:
  *
- *   ./spec_convert_probe > ../../crates/ast-core/tests/spec_convert_oracle/cases.rs
+ *   ./spec_convert_probe > ../../crates/starlink-ast/tests/spec_convert_oracle/cases.rs
  */
 #include <float.h>
 #include <stdio.h>
@@ -91,7 +91,7 @@ int main( void ) {
            "// Each value is printed with 17 digits so that it reads back exactly.\n"
            "#![allow(clippy::excessive_precision, clippy::approx_constant)]\n\n"
            "#[allow(unused_imports)]\n"
-           "use ast_core::constants::BAD_VALUE as BAD;\n\n"
+           "use starlink_ast::constants::BAD_VALUE as BAD;\n\n"
            "/// The source systems, in the order the points are indexed.\n"
            "pub const SYSTEMS: [&str; %d] = [", NSYS );
    for( i = 0; i < NSYS; i++ ) printf( "%s\"%s\"", i ? ", " : "", systems[ i ] );

@@ -11,7 +11,7 @@ AST functions.
 ## TL;DR recipe
 
 ```sh
-cd /path/to/starlink-astrs
+cd /path/to/starlink-ast-rs
 R=$PWD/reference/starlink-ast/build-ast     # cmake build output (see below)
 
 cc probe.c grf_stubs.c -o /tmp/probe \

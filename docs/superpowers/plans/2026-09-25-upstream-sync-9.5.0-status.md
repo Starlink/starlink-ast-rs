@@ -14,7 +14,7 @@ Twenty commits are unpushed, from `7fbc8e3` (the `astEQUALS` regrouping) to
 The working tree is clean apart from the `reference/starlink-ast` submodule
 marker, which is the new pin and is meant to be there.
 
-`cargo test -p ast-core --release` was green at `93adfea`: 1765 tests across 40
+`cargo test -p starlink-ast --release` was green at `93adfea`: 1765 tests across 40
 targets, no failures.
 The citation audit's five gates were green at `445cdb3` (7 passed, 593 s); they
 have not been re-run since, and nothing committed after that touches a checklist

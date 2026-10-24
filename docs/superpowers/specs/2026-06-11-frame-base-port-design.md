@@ -136,7 +136,7 @@ expectation, re-derive the expected value from the C oracle rather than
 adjusting it to whatever Rust now emits.
 
 ### 3.4 Acceptance test
-Port `ast_tester/testconvert.c` → `crates/ast-core/tests/test_convert.rs`
+Port `ast_tester/testconvert.c` → `crates/starlink-ast/tests/test_convert.rs`
 (tier 1). It is the precise end-to-end check for this whole item:
 - `astConvert(Frame[Domain=SKY], SkyFrame)` ⇒ FrameSet whose mapping is
   a UnitMap (requires the matchsub cast-retry — section 4).
@@ -399,7 +399,7 @@ Each commit builds + tests + fmt + clippy clean before the next:
    in Match/SubFrame.
 
 ### 9.2 Scope boundaries
-- **Core-only** (user-approved): no `ast-capi` shims / `ast.h` entries
+- **Core-only** (user-approved): no `starlink-ast-capi` shims / `ast.h` entries
   this round. The capi surface for `astConvert`, `astOffset2`,
   `astResolve`, `astIntersect`, `astAxAngle`, `astAxDistance`,
   `astAxOffset`, `astAxNorm`, `astMatchAxes`, `astNormBox`,

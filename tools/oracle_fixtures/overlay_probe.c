@@ -7,9 +7,9 @@
  * Epoch is set and its value (as a TDB MJD), and the Label and Unit of axis
  * 1, or "None" when no Frame is found.
  *
- * Prints Rust source for crates/ast-core/tests/overlay_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/overlay_oracle/cases.rs:
  *
- *   ./overlay_probe > ../../crates/ast-core/tests/overlay_oracle/cases.rs
+ *   ./overlay_probe > ../../crates/starlink-ast/tests/overlay_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

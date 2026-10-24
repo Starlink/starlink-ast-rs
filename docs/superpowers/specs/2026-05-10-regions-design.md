@@ -362,7 +362,7 @@ Byte-exact round-trip for region fixtures from `ast_tester/`.
 
 ### Port of testregions.c
 
-`crates/ast-core/tests/testregions.rs` — full port covering:
+`crates/starlink-ast/tests/testregions.rs` — full port covering:
 - `checkBox`, `checkCircle`, `checkEllipse`, `checkPolygon`
 - `checkInterval`, `checkNullRegion`, `checkCmpRegion`
 - `checkPointList`, `checkPrism`
@@ -377,7 +377,7 @@ Rust vs C. Target: ≤10% slower.
 ## File Layout
 
 ```
-crates/ast-core/src/regions/
+crates/starlink-ast/src/regions/
 ├── mod.rs           # Region trait, Overlap enum, DynRegion, re-exports
 ├── data.rs          # RegionData struct, RegionGeometry trait
 ├── bounds.rs        # Bounding box shared logic

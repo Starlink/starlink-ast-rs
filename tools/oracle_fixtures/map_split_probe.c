@@ -6,9 +6,9 @@
  * same, and the others return no split. Each split is recorded by its
  * output indices and the dump of the split Mapping.
  *
- * Prints Rust source for crates/ast-core/tests/map_split_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/map_split_oracle/cases.rs:
  *
- *   ./map_split_probe > ../../crates/ast-core/tests/map_split_oracle/cases.rs
+ *   ./map_split_probe > ../../crates/starlink-ast/tests/map_split_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

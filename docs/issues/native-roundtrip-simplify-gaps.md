@@ -12,7 +12,7 @@
 
 CLAUDE.md commits the port to byte-exact native serialization with
 the C AST library. The simplify-fixture corpus
-(`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`,
+(`crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/`,
 ~239 distinct fixtures × {`.map`, `.simp`} = ~478 files, ~389 of which
 are mapping fixtures the test exercises) is the authoritative ground
 truth for that contract. Until these round-trip cleanly, the per-class
@@ -211,7 +211,7 @@ for them and produce a complete per-class report.
 
 When you come back to this:
 
-- [ ] `cargo test -p ast-core --release --test test_serialisation native_byte_exact_round_trip_simplify_fixtures` — confirm baseline is still 41 failures (or recapture the punch list if other unrelated changes shifted it).
+- [ ] `cargo test -p starlink-ast --release --test test_serialisation native_byte_exact_round_trip_simplify_fixtures` — confirm baseline is still 41 failures (or recapture the punch list if other unrelated changes shifted it).
 - [ ] Pick a category from the list above, work through it. The eprintln list above the assert names every failing fixture + the first differing line, so the punch list is concrete.
 - [ ] After fixes: the test will print a smaller failure count or pass entirely. Each commit should reduce the count visibly.
 - [ ] Last thing: re-run `bench_per_class` and update its omitted-variants list as ChebyMap / UnitNormMap / RateMap / MathMap become serializable.

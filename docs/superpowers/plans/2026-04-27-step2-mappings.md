@@ -14,34 +14,34 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/mappings/mod.rs` | Trait + re-exports + `Box<dyn Mapping>` composition methods |
-| `crates/ast-core/src/mappings/helpers.rs` | `is_bad()` helper, BAD_VALUE utilities |
-| `crates/ast-core/src/mappings/rate.rs` | `numeric_rate()` shared implementation |
-| `crates/ast-core/src/mappings/unit.rs` | UnitMap |
-| `crates/ast-core/src/mappings/zoom.rs` | ZoomMap |
-| `crates/ast-core/src/mappings/shift.rs` | ShiftMap |
-| `crates/ast-core/src/mappings/matrix.rs` | MatrixMap |
-| `crates/ast-core/src/mappings/perm.rs` | PermMap |
-| `crates/ast-core/src/mappings/cmpmap.rs` | CmpMap + Composition enum |
-| `crates/ast-core/tests/test_unitmap.rs` | UnitMap tests |
-| `crates/ast-core/tests/test_zoommap.rs` | ZoomMap tests |
-| `crates/ast-core/tests/test_shiftmap.rs` | ShiftMap tests |
-| `crates/ast-core/tests/test_matrixmap.rs` | MatrixMap tests |
-| `crates/ast-core/tests/test_permmap.rs` | PermMap tests |
-| `crates/ast-core/tests/test_cmpmap.rs` | CmpMap + composition tests |
+| `crates/starlink-ast/src/mappings/mod.rs` | Trait + re-exports + `Box<dyn Mapping>` composition methods |
+| `crates/starlink-ast/src/mappings/helpers.rs` | `is_bad()` helper, BAD_VALUE utilities |
+| `crates/starlink-ast/src/mappings/rate.rs` | `numeric_rate()` shared implementation |
+| `crates/starlink-ast/src/mappings/unit.rs` | UnitMap |
+| `crates/starlink-ast/src/mappings/zoom.rs` | ZoomMap |
+| `crates/starlink-ast/src/mappings/shift.rs` | ShiftMap |
+| `crates/starlink-ast/src/mappings/matrix.rs` | MatrixMap |
+| `crates/starlink-ast/src/mappings/perm.rs` | PermMap |
+| `crates/starlink-ast/src/mappings/cmpmap.rs` | CmpMap + Composition enum |
+| `crates/starlink-ast/tests/test_unitmap.rs` | UnitMap tests |
+| `crates/starlink-ast/tests/test_zoommap.rs` | ZoomMap tests |
+| `crates/starlink-ast/tests/test_shiftmap.rs` | ShiftMap tests |
+| `crates/starlink-ast/tests/test_matrixmap.rs` | MatrixMap tests |
+| `crates/starlink-ast/tests/test_permmap.rs` | PermMap tests |
+| `crates/starlink-ast/tests/test_cmpmap.rs` | CmpMap + composition tests |
 
 ---
 
 ### Task 1: Shared Helpers and Rate Implementation
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/helpers.rs`
-- Create: `crates/ast-core/src/mappings/rate.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/src/mappings/helpers.rs`
+- Create: `crates/starlink-ast/src/mappings/rate.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
 
 - [ ] **Step 1: Create helpers module**
 
-Create `crates/ast-core/src/mappings/helpers.rs`:
+Create `crates/starlink-ast/src/mappings/helpers.rs`:
 
 ```rust
 //! Shared utilities for Mapping implementations.
@@ -71,7 +71,7 @@ pub fn fill_bad(out: &mut [f64]) {
 
 - [ ] **Step 2: Create rate module**
 
-Create `crates/ast-core/src/mappings/rate.rs`:
+Create `crates/starlink-ast/src/mappings/rate.rs`:
 
 ```rust
 //! Numeric rate-of-change computation via central finite differences.
@@ -130,7 +130,7 @@ pub fn numeric_rate(
 
 - [ ] **Step 3: Update mod.rs to declare submodules**
 
-Replace `crates/ast-core/src/mappings/mod.rs` with:
+Replace `crates/starlink-ast/src/mappings/mod.rs` with:
 
 ```rust
 //! The Mapping trait, concrete mapping classes, and composition.
@@ -224,12 +224,12 @@ this won't compile until the following tasks create them. Create empty
 placeholder files for each so the build doesn't fail:
 
 ```bash
-touch crates/ast-core/src/mappings/unit.rs
-touch crates/ast-core/src/mappings/zoom.rs
-touch crates/ast-core/src/mappings/shift.rs
-touch crates/ast-core/src/mappings/matrix.rs
-touch crates/ast-core/src/mappings/perm.rs
-touch crates/ast-core/src/mappings/cmpmap.rs
+touch crates/starlink-ast/src/mappings/unit.rs
+touch crates/starlink-ast/src/mappings/zoom.rs
+touch crates/starlink-ast/src/mappings/shift.rs
+touch crates/starlink-ast/src/mappings/matrix.rs
+touch crates/starlink-ast/src/mappings/perm.rs
+touch crates/starlink-ast/src/mappings/cmpmap.rs
 ```
 
 These placeholders should be empty files. The build will succeed because
@@ -295,13 +295,13 @@ pub trait Mapping: Send {
 
 - [ ] **Step 4: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/
+git add crates/starlink-ast/src/mappings/
 git commit -m "Add mapping helpers (is_bad, BAD_VALUE utils) and numeric rate()"
 ```
 
@@ -310,18 +310,18 @@ git commit -m "Add mapping helpers (is_bad, BAD_VALUE utils) and numeric rate()"
 ### Task 2: UnitMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/unit.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Create: `crates/ast-core/tests/test_unitmap.rs`
+- Create: `crates/starlink-ast/src/mappings/unit.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/tests/test_unitmap.rs`
 
 - [ ] **Step 1: Write UnitMap tests**
 
-Create `crates/ast-core/tests/test_unitmap.rs`:
+Create `crates/starlink-ast/tests/test_unitmap.rs`:
 
 ```rust
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, UnitMap};
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
+use starlink_ast::mappings::{Mapping, UnitMap};
 
 #[test]
 fn unit_map_dimensions() {
@@ -388,7 +388,7 @@ fn unit_map_rate() {
 
 - [ ] **Step 2: Implement UnitMap**
 
-Create `crates/ast-core/src/mappings/unit.rs`:
+Create `crates/starlink-ast/src/mappings/unit.rs`:
 
 ```rust
 //! The identity mapping.
@@ -469,7 +469,7 @@ impl Mapping for UnitMap {
 
 - [ ] **Step 3: Update mod.rs**
 
-Add to `crates/ast-core/src/mappings/mod.rs` after `pub(crate) mod rate;`:
+Add to `crates/starlink-ast/src/mappings/mod.rs` after `pub(crate) mod rate;`:
 
 ```rust
 mod unit;
@@ -490,13 +490,13 @@ added in Task 7 after CmpMap exists.
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_unitmap`
+Run: `cargo test -p starlink-ast --test test_unitmap`
 Expected: all tests pass
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/unit.rs crates/ast-core/src/mappings/mod.rs crates/ast-core/tests/test_unitmap.rs
+git add crates/starlink-ast/src/mappings/unit.rs crates/starlink-ast/src/mappings/mod.rs crates/starlink-ast/tests/test_unitmap.rs
 git commit -m "Add UnitMap (identity mapping)"
 ```
 
@@ -505,18 +505,18 @@ git commit -m "Add UnitMap (identity mapping)"
 ### Task 3: ZoomMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/zoom.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Create: `crates/ast-core/tests/test_zoommap.rs`
+- Create: `crates/starlink-ast/src/mappings/zoom.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/tests/test_zoommap.rs`
 
 - [ ] **Step 1: Write ZoomMap tests**
 
-Create `crates/ast-core/tests/test_zoommap.rs`:
+Create `crates/starlink-ast/tests/test_zoommap.rs`:
 
 ```rust
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, UnitMap, ZoomMap};
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
+use starlink_ast::mappings::{Mapping, UnitMap, ZoomMap};
 
 #[test]
 fn zoom_map_dimensions() {
@@ -587,7 +587,7 @@ fn zoom_map_rate() {
 
 - [ ] **Step 2: Implement ZoomMap**
 
-Create `crates/ast-core/src/mappings/zoom.rs`:
+Create `crates/starlink-ast/src/mappings/zoom.rs`:
 
 ```rust
 //! Uniform scaling mapping.
@@ -694,7 +694,7 @@ impl Mapping for ZoomMap {
 
 - [ ] **Step 3: Update mod.rs**
 
-Add to `crates/ast-core/src/mappings/mod.rs`:
+Add to `crates/starlink-ast/src/mappings/mod.rs`:
 ```rust
 mod zoom;
 pub use zoom::ZoomMap;
@@ -702,13 +702,13 @@ pub use zoom::ZoomMap;
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_zoommap`
+Run: `cargo test -p starlink-ast --test test_zoommap`
 Expected: all tests pass
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/zoom.rs crates/ast-core/src/mappings/mod.rs crates/ast-core/tests/test_zoommap.rs
+git add crates/starlink-ast/src/mappings/zoom.rs crates/starlink-ast/src/mappings/mod.rs crates/starlink-ast/tests/test_zoommap.rs
 git commit -m "Add ZoomMap (uniform scaling mapping)"
 ```
 
@@ -717,18 +717,18 @@ git commit -m "Add ZoomMap (uniform scaling mapping)"
 ### Task 4: ShiftMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/shift.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Create: `crates/ast-core/tests/test_shiftmap.rs`
+- Create: `crates/starlink-ast/src/mappings/shift.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/tests/test_shiftmap.rs`
 
 - [ ] **Step 1: Write ShiftMap tests**
 
-Create `crates/ast-core/tests/test_shiftmap.rs`:
+Create `crates/starlink-ast/tests/test_shiftmap.rs`:
 
 ```rust
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, ShiftMap};
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
+use starlink_ast::mappings::{Mapping, ShiftMap};
 
 #[test]
 fn shift_map_dimensions() {
@@ -783,7 +783,7 @@ fn shift_map_rate() {
 
 - [ ] **Step 2: Implement ShiftMap**
 
-Create `crates/ast-core/src/mappings/shift.rs`:
+Create `crates/starlink-ast/src/mappings/shift.rs`:
 
 ```rust
 //! Constant offset mapping.
@@ -888,13 +888,13 @@ pub use shift::ShiftMap;
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_shiftmap`
+Run: `cargo test -p starlink-ast --test test_shiftmap`
 Expected: all tests pass
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/shift.rs crates/ast-core/src/mappings/mod.rs crates/ast-core/tests/test_shiftmap.rs
+git add crates/starlink-ast/src/mappings/shift.rs crates/starlink-ast/src/mappings/mod.rs crates/starlink-ast/tests/test_shiftmap.rs
 git commit -m "Add ShiftMap (constant offset mapping)"
 ```
 
@@ -903,18 +903,18 @@ git commit -m "Add ShiftMap (constant offset mapping)"
 ### Task 5: MatrixMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/matrix.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Create: `crates/ast-core/tests/test_matrixmap.rs`
+- Create: `crates/starlink-ast/src/mappings/matrix.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/tests/test_matrixmap.rs`
 
 - [ ] **Step 1: Write MatrixMap tests**
 
-Create `crates/ast-core/tests/test_matrixmap.rs`:
+Create `crates/starlink-ast/tests/test_matrixmap.rs`:
 
 ```rust
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, MatrixMap};
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
+use starlink_ast::mappings::{Mapping, MatrixMap};
 use ndarray::array;
 
 #[test]
@@ -982,7 +982,7 @@ fn matrix_map_simplified_identity() {
 
 - [ ] **Step 2: Implement MatrixMap**
 
-Create `crates/ast-core/src/mappings/matrix.rs`:
+Create `crates/starlink-ast/src/mappings/matrix.rs`:
 
 ```rust
 //! Linear matrix transformation mapping.
@@ -1204,13 +1204,13 @@ pub use matrix::MatrixMap;
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_matrixmap`
+Run: `cargo test -p starlink-ast --test test_matrixmap`
 Expected: all tests pass
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/matrix.rs crates/ast-core/src/mappings/mod.rs crates/ast-core/tests/test_matrixmap.rs
+git add crates/starlink-ast/src/mappings/matrix.rs crates/starlink-ast/src/mappings/mod.rs crates/starlink-ast/tests/test_matrixmap.rs
 git commit -m "Add MatrixMap (linear matrix transformation)"
 ```
 
@@ -1219,18 +1219,18 @@ git commit -m "Add MatrixMap (linear matrix transformation)"
 ### Task 6: PermMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/perm.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Create: `crates/ast-core/tests/test_permmap.rs`
+- Create: `crates/starlink-ast/src/mappings/perm.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/tests/test_permmap.rs`
 
 - [ ] **Step 1: Write PermMap tests**
 
-Create `crates/ast-core/tests/test_permmap.rs`:
+Create `crates/starlink-ast/tests/test_permmap.rs`:
 
 ```rust
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
-use ast_core::mappings::{Mapping, PermMap};
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
+use starlink_ast::mappings::{Mapping, PermMap};
 
 #[test]
 fn perm_map_swap_axes() {
@@ -1297,7 +1297,7 @@ fn perm_map_identity_simplifies() {
 
 - [ ] **Step 2: Implement PermMap**
 
-Create `crates/ast-core/src/mappings/perm.rs`:
+Create `crates/starlink-ast/src/mappings/perm.rs`:
 
 ```rust
 //! Axis permutation/selection mapping.
@@ -1450,13 +1450,13 @@ pub use perm::PermMap;
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_permmap`
+Run: `cargo test -p starlink-ast --test test_permmap`
 Expected: all tests pass
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/perm.rs crates/ast-core/src/mappings/mod.rs crates/ast-core/tests/test_permmap.rs
+git add crates/starlink-ast/src/mappings/perm.rs crates/starlink-ast/src/mappings/mod.rs crates/starlink-ast/tests/test_permmap.rs
 git commit -m "Add PermMap (axis permutation/selection mapping)"
 ```
 
@@ -1465,18 +1465,18 @@ git commit -m "Add PermMap (axis permutation/selection mapping)"
 ### Task 7: CmpMap and Composition
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/cmpmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Create: `crates/ast-core/tests/test_cmpmap.rs`
+- Create: `crates/starlink-ast/src/mappings/cmpmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Create: `crates/starlink-ast/tests/test_cmpmap.rs`
 
 - [ ] **Step 1: Write CmpMap tests**
 
-Create `crates/ast-core/tests/test_cmpmap.rs`:
+Create `crates/starlink-ast/tests/test_cmpmap.rs`:
 
 ```rust
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
-use ast_core::mappings::{CmpMap, Composition, DynMapping, Mapping, ShiftMap, UnitMap, ZoomMap};
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
+use starlink_ast::mappings::{CmpMap, Composition, DynMapping, Mapping, ShiftMap, UnitMap, ZoomMap};
 
 #[test]
 fn cmpmap_series_zoom_then_shift() {
@@ -1574,7 +1574,7 @@ fn composition_alongside_method() {
 
 - [ ] **Step 2: Implement CmpMap**
 
-Create `crates/ast-core/src/mappings/cmpmap.rs`:
+Create `crates/starlink-ast/src/mappings/cmpmap.rs`:
 
 ```rust
 //! Compound (series or parallel) mapping.
@@ -1784,7 +1784,7 @@ impl Mapping for CmpMap {
 
 - [ ] **Step 3: Update mod.rs to final form**
 
-Replace `crates/ast-core/src/mappings/mod.rs` with the complete version
+Replace `crates/starlink-ast/src/mappings/mod.rs` with the complete version
 including all `mod` declarations, `pub use` exports, and `Box<dyn Mapping>`
 composition methods:
 
@@ -1867,18 +1867,18 @@ impl dyn Mapping {
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_cmpmap`
+Run: `cargo test -p starlink-ast --test test_cmpmap`
 Expected: all tests pass
 
 - [ ] **Step 5: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/ crates/ast-core/tests/test_cmpmap.rs
+git add crates/starlink-ast/src/mappings/ crates/starlink-ast/tests/test_cmpmap.rs
 git commit -m "Add CmpMap (compound mapping) and composition methods"
 ```
 
@@ -1887,15 +1887,15 @@ git commit -m "Add CmpMap (compound mapping) and composition methods"
 ### Task 8: Add then/alongside to Concrete Types
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/unit.rs`
-- Modify: `crates/ast-core/src/mappings/zoom.rs`
-- Modify: `crates/ast-core/src/mappings/shift.rs`
-- Modify: `crates/ast-core/src/mappings/matrix.rs`
-- Modify: `crates/ast-core/src/mappings/perm.rs`
+- Modify: `crates/starlink-ast/src/mappings/unit.rs`
+- Modify: `crates/starlink-ast/src/mappings/zoom.rs`
+- Modify: `crates/starlink-ast/src/mappings/shift.rs`
+- Modify: `crates/starlink-ast/src/mappings/matrix.rs`
+- Modify: `crates/starlink-ast/src/mappings/perm.rs`
 
 - [ ] **Step 1: Add composition methods to UnitMap**
 
-Add to `crates/ast-core/src/mappings/unit.rs` in the `impl UnitMap` block:
+Add to `crates/starlink-ast/src/mappings/unit.rs` in the `impl UnitMap` block:
 
 ```rust
 impl UnitMap {
@@ -1935,13 +1935,13 @@ Each needs `use super::{DynMapping};` and `use crate::error::AstResult;` in scop
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `cargo build -p ast-core`
+Run: `cargo build -p starlink-ast`
 Expected: success
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/mappings/
+git add crates/starlink-ast/src/mappings/
 git commit -m "Add then()/alongside() composition methods to all mapping types"
 ```
 
@@ -1964,7 +1964,7 @@ If issues, run `cargo fmt --all`.
 
 - [ ] **Step 3: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass (previous tests + all new mapping tests)
 
 - [ ] **Step 4: Commit fixes if any**
@@ -1981,7 +1981,7 @@ git commit -m "Fix clippy and fmt issues in mapping implementations"
 After all tasks are complete:
 
 1. `cargo build --workspace` — all crates compile
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. `cargo fmt --all -- --check` — clean
 5. Each mapping handles BAD_VALUE correctly

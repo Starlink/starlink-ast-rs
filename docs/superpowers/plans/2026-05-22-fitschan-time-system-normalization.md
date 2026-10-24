@@ -18,11 +18,11 @@ The bug today is single-direction: writer converts TT→UTC, reader stores UTC a
 
 ## File structure
 
-- **Modify:** `crates/ast-core/src/fitschan/fits_store.rs` — add `timesys: Option<String>` field.
-- **Modify:** `crates/ast-core/src/fitschan/wcs_keywords.rs` — read TIMESYS, MJD-AVG, DATE-OBS, DATE-AVG; populate `store.mjdobs` from priority chain.
-- **Modify:** `crates/ast-core/src/fitschan/wcs_write.rs` — add `date_str_to_mjd` (parser) and `utc_mjd_to_tt` (inverse of `tt_mjd_to_utc`). Both `pub(crate)` so the reader can call them.
-- **Modify:** `crates/ast-core/src/fitschan/wcs_celestial.rs` — when setting `sky_frame.set_epoch(mjd)`, first convert from store.timesys → TT.
-- **Modify:** `crates/ast-core/src/fitschan/enc_iraf.rs`, `enc_pc.rs`, `enc_aips.rs`, `enc_class.rs` — these readers also populate `store.mjdobs` from MJD-OBS. Add the same TIMESYS / DATE-OBS / MJD-AVG fallback.
+- **Modify:** `crates/starlink-ast/src/fitschan/fits_store.rs` — add `timesys: Option<String>` field.
+- **Modify:** `crates/starlink-ast/src/fitschan/wcs_keywords.rs` — read TIMESYS, MJD-AVG, DATE-OBS, DATE-AVG; populate `store.mjdobs` from priority chain.
+- **Modify:** `crates/starlink-ast/src/fitschan/wcs_write.rs` — add `date_str_to_mjd` (parser) and `utc_mjd_to_tt` (inverse of `tt_mjd_to_utc`). Both `pub(crate)` so the reader can call them.
+- **Modify:** `crates/starlink-ast/src/fitschan/wcs_celestial.rs` — when setting `sky_frame.set_epoch(mjd)`, first convert from store.timesys → TT.
+- **Modify:** `crates/starlink-ast/src/fitschan/enc_iraf.rs`, `enc_pc.rs`, `enc_aips.rs`, `enc_class.rs` — these readers also populate `store.mjdobs` from MJD-OBS. Add the same TIMESYS / DATE-OBS / MJD-AVG fallback.
 
 (One option for the encoder readers is to factor out the priority-chain logic into a shared helper. Decision: see Task 2.)
 
@@ -84,7 +84,7 @@ Estimate: **+3 to +4** wcsconv passes. The 2ms timj drift may or may not resolve
 ## Task 1: Add `timesys` to FitsStore
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/fits_store.rs`
+- Modify: `crates/starlink-ast/src/fitschan/fits_store.rs`
 
 - [ ] Step 1: Add the field after `mjdobs` (or near other epoch-related fields):
 
@@ -108,7 +108,7 @@ Estimate: **+3 to +4** wcsconv passes. The 2ms timj drift may or may not resolve
 - [ ] Step 4: Commit:
 
 ```bash
-git add crates/ast-core/src/fitschan/fits_store.rs
+git add crates/starlink-ast/src/fitschan/fits_store.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): add timesys field to FitsStore
 
@@ -128,7 +128,7 @@ EOF
 ## Task 2: Read TIMESYS + MJD-AVG + priority chain in wcs_keywords
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs`
 
 - [ ] Step 1: Locate the existing MJD-OBS read (around line 119). Replace with a priority chain:
 
@@ -172,7 +172,7 @@ EOF
 ## Task 3: Add `date_str_to_mjd` and `utc_mjd_to_tt` helpers
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_write.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_write.rs`
 
 Both helpers are `pub(crate)` so `wcs_keywords.rs` and `wcs_celestial.rs` can call them.
 
@@ -361,7 +361,7 @@ Add to `wcs_write.rs::tests`:
 ### Step 4: Run unit tests
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_write -- --nocapture
+cargo test -p starlink-ast --lib fitschan::wcs_write -- --nocapture
 ```
 
 7 new tests pass. (If `date_str_to_mjd_legacy` fails with the cutoff, adjust the cutoff in `parse_legacy_date` — the C library's exact convention may use 32 instead of 50. Verify against fitschan.c:8446 and the wcsconv expected files like `fk4-aips.fits-iraf` which has `DATE-OBS= '24/05/68'` for a 1968 date.)
@@ -371,20 +371,20 @@ cargo test -p ast-core --lib fitschan::wcs_write -- --nocapture
 Now `wcs_keywords.rs` should compile (it depends on `date_str_to_mjd`).
 
 ```bash
-cargo build -p ast-core
+cargo build -p starlink-ast
 ```
 
 ### Step 6: Clippy / fmt
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 ### Step 7: Commit Tasks 2 + 3 together
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords.rs crates/ast-core/src/fitschan/wcs_write.rs
+git add crates/starlink-ast/src/fitschan/wcs_keywords.rs crates/starlink-ast/src/fitschan/wcs_write.rs
 git commit -m "$(cat <<'EOF'
 feat(fitschan): read TIMESYS and DATE-OBS / MJD-AVG fallback chain
 
@@ -414,7 +414,7 @@ EOF
 ## Task 4: Apply UTC→TT conversion in wcs_celestial
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs`
 
 - [ ] Step 1: Locate `sky_frame.set_epoch(mjd)` (around line 84-86):
 
@@ -453,7 +453,7 @@ EOF
 - [ ] Step 3: Run wcsconv:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: pass count rises by 1-3 (ukirt-dtai, possibly date-z, sin-plain).
@@ -470,13 +470,13 @@ Must be 0.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] Step 6: Commit:
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_celestial.rs
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs
 git commit -m "$(cat <<'EOF'
 fix(fitschan): convert input MJD-OBS from UTC/TAI to TT for SkyFrame.epoch
 
@@ -502,10 +502,10 @@ EOF
 ## Task 5: Same fallback in PC / IRAF / AIPS / CLASS readers
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_pc.rs`
-- Modify: `crates/ast-core/src/fitschan/enc_iraf.rs`
-- Modify: `crates/ast-core/src/fitschan/enc_aips.rs`
-- Modify: `crates/ast-core/src/fitschan/enc_class.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_pc.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_iraf.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_aips.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_class.rs`
 
 These encoders have their own `read_from_cards` paths that populate `store.mjdobs`. They each need the same priority chain.
 
@@ -524,7 +524,7 @@ Then call it from each encoder's `read_from_cards`.
 - [ ] Step 4: Run wcsconv:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: pass count holds or rises slightly (most tests use FITS-WCS reader; this is for completeness across encodings).
@@ -532,12 +532,12 @@ Expected: pass count holds or rises slightly (most tests use FITS-WCS reader; th
 - [ ] Step 5: Run all relevant unit tests:
 
 ```bash
-cargo test -p ast-core --lib fitschan
-cargo test -p ast-core --test test_fitschan
-cargo test -p ast-core --test test_fitschan_encodings
-cargo test -p ast-core --test test_fitschan_wcs
-cargo test -p ast-core --test test_fitschan_wcs_write
-cargo test -p ast-core --test test_fitschan_native_keyword
+cargo test -p starlink-ast --lib fitschan
+cargo test -p starlink-ast --test test_fitschan
+cargo test -p starlink-ast --test test_fitschan_encodings
+cargo test -p starlink-ast --test test_fitschan_wcs
+cargo test -p starlink-ast --test test_fitschan_wcs_write
+cargo test -p starlink-ast --test test_fitschan_native_keyword
 ```
 
 All green.
@@ -546,13 +546,13 @@ All green.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] Step 7: Commit:
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords.rs crates/ast-core/src/fitschan/enc_pc.rs crates/ast-core/src/fitschan/enc_iraf.rs crates/ast-core/src/fitschan/enc_aips.rs crates/ast-core/src/fitschan/enc_class.rs
+git add crates/starlink-ast/src/fitschan/wcs_keywords.rs crates/starlink-ast/src/fitschan/enc_pc.rs crates/starlink-ast/src/fitschan/enc_iraf.rs crates/starlink-ast/src/fitschan/enc_aips.rs crates/starlink-ast/src/fitschan/enc_class.rs
 git commit -m "$(cat <<'EOF'
 refactor(fitschan): share TIMESYS/epoch-priority-chain across encoders
 
@@ -577,7 +577,7 @@ EOF
 - [ ] Step 1: Wcsconv:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: 112 → 115+ (ukirt-dtai, date-z, sin-plain-iraf at minimum).
@@ -585,7 +585,7 @@ Expected: 112 → 115+ (ukirt-dtai, date-z, sin-plain-iraf at minimum).
 - [ ] Step 2: Specific failures:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "ukirt-dtai|date-z|timj_fits-iraf|sin-plain"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "ukirt-dtai|date-z|timj_fits-iraf|sin-plain"
 ```
 
 Hopefully empty (or only timj_fits-iraf 2ms drift, which is a separate precision issue not addressed by this plan).

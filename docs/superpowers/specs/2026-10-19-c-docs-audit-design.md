@@ -1,16 +1,16 @@
 # C documentation audit: design
 
 **Status:** approved in conversation 2026-10-19; this document records it.
-**Scope:** every public documentation header in the C source, mapped to the Rust item that documents it or to a reason it has none, with the content that matters to a Rust user moved into `ast-core`'s rustdoc; and C source citations moved out of the user-facing docs.
+**Scope:** every public documentation header in the C source, mapped to the Rust item that documents it or to a reason it has none, with the content that matters to a Rust user moved into `starlink-ast`'s rustdoc; and C source citations moved out of the user-facing docs.
 
 ## Context
 
 This is the second of three pieces of documentation work.
 The first, `show` and `to_native_string` (`2026-10-19-show-and-native-string-design.md`), is done.
-The third, a user guide adapted from SUN/211 as `ast_core::guide`, comes after this one and links to the item docs this work fills in.
+The third, a user guide adapted from SUN/211 as `starlink_ast::guide`, comes after this one and links to the item docs this work fills in.
 
 The C library documents its public API in structured comment headers that `builddocs` turns into the reference sections of SUN/211.
-Today the Rust docs have no cross-reference to C names (`ast-core` has no `#[doc(alias)]`), and many of them cite C source for porters: 1,982 doc-comment lines in 165 files name a C file or line, some on public items where users read them.
+Today the Rust docs have no cross-reference to C names (`starlink-ast` has no `#[doc(alias)]`), and many of them cite C source for porters: 1,982 doc-comment lines in 165 files name a C file or line, some on public items where users read them.
 
 ## Goals
 
@@ -99,19 +99,19 @@ Doc comments on private items are unchanged, since rustdoc does not render them.
 
 ### Gates
 
-All in `crates/audit-tools/tests/` or `crates/ast-core/tests/meta/`, failing hard:
+All in `crates/audit-tools/tests/` or `crates/starlink-ast/tests/meta/`, failing hard:
 
 1. **Coverage.** Every row of `c-headers.tsv` has exactly one ledger row, and every ledger row has a header.
 2. **Rows are well formed.** A row has a Rust item or a reason, not both; a reason is one of the three; a `merged` row names a C name that has a row with a Rust item.
 3. **Aliases land on their items.** For every row with a Rust item, the source has `#[doc(alias = "<C name>")]` attached to an item of that name, inside that type's `impl`, `trait` or definition. The test parses the source textually: it finds each alias attribute, the item it is attached to (the next `fn`, `struct`, `enum`, `trait` or `type` line), and the enclosing `impl` or `trait` block.
    An alias with no ledger row also fails, so the two cannot drift apart.
    A row whose Rust item is a public top-level type or trait named exactly as the C name (`Mapping`, `PermMap`) is checked against that declaration instead, because rustdoc rejects an alias equal to the item's own name; a type named differently from the C name (`Box` → `BoxRegion`) still carries the alias.
-4. **Rendered docs carry no C internals.** After `cargo doc -p ast-core --no-deps`, no HTML page under `ast_core/` contains a C source or header reference (a `<name>.c` or `<name>.h` file name, with or without a line number) or a name of the form `ast<Name>` that is not in `c-headers.tsv`.
+4. **Rendered docs carry no C internals.** After `cargo doc -p starlink-ast --no-deps`, no HTML page under `starlink_ast/` contains a C source or header reference (a `<name>.c` or `<name>.h` file name, with or without a line number) or a name of the form `ast<Name>` that is not in `c-headers.tsv`.
    Modules not yet cleaned are listed in a named exclusion, `C_CITATIONS_UNCLEANED`, with a reason, and a companion test fails when a listed module becomes clean, so the list can only shrink.
 5. **Review progress.** The number of rows with `reviewed = no` is pinned in the test and may only go down; it reaches zero at the end of the work.
    The pinned count and `C_CITATIONS_UNCLEANED` are added to the verification ledger (`test_verification_ledger.rs`, PLAN §6).
 
-The rendered-docs gate builds the docs itself: its test runs `cargo doc -p ast-core --no-deps` into the workspace target directory (incremental, so a second run is quick) and then scans the HTML, so it never depends on docs someone else built and has no path that passes without checking.
+The rendered-docs gate builds the docs itself: its test runs `cargo doc -p starlink-ast --no-deps` into the workspace target directory (incremental, so a second run is quick) and then scans the HTML, so it never depends on docs someone else built and has no path that passes without checking.
 
 ## Phases
 
@@ -127,5 +127,5 @@ Each phase lands with every gate green.
 ## Out of scope
 
 - Writing docs for Rust items that have no C counterpart, beyond what the citation clean-up requires.
-- The `ast-capi` shim's docs: `c-api-only` rows are recorded, not documented.
+- The `starlink-ast-capi` shim's docs: `c-api-only` rows are recorded, not documented.
 - The user guide (the third piece of work).

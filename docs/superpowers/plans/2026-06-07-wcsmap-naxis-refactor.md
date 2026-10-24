@@ -6,7 +6,7 @@
 
 **Architecture:** Today, each decoder returns its mapping at the smallest natural rank (celestial = 2-axis, spectral = 1-axis), and `build_general_iwc_to_world` glues them together with `Composition::Parallel` plus an output-`PermMap`. After the refactor, each decoder produces an `N`-axis mapping by embedding the small mapping inside a `PermMap`-sandwich-around-`Parallel`-`CmpMap` (the C-equivalent shape — see `fitschan.c:38433-38476`), and `build_iwc_to_world` composes them with `Composition::Series`. The output-permutation step disappears.
 
-**Tech Stack:** Rust 2024 edition, ast-core crate. Existing types: `WcsMap`, `MatrixMap`, `ZoomMap`, `UnitMap`, `PermMap`, `CmpMap`, `Composition::{Series, Parallel}`, `DynMapping`. Test surface: `cargo test -p ast-core --lib`, `cargo test -p ast-core --test test_wcsconv`, `cargo test --workspace`.
+**Tech Stack:** Rust 2024 edition, starlink-ast crate. Existing types: `WcsMap`, `MatrixMap`, `ZoomMap`, `UnitMap`, `PermMap`, `CmpMap`, `Composition::{Series, Parallel}`, `DynMapping`. Test surface: `cargo test -p starlink-ast --lib`, `cargo test -p starlink-ast --test test_wcsconv`, `cargo test --workspace`.
 
 **Source spec:** `docs/issues/wcsmap-naxis-refactor.md` (referred to below as "the spec"). Read it before starting.
 
@@ -28,7 +28,7 @@ Rust shape and restructure the callers to match C. See memory note
 **Hard invariant (regression policy):** the wcsconv pass count must stay ≥ **181/192** at every commit. Establish this baseline before Phase A:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 # Expected: test result: FAILED. 181 passed; 11 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
@@ -42,10 +42,10 @@ If a step drops the count below 181, **stop**, diagnose, and either fix in place
 
 | File | Responsibility | Phases that touch it |
 |---|---|---|
-| `crates/ast-core/src/fitschan/wcs_celestial.rs` | Celestial decoder: `build_celestial_with_def_b1950` returns `CelestialResult { mapping, frame, lon_axis, lat_axis }`. `build_iwc_to_sky_mapping` builds the celestial 2-axis chain (Zoom → WcsMap_inv → rotation). | A, B, D |
-| `crates/ast-core/src/fitschan/wcs_spectral.rs` | Spectral decoder: `build_spectral` returns `SpectralResult { mapping, frame, axis }` with a 1-axis mapping. | B, D |
-| `crates/ast-core/src/fitschan/wcs_read.rs` | Composer: `build_iwc_to_world` and the helper `build_general_iwc_to_world` assemble the per-class mappings into the full IWC→world mapping. | C |
-| `crates/ast-core/src/fitschan/fset_to_store/celestial_axes.rs` | Writer-side: `find_wcsmap`, `split_around_wcsmap`, `split_map2*` walk the FrameSet's pixel→WCS mapping looking for a WcsMap. **No code change expected** — the helpers already handle WcsMap at any depth — but Phase C verifies behavior. | C (audit only, in-task verification) |
+| `crates/starlink-ast/src/fitschan/wcs_celestial.rs` | Celestial decoder: `build_celestial_with_def_b1950` returns `CelestialResult { mapping, frame, lon_axis, lat_axis }`. `build_iwc_to_sky_mapping` builds the celestial 2-axis chain (Zoom → WcsMap_inv → rotation). | A, B, D |
+| `crates/starlink-ast/src/fitschan/wcs_spectral.rs` | Spectral decoder: `build_spectral` returns `SpectralResult { mapping, frame, axis }` with a 1-axis mapping. | B, D |
+| `crates/starlink-ast/src/fitschan/wcs_read.rs` | Composer: `build_iwc_to_world` and the helper `build_general_iwc_to_world` assemble the per-class mappings into the full IWC→world mapping. | C |
+| `crates/starlink-ast/src/fitschan/fset_to_store/celestial_axes.rs` | Writer-side: `find_wcsmap`, `split_around_wcsmap`, `split_map2*` walk the FrameSet's pixel→WCS mapping looking for a WcsMap. **No code change expected** — the helpers already handle WcsMap at any depth — but Phase C verifies behavior. | C (audit only, in-task verification) |
 
 The refactor stays inside `fitschan/`. No new public API surface, no new modules, no changes to `mappings/` (`WcsMap::new` already supports any `ncoord >= 2`; this is the lever the refactor exploits).
 
@@ -83,21 +83,21 @@ cargo clippy --workspace --all-targets -- -D warnings
 - [ ] **Step 1: Capture wcsconv baseline**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 Expected: `test result: FAILED. 181 passed; 11 failed; 0 ignored; 0 measured; 0 filtered out`
 
 - [ ] **Step 2: Capture lib-test baseline**
 
 ```bash
-cargo test -p ast-core --lib 2>&1 | grep "test result" | tail -1
+cargo test -p starlink-ast --lib 2>&1 | grep "test result" | tail -1
 ```
 Expected: `test result: ok. 908 passed; 0 failed; 0 ignored; …` (record the exact number for later comparison; the spec quotes 908 but exact value can drift with unrelated commits).
 
 - [ ] **Step 3: Capture the headline failure's pre-simplify chain length**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --exact wcsconv_cases::sip_3d_swap_fits_wcs --nocapture 2>&1 | tail -40
+cargo test -p starlink-ast --test test_wcsconv -- --exact wcsconv_cases::sip_3d_swap_fits_wcs --nocapture 2>&1 | tail -40
 ```
 Expected: failure with a chain-length / mapping-count mismatch. Save the output for comparison with the post-Phase-C run.
 
@@ -108,13 +108,13 @@ No commit (this is just snapshotting state).
 ### Task A2: Pass `naxis` into `build_iwc_to_sky_mapping` and `WcsMap::new`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs`
 
 **Why:** Spec Step 1 — `WcsMap::new(2, proj, 1, 2)` becomes `WcsMap::new(naxis, proj, lon_axis + 1, lat_axis + 1)`. The `+ 1` converts 0-based `lon_axis` / `lat_axis` to the WcsMap's 1-based convention. We also need `build_iwc_to_sky_mapping` to know `naxis` so it can build the temporary peel-back PermMap sandwich.
 
 - [ ] **Step 1: Add a regression test for the N-axis construction**
 
-Append to the `tests` module of `crates/ast-core/src/fitschan/wcs_celestial.rs` (just before the closing `}` of `mod tests`):
+Append to the `tests` module of `crates/starlink-ast/src/fitschan/wcs_celestial.rs` (just before the closing `}` of `mod tests`):
 
 ```rust
     #[test]
@@ -144,13 +144,13 @@ Append to the `tests` module of `crates/ast-core/src/fitschan/wcs_celestial.rs` 
 - [ ] **Step 2: Run the new test and confirm it passes (the existing 2-axis path satisfies the Phase A invariant trivially)**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_celestial::tests::naxis_wcsmap_built_with_full_rank
+cargo test -p starlink-ast --lib fitschan::wcs_celestial::tests::naxis_wcsmap_built_with_full_rank
 ```
 Expected: PASS. (We're testing the invariant *first* so Phase A's refactor demonstrably preserves it.)
 
 - [ ] **Step 3: Edit `build_iwc_to_sky_mapping` signature and `build_celestial_with_def_b1950` callsite to thread `naxis`**
 
-In `crates/ast-core/src/fitschan/wcs_celestial.rs`:
+In `crates/starlink-ast/src/fitschan/wcs_celestial.rs`:
 
 Find the existing definition (line 474):
 ```rust
@@ -333,21 +333,21 @@ PermMap semantics for context: `PermMap::new(inperm, outperm, constants)` — `i
 - [ ] **Step 6: Run the targeted test, the existing celestial tests, and the new naxis test**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_celestial::tests
+cargo test -p starlink-ast --lib fitschan::wcs_celestial::tests
 ```
 Expected: PASS for all 9 (or however many) existing tests in the module + PASS for `naxis_wcsmap_built_with_full_rank`.
 
 - [ ] **Step 7: Run the full lib test suite**
 
 ```bash
-cargo test -p ast-core --lib 2>&1 | grep "test result" | tail -1
+cargo test -p starlink-ast --lib 2>&1 | grep "test result" | tail -1
 ```
 Expected: same pass count as the baseline captured in Task A1 Step 2 (≥ 908). If lower, **stop** — diagnose before continuing.
 
 - [ ] **Step 8: Run the full wcsconv suite**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 Expected: `181 passed; 11 failed`. If pass count drops below 181, **stop** per the regression policy and revert.
 
@@ -362,7 +362,7 @@ Both must succeed.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_celestial.rs
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs
 git commit -m "fitschan/wcs_celestial: build N-axis WcsMap with FITS-axis lon/lat indices"
 ```
 
@@ -379,13 +379,13 @@ git commit -m "fitschan/wcs_celestial: build N-axis WcsMap with FITS-axis lon/la
 ### Task B1: Replace celestial 2-axis Zoom with N-axis diagonal MatrixMap
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs`
 
 **Why:** Spec Step 2 — instead of `ZoomMap(2, deg2rad)`, build a `MatrixMap` whose diagonal has `deg2rad` on `lon_axis` and `lat_axis` and `1.0` elsewhere. This mirrors C `fitschan.c:35949-35957`. `MatrixMap` recognizes this as `MatrixForm::Diagonal` (see `mappings/matrix.rs:33-34, 143`), so it's still O(N) per point.
 
 - [ ] **Step 1: Write failing test for the N-axis Zoom (round-trip identity on pass-through axes)**
 
-Append to the `tests` module of `crates/ast-core/src/fitschan/wcs_celestial.rs`:
+Append to the `tests` module of `crates/starlink-ast/src/fitschan/wcs_celestial.rs`:
 
 ```rust
     #[test]
@@ -418,7 +418,7 @@ Append to the `tests` module of `crates/ast-core/src/fitschan/wcs_celestial.rs`:
 - [ ] **Step 2: Run the test and confirm it FAILS**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_celestial::tests::naxis_celestial_passthrough_axes_are_identity
+cargo test -p starlink-ast --lib fitschan::wcs_celestial::tests::naxis_celestial_passthrough_axes_are_identity
 ```
 Expected: FAIL — currently `result.mapping.nin() == 2`. (Update: also update `naxis_wcsmap_built_with_full_rank` to assert `nin == 3, nout == 3` instead of 2 — the Phase A invariant has been superseded.)
 
@@ -457,7 +457,7 @@ Replace with:
     let zoom = crate::mappings::MatrixMap::new(zoom_mat).ok()?;
 ```
 
-Note: `ZoomMap` is no longer used here. Remove the `ZoomMap` import from `wcs_celestial.rs:18` if it has no other use *in this file* — but check: it's currently in the brace-list `use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, WcsMap, ZoomMap};`. Run `grep -n ZoomMap crates/ast-core/src/fitschan/wcs_celestial.rs` first; if no other reference, delete `ZoomMap` from the import list. Otherwise leave it.
+Note: `ZoomMap` is no longer used here. Remove the `ZoomMap` import from `wcs_celestial.rs:18` if it has no other use *in this file* — but check: it's currently in the brace-list `use crate::mappings::{CmpMap, Composition, DynMapping, Mapping, PermMap, WcsMap, ZoomMap};`. Run `grep -n ZoomMap crates/starlink-ast/src/fitschan/wcs_celestial.rs` first; if no other reference, delete `ZoomMap` from the import list. Otherwise leave it.
 
 - [ ] **Step 4: Update the rotation to be N-axis via PermMap-around-Parallel-CmpMap sandwich**
 
@@ -544,7 +544,7 @@ Delete the `wcsmap_fwd` clone if the rotation builder doesn't need it after this
 - [ ] **Step 5: Run the targeted celestial tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_celestial::tests
+cargo test -p starlink-ast --lib fitschan::wcs_celestial::tests
 ```
 Expected: all PASS, including the new `naxis_celestial_passthrough_axes_are_identity`.
 
@@ -555,8 +555,8 @@ Re-read `reference_pixel_maps_to_crval` (~line 835): it uses a 2-axis FitsStore.
 - [ ] **Step 7: Run lib + wcsconv**
 
 ```bash
-cargo test -p ast-core --lib 2>&1 | grep "test result" | tail -1
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --lib 2>&1 | grep "test result" | tail -1
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 Expected: lib tests at baseline; wcsconv at `181 passed; 11 failed`. If wcsconv drops, **stop**.
 
@@ -565,7 +565,7 @@ Expected: lib tests at baseline; wcsconv at `181 passed; 11 failed`. If wcsconv 
 ```bash
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_celestial.rs
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs
 git commit -m "fitschan/wcs_celestial: lift celestial chain to N-axis end-to-end"
 ```
 
@@ -574,13 +574,13 @@ git commit -m "fitschan/wcs_celestial: lift celestial chain to N-axis end-to-end
 ### Task B2: Lift spectral mapping to N-axis
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_spectral.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_spectral.rs`
 
 **Why:** Spec Step 3. Currently `SpectralResult.mapping` is 1-axis. After this task, it's N-axis with the spectral component on `axis` and identity on the rest.
 
 - [ ] **Step 1: Write failing test for N-axis spectral pass-through**
 
-Append to the `tests` module of `crates/ast-core/src/fitschan/wcs_spectral.rs`:
+Append to the `tests` module of `crates/starlink-ast/src/fitschan/wcs_spectral.rs`:
 
 ```rust
     #[test]
@@ -614,13 +614,13 @@ Append to the `tests` module of `crates/ast-core/src/fitschan/wcs_spectral.rs`:
 - [ ] **Step 2: Run the test and confirm it FAILS**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_spectral::tests::naxis_spectral_passthrough_other_axes
+cargo test -p starlink-ast --lib fitschan::wcs_spectral::tests::naxis_spectral_passthrough_other_axes
 ```
 Expected: FAIL with `nin == 1`.
 
 - [ ] **Step 3: Add an `embed_1axis_in_naxis` helper and use it in `build_spectral`**
 
-In `crates/ast-core/src/fitschan/wcs_spectral.rs`, just below the imports, add a private helper:
+In `crates/starlink-ast/src/fitschan/wcs_spectral.rs`, just below the imports, add a private helper:
 
 ```rust
 /// Embed a 1-axis mapping into an N-axis mapping with `UnitMap`s on
@@ -719,7 +719,7 @@ Replace with:
 - [ ] **Step 4: Run the spectral tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_spectral::tests
+cargo test -p starlink-ast --lib fitschan::wcs_spectral::tests
 ```
 Expected: all PASS, including the new `naxis_spectral_passthrough_other_axes`.
 
@@ -740,16 +740,16 @@ to:
 - [ ] **Step 5: Run lib + wcsconv**
 
 ```bash
-cargo test -p ast-core --lib 2>&1 | grep "test result" | tail -1
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --lib 2>&1 | grep "test result" | tail -1
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 Expected: lib at baseline; wcsconv at `181 passed; 11 failed`. **Stop on regression.**
 
 The wcsconv suite may report a numerical-differences-style failure here even though the mappings are mathematically equivalent — that's because `build_general_iwc_to_world` is now seeing N-axis inputs and trying to parallel-compose them, which produces a wrong shape for axes ≥ 3. If pass count drops, it's the boundary-mismatch problem Phase C resolves; before continuing, **verify via diff-of-outputs** that the celestial+spectral results are correct in isolation (not via the composer):
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_spectral::tests::naxis_spectral_passthrough_other_axes
-cargo test -p ast-core --lib fitschan::wcs_celestial::tests::naxis_celestial_passthrough_axes_are_identity
+cargo test -p starlink-ast --lib fitschan::wcs_spectral::tests::naxis_spectral_passthrough_other_axes
+cargo test -p starlink-ast --lib fitschan::wcs_celestial::tests::naxis_celestial_passthrough_axes_are_identity
 ```
 Both must PASS. If they do but wcsconv still drops, the parallel composer in `build_general_iwc_to_world` is (mis)wrapping N-axis inputs. Skip ahead to Phase C immediately rather than reverting.
 
@@ -758,7 +758,7 @@ Both must PASS. If they do but wcsconv still drops, the parallel composer in `bu
 ```bash
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_spectral.rs
+git add crates/starlink-ast/src/fitschan/wcs_spectral.rs
 git commit -m "fitschan/wcs_spectral: lift spectral mapping to N-axis with identity passthrough"
 ```
 
@@ -771,18 +771,18 @@ git commit -m "fitschan/wcs_spectral: lift spectral mapping to N-axis with ident
 ### Task C1: Series composition in `build_general_iwc_to_world`
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs`
 
 - [ ] **Step 1: Run the headline target and capture pre-Phase-C state**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --exact wcsconv_cases::sip_3d_swap_fits_wcs --nocapture 2>&1 | tail -30
+cargo test -p starlink-ast --test test_wcsconv -- --exact wcsconv_cases::sip_3d_swap_fits_wcs --nocapture 2>&1 | tail -30
 ```
 Expected: still FAIL at this point; capture the chain length / mismatch for comparison.
 
 - [ ] **Step 2: Replace the parallel-compose block with a series compose**
 
-In `crates/ast-core/src/fitschan/wcs_read.rs`, find the body of `build_general_iwc_to_world` (the `claimed`-walk loop at line 533+, the parallel compose at 590-593, and the trailing PermMap block at 597-625).
+In `crates/starlink-ast/src/fitschan/wcs_read.rs`, find the body of `build_general_iwc_to_world` (the `claimed`-walk loop at line 533+, the parallel compose at 590-593, and the trailing PermMap block at 597-625).
 
 Replace the entire body — **but keep the function signature and the early `parts.is_empty() → UnitMap::new(naxis)` short-circuit** — with the following. Read the original carefully first; here's the full replacement starting from `let mut parts: Vec<DynMapping> = Vec::new();`:
 
@@ -883,28 +883,28 @@ After Phase B these short-circuits still work correctly: at `naxis == 2`, `cel.m
 - [ ] **Step 4: Run the lib tests inside `wcs_read`**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_read::tests
+cargo test -p starlink-ast --lib fitschan::wcs_read::tests
 ```
 Expected: 5 tests, all PASS (`decode_2d_celestial`, `decode_crpix_maps_to_crval`, `decode_1d_spectral`, `decode_3d_mixed`, `build_pixel_to_world_handles_non_adjacent_celestial_axes`). The non-adjacent test is the strict gate — its assertions on DEC-at-axis-0 / RA-at-axis-2 *must* pass under series composition with the new N-axis mappings.
 
 - [ ] **Step 5: Run the headline target**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --exact wcsconv_cases::sip_3d_swap_fits_wcs --nocapture 2>&1 | tail -30
+cargo test -p starlink-ast --test test_wcsconv -- --exact wcsconv_cases::sip_3d_swap_fits_wcs --nocapture 2>&1 | tail -30
 ```
 Expected: PASS. If FAIL, examine the chain length: it should now be ≤ 3 mappings post-simplify (`Shift ; PolyMap ; MatrixMap`-like). If the chain is shorter than C's 3 elements, that's progress; if longer, look at where the FK5↔ICRS SlaMap pair is — it should now be cancellable because everything is in a flat top-level series.
 
 - [ ] **Step 6: Run the full wcsconv suite**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 Expected: `182 passed; 10 failed` (sip_3d_swap_fits_wcs flips green). **If the pass count drops below 181, stop and revert.**
 
 - [ ] **Step 7: Run the full lib test suite**
 
 ```bash
-cargo test -p ast-core --lib 2>&1 | grep "test result" | tail -1
+cargo test -p starlink-ast --lib 2>&1 | grep "test result" | tail -1
 ```
 Expected: at or above the baseline captured in Task A1 Step 2. If lower, **stop**.
 
@@ -913,7 +913,7 @@ Expected: at or above the baseline captured in Task A1 Step 2. If lower, **stop*
 ```bash
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_read.rs
+git add crates/starlink-ast/src/fitschan/wcs_read.rs
 git commit -m "fitschan/wcs_read: compose N-axis IWC->world contributions in series"
 ```
 
@@ -922,10 +922,10 @@ git commit -m "fitschan/wcs_read: compose N-axis IWC->world contributions in ser
 ### Task C2: Audit writer-side helpers against the new shape
 
 **Files:**
-- Read-only: `crates/ast-core/src/fitschan/fset_to_store/celestial_axes.rs`
-- Read-only: `crates/ast-core/src/fitschan/fset_to_store/fiducial.rs`
-- Read-only: `crates/ast-core/src/fitschan/fset_to_store/sky_pole.rs`
-- Read-only: `crates/ast-core/src/fitschan/fset_to_store/make_int_world.rs`
+- Read-only: `crates/starlink-ast/src/fitschan/fset_to_store/celestial_axes.rs`
+- Read-only: `crates/starlink-ast/src/fitschan/fset_to_store/fiducial.rs`
+- Read-only: `crates/starlink-ast/src/fitschan/fset_to_store/sky_pole.rs`
+- Read-only: `crates/starlink-ast/src/fitschan/fset_to_store/make_int_world.rs`
 
 **Why:** Spec Step 5 mentions four helpers/methods to audit:
 - `find_wcsmap` — recursive into CmpMap children; should still work.
@@ -938,22 +938,22 @@ The audit is execution-driven: run the writer-exercising tests and confirm they 
 - [ ] **Step 1: Run all `fset_to_store` lib tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::fset_to_store
+cargo test -p starlink-ast --lib fitschan::fset_to_store
 ```
 Expected: all PASS. If anything fails, the writer is reading a field that's moved due to the new N-axis WcsMap location (specifically: `wcs_offset` in `split_map2_parallel` at `celestial_axes.rs:563` — when WcsMap is now top-level, `wcs_offset` is 0 and `wm.lonax() + 0` is already the FITS-1-based lon index, so this should just work).
 
 - [ ] **Step 2: Run the FrameSet round-trip lib tests**
 
 ```bash
-cargo test -p ast-core --lib frameset
-cargo test -p ast-core --test test_frameset 2>&1 | grep "test result"
+cargo test -p starlink-ast --lib frameset
+cargo test -p starlink-ast --test test_frameset 2>&1 | grep "test result"
 ```
 Expected: at-baseline pass counts. If round-trips fail, the writer is mis-reading the new shape and Step 3 below applies.
 
 - [ ] **Step 3: Run the encoder fixture tests**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 Expected: stays at `182 passed; 10 failed` (or better — the spec notes the `class_write_fits_class` and `jan_fits_class_*` failures are FITS-CLASS encoder issues *unaffected* by this refactor). If pass count drops vs the end of Task C1, **stop, diagnose, fix** before commit.
 
@@ -995,7 +995,7 @@ Authority rule reminder: if at any point during Phase D the cleanup makes the Ru
 ### Task D1: Extract `embed_celestial_in_naxis` helper
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_celestial.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_celestial.rs`
 
 **Why:** The N-axis embedding code added in Phase B Task B1 is inline in `build_iwc_to_sky_mapping`. Extract it into a private function.
 
@@ -1079,9 +1079,9 @@ Replace the whole block with:
 - [ ] **Step 3: Run the celestial tests, lib, and wcsconv**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_celestial::tests
-cargo test -p ast-core --lib 2>&1 | grep "test result" | tail -1
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep "test result"
+cargo test -p starlink-ast --lib fitschan::wcs_celestial::tests
+cargo test -p starlink-ast --lib 2>&1 | grep "test result" | tail -1
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep "test result"
 ```
 Expected: all PASS; wcsconv at `182 passed; 10 failed` or better.
 
@@ -1090,7 +1090,7 @@ Expected: all PASS; wcsconv at `182 passed; 10 failed` or better.
 ```bash
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
-git add crates/ast-core/src/fitschan/wcs_celestial.rs
+git add crates/starlink-ast/src/fitschan/wcs_celestial.rs
 git commit -m "fitschan/wcs_celestial: factor N-axis embedding into embed_celestial_in_naxis"
 ```
 
@@ -1110,7 +1110,7 @@ Expected: all crates green. Record the wcsconv pass count: must be ≥ 182. Reco
 - [ ] **Step 2: Run the targeted-failure check one final time**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --exact wcsconv_cases::sip_3d_swap_fits_wcs
+cargo test -p starlink-ast --test test_wcsconv -- --exact wcsconv_cases::sip_3d_swap_fits_wcs
 ```
 Expected: `test result: ok. 1 passed; 0 failed; …`.
 

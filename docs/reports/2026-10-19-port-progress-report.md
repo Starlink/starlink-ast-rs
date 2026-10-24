@@ -33,13 +33,13 @@ It now covers the core library: every `Mapping`, `Frame` and `Region` class, `Fi
 Each subsystem has had a function-by-function C-parity audit, opened and closed, and a final audit of the core found seven gaps, all fixed.
 
 The thing the design exists for has still not started.
-`ast-capi/src/lib.rs` is a 16-line doc comment and exports no symbols; no C program has linked this library.
+`starlink-ast-capi/src/lib.rs` is a 16-line doc comment and exports no symbols; no C program has linked this library.
 
 | Measure | August (`bc620a6`) | Now (`69c40996`) |
 |---|---:|---:|
 | Commits on the branch | 1,087 | 1,736 (649 since August, 29 of them `fixup!`) |
 | Active days since the previous review | — | 31 |
-| `ast-core` production code | 67,277 | **96,341** (111,347 with inline tests) |
+| `starlink-ast` production code | 67,277 | **96,341** (111,347 with inline tests) |
 | C `src/` code, `.c` files | 184,817 | 181,769 (plus 12,732 in headers) |
 | C code with a Rust counterpart | 116,845 (63%) | **128,174 (71%)** |
 | Port vs C, subsystems with a counterpart | 0.57× | **0.74×** |
@@ -77,14 +77,14 @@ The port centralizes in `serial/` the per-class dump and load that C spreads acr
 
 ## 2. Why tokei shows more Rust than C
 
-`tokei` reports about 200k code lines and 280k comment lines for C's `src/`, and about 225k code lines and 40k comments for `crates/ast-core`.
+`tokei` reports about 200k code lines and 280k comment lines for C's `src/`, and about 225k code lines and 40k comments for `crates/starlink-ast`.
 The two numbers count different things, for four reasons.
 
-**1 → Tests live inside `ast-core`; C's live in `ast_tester/`.**
-Of `ast-core`'s 225k, `src/` is 111k and `tests/` is 113.5k.
+**1 → Tests live inside `starlink-ast`; C's live in `ast_tester/`.**
+Of `starlink-ast`'s 225k, `src/` is 111k and `tests/` is 113.5k.
 C's `ast_tester/` is 29k code lines and is not in `src/`.
 
-**2 → Half of `ast-core/tests/` is generated data.**
+**2 → Half of `starlink-ast/tests/` is generated data.**
 The 125 `*_oracle/cases.rs` directories hold 49.6k lines of C output transcribed as Rust literals, the transform oracle's recorded values among them.
 They are fixtures in Rust syntax, not test logic.
 
@@ -249,9 +249,9 @@ The port must turn any NaN or infinity in an output into `AST__BAD`, which costs
 
 | Tier | What it is meant to prove | State now | August |
 |---|---|---|---|
-| 1 · Idiomatic Rust | The public API behaves. | 4,052 passing across the workspace (3,980 in `ast-core`, run per package; see §9), 0 failing. The 4 ignored are a timing benchmark, a 45 GB test that C also runs only on request, the investigative oracle report, and a probe-output writer; none skips an assertion. | Green |
+| 1 · Idiomatic Rust | The public API behaves. | 4,052 passing across the workspace (3,980 in `starlink-ast`, run per package; see §9), 0 failing. The 4 ignored are a timing benchmark, a 45 GB test that C also runs only on request, the investigative oracle report, and a probe-output writer; none skips an assertion. | Green |
 | 2 · Byte-exact regression | Output byte-identical to C on a real corpus. | 515 simplify fixtures; 194 wcsconv cases with nothing excluded; 2,261 transform-oracle sections; 823 round-trip dumps; all through a comparator that now fails on any whitespace or spelling difference except a number's width change in a fixed-width card. | Green, one known hole |
-| 3 · C tests vs Rust libast | `ast_tester` programs link the Rust library. | Not started: `ast-capi` exports nothing. | Not started |
+| 3 · C tests vs Rust libast | `ast_tester` programs link the Rust library. | Not started: `starlink-ast-capi` exports nothing. | Not started |
 | 4 · Live C comparison | Rust and C in one binary, compared. | **Partly started.** `ast-oracle-tests` runs C live and compares library call counts (libm, PAL, ERFA, wcslib) per section; `ast-bench roman` and `bits` compare output bits live. No value-by-value test suite yet, and none in CI. | Not started |
 | 5 · Performance gate | Fail on a regression. | `ast-bench compare` and `bits`, run by hand. | Not started |
 
@@ -262,7 +262,7 @@ It found seven places where they did not quite, and all are fixed:
 - **Dump comparator:** the simplify and wcsconv comparator normalized whitespace, the same blind spot the round-trip comparator had in August; it is now strict and has its own tests.
 - **Missing fixtures:** a missing wcsconv input now fails instead of being passed over.
 - **Blank FITS cards:** the port dropped blank cards where C keeps them (confirmed by probe); fixed.
-- **Ledger scope:** the verification ledger now scans `ast-oracle-tests` and `ast-bench` as well as `ast-core`, and gained 10 entries.
+- **Ledger scope:** the verification ledger now scans `ast-oracle-tests` and `ast-bench` as well as `starlink-ast`, and gained 10 entries.
 - **Unchecked zips:** four tests zipped two lists without checking their lengths matched.
 - **Missing C error checks:** parts of `testskyframe.c`, `testcmpframe.c` and `testspecframe.c` had not been ported; they are, and the port matches C.
 
@@ -300,7 +300,7 @@ Their Rust rewrite (step 6a) is deferred to a future ticket, after this branch m
 ## 8. The August risks, revisited
 
 **Risk 1, the ABI shim has no code: unchanged.**
-`ast-capi`, `ast-plugins` and `ast-ffi-tests` are still stubs, and tier 3 cannot start.
+`starlink-ast-capi`, `ast-plugins` and `ast-ffi-tests` are still stubs, and tier 3 cannot start.
 This remains the largest gap between what the port has proved and what it is for.
 
 **Risk 2, the next C merge changes serialized output: resolved.**

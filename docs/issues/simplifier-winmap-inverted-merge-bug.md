@@ -44,7 +44,7 @@ until this is fixed.
 
 ## The smoking gun
 
-Fixture: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/spec_cel_invert.map`
+Fixture: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/spec_cel_invert.map`
 (the pixel→world `map8` for `class-ait.head`, a FREQ + RA/DEC-AIT cube, dumped
 from C `WcsMapFrm` just before `astSimplify`) and `…/spec_cel_invert.simp`
 (C's `astSimplify(map8)`).
@@ -127,13 +127,13 @@ The committed fixture lets you work entirely on the simplify harness — no FITS
 read path, no C instrumentation needed:
 
 1. Re-enable the fixture by uncommenting its line in
-   `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`:
+   `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`:
    ```
    spec_cel_invert | simplify_fixtures/spec_cel_invert.map | simplify_fixtures/spec_cel_invert.simp |
    ```
 2. Run the harness:
    ```
-   cargo test -p ast-core --test test_simplify_regression simplify_regression -- --nocapture
+   cargo test -p starlink-ast --test test_simplify_regression simplify_regression -- --nocapture
    ```
    It will report `spec_cel_invert` under both `equal() failures` and
    `transform failures`. (The harness hard-fails on transform failures — that
@@ -141,10 +141,10 @@ read path, no C instrumentation needed:
 
 For an ad-hoc numeric check, a throwaway example like:
 ```rust
-use ast_core::coords::PointSet;
-use ast_core::from_native_string;
+use starlink_ast::coords::PointSet;
+use starlink_ast::from_native_string;
 fn main() {
-    let d = "crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/";
+    let d = "crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/";
     let m = from_native_string(&std::fs::read_to_string(format!("{d}spec_cel_invert.map")).unwrap())
         .unwrap().into_mapping().unwrap();
     let s = m.simplify().unwrap();
@@ -178,7 +178,7 @@ adds the comment formatting. Steps:
 3. Build the probe: `make -C tools/oracle_fixtures head2ast` (links libast.so
    dynamically, so the rebuild takes effect).
 4. `AST_DUMP_MAP8=/tmp/x.map AST_DUMP_SIMP=/tmp/x.simp \
-      tools/oracle_fixtures/head2ast crates/ast-core/tests/fixtures/wcsconv/inputs/class-ait.head >/dev/null`
+      tools/oracle_fixtures/head2ast crates/starlink-ast/tests/fixtures/wcsconv/inputs/class-ait.head >/dev/null`
 5. Reformat each through Rust (parse + re-serialize) into the corpus.
 6. **Revert the C edits, rebuild the library, confirm
    `grep -c AST_DUMP reference/starlink-ast/src/fitschan.c` is 0.**

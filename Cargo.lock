@@ -24,34 +24,15 @@ dependencies = [
 name = "ast-bench"
 version = "0.1.0"
 dependencies = [
- "ast-core",
  "libloading",
-]
-
-[[package]]
-name = "ast-capi"
-version = "0.1.0"
-
-[[package]]
-name = "ast-core"
-version = "0.1.0"
-dependencies = [
- "audit-tools",
- "cc",
- "levenberg-marquardt",
- "nalgebra",
- "ndarray",
- "smallvec",
- "tracing",
- "tracing-subscriber",
- "wide",
+ "starlink-ast",
 ]
 
 [[package]]
 name = "ast-ffi-tests"
 version = "0.1.0"
 dependencies = [
- "ast-capi",
+ "starlink-ast-capi",
 ]
 
 [[package]]
@@ -59,7 +40,7 @@ name = "ast-oracle-tests"
 version = "0.1.0"
 dependencies = [
  "ast-bench",
- "ast-core",
+ "starlink-ast",
 ]
 
 [[package]]
@@ -514,6 +495,25 @@ name = "smallvec"
 version = "1.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
+
+[[package]]
+name = "starlink-ast"
+version = "0.1.0"
+dependencies = [
+ "audit-tools",
+ "cc",
+ "levenberg-marquardt",
+ "nalgebra",
+ "ndarray",
+ "smallvec",
+ "tracing",
+ "tracing-subscriber",
+ "wide",
+]
+
+[[package]]
+name = "starlink-ast-capi"
+version = "0.1.0"
 
 [[package]]
 name = "syn"

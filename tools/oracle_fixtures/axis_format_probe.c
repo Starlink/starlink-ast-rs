@@ -10,9 +10,9 @@
  * -1 and 1 for a log integer conversion, and so are %c values
  * whose byte is not ASCII, which a Rust String cannot hold as one byte.
  *
- * Prints Rust source for crates/ast-core/tests/axis_format_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/axis_format_oracle/cases.rs:
  *
- *   ./axis_format_probe > ../../crates/ast-core/tests/axis_format_oracle/cases.rs
+ *   ./axis_format_probe > ../../crates/starlink-ast/tests/axis_format_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

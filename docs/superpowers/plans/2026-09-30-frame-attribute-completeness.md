@@ -1,7 +1,7 @@
 # Frame attribute completeness — plan
 
 Goal: every public attribute of Frame, SkyFrame, TimeFrame and SpecFrame (and
-the classes built on them) is supported in `ast-core` and behaves as the C
+the classes built on them) is supported in `starlink-ast` and behaves as the C
 library does: get, set, test and clear, the default, the Native dump and load,
 and Overlay.
 Frame first, then SkyFrame, then TimeFrame and SpecFrame.

@@ -30,7 +30,7 @@ Dtai, Dut1) to the Frame trait.
 ## Module Structure
 
 ```
-crates/ast-core/src/frames/
+crates/starlink-ast/src/frames/
 ├── skyframe.rs       # SkyFrame struct, SkySystem, SkyRefIs
 ├── skyaxis.rs        # SkyAxis, HMS/DMS formatting
 ├── sky_convert.rs    # make_sky_mapping pipeline builder
@@ -214,7 +214,7 @@ Class: `"SkyAxis"`. Attributes:
 
 ## MakeSkyMapping — Conversion Pipeline
 
-`crates/ast-core/src/frames/sky_convert.rs`
+`crates/starlink-ast/src/frames/sky_convert.rs`
 
 The core function that builds the SlaMap conversion chain between
 two SkyFrames:

@@ -7,9 +7,9 @@
  * SkyFrame (cmpframe.c Resolve, ResolvePoints), which resolve each
  * component's part of the vector separately.
  *
- * Prints Rust source for crates/ast-core/tests/sky_geometry_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/sky_geometry_oracle/cases.rs:
  *
- *   ./sky_geometry_probe > ../../crates/ast-core/tests/sky_geometry_oracle/cases.rs
+ *   ./sky_geometry_probe > ../../crates/starlink-ast/tests/sky_geometry_oracle/cases.rs
  */
 #include <float.h>
 #include <stdio.h>
@@ -69,7 +69,7 @@ int main( void ) {
            "// Do not edit.\n\n"
            "// Each value is printed with 17 digits so that it reads back exactly.\n"
            "#![allow(clippy::excessive_precision, clippy::approx_constant)]\n\n"
-           "use ast_core::constants::BAD_VALUE as BAD;\n\n"
+           "use starlink_ast::constants::BAD_VALUE as BAD;\n\n"
            "/// `(permuted, point1, point2, point3, point4, d1, d2)` from astResolve.\n"
            "pub type ResolveCase = (bool, [f64; 2], [f64; 2], [f64; 2], [f64; 2], f64, f64);\n\n"
            "/// `(permuted, a1, a2, b1, b2, cross)` from astIntersect.\n"

@@ -6,7 +6,7 @@
 
 **Architecture:** Three orthogonal fixes, one commit each.
 - **A2** — extend `wcs_keywords::extract_wcs_keywords` axis-count fallback so that, when `WCSAXES` and `NAXIS` and `NAXISn` are all absent, the highest CTYPEi/CRVALi/CRPIXi index decides the axis count. (`car3_native` has only `CTYPE1`, `CTYPE2`, `CRVAL1`, `CRVAL2`, `CDELT1`, `CDELT2`, `CRPIX1`, `CRPIX2`.)
-- **A3** — fix the `wcs_read::build_general_iwc_to_world` hardcoded "celestial axes are consecutive" assumption (`crates/ast-core/src/fitschan/wcs_read.rs:141`). When the celestial pair is non-adjacent, wrap the parallel-composed mapping in a `PermMap` to route axes back to FITS order. (`axes-swap_native` has CTYPE1=DEC, CTYPE2=WAVE, CTYPE3=RA, CTYPE4=STOKES — celestial pair at indices 0 and 2, separated by spectral axis at 1.)
+- **A3** — fix the `wcs_read::build_general_iwc_to_world` hardcoded "celestial axes are consecutive" assumption (`crates/starlink-ast/src/fitschan/wcs_read.rs:141`). When the celestial pair is non-adjacent, wrap the parallel-composed mapping in a `PermMap` to route axes back to FITS order. (`axes-swap_native` has CTYPE1=DEC, CTYPE2=WAVE, CTYPE3=RA, CTYPE4=STOKES — celestial pair at indices 0 and 2, separated by spectral axis at 1.)
 - **B1** — extend `enc_class::read_from_cards` so that when NAXIS is missing it falls back to the same CTYPE-index inference as A2. (`jan.fits-class` has CTYPE1/2/3 but no NAXIS.)
 
 **Tech Stack:** Rust 2024, existing FitsChan infrastructure (`CardList`, `FitsStore`, `wcs_keywords`, `wcs_read`, `enc_class`, `mappings::PermMap`). No new dependencies.
@@ -15,18 +15,18 @@
 
 ## File structure
 
-- **Modify:** `crates/ast-core/src/fitschan/wcs_keywords.rs` — extend axis-count fallback (A2). Extract the fallback into a private helper so B1 can reuse it.
-- **Modify:** `crates/ast-core/src/fitschan/wcs_read.rs::build_general_iwc_to_world` — replace the hardcoded `i = first_cel + 2` with correct second-axis tracking; insert a `PermMap` wrapper when the natural assembly order doesn't match FITS axis order (A3).
-- **Modify:** `crates/ast-core/src/fitschan/enc_class.rs::read_from_cards` — call the shared axis-count helper when NAXIS is absent (B1).
-- **Test:** Three `#[test]` functions added to `crates/ast-core/tests/test_fitschan_wcs.rs` — one per fixture, each load-only (no value check beyond "doesn't panic and decodes to a FrameSet").
+- **Modify:** `crates/starlink-ast/src/fitschan/wcs_keywords.rs` — extend axis-count fallback (A2). Extract the fallback into a private helper so B1 can reuse it.
+- **Modify:** `crates/starlink-ast/src/fitschan/wcs_read.rs::build_general_iwc_to_world` — replace the hardcoded `i = first_cel + 2` with correct second-axis tracking; insert a `PermMap` wrapper when the natural assembly order doesn't match FITS axis order (A3).
+- **Modify:** `crates/starlink-ast/src/fitschan/enc_class.rs::read_from_cards` — call the shared axis-count helper when NAXIS is absent (B1).
+- **Test:** Three `#[test]` functions added to `crates/starlink-ast/tests/test_fitschan_wcs.rs` — one per fixture, each load-only (no value check beyond "doesn't panic and decodes to a FrameSet").
 
 ---
 
 ## Background facts (read before starting)
 
-- Existing axis-count fallback at `crates/ast-core/src/fitschan/wcs_keywords.rs:23-43` already handles `NAXIS1..NAXIS9`. It does NOT scan `CTYPE1..` or `CRVAL1..`.
-- `wcs_read::build_general_iwc_to_world` at `crates/ast-core/src/fitschan/wcs_read.rs:106-184` walks axes in FITS order and emits `parts: Vec<DynMapping>` in encounter order. When celestial axes are non-adjacent (e.g. lon=0, lat=2 for `axes-swap`), at index 0 it pushes the celestial mapping (which has nin=2, nout=2) and then jumps to `i = first_cel + 2 = 2` — skipping index 1 (the spectral axis). The spectral mapping is never pushed. The result has nout=4 (2 celestial + 1 stokes-shift + … wait, let me re-derive: see line 141 comment "Assuming consecutive for now"), but the FITS axis ordering in the chain needs to be undone with a `PermMap`.
-- `mappings::PermMap` (`crates/ast-core/src/mappings/perm.rs`) takes `inperm: &[i64]`, `outperm: &[i64]`, `constants: &[f64]`. 1-based axis indices; positive entries reference an input axis; negative entries reference a constant. For our purposes only positive entries are used.
+- Existing axis-count fallback at `crates/starlink-ast/src/fitschan/wcs_keywords.rs:23-43` already handles `NAXIS1..NAXIS9`. It does NOT scan `CTYPE1..` or `CRVAL1..`.
+- `wcs_read::build_general_iwc_to_world` at `crates/starlink-ast/src/fitschan/wcs_read.rs:106-184` walks axes in FITS order and emits `parts: Vec<DynMapping>` in encounter order. When celestial axes are non-adjacent (e.g. lon=0, lat=2 for `axes-swap`), at index 0 it pushes the celestial mapping (which has nin=2, nout=2) and then jumps to `i = first_cel + 2 = 2` — skipping index 1 (the spectral axis). The spectral mapping is never pushed. The result has nout=4 (2 celestial + 1 stokes-shift + … wait, let me re-derive: see line 141 comment "Assuming consecutive for now"), but the FITS axis ordering in the chain needs to be undone with a `PermMap`.
+- `mappings::PermMap` (`crates/starlink-ast/src/mappings/perm.rs`) takes `inperm: &[i64]`, `outperm: &[i64]`, `constants: &[f64]`. 1-based axis indices; positive entries reference an input axis; negative entries reference a constant. For our purposes only positive entries are used.
 - `FitsStore::celestial_axes() -> Option<(usize, usize)>` returns 0-based indices already.
 - The CLASS reader at `enc_class.rs:32-36` errors hard on missing NAXIS. `jan.fits-class` has CTYPE1=RA, CTYPE2=DEC, CTYPE3=FREQ — three axes — but no NAXIS card.
 
@@ -35,12 +35,12 @@
 ## Task 1: Failing integration tests (red)
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_fitschan_wcs.rs`
+- Modify: `crates/starlink-ast/tests/test_fitschan_wcs.rs`
 
 - [ ] **Step 1: Confirm the current failures**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "car3|axes-swap|jan_fits"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "car3|axes-swap|jan_fits"
 ```
 
 Expected output (current):
@@ -53,7 +53,7 @@ Expected output (current):
 
 - [ ] **Step 2: Add focused tests**
 
-Append to `crates/ast-core/tests/test_fitschan_wcs.rs`:
+Append to `crates/starlink-ast/tests/test_fitschan_wcs.rs`:
 
 ```rust
 //! Tier-1 A2/A3/B1 regression tests — three reader gaps that block
@@ -62,9 +62,9 @@ Append to `crates/ast-core/tests/test_fitschan_wcs.rs`:
 
 use std::path::PathBuf;
 
-use ast_core::AnyObject;
-use ast_core::channel::Channel;
-use ast_core::fitschan::FitsChan;
+use starlink_ast::AnyObject;
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::FitsChan;
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -109,9 +109,9 @@ fn jan_class_no_naxis_keyword() {
 - [ ] **Step 3: Run them, confirm they fail**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_wcs car3_naxis_inferred_from_ctype_indices -- --nocapture
-cargo test -p ast-core --test test_fitschan_wcs axes_swap_non_adjacent_celestial_axes -- --nocapture
-cargo test -p ast-core --test test_fitschan_wcs jan_class_no_naxis_keyword -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_wcs car3_naxis_inferred_from_ctype_indices -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_wcs axes_swap_non_adjacent_celestial_axes -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_wcs jan_class_no_naxis_keyword -- --nocapture
 ```
 
 Each should panic with the expected error from Step 1.
@@ -119,7 +119,7 @@ Each should panic with the expected error from Step 1.
 - [ ] **Step 4: Commit the failing tests**
 
 ```bash
-git add crates/ast-core/tests/test_fitschan_wcs.rs
+git add crates/starlink-ast/tests/test_fitschan_wcs.rs
 git commit -m "$(cat <<'EOF'
 test(fitschan): expected-failure tests for A2/A3/B1 parser gaps
 
@@ -135,7 +135,7 @@ EOF
 ## Task 2: A2 — CTYPE-index axis-count fallback
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_keywords.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_keywords.rs`
 
 The existing fallback (lines 27-42) only scans `NAXIS1..NAXIS9`. Extend it to also scan `CTYPE1..CTYPE9`, `CRVAL1..CRVAL9`, `CRPIX1..CRPIX9`, `CDELT1..CDELT9` and take the maximum index found. Extract the fallback into a private helper so B1 can reuse it.
 
@@ -251,7 +251,7 @@ END
 - [ ] **Step 3: Run unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_keywords::tests -- --nocapture
+cargo test -p starlink-ast --lib fitschan::wcs_keywords::tests -- --nocapture
 ```
 
 All existing tests must pass + the 2 new ones.
@@ -259,7 +259,7 @@ All existing tests must pass + the 2 new ones.
 - [ ] **Step 4: Run the integration test added in Task 1**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_wcs car3_naxis_inferred_from_ctype_indices -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_wcs car3_naxis_inferred_from_ctype_indices -- --nocapture
 ```
 
 Expected: PASS.
@@ -268,13 +268,13 @@ Expected: PASS.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_keywords.rs
+git add crates/starlink-ast/src/fitschan/wcs_keywords.rs
 git commit -m "$(cat <<'EOF'
 fix(fitschan): infer axis count from CTYPE/CRVAL/CRPIX/CDELT indices
 
@@ -294,7 +294,7 @@ EOF
 ## Task 3: B1 — CLASS reader NAXIS fallback
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_class.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_class.rs`
 
 `enc_class::read_from_cards` errors hard at line 34 when NAXIS is absent. Reuse the helper from Task 2.
 
@@ -336,7 +336,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
 - [ ] **Step 2: Run the integration tests**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_wcs jan_class_no_naxis_keyword -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_wcs jan_class_no_naxis_keyword -- --nocapture
 ```
 
 Expected: PASS.
@@ -344,7 +344,7 @@ Expected: PASS.
 - [ ] **Step 3: Run the wcsconv suite spot-check**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "jan_fits-class"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "jan_fits-class"
 ```
 
 Expected: no output (both `jan_fits-class_ast` and `jan_fits-class-rt` either pass or fail with a *different* error than "NAXIS keyword not found in CLASS header"). The string-compare half of `jan_fits-class-rt` may still fail because of CLASS-write content gaps tracked under category B (Tier 3); only the *read* error is in scope here.
@@ -352,8 +352,8 @@ Expected: no output (both `jan_fits-class_ast` and `jan_fits-class-rt` either pa
 - [ ] **Step 4: Run existing CLASS tests for regression**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_class
-cargo test -p ast-core --test test_fitschan_encodings
+cargo test -p starlink-ast --lib fitschan::enc_class
+cargo test -p starlink-ast --test test_fitschan_encodings
 ```
 
 All must remain green.
@@ -362,13 +362,13 @@ All must remain green.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_class.rs
+git add crates/starlink-ast/src/fitschan/enc_class.rs
 git commit -m "$(cat <<'EOF'
 fix(fitschan): CLASS reader infers axis count when NAXIS is absent
 
@@ -389,7 +389,7 @@ EOF
 ## Task 4: A3 — non-adjacent celestial axes
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/wcs_read.rs`
+- Modify: `crates/starlink-ast/src/fitschan/wcs_read.rs`
 
 The existing `build_general_iwc_to_world` (at `wcs_read.rs:106-184`) walks axes in FITS index order and pushes per-axis mappings into `parts: Vec<DynMapping>`. When the celestial pair is consecutive (e.g. axes 0 and 1), this works because the celestial mapping is pushed at index 0 and `i` advances to 2 to skip the second axis. When the pair is non-adjacent (e.g. axes 0 and 2 in `axes-swap.head`), the current code's `i = first_cel + 2` skips the WRONG axis: it skips the axis that physically lives at position 1 (the spectral axis WAVE), not the second celestial axis at position 2. This produces a parallel composition with the wrong axis count and ordering.
 
@@ -539,7 +539,7 @@ You will need to confirm `PermMap` is in scope. Add `use crate::mappings::PermMa
 - [ ] **Step 2: Run the integration test for axes-swap**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_wcs axes_swap_non_adjacent_celestial_axes -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_wcs axes_swap_non_adjacent_celestial_axes -- --nocapture
 ```
 
 Expected: PASS.
@@ -553,9 +553,9 @@ If it still fails: the error message tells you what's wrong. Common modes:
 The existing tests cover the consecutive-celestial case and 1D/2D shortcuts (which take an earlier return path). Confirm:
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_read::tests
-cargo test -p ast-core --test test_fitschan_wcs
-cargo test -p ast-core --test test_fitschan_wcs_write
+cargo test -p starlink-ast --lib fitschan::wcs_read::tests
+cargo test -p starlink-ast --test test_fitschan_wcs
+cargo test -p starlink-ast --test test_fitschan_wcs_write
 ```
 
 All must remain green.
@@ -563,7 +563,7 @@ All must remain green.
 - [ ] **Step 4: Run the wcsconv suite spot-check**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "axes-swap"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "axes-swap"
 ```
 
 Expected: no failure for `axes-swap_native`. Other 2D celestial+spectral or 3D fixtures that previously worked must still work.
@@ -622,7 +622,7 @@ In `wcs_read.rs::tests`, add:
 - [ ] **Step 6: Run the new unit test**
 
 ```bash
-cargo test -p ast-core --lib fitschan::wcs_read::tests::build_pixel_to_world_handles_non_adjacent_celestial_axes -- --nocapture
+cargo test -p starlink-ast --lib fitschan::wcs_read::tests::build_pixel_to_world_handles_non_adjacent_celestial_axes -- --nocapture
 ```
 
 Expected: PASS.
@@ -631,13 +631,13 @@ Expected: PASS.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/wcs_read.rs
+git add crates/starlink-ast/src/fitschan/wcs_read.rs
 git commit -m "$(cat <<'EOF'
 fix(fitschan): handle non-adjacent celestial axes in pixel-to-world build
 
@@ -670,7 +670,7 @@ EOF
 - [ ] **Step 1: Run the wcsconv suite**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: `=== wcsconv results: 111 passed, 81 failed, 0 skipped (of 192 total) ===` (108 → 111: +1 from `car3_native`, +1 from `axes-swap_native`, +1 from `jan_fits-class_ast`. `jan_fits-class-rt` decodes successfully but its write-side string-compare may still fail under category B Tier-3 work — that's expected.)
@@ -678,7 +678,7 @@ Expected: `=== wcsconv results: 111 passed, 81 failed, 0 skipped (of 192 total) 
 If only some pass, capture which still fail:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "car3|axes-swap|jan_fits"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "car3|axes-swap|jan_fits"
 ```
 
 A still-failing case needs investigation — check the error message against the fix's intended behavior.

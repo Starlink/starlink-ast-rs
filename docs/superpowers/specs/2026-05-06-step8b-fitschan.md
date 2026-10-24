@@ -25,7 +25,7 @@ Each phase produces working, testable software independently.
 ## Module Structure
 
 ```
-crates/ast-core/src/fitschan/
+crates/starlink-ast/src/fitschan/
 ├── mod.rs              # FitsChan struct, Channel impl, public API
 ├── card.rs             # FitsCard, FitsValue enum, card parsing
 ├── card_list.rs        # CardList (ordered collection with iteration)
@@ -327,7 +327,7 @@ Port the 196-case `wcsconv_tests.txt` as a data-driven test
 harness (same pattern as our simplify regression tests):
 
 ```
-crates/ast-core/tests/
+crates/starlink-ast/tests/
 ├── test_wcsconv.rs           # Data-driven harness
 ├── fixtures/fits/
 │   ├── wcsconv_tests.txt     # Test manifest

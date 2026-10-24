@@ -1,8 +1,8 @@
 [workspace]
 members = ["crates/*"]
 default-members = [
-    "crates/ast-core",
-    "crates/ast-capi",
+    "crates/starlink-ast",
+    "crates/starlink-ast-capi",
     "crates/ast-plugins",
 ]
 resolver = "2"
@@ -11,7 +11,7 @@ resolver = "2"
 edition = "2024"
 rust-version = "1.85"
 license = "LGPL-3.0-or-later"
-repository = "https://github.com/lsst-dm/starlink-astrs"
+repository = "https://github.com/lsst-dm/starlink-ast-rs"
 
 [workspace.dependencies]
 cc = "1"
@@ -56,7 +56,7 @@ all = { level = "deny", priority = -1 }
 [workspace.lints.rustdoc]
 all = { level = "deny", priority = -1 }
 
-# The audit gates in ast-core's tests parse every cited source file through
+# The audit gates in starlink-ast's tests parse every cited source file through
 # audit-tools; built unoptimised, that dominates the test suite's run time.
 [profile.dev.package.audit-tools]
 opt-level = 3

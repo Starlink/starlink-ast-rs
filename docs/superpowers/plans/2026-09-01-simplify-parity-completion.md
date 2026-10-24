@@ -8,7 +8,7 @@
 A phase 0 rebuilds the audit instrument first, because the per-cluster citation repair needs its gate to exist.
 The verification-posture ledger is the ratchet throughout: it asserts exact counts, so a partial fix cannot land quietly.
 
-**Tech Stack:** Rust 2024 (`ast-core`), C99 oracle probes under `tools/oracle_fixtures/` linked against `reference/starlink-ast`, `cargo test -p ast-core`, `cargo fmt`, `cargo clippy`.
+**Tech Stack:** Rust 2024 (`starlink-ast`), C99 oracle probes under `tools/oracle_fixtures/` linked against `reference/starlink-ast`, `cargo test -p starlink-ast`, `cargo fmt`, `cargo clippy`.
 
 **Spec:** [`docs/superpowers/specs/2026-09-01-simplify-parity-completion-design.md`](../specs/2026-09-01-simplify-parity-completion-design.md)
 
@@ -44,7 +44,7 @@ Do not attempt these; each is excluded in spec §1.3 for a stated reason.
 | `IntraMap`, `XphMap`, `StcResourceProfile` | Unported classes. Tracked by `DEFERRED_CLASSES`, which stays at 3. |
 | The `InvA` / `InvB` dump line in `cap_cmpmap_01` and `cap_cmpmap_04` | C pointer aliasing, unreproducible in owned Rust values. `docs/issues/c-library-quirks.md:320`. |
 | Four wcsconv reader-order `IsSimp` placements | `ISSIMP_PLACEMENT_LICENSED` in `test_wcsconv.rs` stays at 4. |
-| ChebyMap's linear-reduction half (`PLAN.md` §10.2) | Needs an upstream C fix through a pin move. The `UNPORTED` marker at `crates/ast-core/src/mappings/chebymap.rs:544` stays. |
+| ChebyMap's linear-reduction half (`PLAN.md` §10.2) | Needs an upstream C fix through a pin move. The `UNPORTED` marker at `crates/starlink-ast/src/mappings/chebymap.rs:544` stays. |
 | The 51 fixture files with no transform-oracle section (`PLAN.md` §9.4) | Closed by the maintainer at the next upstream sync. |
 
 ## File Structure
@@ -53,11 +53,11 @@ Do not attempt these; each is excluded in spec §1.3 for a stated reason.
 
 | Path | Responsibility |
 |---|---|
-| `crates/audit-tools/Cargo.toml` | Workspace member holding the citation derivation. Not published, not linked into `ast-core`'s build. |
+| `crates/audit-tools/Cargo.toml` | Workspace member holding the citation derivation. Not published, not linked into `starlink-ast`'s build. |
 | `crates/audit-tools/src/lib.rs` | `enclosing_rust_item(path, line)` and `enclosing_c_function(path, line)`. The single derivation both the rewriter and the gate call, so the tool and the gate cannot disagree (spec §3.1). |
 | `crates/audit-tools/src/bin/anchor-citations.rs` | Rewrites checklist citations to `file.rs:N (fn name)` form using that library. Reports rows it cannot anchor rather than guessing. |
 | `crates/audit-tools/src/c_steps.rs` | Derives the per-class C step count from a seam function body (spec §3.3). |
-| `crates/ast-core/tests/test_audit_citations.rs` | The citation and seam-column gates. Calls `audit-tools` as a dev-dependency. |
+| `crates/starlink-ast/tests/test_audit_citations.rs` | The citation and seam-column gates. Calls `audit-tools` as a dev-dependency. |
 | `tools/oracle_fixtures/gen_region_stamp_fixtures.c` | Cluster 1's stamped / not-stamped Region pair, and a committed generator for the four existing `cefit_*` fixtures, which currently have none. |
 | `tools/oracle_fixtures/gen_normbox_fixtures.c` | Cluster 3's pole-straddling and non-straddling cases for `Ellipse::RegBaseMesh`, `Polygon::RegBaseBox` and `CmpFrame::norm_box`. |
 | `tools/oracle_fixtures/gen_frame_in_mapping_slot.c` | Cluster 4's single failing fixture: a FrameSet whose `Map2` slot holds a `CmpFrame`. |
@@ -67,14 +67,14 @@ Do not attempt these; each is excluded in spec §1.3 for a stated reason.
 
 | Path | What changes |
 |---|---|
-| `crates/ast-core/tests/test_verification_ledger.rs` | Row counts fall as clusters land. One row added in phase 0 (`CHECKLISTS_UNREPAIRED`) and removed again at cluster 7. |
-| `crates/ast-core/tests/test_simplify_regression.rs` | `SERIAL_UNGATED` 6 → 0, `NO_ISSIMP_CARD_UNGATED` 1 → 0, `ISSIMP_DISAGREEMENTS` 7 → 0, `ISSIMP_PLACEMENT_LICENSED` 1 → 0. |
-| `crates/ast-core/tests/test_mapmerge_audit.rs` | Verdict vocabulary extended to spec §3.4; `C_SIMPLIFY_SEAMS` deepened to per-class steps; the `cmpframe.c` row moves off `gap:`. |
-| `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt` | Four `skip_string_compare` rows lose their `yes`; new fixture rows added. |
-| `crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt` | Both override entries removed. |
+| `crates/starlink-ast/tests/test_verification_ledger.rs` | Row counts fall as clusters land. One row added in phase 0 (`CHECKLISTS_UNREPAIRED`) and removed again at cluster 7. |
+| `crates/starlink-ast/tests/test_simplify_regression.rs` | `SERIAL_UNGATED` 6 → 0, `NO_ISSIMP_CARD_UNGATED` 1 → 0, `ISSIMP_DISAGREEMENTS` 7 → 0, `ISSIMP_PLACEMENT_LICENSED` 1 → 0. |
+| `crates/starlink-ast/tests/test_mapmerge_audit.rs` | Verdict vocabulary extended to spec §3.4; `C_SIMPLIFY_SEAMS` deepened to per-class steps; the `cmpframe.c` row moves off `gap:`. |
+| `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt` | Four `skip_string_compare` rows lose their `yes`; new fixture rows added. |
+| `crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt` | Both override entries removed. |
 | `docs/audits/mapmerge/*.md` | 978 citations re-anchored with `(fn …)`; a seam column added; verdicts moved to the §3.4 vocabulary. |
 | `PLAN.md` | §6 ledger mirrored in the same commits; §9.1, §9.2, §9.5, §9.6 and §10.3 close. |
-| `crates/ast-core/src/mappings/`, `src/regions/`, `src/frames/` | The ports themselves, per cluster. |
+| `crates/starlink-ast/src/mappings/`, `src/regions/`, `src/frames/` | The ports themselves, per cluster. |
 
 ## Task map
 
@@ -131,7 +131,7 @@ If they disagree, stop — every line number in this plan is against that pin.
 
 ```bash
 mkdir -p /tmp/baseline
-cargo test -p ast-core 2>&1 | tee /tmp/baseline/all.txt | tail -40
+cargo test -p starlink-ast 2>&1 | tee /tmp/baseline/all.txt | tail -40
 cargo fmt --all -- --check && echo FMT-CLEAN
 cargo clippy --workspace -- -D warnings 2>&1 | tail -5
 ```
@@ -142,10 +142,10 @@ If anything fails at baseline, stop and report — this plan assumes a green HEA
 - [x] **Step 4: Record the starting relaxation counts**
 
 ```bash
-cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -5
-grep -c "^[^#]" crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt
+cargo test -p starlink-ast --test test_verification_ledger 2>&1 | tail -5
+grep -c "^[^#]" crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt
 awk -F'|' '!/^#/ && NF>3 { gsub(/ /,"",$4); if ($4=="yes") print $1 }' \
-  crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt
+  crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt
 ls docs/audits/mapmerge/*.md | grep -vc README
 ```
 
@@ -168,7 +168,7 @@ No commit for this task — it produces no tracked change.
 ### Task 2: The citation derivation library
 
 One derivation, called by both the rewriter and the gate, so they cannot disagree (spec §3.1).
-It is a workspace member rather than a module inside `ast-core` because `ast-core` must not gain a dependency that exists only for documentation tooling.
+It is a workspace member rather than a module inside `starlink-ast` because `starlink-ast` must not gain a dependency that exists only for documentation tooling.
 
 **Files:**
 - Create: `crates/audit-tools/Cargo.toml`
@@ -546,12 +546,12 @@ A file is repaired when its header carries `Citations: verified against pin 3e60
 The count of files *not* yet carrying it is a ledger row, so the remainder is an exact number that has to fall rather than a skip mode.
 
 **Files:**
-- Create: `crates/ast-core/tests/test_audit_citations.rs`
+- Create: `crates/starlink-ast/tests/test_audit_citations.rs`
 - Create: `crates/audit-tools/src/bin/anchor-citations.rs`
-- Modify: `crates/ast-core/Cargo.toml` (dev-dependency)
+- Modify: `crates/starlink-ast/Cargo.toml` (dev-dependency)
 - Modify: `docs/audits/mapmerge/sphmap.md`, `docs/audits/mapmerge/region_polygon.md`
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs`, `PLAN.md`
-- Test: `crates/ast-core/tests/test_audit_citations.rs`
+- Modify: `crates/starlink-ast/tests/test_verification_ledger.rs`, `PLAN.md`
+- Test: `crates/starlink-ast/tests/test_audit_citations.rs`
 
 **Interfaces:**
 - Consumes: `audit_tools::{parse_citation, enclosing_rust_item, enclosing_c_function, Citation}` from Task 2.
@@ -559,7 +559,7 @@ The count of files *not* yet carrying it is a ledger row, so the remainder is an
 
 - [x] **Step 1: Write the failing gate**
 
-Create `crates/ast-core/tests/test_audit_citations.rs`:
+Create `crates/starlink-ast/tests/test_audit_citations.rs`:
 
 ```rust
 //! The audit checklists' citations have to still designate what they claim.
@@ -582,7 +582,7 @@ fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
-        .expect("crates/ast-core has two ancestors")
+        .expect("crates/starlink-ast has two ancestors")
         .to_path_buf()
 }
 
@@ -612,7 +612,7 @@ fn resolve(file: &str) -> Option<PathBuf> {
     let root = repo_root();
     if file.ends_with(".rs") {
         let mut found = None;
-        let mut stack = vec![root.join("crates/ast-core/src")];
+        let mut stack = vec![root.join("crates/starlink-ast/src")];
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).expect("src dir readable") {
                 let path = entry.expect("readable entry").path();
@@ -709,14 +709,14 @@ fn every_repaired_rust_citation_names_a_file_that_exists() {
 
 - [x] **Step 2: Add the dev-dependency and run the gate**
 
-In `crates/ast-core/Cargo.toml`, under `[dev-dependencies]`:
+In `crates/starlink-ast/Cargo.toml`, under `[dev-dependencies]`:
 
 ```toml
 audit-tools = { path = "../audit-tools" }
 ```
 
 ```bash
-cargo test -p ast-core --test test_audit_citations 2>&1 | tail -20
+cargo test -p starlink-ast --test test_audit_citations 2>&1 | tail -20
 ```
 
 Expected: PASS with nothing checked — no checklist carries the marker yet.
@@ -748,7 +748,7 @@ fn repo_root() -> PathBuf {
 
 fn resolve(root: &Path, file: &str) -> Option<PathBuf> {
     if file.ends_with(".rs") {
-        let mut stack = vec![root.join("crates/ast-core/src")];
+        let mut stack = vec![root.join("crates/starlink-ast/src")];
         let mut found = None;
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).ok()? {
@@ -853,7 +853,7 @@ Citations: verified against pin 3e60abaa
 - [x] **Step 5: Run the gate and expect it to bite**
 
 ```bash
-cargo test -p ast-core --test test_audit_citations 2>&1 | tail -30
+cargo test -p starlink-ast --test test_audit_citations 2>&1 | tail -30
 ```
 
 Expected: FAIL on any row whose number drifted since it was hand-anchored, naming the item actually at that line.
@@ -861,7 +861,7 @@ Fix each by reading the code, then re-run until PASS.
 
 - [x] **Step 6: Add the ledger row**
 
-In `crates/ast-core/tests/test_verification_ledger.rs`, `LEDGER` cannot hold this one — the count is of files, not of a `const` — so add it to `manifest_relaxations()` instead, beside the existing manifest-derived rows:
+In `crates/starlink-ast/tests/test_verification_ledger.rs`, `LEDGER` cannot hold this one — the count is of files, not of a `const` — so add it to `manifest_relaxations()` instead, beside the existing manifest-derived rows:
 
 ```rust
     let unrepaired = std::fs::read_dir(
@@ -912,9 +912,9 @@ Add a row to the Verification-posture ledger table in `PLAN.md` §6, matching th
 ```
 
 ```bash
-cargo test -p ast-core --test test_audit_citations --test test_verification_ledger 2>&1 | tail -10
+cargo test -p starlink-ast --test test_audit_citations --test test_verification_ledger 2>&1 | tail -10
 cargo fmt --all && cargo clippy --workspace -- -D warnings
-git add -A crates/audit-tools crates/ast-core docs/audits/mapmerge PLAN.md
+git add -A crates/audit-tools crates/starlink-ast docs/audits/mapmerge PLAN.md
 git commit -F - <<'MSG'
 audit: gate the checklist citations that claim an item
 
@@ -949,10 +949,10 @@ Extension points: classified
 
 **Files:**
 - Modify: `crates/audit-tools/src/lib.rs`
-- Modify: `crates/ast-core/tests/test_mapmerge_audit.rs:158` (`verdict_is_valid`)
-- Modify: `crates/ast-core/tests/test_audit_citations.rs`
+- Modify: `crates/starlink-ast/tests/test_mapmerge_audit.rs:158` (`verdict_is_valid`)
+- Modify: `crates/starlink-ast/tests/test_audit_citations.rs`
 - Modify: `docs/audits/mapmerge/sphmap.md`, `docs/audits/mapmerge/region_polygon.md`, `docs/audits/mapmerge/README.md`
-- Test: `crates/ast-core/tests/test_audit_citations.rs`, `crates/audit-tools/src/lib.rs`
+- Test: `crates/starlink-ast/tests/test_audit_citations.rs`, `crates/audit-tools/src/lib.rs`
 
 **Interfaces:**
 - Consumes: `audit_tools::{parse_citation, enclosing_rust_item}`; the `REPAIRED` marker from Task 3.
@@ -1082,7 +1082,7 @@ Expected: PASS, 5 tests.
 
 - [x] **Step 5: Extend the verdict vocabulary**
 
-In `crates/ast-core/tests/test_mapmerge_audit.rs`, replace the body of `verdict_is_valid` with the full spec §3.4 vocabulary.
+In `crates/starlink-ast/tests/test_mapmerge_audit.rs`, replace the body of `verdict_is_valid` with the full spec §3.4 vocabulary.
 `mirrors-quirk:` is spelled `divergence:` in this repo already, on three `chebymap.md` rows, and keeps that spelling — the requirement is that the verdict names an anchor in the quirks document, not that it uses a particular word:
 
 ```rust
@@ -1106,7 +1106,7 @@ fn verdict_is_valid(verdict: &str) -> bool {
 - [x] **Step 6: Run the audit test and confirm nothing regressed**
 
 ```bash
-cargo test -p ast-core --test test_mapmerge_audit 2>&1 | tail -15
+cargo test -p starlink-ast --test test_mapmerge_audit 2>&1 | tail -15
 ```
 
 Expected: PASS — the vocabulary only widened, and `C_SIMPLIFY_SEAMS`'s `deferred:` / `driver:` verdicts, which the previous body did not list, are now accepted by the same predicate rather than by a separate one.
@@ -1114,7 +1114,7 @@ If `every_checklist_row_has_a_verdict` now fails, a row is using a word outside 
 
 - [x] **Step 7: Write the failing architecture-column gate**
 
-Append to `crates/ast-core/tests/test_audit_citations.rs`:
+Append to `crates/starlink-ast/tests/test_audit_citations.rs`:
 
 ```rust
 /// The marker a checklist carries once its rows classify their C steps.
@@ -1216,7 +1216,7 @@ For `region_polygon.md`, the classification follows from `Simplify` being a vtab
 Update the table's header row and its `|---|` separator in both files.
 
 ```bash
-cargo test -p ast-core --test test_audit_citations 2>&1 | tail -30
+cargo test -p starlink-ast --test test_audit_citations 2>&1 | tail -30
 ```
 
 Expected: FAIL on any architecture row whose Rust site is not in an `impl Trait for Type` block.
@@ -1224,7 +1224,7 @@ For `region_polygon.md` the cited sites are inside `impl Region for Polygon`, so
 
 - [x] **Step 9: Extend the unrepaired count to cover both markers**
 
-In `crates/ast-core/tests/test_verification_ledger.rs`, the `unrepaired` closure added in Task 3 counts files missing the citation marker.
+In `crates/starlink-ast/tests/test_verification_ledger.rs`, the `unrepaired` closure added in Task 3 counts files missing the citation marker.
 Change its predicate so a file counts as repaired only when it carries both markers:
 
 ```rust
@@ -1252,7 +1252,7 @@ Extension points: classified
 Record in the same README that `architecture` means a generic driver in another file dispatches to the step through the vtab, and that an architecture row's Rust site must be a trait method.
 
 ```bash
-cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit \
+cargo test -p starlink-ast --test test_audit_citations --test test_mapmerge_audit \
   --test test_verification_ledger 2>&1 | tail -10
 cargo fmt --all && cargo clippy --workspace -- -D warnings
 git add -A crates docs/audits/mapmerge
@@ -1286,9 +1286,9 @@ AST's house style makes this mechanical — every step inside a seam body is pre
 **Files:**
 - Create: `crates/audit-tools/src/c_steps.rs`
 - Modify: `crates/audit-tools/src/lib.rs` (`mod c_steps; pub use`)
-- Modify: `crates/ast-core/tests/test_audit_citations.rs`
+- Modify: `crates/starlink-ast/tests/test_audit_citations.rs`
 - Modify: `docs/audits/mapmerge/sphmap.md`, `docs/audits/mapmerge/region_polygon.md`
-- Test: `crates/audit-tools/src/c_steps.rs`, `crates/ast-core/tests/test_audit_citations.rs`
+- Test: `crates/audit-tools/src/c_steps.rs`, `crates/starlink-ast/tests/test_audit_citations.rs`
 
 **Interfaces:**
 - Consumes: `audit_tools::{c_functions, parse_citation}` from Tasks 2 and 4.
@@ -1427,7 +1427,7 @@ Expected: PASS, 7 tests.
 
 - [x] **Step 5: Write the failing coverage gate**
 
-Append to `crates/ast-core/tests/test_audit_citations.rs`:
+Append to `crates/starlink-ast/tests/test_audit_citations.rs`:
 
 ```rust
 /// Every C step inside a function a repaired checklist cites is covered by one
@@ -1507,7 +1507,7 @@ fn every_c_step_in_a_cited_body_is_covered_by_a_row() {
 - [x] **Step 6: Run it and close what it reports**
 
 ```bash
-cargo test -p ast-core --test test_audit_citations 2>&1 | tail -40
+cargo test -p starlink-ast --test test_audit_citations 2>&1 | tail -40
 ```
 
 Expected: FAIL, listing the step comments in `SphMap`'s and `Polygon`'s cited bodies that no row covers.
@@ -1524,7 +1524,7 @@ Do not widen the gate.
 - [x] **Step 7: Verify and commit**
 
 ```bash
-cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit 2>&1 | tail -10
+cargo test -p starlink-ast --test test_audit_citations --test test_mapmerge_audit 2>&1 | tail -10
 cargo fmt --all && cargo clippy --workspace -- -D warnings
 git add -A crates docs/audits/mapmerge
 git commit -F - <<'MSG'
@@ -1565,7 +1565,7 @@ which writes the card only when `astGetIsSimple` is non-zero, never writes one
 for a Frame-kind object however many times `astSimplify` has stamped it.
 The port reproduces the *output* by accident — no Frame-kind class holds a
 `SimplifiedRecord`, so the `Mapping` trait defaults at
-`crates/ast-core/src/mappings/mod.rs:564-582` return `false` — but the harness
+`crates/starlink-ast/src/mappings/mod.rs:564-582` return `false` — but the harness
 asserts the opposite, requiring a card on every simplified result
 (`test_simplify_regression.rs:402-406`), and `neg_box_asymmetric_2d` is licensed
 out of that wrong assertion rather than gated by the right one.
@@ -1609,7 +1609,7 @@ it is the original, and the constructor it was looking for does not exist.
 `cap_poly_bent_edges` never loses the record at all, because its MathMap carries
 no `SimpFI` / `SimpIF` / `Seeded` card and `TestSimpFI` is therefore false.
 
-`FrameSet::simplified` (`crates/ast-core/src/frames/frameset.rs:1647-1670`)
+`FrameSet::simplified` (`crates/starlink-ast/src/frames/frameset.rs:1647-1670`)
 already mirrors `frameset.c:10111` edge for edge, including the unconditional
 `edge.mapping = simplified` that stands in for C's in-place stamp of the same
 pointer, so rule 2 is the only missing piece on the port side.
@@ -1619,20 +1619,20 @@ pointer, so rule 2 is the only missing piece on the port side.
 ### Task 6: A Frame-kind result never reports `IsSimple`
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/mod.rs:564-582` (record the Frame rule on the two trait defaults)
-- Modify: `crates/ast-core/tests/test_simplify_regression.rs:400-410` (replace the file-wide card requirement), `:545-547` (delete `NO_ISSIMP_CARD_UNGATED`), `:565-577` (delete its license assertion)
+- Modify: `crates/starlink-ast/src/mappings/mod.rs:564-582` (record the Frame rule on the two trait defaults)
+- Modify: `crates/starlink-ast/tests/test_simplify_regression.rs:400-410` (replace the file-wide card requirement), `:545-547` (delete `NO_ISSIMP_CARD_UNGATED`), `:565-577` (delete its license assertion)
 - Modify: `PLAN.md:349` (delete the ledger row)
 
 **Interfaces:**
-- Consumes: `ast_core::serial::AnyObject::from_mapping(m: &dyn Mapping) -> Option<AnyObject>` and `AnyObject::as_frame(&self) -> Option<&dyn Frame>`, both already public (`crates/ast-core/src/serial/mod.rs:1480`, `:1647`); `common::strip_is_simp(&str) -> String`.
-- Produces: two free functions in `crates/ast-core/tests/test_simplify_regression.rs`, used by this task and re-run unchanged by tasks 7 and 9:
+- Consumes: `starlink_ast::serial::AnyObject::from_mapping(m: &dyn Mapping) -> Option<AnyObject>` and `AnyObject::as_frame(&self) -> Option<&dyn Frame>`, both already public (`crates/starlink-ast/src/serial/mod.rs:1480`, `:1647`); `common::strip_is_simp(&str) -> String`.
+- Produces: two free functions in `crates/starlink-ast/tests/test_simplify_regression.rs`, used by this task and re-run unchanged by tasks 7 and 9:
   - `fn result_is_frame_kind(m: &dyn Mapping) -> bool`
   - `fn has_top_level_is_simp(dump: &str) -> bool`
 
 - [x] **Step 1: Confirm the harness assertion is the file-wide one described above**
 
 ```bash
-sed -n '400,410p' crates/ast-core/tests/test_simplify_regression.rs
+sed -n '400,410p' crates/starlink-ast/tests/test_simplify_regression.rs
 ```
 
 Expected: the comment "the result of `simplify` always does (mapping.c:24763
@@ -1644,7 +1644,7 @@ inner Mapping to carry one, ever tripped it.
 
 - [x] **Step 2: Add the two helpers at the end of the file**
 
-Append to `crates/ast-core/tests/test_simplify_regression.rs`:
+Append to `crates/starlink-ast/tests/test_simplify_regression.rs`:
 
 ```rust
 /// Whether `m` is a Frame, a FrameSet or a Region.
@@ -1672,20 +1672,20 @@ fn has_top_level_is_simp(dump: &str) -> bool {
 
 - [x] **Step 3: Add the imports the helpers need**
 
-At the top of `crates/ast-core/tests/test_simplify_regression.rs`, extend the
-existing `ast_core` imports so `AnyObject` and `Mapping` are in scope:
+At the top of `crates/starlink-ast/tests/test_simplify_regression.rs`, extend the
+existing `starlink_ast` imports so `AnyObject` and `Mapping` are in scope:
 
 ```rust
-use ast_core::serial::AnyObject;
+use starlink_ast::serial::AnyObject;
 ```
 
-Run `grep -n "^use " crates/ast-core/tests/test_simplify_regression.rs` first
+Run `grep -n "^use " crates/starlink-ast/tests/test_simplify_regression.rs` first
 and add only what is missing — `Mapping` is already imported for the transform
 checks.
 
 - [x] **Step 4: Replace the file-wide requirement with C's rule**
 
-In `crates/ast-core/tests/test_simplify_regression.rs`, replace
+In `crates/starlink-ast/tests/test_simplify_regression.rs`, replace
 
 ```rust
                 // A negative fixture's reference is its own input, which was
@@ -1763,7 +1763,7 @@ with nothing — `other_failures` is already the list the panic counts.
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -30
 ```
 
 Expected: PASS. The three other Frame-kind identical-reference rows —
@@ -1775,7 +1775,7 @@ that is a real finding to fix before continuing, not a row to license.
 
 - [x] **Step 7: Record the rule where the port relies on it**
 
-In `crates/ast-core/src/mappings/mod.rs`, extend the doc comment on
+In `crates/starlink-ast/src/mappings/mod.rs`, extend the doc comment on
 `has_been_simplified` (currently ending "Serialized as the `IsSimp` token.")
 with the paragraph that makes the default deliberate rather than incidental:
 
@@ -1838,14 +1838,14 @@ MSG
 ### Task 7: The `IsSimp` card is discarded on load — ZoomMap and MathMap
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/zoom.rs:48-51` (add the setter), `:312-321` (route `from_node` through it)
-- Modify: `crates/ast-core/src/mappings/mathmap/mod.rs:698-733` (route `from_node` through the three setters it already has)
-- Modify: `crates/ast-core/tests/test_simplify_regression.rs:514-543` (delete two `SERIAL_UNGATED` rows), `:583-606` (delete two `ISSIMP_DISAGREEMENTS` rows)
+- Modify: `crates/starlink-ast/src/mappings/zoom.rs:48-51` (add the setter), `:312-321` (route `from_node` through it)
+- Modify: `crates/starlink-ast/src/mappings/mathmap/mod.rs:698-733` (route `from_node` through the three setters it already has)
+- Modify: `crates/starlink-ast/tests/test_simplify_regression.rs:514-543` (delete two `SERIAL_UNGATED` rows), `:583-606` (delete two `ISSIMP_DISAGREEMENTS` rows)
 - Modify: `docs/issues/c-library-quirks.md` (append the dump/load asymmetry)
 - Modify: `PLAN.md:346`, `PLAN.md:348` (ledger counts)
 
 **Interfaces:**
-- Consumes: `SimplifiedRecord::clear(&mut self)` (`crates/ast-core/src/mappings/mod.rs:154-196`); `Node::get_double(&self, key: &str, default: f64) -> f64`, `Node::get_int(&self, key: &str, default: i64) -> i64` (`crates/ast-core/src/serial/node.rs`); the existing `MathMap::set_simp_fi(&mut self, val: bool)`, `set_simp_if(&mut self, val: bool)`, `set_seed(&mut self, seed: i32)` (`crates/ast-core/src/mappings/mathmap/mod.rs:182-215`).
+- Consumes: `SimplifiedRecord::clear(&mut self)` (`crates/starlink-ast/src/mappings/mod.rs:154-196`); `Node::get_double(&self, key: &str, default: f64) -> f64`, `Node::get_int(&self, key: &str, default: i64) -> i64` (`crates/starlink-ast/src/serial/node.rs`); the existing `MathMap::set_simp_fi(&mut self, val: bool)`, `set_simp_if(&mut self, val: bool)`, `set_seed(&mut self, seed: i32)` (`crates/starlink-ast/src/mappings/mathmap/mod.rs:182-215`).
 - Produces: `ZoomMap::set_factor(&mut self, factor: f64) -> AstResult<()>` — `pub(crate)`, used by Task 8's gate and by nothing in the public API.
 
 - [x] **Step 1: Read C's loader for both classes and confirm the routing**
@@ -1866,7 +1866,7 @@ runs first.
 
 - [x] **Step 2: Add `ZoomMap::set_factor`**
 
-In `crates/ast-core/src/mappings/zoom.rs`, immediately after the `factor`
+In `crates/starlink-ast/src/mappings/zoom.rs`, immediately after the `factor`
 getter:
 
 ```rust
@@ -1894,7 +1894,7 @@ getter:
 
 - [x] **Step 3: Route `ZoomMap::from_node` through it**
 
-Replace the body of `from_node` in `crates/ast-core/src/mappings/zoom.rs`:
+Replace the body of `from_node` in `crates/starlink-ast/src/mappings/zoom.rs`:
 
 ```rust
     fn from_node(node: &Node) -> AstResult<Self> {
@@ -1925,7 +1925,7 @@ loader routes nothing must still honor the card.
 
 - [x] **Step 4: Route `MathMap::from_node` through its three setters**
 
-In `crates/ast-core/src/mappings/mathmap/mod.rs`, replace the attribute reads
+In `crates/starlink-ast/src/mappings/mathmap/mod.rs`, replace the attribute reads
 and the struct literal at the end of `from_node`. Read the raw values as now,
 but construct with the *unset* values and apply each through its setter:
 
@@ -1976,7 +1976,7 @@ harmless because it is used only inside the same branch, and
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -40
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -40
 ```
 
 Expected: the license assertions now fail, because the two `cefit_*` cases pass
@@ -1985,7 +1985,7 @@ reason the deletions are a separate step from the code.
 
 - [x] **Step 6: Delete the two `SERIAL_UNGATED` rows**
 
-In `crates/ast-core/tests/test_simplify_regression.rs`, delete these two entries
+In `crates/starlink-ast/tests/test_simplify_regression.rs`, delete these two entries
 and the `(B)` paragraph of the comment above `SERIAL_UNGATED` that describes
 them:
 
@@ -2016,8 +2016,8 @@ it.
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -20
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -10
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -20
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -10
 ```
 
 Expected: PASS. `cap_poly_unc_frame`, `cap_poly_bent_edges` and
@@ -2131,21 +2131,21 @@ and are cluster 5's, at Task 23; `IntraMap::IntraFlag` is excluded with the
 class.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/lutmap.rs:895-926` (`from_node`)
-- Modify: `crates/ast-core/src/mappings/polymap.rs:2022-2043` (`from_node`)
-- Modify: `crates/ast-core/src/mappings/splinemap.rs:1083-1104` (`from_node`)
-- Modify: `crates/ast-core/src/mappings/sphmap.rs:425-451` (`from_node`)
-- Modify: `crates/ast-core/src/mappings/wcsmap.rs:1168-1205` (`from_node`, ordering)
-- Modify: `crates/ast-core/src/mappings/perm.rs:1328-1337` (`from_node`)
-- Modify: `crates/ast-core/tests/test_clear_on_set.rs` (add the load-path gate)
+- Modify: `crates/starlink-ast/src/mappings/lutmap.rs:895-926` (`from_node`)
+- Modify: `crates/starlink-ast/src/mappings/polymap.rs:2022-2043` (`from_node`)
+- Modify: `crates/starlink-ast/src/mappings/splinemap.rs:1083-1104` (`from_node`)
+- Modify: `crates/starlink-ast/src/mappings/sphmap.rs:425-451` (`from_node`)
+- Modify: `crates/starlink-ast/src/mappings/wcsmap.rs:1168-1205` (`from_node`, ordering)
+- Modify: `crates/starlink-ast/src/mappings/perm.rs:1328-1337` (`from_node`)
+- Modify: `crates/starlink-ast/tests/test_clear_on_set.rs` (add the load-path gate)
 
 **Interfaces:**
-- Consumes: `ast_core::to_native_string(&AnyObject) -> AstResult<String>` and `ast_core::from_native_string(&str) -> AstResult<AnyObject>`; `AnyObject::from_mapping(&dyn Mapping) -> Option<AnyObject>`, `AnyObject::as_mapping(&self) -> Option<&dyn Mapping>` (`crates/ast-core/src/serial/mod.rs:1480`, `:1594`); `Node::get(&self, key: &str) -> Option<&NodeValue>`, which is case-insensitive and reports `Unset` as absent (`node.rs:135-143`); the setters listed in the table above; `ZoomMap::set_factor` from Task 7.
-- Produces: `fn load_discards(m: impl Mapping, what: &str)` in `crates/ast-core/tests/test_clear_on_set.rs`.
+- Consumes: `starlink_ast::to_native_string(&AnyObject) -> AstResult<String>` and `starlink_ast::from_native_string(&str) -> AstResult<AnyObject>`; `AnyObject::from_mapping(&dyn Mapping) -> Option<AnyObject>`, `AnyObject::as_mapping(&self) -> Option<&dyn Mapping>` (`crates/starlink-ast/src/serial/mod.rs:1480`, `:1594`); `Node::get(&self, key: &str) -> Option<&NodeValue>`, which is case-insensitive and reports `Unset` as absent (`node.rs:135-143`); the setters listed in the table above; `ZoomMap::set_factor` from Task 7.
+- Produces: `fn load_discards(m: impl Mapping, what: &str)` in `crates/starlink-ast/tests/test_clear_on_set.rs`.
 
 - [x] **Step 1: Write the failing gate**
 
-Append to `crates/ast-core/tests/test_clear_on_set.rs`:
+Append to `crates/starlink-ast/tests/test_clear_on_set.rs`:
 
 ```rust
 /// Record the flag on `m`, dump it to native, read it back, and require the
@@ -2233,21 +2233,21 @@ fn load_discards_the_record_for_every_clear_on_set_class() {
 Extend the imports at the top of the file with what the new cases need:
 
 ```rust
-use ast_core::mappings::{ShiftMap, SphMap, ZoomMap};
-use ast_core::{AnyObject, from_native_string, to_native_string};
+use starlink_ast::mappings::{ShiftMap, SphMap, ZoomMap};
+use starlink_ast::{AnyObject, from_native_string, to_native_string};
 ```
 
-Run `grep -n "^use \|^}" crates/ast-core/tests/test_clear_on_set.rs | head` and
-merge these into the existing `use ast_core::mappings::{…}` list rather than
+Run `grep -n "^use \|^}" crates/starlink-ast/tests/test_clear_on_set.rs | head` and
+merge these into the existing `use starlink_ast::mappings::{…}` list rather than
 adding a second one. `SphMap::new()` takes no arguments; check with
-`grep -n "pub fn new" crates/ast-core/src/mappings/sphmap.rs` and use the
+`grep -n "pub fn new" crates/starlink-ast/src/mappings/sphmap.rs` and use the
 constructor as it stands.
 
 - [x] **Step 2: Run it and read which classes fail**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
+cargo test -p starlink-ast --test test_clear_on_set 2>&1 | tail -20
 ```
 
 Expected: `load_discards_the_record_for_every_clear_on_set_class` fails on the
@@ -2257,7 +2257,7 @@ list order, re-running after each so the failure moves down the list.
 
 - [x] **Step 3: LutMap**
 
-In `crates/ast-core/src/mappings/lutmap.rs`, after the `if base.inverted {
+In `crates/starlink-ast/src/mappings/lutmap.rs`, after the `if base.inverted {
 m.invert(); }` block in `from_node` and before `Ok(m)`:
 
 ```rust
@@ -2272,7 +2272,7 @@ m.invert(); }` block in `from_node` and before `Ok(m)`:
 
 - [x] **Step 4: PolyMap**
 
-In `crates/ast-core/src/mappings/polymap.rs`, in the same position in
+In `crates/starlink-ast/src/mappings/polymap.rs`, in the same position in
 `from_node`:
 
 ```rust
@@ -2292,7 +2292,7 @@ In `crates/ast-core/src/mappings/polymap.rs`, in the same position in
 
 - [x] **Step 5: SplineMap**
 
-In `crates/ast-core/src/mappings/splinemap.rs`, after the line
+In `crates/starlink-ast/src/mappings/splinemap.rs`, after the line
 `m.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);`
 and before `Ok(m)`:
 
@@ -2313,7 +2313,7 @@ and before `Ok(m)`:
 
 - [x] **Step 6: SphMap**
 
-In `crates/ast-core/src/mappings/sphmap.rs`, in the same position:
+In `crates/starlink-ast/src/mappings/sphmap.rs`, in the same position:
 
 ```rust
         // C re-applies both attributes through their setters when the Test
@@ -2333,7 +2333,7 @@ count as set.
 
 - [x] **Step 7: WcsMap — install the record before the setters, not after**
 
-In `crates/ast-core/src/mappings/wcsmap.rs`, `from_node` calls the two setters
+In `crates/starlink-ast/src/mappings/wcsmap.rs`, `from_node` calls the two setters
 and only then `wcs.set_has_been_simplified(base.has_been_simplified)`, so the
 record is installed after the clears and survives. Move that call to just after
 the `WcsMap::new` line:
@@ -2355,7 +2355,7 @@ and delete the later call:
 
 - [x] **Step 8: PermMap — route through the setter, and install the record first**
 
-In `crates/ast-core/src/mappings/perm.rs`, `from_node` assigns the field
+In `crates/starlink-ast/src/mappings/perm.rs`, `from_node` assigns the field
 directly and installs the record afterwards. Replace
 
 ```rust
@@ -2393,8 +2393,8 @@ finds the card the serializer writes.
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -10
-cargo test -p ast-core 2>&1 | tail -40
+cargo test -p starlink-ast --test test_clear_on_set 2>&1 | tail -10
+cargo test -p starlink-ast 2>&1 | tail -40
 ```
 
 Expected: PASS throughout, including the whole `.simp` corpus and the native
@@ -2515,7 +2515,7 @@ and `cap_poly_bent_edges` — whose MathMap carries no `SimpFI` / `SimpIF` /
 `Seeded` card, so `TestSimpFI` is false and nothing is routed — is the control
 that keeps its card (§9.1).
 
-The direct half is gated by `crates/ast-core/tests/test_clear_on_set.rs`: a case
+The direct half is gated by `crates/starlink-ast/tests/test_clear_on_set.rs`: a case
 per setter, plus `record_survives_invert_and_back`, which pins an operation C
 does *not* cover (`mapping.h:424-437`) so the other assertions cannot pass on a
 port that never records anything, plus `load_discards_the_record_for_every_clear_on_set_class`,
@@ -2561,7 +2561,7 @@ checklists carry per-step verdicts, not cluster status.
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core 2>&1 | tail -20
+cargo test -p starlink-ast 2>&1 | tail -20
 grep -n "ISSIMP_DISAGREEMENTS\|SERIAL_UNGATED\|NO_ISSIMP_CARD_UNGATED" PLAN.md
 ```
 
@@ -2570,7 +2570,7 @@ Expected: PASS, and the ledger shows `ISSIMP_DISAGREEMENTS` at 5,
 count against the source lists:
 
 ```bash
-grep -n "ISSIMP_DISAGREEMENTS" -A 26 crates/ast-core/tests/test_simplify_regression.rs | grep -c '"'
+grep -n "ISSIMP_DISAGREEMENTS" -A 26 crates/starlink-ast/tests/test_simplify_regression.rs | grep -c '"'
 ```
 
 - [x] **Step 7: Commit**
@@ -2617,9 +2617,9 @@ cd /sdf/home/t/timj/WORK/starlink-astrs
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 git stash list | head -1
 # Back out only the Region IsSimp stamping, leaving the tests in place.
-git diff HEAD~4 --stat -- crates/ast-core/src
-git checkout HEAD~4 -- crates/ast-core/src/regions/
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
+git diff HEAD~4 --stat -- crates/starlink-ast/src
+git checkout HEAD~4 -- crates/starlink-ast/src/regions/
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
 ```
 
 Expected: `cefit_circle_conformal`, `cefit_circle_nonconformal_keep` and
@@ -2628,8 +2628,8 @@ closed them — find what did before continuing, because the cluster's evidence 
 then attributing the result to the wrong change.
 
 ```bash
-git checkout HEAD -- crates/ast-core/src/regions/
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
+git checkout HEAD -- crates/starlink-ast/src/regions/
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
 ```
 
 Expected: back to green. The revert is never committed.
@@ -2827,7 +2827,7 @@ that `-Wl,--disable-new-dtags` survived into `RPATH`.
 - [x] **Step 4: Reproduce one known-fresh reference exactly**
 
 ```bash
-cd crates/ast-core/tests/fixtures/native/reference
+cd crates/starlink-ast/tests/fixtures/native/reference
 ../../../../../../tools/oracle_fixtures/gen_simp \
    simplify_fixtures/cap_specmap_02.map /tmp/cap_specmap_02.freshC
 diff simplify_fixtures/cap_specmap_02.simp /tmp/cap_specmap_02.freshC && echo BYTE-EXACT
@@ -2840,7 +2840,7 @@ conditions and nothing built on it means anything.
 - [x] **Step 5: Check the `Comment` / `Indent` arguments against the one reference captured without them**
 
 ```bash
-cd crates/ast-core/tests/fixtures/native/reference
+cd crates/starlink-ast/tests/fixtures/native/reference
 ../../../../../../tools/oracle_fixtures/gen_simp lsst.ast /tmp/lsst.freshC 0 0
 diff lsst.simp /tmp/lsst.freshC && echo BYTE-EXACT
 ```
@@ -3078,7 +3078,7 @@ SRC=$HERE/reference/starlink-ast
 make -C "$HERE/tools/oracle_fixtures" gen_simp >/dev/null
 
 exec python3 "$HERE/tools/oracle_fixtures/check_simplify_fresh.py" \
-   "$HERE/crates/ast-core/tests/fixtures/native/reference" \
+   "$HERE/crates/starlink-ast/tests/fixtures/native/reference" \
    "$HERE/tools/oracle_fixtures/gen_simp" \
    "${TMPDIR:-/tmp}/ast-simplify-oracle"
 ```
@@ -3135,7 +3135,7 @@ Append to `tools/oracle_fixtures/README.md`:
 ## `check_simplify_fresh.sh` — is the simplify corpus still the pinned C's output?
 
 Captures every row of
-`crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt` from the
+`crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt` from the
 pinned oracle with `gen_simp` and classifies the difference:
 
 - **card** — the reference has a different set of cards. It predates a library
@@ -3223,11 +3223,11 @@ reference's — and cites the residue as a port defect. That sentence is correct
 here.
 
 **Files:**
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_winmap_03.simp` (regenerate)
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt:43-54` (the `rigby` note), `:485-491` (the `cap_winmap_03` note and its `yes`)
-- Modify: `crates/ast-core/tests/test_simplify_regression.rs`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_winmap_03.simp` (regenerate)
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt:43-54` (the `rigby` note), `:485-491` (the `cap_winmap_03` note and its `yes`)
+- Modify: `crates/starlink-ast/tests/test_simplify_regression.rs`
 - Modify: `PLAN.md` §6 (the ledger table)
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs`
+- Modify: `crates/starlink-ast/tests/test_verification_ledger.rs`
 
 **Interfaces:**
 - Consumes: `tools/oracle_fixtures/gen_simp` (Task 10), `check_simplify_fresh.sh` (Task 11).
@@ -3276,7 +3276,7 @@ ldd /tmp/gen_simp_oldpin | grep libast
 Expected: `libast.so.9 => /tmp/ast-oldpin/build/libast.so.9`.
 
 ```bash
-cd crates/ast-core/tests/fixtures/native/reference
+cd crates/starlink-ast/tests/fixtures/native/reference
 for f in rigby cap_interval_01 cap_matrixmap_03 cap_pointlist_01 cap_timemap_01 \
          timemap_invert_normalize; do
   M=$(ls simplify_fixtures/$f.map $f.map 2>/dev/null | head -1)
@@ -3310,7 +3310,7 @@ git -C reference/starlink-ast worktree remove --force /tmp/ast-oldpin
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cd crates/ast-core/tests/fixtures/native/reference
+cd crates/starlink-ast/tests/fixtures/native/reference
 ../../../../../../tools/oracle_fixtures/gen_simp \
    simplify_fixtures/cap_winmap_03.map simplify_fixtures/cap_winmap_03.simp
 git diff --stat simplify_fixtures/cap_winmap_03.simp
@@ -3342,7 +3342,7 @@ Expected: `0 card-drifted`, exit status 0, and the six numeric rows unchanged.
 - [x] **Step 3: Write the failing test — `rigby` byte-compared**
 
 Remove `rigby`'s skip so the comparison runs. In
-`crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, change
+`crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`, change
 
 ```
 rigby | rigby.map | rigby.simp | yes |
@@ -3358,7 +3358,7 @@ rigby | rigby.map | rigby.simp | |
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -A 8 "=== rigby ==="
+SIMPLIFY_DIFF=1 cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -A 8 "=== rigby ==="
 ```
 
 Expected: two differing lines — the `IM5` card, and one missing `IsSimp` card.
@@ -3366,7 +3366,7 @@ The `IsSimp` line is Task 14's; only `IM5` is this task's.
 
 - [x] **Step 5: Add the license and its comparator**
 
-In `crates/ast-core/tests/test_simplify_regression.rs`, immediately after the
+In `crates/starlink-ast/tests/test_simplify_regression.rs`, immediately after the
 `ISSIMP_PLACEMENT_LICENSED` declaration, add:
 
 ```rust
@@ -3448,7 +3448,7 @@ The `let` shadows the existing `got` / `want`, so nothing below changes.
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -A 6 "=== rigby ==="
+SIMPLIFY_DIFF=1 cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -A 6 "=== rigby ==="
 ```
 
 Expected: the `IM5` line is gone from the diff and only the `IsSimp` line remains.
@@ -3461,9 +3461,9 @@ a count problem rather than silently dropping more:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-sed -i 's/    1e-15,/    1e-10,/' crates/ast-core/tests/test_simplify_regression.rs
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep "NUMERIC_PLATFORM_DRIFT licenses"
-sed -i 's/    1e-10,/    1e-15,/' crates/ast-core/tests/test_simplify_regression.rs
+sed -i 's/    1e-15,/    1e-10,/' crates/starlink-ast/tests/test_simplify_regression.rs
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep "NUMERIC_PLATFORM_DRIFT licenses"
+sed -i 's/    1e-10,/    1e-15,/' crates/starlink-ast/tests/test_simplify_regression.rs
 ```
 
 Expected: at least one `dropped N from the … side` line at `1e-10`, and none at
@@ -3525,26 +3525,26 @@ Then add a new row immediately below it:
 | simplify regression | 468 | 1 | `NUMERIC_PLATFORM_DRIFT` — one card on one fixture (`rigby`'s `IM5`), dropped from both sides only while each side parses below 1e-15 in absolute value on an element whose row-mates are of order one. The reference was captured on another platform and the freshness rule keeps its values; the licence is per case, per card and magnitude-bounded, and reports a failure if it ever drops a different number of lines from the two sides |
 ```
 
-In `crates/ast-core/tests/test_verification_ledger.rs`, change
+In `crates/starlink-ast/tests/test_verification_ledger.rs`, change
 `"simplify manifest: skip_string_compare" => 4` to `=> 2` and add
 `"NUMERIC_PLATFORM_DRIFT" => 1` to the table, matching the surrounding entries'
 form. Then:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -20
+cargo test -p starlink-ast --test test_verification_ledger 2>&1 | tail -20
 ```
 
 Expected: PASS. A failure naming an uncounted constant means the new `const` is
 not in the table; a failure on the count means the manifest still has more `yes`
 rows than the ledger claims — check with
-`awk -F'|' 'NF>3 && $4 ~ /yes/ {print $1}' crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`.
+`awk -F'|' 'NF>3 && $4 ~ /yes/ {print $1}' crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`.
 
 - [x] **Step 12: Run the whole simplify suite and record what is left**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -30
 ```
 
 Expected: `cap_winmap_03` passes; `rigby` fails on one `IsSimp` line;
@@ -3553,11 +3553,11 @@ its license. Also run the second consumer of these fixtures — the auto-discove
 round-trip test — because a regenerated reference is an input to it too:
 
 ```bash
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -10
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -10
 ```
 
 If that test name does not exist, find it with
-`grep -rln "simplify_fixtures" crates/ast-core/tests/*.rs` and run every file it
+`grep -rln "simplify_fixtures" crates/starlink-ast/tests/*.rs` and run every file it
 names. Both consumers must be run whenever a `.simp` changes.
 
 - [x] **Step 13: Format, lint, commit**
@@ -3633,9 +3633,9 @@ shrinks the 680-line fixture to something small enough to reason about and lands
 it as a failing gate; Task 14 uses it to choose the fix.
 
 **Files:**
-- Create: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_cmpmap_nested_tag.map`
-- Create: `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_cmpmap_nested_tag.simp`
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`
+- Create: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_cmpmap_nested_tag.map`
+- Create: `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_cmpmap_nested_tag.simp`
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`
 
 **Interfaces:**
 - Consumes: `tools/oracle_fixtures/gen_simp` (Task 10);
@@ -3667,7 +3667,7 @@ commands above are needed; leave the script alone rather than fixing it here.
 - [x] **Step 2: Capture the stamps and locate the one that matters**
 
 ```bash
-cd crates/ast-core/tests/fixtures/native/reference
+cd crates/starlink-ast/tests/fixtures/native/reference
 AST_LOG_ISSIMPLE=1 /tmp/ast-instr/gen_simp \
    simplify_fixtures/cap_specmap_02.map /tmp/instr02.simp 2>/tmp/instr02.stamps
 diff /tmp/instr02.simp simplify_fixtures/cap_specmap_02.simp && echo "instrument agrees with the reference"
@@ -3706,7 +3706,7 @@ root, so the input can lose everything outside that. `cap_specmap_02.map`'s root
 is a series CmpMap; take its `MapA` only.
 
 ```bash
-cd /sdf/home/t/timj/WORK/starlink-astrs/crates/ast-core/tests/fixtures/native/reference
+cd /sdf/home/t/timj/WORK/starlink-astrs/crates/starlink-ast/tests/fixtures/native/reference
 python3 - <<'PY'
 from pathlib import Path
 src = Path("simplify_fixtures/cap_specmap_02.map").read_text().splitlines()
@@ -3746,7 +3746,7 @@ class with `head -1 /tmp/shrink0.map` and check it is the parallel CmpMap.
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo run -q -p ast-core --example simp_one -- /tmp/shrink0.map > /tmp/shrink0.port
+cargo run -q -p starlink-ast --example simp_one -- /tmp/shrink0.map > /tmp/shrink0.port
 diff /tmp/shrink0.simp /tmp/shrink0.port
 ```
 
@@ -3793,7 +3793,7 @@ for tag, card in zip("ab", cards):
 PY
 for t in a b; do
   ./tools/oracle_fixtures/gen_simp /tmp/shrink_$t.map /tmp/shrink_$t.simp
-  cargo run -q -p ast-core --example simp_one -- /tmp/shrink_$t.map > /tmp/shrink_$t.port
+  cargo run -q -p starlink-ast --example simp_one -- /tmp/shrink_$t.map > /tmp/shrink_$t.port
   echo "== $t: $(diff /tmp/shrink_$t.simp /tmp/shrink_$t.port | grep -c IsSimp) IsSimp diffs, $(wc -l < /tmp/shrink_$t.map) input lines"
 done
 ```
@@ -3812,7 +3812,7 @@ still fails and is smallest:
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 SRC=/tmp/shrink0.map   # or shrink_a / shrink_b, per Step 5
-DEST=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+DEST=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
 cp "$SRC" "$DEST/cap_cmpmap_nested_tag.map"
 ./tools/oracle_fixtures/gen_simp "$DEST/cap_cmpmap_nested_tag.map" \
                                  "$DEST/cap_cmpmap_nested_tag.simp"
@@ -3823,7 +3823,7 @@ The `.simp` is an oracle product and is never hand-edited.
 
 - [x] **Step 7: Add the manifest row, with the comment that says what it pins**
 
-Append to `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`,
+Append to `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`,
 in the `cap_*` block and in alphabetical position:
 
 ```
@@ -3841,21 +3841,21 @@ cap_cmpmap_nested_tag    | simplify_fixtures/cap_cmpmap_nested_tag.map | simplif
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 \
+SIMPLIFY_DIFF=1 cargo test -p starlink-ast --test test_simplify_regression 2>&1 \
   | grep -A 6 "=== cap_cmpmap_nested_tag ==="
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -5
 ```
 
 Expected: the new row fails on one missing `IsSimp` line and nothing else, and
 the round-trip test passes on the new pair. If the round-trip test's name differs,
 find every consumer with
-`grep -rln "simplify_fixtures" crates/ast-core/tests/*.rs` and run them all.
+`grep -rln "simplify_fixtures" crates/starlink-ast/tests/*.rs` and run them all.
 
 - [x] **Step 9: Commit the failing gate**
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-git add crates/ast-core/tests/fixtures/native/reference
+git add crates/starlink-ast/tests/fixtures/native/reference
 git commit -F - <<'MSG'
 test(simplify): add the minimal nested-IsSimp fixture
 
@@ -3903,8 +3903,8 @@ tag that goes missing has three places it can go missing and picking by inspecti
 is what has been wrong here before.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/simplify.rs:560-565`
-- Test: `crates/ast-core/tests/test_simplify_regression.rs` (existing harness; no new test file)
+- Modify: `crates/starlink-ast/src/mappings/simplify.rs:560-565`
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs` (existing harness; no new test file)
 
 **Interfaces:**
 - Consumes: `MergeContext::list` entries as `(DynMapping, bool, bool)` =
@@ -3916,7 +3916,7 @@ is what has been wrong here before.
 - [x] **Step 1: Find out whether the tag is being written at all**
 
 Add a temporary probe to `set_component_simple_tag` in
-`crates/ast-core/src/mappings/simplify.rs`, replacing the body:
+`crates/starlink-ast/src/mappings/simplify.rs`, replacing the body:
 
 ```rust
     pub(crate) fn set_component_simple_tag(&mut self, index: usize) {
@@ -3940,8 +3940,8 @@ Then run the minimal fixture from Task 13:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo run -q -p ast-core --example simp_one -- \
-   crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/cap_cmpmap_nested_tag.map \
+cargo run -q -p starlink-ast --example simp_one -- \
+   crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/cap_cmpmap_nested_tag.map \
    > /dev/null 2>/tmp/tagwrite.txt
 sort /tmp/tagwrite.txt | uniq -c | sort -rn | head
 ```
@@ -4044,7 +4044,7 @@ bound lives. Fix the bound, do not add a nomination outside the loop.
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-grep -n "TAGWRITE\|TAGSKIP\|NOMINATE" crates/ast-core/src/mappings/simplify.rs
+grep -n "TAGWRITE\|TAGSKIP\|NOMINATE" crates/starlink-ast/src/mappings/simplify.rs
 ```
 
 Expected: no output. An `eprintln!` left in a hot path is a performance defect as
@@ -4054,7 +4054,7 @@ well as noise.
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-SIMPLIFY_DIFF=1 cargo test -p ast-core --test test_simplify_regression 2>&1 \
+SIMPLIFY_DIFF=1 cargo test -p starlink-ast --test test_simplify_regression 2>&1 \
   | grep -A 6 "=== cap_cmpmap_nested_tag ===" || echo "cap_cmpmap_nested_tag passes"
 ```
 
@@ -4067,9 +4067,9 @@ compare them directly instead of through the harness:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cd crates/ast-core/tests/fixtures/native/reference
+cd crates/starlink-ast/tests/fixtures/native/reference
 for f in cap_specmap_02 cap_cmpmap_01 cap_cmpmap_04 rigby; do
-  cargo run -q -p ast-core --example simp_one -- simplify_fixtures/$f.map \
+  cargo run -q -p starlink-ast --example simp_one -- simplify_fixtures/$f.map \
      > /tmp/$f.port 2>/dev/null
   echo "== $f"
   diff simplify_fixtures/$f.simp /tmp/$f.port | grep -E "IsSimp|Invert" || echo "   no IsSimp/Invert diffs"
@@ -4092,8 +4092,8 @@ is lost.
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -20
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -20
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -5
 ```
 
 Expected: `rigby` and `cap_cmpmap_nested_tag` pass; the only remaining simplify
@@ -4113,7 +4113,7 @@ constraint is not in play — but the tag writer runs once per nomination, so co
 it did not acquire a clone or an allocation:
 
 ```bash
-grep -n -A 6 "fn set_component_simple_tag" crates/ast-core/src/mappings/simplify.rs
+grep -n -A 6 "fn set_component_simple_tag" crates/starlink-ast/src/mappings/simplify.rs
 ```
 
 Expected: a field write and a downcast, no `clone_box`, no `Vec`. Candidate 2's
@@ -4129,7 +4129,7 @@ export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUS
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 unset CARGO_TARGET_DIR RUSTC RUSTDOC
-git add crates/ast-core/src/mappings/simplify.rs
+git add crates/starlink-ast/src/mappings/simplify.rs
 git commit -F - <<'MSG'
 simplify: record a nominated component's IsSimple at the stored orientation
 
@@ -4175,9 +4175,9 @@ re-deriving it:
   turned out to be exactly that.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_simplify_regression.rs:64-98` (the license and its doc comment), `:578-607` (`ISSIMP_DISAGREEMENTS`)
-- Modify: `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt:405-427` (the three-fixture block), `:431`, `:434`
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs`
+- Modify: `crates/starlink-ast/tests/test_simplify_regression.rs:64-98` (the license and its doc comment), `:578-607` (`ISSIMP_DISAGREEMENTS`)
+- Modify: `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt:405-427` (the three-fixture block), `:431`, `:434`
+- Modify: `crates/starlink-ast/tests/test_verification_ledger.rs`
 - Modify: `PLAN.md` §6, §8, §10.3
 - Modify: `docs/superpowers/specs/2026-09-01-simplify-parity-completion-design.md` (§2.2)
 
@@ -4193,9 +4193,9 @@ re-deriving it:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cd crates/ast-core/tests/fixtures/native/reference
+cd crates/starlink-ast/tests/fixtures/native/reference
 for f in cap_cmpmap_01 cap_cmpmap_04; do
-  cargo run -q -p ast-core --example simp_one -- simplify_fixtures/$f.map \
+  cargo run -q -p starlink-ast --example simp_one -- simplify_fixtures/$f.map \
      > /tmp/$f.port 2>/dev/null
   echo "== $f"
   diff simplify_fixtures/$f.simp /tmp/$f.port | grep "^[<>]"
@@ -4210,7 +4210,7 @@ C recorded the shared child's `Invert` on the parent, so the port's node has an
 
 - [x] **Step 2: Replace the placement license with the aliasing license**
 
-In `crates/ast-core/tests/test_simplify_regression.rs`, delete
+In `crates/starlink-ast/tests/test_simplify_regression.rs`, delete
 `ISSIMP_PLACEMENT_LICENSED` and its doc comment in full (`:64-98`) and put this in
 its place:
 
@@ -4286,7 +4286,7 @@ the two calls as separate loops rather than reaching for `RefCell`.
 
 - [x] **Step 3: Rewire Check 3 and delete the card-count assertions**
 
-In the Check 3 block of `crates/ast-core/tests/test_simplify_regression.rs`,
+In the Check 3 block of `crates/starlink-ast/tests/test_simplify_regression.rs`,
 replace the `licence` lookup and its card-count enforcement with:
 
 ```rust
@@ -4304,7 +4304,7 @@ wholesale.
 
 - [x] **Step 4: Drop the three rows from `ISSIMP_DISAGREEMENTS` and correct its preamble**
 
-In `crates/ast-core/tests/test_simplify_regression.rs`, delete the three entries
+In `crates/starlink-ast/tests/test_simplify_regression.rs`, delete the three entries
 `"cap_specmap_02 (7 vs C's 8)"`, `"cap_cmpmap_01 (16 vs C's 18)"` and
 `"cap_cmpmap_04 (15 vs C's 18)"` together with the comment paragraphs above them,
 leaving the three `cefit_*` / `cap_zoommap_04` rows and their comment. Replace the
@@ -4323,7 +4323,7 @@ preamble at `:578-582` with:
 
 - [x] **Step 5: Remove the remaining two skips and correct the manifest block**
 
-In `crates/ast-core/tests/fixtures/native/reference/simplify_tests.txt`, replace
+In `crates/starlink-ast/tests/fixtures/native/reference/simplify_tests.txt`, replace
 the whole `cap_cmpmap_01, cap_cmpmap_04 and cap_specmap_02` comment block
 (`:405-427`) with:
 
@@ -4369,7 +4369,7 @@ regenerated from that C", naming `f6762005`. Replace those four lines with:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -25
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -25
 ```
 
 Expected: PASS. A failure naming `INVAB_ALIASING_LICENSED … but found 0` means
@@ -4383,14 +4383,14 @@ deleted rows still disagrees.
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 python3 - <<'PY'
 from pathlib import Path
-p = Path("crates/ast-core/tests/test_simplify_regression.rs")
+p = Path("crates/starlink-ast/tests/test_simplify_regression.rs")
 t = p.read_text()
 assert '"cap_cmpmap_02",' not in t
 p.write_text(t.replace('    (\n        "cap_cmpmap_01",',
                        '    (\n        "cap_cmpmap_02",\n        "probe",\n    ),\n    (\n        "cap_cmpmap_01",', 1))
 PY
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep "INVAB_ALIASING_LICENSED"
-git checkout crates/ast-core/tests/test_simplify_regression.rs
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep "INVAB_ALIASING_LICENSED"
+git checkout crates/starlink-ast/tests/test_simplify_regression.rs
 ```
 
 Expected: a `but found 0` problem for `cap_cmpmap_02`, which passes byte-exact and
@@ -4420,13 +4420,13 @@ entries in it
 
 Update the case totals from 468 to 469 for the new fixture, in every §6 row.
 
-In `crates/ast-core/tests/test_verification_ledger.rs`, delete
+In `crates/starlink-ast/tests/test_verification_ledger.rs`, delete
 `"simplify manifest: skip_string_compare"` and `"ISSIMP_PLACEMENT_LICENSED"`, add
 `"INVAB_ALIASING_LICENSED" => 2`, and change `"ISSIMP_DISAGREEMENTS"` to 4. Then:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -20
+cargo test -p starlink-ast --test test_verification_ledger 2>&1 | tail -20
 ```
 
 Expected: PASS.
@@ -4531,9 +4531,9 @@ The revert-check first (spec §6.4). Cluster 2 changed CmpMap flatten,
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-git checkout HEAD~6 -- crates/ast-core/src/mappings/
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
-git checkout HEAD -- crates/ast-core/src/mappings/
+git checkout HEAD~6 -- crates/starlink-ast/src/mappings/
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
+git checkout HEAD -- crates/starlink-ast/src/mappings/
 ```
 
 Expected: `rigby`, `cap_cmpmap_01`, `cap_cmpmap_04`, `cap_winmap_03` and
@@ -4544,7 +4544,7 @@ Then the performance measurement spec §6.5 requires, because this cluster touch
 transform paths and there is no automated performance gate:
 
 ```bash
-cargo run --release --example bench_per_class -p ast-core 2>&1 | tee /tmp/bench-cluster2.txt | tail -30
+cargo run --release --example bench_per_class -p starlink-ast 2>&1 | tee /tmp/bench-cluster2.txt | tail -30
 grep -n 'WinMap\|CmpMap\|MatrixMap' /tmp/bench-cluster2.txt
 ```
 
@@ -4601,7 +4601,7 @@ Two facts about these fixtures that must not be mistaken for defects:
   significant figure, and the port agrees with a fresh capture from the pinned
   C to the last digit. That is the reference's platform drift, licensed in
   Task 12. **Those two values stay as they are.**
-- Every capture from `cargo run -p ast-core --example simp_one` carries one
+- Every capture from `cargo run -p starlink-ast --example simp_one` carries one
   extra trailing blank line. That is the example's own output, not the
   serializer's; the harness does not see it.
 
@@ -4616,8 +4616,8 @@ compound Frame is never extended.
 ### Task 16: `NullRegion::region_merge` builds on the base Frames and simplifies the combined uncertainty
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/nullregion.rs:332-395`
-- Test: `crates/ast-core/tests/test_simplify_regression.rs` (fixture
+- Modify: `crates/starlink-ast/src/regions/nullregion.rs:332-395`
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs` (fixture
   `nullregion_unc_fillfactor_merge`, no source change)
 
 **Interfaces:**
@@ -4647,8 +4647,8 @@ Prism.
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 cd /sdf/home/t/timj/WORK/starlink-astrs
-F=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/nullregion_unc_fillfactor_merge
-cargo run -q -p ast-core --example simp_one -- $F.map > /tmp/nrufm.port
+F=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/nullregion_unc_fillfactor_merge
+cargo run -q -p starlink-ast --example simp_one -- $F.map > /tmp/nrufm.port
 diff $F.simp /tmp/nrufm.port | tee /tmp/nrufm.diff | head -40
 ```
 
@@ -4658,7 +4658,7 @@ reference has `Begin Box`.
 - [x] **Step 2: Rewrite the merge body to follow C's order**
 
 Replace the whole of `fn region_merge` in
-`crates/ast-core/src/regions/nullregion.rs` (currently lines 332-395) with:
+`crates/starlink-ast/src/regions/nullregion.rs` (currently lines 332-395) with:
 
 ```rust
     fn region_merge(&self, other_reg: &dyn Region, intfirst: bool) -> Option<DynMapping> {
@@ -4774,7 +4774,7 @@ Replace the whole of `fn region_merge` in
 `apply_merge_scaling` takes a `&mut RegionData`, but C applies the FillFactor
 product and the MeshSize ratio to the Region `astMapRegion` returned. Add a
 sibling that reaches those two attributes through the trait. In
-`crates/ast-core/src/regions/merge_util.rs`, after `apply_merge_scaling`,
+`crates/starlink-ast/src/regions/merge_util.rs`, after `apply_merge_scaling`,
 append:
 
 ```rust
@@ -4802,7 +4802,7 @@ pub(super) fn apply_merge_scaling_to(region: &mut dyn super::Region, scaling: &M
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo build -p ast-core 2>&1 | tail -20
+cargo build -p starlink-ast 2>&1 | tail -20
 ```
 
 Expected: clean. `merge_util.rs` already imports `default_mesh_size` from
@@ -4811,8 +4811,8 @@ Expected: clean. `merge_util.rs` already imports `default_mesh_size` from
 - [x] **Step 5: Re-capture the fixture**
 
 ```bash
-F=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/nullregion_unc_fillfactor_merge
-cargo run -q -p ast-core --example simp_one -- $F.map > /tmp/nrufm.port
+F=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/nullregion_unc_fillfactor_merge
+cargo run -q -p starlink-ast --example simp_one -- $F.map > /tmp/nrufm.port
 diff $F.simp /tmp/nrufm.port
 ```
 
@@ -4823,9 +4823,9 @@ at ±0.1, because simplifying a Prism of two 1-d Boxes gives a 2-d Box.
 - [x] **Step 6: Run both fixture consumers, and the Region tests**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -25
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
-cargo test -p ast-core --test test_region 2>&1 | tail -5
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -25
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -5
+cargo test -p starlink-ast --test test_region 2>&1 | tail -5
 ```
 
 Expected: `test_simplify_regression` reports one more byte-exact case and no
@@ -4842,7 +4842,7 @@ export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUS
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 unset CARGO_TARGET_DIR RUSTC RUSTDOC
-git add crates/ast-core/src/regions/nullregion.rs crates/ast-core/src/regions/merge_util.rs
+git add crates/starlink-ast/src/regions/nullregion.rs crates/starlink-ast/src/regions/merge_util.rs
 git commit -F - <<'MSG'
 fix(regions): merge two NullRegions the way C does
 
@@ -4867,19 +4867,19 @@ MSG
 ### Task 17: A construction-time uncertainty goes through `astSetUnc`, as C's constructor does
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/box_region.rs:135`
-- Modify: `crates/ast-core/src/regions/circle.rs:205`
-- Modify: `crates/ast-core/src/regions/ellipse.rs:312`
-- Modify: `crates/ast-core/src/regions/interval.rs:92`
-- Modify: `crates/ast-core/src/regions/pointlist.rs:111`
-- Modify: `crates/ast-core/src/regions/polygon.rs:289`
-- Modify: `crates/ast-core/src/regions/prism.rs:94`
-- Modify: `crates/ast-core/src/regions/cmpregion.rs:119`
-- Modify: `crates/ast-core/src/regions/nullregion.rs:62`
-- Modify: `crates/ast-core/src/regions/merge_util.rs:106`
-- Modify: `crates/ast-core/src/regions/mod.rs:388-391` (the doc paragraph that
+- Modify: `crates/starlink-ast/src/regions/box_region.rs:135`
+- Modify: `crates/starlink-ast/src/regions/circle.rs:205`
+- Modify: `crates/starlink-ast/src/regions/ellipse.rs:312`
+- Modify: `crates/starlink-ast/src/regions/interval.rs:92`
+- Modify: `crates/starlink-ast/src/regions/pointlist.rs:111`
+- Modify: `crates/starlink-ast/src/regions/polygon.rs:289`
+- Modify: `crates/starlink-ast/src/regions/prism.rs:94`
+- Modify: `crates/starlink-ast/src/regions/cmpregion.rs:119`
+- Modify: `crates/starlink-ast/src/regions/nullregion.rs:62`
+- Modify: `crates/starlink-ast/src/regions/merge_util.rs:106`
+- Modify: `crates/starlink-ast/src/regions/mod.rs:388-391` (the doc paragraph that
   records the bypass)
-- Test: `crates/ast-core/tests/test_simplify_regression.rs` (fixtures
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs` (fixtures
   `cap_interval_01` and `cap_pointlist_01`, no source change)
 
 **Interfaces:**
@@ -4916,9 +4916,9 @@ Channel read verbatim, so reading a `.map` must stay an identity.
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 cd /sdf/home/t/timj/WORK/starlink-astrs
-D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+D=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
 for c in cap_interval_01 cap_pointlist_01; do
-  cargo run -q -p ast-core --example simp_one -- $D/$c.map > /tmp/$c.before
+  cargo run -q -p starlink-ast --example simp_one -- $D/$c.map > /tmp/$c.before
   echo "=== $c ==="; diff $D/$c.simp /tmp/$c.before
 done
 ```
@@ -4932,7 +4932,7 @@ closes. The extra `Closed = 1` is Task 19.
 
 - [x] **Step 2: Install through `set_uncertainty` in the five single-expression builders**
 
-In `crates/ast-core/src/regions/box_region.rs`, replace
+In `crates/starlink-ast/src/regions/box_region.rs`, replace
 
 ```rust
         data.uncertainty = self.uncertainty;
@@ -4966,7 +4966,7 @@ miss one.
 
 - [x] **Step 3: The two builders whose constructor expression has fields**
 
-In `crates/ast-core/src/regions/prism.rs`, replace
+In `crates/starlink-ast/src/regions/prism.rs`, replace
 
 ```rust
         data.uncertainty = self.uncertainty;
@@ -4995,7 +4995,7 @@ with
         Ok(region)
 ```
 
-In `crates/ast-core/src/regions/cmpregion.rs`, replace
+In `crates/starlink-ast/src/regions/cmpregion.rs`, replace
 
 ```rust
         data.uncertainty = self.uncertainty;
@@ -5028,7 +5028,7 @@ with
 
 - [x] **Step 4: NullRegion, whose re-center step is a no-op**
 
-In `crates/ast-core/src/regions/nullregion.rs`, replace
+In `crates/starlink-ast/src/regions/nullregion.rs`, replace
 
 ```rust
         data.uncertainty = self.uncertainty;
@@ -5058,7 +5058,7 @@ C reaches `SetUnc` inside `astInitRegion`, which `astInitPolygon` calls *before*
 it runs `EnsureInside` (`polygon.c:7160`). `EnsureInside` can reverse the vertex
 order, which changes which vertex is first, and `SetUnc` re-centers on the first
 vertex — so the uncertainty is centered on the vertex that was first *before* the
-reversal. In `crates/ast-core/src/regions/polygon.rs`, replace
+reversal. In `crates/starlink-ast/src/regions/polygon.rs`, replace
 
 ```rust
         data.uncertainty = self.uncertainty;
@@ -5103,7 +5103,7 @@ with
 `RegionData` (`merge_util.rs:106`) although its own doc says `astSetUnc`
 assigns it. The Region is built inside a `match`, so install the uncertainty on
 each arm's finished Region instead. In
-`crates/ast-core/src/regions/merge_util.rs`, delete the line
+`crates/starlink-ast/src/regions/merge_util.rs`, delete the line
 
 ```rust
         data.uncertainty = uncertainty.clone();
@@ -5153,7 +5153,7 @@ it, the leftover `uncertainty.clone()` line was not removed.
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo build -p ast-core 2>&1 | tail -20
+cargo build -p starlink-ast 2>&1 | tail -20
 ```
 
 Expected: clean. `set_uncertainty` is a `Region` trait method, so each file
@@ -5163,9 +5163,9 @@ so no new `use` is required.
 - [x] **Step 8: Re-capture the two fixtures**
 
 ```bash
-D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
+D=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
 for c in cap_interval_01 cap_pointlist_01; do
-  cargo run -q -p ast-core --example simp_one -- $D/$c.map > /tmp/$c.after
+  cargo run -q -p starlink-ast --example simp_one -- $D/$c.map > /tmp/$c.after
   echo "=== $c ==="; diff $D/$c.simp /tmp/$c.after
 done
 ```
@@ -5177,13 +5177,13 @@ but `X7` now reads `5.7870370370370369e-10`.
 - [x] **Step 9: Run the whole corpus, and stop if anything else moved**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -10
-cargo test -p ast-core 2>&1 | tail -40
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -30
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -10
+cargo test -p starlink-ast 2>&1 | tail -40
 ```
 
 Expected: `cap_pointlist_01` passes, no previously-passing fixture fails, and
-the full `ast-core` suite is as green as the Task 1 baseline recorded in
+the full `starlink-ast` suite is as green as the Task 1 baseline recorded in
 `/tmp/baseline/all.txt`.
 
 This is the step with the widest blast radius in the cluster: `astSetUnc` can
@@ -5216,7 +5216,7 @@ export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUS
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 unset CARGO_TARGET_DIR RUSTC RUSTDOC
-git add crates/ast-core/src/regions
+git add crates/starlink-ast/src/regions
 git commit -F - <<'MSG'
 fix(regions): construct an uncertainty through astSetUnc
 
@@ -5246,8 +5246,8 @@ MSG
 ### Task 18: `Region::Simplify` tests the simplified uncertainty for change the way C does
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/mod.rs:958-960`
-- Test: `crates/ast-core/tests/test_simplify_regression.rs` (fixture
+- Modify: `crates/starlink-ast/src/regions/mod.rs:958-960`
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs` (fixture
   `cap_zoommap_04` and its `ISSIMP_DISAGREEMENTS` row, source change in Step 5)
 
 **Interfaces:**
@@ -5291,8 +5291,8 @@ drivers detect by pointer identity.
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 cd /sdf/home/t/timj/WORK/starlink-astrs
-D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
-cargo run -q -p ast-core --example simp_one -- $D/cap_zoommap_04.map > /tmp/zm04.before
+D=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
+cargo run -q -p starlink-ast --example simp_one -- $D/cap_zoommap_04.map > /tmp/zm04.before
 diff $D/cap_zoommap_04.simp /tmp/zm04.before | head -20
 grep -c '' /tmp/zm04.before $D/cap_zoommap_04.simp
 ```
@@ -5302,7 +5302,7 @@ the `Unc` Region, and its `IsSimp` card reads 3 where the reference reads 0.
 
 - [x] **Step 2: Ask the gate instead of the comparator**
 
-In `crates/ast-core/src/regions/mod.rs`, replace
+In `crates/starlink-ast/src/regions/mod.rs`, replace
 
 ```rust
             // Try simplifying the uncertainty. Only proceed if it changed
@@ -5328,7 +5328,7 @@ with
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo build -p ast-core 2>&1 | tail -20
+cargo build -p starlink-ast 2>&1 | tail -20
 ```
 
 Expected: clean. If `Mapping::equal` is now unused in this file, clippy will say
@@ -5338,8 +5338,8 @@ call it.
 - [x] **Step 4: Re-capture the fixture**
 
 ```bash
-D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
-cargo run -q -p ast-core --example simp_one -- $D/cap_zoommap_04.map > /tmp/zm04.after
+D=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
+cargo run -q -p starlink-ast --example simp_one -- $D/cap_zoommap_04.map > /tmp/zm04.after
 diff $D/cap_zoommap_04.simp /tmp/zm04.after && echo BYTE-EQUAL
 ```
 
@@ -5350,7 +5350,7 @@ set.
 - [x] **Step 5: Retire the `ISSIMP_DISAGREEMENTS` row**
 
 `cap_zoommap_04`'s row in `ISSIMP_DISAGREEMENTS`
-(`crates/ast-core/tests/test_simplify_regression.rs:583`) records "3 vs C's 0"
+(`crates/starlink-ast/tests/test_simplify_regression.rs:583`) records "3 vs C's 0"
 as an accepted disagreement. Delete that entry. The companion assertion that
 fails when a listed case starts agreeing is what would otherwise flag this, so
 running the test without deleting the row is a failure, not a pass.
@@ -5358,9 +5358,9 @@ running the test without deleting the row is a failure, not a pass.
 - [x] **Step 6: Run the corpus and the round-trip**
 
 ```bash
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -10
-cargo test -p ast-core 2>&1 | tail -40
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -30
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -10
+cargo test -p starlink-ast 2>&1 | tail -40
 ```
 
 Expected: `cap_zoommap_04` passes and no other fixture moves. This change makes
@@ -5377,7 +5377,7 @@ export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUS
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 unset CARGO_TARGET_DIR RUSTC RUSTDOC
-git add crates/ast-core/src/regions/mod.rs crates/ast-core/tests/test_simplify_regression.rs
+git add crates/starlink-ast/src/regions/mod.rs crates/starlink-ast/tests/test_simplify_regression.rs
 git commit -F - <<'MSG'
 fix(regions): detect a structural uncertainty simplification
 
@@ -5402,10 +5402,10 @@ MSG
 ### Task 19: A derived Box carries `Closed` only where C sets it
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/interval.rs:343-344`
-- Modify (conditionally, see Step 4): `crates/ast-core/src/regions/interval.rs:1109`,
-  `crates/ast-core/src/regions/interval.rs:1432-1433`
-- Test: `crates/ast-core/tests/test_simplify_regression.rs` (fixture
+- Modify: `crates/starlink-ast/src/regions/interval.rs:343-344`
+- Modify (conditionally, see Step 4): `crates/starlink-ast/src/regions/interval.rs:1109`,
+  `crates/starlink-ast/src/regions/interval.rs:1432-1433`
+- Test: `crates/starlink-ast/tests/test_simplify_regression.rs` (fixture
   `cap_interval_01`, no source change)
 
 **Interfaces:**
@@ -5444,8 +5444,8 @@ re-measure.
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 cd /sdf/home/t/timj/WORK/starlink-astrs
-D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
-cargo run -q -p ast-core --example simp_one -- $D/cap_interval_01.map > /tmp/int01.after17
+D=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
+cargo run -q -p starlink-ast --example simp_one -- $D/cap_interval_01.map > /tmp/int01.after17
 diff $D/cap_interval_01.simp /tmp/int01.after17
 ```
 
@@ -5458,7 +5458,7 @@ that in the commit message and skip to Step 6 with only the Step 2 edit.
 
 - [x] **Step 2: Drop the `Closed` write that has no C analogue**
 
-In `crates/ast-core/src/regions/interval.rs`, inside the unbounded-branch Box
+In `crates/starlink-ast/src/regions/interval.rs`, inside the unbounded-branch Box
 construction, replace
 
 ```rust
@@ -5489,9 +5489,9 @@ with
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo build -p ast-core 2>&1 | tail -20
-D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
-cargo run -q -p ast-core --example simp_one -- $D/cap_interval_01.map > /tmp/int01.step3
+cargo build -p starlink-ast 2>&1 | tail -20
+D=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
+cargo run -q -p starlink-ast --example simp_one -- $D/cap_interval_01.map > /tmp/int01.step3
 diff $D/cap_interval_01.simp /tmp/int01.step3
 ```
 
@@ -5506,7 +5506,7 @@ Two sites are left. Add a temporary `eprintln!` to each and run the one fixture:
 cd /sdf/home/t/timj/WORK/starlink-astrs
 python3 - <<'PY'
 import re
-p = 'crates/ast-core/src/regions/interval.rs'
+p = 'crates/starlink-ast/src/regions/interval.rs'
 s = open(p).read()
 s = s.replace("        box_data.closed = true;\n        box_data.closed_set = true;\n",
               "        box_data.closed = true;\n        box_data.closed_set = true;\n        eprintln!(\"CLOSED-SITE reg_centre_set\");\n", 1)
@@ -5514,15 +5514,15 @@ s = s.replace("            data.closed = true;\n            data.closed_set = tr
               "            data.closed = true;\n            data.closed_set = true;\n            eprintln!(\"CLOSED-SITE box_equivalent\");\n            if let Some(unc) = self.data.uncertainty.as_ref() {", 1)
 open(p, 'w').write(s)
 PY
-D=crates/ast-core/tests/fixtures/native/reference/simplify_fixtures
-cargo run -q -p ast-core --example simp_one -- $D/cap_interval_01.map >/dev/null
+D=crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures
+cargo run -q -p starlink-ast --example simp_one -- $D/cap_interval_01.map >/dev/null
 ```
 
 The site names printed tell you which construction runs on this fixture. Then
 revert the probe:
 
 ```bash
-git checkout crates/ast-core/src/regions/interval.rs
+git checkout crates/starlink-ast/src/regions/interval.rs
 ```
 
 — which also reverts Step 2, so re-apply Step 2 afterwards.
@@ -5570,9 +5570,9 @@ the same probe over `merge_util.rs`'s `MergedRegion::Box` arm and
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -30
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -10
-cargo test -p ast-core --test test_region 2>&1 | tail -10
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -30
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -10
+cargo test -p starlink-ast --test test_region 2>&1 | tail -10
 ```
 
 Expected: `cap_interval_01` fails on `X5`/`X6` alone, which is the reference's
@@ -5589,7 +5589,7 @@ export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUS
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 unset CARGO_TARGET_DIR RUSTC RUSTDOC
-git add crates/ast-core/src/regions/interval.rs
+git add crates/starlink-ast/src/regions/interval.rs
 git commit -F - <<'MSG'
 fix(interval): stop marking Closed explicit on a derived Box
 
@@ -5610,8 +5610,8 @@ MSG
 ### Task 20: `Ellipse` bounds come from the mesh, as C's do
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/ellipse.rs:465-481`
-- Test: `crates/ast-core/tests/test_region.rs` (new test, Step 1)
+- Modify: `crates/starlink-ast/src/regions/ellipse.rs:465-481`
+- Test: `crates/starlink-ast/tests/test_region.rs` (new test, Step 1)
 
 **Interfaces:**
 - Consumes: `Frame::ax_distance(&self, axis: usize, v1: f64, v2: f64) -> AstResult<f64>`
@@ -5658,7 +5658,7 @@ Two C details the port must keep:
 
 - [x] **Step 1: Write the failing test**
 
-Add to `crates/ast-core/tests/test_region.rs`:
+Add to `crates/starlink-ast/tests/test_region.rs`:
 
 ```rust
 /// An Ellipse on a SkyFrame that encloses the north pole must report a
@@ -5704,7 +5704,7 @@ use that spelling.
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo test -p ast-core --test test_region ellipse_sky_pole_bounds 2>&1 | tail -20
+cargo test -p starlink-ast --test test_region ellipse_sky_pole_bounds 2>&1 | tail -20
 ```
 
 Expected: FAIL. The closed-form extent gives a longitude range of roughly
@@ -5712,7 +5712,7 @@ Expected: FAIL. The closed-form extent gives a longitude range of roughly
 
 - [x] **Step 3: Replace the closed form with C's mesh accumulation**
 
-In `crates/ast-core/src/regions/ellipse.rs`, replace the whole body of
+In `crates/starlink-ast/src/regions/ellipse.rs`, replace the whole body of
 `reg_base_box` with:
 
 ```rust
@@ -5790,7 +5790,7 @@ test; keep the two consistent if either changes.
 - [x] **Step 4: Run the new test and the Region suite**
 
 ```bash
-cargo test -p ast-core --test test_region 2>&1 | tail -20
+cargo test -p starlink-ast --test test_region 2>&1 | tail -20
 ```
 
 Expected: the new test passes and every existing Ellipse test still passes. A
@@ -5829,7 +5829,7 @@ export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUS
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 unset CARGO_TARGET_DIR RUSTC RUSTDOC
-git add crates/ast-core/src/regions/ellipse.rs crates/ast-core/tests/test_region.rs docs/issues/c-library-quirks.md
+git add crates/starlink-ast/src/regions/ellipse.rs crates/starlink-ast/tests/test_region.rs docs/issues/c-library-quirks.md
 git commit -F - <<'MSG'
 fix(ellipse): take the bounding box from the mesh, as C does
 
@@ -5853,8 +5853,8 @@ MSG
 ### Task 21: `Polygon` bounds are offsets from the first vertex, and pass through `astNormBox`
 
 **Files:**
-- Modify: `crates/ast-core/src/regions/polygon.rs:644-670`
-- Test: `crates/ast-core/tests/test_region.rs` (new test, Step 1)
+- Modify: `crates/starlink-ast/src/regions/polygon.rs:644-670`
+- Test: `crates/starlink-ast/tests/test_region.rs` (new test, Step 1)
 
 **Interfaces:**
 - Consumes: `Frame::ax_distance`, `Frame::norm_box` (as Task 20).
@@ -5878,7 +5878,7 @@ axes 1 and 2 correctly.
 
 - [x] **Step 1: Write the failing test**
 
-Add to `crates/ast-core/tests/test_region.rs`:
+Add to `crates/starlink-ast/tests/test_region.rs`:
 
 ```rust
 /// A sky Polygon straddling RA = 0 must report a narrow longitude range: C
@@ -5919,7 +5919,7 @@ file's existing Polygon tests use.
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_region polygon_sky_bounds 2>&1 | tail -20
+cargo test -p starlink-ast --test test_region polygon_sky_bounds 2>&1 | tail -20
 ```
 
 Expected: FAIL with a width near `2*PI` — the raw min/max spans from 0.05 to
@@ -5927,7 +5927,7 @@ Expected: FAIL with a width near `2*PI` — the raw min/max spans from 0.05 to
 
 - [x] **Step 3: Port C's algorithm**
 
-In `crates/ast-core/src/regions/polygon.rs`, replace the whole body of
+In `crates/starlink-ast/src/regions/polygon.rs`, replace the whole body of
 `reg_base_box` with:
 
 ```rust
@@ -5993,8 +5993,8 @@ probe amounts to.
 - [x] **Step 4: Run the new test and the Region suite**
 
 ```bash
-cargo test -p ast-core --test test_region 2>&1 | tail -20
-cargo test -p ast-core --test test_polygon 2>&1 | tail -20
+cargo test -p starlink-ast --test test_region 2>&1 | tail -20
+cargo test -p starlink-ast --test test_polygon 2>&1 | tail -20
 ```
 
 Expected: the new test passes. For a Cartesian Frame `ax_distance` is `v2 - v1`,
@@ -6011,7 +6011,7 @@ export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUS
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 unset CARGO_TARGET_DIR RUSTC RUSTDOC
-git add crates/ast-core/src/regions/polygon.rs crates/ast-core/tests/test_region.rs
+git add crates/starlink-ast/src/regions/polygon.rs crates/starlink-ast/tests/test_region.rs
 git commit -F - <<'MSG'
 fix(polygon): bound the polygon relative to its first vertex
 
@@ -6033,10 +6033,10 @@ MSG
 
 **Files:**
 - Create: `/tmp/probe_normbox.c` (throwaway C-oracle probe, not committed)
-- Modify: `crates/ast-core/src/frames/cmpframe.rs` (add `norm_box` to the
+- Modify: `crates/starlink-ast/src/frames/cmpframe.rs` (add `norm_box` to the
   `impl Frame for CmpFrame` block)
 - Modify: `docs/issues/c-library-quirks.md`
-- Test: `crates/ast-core/tests/test_region.rs` (new test, Step 4)
+- Test: `crates/starlink-ast/tests/test_region.rs` (new test, Step 4)
 
 **Interfaces:**
 - Consumes: `CmpFrame::perm(&self) -> &[usize]` (`cmpframe.rs:226`, `perm[ext]`
@@ -6157,7 +6157,7 @@ malformed `pm3`. Write both output lines into the commit message in Step 6.
 - [x] **Step 3: Port it**
 
 Add to the `impl Frame for CmpFrame` block in
-`crates/ast-core/src/frames/cmpframe.rs`:
+`crates/starlink-ast/src/frames/cmpframe.rs`:
 
 ```rust
     /// Extend a box to include the effect of singularities in either component
@@ -6237,7 +6237,7 @@ which of the two is meant to differ.
 
 - [x] **Step 4: Write the test the probe justifies**
 
-Add to `crates/ast-core/tests/test_region.rs`, filling both expected values in
+Add to `crates/starlink-ast/tests/test_region.rs`, filling both expected values in
 from the `sky-first` line the probe printed:
 
 ```rust
@@ -6269,9 +6269,9 @@ file's existing tests use.
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_region 2>&1 | tail -20
-cargo test -p ast-core --test test_cmpframe 2>&1 | tail -10
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -20
+cargo test -p starlink-ast --test test_region 2>&1 | tail -20
+cargo test -p starlink-ast --test test_cmpframe 2>&1 | tail -10
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -20
 ```
 
 Expected: the new test passes and the corpus does not move. `CmpFrame` was a
@@ -6317,7 +6317,7 @@ export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUS
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 unset CARGO_TARGET_DIR RUSTC RUSTDOC
-git add crates/ast-core/src/frames/cmpframe.rs crates/ast-core/tests/test_region.rs docs/issues/c-library-quirks.md
+git add crates/starlink-ast/src/frames/cmpframe.rs crates/starlink-ast/tests/test_region.rs docs/issues/c-library-quirks.md
 git commit -F - <<'MSG'
 feat(cmpframe): normalise a box through both component Frames
 
@@ -6347,9 +6347,9 @@ retired, and the three missing `astNormBox` participants are ported.
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-git checkout HEAD~7 -- crates/ast-core/src/regions/ crates/ast-core/src/frames/
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
-git checkout HEAD -- crates/ast-core/src/regions/ crates/ast-core/src/frames/
+git checkout HEAD~7 -- crates/starlink-ast/src/regions/ crates/starlink-ast/src/frames/
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
+git checkout HEAD -- crates/starlink-ast/src/regions/ crates/starlink-ast/src/frames/
 ```
 
 Expected: `nullregion_unc_fillfactor_merge`, `cap_interval_01`,
@@ -6360,7 +6360,7 @@ Then the measurement (spec §6.5) — this cluster changed the Region mesh and t
 `astNormBox` participants, all on transform paths:
 
 ```bash
-cargo run --release --example bench_per_class -p ast-core 2>&1 | tee /tmp/bench-cluster3.txt | tail -30
+cargo run --release --example bench_per_class -p starlink-ast 2>&1 | tee /tmp/bench-cluster3.txt | tail -30
 diff <(grep -oE '^[A-Za-z]+ +[0-9.]+' /tmp/bench-cluster2.txt) \
      <(grep -oE '^[A-Za-z]+ +[0-9.]+' /tmp/bench-cluster3.txt) || true
 ```
@@ -6422,13 +6422,13 @@ a case per setter in that file, made falsifiable by the
 ### Task 23: setters for `ZoomMap::Zoom`, `LutMap::LutEpsilon` and `PcdMap::Disco`
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/zoom.rs:47-51` (add a public getter and
+- Modify: `crates/starlink-ast/src/mappings/zoom.rs:47-51` (add a public getter and
   the setter after `factor`)
-- Modify: `crates/ast-core/src/mappings/lutmap.rs:95-107` (add the setter and a
+- Modify: `crates/starlink-ast/src/mappings/lutmap.rs:95-107` (add the setter and a
   getter beside `set_interp`)
-- Modify: `crates/ast-core/src/mappings/pcdmap.rs:69-72` (add the setter after
+- Modify: `crates/starlink-ast/src/mappings/pcdmap.rs:69-72` (add the setter after
   `disc`)
-- Modify: `crates/ast-core/tests/test_clear_on_set.rs` (four new cases and two
+- Modify: `crates/starlink-ast/tests/test_clear_on_set.rs` (four new cases and two
   new imports)
 - Modify: `PLAN.md:664-720` (§9.2's table and its closing paragraph)
 
@@ -6448,7 +6448,7 @@ a case per setter in that file, made falsifiable by the
 
 - [x] **Step 1: Write the four failing test cases**
 
-Append to `crates/ast-core/tests/test_clear_on_set.rs`, after
+Append to `crates/starlink-ast/tests/test_clear_on_set.rs`, after
 `clearing_perm_split_discards_the_record` (which ends at line 206) and *before*
 the `record_survives_invert_and_back` control and its doc comment:
 
@@ -6498,8 +6498,8 @@ Extend the import block at `test_clear_on_set.rs:26-29` to bring in the three
 new types and the error code:
 
 ```rust
-use ast_core::error::ErrorCode;
-use ast_core::mappings::{
+use starlink_ast::error::ErrorCode;
+use starlink_ast::mappings::{
     LutInterp, LutMap, Mapping, MathMap, PcdMap, PermMap, PolyMap, PolyTerm, SphMap, SplineMap,
     WcsMap, WcsProjection, ZoomMap,
 };
@@ -6509,7 +6509,7 @@ use ast_core::mappings::{
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
+cargo test -p starlink-ast --test test_clear_on_set 2>&1 | tail -20
 ```
 
 Expected: the crate fails to compile, with `no method named set_zoom found for
@@ -6518,7 +6518,7 @@ struct ZoomMap`, `no method named zoom`, `no method named set_lut_epsilon` and
 
 - [x] **Step 3: Add `ZoomMap::zoom` and `ZoomMap::set_zoom`**
 
-In `crates/ast-core/src/mappings/zoom.rs`, replace the `factor` accessor block
+In `crates/starlink-ast/src/mappings/zoom.rs`, replace the `factor` accessor block
 
 ```rust
     /// The zoom factor.
@@ -6571,7 +6571,7 @@ with
 
 - [x] **Step 4: Add `LutMap::lut_epsilon` and `LutMap::set_lut_epsilon`**
 
-In `crates/ast-core/src/mappings/lutmap.rs`, immediately after the `interp`
+In `crates/starlink-ast/src/mappings/lutmap.rs`, immediately after the `interp`
 getter (which ends at line 112), insert:
 
 ```rust
@@ -6601,7 +6601,7 @@ getter (which ends at line 112), insert:
 
 - [x] **Step 5: Add `PcdMap::set_disc`**
 
-In `crates/ast-core/src/mappings/pcdmap.rs`, immediately after the `disc` getter
+In `crates/starlink-ast/src/mappings/pcdmap.rs`, immediately after the `disc` getter
 (which ends at line 72), insert:
 
 ```rust
@@ -6623,7 +6623,7 @@ In `crates/ast-core/src/mappings/pcdmap.rs`, immediately after the `disc` getter
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
+cargo test -p starlink-ast --test test_clear_on_set 2>&1 | tail -20
 ```
 
 Expected: 22 passed — the 18 that were there plus the four new ones,
@@ -6636,8 +6636,8 @@ zero check with `ZoomMap::new`, so run the two suites that would notice:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -5
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -5
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -5
 ```
 
 Expected: both unchanged from the state Cluster 3 left them in.
@@ -6689,8 +6689,8 @@ export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUS
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 unset CARGO_TARGET_DIR RUSTC RUSTDOC
-git add crates/ast-core/src/mappings/zoom.rs crates/ast-core/src/mappings/lutmap.rs \
-        crates/ast-core/src/mappings/pcdmap.rs crates/ast-core/tests/test_clear_on_set.rs PLAN.md
+git add crates/starlink-ast/src/mappings/zoom.rs crates/starlink-ast/src/mappings/lutmap.rs \
+        crates/starlink-ast/src/mappings/pcdmap.rs crates/starlink-ast/tests/test_clear_on_set.rs PLAN.md
 git commit -F - <<'MSG'
 feat(mappings): setters for Zoom, LutEpsilon and Disco
 
@@ -6724,9 +6724,9 @@ commented or uncommented output. Storing a value through a setter makes C's
 predicate true, so each setter sets its flag.
 
 **Files:**
-- Modify: `crates/ast-core/src/mappings/grismmap.rs:176-184` (eight setters,
+- Modify: `crates/starlink-ast/src/mappings/grismmap.rs:176-184` (eight setters,
   inserted between the `grism_theta` getter and `update_constants`)
-- Modify: `crates/ast-core/tests/test_clear_on_set.rs` (eight new cases, one new
+- Modify: `crates/starlink-ast/tests/test_clear_on_set.rs` (eight new cases, one new
   import)
 
 **Interfaces:**
@@ -6748,7 +6748,7 @@ predicate true, so each setter sets its flag.
 
 - [x] **Step 1: Write the eight failing test cases**
 
-Append to `crates/ast-core/tests/test_clear_on_set.rs`, after the cases Task 23
+Append to `crates/starlink-ast/tests/test_clear_on_set.rs`, after the cases Task 23
 added and still before `record_survives_invert_and_back`:
 
 ```rust
@@ -6844,9 +6844,9 @@ fn grism_setters_recompute_the_constants() {
 Extend the import block again so it reads:
 
 ```rust
-use ast_core::coords::PointSet;
-use ast_core::error::ErrorCode;
-use ast_core::mappings::{
+use starlink_ast::coords::PointSet;
+use starlink_ast::error::ErrorCode;
+use starlink_ast::mappings::{
     GrismMap, LutInterp, LutMap, Mapping, MathMap, PcdMap, PermMap, PolyMap, PolyTerm, SphMap,
     SplineMap, WcsMap, WcsProjection, ZoomMap,
 };
@@ -6856,7 +6856,7 @@ use ast_core::mappings::{
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
+cargo test -p starlink-ast --test test_clear_on_set 2>&1 | tail -20
 ```
 
 Expected: the crate fails to compile, with `no method named set_grism_nr found
@@ -6864,7 +6864,7 @@ for struct GrismMap` and one such error per remaining setter.
 
 - [x] **Step 3: Add the eight setters**
 
-In `crates/ast-core/src/mappings/grismmap.rs`, insert between the `grism_theta`
+In `crates/starlink-ast/src/mappings/grismmap.rs`, insert between the `grism_theta`
 getter (which ends at line 176) and the `update_constants` doc comment:
 
 ```rust
@@ -6950,7 +6950,7 @@ getter (which ends at line 176) and the `update_constants` doc comment:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -25
+cargo test -p starlink-ast --test test_clear_on_set 2>&1 | tail -25
 ```
 
 Expected: 31 passed — Task 23's 22 plus the eight setter cases and
@@ -6959,7 +6959,7 @@ Expected: 31 passed — Task 23's 22 plus the eight setter cases and
 If `grism_setters_recompute_the_constants` fails, the setters are storing the
 value without recomputing; check that each one ends with
 `self.update_constants();`. `PointSet::from_rows` and `.point(i)` are the forms
-`crates/ast-core/tests/test_grismmap.rs:75-84` uses.
+`crates/starlink-ast/tests/test_grismmap.rs:75-84` uses.
 
 - [x] **Step 5: Confirm the dump is unchanged for GrismMaps nothing sets**
 
@@ -6968,9 +6968,9 @@ output, so the corpus is the check that no existing GrismMap dump moved:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -5
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | tail -5
-cargo test -p ast-core --test test_grismmap 2>&1 | tail -5
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -5
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | tail -5
+cargo test -p starlink-ast --test test_grismmap 2>&1 | tail -5
 ```
 
 Expected: all three unchanged. Nothing in the corpus calls a setter, so nothing
@@ -7035,7 +7035,7 @@ Verify the number against the suite rather than trusting the arithmetic:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_clear_on_set 2>&1 | grep "test result"
+cargo test -p starlink-ast --test test_clear_on_set 2>&1 | grep "test result"
 ```
 
 Expected: `31 passed`. The prose number is that total minus
@@ -7050,7 +7050,7 @@ export CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUS
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 unset CARGO_TARGET_DIR RUSTC RUSTDOC
-git add crates/ast-core/src/mappings/grismmap.rs crates/ast-core/tests/test_clear_on_set.rs PLAN.md
+git add crates/starlink-ast/src/mappings/grismmap.rs crates/starlink-ast/tests/test_clear_on_set.rs PLAN.md
 git commit -F - <<'MSG'
 feat(grismmap): setters for the eight dispersion attributes
 
@@ -7080,10 +7080,10 @@ Cluster 5 adds no corpus fixture — no dump can express a cleared simplify reco
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-git checkout HEAD~2 -- crates/ast-core/src/mappings/
-cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -20
-git checkout HEAD -- crates/ast-core/src/mappings/
-cargo test -p ast-core --test test_clear_on_set 2>&1 | tail -8
+git checkout HEAD~2 -- crates/starlink-ast/src/mappings/
+cargo test -p starlink-ast --test test_clear_on_set 2>&1 | tail -20
+git checkout HEAD -- crates/starlink-ast/src/mappings/
+cargo test -p starlink-ast --test test_clear_on_set 2>&1 | tail -8
 ```
 
 Expected: the twelve new cases fail to compile or fail outright on the reverted
@@ -7113,7 +7113,7 @@ the directory would take that with it:
 
 ## Cluster 6 — the two transform-oracle overrides
 
-`crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt` is the
+`crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt` is the
 last place in the transform harness where a check can be switched off per
 fixture. It holds two entries, and the spec requires both gone (§6.2, the row
 `transform_oracle_overrides.txt` 2 → 0).
@@ -7140,13 +7140,13 @@ an exact assertion".
 ### Task 25: the `tnx-cheb.head` round-trip
 
 **Files:**
-- Modify: `crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt` (drop the `tnx-cheb.head` entry and the comment block above it)
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs:826-873` (`compare_rtrip`), plus a new const, helper, census test and unit control
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs:34` (`LEDGER`)
+- Modify: `crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt` (drop the `tnx-cheb.head` entry and the comment block above it)
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs:826-873` (`compare_rtrip`), plus a new const, helper, census test and unit control
+- Modify: `crates/starlink-ast/tests/test_verification_ledger.rs:34` (`LEDGER`)
 - Modify: `PLAN.md` §6 (the ledger table)
 
 **Interfaces:**
-- Consumes: `within_tol(got: f64, reference: f64, rtol: f64, atol: f64) -> bool` (`test_transform_oracle.rs:35`); `struct Section { relpath: String, nin: usize, nout: usize, forward: bool, inputs: Vec<Vec<f64>>, outputs: Vec<Vec<f64>> }` with `fn npoint(&self) -> usize`; `parse_oracle(text: &str) -> Result<Vec<Section>, String>`; `const RTRIP_RTOL: f64 = 1e-6`; `const RTRIP_ATOL: f64 = 0.05`; `has_ext(relpath: &str, ext: &str) -> bool`; `ast_core::mappings::UnitMap::new(ncoord: usize) -> UnitMap`.
+- Consumes: `within_tol(got: f64, reference: f64, rtol: f64, atol: f64) -> bool` (`test_transform_oracle.rs:35`); `struct Section { relpath: String, nin: usize, nout: usize, forward: bool, inputs: Vec<Vec<f64>>, outputs: Vec<Vec<f64>> }` with `fn npoint(&self) -> usize`; `parse_oracle(text: &str) -> Result<Vec<Section>, String>`; `const RTRIP_RTOL: f64 = 1e-6`; `const RTRIP_ATOL: f64 = 0.05`; `has_ext(relpath: &str, ext: &str) -> bool`; `starlink_ast::mappings::UnitMap::new(ncoord: usize) -> UnitMap`.
 - Produces: `fn reference_round_trips(fwd: &Section, inv_ref: &[Vec<f64>], row: usize, rtol: f64, atol: f64) -> bool`; `const RTRIP_REFERENCE_GAPS_LICENSED: &[(&str, &[usize])]`; and the new `compare_rtrip(map: &dyn Mapping, fwd: &Section, inv_live: &[Vec<f64>], inv_ref: &[Vec<f64>], rtol: f64, atol: f64) -> Vec<AxisMiss>` signature, which Task 26 does not touch.
 
 The evidence first, because it is what makes this a comparator fix rather than a
@@ -7178,7 +7178,7 @@ that row keeps being asserted.
 cd /sdf/home/t/timj/WORK/starlink-astrs
 python3 - <<'PY'
 from pathlib import Path
-p = Path("crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt")
+p = Path("crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt")
 t = p.read_text()
 old = """# KNOWN ROUND-TRIP FAILURE -- INVESTIGATE.  The golden checks still pin the
 # fixture's forward and inverse outputs; only the round-trip accuracy
@@ -7212,7 +7212,7 @@ Then run the gate that owns `.head` sections:
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_transform_oracle head_sections_match_oracle 2>&1 | tail -20
+cargo test -p starlink-ast --test test_transform_oracle head_sections_match_oracle 2>&1 | tail -20
 ```
 
 Expected: FAIL. `head oracle sections diverged from C (not excluded)` naming
@@ -7224,7 +7224,7 @@ either.
 
 The set is a property of the corpus, so it is asserted without loading a single
 fixture. Add the const immediately after `compare_rtrip` in
-`crates/ast-core/tests/test_transform_oracle.rs`:
+`crates/starlink-ast/tests/test_transform_oracle.rs`:
 
 ```rust
 /// Rows where C's own recorded inverse does not recover the recorded forward
@@ -7334,7 +7334,7 @@ reference gate fires last. Add to the `check_tests` module, after
     fn rtrip_excuses_only_rows_the_reference_also_fails() {
         // A 1-axis identity mapping, so the alias escape is easy to reason
         // about: a recovered pixel forward-maps to itself.
-        let map = ast_core::mappings::UnitMap::new(1);
+        let map = starlink_ast::mappings::UnitMap::new(1);
         let fwd = Section {
             relpath: "synthetic.head".into(),
             nin: 1,
@@ -7360,7 +7360,7 @@ reference gate fires last. Add to the `check_tests` module, after
 - [x] **Step 5: Run it and watch it fail to compile**
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle rtrip_excuses 2>&1 | tail -20
+cargo test -p starlink-ast --test test_transform_oracle rtrip_excuses 2>&1 | tail -20
 ```
 
 Expected: FAIL — `error[E0061]: this function takes 5 arguments but 6 arguments
@@ -7369,7 +7369,7 @@ were supplied`, pointing at `compare_rtrip`. The gate does not exist yet.
 - [x] **Step 6: Add the helper**
 
 Immediately before `compare_rtrip` in
-`crates/ast-core/tests/test_transform_oracle.rs`:
+`crates/starlink-ast/tests/test_transform_oracle.rs`:
 
 ```rust
 /// Does C's own recorded inverse recover the recorded forward input at this
@@ -7445,7 +7445,7 @@ section, so its recorded outputs are C's inverse:
 - [x] **Step 9: Run the control and the three gates**
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle 2>&1 | tail -25
+cargo test -p starlink-ast --test test_transform_oracle 2>&1 | tail -25
 ```
 
 Expected: PASS, including `rtrip_excuses_only_rows_the_reference_also_fails`,
@@ -7479,7 +7479,7 @@ the entry that no longer exists. Replace its first assertion:
 
 - [x] **Step 11: Add the ledger row**
 
-In `crates/ast-core/tests/test_verification_ledger.rs`, add to `LEDGER` after
+In `crates/starlink-ast/tests/test_verification_ledger.rs`, add to `LEDGER` after
 the `SIMPLIFY_ORACLE_EXCLUDED` entry:
 
 ```rust
@@ -7520,7 +7520,7 @@ PY
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
 cargo fmt --all
-cargo test -p ast-core --test test_verification_ledger --test test_transform_oracle 2>&1 | tail -15
+cargo test -p starlink-ast --test test_verification_ledger --test test_transform_oracle 2>&1 | tail -15
 CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
   cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 ```
@@ -7530,9 +7530,9 @@ Expected: both test binaries pass; clippy clean.
 - [x] **Step 14: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_transform_oracle.rs \
-        crates/ast-core/tests/test_verification_ledger.rs \
-        crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt \
+git add crates/starlink-ast/tests/test_transform_oracle.rs \
+        crates/starlink-ast/tests/test_verification_ledger.rs \
+        crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt \
         PLAN.md
 git commit -F - <<'MSG'
 test(oracle): excuse round-trip rows C itself does not round-trip
@@ -7566,14 +7566,14 @@ MSG
 **Files:**
 - Create: `tools/oracle_fixtures/unitnorm_probe.c`
 - Modify: `tools/oracle_fixtures/Makefile:16-17` (`PROGS`)
-- Modify: `crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt` (drop the last entry; rewrite the header to say the file declares nothing)
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs` (new const, substitution helper, call-site change, two tests)
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs:34` (`LEDGER`)
+- Modify: `crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt` (drop the last entry; rewrite the header to say the file declares nothing)
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs` (new const, substitution helper, call-site change, two tests)
+- Modify: `crates/starlink-ast/tests/test_verification_ledger.rs:34` (`LEDGER`)
 - Modify: `docs/issues/c-library-quirks.md` (new entry at the end)
 - Modify: `PLAN.md` §6
 
 **Interfaces:**
-- Consumes: `struct Section` and `parse_oracle` as in Task 25; `compare_golden(kind: &str, live: &[Vec<f64>], reference: &[Vec<f64>], angular: &[bool]) -> Vec<AxisMiss>` (`test_transform_oracle.rs:758`); `GOLDEN_RTOL`, `GOLDEN_ATOL`; `ast_core::constants::BAD_VALUE`; `Overrides::golden_off(&self, relpath: &str, forward: bool) -> bool`.
+- Consumes: `struct Section` and `parse_oracle` as in Task 25; `compare_golden(kind: &str, live: &[Vec<f64>], reference: &[Vec<f64>], angular: &[bool]) -> Vec<AxisMiss>` (`test_transform_oracle.rs:758`); `GOLDEN_RTOL`, `GOLDEN_ATOL`; `starlink_ast::constants::BAD_VALUE`; `Overrides::golden_off(&self, relpath: &str, forward: bool) -> bool`.
 - Produces: `const FMA_SUBSTITUTIONS_LICENSED: &[(&str, bool, usize, &[f64])]`; `fn substituted_reference<'a>(relpath: &str, forward: bool, recorded: &'a [Vec<f64>]) -> std::borrow::Cow<'a, [Vec<f64>]>`. Nothing later in the plan consumes either.
 
 The override disables the golden comparison of a whole 24-row inverse section
@@ -7595,7 +7595,7 @@ C's own zero-norm guard at `:1024` was stepped past on that host, and it is
 taken on any non-contracting build — x86-64 C without `-mfma`, and Rust
 everywhere.
 
-`crates/ast-core/src/mappings/unitnormmap.rs:173-198` already mirrors C's branch
+`crates/starlink-ast/src/mappings/unitnormmap.rs:173-198` already mirrors C's branch
 exactly, so there is nothing to fix in the port. Three ways out were rejected:
 loosening the tolerance (a tolerance with no C analogue — stop signal 1);
 regenerating the section (numeric drift must be left alone, per the corpus rules
@@ -7717,7 +7717,7 @@ The oracle's inverse rows 2 and 3 share an input, so one point settles both.
 ```bash
 cd tools/oracle_fixtures
 make unitnorm_probe 2>&1 | tail -3
-FIX=../../crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map
+FIX=../../crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/neg_unitnormmap_inv_fwd_diffcentre.map
 ./unitnorm_probe "$FIX" \
   -0.70710678118654746 -0.70710678118654746 7.0710678118654755
 ```
@@ -7733,7 +7733,7 @@ not a throwaway, and belongs in the same commit.
 
 - [x] **Step 4: Add the substitution table**
 
-In `crates/ast-core/tests/test_transform_oracle.rs`, immediately after
+In `crates/starlink-ast/tests/test_transform_oracle.rs`, immediately after
 `RTRIP_REFERENCE_GAPS_LICENSED`:
 
 ```rust
@@ -7855,7 +7855,7 @@ fn fma_substitutions_replace_rows_that_really_differ() {
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_transform_oracle fma_substitutions 2>&1 | tail -12
+cargo test -p starlink-ast --test test_transform_oracle fma_substitutions 2>&1 | tail -12
 ```
 
 Expected: PASS. The table is self-consistent with the corpus. The golden
@@ -7868,7 +7868,7 @@ at this point.
 cd /sdf/home/t/timj/WORK/starlink-astrs
 python3 - <<'PY'
 from pathlib import Path
-p = Path("crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt")
+p = Path("crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt")
 t = p.read_text()
 old = """# KNOWN GENERATOR-PLATFORM DIVERGENCE.  The inverse of a UnitNormMap at a
 # point coincident with its centre is singular: the direction is undefined, so
@@ -7885,7 +7885,7 @@ new = """# Two rows of that fixture's inverse section are substituted per row by
 assert t.count(old) == 1
 p.write_text(t.replace(old, new))
 PY
-cargo test -p ast-core --test test_transform_oracle simplify_sections_match_oracle 2>&1 | tail -15
+cargo test -p starlink-ast --test test_transform_oracle simplify_sections_match_oracle 2>&1 | tail -15
 ```
 
 Expected: FAIL — `simplify oracle sections diverged from C (not excluded)`,
@@ -7917,7 +7917,7 @@ memory.
 - [x] **Step 9: Run the three gates**
 
 ```bash
-cargo test -p ast-core --test test_transform_oracle 2>&1 | tail -25
+cargo test -p starlink-ast --test test_transform_oracle 2>&1 | tail -25
 ```
 
 Expected: PASS throughout, with `simplify_sections_match_oracle` green and no
@@ -7931,7 +7931,7 @@ and tighten the parse test. First the file:
 ```bash
 python3 - <<'PY'
 from pathlib import Path
-p = Path("crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt")
+p = Path("crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt")
 t = p.read_text()
 old = t.split("\n")[0]
 assert old.startswith("#"), old
@@ -7949,7 +7949,7 @@ head = """# Per-fixture overrides for test_transform_oracle.rs.
 #"""
 p.write_text(head + t[len(old):])
 PY
-sed -n '1,24p' crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt
+sed -n '1,24p' crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt
 ```
 
 Then the test, replacing the body written in Task 25's step 10:
@@ -8027,11 +8027,11 @@ comparison made before the multiply-add would all settle it.
 
 **Rust behaviour (no mirror):** Rust does not contract floating-point
 expressions, so `UnitNormMap::transform_into`
-(`crates/ast-core/src/mappings/unitnormmap.rs:173-198`) always takes the guard
+(`crates/starlink-ast/src/mappings/unitnormmap.rs:173-198`) always takes the guard
 and always returns `BAD_VALUE` on the leading axes and `0.0` on the last —
 agreeing with the C source as written, and with C as built anywhere that does
 not fuse. `FMA_SUBSTITUTIONS_LICENSED` in
-`crates/ast-core/tests/test_transform_oracle.rs` substitutes the two affected
+`crates/starlink-ast/tests/test_transform_oracle.rs` substitutes the two affected
 oracle rows so the port is held to the prescribed value rather than the fused
 one.
 
@@ -8082,7 +8082,7 @@ sed -n '/^| Gate | Cases/,/^$/p' PLAN.md
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
 cargo fmt --all
-cargo test -p ast-core --test test_transform_oracle --test test_verification_ledger 2>&1 | tail -18
+cargo test -p starlink-ast --test test_transform_oracle --test test_verification_ledger 2>&1 | tail -18
 CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
   cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
 ```
@@ -8096,9 +8096,9 @@ clean.
 
 ```bash
 git add tools/oracle_fixtures/unitnorm_probe.c tools/oracle_fixtures/Makefile \
-        crates/ast-core/tests/test_transform_oracle.rs \
-        crates/ast-core/tests/test_verification_ledger.rs \
-        crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt \
+        crates/starlink-ast/tests/test_transform_oracle.rs \
+        crates/starlink-ast/tests/test_verification_ledger.rs \
+        crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt \
         docs/issues/c-library-quirks.md PLAN.md
 git commit -F - <<'MSG'
 test(oracle): hold UnitNormMap to C's zero-norm branch, not the fused reference
@@ -8165,7 +8165,7 @@ The residual citation rot is real and measured. `PLAN.md` §9.5 records that 255
 
 There is also a defect in the Phase 0 resolver that has to be fixed before the mass repair, or the repair certifies the wrong files:
 
-| Cited name | Files in `crates/ast-core/src` with that basename | Citations |
+| Cited name | Files in `crates/starlink-ast/src` with that basename | Citations |
 |---|---:|---:|
 | `simplify.rs` | 2 (`mappings/simplify.rs`, `units/simplify.rs`) | 259 |
 | `pointlist.rs` | 2 (`regions/pointlist.rs`, `coords/pointlist.rs`) | 11 |
@@ -8186,9 +8186,9 @@ The work per file is the same four operations, and each task carries them in ful
 **Files:**
 - Modify: `crates/audit-tools/src/lib.rs` (`parse_citation`, plus `resolve_source`)
 - Modify: `crates/audit-tools/src/bin/anchor-citations.rs` (drop its private `resolve`)
-- Modify: `crates/ast-core/tests/test_audit_citations.rs` (drop its private `resolve`; one gate replaced)
+- Modify: `crates/starlink-ast/tests/test_audit_citations.rs` (drop its private `resolve`; one gate replaced)
 - Modify: all 37 files in `docs/audits/mapmerge/` (the ambiguity rewrite), then in full: `cmpmap.md`, `winmap.md`, `perm.md`, `matrix.md`, `zoom.md`, `shift.md`, `unit.md`, `tranmap.md`, `switchmap.md`, `selectormap.md`, `ratemap.md`, `normmap.md`
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs`, `PLAN.md`
+- Modify: `crates/starlink-ast/tests/test_verification_ledger.rs`, `PLAN.md`
 
 **Interfaces:**
 - Consumes: `audit_tools::{parse_citation, enclosing_rust_item, enclosing_c_function, enclosing_rust_impl, c_step_comments, Citation}` from Tasks 2, 4 and 5; the markers `Citations: verified against pin 3e60abaa` and `Extension points: classified` from Tasks 3 and 4; the binary `anchor-citations` from Task 3.
@@ -8202,7 +8202,7 @@ The work per file is the same four operations, and each task carries them in ful
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 for b in $(grep -oh '[A-Za-z_0-9]*\.rs:' docs/audits/mapmerge/*.md | sort -u | tr -d ':'); do
-  n=$(find crates/ast-core/src -name "$b" | wc -l)
+  n=$(find crates/starlink-ast/src -name "$b" | wc -l)
   [ "$n" -ne 1 ] && echo "$b -> $n candidates, $(grep -oh "$b:" docs/audits/mapmerge/*.md | wc -l) citations"
 done
 ```
@@ -8266,7 +8266,7 @@ Expected: PASS, including `parses_all_three_citation_forms`, which uses bare nam
 
 - [x] **Step 5: Write the failing test for unique resolution**
 
-The resolver needs the tree, so its test lives with the gate. Append to `crates/ast-core/tests/test_audit_citations.rs`:
+The resolver needs the tree, so its test lives with the gate. Append to `crates/starlink-ast/tests/test_audit_citations.rs`:
 
 ```rust
 /// The resolver answers against this tree, so its contract is tested against
@@ -8313,7 +8313,7 @@ fn resolution_is_by_unique_path_suffix() {
 ```
 
 ```bash
-cargo test -p ast-core --test test_audit_citations resolution_is_by 2>&1 | tail -10
+cargo test -p starlink-ast --test test_audit_citations resolution_is_by 2>&1 | tail -10
 ```
 
 Expected: FAIL — `could not find `resolve_source` in `audit_tools``.
@@ -8339,7 +8339,7 @@ pub enum Resolution {
 
 /// Resolve a citation's file name against the tree at `root`.
 ///
-/// A Rust name is matched as a path suffix under `crates/ast-core/src`, on whole
+/// A Rust name is matched as a path suffix under `crates/starlink-ast/src`, on whole
 /// path components, so `regions/mod.rs` matches `.../src/regions/mod.rs` and not
 /// `.../src/fitschan/mod.rs`, and a bare `mod.rs` matches all thirteen. A C name
 /// resolves in the pinned submodule's `src`.
@@ -8358,7 +8358,7 @@ pub fn resolve_source(root: &Path, file: &str) -> Resolution {
 
     let wanted: Vec<&str> = file.split('/').collect();
     let mut hits = Vec::new();
-    let mut stack = vec![root.join("crates/ast-core/src")];
+    let mut stack = vec![root.join("crates/starlink-ast/src")];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
@@ -8393,14 +8393,14 @@ pub fn resolve_source(root: &Path, file: &str) -> Resolution {
 ```
 
 ```bash
-cargo test -p ast-core --test test_audit_citations resolution_is_by 2>&1 | tail -8
+cargo test -p starlink-ast --test test_audit_citations resolution_is_by 2>&1 | tail -8
 ```
 
 Expected: PASS.
 
 - [x] **Step 7: Route both callers through it**
 
-Delete the private `resolve` from `crates/ast-core/tests/test_audit_citations.rs` and from `crates/audit-tools/src/bin/anchor-citations.rs`, and call the library in both.
+Delete the private `resolve` from `crates/starlink-ast/tests/test_audit_citations.rs` and from `crates/audit-tools/src/bin/anchor-citations.rs`, and call the library in both.
 In the gate, the two existing uses become:
 
 ```rust
@@ -8472,7 +8472,7 @@ fn every_repaired_citation_resolves_to_exactly_one_file() {
 ```
 
 ```bash
-cargo test -p ast-core --test test_audit_citations 2>&1 | tail -20
+cargo test -p starlink-ast --test test_audit_citations 2>&1 | tail -20
 ```
 
 Expected: FAIL on `sphmap.md` and `region_polygon.md` if either cites a bare `simplify.rs`, PASS otherwise.
@@ -8511,7 +8511,7 @@ Expected: 20 files rewritten for `simplify.rs` plus `region_pointlist.md`.
 The prose sentences that name `simplify.rs` without a line number are left alone — they are prose, not citations — but check the diff and qualify any that read as a file reference, so a reader is not sent to the wrong module.
 
 ```bash
-cargo test -p ast-core --test test_audit_citations 2>&1 | tail -12
+cargo test -p starlink-ast --test test_audit_citations 2>&1 | tail -12
 ```
 
 Expected: PASS. Only the two Phase 0 files are checked, and both now resolve uniquely.
@@ -8607,7 +8607,7 @@ Reading one file back through the tool without `--write` is a cheap check that t
 
 - [x] **Step 11: Point the verdict reader at the last cell, not the fifth**
 
-`verdicts()` in `crates/ast-core/tests/test_mapmerge_audit.rs:139-155` reads
+`verdicts()` in `crates/starlink-ast/tests/test_mapmerge_audit.rs:139-155` reads
 `cells[4]`, so a six-column row hands it the new extension-point cell and every
 verdict gate fails with `architecture is not a permitted verdict`. Take the last
 cell and accept both widths, since the three groups add the column in three
@@ -8639,7 +8639,7 @@ fn verdicts(text: &str) -> Vec<String> {
 ```
 
 ```bash
-cargo test -p ast-core --test test_mapmerge_audit 2>&1 | tail -12
+cargo test -p starlink-ast --test test_mapmerge_audit 2>&1 | tail -12
 ```
 
 Expected: PASS. Run this before adding the markers — the verdict gates are not
@@ -8655,7 +8655,7 @@ Extension points: classified
 ```
 
 ```bash
-cargo test -p ast-core --test test_audit_citations 2>&1 | tee /tmp/gateA.txt | tail -40
+cargo test -p starlink-ast --test test_audit_citations 2>&1 | tee /tmp/gateA.txt | tail -40
 ```
 
 Four gates now run on twelve more files, and each failure has one correct response:
@@ -8669,7 +8669,7 @@ Work file by file and re-run. Do not widen a gate to close a file.
 
 - [x] **Step 13: Drop the ledger count by twelve**
 
-In `crates/ast-core/tests/test_verification_ledger.rs`, the `CHECKLISTS_UNREPAIRED` row goes from 35 to 23:
+In `crates/starlink-ast/tests/test_verification_ledger.rs`, the `CHECKLISTS_UNREPAIRED` row goes from 35 to 23:
 
 ```rust
     (
@@ -8703,12 +8703,12 @@ PY
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
 cargo fmt --all
-cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit \
+cargo test -p starlink-ast --test test_audit_citations --test test_mapmerge_audit \
   --test test_verification_ledger 2>&1 | tail -12
 cargo test -p audit-tools 2>&1 | tail -5
 CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
   cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
-git add -A crates/audit-tools crates/ast-core docs/audits/mapmerge PLAN.md
+git add -A crates/audit-tools crates/starlink-ast docs/audits/mapmerge PLAN.md
 git commit -F - <<'MSG'
 audit: resolve citations by unique path, and repair the twelve composition checklists
 
@@ -8743,7 +8743,7 @@ Two rows in this group are not a citation exercise:
 
 **Files:**
 - Modify: `docs/audits/mapmerge/slamap.md`, `specmap.md`, `timemap.md`, `wcsmap.md`, `grismmap.md`, `polymap.md`, `chebymap.md`, `lutmap.md`, `pcdmap.md`, `mathmap.md`, `splinemap.md`, `dssmap.md`, `unitnormmap.md`
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs`, `PLAN.md`
+- Modify: `crates/starlink-ast/tests/test_verification_ledger.rs`, `PLAN.md`
 
 **Interfaces:**
 - Consumes: `audit_tools::{parse_citation, resolve_source, Resolution, enclosing_rust_item, enclosing_c_function, enclosing_rust_impl, c_step_comments}`; the `anchor-citations` binary; both header markers.
@@ -8831,7 +8831,7 @@ Cluster 5's Task 23 added the setter. The row becomes:
 Check the cited Rust line against the setter cluster 5 actually landed before writing it — the number here is the one in the tree, not a guess:
 
 ```bash
-grep -n 'fn set_lut_epsilon\|fn set_lut_interp\|fn clear_lut' crates/ast-core/src/mappings/lutmap.rs
+grep -n 'fn set_lut_epsilon\|fn set_lut_interp\|fn clear_lut' crates/starlink-ast/src/mappings/lutmap.rs
 ```
 
 - [x] **Step 4: Record ChebyMap's deferral in its front matter**
@@ -8858,7 +8858,7 @@ Extension points: classified
 ```
 
 ```bash
-cargo test -p ast-core --test test_audit_citations 2>&1 | tee /tmp/gateB.txt | tail -40
+cargo test -p starlink-ast --test test_audit_citations 2>&1 | tee /tmp/gateB.txt | tail -40
 ```
 
 Fix each failure at the row it names — re-anchor a rotted citation, correct a misclassified row, add a missing row for an uncovered C step, or list the step under `Uncited C steps:` with a reason.
@@ -8896,11 +8896,11 @@ PY
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
 cargo fmt --all
-cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit \
+cargo test -p starlink-ast --test test_audit_citations --test test_mapmerge_audit \
   --test test_verification_ledger 2>&1 | tail -12
 CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
   cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
-git add -A crates/ast-core docs/audits/mapmerge PLAN.md
+git add -A crates/starlink-ast docs/audits/mapmerge PLAN.md
 git commit -F - <<'MSG'
 audit: repair the thirteen conversion and distortion checklists
 
@@ -8938,9 +8938,9 @@ A skip mode that reads zero is one nobody has to argue about; left in place it i
 
 **Files:**
 - Modify: `docs/audits/mapmerge/region_interval.md`, `region_box_region.md`, `region_prism.md`, `region_mod.md`, `region_cmpregion.md`, `region_nullregion.md`, `region_pointlist.md`, `region_ellipse.md`, `region_circle.md`, `frame_frameset.md`
-- Modify: `crates/ast-core/tests/test_audit_citations.rs` (two gates added)
-- Modify: `crates/ast-core/tests/test_simplify_regression.rs:178-181`, `:221`, `:459-467`, `:628`
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs` (row removed)
+- Modify: `crates/starlink-ast/tests/test_audit_citations.rs` (two gates added)
+- Modify: `crates/starlink-ast/tests/test_simplify_regression.rs:178-181`, `:221`, `:459-467`, `:628`
+- Modify: `crates/starlink-ast/tests/test_verification_ledger.rs` (row removed)
 - Modify: `PLAN.md` (§6 row removed, §9.5 closed)
 
 **Interfaces:**
@@ -9034,7 +9034,7 @@ Extension points: classified
 ```
 
 ```bash
-cargo test -p ast-core --test test_audit_citations 2>&1 | tee /tmp/gateC.txt | tail -40
+cargo test -p starlink-ast --test test_audit_citations 2>&1 | tee /tmp/gateC.txt | tail -40
 ```
 
 All four gates now run on all 37 files.
@@ -9043,7 +9043,7 @@ Re-run until PASS.
 
 - [x] **Step 4: Write the failing gate that makes the markers mandatory**
 
-Append to `crates/ast-core/tests/test_audit_citations.rs`:
+Append to `crates/starlink-ast/tests/test_audit_citations.rs`:
 
 ```rust
 /// Every checklist declares both markers, so the four gates above have no
@@ -9106,7 +9106,7 @@ fn no_row_is_left_at_gap() {
 ```
 
 ```bash
-cargo test -p ast-core --test test_audit_citations 2>&1 | tail -20
+cargo test -p starlink-ast --test test_audit_citations 2>&1 | tail -20
 ```
 
 Expected: both PASS — Task 27 and Task 28 added the markers to their 25 files, this task's Step 3 added the last ten, and Task 28 flipped `lutmap.md` row 24 off `gap`.
@@ -9117,13 +9117,13 @@ The one `gap` left in the audit machinery is not a checklist row: `C_SIMPLIFY_SE
 
 - [x] **Step 5: Remove the ledger row**
 
-Delete the `CHECKLISTS_UNREPAIRED` entry from `LEDGER` in `crates/ast-core/tests/test_verification_ledger.rs`.
+Delete the `CHECKLISTS_UNREPAIRED` entry from `LEDGER` in `crates/starlink-ast/tests/test_verification_ledger.rs`.
 The marker is not one of `MARKERS`, so `no_relaxation_hides_outside_the_ledger` does not require an entry for it — the row existed to keep a count visible while it was nonzero, and a zero row invites the reading that something is still licensed.
 
 ```bash
 python3 - <<'PY'
 from pathlib import Path
-p = Path("crates/ast-core/tests/test_verification_ledger.rs")
+p = Path("crates/starlink-ast/tests/test_verification_ledger.rs")
 t = p.read_text()
 start = t.index('        "docs/audits/mapmerge/*.md",')
 # Back up to the opening paren of the tuple, forward to the line after its close.
@@ -9143,7 +9143,7 @@ t = t.replace(rows[0] + "\n", "", 1)
 p.write_text(t)
 print("removed the §6 row")
 PY
-cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -8
+cargo test -p starlink-ast --test test_verification_ledger 2>&1 | tail -8
 ```
 
 Expected: PASS. `every_relaxation_is_the_size_the_ledger_says` iterates `LEDGER`, so a removed row is simply not checked, and the new gate in Step 4 is what holds the invariant now.
@@ -9197,23 +9197,23 @@ export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 cd /sdf/home/t/timj/WORK/starlink-astrs
 
 # 1. Missing manifest.
-mv crates/ast-core/tests/fixtures/simplify_fixtures/simplify_tests.txt /tmp/mt.txt
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -c 'not found'
-mv /tmp/mt.txt crates/ast-core/tests/fixtures/simplify_fixtures/simplify_tests.txt
+mv crates/starlink-ast/tests/fixtures/simplify_fixtures/simplify_tests.txt /tmp/mt.txt
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -c 'not found'
+mv /tmp/mt.txt crates/starlink-ast/tests/fixtures/simplify_fixtures/simplify_tests.txt
 
 # 2. Missing fixture file.
-F=$(ls crates/ast-core/tests/fixtures/simplify_fixtures/*.map | head -1)
+F=$(ls crates/starlink-ast/tests/fixtures/simplify_fixtures/*.map | head -1)
 mv "$F" /tmp/one.map
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'have no fixture|passed'
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -E 'have no fixture|passed'
 mv /tmp/one.map "$F"
 
 # 3. Unparseable fixture.
 cp "$F" /tmp/one.map && printf 'Begin Garbage\n' > "$F"
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'failed to parse|passed'
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -E 'failed to parse|passed'
 cp /tmp/one.map "$F"
 
 # Back to green.
-cargo test -p ast-core --test test_simplify_regression 2>&1 | tail -6
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | tail -6
 ```
 
 Expected: each of the three fails the test with its own message, and the restore returns it to `468 passed, 0 skipped (file absent), 0 skipped (parse …)`.
@@ -9232,7 +9232,7 @@ Replace §9.5's body with its resolution, keeping the warning that made it expen
 All 37 checklists in `docs/audits/mapmerge/` are anchored against pin
 `3e60abaa` and declare `Citations: verified against pin 3e60abaa` and
 `Extension points: classified`.
-Four gates in `crates/ast-core/tests/test_audit_citations.rs` hold it: each
+Four gates in `crates/starlink-ast/tests/test_audit_citations.rs` hold it: each
 citation resolves to exactly one file, names the item it claims, every
 architecture row lands on a trait method, and every C step comment inside a
 cited body is covered by a row or named under `Uncited C steps:`.
@@ -9258,7 +9258,7 @@ not checked against.
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
 cargo fmt --all
-cargo test -p ast-core --test test_audit_citations --test test_mapmerge_audit \
+cargo test -p starlink-ast --test test_audit_citations --test test_mapmerge_audit \
   --test test_verification_ledger --test test_simplify_regression \
   --test test_transform_oracle 2>&1 | tail -20
 cargo test -p audit-tools 2>&1 | tail -5
@@ -9269,7 +9269,7 @@ CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$R
 Expected: all green, `simplify_regression` still `468 passed`, and the audit gates now covering 37 files.
 
 ```bash
-git add -A crates/ast-core crates/audit-tools docs/audits/mapmerge PLAN.md
+git add -A crates/starlink-ast crates/audit-tools docs/audits/mapmerge PLAN.md
 git commit -F - <<'MSG'
 audit: repair the ten Region and Frame checklists, and make the markers mandatory
 
@@ -9333,17 +9333,17 @@ If the answer is "no use case", the exclusion stays and carries that answer as i
 **Files:**
 - Create: `tools/oracle_fixtures/frame_in_map_slot_probe.c`
 - Modify: `tools/oracle_fixtures/Makefile:16-18` (`PROGS`)
-- Create: `crates/ast-core/tests/fixtures/frame_in_map_slot.ast`
-- Create: `crates/ast-core/tests/test_frame_in_map_slot.rs`
+- Create: `crates/starlink-ast/tests/fixtures/frame_in_map_slot.ast`
+- Create: `crates/starlink-ast/tests/test_frame_in_map_slot.rs`
 - Create: `docs/issues/frame-in-a-mapping-slot.md`
-- Modify: `crates/ast-core/tests/test_mapmerge_audit.rs` (`C_SIMPLIFY_SEAMS`, `verdict_is_valid`, `every_c_simplify_seam_is_covered`, and one gate deleted)
-- Modify: `crates/ast-core/tests/test_verification_ledger.rs` (`MARKERS`, `LEDGER`)
+- Modify: `crates/starlink-ast/tests/test_mapmerge_audit.rs` (`C_SIMPLIFY_SEAMS`, `verdict_is_valid`, `every_c_simplify_seam_is_covered`, and one gate deleted)
+- Modify: `crates/starlink-ast/tests/test_verification_ledger.rs` (`MARKERS`, `LEDGER`)
 - Modify: `PLAN.md` (§6 row, §9.6 rewritten), `docs/superpowers/specs/2026-09-01-simplify-parity-completion-design.md` (§3.4 row)
 
 **Interfaces:**
 - Consumes: the native reader's public entry point, `Channel::read` over a `&str` (as `test_native_roundtrip_all` uses it); `MARKERS` and `LEDGER` from `test_verification_ledger.rs`.
 - Produces:
-  - `crates/ast-core/tests/fixtures/frame_in_map_slot.ast` — a C-written FrameSet whose `Map2` slot holds `Begin CmpFrame`.
+  - `crates/starlink-ast/tests/fixtures/frame_in_map_slot.ast` — a C-written FrameSet whose `Map2` slot holds `Begin CmpFrame`.
   - `const FRAME_IN_MAP_SLOT_UNDECIDED: &[(&str, &str)]` — one entry, fixture name and reason.
   - `fn frame_in_a_map_slot_is_rejected()` and `fn the_settled_region_nestings_still_read()`.
   - The seam-coverage form `undecided: <issue path>`, replacing `gap: PLAN.md §9.6` for `cmpframe.c`.
@@ -9436,9 +9436,9 @@ If C rejects the construct instead, this whole cluster is void: stop, and report
 
 ```bash
 cp frame_in_map_slot.ast \
-  /sdf/home/t/timj/WORK/starlink-astrs/crates/ast-core/tests/fixtures/frame_in_map_slot.ast
+  /sdf/home/t/timj/WORK/starlink-astrs/crates/starlink-ast/tests/fixtures/frame_in_map_slot.ast
 cd /sdf/home/t/timj/WORK/starlink-astrs
-grep -c . crates/ast-core/tests/fixtures/frame_in_map_slot.ast
+grep -c . crates/starlink-ast/tests/fixtures/frame_in_map_slot.ast
 ```
 
 This is a reference product: written by the C oracle, never hand-edited.
@@ -9446,7 +9446,7 @@ It is committed rather than symlinked, so tier 1 reads it with the submodule abs
 
 - [x] **Step 5: Write the test that pins the refusal**
 
-`crates/ast-core/tests/test_frame_in_map_slot.rs`:
+`crates/starlink-ast/tests/test_frame_in_map_slot.rs`:
 
 ```rust
 //! A bare Frame where a Mapping is expected.
@@ -9466,7 +9466,7 @@ It is committed rather than symlinked, so tier 1 reads it with the submodule abs
 
 use std::path::{Path, PathBuf};
 
-use ast_core::Channel;
+use starlink_ast::Channel;
 
 /// The one dump the reader refuses, with the reason it is refused.
 ///
@@ -9571,7 +9571,7 @@ fn the_settled_region_nestings_still_read() {
 
 ```bash
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core --test test_frame_in_map_slot 2>&1 | tail -25
+cargo test -p starlink-ast --test test_frame_in_map_slot 2>&1 | tail -25
 ```
 
 Expected: `frame_in_a_map_slot_is_rejected` PASS, on the message
@@ -9583,7 +9583,7 @@ If `read_str` is not the reader's entry name, take the one
 `test_native_roundtrip_all` uses:
 
 ```bash
-grep -n 'Channel::new()\|fn read' crates/ast-core/tests/test_native_roundtrip_all.rs | head -5
+grep -n 'Channel::new()\|fn read' crates/starlink-ast/tests/test_native_roundtrip_all.rs | head -5
 ```
 
 The counts in the control are the ones §4.2 measured; if the floors fail, print the two totals and check the corpus rather than adjusting the floors to fit.
@@ -9640,13 +9640,13 @@ have blocked it. The port mirrors that override (`mappings/mod.rs:666`).
 
 ## The artifact
 
-`crates/ast-core/tests/fixtures/frame_in_map_slot.ast` is a dump the C library
+`crates/starlink-ast/tests/fixtures/frame_in_map_slot.ast` is a dump the C library
 wrote: a FrameSet whose `Map2` slot holds `Begin CmpFrame`. `astAddFrame`
 accepted it, `astTran2` transformed through it, and the Channel dumped it
 without error. Reproduce it with
 `tools/oracle_fixtures/frame_in_map_slot_probe.c`.
 
-`crates/ast-core/tests/test_frame_in_map_slot.rs` pins the current refusal and
+`crates/starlink-ast/tests/test_frame_in_map_slot.rs` pins the current refusal and
 keeps it narrow: its second test requires the 35 Region-in-`CmpMap` and 15
 Region-in-`CmpFrame` nestings to keep reading, so the gap cannot be closed by
 refusing Frames in Mapping slots wholesale, nor the refusal widened to catch
@@ -9681,7 +9681,7 @@ team rather than being answered here.
 `cmpframe.c` is the audit's last `gap:`.
 It cannot become a checklist: `audit_universe()` derives the universe from Rust modules containing `fn simplified`, and `no_checklist_is_orphaned` rejects a checklist no module claims — `frames/cmpframe.rs` has no `fn simplified` precisely because CmpFrame is not a Mapping here, which is the open question rather than an oversight.
 
-In `crates/ast-core/tests/test_mapmerge_audit.rs`, the entry becomes:
+In `crates/starlink-ast/tests/test_mapmerge_audit.rs`, the entry becomes:
 
 ```rust
     (
@@ -9766,11 +9766,11 @@ Add the amendment to the spec's revision history in the same edit, since that is
 
 - [x] **Step 10: Count the exclusion in the ledger**
 
-In `crates/ast-core/tests/test_verification_ledger.rs`, add `"_UNDECIDED"` to `MARKERS` and the row:
+In `crates/starlink-ast/tests/test_verification_ledger.rs`, add `"_UNDECIDED"` to `MARKERS` and the row:
 
 ```rust
     (
-        "crates/ast-core/tests/test_frame_in_map_slot.rs",
+        "crates/starlink-ast/tests/test_frame_in_map_slot.rs",
         "FRAME_IN_MAP_SLOT_UNDECIDED",
         1,
         "one C-written dump the reader refuses: a bare Frame in a Map<n> slot. \
@@ -9786,7 +9786,7 @@ And the matching `PLAN.md` §6 row, in the existing column order:
 ```
 
 ```bash
-cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -10
+cargo test -p starlink-ast --test test_verification_ledger 2>&1 | tail -10
 ```
 
 Expected: PASS. If `no_relaxation_hides_outside_the_ledger` reports the new marker, the `MARKERS` addition is missing; if `every_relaxation_is_the_size_the_ledger_says` reports a count of 1 vs 0, `count_entries` is not counting a two-field tuple — check how it counts rather than changing the constant's shape.
@@ -9808,10 +9808,10 @@ Frame a Mapping in order to support Region, or answers a real use case — is
 written up with its C citations, the cost of each answer, and the evidence
 available in `docs/issues/frame-in-a-mapping-slot.md`.
 
-The artifact is `crates/ast-core/tests/fixtures/frame_in_map_slot.ast`, a dump
+The artifact is `crates/starlink-ast/tests/fixtures/frame_in_map_slot.ast`, a dump
 the C library wrote, reproducible with
 `tools/oracle_fixtures/frame_in_map_slot_probe.c`.
-`crates/ast-core/tests/test_frame_in_map_slot.rs` pins the refusal and keeps it
+`crates/starlink-ast/tests/test_frame_in_map_slot.rs` pins the refusal and keeps it
 narrow: the 35 Region-in-`CmpMap` and 15 Region-in-`CmpFrame` nestings must keep
 reading, so the gap cannot be closed by refusing Frames in Mapping slots
 wholesale.
@@ -9827,12 +9827,12 @@ wholesale.
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
 RT=/sdf/home/t/timj/.cargo/rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
 cargo fmt --all
-cargo test -p ast-core --test test_frame_in_map_slot --test test_mapmerge_audit \
+cargo test -p starlink-ast --test test_frame_in_map_slot --test test_mapmerge_audit \
   --test test_audit_citations --test test_verification_ledger \
   --test test_native_roundtrip_all 2>&1 | tail -20
 CARGO_TARGET_DIR=/lscratch/timj/starlink-astrs-clippy RUSTC=$RT/rustc RUSTDOC=$RT/rustdoc \
   cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
-git add -A crates/ast-core tools/oracle_fixtures docs PLAN.md
+git add -A crates/starlink-ast tools/oracle_fixtures docs PLAN.md
 git commit -F - <<'MSG'
 audit: commit the Frame-in-a-Mapping-slot artifact and put the question in writing
 
@@ -9892,7 +9892,7 @@ The report is not a summary of the plan. It is a statement of what holds parity 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
 export PATH=/sdf/group/rubin/sw/conda/envs/lsst-scipipe-10.0.0/bin:$PATH
-cargo test -p ast-core 2>&1 | tee /tmp/final-tier1.txt | tail -40
+cargo test -p starlink-ast 2>&1 | tee /tmp/final-tier1.txt | tail -40
 grep -E '^test result|passed,|failures' /tmp/final-tier1.txt | tail -30
 ```
 
@@ -9904,7 +9904,7 @@ Spec §6.1 names the nine binaries that decide it, so name them explicitly rathe
 for t in test_simplify_regression test_simplify_seams test_regions \
          test_mapmerge_audit test_verification_ledger test_transform_oracle \
          test_serialisation test_wcsconv test_deferred_fixtures; do
-  r=$(cargo test -p ast-core --test "$t" 2>&1 | grep -E '^test result' | tail -1)
+  r=$(cargo test -p starlink-ast --test "$t" 2>&1 | grep -E '^test result' | tail -1)
   printf '%-28s %s\n' "$t" "${r:-DID NOT RUN}"
 done
 cargo fmt --all -- --check && echo "fmt clean"
@@ -9914,17 +9914,17 @@ cargo fmt --all -- --check && echo "fmt clean"
 
 ```bash
 # The four data-driven harnesses, with their own summaries.
-cargo test -p ast-core --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
-cargo test -p ast-core --test test_transform_oracle 2>&1 | grep -E 'sections|passed'
-cargo test -p ast-core --test test_native_roundtrip_all 2>&1 | grep -E 'passed|excluded'
-cargo test -p ast-core --test test_wcsconv 2>&1 | grep -E 'passed|excluded'
+cargo test -p starlink-ast --test test_simplify_regression 2>&1 | grep -E 'passed|failures'
+cargo test -p starlink-ast --test test_transform_oracle 2>&1 | grep -E 'sections|passed'
+cargo test -p starlink-ast --test test_native_roundtrip_all 2>&1 | grep -E 'passed|excluded'
+cargo test -p starlink-ast --test test_wcsconv 2>&1 | grep -E 'passed|excluded'
 ```
 
 - [x] **Step 2: Re-derive the ledger, from the ledger**
 
 ```bash
-cargo test -p ast-core --test test_verification_ledger -- --nocapture 2>&1 | tail -40
-grep -n '^    (' -A4 crates/ast-core/tests/test_verification_ledger.rs | grep -E '^\s*[0-9]+-\s+[0-9]+,' | wc -l
+cargo test -p starlink-ast --test test_verification_ledger -- --nocapture 2>&1 | tail -40
+grep -n '^    (' -A4 crates/starlink-ast/tests/test_verification_ledger.rs | grep -E '^\s*[0-9]+-\s+[0-9]+,' | wc -l
 ```
 
 Then read `LEDGER` and transcribe every row into the report's table.
@@ -10089,7 +10089,7 @@ For each §9 section this plan closed, replace the body with its resolution and 
 Then update §6's totals row if it has one, and confirm the table still adds up:
 
 ```bash
-cargo test -p ast-core --test test_verification_ledger 2>&1 | tail -6
+cargo test -p starlink-ast --test test_verification_ledger 2>&1 | tail -6
 ```
 
 - [x] **Step 6: Update the test-migration tracker and the `CLAUDE.md` pointer**

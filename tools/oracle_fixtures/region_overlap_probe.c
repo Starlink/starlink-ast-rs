@@ -10,9 +10,9 @@
  * The Prism cases need prism.c from 0516a13d or later, which passes the
  * Regions to that OverlapX in the right order.
  *
- * Prints Rust source for crates/ast-core/tests/region_overlap_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_overlap_oracle/cases.rs:
  *
- *   ./region_overlap_probe > ../../crates/ast-core/tests/region_overlap_oracle/cases.rs
+ *   ./region_overlap_probe > ../../crates/starlink-ast/tests/region_overlap_oracle/cases.rs
  */
 #include <math.h>
 #include <stdio.h>

@@ -24,7 +24,7 @@ via `then()`/`alongside()` is provided on all types.
 ## Module Structure
 
 ```
-crates/ast-core/src/mappings/
+crates/starlink-ast/src/mappings/
 ├── mod.rs           # trait + DynMapping + re-exports + Box<dyn Mapping> methods
 ├── unit.rs          # UnitMap
 ├── zoom.rs          # ZoomMap

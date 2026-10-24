@@ -16,7 +16,7 @@ frame_class_attrs_probe
 *.dSYM/
 
 # Dumps a probe writes here; the committed copies live under
-# crates/ast-core/tests/fixtures/.
+# crates/starlink-ast/tests/fixtures/.
 *.ast
 frame_axis_attrs_probe
 skyframe_attrs_probe

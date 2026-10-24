@@ -39,20 +39,20 @@ Group references map back to plan tasks; "Plan §X.Y" means
 
 ## Group 3 — `other_axes.rs`
 
-**Source:** `crates/ast-core/src/fitschan/fset_to_store/other_axes.rs`
+**Source:** `crates/starlink-ast/src/fitschan/fset_to_store/other_axes.rs`
 mirrors `fitschan.c::OtherAxes` (~24030).
 
 ### `IsMapLinear` linearity gate — DONE
 
 Ported in
-`crates/ast-core/src/fitschan/fset_to_store/is_map_linear.rs`,
+`crates/starlink-ast/src/fitschan/fset_to_store/is_map_linear.rs`,
 wired into `other_axes` as the first branch of the algorithm
 cascade.
 
 ### `LogAxis` (-LOG algorithm) — DONE
 
 Ported in
-`crates/ast-core/src/fitschan/fset_to_store/log_axis.rs`, wired
+`crates/starlink-ast/src/fitschan/fset_to_store/log_axis.rs`, wired
 into `other_axes` as the second branch (after `is_map_linear`).
 Appends `-LOG` to the CTYPE on success.
 
@@ -66,7 +66,7 @@ which ForceTab skips.
 
 ## Group 5.1 — `sky_sys.rs`
 
-**Source:** `crates/ast-core/src/fitschan/fset_to_store/sky_sys.rs`
+**Source:** `crates/starlink-ast/src/fitschan/fset_to_store/sky_sys.rs`
 mirrors `fitschan.c::SkySys` (~29599).
 
 ### Missing `FitsStore` fields for offset-coord AST extension — DONE
@@ -136,7 +136,7 @@ formatter chain matures, route through it.
 ## Group 5.3 — `celestial_axes.rs`
 
 **Source:**
-`crates/ast-core/src/fitschan/fset_to_store/celestial_axes.rs`
+`crates/starlink-ast/src/fitschan/fset_to_store/celestial_axes.rs`
 mirrors `fitschan.c::CelestialAxes` (~4890).
 
 ### `-TAB` algorithm fallback (C:5396–5580) — DONE
@@ -148,7 +148,7 @@ is described through `map_tab::is_map_tab_2d`, as C does, in
 ### `SkyPole` — LONPOLE / LATPOLE storage — DONE
 
 Ported in
-`crates/ast-core/src/fitschan/fset_to_store/sky_pole.rs`. Both
+`crates/starlink-ast/src/fitschan/fset_to_store/sky_pole.rs`. Both
 zenithal (PV-3/PV-4 read) and non-zenithal (`wcs_nat_pole` math
 helper applying FITS-WCS paper II equations 8-9-10 plus a
 post-WcsMap-chain inverse on the celestial north pole) branches
@@ -157,7 +157,7 @@ are covered. Wired into `celestial_axes` after `sky_sys`.
 ### Auto axis-swap with `WorldAxes` (C:5318–5378) — DONE
 
 `WorldAxes` (bidirectional branch) ported in
-`crates/ast-core/src/fitschan/fset_to_store/world_axes.rs`. The
+`crates/starlink-ast/src/fitschan/fset_to_store/world_axes.rs`. The
 swap is wired into `celestial_axes` after `build_wcs_to_iwc`:
 pixel→WCS is composed with WCS→IWC, `world_axes` returns the
 pixel-axis association per WCS axis, and if that transposes
@@ -175,7 +175,7 @@ positive.
 ## Group 5.4 — `spectral_axes.rs`
 
 **Source:**
-`crates/ast-core/src/fitschan/fset_to_store/spectral_axes.rs`
+`crates/starlink-ast/src/fitschan/fset_to_store/spectral_axes.rs`
 mirrors `fitschan.c::SpectralAxes` (~30050). This is the largest
 gap by far — most of the C function is **not yet ported**.
 
@@ -274,7 +274,7 @@ follow-up if a class needs it beyond the spectral writer pipeline.
 ## Group 4 — `make_int_world.rs`
 
 **Source:**
-`crates/ast-core/src/fitschan/fset_to_store/make_int_world.rs`
+`crates/starlink-ast/src/fitschan/fset_to_store/make_int_world.rs`
 mirrors `fitschan.c::MakeIntWorld` (~21689).
 
 ### SIP-distortion branch (planned for Group 6)

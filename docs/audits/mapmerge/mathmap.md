@@ -1,7 +1,7 @@
 # `MapMerge` audit — MathMap
 
 C source: reference/starlink-ast/src/mathmap.c
-Rust: crates/ast-core/src/mappings/mathmap/mod.rs
+Rust: crates/starlink-ast/src/mappings/mathmap/mod.rs
 Audited: 2026-08-24 against pin d0346c0d
 Citations: verified against pin 3b9dc639
 Extension points: classified

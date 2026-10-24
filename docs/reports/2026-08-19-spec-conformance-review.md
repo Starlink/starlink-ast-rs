@@ -47,7 +47,7 @@ the review was worth its cost.
 |---|---|
 | Sibling traits, no hierarchy: `Mapping` and `Frame` independent, `Region: Frame + Mapping` | Exact. `regions/mod.rs:93` is literally `pub trait Region: Frame + Mapping` |
 | Owned values, `&mut self` mutation, `Clone` is the deep copy | Exact throughout |
-| `Send` but not `Sync`; no locks in hot paths | Exact — `Mapping: AsAny + Send`, `Frame: AsAny + Send`, no `Mutex`/`RwLock` in `ast-core` |
+| `Send` but not `Sync`; no locks in hot paths | Exact — `Mapping: AsAny + Send`, `Frame: AsAny + Send`, no `Mutex`/`RwLock` in `starlink-ast` |
 | `BAD_VALUE = -f64::MAX`, NaN accepted on input only | Exact (`constants.rs:8`) |
 | 1-based axis indices in the public API | Exact, and enforced — `map_split` even carries a `map_split_zero_based` internal twin so the public seam stays 1-based |
 | `PointSet` row-major `(npoint, ncoord)`, `ndarray`-backed, `PointList` frame-aware | Exact, including the constructor and accessor list — only `axis()` was renamed `axis_iter()` |
@@ -75,7 +75,7 @@ fn edit          0
 The seventeen `with_*` functions in the tree are `with_integrity`,
 `with_region_integrity`, `with_context` and `with_size_guess` — none is the
 banned "return a modified copy" pattern.
-Stringly-keyed attribute access never reappeared, and there is no `ast-capi` yet
+Stringly-keyed attribute access never reappeared, and there is no `starlink-ast-capi` yet
 for it to hide in.
 
 ---
@@ -188,17 +188,17 @@ Spec: *"Optional `tracing` feature emits every constructed `AstError` as a
 `CLAUDE.md:69` documents it as a usable command:
 
 ```shell
-cargo test -p ast-core --features tracing    # emit AstError as tracing events
+cargo test -p starlink-ast --features tracing    # emit AstError as tracing events
 ```
 
 Actual:
 
 ```
-$ cargo check -p ast-core --features tracing
-error: the package 'ast-core' does not contain this feature: tracing
+$ cargo check -p starlink-ast --features tracing
+error: the package 'starlink-ast' does not contain this feature: tracing
 ```
 
-`ast-core`'s only feature is `simd-eval`.
+`starlink-ast`'s only feature is `simd-eval`.
 This is hazard H12 — a documented capability that does not hold — in the file
 that documents H12.
 It needs fixing in one place or the other; the debugging affordance is cheap
@@ -265,7 +265,7 @@ and users will reach for a one-row `PointSet`.
 ### 4.6 `thiserror` is not used
 
 Spec: *"`thiserror` provides boilerplate."*
-`ast-core`'s dependencies are `ndarray`, `nalgebra`, `levenberg-marquardt` and
+`starlink-ast`'s dependencies are `ndarray`, `nalgebra`, `levenberg-marquardt` and
 optional `wide`.
 `AstError` is hand-rolled.
 Fine — arguably better for a type with a `context` stack and a
@@ -294,8 +294,8 @@ there is no `Unknown` variant.
 Unrecognized values are handled by `from_raw(value: u32) -> Option<Self>`
 returning `None` instead.
 
-For `ast-core` this is arguably tidier.
-It matters for `ast-capi`, which is not yet written: `astStatus` can hand back a
+For `starlink-ast` this is arguably tidier.
+It matters for `starlink-ast-capi`, which is not yet written: `astStatus` can hand back a
 value that is not in `ast_err.msg` (a caller's own code set via `astSetPutErr`,
 or a code from a newer C release), and with no `Unknown` variant there is no
 lossless way to carry it through the Rust error type and back out.
@@ -327,7 +327,7 @@ Steps are the spec's own numbering.
 | 8 | `Channel`, `FitsChan`, `YamlChan`, `StcsChan`, `MocChan` | **Partial** — Channel and FitsChan done; the other three unported |
 | 9 | Regions + region integrity | **Done**, with the geodesic-mesh gap (`MESH-GEO`) open |
 | 10 | `Plot` / `Plot3D` + `ast-plugins` | **Not started** |
-| 11 | Tier-1 completeness gate; `ast-capi` full export coverage | **Not started** |
+| 11 | Tier-1 completeness gate; `starlink-ast-capi` full export coverage | **Not started** |
 | 12 | Cutover | **Not started** |
 
 Steps 1–4, 6, 7 and 9 are complete and ahead of the listed scope; 5 and 8 are

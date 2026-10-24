@@ -14,23 +14,23 @@
 
 | File | Responsibility |
 |------|---------------|
-| `crates/ast-core/src/pal.rs` | Safe Rust wrappers for vendored PAL C functions |
-| `crates/ast-core/src/wcslib.rs` | Safe Rust wrappers for vendored wcslib C projections |
-| `crates/ast-core/src/mappings/wcsmap.rs` | WcsMap struct, Mapping impl, Serializable impl |
-| `crates/ast-core/src/mappings/slamap.rs` | SlaMap + SlaCvtType, Mapping impl, Serializable impl |
-| `crates/ast-core/src/mappings/mod.rs` | Updated re-exports |
-| `crates/ast-core/src/serial/mod.rs` | Updated dispatch points |
-| `crates/ast-core/src/lib.rs` | Add `pal` and `wcslib` modules |
-| `crates/ast-core/tests/test_wcsmap.rs` | WcsMap tests |
-| `crates/ast-core/tests/test_slamap.rs` | SlaMap tests |
+| `crates/starlink-ast/src/pal.rs` | Safe Rust wrappers for vendored PAL C functions |
+| `crates/starlink-ast/src/wcslib.rs` | Safe Rust wrappers for vendored wcslib C projections |
+| `crates/starlink-ast/src/mappings/wcsmap.rs` | WcsMap struct, Mapping impl, Serializable impl |
+| `crates/starlink-ast/src/mappings/slamap.rs` | SlaMap + SlaCvtType, Mapping impl, Serializable impl |
+| `crates/starlink-ast/src/mappings/mod.rs` | Updated re-exports |
+| `crates/starlink-ast/src/serial/mod.rs` | Updated dispatch points |
+| `crates/starlink-ast/src/lib.rs` | Add `pal` and `wcslib` modules |
+| `crates/starlink-ast/tests/test_wcsmap.rs` | WcsMap tests |
+| `crates/starlink-ast/tests/test_slamap.rs` | SlaMap tests |
 
 ---
 
 ### Task 1: PAL FFI Wrapper
 
 **Files:**
-- Create: `crates/ast-core/src/pal.rs`
-- Modify: `crates/ast-core/src/lib.rs`
+- Create: `crates/starlink-ast/src/pal.rs`
+- Modify: `crates/starlink-ast/src/lib.rs`
 
 Create safe Rust wrappers for the vendored PAL C library. The C
 library is already compiled by `build.rs` into `libast_pal_erfa.a`
@@ -39,7 +39,7 @@ files). PAL function names are prefixed with `pal` (e.g. `palEpj`).
 
 - [ ] **Step 1: Create pal.rs with extern declarations and safe wrappers**
 
-Create `crates/ast-core/src/pal.rs`. The module is `pub(crate)`.
+Create `crates/starlink-ast/src/pal.rs`. The module is `pub(crate)`.
 
 The file needs an `extern "C"` block declaring each PAL function,
 then a safe Rust wrapper function for each. Group by category:
@@ -141,7 +141,7 @@ values), return a tuple or small struct.
 
 - [ ] **Step 2: Add to lib.rs**
 
-Add `pub(crate) mod pal;` to `crates/ast-core/src/lib.rs`.
+Add `pub(crate) mod pal;` to `crates/starlink-ast/src/lib.rs`.
 
 - [ ] **Step 3: Write PAL wrapper tests**
 
@@ -193,13 +193,13 @@ fn galactic_centre_approx() {
 
 - [ ] **Step 4: Verify**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass (including PAL tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/pal.rs crates/ast-core/src/lib.rs
+git add crates/starlink-ast/src/pal.rs crates/starlink-ast/src/lib.rs
 git commit -m "Add PAL FFI wrapper module with safe Rust functions"
 ```
 
@@ -208,15 +208,15 @@ git commit -m "Add PAL FFI wrapper module with safe Rust functions"
 ### Task 2: wcslib FFI Wrapper
 
 **Files:**
-- Create: `crates/ast-core/src/wcslib.rs`
-- Modify: `crates/ast-core/src/lib.rs`
+- Create: `crates/starlink-ast/src/wcslib.rs`
+- Modify: `crates/starlink-ast/src/lib.rs`
 
 Create safe Rust wrappers for the vendored wcslib C projection
 library. The C code is compiled by `build.rs` into `libast_wcslib.a`.
 
 - [ ] **Step 1: Create wcslib.rs with WcsProjection enum**
 
-Create `crates/ast-core/src/wcslib.rs`. The module is `pub(crate)`.
+Create `crates/starlink-ast/src/wcslib.rs`. The module is `pub(crate)`.
 
 Define the `WcsProjection` enum with all 31 projection types:
 
@@ -360,7 +360,7 @@ owned and not shared. Alternatively, WcsMap can manually impl Send.
 
 - [ ] **Step 4: Add to lib.rs**
 
-Add `pub(crate) mod wcslib;` to `crates/ast-core/src/lib.rs`.
+Add `pub(crate) mod wcslib;` to `crates/starlink-ast/src/lib.rs`.
 
 - [ ] **Step 5: Write wcslib tests**
 
@@ -406,10 +406,10 @@ fn sin_round_trip() {
 
 - [ ] **Step 6: Verify and commit**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 
 ```bash
-git add crates/ast-core/src/wcslib.rs crates/ast-core/src/lib.rs
+git add crates/starlink-ast/src/wcslib.rs crates/starlink-ast/src/lib.rs
 git commit -m "Add wcslib FFI wrapper with WcsProjection enum and PrjParams"
 ```
 
@@ -418,10 +418,10 @@ git commit -m "Add wcslib FFI wrapper with WcsProjection enum and PrjParams"
 ### Task 3: WcsMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/wcsmap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Create: `crates/ast-core/tests/test_wcsmap.rs`
+- Create: `crates/starlink-ast/src/mappings/wcsmap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Create: `crates/starlink-ast/tests/test_wcsmap.rs`
 
 WcsMap applies a FITS-WCS sky projection. It transforms between
 native spherical coordinates and projected plane coordinates.
@@ -509,7 +509,7 @@ re-export `WcsProjection` from `mappings/mod.rs` if needed by tests.
 
 - [ ] **Step 5: Write tests**
 
-Create `crates/ast-core/tests/test_wcsmap.rs`:
+Create `crates/starlink-ast/tests/test_wcsmap.rs`:
 
 ```rust
 #[test]
@@ -548,10 +548,10 @@ BAD_VALUE propagation, inversion.
 
 - [ ] **Step 6: Verify and commit**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 
 ```bash
-git add crates/ast-core/src/mappings/ crates/ast-core/src/serial/mod.rs crates/ast-core/tests/test_wcsmap.rs
+git add crates/starlink-ast/src/mappings/ crates/starlink-ast/src/serial/mod.rs crates/starlink-ast/tests/test_wcsmap.rs
 git commit -m "Add WcsMap (FITS-WCS sky projections via wcslib)"
 ```
 
@@ -560,10 +560,10 @@ git commit -m "Add WcsMap (FITS-WCS sky projections via wcslib)"
 ### Task 4: SlaMap
 
 **Files:**
-- Create: `crates/ast-core/src/mappings/slamap.rs`
-- Modify: `crates/ast-core/src/mappings/mod.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs`
-- Create: `crates/ast-core/tests/test_slamap.rs`
+- Create: `crates/starlink-ast/src/mappings/slamap.rs`
+- Modify: `crates/starlink-ast/src/mappings/mod.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs`
+- Create: `crates/starlink-ast/tests/test_slamap.rs`
 
 SlaMap chains celestial coordinate system conversions via the PAL
 library.
@@ -785,7 +785,7 @@ Add to `mappings/mod.rs` and update all dispatch points in
 
 - [ ] **Step 7: Write tests**
 
-Create `crates/ast-core/tests/test_slamap.rs`:
+Create `crates/starlink-ast/tests/test_slamap.rs`:
 
 ```rust
 #[test]
@@ -863,10 +863,10 @@ Additional tests: FK4↔FK5, multi-step chain, empty SlaMap (identity).
 
 - [ ] **Step 8: Verify and commit**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 
 ```bash
-git add crates/ast-core/src/mappings/ crates/ast-core/src/serial/mod.rs crates/ast-core/tests/test_slamap.rs
+git add crates/starlink-ast/src/mappings/ crates/starlink-ast/src/serial/mod.rs crates/starlink-ast/tests/test_slamap.rs
 git commit -m "Add SlaMap (celestial coordinate system conversions via PAL)"
 ```
 
@@ -888,7 +888,7 @@ Run: `cargo fmt --all -- --check`
 
 - [ ] **Step 3: Run full test suite**
 
-Run: `cargo test -p ast-core`
+Run: `cargo test -p starlink-ast`
 Expected: all tests pass
 
 - [ ] **Step 4: Verify dispatch completeness**
@@ -908,7 +908,7 @@ Verify WcsMap and SlaMap appear in all dispatch points:
 ## Verification Checklist
 
 1. `cargo build --workspace` — compiles
-2. `cargo test -p ast-core` — all tests pass
+2. `cargo test -p starlink-ast` — all tests pass
 3. `cargo clippy --workspace -- -D warnings` — clean
 4. `cargo fmt --all -- --check` — clean
 5. PAL wrapper: epoch, spherical, galactic conversions verified

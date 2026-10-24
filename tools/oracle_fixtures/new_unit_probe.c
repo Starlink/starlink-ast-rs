@@ -4,9 +4,9 @@
  * new Unit and a set Format is cleared when the Unit changes; trailing
  * spaces are dropped from the Unit.
  *
- * Prints Rust source for crates/ast-core/tests/new_unit_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/new_unit_oracle/cases.rs:
  *
- *   ./new_unit_probe > ../../crates/ast-core/tests/new_unit_oracle/cases.rs
+ *   ./new_unit_probe > ../../crates/starlink-ast/tests/new_unit_oracle/cases.rs
  */
 #include <stdio.h>
 #include "ast.h"

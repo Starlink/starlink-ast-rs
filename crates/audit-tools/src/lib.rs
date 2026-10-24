@@ -1070,7 +1070,7 @@ pub enum Resolution {
 
 /// Resolve a citation's file name against the tree.
 ///
-/// A Rust name is matched by whole path components against `ast-core`'s source,
+/// A Rust name is matched by whole path components against `starlink-ast`'s source,
 /// so `simplify.rs` matches both `units/simplify.rs` and `mappings/simplify.rs`
 /// and is reported ambiguous, while `mappings/simplify.rs` matches one.
 /// Matching whole components keeps `pointlist.rs` from matching
@@ -1088,7 +1088,7 @@ pub fn resolve_source(root: &std::path::Path, file: &str) -> Resolution {
     }
     let wanted: Vec<&str> = file.split('/').filter(|s| !s.is_empty()).collect();
     let mut found: Vec<PathBuf> = Vec::new();
-    let mut stack = vec![root.join("crates/ast-core/src")];
+    let mut stack = vec![root.join("crates/starlink-ast/src")];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;

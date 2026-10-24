@@ -27,12 +27,12 @@ cargo build --workspace        # build everything including oracle test/bench st
 Tests are organised into tiers. Tiers 1 and 2 run on every build with no extra setup:
 
 ```shell
-cargo test -p ast-core                         # tier 1+2: all Rust unit and integration tests
-cargo test -p ast-core --test domain_frames    # one area's test program
-cargo test -p ast-core --test domain_frames test_skyframe::  # one test file
+cargo test -p starlink-ast                         # tier 1+2: all Rust unit and integration tests
+cargo test -p starlink-ast --test domain_frames    # one area's test program
+cargo test -p starlink-ast --test domain_frames test_skyframe::  # one test file
 ```
 
-Each file in `crates/ast-core/tests/` is a module of one of a few test
+Each file in `crates/starlink-ast/tests/` is a module of one of a few test
 programs, one per area (`tests/<area>/main.rs`), and its tests are named
 `<file>::<test>`.
 A new test file must be added to its area's `main.rs`; `test_area_membership`
@@ -61,15 +61,15 @@ cargo fmt --all -- --check
 cargo doc --workspace --no-deps --open
 ```
 
-This builds rustdoc for all crates and opens the result in a browser. The `ast-core` crate contains the public Rust API.
+This builds rustdoc for all crates and opens the result in a browser. The `starlink-ast` crate contains the public Rust API.
 
 ## Repository Layout
 
 ```
-starlink-astrs/
+starlink-ast-rs/
 ├── crates/
-│   ├── ast-core/          # pure-Rust idiomatic API
-│   ├── ast-capi/          # cdylib; re-exports ast.h symbols
+│   ├── starlink-ast/      # pure-Rust idiomatic API
+│   ├── starlink-ast-capi/ # cdylib; re-exports ast.h symbols
 │   ├── ast-plugins/       # Grf / Grf3d backends
 │   ├── ast-ffi-tests/     # tier 3: C tests vs Rust libast
 │   ├── ast-oracle-tests/  # tier 4: bit/ULP comparison

@@ -268,21 +268,24 @@ mod tests {
                 .set_modified(mtime)
                 .unwrap();
         };
-        put("doc/ast_core/fresh.html", since + Duration::from_secs(5));
-        put("doc/ast_core/stale.html", old);
-        put("doc/type.impl/ast_core/stale.js", old);
-        put("aarch64/doc/ast_core/stale.html", old);
+        put(
+            "doc/starlink_ast/fresh.html",
+            since + Duration::from_secs(5),
+        );
+        put("doc/starlink_ast/stale.html", old);
+        put("doc/type.impl/starlink_ast/stale.js", old);
+        put("aarch64/doc/starlink_ast/stale.html", old);
         put("doc/static.files/shared-1.js", old);
-        put("doc/ast_core/notes.txt", old);
+        put("doc/starlink_ast/notes.txt", old);
         put("debug/deps/lib.rlib", old);
         assert_eq!(clear_stale_pages(&root, since).unwrap(), 3);
-        assert!(root.join("doc/ast_core/fresh.html").exists());
-        assert!(!root.join("doc/ast_core/stale.html").exists());
-        assert!(!root.join("doc/type.impl/ast_core/stale.js").exists());
-        assert!(!root.join("aarch64/doc/ast_core/stale.html").exists());
+        assert!(root.join("doc/starlink_ast/fresh.html").exists());
+        assert!(!root.join("doc/starlink_ast/stale.html").exists());
+        assert!(!root.join("doc/type.impl/starlink_ast/stale.js").exists());
+        assert!(!root.join("aarch64/doc/starlink_ast/stale.html").exists());
         for kept in [
             "doc/static.files/shared-1.js",
-            "doc/ast_core/notes.txt",
+            "doc/starlink_ast/notes.txt",
             "debug/deps/lib.rlib",
         ] {
             assert!(root.join(kept).exists(), "{kept}");
@@ -290,7 +293,7 @@ mod tests {
         // A build that wrote nothing left nothing stale: keep everything.
         let later = SystemTime::now() + Duration::from_secs(3600);
         assert_eq!(clear_stale_pages(&root, later).unwrap(), 0);
-        assert!(root.join("doc/ast_core/fresh.html").exists());
+        assert!(root.join("doc/starlink_ast/fresh.html").exists());
         // A target that does not exist yet is fine.
         assert_eq!(clear_stale_pages(&root.join("absent"), since).unwrap(), 0);
         std::fs::remove_dir_all(&root).unwrap();
@@ -332,7 +335,7 @@ mod tests {
 
     #[test]
     fn markup_and_rust_names_are_not_text() {
-        let html = "<a href=\"permmap.html\" class=\"astx\">ast_core</a><p>AstError</p>";
+        let html = "<a href=\"permmap.html\" class=\"astx\">starlink_ast</a><p>AstError</p>";
         assert!(c_references(html, &public()).is_empty());
     }
 
@@ -360,7 +363,7 @@ mod tests {
 
     #[test]
     fn ordinary_links_are_not_flagged() {
-        let html = "<a href=\"../ast_core/struct.PermMap.html#method.new\">a</a>\
+        let html = "<a href=\"../starlink_ast/struct.PermMap.html#method.new\">a</a>\
                     <a href=\"https://www.starlink.ac.uk/docs/sun211.htx/sun211.html\">b</a>\
                     <a href=\"https://docs.rs/ndarray/latest/ndarray/index.html\">c</a>\
                     <a href=\"#astPermMap\">d</a>";

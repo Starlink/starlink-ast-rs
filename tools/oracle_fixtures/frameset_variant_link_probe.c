@@ -14,9 +14,9 @@
  * back to the Frame's Domain.
  *
  * Prints Rust source for
- * crates/ast-core/tests/frameset_variant_link_oracle/cases.rs:
+ * crates/starlink-ast/tests/frameset_variant_link_oracle/cases.rs:
  *
- *   ./frameset_variant_link_probe > ../../crates/ast-core/tests/frameset_variant_link_oracle/cases.rs
+ *   ./frameset_variant_link_probe > ../../crates/starlink-ast/tests/frameset_variant_link_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

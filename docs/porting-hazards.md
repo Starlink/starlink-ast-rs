@@ -262,7 +262,7 @@ Stripping test modules puts `fitschan/` at **0.73×**, and every subsystem in a 
 
 Two controls are therefore mandatory before the signal means anything:
 
-- **Strip `#[cfg(test)]` modules from the Rust side.** They are 18,998 lines across `ast-core`, unevenly distributed — 8,582 in `fitschan/`, 65 in `regions/`. Comparing with them included is not a like-for-like measure.
+- **Strip `#[cfg(test)]` modules from the Rust side.** They are 18,998 lines across `starlink-ast`, unevenly distributed — 8,582 in `fitschan/`, 65 in `regions/`. Comparing with them included is not a like-for-like measure.
 - **Count code lines, not total lines.** The AST C sources are 52.6% comment; a `wc -l` comparison flatters C by about a factor of two.
 
 **Expect Rust to use ~1.8× the lines per statement.** Measured on `fitschan`: 0.36 semicolons per code line against C's 0.65, because `rustfmt` gives every closing delimiter its own line (21% of Rust's lines are structural only).

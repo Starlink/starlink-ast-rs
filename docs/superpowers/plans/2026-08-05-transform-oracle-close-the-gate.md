@@ -23,7 +23,7 @@ The C-oracle probe recipe is `docs/issues/c-oracle-probe-recipe.md`.
 These apply to every task in this plan.
 A task's requirements implicitly include this section.
 
-- **No fixture edits.** Files under `crates/ast-core/tests/fixtures/` are C-generated ground truth.
+- **No fixture edits.** Files under `crates/starlink-ast/tests/fixtures/` are C-generated ground truth.
   A fixture that looks wrong is a finding to investigate and record, not to overwrite.
 - **Port C, do not approximate it.** When C's control flow is available, mirror it.
   Do not substitute a heuristic or a tolerance constant for logic C did not need.
@@ -49,7 +49,7 @@ Every unit ends with the same two measurements, and the measurement — not a ta
 cd /sdf/home/t/timj/WORK/starlink-astrs
 
 # 1. Re-measure the oracle. Writes target/transform_oracle_report.json.
-cargo test -p ast-core --test test_transform_oracle -- --ignored transform_oracle_report
+cargo test -p starlink-ast --test test_transform_oracle -- --ignored transform_oracle_report
 
 # 2. Print the status histogram and every non-passing section.
 python3 -c "
@@ -62,7 +62,7 @@ for s in secs:
 "
 
 # 3. Whole-crate regression check.
-cargo test -p ast-core 2>&1 | grep -E 'FAILED|failed;' | grep -v '0 failed'
+cargo test -p starlink-ast 2>&1 | grep -E 'FAILED|failed;' | grep -v '0 failed'
 ```
 
 Baseline at the time of writing (commit `96d289f`), across 1606 sections:
@@ -154,7 +154,7 @@ The Rust `SelectorMap::transform` already mirrors C faithfully (`selectormap.rs:
 
 - [x] Read `box.c:4200-4270`, `interval.c:3666-3890`, `circle.c:2078-2092`, `ellipse.c:2196-2210`, and `polygon.c:6390-6455` and confirm the rule in each before touching Rust.
       This is what showed the rule is *not* joint: boundary membership is plain `closed`, and the `closed != negated` expression is an artifact of `reg_base_inside` returning un-negated membership to a caller that inverts it.
-- [x] In `crates/ast-core/src/regions/box_region.rs::reg_base_inside`, derive the comparison from the effective flag rather than `self.data.closed`.
+- [x] In `crates/starlink-ast/src/regions/box_region.rs::reg_base_inside`, derive the comparison from the effective flag rather than `self.data.closed`.
 - [x] Do the same in `interval.rs::reg_base_inside`, covering all four of C's labeled blocks including the excluded-interval (`lb > ub`) orientation.
 - [x] Apply the identical rule in `circle.rs`, `ellipse.rs`, and `polygon.rs::reg_base_inside`.
       Polygon needed it too, contrary to the guess above.
@@ -166,7 +166,7 @@ The Rust `SelectorMap::transform` already mirrors C faithfully (`selectormap.rs:
       Counts unmoved, but it did expose `test_pointlist.rs::region_attributes` asserting a settable Closed; a C probe confirms `astSetI(pl,"Closed",0)` leaves Closed=1, so the test was corrected.
 - [x] Consider whether the rule is better expressed once as a helper on `RegionData` (e.g. `effective_closed()`) than repeated per class; prefer the helper if it does not obscure the per-class C correspondence.
       Landed as `RegionData::closed_for_base_inside`, named for the one question it answers so it cannot be mistaken for the Closed attribute itself, with the per-class C citations in its doc comment.
-- [x] Fix `crates/ast-core/tests/test_interval.rs::reg_pins_semi_infinite_interval_boundary`.
+- [x] Fix `crates/starlink-ast/tests/test_interval.rs::reg_pins_semi_infinite_interval_boundary`.
       It asserts `!reg_pins((10,5))`, which the C probe contradicts: C returns `RegPins=1` for that point, `0` for the interior `(-100,5)`, and `1` for the y-face `(5,0)`.
       Post-fix Rust returns exactly that.
       Update the assertion **and** its explanatory comment — the comment's claim about the zero-width uncertainty band leading to rejection is the mis-derivation that produced the wrong expectation.
@@ -198,7 +198,7 @@ for( out_coord = 0; out_coord < nax; out_coord++ ){
 }
 ```
 
-Rust (`crates/ast-core/src/mappings/matrix.rs`, `apply_matrix`, Diagonal arm) instead tests `diag == 0.0` and returns `0.0`:
+Rust (`crates/starlink-ast/src/mappings/matrix.rs`, `apply_matrix`, Diagonal arm) instead tests `diag == 0.0` and returns `0.0`:
 
 ```rust
 if diag == 0.0 {
@@ -218,7 +218,7 @@ No oracle section exercises it, but it is the same defect and was fixed in the s
 **Reproducer.** `simplify_fixtures/neg_matrix_singular_diag.map` is a Diagonal MatrixMap with `M0 = 0`, `M1 = 2`, `IM1 = 0.5`, and *no* `IM0`.
 A BAD inverse element is not written on dump, so `IM0` loads back as `AST__BAD` — `from_node`'s Diagonal branch (`matrix.rs:1193-1200`) already defaults it correctly, and `diagonal_inverse` (`matrix.rs:1450`) already emits `BAD_VALUE` for a zero diagonal.
 The BAD genuinely reaches the kernel; the kernel is the sole defect.
-C's golden (`crates/ast-core/tests/fixtures/oracle/simplify_fixtures.oracle:12562`, `dir=inverse`) has output column 3 entirely `BAD`; Rust produces `0.0` for all 24 rows.
+C's golden (`crates/starlink-ast/tests/fixtures/oracle/simplify_fixtures.oracle:12562`, `dir=inverse`) has output column 3 entirely `BAD`; Rust produces `0.0` for all 24 rows.
 The forward direction passes, which is why the simplify regression corpus (427/427) never caught it — that corpus does not exercise this map's inverse.
 
 **Evidence (already gathered).** Replacing the arm with C's test:
@@ -312,7 +312,7 @@ Defining the third selector as a complement rather than as its own path predicat
 - [x] Three asserting gates cover 259 + 136 + 1211 = 1606 sections — the whole corpus — of which 1588 are gated outcomes and 18 are the documented unported-class load-fails, licensed by outcome rather than dropped from a selector.
 - [x] `SIMPLIFY_ORACLE_EXCLUDED` is empty, as are `HEAD_ORACLE_EXCLUDED` and `SLAMAP_ORACLE_EXCLUDED`.
 - [x] The new gate has been observed to fail on both reintroduced defects.
-- [x] `cargo test -p ast-core` is green; `cargo fmt` and clippy clean.
+- [x] `cargo test -p starlink-ast` is green; `cargo fmt` and clippy clean.
 - [x] `PLAN.md` reflects the new gate.
 
 ## Out of scope

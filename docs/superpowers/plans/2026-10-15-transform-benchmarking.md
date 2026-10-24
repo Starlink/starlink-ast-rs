@@ -4,7 +4,7 @@
 
 **Goal:** Build call-count parity checking (Phase 0) and a Rust-first transform benchmark harness with an optional C engine (Phase 1), then run the first full sweep (Phase 2).
 
-**Architecture:** `ast-core` gains a zero-cost `call-counts` feature (a `math` module plus counted FFI boundaries).
+**Architecture:** `starlink-ast` gains a zero-cost `call-counts` feature (a `math` module plus counted FFI boundaries).
 A new `ast-bench` crate (renamed from `ast-oracle-bench`) reads the committed transform oracles, selects points, and times Rust always and C optionally, loading C at runtime from a shared library built by `tools/perf/build_c_engine.sh`.
 `ast-oracle-tests` hosts the Phase 0 parity test, which uses the same loader against a counting build of C.
 
@@ -16,7 +16,7 @@ A new `ast-bench` crate (renamed from `ast-oracle-bench`) reads the committed tr
 
 - Point counts: N ∈ {1, 10, 100, 100 000, 1 000 000}.
 - Objects are timed as loaded; never simplify before timing.
-- No explicit SIMD on either side; `ast-core`'s `simd-eval` feature must not be enabled in any timed build.
+- No explicit SIMD on either side; `starlink-ast`'s `simd-eval` feature must not be enabled in any timed build.
 - C is built with `-O3 -ffp-contract=off`; Rust with the release profile.
 - Small N (1, 10, 100) uses only oracle rows whose inputs and outputs are all non-BAD; a case with no such row is a hard error.
 - Large N (100 000, 1 000 000) uses all oracle rows, BAD included, repeated in order.
@@ -27,11 +27,11 @@ A new `ast-bench` crate (renamed from `ast-oracle-bench`) reads the committed tr
 - Use the clean-environment wrapper for cargo and git commit: conda's `CC`/`LDFLAGS` break links (see memory `conda-toolchain-breaks-cargo-links`).
 - Never stage `reference/starlink-ast` in the parent repo; never modify the submodule in this plan.
 - Commit trailer: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- Gates before each commit: `cargo fmt --all -- --check`, `cargo clippy --workspace --tests --examples -- -D warnings`, and for `ast-core` changes also with `--features call-counts`.
+- Gates before each commit: `cargo fmt --all -- --check`, `cargo clippy --workspace --tests --examples -- -D warnings`, and for `starlink-ast` changes also with `--features call-counts`.
 
 ## Review Focus
 
-1. **A timing run built with `call-counts` enabled** (feature unification via `ast-oracle-tests`) would silently time counting code; `ast-bench run` must refuse when `ast_core::CALL_COUNTS_ENABLED` is true (test in Task 10).
+1. **A timing run built with `call-counts` enabled** (feature unification via `ast-oracle-tests`) would silently time counting code; `ast-bench run` must refuse when `starlink_ast::CALL_COUNTS_ENABLED` is true (test in Task 10).
 2. **A missing or stale C engine library** must fail with the exact build command to run, never fall back to Rust-only (test in Task 7).
 3. **A case that errors** (a missing fixture, or a transform that fails only at large N once BAD rows reach an error path) must be reported as an error naming the case and N, while the rest of the set still runs (test in Task 10).
 4. **`compare` against a baseline from another machine** must refuse, naming the differing fingerprint field (test in Task 11).
@@ -65,7 +65,7 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Transform benchmarks: Rust ast-core, optionally against the reference C libast"
+description = "Transform benchmarks: Rust starlink-ast, optionally against the reference C libast"
 
 [lints]
 workspace = true
@@ -75,7 +75,7 @@ workspace = true
 c-oracle = ["dep:libloading"]
 
 [dependencies]
-ast-core = { path = "../ast-core" }
+starlink-ast = { path = "../starlink-ast" }
 libloading = { version = "0.8", optional = true }
 ```
 
@@ -155,13 +155,13 @@ git commit -m "Rename ast-oracle-bench to ast-bench"
 - Produces:
   - `pub struct Section { pub relpath: String, pub nin: usize, pub nout: usize, pub forward: bool, pub inputs: Vec<Vec<f64>>, pub outputs: Vec<Vec<f64>> }` (column-major: `inputs[axis][row]`), with `pub fn npoint(&self) -> usize`.
   - `pub fn parse_oracle(text: &str) -> Result<Vec<Section>, String>`
-  - `pub const CORE_FIXTURES: &str` — absolute path of `crates/ast-core/tests/fixtures`.
+  - `pub const CORE_FIXTURES: &str` — absolute path of `crates/starlink-ast/tests/fixtures`.
   - `pub const CORE_ORACLES: [&str; 3] = ["simplify_fixtures.oracle", "headers.oracle", "framesets.oracle"]` (under `CORE_FIXTURES/oracle/`).
-  - `pub enum Loaded { Mapping(ast_core::AnyObject), Untransformable(&'static str) }`
+  - `pub enum Loaded { Mapping(starlink_ast::AnyObject), Untransformable(&'static str) }`
   - `pub fn load_fixture(root: &Path, relpath: &str) -> Result<Loaded, String>`
-  - `pub fn intra_registry() -> ast_core::mappings::IntraRegistry`
+  - `pub fn intra_registry() -> starlink_ast::mappings::IntraRegistry`
 
-The parser and loader are copies of `crates/ast-core/tests/test_transform_oracle.rs:62-266` and the IntraMap helper in `crates/ast-core/tests/common/mod.rs:186-296`, because integration-test code cannot be imported.
+The parser and loader are copies of `crates/starlink-ast/tests/test_transform_oracle.rs:62-266` and the IntraMap helper in `crates/starlink-ast/tests/common/mod.rs:186-296`, because integration-test code cannot be imported.
 Each copied block carries a comment naming the file it mirrors.
 
 - [ ] **Step 1: Write the failing tests** (in `oracle.rs` and `load.rs` `#[cfg(test)]` modules)
@@ -175,7 +175,7 @@ fn parses_all_core_oracles_with_known_section_count() {
         let text = std::fs::read_to_string(format!("{CORE_FIXTURES}/oracle/{name}")).unwrap();
         total += parse_oracle(&text).unwrap().len();
     }
-    // Same total `every_oracle_section_is_gated` asserts in ast-core.
+    // Same total `every_oracle_section_is_gated` asserts in starlink-ast.
     assert_eq!(total, 2261);
 }
 
@@ -208,7 +208,7 @@ Expected: compile errors (`parse_oracle`, `load_fixture` not defined).
 `oracle.rs`: copy `Section`, `parse_double`, `parse_oracle` verbatim from `test_transform_oracle.rs:62-150`, making the items `pub`, and add:
 
 ```rust
-pub const CORE_FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../ast-core/tests/fixtures");
+pub const CORE_FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../starlink-ast/tests/fixtures");
 pub const CORE_ORACLES: [&str; 3] = ["simplify_fixtures.oracle", "headers.oracle", "framesets.oracle"];
 ```
 
@@ -216,13 +216,13 @@ pub const CORE_ORACLES: [&str; 3] = ["simplify_fixtures.oracle", "headers.oracle
 
 ```rust
 //! Load an oracle fixture as the transform-oracle gate does
-//! (`crates/ast-core/tests/test_transform_oracle.rs`, `load_fixture`).
+//! (`crates/starlink-ast/tests/test_transform_oracle.rs`, `load_fixture`).
 
 use std::path::Path;
 
-use ast_core::AnyObject;
-use ast_core::channel::Channel;
-use ast_core::fitschan::FitsChan;
+use starlink_ast::AnyObject;
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::FitsChan;
 
 pub enum Loaded {
     Mapping(AnyObject),
@@ -239,7 +239,7 @@ pub fn load_fixture(root: &Path, relpath: &str) -> Result<Loaded, String> {
             .map_err(|e| format!("read {relpath}: {e}"))?
             .ok_or_else(|| format!("FitsChan read returned None: {relpath}"))?
     } else {
-        ast_core::from_native_string_with(&text, &intra_registry())
+        starlink_ast::from_native_string_with(&text, &intra_registry())
             .map_err(|e| format!("from_native_string {relpath}: {e}"))?
     };
     if obj.as_mapping().is_some() {
@@ -256,8 +256,8 @@ pub fn load_fixture(root: &Path, relpath: &str) -> Result<Loaded, String> {
 Copy `TestIntraTran` and `test_intra_transforms` from `tests/common/mod.rs:186-288` into `load.rs` as private items, and add:
 
 ```rust
-pub fn intra_registry() -> ast_core::mappings::IntraRegistry {
-    let mut registry = ast_core::mappings::IntraRegistry::new();
+pub fn intra_registry() -> starlink_ast::mappings::IntraRegistry {
+    let mut registry = starlink_ast::mappings::IntraRegistry::new();
     for t in test_intra_transforms() {
         registry.register(t).expect("the four test IntraMap names are distinct");
     }
@@ -293,7 +293,7 @@ git commit -m "ast-bench: read the transform oracles and load their fixtures"
   - `pub const SMALL_N_MAX: usize = 100;`
   - `pub const NPOINTS: [usize; 5] = [1, 10, 100, 100_000, 1_000_000];`
   - `pub fn select_rows(s: &Section, n: usize) -> Result<Vec<usize>, String>` — row indices, length `n`.
-  - `pub fn rows_to_pointset(s: &Section, rows: &[usize]) -> ast_core::coords::PointSet` (row-major, `nin` coords).
+  - `pub fn rows_to_pointset(s: &Section, rows: &[usize]) -> starlink_ast::coords::PointSet` (row-major, `nin` coords).
   - `pub fn rows_to_columns(s: &Section, rows: &[usize]) -> Vec<f64>` (C layout: `col[axis * n + i]`).
 
 - [ ] **Step 1: Write the failing tests**
@@ -303,7 +303,7 @@ git commit -m "ast-bench: read the transform oracles and load their fixtures"
 mod tests {
     use super::*;
     use crate::oracle::Section;
-    use ast_core::constants::BAD_VALUE as B;
+    use starlink_ast::constants::BAD_VALUE as B;
 
     fn sec(inputs: Vec<Vec<f64>>, outputs: Vec<Vec<f64>>) -> Section {
         Section { relpath: "t.map".into(), nin: inputs.len(), nout: outputs.len(), forward: true, inputs, outputs }
@@ -358,8 +358,8 @@ Expected: compile error.
 ```rust
 //! Choose oracle rows for a timing run of N points.
 
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
 
 use crate::oracle::Section;
 
@@ -416,22 +416,22 @@ git commit -m "ast-bench: select oracle rows for N-point runs"
 
 ---
 
-### Task 4: `ast-core` `math` module, `call_counts` module, and the clippy ban
+### Task 4: `starlink-ast` `math` module, `call_counts` module, and the clippy ban
 
 **Files:**
-- Create: `crates/ast-core/src/math.rs`, `crates/ast-core/src/call_counts.rs`, `crates/ast-core/clippy.toml`
-- Modify: `crates/ast-core/Cargo.toml` (feature), `crates/ast-core/src/lib.rs`, every file using a banned `f64` method (about 21 files; list with the `rg` in Step 4)
+- Create: `crates/starlink-ast/src/math.rs`, `crates/starlink-ast/src/call_counts.rs`, `crates/starlink-ast/clippy.toml`
+- Modify: `crates/starlink-ast/Cargo.toml` (feature), `crates/starlink-ast/src/lib.rs`, every file using a banned `f64` method (about 21 files; list with the `rg` in Step 4)
 
 **Interfaces:**
 - Produces:
-  - Feature `call-counts` on `ast-core`.
+  - Feature `call-counts` on `starlink-ast`.
   - `pub const CALL_COUNTS_ENABLED: bool` at the crate root (`cfg!(feature = "call-counts")`).
   - `pub(crate) fn call_counts::hit(name: &'static str)` (no-op without the feature).
-  - With the feature only: `pub fn ast_core::call_counts::reset()` and `pub fn ast_core::call_counts::snapshot() -> std::collections::BTreeMap<String, u64>`.
+  - With the feature only: `pub fn starlink_ast::call_counts::reset()` and `pub fn starlink_ast::call_counts::snapshot() -> std::collections::BTreeMap<String, u64>`.
   - `pub(crate) fn math::{sin, cos, tan, asin, acos, atan, atan2, sin_cos, exp, ln, log10, powf, powi, sqrt, hypot, sinh, cosh, tanh}` with the same signatures as the `f64` methods (receiver becomes the first argument).
   - Count keys are the C names: `sin cos tan asin acos atan atan2 exp log log10 pow sqrt hypot sinh cosh tanh`; `sin_cos` counts one `sin` and one `cos`; `powi` counts as `powi` (C has no such function, so a difference there is a real source difference).
 
-- [ ] **Step 1: Write the failing test** (`crates/ast-core/src/math.rs` test module, run under the feature)
+- [ ] **Step 1: Write the failing test** (`crates/starlink-ast/src/math.rs` test module, run under the feature)
 
 ```rust
 #[cfg(all(test, feature = "call-counts"))]
@@ -452,7 +452,7 @@ mod tests {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cargo test -p ast-core --features call-counts --lib math::`
+Run: `cargo test -p starlink-ast --features call-counts --lib math::`
 Expected: compile error (feature and modules missing).
 
 - [ ] **Step 3: Implement the modules**
@@ -461,7 +461,7 @@ Expected: compile error (feature and modules missing).
 
 ```toml
 # Count calls into libm, PAL, ERFA and wcslib, keyed by C function name, for
-# checking that the port makes the same calls as C (`ast_core::call_counts`).
+# checking that the port makes the same calls as C (`starlink_ast::call_counts`).
 # Never enable in a timed build.
 call-counts = []
 ```
@@ -519,7 +519,7 @@ pub(crate) fn hit(_name: &'static str) {}
 `math.rs` (one function per method; all follow this shape):
 
 ```rust
-//! The floating-point library functions `ast-core` calls, routed through one
+//! The floating-point library functions `starlink-ast` calls, routed through one
 //! place so `call-counts` can count them by their C names. The bare `f64`
 //! methods are banned in this crate by `clippy.toml`.
 #![allow(clippy::disallowed_methods)]
@@ -566,7 +566,7 @@ pub(crate) fn tanh(x: f64) -> f64 { hit("tanh"); x.tanh() }
 
 (rustfmt will expand these onto multiple lines; that is fine.)
 
-`crates/ast-core/clippy.toml`:
+`crates/starlink-ast/clippy.toml`:
 
 ```toml
 # Library math goes through `crate::math` so `call-counts` sees every call.
@@ -592,29 +592,29 @@ disallowed-methods = [
 ]
 ```
 
-Integration tests and examples under `crates/ast-core/` are not library code and may keep the bare methods: add `#![allow(clippy::disallowed_methods)]` to each test area's `main.rs` and to each example that trips it.
+Integration tests and examples under `crates/starlink-ast/` are not library code and may keep the bare methods: add `#![allow(clippy::disallowed_methods)]` to each test area's `main.rs` and to each example that trips it.
 
 - [ ] **Step 4: Convert the library call sites**
 
-Run: `cargo clippy -p ast-core --lib -- -D warnings 2>&1 | rg -c disallowed_methods`
+Run: `cargo clippy -p starlink-ast --lib -- -D warnings 2>&1 | rg -c disallowed_methods`
 Convert each reported site, `x.sin()` → `math::sin(x)`, `y.atan2(x)` → `math::atan2(y, x)`, `x.powi(2)` → `math::powi(x, 2)`, adding `use crate::math;` per file.
 Repeat until clippy is clean.
 Do not reorder operands or change expressions otherwise: the arithmetic must be bit-identical.
 
 - [ ] **Step 5: Verify**
 
-Run: `cargo test -p ast-core --features call-counts --lib math:: && cargo clippy --workspace --tests --examples -- -D warnings && cargo clippy -p ast-core --features call-counts --tests --examples -- -D warnings`
-Then the whole suite, which must be unchanged: for each area in `domain_frames fitschan frames mappings meta regions serial`, `cargo test -q -p ast-core --test <area>`, plus `cargo test -q -p ast-core --lib`.
+Run: `cargo test -p starlink-ast --features call-counts --lib math:: && cargo clippy --workspace --tests --examples -- -D warnings && cargo clippy -p starlink-ast --features call-counts --tests --examples -- -D warnings`
+Then the whole suite, which must be unchanged: for each area in `domain_frames fitschan frames mappings meta regions serial`, `cargo test -q -p starlink-ast --test <area>`, plus `cargo test -q -p starlink-ast --lib`.
 Expected: all pass.
 
 - [ ] **Step 6: Negative controls and commit**
 
-1. Add `let _ = 1.0f64.sin();` in any `ast-core/src` function; clippy must FAIL with `disallowed_methods`. Remove.
+1. Add `let _ = 1.0f64.sin();` in any `starlink-ast/src` function; clippy must FAIL with `disallowed_methods`. Remove.
 2. In `math::sin`, delete `hit("sin");`; `counts_by_c_name` must FAIL. Restore.
 
 ```bash
-git add crates/ast-core
-git commit -m "ast-core: route library math through a counted math module"
+git add crates/starlink-ast
+git commit -m "starlink-ast: route library math through a counted math module"
 ```
 
 ---
@@ -622,8 +622,8 @@ git commit -m "ast-core: route library math through a counted math module"
 ### Task 5: Count the PAL, ERFA and wcslib boundaries
 
 **Files:**
-- Modify: `crates/ast-core/src/pal.rs` (54 `unsafe { astPal…/astEra… }` call sites), `crates/ast-core/src/wcslib.rs` (the `astPRJset`/`astTPNset` calls and the four `fwd`/`rev` function-pointer calls at about lines 715, 753, 788, 807)
-- Test: `crates/ast-core/src/pal.rs`, `crates/ast-core/src/wcslib.rs` test modules
+- Modify: `crates/starlink-ast/src/pal.rs` (54 `unsafe { astPal…/astEra… }` call sites), `crates/starlink-ast/src/wcslib.rs` (the `astPRJset`/`astTPNset` calls and the four `fwd`/`rev` function-pointer calls at about lines 715, 753, 788, 807)
+- Test: `crates/starlink-ast/src/pal.rs`, `crates/starlink-ast/src/wcslib.rs` test modules
 
 **Interfaces:**
 - Consumes: `call_counts::hit`.
@@ -660,7 +660,7 @@ The analogous `wcslib.rs` test asserts that `forward_raw` on a TAN projection co
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cargo test -p ast-core --features call-counts --lib count_tests`
+Run: `cargo test -p starlink-ast --features call-counts --lib count_tests`
 Expected: FAIL (54 bare calls).
 
 - [ ] **Step 3: Implement**
@@ -692,7 +692,7 @@ let status = unsafe { fwd(phi, theta, &mut self.inner, &mut x, &mut y) };
 
 - [ ] **Step 4: Verify**
 
-Run: `cargo test -p ast-core --features call-counts --lib count_tests && cargo test -q -p ast-core --test mappings && cargo clippy -p ast-core --features call-counts --tests -- -D warnings`
+Run: `cargo test -p starlink-ast --features call-counts --lib count_tests && cargo test -q -p starlink-ast --test mappings && cargo clippy -p starlink-ast --features call-counts --tests -- -D warnings`
 Expected: pass.
 
 - [ ] **Step 5: Negative control and commit**
@@ -700,8 +700,8 @@ Expected: pass.
 Revert one `counted!` back to `unsafe { astPalEpj(date) }`; `every_ffi_call_is_counted` must FAIL. Restore.
 
 ```bash
-git add crates/ast-core/src/pal.rs crates/ast-core/src/wcslib.rs
-git commit -m "ast-core: count calls into PAL, ERFA and wcslib"
+git add crates/starlink-ast/src/pal.rs crates/starlink-ast/src/wcslib.rs
+git commit -m "starlink-ast: count calls into PAL, ERFA and wcslib"
 ```
 
 ---
@@ -963,14 +963,14 @@ git commit -m "ast-bench: load the C engine at runtime"
 - Create: `crates/ast-oracle-tests/tests/call_count_parity.rs`
 
 **Interfaces:**
-- Consumes: `ast_bench::{oracle, load, c_engine}`, `ast_core::call_counts::{reset, snapshot}`.
+- Consumes: `ast_bench::{oracle, load, c_engine}`, `starlink_ast::call_counts::{reset, snapshot}`.
 - Produces: `COUNT_PARITY_EXCLUDED: &[(&str, &str)]` (`"relpath dir=forward|inverse"`, reason).
 
 - [ ] **Step 1: Dependencies**
 
 ```toml
 [dependencies]
-ast-core = { path = "../ast-core", features = ["call-counts"] }
+starlink-ast = { path = "../starlink-ast", features = ["call-counts"] }
 ast-bench = { path = "../ast-bench", features = ["c-oracle"] }
 ```
 
@@ -989,8 +989,8 @@ use std::path::Path;
 use ast_bench::c_engine::{CEngine, Variant};
 use ast_bench::load::{load_fixture, Loaded};
 use ast_bench::oracle::{parse_oracle, CORE_FIXTURES, CORE_ORACLES};
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
 
 /// Sections whose counts differ for an understood reason, each with that reason.
 const COUNT_PARITY_EXCLUDED: &[(&str, &str)] = &[];
@@ -1012,9 +1012,9 @@ fn mismatches() -> Vec<(String, BTreeMap<String, (u64, u64)>)> {
             let rows: Vec<Vec<f64>> = (0..n).map(|r| s.inputs.iter().map(|c| c[r]).collect()).collect();
             let pts = PointSet::from_rows(rows);
             let mut out = PointSet::zeros(n, s.nout);
-            ast_core::call_counts::reset();
+            starlink_ast::call_counts::reset();
             map.transform_into(&pts, s.forward, &mut out).unwrap();
-            let rust = ast_core::call_counts::snapshot();
+            let rust = starlink_ast::call_counts::snapshot();
 
             let cm = c.load(root, &s.relpath).unwrap();
             let mut cout = vec![0.0; s.nout * n];
@@ -1124,16 +1124,16 @@ Before writing each constructor, check its argument order in the class's `.h` in
 - [ ] **Step 1: Write the failing gate test** (`crates/ast-bench/tests/bench_fixtures.rs`)
 
 ```rust
-//! The bench fixtures are not in ast-core's oracle gate (they are not yet in
+//! The bench fixtures are not in starlink-ast's oracle gate (they are not yet in
 //! ast_tester), so this test holds the port to C's recorded outputs for them,
-//! with the tolerances of `crates/ast-core/tests/test_transform_oracle.rs`.
+//! with the tolerances of `crates/starlink-ast/tests/test_transform_oracle.rs`.
 
 use std::path::Path;
 
 use ast_bench::load::{load_fixture, Loaded};
 use ast_bench::oracle::{parse_oracle, BENCH_FIXTURES, BENCH_ORACLE};
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
 
 const GOLDEN_RTOL: f64 = 1e-7;
 const GOLDEN_ATOL: f64 = 1e-7;
@@ -1251,7 +1251,7 @@ fn bench_set_covers_every_bench_section() {
 // main.rs or lib-level test
 #[test]
 fn run_refuses_a_counting_build() {
-    assert!(!ast_core::CALL_COUNTS_ENABLED, "ast-bench must never be built with call-counts");
+    assert!(!starlink_ast::CALL_COUNTS_ENABLED, "ast-bench must never be built with call-counts");
 }
 
 #[test]
@@ -1279,7 +1279,7 @@ Expected: compile errors.
 `run_set`: for each case, load it once per engine (Rust via `load_fixture`, C via `CEngine::load`), then for each N select rows, build the input (`rows_to_pointset` / `rows_to_columns`) and pre-allocated output (`PointSet::zeros(n, nout)` / `vec![0.0; nout * n]`), and time the transform: Rust `map.transform_into(&pts, forward, &mut out)`, C `cm.tran(..)`.
 With both engines, alternate them sample by sample (`measure` on each in turn, budget split) so drift affects both.
 Budgets: 200 ms per (case, direction, N, engine) for N ≤ 100 000, 1 s for 1 000 000; `min_samples` 7.
-`main.rs` `run`: parse `--set`, `--engine` (default `rust`; `c` and `both` require the `c-oracle` feature and error otherwise naming it), `--format`, `--save`; at startup `if ast_core::CALL_COUNTS_ENABLED { exit with "this build counts library calls; rebuild ast-bench without call-counts" }`; print `report::table` (with a ratio column when both engines ran) or `report::tsv`; print each `Err` row to stderr and exit nonzero at the end if any.
+`main.rs` `run`: parse `--set`, `--engine` (default `rust`; `c` and `both` require the `c-oracle` feature and error otherwise naming it), `--format`, `--save`; at startup `if starlink_ast::CALL_COUNTS_ENABLED { exit with "this build counts library calls; rebuild ast-bench without call-counts" }`; print `report::table` (with a ratio column when both engines ran) or `report::tsv`; print each `Err` row to stderr and exit nonzero at the end if any.
 
 - [ ] **Step 4: Verify**
 
@@ -1475,8 +1475,8 @@ git commit -m "ast-bench: full sweep, committed ratio snapshots, advisory ratio 
 ### Task 14: Housekeeping
 
 **Files:**
-- Delete: `crates/ast-core/examples/bench_per_class.rs`, `crates/ast-core/tests/bench_per_class_c.c`
-- Keep: `crates/ast-core/examples/bench_polymap_simd.rs` and the `simd-eval` feature, for the later SIMD investigation
+- Delete: `crates/starlink-ast/examples/bench_per_class.rs`, `crates/starlink-ast/tests/bench_per_class_c.c`
+- Keep: `crates/starlink-ast/examples/bench_polymap_simd.rs` and the `simd-eval` feature, for the later SIMD investigation
 - Modify: `.github/workflows/ci.yml` (the `test` job also runs `cargo test -p ast-bench`, which needs no submodule and no C), `docs/issues/mapping-perf-vs-c-oracle.md` (top: a pointer to `docs/perf/macos-aarch64.tsv` and `ast-bench`), `PLAN.md` (the per-class performance row and the tier-5 row), `CLAUDE.md` ("Bulk-transform optimization": prototype comparisons now use `ast-bench run --engine both`)
 
 - [ ] **Step 1: Confirm coverage before deleting**
@@ -1487,13 +1487,13 @@ Add a `PLAN.md` row: SIMD comparison deferred until the C side's SIMD work (http
 
 - [ ] **Step 2: Delete, update, verify**
 
-Run: `cargo test -p ast-bench && cargo build -p ast-core --examples && cargo clippy --workspace --tests --examples -- -D warnings && rg -n 'bench_per_class' --glob '!target' --glob '!docs/superpowers/*' .`
+Run: `cargo test -p ast-bench && cargo build -p starlink-ast --examples && cargo clippy --workspace --tests --examples -- -D warnings && rg -n 'bench_per_class' --glob '!target' --glob '!docs/superpowers/*' .`
 Expected: clean; the `rg` finds only historical mentions in `docs/issues/` (leave those; they describe past snapshots).
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add -A crates/ast-core/examples crates/ast-core/tests/bench_per_class_c.c .github/workflows/ci.yml docs/issues/mapping-perf-vs-c-oracle.md PLAN.md CLAUDE.md
+git add -A crates/starlink-ast/examples crates/starlink-ast/tests/bench_per_class_c.c .github/workflows/ci.yml docs/issues/mapping-perf-vs-c-oracle.md PLAN.md CLAUDE.md
 git commit -m "Retire the hand-run per-class bench in favor of ast-bench"
 ```
 

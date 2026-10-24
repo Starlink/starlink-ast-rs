@@ -44,7 +44,7 @@ C's `TDBConv` is ported as `epoch::tdb_conv`, which converts through
 a `TimeFrame` as C does.
 That gives us the same entry point C uses but the underlying
 TimeMap conversions in
-`crates/ast-core/src/mappings/timemap.rs` may not be bit-exact with
+`crates/starlink-ast/src/mappings/timemap.rs` may not be bit-exact with
 the C oracle yet.
 
 **To do.**

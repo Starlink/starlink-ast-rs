@@ -4,9 +4,9 @@
 
 **Goal:** Give every AST class `show()` and `to_native_string()` methods matching C's `astShow` and `astToString` byte for byte, `TryFrom<AnyObject>` for typed reads, and remove the free `to_native_string` function.
 
-**Architecture:** One macro in `crates/ast-core/src/serial/` expands over the `AnyObject` variant list to generate the two methods and the `TryFrom` impl for each class, plus the same methods on `AnyObject`. Both methods render the class's `Serializable::to_node` through the existing `native_write::render_native_with_options` with the option values C's Channel settings give, so no object is copied into an `AnyObject`. A C probe records `astShow` and `astToString` output for four objects, each exercising one part of the mechanism, and an oracle test compares exactly.
+**Architecture:** One macro in `crates/starlink-ast/src/serial/` expands over the `AnyObject` variant list to generate the two methods and the `TryFrom` impl for each class, plus the same methods on `AnyObject`. Both methods render the class's `Serializable::to_node` through the existing `native_write::render_native_with_options` with the option values C's Channel settings give, so no object is copied into an `AnyObject`. A C probe records `astShow` and `astToString` output for four objects, each exercising one part of the mechanism, and an oracle test compares exactly.
 
-**Tech Stack:** Rust 2024 (`ast-core`), C probe linked against the reference `libast` built per `docs/issues/c-oracle-probe-recipe.md`.
+**Tech Stack:** Rust 2024 (`starlink-ast`), C probe linked against the reference `libast` built per `docs/issues/c-oracle-probe-recipe.md`.
 
 **Spec:** `docs/superpowers/specs/2026-10-19-show-and-native-string-design.md`
 
@@ -37,10 +37,10 @@ The cases test the mechanism: four objects, each exercising one part of it.
 
 **Files:**
 - Create: `tools/oracle_fixtures/show_tostring_probe.c`
-- Create: `crates/ast-core/tests/show_tostring_oracle/cases.rs` (generated)
+- Create: `crates/starlink-ast/tests/show_tostring_oracle/cases.rs` (generated)
 
 **Interfaces:**
-- Produces: `crates/ast-core/tests/show_tostring_oracle/cases.rs` defining
+- Produces: `crates/starlink-ast/tests/show_tostring_oracle/cases.rs` defining
   `pub const CASES: &[(&str, &str, &str, &str)]` — `(case name, AST class name, astShow text, astToString text)`.
 
 - [ ] **Step 1: Write the probe.**
@@ -52,9 +52,9 @@ The cases test the mechanism: four objects, each exercising one part of it.
    * FrameSet), a class whose Rust type is named differently (a Box), and a
    * boxed AnyObject variant (a KeyMap).
    *
-   * Prints Rust source for crates/ast-core/tests/show_tostring_oracle/cases.rs:
+   * Prints Rust source for crates/starlink-ast/tests/show_tostring_oracle/cases.rs:
    *
-   *   ./show_tostring_probe > ../../crates/ast-core/tests/show_tostring_oracle/cases.rs
+   *   ./show_tostring_probe > ../../crates/starlink-ast/tests/show_tostring_oracle/cases.rs
    */
   #include <stdio.h>
   #include <stdlib.h>
@@ -124,7 +124,7 @@ The cases test the mechanism: four objects, each exercising one part of it.
      emit( "zoommap_with_id", obj );
      obj = astAnnul( obj );
 
-     obj = read_fixture( "../../crates/ast-core/tests/fixtures/wcsconv/inputs/dss.ast" );
+     obj = read_fixture( "../../crates/starlink-ast/tests/fixtures/wcsconv/inputs/dss.ast" );
      emit( "frameset", obj );
      obj = astAnnul( obj );
 
@@ -151,18 +151,18 @@ The cases test the mechanism: four objects, each exercising one part of it.
   cc show_tostring_probe.c grf_stubs.c -o $SCRATCH/show_tostring_probe \
     -I "$R" -L "$R" -Wl,-rpath,"$R" \
     -last -last_pal -last_cminpack -lyaml -lm
-  mkdir -p ../../crates/ast-core/tests/show_tostring_oracle
-  LD_LIBRARY_PATH= $SCRATCH/show_tostring_probe > ../../crates/ast-core/tests/show_tostring_oracle/cases.rs
+  mkdir -p ../../crates/starlink-ast/tests/show_tostring_oracle
+  LD_LIBRARY_PATH= $SCRATCH/show_tostring_probe > ../../crates/starlink-ast/tests/show_tostring_oracle/cases.rs
   ```
 
-  Expected: exit 0; `rg -c '^    \($' ../../crates/ast-core/tests/show_tostring_oracle/cases.rs` prints `4`, and the class column reads `ZoomMap`, `FrameSet`, `Box`, `KeyMap`.
+  Expected: exit 0; `rg -c '^    \($' ../../crates/starlink-ast/tests/show_tostring_oracle/cases.rs` prints `4`, and the class column reads `ZoomMap`, `FrameSet`, `Box`, `KeyMap`.
   The compact text of `zoommap_with_id` contains `ID = "zoom_id"` and `Ident = "zoom ident"`; the compact text of `frameset` has no line starting with a space.
   The binary goes to the scratchpad, not `tools/oracle_fixtures/`.
 
 - [ ] **Step 3: Commit.**
 
   ```sh
-  git add tools/oracle_fixtures/show_tostring_probe.c crates/ast-core/tests/show_tostring_oracle/cases.rs
+  git add tools/oracle_fixtures/show_tostring_probe.c crates/starlink-ast/tests/show_tostring_oracle/cases.rs
   git commit -m "Record astShow and astToString output for four objects"
   ```
 
@@ -171,11 +171,11 @@ The cases test the mechanism: four objects, each exercising one part of it.
 ### Task 2: `show`, `to_native_string` and `TryFrom<AnyObject>`
 
 **Files:**
-- Create: `crates/ast-core/src/serial/object_text.rs`
-- Modify: `crates/ast-core/src/serial/mod.rs` (declare the module; add `AnyObject::class_name`)
-- Modify: `crates/ast-core/src/channel/native.rs:143-153` (build `RenderOptions` with the shared helper)
-- Create: `crates/ast-core/tests/test_show_tostring_oracle.rs`
-- Modify: `crates/ast-core/tests/serial/main.rs` (add the module)
+- Create: `crates/starlink-ast/src/serial/object_text.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs` (declare the module; add `AnyObject::class_name`)
+- Modify: `crates/starlink-ast/src/channel/native.rs:143-153` (build `RenderOptions` with the shared helper)
+- Create: `crates/starlink-ast/tests/test_show_tostring_oracle.rs`
+- Modify: `crates/starlink-ast/tests/serial/main.rs` (add the module)
 
 **Interfaces:**
 - Consumes: `CASES` from Task 1.
@@ -185,7 +185,7 @@ The cases test the mechanism: four objects, each exercising one part of it.
   - `impl TryFrom<AnyObject> for <Class> { type Error = AstError; }`
 - Produces `pub fn AnyObject::class_name(&self) -> &'static str` (the AST class name, e.g. `"Box"`).
 
-- [ ] **Step 1: Write the failing oracle test** in `crates/ast-core/tests/test_show_tostring_oracle.rs`.
+- [ ] **Step 1: Write the failing oracle test** in `crates/starlink-ast/tests/test_show_tostring_oracle.rs`.
 
   ```rust
   //! `show` and `to_native_string` against C's `astShow` and `astToString`.
@@ -195,8 +195,8 @@ The cases test the mechanism: four objects, each exercising one part of it.
   //! with the text C writes for each. Each case is read back from C's `astShow`
   //! text and must write both texts exactly.
 
-  use ast_core::AnyObject;
-  use ast_core::mappings::ZoomMap;
+  use starlink_ast::AnyObject;
+  use starlink_ast::mappings::ZoomMap;
 
   use crate::common::{assert_c_text, from_native_string};
 
@@ -241,8 +241,8 @@ The cases test the mechanism: four objects, each exercising one part of it.
       let any = AnyObject::ZoomMap(ZoomMap::new(2, 4.0).unwrap());
       let map = ZoomMap::try_from(any.clone()).unwrap();
       assert_eq!(map.zoom(), 4.0);
-      let err = ast_core::mappings::PermMap::try_from(any).unwrap_err();
-      assert_eq!(err.code(), ast_core::error::ErrorCode::Objin);
+      let err = starlink_ast::mappings::PermMap::try_from(any).unwrap_err();
+      assert_eq!(err.code(), starlink_ast::error::ErrorCode::Objin);
       assert_eq!(
           err.message(),
           "Pointer to PermMap required, but pointer to ZoomMap given."
@@ -251,16 +251,16 @@ The cases test the mechanism: four objects, each exercising one part of it.
 
   #[test]
   fn try_from_unboxes_boxed_variants() {
-      let km = ast_core::KeyMap::new();
-      let back = ast_core::KeyMap::try_from(AnyObject::KeyMap(Box::new(km))).unwrap();
+      let km = starlink_ast::KeyMap::new();
+      let back = starlink_ast::KeyMap::try_from(AnyObject::KeyMap(Box::new(km))).unwrap();
       assert_eq!(back.size(), 0);
   }
   ```
 
   `show_text` is a `#[doc(hidden)] pub` method on `AnyObject` returning the string `show` prints, so the test does not capture standard output.
-  Use the accessor names `ZoomMap::zoom`, `AstError::message`, `KeyMap::size` as they exist; if one is named differently, use the existing name (check with `rg -n 'pub fn (zoom|message|size)\b' crates/ast-core/src`).
+  Use the accessor names `ZoomMap::zoom`, `AstError::message`, `KeyMap::size` as they exist; if one is named differently, use the existing name (check with `rg -n 'pub fn (zoom|message|size)\b' crates/starlink-ast/src`).
 
-  Register the module in `crates/ast-core/tests/serial/main.rs` next to `test_object_id_oracle`:
+  Register the module in `crates/starlink-ast/tests/serial/main.rs` next to `test_object_id_oracle`:
 
   ```rust
   #[path = "../test_show_tostring_oracle.rs"]
@@ -269,11 +269,11 @@ The cases test the mechanism: four objects, each exercising one part of it.
 
 - [ ] **Step 2: Run it to verify it fails.**
 
-  Run: `cargo test -p ast-core --test serial test_show_tostring_oracle::`
+  Run: `cargo test -p starlink-ast --test serial test_show_tostring_oracle::`
   Expected: compile errors — no method `to_native_string` on `AnyObject`, no `class_name`, `show_text`, no `TryFrom`.
 
 - [ ] **Step 3: Share the option mapping with `NativeChannel`.**
-  In `crates/ast-core/src/serial/native_write.rs`, add:
+  In `crates/starlink-ast/src/serial/native_write.rs`, add:
 
   ```rust
   impl RenderOptions {
@@ -292,7 +292,7 @@ The cases test the mechanism: four objects, each exercising one part of it.
 
   and replace the struct literal in `NativeChannel::write` (`channel/native.rs:146-152`) with `RenderOptions::from_config(&self.base.config)`.
 
-- [ ] **Step 4: Write `crates/ast-core/src/serial/object_text.rs`.**
+- [ ] **Step 4: Write `crates/starlink-ast/src/serial/object_text.rs`.**
 
   ```rust
   //! `show`, `to_native_string` and `TryFrom<AnyObject>` for every class.
@@ -344,7 +344,7 @@ The cases test the mechanism: four objects, each exercising one part of it.
   ```
 
   Confirm the line endings: `render_native_with_options` must return text whose every line ends in `\n`, which is what `NativeChannel`'s string sink produced; if it returns text without a final newline, append one in both functions so that `show_text` equals what the free `to_native_string` returned.
-  Use `AstError::new`'s actual signature (`rg -n 'pub fn new' crates/ast-core/src/error.rs`).
+  Use `AstError::new`'s actual signature (`rg -n 'pub fn new' crates/starlink-ast/src/error.rs`).
 
 - [ ] **Step 5: Generate the methods with one macro** at the end of `object_text.rs`.
   The variant list is `AnyObject`'s (`serial/mod.rs:1865`); the macro takes `(Variant, Type, "AstClass", boxed-or-not)` rows.
@@ -439,25 +439,25 @@ The cases test the mechanism: four objects, each exercising one part of it.
   }
   ```
 
-  Take each class string from that type's `Serializable::class_name`, not from memory (`rg -n 'fn class_name' -A2 crates/ast-core/src`).
+  Take each class string from that type's `Serializable::class_name`, not from memory (`rg -n 'fn class_name' -A2 crates/starlink-ast/src`).
   Declare the module in `serial/mod.rs`: `mod object_text;`.
 
 - [ ] **Step 6: Run the tests to verify they pass.**
 
-  Run: `cargo test -p ast-core --test serial test_show_tostring_oracle::`
+  Run: `cargo test -p starlink-ast --test serial test_show_tostring_oracle::`
   Expected: 6 passed.
   A byte difference in a case is a port defect to fix in that class's `to_node` or in the renderer, not in the expected text; diagnose it with the simplify-style diff of the two texts before changing code.
 
-- [ ] **Step 7: Run the whole `ast-core` suite, fmt and clippy.**
+- [ ] **Step 7: Run the whole `starlink-ast` suite, fmt and clippy.**
 
-  Run: `cargo test -p ast-core && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo clippy --workspace --all-targets --features ast-bench/c-oracle -- -D warnings`
+  Run: `cargo test -p starlink-ast && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo clippy --workspace --all-targets --features ast-bench/c-oracle -- -D warnings`
   Expected: all pass.
 
 - [ ] **Step 8: Commit.**
 
   ```sh
-  git add crates/ast-core/src/serial crates/ast-core/src/channel/native.rs \
-    crates/ast-core/tests/test_show_tostring_oracle.rs crates/ast-core/tests/serial/main.rs
+  git add crates/starlink-ast/src/serial crates/starlink-ast/src/channel/native.rs \
+    crates/starlink-ast/tests/test_show_tostring_oracle.rs crates/starlink-ast/tests/serial/main.rs
   git commit -m "Add show, to_native_string and TryFrom<AnyObject> to every class"
   ```
 
@@ -466,23 +466,23 @@ The cases test the mechanism: four objects, each exercising one part of it.
 ### Task 3: Remove the free `to_native_string`
 
 **Files:**
-- Modify: `crates/ast-core/src/serial/mod.rs:2629-2644` (delete the function and its section comment's mention)
-- Modify: `crates/ast-core/src/lib.rs:30` (drop it from the re-export)
-- Modify: `crates/ast-core/tests/common/mod.rs` (add `native_dump`)
-- Modify: the 100 test files, `crates/ast-core/src/mappings/dssmap.rs` (inline tests), `crates/ast-core/examples/simp_one.rs`, `crates/ast-core/examples/wcsconv_debug.rs`
+- Modify: `crates/starlink-ast/src/serial/mod.rs:2629-2644` (delete the function and its section comment's mention)
+- Modify: `crates/starlink-ast/src/lib.rs:30` (drop it from the re-export)
+- Modify: `crates/starlink-ast/tests/common/mod.rs` (add `native_dump`)
+- Modify: the 100 test files, `crates/starlink-ast/src/mappings/dssmap.rs` (inline tests), `crates/starlink-ast/examples/simp_one.rs`, `crates/starlink-ast/examples/wcsconv_debug.rs`
 
 **Interfaces:**
 - Consumes: `AnyObject::to_native_string` from Task 2.
 - Produces: `crate::common::native_dump(obj: &AnyObject) -> AstResult<String>`, the default-Channel dump the free function wrote.
 
-- [ ] **Step 1: Add the helper** to `crates/ast-core/tests/common/mod.rs`:
+- [ ] **Step 1: Add the helper** to `crates/starlink-ast/tests/common/mod.rs`:
 
   ```rust
   /// The Native dump a Channel with no attributes set writes for `obj`:
   /// comments included and nested objects indented, as the reference
   /// fixtures were written.
-  pub fn native_dump(obj: &ast_core::AnyObject) -> ast_core::error::AstResult<String> {
-      use ast_core::{Channel, NativeChannel};
+  pub fn native_dump(obj: &starlink_ast::AnyObject) -> starlink_ast::error::AstResult<String> {
+      use starlink_ast::{Channel, NativeChannel};
       let mut ch = NativeChannel::with_string_sink();
       ch.write(obj)?;
       Ok(ch.into_string())
@@ -491,24 +491,24 @@ The cases test the mechanism: four objects, each exercising one part of it.
 
 - [ ] **Step 2: Remove the free function and its re-export**, then confirm the build breaks where it is used.
 
-  Run: `cargo test -p ast-core --no-run 2>&1 | rg -c 'to_native_string'`
+  Run: `cargo test -p starlink-ast --no-run 2>&1 | rg -c 'to_native_string'`
   Expected: a non-zero count of unresolved-import and unresolved-name errors.
 
 - [ ] **Step 3: Rewrite the call sites with a script** in the scratchpad (not committed):
 
   ```python
   import pathlib, re
-  root = pathlib.Path("crates/ast-core/tests")
+  root = pathlib.Path("crates/starlink-ast/tests")
   for p in root.glob("*.rs"):
       s = p.read_text()
       if "to_native_string" not in s:
           continue
-      t = s.replace("ast_core::to_native_string(", "native_dump(")
+      t = s.replace("starlink_ast::to_native_string(", "native_dump(")
       def fix_use(m):
           items = [i.strip() for i in m.group(1).split(",") if i.strip() and i.strip() != "to_native_string"]
-          return "use ast_core::{" + ", ".join(items) + "};" if len(items) != 1 else f"use ast_core::{items[0]};"
-      t = re.sub(r"use ast_core::\{([^}]*\bto_native_string\b[^}]*)\};", fix_use, t)
-      t = t.replace("use ast_core::to_native_string;\n", "")
+          return "use starlink_ast::{" + ", ".join(items) + "};" if len(items) != 1 else f"use starlink_ast::{items[0]};"
+      t = re.sub(r"use starlink_ast::\{([^}]*\bto_native_string\b[^}]*)\};", fix_use, t)
+      t = t.replace("use starlink_ast::to_native_string;\n", "")
       t = re.sub(r"(?<![.\w])to_native_string\(", "native_dump(", t)
       if "native_dump(" in t and "use crate::common::native_dump;" not in t:
           # After the file's leading //! block, or at the top if it has none.
@@ -524,7 +524,7 @@ The cases test the mechanism: four objects, each exercising one part of it.
 
 - [ ] **Step 4: Build, then run the full suite.**
 
-  Run: `cargo test -p ast-core --no-run && cargo test -p ast-core`
+  Run: `cargo test -p starlink-ast --no-run && cargo test -p starlink-ast`
   Expected: builds; every test passes with the same count as before Task 3 (the helper writes exactly what the free function wrote).
   Also: `rg -n '\bto_native_string\b' crates --type rust | rg -v '\.to_native_string\(|fn to_native_string'` prints nothing.
 
@@ -532,7 +532,7 @@ The cases test the mechanism: four objects, each exercising one part of it.
 
   ```sh
   cargo fmt && cargo clippy --workspace --all-targets -- -D warnings
-  git add crates/ast-core
+  git add crates/starlink-ast
   git commit -m "Remove the free to_native_string in favour of the method"
   ```
 
@@ -560,7 +560,7 @@ The cases test the mechanism: four objects, each exercising one part of it.
 
 - [ ] **Step 4: Run the meta tests** (they check CLAUDE.md and PLAN.md citations).
 
-  Run: `cargo test -p ast-core --test meta`
+  Run: `cargo test -p starlink-ast --test meta`
   Expected: pass.
 
 - [ ] **Step 5: Commit.**

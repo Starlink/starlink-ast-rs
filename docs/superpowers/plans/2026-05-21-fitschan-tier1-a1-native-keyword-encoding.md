@@ -4,7 +4,7 @@
 
 **Goal:** Implement the keyword-card variant of NATIVE encoding so `polco_native`, `polco2_native`, `specflux_native`, and `timeplot_native` wcsconv tests pass.
 
-**Architecture:** Add a new `crates/ast-core/src/fitschan/enc_native.rs` that — when a FitsChan in NATIVE encoding contains keyword cards of the form `BEGAST_xx`, `ENDAST_xx`, `ISA_xx`, `<NAME>_xx` (where `xx` is two characters from `_ABCDEFGHIJKLMNOPQRSTUVWXYZ`) — translates those cards back into the same line-oriented text format that `serial::native_read::parse_native` already understands (`Begin Class`, `Key = value`, `IsA Class`, `End Class`). The existing parser then takes over with no further FITS knowledge. This mirrors the C library's structure where `fitschan.c::Read` (line 25699) routes NATIVE-encoded reads through the inherited Channel reader using a keyword-card source function.
+**Architecture:** Add a new `crates/starlink-ast/src/fitschan/enc_native.rs` that — when a FitsChan in NATIVE encoding contains keyword cards of the form `BEGAST_xx`, `ENDAST_xx`, `ISA_xx`, `<NAME>_xx` (where `xx` is two characters from `_ABCDEFGHIJKLMNOPQRSTUVWXYZ`) — translates those cards back into the same line-oriented text format that `serial::native_read::parse_native` already understands (`Begin Class`, `Key = value`, `IsA Class`, `End Class`). The existing parser then takes over with no further FITS knowledge. This mirrors the C library's structure where `fitschan.c::Read` (line 25699) routes NATIVE-encoded reads through the inherited Channel reader using a keyword-card source function.
 
 **Tech Stack:** Rust 2024, existing FitsChan infrastructure (`CardList`, `FitsCard`, `FitsValue`), existing `serial::native_read::parse_native`. No new dependencies.
 
@@ -47,7 +47,7 @@ Card → native text mapping:
 
 Long strings ending in `&` continue on subsequent `CONTINUE` cards. This pattern already exists in the test fixtures (e.g. `polco.head` line 12: `TITLE_A = 'Data grid indices; first pixel at (1&'/...` followed by `CONTINUE  '",1)     "'`).
 
-The `parse_native` Rust parser (`crates/ast-core/src/serial/native_read.rs`) already accepts:
+The `parse_native` Rust parser (`crates/starlink-ast/src/serial/native_read.rs`) already accepts:
 - `Begin <Class>` / `End <Class>`
 - `<key> = <value>` scalar attributes
 - `<key> =` (empty value) as a marker that the next non-blank line is `Begin <ChildClass>` of a nested object
@@ -60,22 +60,22 @@ So our job in `enc_native.rs` is purely a card-to-text projection — no parsing
 
 ## File structure
 
-- **Create:** `crates/ast-core/src/fitschan/enc_native.rs` — keyword-card NATIVE decoder.
-- **Modify:** `crates/ast-core/src/fitschan/mod.rs` — register the module; route `Encoding::Native` reads through `enc_native::cards_to_native_text` when keyword-card NATIVE is detected, otherwise fall back to existing `extract_native_text`.
-- **Modify:** `crates/ast-core/src/fitschan/guess_encoding.rs` — detect `BEGAST<xx>` keyword as a NATIVE-encoding signature in addition to the existing COMMENT-card markers.
-- **Create:** `crates/ast-core/tests/test_fitschan_native_keyword.rs` — focused integration tests for keyword-card NATIVE input.
-- (Test side-effect: `cargo test -p ast-core --test test_wcsconv` should report 4 more passes.)
+- **Create:** `crates/starlink-ast/src/fitschan/enc_native.rs` — keyword-card NATIVE decoder.
+- **Modify:** `crates/starlink-ast/src/fitschan/mod.rs` — register the module; route `Encoding::Native` reads through `enc_native::cards_to_native_text` when keyword-card NATIVE is detected, otherwise fall back to existing `extract_native_text`.
+- **Modify:** `crates/starlink-ast/src/fitschan/guess_encoding.rs` — detect `BEGAST<xx>` keyword as a NATIVE-encoding signature in addition to the existing COMMENT-card markers.
+- **Create:** `crates/starlink-ast/tests/test_fitschan_native_keyword.rs` — focused integration tests for keyword-card NATIVE input.
+- (Test side-effect: `cargo test -p starlink-ast --test test_wcsconv` should report 4 more passes.)
 
 ---
 
 ## Task 1: Failing integration test for keyword-card NATIVE input
 
 **Files:**
-- Create: `crates/ast-core/tests/test_fitschan_native_keyword.rs`
+- Create: `crates/starlink-ast/tests/test_fitschan_native_keyword.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `crates/ast-core/tests/test_fitschan_native_keyword.rs` with:
+Create `crates/starlink-ast/tests/test_fitschan_native_keyword.rs` with:
 
 ```rust
 //! Tests for the keyword-card variant of NATIVE encoding (BEGAST/ENDAST cards).
@@ -88,9 +88,9 @@ Create `crates/ast-core/tests/test_fitschan_native_keyword.rs` with:
 
 use std::path::PathBuf;
 
-use ast_core::AnyObject;
-use ast_core::channel::Channel;
-use ast_core::fitschan::FitsChan;
+use starlink_ast::AnyObject;
+use starlink_ast::channel::Channel;
+use starlink_ast::fitschan::FitsChan;
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -120,7 +120,7 @@ fn polco_loads() {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_native_keyword polco_loads -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_native_keyword polco_loads -- --nocapture
 ```
 
 Expected: FAIL with a panic message like
@@ -129,7 +129,7 @@ Expected: FAIL with a panic message like
 - [ ] **Step 3: Commit the failing test**
 
 ```bash
-git add crates/ast-core/tests/test_fitschan_native_keyword.rs
+git add crates/starlink-ast/tests/test_fitschan_native_keyword.rs
 git commit -m "test(fitschan): expected-failure test for keyword-card NATIVE input"
 ```
 
@@ -140,8 +140,8 @@ This commit is intentionally a red-test commit; it will turn green at the end of
 ## Task 2: Module skeleton with SEQ_CHARS table and suffix predicate
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/enc_native.rs`
-- Modify: `crates/ast-core/src/fitschan/mod.rs` — add `mod enc_native;`
+- Create: `crates/starlink-ast/src/fitschan/enc_native.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs` — add `mod enc_native;`
 
 - [ ] **Step 1: Write a failing unit test**
 
@@ -199,7 +199,7 @@ mod tests {
 }
 ```
 
-In `crates/ast-core/src/fitschan/mod.rs`, add the module declaration alongside the existing encoding modules. Find the line near the top:
+In `crates/starlink-ast/src/fitschan/mod.rs`, add the module declaration alongside the existing encoding modules. Find the line near the top:
 
 ```rust
 mod enc_aips;
@@ -223,7 +223,7 @@ mod enc_pc;
 - [ ] **Step 2: Run unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_native::tests -- --nocapture
+cargo test -p starlink-ast --lib fitschan::enc_native::tests -- --nocapture
 ```
 
 Expected: 2 PASS.
@@ -232,7 +232,7 @@ Expected: 2 PASS.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 Both must pass. If fmt fails, `cargo fmt --all` then re-run check.
@@ -240,7 +240,7 @@ Both must pass. If fmt fails, `cargo fmt --all` then re-run check.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_native.rs crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/enc_native.rs crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "feat(fitschan): enc_native module skeleton with SEQ_CHARS table"
 ```
 
@@ -249,7 +249,7 @@ git commit -m "feat(fitschan): enc_native module skeleton with SEQ_CHARS table"
 ## Task 3: Classify a NATIVE keyword
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_native.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_native.rs`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -338,7 +338,7 @@ Append the following tests inside the existing `mod tests`:
 - [ ] **Step 2: Run unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_native::tests -- --nocapture
+cargo test -p starlink-ast --lib fitschan::enc_native::tests -- --nocapture
 ```
 
 Expected: 4 new PASSes (6 total).
@@ -347,13 +347,13 @@ Expected: 4 new PASSes (6 total).
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_native.rs
+git add crates/starlink-ast/src/fitschan/enc_native.rs
 git commit -m "feat(fitschan): classify NATIVE keyword cards (BEGAST/ENDAST/ISA/data)"
 ```
 
@@ -362,7 +362,7 @@ git commit -m "feat(fitschan): classify NATIVE keyword cards (BEGAST/ENDAST/ISA/
 ## Task 4: Detect keyword-card NATIVE encoding presence
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_native.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_native.rs`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -389,7 +389,7 @@ Inside the `mod tests` block, add helpers and a test. First check what `CardList
 Run this command to confirm what iteration helper exists:
 
 ```bash
-grep -nE "fn (iter|cards|all|each)" crates/ast-core/src/fitschan/card_list.rs
+grep -nE "fn (iter|cards|all|each)" crates/starlink-ast/src/fitschan/card_list.rs
 ```
 
 If `iter()` returning `impl Iterator<Item = &FitsCard>` exists, use it. Otherwise: add it as a `pub(crate) fn iter(&self) -> impl Iterator<Item = &FitsCard> + '_ { self.cards.iter() }` (look at the field name in `card_list.rs` — likely `cards` or `entries`) and re-run.
@@ -431,12 +431,12 @@ END
     }
 ```
 
-The test uses a `cards_for_test()` accessor on `FitsChan`. If it doesn't exist, add a `#[cfg(test)] pub(crate) fn cards_for_test(&self) -> &CardList { &self.cards }` inside `impl FitsChan` in `mod.rs`. Look for an existing similar test accessor first (`grep -n "for_test\|cards()" crates/ast-core/src/fitschan/mod.rs`) and reuse if found.
+The test uses a `cards_for_test()` accessor on `FitsChan`. If it doesn't exist, add a `#[cfg(test)] pub(crate) fn cards_for_test(&self) -> &CardList { &self.cards }` inside `impl FitsChan` in `mod.rs`. Look for an existing similar test accessor first (`grep -n "for_test\|cards()" crates/starlink-ast/src/fitschan/mod.rs`) and reuse if found.
 
 - [ ] **Step 2: Run unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_native::tests -- --nocapture
+cargo test -p starlink-ast --lib fitschan::enc_native::tests -- --nocapture
 ```
 
 Expected: 2 new PASSes (8 total).
@@ -445,13 +445,13 @@ Expected: 2 new PASSes (8 total).
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_native.rs crates/ast-core/src/fitschan/mod.rs crates/ast-core/src/fitschan/card_list.rs
+git add crates/starlink-ast/src/fitschan/enc_native.rs crates/starlink-ast/src/fitschan/mod.rs crates/starlink-ast/src/fitschan/card_list.rs
 git commit -m "feat(fitschan): detect keyword-card NATIVE encoding via BEGAST presence"
 ```
 
@@ -462,7 +462,7 @@ git commit -m "feat(fitschan): detect keyword-card NATIVE encoding via BEGAST pr
 ## Task 5: Format a single attribute value as native text
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_native.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_native.rs`
 
 The `parse_native` parser accepts these value formats on a `Key = Value` line:
 - Quoted string: `"text"`  (with embedded `\"` for literal quote characters; native_read.rs splits on `=` then trims)
@@ -573,7 +573,7 @@ If `FormattedValue` doesn't derive `Debug`, add `#[derive(Debug)]` so the panic 
 - [ ] **Step 2: Run unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_native::tests -- --nocapture
+cargo test -p starlink-ast --lib fitschan::enc_native::tests -- --nocapture
 ```
 
 Expected: 4 new PASSes (12 total).
@@ -582,13 +582,13 @@ Expected: 4 new PASSes (12 total).
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_native.rs
+git add crates/starlink-ast/src/fitschan/enc_native.rs
 git commit -m "feat(fitschan): format card values as NATIVE-text scalars"
 ```
 
@@ -597,7 +597,7 @@ git commit -m "feat(fitschan): format card values as NATIVE-text scalars"
 ## Task 6: Walk cards into a native-text string
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_native.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_native.rs`
 
 This is the main pass. Sequentially walk the card list. For each card:
 - `Begin` keyword → emit ` Begin <Class>` line; class comes from the unquoted string value (trimmed).
@@ -737,7 +737,7 @@ END
 - [ ] **Step 2: Run unit tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_native::tests -- --nocapture
+cargo test -p starlink-ast --lib fitschan::enc_native::tests -- --nocapture
 ```
 
 Expected: 2 new PASSes (14 total).
@@ -746,13 +746,13 @@ Expected: 2 new PASSes (14 total).
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_native.rs
+git add crates/starlink-ast/src/fitschan/enc_native.rs
 git commit -m "feat(fitschan): translate keyword-card NATIVE to native text stream"
 ```
 
@@ -761,7 +761,7 @@ git commit -m "feat(fitschan): translate keyword-card NATIVE to native text stre
 ## Task 7: CONTINUE-card support for long string values
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/enc_native.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_native.rs`
 
 A long string value ending in `&` continues on subsequent `CONTINUE` cards. The native-text representation joins them into a single quoted string.
 
@@ -804,7 +804,7 @@ END
 - [ ] **Step 2: Run the test to confirm it fails**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_native::tests::cards_to_native_text_joins_continue_cards -- --nocapture
+cargo test -p starlink-ast --lib fitschan::enc_native::tests::cards_to_native_text_joins_continue_cards -- --nocapture
 ```
 
 Expected: FAIL — current code treats CONTINUE as `KeywordKind::Other` and skips it, leaving `title = "first part &"` in the output.
@@ -929,7 +929,7 @@ fn format_value_with_continues(
 - [ ] **Step 4: Run all enc_native tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::enc_native::tests -- --nocapture
+cargo test -p starlink-ast --lib fitschan::enc_native::tests -- --nocapture
 ```
 
 Expected: 15 PASS (including the new CONTINUE-handling test).
@@ -938,13 +938,13 @@ Expected: 15 PASS (including the new CONTINUE-handling test).
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/enc_native.rs
+git add crates/starlink-ast/src/fitschan/enc_native.rs
 git commit -m "feat(fitschan): join CONTINUE cards for long NATIVE string values"
 ```
 
@@ -953,14 +953,14 @@ git commit -m "feat(fitschan): join CONTINUE cards for long NATIVE string values
 ## Task 8: Wire keyword-card NATIVE into the FitsChan read dispatch
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 In the `Channel for FitsChan::read` impl, the `Encoding::Native` branch currently calls `extract_native_text()` (COMMENT-card only). Extend it to first check whether the card list contains keyword-card NATIVE; if so, route through `enc_native::cards_to_native_text`.
 
 - [ ] **Step 1: Locate the read dispatch**
 
 ```bash
-grep -n "Encoding::Native" crates/ast-core/src/fitschan/mod.rs
+grep -n "Encoding::Native" crates/starlink-ast/src/fitschan/mod.rs
 ```
 
 You should find a block in the `read()` implementation around line 508.
@@ -1010,7 +1010,7 @@ If `enc_native` is not in scope at this `impl` block, add `use super::enc_native
 - [ ] **Step 3: Run the integration test from Task 1**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_native_keyword polco_loads -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_native_keyword polco_loads -- --nocapture
 ```
 
 Expected: PASS (the polco fixture now decodes successfully).
@@ -1020,10 +1020,10 @@ If it still fails: read the new error message — most likely a value-type misma
 - [ ] **Step 4: Run the existing FitsChan tests to confirm no regression**
 
 ```bash
-cargo test -p ast-core --test test_fitschan
-cargo test -p ast-core --test test_fitschan_encodings
-cargo test -p ast-core --test test_fitschan_wcs
-cargo test -p ast-core --test test_fitschan_wcs_write
+cargo test -p starlink-ast --test test_fitschan
+cargo test -p starlink-ast --test test_fitschan_encodings
+cargo test -p starlink-ast --test test_fitschan_wcs
+cargo test -p starlink-ast --test test_fitschan_wcs_write
 ```
 
 All must remain green.
@@ -1032,13 +1032,13 @@ All must remain green.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "feat(fitschan): route keyword-card NATIVE reads through enc_native"
 ```
 
@@ -1047,7 +1047,7 @@ git commit -m "feat(fitschan): route keyword-card NATIVE reads through enc_nativ
 ## Task 9: Add tests for the remaining three fixtures
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_fitschan_native_keyword.rs`
+- Modify: `crates/starlink-ast/tests/test_fitschan_native_keyword.rs`
 
 - [ ] **Step 1: Add tests for polco2, specflux, timeplot**
 
@@ -1073,7 +1073,7 @@ fn timeplot_loads() {
 - [ ] **Step 2: Run them**
 
 ```bash
-cargo test -p ast-core --test test_fitschan_native_keyword -- --nocapture
+cargo test -p starlink-ast --test test_fitschan_native_keyword -- --nocapture
 ```
 
 Expected: 4 PASS.
@@ -1083,7 +1083,7 @@ If a fixture fails: read the error and decide if it's a missing CONTINUE edge ca
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/ast-core/tests/test_fitschan_native_keyword.rs
+git add crates/starlink-ast/tests/test_fitschan_native_keyword.rs
 git commit -m "test(fitschan): cover polco2, specflux, timeplot keyword-card NATIVE inputs"
 ```
 
@@ -1092,14 +1092,14 @@ git commit -m "test(fitschan): cover polco2, specflux, timeplot keyword-card NAT
 ## Task 10: Extend `guess_encoding` to detect BEGAST keyword
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/guess_encoding.rs`
+- Modify: `crates/starlink-ast/src/fitschan/guess_encoding.rs`
 
 Currently `has_native_markers` only looks for COMMENT-card `AST +++` markers. The C library (`fitschan.c::GetEncoding` line 12566) also returns NATIVE when `astKeyFields( this, "BEGAST%2f", 0, NULL, NULL )` matches. The wcsconv test invokes `fc.guess_encoding()` for `.head` inputs without an explicit encoding, so this is the trigger that sets `Encoding::Native` before `read()` is called.
 
 - [ ] **Step 1: Locate has_native_markers**
 
 ```bash
-grep -n "has_native_markers\|fn guess_encoding" crates/ast-core/src/fitschan/guess_encoding.rs
+grep -n "has_native_markers\|fn guess_encoding" crates/starlink-ast/src/fitschan/guess_encoding.rs
 ```
 
 - [ ] **Step 2: Add the BEGAST check**
@@ -1150,7 +1150,7 @@ END
 - [ ] **Step 4: Run the tests**
 
 ```bash
-cargo test -p ast-core --lib fitschan::guess_encoding::tests -- --nocapture
+cargo test -p starlink-ast --lib fitschan::guess_encoding::tests -- --nocapture
 ```
 
 Expected: existing tests still pass + 1 new PASS.
@@ -1159,13 +1159,13 @@ Expected: existing tests still pass + 1 new PASS.
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy -p ast-core -- -D warnings
+cargo clippy -p starlink-ast -- -D warnings
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/guess_encoding.rs
+git add crates/starlink-ast/src/fitschan/guess_encoding.rs
 git commit -m "feat(fitschan): guess_encoding recognises BEGAST keyword cards as NATIVE"
 ```
 
@@ -1178,7 +1178,7 @@ git commit -m "feat(fitschan): guess_encoding recognises BEGAST keyword cards as
 - [ ] **Step 1: Run the wcsconv suite**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep "wcsconv results"
 ```
 
 Expected: `=== wcsconv results: 108 passed, 84 failed, 0 skipped (of 192 total) ===` (104 → 108, +4 from `polco_native`, `polco2_native`, `specflux_native`, `timeplot_native`).
@@ -1186,7 +1186,7 @@ Expected: `=== wcsconv results: 108 passed, 84 failed, 0 skipped (of 192 total) 
 If only some of the four pass, capture which still fail:
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --nocapture 2>&1 | grep -E "polco|specflux|timeplot"
+cargo test -p starlink-ast --test test_wcsconv -- --nocapture 2>&1 | grep -E "polco|specflux|timeplot"
 ```
 
 A still-failing case needs additional investigation in `enc_native.rs` (likely a value-formatting edge case not yet covered).

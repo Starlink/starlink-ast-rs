@@ -62,7 +62,7 @@ Both approaches, where practical (per the decision in brainstorming):
   standalone reproducer is cleaner, a small C program linked against the
   prebuilt oracle (memory `reference_c_oracle_reproducer`).
 - **Ported C-test assertions** for discrete quirks: port the assertions
-  the upstream commits added into `ast-core` tier-1 Rust tests, locking
+  the upstream commits added into `starlink-ast` tier-1 Rust tests, locking
   the corrected behavior.
 
 Each Bucket 1 change is re-derived by reading the actual upstream
@@ -131,7 +131,7 @@ compare equal, so Rust and C agree.
 ## Section B: Regenerated golden fixtures
 
 Upstream regenerated goldens we ship in
-`crates/ast-core/tests/fixtures/wcsconv/expected/`. Verified diffs — our
+`crates/starlink-ast/tests/fixtures/wcsconv/expected/`. Verified diffs — our
 copies still carry the **old buggy values**:
 
 | Golden | Change | Driven by |
@@ -158,7 +158,7 @@ Rules:
 ### Corpus
 
 - Upstream `ast_tester/simplify_fixtures/`: 419 `.map` / 276 `.simp`.
-- Ours `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`:
+- Ours `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/`:
   261 `.map` / 177 `.simp`.
 - **164 new `.map`** to import (with their `.simp` partners; some
   `neg_*` cases are input-only "no simplification" fixtures).
@@ -174,7 +174,7 @@ etc. `intramap` and `xphmap` are unported.
 ### Mechanics
 
 1. **Copy** all new `.map`/`.simp` into
-   `crates/ast-core/tests/fixtures/native/reference/simplify_fixtures/`.
+   `crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures/`.
    Committed, never symlinked (CLAUDE.md).
 2. **Sync the manifest** `simplify_tests.txt` (upstream 422 entries,
    ours 259): merge upstream's entries with our 6 local-only ones,
@@ -199,7 +199,7 @@ counter.
 
 ### Failure handling (fix all supported-class failures before landing)
 
-Run `cargo test -p ast-core --test test_simplify_regression`. For
+Run `cargo test -p starlink-ast --test test_simplify_regression`. For
 **supported-class** fixtures:
 
 - **equal()/transform failures** → genuine simplifier gaps. Root-cause
@@ -217,7 +217,7 @@ fix.
 ## New / updated tests
 
 Upstream added assertions in these `ast_tester/` files relevant to
-Bucket 1; port the relevant cases into `ast-core` tier-1 Rust tests
+Bucket 1; port the relevant cases into `starlink-ast` tier-1 Rust tests
 (or extend existing ported tests):
 
 - `testtime.c` → timemap `ast_dat` inverse round-trip (pre-1972).

@@ -4,9 +4,9 @@
  * and whether astFindFrame then matches a plain Frame template against a
  * plain Frame target of each axis count.
  *
- * Prints Rust source for crates/ast-core/tests/min_max_axes_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/min_max_axes_oracle/cases.rs:
  *
- *   ./min_max_axes_probe > ../../crates/ast-core/tests/min_max_axes_oracle/cases.rs
+ *   ./min_max_axes_probe > ../../crates/starlink-ast/tests/min_max_axes_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

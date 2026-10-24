@@ -2,12 +2,21 @@
 
 ## Revision history
 
+- **2026-10-24 (rev 39)**: The library crate is `starlink-ast` (import
+  path `starlink_ast`), not `ast-core`, and the C shim is
+  `starlink-ast-capi`. On crates.io `ast` means abstract syntax tree, so
+  the published names carry the project's name, as `starlink-pyast`
+  does. The internal crates (`ast-plugins`, `ast-bench`, `ast-ffi-tests`,
+  `ast-oracle-tests`) keep their names and are marked `publish = false`.
+  The repository is `lsst-dm/starlink-ast-rs`: the hyphenated `-rs`
+  suffix is the Rust convention for a C library port's repository, and
+  the API guidelines forbid it in a crate name.
 - **2026-10-22 (rev 38)**: `convert_to` and `find_frame_template` move
   from `Frame` to a new trait, `FrameSearch`, implemented for every
   Frame by a blanket implementation, so no class can override them and
   bypass the FrameSet and Region dispatch or the Base and Current they
   write back.
-  Callers import `ast_core::frames::FrameSearch` to use them.
+  Callers import `starlink_ast::frames::FrameSearch` to use them.
 - **2026-10-21 (rev 37)**: `Frame::convert_to` takes `&mut self` and
   `to: &mut dyn Frame`, and `Frame::find_frame_template` and
   `FrameSet::find_frame` take `&mut self`, because C's `astConvert` sets
@@ -17,7 +26,7 @@
   Neither method is overridden any more: the FrameSet and Region
   dispatch C makes through its `Convert`, `ConvertX` and `FindFrame`
   overrides is made once, in crate-private functions that also serve
-  ast-core's internal callers, which hold their Frames by shared
+  starlink-ast's internal callers, which hold their Frames by shared
   reference and do not depend on the side effect.
   `FrameSet` gains `base_index` and `current_index`, the integer Base and
   Current attributes, and `set_base_by_domain` and
@@ -45,7 +54,7 @@
   axis, shape `(ncoord, npoint)`, and `Mapping::transform_into` takes
   borrowed views, `Points` and `PointsMut`, instead of `PointSet`s.
   `transform` is a provided method over it. Kernels loop down whole axes.
-  The statement that a row-major `Array2` lets `ast-capi` hand buffers to
+  The statement that a row-major `Array2` lets `starlink-ast-capi` hand buffers to
   C without a copy is withdrawn: every C transform entry takes per-axis
   arrays, so it was never true. See
   `2026-10-16-per-axis-pointset-design.md`.
@@ -239,7 +248,7 @@
   `c384289f` made a write that produces no usable description report zero
   rather than emit a partial header — so a `()` return left the port unable to
   express the outcome its own encoder computes.
-  `ast-capi` has no `astWrite` shim, so there is no ABI consequence.
+  `starlink-ast-capi` has no `astWrite` shim, so there is no ABI consequence.
 
 - **2026-08-31 (rev 9)**: `Frame` gained the simplify seam it had been missing.
   C has one `Simplify` slot, on the Mapping vtab, and every Frame inherits it
@@ -346,7 +355,7 @@
   more fixture coverage):
   - Full ast_tester migration is now a **hard project goal**, not a
     "ported class-by-class" aspiration. Every `.c` test program in
-    `ast_tester/` must have a Rust counterpart in `ast-core/tests/`,
+    `ast_tester/` must have a Rust counterpart in `starlink-ast/tests/`,
     and every reference fixture (`.head`, `.ast`, `.native`,
     `.fits-*`, `.attr`, `.box`, `.fattr`, `.simp`, `.current`,
     `.moctohtml`, `teststc_eg*`, …) must be copied into the Rust
@@ -364,7 +373,7 @@
 - **2026-04-27 (rev 4)**: further PR feedback and a project layout
   decision:
   - **Repository layout reworked.** The Rust port lives in its own
-    fresh git repository (`starlink-astrs`) with Rust-only commit
+    fresh git repository (`starlink-ast-rs`) with Rust-only commit
     history. The new repo takes ownership of the vendored C
     dependencies (`pal`, `erfa`, `wcslib`) by copying them in-tree at
     `vendor/`, so the everyday build (`cargo build`, `cargo test`)
@@ -372,7 +381,7 @@
     submodule at `reference/starlink-ast/` brings in the upstream C
     library and is needed *only* by the optional oracle test tier
     (Rust-vs-C comparison) and the FFI parity tier (existing C
-    `ast_tester` programs against `ast-capi`). Replaces the rev-3
+    `ast_tester` programs against `starlink-ast-capi`). Replaces the rev-3
     layout's four separate `vendor/` directories.
   - **Axis indexing switched to 1-based in the Rust API.** Rev 3
     proposed 0-based with CFFI translation; per @timj that produces a
@@ -388,7 +397,7 @@
     internal transforms use ERFA's two-double-precision API without
     changing the public `f64` interface.
 - **2026-04-24 (rev 3)**: further review decisions from
-  [lsst-dm/starlink-astrs#2](https://github.com/lsst-dm/starlink-astrs/pull/2):
+  [lsst-dm/starlink-ast-rs#2](https://github.com/lsst-dm/starlink-ast-rs/pull/2):
   - Open questions closed:
     - generics-over-`Frame` is dropped (not appropriate for this port's
       goals, per @TallJimbo).
@@ -415,7 +424,7 @@
     domain conflation; double-precision time axes) that cannot be
     fixed while preserving the C ABI.
 - **2026-04-24 (rev 2)**: incorporates review feedback from
-  [lsst-dm/starlink-astrs#2](https://github.com/lsst-dm/starlink-astrs/pull/2).
+  [lsst-dm/starlink-ast-rs#2](https://github.com/lsst-dm/starlink-ast-rs/pull/2).
   Major changes:
   - Mutability model flipped from immutable+Arc (v1 option A) to
     owned-values with `&mut self` mutation (v1 option B). Driven by
@@ -469,18 +478,18 @@ Per-class method-level design is deferred to the implementation plan.
 1. A pure-Rust implementation of AST with an idiomatic Rust API — traits,
    `Result`-based errors, owned-value mutation via `&mut self`,
    strongly-typed attributes, `ndarray`-backed coordinate data.
-2. A `cdylib` shim (`ast-capi`) that preserves full binary ABI
+2. A `cdylib` shim (`starlink-ast-capi`) that preserves full binary ABI
    compatibility with today's `libast.{so,dylib,a}`: existing applications
    link without recompile, without relink, without header changes.
 3. Byte-for-byte round-trip compatibility with every existing AST-serialized
    document (Native, XML, YAML, FITS-WCS, FITS-Native-encoded, STC-S, MOC).
 4. **Full migration of `ast_tester/` to native Rust.** Every C test
    program (~53 `.c` files) becomes an idiomatic Rust integration test
-   under `crates/ast-core/tests/`. Every reference fixture currently
+   under `crates/starlink-ast/tests/`. Every reference fixture currently
    shipped alongside the C tests — `.head` (132), `.ast` (12),
    `.native`, `.simp`, `.current`, `.fits-{wcs,iraf,pc,aips,aips++,class,dss}`,
    `.attr`, `.fattr`, `.box`, `.moctohtml`, `teststc_eg*`, etc. — is
-   copied into `crates/ast-core/tests/fixtures/` and exercised by the
+   copied into `crates/starlink-ast/tests/fixtures/` and exercised by the
    matching Rust test or regression harness. The three large
    regression harnesses (`wcsconverter`, `simplify`, plot/grid smoke
    matrix) are reimplemented in Rust as test binaries that drive the
@@ -497,7 +506,7 @@ Per-class method-level design is deferred to the implementation plan.
 ## Non-goals
 
 - Porting `pal` / `erfa` to Rust. These are small and community-trusted;
-  they remain vendored C and are built via `cc` from `ast-core`'s
+  they remain vendored C and are built via `cc` from `starlink-ast`'s
   `build.rs`. Future perf work may motivate a port, but it is not
   planned here.
 
@@ -522,22 +531,22 @@ and to expose upstream's later-added vectorized APIs to `WcsMap`.
 
 ### Repository and workspace layout
 
-The Rust port is its own fresh git repository (`starlink-astrs`),
+The Rust port is its own fresh git repository (`starlink-ast-rs`),
 **not** a branch or subdirectory of the existing C `starlink-ast` repo.
 This keeps the Rust commit history clean and uncluttered by the
 20+ years of C history.
 
 ```
-starlink-astrs/                # new fresh repo, Rust-only history
+starlink-ast-rs/                # new fresh repo, Rust-only history
 ├── .gitmodules                # only for the optional reference submodule
 ├── Cargo.toml                 # workspace root
 ├── README.md
 ├── crates/
-│   ├── ast-core/              # pure-Rust idiomatic API (rlib)
-│   ├── ast-capi/              # cdylib; re-exports ast.h symbols
+│   ├── starlink-ast/              # pure-Rust idiomatic API (rlib)
+│   ├── starlink-ast-capi/              # cdylib; re-exports ast.h symbols
 │   ├── ast-plugins/           # optional Grf / Grf3d backends (PLplot, SVG, logging)
-│   ├── ast-ffi-tests/         # builds ast-capi, runs C ast_tester programs
-│   ├── ast-oracle-tests/      # links ast-core + reference libast.a
+│   ├── ast-ffi-tests/         # builds starlink-ast-capi, runs C ast_tester programs
+│   ├── ast-oracle-tests/      # links starlink-ast + reference libast.a
 │   └── ast-bench/             # transform benches: Rust, optionally vs C
 ├── vendor/                    # copied in-tree, owned by THIS repo
 │   ├── pal/                   #   small astrometry routines (was AST's pal/)
@@ -553,7 +562,7 @@ starlink-astrs/                # new fresh repo, Rust-only history
 Two key principles:
 
 1. **The everyday build does not need the submodule.** A fresh
-   `git clone` + `cargo build` + `cargo test -p ast-core` works
+   `git clone` + `cargo build` + `cargo test -p starlink-ast` works
    without any submodule initialization. The vendored C sources in
    `vendor/` are committed in-tree, owned by this repo. This matters
    for packaging (`cargo publish`, distribution tarballs) and for
@@ -573,7 +582,7 @@ Notes:
   `vendor/README.md` records provenance (source repo, commit hash,
   date copied, list of AST-specific local modifications) so the
   history is recoverable without git.
-- `ast-core`'s `build.rs` compiles `vendor/pal/`, `vendor/erfa/`, and
+- `starlink-ast`'s `build.rs` compiles `vendor/pal/`, `vendor/erfa/`, and
   (until step 6a) `vendor/wcslib/` via the `cc` crate, using the same
   symbol-renaming conventions `palwrap.c` / `pal2ast.h` / `erfa2ast.h`
   use today.
@@ -596,9 +605,9 @@ The Rust repo owns its own copies of the vendored C sources at
 time, so the everyday workflow does not need it.
 
 `pal` (`vendor/pal/`) and `erfa` (`vendor/erfa/`) are compiled by
-`ast-core`'s `build.rs` using the `cc` crate, with the same
+`starlink-ast`'s `build.rs` using the `cc` crate, with the same
 symbol-renaming conventions `palwrap.c` / `pal2ast.h` / `erfa2ast.h`
-use today, keeping them private to `ast-core`. Porting to Rust is a
+use today, keeping them private to `starlink-ast`. Porting to Rust is a
 later perf decision, not a phase-one goal — the C source is small,
 well-tested, and stable.
 
@@ -609,13 +618,13 @@ also take on the `wcslib` port to remove the FFI crossing and to
 expose upstream's newer **vectorized transform API** to `WcsMap`. That
 port is sequenced as **step 6a** of the indicative delivery order,
 immediately before `WcsMap` itself. Until then, `vendor/wcslib/`
-continues to be built as C by `ast-core`'s `build.rs` and called
+continues to be built as C by `starlink-ast`'s `build.rs` and called
 through a small private FFI. After step 6a it is removed from the
 repo entirely.
 
 `cminpack` is **not** copied across — it is retired in favor of the
 `levenberg-marquardt` crate (already validated in the prototype port
-at lsst-dm/starlink-astrs). Before retirement, fixture-level validation
+at lsst-dm/starlink-ast-rs). Before retirement, fixture-level validation
 confirms Rust-LM output matches cminpack output to within fitting
 tolerances; the cminpack source we validate against lives inside the
 reference submodule and is not vendored into the new repo.
@@ -705,7 +714,7 @@ Notes:
   `Object` methods cannot express real cross-class operations
   (e.g. writing to a Channel is dispatched per-concrete-type, not via
   `Object` methods). A private `Object` super-trait may exist inside
-  `ast-core` as an implementation detail for shared bookkeeping (class
+  `starlink-ast` as an implementation detail for shared bookkeeping (class
   name, ID, Ident), but it is not part of the public API.
   **Rev 8**: no such super-trait was needed. `Ident` is the one piece of that
   bookkeeping a generic driver reads, and it lives as `Mapping` trait methods
@@ -940,7 +949,7 @@ pub enum ErrorCode {
     // ... one variant per AST__XXXX code from ast_err.msg
     // rev 6: NOT implemented. The generated enum is `#[non_exhaustive]` and
     // unrecognised values are handled by `from_raw(u32) -> Option<Self>`
-    // returning None. Settle before `ast-capi` is written: `astStatus` can
+    // returning None. Settle before `starlink-ast-capi` is written: `astStatus` can
     // return a code absent from ast_err.msg (a caller's own, set through
     // `astSetPutErr`, or one from a newer C release), and without a fallback
     // variant there is no lossless way to carry it through and back out.
@@ -949,7 +958,7 @@ pub enum ErrorCode {
 
 Rules (unchanged):
 
-- No global state in `ast-core`. `astOK` / `astStatus` / `astWatch` etc.
+- No global state in `starlink-ast`. `astOK` / `astStatus` / `astWatch` etc.
   exist only in the CFFI shim.
 - `anyhow` is not used in public APIs. (`thiserror` was specified for the
   boilerplate; rev 6: it is not a dependency — `Display` and `Error` are
@@ -957,7 +966,7 @@ Rules (unchanged):
   `#[track_caller]` location.)
 - `ErrorCode` is generated from `ast_err.msg` by `build.rs`, keeping
   Rust and C codes in lockstep.
-- Panics never cross FFI: `ast-capi` wraps each entry point with
+- Panics never cross FFI: `starlink-ast-capi` wraps each entry point with
   `catch_unwind` and translates panics to `AST__INTER`.
 - Optional `tracing` feature emits every constructed `AstError` as a
   `tracing::error!` event; off by default.
@@ -1020,12 +1029,12 @@ pub struct PointList {
 impl Region for PointList { .. }
 ```
 
-- **`ndarray` is a public dependency of `ast-core`.** `PointSet::view`,
+- **`ndarray` is a public dependency of `starlink-ast`.** `PointSet::view`,
   `from_ndarray` and `into_ndarray` exchange `(ncoord, npoint)` arrays.
   *(rev 34: the C interop does not rest on ndarray. `transform_into` takes
   `Points` and `PointsMut`, which the C shim builds over the caller's
   per-axis arrays without copying, as C's `TranN` does with
-  `astSetPoints`. `ast-capi` is still a stub, so those entry points are
+  `astSetPoints`. `starlink-ast-capi` is still a stub, so those entry points are
   not written yet.)*
 - **`BAD_VALUE` = `-f64::MAX`**, bit-identical to `AST__BAD` (unchanged
   from v1). NaN accepted on input, `BAD_VALUE` always on output.
@@ -1366,7 +1375,7 @@ per concrete class (dispatched by `class() -> &'static str`). This is
 the "enumerate the concrete types" pattern @TallJimbo identified as
 unavoidable.
 
-## CFFI shim (`ast-capi`)
+## CFFI shim (`starlink-ast-capi`)
 
 A single `cdylib` crate producing `libast.{so,dylib,a}` with symbols
 matching the existing `ast.h` byte-for-byte. Full binary ABI
@@ -1444,7 +1453,7 @@ shims from the plugin section.
 ### `ast.h` maintenance
 
 `makeh` retired. Current `ast.h` becomes a hand-maintained artifact at
-`crates/ast-capi/include/ast.h`. Two CI checks prevent drift (libclang
+`crates/starlink-ast-capi/include/ast.h`. Two CI checks prevent drift (libclang
 prototype extraction vs `nm`; cbindgen prototype view vs hand-written
 header). Macros, error codes, struct typedefs stay by hand. `ast_err.h`
 continues to be generated from `ast_err.msg` by
@@ -1455,9 +1464,9 @@ continues to be generated from `ast_err.msg` by
 
 Five tiers, each answering a distinct question.
 
-1. **`ast-core` Rust tests — does the idiomatic API work, and does it
+1. **`starlink-ast` Rust tests — does the idiomatic API work, and does it
    cover everything the C suite covered?**
-   Lives at `crates/ast-core/tests/`. The completion goal (a hard
+   Lives at `crates/starlink-ast/tests/`. The completion goal (a hard
    project goal — see Goals §4) is **full migration** of every C test
    in the upstream `ast_tester/` directory:
    - **One Rust test file per C test program.** `testzoommap.c` →
@@ -1468,7 +1477,7 @@ Five tiers, each answering a distinct question.
      path and any idiomatic Rust divergences (same convention used
      today for Fortran→C ports).
    - **All reference fixtures copied verbatim** into
-     `crates/ast-core/tests/fixtures/`:
+     `crates/starlink-ast/tests/fixtures/`:
        - `*.head` — FITS header inputs for the WCS converter (132
          files).
        - `*.ast`, `*.native`, `*.simp`, `*.current` — Native-encoded
@@ -1516,14 +1525,14 @@ Five tiers, each answering a distinct question.
    are committed; Rust reads them, writes them back, `diff` must be
    clean. Catches attribute-ordering drift and float-precision
    changes.
-3. **`ast-capi` C test harness** — all CMake tests from
+3. **`starlink-ast-capi` C test harness** — all CMake tests from
    `reference/starlink-ast/ast_tester/` link against the Rust-built
    `libast` and must pass unchanged. Skipped (with a notice) when the
    submodule is not initialized. This tier proves the CFFI layer
    preserves the C ABI; tier 1 already proves the Rust API itself
    covers the same surface.
 4. **Oracle correctness tests** (`ast-oracle-tests`) — matched inputs
-   driven through both `ast-core` and the C `libast.a` built from the
+   driven through both `starlink-ast` and the C `libast.a` built from the
    `reference/starlink-ast/` submodule. Submodule pinned to a specific
    commit; bumping the pin is an explicit, reviewable action. Bit-exact
    for integer/classification outputs; bounded ULP tolerance for
@@ -1545,7 +1554,7 @@ progress the same way it tracks today's Fortran → C migrations.
 
 ## Indicative delivery order
 
-0. **Project bootstrap.** Initialize the new `starlink-astrs` repo,
+0. **Project bootstrap.** Initialize the new `starlink-ast-rs` repo,
    copy `pal` / `erfa` / `wcslib` from the current C tree into
    `vendor/` with a `vendor/README.md` recording provenance, and add
    `reference/starlink-ast/` as a submodule pinned to a known-good
@@ -1571,7 +1580,7 @@ progress the same way it tracks today's Fortran → C migrations.
     `erfa` remain vendored C. Oracle tests validate bit-compatibility
     against the old C `wcslib` implementation; once green,
     `vendor/wcslib/` is deleted from the repo and the `cc`-driven
-    `wcslib` build is removed from `ast-core`'s `build.rs`.
+    `wcslib` build is removed from `starlink-ast`'s `build.rs`.
 7. `SkyFrame`, `SpecFrame`, `TimeFrame`, `FluxFrame`, `SpecFluxFrame`.
    Oracle benchmarks for per-time-slice attribute mutation go green
    here.
@@ -1582,14 +1591,14 @@ progress the same way it tracks today's Fortran → C migrations.
     backends).
 11. **Tier-1 completeness gate.** Confirms every C test program in
     `ast_tester/` has a green Rust counterpart and every reference
-    fixture has landed under `crates/ast-core/tests/fixtures/`. By
+    fixture has landed under `crates/starlink-ast/tests/fixtures/`. By
     this point most of the migration has happened incrementally
     inside steps 2-10 (each step pulling in the tests its classes
     enable); step 11 audits coverage, ports any stragglers (typically
     cross-cutting harnesses like `testhuge` and edge-case-only
     programs that depend on many subsystems), and confirms the
     `wcsconverter` / `simplify` / plot+grid Rust harnesses match
-    their C ancestors fixture-for-fixture. Concurrently, `ast-capi`
+    their C ancestors fixture-for-fixture. Concurrently, `starlink-ast-capi`
     reaches full export coverage and `ast-ffi-tests` (tier 3) runs
     the whole C test matrix green against the Rust-built `libast`.
     The port is not declarable complete before this step.

@@ -1,7 +1,7 @@
 //! Choose oracle rows for a timing run of N points.
 
-use ast_core::constants::BAD_VALUE;
-use ast_core::coords::PointSet;
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
 
 use crate::oracle::Section;
 
@@ -59,7 +59,7 @@ pub fn rows_to_columns(s: &Section, rows: &[usize]) -> Vec<f64> {
 mod tests {
     use super::*;
     use crate::oracle::Section;
-    use ast_core::constants::BAD_VALUE as B;
+    use starlink_ast::constants::BAD_VALUE as B;
 
     fn sec(inputs: Vec<Vec<f64>>, outputs: Vec<Vec<f64>>) -> Section {
         Section {

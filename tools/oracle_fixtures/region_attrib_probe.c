@@ -9,9 +9,9 @@
  * set to km. The "permuted_box" case is the Box before Label(1) is set in
  * "label_after_permaxes".
  *
- * Prints Rust source for crates/ast-core/tests/region_attrib_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_attrib_oracle/cases.rs:
  *
- *   ./region_attrib_probe > ../../crates/ast-core/tests/region_attrib_oracle/cases.rs
+ *   ./region_attrib_probe > ../../crates/starlink-ast/tests/region_attrib_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

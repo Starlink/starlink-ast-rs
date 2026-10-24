@@ -3,9 +3,9 @@
  * from its current Frame (cmpframe.c, frameset.c GetUseDefs), and the
  * UseDfs item a dump writes when it is set (object.c Dump).
  *
- * Prints Rust source for crates/ast-core/tests/use_defs_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/use_defs_oracle/cases.rs:
  *
- *   ./use_defs_probe > ../../crates/ast-core/tests/use_defs_oracle/cases.rs
+ *   ./use_defs_probe > ../../crates/starlink-ast/tests/use_defs_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

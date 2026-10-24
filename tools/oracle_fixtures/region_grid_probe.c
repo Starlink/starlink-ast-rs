@@ -8,9 +8,9 @@
  *
  * Needs the CmpFrame FrameGrid fix (db5199d7 on u/timj/norm-unit).
  *
- * Prints Rust source for crates/ast-core/tests/region_grid_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/region_grid_oracle/cases.rs:
  *
- *   ./region_grid_probe > ../../crates/ast-core/tests/region_grid_oracle/cases.rs
+ *   ./region_grid_probe > ../../crates/starlink-ast/tests/region_grid_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

@@ -4,9 +4,9 @@
 
 **Goal:** Port the C transform-output oracle *checker* (submodule commit `3a3c3e51`) to Rust as an `#[ignore]` investigative harness that measures how far the Rust port's transform outputs diverge from the committed C reference values.
 
-**Architecture:** Vendor the three committed `.oracle` files as a frozen cross-implementation baseline. A single integration test at `crates/ast-core/tests/test_transform_oracle.rs` parses the oracle, reloads each named fixture through the public Rust API, re-transforms the recorded inputs, runs four checks (golden fwd/inv, equivalence, round-trip), and writes a machine-readable JSON divergence report. The test is `#[ignore]` (out of CI); its pure helpers (parser, comparison, resolver) are covered by ordinary non-ignored unit tests.
+**Architecture:** Vendor the three committed `.oracle` files as a frozen cross-implementation baseline. A single integration test at `crates/starlink-ast/tests/test_transform_oracle.rs` parses the oracle, reloads each named fixture through the public Rust API, re-transforms the recorded inputs, runs four checks (golden fwd/inv, equivalence, round-trip), and writes a machine-readable JSON divergence report. The test is `#[ignore]` (out of CI); its pure helpers (parser, comparison, resolver) are covered by ordinary non-ignored unit tests.
 
-**Tech Stack:** Rust 2024, `ast-core` public API only (`FitsChan`, `from_native_string`, `FrameSet`/`Mapping`, `Frame::norm`, `PointSet`). No new crate dependencies — JSON is hand-written.
+**Tech Stack:** Rust 2024, `starlink-ast` public API only (`FitsChan`, `from_native_string`, `FrameSet`/`Mapping`, `Frame::norm`, `PointSet`). No new crate dependencies — JSON is hand-written.
 
 **Design spec:** `docs/superpowers/specs/2026-07-15-transform-oracle-checker-design.md`.
 
@@ -14,10 +14,10 @@
 
 - **Rust 2024 edition; MSRV pinned in `rust-toolchain.toml`.** Copy the style of neighboring test files.
 - **`cargo fmt` and `cargo clippy --workspace -- -D warnings` are CI gates.** Every commit must be fmt- and clippy-clean. `cargo`/`rustc` are in the `lsst-scipipe` conda bin — ensure it is on `PATH`.
-- **Public Rust API only in tests** (no private `ast-core` modules), per CLAUDE.md "Porting a test" rule.
+- **Public Rust API only in tests** (no private `starlink-ast` modules), per CLAUDE.md "Porting a test" rule.
 - **Fixtures must be committed and work with the submodule absent.** Never symlink to `reference/starlink-ast/`. Never read from `reference/` at test time.
-- **`BAD_VALUE = -f64::MAX`** (`ast_core::constants::BAD_VALUE`), bit-identical to C `AST__BAD`. NaN never matches anything.
-- **No new workspace/crate dependencies.** `ast-core` has no `serde`; the JSON report is written by a small hand-rolled serializer in the test file.
+- **`BAD_VALUE = -f64::MAX`** (`starlink_ast::constants::BAD_VALUE`), bit-identical to C `AST__BAD`. NaN never matches anything.
+- **No new workspace/crate dependencies.** `starlink-ast` has no `serde`; the JSON report is written by a small hand-rolled serializer in the test file.
 - **Tolerances (C constants, verbatim):** golden `rtol = atol = 1e-7`; equivalence `rtol = atol = 1e-9`; round-trip absolute `atol = 0.05` px, `rtol = 1e-6`.
 - **The investigative test never asserts on divergence.** It runs to completion over all 1606 sections and always writes the report. It panics only on a broken harness (corrupt oracle, unreadable fixture dir, unwritable report).
 
@@ -25,16 +25,16 @@
 
 ## File Structure
 
-- **Create** `crates/ast-core/tests/test_transform_oracle.rs` — the entire harness: oracle parser, comparison primitives, fixture-path resolver, fixture loader, the four checks with C section-pairing, overrides parser, findings model, hand-rolled JSON report writer, the `#[ignore]` investigative test, and non-ignored unit tests for the pure helpers.
-- **Create** `crates/ast-core/tests/fixtures/oracle/simplify_fixtures.oracle` — vendored verbatim from submodule.
-- **Create** `crates/ast-core/tests/fixtures/oracle/headers.oracle` — vendored verbatim.
-- **Create** `crates/ast-core/tests/fixtures/oracle/framesets.oracle` — vendored verbatim.
-- **Create** `crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt` — vendored verbatim.
+- **Create** `crates/starlink-ast/tests/test_transform_oracle.rs` — the entire harness: oracle parser, comparison primitives, fixture-path resolver, fixture loader, the four checks with C section-pairing, overrides parser, findings model, hand-rolled JSON report writer, the `#[ignore]` investigative test, and non-ignored unit tests for the pure helpers.
+- **Create** `crates/starlink-ast/tests/fixtures/oracle/simplify_fixtures.oracle` — vendored verbatim from submodule.
+- **Create** `crates/starlink-ast/tests/fixtures/oracle/headers.oracle` — vendored verbatim.
+- **Create** `crates/starlink-ast/tests/fixtures/oracle/framesets.oracle` — vendored verbatim.
+- **Create** `crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt` — vendored verbatim.
 - **Create** the four absent corpus fixtures (vendored verbatim from submodule `ast_tester/`):
-  - `crates/ast-core/tests/fixtures/wcsconv/inputs/offset-sref.head`
-  - `crates/ast-core/tests/fixtures/native/reference/plot3d-test1.ast`
-  - `crates/ast-core/tests/fixtures/native/reference/sparse.ast`
-  - `crates/ast-core/tests/fixtures/native/reference/stcschan-test1-doc3.ast`
+  - `crates/starlink-ast/tests/fixtures/wcsconv/inputs/offset-sref.head`
+  - `crates/starlink-ast/tests/fixtures/native/reference/plot3d-test1.ast`
+  - `crates/starlink-ast/tests/fixtures/native/reference/sparse.ast`
+  - `crates/starlink-ast/tests/fixtures/native/reference/stcschan-test1-doc3.ast`
 - **Modify** `PLAN.md` — record the new harness in the "C → Rust test migration tracker".
 
 Everything lives in one test file because the pieces are cohesive (they all serve the one harness) and share private types; splitting across a `common/` module would only add indirection for no reuse.
@@ -46,10 +46,10 @@ Everything lives in one test file because the pieces are cohesive (they all serv
 No code — pure data vendoring, committed on its own so the diff is a clean import of C-provenance files.
 
 **Files:**
-- Create: `crates/ast-core/tests/fixtures/oracle/{simplify_fixtures,headers,framesets}.oracle`
-- Create: `crates/ast-core/tests/fixtures/oracle/transform_oracle_overrides.txt`
-- Create: `crates/ast-core/tests/fixtures/wcsconv/inputs/offset-sref.head`
-- Create: `crates/ast-core/tests/fixtures/native/reference/{plot3d-test1,sparse,stcschan-test1-doc3}.ast`
+- Create: `crates/starlink-ast/tests/fixtures/oracle/{simplify_fixtures,headers,framesets}.oracle`
+- Create: `crates/starlink-ast/tests/fixtures/oracle/transform_oracle_overrides.txt`
+- Create: `crates/starlink-ast/tests/fixtures/wcsconv/inputs/offset-sref.head`
+- Create: `crates/starlink-ast/tests/fixtures/native/reference/{plot3d-test1,sparse,stcschan-test1-doc3}.ast`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -59,9 +59,9 @@ No code — pure data vendoring, committed on its own so the diff is a clean imp
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-mkdir -p crates/ast-core/tests/fixtures/oracle
+mkdir -p crates/starlink-ast/tests/fixtures/oracle
 for f in simplify_fixtures.oracle headers.oracle framesets.oracle transform_oracle_overrides.txt; do
-  git -C reference/starlink-ast show 3a3c3e51:ast_tester/$f > crates/ast-core/tests/fixtures/oracle/$f
+  git -C reference/starlink-ast show 3a3c3e51:ast_tester/$f > crates/starlink-ast/tests/fixtures/oracle/$f
 done
 ```
 
@@ -69,10 +69,10 @@ done
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-git -C reference/starlink-ast show 3a3c3e51:ast_tester/offset-sref.head        > crates/ast-core/tests/fixtures/wcsconv/inputs/offset-sref.head
-git -C reference/starlink-ast show 3a3c3e51:ast_tester/plot3d-test1.ast        > crates/ast-core/tests/fixtures/native/reference/plot3d-test1.ast
-git -C reference/starlink-ast show 3a3c3e51:ast_tester/sparse.ast              > crates/ast-core/tests/fixtures/native/reference/sparse.ast
-git -C reference/starlink-ast show 3a3c3e51:ast_tester/stcschan-test1-doc3.ast > crates/ast-core/tests/fixtures/native/reference/stcschan-test1-doc3.ast
+git -C reference/starlink-ast show 3a3c3e51:ast_tester/offset-sref.head        > crates/starlink-ast/tests/fixtures/wcsconv/inputs/offset-sref.head
+git -C reference/starlink-ast show 3a3c3e51:ast_tester/plot3d-test1.ast        > crates/starlink-ast/tests/fixtures/native/reference/plot3d-test1.ast
+git -C reference/starlink-ast show 3a3c3e51:ast_tester/sparse.ast              > crates/starlink-ast/tests/fixtures/native/reference/sparse.ast
+git -C reference/starlink-ast show 3a3c3e51:ast_tester/stcschan-test1-doc3.ast > crates/starlink-ast/tests/fixtures/native/reference/stcschan-test1-doc3.ast
 ```
 
 - [ ] **Step 3: Verify the imports are non-empty and hash-match the source**
@@ -81,13 +81,13 @@ git -C reference/starlink-ast show 3a3c3e51:ast_tester/stcschan-test1-doc3.ast >
 cd /sdf/home/t/timj/WORK/starlink-astrs
 for f in simplify_fixtures.oracle headers.oracle framesets.oracle transform_oracle_overrides.txt; do
   a=$(git -C reference/starlink-ast show 3a3c3e51:ast_tester/$f | md5sum | cut -d' ' -f1)
-  b=$(md5sum crates/ast-core/tests/fixtures/oracle/$f | cut -d' ' -f1)
+  b=$(md5sum crates/starlink-ast/tests/fixtures/oracle/$f | cut -d' ' -f1)
   [ "$a" = "$b" ] && echo "OK $f" || echo "FAIL $f"
 done
 ```
 Expected: four `OK` lines. Confirm the three `.oracle` files total 1606 section headers:
 ```bash
-grep -hc '^\[' crates/ast-core/tests/fixtures/oracle/*.oracle | paste -sd+ | bc
+grep -hc '^\[' crates/starlink-ast/tests/fixtures/oracle/*.oracle | paste -sd+ | bc
 ```
 Expected: `1606`.
 
@@ -95,7 +95,7 @@ Expected: `1606`.
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-git add crates/ast-core/tests/fixtures/oracle crates/ast-core/tests/fixtures/wcsconv/inputs/offset-sref.head crates/ast-core/tests/fixtures/native/reference/plot3d-test1.ast crates/ast-core/tests/fixtures/native/reference/sparse.ast crates/ast-core/tests/fixtures/native/reference/stcschan-test1-doc3.ast
+git add crates/starlink-ast/tests/fixtures/oracle crates/starlink-ast/tests/fixtures/wcsconv/inputs/offset-sref.head crates/starlink-ast/tests/fixtures/native/reference/plot3d-test1.ast crates/starlink-ast/tests/fixtures/native/reference/sparse.ast crates/starlink-ast/tests/fixtures/native/reference/stcschan-test1-doc3.ast
 git commit -m "test: vendor transform-oracle corpus and four missing fixtures"
 ```
 
@@ -105,10 +105,10 @@ git commit -m "test: vendor transform-oracle corpus and four missing fixtures"
 Port the pure tolerance helpers from `transform_oracle_util.c`. These are the numeric heart of every check and are pinned by the exact arm64-vs-x86 pairs the C `test_oracle_util.c` records.
 
 **Files:**
-- Create: `crates/ast-core/tests/test_transform_oracle.rs` (start the file with these helpers)
+- Create: `crates/starlink-ast/tests/test_transform_oracle.rs` (start the file with these helpers)
 
 **Interfaces:**
-- Consumes: `ast_core::constants::BAD_VALUE`.
+- Consumes: `starlink_ast::constants::BAD_VALUE`.
 - Produces:
   - `fn within_tol(got: f64, reference: f64, rtol: f64, atol: f64) -> bool`
   - `fn within_tol_wrap(got: f64, reference: f64, rtol: f64, atol: f64) -> bool`
@@ -128,7 +128,7 @@ Put at the top of the new file:
 //! the Rust outputs diverge from the C reference values. This harness never
 //! regenerates the oracle: the C values are the frozen baseline.
 
-use ast_core::constants::BAD_VALUE;
+use starlink_ast::constants::BAD_VALUE;
 
 /// Golden tolerance: live outputs vs recorded oracle values. Wide enough to
 /// absorb cross-architecture libm differences (~5e-9 near singularities)
@@ -211,16 +211,16 @@ mod primitive_tests {
 
 - [ ] **Step 2: Run tests to verify they fail to compile then pass**
 
-Run: `cargo test -p ast-core --test test_transform_oracle primitive_tests -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_transform_oracle primitive_tests -- --nocapture`
 Expected: compiles and PASSES (both tests). If a `dead_code` warning trips `-D warnings` on the not-yet-used constants, add `#![allow(dead_code)]` at the top of the file with a comment that later tasks consume them.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt -p ast-core
-cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_transform_oracle.rs
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test: transform-oracle comparison primitives"
 ```
 
@@ -230,7 +230,7 @@ git commit -m "test: transform-oracle comparison primitives"
 Port `oracle_read_file` from `check_transform_oracle.c`. Parse a `.oracle` file into an ordered list of sections, storing inputs and outputs column-major (as C does). A malformed row is a hard error.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs`
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs`
 
 **Interfaces:**
 - Consumes: `within_tol` (not directly; Section only holds data).
@@ -380,16 +380,16 @@ mod parse_tests {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_transform_oracle parse_tests -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_transform_oracle parse_tests -- --nocapture`
 Expected: all three PASS (the third depends on Task 1's vendored files).
 
 - [ ] **Step 3: Commit**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt -p ast-core
-cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_transform_oracle.rs
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test: transform-oracle file parser"
 ```
 
@@ -399,14 +399,14 @@ git commit -m "test: transform-oracle file parser"
 The oracle relpaths assume the C `ast_tester/` root, but the Rust fixtures are scattered across several directories, with real basename collisions. Investigation established that an ordered search list resolves all 817 relpaths to the byte-identical submodule content, provided `native/generated/` (which holds *Rust output*, e.g. a divergent `lsst.ast`) is never searched. This task builds that resolver.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs`
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs`
 
 **Interfaces:**
 - Consumes: nothing.
 - Produces: `fn resolve_fixture(relpath: &str) -> Option<std::path::PathBuf>` — returns the on-disk path of a fixture named by an oracle relpath, or `None` if absent.
 
 **Background (verified during planning — do not re-derive):**
-- Search order, all relative to `crates/ast-core/tests/fixtures/`:
+- Search order, all relative to `crates/starlink-ast/tests/fixtures/`:
   1. `wcsconv/inputs/`
   2. `native/reference/`
   3. `native/reference/simplify_fixtures/`
@@ -489,16 +489,16 @@ mod resolve_tests {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_transform_oracle resolve_tests -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_transform_oracle resolve_tests -- --nocapture`
 Expected: both PASS. If `resolves_every_oracle_relpath` reports unresolved fixtures, Task 1 vendoring is incomplete — fix that, do not add directories to work around it.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt -p ast-core
-cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_transform_oracle.rs
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test: transform-oracle fixture-path resolver"
 ```
 
@@ -508,10 +508,10 @@ git commit -m "test: transform-oracle fixture-path resolver"
 Port `oracle_load_mapping`. Load a fixture into an owned object, exposing it as a `&dyn Mapping` and — for FrameSet fixtures — the base and current `&dyn Frame` (needed later for angular-axis detection). Because Rust returns owned values, the loader returns an owned `AnyObject` the caller keeps alive, plus the frame indices.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs`
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs`
 
 **Interfaces:**
-- Consumes: `resolve_fixture`; `ast_core::{from_native_string, AnyObject}`; `ast_core::fitschan::FitsChan`; `ast_core::frames::FrameRef`.
+- Consumes: `resolve_fixture`; `starlink_ast::{from_native_string, AnyObject}`; `starlink_ast::fitschan::FitsChan`; `starlink_ast::frames::FrameRef`.
 - Produces:
   - `struct Loaded { obj: AnyObject, is_frameset: bool }`
   - `impl Loaded { fn mapping(&self) -> Option<&dyn Mapping>; fn frame(&self, forward: bool) -> Option<&dyn Frame> }`
@@ -524,10 +524,10 @@ Port `oracle_load_mapping`. Load a fixture into an owned object, exposing it as 
 Add imports at the top and the loader:
 
 ```rust
-use ast_core::AnyObject;
-use ast_core::fitschan::FitsChan;
-use ast_core::frames::{Frame, FrameRef};
-use ast_core::mappings::Mapping;
+use starlink_ast::AnyObject;
+use starlink_ast::fitschan::FitsChan;
+use starlink_ast::frames::{Frame, FrameRef};
+use starlink_ast::mappings::Mapping;
 
 /// A loaded fixture: the owned object plus whether it is a FrameSet (so the
 /// checker knows to pull base/current frames for angular detection).
@@ -586,7 +586,7 @@ fn load_fixture(relpath: &str) -> Result<Option<Loaded>, String> {
     Ok(Some(Loaded { obj, is_frameset }))
 }
 
-use ast_core::from_native_string;
+use starlink_ast::from_native_string;
 ```
 
 ```rust
@@ -616,20 +616,20 @@ mod loader_tests {
 }
 ```
 
-Note on import placement: keep all `use` at the top of the file with the others; the `use ast_core::from_native_string;` shown inline above is illustrative — during implementation, merge it into the top import block so clippy's `-D warnings` does not flag a mid-file `use`.
+Note on import placement: keep all `use` at the top of the file with the others; the `use starlink_ast::from_native_string;` shown inline above is illustrative — during implementation, merge it into the top import block so clippy's `-D warnings` does not flag a mid-file `use`.
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_transform_oracle loader_tests -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_transform_oracle loader_tests -- --nocapture`
 Expected: both PASS. `cobe.head` is a sky FrameSet (base GRID, current SkyFrame), verified in the C `test_oracle_util.c`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt -p ast-core
-cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_transform_oracle.rs
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test: transform-oracle fixture loader"
 ```
 
@@ -639,10 +639,10 @@ git commit -m "test: transform-oracle fixture loader"
 Port `axis_is_cyclic` (via `Frame::norm`) and a helper that runs a section's recorded inputs through the live mapping into a column-major output matrix matching the oracle's layout.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs`
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs`
 
 **Interfaces:**
-- Consumes: `Section`, `Loaded`, `ast_core::coords::PointSet`, `Mapping::transform`, `Frame::norm`.
+- Consumes: `Section`, `Loaded`, `starlink_ast::coords::PointSet`, `Mapping::transform`, `Frame::norm`.
 - Produces:
   - `fn axis_is_cyclic(frame: &dyn Frame, axis: usize) -> bool`
   - `fn angular_flags(loaded: &Loaded, section: &Section) -> Vec<bool>` — one flag per output axis (`section.nout` long); for a bare Mapping every axis is angular (C fallback).
@@ -651,7 +651,7 @@ Port `axis_is_cyclic` (via `Frame::norm`) and a helper that runs a section's rec
 - [ ] **Step 1: Write the failing tests**
 
 ```rust
-use ast_core::coords::PointSet;
+use starlink_ast::coords::PointSet;
 
 /// Port of C `axis_is_cyclic`: is output `axis` of `frame` 2*pi-periodic?
 /// Set a point, shift `axis` by 2*pi, `norm` both, and treat the axis as
@@ -746,20 +746,20 @@ mod transform_tests {
 }
 ```
 
-Before writing, confirm `Frame::naxes()` exists (public). If the accessor is named differently, grep `crates/ast-core/src/frames/mod.rs` for the axis-count method and use that name; the C code calls `astGetI(frame,"Naxes")`.
+Before writing, confirm `Frame::naxes()` exists (public). If the accessor is named differently, grep `crates/starlink-ast/src/frames/mod.rs` for the axis-count method and use that name; the C code calls `astGetI(frame,"Naxes")`.
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_transform_oracle transform_tests -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_transform_oracle transform_tests -- --nocapture`
 Expected: all three PASS.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt -p ast-core
-cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_transform_oracle.rs
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test: transform-oracle angular detection and transform helper"
 ```
 
@@ -769,7 +769,7 @@ git commit -m "test: transform-oracle angular detection and transform helper"
 Port `load_overrides` / `rtrip_tol` / `golden_off`. Two independent per-fixture entry kinds keyed by relpath (a fixture may have both): round-trip lines (`off` or loosened tolerances) and golden lines (`golden|golden-fwd|golden-inv off`).
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs`
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs`
 
 **Interfaces:**
 - Consumes: `RTRIP_RTOL`, `RTRIP_ATOL`.
@@ -894,16 +894,16 @@ mod override_tests {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_transform_oracle override_tests -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_transform_oracle override_tests -- --nocapture`
 Expected: both PASS.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt -p ast-core
-cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_transform_oracle.rs
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test: transform-oracle overrides parser"
 ```
 
@@ -913,7 +913,7 @@ git commit -m "test: transform-oracle overrides parser"
 Define the per-section outcome model and the four comparison functions. These are the numeric checks; Task 9 drives them with section pairing.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs`
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs`
 
 **Interfaces:**
 - Consumes: `within_tol`, `within_tol_wrap`, tolerance constants.
@@ -1091,16 +1091,16 @@ mod check_tests {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cargo test -p ast-core --test test_transform_oracle check_tests -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_transform_oracle check_tests -- --nocapture`
 Expected: both PASS.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt -p ast-core
-cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_transform_oracle.rs
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test: transform-oracle four comparison checks"
 ```
 
@@ -1110,7 +1110,7 @@ git commit -m "test: transform-oracle four comparison checks"
 Port `main`'s section loop: for each section, load the fixture, transform, run the applicable checks, and record an outcome. Reproduce the C one-slot caches (`prev_fwd` for round-trip; `prev_map` + `prev_map_live` for equivalence) that rely on the generator's emission order.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs`
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs`
 
 **Interfaces:**
 - Consumes: everything from Tasks 3–8.
@@ -1275,16 +1275,16 @@ mod driver_tests {
 
 - [ ] **Step 3: Run**
 
-Run: `cargo test -p ast-core --test test_transform_oracle driver_tests -- --nocapture`
+Run: `cargo test -p starlink-ast --test test_transform_oracle driver_tests -- --nocapture`
 Expected: PASS (20 sections; some may be `Mismatch`/`LoadFail` — that is fine, the test only checks it runs and counts).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt -p ast-core
-cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_transform_oracle.rs
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test: transform-oracle section driver with C pairing"
 ```
 
@@ -1296,7 +1296,7 @@ Aggregate the `SectionReport`s into headline counts, magnitude buckets, and per-
 The spec also calls for grouping by *fixture class mix*. The JSON emits one object per section carrying `relpath`, `status` (which encodes the failing check via `mismatch:<check>`), and `detail` (which carries the magnitude `bucket`). That is a complete per-section record: class-mix grouping is a trivial offline `jq`/Python pivot over `relpath` (the fixture name encodes its class family, e.g. `matrix_*`, `cap_timemap_*`, `*-tan.head`), so the report does not need an in-Rust class parser. Do **not** build a `Begin`-token class walker in this task — keep the class dimension as an offline pivot over the committed JSON.
 
 **Files:**
-- Modify: `crates/ast-core/tests/test_transform_oracle.rs`
+- Modify: `crates/starlink-ast/tests/test_transform_oracle.rs`
 
 **Interfaces:**
 - Consumes: `run_oracle`, `SectionReport`, `Outcome`, `AxisMiss`, `CheckKind`.
@@ -1432,7 +1432,7 @@ fn write_json_report(path: &str, reports: &[SectionReport]) -> std::io::Result<(
 }
 
 /// Investigative harness. Not part of the normal suite or CI: run with
-///   cargo test -p ast-core --test test_transform_oracle -- --ignored --nocapture
+///   cargo test -p starlink-ast --test test_transform_oracle -- --ignored --nocapture
 /// It runs every oracle section, prints a summary, and writes a JSON report
 /// to `target/transform_oracle_report.json`. It never asserts on divergence
 /// (the whole point is to measure it); it panics only on a broken harness.
@@ -1458,12 +1458,12 @@ fn transform_oracle_report() {
 
 - [ ] **Step 2: Verify the ignored test is excluded from the normal run**
 
-Run: `cargo test -p ast-core --test test_transform_oracle`
+Run: `cargo test -p starlink-ast --test test_transform_oracle`
 Expected: the unit-test modules pass; `transform_oracle_report` shows as `ignored`.
 
 - [ ] **Step 3: Run the investigative test and inspect the report**
 
-Run: `cargo test -p ast-core --test test_transform_oracle -- --ignored --nocapture`
+Run: `cargo test -p starlink-ast --test test_transform_oracle -- --ignored --nocapture`
 Expected: prints the headline counts and the worst-40 table, prints `wrote .../target/transform_oracle_report.json`, and PASSES (it asserts only the 1606-section coverage and that the report writes). Confirm the JSON parses:
 ```bash
 python3 -c "import json,sys; d=json.load(open('target/transform_oracle_report.json')); print(d['totals'])"
@@ -1473,9 +1473,9 @@ python3 -c "import json,sys; d=json.load(open('target/transform_oracle_report.js
 
 ```bash
 cd /sdf/home/t/timj/WORK/starlink-astrs
-cargo fmt -p ast-core
-cargo clippy -p ast-core --tests -- -D warnings
-git add crates/ast-core/tests/test_transform_oracle.rs
+cargo fmt -p starlink-ast
+cargo clippy -p starlink-ast --tests -- -D warnings
+git add crates/starlink-ast/tests/test_transform_oracle.rs
 git commit -m "test: transform-oracle report writer and investigative test"
 ```
 
@@ -1492,7 +1492,7 @@ git commit -m "test: transform-oracle report writer and investigative test"
 
 - [ ] **Step 1: Add the tracker entry**
 
-Under the "C → Rust test migration tracker" section of `PLAN.md`, add a row/line recording that `check_transform_oracle` (submodule `3a3c3e51`) is ported as the `#[ignore]` investigative harness `crates/ast-core/tests/test_transform_oracle.rs`, consuming the vendored `tests/fixtures/oracle/*.oracle`. Note that it is investigative (not a CI gate) pending divergence fixes, and that the generator (`gen_transform_oracle`) is intentionally not ported. Match the surrounding format of that section (read it first and follow the existing convention).
+Under the "C → Rust test migration tracker" section of `PLAN.md`, add a row/line recording that `check_transform_oracle` (submodule `3a3c3e51`) is ported as the `#[ignore]` investigative harness `crates/starlink-ast/tests/test_transform_oracle.rs`, consuming the vendored `tests/fixtures/oracle/*.oracle`. Note that it is investigative (not a CI gate) pending divergence fixes, and that the generator (`gen_transform_oracle`) is intentionally not ported. Match the surrounding format of that section (read it first and follow the existing convention).
 
 - [ ] **Step 2: Commit**
 

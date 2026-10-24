@@ -4,7 +4,7 @@
 
 **Goal:** Port C `fitschan.c::SpecTrans` line-by-line so all FITS-* readers consume normalized cards via a single pre-pass, replacing the scattered, partial translations spread across `enc_pc.rs`, `enc_iraf.rs`, `enc_aips.rs`, and per-call-site fallbacks. The port unblocks the FITS-PC `Cnxxx` alt-axis fixtures and provides a single, auditable place for the 24 non-standard-WCS translations C performs.
 
-**Architecture:** A new `crates/ast-core/src/fitschan/spec_trans.rs` module holds the entry point `pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding)` that walks the card list, identifies non-standard keywords, and writes the standard equivalents into the same CardList (matching C's "create a returned FitsChan with translated cards while marking originals as used"). All FITS-encoding read paths call `spec_trans` once, before alt-axis detection or store extraction. Non-standard keywords are marked as "used" so they don't round-trip back into outputs. The module is one file with one private function per translation (24 total), keyed by section comments mirroring the C source line ranges.
+**Architecture:** A new `crates/starlink-ast/src/fitschan/spec_trans.rs` module holds the entry point `pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding)` that walks the card list, identifies non-standard keywords, and writes the standard equivalents into the same CardList (matching C's "create a returned FitsChan with translated cards while marking originals as used"). All FITS-encoding read paths call `spec_trans` once, before alt-axis detection or store extraction. Non-standard keywords are marked as "used" so they don't round-trip back into outputs. The module is one file with one private function per translation (24 total), keyed by section comments mirroring the C source line ranges.
 
 **Tech Stack:** Rust 2024, the existing `CardList` API (`set_string`, `set_float`, `find`, `get_float`, `get_string`), the `Encoding` enum.
 
@@ -55,28 +55,28 @@ Tasks 1-2 set up the module skeleton + helpers. Tasks 26-28 wire in callers and 
 
 ## Test Strategy
 
-Each translation gets a unit test in `crates/ast-core/src/fitschan/spec_trans.rs` (cfg(test) block) using small synthetic CardLists. Each task's tests exercise the specific translation in isolation. A final integration task (29) verifies the full wcsconv suite gains tests as expected (Bucket A: FITS-PC alt-axis = 8 fixtures; CLASS bucket; AIPS variants; etc).
+Each translation gets a unit test in `crates/starlink-ast/src/fitschan/spec_trans.rs` (cfg(test) block) using small synthetic CardLists. Each task's tests exercise the specific translation in isolation. A final integration task (29) verifies the full wcsconv suite gains tests as expected (Bucket A: FITS-PC alt-axis = 8 fixtures; CLASS bucket; AIPS variants; etc).
 
 ## File Structure
 
-- **Create:** `crates/ast-core/src/fitschan/spec_trans.rs` — the new module, ~1500 lines covering all 24 translations
-- **Modify:** `crates/ast-core/src/fitschan/mod.rs` — register the module, call `spec_trans` from each FITS encoding's read path
-- **Modify:** `crates/ast-core/src/fitschan/enc_pc.rs` — remove RADECSYS-fallback and RESTFREQ-fallback (tasks 26)
-- **Modify:** `crates/ast-core/src/fitschan/enc_iraf.rs` — remove inline CTYPE translator and RESTFREQ-fallback (task 27)
-- **Modify:** `crates/ast-core/src/fitschan/enc_aips.rs` — remove inline CTYPE translator and RESTFREQ-fallback (task 28)
+- **Create:** `crates/starlink-ast/src/fitschan/spec_trans.rs` — the new module, ~1500 lines covering all 24 translations
+- **Modify:** `crates/starlink-ast/src/fitschan/mod.rs` — register the module, call `spec_trans` from each FITS encoding's read path
+- **Modify:** `crates/starlink-ast/src/fitschan/enc_pc.rs` — remove RADECSYS-fallback and RESTFREQ-fallback (tasks 26)
+- **Modify:** `crates/starlink-ast/src/fitschan/enc_iraf.rs` — remove inline CTYPE translator and RESTFREQ-fallback (task 27)
+- **Modify:** `crates/starlink-ast/src/fitschan/enc_aips.rs` — remove inline CTYPE translator and RESTFREQ-fallback (task 28)
 
 ---
 
 ### Task 1: Module skeleton + entry point
 
 **Files:**
-- Create: `crates/ast-core/src/fitschan/spec_trans.rs`
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Create: `crates/starlink-ast/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 - [ ] **Step 1: Write the failing integration test**
 
 ```rust
-// In crates/ast-core/src/fitschan/spec_trans.rs (new file, cfg(test) block):
+// In crates/starlink-ast/src/fitschan/spec_trans.rs (new file, cfg(test) block):
 
 #[cfg(test)]
 mod tests {
@@ -108,7 +108,7 @@ mod tests {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::spec_trans_is_a_no_op_when_all_keywords_are_already_standard 2>&1 | tail -15`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::spec_trans_is_a_no_op_when_all_keywords_are_already_standard 2>&1 | tail -15`
 Expected: FAIL with "could not find function `spec_trans`".
 
 - [ ] **Step 3: Write the entry-point stub**
@@ -148,7 +148,7 @@ mod tests { /* ... as in step 1 ... */ }
 
 - [ ] **Step 4: Register the module**
 
-In `crates/ast-core/src/fitschan/mod.rs`, add to the module list (near `mod wcs_keywords;`):
+In `crates/starlink-ast/src/fitschan/mod.rs`, add to the module list (near `mod wcs_keywords;`):
 
 ```rust
 pub(crate) mod spec_trans;
@@ -156,13 +156,13 @@ pub(crate) mod spec_trans;
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cargo build -p ast-core 2>&1 | tail -3 && cargo test -p ast-core --lib spec_trans::tests::spec_trans_is_a_no_op_when_all_keywords_are_already_standard 2>&1 | tail -5`
+Run: `cargo build -p starlink-ast 2>&1 | tail -3 && cargo test -p starlink-ast --lib spec_trans::tests::spec_trans_is_a_no_op_when_all_keywords_are_already_standard 2>&1 | tail -5`
 Expected: build clean, test PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "fitschan: introduce spec_trans module skeleton"
 ```
 
@@ -171,7 +171,7 @@ git commit -m "fitschan: introduce spec_trans module skeleton"
 ### Task 2: Card-rename helper
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -216,7 +216,7 @@ fn rename_keyword_no_op_when_destination_already_present() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans:: 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans:: 2>&1 | tail -10`
 Expected: FAIL with "no function `rename_keyword`".
 
 - [ ] **Step 3: Implement `rename_keyword` and a string/float rename helper**
@@ -261,13 +261,13 @@ pub(super) fn rename_keyword(cards: &mut CardList, from: &str, to: &str) -> bool
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans:: 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans:: 2>&1 | tail -10`
 Expected: 4 tests PASS (the no-op + 3 rename tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs crates/ast-core/src/fitschan/card_list.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs crates/starlink-ast/src/fitschan/card_list.rs
 git commit -m "fitschan/spec_trans: rename_keyword helper"
 ```
 
@@ -276,7 +276,7 @@ git commit -m "fitschan/spec_trans: rename_keyword helper"
 ### Task 3: Translation #1 — RADECSYS → RADESYS
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -308,7 +308,7 @@ fn keeps_radesys_when_both_present() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_radecsys 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_radecsys 2>&1 | tail -10`
 Expected: FAIL — RADECSYS is still present.
 
 - [ ] **Step 3: Implement the translation**
@@ -325,13 +325,13 @@ pub(crate) fn spec_trans(cards: &mut CardList, encoding: Encoding) {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans:: 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans:: 2>&1 | tail -10`
 Expected: all spec_trans tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs
 git commit -m "fitschan/spec_trans: translation #1 RADECSYS -> RADESYS"
 ```
 
@@ -340,7 +340,7 @@ git commit -m "fitschan/spec_trans: translation #1 RADECSYS -> RADESYS"
 ### Task 4: Translation #2 — LONGPOLE → LONPOLE
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -360,7 +360,7 @@ fn translates_longpole_to_lonpole() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_longpole 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_longpole 2>&1 | tail -5`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -374,13 +374,13 @@ Append to `spec_trans` body:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans:: 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans:: 2>&1 | tail -10`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs
 git commit -m "fitschan/spec_trans: translation #2 LONGPOLE -> LONPOLE"
 ```
 
@@ -389,7 +389,7 @@ git commit -m "fitschan/spec_trans: translation #2 LONGPOLE -> LONPOLE"
 ### Task 5: Translation #3 — CDjjjiii → CDj_i
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 C source: fitschan.c:31266-31324. The 6-digit `CDjjjiii` form has `j` and `i` as zero-padded 3-digit fields. We rewrite to `CDj_i` (the standard form). Per-axis-version: only happens for primary plane (no version letter).
 
@@ -428,7 +428,7 @@ fn cdjjjiii_does_not_overwrite_cdj_i() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_cdjjjiii 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_cdjjjiii 2>&1 | tail -10`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -447,13 +447,13 @@ Expected: FAIL.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_cdjjjiii 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_cdjjjiii 2>&1 | tail -10`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs
 git commit -m "fitschan/spec_trans: translation #3 CDjjjiii -> CDj_i"
 ```
 
@@ -462,7 +462,7 @@ git commit -m "fitschan/spec_trans: translation #3 CDjjjiii -> CDj_i"
 ### Task 6: Translation #4 — CROTAj → PCi_j
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 C source: fitschan.c:31311-31489. CROTA encodes celestial-axis rotation as a single angle. The rewrite produces a 2×2 PC matrix using cos/sin of CROTA on the celestial axes, leaving non-celestial axes as identity, plus the original CDELT values intact.
 
@@ -502,7 +502,7 @@ fn translates_crota_to_pc_matrix() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_crota 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_crota 2>&1 | tail -10`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -597,13 +597,13 @@ Then in `spec_trans` body:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans:: 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans:: 2>&1 | tail -10`
 Expected: all PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs
 git commit -m "fitschan/spec_trans: translation #4 CROTA -> PC matrix"
 ```
 
@@ -612,7 +612,7 @@ git commit -m "fitschan/spec_trans: translation #4 CROTA -> PC matrix"
 ### Task 7: Translation #5 — PROJPi → PV<axlat>_i
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 C source: fitschan.c:31491-31554. `PROJPi` (i = 0..9) was an early-paper-II projection-parameter syntax. The standard form is `PV<axlat>_i` — i.e. on the latitude axis.
 
@@ -640,7 +640,7 @@ fn translates_projp_to_pv_on_latitude_axis() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_projp 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_projp 2>&1 | tail -10`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -663,13 +663,13 @@ In `spec_trans`: `translate_projp(cards);`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_projp 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_projp 2>&1 | tail -5`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs
 git commit -m "fitschan/spec_trans: translation #5 PROJP -> PV"
 ```
 
@@ -678,7 +678,7 @@ git commit -m "fitschan/spec_trans: translation #5 PROJP -> PV"
 ### Task 8: Translation #6 — Cnxxx (FITS-PC alt-axis) → *A..*Z
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 C source: fitschan.c:31569-31729. The FITS-PC alternate-axis convention uses the 8-character forms `CmYPEi`, `CmVALi`, `CmPIXi`, `CmNITi`, `CmELTi` where `m` is a digit 1..=9 indicating alt-A..alt-I. We rewrite these to `CTYPE{i}{S}` etc. with `S = 'A' + (m-1)`.
 
@@ -727,7 +727,7 @@ fn cnxxx_translation_skipped_for_fits_wcs() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_cnxxx 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_cnxxx 2>&1 | tail -10`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -765,13 +765,13 @@ In `spec_trans`, gate to FITS-PC / FITS-IRAF:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_cnxxx 2>&1 | tail -10 && cargo test -p ast-core --lib spec_trans::tests::cnxxx_translation_skipped 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_cnxxx 2>&1 | tail -10 && cargo test -p starlink-ast --lib spec_trans::tests::cnxxx_translation_skipped 2>&1 | tail -5`
 Expected: both PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs
 git commit -m "fitschan/spec_trans: translation #6 Cnxxx alt-axis form"
 ```
 
@@ -780,7 +780,7 @@ git commit -m "fitschan/spec_trans: translation #6 Cnxxx alt-axis form"
 ### Task 9: Translation #7 — `EQUINOX = "B1995.0"` string → numeric
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 C source: fitschan.c:31731-31779. Some old FITS files store `EQUINOX = 'B1995.0'` (a string with a B/J prefix) instead of the numeric form. The B-prefix → Besselian (convert via `palEpb2d`/`palEpj` round-trip to Julian); the J-prefix → strip to a plain Julian number.
 
@@ -815,7 +815,7 @@ fn translates_equinox_j2000_string_to_plain_number() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_equinox 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_equinox 2>&1 | tail -10`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -850,13 +850,13 @@ In `spec_trans`: `translate_equinox_string(cards);`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_equinox 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_equinox 2>&1 | tail -10`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs
 git commit -m "fitschan/spec_trans: translation #7 EQUINOX 'BYYYY' string"
 ```
 
@@ -865,7 +865,7 @@ git commit -m "fitschan/spec_trans: translation #7 EQUINOX 'BYYYY' string"
 ### Task 10: Translations #8 & #10 — EPOCH → EQUINOX (and zero → B1950)
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 C source: fitschan.c:31781-31849. EPOCH (an old AIPS-style attribute) is renamed to EQUINOX *only when EQUINOX is absent*. Per C: also handle the case where the value is exactly 0.0 — that's an old AIPS convention meaning "B1950".
 
@@ -921,7 +921,7 @@ fn equinox_zero_becomes_b1950() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_epoch 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_epoch 2>&1 | tail -10`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -956,13 +956,13 @@ In `spec_trans`: `translate_epoch(cards);` (after `translate_equinox_string`).
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans:: 2>&1 | tail -15`
+Run: `cargo test -p starlink-ast --lib spec_trans:: 2>&1 | tail -15`
 Expected: all PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs
 git commit -m "fitschan/spec_trans: translations #8 + #10 EPOCH/EQUINOX zero"
 ```
 
@@ -971,7 +971,7 @@ git commit -m "fitschan/spec_trans: translations #8 + #10 EPOCH/EQUINOX zero"
 ### Task 11: Translation #9 — DATE-OBS → MJD-OBS
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 C source: fitschan.c:31854-31904. DATE-OBS is parsed (we already have `date_str_to_mjd` in `wcs_write/mod.rs`) and stored as MJD-OBS, but only when MJD-OBS is absent.
 
@@ -1009,7 +1009,7 @@ fn date_obs_translation_skipped_when_mjd_obs_present() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_date_obs 2>&1 | tail -10`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_date_obs 2>&1 | tail -10`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -1028,13 +1028,13 @@ In `spec_trans`: `translate_date_obs(cards);`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans:: 2>&1 | tail -15`
+Run: `cargo test -p starlink-ast --lib spec_trans:: 2>&1 | tail -15`
 Expected: all PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs
 git commit -m "fitschan/spec_trans: translation #9 DATE-OBS -> MJD-OBS"
 ```
 
@@ -1043,7 +1043,7 @@ git commit -m "fitschan/spec_trans: translation #9 DATE-OBS -> MJD-OBS"
 ### Task 12: Translation #11 — AIPS NCP/GLS projections
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/spec_trans.rs`
+- Modify: `crates/starlink-ast/src/fitschan/spec_trans.rs`
 
 C source: fitschan.c:31909-32029. CTYPE values ending `-NCP` are equivalent to SIN with a specific PV2_2 (`cot(δ_ref)`). CTYPE values ending `-GLS` are equivalent to SFL.
 
@@ -1084,7 +1084,7 @@ fn translates_gls_to_sfl() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p ast-core --lib spec_trans::tests::translates_ncp 2>&1 | tail -10 && cargo test -p ast-core --lib spec_trans::tests::translates_gls 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast --lib spec_trans::tests::translates_ncp 2>&1 | tail -10 && cargo test -p starlink-ast --lib spec_trans::tests::translates_gls 2>&1 | tail -5`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
@@ -1135,13 +1135,13 @@ In `spec_trans`: `translate_ncp_gls(cards);`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cargo test -p ast-core --lib spec_trans:: 2>&1 | tail -15`
+Run: `cargo test -p starlink-ast --lib spec_trans:: 2>&1 | tail -15`
 Expected: all PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/spec_trans.rs
+git add crates/starlink-ast/src/fitschan/spec_trans.rs
 git commit -m "fitschan/spec_trans: translation #11 AIPS NCP/GLS"
 ```
 
@@ -1180,19 +1180,19 @@ Each task should produce one commit covering its translation (with a unit test) 
 ### Task 26: Wire spec_trans into FITS-PC reader
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
-- Modify: `crates/ast-core/src/fitschan/enc_pc.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_pc.rs`
 
 - [ ] **Step 1: Write the failing integration test**
 
-In `crates/ast-core/tests/test_wcsconv.rs` (the existing integration runner already covers this via the `fits_pc_gal_fits_pc` fixture). Verify the test currently fails:
+In `crates/starlink-ast/tests/test_wcsconv.rs` (the existing integration runner already covers this via the `fits_pc_gal_fits_pc` fixture). Verify the test currently fails:
 
-Run: `cargo test -p ast-core --test test_wcsconv wcsconv_cases::fits_pc_gal_fits_pc -- --include-ignored --nocapture 2>&1 | tail -8`
+Run: `cargo test -p starlink-ast --test test_wcsconv wcsconv_cases::fits_pc_gal_fits_pc -- --include-ignored --nocapture 2>&1 | tail -8`
 Expected: FAIL with the MJD-OBS / RA-Dec discrepancy from the diff captured during planning.
 
 - [ ] **Step 2: Wire `spec_trans` into the FITS-PC read path**
 
-In `crates/ast-core/src/fitschan/mod.rs`, modify the `Encoding::FitsPc` arm of `Channel::read`:
+In `crates/starlink-ast/src/fitschan/mod.rs`, modify the `Encoding::FitsPc` arm of `Channel::read`:
 
 ```rust
 Encoding::FitsPc => {
@@ -1214,19 +1214,19 @@ Delete the inline RADECSYS-fallback (line ~104) and the inline RESTFREQ-fallback
 
 - [ ] **Step 4: Run the integration test**
 
-Run: `cargo test -p ast-core --test test_wcsconv wcsconv_cases::fits_pc_gal_fits_pc -- --include-ignored 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast --test test_wcsconv wcsconv_cases::fits_pc_gal_fits_pc -- --include-ignored 2>&1 | tail -5`
 Expected: PASS.
 
-Run: `cargo test -p ast-core --test test_wcsconv wcsconv_cases::fits_pc_altgal_fits_wcs -- --include-ignored 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast --test test_wcsconv wcsconv_cases::fits_pc_altgal_fits_wcs -- --include-ignored 2>&1 | tail -5`
 Expected: PASS.
 
-Run: `cargo test -p ast-core --test test_wcsconv -- --include-ignored 2>&1 | grep "test result"`
+Run: `cargo test -p starlink-ast --test test_wcsconv -- --include-ignored 2>&1 | grep "test result"`
 Expected: a higher pass count than 166 (Bucket A's 8 fixtures should now pass).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/mod.rs crates/ast-core/src/fitschan/enc_pc.rs
+git add crates/starlink-ast/src/fitschan/mod.rs crates/starlink-ast/src/fitschan/enc_pc.rs
 git commit -m "fitschan: route FITS-PC reads through spec_trans + multi-plane decoder"
 ```
 
@@ -1235,14 +1235,14 @@ git commit -m "fitschan: route FITS-PC reads through spec_trans + multi-plane de
 ### Task 27: Wire spec_trans into FITS-IRAF reader
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
-- Modify: `crates/ast-core/src/fitschan/enc_iraf.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_iraf.rs`
 
 Same pattern as Task 26: in `Channel::read::Encoding::FitsIraf`, call `spec_trans` first, then route through the alt-aware reader. Remove inline IRAF CTYPE translator (`translate_iraf_ctype_read`) and RESTFREQ-fallback from `enc_iraf.rs`.
 
 - [ ] **Step 1: Verify the affected fixture currently fails**
 
-Run: `cargo test -p ast-core --test test_wcsconv wcsconv_cases::a20070718_fits_iraf -- --include-ignored 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast --test test_wcsconv wcsconv_cases::a20070718_fits_iraf -- --include-ignored 2>&1 | tail -5`
 Expected: FAIL.
 
 - [ ] **Step 2: Wire spec_trans into FITS-IRAF read path**
@@ -1262,16 +1262,16 @@ Delete `translate_iraf_ctype_read` (~line 230) and the RESTFREQ-fallback (~line 
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_wcsconv wcsconv_cases::a20070718_fits_iraf -- --include-ignored 2>&1 | tail -5`
+Run: `cargo test -p starlink-ast --test test_wcsconv wcsconv_cases::a20070718_fits_iraf -- --include-ignored 2>&1 | tail -5`
 Expected: PASS.
 
-Run: `cargo test -p ast-core --test test_wcsconv -- --include-ignored 2>&1 | grep "test result"`
+Run: `cargo test -p starlink-ast --test test_wcsconv -- --include-ignored 2>&1 | grep "test result"`
 Expected: continued improvement.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/mod.rs crates/ast-core/src/fitschan/enc_iraf.rs
+git add crates/starlink-ast/src/fitschan/mod.rs crates/starlink-ast/src/fitschan/enc_iraf.rs
 git commit -m "fitschan: route FITS-IRAF reads through spec_trans"
 ```
 
@@ -1280,8 +1280,8 @@ git commit -m "fitschan: route FITS-IRAF reads through spec_trans"
 ### Task 28: Wire spec_trans into FITS-AIPS / AIPS++ readers
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
-- Modify: `crates/ast-core/src/fitschan/enc_aips.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/enc_aips.rs`
 
 Same pattern. AIPS doesn't use `Cnxxx` alt-axis form, but does benefit from RADECSYS / EPOCH / DATE-OBS / AIPS-spectral-CTYPE / OBSRA-OBSDEC translations.
 
@@ -1306,13 +1306,13 @@ Delete `translate_aips_spectral_read` (~line 734) and the RESTFREQ-fallback. The
 
 - [ ] **Step 4: Run tests**
 
-Run: `cargo test -p ast-core --test test_wcsconv -- --include-ignored 2>&1 | grep "test result"`
+Run: `cargo test -p starlink-ast --test test_wcsconv -- --include-ignored 2>&1 | grep "test result"`
 Expected: maintain or improve total pass count.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/mod.rs crates/ast-core/src/fitschan/enc_aips.rs
+git add crates/starlink-ast/src/fitschan/mod.rs crates/starlink-ast/src/fitschan/enc_aips.rs
 git commit -m "fitschan: route FITS-AIPS reads through spec_trans"
 ```
 
@@ -1321,7 +1321,7 @@ git commit -m "fitschan: route FITS-AIPS reads through spec_trans"
 ### Task 29: Wire spec_trans into FITS-WCS / FITS-CLASS / DSS readers
 
 **Files:**
-- Modify: `crates/ast-core/src/fitschan/mod.rs`
+- Modify: `crates/starlink-ast/src/fitschan/mod.rs`
 
 Apply spec_trans at the entry of every FITS read path. FITS-WCS doesn't need most translations (it uses standard keywords) but the OBSRA/OBSDEC, RESTFREQ, LAMBDA-WAVE, and SAO-TPV cases still apply.
 
@@ -1334,23 +1334,23 @@ In `mod.rs`, prepend `super::spec_trans::spec_trans(&mut self.cards, self.encodi
 
 - [ ] **Step 2: Run the full wcsconv suite**
 
-Run: `cargo test -p ast-core --test test_wcsconv -- --include-ignored 2>&1 | grep "test result"`
+Run: `cargo test -p starlink-ast --test test_wcsconv -- --include-ignored 2>&1 | grep "test result"`
 Expected: total pass count higher than 166. Document the new count.
 
-- [ ] **Step 3: Run the full ast-core suite to check no regression**
+- [ ] **Step 3: Run the full starlink-ast suite to check no regression**
 
-Run: `cargo test -p ast-core 2>&1 | grep -E "test result:|FAILED" | tail -20`
+Run: `cargo test -p starlink-ast 2>&1 | grep -E "test result:|FAILED" | tail -20`
 Expected: only known pre-existing failures (the wcsconv subset still failing).
 
 - [ ] **Step 4: Run fmt + clippy**
 
-Run: `cargo fmt && cargo clippy -p ast-core --all-targets -- -D warnings 2>&1 | tail -3`
+Run: `cargo fmt && cargo clippy -p starlink-ast --all-targets -- -D warnings 2>&1 | tail -3`
 Expected: clean.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/ast-core/src/fitschan/mod.rs
+git add crates/starlink-ast/src/fitschan/mod.rs
 git commit -m "fitschan: route all FITS encodings through spec_trans"
 ```
 
@@ -1364,7 +1364,7 @@ git commit -m "fitschan: route all FITS encodings through spec_trans"
 - [ ] **Step 1: Re-run the full wcsconv suite and capture the new failure list**
 
 ```bash
-cargo test -p ast-core --test test_wcsconv -- --include-ignored 2>&1 | grep FAILED | grep -v "test result" | sort -u > /tmp/wcsconv_failures.txt
+cargo test -p starlink-ast --test test_wcsconv -- --include-ignored 2>&1 | grep FAILED | grep -v "test result" | sort -u > /tmp/wcsconv_failures.txt
 wc -l /tmp/wcsconv_failures.txt
 ```
 

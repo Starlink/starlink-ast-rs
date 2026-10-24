@@ -3,9 +3,9 @@
  * on an unpermuted and a permuted SkyFrame; and the SkyTol and Equinox
  * setters (skyframe.c:11436, 11658).
  *
- * Prints Rust source for crates/ast-core/tests/sky_norm_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/sky_norm_oracle/cases.rs:
  *
- *   ./sky_norm_probe > ../../crates/ast-core/tests/sky_norm_oracle/cases.rs
+ *   ./sky_norm_probe > ../../crates/starlink-ast/tests/sky_norm_oracle/cases.rs
  */
 #include <float.h>
 #include <stdio.h>
@@ -34,7 +34,7 @@ int main( void ) {
            "// the C library at u/timj/norm-unit 5a2cac2a, past the submodule pin.\n"
            "// Do not edit.\n\n"
            "#![allow(clippy::excessive_precision, clippy::approx_constant)]\n\n"
-           "use ast_core::constants::BAD_VALUE as BAD;\n\n"
+           "use starlink_ast::constants::BAD_VALUE as BAD;\n\n"
            "/// `(permuted, neglon, input, normalised)`.\n"
            "pub const NORM_CASES: &[(bool, bool, [f64; 2], [f64; 2])] = &[\n" );
    for( p = 0; p < 2; p++ ) {

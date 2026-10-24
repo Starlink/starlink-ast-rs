@@ -252,13 +252,13 @@ And a factor can only be `AST__BAD` when that point's input is bad, which `PolyP
 Consequence: a performance cost only; the result is the same.
 
 The port does both, and gives bit-identical output on every corpus transform (`ast-bench bits`):
-`eval_term_with_table` in `crates/ast-core/src/mappings/polymap.rs` multiplies by every power without a branch, and `poly_transform` uses that unchecked loop for a point whose powers are all good and whose coefficients are all good, keeping C's checked loop for the rest.
+`eval_term_with_table` in `crates/starlink-ast/src/mappings/polymap.rs` multiplies by every power without a branch, and `poly_transform` uses that unchecked loop for a point whose powers are all good and whose coefficients are all good, keeping C's checked loop for the rest.
 In the port, dropping the zero-power branch alone took a 2-D degree-5 PolyMap's forward transform from 53 to 38 ns per point at 1 000 000 points, on macOS aarch64, where C takes 58.
 That is the port's measurement; the gain in C has not been measured.
 A C speed-up: drop the `pow > 0` test, and have `PolyPowers` return whether every power is good so that `Transform` can skip the `AST__BAD` tests for that point.
 [Starlink/ast pull request 51](https://github.com/Starlink/ast/pull/51) evaluates each term over a block of points with the point loop innermost, but only in its opt-in SIMD build (`TransformLoopSIMD`, compiled only with `AST_HAVE_SIMD` and `-ffast-math`); its default `TransformLoopScalar` keeps the loop above.
 That reordering keeps C's operations in C's order (powers by repeated multiplication from 1.0, each term's product in input order, the terms summed in coefficient order from 0.0), so on its own it needs no `-ffast-math` and gives C's results in the default build.
-The port makes it (`poly_transform_blocked` in `crates/ast-core/src/mappings/polymap.rs`, for 16 points or more and good coefficients) and gives bit-identical output on every corpus transform and on all 33 million values of `ast-bench roman`'s PolyMaps; it took the pull request's degree-5 PolyMap from 43 to 155 million points per second and its degree-1 PolyMap from 76 to 272, where C takes 30 and 55, on macOS aarch64.
+The port makes it (`poly_transform_blocked` in `crates/starlink-ast/src/mappings/polymap.rs`, for 16 points or more and good coefficients) and gives bit-identical output on every corpus transform and on all 33 million values of `ast-bench roman`'s PolyMaps; it took the pull request's degree-5 PolyMap from 43 to 155 million points per second and its degree-1 PolyMap from 76 to 272, where C takes 30 and 55, on macOS aarch64.
 The port evaluates a point with a bad input again with C's per-term checks, which keeps C's rule below.
 The pull request's version also differs from C in two ways besides rounding: it skips zero coefficients, where C adds `0 * term` (which matters only for the sign of a zero result, or when a term overflows to infinity), and its bad-value fix-up makes every output bad when any input is `AST__BAD`, where C makes an output bad only when one of its terms uses that input with a non-zero power; a PolyMap whose second output depends only on its second input keeps a good second output in C when the first input is bad.
 ChebyMap shares the loop, so it gains too, and FITS-WCS SIP and TPN distortions are PolyMaps.
@@ -272,7 +272,7 @@ The early exit and the point-outermost order keep the compiler from vectorizing 
 
 Consequence: a performance cost only; the result is the same.
 
-The port (`apply_matrix` and `full_row_fixed` in `crates/ast-core/src/mappings/matrix.rs`) loops over outputs, then points, and gives bit-identical output on every corpus transform.
+The port (`apply_matrix` and `full_row_fixed` in `crates/starlink-ast/src/mappings/matrix.rs`) loops over outputs, then points, and gives bit-identical output on every corpus transform.
 A row with a bad matrix element is filled with `AST__BAD` once.
 For each point, a bad input adds 0.0 to the sum and sets a bad flag only when its matrix element is non-zero, so the zero-element rule still holds, and both steps are selects, not branches.
 For up to four inputs each row's sum is unrolled.
@@ -307,7 +307,7 @@ The bisection is a chain of dependent loads; the processor overlaps the chains o
 
 Consequence: a performance cost only; the result is the same.
 
-The port (`inverse_slice` in `crates/ast-core/src/mappings/lutmap.rs`) runs the bisections for a block of 32 points in one loop and the remaining steps in a second loop over the block, with bit-identical output on every corpus transform.
+The port (`inverse_slice` in `crates/starlink-ast/src/mappings/lutmap.rs`) runs the bisections for a block of 32 points in one loop and the remaining steps in a second loop over the block, with bit-identical output on every corpus transform.
 That took the port's inverse of a 100-entry table from 16.7 to 13.8 ns per point at 1 000 000 points on macOS aarch64, where C takes 13.0.
 C's loop is shorter than the port's single-loop version was, so its gain will be smaller; it has not been measured.
 A C speed-up: the same split, with the bisection results for a block held in a small array.
@@ -321,7 +321,7 @@ The compiler cannot unroll or keep the values in registers, though `k` is at mos
 
 Consequence: a performance cost only; the result is the same.
 
-The port (`dbvalu_k` in `crates/ast-core/src/mappings/splinemap.rs`) has one copy per order, chosen by a `match` on `k`, with the coefficients, `dp` and `dm` in three fixed-size arrays and C's arithmetic in C's order; output bits are unchanged on every corpus transform.
+The port (`dbvalu_k` in `crates/starlink-ast/src/mappings/splinemap.rs`) has one copy per order, chosen by a `match` on `k`, with the coefficients, `dp` and `dm` in three fixed-size arrays and C's arithmetic in C's order; output bits are unchanged on every corpus transform.
 With that, and `Dintrv` inlined, the bicubic SplineMap from the Rubin `lsst2.ast` FrameSet takes 170 ns per point forward and 762 inverse at 100 000 points, where C takes 206 and 850, on macOS aarch64.
 Part of the port's own gain (281 to 170 forward) came from removing bounds checks C never had, so the gain in C will be smaller; it has not been measured.
 A C speed-up: a `Dbvalu` per order (or a macro instantiated for each `k` up to `MAX_K`) with constant loop bounds, selected by a `switch` on `k`.
@@ -336,7 +336,7 @@ The input comes straight from the caller's selector array, so any user data can 
 
 Consequence: on common hardware the conversion saturates or gives `INT_MIN`, the index lands out of range and the point gets no route, which is the documented result for an out-of-range selector; nothing guarantees that.
 
-The port (`route_index` in `crates/ast-core/src/mappings/switchmap.rs`) compares the rounded value with 1 and the number of routes as a `double` before converting, so such a selector selects no route by definition; `a_selector_value_beyond_any_integer_selects_no_route` in `tests/test_switchmap.rs` pins it.
+The port (`route_index` in `crates/starlink-ast/src/mappings/switchmap.rs`) compares the rounded value with 1 and the number of routes as a `double` before converting, so such a selector selects no route by definition; `a_selector_value_beyond_any_integer_selects_no_route` in `tests/test_switchmap.rs` pins it.
 A C fix: test `round( sel )` against 1 and `nroute` before the cast.
 
 ### Moc converts transformed grid bounds to `AstDim` without a range check
@@ -349,7 +349,7 @@ The bounds fed to it are converted the same way earlier (lines 2734 to 2738 and 
 
 Consequence: none observed; if a corner were bad, C's behavior would be undefined and the cell loop would cover a nonsense range.
 
-The port (`grid_index` in `crates/ast-core/src/regions/moc.rs`) reports AST__NODEF for a bad or out-of-range corner; `bounds_beyond_any_grid_index_are_an_error` pins it with a hand-built Mapping, since no public input reaches it.
+The port (`grid_index` in `crates/starlink-ast/src/regions/moc.rs`) reports AST__NODEF for a bad or out-of-range corner; `bounds_beyond_any_grid_index_are_an_error` pins it with a hand-built Mapping, since no public input reaches it.
 A C fix: check each corner before the cast and report an error.
 
 ### The Channel `Indent` documentation gives the wrong default
@@ -492,7 +492,7 @@ Table's `Equal` calls its parent's, then compares the column definitions and ass
 None of the comparisons looks at content either: KeyMap has no `Equal` of its own, so each is Object's, which compares class names and structure sizes.
 Probed: `astEqual` gives 1 for two Tables whose cells, columns or parameters differ.
 FitsTable's `Equal` adds a comparison of the two headers, but FitsChan has no `Equal` either, so two FitsTables are always equal too.
-The port has no KeyMap, Table or FitsTable equality, so there is nothing to mirror; an `astEqual` in `ast-capi` would need to decide.
+The port has no KeyMap, Table or FitsTable equality, so there is nothing to mirror; an `astEqual` in `starlink-ast-capi` would need to decide.
 
 ### Table's read-only column attributes are not recognized in `astSet`, `astClear` or `astTest`
 
@@ -501,7 +501,7 @@ C location: `table.c` `SetAttrib`, `ClearAttrib`, `TestAttrib`.
 Each matches the column attributes with a pattern such as `"columntype(%*s)%n"`, whose `%*s` reads up to white space and so takes the closing parenthesis, leaving the literal `)` nothing to match.
 `astSet( t, "ColumnType(Fred)=2" )` and `astClear( t, "ColumnUnit(Fred)" )` are therefore AST__BADAT (unknown attribute) rather than AST__NOWRT (read-only), and `astTest( t, "ColumnLength(Fred)" )` is an error rather than 0.
 `Nrow`, `Ncolumn` and `Nparameter` are recognized.
-The port's Table has no string attribute access; this is for `ast-capi`.
+The port's Table has no string attribute access; this is for `starlink-ast-capi`.
 
 ### `astLoadXphMap` leaks the projection-type string it reads
 
@@ -594,7 +594,7 @@ it by diffing.
 **Status:** Open, and deliberately *not* mirrored in the Rust port. Four wcsconv
 cases are compared with the `IsSimp` cards dropped from both sides and both card
 counts pinned (`ISSIMP_PLACEMENT_LICENSED` in
-`crates/ast-core/tests/test_wcsconv.rs`); every other card, `Invert` included,
+`crates/starlink-ast/tests/test_wcsconv.rs`); every other card, `Invert` included,
 is byte-compared, and it matches. The Mapping tree, its structure, its
 attributes and its transforms are identical — the sole difference is which
 interior nodes carry the card, and C emits more of them: `axes-swap` 4 against
@@ -776,10 +776,10 @@ component, since the Region need not be a product of per-component Regions. So
 the behavior stands, documented rather than changed.
 
 **Rust behavior (mirrored):** `CmpFrame::norm_box`
-(`crates/ast-core/src/frames/cmpframe.rs:643`) performs the same permute / split
+(`crates/starlink-ast/src/frames/cmpframe.rs:643`) performs the same permute / split
 / delegate / un-permute and fills the other component's axes with `BAD_VALUE`.
 `norm_box_probe_carries_bad_on_the_other_components_axes` in
-`crates/ast-core/tests/test_cmpframe.rs` holds it there: a fill with the box's own
+`crates/starlink-ast/tests/test_cmpframe.rs` holds it there: a fill with the box's own
 coordinates would widen the box and fail it, and the companion
 `norm_box_reaches_the_sky_component` proves the delegation runs at all.
 
@@ -820,11 +820,11 @@ comparison made before the multiply-add would all settle it.
 
 **Rust behavior (no mirror):** Rust does not contract floating-point
 expressions, so `UnitNormMap::transform_into`
-(`crates/ast-core/src/mappings/unitnormmap.rs:173-198`) always takes the guard
+(`crates/starlink-ast/src/mappings/unitnormmap.rs:173-198`) always takes the guard
 and always returns `BAD_VALUE` on the leading axes and `0.0` on the last —
 agreeing with the C source as written, and with C as built anywhere that does
 not fuse. `FMA_SUBSTITUTIONS_LICENSED` in
-`crates/ast-core/tests/test_transform_oracle.rs` substitutes the two affected
+`crates/starlink-ast/tests/test_transform_oracle.rs` substitutes the two affected
 oracle rows so the port is held to the prescribed value rather than the fused
 one.
 
@@ -837,8 +837,8 @@ For two identical points the cross product is exactly zero only when each compon
 On arm64 macOS, where clang contracts by default, the C library at the submodule pin returns `(0.1 + pi, 0)` for `astOffset` from `(0.1, 0)` to itself by pi; built without contraction it returns bad coordinates, as the source prescribes.
 This is the same failure as the `UnitNormMap` entry above: a guard that must hold exactly, written against a contractable expression.
 
-**Rust behavior (no mirror):** the port calls the vendored PAL for the cross product, so it inherited the platform's answer, and `offset_normalises_the_longitude_it_returns` in `crates/ast-core/tests/test_skyframe.rs` failed on arm64 (it is what failed CI on `macos-latest`).
-`crates/ast-core/build.rs` now compiles the vendored PAL, ERFA and wcslib with `-ffp-contract=off`, so the port computes what the C source says on every platform, as its Rust code already does.
+**Rust behavior (no mirror):** the port calls the vendored PAL for the cross product, so it inherited the platform's answer, and `offset_normalises_the_longitude_it_returns` in `crates/starlink-ast/tests/test_skyframe.rs` failed on arm64 (it is what failed CI on `macos-latest`).
+`crates/starlink-ast/build.rs` now compiles the vendored PAL, ERFA and wcslib with `-ffp-contract=off`, so the port computes what the C source says on every platform, as its Rust code already does.
 
 To be raised upstream, with the `UnitNormMap` entry: building AST with `-ffp-contract=off`, or writing both guards against uncontracted expressions, would settle both.
 
@@ -848,7 +848,7 @@ To be raised upstream, with the `UnitNormMap` entry: building AST with `-ffp-con
 That method reads the Format through the Axis class's private `GetAxisFormat` (`axis.c:731`), which returns the Axis's own Format member; a SkyAxis stores its Format separately (`skyformat`), so the member is never set and the Axis default `%1.<Digits>G` is used (`axis.c:2673`, `GetDefaultFormat`).
 The `%` Format therefore chooses the numeric path and a Unit of `rad` (`GetAxisUnit`, `skyaxis.c:3288`), and nothing else: at the submodule pin an ICRS SkyFrame with `Format(1)=%10.4f` formats 1.0 as `1`, where a plain Frame with the same Format gives `    1.0000`.
 
-**Rust behavior (mirror):** `SkyFrame::format` formats a `%`-Format axis with `%1.<Digits>G`, and `format_matches_the_c_library` in `crates/ast-core/tests/test_skyframe_format.rs` pins the `%g` and `%10.4f` cases.
+**Rust behavior (mirror):** `SkyFrame::format` formats a `%`-Format axis with `%1.<Digits>G`, and `format_matches_the_c_library` in `crates/starlink-ast/tests/test_skyframe_format.rs` pins the `%g` and `%10.4f` cases.
 A fix upstream would pass the SkyAxis Format to the parser, or have the SkyAxis `SetAxisFormat` store a `%` Format in the Axis member too.
 
 To be raised upstream.
@@ -861,7 +861,7 @@ The SkyAxis defaults then treat both axes alike, IsLatitude 0 and Centerzero 0 (
 SkyFrame over-rides the Frame methods that know which axis is the latitude (`GetTop`, `GetBottom`, `GetDirection`, `GetAsTime`, `Norm`), but not the ones that go straight to the Axis object through `astGetAxis`: `astAxOffset`, `astAxDistance` and `astAxNormValues`, nor a CmpFrame's `GetTop` and `GetBottom`, which read its component's Axis.
 So at the submodule pin `astAxOffset( skyframe, 2, -0.1, 0.0 )` gives 6.1832 rather than -0.1, and a CmpFrame holding an ICRS SkyFrame reports no Top or Bottom limit on the declination axis, while the SkyFrame itself reports pi/2.
 
-**Rust behavior (mirror):** `SkyFrame` holds `SkyAxis` values with IsLatitude unset, `SkyFrame::get_axis` reports them as C's do, and `Frame::axis_object_top` is the `astGetAxis` path a CmpFrame takes. `own_axes_have_no_is_latitude` in `crates/ast-core/tests/test_skyframe_attrs.rs` pins it.
+**Rust behavior (mirror):** `SkyFrame` holds `SkyAxis` values with IsLatitude unset, `SkyFrame::get_axis` reports them as C's do, and `Frame::axis_object_top` is the `astGetAxis` path a CmpFrame takes. `own_axes_have_no_is_latitude` in `crates/starlink-ast/tests/test_skyframe_attrs.rs` pins it.
 A fix upstream would set IsLatitude and Centerzero on the SkyFrame's axes when it is created and when its axes are permuted, as SubFrame does on a picked copy.
 
 To be raised upstream.
@@ -875,8 +875,8 @@ For UT1, GMST, LAST and LMST the code maps the origin to UT1 so that it can trea
 It then re-reads the raw TimeOrigin (`timeframe.c:2556`) and converts that, not the UT1 value, with the Mapping from a UTC MJD in days.
 The result is the origin taken as a UTC MJD, whatever the System: at the submodule pin a JD TimeFrame in UT1 with TimeOrigin 2455000.5 has Epoch 2455000.5008, an MJD some 6000 years in the future, and a GMST TimeFrame ignores the sidereal-to-UT1 step altogether.
 
-**Rust behavior (mirror):** `TimeFrame::epoch_from_time_origin` in `crates/ast-core/src/frames/timeframe.rs` builds the UT1 Mapping, so that a failure to make it still fails, and converts the raw origin.
-`epoch_from_time_origin_matches_the_c_library` in `crates/ast-core/tests/test_time_epoch.rs` pins 102 cases.
+**Rust behavior (mirror):** `TimeFrame::epoch_from_time_origin` in `crates/starlink-ast/src/frames/timeframe.rs` builds the UT1 Mapping, so that a failure to make it still fails, and converts the raw origin.
+`epoch_from_time_origin_matches_the_c_library` in `crates/starlink-ast/tests/test_time_epoch.rs` pins 102 cases.
 A fix upstream would convert `result` rather than re-reading the origin; the mirror would then become a bug.
 
 To be raised upstream.
@@ -916,7 +916,7 @@ The inverse path calls the forward projection first, to find the longitude range
 
 The port leaves `flag` clear after installing the projection functions (`PrjParams::run_setup`), as `InitPrjPrm` does, and keeps a WcsMap's parameter block across transformations, so a first forward transformation reports `AST__WCSPA` and later ones give bad values, as in C.
 It does not reproduce what C computes from partly set-up parameters: after an inverse first, its forward transformation gives bad values where C gives `(-0, 0)`.
-`unusable_projection_parameters_are_errors` in `crates/ast-core/tests/test_wcsmap.rs` covers the forward-first order, which C and the port agree on.
+`unusable_projection_parameters_are_errors` in `crates/starlink-ast/tests/test_wcsmap.rs` covers the forward-first order, which C and the port agree on.
 
 Question for upstream: should the set-up routines leave `flag` clear when they fail, so that every transformation reports the parameters rather than projecting with them?
 
@@ -940,8 +940,8 @@ SUN/211 describes `AST__SOMBCOS` as `somb(pi*x)*cos(k*pi*x)`.
 Because kernel weights are normalized, the halving cancels unless one of the contributing offsets is exactly zero; it then counts the pixel at the interpolation point twice as heavily as the documented kernel does.
 That happens whenever a position falls on a pixel center along some axis, as for a UnitMap or an integer shift.
 
-The port mirrors it: `kernels::somb_cos` in `crates/ast-core/src/mappings/resample/kernels.rs`.
-The `sombcos_unit` case of `crates/ast-core/tests/test_resample_oracle.rs` pins it; it fails if the factor of 2 is added.
+The port mirrors it: `kernels::somb_cos` in `crates/starlink-ast/src/mappings/resample/kernels.rs`.
+The `sombcos_unit` case of `crates/starlink-ast/tests/test_resample_oracle.rs` pins it; it fails if the factor of 2 is added.
 Resolved when upstream either adds the factor or documents the kernel as it is.
 
 ### Block averaging with variances lets one pixel's bad variance decide for others
@@ -950,8 +950,8 @@ Resolved when upstream either adds the factor or documents the kernel as it is.
 For a signed type without `AST__USEBAD`, `bad_var = bad_var || var < 0` accumulates, so after the first negative variance every later pixel of the block is skipped too.
 With `AST__USEBAD`, `bad_var` is reassigned per pixel, so the skipping is right, but `CALC_AND_ASSIGN_OUTPUT` then reads the value left by the last pixel of the block whose data value was good, so the output variance is bad exactly when that pixel's variance was.
 
-The port mirrors both: `interp::block_average` in `crates/ast-core/src/mappings/resample/interp.rs` keeps C's single `bad_var`.
-In `crates/ast-core/tests/test_resample_oracle.rs`, the `blockave_novarbad` and `blockave_win3` cases fail if the flag is reset for each pixel, and `blockave_cubic`, `blockave_zoom` and `conserve_win3` fail if the last pixel's value is ignored.
+The port mirrors both: `interp::block_average` in `crates/starlink-ast/src/mappings/resample/interp.rs` keeps C's single `bad_var`.
+In `crates/starlink-ast/tests/test_resample_oracle.rs`, the `blockave_novarbad` and `blockave_win3` cases fail if the flag is reset for each pixel, and `blockave_cubic`, `blockave_zoom` and `conserve_win3` fail if the last pixel's value is ignored.
 Resolved when upstream resets the flag per pixel; the cases would then need regenerating.
 
 ### `astRebin<X>` zeroes only the first output element after an argument error
@@ -959,8 +959,8 @@ Resolved when upstream resets the flag per pixel; the cases would then need rege
 `Rebin<X>` (`mapping.c`, `MAKE_REBIN`) reports a bad argument and carries on to its "initialise the output arrays to hold zeros" loops, which run whatever the status.
 Their length, `npix_out`, starts at 1 and is counted only once the argument checks have passed, so after an error in the axis counts, bounds, region or tolerance the output's first element is zeroed and the rest left alone; after a later error, such as a Mapping with no forward transformation, the whole output is zeroed.
 
-The port mirrors it: `rebin` in `crates/ast-core/src/mappings/rebin/mod.rs` zeroes the number of elements C would have.
-`errors_match_c` in `crates/ast-core/tests/test_rebin_oracle.rs` records the first two output values after each error, and fails if the whole output is zeroed.
+The port mirrors it: `rebin` in `crates/starlink-ast/src/mappings/rebin/mod.rs` zeroes the number of elements C would have.
+`errors_match_c` in `crates/starlink-ast/tests/test_rebin_oracle.rs` records the first two output values after each error, and fails if the whole output is zeroed.
 Resolved when upstream either returns before touching the output or zeroes all of it.
 
 ### Rebinning `B` and `UB` data relies on out-of-range conversions wrapping
@@ -969,8 +969,8 @@ The spreading functions (`SpreadNearest<X>`, `SpreadLinear<X>` and `SpreadKernel
 A kernel with negative lobes, such as `AST__SINC`, gives negative contributions, and the C standard leaves converting a negative double to `unsigned char` undefined.
 clang on arm64 and x86-64 converts through a 32-bit integer, so the value wraps, and the wrapped contributions then sum back to the right total once it is in range; a saturating conversion would clip each negative contribution to zero and bias the result.
 
-The port mirrors the compiled behavior: `RebinValue::from_c` in `crates/ast-core/src/pixel.rs` converts through `i32` for `B` and `UB`, and saturates for `I` as arm64 does (x86-64 gives `INT_MIN` instead, which no fixture exercises).
-In `crates/ast-core/tests/test_rebin_oracle.rs`, eight `UB` kernel cases fail with a saturating conversion.
+The port mirrors the compiled behavior: `RebinValue::from_c` in `crates/starlink-ast/src/pixel.rs` converts through `i32` for `B` and `UB`, and saturates for `I` as arm64 does (x86-64 gives `INT_MIN` instead, which no fixture exercises).
+In `crates/starlink-ast/tests/test_rebin_oracle.rs`, eight `UB` kernel cases fail with a saturating conversion.
 Resolved when upstream accumulates in a wider type or clamps explicitly.
 
 ### `astRebinSeq<X>` initializes and normalizes after an argument error
@@ -979,8 +979,8 @@ Resolved when upstream accumulates in a wider type or clamps explicitly.
 Its checks for a missing weights array or count are made whatever the status, so their AST__BDPAR replaces an earlier error's status.
 When no input pixel has been used, normalization reports AST__BADIN (only if no error came first) and then reads an uninitialized effective number of pixels for every output pixel; on the supported platforms every output pixel then comes out bad, as it should with nothing added.
 
-The port mirrors the first two in `rebin_seq` (`crates/ast-core/src/mappings/rebin/mod.rs`) and takes the uninitialized value as zero in `normalise`, which gives the same all-bad output.
-`errors_match_c` in `crates/ast-core/tests/test_rebinseq_oracle.rs` records the output, weights and count after each error, and the `nothing_used` cases there pin the all-bad output; both fail if normalization is skipped.
+The port mirrors the first two in `rebin_seq` (`crates/starlink-ast/src/mappings/rebin/mod.rs`) and takes the uninitialized value as zero in `normalise`, which gives the same all-bad output.
+`errors_match_c` in `crates/starlink-ast/tests/test_rebinseq_oracle.rs` records the output, weights and count after each error, and the `nothing_used` cases there pin the all-bad output; both fail if normalization is skipped.
 Resolved when upstream returns before touching the arrays, or initializes the effective number of pixels.
 
 ### The `astAxAngle` documentation gives a 2-D range of -PI/2 to +PI/2
@@ -1006,7 +1006,7 @@ The scoring the prologue describes is what `ConvertX` (frameset.c) does for `ast
 
 Consequence: documentation only; a FrameSet search returns the first match in the documented Frame order.
 
-The port's `frameset_find_frame` (`crates/ast-core/src/frames/frameset.rs`) takes the first match, as C does, and `Frame::find_frame_template` documents that.
+The port's `frameset_find_frame` (`crates/starlink-ast/src/frames/frameset.rs`) takes the first match, as C does, and `Frame::find_frame_template` documents that.
 A C fix: drop the paragraph about preferring both transformations from the `astFindFrame` prologue.
 
 ### The `astSetActiveUnit` documentation says a CmpFrame needs both components to use active units
@@ -1018,7 +1018,7 @@ The code is `astGetActiveUnit( frame1 ) || astGetActiveUnit( frame2 )`, so eithe
 
 Consequence: a CmpFrame of a SpecFrame and a plain Frame uses active units by default, where the documentation says it does not.
 
-The port's `CmpFrame::get_active_unit` (`crates/ast-core/src/frames/cmpframe.rs`) mirrors the code, and `Frame::set_active_unit` documents "either".
+The port's `CmpFrame::get_active_unit` (`crates/starlink-ast/src/frames/cmpframe.rs`) mirrors the code, and `Frame::set_active_unit` documents "either".
 A C fix: change the code to `&&` if the documentation states the intent, or the prologue to "either" if the code does.
 
 ### The `astSetActiveUnit` documentation says units with no Mapping between them raise an error
@@ -1030,7 +1030,7 @@ The prologue says that when both Frames use active units and no Mapping can be f
 
 Consequence: documentation only.
 
-The port's `find_frame` (`crates/ast-core/src/frames/find_frame.rs`) treats such units as no match, as C does, and `Frame::set_active_unit` documents that.
+The port's `find_frame` (`crates/starlink-ast/src/frames/find_frame.rs`) treats such units as no match, as C does, and `Frame::set_active_unit` documents that.
 A C fix: say in the prologue that the Frames then do not match.
 
 ### The `Symbol` documentation says the default is at most 15 characters
@@ -1042,7 +1042,7 @@ The code truncates the Domain so that the whole fits `SYMBOL_BUFF_LEN`, which is
 
 Consequence: documentation only; a Domain of 15 to 49 characters appears in full in the default Symbol.
 
-The port's `default_symbol` (`crates/ast-core/src/frames/frame_attrs.rs`) uses 50, and `Frame::symbol` documents that.
+The port's `default_symbol` (`crates/starlink-ast/src/frames/frame_attrs.rs`) uses 50, and `Frame::symbol` documents that.
 A C fix: change 15 to 50 in the prologue.
 
 ### The `Top` and `Bottom` documentation gives SkyFrame defaults for co-latitude axes
@@ -1066,7 +1066,7 @@ The prologue says the default MaxAxes value may be reduced to remain consistent 
 
 Consequence: documentation only.
 
-The port's `frame_attrs_match!` (`crates/ast-core/src/frames/frame_attrs.rs`) raises the default, and `Frame::max_axes` documents that.
+The port's `frame_attrs_match!` (`crates/starlink-ast/src/frames/frame_attrs.rs`) raises the default, and `Frame::max_axes` documents that.
 A C fix: change "reduced" to "increased" in the prologue.
 
 ### The `SkyRef` documentation says a SkyRef alone changes the default Labels, Symbols and Title
@@ -1078,7 +1078,7 @@ The code makes those changes only when SkyRefIs is also not "Ignored", and "Igno
 
 Consequence: documentation only.
 
-The port's `SkyFrame` (`is_offset` in `crates/ast-core/src/frames/skyframe.rs`) mirrors the code, and `SkyFrame::sky_ref` documents both conditions.
+The port's `SkyFrame` (`is_offset` in `crates/starlink-ast/src/frames/skyframe.rs`) mirrors the code, and `SkyFrame::sky_ref` documents both conditions.
 A C fix: say in the note that SkyRefIs must be "Origin" or "Pole" as well.
 
 ### The `AlignSpecOffset` documentation names a SpecOffset attribute
@@ -1103,7 +1103,7 @@ A probe built against `reference/starlink-ast/build/libast.dylib` gets a value a
 
 Consequence: documentation only.
 
-`TimeFrame::current_time` (`crates/ast-core/src/frames/timeframe.rs`) gives the same values, to the second, and documents `ErrorCode::Incts` only for a time scale UTC cannot be converted to.
+`TimeFrame::current_time` (`crates/starlink-ast/src/frames/timeframe.rs`) gives the same values, to the second, and documents `ErrorCode::Incts` only for a time scale UTC cannot be converted to.
 A C fix: drop the note, or name a time scale that cannot be reached.
 
 ### `SetVariant` reads `map[-1]` when the variant owner is on the root node
@@ -1116,7 +1116,7 @@ Node 0, the root, which holds the first Frame added unless it has been remapped,
 
 Consequence: undefined behavior in C for variants on the root node.
 
-The port's `FrameSet::set_variant` (`crates/ast-core/src/frames/frameset.rs`) replaces the parent Mapping as C does for any other node, and for the root node moves the owner Frame to a new node linked to the root by the change of variant, so Frames derived from it do not move.
+The port's `FrameSet::set_variant` (`crates/starlink-ast/src/frames/frameset.rs`) replaces the parent Mapping as C does for any other node, and for the root node moves the owner Frame to a new node linked to the root by the change of variant, so Frames derived from it do not move.
 `tests/test_frameset_variants.rs` (`selecting_a_variant_of_a_frame_on_the_root_node`) holds the port to that.
 A C fix: handle the root node, for instance by remapping the Frame as `astRemapFrame` does.
 
@@ -1531,7 +1531,7 @@ The only place it shows is a warning that `Strict` turns into an error: `astAddW
 
 Consequence: the error for a warning met while a FrameSet is described for a write names no method.
 
-The port mirrors the message: `FitsChan::write_attrs` in `crates/ast-core/src/fitschan/mod.rs` makes the write's warning list with the method "FitsChan", and `strict_write_warning_is_an_error` in `tests/test_fitschan_astwarn.rs` pins it.
+The port mirrors the message: `FitsChan::write_attrs` in `crates/starlink-ast/src/fitschan/mod.rs` makes the write's warning list with the method "FitsChan", and `strict_write_warning_is_an_error` in `tests/test_fitschan_astwarn.rs` pins it.
 A C fix: swap the two arguments in the call; the port's list then takes "astWrite".
 
 ### `GetCDMatrix` puts back the card current before the source was read
@@ -1544,7 +1544,7 @@ A C-oracle probe: a FitsChan with a source of 11 FITS-WCS cards, asked for CDMat
 
 Consequence: whether a read after a CDMatrix query finds anything depends on whether the source had already been read.
 
-The port mirrors it: `FitsChan::cd_matrix` in `crates/ast-core/src/fitschan/mod.rs` restores end-of-file when the FitsChan was at end-of-file before reading the source, and `cd_matrix_from_a_source_leaves_end_of_file_as_c_does` in `tests/test_fitschan.rs` pins it.
+The port mirrors it: `FitsChan::cd_matrix` in `crates/starlink-ast/src/fitschan/mod.rs` restores end-of-file when the FitsChan was at end-of-file before reading the source, and `cd_matrix_from_a_source_leaves_end_of_file_as_c_does` in `tests/test_fitschan.rs` pins it.
 A C fix: save the card after `astClearCard`, or read the source first, as `GetEncoding` does.
 
 ### `WriteData` never refuses a SinkFile that is the SourceFile in use
@@ -1562,7 +1562,7 @@ A C fix: test `this->fd_in` in `WriteData` and compare the names there.
 
 ### SUN/211 shows examples and output that the current library does not produce
 
-C location: `sun_master.tex` (SUN/211 211.34), at the lines given below; found while porting it into `ast_core::guide`.
+C location: `sun_master.tex` (SUN/211 211.34), at the lines given below; found while porting it into `starlink_ast::guide`.
 
 Each item was checked against the C library built from the same submodule commit (`build-ast`), and the port agrees with C in every case, so these are errors in the document, not in either library.
 The guide shows what the library does.
@@ -1580,7 +1580,7 @@ The guide shows what the library does.
 
 Consequence: documentation only; a reader who runs the examples gets output that differs from the guide, or, for the permutation, an error.
 
-The port's guide (`crates/ast-core/src/guide/`) uses the current output, the 1-based permutation, the FITS-WCS first step and the SipOK behavior.
+The port's guide (`crates/starlink-ast/src/guide/`) uses the current output, the 1-based permutation, the FITS-WCS first step and the SipOK behavior.
 A C fix: regenerate the output blocks from the current library and correct the items above in `sun_master.tex`.
 
 ## Addressed here, and not going upstream
@@ -1730,7 +1730,7 @@ branch changes no test.
 
 C `AxisUnformat` (`axis.c:1335`) reads the value with `astSscanf( string, "%lf %n", ... )`.
 The port used to parse the longest prefix Rust's `f64::parse` accepts, so it rejected hexadecimal floats such as `0x10` and `nan(...)`.
-Since 2026-10-06 it reads the value through a port of `strtod`, `c_strtod` in `crates/ast-core/src/frames/axis_format.rs` (audit FR-11).
+Since 2026-10-06 it reads the value through a port of `strtod`, `c_strtod` in `crates/starlink-ast/src/frames/axis_format.rs` (audit FR-11).
 
 What remains is a difference between C libraries rather than between C and the port.
 When an exponent marker or `0x` has no digits after it, or a word is a partial `infinity` or `nan(...)`, the C standard makes the input item the whole prefix, so the conversion fails.
@@ -1780,7 +1780,7 @@ FITS `CDELT3` comment from "Pixel size" back to the stale input
 "Channel width (m/s)".
 
 **Rust mirror:** `CmpMap::rate` in
-`crates/ast-core/src/mappings/cmpmap.rs` calls `numeric_rate` on the
+`crates/starlink-ast/src/mappings/cmpmap.rs` calls `numeric_rate` on the
 whole composition (matching the installed base behavior) and does
 **not** implement the chain-rule override. The method carries a
 TODO noting the override could be revisited (potentially faster and
@@ -1807,7 +1807,7 @@ byte-for-byte; verified bidirectionally against the reference library). The
 only unsupported case is a *bare* `Frame` (outside a FrameSet) carrying
 variants — which the C public test surface (`testframeset.c`) never exercises.
 Revisit if a consumer needs Frame-level variants. Tests:
-`crates/ast-core/tests/test_frameset_variants.rs`.
+`crates/starlink-ast/tests/test_frameset_variants.rs`.
 
 ### KeyMap `MapSz` records collision history, so identical KeyMaps can serialize differently
 
@@ -1883,7 +1883,7 @@ is what makes the value exact rather than approximate.
 
 The `MapSz` card is dropped from both sides of any byte comparison against C
 output, following the `ISSIMP<xx>` precedent (`common::is_issimp_tag_card`,
-`ISSIMP_PLACEMENT_LICENSED` in `crates/ast-core/tests/test_wcsconv.rs`). Every other card, `MemCnt` included, is
+`ISSIMP_PLACEMENT_LICENSED` in `crates/starlink-ast/tests/test_wcsconv.rs`). Every other card, `MemCnt` included, is
 compared byte-exactly, and the computed size is tested directly against the C
 oracle so a wrong value cannot hide behind the exclusion.
 
@@ -1927,7 +1927,7 @@ colliding` pair (confirming the doubling condition really is `>`, not `>=`,
 against `MAX_ENTRIES_PER_TABLE_ENTRY`) and the `guess 170` and `guess 5000,
 500 keys` boundary cases where the initial size and the doubling rule
 interact. This output is committed verbatim as
-`crates/ast-core/tests/fixtures/keymap/mapsz_oracle.txt`, the ground truth a
+`crates/starlink-ast/tests/fixtures/keymap/mapsz_oracle.txt`, the ground truth a
 later test parses to pin the Rust arithmetic to C's actual numbers rather
 than to a Rust-side restatement of djb2.
 
@@ -2037,7 +2037,7 @@ Each entry names the commit that fixed it.
 Where the port mirrored the defect, the entry also records the inversion, because a mirror of a fixed bug is a bug.
 
 The four entries immediately below were found while porting `NormUnit`, are fixed on upstream branch `u/timj/norm-unit` (not yet merged), and are what the submodule pin points at.
-The three `unit.c` ones were found by reading `NormUnit(1)` from a one-axis C Frame across a table of Unit strings, now `C_ORACLE` in `crates/ast-core/tests/test_frame.rs`; the SkyAxis one by reading it through each class that can hold a SkyFrame axis.
+The three `unit.c` ones were found by reading `NormUnit(1)` from a one-axis C Frame across a table of Unit strings, now `C_ORACLE` in `crates/starlink-ast/tests/test_frame.rs`; the SkyAxis one by reading it through each class that can hold a SkyFrame axis.
 
 ### RESOLVED (upstream d9e43a6b): SkyAxis normalizes a set Unit that describes the axis values, so a picked-out RA axis reports `hh*mm*s`
 
@@ -2048,7 +2048,7 @@ A SkyFrame, and a CmpFrame, FrameSet or Region holding one, were unaffected: eac
 Upstream now leaves a set Unit alone when it equals the description the Format produces; `testframe.c` covers four picked axes.
 
 **Rust behavior:** the SkyFrame itself follows the fixed rule (`SkyFrame::norm_unit`, pinned by `tests/test_skyframe_format.rs`). A picked axis does not yet: the port's picked SkyFrame axis is a BasicFrame axis carrying only the Unit string, so with the SkyFrame Format now ported, `Format(1)=bhms` gives a picked axis NormUnit `hh*mm*s`, C's pre-fix answer.
-That is the "SkyAxis picked into a plain Frame" row in `PLAN.md` §2; `picked_sky_axis_keeps_its_norm_unit` in `crates/ast-core/tests/test_frame.rs` covers only the default Formats, whose Units contain no spaces.
+That is the "SkyAxis picked into a plain Frame" row in `PLAN.md` §2; `picked_sky_axis_keeps_its_norm_unit` in `crates/starlink-ast/tests/test_frame.rs` covers only the default Formats, whose Units contain no spaces.
 
 ### RESOLVED (upstream 965b7587): `InvertConstants` leaves a constant numerator uninverted, so `"2/m"` converts as `"0.5/m"`
 
@@ -2057,8 +2057,8 @@ It did this for a constant factor of a `MULT` node and a constant denominator of
 `"2/m"` and `"2*m**-1"` name the same unit, yet converting a value of 1 per meter gave 2 in the first and 0.5 in the second; only 0.5 is right.
 This affected every unit conversion (`astUnitMapper`, so Frame `ActiveUnit` matching and SpecFrame / FluxFrame unit changes), not only `NormUnit`, which reported `"2/m"` as `"0.5/m"` once `ModifyPrefix` stopped crashing on it.
 
-**Rust behavior:** `invert_constants` in `crates/ast-core/src/units/simplify.rs` had ported the defect faithfully, and now inverts both arguments of a `DIV`, as upstream does.
-`convert_constant_numerator_units` in `crates/ast-core/tests/test_convert.rs` ports upstream's `testconvert.c` Errors 52-53.
+**Rust behavior:** `invert_constants` in `crates/starlink-ast/src/units/simplify.rs` had ported the defect faithfully, and now inverts both arguments of a `DIV`, as upstream does.
+`convert_constant_numerator_units` in `crates/starlink-ast/tests/test_convert.rs` ports upstream's `testconvert.c` Errors 52-53.
 
 ### RESOLVED (upstream 25bd4924): `astUnitNormaliser` blanks any result that starts with a number
 
@@ -2066,7 +2066,7 @@ This affected every unit conversion (`astUnitMapper`, so Frame `ActiveUnit` matc
 `%lg` converts a number at the start of a string and ignores the rest, so `"2*m"`, `"m/2"` and `"1.5 furlong"` all normalized to `""`, contradicting `NormUnit`'s documentation.
 Upstream now requires the whole string to be consumed.
 
-**Rust behavior:** the port had mirrored the prefix test; `unit_normaliser` in `crates/ast-core/src/units/mod.rs` now uses the crate's whole-string `scan_double`, the equivalent of `" %lf %n"` with the consumed length checked.
+**Rust behavior:** the port had mirrored the prefix test; `unit_normaliser` in `crates/starlink-ast/src/units/mod.rs` now uses the crate's whole-string `scan_double`, the equivalent of `" %lf %n"` with the consumed length checked.
 For comparison, Astropy 8.0.1 keeps a numeric factor too (`Unit("2*m")` is `2 m`), though it never folds a factor into a prefix as AST does (`0.01 m` stays `0.01 m`).
 
 ### RESOLVED (upstream 8c734154): `ModifyPrefix` recurses without end on `k/unit`
@@ -2075,8 +2075,8 @@ For comparison, Astropy 8.0.1 keeps a numeric factor too (`Unit("2*m")` is `2 m`
 For `constant/unit` it did not: the stored constant is the numerator but was compared with the combined scale, its reciprocal, so a change was reported for every numerator but 1.
 Reading `NormUnit` for `"2/m"`, `"3/s"` or `"2/km"` crashed with a stack overflow.
 
-**Rust behavior:** the port never mirrored the crash; `modify_prefix` in `crates/ast-core/src/units/to_expr.rs` judges the reciprocal's numerator only after it is recomputed, which is now what upstream does.
-The four cases are rows of `C_ORACLE` in `crates/ast-core/tests/test_frame.rs`, and restoring the old flag logic makes that test overflow the stack.
+**Rust behavior:** the port never mirrored the crash; `modify_prefix` in `crates/starlink-ast/src/units/to_expr.rs` judges the reciprocal's numerator only after it is recomputed, which is now what upstream does.
+The four cases are rows of `C_ORACLE` in `crates/starlink-ast/tests/test_frame.rs`, and restoring the old flag logic makes that test overflow the stack.
 
 The four entries immediately below were found while porting Frame attributes and geometry, and are fixed on the same branch in commits past the submodule pin.
 They moved here from the open questions when those commits landed.
@@ -2087,7 +2087,7 @@ They moved here from the open questions when those commits landed.
 So `astSet( fluxframe, "System=SFCBRW" )` failed with "Invalid System description", and a FluxFrame in that system dumped a System card that C could not read back.
 Upstream now matches `"SFCBRW"` and still accepts `"SRCBR"`; `testflux.c` sets `System=SFCBRW` and reads it back directly and from a dump.
 
-**Rust behavior:** `FluxSystem::parse` accepts both `"SFCBRW"` and `"SRCBR"` and writes `"SFCBRW"`, which is what upstream now does. `per_wavelength_surface_brightness_reads_back` in `crates/ast-core/tests/test_flux.rs` ports the new `testflux.c` check.
+**Rust behavior:** `FluxSystem::parse` accepts both `"SFCBRW"` and `"SRCBR"` and writes `"SFCBRW"`, which is what upstream now does. `per_wavelength_surface_brightness_reads_back` in `crates/starlink-ast/tests/test_flux.rs` ports the new `testflux.c` check.
 `tools/oracle_fixtures/class_attrs_probe.c` sets the system with `"SRCBR"`, which C at the submodule pin accepts.
 
 ### RESOLVED (upstream 5a2cac2a): CmpFrame `ResolvePoints` passes internal-order points to methods that expect external order
@@ -2098,7 +2098,7 @@ Both methods expect external order, so for a permuted CmpFrame the perpendicular
 Upstream now passes the supplied `point1` and `point2`, and puts each input point back into external order; `testcmpframe.c` compares the batch components with `astResolve` on a permuted CmpFrame.
 
 **Rust behavior:** `CmpFrame::resolve_points` had mirrored the defect, and now passes the supplied points as upstream does.
-`crates/ast-core/tests/sky_geometry_oracle/cases.rs` is generated against the fixed C, so `cmp_frame_resolve_points_matches_the_c_library` in `crates/ast-core/tests/test_sky_geometry.rs` no longer agrees with C at the submodule pin on its permuted cases.
+`crates/starlink-ast/tests/sky_geometry_oracle/cases.rs` is generated against the fixed C, so `cmp_frame_resolve_points_matches_the_c_library` in `crates/starlink-ast/tests/test_sky_geometry.rs` no longer agrees with C at the submodule pin on its permuted cases.
 Matching those cases bit for bit also needed the one-axis and plain Frames' `offset` and `distance` to follow `frame.c`'s formulas, and `SpecFluxFrame::offset` to split the offset between its components as `CmpFrame::Offset` does.
 
 ### RESOLVED (upstream 5ef2a014): The public `astPointSet` passes no status to `astPointSetId_`, which expects one
@@ -2708,9 +2708,9 @@ In a wavelength System 0 has no frequency, so the transformed value is `AST__BAD
 A SpecFrame and a DSBSpecFrame were affected alike; the same Frames in FREQ converted normally.
 Upstream now uses the result Frame's own origin when the transformed zero point is bad, as when not aligning offsets; `testspecframe.c` Errors 13-15 cover it.
 
-**Rust behavior:** `make_spec_mapping_full` in `crates/ast-core/src/frames/specframe.rs` follows the fix.
+**Rust behavior:** `make_spec_mapping_full` in `crates/starlink-ast/src/frames/specframe.rs` follows the fix.
 Before it, the port matched neither side: it built the same shift, but its WinMap merge did not treat a bad coefficient as undefined, so its two shifts canceled.
-`compose_linear_terms` in `crates/ast-core/src/mappings/winmap.rs` now does, as `WinWin`, `WinZoom` and `WinShift` do.
+`compose_linear_terms` in `crates/starlink-ast/src/mappings/winmap.rs` now does, as `WinWin`, `WinZoom` and `WinShift` do.
 `tests/test_spec_origin_sor.rs` and `tests/test_dsb_topo.rs` pin the fixed behavior from corpora generated against 65bd5b6e (audit DSB-5).
 
 ### RESOLVED (upstream e40e71b4): CmpMap `IsSimp` tag placement depends on shared-pointer aliasing during simplification
@@ -2726,7 +2726,7 @@ now a property of the Mapping tree alone.
 
 **Port position after the sync.** The emulation is gone: the port's per-class
 `has_been_simplified` became a two-orientation `SimplifiedRecord`
-(`crates/ast-core/src/mappings/mod.rs`), `invert()` no longer clears it, and every
+(`crates/starlink-ast/src/mappings/mod.rs`), `invert()` no longer clears it, and every
 routine that existed to reproduce C's clears — `clear_element_simple_tags`,
 `clear_component_simple_tag`, `clear_child_simple_tag`, `reconstruct_simplified`
 and the recursion-guard clear — was deleted. Tagging was extended to the
@@ -2851,10 +2851,10 @@ re-simplification, which is what actually matches C's post-probe-clear
 behavior.
 
 **Rust mirror:** `CmpMap` in
-`crates/ast-core/src/mappings/cmpmap.rs` keeps the two flags
+`crates/starlink-ast/src/mappings/cmpmap.rs` keeps the two flags
 (`has_been_simplified` + `is_simple_serial`) with
 `dump_is_simple() = has_been_simplified || is_simple_serial`.
-`crates/ast-core/src/mappings/simplify.rs` raises `is_simple_serial`
+`crates/starlink-ast/src/mappings/simplify.rs` raises `is_simple_serial`
 on changed CmpMap results of a simplify step (the serialization tag)
 without setting the merge guard. This yields the correct transform,
 the correct tree structure, and a correct `IsSimp` tag on the nodes we
@@ -2952,7 +2952,7 @@ it would need the parent's `InvA` to cancel it back out.
 
 **Why the Rust port does not mirror it:** the port holds Mappings as
 owned values, so `embed_celestial_in_naxis`
-(`crates/ast-core/src/fitschan/wcs_celestial.rs`) builds two
+(`crates/starlink-ast/src/fitschan/wcs_celestial.rs`) builds two
 independent forward PermMaps and the artifact cannot arise from
 construction order. Replaying it would mean calling
 `CmpMap::set_first_orientation` on the stage-1 CmpMap purely to stamp a
@@ -3024,7 +3024,7 @@ fixtures that have already been calibrated to the lossy form, and
 those changes would be in the FP-precision direction (more
 accurate, not less).
 
-**Mirrored in Rust:** `crates/ast-core/src/fitschan/wcs_write.rs`,
+**Mirrored in Rust:** `crates/starlink-ast/src/fitschan/wcs_write.rs`,
 `identify_axes::cap_src` — replays the same lossy round trip via
 `SkyFrame::format` followed by `SkyFrame::unformat` on the source
 RA/Dec before handing them to `populate_velosys`. Going through
@@ -3088,7 +3088,7 @@ different downstream contract; (b) is closest to "do what the
 caller asked"; (c) is the most conservative.
 
 **How Rust diverges (deliberate, not mirrored):**
-`crates/ast-core/src/mappings/matrix.rs::map_split` allocates a
+`crates/starlink-ast/src/mappings/matrix.rs::map_split` allocates a
 zero-initialized `Array2<f64>` and writes every kept entry —
 `AST__BAD` or finite — into it unconditionally. This is a
 *deliberate* divergence from the C oracle:
@@ -3162,7 +3162,7 @@ path doesn't hit it. Anyone who calls `ScalePolyInputs` from new
 code with an explicit-inverse PolyMap would invoke UB.
 
 **How Rust diverges (deliberate):**
-`crates/ast-core/src/mappings/helpers/scale_poly_inputs.rs` writes
+`crates/starlink-ast/src/mappings/helpers/scale_poly_inputs.rs` writes
 the apparently-intended math directly: `coeff /= scales[iin]`,
 where `iin = (term.out_axis - 1) % nin`. The Rust port also runs
 this branch only when `polymap.inverse_terms()` is `Some(...)`, so
@@ -3271,7 +3271,7 @@ variant should reuse the same width capture.)
 **Rust mirror:** `wcs_write::date_str_to_mjd` parses the fractional
 seconds via `f64::parse` on the full `"SS.fff"` substring, which is
 correct (no quirk to mirror). The corresponding test fixture
-`crates/ast-core/tests/fixtures/wcsconv/expected/azel.fits-wcs`
+`crates/starlink-ast/tests/fixtures/wcsconv/expected/azel.fits-wcs`
 has been updated to carry the *correct* `08:38:39.087` rather than
 C's buggy round-trip output `08:38:39.870`.
 
@@ -3324,7 +3324,7 @@ non-square Mappings that previously squeaked through).
 +  nout = astGetNout( map );
 ```
 
-**Rust mirror:** `crates/ast-core/src/fitschan/fset_to_store/sip_int_world.rs`
+**Rust mirror:** `crates/starlink-ast/src/fitschan/fset_to_store/sip_int_world.rs`
 (this directory; the function is the SIP write-side counterpart
 of C `SIPIntWorld`). The Rust port reads `map.nout()` correctly,
 so we don't carry the quirk forward; record it here only so the
@@ -3370,7 +3370,7 @@ accuracy without changing the API. The four affected callsites are
 all in `specmap.c`. Coordinating an upstream fix would let us drop
 the matching cast in the Rust port (see below).
 
-**Rust mirror:** `crates/ast-core/src/mappings/specmap.rs` —
+**Rust mirror:** `crates/starlink-ast/src/mappings/specmap.rs` —
 `lsrk_vel`, `lsrd_vel`, `lg_vel`, `gal_vel` each call
 `pal::rv*(ra as f32 as f64, dec as f32 as f64)` to reproduce the C
 truncation. If the C library is ever fixed to remove the cast, drop
@@ -3445,7 +3445,7 @@ the AddEncodingFrame Hz-force was added.
 +  aval[ 1 ] = aval[ 0 ] + cdelt[ axspec ];
 ```
 
-**Rust mirror:** `crates/ast-core/src/fitschan/enc_class.rs`
+**Rust mirror:** `crates/starlink-ast/src/fitschan/enc_class.rs`
 (`write_velocities_from_frameset`) reads CRVAL1/CDELT1 from the
 already-emitted cards (post-RESTFREQ-subtract for CRVAL1; raw for
 CDELT1). Because our CDELT1 card has the same value as C's CDELT1
@@ -3504,7 +3504,7 @@ the FitsStore but only emit DATE-OBS — leaving the input header's
 MJD-OBS card untouched. C's `PCFromStore` (fitschan.c:24922-24926)
 does re-emit, and would exhibit the drift visibly.
 
-**Rust mirror:** `crates/ast-core/src/mappings/timemap.rs`
+**Rust mirror:** `crates/starlink-ast/src/mappings/timemap.rs`
 (`ast_dat`) preserves the C divisors verbatim — necessary because
 `fset_to_store::sky_sys` calls `epoch::tdb_conv` (C's `TDBConv`) whose inverse path
 hits this code, and downstream tests compare bit-for-bit against
@@ -3549,7 +3549,7 @@ resolve. Verified against `libast` built with cmake:
 `astAxAngle(frame2, (0,5), (3,2), 1)` returns `PI/4` (using `b[1]=2`).
 
 **Rust mirror:** `Frame::ax_angle` in
-`crates/ast-core/src/frames/mod.rs` reads `b[naxes - 1]` in the same
+`crates/starlink-ast/src/frames/mod.rs` reads `b[naxes - 1]` in the same
 branch, with a comment marking it as the preserved C index.
 
 ### RESOLVED (upstream e782c220): `astRate` returns BAD at `x0 = 0` for domain-restricted Mappings
@@ -3598,10 +3598,10 @@ the true gradient. Verified against `libast` built with cmake:
 `0.75` at `x0=0.5` and `AST__BAD` at `x0=0.0`.
 
 **Rust mirror:** `numeric_rate` in
-`crates/ast-core/src/mappings/rate.rs` seeds `h0 = 1.0` for `x0 == 0.0`
+`crates/starlink-ast/src/mappings/rate.rs` seeds `h0 = 1.0` for `x0 == 0.0`
 (previously it used `DBL_EPSILON*1e9`, which gave the mathematically
 correct answer but diverged from C). The ported tests in
-`crates/ast-core/tests/test_numeric_rate.rs` and `test_chebymap.rs`
+`crates/starlink-ast/tests/test_numeric_rate.rs` and `test_chebymap.rs`
 assert `BAD_VALUE` at `x0 = 0` for ChebyMaps to lock the C behavior in.
 
 ### RESOLVED (upstream c1a88658): `astRate` zero-range confirmation reads a stale array slot
@@ -3641,7 +3641,7 @@ short-circuit may fire or not fire depending on uninitialized stack
 contents.
 
 **Rust mirror:** `numeric_rate` in
-`crates/ast-core/src/mappings/rate.rs` indexes `ranges[iin - 1]` /
+`crates/starlink-ast/src/mappings/rate.rs` indexes `ranges[iin - 1]` /
 `ranges[iin + 1]` exactly as C does (rather than the store index), with
 a comment marking the preserved stale-slot read. Because the array is
 zero-initialized in Rust (versus uninitialized C stack), the two
@@ -3696,10 +3696,10 @@ referencing equal values it returns 1; referencing differing values it
 returns 0; differing unreferenced surplus constants return 1.
 
 **Rust mirror:** `PermMap::equal` in
-`crates/ast-core/src/mappings/perm.rs` ports the per-entry comparison
+`crates/starlink-ast/src/mappings/perm.rs` ports the per-entry comparison
 including the matching-index short-circuit (so it preserves the quirk)
 and the exact (non-tolerance) constant comparison. Tests in
-`crates/ast-core/tests/test_permmap.rs` lock all four cases.
+`crates/starlink-ast/tests/test_permmap.rs` lock all four cases.
 
 ### ~~TimeFrame `astUnformat` of a Besselian-epoch string is off by the leap-second offset~~ — RESOLVED: not a C bug
 
@@ -3735,12 +3735,12 @@ construction orders, and so does the Rust port. astropy's
 *not* re-express `TimeOrigin`, so the origin-then-timescale frame kept
 origin=2005 and accidentally produced the astropy value — masking the
 missing `OriginScale`/`OriginSystem` step. Fixed in
-`crates/ast-core/src/frames/timeframe.rs` (`origin_scale`/
+`crates/starlink-ast/src/frames/timeframe.rs` (`origin_scale`/
 `origin_system`); covered by `test_set_timescale_reexpresses_time_origin`,
 `test_set_system_reexpresses_time_origin`,
 `test_unformat_b_prefix_uses_tt` and
 `test_unformat_b_prefix_origin_then_timescale` in
-`crates/ast-core/tests/test_timeframe.rs`.
+`crates/starlink-ast/tests/test_timeframe.rs`.
 
 ### RESOLVED (upstream a3b9468c): SpecFluxFrame `astEqual` reports identical frames as unequal
 
@@ -3788,7 +3788,7 @@ identical SpecFluxFrames therefore convert via a UnitMap and compare equal in
 Rust. This is the one place the port intentionally does not match C; revisit
 if the upstream AST developers confirm the C behavior is intentional. Tests
 `test_specfluxframe_equal` / `test_specfluxframe_serialisation_roundtrip` in
-`crates/ast-core/tests/test_fluxframe.rs` assert the Rust (equal) behavior.
+`crates/starlink-ast/tests/test_fluxframe.rs` assert the Rust (equal) behavior.
 
 ### RESOLVED (upstream 6301311f): duplicate-keyword consumption is inconsistent between `WcsFcRead` and `SpecTrans`
 
@@ -3826,7 +3826,7 @@ plus an `XTENSION='IMAGE'`), a single `astRead` strips *both* copies of
 self-inconsistent WCS description: `CD` without `CRPIX`/`CRVAL`/`CTYPE`. Which
 keywords survive is decided by which of the two read paths happens to handle
 them, not by any property of the keyword. Visible in
-`crates/ast-core/tests/fixtures/wcsconv/expected/serpens.native`, whose second
+`crates/starlink-ast/tests/fixtures/wcsconv/expected/serpens.native`, whose second
 HDU retains only `CD1_1`…`CD2_2`, `RADECSYS` and `DATE-OBS`.
 
 A related asymmetry: `WcsFcRead`'s `MJD-OBS` branch sets `mark = 0`
@@ -3835,7 +3835,7 @@ present, `SpecTrans`'s translation-9 block (`fitschan.c:31832`) reaches MJD-OBS
 through `GetValue2` with `mark = 1`, consuming it after all. Whether MJD-OBS
 survives thus depends on whether an unrelated keyword sits alongside it.
 
-**Former Rust mirror:** `crates/ast-core/src/fitschan/wcs_mark.rs` reproduces
+**Former Rust mirror:** `crates/starlink-ast/src/fitschan/wcs_mark.rs` reproduces
 the sweep (with the template list and the `mark = 0` exceptions annotated
 against their C line numbers); `CardList::mark_card` used to keep the
 first-match semantics for the `GetValue2` path and `translate_date_obs` used to
@@ -3937,7 +3937,7 @@ right-justified to the same column either way), so only the malformed wide
 cards change.
 
 **Rust position:** `strip_exponent_leading_zero` in
-`crates/ast-core/src/fitschan/format.rs`, applied at the end of
+`crates/starlink-ast/src/fitschan/format.rs`, applied at the end of
 `format_significant_rounded` so it runs after the rounding pass exactly as C
 runs it after `CheckZero`. `c_style_exponent` in the same file first restores
 the two-digit exponent that Rust's `{:E}` omits, so the strip sees the text C
@@ -4014,7 +4014,7 @@ property C documents as its reason for being the default. Two round-trip
 property tests pin the intended invariant: dump idempotence, and identical
 output for the same entries inserted in different orders. Both fail against
 current C by construction. The two in-repo KeyMap fixtures
-(`crates/ast-core/tests/fixtures/native/reference/simplify_fixtures_unsupported/stcresourceprofile/cap_timemap_02.{map,simp}`)
+(`crates/starlink-ast/tests/fixtures/native/reference/simplify_fixtures_unsupported/stcresourceprofile/cap_timemap_02.{map,simp}`)
 are regenerated with alphabetically ordered keys.
 
 ### RESOLVED (upstream eec1e53d): `LoadKeyMap` injects a spurious `KyCas = 1` because `KeyCase`'s unset sentinel is `-1`, not `-INT_MAX`
@@ -4235,7 +4235,7 @@ are already undefined — every in-range `dval` casts to the same `int`
 it does today.
 
 **Rust behavior (divergence, not mirror):** `convert_value` in
-`crates/ast-core/src/keymap/convert.rs` computes `round_c(as_f64) as i64`
+`crates/starlink-ast/src/keymap/convert.rs` computes `round_c(as_f64) as i64`
 and then narrows with `as i32`/`as i16`/`as u8`. Rust's `as` between
 numeric types is a well-defined truncating/wrapping conversion at every
 step (unlike C's float-to-int cast), so `5000000100.0` narrows to
@@ -4347,7 +4347,7 @@ the same `int` they do today, and the fallback to `%lf` (which already
 exists) takes over exactly where a range failure is detected.
 
 **Rust behavior (divergence, not mirror):** `scan_int` in
-`crates/ast-core/src/keymap/convert.rs` uses `str::parse::<i64>`, which
+`crates/starlink-ast/src/keymap/convert.rs` uses `str::parse::<i64>`, which
 returns `Err` on overflow rather than wrapping. `convert_value`'s
 `String`-to-`Int` arm then falls through to the `%lf`-equivalent
 `scan_double` path exactly as C's own two-scan chain does, but because
@@ -4519,7 +4519,7 @@ applies `MpLck` via `set_map_locked` before the entry-reading loop,
 in the same order as C, so `KeyMap::from_node` on a dump of a locked,
 non-empty KeyMap fails with the same `AST__BADKEY`. Pinned by
 `reloading_a_locked_non_empty_keymap_fails_like_c` in
-`crates/ast-core/src/keymap/serial.rs`.
+`crates/starlink-ast/src/keymap/serial.rs`.
 
 ### RESOLVED (upstream b7135abc): `DumpEntry` reads an `Entry1X` as an `Entry0X` for a zero-length vector, writing pointer bytes as the value
 
@@ -4563,18 +4563,18 @@ with treating it as the scalar C's representation says it is.
 **Rust behavior (not a mirror):** Rust cannot reproduce a
 pointer-aliasing read, and must not reproduce the String crash, so
 the fix lives at the `put_1<X>`/`put_vector` boundary
-(`KeyMap::put_vector`, `crates/ast-core/src/keymap/mod.rs`) rather
+(`KeyMap::put_vector`, `crates/starlink-ast/src/keymap/mod.rs`) rather
 than in the dump path: a zero-length vector is degraded to a scalar
 before it is ever stored, via `entry::degrade_empty_vector`
-(`crates/ast-core/src/keymap/entry.rs`). This stores the same
+(`crates/starlink-ast/src/keymap/entry.rs`). This stores the same
 well-defined value C's degradation happens to produce for every type
 it does not crash on (a numeric zero, a `false`/absent Object), and
 an empty string in place of the `NULL` C cannot safely dump for
 String. `dump_entry`/`push_element` in
-`crates/ast-core/src/keymap/serial.rs` are unaffected: they never see
+`crates/starlink-ast/src/keymap/serial.rs` are unaffected: they never see
 a zero-length vector, because none can exist. Pinned by
 `putting_a_zero_length_vector_degrades_to_a_scalar` in
-`crates/ast-core/src/keymap/serial.rs`.
+`crates/starlink-ast/src/keymap/serial.rs`.
 
 ### RESOLVED (upstream 367a6a6b): `astMapGetElem<X>` reports success on an undefined entry, unlike `astMapGet0<X>` and `astMapGet1<X>`
 
@@ -4635,7 +4635,7 @@ The `[0,10]` ChebyMap above now simplifies to a WinMap with `Scl1 = 0.4` and `Sf
 **Rust behavior:** the divergence was retired at the 9.5.0 sync.
 `ChebyMap::map_merge` runs both of PolyMap's replace-with-simpler halves, passing its own `scale_f` / `offset_f` to the shared `PolyMap::linear_replacement`, and `PolyMap` passes `None`.
 `cheby_linear_lone_reduce` was the port's one `C_DEFECT_EXCLUDED` row; that exclusion's own gate is what reported the fix, and the row is now compared byte for byte like any other.
-Two tests in `crates/ast-core/tests/test_chebymap.rs` pin the two halves separately — `a_linear_chebymap_reduces_with_its_normalisation_folded_in` fails when the normalization is dropped, and `a_linear_chebymap_accumulates_each_outputs_constant_contributions` fails when either array is assigned rather than accumulated.
+Two tests in `crates/starlink-ast/tests/test_chebymap.rs` pin the two halves separately — `a_linear_chebymap_reduces_with_its_normalisation_folded_in` fails when the normalization is dropped, and `a_linear_chebymap_accumulates_each_outputs_constant_contributions` fails when either array is assigned rather than accumulated.
 
 Fixed upstream in `abe5baae`.
 
@@ -4663,7 +4663,7 @@ The `feed >= nout` case two branches down sets `isNull = 1` unconditionally, so 
 `simpler`, set beside it, is the one flag in the loop that can only be cleared.
 
 **Rust behavior:** inverted at the 9.5.0 sync.
-`BoxRegion::simplify_over_permmap` (`crates/ast-core/src/regions/box_region.rs`) accumulates the verdict, matching upstream `83925af2`.
+`BoxRegion::simplify_over_permmap` (`crates/starlink-ast/src/regions/box_region.rs`) accumulates the verdict, matching upstream `83925af2`.
 `cap_box_permmap_null` covers the single-constant case, which is unaffected either way; `cap_box_permmap_null_first` orders the constants so the missing plane is seen first, and the four `simplify_permmap_slice_*` cases in `test_box_region.rs` state the property directly.
 
 Fixed upstream in `83925af2`.
@@ -4699,7 +4699,7 @@ point to `AST__BAD` (`region.c:5546`), so no route to `astSimplify` can present
 a vertex for the untested loop to pass through.
 
 **Rust behavior:** inverted at the 9.5.0 sync.
-`Polygon::simplified` (`crates/ast-core/src/regions/polygon.rs`) tests both axes
+`Polygon::simplified` (`crates/starlink-ast/src/regions/polygon.rs`) tests both axes
 of each transformed vertex and keeps the original Polygon if either is bad.
 
 Fixed upstream in `5613e44d`'s companion `d27cc981`, which carries no test for
@@ -4774,17 +4774,17 @@ neither pole rather than reading what was never written
 (`skyframe.c:7338-7342`).
 
 **Rust behavior:** inverted at the 9.5.0 sync. `CmpFrame::norm_box`
-(`crates/ast-core/src/frames/cmpframe.rs:688-708`) gives the second component's
+(`crates/starlink-ast/src/frames/cmpframe.rs:688-708`) gives the second component's
 predicate that component's own arity and copies the sub-position to the upper
 internal axes. `SkyFrame::norm_box`
-(`crates/ast-core/src/frames/skyframe.rs:1264`) has no analogue of C's read: its
+(`crates/starlink-ast/src/frames/skyframe.rs:1264`) has no analogue of C's read: its
 predicate returns an `AstResult<bool>`, so a failure propagates and the limits are
 left as they arrived.
 
 The gates are `norm_box_delegates_to_a_second_component_of_a_different_size`,
 `norm_box_reaches_a_sky_second_component` and
 `norm_box_bounds_do_not_depend_on_component_order` in
-`crates/ast-core/tests/test_cmpframe.rs`, the last ported from
+`crates/starlink-ast/tests/test_cmpframe.rs`, the last ported from
 `check_normbox_component_order` in
 `reference/starlink-ast/ast_tester/testcmpframe.c`. With the mirror restored all
 three fail, and the ported one fails exactly as the C test does — `AST__NCPIN`
@@ -4799,7 +4799,7 @@ separate port gaps, each of which the C oracle settled:
   ported with it.
 - `SkyFrame::offset` did not constrain the longitude it returns to `0 .. 2*pi`
   (gated by `offset_normalises_the_longitude_it_returns` in
-  `crates/ast-core/tests/test_skyframe.rs`).
+  `crates/starlink-ast/tests/test_skyframe.rs`).
   C calls `palDranrm` on both return paths, commented because `palDcc2s` does not
   do it itself (`skyframe.c:7720` and `:7746`). The mesh a Circle builds by
   repeated `astOffset` therefore has pre-normalized longitudes in C and raw
@@ -4807,7 +4807,7 @@ separate port gaps, each of which the C oracle settled:
 - `CircleBuilder::build` turned a radius into a circumference point by offsetting
   the center one unit along the first axis and walking the geodesic from there
   (gated by `radius_round_trips_exactly_on_a_sky_frame` in
-  `crates/ast-core/tests/test_circle.rs`).
+  `crates/starlink-ast/tests/test_circle.rs`).
   C's `CircumPoint` offsets by `radius`, not by one unit
   (`circle.c:570`, called at `:2655`), and `CalcPars` then defines the Circle's
   radius as the geodesic distance back to that stored point. The offset length is
@@ -4859,11 +4859,11 @@ attribute read (`pcdmap.c:2380`); the ZoomMap the swap creates carries a cleared
 `Invert` flag, so it holds that factor directly.
 
 **Rust behavior:** inverted at the 9.5.0 sync.
-`pcd_swap_pair` (`crates/ast-core/src/mappings/simplify.rs:2931-2987`) takes the
+`pcd_swap_pair` (`crates/starlink-ast/src/mappings/simplify.rs:2931-2987`) takes the
 reciprocal of `zm.zoom()` when the neighbor's list flag is set, and leaves the
 rest of the arithmetic alone.
 The gate is `pcdmap_swap_past_an_inverted_zoommap_preserves_the_transformation`
-in `crates/ast-core/tests/test_pcdmap.rs`, ported from `testpcdzoominverted` in
+in `crates/starlink-ast/tests/test_pcdmap.rs`, ported from `testpcdzoominverted` in
 `reference/starlink-ast/ast_tester/testmapping.c`: it checks that simplification
 leaves the transformation alone over both factors and both directions.
 With the mirror restored it reports the same divergence the C test does — an
@@ -4918,7 +4918,7 @@ inverse-direction neighbor, one carrying the inverse `x = 0.5 y` and the other
 `x = 0.7 y`, simplified to `Begin UnitMap`.
 
 **Rust behavior:** inverted at the 9.5.0 sync.
-`PolyMap::equal` (`crates/ast-core/src/mappings/polymap.rs`) compares the inverse
+`PolyMap::equal` (`crates/starlink-ast/src/mappings/polymap.rs`) compares the inverse
 terms exactly as it compares the forward ones — coefficient values, power
 patterns and output axes — which covers all four of C's inverse arrays at once.
 The `inverse_shape` helper that reduced a term list to `ncoeff_i` and `mxpow_i`
@@ -4928,9 +4928,9 @@ had an equivalent of C's out-of-range read; the shape that exposed it upstream i
 covered by `polymap_with_more_outputs_than_inputs_equals_its_copy`.
 The gates are `polymap_equal_compares_the_inverse_coefficients` and
 `polymap_fitted_inverse_cancels_soundly` in
-`crates/ast-core/tests/test_polymap.rs`, and
+`crates/starlink-ast/tests/test_polymap.rs`, and
 `chebymap_does_not_cancel_when_only_inverse_coefficient_values_differ` in
-`crates/ast-core/tests/test_chebymap.rs` — ChebyMap inherits the comparison,
+`crates/starlink-ast/tests/test_chebymap.rs` — ChebyMap inherits the comparison,
 since `chebymap.c::Equal` calls the PolyMap one before it compares the two
 bounding boxes (`chebymap.c:407-515`).
 The negative fixture `neg_poly_different_inverse_coeffs` now holds.
@@ -4990,7 +4990,7 @@ is finite — which is why the values look right in the bounded case and collaps
 to `0.0` on any axis with a missing limit.
 
 **Rust behavior:** inverted at the 9.5.0 sync.
-`Interval::region_merge`'s PointList arm (`crates/ast-core/src/regions/interval.rs`)
+`Interval::region_merge`'s PointList arm (`crates/starlink-ast/src/regions/interval.rs`)
 reads the uncertainty into its own arrays and tests the Interval's half-width
 against a quarter of the uncertainty width, which is the test `MergeBox` applies
 to a Box's half-width.
@@ -5034,11 +5034,11 @@ The fix applies the same floor, so the half-width on such an axis is `0.5E-12`
 that is not equivalent to a Box, and gets the same floor (`interval.c:690`).
 
 **Rust behavior:** inverted at the 9.5.0 sync.
-`Region::default_bounding_box_unc` (`crates/ast-core/src/regions/mod.rs`) and
-`Interval::get_def_unc` (`crates/ast-core/src/regions/interval.rs`) both apply the
+`Region::default_bounding_box_unc` (`crates/starlink-ast/src/regions/mod.rs`) and
+`Interval::get_def_unc` (`crates/starlink-ast/src/regions/interval.rs`) both apply the
 `0.5E-12` floor.
 `the_default_uncertainty_keeps_a_non_zero_width_at_the_origin` in
-`crates/ast-core/tests/test_regions.rs`, ported from `checkDefaultUncAtOrigin` in
+`crates/starlink-ast/tests/test_regions.rs`, ported from `checkDefaultUncAtOrigin` in
 `reference/starlink-ast/ast_tester/testregions.c`, is the gate; it fails with the
 floor reverted.
 
@@ -5056,6 +5056,6 @@ spanning `-1 .. 1`, C reports the boundary point `1.0` as outside and `0.5` as
 inside; with a zero-width uncertainty Box it reports the PointList's own points as
 outside.
 `membership_uses_the_negated_uncertainty_boundary_rule` in
-`crates/ast-core/tests/test_pointlist.rs` pins all three.
+`crates/starlink-ast/tests/test_pointlist.rs` pins all three.
 
 Fixed upstream in `dc424b56`.

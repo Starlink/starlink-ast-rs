@@ -3,7 +3,7 @@
 Read-only audit of the two compound-Region classes against the C reference.
 
 - C: `reference/starlink-ast/src/cmpregion.c`, `reference/starlink-ast/src/prism.c`
-- Rust: `crates/ast-core/src/regions/cmpregion.rs`, `crates/ast-core/src/regions/prism.rs`
+- Rust: `crates/starlink-ast/src/regions/cmpregion.rs`, `crates/starlink-ast/src/regions/prism.rs`
 
 Classification key:
 

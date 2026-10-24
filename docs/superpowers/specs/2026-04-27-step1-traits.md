@@ -2,7 +2,7 @@
 
 ## Summary
 
-Define the core public API surface of `ast-core`: the `Mapping`, `Frame`,
+Define the core public API surface of `starlink-ast`: the `Mapping`, `Frame`,
 and `Region` traits with full method signatures (bodies unimplemented),
 the expanded error model, `PointSet` (ndarray-backed coordinate block),
 `PointList` (struct only, Region impl deferred), and the `BAD_VALUE`
@@ -23,7 +23,7 @@ constant.
 ## Module Structure
 
 ```
-crates/ast-core/src/
+crates/starlink-ast/src/
 ├── lib.rs              # crate root; re-exports public modules
 ├── constants.rs        # BAD_VALUE
 ├── error.rs            # AstError, AstResult, ErrorCode (generated)
@@ -349,7 +349,7 @@ pub const BAD_VALUE: f64 = -f64::MAX;
 
 ## Dependencies
 
-Add to `crates/ast-core/Cargo.toml`:
+Add to `crates/starlink-ast/Cargo.toml`:
 
 ```toml
 [dependencies]

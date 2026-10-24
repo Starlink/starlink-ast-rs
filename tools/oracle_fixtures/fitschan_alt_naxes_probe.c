@@ -8,9 +8,9 @@
  * axes, and is written with NAXIS = 3. For each: the value astWrite
  * returns and the cards written.
  *
- * Prints Rust source for crates/ast-core/tests/fitschan_alt_naxes_oracle/cases.rs:
+ * Prints Rust source for crates/starlink-ast/tests/fitschan_alt_naxes_oracle/cases.rs:
  *
- *   ./fitschan_alt_naxes_probe > ../../crates/ast-core/tests/fitschan_alt_naxes_oracle/cases.rs
+ *   ./fitschan_alt_naxes_probe > ../../crates/starlink-ast/tests/fitschan_alt_naxes_oracle/cases.rs
  */
 #include <stdio.h>
 #include <string.h>

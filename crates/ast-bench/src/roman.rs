@@ -16,7 +16,7 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use ast_core::coords::{Points, PointsMut};
+use starlink_ast::coords::{Points, PointsMut};
 
 use crate::load::{Loaded, load_fixture};
 
@@ -337,7 +337,7 @@ pub fn run(
             if engines != Engines::C {
                 rust_out = vec![0.0; nout * n];
                 let mut op = || -> Result<(), String> {
-                    let fail = |e: ast_core::error::AstError| format!("{} N={n}: {e}", b.label);
+                    let fail = |e: starlink_ast::error::AstError| format!("{} N={n}: {e}", b.label);
                     let input = Points::new(columns.chunks_exact(n)).map_err(fail)?;
                     let out = PointsMut::new(rust_out.chunks_exact_mut(n)).map_err(fail)?;
                     map.transform_into(input, b.forward, out).map_err(fail)

@@ -260,7 +260,7 @@ twice: `normalize_unitmap_children`, which §10.15 measured as load-bearing, and
 `narrow_unit_scale_winmap_children` at `:90`, gated on
 `PublicSimplifyGuard::is_outermost()`.
 
-Measured at pin `07fbe2dc` with the second call disabled, the whole `ast-core`
+Measured at pin `07fbe2dc` with the second call disabled, the whole `starlink-ast`
 suite is green: 98 test binaries, the 453-fixture simplify corpus, all 194
 `wcsconv` byte comparisons, the native round-trip.
 That is consistent with the narrowing having moved into `win_map_merge`'s final
@@ -404,7 +404,7 @@ The branch is reachable in C because a Frame *can* simplify to a different Frame
 (`cmpframe.c:9019-9034`), and every Region class overrides it too.
 The port cannot express that.
 `NormMap` holds a `DynFrame` (`normmap.rs:42`), `dyn Frame` has no simplify
-method, and `FrameSet` is the only type under `crates/ast-core/src/frames/` that
+method, and `FrameSet` is the only type under `crates/starlink-ast/src/frames/` that
 implements `Mapping` (`frameset.rs:1561`) — so `CmpFrame` has no `simplified` to
 override.
 Closing this means adding the seam, not just the branch.

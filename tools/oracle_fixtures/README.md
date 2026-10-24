@@ -27,7 +27,7 @@ source file.
 
 ## Native-serialization round-trip corpus
 
-`crates/ast-core/tests/fixtures/wcsconv/framesets/` is generated upstream, by
+`crates/starlink-ast/tests/fixtures/wcsconv/framesets/` is generated upstream, by
 `reference/starlink-ast/ast_tester/gen_frameset_fixtures.c`, and mirrored here by
 copying the tree. It used to be generated on this side by `gen_frameset_fixtures.sh`
 driving two local probes, `head2ast` and `ast2ast`; both are gone with it, because
@@ -83,7 +83,7 @@ This is the instrument behind every re-baseline in the simplify corpus, and
 
 ## `check_simplify_fresh.sh` — is the simplify corpus still the pinned C's output?
 
-Captures every row of `crates/ast-core/tests/fixtures/simplify/cases.txt` from
+Captures every row of `crates/starlink-ast/tests/fixtures/simplify/cases.txt` from
 the pinned oracle with `gen_simp` and classifies the difference. `gen_simp` links
 upstream's `oracle_register_intramaps`, so the corpus's IntraMap fixtures load and
 are compared like any other rather than being reported as structural drift:
@@ -220,14 +220,14 @@ patches the copy.
 ## Diffing the port against C
 
 The port emits the same events as `tracing` events under its `tracing` feature,
-from `simplify::trace` in `crates/ast-core/src/mappings/simplify.rs`, on the
+from `simplify::trace` in `crates/starlink-ast/src/mappings/simplify.rs`, on the
 target `ast::simplify`, with the same names and fields in the same order.
 The `simp_one` example installs a subscriber that prints them, so once each
 side's prefix is stripped the merge events diff line for line:
 
 ```shell
 AST_TRACE=1 <scratch>/ast-trace/gen_simp in.map /dev/null 2> c.txt
-cargo run -q -p ast-core --features tracing --example simp_one -- in.map 2> port.txt >/dev/null
+cargo run -q -p starlink-ast --features tracing --example simp_one -- in.map 2> port.txt >/dev/null
 
 EV='MERGE-LIST|MAPMERGE|CMPMAP-|NOMINATE-SKIP|FREEZE'
 grep -E "$EV" c.txt    | sed -E 's/^ +//'                 > c_ev.txt
