@@ -152,7 +152,7 @@ resolver = "2"
 edition = "2024"
 rust-version = "1.85"
 license = "LGPL-3.0-or-later"
-repository = "https://github.com/lsst-dm/starlink-ast-rs"
+repository = "https://github.com/Starlink/starlink-ast-rs"
 
 [workspace.dependencies]
 cc = "1"

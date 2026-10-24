@@ -14,7 +14,7 @@
   the published names carry the project's name, as `starlink-pyast`
   does. The internal crates (`ast-plugins`, `ast-bench`, `ast-ffi-tests`,
   `ast-oracle-tests`) keep their names and are marked `publish = false`.
-  The repository is `lsst-dm/starlink-ast-rs`: the hyphenated `-rs`
+  The repository is `Starlink/starlink-ast-rs`: the hyphenated `-rs`
   suffix is the Rust convention for a C library port's repository, and
   the API guidelines forbid it in a crate name.
 - **2026-10-22 (rev 38)**: `convert_to` and `find_frame_template` move
@@ -403,7 +403,7 @@
     internal transforms use ERFA's two-double-precision API without
     changing the public `f64` interface.
 - **2026-04-24 (rev 3)**: further review decisions from
-  [lsst-dm/starlink-ast-rs#2](https://github.com/lsst-dm/starlink-ast-rs/pull/2):
+  [Starlink/starlink-ast-rs#2](https://github.com/Starlink/starlink-ast-rs/pull/2):
   - Open questions closed:
     - generics-over-`Frame` is dropped (not appropriate for this port's
       goals, per @TallJimbo).
@@ -430,7 +430,7 @@
     domain conflation; double-precision time axes) that cannot be
     fixed while preserving the C ABI.
 - **2026-04-24 (rev 2)**: incorporates review feedback from
-  [lsst-dm/starlink-ast-rs#2](https://github.com/lsst-dm/starlink-ast-rs/pull/2).
+  [Starlink/starlink-ast-rs#2](https://github.com/Starlink/starlink-ast-rs/pull/2).
   Major changes:
   - Mutability model flipped from immutable+Arc (v1 option A) to
     owned-values with `&mut self` mutation (v1 option B). Driven by
@@ -630,7 +630,7 @@ repo entirely.
 
 `cminpack` is **not** copied across — it is retired in favor of the
 `levenberg-marquardt` crate (already validated in the prototype port
-at lsst-dm/starlink-ast-rs). Before retirement, fixture-level validation
+at Starlink/starlink-ast-rs). Before retirement, fixture-level validation
 confirms Rust-LM output matches cminpack output to within fitting
 tolerances; the cminpack source we validate against lives inside the
 reference submodule and is not vendored into the new repo.

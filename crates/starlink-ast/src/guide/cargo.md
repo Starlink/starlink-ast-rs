@@ -4,7 +4,7 @@ Add the library to the `[dependencies]` of your `Cargo.toml`:
 
 ```toml
 [dependencies]
-starlink-ast = { git = "https://github.com/lsst-dm/starlink-ast-rs" }
+starlink-ast = { git = "https://github.com/Starlink/starlink-ast-rs" }
 ```
 
 The crate is not yet published on crates.io, so it is taken from its repository.
