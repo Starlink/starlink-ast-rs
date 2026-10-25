@@ -23,7 +23,7 @@ Each crate is versioned on its own, and each release is one commit on `main` and
 
 5. Run the full suite, `cargo test -p starlink-ast --no-fail-fast`, and the tier 3 and 4 checks when the submodule is present.
 6. Commit as `starlink-ast: release <version>`, tag the commit `starlink-ast-v<version>`, and push both.
-7. Pushing the tag runs `.github/workflows/release.yml`, which publishes the crate.
+7. Pushing the tag runs `.github/workflows/release.yml`, which runs the CI workflow on the tagged commit and, if it passes, publishes the crate.
    It authenticates with crates.io Trusted Publishing, exchanging a GitHub OIDC token for a short-lived publish token, so no crates.io token is stored in the repository.
    It refuses a tag whose version differs from the crate's `Cargo.toml`, and does nothing if that version is already on crates.io.
 

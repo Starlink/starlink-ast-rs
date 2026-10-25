@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release.yml runs this whole workflow on the tagged commit before it
+  # publishes, so a release is gated on the same checks as a pull request.
+  workflow_call:
 
 env:
   CARGO_TERM_COLOR: always

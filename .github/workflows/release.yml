@@ -4,7 +4,8 @@ name: Release
 # Authentication is crates.io Trusted Publishing: the job exchanges a GitHub
 # OIDC token for a short-lived crates.io token, so no secret is stored in the
 # repository.  crates.io must have this repository and workflow file registered
-# as a trusted publisher for the crate (docs/releasing.md).
+# as a trusted publisher for the crate (docs/releasing.md). Nothing is
+# published unless the CI workflow passes on the tagged commit.
 
 on:
   push:
@@ -16,7 +17,15 @@ env:
   CRATE: starlink-ast
 
 jobs:
+  # The same checks a pull request gets, run on the tagged commit: tiers 1 and
+  # 2, clippy, fmt, docs, the fixture mirror, and the archive's own tests.
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   publish:
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       # Needed to request the OIDC token that crates.io exchanges for a
