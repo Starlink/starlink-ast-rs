@@ -33,8 +33,12 @@ __pycache__/
 # Editors
 .vscode
 
-# Agents
-.claude
+# Agents: ignore per-user Claude Code state, keep the shareable parts
+.claude/*
+!.claude/settings.json
+!.claude/commands/
+!.claude/skills/
+!.claude/agents/
 
 # Probe programs built from tools/oracle_fixtures/*.c
 /tools/oracle_fixtures/*_probe
