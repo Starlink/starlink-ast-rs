@@ -83,6 +83,7 @@ fn guess_encoding_class() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn guess_encoding_dss() {
     // dss.dss has PLTRAH keyword -> Dss
     let text = load_fixture("wcsconv/expected/dss.dss");
@@ -162,6 +163,7 @@ fn read_class_produces_frameset() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn read_dss_produces_frameset() {
     let text = load_fixture("wcsconv/expected/dss.dss");
     let mut fc = FitsChan::from_header(&text).unwrap();
@@ -234,6 +236,7 @@ fn pc_frameset_has_sky() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn dss_frameset_has_sky() {
     // DSS should produce a 2D FrameSet with FK5 coordinates.
     let text = load_fixture("wcsconv/expected/dss.dss");

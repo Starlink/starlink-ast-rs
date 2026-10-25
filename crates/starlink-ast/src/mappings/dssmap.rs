@@ -1226,6 +1226,7 @@ mod tests {
     /// reference libast; the expected transform value is the C `astTran2` output
     /// for the same object (oracle-verified).
     #[test]
+    #[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
     fn dssmap_reads_c_written_native_dump() {
         let path = format!(
             "{}/tests/fixtures/serialisation/c_dssmap.ast",

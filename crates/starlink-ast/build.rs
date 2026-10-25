@@ -10,11 +10,63 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let vendor_dir = manifest_dir.join("vendor");
 
+    declare_dist_tier(&manifest_dir);
     compile_pal_erfa(&vendor_dir);
     compile_wcslib(&vendor_dir);
     generate_error_codes(&vendor_dir);
     generate_wcsconv_tests(&manifest_dir);
     generate_guide(&manifest_dir);
+}
+
+/// Tell every target of the crate which distribution tier this tree is, as
+/// `cfg(ast_dist_tier = "full")` or `cfg(ast_dist_tier = "cutdown")`.
+///
+/// The published archive carries the subset of `tests/fixtures/` that
+/// `tests/fixtures/DIST_MANIFEST` names, as the C library's default
+/// `make dist` does: enough to show that a build works, without the corpora
+/// that exist to catch library defects. `cargo package` can leave a file out
+/// but cannot write one, so the marker runs the other way from C's
+/// `fixtures/DIST_TIER`, which the dist hook writes into the tarball:
+/// `tests/DIST_TIER` is committed, says `full`, and is left out of the
+/// archive, and its absence is what makes a tree cut down.
+///
+/// A test that reads a fixture the manifest does not ship, or that reads the
+/// repository outside this crate, carries
+/// `#[cfg_attr(ast_dist_tier = "cutdown", ignore = "...")]`, so a run from the
+/// archive reports it as ignored, the way the C suite reports a test it did
+/// not register, rather than failing on a file left out on purpose.
+/// `tests/test_dist_manifest.rs` keeps the manifest and the `include` list in
+/// `Cargo.toml` the same.
+fn declare_dist_tier(manifest_dir: &Path) {
+    println!("cargo::rustc-check-cfg=cfg(ast_dist_tier, values(\"full\", \"cutdown\"))");
+    let marker = manifest_dir.join("tests/DIST_TIER");
+    let tier = match fs::read_to_string(&marker) {
+        Ok(text) => {
+            // Watched only while it exists: cargo treats a watched file that
+            // is missing as always changed, which would rerun this script,
+            // and so recompile the vendored C, on every build of a cut-down
+            // tree.
+            println!("cargo::rerun-if-changed={}", marker.display());
+            let tier = text.trim().to_string();
+            assert_eq!(tier, "full", "{}: expected `full`", marker.display());
+            tier
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // A cut-down tree without its manifest cannot tell a fixture left
+            // out on purpose from one that went missing, so every omission
+            // would look deliberate. Refuse, as the C CMake build does.
+            let manifest = manifest_dir.join("tests/fixtures/DIST_MANIFEST");
+            assert!(
+                manifest.is_file(),
+                "tests/DIST_TIER is absent, so this is a cut-down distribution, \
+                 but {} is missing: the archive is malformed",
+                manifest.display()
+            );
+            "cutdown".to_string()
+        }
+        Err(e) => panic!("{}: {e}", marker.display()),
+    };
+    println!("cargo::rustc-cfg=ast_dist_tier=\"{tier}\"");
 }
 
 /// Read `tests/fixtures/wcsconv/cases.txt` and emit one
@@ -59,8 +111,12 @@ fn generate_wcsconv_tests(manifest_dir: &Path) {
             continue;
         }
         let fn_name = sanitise_test_name(name);
+        // The cases' expected outputs are not in the distributed fixture
+        // subset (`declare_dist_tier`).
         out.push_str(&format!(
-            "    #[test]\n    fn {fn_name}() {{ run_named_case({name:?}); }}\n"
+            "    #[test]\n    \
+             #[cfg_attr(ast_dist_tier = \"cutdown\", ignore = \"fixture not distributed\")]\n    \
+             fn {fn_name}() {{ run_named_case({name:?}); }}\n"
         ));
     }
     out.push_str("}\n");

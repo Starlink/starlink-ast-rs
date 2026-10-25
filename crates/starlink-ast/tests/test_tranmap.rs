@@ -471,6 +471,7 @@ fn clone_produces_independent_copy() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_invert_normalize_fixture_roundtrip() {
     // Verify that simplifying the tranmap_invert_normalize fixture
     // produces byte-exact output matching the C reference.

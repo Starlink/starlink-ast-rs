@@ -291,6 +291,7 @@ fn pcdmap_serialization_zero_disc() {
 // ------------------------------------------------------------------ //
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn pcdmap_deserialize_fixture() {
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),

@@ -72,6 +72,7 @@ fn is_copyright(line: &str) -> bool {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "needs the source repository")]
 fn every_source_file_opens_with_the_copyright_and_license() {
     let root = repo_root();
     let mut files = Vec::new();

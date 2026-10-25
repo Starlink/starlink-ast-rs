@@ -181,6 +181,7 @@ fn verdict_is_valid(verdict: &str) -> bool {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "needs the source repository")]
 fn every_audited_class_has_a_checklist() {
     let missing: Vec<String> = audit_universe()
         .into_iter()
@@ -195,6 +196,7 @@ fn every_audited_class_has_a_checklist() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "needs the source repository")]
 fn every_checklist_row_has_a_verdict() {
     let mut bad = Vec::new();
     for stem in audit_universe() {
@@ -224,6 +226,7 @@ fn every_checklist_row_has_a_verdict() {
 /// No checklist may sit in the directory without a class in the universe that
 /// claims it. A stale file is a checklist nothing audits any more.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "needs the source repository")]
 fn no_checklist_is_orphaned() {
     let universe = audit_universe();
     let orphans: Vec<String> = module_stems(&audit_dir())
@@ -336,6 +339,7 @@ fn installs_simplify_seam(line: &str) -> bool {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "needs the source repository")]
 fn every_c_simplify_seam_is_covered() {
     let universe = audit_universe();
     let mut bad = Vec::new();
@@ -399,6 +403,7 @@ fn every_c_simplify_seam_is_covered() {
 /// move that adds or removes a seam fails here instead of passing unnoticed.
 /// Tier 1 runs without the submodule, where the committed list stands alone.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "needs the source repository")]
 fn the_c_seam_list_matches_the_c_source() {
     let src = repo_root().join("reference/starlink-ast/src");
     if !src.is_dir() {

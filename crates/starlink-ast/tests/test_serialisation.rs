@@ -1374,6 +1374,7 @@ const FRAMESET_FIXTURE_EXCLUDED: &[(&str, &str)] = &[];
 /// keyword-card form, so when this corpus is byte-exact the FitsChan
 /// `native` wcsconv cases follow.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn native_byte_exact_round_trip_frameset_fixtures() {
     let fixture_dir = std::path::PathBuf::from(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -1432,6 +1433,7 @@ fn native_byte_exact_round_trip_frameset_fixtures() {
 /// reading one back needs a FitsChan and the encoding it was written with, which
 /// is what the wcsconv harness already does.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn native_byte_exact_round_trip_serialisation_fixtures() {
     let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
     let fixture_dir = root.join("serialisation");
@@ -1498,6 +1500,7 @@ fn native_byte_exact_round_trip_serialisation_fixtures() {
 
 /// Every `ROUND_TRIP_EXCLUDED` entry still names a fixture that fails.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn round_trip_exclusions_still_fail() {
     let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
     let mut now_passing = Vec::new();

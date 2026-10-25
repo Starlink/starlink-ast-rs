@@ -432,6 +432,7 @@ fn test_ratemap_serialization_default_axes() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn test_ratemap_read_fixture_inverse_cancel() {
     // Read the ratemap_inverse_cancel.map fixture (CmpMap with two RateMaps).
     let input =
@@ -445,6 +446,7 @@ fn test_ratemap_read_fixture_inverse_cancel() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn test_ratemap_read_fixture_simplify_interior() {
     // Read the ratemap_simplify_interior.map fixture.
     let input =
@@ -461,6 +463,7 @@ fn test_ratemap_read_fixture_simplify_interior() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn test_ratemap_simplify_inverse_cancel_fixture() {
     // The fixture: CmpMap(RateMap(ZoomMap(2)), inv(RateMap(ZoomMap(2))), series)
     // Should simplify to UnitMap(1).
@@ -480,6 +483,7 @@ fn test_ratemap_simplify_inverse_cancel_fixture() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn test_ratemap_simplify_interior_fixture() {
     // The fixture: RateMap(CmpMap(ZoomMap(2), ZoomMap(3), series), ax1=1, ax2=1)
     // Should simplify to RateMap(ZoomMap(6), ax1=1, ax2=1).
@@ -509,6 +513,7 @@ fn test_ratemap_simplify_interior_fixture() {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn test_ratemap_neg_nonratemap_neighbour() {
     // RateMap in series with a non-RateMap → no cancellation.
     let input =
@@ -526,6 +531,7 @@ fn test_ratemap_neg_nonratemap_neighbour() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn test_ratemap_neg_different_inner() {
     // Two RateMaps with different encapsulated mappings → no cancellation.
     let input =
@@ -541,6 +547,7 @@ fn test_ratemap_neg_different_inner() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn test_ratemap_neg_parallel() {
     // Two RateMaps in parallel → no cancellation (only series cancels).
     let input =

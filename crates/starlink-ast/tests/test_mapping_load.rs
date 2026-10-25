@@ -87,6 +87,7 @@ fn permmap_dumps_match_the_c_library() {
 /// 13 plate solution coefficients on an axis is an AST__RDERR error, as C's
 /// loader reports; a later coefficient defaults to 0 (dssmap.c Load).
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn a_dssmap_dump_needs_its_plate_solution() {
     let dump = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),

@@ -86,12 +86,18 @@ fn template_matches_a_plain_cmpframe_as_c_does() {
 /// same Frame. `specfluxframe_swapped.native` is the C library's `astShow`
 /// of the Frame built here.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn native_dump_matches_the_c_library() {
     let mut s = SpecFluxFrame::new(spec("GHz"), flux());
     Frame::set_title(&mut s, "MyT").unwrap();
     s.perm_axes(&[2, 1]).unwrap();
     let text = native_dump(&starlink_ast::AnyObject::SpecFluxFrame(Box::new(s.clone()))).unwrap();
-    assert_eq!(text, include_str!("fixtures/specfluxframe_swapped.native"));
+    let want = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/specfluxframe_swapped.native"
+    ))
+    .unwrap();
+    assert_eq!(text, want);
 
     let starlink_ast::AnyObject::SpecFluxFrame(back) =
         starlink_ast::from_native_string(&text).unwrap()

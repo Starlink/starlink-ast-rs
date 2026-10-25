@@ -115,6 +115,7 @@ fn frame_class_in_a_map_slot(text: &str) -> Option<String> {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn frame_in_a_map_slot_is_rejected() {
     for (name, reason) in FRAME_IN_MAP_SLOT_DECLINED {
         let path = fixtures().join(name);
@@ -148,6 +149,7 @@ fn frame_in_a_map_slot_is_rejected() {
 /// corpus is full of it. The floor keeps the refusal above narrow: it fails if
 /// anyone closes the gap by refusing Frames in Mapping slots wholesale.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn a_region_inside_a_cmpmap_still_reads() {
     let corpus = fixtures().join("simplify");
     let mut read = 0usize;
@@ -180,6 +182,7 @@ fn a_region_inside_a_cmpmap_still_reads() {
 /// in that corpus is a Region's own Frame, the opposite nesting — so the
 /// reference product beside this test is what covers it.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn a_region_inside_a_cmpframe_still_reads() {
     let path = fixtures().join("serialisation/region_in_cmpframe.ast");
     let text = std::fs::read_to_string(&path)

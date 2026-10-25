@@ -3534,6 +3534,7 @@ fn setunc_fixture_map(name: &str) -> String {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn set_uncertainty_unitmap_clears_region_fs() {
     // Oracle: setunc_unitmap_regionfs_omitted. Region and uncertainty share a
     // plain 2-D Frame, so the remap into the region's base Frame is a UnitMap.
@@ -3561,6 +3562,7 @@ fn set_uncertainty_unitmap_clears_region_fs() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn set_uncertainty_negates_unbounded() {
     // Oracle: setunc_unbounded_negated. A negated (hence unbounded) uncertainty
     // Box is supplied; C negates it again (region.c:10856) to restore a bounded
@@ -3635,6 +3637,7 @@ fn defunc_native(region: &dyn Region) -> String {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn get_def_unc_interval_unbounded() {
     // Oracle: defunc_interval_unbounded. A 2-D Interval with a bounded axis 1
     // ([5, 8]) and a half-open axis 2 (no upper limit) is not Box-equivalent,
@@ -3654,6 +3657,7 @@ fn get_def_unc_interval_unbounded() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn get_def_unc_nullregion_is_zero_circle() {
     // Oracle: defunc_nullregion_2d. NullRegion::get_def_unc (nullregion.c:170)
     // is a zero-radius Circle centered on the origin, not the base-class
@@ -3670,6 +3674,7 @@ fn get_def_unc_nullregion_is_zero_circle() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn get_def_unc_prism_combines_components() {
     // Oracle: defunc_prism_box_interval. Prism::get_def_unc (prism.c:1207) is a
     // Prism of the two component default uncertainties (Box's and Interval's).
@@ -3694,6 +3699,7 @@ fn get_def_unc_prism_combines_components() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn get_def_unc_cmpregion_uses_component_uncertainty() {
     // Oracle: defunc_cmpregion_component_unc. CmpRegion::get_def_unc
     // (cmpregion.c:1090) returns the first component's uncertainty when that
@@ -3856,6 +3862,7 @@ fn simpstab_simplified_native(map_name: &str) -> String {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_stability_box_linear_unc() {
     // Oracle: simpstab_box_linear_unc. A Box mapped through a ZoomMap (factor 2)
     // carries an uncertainty Box whose base->current FrameSet is that same
@@ -3869,6 +3876,7 @@ fn simplify_stability_box_linear_unc() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_stability_box_nonlinear_unc() {
     // Oracle: simpstab_box_nonlinear_unc. The uncertainty is mapped through a
     // per-axis monotonic MathMap (squaring). astSimplify locally linearizes and
@@ -3881,6 +3889,7 @@ fn simplify_stability_box_nonlinear_unc() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_stability_permmap_slice_unc() {
     // Oracle: simpstab_permmap_slice_unc. The Region is mapped through a PermMap
     // that drops an axis (2-D -> 1-D), so nin != nout and the stability check
@@ -3901,6 +3910,7 @@ fn simplify_stability_permmap_slice_unc() {
 // ============================================================================
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_circle_conformal_keeps_circle() {
     // Oracle: cefit_circle_conformal. A Circle mapped through an isotropic
     // ZoomMap. astBestCircle re-fits and astRegPins confirms the boundary, so
@@ -3920,6 +3930,7 @@ fn simplify_circle_conformal_keeps_circle() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_circle_to_ellipse() {
     // Oracle: cefit_circle_to_ellipse. A Circle mapped through an anisotropic
     // (diagonal 2,1) MatrixMap becomes an ellipse. astBestCircle fails
@@ -3932,6 +3943,7 @@ fn simplify_circle_to_ellipse() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_ellipse_to_circle() {
     // Oracle: cefit_ellipse_to_circle. An Ellipse mapped through a diagonal
     // (1,2) MatrixMap that rescales it back to a circular boundary. Ellipse
@@ -3944,6 +3956,7 @@ fn simplify_ellipse_to_circle() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_circle_nonconformal_keeps_circle() {
     // Oracle: cefit_circle_nonconformal_keep. A Circle mapped through a
     // non-linear MathMap warps the boundary into a non-elliptical closed curve.
@@ -3964,6 +3977,7 @@ fn simplify_circle_nonconformal_keeps_circle() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_regbasepick_circle_permaxes() {
     // Oracle: regbasepick_circle_permaxes. A Circle mapped through a PermMap
     // that swaps the two axes. The Circle class cannot be axis-sliced by
