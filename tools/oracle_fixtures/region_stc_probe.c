@@ -1,0 +1,261 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
+/* region_stc_probe -- capture StcResourceProfile (stc.c, stcresourceprofile.c):
+ * dumps of a plain, a negated and a sky Stc whose AstroCoords Error Region is
+ * given in another SkyFrame (astInitStc and MakeAstroCoordsKeyMap remap and
+ * simplify it); an Stc made from an Stc whose base->current Mapping is a
+ * ZoomMap (astInitStc maps the encapsulated Region into its current Frame);
+ * the Simplify of that mapped Stc; two test points transformed by each Stc and
+ * whether it is bounded; the overlap of an Stc with a Circle each way round;
+ * the AstroCoords element astGetStcCoord gives; and the error status of an
+ * AstroCoords index out of range and of an unknown AstroCoords key. Also
+ * the other Stc classes: an StcSearchLocation, an StcCatalogEntryLocation
+ * with the sky AstroCoords, and an StcObsDataLocation with an observatory
+ * position (the protected astStcSetObs) and without one. Each
+ * dump is also read back and written again: astLoadStc gives an AstroCoords
+ * Region with no Frame of its own the Stc's base Frame and stores it again
+ * with its comment, so that dump can differ from the first. Each is also
+ * dumped with Full set to 1, which writes every unset value.
+ *
+ * Prints Rust source for crates/starlink-ast/tests/region_stc_oracle/cases.rs:
+ *
+ *   ./region_stc_probe > ../../crates/starlink-ast/tests/region_stc_oracle/cases.rs
+ */
+#include <stdio.h>
+#include <string.h>
+#include "ast.h"
+
+extern AstRegion *astMapRegion_( AstRegion *, AstMapping *, AstFrame *, int * );
+extern AstObject *astMakeId_( AstObject *, int * );
+extern void astStcSetObs_( AstStcObsDataLocation *, AstPointList *, int * );
+
+static char dump[ 80000 ];
+
+static void sink( const char *line ) {
+   strcat( dump, line );
+   strcat( dump, "\n" );
+}
+
+static void str( const char *s ) {
+   putchar( '"' );
+   for( ; *s; s++ ) {
+      if( *s == '\n' ) {
+         printf( "\\n" );
+      } else {
+         if( *s == '"' || *s == '\\' ) putchar( '\\' );
+         putchar( *s );
+      }
+   }
+   putchar( '"' );
+}
+
+static char reloaded_text[ 80000 ];
+static const char *next_line;
+
+static const char *source( void ) {
+   static char line[ 4000 ];
+   const char *nl;
+   size_t n;
+   if( !next_line || !*next_line ) return NULL;
+   nl = strchr( next_line, '\n' );
+   n = nl ? (size_t)( nl - next_line ) : strlen( next_line );
+   memcpy( line, next_line, n );
+   line[ n ] = 0;
+   next_line = nl ? nl + 1 : next_line + n;
+   return line;
+}
+
+static const char *dumped( AstObject *obj );
+
+/* Read `text` back and dump what is read. */
+static const char *reloaded( const char *text ) {
+   AstChannel *ch;
+   AstObject *obj;
+   strcpy( reloaded_text, text );
+   next_line = reloaded_text;
+   ch = astChannel( source, NULL, " " );
+   obj = astRead( ch );
+   ch = astAnnul( ch );
+   return dumped( obj );
+}
+
+static const char *dumped( AstObject *obj ) {
+   AstChannel *ch;
+   dump[ 0 ] = 0;
+   ch = astChannel( NULL, sink, " " );
+   astWrite( ch, obj );
+   ch = astAnnul( ch );
+   return dump;
+}
+
+/* Sink for a dump written with Full set to 1, leaving out the lines that
+   hold the state of the C process rather than of the Object: the unset
+   RefCnt and Nobj of the Object part (object.c Dump). */
+static void full_sink( const char *line ) {
+   char key[ 32 ];
+   if( sscanf( line, "# %31[A-Za-z] = ", key ) == 1 &&
+       ( !strcmp( key, "RefCnt" ) || !strcmp( key, "Nobj" ) ) ) return;
+   sink( line );
+}
+
+/* `(name, dump written with Full set to 1)` entries, printed after CASES. */
+static char full_dumps[ 400000 ];
+
+static void full_dump( const char *name, AstObject *obj ) {
+   AstChannel *ch;
+   char *out = full_dumps + strlen( full_dumps );
+   const char *c;
+   dump[ 0 ] = 0;
+   ch = astChannel( NULL, full_sink, "Full=1" );
+   astWrite( ch, obj );
+   ch = astAnnul( ch );
+   out += sprintf( out, "    (\"%s\", \"", name );
+   for( c = dump; *c; c++ ) {
+      if( *c == '\n' ) {
+         out += sprintf( out, "\\n" );
+      } else {
+         if( *c == '"' || *c == '\\' ) *out++ = '\\';
+         *out++ = *c;
+      }
+   }
+   sprintf( out, "\"),\n" );
+}
+
+/* A double as a Rust f64 literal. */
+static void num( double v ) {
+   char buf[ 40 ];
+   sprintf( buf, "%.17g", v );
+   printf( "%s%s", buf, strpbrk( buf, ".en" ) ? "" : ".0" );
+}
+
+/* One Stc: `(name, dump, that dump read back and dumped, the two test
+   points transformed, bounded)`. */
+static void emit( const char *name, AstObject *stc, double x[ 2 ], double y[ 2 ] ) {
+   double xout[ 2 ], yout[ 2 ];
+   int i;
+   astTran2( stc, 2, x, y, 1, xout, yout );
+   full_dump( name, stc );
+   static char first[ 80000 ];
+   printf( "    (\"%s\",\n        ", name );
+   strcpy( first, dumped( stc ) );
+   str( first );
+   printf( ",\n        " );
+   str( reloaded( first ) );
+   printf( ",\n        [" );
+   for( i = 0; i < 2; i++ ) {
+      printf( "[" );
+      num( x[ i ] );
+      printf( ", " );
+      num( y[ i ] );
+      printf( ", " );
+      num( xout[ i ] );
+      printf( ", " );
+      num( yout[ i ] );
+      printf( "]%s", i ? "" : ", " );
+   }
+   printf( "],\n        %s),\n", astGetI( stc, "Bounded" ) ? "true" : "false" );
+}
+
+int main( void ) {
+   int status = 0;
+   double c[ 2 ], r;
+   double xin[ 2 ] = { 0.0, 5.0 }, yin[ 2 ] = { 0.0, 0.0 };
+   double sx[ 2 ] = { 1.0, 1.1 }, sy[ 2 ] = { 0.5, 0.5 };
+   double zx[ 2 ] = { 0.0, 3.0 }, zy[ 2 ] = { 0.0, 0.0 };
+   const char *names[ 2 ] = { "RA", "Dec" };
+   AstRegion *circle, *sky, *err, *big;
+   AstStcResourceProfile *plain, *neg, *skystc, *fromstc;
+   AstKeyMap *coord, *bad, *got;
+   AstRegion *mapped;
+   AstObject *mappedid, *simp;
+   AstStcSearchLocation *search;
+   AstStcCatalogEntryLocation *entry;
+   AstStcObsDataLocation *obsdata, *noobs;
+   AstPointList *obs;
+   double obspt[ 3 ] = { 1.0, 2.0, 3.0 };
+
+   astWatch( &status );
+   printf( "// Generated by tools/oracle_fixtures/region_stc_probe.c. Do not edit.\n\n" );
+
+   c[ 0 ] = 0.0;
+   c[ 1 ] = 0.0;
+   r = 1.0;
+   circle = (AstRegion *) astCircle( astFrame( 2, " " ), 1, c, &r, NULL, " " );
+   plain = astStcResourceProfile( circle, 0, NULL, " " );
+   neg = astCopy( plain );
+   astNegate( neg );
+
+   c[ 0 ] = 1.0;
+   c[ 1 ] = 0.5;
+   r = 0.01;
+   sky = (AstRegion *) astCircle( astSkyFrame( " " ), 1, c, &r, NULL, " " );
+   c[ 0 ] = 2.0;
+   c[ 1 ] = -0.3;
+   r = 0.0001;
+   err = (AstRegion *) astCircle( astSkyFrame( "System=Galactic" ), 1, c, &r, NULL, " " );
+   coord = astKeyMap( " " );
+   astMapPut1C( coord, AST__STCNAME, 2, names, NULL );
+   astMapPut0A( coord, AST__STCERROR, err, NULL );
+   skystc = astStcResourceProfile( sky, 1, &coord, " " );
+
+   mapped = astMapRegion_( astMakePointer( plain ), astMakePointer( astZoomMap( 2, 2.0, " " ) ),
+                           astMakePointer( astFrame( 2, "Domain=ZOOMED" ) ), &status );
+   mappedid = astMakeId_( (AstObject *) mapped, &status );
+   fromstc = astStcResourceProfile( mappedid, 0, NULL, " " );
+   simp = astSimplify( mappedid );
+
+   printf( "/// `(case, dump, that dump read back and dumped, two test points as\n" );
+   printf( "/// `[x, y, x out, y out]`, Bounded)`.\n" );
+   printf( "pub type Case = (&'static str, &'static str, &'static str, [[f64; 4]; 2], bool);\n" );
+   printf( "pub const CASES: &[Case] = &[\n" );
+   emit( "plain", (AstObject *) plain, xin, yin );
+   emit( "negated", (AstObject *) neg, xin, yin );
+   emit( "sky", (AstObject *) skystc, sx, sy );
+   emit( "mapped", mappedid, zx, zy );
+   emit( "from_mapped", (AstObject *) fromstc, zx, zy );
+   emit( "mapped_simplified", simp, zx, zy );
+
+   search = astStcSearchLocation( circle, 0, NULL, " " );
+   emit( "search", (AstObject *) search, xin, yin );
+   entry = astStcCatalogEntryLocation( sky, 1, &coord, " " );
+   emit( "catalog_entry", (AstObject *) entry, sx, sy );
+   noobs = astStcObsDataLocation( circle, 0, NULL, " " );
+   emit( "obs_data_without_obs", (AstObject *) noobs, xin, yin );
+   obsdata = astStcObsDataLocation( circle, 0, NULL, " " );
+   obs = astPointList( astFrame( 3, "Domain=GEO" ), 1, 3, 1, obspt, NULL, " " );
+   astStcSetObs_( astMakePointer( obsdata ), astMakePointer( obs ), &status );
+   emit( "obs_data", (AstObject *) obsdata, xin, yin );
+   printf( "];\n\n" );
+   printf( "/// `(case, dump written with Full = 1, less the unset RefCnt and Nobj)`.\n" );
+   printf( "pub const FULL_DUMPS: &[(&str, &str)] = &[\n%s];\n\n", full_dumps );
+
+   c[ 0 ] = 0.0;
+   c[ 1 ] = 0.0;
+   r = 2.0;
+   big = (AstRegion *) astCircle( astFrame( 2, " " ), 1, c, &r, NULL, " " );
+   printf( "/// astOverlap of the plain Stc with a Circle of radius 2 about its centre.\n" );
+   printf( "pub const OVERLAP_STC_CIRCLE: i32 = %d;\n", astOverlap( plain, big ) );
+   printf( "/// astOverlap of that Circle with the plain Stc.\n" );
+   printf( "pub const OVERLAP_CIRCLE_STC: i32 = %d;\n\n", astOverlap( big, plain ) );
+
+   got = astGetStcCoord( skystc, 1 );
+   printf( "/// astGetStcNCoord and astGetStcCoord( 1 ) of the sky Stc.\n" );
+   printf( "pub const SKY_NCOORD: i32 = %d;\n", astGetStcNCoord( skystc ) );
+   printf( "pub const SKY_COORD: &str = " );
+   str( dumped( (AstObject *) got ) );
+   printf( ";\n\n" );
+
+   printf( "/// The status of astGetStcCoord( 2 ) on the sky Stc.\n" );
+   astGetStcCoord( skystc, 2 );
+   printf( "pub const COORD_INDEX: i32 = %d;\n", status );
+   astClearStatus;
+   bad = astKeyMap( " " );
+   astMapPut0A( bad, "Colour", err, NULL );
+   printf( "/// The status of astStcResourceProfile given an unknown AstroCoords key.\n" );
+   astStcResourceProfile( sky, 1, &bad, " " );
+   printf( "pub const COORD_KEY: i32 = %d;\n", status );
+   astClearStatus;
+
+   return 0;
+}

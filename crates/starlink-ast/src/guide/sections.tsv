@@ -1,0 +1,220 @@
+97	1	Introduction
+110	2	What Problems Does AST Tackle?
+187	2	Other Design Objectives
+277	2	What Does "AST" Stand For?
+286	1	Overview of AST Concepts
+292	2	Relationships Between Coordinate Systems
+334	2	Mappings Available
+399	2	Compound Mappings
+482	2	Representing Coordinate Systems
+573	2	Networks of Coordinate Systems
+619	2	Input/Output Facilities
+681	2	Producing Graphical Output
+750	1	How To...
+767	2	... Obtain and Install AST
+777	2	... Structure an AST Program
+841	2	... Build an AST Program
+899	2	... Read a WCS Calibration from a Dataset
+1016	2	... Validate WCS Information
+1071	2	... Display AST Data
+1106	2	... Convert Between Pixel and World Coordinates
+1182	2	... Test if a WCS is a Celestial Coordinate System
+1245	2	... Test if a WCS is a Spectral Coordinate System
+1263	2	... Format Coordinates for Display
+1338	2	... Display Coordinates as they are Transformed
+1401	2	... Read Coordinates Entered by a User
+1565	2	... Create a New WCS Calibration
+1668	2	... Modify a WCS Calibration
+1882	2	... Write a Modified WCS Calibration to a Dataset
+2138	2	... Display a Graphical Coordinate Grid
+2409	2	... Switch to Plot a Different Celestial Coordinate Grid
+2466	2	... Give a User Control Over the Appearance of a Plot
+2587	1	An AST Object Primer
+2631	2	AST Objects
+2648	2	Object Creation and Pointers
+2733	2	The Object Hierarchy
+2808	2	Displaying Objects
+2884	2	Getting Attribute Values
+3011	2	Setting Attribute Values
+3240	2	Testing, Clearing and Defaulting Attributes
+3340	2	Transforming Coordinates
+3541	2	Managing Object Pointers
+3609	2	AST Pointer Contexts — Begin and End
+3723	2	Exporting, Importing and Exempting AST Pointers
+3832	2	AST Objects within Multi-threaded Applications
+3913	2	Copying Objects
+3973	2	C Pointer Types
+4090	2	Error Detection
+4350	2	Sharing the Error Status
+4387	1	Inter-Relating Coordinate Systems (Mappings)
+4402	2	The Mapping Class
+4454	2	The Mapping Model
+4463	2	Changing Attributes of a Mapping
+4486	2	Input and Output Coordinate Numbers
+4543	2	Forward and Inverse Transformations
+4565	2	Inverting Mappings
+4629	2	Finding the Rate of Change of a Mapping Output
+4644	2	Reporting Coordinate Transformations
+4679	2	Handling Missing (Bad) Coordinate Values
+4768	2	Example — the UnitMap
+4817	2	Example — the PermMap
+5055	1	Compound Mappings (CmpMaps)
+5066	2	Combining Mappings in Series
+5161	2	Combining Mappings in Parallel
+5217	2	The Component Mappings
+5260	2	Creating More Complex Mappings
+5318	2	Example — Transforming Between Two Calibrated Images
+5390	2	Over-Complex Compound Mappings
+5438	2	Simplifying Compound Mappings
+5565	1	Representing Coordinate Systems (Frames)
+5581	2	The Frame Model
+5602	2	Creating a Frame
+5642	2	Using a Frame as a Mapping
+5708	2	Frame Axis Attributes
+5834	2	Frame Attributes
+5935	2	Formatting Axis Values
+6084	2	Normalising Frame Coordinates
+6178	2	Reading Formatted Axis Values
+6610	2	Permuting Frame Axes
+6665	2	Selecting Frame Axes
+6806	2	Calculating Distances, Angles and Offsets
+7048	2	The Domain Attribute
+7186	2	Conventions for Domain Names
+7280	2	The Unit Attribute
+7589	1	Celestial Coordinate Systems (SkyFrames)
+7597	2	The SkyFrame Model
+7640	2	Creating a SkyFrame
+7676	2	Specifying a Particular Celestial Coordinate System
+7720	2	Attributes which Qualify Celestial Coordinate Systems
+7816	2	Using Default SkyFrame Attributes
+7912	2	Formatting Celestial Coordinates
+8023	2	Reading Formatted Celestial Coordinates
+8255	2	Representing Offsets from a Specified Sky Position
+8283	1	Spectral Coordinate Systems (SpecFrames)
+8290	2	The SpecFrame Model
+8305	2	Creating a SpecFrame
+8342	2	Specifying a Particular Spectral Coordinate System
+8374	2	Attributes which Qualify Spectral Coordinate Systems
+8451	2	Using Default SpecFrame Attributes
+8576	2	Creating Spectral Cubes
+8651	2	Handling Dual-Sideband Spectra
+9095	1	Time Systems (TimeFrames)
+9101	2	The TimeFrame Model
+9121	2	Creating a TimeFrame
+9157	2	Specifying a Particular Time System
+9191	2	Attributes which Qualify Time Coordinate Systems
+9246	1	Compound Frames (CmpFrames)
+9260	2	Creating a CmpFrame
+9328	2	The Attributes of a CmpFrame
+9385	1	An Introduction to Coordinate System Conversions
+9395	2	Converting between Celestial Coordinate Systems
+9706	2	Converting between Spectral Coordinate Systems
+9882	2	Converting between Time Coordinate Systems
+9887	2	Handling SkyFrame Axis Permutations
+9991	2	Converting Between Frames
+10125	2	The Choice of Alignment System
+10182	1	Coordinate System Networks (FrameSets)
+10233	2	The FrameSet Model
+10268	2	Creating a FrameSet
+10329	2	Adding New Frames to a FrameSet
+10481	2	The Base and Current Frames
+10537	2	Referring to the Base and Current Frames
+10592	2	Using a FrameSet as a Mapping
+10672	2	Extracting a Mapping from a FrameSet
+10750	2	Using a FrameSet as a Frame
+10818	2	Extracting a Frame from a FrameSet
+10853	2	Removing a Frame from a FrameSet
+10914	1	Higher Level Operations on FrameSets
+10917	2	Creating FrameSets with astConvert
+11067	2	Converting between FrameSet Coordinate Systems
+11293	2	Example — Registering Two Images
+11474	2	Re-Defining a FrameSet Coordinate System
+11578	2	Example — Binning an Image
+11689	2	Maintaining the Integrity of FrameSets
+11897	2	Merging FrameSets
+12012	1	Saving and Restoring Objects (Channels)
+12035	2	The Channel Model
+12072	2	Creating a Channel
+12145	2	Writing Objects to a Channel
+12205	2	Reading Objects from a Channel
+12264	2	Saving and Restoring Multiple Objects
+12293	2	Validating Input
+12356	2	Storing an ID String with an Object
+12424	2	The Textual Output Format
+12566	2	Controlling the Amount of Output
+12710	2	Controlling Commenting
+12755	2	Editing Textual Output
+12817	2	Mixing Objects with other Text
+12896	2	Reading Objects from Files
+13076	2	Writing Objects to Files
+13239	2	Reading and Writing Objects to other Places
+13269	1	Storing AST Objects in FITS Headers (FitsChans)
+13298	2	The Native FITS Encoding
+13325	2	The FitsChan Model
+13465	2	Creating a FitsChan
+13521	2	Addressing Cards in a FitsChan
+13638	2	Writing Native Objects to a FitsChan
+13732	2	Extracting Individual Cards from a FitsChan
+13815	2	The Native FitsChan Output Format
+13910	2	Adding Individual Cards to a FitsChan
+14011	2	Adding Concatenated Cards to a FitsChan
+14064	2	Reading Native Objects From a FitsChan
+14156	2	Saving and Restoring Multiple Objects in a FitsChan
+14176	2	Mixing Native Objects with Other FITS Cards
+14196	2	Finding and Changing Cards in a FitsChan
+14359	2	Source and Sink Functions for FitsChans
+14475	1	Using Foreign FITS Encodings
+14490	2	The Foreign FITS Encodings
+14575	2	Limitations of Foreign Encodings
+14634	2	Identifying Foreign Encodings on Input
+14792	2	Reading Foreign WCS Information from a FITS Header
+14945	2	Removing WCS Information from FITS Headers — the Destructive Read
+15059	2	Propagating WCS Information through Data Processing Steps
+15104	2	Writing Foreign WCS Information to a FITS Header
+15289	1	Storing AST Objects as XML (XmlChan)
+15402	2	Reading IVOA Space-Time-Coordinates XML (STC-X) Descriptions
+15424	1	Reading and writing STC-S descriptions (StcsChans)
+15438	1	Creating Your Own Private Mappings (IntraMaps)
+15440	2	The Need for Extensibility
+15467	2	The IntraMap Model
+15497	2	Limitations of IntraMaps
+15571	2	Writing a Transformation Function
+15773	2	Registering a Transformation Function
+15937	2	Creating an IntraMap
+16032	2	Restricted Implementations of Transformation Functions
+16149	2	Variable Numbers of Coordinates
+16263	2	Adapting a Transformation Function to Individual IntraMaps
+16351	2	Simplifying IntraMaps
+16598	2	Writing and Reading IntraMaps
+16674	2	Managing Transformation Functions in Libraries
+16797	1	Producing Graphical Output (Plots)
+16805	2	The Plot Model
+16848	2	Plotting Symbols
+16911	2	Plotting Geodesic Curves
+17030	2	Plotting Curves Parallel to Axes
+17098	2	Plotting Generalized Curves
+17134	2	Clipping
+17210	2	Using a Plot as a Mapping
+17265	2	Using a Plot as a Frame
+17293	2	Regions of Valid Physical Coordinates
+17317	2	Plotting Borders
+17389	2	Plotting Text
+17466	2	Plotting a Grid
+17507	2	Controlling the Appearance of Sub-strings
+17547	2	Producing Logarithmic Axes
+17596	2	Choosing a Graphics Package
+17652	1	Compiling and Linking Software that Uses AST
+17663	2	Accessing the "ast.h" Header File
+17750	2	Linking with AST Facilities
+17827	2	Building ADAM Applications that Use AST
+17868	1	The AST Class Hierarchy
+17944	1	AST Function Descriptions
+17957	1	AST Attribute Descriptions
+17968	1	AST Class Descriptions
+17979	1	UNIX Command Descriptions
+17996	1	AST Memory Management and Utility Functions
+18055	1	FITS-WCS Coverage
+18093	2	Paper I - General Linear Coordinates
+18258	2	Paper II - Celestial Coordinates
+18450	2	Paper III - Spectral Coordinates
+18577	2	Paper IV - Coordinate Distortions

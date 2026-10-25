@@ -1,0 +1,23 @@
+ Begin MatrixMap 	# Matrix transformation
+    Nin = 3 	# Number of input coordinates
+ IsA Mapping 	# Mapping between coordinate systems
+    M0 = 0.86599999999999999 	# Forward matrix value
+    M1 = -0.5 	# Forward matrix value
+    M2 = 0 	# Forward matrix value
+    M3 = 0.5 	# Forward matrix value
+    M4 = 0.86599999999999999 	# Forward matrix value
+    M5 = 0 	# Forward matrix value
+    M6 = 0.10000000000000001 	# Forward matrix value
+    M7 = 0.050000000000000003 	# Forward matrix value
+    M8 = 0.995 	# Forward matrix value
+    IM0 = 0.86603810567664974 	# Inverse matrix value
+    IM1 = 0.50002200096804261 	# Inverse matrix value
+    IM2 = 0 	# Inverse matrix value
+    IM3 = -0.50002200096804261 	# Inverse matrix value
+    IM4 = 0.86603810567664985 	# Inverse matrix value
+    IM5 = 0 	# Inverse matrix value
+    IM6 = -0.061912271878656111 	# Inverse matrix value
+    IM7 = -0.093772970231795733 	# Inverse matrix value
+    IM8 = 1.0050251256281406 	# Inverse matrix value
+    Form = "Full" 	# Matrix storage form
+ End MatrixMap

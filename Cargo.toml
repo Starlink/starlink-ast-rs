@@ -1,0 +1,62 @@
+[workspace]
+members = ["crates/*"]
+default-members = [
+    "crates/starlink-ast",
+    "crates/starlink-ast-capi",
+    "crates/ast-plugins",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "LGPL-3.0-or-later"
+repository = "https://github.com/Starlink/starlink-ast-rs"
+
+[workspace.dependencies]
+cc = "1"
+levenberg-marquardt = "0.15"
+nalgebra = { version = "0.34", default-features = false, features = ["std"] }
+ndarray = "0.16"
+smallvec = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Workspace-wide lint configuration. Mirrors CI's
+# `RUSTFLAGS=-D warnings` and `cargo clippy --workspace -- -D warnings`
+# so warnings surface as errors during local `cargo build`/`cargo test`
+# /`cargo clippy` instead of slipping into the GitHub Actions build.
+# Each crate inherits via `[lints] workspace = true`.
+[workspace.lints.rust]
+warnings = "deny"
+
+# Clippy's default lint groups (correctness, suspicious, style,
+# complexity, perf) are denied. CI runs `cargo clippy --workspace`;
+# this config makes that the same as `cargo clippy --workspace --
+# -D warnings` and keeps `cargo clippy` honest locally.
+#
+# `pedantic` is intentionally left at its default (allow). Promoting it
+# is a separate, larger cleanup — the existing code base trips a
+# couple of hundred pedantic lints, several of which are deliberate
+# choices (e.g. range-based loops where iterator chains read worse).
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
+# Rustdoc's own lint group, denied for the same reason as clippy's: so that a
+# plain `cargo doc` fails locally rather than only under
+# `RUSTDOCFLAGS=-D warnings` in CI. Denying the whole group (rather than the
+# three lints that had actually drifted — broken_intra_doc_links,
+# private_intra_doc_links, invalid_html_tags) also covers the allow-by-default
+# members, so a new class of doc breakage is caught the first time it appears
+# instead of accumulating until someone runs `cargo doc` by hand.
+#
+# This is enforced because it had already drifted twice: aa8ff4c fixed one
+# batch of broken links, and 20 more had accumulated by 2026-08-19 because
+# nothing ran rustdoc.
+[workspace.lints.rustdoc]
+all = { level = "deny", priority = -1 }
+
+# The audit gates in starlink-ast's tests parse every cited source file through
+# audit-tools; built unoptimised, that dominates the test suite's run time.
+[profile.dev.package.audit-tools]
+opt-level = 3

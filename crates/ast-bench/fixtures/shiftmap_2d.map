@@ -1,0 +1,6 @@
+ Begin ShiftMap 	# Shift each coordinate axis
+    Nin = 2 	# Number of input coordinates
+ IsA Mapping 	# Mapping between coordinate systems
+    Sft1 = 0.25 	# Shift for axis 1
+    Sft2 = -0.5 	# Shift for axis 2
+ End ShiftMap

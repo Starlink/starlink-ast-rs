@@ -1,0 +1,268 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
+/* channel_dump_probe -- capture the native dumps of Channels, MocChans and
+ * FitsChans (channel.c, mocchan.c and fitschan.c Dump): with every
+ * attribute unset, with each set (Comment, Full, Indent, ReportLevel, Skip
+ * and Strict, MocFormat and MocLineLen, and each FitsChan attribute), and
+ * with values the setters change (Full=5, Comment=7, MocLineLen=-3).
+ * FitsChans holding a card of each type, cards used by a read, a
+ * retained card, and cards still to be read from a source. Also the dump of each after it is read back, and the dump
+ * and status of objects read from hand-written dumps holding values the
+ * setters change, a lower-case MocEnc and an unknown one, missing FitsChan
+ * card items, a legacy deletion flag, and unknown card types, encodings
+ * and AltAxes values. It needs mocchan.c as fixed upstream at 228a0310
+ * and with the reversed MocEnc names explained at f5fdca61, and
+ * fitschan.c as fixed at c16f9b11.
+ *
+ * Each case is also dumped with Full set to 1, which writes every unset
+ * value (channel.c Use).
+ *
+ * Prints Rust source for crates/starlink-ast/tests/channel_dump_oracle/cases.rs:
+ *
+ *   ./channel_dump_probe > ../../crates/starlink-ast/tests/channel_dump_oracle/cases.rs
+ */
+#include <stdio.h>
+#include <string.h>
+#include "ast.h"
+
+static char lines[ 600 ][ 200 ];
+static int nline, iline;
+
+static void sink( const char *line ) {
+   strncpy( lines[ nline ], line, 199 );
+   lines[ nline++ ][ 199 ] = 0;
+}
+
+static const char *source( void ) {
+   return iline < nline ? lines[ iline++ ] : NULL;
+}
+
+static const char *fits_cards[] = { "A       =                    1",
+                                    "B       = 'two'", NULL };
+static int ifits;
+
+static const char *fits_source( void ) {
+   return fits_cards[ ifits ] ? fits_cards[ ifits++ ] : NULL;
+}
+
+static void str( const char *s ) {
+   putchar( '"' );
+   for( ; *s; s++ ) {
+      if( *s == '"' || *s == '\\' ) putchar( '\\' );
+      if( *s == '\t' ) {
+         printf( "\\t" );
+      } else {
+         putchar( *s );
+      }
+   }
+   putchar( '"' );
+}
+
+/* The dumps written with Full set to 1, printed after the others. */
+static char full_dumps[ 200000 ];
+static int full_len;
+
+/* Record the dump of `obj` written with Full set to 1, without the lines
+   holding the state of the C process rather than of the Object: the unset
+   RefCnt and Nobj of the Object part (object.c Dump). */
+static void full_dump( const char *name, AstObject *obj ) {
+   AstChannel *ch = astChannel( NULL, sink, "Full=1" );
+   char key[ 32 ];
+   int i, n = 0;
+   nline = 0;
+   astWrite( ch, obj );
+   full_len += sprintf( full_dumps + full_len, "    (\"%s\", &[", name );
+   for( i = 0; i < nline; i++ ) {
+      if( sscanf( lines[ i ], "# %31[A-Za-z] = ", key ) == 1 &&
+          ( !strcmp( key, "RefCnt" ) || !strcmp( key, "Nobj" ) ) ) continue;
+      full_len += sprintf( full_dumps + full_len, "%s\"", n++ ? ", " : "" );
+      for( const char *c = lines[ i ]; *c; c++ ) {
+         if( *c == '"' || *c == '\\' ) full_dumps[ full_len++ ] = '\\';
+         if( *c == '\t' ) {
+            full_len += sprintf( full_dumps + full_len, "\\t" );
+         } else {
+            full_dumps[ full_len++ ] = *c;
+         }
+      }
+      full_dumps[ full_len++ ] = '"';
+   }
+   full_len += sprintf( full_dumps + full_len, "]),\n" );
+   ch = astAnnul( ch );
+}
+
+/* Dump `obj`, then read it back and dump that: `(case, dump, read-back dump)`. */
+static void dump( const char *name, AstObject *obj ) {
+   AstChannel *ch = astChannel( source, sink, " " );
+   AstObject *back;
+   int i, n;
+   full_dump( name, obj );
+   nline = 0;
+   astWrite( ch, obj );
+   n = nline;
+   printf( "    (\"%s\", &[", name );
+   for( i = 0; i < n; i++ ) {
+      printf( "%s", i ? ", " : "" );
+      str( lines[ i ] );
+   }
+   printf( "], &[" );
+   iline = 0;
+   back = astRead( ch );
+   nline = 0;
+   astWrite( ch, back );
+   for( i = 0; i < nline; i++ ) {
+      printf( "%s", i ? ", " : "" );
+      str( lines[ i ] );
+   }
+   printf( "]),\n" );
+}
+
+/* Read `text` and dump the result: `(case, text, dump, status)`. */
+static void load( const char *name, const char **text ) {
+   AstChannel *ch = astChannel( source, sink, " " );
+   AstObject *obj;
+   int i, st;
+   for( nline = 0; text[ nline ]; nline++ ) strcpy( lines[ nline ], text[ nline ] );
+   iline = 0;
+   obj = astRead( ch );
+   st = astStatus;
+   astClearStatus;
+   printf( "    (\"%s\", &[", name );
+   for( i = 0; text[ i ]; i++ ) {
+      printf( "%s", i ? ", " : "" );
+      str( text[ i ] );
+   }
+   printf( "], &[" );
+   nline = 0;
+   if( obj ) astWrite( ch, obj );
+   for( i = 0; i < nline; i++ ) {
+      printf( "%s", i ? ", " : "" );
+      str( lines[ i ] );
+   }
+   printf( "], %d),\n", st );
+}
+
+int main( void ) {
+   int status = 0;
+   astWatch( &status );
+   printf( "// Generated by tools/oracle_fixtures/channel_dump_probe.c. Do not edit.\n\n" );
+   printf( "/// `(case, dump, dump of the object read back from it)`.\n" );
+   printf( "pub const DUMPS: &[(&str, &[&str], &[&str])] = &[\n" );
+   dump( "channel", (AstObject *) astChannel( NULL, NULL, " " ) );
+   dump( "channel_set", (AstObject *) astChannel( NULL, NULL,
+         "Comment=0,Full=1,Indent=5,ReportLevel=2,Skip=1,Strict=1" ) );
+   dump( "channel_set_defaults", (AstObject *) astChannel( NULL, NULL,
+         "Comment=1,Full=0,Indent=3,ReportLevel=1,Skip=0,Strict=0" ) );
+   dump( "channel_clamped", (AstObject *) astChannel( NULL, NULL,
+         "Comment=7,Full=5,Indent=-2" ) );
+   dump( "channel_full_negative", (AstObject *) astChannel( NULL, NULL, "Full=-4" ) );
+   dump( "mocchan", (AstObject *) astMocChan( NULL, NULL, " " ) );
+   dump( "mocchan_string", (AstObject *) astMocChan( NULL, NULL,
+         "MocFormat=String,MocLineLen=40" ) );
+   dump( "mocchan_json", (AstObject *) astMocChan( NULL, NULL,
+         "MocFormat=JSON,MocLineLen=-3,Indent=2,Strict=1" ) );
+   dump( "mocchan_ident", (AstObject *) astMocChan( NULL, NULL,
+         "Ident=hello" ) );
+   {
+      AstFitsChan *fc;
+      AstObject *obj;
+      double cf[ 2 ] = { 1.5, -2.25 };
+      int ci[ 2 ] = { 3, 4 };
+      dump( "fitschan", (AstObject *) astFitsChan( NULL, NULL, " " ) );
+      fc = astFitsChan( NULL, NULL, " " );
+      astPutFits( fc, "INTKEY  =                   42 / an integer", 0 );
+      astPutFits( fc, "FLTKEY  =                  1.5 / a float", 0 );
+      astPutFits( fc, "STRKEY  = 'hello   '           / a string", 0 );
+      astPutFits( fc, "LOGKEY  =                    T", 0 );
+      astSetFitsCF( fc, "CPXF", cf, "complex float", 0 );
+      astSetFitsCI( fc, "CPXI", ci, NULL, 0 );
+      astPutFits( fc, "BIGINT  =         123456789012 / 64-bit", 0 );
+      astPutFits( fc, "UNDEFKEY=                      / no value", 0 );
+      astPutFits( fc, "COMMENT a comment card", 0 );
+      astPutFits( fc, "HISTORY   history text   ", 0 );
+      astPutFits( fc, "        blank keyword", 0 );
+      astPutFits( fc, "LONGSTR = 'abc&'", 0 );
+      astPutFits( fc, "CONTINUE  'def'", 0 );
+      astSetI( fc, "Card", 3 );
+      dump( "fitschan_cards", (AstObject *) fc );
+      dump( "fitschan_attrs", (AstObject *) astFitsChan( NULL, NULL,
+            "Encoding=FITS-WCS,FitsDigits=10,FitsRounding=5,AltAxes=IDENT,"
+            "DefB1950=0,IgnoreBadAlt=1,CDMatrix=1,CarLin=1,SipReplace=0,"
+            "FitsTol=0.5,PolyTan=1,SipOK=0,Iwc=1,Clean=1,Warnings=BadKeyName,"
+            "FitsAxisOrder=<copy>,Ident=fc,Skip=0,Full=0" ) );
+      dump( "fitschan_attrs_default", (AstObject *) astFitsChan( NULL, NULL,
+            "Encoding=NATIVE,FitsDigits=17,AltAxes=ALL,DefB1950=1,"
+            "IgnoreBadAlt=0,CDMatrix=0,CarLin=0,SipReplace=1,FitsTol=0.1,"
+            "PolyTan=-1,SipOK=1,Iwc=0,Clean=0,Warnings=,Skip=1,Full=-1" ) );
+      fc = astFitsChan( NULL, NULL, " " );
+      astPutFits( fc, "NAXIS   =                    2", 0 );
+      astPutFits( fc, "CTYPE1  = 'RA---TAN'", 0 );
+      astPutFits( fc, "CTYPE2  = 'DEC--TAN'", 0 );
+      astPutFits( fc, "CRVAL1  =                 10.0", 0 );
+      astPutFits( fc, "CRVAL2  =                 20.0", 0 );
+      astPutFits( fc, "CRPIX1  =                 50.0", 0 );
+      astPutFits( fc, "CRPIX2  =                 60.0", 0 );
+      astPutFits( fc, "CDELT1  =               -0.001", 0 );
+      astPutFits( fc, "CDELT2  =                0.001", 0 );
+      astPutFits( fc, "OTHER   =                    1", 0 );
+      astClear( fc, "Card" );
+      astFindFits( fc, "CRVAL2", NULL, 0 );
+      astRetainFits( fc );
+      astClear( fc, "Card" );
+      dump( "fitschan_guessed_encoding", (AstObject *) fc );
+      obj = astRead( fc );
+      if( obj ) obj = astAnnul( obj );
+      dump( "fitschan_used", (AstObject *) fc );
+      ifits = 0;
+      dump( "fitschan_source", (AstObject *) astFitsChan( fits_source, NULL, " " ) );
+   }
+   printf( "];\n\n" );
+
+   printf( "/// `(case, dump read, dump of the object read, status)`.\n" );
+   printf( "pub const LOADS: &[(&str, &[&str], &[&str], i32)] = &[\n" );
+   {
+      const char *t1[] = { " Begin Channel", "    Comm = 7", "    Full = 5",
+                           "    Skip = 3", "    Strict = -2", " End Channel", NULL };
+      const char *t2[] = { " Begin MocChan", "    Full = -9", " IsA Channel",
+                           "    MocEnc = \"json\"", "    MocLLn = -3", " End MocChan", NULL };
+      const char *t3[] = { " Begin MocChan", "    MocEnc = \"XML\"", " End MocChan", NULL };
+      const char *t4[] = { " Begin MocChan", "    MocEnc = \"UNKNOWN\"", "    MocLLn = 12",
+                           " End MocChan", NULL };
+      load( "channel_values", t1 );
+      load( "mocchan_values", t2 );
+      load( "mocchan_bad_enc", t3 );
+      load( "mocchan_unknown_enc", t4 );
+      {
+         const char *t5[] = { " Begin FitsChan", "    Ty1 = \"integer\"", "    Nm1 = \"A\"",
+                              "    Dt1 = 3", "    Ty2 = \"Logical\"", "    Dt2 = 1",
+                              "    Ty4 = \"string\"", "    Nm4 = \"D\"", "    Card = 9",
+                              " End FitsChan", NULL };
+         const char *t6[] = { " Begin FitsChan", "    Ty1 = \"floating point\"", "    Nm1 = \"X\"",
+                              "    Dl1 = 1", "    Cm1 = \"legacy flag\"", "    Card = 1",
+                              " End FitsChan", NULL };
+         const char *t7[] = { " Begin FitsChan", "    Ty1 = \"bogus\"", " End FitsChan", NULL };
+         const char *t8[] = { " Begin FitsChan", "    Encod = \"fits-wcs\"", " End FitsChan", NULL };
+         const char *t9[] = { " Begin FitsChan", "    Encod = \"XML\"", " End FitsChan", NULL };
+         const char *t10[] = { " Begin FitsChan", "    AltAx = \"some\"", " End FitsChan", NULL };
+         const char *t11[] = { " Begin FitsChan", "    TabOK = 3", "    FrcTab = 1",
+                               "    FitsDg = -4", "    FitsTol = -2", "    Clean = 5",
+                               "    Warn = \"\"", "    FAxOrd = \"\"", " End FitsChan", NULL };
+         const char *t12[] = { " Begin FitsChan", "    Ty1 = \"complex integer\"", "    Nm1 = \"C\"",
+                               "    Dr1 = 5", "    Ty2 = \"64 bit integer\"", "    Nm2 = \"K\"",
+                               "    Dt2 = 9876543210", "    Ty3 = \"undef\"", "    Nm3 = \"U\"",
+                               "    Dt3 = 4", "    Fl3 = 17", " End FitsChan", NULL };
+         load( "fitschan_values", t5 );
+         load( "fitschan_legacy_flag", t6 );
+         load( "fitschan_bad_type", t7 );
+         load( "fitschan_lower_encoding", t8 );
+         load( "fitschan_bad_encoding", t9 );
+         load( "fitschan_bad_altaxes", t10 );
+         load( "fitschan_attr_values", t11 );
+         load( "fitschan_partial_values", t12 );
+      }
+   }
+   printf( "];\n\n" );
+   printf( "/// `(case, dump written with Full = 1, less the unset RefCnt and Nobj)`.\n" );
+   printf( "pub const FULL_DUMPS: &[(&str, &[&str])] = &[\n%s];\n", full_dumps );
+   return 0;
+}

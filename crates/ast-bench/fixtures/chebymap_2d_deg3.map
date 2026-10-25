@@ -1,0 +1,39 @@
+ Begin ChebyMap 	# Chebyshev polynomial transformation
+    Nin = 2 	# Number of input coordinates
+ IsA Mapping 	# Mapping between coordinate systems
+    MPF1 = 3 	# Max. power of input 1 in any forward polynomial
+    MPF2 = 3 	# Max. power of input 2 in any forward polynomial
+    NCF1 = 6 	# No. of coeff.s for forward polynomial 1
+    NCF2 = 6 	# No. of coeff.s for forward polynomial 2
+    CF1 = 1 	# Coeff 1 of forward polynomial 1
+    CF2 = 0.050000000000000003 	# Coeff 2 of forward polynomial 1
+    CF3 = 0.02 	# Coeff 3 of forward polynomial 1
+    CF4 = 0.01 	# Coeff 4 of forward polynomial 1
+    CF5 = 0.0050000000000000001 	# Coeff 5 of forward polynomial 1
+    CF6 = 0.0030000000000000001 	# Coeff 6 of forward polynomial 1
+    CF7 = 1 	# Coeff 1 of forward polynomial 2
+    CF8 = 0.050000000000000003 	# Coeff 2 of forward polynomial 2
+    CF9 = 0.02 	# Coeff 3 of forward polynomial 2
+    CF10 = 0.01 	# Coeff 4 of forward polynomial 2
+    CF11 = 0.0050000000000000001 	# Coeff 5 of forward polynomial 2
+    CF12 = 0.0030000000000000001 	# Coeff 6 of forward polynomial 2
+    PF1 = 1 	# Power of i/p 1 for coeff 1 of fwd poly 1
+    PF4 = 1 	# Power of i/p 2 for coeff 2 of fwd poly 1
+    PF5 = 2 	# Power of i/p 1 for coeff 3 of fwd poly 1
+    PF7 = 1 	# Power of i/p 1 for coeff 4 of fwd poly 1
+    PF8 = 1 	# Power of i/p 2 for coeff 4 of fwd poly 1
+    PF9 = 3 	# Power of i/p 1 for coeff 5 of fwd poly 1
+    PF12 = 3 	# Power of i/p 2 for coeff 6 of fwd poly 1
+    PF14 = 1 	# Power of i/p 2 for coeff 1 of fwd poly 2
+    PF15 = 1 	# Power of i/p 1 for coeff 2 of fwd poly 2
+    PF18 = 2 	# Power of i/p 2 for coeff 3 of fwd poly 2
+    PF19 = 1 	# Power of i/p 1 for coeff 4 of fwd poly 2
+    PF20 = 1 	# Power of i/p 2 for coeff 4 of fwd poly 2
+    PF22 = 3 	# Power of i/p 2 for coeff 5 of fwd poly 2
+    PF23 = 3 	# Power of i/p 1 for coeff 6 of fwd poly 2
+ IsA PolyMap 	# Polynomial transformation
+    FSCL1 = 0.5 	# Scale factor on input 1
+    FSCL2 = 0.5 	# Scale factor on input 2
+    FOFF1 = 0 	# Offset on input 1
+    FOFF2 = 0 	# Offset on input 2
+ End ChebyMap

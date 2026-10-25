@@ -1,0 +1,594 @@
+kind	name	file	rust_item	reason	reviewed	note
+class	Axis	axis.c		merged	yes	Frame
+class	Box	box.c	BoxRegion		yes
+function	astBox	box.c	BoxRegionBuilder::new;BoxRegionBuilder::from_bounds		yes	new takes a center and a corner (form 0), from_bounds two opposite corners (form 1)
+class	Channel	channel.c	NativeChannel		yes	With no source or SourceFile a read takes standard input, and with no sink or SinkFile a write goes to standard output, as in C
+function	astChannelData	channel.c		c-api-only	yes	A Source or Sink implementation holds its own data
+function	astWarnings	channel.c	Channel::warnings		yes
+function	astPutChannelData	channel.c		c-api-only	yes	A Source or Sink implementation holds its own data
+function	astRead	channel.c	Channel::read		yes	A MocChan with no text left fails with AST__INMOC, as C's does, where the header promises no object and no error (c-library-quirks.md)
+function	astWrite	channel.c	Channel::write		yes
+attribute	SourceFile	channel.c	FitsChan::source_file; NativeChannel::source_file; MocChan::source_file		yes	A FitsChan reads the file when the attribute is set and keeps the cards; the other Channels read it from the first read after
+attribute	SinkFile	channel.c	FitsChan::sink_file; NativeChannel::sink_file; MocChan::sink_file		yes	A FitsChan writes the file when it is dropped or write_fits is called; the other Channels write it as they write
+attribute	Comment	channel.c	ChannelConfig::comment		yes
+attribute	Full	channel.c	ChannelConfig::full		yes	The FitsChan default is -1, as the code gives, not the 0 the header says (c-library-quirks.md)
+attribute	Indent	channel.c	ChannelConfig::indent		yes	The default is 3, as the code gives, not the 0 the header says (c-library-quirks.md)
+attribute	ReportLevel	channel.c	ChannelConfig::report_level		yes
+attribute	Skip	channel.c	ChannelConfig::skip		yes
+attribute	Strict	channel.c	ChannelConfig::strict		yes
+function	astChannel	channel.c	NativeChannel::new		yes	No source, sink or options arguments: set_source, set_sink and the attribute setters take their place, and from_string, with_string_sink, from_file and to_file make one with a source or sink
+class	ChebyMap	chebymap.c	ChebyMap		yes	The C class and astChebyMap headers write the recurrence as Tn+1 = 2x Tn + Tn-1; the code subtracts Tn-1, as the port's doc says (docs/issues/c-library-quirks.md)
+function	astChebyDomain	chebymap.c	ChebyMap::domain		yes	C keeps no forward box when there are no forward coefficients and finds the forward domain by MapBox; the port always keeps the forward box given at creation (CH-8, docs/audits/mapping-c-parity.md; PLAN.md §2 row for that audit)
+function	astChebyMap	chebymap.c	ChebyMap::new		yes	C reads lbnd_i/ubnd_i whenever inverse coefficients are given and dereferences a NULL; the port refuses the call with Badin. C ignores lbnd_f/ubnd_f when there are no forward coefficients; the port requires them and keeps a forward box (CH-8, docs/audits/mapping-c-parity.md; PLAN.md §2 row for that audit)
+class	Circle	circle.c	Circle		yes
+function	astCirclePars	circle.c	Circle::circle_pars		yes	returns the center, radius and circumference point as a tuple
+function	astCircle	circle.c	CircleBuilder::new		yes	edge_point gives form 0 and radius form 1
+class	CmpFrame	cmpframe.c	CmpFrame		yes	A CmpFrame is not a Mapping here (PLAN.md 9.6), so C's use of one holding a Region as a masking Mapping has no counterpart; component attributes are reached through frame1 and frame2 rather than forwarded by name
+function	astCmpFrame	cmpframe.c	CmpFrame::new		yes	Takes ownership of the two Frames, where C stores the pointers supplied, so later changes go through frame1_mut and frame2_mut
+class	CmpMap	cmpmap.c	CmpMap		yes
+function	astCmpMap	cmpmap.c	CmpMap::new		yes	C keeps references to the components; the port's CmpMap takes ownership of them
+class	CmpRegion	cmpregion.c	CmpRegion		yes
+function	astCmpRegion	cmpregion.c	CmpRegionBuilder::new		yes	the builder can also set an uncertainty, which astCmpRegion cannot
+class	DSBSpecFrame	dsbspecframe.c	DSBSpecFrame		yes
+attribute	ImagFreq	dsbspecframe.c	DSBSpecFrame::imag_freq_ghz;DSBSpecFrame::imag_freq		yes	imag_freq_ghz gives GHz as C's attribute does, imag_freq Hz
+attribute	DSBCentre	dsbspecframe.c	DSBSpecFrame::dsb_centre_cur;DSBSpecFrame::dsb_centre		yes	dsb_centre_cur is C's attribute, in the current spectral system; dsb_centre is the stored topocentric frequency in Hz; C's strings with units are for its string interface
+attribute	IF	dsbspecframe.c	DSBSpecFrame::if_ghz;DSBSpecFrame::ifr		yes	if_ghz gives GHz as C's attribute does, ifr Hz; C's strings with units are for its string interface
+attribute	SideBand	dsbspecframe.c	DSBSpecFrame::sideband		yes	The setter takes a SideBand; C's "observed" and "image" setting names have no counterpart: set_sideband(observed_sideband()) gives "observed", and set_sideband with the other of USB and LSB (USB for a positive IF, else LSB) gives "image", as the sideband doc shows
+attribute	AlignSideBand	dsbspecframe.c	DSBSpecFrame::align_sideband		yes
+function	astDSBSpecFrame	dsbspecframe.c	DSBSpecFrame::new;DSBSpecFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; unset_system is astDSBSpecFrame("")
+class	DssMap	dssmap.c	DssMap		yes	The header says a DSS FitsChan read creates a DssMap; C's FitsChan builds a TPN WcsMap instead, as the port does (docs/issues/c-library-quirks.md)
+class	Ellipse	ellipse.c	Ellipse		yes
+function	astEllipsePars	ellipse.c	Ellipse::ellipse_pars		yes	returns an EllipsePars
+function	astEllipse	ellipse.c	EllipseBuilder::new;EllipseBuilder::from_points		yes	new takes the axes and angle (form 1), from_points the boundary points (form 0)
+function	astClearStatus	error.c		c-api-only	yes	The C error status; an Err result replaces it
+function	astOK	error.c		c-api-only	yes	The C error status; an Err result replaces it
+function	astSetPutErr	error.c		c-api-only	yes	Error delivery in the C interface; Rust returns each AstError to the caller
+function	astSetStatus	error.c		c-api-only	yes	The C error status; an Err result replaces it
+function	astStatus	error.c		c-api-only	yes	The C error status; AstError::code replaces it
+function	astWatch	error.c		c-api-only	yes	The C error status variable; an Err result replaces it
+class	FitsChan	fitschan.c	FitsChan		yes
+function	astDelFits	fitschan.c	FitsChan::del_fits		yes
+function	astEmptyFits	fitschan.c	FitsChan::empty_fits		yes
+function	astGetTables	fitschan.c	FitsChan::get_tables		yes
+function	astFindFits	fitschan.c	FitsChan::find_fits		yes	returns the text of the card found, or None, in place of the flag and card buffer; the header says a template of 8 spaces matches a blank keyword, but trailing spaces are removed and the empty template matches nothing, in the C code and here (c-library-quirks.md)
+function	astGetFits<X>	fitschan.c	FitsChan::get_fits_cf;FitsChan::get_fits_ci;FitsChan::get_fits_f;FitsChan::get_fits_i;FitsChan::get_fits_k;FitsChan::get_fits_l;FitsChan::get_fits_s;FitsChan::get_fits_cn		yes	one method per <X>: cf (f64, f64), ci (i32, i32), f f64, i i32, k i64, l bool, s and cn String; returns None for a missing keyword in place of the flag; the header says a keyword name that does not conform to FITS is an error, but only an = in it is (Bdfts) and an illegal character gives a BadKeyName warning, in the C code and here (c-library-quirks.md)
+function	astSetFits<X>	fitschan.c	FitsChan::set_fits_cf;FitsChan::set_fits_ci;FitsChan::set_fits_f;FitsChan::set_fits_i;FitsChan::set_fits_k;FitsChan::set_fits_l;FitsChan::set_fits_s;FitsChan::set_fits_cn		yes	one method per <X>: cf (f64, f64), ci (i32, i32), f f64, i i32, k i64, l bool, s and cn &str; a keyword name is checked as for astGetFits<X> (c-library-quirks.md)
+function	astSetFitsU	fitschan.c	FitsChan::set_fits_u		yes	a keyword name is checked as for astGetFits<X> (c-library-quirks.md)
+function	astSetFitsCM	fitschan.c	FitsChan::set_fits_cm		yes
+function	astPurgeWCS	fitschan.c	FitsChan::purge_wcs		yes
+function	astPutCards	fitschan.c	FitsChan::put_cards		yes
+function	astPutFits	fitschan.c	FitsChan::put_fits		yes
+function	astPutTable	fitschan.c	FitsChan::put_table		yes	the astPutTable and astPutTables headers name the table source function astTablesSource, for astTableSource (c-library-quirks.md)
+function	astPutTables	fitschan.c	FitsChan::put_tables		yes
+function	astReadFits	fitschan.c	FitsChan::read_fits		yes
+function	astRemoveTables	fitschan.c	FitsChan::remove_tables		yes
+function	astRetainFits	fitschan.c	FitsChan::retain_fits		yes
+function	astShowFits	fitschan.c	FitsChan::show_fits		yes
+function	astTableSource	fitschan.c	FitsChan::set_table_source;FitsChan::clear_table_source		yes	a TableSource returns the table, which the FitsChan stores under the extension name asked for, in place of a function that stores it with astPutTable and reports failure through its status; data reach it by capture rather than astPutChannelData; clear_table_source stands for a NULL function; the C edition of the header gets the failure convention and the position of the status argument wrong (c-library-quirks.md)
+function	astTestFits	fitschan.c	FitsChan::test_fits		yes	returns None for a missing keyword and Some(has a value) otherwise, in place of the flag and there; a keyword name is checked as for astGetFits<X> (c-library-quirks.md)
+function	astWriteFits	fitschan.c	FitsChan::write_fits		yes	reports Wrerr for a SinkFile that cannot be created, which a drop cannot
+attribute	FitsTol	fitschan.c	FitsChan::fits_tol		yes
+attribute	Card	fitschan.c	FitsChan::card		yes	0 for a FitsChan with no cards, as the C code gives, where the header implies 1 (c-library-quirks.md)
+attribute	Encoding	fitschan.c	FitsChan::encoding		yes	an Encoding enum; the default is chosen from the cards already held and does not read a source not yet read, where C reads it first (PLAN.md §2); the header lists the default choice in another order than the code, which the docs follow (c-library-quirks.md)
+attribute	DefB1950	fitschan.c	FitsChan::def_b1950		yes	its default follows the Encoding default, so the default is chosen from the cards already held and does not read a source not yet read, where C reads it first (PLAN.md §2)
+attribute	TabOK	fitschan.c	FitsChan::tab_ok		yes	with TabOK not positive a read of a -TAB header fails with Bdfts for spectral and celestial axes and reads other axes without error, as the C code does; the header says astRead returns NULL (c-library-quirks.md)
+attribute	ForceTab	fitschan.c	FitsChan::force_tab		yes
+attribute	IgnoreBadAlt	fitschan.c	FitsChan::ignore_bad_alt		yes
+attribute	CarLin	fitschan.c	FitsChan::car_lin		yes
+attribute	SipReplace	fitschan.c	FitsChan::sip_replace		yes
+attribute	PolyTan	fitschan.c	FitsChan::poly_tan		yes
+attribute	SipOK	fitschan.c	FitsChan::sip_ok		yes
+attribute	Iwc	fitschan.c	FitsChan::iwc		yes
+attribute	CDMatrix	fitschan.c	FitsChan::cd_matrix		yes	the default is chosen from the cards already held and does not read a source not yet read, where C reads it first (PLAN.md §2)
+attribute	Clean	fitschan.c	FitsChan::clean		yes
+attribute	FitsAxisOrder	fitschan.c	FitsChan::fits_axis_order		yes	the header gives the Purpose "Frame title." (c-library-quirks.md)
+attribute	FitsDigits	fitschan.c	FitsChan::fits_digits		yes
+attribute	FitsRounding	fitschan.c	FitsChan::fits_rounding		yes
+attribute	AltAxes	fitschan.c	FitsChan::alt_axes		yes	an AltAxes enum
+attribute	CardComm	fitschan.c	FitsChan::card_comm		yes
+attribute	CardName	fitschan.c	FitsChan::card_name		yes	None at end-of-file
+attribute	CardType	fitschan.c	FitsChan::card_type		yes	a CardType enum, whose code gives the AST__ constant values
+attribute	Ncard	fitschan.c	FitsChan::ncard		yes
+attribute	Nkey	fitschan.c	FitsChan::nkey		yes
+attribute	Warnings	fitschan.c	FitsChan::warning_conditions		yes	the header says it does not affect the warnings stored in the Channel, but the C code stores only those for conditions it names, as here (c-library-quirks.md)
+attribute	AllWarnings	fitschan.c	FitsChan::all_warning_conditions		yes
+function	astFitsChan	fitschan.c	FitsChan::new		yes	no source, sink or options arguments: set_source, set_sink and the attribute setters take their place; the FITSCHAN_OPTIONS environment variable is applied
+class	FitsTable	fitstable.c	FitsTable		yes
+function	astColumnNull	fitstable.c	FitsTable::column_null		yes	int null values only, deprecated; FitsTable::column_null covers every integer type with i64 values, as astColumnNullK
+function	astColumnNullK	fitstable.c	FitsTable::column_null		yes	returns a ColumnNull in place of the wasset and hasnull arguments; check_nulls stands for a non-NULL hasnull
+function	astColumnSize	fitstable.c	FitsTable::column_size		yes
+function	astGetColumnData	fitstable.c	FitsTable::get_column_data		yes	returns a ColumnData; max_rows stands for mxsize; strings are not null terminated, as in C (quirk)
+function	astGetTableHeader	fitstable.c	FitsTable::get_table_header		yes
+function	astPutColumnData	fitstable.c	FitsTable::put_column_data		yes	takes a ColumnData, so a type mismatch is ErrorCode::Badtyp; clen is the String variant len
+function	astPutTableHeader	fitstable.c	FitsTable::put_table_header		yes
+function	astFitsTable	fitstable.c	FitsTable::new;FitsTable::from_header		yes	new for a NULL header, from_header otherwise; no options argument
+class	FluxFrame	fluxframe.c	FluxFrame		yes
+attribute	SpecVal	fluxframe.c	FluxFrame::spec_val		yes
+function	astFluxFrame	fluxframe.c	FluxFrame::with_spec_val;FluxFrame::new;FluxFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; with_spec_val is astFluxFrame(specval, specfrm, ""), and new(system) sets the System unless it is FluxDen, which it leaves unset as unset_system does
+class	Frame	frame.c	BasicFrame		yes	A plain Frame does not implement Mapping, where C's Frame is a unit Mapping with Nin = Nout = Naxes (PLAN.md 9.6: a bare Frame in a Mapping slot is not supported)
+function	astAngle	frame.c	Frame::angle		yes
+function	astAxAngle	frame.c	Frame::ax_angle		yes	C's header gives -PI/2 to +PI/2 for a 2-D Frame; the code returns astAngle's -PI to +PI, as the port's doc says (docs/issues/c-library-quirks.md)
+function	astAxDistance	frame.c	Frame::ax_distance		yes
+function	astAxNorm	frame.c	Frame::ax_norm		yes	C's header says SkyFrame latitudes always go into -PI to +PI; a SkyFrame's own SkyAxes are not latitude axes in C's code, and the port mirrors that (docs/issues/c-library-quirks.md)
+function	astAxOffset	frame.c	Frame::ax_offset		yes
+function	astConvert	frame.c	FrameSearch::convert_to		yes
+function	astDistance	frame.c	Frame::distance		yes
+function	astFindFrame	frame.c	FrameSearch::find_frame_template;FrameSet::find_frame		yes	The header's preference for paths with both transformations in a FrameSet search is not in C's FindFrame code, which takes the first match (docs/issues/c-library-quirks.md)
+function	astGetActiveUnit	frame.c	Frame::get_active_unit		yes
+function	astIntersect	frame.c	Frame::intersect		yes
+function	astMatchAxes	frame.c	Frame::match_axes		yes
+function	astNorm	frame.c	Frame::norm		yes
+function	astNormPoints	frame.c	Frame::norm_points		yes	Takes a PointSet, so no 8-byte variant or dimension arguments
+function	astOffset2	frame.c	Frame::offset2		yes
+function	astOffset	frame.c	Frame::offset		yes
+function	astResolve	frame.c	Frame::resolve		yes
+function	astSetActiveUnit	frame.c	Frame::set_active_unit		yes	C's header says a CmpFrame defaults to active units when both components use them, and that units with no Mapping between them raise an error; C's code uses either component, and treats such units as no match, as the port does (docs/issues/c-library-quirks.md)
+attribute	Naxes	frame.c	Frame::naxes		yes
+attribute	Direction	frame.c	Frame::direction		yes	Plot is not ported, so the Plot applicability is dropped
+attribute	Dtai	frame.c	Frame::dtai		yes
+attribute	Dut1	frame.c	Frame::dut1		yes
+attribute	Epoch	frame.c	Frame::epoch_mjd		yes	The Rust API takes and gives an MJD; C's string input formats (Besselian and Julian epochs, years, JD, MJD, dates) and year output are not on it, though BasicFrame and SkyFrame have year forms
+attribute	Top	frame.c	Frame::top		yes	C's header gives a co-latitude default of 180 degrees; SkyFrame's code has no co-latitude axes (docs/issues/c-library-quirks.md)
+attribute	Bottom	frame.c	Frame::bottom		yes	C's header gives a co-latitude default of 0 degrees; SkyFrame's code has no co-latitude axes (docs/issues/c-library-quirks.md)
+attribute	Format	frame.c	Frame::format_str		yes	The g SkyFrame flag behaves as l: the port has no escape sequences, as C without astEscapes; astSetSkyDelim has no counterpart. The note on doubling % for astSet does not apply to the typed setter
+attribute	Label	frame.c	Frame::label		yes
+attribute	Symbol	frame.c	Frame::symbol		yes	C's header says the default is truncated to 15 characters; the code's limit is SYMBOL_BUFF_LEN, 50, as the port's doc says (docs/issues/c-library-quirks.md)
+attribute	Unit	frame.c	Frame::unit		yes
+attribute	NormUnit	frame.c	Frame::norm_unit		yes
+attribute	InternalUnit	frame.c	Frame::internal_unit		yes
+attribute	Digits	frame.c	Frame::digits;Frame::axis_digits		yes	Plot is not ported, so the Plot applicability is dropped
+attribute	MatchEnd	frame.c	Frame::match_end		yes
+attribute	MaxAxes	frame.c	Frame::max_axes		yes	C's header says the default may be reduced to stay consistent with MinAxes; DefaultMaxAxes raises it, as the port's doc says (docs/issues/c-library-quirks.md)
+attribute	MinAxes	frame.c	Frame::min_axes		yes
+attribute	Domain	frame.c	Frame::domain		yes
+attribute	Permute	frame.c	Frame::permute		yes
+attribute	PreserveAxes	frame.c	Frame::preserve_axes		yes
+attribute	AlignSystem	frame.c	BasicFrame::align_system		yes	No trait getter: each class has a typed align_system of its own
+attribute	System	frame.c	Frame::system_string;BasicFrame::system		yes	Each class sets its System with a typed setter; the CmpFrame System(axis) form for a component's System has no counterpart
+attribute	Title	frame.c	Frame::title		yes
+attribute	ObsLat	frame.c	Frame::obs_lat		yes	Radians on the Rust API; C's sexagesimal degree strings are for its string interface
+attribute	ObsAlt	frame.c	Frame::obs_alt		yes
+attribute	ObsLon	frame.c	Frame::obs_lon		yes	Radians on the Rust API; C's sexagesimal degree strings are for its string interface
+function	astFormat	frame.c	Frame::format		yes
+function	astFrame	frame.c	BasicFrameBuilder::new		yes	Attributes are set with the builder's typed methods rather than an options string
+function	astPermAxes	frame.c	Frame::perm_axes		yes
+function	astPickAxes	frame.c	pick_axes		yes	For a Region, regions::pick_axes_region keeps the bounds where C's astPickAxes does
+function	astUnformat	frame.c	Frame::unformat		yes
+class	FrameSet	frameset.c	FrameSet		yes	A Region inside a CmpFrame does not mask the Mappings, since a CmpFrame is not a Mapping here (PLAN.md 9.6)
+function	astAddFrame	frameset.c	FrameSet::add_frame;FrameSet::add_frameset		yes
+function	astAddVariant	frameset.c	FrameSet::add_variant		yes
+function	astGetFrame	frameset.c	FrameSet::frame;FrameSet::frame_mut		yes	frame gives a shared reference; frame_mut gives a mutable one that bypasses the FrameSet's integrity, as changes through C's returned pointer do
+function	astGetMapping	frameset.c	FrameSet::mapping		yes
+function	astMirrorVariants	frameset.c	FrameSet::mirror_variants		yes	C's AST__NOFRAME is giving the current Frame
+function	astRemapFrame	frameset.c	FrameSet::remap_frame		yes
+function	astRemoveFrame	frameset.c	FrameSet::remove_frame		yes
+attribute	AllVariants	frameset.c	FrameSet::all_variants		yes
+attribute	Base	frameset.c	FrameSet::set_base;FrameSet::base_index;FrameSet::set_base_by_domain		yes	base gives the Frame; setting by Domain name is set_base_by_domain
+attribute	Current	frameset.c	FrameSet::set_current;FrameSet::current_index;FrameSet::set_current_by_domain		yes	current gives the Frame; setting by Domain name is set_current_by_domain
+attribute	Nframe	frameset.c	FrameSet::nframe		yes
+attribute	Variant	frameset.c	FrameSet::variant		yes	set_variant, test_variant and clear_variant are the setter, test and clear
+function	astFrameSet	frameset.c	FrameSet::new		yes
+class	GrismMap	grismmap.c	GrismMap		yes
+attribute	GrismNR	grismmap.c	GrismMap::grism_nr		yes	C refuses to set it on a GrismMap with more than one reference; owned values have no such restriction
+attribute	GrismNRP	grismmap.c	GrismMap::grism_nrp		yes	C refuses to set it on a GrismMap with more than one reference
+attribute	GrismWaveR	grismmap.c	GrismMap::grism_wave_r		yes	C refuses to set it on a GrismMap with more than one reference
+attribute	GrismAlpha	grismmap.c	GrismMap::grism_alpha		yes	C refuses to set it on a GrismMap with more than one reference
+attribute	GrismG	grismmap.c	GrismMap::grism_g		yes	C refuses to set it on a GrismMap with more than one reference
+attribute	GrismM	grismmap.c	GrismMap::grism_m		yes	C refuses to set it on a GrismMap with more than one reference; the unset sentinel is INT_MAX, which set_grism_m(i32::MAX) mirrors
+attribute	GrismEps	grismmap.c	GrismMap::grism_eps		yes	C refuses to set it on a GrismMap with more than one reference
+attribute	GrismTheta	grismmap.c	GrismMap::grism_theta		yes	C refuses to set it on a GrismMap with more than one reference
+function	astGrismMap	grismmap.c	GrismMap::new;GrismMap::default_map		yes	C takes only an options string; new sets every attribute and default_map sets none
+class	Interval	interval.c	Interval		yes
+function	astInterval	interval.c	IntervalBuilder::new		yes	an Interval with no limit is accepted, as the C code accepts it, though the header says at least one is needed (c-library-quirks.md)
+class	IntraMap	intramap.c	IntraMap		yes	The transformation is an Arc<dyn IntraTransform> held by the IntraMap; registration is needed only to read a dump
+function	astIntraReg	intramap.c	IntraRegistry::register		yes	C keeps one process-wide table; the port's registry belongs to the Channel that reads (Channel::register_intra), and an IntraMap made in code needs none. The name, numbers of coordinates, flags, purpose, author and contact are IntraTransform methods. C accepts a repeat registration whose arguments are all identical; the port accepts a repeat of the same Arc
+attribute	IntraFlag	intramap.c	IntraMap::intra_flag		yes	The header gives an empty-string default; the getter returns None while unset, and the merge compares an unset value as an empty string, as C does
+function	astIntraMap	intramap.c	IntraMap::new		yes	Takes the transformation itself rather than its registered name
+class	KeyMap	keymap.c	KeyMap		yes
+function	astMapCopy	keymap.c	KeyMap::map_copy		yes
+function	astMapCopyEntry	keymap.c	KeyMap::map_copy_entry		yes
+function	astMapKey	keymap.c	KeyMap::map_key		yes
+function	astMapPut0<X>	keymap.c	KeyMap::put_0i;KeyMap::put_0s;KeyMap::put_0k;KeyMap::put_0b;KeyMap::put_0f;KeyMap::put_0d;KeyMap::put_0c;KeyMap::put_0a		yes	one method per <X>: i i32, s i16, k i64, b u8, f f32, d f64, c &str, a AnyObject (owned, read back as a copy); P has no counterpart
+function	astMapPut1<X>	keymap.c	KeyMap::put_1i;KeyMap::put_1s;KeyMap::put_1k;KeyMap::put_1b;KeyMap::put_1f;KeyMap::put_1d;KeyMap::put_1c;KeyMap::put_1a		yes	one method per <X>: i, s, k, b, f, d slices, c &[&str], a Vec<Option<AnyObject>>; P has no counterpart; no size argument
+function	astMapPutU	keymap.c	KeyMap::put_u		yes
+function	astMapGet0<X>	keymap.c	KeyMap::get_0i;KeyMap::get_0s;KeyMap::get_0k;KeyMap::get_0b;KeyMap::get_0f;KeyMap::get_0d;KeyMap::get_0c;KeyMap::get_0a		yes	one method per <X>, as for astMapPut0<X>; returns Ok(None) in place of the zero flag; a stored Object is returned as a copy, not a new reference to it
+function	astMapGet1<X>	keymap.c	KeyMap::get_1i;KeyMap::get_1s;KeyMap::get_1k;KeyMap::get_1b;KeyMap::get_1f;KeyMap::get_1d;KeyMap::get_1c;KeyMap::get_1a		yes	one method per <X>, returning a Vec the length of the entry, so no mxval, nval or string length arguments; Ok(None) in place of the zero flag
+function	astMapGetC	keymap.c	KeyMap::map_get_c		yes
+function	astMapGetElem<X>	keymap.c	KeyMap::get_elem_i;KeyMap::get_elem_s;KeyMap::get_elem_k;KeyMap::get_elem_b;KeyMap::get_elem_f;KeyMap::get_elem_d;KeyMap::get_elem_c;KeyMap::get_elem_a		yes	one method per <X>; no string length argument; Ok(None) in place of the zero flag
+function	astMapDefined	keymap.c	KeyMap::map_defined		yes	consults KeyError for a missing key, which the header does not say (c-library-quirks.md)
+function	astMapHasKey	keymap.c	KeyMap::map_has_key		yes
+function	astMapRemove	keymap.c	KeyMap::map_remove		yes
+function	astMapRename	keymap.c	KeyMap::map_rename		yes
+function	astMapSize	keymap.c	KeyMap::map_size		yes
+function	astMapLenC	keymap.c	KeyMap::map_len_c		yes
+function	astMapLength	keymap.c	KeyMap::map_length		yes
+function	astMapPutElem<X>	keymap.c	KeyMap::put_elem_i;KeyMap::put_elem_s;KeyMap::put_elem_k;KeyMap::put_elem_b;KeyMap::put_elem_f;KeyMap::put_elem_d;KeyMap::put_elem_c;KeyMap::put_elem_a		yes	one method per <X>; elem is a usize, so only an index past the end appends; P has no counterpart
+function	astMapType	keymap.c	KeyMap::map_type		yes
+attribute	SizeGuess	keymap.c	KeyMap::size_guess		yes	the header gives a default of 300, but the code gives 160, here and in C (c-library-quirks.md)
+attribute	KeyCase	keymap.c	KeyMap::key_case		yes
+attribute	KeyError	keymap.c	KeyMap::key_error		yes	the header says the astMapGet... functions report a missing key, but astMapGetC does not, here and in C (c-library-quirks.md)
+attribute	MapLocked	keymap.c	KeyMap::map_locked		yes
+attribute	SortBy	keymap.c	KeyMap::sort_by		yes	None returns keys in KeyUp order, where C leaves the order arbitrary (c-library-quirks.md)
+function	astKeyMap	keymap.c	KeyMap::new		yes	no options argument: the attribute setters and KeyMap::with_size_guess take its place
+class	LutMap	lutmap.c	LutMap		yes
+attribute	LutInterp	lutmap.c	LutMap::interp		yes	C takes an integer (0 linear, otherwise nearest) and refuses a change on a LutMap with more than one reference; the port takes the LutInterp enum and owned values have no shared references
+attribute	LutEpsilon	lutmap.c	LutMap::lut_epsilon		yes	C refuses a change on a LutMap with more than one reference; owned values have no shared references
+function	astLutMap	lutmap.c	LutMap::new		yes
+class	Mapping	mapping.c	Mapping		yes	rustdoc rejects an alias equal to the item's name, so the gate checks the trait's declaration
+function	astInvert	mapping.c	Mapping::invert		yes
+function	astLinearApprox	mapping.c	Mapping::linear_approx		yes	C's header says an all-bad box gives unit-transformation coefficients with bad offsets; C's code returns all-bad coefficients and zero, which the port returns as None
+function	astQuadApprox	mapping.c	Mapping::quad_approx		yes
+function	astRebin<X>	mapping.c	rebin		yes	one function generic over RebinValue for the type codes
+function	astRebinSeq<X>	mapping.c	rebin_seq		yes	one function generic over RebinValue for the type codes
+function	astRemoveRegions	mapping.c	remove_regions		yes	a Region becomes a UnitMap rather than its Frame, since the port's Frames are not Mappings (PLAN.md §9.6)
+function	astResample<X>	mapping.c	resample		yes
+function	astSimplify	mapping.c	dyn Mapping::simplify		yes
+function	astTran1	mapping.c	Mapping::tran1		yes
+function	astTran2	mapping.c	Mapping::tran2		yes
+function	astTranGrid	mapping.c	Mapping::tran_grid		yes
+function	astTranN	mapping.c	Mapping::transform		yes	transform does not honor Report, which astTranN does (PLAN.md §2)
+function	astTranP	mapping.c	Mapping::transform_into		yes	transform_into does not honor Report, which astTranP does (PLAN.md §2)
+function	astUinterp	mapping.c	InterpFn		yes
+function	astUkern1	mapping.c	Kernel1Fn		yes
+attribute	Invert	mapping.c	Mapping::is_inverted		yes
+attribute	IsLinear	mapping.c	Mapping::is_linear		yes
+attribute	IsSimple	mapping.c	Mapping::has_been_simplified		yes
+attribute	Nin	mapping.c	Mapping::nin		yes
+attribute	Nout	mapping.c	Mapping::nout		yes
+attribute	Report	mapping.c	Mapping::report		yes	only tran1/tran2 report (PLAN.md §2); C's header says a dump drops it, but C's Dump writes it when set, as the port does
+attribute	TranForward	mapping.c	Mapping::has_forward		yes
+attribute	TranInverse	mapping.c	Mapping::has_inverse		yes
+function	astDecompose	mapping.c	CmpMap::decompose;TranMap::decompose		yes	CmpFrame::frame1/frame2 and CmpRegion's and Prism's region1/region2 give those classes' components, whose Invert values C takes from the components themselves; a Mapping that is not compound, which C decomposes into itself, has no counterpart
+function	astMapBox	mapping.c	Mapping::map_box		yes
+function	astRate	mapping.c	Mapping::rate		yes
+function	astMapSplit	mapping.c	Mapping::map_split		yes
+class	MathMap	mathmap.c	MathMap		yes	The expression syntax from the astMathMap header is on the struct doc
+attribute	Seed	mathmap.c	MathMap::seed		yes
+attribute	SimpFI	mathmap.c	MathMap::simp_fi		yes
+attribute	SimpIF	mathmap.c	MathMap::simp_if		yes
+function	astMathMap	mathmap.c	MathMap::new		yes	C validates every variable name (AST__MISVN, AST__VARIN, AST__DUVAR); the port does not (PLAN.md §2). For nout < 1 C's final status is AST__BADNI (its second astError uses that code); the port returns Badno (docs/issues/c-library-quirks.md)
+class	MatrixMap	matrixmap.c	MatrixMap		yes
+function	astMatrixMap	matrixmap.c	MatrixMap::new;MatrixMap::diagonal		yes	form 0 is new, form 1 is diagonal, and form 2 (unit) is diagonal with every element 1.0
+function	astAppendString	memory.c		c-api-only	yes	Heap string building for C callers; Rust code uses String and Vec<String>
+function	astAppendStringf	memory.c		c-api-only	yes	Heap string building for C callers; Rust code uses String and Vec<String>
+function	astBrackets	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astCalloc	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astChr2Double	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrCase	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrClean	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrMatch	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrMatchN	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrRemoveBlanks	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrSplit	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrSplitC	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrSplitRE	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrSub	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrTrunc	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astFandl	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astFree	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astFreeDouble	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astGrow	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astIsDynamic	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astMalloc	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astMemCaching	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astRealloc	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astRemoveLeadingBlanks	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astSizeOf	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astStore	memory.c		c-api-only	yes	Memory management for C callers; Rust values own and free their memory
+function	astString	memory.c		c-api-only	yes	Heap string building for C callers; Rust code uses String and Vec<String>
+function	astStringArray	memory.c		c-api-only	yes	Heap string building for C callers; Rust code uses String and Vec<String>
+function	astStringCase	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+function	astChrLen	memory.c		c-api-only	yes	C string utility; Rust code uses the str and String methods
+class	Moc	moc.c	Moc		yes
+function	astAddCell	moc.c	Moc::add_cell		yes
+function	astAddMocData	moc.c	Moc::add_moc_data		yes	data is a slice of i32 or i64, which replaces len, nbyte and the data pointer; the C edition of the header has negate the wrong way round: true combines the cells the data do not hold, as the C code does (c-library-quirks.md)
+function	astAddMocString	moc.c	Moc::add_moc_string		yes	takes a &str ending at its end or first null, which replaces len, and returns the JSON flag; negate as for astAddMocData; cells above maxorder are degraded, as the C code does, not ignored as the header says (c-library-quirks.md)
+function	astAddPixelMask<X>	moc.c	Moc::add_pixel_mask		yes	one function generic over PixelValue for the type codes; bad: Option<T> replaces the AST__USEBAD flag and badval; dims are usize, so the 8-byte interface is the same function; Invar for a zero dimension or an array shorter than dims needs
+function	astAddRegion	moc.c	Moc::add_region		yes
+function	astGetCell	moc.c	Moc::get_cell		yes	returns (order, npix)
+function	astGetMocData	moc.c	Moc::get_moc_data		yes	returns MocData, i32 or i64 values by MocType, instead of filling a buffer of mxsize bytes
+function	astGetMocHeader	moc.c	Moc::get_moc_header		yes
+function	astGetMocString	moc.c	Moc::get_moc_string		yes	returns a String instead of filling a buffer and its size; get_moc_text writes it in pieces
+function	astTestCell	moc.c	Moc::test_cell		yes
+attribute	MaxOrder	moc.c	Moc::max_order		yes	the header gives astAddPixelMask<X> a default of cells no larger than the pixels; the code and the astAddPixelMask<X> header use half (c-library-quirks.md)
+attribute	MinOrder	moc.c	Moc::min_order		yes	default MaxOrder-5 as the C code has it; the header says MaxOrder-4 (c-library-quirks.md)
+attribute	MaxRes	moc.c	Moc::max_res		yes	no test_max_res or clear_max_res: test_max_order and clear_max_order, which C uses for MaxRes too
+attribute	MinRes	moc.c	Moc::min_res		yes	no test_min_res or clear_min_res: test_min_order and clear_min_order, which C uses for MinRes too
+attribute	MocType	moc.c	Moc::moc_type		yes
+attribute	MocArea	moc.c	Moc::moc_area		yes
+attribute	MocLength	moc.c	Moc::moc_length		yes	returns usize
+function	astMoc	moc.c	Moc::new		yes	takes no attribute options; set MaxOrder and MinOrder with their setters
+class	MocChan	mocchan.c	MocChan		yes
+attribute	MocFormat	mocchan.c	MocChan::moc_format		yes
+attribute	MocLineLen	mocchan.c	MocChan::moc_line_len		yes
+function	astMocChan	mocchan.c	MocChan::new		yes	No source, sink or options arguments: set_source, set_sink and the attribute setters take their place; with no source or sink the MocChan uses standard input or output, as in C
+class	NormMap	normmap.c	NormMap		yes
+function	astNormMap	normmap.c	NormMap::new		yes	The NormMap owns its Frame
+class	NullRegion	nullregion.c	NullRegion		yes
+function	astNullRegion	nullregion.c	NullRegionBuilder::new		yes
+class	Object	object.c	AnyObject		yes	No common base trait: AnyObject holds any object and documents what all share
+function	astAnnul	object.c		c-api-only	yes	Handle management; an owned value is dropped
+function	astClear	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed clear_ method
+function	astClone	object.c		c-api-only	yes	Handle management; no shared objects or reference counts in starlink-ast
+function	astCopy	object.c	AnyObject		yes	Clone on every class is the deep copy; alias on AnyObject, as an impl Clone cannot carry one
+function	astDelete	object.c		c-api-only	yes	Handle management; an owned value is dropped
+function	astGet<X>	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed getter
+function	astHasAttribute	object.c		c-api-only	yes	String-dispatch attribute access; Rust attributes are methods, checked at compile time
+function	astToString	object.c	AnyObject::to_native_string; $ty::to_native_string		yes	$ty is every class the object_text! macro gives the method
+function	astSet	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed setter
+function	astSame	object.c		c-api-only	yes	Pointer identity; std::ptr::eq in Rust
+function	astSet<X>	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed setter
+function	astShow	object.c	AnyObject::show; $ty::show		yes	$ty is every class the object_text! macro gives the method
+function	astTest	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed test_ method
+function	astTune	object.c		c-api-only	yes	Global tuning: ObjectCaching and MemoryCaching control C memory caching, which Rust allocation does not have
+function	astTuneC	object.c		c-api-only	yes	Global tuning of the Plot escape strings for sky formatting; graphical escapes are not ported
+function	astFromString	object.c	from_native_string; from_native_string_with		yes
+attribute	Class	object.c	AnyObject::class_name		yes
+attribute	ID	object.c	Mapping::id; Frame::id; KeyMap::id; NativeChannel::id; MocChan::id; FitsChan::id		yes	Table and FitsTable read it through their KeyMap
+attribute	Ident	object.c	Mapping::ident; Frame::ident; KeyMap::ident; NativeChannel::ident; MocChan::ident; FitsChan::ident		yes	Table and FitsTable read it through their KeyMap
+attribute	UseDefs	object.c	Frame::use_defs		yes	Only Frames expose it, the only classes C lets it affect; a FitsChan keeps one set through FITSCHAN_OPTIONS for its dump
+attribute	Nobject	object.c		c-api-only	yes	A count of live objects per class; starlink-ast keeps no object registry, so only the C interface can count its handles
+attribute	ObjSize	object.c		not-ported	yes	No in-memory size of an object; nothing in starlink-ast needs it (PLAN.md §7)
+attribute	RefCount	object.c		c-api-only	yes	Handle reference count; owned values have none
+function	astIsA<Class>	object.c	AnyObject::as_mapping; AnyObject::as_frame; AnyObject::as_region		yes	A plain Frame is not a Mapping (sibling traits), where astIsAMapping is true for any Frame
+function	astActiveObjects	object.c		c-api-only	yes	Handle bookkeeping
+function	astBegin	object.c		c-api-only	yes	Handle context
+function	astCreatedAt	object.c		c-api-only	yes	Handle bookkeeping
+function	astEnd	object.c		c-api-only	yes	Handle context
+function	astExempt	object.c		c-api-only	yes	Handle context
+function	astExport	object.c		c-api-only	yes	Handle context
+function	astImport	object.c		c-api-only	yes	Handle context
+function	astLock	object.c		c-api-only	yes	Thread locking of handles; objects are Send, not Sync
+function	astUnlock	object.c		c-api-only	yes	Thread locking of handles; objects are Send, not Sync
+function	astThread	object.c		c-api-only	yes	Thread locking of handles; objects are Send, not Sync
+function	astVersion	object.c	PACKAGE_STRING		yes	The version as text; no integer form (PLAN.md §7)
+function	astEscapes	object.c		not-ported	yes	Graphical escape sequences belong to Plot, which is not ported
+class	PcdMap	pcdmap.c	PcdMap		yes
+attribute	Disco	pcdmap.c	PcdMap::disc		yes	C refuses to set it on a PcdMap with more than one reference; owned values have no such restriction
+attribute	PcdCen	pcdmap.c	PcdMap::pcdcen		yes	The getter returns both axes; C's PcdCen without an axis reads axis 1. C refuses to set it on a PcdMap with more than one reference
+function	astPcdMap	pcdmap.c	PcdMap::new		yes	The options string is replaced by the typed setters
+class	PermMap	permmap.c	PermMap		yes
+function	astPermMap	permmap.c	PermMap::new;PermMap::with_null_perms		yes
+class	Plot	plot.c		not-ported	yes
+attribute	Tol	plot.c		not-ported	yes
+attribute	Grid	plot.c		not-ported	yes
+attribute	Invisible	plot.c		not-ported	yes
+attribute	TickAll	plot.c		not-ported	yes
+attribute	Border	plot.c		not-ported	yes
+attribute	Clip	plot.c		not-ported	yes
+attribute	ClipOp	plot.c		not-ported	yes
+attribute	Grf	plot.c		not-ported	yes
+attribute	DrawTitle	plot.c		not-ported	yes
+attribute	LabelUp	plot.c		not-ported	yes
+attribute	DrawAxes	plot.c		not-ported	yes
+attribute	Abbrev	plot.c		not-ported	yes
+attribute	Escape	plot.c		not-ported	yes
+attribute	LabelAt	plot.c		not-ported	yes
+attribute	Gap	plot.c		not-ported	yes
+attribute	LogGap	plot.c		not-ported	yes
+attribute	LogPlot	plot.c		not-ported	yes
+attribute	LogTicks	plot.c		not-ported	yes
+attribute	LogLabel	plot.c		not-ported	yes
+attribute	MajTickLen	plot.c		not-ported	yes
+attribute	TitleGap	plot.c		not-ported	yes
+attribute	MinTickLen	plot.c		not-ported	yes
+attribute	TextGapType	plot.c		not-ported	yes
+attribute	Labelling	plot.c		not-ported	yes
+attribute	Edge	plot.c		not-ported	yes
+attribute	NumLab	plot.c		not-ported	yes
+attribute	NumLabGap	plot.c		not-ported	yes
+attribute	MinTick	plot.c		not-ported	yes
+attribute	TextLab	plot.c		not-ported	yes
+attribute	TextLabGap	plot.c		not-ported	yes
+attribute	LabelUnits	plot.c		not-ported	yes
+attribute	Style	plot.c		not-ported	yes
+attribute	Font	plot.c		not-ported	yes
+attribute	Colour	plot.c		not-ported	yes
+attribute	Width	plot.c		not-ported	yes
+attribute	Size	plot.c		not-ported	yes
+function	astBBuf	plot.c		not-ported	yes
+function	astBorder	plot.c		not-ported	yes
+function	astBoundingBox	plot.c		not-ported	yes
+function	astClip	plot.c		not-ported	yes
+function	astCurve	plot.c		not-ported	yes
+function	astEBuf	plot.c		not-ported	yes
+function	astGetGrfContext	plot.c		not-ported	yes
+function	astGenCurve	plot.c		not-ported	yes
+function	astGrfPop	plot.c		not-ported	yes
+function	astGrfPush	plot.c		not-ported	yes
+function	astGrfSet	plot.c		not-ported	yes
+function	astGrid	plot.c		not-ported	yes
+function	astGridLine	plot.c		not-ported	yes
+function	astMark	plot.c		not-ported	yes
+function	astPolyCurve	plot.c		not-ported	yes
+function	astRegionOutline	plot.c		not-ported	yes
+function	astStripEscapes	plot.c		not-ported	yes
+function	astText	plot.c		not-ported	yes
+function	astPlot	plot.c		not-ported	yes
+class	Plot3D	plot3d.c		not-ported	yes
+attribute	RootCorner	plot3d.c		not-ported	yes
+attribute	Norm	plot3d.c		not-ported	yes
+function	astPlot3D	plot3d.c		not-ported	yes
+class	PointList	pointlist.c	PointList		yes
+attribute	ListSize	pointlist.c	PointList::list_size		yes
+function	astPointList	pointlist.c	PointListBuilder::new		yes	points are given as one Vec per point rather than an [ncoord][dim] array
+class	Polygon	polygon.c	Polygon		yes
+function	astConvex<X>	polygon.c	Polygon::convex		yes	one function generic over PixelValue for the type codes; the i64 bounds are the 8-byte interface; Dimin where C reads past a short array
+function	astDownsize	polygon.c	Polygon::downsize		yes	maxerr is measured in the base Frame, as the C code measures it (c-library-quirks.md)
+function	astOutline<X>	polygon.c	Polygon::outline		yes	one function generic over PixelValue for the type codes; the i64 bounds are the 8-byte interface; Dimin where C reads past a short array
+attribute	SimpVertices	polygon.c	Polygon::simp_vertices		yes
+function	astPolygon	polygon.c	PolygonBuilder::new		yes	vertices are given as one Vec per vertex rather than a [2][dim] array
+class	PolyMap	polymap.c	PolyMap		yes
+function	astPolyCoeffs	polymap.c	PolyMap::coeffs;ChebyMap::coeffs		yes
+function	astPolyTran	polymap.c	PolyMap::poly_tran;ChebyMap::poly_tran		yes	ChebyMap's Applicability text (NULL bounds use the ChebyMap's own box, Chebyshev result) is on ChebyMap::poly_tran
+attribute	IterInverse	polymap.c	PolyMap::iter_inverse		yes	ChebyMap's Applicability (always zero, setting has no effect) is on the ChebyMap struct doc: ChebyMap has no iter_inverse methods
+attribute	NiterInverse	polymap.c	PolyMap::niter_inverse		yes
+attribute	TolInverse	polymap.c	PolyMap::tol_inverse		yes
+function	astPolyMap	polymap.c	PolyMap::new		yes	C takes powers as doubles rounded to the nearest integer and rejects negative ones; the port takes PolyTerm with usize powers
+class	Prism	prism.c	Prism		yes
+function	astPrism	prism.c	PrismBuilder::new		yes	the builder can also set an uncertainty, which astPrism cannot
+class	RateMap	ratemap.c	RateMap		yes
+function	astRateMap	ratemap.c	RateMap::new		yes	The RateMap owns the encapsulated Mapping; C keeps a reference to it
+class	Region	region.c	Region		yes	rustdoc rejects an alias equal to the item's name, so the gate checks the trait's declaration
+function	astGetUnc	region.c	Region::get_unc		yes	get_uncertainty gives the stored Region, in the base Frame
+function	astGetRegionFrame	region.c	Region::get_region_frame		yes
+function	astGetRegionFrameSet	region.c	Region::get_region_frameset		yes
+function	astMask<X>	region.c	mask		yes	one function generic over MaskValue for the type codes; the 8-byte interface is the i64 bounds
+function	astNegate	region.c	Region::negate		yes
+function	astOverlap	region.c	Region::overlap		yes	returns the Overlap enum for codes 0 to 6
+function	astPointInRegion	region.c	Region::point_in_region		yes
+function	astGetRegionBounds	region.c	Region::get_region_bounds		yes
+function	astGetRegionMesh	region.c	Region::region_mesh;Region::region_grid		yes	surface set and unset; base_mesh is the base-Frame boundary mesh; no maxpoint/maxcoord errors, the result is a PointSet
+function	astGetRegionPoints	region.c	Region::region_points		yes	base_points is the stored base-Frame points; no maxpoint/maxcoord errors, the result is a PointSet
+function	astGetRegionDisc	region.c	Region::get_region_disc;region_disc		yes	an unbounded Region gives a bad center, where C leaves the caller center array unchanged
+function	astSetUnc	region.c	Region::set_uncertainty		yes
+function	astShowMesh	region.c	Region::show_mesh		yes	show_mesh_text returns the same table
+attribute	Adaptive	region.c	Region::is_adaptive		yes
+attribute	Negated	region.c	Region::is_negated		yes
+attribute	Bounded	region.c	Region::is_bounded		yes
+attribute	FillFactor	region.c	Region::fill_factor		yes
+attribute	MeshSize	region.c	Region::mesh_size		yes	1-D default is 2, as in the code
+attribute	Closed	region.c	Region::is_closed		yes	CmpRegion takes the first component value at construction, if set, as the code does
+function	astMapRegion	region.c	Region::map_region		yes
+class	SelectorMap	selectormap.c	SelectorMap		yes
+function	astSelectorMap	selectormap.c	SelectorMapBuilder::new		yes	badval is the builder's badval method, defaulting to BAD_VALUE
+class	ShiftMap	shiftmap.c	ShiftMap		yes
+function	astShiftMap	shiftmap.c	ShiftMap::new		yes
+class	SkyAxis	skyaxis.c		merged	yes	SkyFrame
+class	SkyFrame	skyframe.c	SkyFrame		yes
+function	astSkyOffsetMap	skyframe.c	SkyFrame::sky_offset_map		yes
+attribute	AlignOffset	skyframe.c	SkyFrame::align_offset		yes
+attribute	AsTime	skyframe.c	SkyFrame::as_time		yes
+attribute	Equinox	skyframe.c	SkyFrame::equinox_mjd		yes	The Rust API takes and gives an MJD, or a decimal year through equinox_year and set_equinox_year; C's other string input formats are for its string interface
+attribute	IsLatAxis	skyframe.c	SkyFrame::is_lat_axis		yes
+attribute	IsLonAxis	skyframe.c	SkyFrame::is_lon_axis		yes
+attribute	LatAxis	skyframe.c	SkyFrame::lat_axis		yes
+attribute	LonAxis	skyframe.c	SkyFrame::lon_axis		yes
+attribute	NegLon	skyframe.c	SkyFrame::neg_lon		yes
+attribute	SkyTol	skyframe.c	SkyFrame::sky_tol		yes
+attribute	Projection	skyframe.c	SkyFrame::projection		yes	An unset Projection is None, where C gives an empty string
+attribute	SkyRefIs	skyframe.c	SkyFrame::sky_ref_is		yes
+attribute	SkyRef	skyframe.c	SkyFrame::sky_ref		yes	C's unsubscripted two-value string form is sky_ref_lon_lat here. C's header says assigning SkyRef alone changes the default Labels, Symbols and Title; the code also needs SkyRefIs not Ignored, as the port's doc says (docs/issues/c-library-quirks.md)
+attribute	SkyRefP	skyframe.c	SkyFrame::sky_ref_p		yes	C's unsubscripted two-value string form is sky_ref_p_lon_lat here
+function	astSkyFrame	skyframe.c	SkyFrame::new;SkyFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; unset_system is astSkyFrame("")
+class	SlaMap	slamap.c	SlaMap		yes
+function	astSlaAdd	slamap.c	SlaMap::add		yes	C takes the conversion as a string; the port takes SlaCvtType, whose variants carry the conversion list and SlaCvtType::from_code parses the strings
+function	astSlaMap	slamap.c	SlaMap::new		yes	C's reserved flags argument is dropped
+class	SpecFluxFrame	specfluxframe.c	SpecFluxFrame		yes	Holds its SpecFrame and FluxFrame directly rather than being a CmpFrame subclass; their attributes are reached through spec_frame and flux_frame rather than forwarded by name
+function	astSpecFluxFrame	specfluxframe.c	SpecFluxFrame::new		yes	Takes ownership of the two Frames, where C stores the pointers supplied, so later changes go through spec_frame_mut and flux_frame_mut
+class	SpecFrame	specframe.c	SpecFrame		yes
+function	astGetRefPos	specframe.c	SpecFrame::ref_pos		yes
+function	astSetRefPos	specframe.c	SpecFrame::set_ref_pos		yes
+attribute	AlignSpecOffset	specframe.c	SpecFrame::align_spec_offset		yes	C's header names a SpecOffset attribute where it means SpecOrigin (docs/issues/c-library-quirks.md)
+attribute	AlignStdOfRest	specframe.c	SpecFrame::align_std_of_rest		yes
+attribute	RefDec	specframe.c	SpecFrame::ref_dec		yes	Radians on the Rust API; C's "dd:mm:ss.s" strings are for its string interface
+attribute	RefRA	specframe.c	SpecFrame::ref_ra		yes	Radians on the Rust API; C's "hh:mm:ss.ss" strings are for its string interface
+attribute	RestFreq	specframe.c	SpecFrame::rest_freq		yes	Hz on the Rust API where C's attribute is in GHz; C's strings giving a frequency, wavelength or energy with units are for its string interface
+attribute	SourceVel	specframe.c	SpecFrame::source_vel;SpecFrame::source_vel_cur		yes	source_vel gives a velocity in m/s, source_vel_cur in km/s as C's attribute does
+attribute	SourceVRF	specframe.c	SpecFrame::source_vrf		yes
+attribute	SourceSys	specframe.c	SpecFrame::source_sys		yes
+attribute	StdOfRest	specframe.c	SpecFrame::std_of_rest		yes
+attribute	SpecOrigin	specframe.c	SpecFrame::spec_origin;SpecFrame::spec_origin_cur		yes	C's attribute is in the current units, as spec_origin_cur; spec_origin gives the stored value in the System's default units; C's strings with units are for its string interface
+function	astSpecFrame	specframe.c	SpecFrame::new;SpecFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; unset_system is astSpecFrame("")
+class	SpecMap	specmap.c	SpecMap		yes
+function	astSpecAdd	specmap.c	SpecMap::add		yes	C takes the conversion as a string; the port takes SpecCvtType, whose variants carry the conversion list and SpecCvtType::from_code parses the strings
+function	astSpecMap	specmap.c	SpecMap::new;SpecMap::with_nin		yes	new is nin = 1; C's reserved flags argument is dropped
+class	SphMap	sphmap.c	SphMap		yes
+attribute	UnitRadius	sphmap.c	SphMap::unit_radius		yes	C refuses to set it on a SphMap with more than one reference; owned values have no such restriction
+attribute	PolarLong	sphmap.c	SphMap::polar_long		yes	C refuses to set it on a SphMap with more than one reference
+function	astSphMap	sphmap.c	SphMap::new		yes	The header says a zero vector transforms to AST__BAD; C's code (and the port) give (0, 0) from palDcc2s (docs/issues/c-library-quirks.md)
+class	SplineMap	splinemap.c	SplineMap		yes
+function	astSplineCoeffs	splinemap.c	SplineMap::coeffs		yes	Returns a Vec of nx*ny values; C's nel argument (truncate or zero-fill) has no equivalent
+function	astSplineKnots	splinemap.c	SplineMap::tx;SplineMap::ty		yes	One method per input axis in place of C's axis argument; C's nel argument (truncate or zero-fill) has no equivalent
+attribute	InvNiter	splinemap.c	SplineMap::inv_niter		yes	The header's note that OutUnit changes the value returned for a non-converged point is dropped: C sets such points to AST__BAD whatever OutUnit is (splinemap.c:1595-1610), as the port does
+attribute	InvTol	splinemap.c	SplineMap::inv_tol		yes
+attribute	OutUnit	splinemap.c	SplineMap::out_unit		yes
+attribute	SplineKx	splinemap.c	SplineMap::kx		yes
+attribute	SplineKy	splinemap.c	SplineMap::ky		yes
+attribute	SplineNx	splinemap.c	SplineMap::nx		yes
+attribute	SplineNy	splinemap.c	SplineMap::ny		yes
+function	astSplineMap	splinemap.c	SplineMap::new;SplineMap::from_scipy		yes	from_scipy takes C's SciPy coefficient order; new takes the X-fastest order of C's Fortran API and the dump. The port also checks the array lengths C takes on trust
+class	Stc	stc.c	Stc		yes	generic over a StcKind marker, used through the four class aliases
+function	astGetStcCoord	stc.c	Stc::get_stc_coord		yes
+function	astGetStcNCoord	stc.c	Stc::get_stc_n_coord		yes	returns usize
+function	astGetStcRegion	stc.c	Stc::get_stc_region		yes
+attribute	RegionClass	stc.c	Stc::region_class		yes
+class	StcCatalogEntryLocation	stccatalogentrylocation.c	StcCatalogEntryLocation		yes	a type alias of Stc
+function	astStcCatalogEntryLocation	stccatalogentrylocation.c	StcBuilder::new		yes	one generic builder for the four classes, through StcCatalogEntryLocationBuilder; the AstroCoords KeyMaps are given with coords
+class	StcObsDataLocation	stcobsdatalocation.c	StcObsDataLocation		yes	a type alias of Stc; obs and obs gives the observatory position, which only a dump can set (C's astStcSetObs is protected)
+function	astStcObsDataLocation	stcobsdatalocation.c	StcBuilder::new		yes	one generic builder for the four classes, through StcObsDataLocationBuilder; the header describes the class as StcResourceProfile's does (c-library-quirks.md)
+class	StcResourceProfile	stcresourceprofile.c	StcResourceProfile		yes	a type alias of Stc
+function	astStcResourceProfile	stcresourceprofile.c	StcBuilder::new		yes	one generic builder for the four classes, through StcResourceProfileBuilder; the AstroCoords KeyMaps are given with coords
+class	StcsChan	stcschan.c		not-ported	yes
+attribute	StcsArea	stcschan.c		not-ported	yes
+attribute	StcsCoords	stcschan.c		not-ported	yes
+attribute	StcsProps	stcschan.c		not-ported	yes
+attribute	StcsLength	stcschan.c		not-ported	yes
+function	astStcsChan	stcschan.c		not-ported	yes
+class	StcSearchLocation	stcsearchlocation.c	StcSearchLocation		yes	a type alias of Stc
+function	astStcSearchLocation	stcsearchlocation.c	StcBuilder::new		yes	one generic builder for the four classes, through StcSearchLocationBuilder; the AstroCoords KeyMaps are given with coords
+class	SwitchMap	switchmap.c	SwitchMap		yes
+function	astSwitchMap	switchmap.c	SwitchMap::new		yes	The SwitchMap owns its components; C keeps references to them
+class	Table	table.c	Table		yes
+function	astAddColumn	table.c	Table::add_column;FitsTable::add_column		yes	dims slice in place of ndim and dims
+function	astAddParameter	table.c	Table::add_parameter		yes
+function	astColumnName	table.c	Table::column_name		yes
+function	astColumnShape	table.c	Table::column_shape		yes	returns the shape as a Vec, with no padding to mxdim
+function	astHasColumn	table.c	Table::has_column		yes
+function	astHasParameter	table.c	Table::has_parameter		yes
+function	astParameterName	table.c	Table::parameter_name		yes
+function	astPurgeRows	table.c	Table::purge_rows		yes
+function	astRemoveColumn	table.c	Table::remove_column		yes	header says case is significant; it is not, in C or here (quirk)
+function	astRemoveParameter	table.c	Table::remove_parameter		yes	header says case is significant; it is not, in C or here (quirk)
+function	astRemoveRow	table.c	Table::remove_row		yes
+attribute	ColumnLenC	table.c	Table::column_len_c		yes
+attribute	ColumnLength	table.c	Table::column_length		yes
+attribute	ColumnNdim	table.c	Table::column_ndim		yes
+attribute	ColumnType	table.c	Table::column_type		yes	AstType; no pointer type
+attribute	Ncolumn	table.c	Table::ncolumn		yes
+attribute	Nparameter	table.c	Table::nparameter		yes
+attribute	Nrow	table.c	Table::nrow		yes
+function	astTable	table.c	Table::new		yes	no options argument
+class	TemplateClass	templateclass.c		not-ported	yes	A template for writing a new C class, not a class of the library
+attribute	AlignSpecOffset	templateclass.c		not-ported	yes	A template for writing a new C class, not a class of the library
+function	astTemplateClass	templateclass.c		not-ported	yes	A template for writing a new C class, not a class of the library
+class	TimeFrame	timeframe.c	TimeFrame		yes
+function	astCurrentTime	timeframe.c	TimeFrame::current_time		yes	C's header says the time scales defined by the Earth's rotation are an error; C's code and the port convert to them (docs/issues/c-library-quirks.md)
+attribute	TimeOrigin	timeframe.c	TimeFrame::time_origin;TimeFrame::time_origin_cur		yes	C's attribute is in the current units, as time_origin_cur; time_origin gives the stored value in the System's default unit; C's input formats (epochs, JD and MJD, calendar dates, values with units) are for its string interface
+attribute	LTOffset	timeframe.c	TimeFrame::lt_offset		yes
+attribute	AlignTimeScale	timeframe.c	TimeFrame::align_timescale		yes
+attribute	TimeScale	timeframe.c	TimeFrame::timescale		yes
+function	astTimeFrame	timeframe.c	TimeFrame::new;TimeFrame::unset_system		yes	Attributes are set with typed setters rather than an options string; unset_system is astTimeFrame("")
+class	TimeMap	timemap.c	TimeMap		yes
+function	astTimeAdd	timemap.c	TimeMap::add		yes	C takes the conversion as a string; the port takes TimeCvtType, whose variants carry the conversion list and TimeCvtType::from_code parses the strings; the C header describes LASTTOLMST and LMSTTOLAST as GMST/LMST conversions, the port documents what they do (docs/issues/c-library-quirks.md)
+function	astTimeMap	timemap.c	TimeMap::new		yes	C's reserved flags argument is dropped
+class	TranMap	tranmap.c	TranMap		yes
+function	astTranMap	tranmap.c	TranMap::new		yes	The TranMap owns its components; C keeps references to them
+class	UnitMap	unitmap.c	UnitMap		yes
+function	astUnitMap	unitmap.c	UnitMap::new		yes
+class	UnitNormMap	unitnormmap.c	UnitNormMap		yes
+function	astUnitNormMap	unitnormmap.c	UnitNormMap::new		yes	ncoord is the length of the centre slice; C's undocumented NULL centre is equivalent to BAD_VALUE on every axis
+class	WcsMap	wcsmap.c	WcsMap		yes
+attribute	ProjP	wcsmap.c		merged	yes	PVi_m
+attribute	PVi_m	wcsmap.c	WcsMap::get_pv		yes	C refuses a change on a WcsMap with more than one reference; owned values have no shared references; the header's zero default for parameters the projection does not use holds only on the latitude axis, in C as in the port (wcsmap.c GetPV)
+attribute	PVMax	wcsmap.c	WcsMap::pv_max		yes	C returns -1 for an axis that is neither longitude nor latitude; the port returns None
+attribute	WcsType	wcsmap.c	WcsMap::projection		yes
+attribute	NatLat	wcsmap.c	WcsMap::nat_lat		yes
+attribute	NatLon	wcsmap.c	WcsMap::nat_lon		yes
+attribute	WcsAxis	wcsmap.c	WcsMap::lonax;WcsMap::latax		yes	WcsAxis(1) is lonax, WcsAxis(2) latax
+function	astWcsMap	wcsmap.c	WcsMap::new		yes	C sets projection parameters through the options string; the port sets them with set_pv after construction
+class	WinMap	winmap.c	WinMap		yes
+function	astWinMap	winmap.c	WinMap::from_corners		yes
+class	XmlChan	xmlchan.c		not-ported	yes
+attribute	XmlFormat	xmlchan.c		not-ported	yes
+attribute	XmlLength	xmlchan.c		not-ported	yes
+attribute	XmlPrefix	xmlchan.c		not-ported	yes
+function	astXmlChan	xmlchan.c		not-ported	yes
+class	YamlChan	yamlchan.c		not-ported	yes
+attribute	VerboseRead	yamlchan.c		not-ported	yes
+attribute	PreserveName	yamlchan.c		not-ported	yes
+attribute	YamlEncoding	yamlchan.c		not-ported	yes
+function	astYamlChan	yamlchan.c		not-ported	yes
+class	ZoomMap	zoommap.c	ZoomMap		yes
+attribute	Zoom	zoommap.c	ZoomMap::zoom		yes	C forbids setting or clearing Zoom on a ZoomMap with more than one reference; the port has owned values, so set_zoom and clear_zoom always apply
+function	astZoomMap	zoommap.c	ZoomMap::new		yes

@@ -1,0 +1,46 @@
+// Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
+//! # The AST user guide
+//!
+//! This guide explains the concepts of the AST library and how its parts fit
+//! together, with worked examples.
+//! The documentation of each type, trait and function describes that item in
+//! full; the guide links to it wherever it names one.
+//!
+//! The source of this guide's text, and of each chapter's attribution, is
+//! recorded in `README.md` beside these files.
+//!
+//! ## Contents
+#![doc = include_str!("contents.md")]
+
+/// Declares a chapter module whose documentation is `<name>.md`, as the build
+/// script writes it with its figures inlined.
+macro_rules! chapter {
+    ($name:ident) => {
+        #[doc = include_str!(concat!(env!("OUT_DIR"), "/guide/", stringify!($name), ".md"))]
+        pub mod $name {}
+    };
+}
+
+chapter!(intro);
+chapter!(concepts);
+chapter!(howto);
+chapter!(objects);
+chapter!(mappings);
+chapter!(cmpmaps);
+chapter!(frames);
+chapter!(skyframes);
+chapter!(specframes);
+chapter!(timeframes);
+chapter!(cmpframes);
+chapter!(conversions);
+chapter!(framesets);
+chapter!(frameset_ops);
+chapter!(channels);
+chapter!(fitschans);
+chapter!(foreign_fits);
+chapter!(intramaps);
+chapter!(fits_wcs);
+
+chapter!(cargo);

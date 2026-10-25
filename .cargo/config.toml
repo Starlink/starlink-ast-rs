@@ -1,0 +1,30 @@
+# Cargo aliases for common developer commands. Keeps the local
+# workflow honest with what CI runs (see .github/workflows/ci.yml).
+#
+# These are aliases, not a hook system — `cargo lint` is just a
+# shortcut for `cargo clippy --workspace --all-targets`. Run them
+# manually before pushing, or wire into a git pre-commit hook if you
+# prefer.
+
+[alias]
+# Match the CI `Clippy` step exactly. Workspace-level
+# `[lints.clippy] all = "deny"` makes a bare `cargo clippy` run as
+# strict as the CI invocation that explicitly passes `-D warnings`.
+lint = "clippy --workspace"
+
+# Broader lint scope including test/bench/example code. Currently
+# trips a number of pre-existing pedantic issues in test fixtures
+# (PI approximations, range-indexed loops). Fix those before adding
+# `--all-targets` to CI; until then this alias is a TODO list.
+lint-all = "clippy --workspace --all-targets"
+
+# Format check without rewriting files. Same as the CI `Format check`
+# step; useful before a commit.
+fmt-check = "fmt --all -- --check"
+
+# A new FitsChan applies the attribute settings in FITSCHAN_OPTIONS, as
+# C's astFitsChan does. The tests' byte-exact results assume none, so every
+# process cargo runs sees the variable empty, whatever the developer's
+# shell holds; a test or program that wants it sets it for a child process.
+[env]
+FITSCHAN_OPTIONS = { value = "", force = true }

@@ -1,0 +1,257 @@
+# Sections the 2026-10-16 sweep (commit 54d21ee6) could not time, with the reason for each.
+simplify/box_pointlist_merge.map dir=forward: no non-BAD row to time at N=100
+simplify/box_pointlist_merge.map dir=inverse: no non-BAD row to time at N=100
+simplify/box_pointlist_merge.simp dir=forward: no non-BAD row to time at N=100
+simplify/box_pointlist_merge.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_box_permmap_const.simp dir=forward: no non-BAD row to time at N=100
+simplify/cap_box_permmap_const.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_box_permmap_null.map dir=forward: no non-BAD row to time at N=100
+simplify/cap_box_permmap_null.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_box_permmap_null.simp dir=forward: no non-BAD row to time at N=100
+simplify/cap_box_permmap_null.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_box_permmap_null_first.map dir=forward: no non-BAD row to time at N=100
+simplify/cap_box_permmap_null_first.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_box_permmap_null_first.simp dir=forward: no non-BAD row to time at N=100
+simplify/cap_box_permmap_null_first.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_cmpmap_nested_tag.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_cmpmap_nested_tag.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_interval_01.map dir=forward: no non-BAD row to time at N=100
+simplify/cap_interval_01.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_interval_01.simp dir=forward: no non-BAD row to time at N=100
+simplify/cap_interval_01.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_permmap_02.map dir=forward: no non-BAD row to time at N=100
+simplify/cap_permmap_02.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_permmap_02.simp dir=forward: no non-BAD row to time at N=100
+simplify/cap_permmap_02.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_pointlist_01.map dir=forward: no non-BAD row to time at N=100
+simplify/cap_pointlist_01.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_pointlist_01.simp dir=forward: no non-BAD row to time at N=100
+simplify/cap_pointlist_01.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_pointlist_02.map dir=forward: no non-BAD row to time at N=100
+simplify/cap_pointlist_02.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_pointlist_02.simp dir=forward: no non-BAD row to time at N=100
+simplify/cap_pointlist_02.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_slamap_02.map dir=forward: no non-BAD row to time at N=100
+simplify/cap_slamap_02.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_slamap_02.simp dir=forward: no non-BAD row to time at N=100
+simplify/cap_slamap_02.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_specmap_03.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_specmap_03.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_timemap_02.map dir=forward: no non-BAD row to time at N=100
+simplify/cap_timemap_02.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_timemap_02.simp dir=forward: no non-BAD row to time at N=100
+simplify/cap_timemap_02.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_wcsmap_01.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_wcsmap_01.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cap_xphmap_01.map dir=forward: no non-BAD row to time at N=100
+simplify/cap_xphmap_01.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_zoommap_04.map dir=forward: no non-BAD row to time at N=100
+simplify/cap_zoommap_04.map dir=inverse: no non-BAD row to time at N=100
+simplify/cap_zoommap_04.simp dir=forward: no non-BAD row to time at N=100
+simplify/cap_zoommap_04.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cefit_circle_nonconformal_keep.map dir=forward: no non-BAD row to time at N=100
+simplify/cefit_circle_nonconformal_keep.map dir=inverse: no non-BAD row to time at N=100
+simplify/cefit_circle_nonconformal_keep.simp dir=forward: no non-BAD row to time at N=100
+simplify/cefit_circle_nonconformal_keep.simp dir=inverse: no non-BAD row to time at N=100
+simplify/cefit_circle_to_ellipse.map dir=forward: no non-BAD row to time at N=100
+simplify/cefit_circle_to_ellipse.map dir=inverse: no non-BAD row to time at N=100
+simplify/cefit_circle_to_ellipse.simp dir=forward: no non-BAD row to time at N=100
+simplify/cefit_circle_to_ellipse.simp dir=inverse: no non-BAD row to time at N=100
+simplify/defunc_interval_unbounded.map dir=forward: no non-BAD row to time at N=100
+simplify/defunc_interval_unbounded.map dir=inverse: no non-BAD row to time at N=100
+simplify/defunc_interval_unbounded.simp dir=forward: no non-BAD row to time at N=100
+simplify/defunc_interval_unbounded.simp dir=inverse: no non-BAD row to time at N=100
+simplify/defunc_pointlist_origin_axis.map dir=forward: no non-BAD row to time at N=100
+simplify/defunc_pointlist_origin_axis.map dir=inverse: no non-BAD row to time at N=100
+simplify/defunc_pointlist_origin_axis.simp dir=forward: no non-BAD row to time at N=100
+simplify/defunc_pointlist_origin_axis.simp dir=inverse: no non-BAD row to time at N=100
+simplify/defunc_prism_box_interval.map dir=forward: no non-BAD row to time at N=100
+simplify/defunc_prism_box_interval.map dir=inverse: no non-BAD row to time at N=100
+simplify/defunc_prism_box_interval.simp dir=forward: no non-BAD row to time at N=100
+simplify/defunc_prism_box_interval.simp dir=inverse: no non-BAD row to time at N=100
+simplify/grism_inverse_cancel.map dir=forward: no non-BAD row to time at N=100
+simplify/grism_inverse_cancel.map dir=inverse: no non-BAD row to time at N=100
+simplify/grism_inverse_cancel_tail.map dir=forward: no non-BAD row to time at N=100
+simplify/grism_inverse_cancel_tail.map dir=inverse: no non-BAD row to time at N=100
+simplify/grism_zoom_inv_merge.map dir=inverse: no non-BAD row to time at N=100
+simplify/grism_zoom_inv_merge.simp dir=inverse: no non-BAD row to time at N=100
+simplify/interval_pointlist_merge.map dir=forward: no non-BAD row to time at N=100
+simplify/interval_pointlist_merge.map dir=inverse: no non-BAD row to time at N=100
+simplify/interval_pointlist_merge.simp dir=forward: no non-BAD row to time at N=100
+simplify/interval_pointlist_merge.simp dir=inverse: no non-BAD row to time at N=100
+simplify/matrix_perm_const_swap.map dir=forward: no non-BAD row to time at N=100
+simplify/matrix_perm_const_swap.map dir=inverse: no non-BAD row to time at N=100
+simplify/matrix_perm_const_swap.simp dir=forward: no non-BAD row to time at N=100
+simplify/matrix_perm_const_swap.simp dir=inverse: no non-BAD row to time at N=100
+simplify/neg_box_asymmetric_2d.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_box_asymmetric_2d.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_circle_cmpframe_sky_second.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_circle_cmpframe_sky_second.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_grism_different_attrs.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_grism_different_attrs.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_grism_fwd_then_nonzoom.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_grism_fwd_then_nonzoom.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_grism_inv_then_zoom.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_grism_nonzoom_before_inv.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_grism_parallel.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_grism_parallel.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_grism_same_direction.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_grism_same_direction.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_grism_zoom_before_fwd.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_grism_zoom_before_fwd.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_interval_unbounded_pointlist.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_interval_unbounded_pointlist.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_matrix_singular_diag.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_nullregion_parallel_nonregion.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_nullregion_parallel_nonregion.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_nullregion_series.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_nullregion_series.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_pcd_perm_nonswap.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_pcd_perm_nonswap.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_pointlist_parallel_nonregion.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_pointlist_parallel_nonregion.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_pointlist_series.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_pointlist_series.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_spline_different_coeffs.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_spline_different_coeffs.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_spline_nonspline_neighbour.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_spline_parallel.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_spline_same_direction.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_spline_same_direction.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_switchmap_not_equal.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_switchmap_not_equal.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_switchmap_parallel.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_switchmap_parallel.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_switchmap_series.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_switchmap_series.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_switchmap_series_lower.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_switchmap_series_lower.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_wcsmap_perm_disconnect.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_wcsmap_perm_disconnect.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_wcsmap_perm_disconnect_lower.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_wcsmap_perm_disconnect_lower.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_wcsmap_perm_nonbidir.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_wcsmap_perm_nonbidir.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_winmap_perm_nonbidir.map dir=forward: no non-BAD row to time at N=100
+simplify/neg_winmap_perm_nonbidir.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_winmap_perm_nonbidir.simp dir=forward: no non-BAD row to time at N=100
+simplify/neg_winmap_perm_nonbidir.simp dir=inverse: no non-BAD row to time at N=100
+simplify/neg_xph_nonxph_neighbour.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_xph_not_opposite.map dir=inverse: no non-BAD row to time at N=100
+simplify/neg_xph_parallel.map dir=inverse: no non-BAD row to time at N=100
+simplify/nullregion_merge_tail.map dir=forward: no non-BAD row to time at N=100
+simplify/nullregion_merge_tail.map dir=inverse: no non-BAD row to time at N=100
+simplify/nullregion_merge_tail.simp dir=forward: no non-BAD row to time at N=100
+simplify/nullregion_merge_tail.simp dir=inverse: no non-BAD row to time at N=100
+simplify/nullregion_parallel_merge.map dir=forward: no non-BAD row to time at N=100
+simplify/nullregion_parallel_merge.map dir=inverse: no non-BAD row to time at N=100
+simplify/nullregion_parallel_merge.simp dir=forward: no non-BAD row to time at N=100
+simplify/nullregion_parallel_merge.simp dir=inverse: no non-BAD row to time at N=100
+simplify/nullregion_parallel_merge_pair.map dir=forward: no non-BAD row to time at N=100
+simplify/nullregion_parallel_merge_pair.map dir=inverse: no non-BAD row to time at N=100
+simplify/nullregion_parallel_merge_pair.simp dir=forward: no non-BAD row to time at N=100
+simplify/nullregion_parallel_merge_pair.simp dir=inverse: no non-BAD row to time at N=100
+simplify/nullregion_self_simplify.map dir=forward: no non-BAD row to time at N=100
+simplify/nullregion_self_simplify.map dir=inverse: no non-BAD row to time at N=100
+simplify/nullregion_self_simplify.simp dir=forward: no non-BAD row to time at N=100
+simplify/nullregion_self_simplify.simp dir=inverse: no non-BAD row to time at N=100
+simplify/nullregion_unc_fillfactor_merge.map dir=forward: no non-BAD row to time at N=100
+simplify/nullregion_unc_fillfactor_merge.map dir=inverse: no non-BAD row to time at N=100
+simplify/nullregion_unc_fillfactor_merge.simp dir=forward: no non-BAD row to time at N=100
+simplify/nullregion_unc_fillfactor_merge.simp dir=inverse: no non-BAD row to time at N=100
+simplify/perm_array_simplify.map dir=forward: no non-BAD row to time at N=100
+simplify/perm_array_simplify.map dir=inverse: no non-BAD row to time at N=100
+simplify/perm_array_simplify.simp dir=forward: no non-BAD row to time at N=100
+simplify/perm_array_simplify.simp dir=inverse: no non-BAD row to time at N=100
+simplify/perm_bad_propagation.map dir=forward: no non-BAD row to time at N=100
+simplify/perm_bad_propagation.map dir=inverse: no non-BAD row to time at N=100
+simplify/perm_bad_propagation.simp dir=forward: no non-BAD row to time at N=100
+simplify/perm_bad_propagation.simp dir=inverse: no non-BAD row to time at N=100
+simplify/pointlist_parallel_merge_pair.map dir=forward: no non-BAD row to time at N=100
+simplify/pointlist_parallel_merge_pair.map dir=inverse: no non-BAD row to time at N=100
+simplify/pointlist_parallel_merge_pair.simp dir=forward: no non-BAD row to time at N=100
+simplify/pointlist_parallel_merge_pair.simp dir=inverse: no non-BAD row to time at N=100
+simplify/pointlist_self_simplify.map dir=forward: no non-BAD row to time at N=100
+simplify/pointlist_self_simplify.map dir=inverse: no non-BAD row to time at N=100
+simplify/pointlist_self_simplify.simp dir=forward: no non-BAD row to time at N=100
+simplify/pointlist_self_simplify.simp dir=inverse: no non-BAD row to time at N=100
+simplify/pointlist_unc_fillfactor_merge.map dir=forward: no non-BAD row to time at N=100
+simplify/pointlist_unc_fillfactor_merge.map dir=inverse: no non-BAD row to time at N=100
+simplify/pointlist_unc_fillfactor_merge.simp dir=forward: no non-BAD row to time at N=100
+simplify/pointlist_unc_fillfactor_merge.simp dir=inverse: no non-BAD row to time at N=100
+simplify/regbasepick_circle_permaxes.map dir=forward: no non-BAD row to time at N=100
+simplify/regbasepick_circle_permaxes.map dir=inverse: no non-BAD row to time at N=100
+simplify/regbasepick_circle_permaxes.simp dir=forward: no non-BAD row to time at N=100
+simplify/regbasepick_circle_permaxes.simp dir=inverse: no non-BAD row to time at N=100
+simplify/regbasepick_cmpregion_subset.map dir=forward: no non-BAD row to time at N=100
+simplify/regbasepick_cmpregion_subset.map dir=inverse: no non-BAD row to time at N=100
+simplify/regbasepick_cmpregion_subset.simp dir=forward: no non-BAD row to time at N=100
+simplify/regbasepick_cmpregion_subset.simp dir=inverse: no non-BAD row to time at N=100
+simplify/regbasepick_prism_subset.map dir=forward: no non-BAD row to time at N=100
+simplify/regbasepick_prism_subset.map dir=inverse: no non-BAD row to time at N=100
+simplify/regbasepick_prism_subset.simp dir=forward: no non-BAD row to time at N=100
+simplify/regbasepick_prism_subset.simp dir=inverse: no non-BAD row to time at N=100
+simplify/sla_run_identity.map dir=forward: no non-BAD row to time at N=100
+simplify/sla_run_identity.map dir=inverse: no non-BAD row to time at N=100
+simplify/sla_run_partial.map dir=forward: no non-BAD row to time at N=100
+simplify/sla_run_partial.map dir=inverse: no non-BAD row to time at N=100
+simplify/sla_run_partial.simp dir=forward: no non-BAD row to time at N=100
+simplify/sla_run_partial.simp dir=inverse: no non-BAD row to time at N=100
+simplify/specmap_invert_normalize.map dir=forward: no non-BAD row to time at N=100
+simplify/specmap_invert_normalize.map dir=inverse: no non-BAD row to time at N=100
+simplify/specmap_invert_normalize.simp dir=forward: no non-BAD row to time at N=100
+simplify/specmap_invert_normalize.simp dir=inverse: no non-BAD row to time at N=100
+simplify/spline_inverse_cancel.map dir=forward: no non-BAD row to time at N=100
+simplify/spline_inverse_cancel.map dir=inverse: no non-BAD row to time at N=100
+simplify/switchmap_fwdonly_simplify.map dir=forward: no non-BAD row to time at N=100
+simplify/switchmap_fwdonly_simplify.simp dir=forward: no non-BAD row to time at N=100
+simplify/switchmap_internal_simplify.map dir=forward: no non-BAD row to time at N=100
+simplify/switchmap_internal_simplify.map dir=inverse: no non-BAD row to time at N=100
+simplify/switchmap_internal_simplify.simp dir=forward: no non-BAD row to time at N=100
+simplify/switchmap_internal_simplify.simp dir=inverse: no non-BAD row to time at N=100
+simplify/switchmap_inv_fwdonly.map dir=inverse: no non-BAD row to time at N=100
+simplify/switchmap_inv_fwdonly.simp dir=inverse: no non-BAD row to time at N=100
+simplify/switchmap_inv_invonly.map dir=forward: no non-BAD row to time at N=100
+simplify/switchmap_inv_invonly.simp dir=forward: no non-BAD row to time at N=100
+simplify/switchmap_inverse_cancel.map dir=forward: no non-BAD row to time at N=100
+simplify/switchmap_inverse_cancel.map dir=inverse: no non-BAD row to time at N=100
+simplify/switchmap_inverse_cancel_tail.map dir=forward: no non-BAD row to time at N=100
+simplify/switchmap_inverse_cancel_tail.map dir=inverse: no non-BAD row to time at N=100
+simplify/switchmap_invert_normalize.map dir=forward: no non-BAD row to time at N=100
+simplify/switchmap_invert_normalize.map dir=inverse: no non-BAD row to time at N=100
+simplify/switchmap_invert_normalize.simp dir=forward: no non-BAD row to time at N=100
+simplify/switchmap_invert_normalize.simp dir=inverse: no non-BAD row to time at N=100
+simplify/switchmap_invonly_simplify.map dir=inverse: no non-BAD row to time at N=100
+simplify/switchmap_invonly_simplify.simp dir=inverse: no non-BAD row to time at N=100
+simplify/winmap_perm_swap_to_zoom.map dir=forward: no non-BAD row to time at N=100
+simplify/winmap_perm_swap_to_zoom.map dir=inverse: no non-BAD row to time at N=100
+simplify/winmap_perm_swap_to_zoom.simp dir=forward: no non-BAD row to time at N=100
+simplify/winmap_perm_swap_to_zoom.simp dir=inverse: no non-BAD row to time at N=100
+simplify/xph_inverse_cancel.map dir=forward: no non-BAD row to time at N=100
+simplify/xph_inverse_cancel.map dir=inverse: no non-BAD row to time at N=100
+programs/teststcschan/stcschan-test1-doc3.ast dir=forward: no non-BAD row to time at N=100
+programs/teststcschan/stcschan-test1-doc3.ast dir=inverse: no non-BAD row to time at N=100
+serialisation/basicframe.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/basicframe.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/cmpframe.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/cmpframe.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/frame_in_map_slot.ast forward: CmpFrame in a Map<n> slot, refused
+serialisation/frame_in_map_slot.ast inverse: CmpFrame in a Map<n> slot, refused
+serialisation/jan-dsb.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/jan-dsb.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/region_in_cmpframe.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/region_in_cmpframe.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/skyframe.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/skyframe.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/skyframe_galactic.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/skyframe_galactic.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/specframe.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/specframe.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/timeframe.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+serialisation/timeframe.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+wcsconv/framesets/specflux-head.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+wcsconv/framesets/specflux-head.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+wcsconv/framesets/timeplot-head.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+wcsconv/framesets/timeplot-head.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+wcsconv/inputs/specflux.ast forward: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform
+wcsconv/inputs/specflux.ast inverse: bare Frame: not a Mapping in the Rust port; C treats it as a unit transform

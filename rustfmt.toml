@@ -1,0 +1,7 @@
+# When `cargo fmt` is invoked it derives the edition from each crate's
+# Cargo.toml, so locking it here is mostly belt-and-braces — but it
+# also kicks in when rustfmt is run directly (without cargo) on
+# individual files, which otherwise defaults to edition 2015 and can
+# produce subtly different output. Match the workspace's `edition =
+# "2024"` so any invocation of rustfmt parses the source the same way.
+edition = "2024"

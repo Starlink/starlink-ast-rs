@@ -1,0 +1,27 @@
+ Begin RateMap 	# Differential Mapping
+    Nin = 2 	# Number of input coordinates
+    Nout = 1 	# Number of output coordinates
+    Inv = 0 	# Inverse transformation not defined
+ IsA Mapping 	# Mapping between coordinate systems
+    Map = 	# Mapping to be differentiated
+       Begin PolyMap 	# Polynomial transformation
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          MPF1 = 2 	# Max. power of input 1 in any forward polynomial
+          MPF2 = 2 	# Max. power of input 2 in any forward polynomial
+          NCF1 = 3 	# No. of coeff.s for forward polynomial 1
+          NCF2 = 3 	# No. of coeff.s for forward polynomial 2
+          CF1 = 1 	# Coeff 1 of forward polynomial 1
+          CF2 = 0.10000000000000001 	# Coeff 2 of forward polynomial 1
+          CF3 = 0.050000000000000003 	# Coeff 3 of forward polynomial 1
+          CF4 = 0.10000000000000001 	# Coeff 1 of forward polynomial 2
+          CF5 = 1 	# Coeff 2 of forward polynomial 2
+          CF6 = 0.050000000000000003 	# Coeff 3 of forward polynomial 2
+          PF1 = 1 	# Power of i/p 1 for coeff 1 of fwd poly 1
+          PF4 = 1 	# Power of i/p 2 for coeff 2 of fwd poly 1
+          PF5 = 2 	# Power of i/p 1 for coeff 3 of fwd poly 1
+          PF7 = 1 	# Power of i/p 1 for coeff 1 of fwd poly 2
+          PF10 = 1 	# Power of i/p 2 for coeff 2 of fwd poly 2
+          PF12 = 2 	# Power of i/p 2 for coeff 3 of fwd poly 2
+       End PolyMap
+ End RateMap

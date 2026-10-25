@@ -1,0 +1,12 @@
+# The framesets set: real-world FrameSets that must stay at parity with C,
+# and the worst Rust/C ratios found by the first full sweep (2026-10-16).
+# Each line: <oracle> <relpath> # reason.
+framesets wcsconv/framesets/lsst-ast.ast # LSST FrameSet, the heaviest chain in the corpus
+framesets wcsconv/framesets/tnx-cheb-head.ast # TNX Chebyshev distortion
+framesets wcsconv/framesets/sip2-head.ast # SIP distortion
+framesets wcsconv/framesets/dss-ast.ast # DSS plate solution (the only DssMap coverage)
+framesets wcsconv/framesets/sao-tan-head.ast # plain celestial TAN
+headers wcsconv/inputs/vopt-wav.head # spectral header, inverse ~11x slower than C
+simplify_fixtures simplify/win_parallel_merge.map # parallel CmpMap of WinMaps, ~25x
+simplify_fixtures simplify/cmpmap_nested_parallel_flatten.map # nested parallel CmpMaps, ~13x
+simplify_fixtures simplify/neg_intra_parallel.map # IntraMaps in parallel, ~37x

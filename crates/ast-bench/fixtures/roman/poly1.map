@@ -1,0 +1,16 @@
+ Begin PolyMap 	# Polynomial transformation
+    Nin = 2 	# Number of input coordinates
+ IsA Mapping 	# Mapping between coordinate systems
+    MPF1 = 1 	# Max. power of input 1 in any forward polynomial
+    MPF2 = 1 	# Max. power of input 2 in any forward polynomial
+    NCF1 = 2 	# No. of coeff.s for forward polynomial 1
+    NCF2 = 2 	# No. of coeff.s for forward polynomial 2
+    CF1 = -0.5 	# Coeff 1 of forward polynomial 1
+    CF2 = -0.86602539999999995 	# Coeff 2 of forward polynomial 1
+    CF3 = -0.86602539999999995 	# Coeff 1 of forward polynomial 2
+    CF4 = 0.5 	# Coeff 2 of forward polynomial 2
+    PF1 = 1 	# Power of i/p 1 for coeff 1 of fwd poly 1
+    PF4 = 1 	# Power of i/p 2 for coeff 2 of fwd poly 1
+    PF5 = 1 	# Power of i/p 1 for coeff 1 of fwd poly 2
+    PF8 = 1 	# Power of i/p 2 for coeff 2 of fwd poly 2
+ End PolyMap

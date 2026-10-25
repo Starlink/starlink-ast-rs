@@ -1,0 +1,7 @@
+ Begin WcsMap 	# FITS-WCS sky projection
+    Nin = 2 	# Number of input coordinates
+ IsA Mapping 	# Mapping between coordinate systems
+    Type = "ZPN" 	# Zenithal polynomial projection
+    PV2_1 = 1 	# Projection parameter 1 for axis 2
+    PV2_3 = 0.050000000000000003 	# Projection parameter 3 for axis 2
+ End WcsMap

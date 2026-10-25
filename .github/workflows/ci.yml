@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # The fixture tree must stay a byte-identical copy of the upstream
+  # ast_tester/fixtures/ tree at the current submodule pin.  This runs on every
+  # pull request rather than nightly: it is one recursive diff, so there is no
+  # cost argument for deferring it, and the invariant it protects is one a pull
+  # request can break -- a fixture edited here and not upstreamed, or an upstream
+  # fixture that arrived without its siblings, would otherwise sit undetected
+  # until the next pin move.
+  fixture-mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Fixture tree matches upstream
+        run: ./tools/fixtures/check_mirror.sh
+
+  build-and-test:
+    # Cover both glibc x86_64 (ubuntu-latest) and Apple aarch64 (macos-latest)
+    # so platform-specific libm precision issues surface in CI rather than
+    # only on developer machines. The sky_circle_open_boundary test that
+    # added macos-latest was originally caught only ever revealed itself
+    # locally because pal::dsep happens to be bit-symmetric under glibc
+    # but asymmetric by 1 ULP under Apple's libm.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2.9.1
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Test
+        # --no-fail-fast so one run reports every failing test binary: a
+        # platform-specific failure in an early binary would otherwise hide
+        # whatever the later ones would have said on that platform.
+        run: cargo test -p starlink-ast --no-fail-fast
+
+      - name: Benchmark harness tests
+        # Rust engine only: needs neither the submodule nor a C build.
+        run: cargo test -p ast-bench
+
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      # Catches broken intra-doc links, public docs pointing at private
+      # items, and malformed doc markup. `[workspace.lints.rustdoc]` already
+      # denies the group, so this needs no RUSTDOCFLAGS; the step exists so
+      # rustdoc actually runs somewhere.
+      - name: Docs
+        run: cargo doc --workspace --no-deps

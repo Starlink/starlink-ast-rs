@@ -1,0 +1,19 @@
+[package]
+name = "ast-bench"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Transform benchmarks: Rust starlink-ast, optionally against the reference C libast"
+
+[lints]
+workspace = true
+
+[features]
+# Load the reference C library at runtime as a second engine.
+c-oracle = ["dep:libloading"]
+
+[dependencies]
+starlink-ast = { path = "../starlink-ast" }
+libloading = { version = "0.8", optional = true }

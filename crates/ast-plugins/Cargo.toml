@@ -1,0 +1,11 @@
+[package]
+name = "ast-plugins"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Graphics and plugin backends for the Starlink AST library"
+
+[lints]
+workspace = true
