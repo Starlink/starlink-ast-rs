@@ -23,14 +23,27 @@ Each crate is versioned on its own, and each release is one commit on `main` and
 
 5. Run the full suite, `cargo test -p starlink-ast --no-fail-fast`, and the tier 3 and 4 checks when the submodule is present.
 6. Commit as `starlink-ast: release <version>`, tag the commit `starlink-ast-v<version>`, and push both.
-7. Publish:
+7. Pushing the tag runs `.github/workflows/release.yml`, which publishes the crate.
+   It authenticates with crates.io Trusted Publishing, exchanging a GitHub OIDC token for a short-lived publish token, so no crates.io token is stored in the repository.
+   It refuses a tag whose version differs from the crate's `Cargo.toml`, and does nothing if that version is already on crates.io.
 
-   ```shell
-   cargo publish -p starlink-ast
-   ```
+   Trusted Publishing cannot create a crate, so the first release of each crate is published by hand once:
 
-   Publishing needs a crates.io token with publish scope (`cargo login`).
-   The crate's owners on crates.io should include a GitHub team (`cargo owner --add github:Starlink:<team> starlink-ast`) so a release never depends on one account.
+   1. On crates.io, verify your email address under Account Settings, Profile; publishing is refused without one.
+   2. Under Account Settings, API Tokens, create a token with only the `publish-new` scope, restricted to the crate name, with a short expiry.
+   3. From the release commit, run
+
+      ```shell
+      CARGO_REGISTRY_TOKEN=<token> cargo publish -p starlink-ast --locked
+      ```
+
+   4. On the crate's page, open Settings, Trusted Publishing, and add a GitHub publisher with owner `Starlink`, repository `starlink-ast-rs` and workflow `release.yml`, leaving the environment blank.
+      The publisher is tied to the repository's owner and name, so a transfer or rename must be followed by updating it.
+   5. Revoke the token.
+
+   Add owners on the crate's Settings page as soon as the crate exists, so nothing depends on one account.
+   A GitHub team owner (`github:Starlink:<team>`) lets every member publish and yank, but team owners cannot add or remove owners or change Trusted Publishing, so at least one other person must be a user owner as well.
+   A user owner must have logged into crates.io once and accepts an invitation; adding a team requires being a member of it and crates.io having the `read:org` GitHub scope.
 8. Create the GitHub release from the tag, with the version's changelog section as its notes.
 
 After the first release, add the `cargo-semver-checks` GitHub Action to CI so every pull request is checked against the latest published version rather than only at release time.

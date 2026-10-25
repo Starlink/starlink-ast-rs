@@ -1,0 +1,65 @@
+name: Release
+
+# Publishes starlink-ast to crates.io when a release tag is pushed.
+# Authentication is crates.io Trusted Publishing: the job exchanges a GitHub
+# OIDC token for a short-lived crates.io token, so no secret is stored in the
+# repository.  crates.io must have this repository and workflow file registered
+# as a trusted publisher for the crate (docs/releasing.md).
+
+on:
+  push:
+    tags:
+      - "starlink-ast-v*"
+
+env:
+  CARGO_TERM_COLOR: always
+  CRATE: starlink-ast
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to request the OIDC token that crates.io exchanges for a
+      # publish token.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Tag matches the crate version
+        # A tag that names one version while Cargo.toml says another would
+        # publish the wrong thing under a misleading tag.
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r --arg crate "$CRATE" '.packages[] | select(.name == $crate) | .version')
+          echo "crate version: $version"
+          echo "tag:           $GITHUB_REF_NAME"
+          test "$GITHUB_REF_NAME" = "$CRATE-v$version"
+          echo "version=$version" >> "$GITHUB_ENV"
+
+      - name: Check whether this version is already on crates.io
+        # Lets a tag be re-pushed, and lets a release that was bootstrapped by
+        # hand (the first one; see docs/releasing.md) carry its tag without the
+        # workflow failing on a duplicate upload.
+        id: published
+        run: |
+          if curl -fsS -A "starlink-ast-rs release workflow" \
+               "https://crates.io/api/v1/crates/$CRATE/$version" > /dev/null; then
+            echo "$CRATE $version is already published; nothing to do"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate with crates.io
+        if: steps.published.outputs.exists == 'false'
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish
+        if: steps.published.outputs.exists == 'false'
+        run: cargo publish -p "$CRATE" --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
