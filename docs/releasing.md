@@ -21,6 +21,9 @@ Each crate is versioned on its own, and each release is one commit on `main` and
    cargo package -p starlink-ast
    ```
 
+   The archive carries the subset of `tests/fixtures/` that `tests/fixtures/DIST_MANIFEST` names, as the C library's default `make dist` does: enough to show that a build works, without the corpora that exist to catch library defects.
+   `cargo test` from the unpacked archive reports the tests that need the rest as ignored; CI's `package` job runs exactly that on every pull request, and `tests/test_dist_manifest.rs` fails if the manifest and the `include` list in `Cargo.toml` differ.
+
 5. Run the full suite, `cargo test -p starlink-ast --no-fail-fast`, and the tier 3 and 4 checks when the submodule is present.
 6. Commit as `starlink-ast: release <version>`, tag the commit `starlink-ast-v<version>`, and push both.
 7. Pushing the tag runs `.github/workflows/release.yml`, which runs the CI workflow on the tagged commit and, if it passes, publishes the crate.

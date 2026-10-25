@@ -76,3 +76,34 @@ jobs:
       # rustdoc actually runs somewhere.
       - name: Docs
         run: cargo doc --workspace --no-deps
+
+  # The archive `cargo publish` would upload, tested on its own: unpacked
+  # outside the workspace so that nothing left behind in the repository can be
+  # reached, and run with its own Cargo.lock. tests/fixtures/ ships the subset
+  # that tests/fixtures/DIST_MANIFEST names, as the C library's `make dist`
+  # does, so the tests that need the rest are reported as ignored (see
+  # declare_dist_tier in crates/starlink-ast/build.rs); everything else must
+  # pass.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2.9.1
+
+      - name: Build the archive
+        run: cargo package -p starlink-ast --locked
+
+      - name: Test from the archive
+        # The workspace's target directory, so the cached dependency builds
+        # are reused; the archive's own crate is keyed by its path and builds
+        # beside the repository's.
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: |
+          mkdir "$RUNNER_TEMP/archive"
+          tar -xzf target/package/starlink-ast-*.crate -C "$RUNNER_TEMP/archive"
+          cd "$RUNNER_TEMP"/archive/starlink-ast-*
+          cargo test --locked --no-fail-fast
