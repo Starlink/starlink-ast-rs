@@ -6,8 +6,8 @@
 //! Usage: `cargo run -p starlink-ast --example fits_wcs -- [--dump] <file.fits> [<hdu>]`
 //!
 //! The header of HDU `<hdu>` (0, the default, is the primary HDU) is read
-//! with the `fitsrs` crate and its value cards are stored one by one, with
-//! their types, in a [`FitsChan`], which reads a [`FrameSet`] from them.
+//! straight from the file and handed to a [`FitsChan`], which reads a
+//! [`FrameSet`] from it.
 //! Without `--dump` the program describes the base and current Frames and
 //! transforms the corners of the image, GRID position 0.5 and `NAXISn + 0.5`
 //! on every axis, and its centre into the current Frame and back again.
@@ -16,14 +16,19 @@
 //! with the image's BITPIX, NAXIS and NAXISn in place of the binary table's.
 //! `tools/fits_wcs/fits_wcs.py` does the same with starlink-pyast, so the
 //! two outputs can be diffed to compare this crate with the C library.
+//!
+//! The few lines that find the HDU and collect its cards are written here
+//! rather than taken from a FITS crate such as `fitsrs`.
+//! An example's dependencies are dev-dependencies of the crate, so a FITS
+//! reader would bring its own dependency tree into starlink-ast purely for
+//! this example, and the WCS library and a FITS library should stay
+//! independent of each other.
 
 use std::error::Error;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{ErrorKind, Read, Seek, SeekFrom};
 use std::process::ExitCode;
 
-use fitsrs::card::{Card, Value};
-use fitsrs::{Fits, HDU};
 use starlink_ast::constants::BAD_VALUE;
 use starlink_ast::coords::PointSet;
 use starlink_ast::error::AstResult;
@@ -31,126 +36,160 @@ use starlink_ast::frames::FrameSet;
 use starlink_ast::prelude::*;
 use starlink_ast::{AnyObject, FitsChan};
 
-/// The value cards of a header, keyword and value, in header order.
-type Cards = Vec<(String, Value)>;
+/// A FITS header is written in blocks of this many bytes.
+const BLOCK: usize = 2880;
+/// Each header card is this many bytes.
+const CARD: usize = 80;
 
-/// The value cards of HDU `index`, 0 being the primary HDU.
-fn read_cards(path: &str, index: usize) -> Result<Cards, Box<dyn Error>> {
-    let file = File::open(path).map_err(|e| format!("{path}: {e}"))?;
-    let hdu = Fits::from_reader(BufReader::new(file))
-        .nth(index)
-        .ok_or_else(|| format!("the file has fewer than {} HDUs", index + 1))??;
-    let cards: Vec<Card> = match hdu {
-        HDU::Primary(h) | HDU::XImage(h) => h.get_header().cards().cloned().collect(),
-        HDU::XBinaryTable(h) => h.get_header().cards().cloned().collect(),
-        HDU::XASCIITable(h) => h.get_header().cards().cloned().collect(),
-    };
-    Ok(cards
-        .into_iter()
-        .filter_map(|card| match card {
-            Card::Value { name, value } => Some((name, value)),
-            _ => None,
-        })
-        .collect())
+/// The cards of one HDU's header, 80 characters each, without the END card.
+struct Header {
+    cards: Vec<String>,
 }
 
-/// The integer value of the card named `key`, if there is one.
-fn int(cards: &Cards, key: &str) -> Option<i64> {
-    cards.iter().find_map(|(name, value)| match value {
-        Value::Integer { value, .. } if name == key => Some(*value),
-        _ => None,
-    })
-}
-
-/// Whether the card named `key` holds the logical value T.
-fn flag(cards: &Cards, key: &str) -> bool {
-    cards
-        .iter()
-        .any(|(name, value)| name == key && matches!(value, Value::Logical { value: true, .. }))
-}
-
-/// The length of every data axis, NAXIS1 first; a missing NAXISn counts as 0.
-fn axis_lengths(cards: &Cards) -> Vec<i64> {
-    let naxis = int(cards, "NAXIS").unwrap_or(0).max(0);
-    (1..=naxis)
-        .map(|i| int(cards, &format!("NAXIS{i}")).unwrap_or(0))
-        .collect()
-}
-
-/// The cards as CFITSIO and astropy present them: for a tile-compressed
-/// image, which is stored as a binary table, BITPIX, NAXIS and NAXISn take
-/// the image's values from ZBITPIX, ZNAXIS and ZNAXISn, which are dropped.
-/// Any other header is returned unchanged.
-///
-/// A FrameSet read from the table's own NAXISn would be wrong: AST takes
-/// them as the image size when it chooses the region over which to fit a
-/// SIP inverse.
-fn as_image(cards: Cards) -> Cards {
-    if !flag(&cards, "ZIMAGE") {
-        return cards;
+impl Header {
+    /// The first card named `key`, if there is one.
+    fn card(&self, key: &str) -> Option<&str> {
+        self.cards
+            .iter()
+            .map(String::as_str)
+            .find(|c| c[..8].trim_end() == key && &c[8..10] == "= ")
     }
-    let Some(znaxis) = int(&cards, "ZNAXIS") else {
-        return cards;
-    };
-    let zkeys: Vec<String> = ["ZBITPIX", "ZNAXIS"]
-        .into_iter()
-        .map(String::from)
-        .chain((1..=znaxis).map(|i| format!("ZNAXIS{i}")))
-        .collect();
-    let image: Cards = zkeys
-        .iter()
-        .filter_map(|k| cards.iter().find(|(name, _)| name == k))
-        .map(|(name, value)| (name[1..].to_string(), value.clone()))
-        .collect();
-    let describes_shape = |name: &str| {
-        name == "BITPIX"
-            || name == "NAXIS"
-            || name
-                .strip_prefix("NAXIS")
-                .is_some_and(|n| n.parse::<u32>().is_ok())
-    };
-    let mut out = Vec::with_capacity(cards.len());
-    let mut placed = false;
-    for (name, value) in cards {
-        if describes_shape(&name) {
-            if !placed {
-                out.extend(image.iter().cloned());
-                placed = true;
-            }
-        } else if !zkeys.contains(&name) {
-            out.push((name, value));
+
+    /// The value of the first card named `key`, before any comment.
+    fn value(&self, key: &str) -> Option<&str> {
+        Some(self.card(key)?[10..].split('/').next()?.trim())
+    }
+
+    /// The integer value of the first card named `key`, if there is one.
+    fn int(&self, key: &str) -> Option<i64> {
+        self.value(key)?.parse().ok()
+    }
+
+    /// Whether the first card named `key` holds the logical value T.
+    fn flag(&self, key: &str) -> bool {
+        self.value(key) == Some("T")
+    }
+
+    /// The length of every data axis, NAXIS1 first; a missing NAXISn counts
+    /// as 0.
+    fn axis_lengths(&self) -> Vec<i64> {
+        let naxis = self.int("NAXIS").unwrap_or(0).max(0);
+        (1..=naxis)
+            .map(|i| self.int(&format!("NAXIS{i}")).unwrap_or(0))
+            .collect()
+    }
+
+    /// The size of the data that follows this header, rounded up to whole
+    /// blocks.
+    fn data_bytes(&self) -> u64 {
+        let lengths = self.axis_lengths();
+        if lengths.is_empty() {
+            return 0;
         }
+        // Random-groups data has NAXIS1 = 0 and the other axes give the
+        // size of one group.
+        let axes = if lengths[0] == 0 {
+            &lengths[1..]
+        } else {
+            &lengths
+        };
+        let pixels: u64 = axes.iter().map(|&n| n.max(0) as u64).product();
+        let bitpix = self.int("BITPIX").unwrap_or(0).unsigned_abs();
+        let gcount = self.int("GCOUNT").unwrap_or(1).max(0) as u64;
+        let pcount = self.int("PCOUNT").unwrap_or(0).max(0) as u64;
+        let bytes = bitpix / 8 * gcount * (pcount + pixels);
+        bytes.div_ceil(BLOCK as u64) * BLOCK as u64
     }
-    out
-}
 
-/// Store the cards in `fc`, each with its type, as `astSetFits<X>` does
-/// in C, then rewind so that a read starts at the first card. A card whose
-/// value is not legal FITS is left out.
-fn store_cards(fc: &mut FitsChan, cards: &Cards) -> AstResult<()> {
-    for (name, value) in cards {
-        match value {
-            Value::Integer { value, comment } => {
-                let comment = comment.as_deref().unwrap_or("");
-                match i32::try_from(*value) {
-                    Ok(v) => fc.set_fits_i(name, v, comment, false)?,
-                    Err(_) => fc.set_fits_k(name, *value, comment, false)?,
+    /// The header as CFITSIO and astropy present it: for a tile-compressed
+    /// image, which is stored as a binary table, BITPIX, NAXIS and NAXISn
+    /// take the image's values from ZBITPIX, ZNAXIS and ZNAXISn, which are
+    /// dropped. Any other header is returned unchanged.
+    ///
+    /// A FrameSet read from the table's own NAXISn would be wrong: AST
+    /// takes them as the image size when it chooses the region over which
+    /// to fit a SIP inverse.
+    fn into_image(self) -> Self {
+        if !self.flag("ZIMAGE") {
+            return self;
+        }
+        let Some(znaxis) = self.int("ZNAXIS") else {
+            return self;
+        };
+        let zkeys: Vec<String> = ["ZBITPIX", "ZNAXIS"]
+            .into_iter()
+            .map(String::from)
+            .chain((1..=znaxis).map(|i| format!("ZNAXIS{i}")))
+            .collect();
+        // The Z cards renamed, keeping their values and comments.
+        let image: Vec<String> = zkeys
+            .iter()
+            .filter_map(|k| self.card(k).map(|c| format!("{:<8}{}", &k[1..], &c[8..])))
+            .collect();
+        let describes_shape = |key: &str| {
+            key == "BITPIX"
+                || key == "NAXIS"
+                || key
+                    .strip_prefix("NAXIS")
+                    .is_some_and(|n| n.parse::<u32>().is_ok())
+        };
+        let mut cards = Vec::with_capacity(self.cards.len());
+        let mut placed = false;
+        for card in self.cards {
+            let key = card[..8].trim_end().to_string();
+            if describes_shape(&key) {
+                if !placed {
+                    cards.extend(image.iter().cloned());
+                    placed = true;
                 }
+            } else if !zkeys.contains(&key) {
+                cards.push(card);
             }
-            Value::Float { value, comment } => {
-                fc.set_fits_f(name, *value, comment.as_deref().unwrap_or(""), false)?;
-            }
-            Value::Logical { value, comment } => {
-                fc.set_fits_l(name, *value, comment.as_deref().unwrap_or(""), false)?;
-            }
-            Value::String { value, comment } => {
-                fc.set_fits_s(name, value, comment.as_deref().unwrap_or(""), false)?;
-            }
-            Value::Undefined => fc.set_fits_u(name, "", false)?,
-            Value::Invalid(_) => {}
         }
+        Self { cards }
     }
-    fc.clear_card()
+}
+
+/// The header of HDU `hdu`, 0 being the primary HDU, read block by block
+/// past the data of the HDUs before it.
+fn read_header(file: &mut File, hdu: usize) -> Result<Header, Box<dyn Error>> {
+    let mut block = [0u8; BLOCK];
+    let mut index = 0;
+    loop {
+        let mut cards = Vec::new();
+        let mut end = false;
+        while !end {
+            match file.read_exact(&mut block) {
+                Ok(()) => {}
+                Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                    let what = if cards.is_empty() {
+                        format!("the file has fewer than {} HDUs", hdu + 1)
+                    } else {
+                        format!("the file ends inside the header of HDU {index}")
+                    };
+                    return Err(what.into());
+                }
+                Err(e) => return Err(e.into()),
+            }
+            for raw in block.chunks(CARD) {
+                if raw.starts_with(b"END     ") {
+                    end = true;
+                    break;
+                }
+                cards.push(
+                    raw.iter()
+                        .map(|&b| if b.is_ascii() { b as char } else { '?' })
+                        .collect(),
+                );
+            }
+        }
+        let header = Header { cards };
+        if index == hdu {
+            return Ok(header);
+        }
+        file.seek(SeekFrom::Current(header.data_bytes() as i64))?;
+        index += 1;
+    }
 }
 
 /// The value with 17 significant digits in C's `%.16e` form, which is what
@@ -199,8 +238,8 @@ fn describe(which: &str, frame: &dyn Frame) -> AstResult<()> {
 }
 
 /// Describe the FrameSet and transform the image corners through it.
-fn report(path: &str, hdu: usize, cards: &Cards, fs: &FrameSet) -> Result<(), Box<dyn Error>> {
-    let lengths = axis_lengths(cards);
+fn report(path: &str, hdu: usize, header: &Header, fs: &FrameSet) -> Result<(), Box<dyn Error>> {
+    let lengths = header.axis_lengths();
     println!("file: {path}");
     println!("hdu: {hdu}");
     let dims: Vec<String> = lengths.iter().map(i64::to_string).collect();
@@ -287,9 +326,10 @@ fn run() -> Result<(), Box<dyn Error>> {
         _ => return Err("usage: fits_wcs [--dump] <file.fits> [<hdu>]".into()),
     };
 
-    let cards = as_image(read_cards(&path, hdu)?);
+    let mut file = File::open(&path).map_err(|e| format!("{path}: {e}"))?;
+    let header = read_header(&mut file, hdu)?.into_image();
     let mut fc = FitsChan::new()?;
-    store_cards(&mut fc, &cards)?;
+    fc.put_cards(&header.cards.concat())?;
     let fs = match fc.read()? {
         Some(AnyObject::FrameSet(fs)) => fs,
         Some(other) => {
@@ -302,7 +342,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     if dump {
         fs.show()?;
     } else {
-        report(&path, hdu, &cards, &fs)?;
+        report(&path, hdu, &header, &fs)?;
     }
     Ok(())
 }
