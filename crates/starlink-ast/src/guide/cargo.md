@@ -4,10 +4,16 @@ Add the library to the `[dependencies]` of your `Cargo.toml`:
 
 ```toml
 [dependencies]
-starlink-ast = { git = "https://github.com/Starlink/starlink-ast-rs" }
+starlink-ast = "0.1"
 ```
 
-The crate is not yet published on crates.io, so it is taken from its repository.
+The versions published on [crates.io](https://crates.io/crates/starlink-ast) follow semantic versioning, so `"0.1"` accepts every `0.1.z` release.
+To build against the development version instead, name the repository:
+
+```toml
+[dependencies]
+starlink-ast = { git = "https://github.com/Starlink/starlink-ast-rs" }
+```
 
 The library includes the C sources of the PAL, ERFA and WCSLIB libraries it uses, and its build script compiles them.
 Building it needs a C compiler, and nothing else installed.
