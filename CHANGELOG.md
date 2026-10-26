@@ -7,6 +7,10 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ## [Unreleased]
 
+### Fixed
+
+- `starlink-ast`: the guide's Cargo chapter gives the crates.io dependency, `starlink-ast = "0.1"`, rather than saying the crate is unpublished and must come from its repository.
+
 ## [starlink-ast 0.1.0] - 2026-10-26
 
 ### Added
