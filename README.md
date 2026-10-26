@@ -13,6 +13,7 @@ AST is portable and environment-independent.
 
 This repository is a project to create a from-scratch rewrite of the C library in Rust, retaining a thin C wrapper that will enable existing users to link against it without changing their code.
 It has been created almost entirely using large-language model coding agents such as Anthropic Claude and OpenAI Codex, with human guidance.
+For background on the motivation for the port see [DMTN-349](https://dmtn-349.lsst.io).
 
 ## Building
 

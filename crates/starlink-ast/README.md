@@ -13,6 +13,8 @@ It follows the C library closely and is checked against it, and its Rust API wil
 It has been created almost entirely using large-language model coding agents such as Anthropic Claude and OpenAI Codex, with human guidance.
 A thin C-compatible shim, `starlink-ast-capi`, will let existing applications link against the Rust build without changing their code; it is not published yet.
 
+For background on the motivation for the port see [DMTN-349](https://dmtn-349.lsst.io).
+
 ## Using the crate
 
 ```toml
