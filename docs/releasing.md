@@ -19,17 +19,30 @@ A crate's first release has extra steps, because crates.io Trusted Publishing ca
    A reported break is either a bug to fix or the reason `y` rises in `0.y.z`; it is never silenced.
    It only vetoes: a bump larger than it requires passes, and it never chooses the number.
 3. Set `version` in the crate's `Cargo.toml`; that field is the only place the version is recorded, and the release workflow refuses a tag that does not match it.
+   Between releases the field holds the last published version, with no pre-release suffix: the size of the bump is decided by step 2 from what actually changed, so it cannot be chosen in advance.
+   `Cargo.lock` records the version too and changes on the next cargo run.
 4. Build the archive in isolation, which is what docs.rs and every user will build:
 
    ```shell
    cargo package -p starlink-ast
    ```
 
+   `cargo package` builds the unpacked archive to check that it compiles, but runs no tests.
    The archive carries the subset of `tests/fixtures/` that `tests/fixtures/DIST_MANIFEST` names, as the C library's default `make dist` does: enough to show that a build works, without the corpora that exist to catch library defects.
    `cargo test` from the unpacked archive reports the tests that need the rest as ignored; CI's `package` job runs exactly that on every pull request, and `tests/test_dist_manifest.rs` fails if the manifest and the `include` list in `Cargo.toml` differ.
+   To run it by hand, unpack `target/package/starlink-ast-<version>.crate` somewhere outside the repository and run `cargo test` there.
 
-5. Run the full suite, `cargo test -p starlink-ast --no-fail-fast`, and the tier 3 and 4 checks when the submodule is present.
-6. Commit as `starlink-ast: release <version>`, merge it to `main`, tag that commit on `main` as `starlink-ast-v<version>`, and push the tag.
+5. Run the full suite in the repository checkout, `cargo test -p starlink-ast --no-fail-fast`, and the tier 3 and 4 checks when the submodule is present.
+   The checkout has the fixture corpora the archive leaves out, so this covers more than step 4.
+6. Commit the changes of steps 1 and 3, `CHANGELOG.md`, the crate's `Cargo.toml` and `Cargo.lock`, as `starlink-ast: release <version>`.
+   Merge it to `main`, tag the commit that lands on `main` (a squash or merge commit is fine) as `starlink-ast-v<version>`, and push the tag:
+
+   ```shell
+   git checkout main && git pull
+   git tag starlink-ast-v<version>
+   git push origin starlink-ast-v<version>
+   ```
+
 7. Pushing the tag runs `.github/workflows/release.yml`, which runs the CI workflow on the tagged commit and, if it passes, publishes the crate.
    It authenticates with crates.io Trusted Publishing, exchanging a GitHub OIDC token for a short-lived publish token, so no crates.io token is stored in the repository.
    It refuses a tag whose version differs from the crate's `Cargo.toml`, and does nothing if that version is already on crates.io, so a tag can be pushed again after a failed run.
