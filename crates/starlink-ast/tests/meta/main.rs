@@ -14,6 +14,10 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+// `audit-tools` is a path-only dev-dependency, which cargo leaves out of the
+// published manifest, so the two gates that use it are compiled only in the
+// repository (`declare_dist_tier` in build.rs).
+
 #[path = "../bench_lsst.rs"]
 mod bench_lsst;
 #[path = "../error_codes.rs"]
@@ -26,14 +30,18 @@ mod points;
 mod pointset;
 #[path = "../test_area_membership.rs"]
 mod test_area_membership;
+#[cfg(ast_dist_tier = "full")]
 #[path = "../test_audit_citations.rs"]
 mod test_audit_citations;
 #[path = "../test_c_compare.rs"]
 mod test_c_compare;
+#[cfg(ast_dist_tier = "full")]
 #[path = "../test_c_docs_audit.rs"]
 mod test_c_docs_audit;
 #[path = "../test_constructor_checks.rs"]
 mod test_constructor_checks;
+#[path = "../test_dist_manifest.rs"]
+mod test_dist_manifest;
 #[path = "../test_dump_comparator.rs"]
 mod test_dump_comparator;
 #[path = "../test_guide.rs"]

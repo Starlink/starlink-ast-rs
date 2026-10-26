@@ -280,6 +280,7 @@ mod resolve_tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
     fn resolves_every_oracle_relpath() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
         let mut missing = Vec::new();
@@ -304,6 +305,7 @@ mod resolve_tests {
     /// by full relative path. `serialisation/degen1.ast` is the round-tripped form
     /// of `wcsconv/inputs/degen1.ast`, and the oracles reference both.
     #[test]
+    #[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
     fn duplicate_basenames_resolve_to_their_own_files() {
         let a = resolve_fixture("wcsconv/inputs/degen1.ast").expect("wcsconv copy");
         let b = resolve_fixture("serialisation/degen1.ast").expect("serialisation copy");
@@ -354,6 +356,7 @@ mod parse_tests {
     }
 
     #[test]
+    #[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
     fn parses_all_three_committed_oracles() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
         let mut total = 0;
@@ -432,6 +435,7 @@ mod loader_tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
     fn loads_native_mapping() {
         let l = load_fixture("simplify/matrix_diagonal_to_zoom.map")
             .expect("no error")
@@ -783,6 +787,7 @@ mod transform_tests {
     }
 
     #[test]
+    #[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
     fn bare_mapping_all_axes_angular() {
         let l = load_fixture("simplify/matrix_diagonal_to_zoom.map")
             .unwrap()
@@ -799,6 +804,7 @@ mod transform_tests {
     }
 
     #[test]
+    #[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
     fn transform_reproduces_oracle_shape() {
         let l = load_fixture("simplify/matrix_diagonal_to_zoom.map")
             .unwrap()
@@ -1343,6 +1349,7 @@ mod driver_tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
     fn runs_framesets_oracle_without_panicking() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
         let oracle = std::fs::read_to_string(format!("{dir}/framesets.oracle")).unwrap();
@@ -1560,6 +1567,7 @@ fn is_slamap_section(relpath: &str) -> bool {
 /// proven for this class. The two invariants: no un-excluded SlaMap section
 /// diverges, and no excluded section secretly passes (a stale entry).
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn slamap_sections_match_oracle() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
     let ov = parse_overrides(
@@ -1907,6 +1915,7 @@ fn is_deferred_class_fixture(relpath: &str) -> bool {
 /// lists: those shrink when a divergence is fixed, this shrinks when a class
 /// lands.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn deferred_fixtures_still_fail_to_load() {
     let mut now_loading = Vec::new();
     for (file, reason) in DEFERRED_LOAD {
@@ -1930,6 +1939,7 @@ fn deferred_fixtures_still_fail_to_load() {
 /// `transform_oracle_report`, which is `#[ignore]` and does not assert, so a
 /// divergence there failed nothing.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_sections_match_oracle() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
     let ov = parse_overrides(
@@ -2022,6 +2032,7 @@ fn simplify_sections_match_oracle() {
 /// divergence anywhere in the corpus fails a test rather than only showing up
 /// in the `#[ignore]` report.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn every_oracle_section_is_gated() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
     let mut ungated = Vec::new();
@@ -2055,6 +2066,7 @@ fn every_oracle_section_is_gated() {
 /// A regenerated corpus, a new fixture whose reference does not round-trip, or
 /// a stale entry all fail here.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn reference_rtrip_gaps_are_exactly_the_recorded_set() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/oracle");
     let mut found: std::collections::BTreeMap<String, Vec<usize>> = Default::default();

@@ -203,6 +203,7 @@ fn extract_keymap_block(text: &str) -> String {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn the_c_fixture_keymap_round_trips() {
     let text = std::fs::read_to_string(FIXTURE).unwrap();
     let block = extract_keymap_block(&text);
@@ -268,6 +269,7 @@ fn dumped_map_sz(km: &KeyMap) -> i64 {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn the_c_fixture_map_sz_matches() {
     // C wrote MapSz = 16 for these four keys. Located by scanning for the
     // `Begin KeyMap` marker, not by a hardcoded line number: the block sits
@@ -411,6 +413,7 @@ fn key_map_for(row: &OracleRow) -> Option<KeyMap> {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn map_sz_matches_c_oracle() {
     // Every label the probe emits today. If the probe gains a row, this
     // number goes up and key_map_for gains an arm; it must never be raised

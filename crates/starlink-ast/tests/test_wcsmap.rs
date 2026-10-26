@@ -645,6 +645,7 @@ fn wcsmap_cancel_same_params() {
 // ===========================================================================
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn wcsmap_perm_swap_cancel_simplify() {
     // Fixture: WcsMap(TAN,1,2)_fwd ; PermMap(swap) ; WcsMap(TAN,2,1)_inv
     // Expected simplification: PermMap(swap)
@@ -684,6 +685,7 @@ fn wcsmap_perm_swap_cancel_simplify() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn wcsmap_perm_swap_simplify_constants() {
     // Fixture: WcsMap(TAN,1,2,3axes)_fwd ; PermMap(3→1, with constants)
     // Expected: PermMap with transformed constants (WcsMap → UnitMap).

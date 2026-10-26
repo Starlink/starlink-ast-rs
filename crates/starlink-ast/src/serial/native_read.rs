@@ -813,6 +813,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
     fn ref_brad_map_parse() {
         let text = read_committed_fixture("simplify/brad.map");
         let node = parse_native(&text).unwrap();

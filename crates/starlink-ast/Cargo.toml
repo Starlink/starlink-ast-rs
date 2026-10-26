@@ -15,6 +15,34 @@ categories = ["science"]
 # all of starlink-ast, and on macOS each new program is scanned on its first run,
 # so one program per file made the test suite take most of an hour.
 autotests = false
+# What the archive carries. tests/fixtures/ ships the subset that
+# tests/fixtures/DIST_MANIFEST names, as the C library's `make dist` does;
+# tests/test_dist_manifest.rs fails if the two lists differ. tests/DIST_TIER
+# stays behind: its absence tells build.rs the tree is cut down.
+include = [
+    "/build.rs",
+    "/clippy.toml",
+    "/COPYRIGHT",
+    "/LICENSE",
+    "/README.md",
+    "/src/**",
+    "/vendor/**",
+    "/examples/**",
+    "/tests/**",
+    "!/tests/DIST_TIER",
+    "!/tests/fixtures/**",
+    # DIST_MANIFEST, entry for entry.
+    "/tests/fixtures/DIST_MANIFEST",
+    "/tests/fixtures/programs/**",
+    "/tests/fixtures/plot/cases.txt",
+    "/tests/fixtures/plot/expected/*.svg",
+    "/tests/fixtures/wcsconv/inputs/**",
+    "/tests/fixtures/oracle/headers.oracle",
+    "/tests/fixtures/oracle/transform_oracle_overrides.txt",
+    "/tests/fixtures/oracle/README.md",
+    "/tests/fixtures/simplify/cases.txt",
+    "/tests/fixtures/wcsconv/cases.txt",
+]
 
 [lints]
 workspace = true

@@ -93,6 +93,7 @@ fn differs(file: &str, hash: u64) -> bool {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn full_dumps_match_c() {
     let failed: Vec<&str> = cases::CASES
         .iter()
@@ -109,6 +110,7 @@ fn full_dumps_match_c() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn excluded_fixtures_still_differ() {
     for (file, reason) in EXCLUDED {
         let &(_, hash) = cases::CASES

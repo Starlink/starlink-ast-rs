@@ -540,6 +540,7 @@ const C_DEFECT_EXCLUDED: &[(&str, &str)] = &[];
 const DEFERRED: &[(&str, &str)] = &[];
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn simplify_regression() {
     let fixture_dir = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
     let manifest = fixture_dir.join("simplify/cases.txt");

@@ -412,9 +412,14 @@ fn serialization_round_trip() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn deserialize_fixture() {
-    let fixture = include_str!("fixtures/serialisation/jan-dsb.ast");
-    let obj = from_native_string(fixture).unwrap();
+    let fixture = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/serialisation/jan-dsb.ast"
+    ))
+    .unwrap();
+    let obj = from_native_string(&fixture).unwrap();
     let dsb = match obj {
         AnyObject::DSBSpecFrame(d) => d,
         other => panic!("expected DSBSpecFrame, got {other:?}"),

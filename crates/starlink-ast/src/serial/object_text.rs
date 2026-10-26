@@ -334,6 +334,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
     fn every_class_name_matches_the_class_its_dump_names() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
         let mut files = Vec::new();

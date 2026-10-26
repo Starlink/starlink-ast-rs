@@ -113,6 +113,7 @@ fn only_c_simplify_classes_implement_simplified() {
 /// that harness reduces a FrameSet input to its base→current Mapping, which is
 /// the one thing this case must not do.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn frameset_with_no_reducible_edge_returns_the_original() {
     use starlink_ast::mappings::Mapping;
     use starlink_ast::{AnyObject, from_native_string};

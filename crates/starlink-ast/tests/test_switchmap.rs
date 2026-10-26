@@ -146,6 +146,7 @@ fn switchmap_remove_regions() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn switchmap_simplify_inverse_cancel_fixture() {
     // The fixture: CmpMap(SwitchMap, inv(SwitchMap), series) with matching content.
     // Should simplify to UnitMap(1).
@@ -165,6 +166,7 @@ fn switchmap_simplify_inverse_cancel_fixture() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn switchmap_simplify_internal_fixture() {
     // The fixture: SwitchMap whose children can be simplified.
     // Result should still be a SwitchMap (or simpler), with same nin/nout.
@@ -181,6 +183,7 @@ fn switchmap_simplify_internal_fixture() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn switchmap_simplify_invert_normalize_fixture() {
     // The fixture: an inverted SwitchMap. Simplification normalizes the
     // inversion into the children, leaving a non-inverted SwitchMap.

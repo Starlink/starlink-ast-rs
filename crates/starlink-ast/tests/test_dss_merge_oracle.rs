@@ -35,6 +35,7 @@ fn get_value(dump: &str, key: &str) -> f64 {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn merged_plate_centre_matches_the_c_library() {
     let base = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),

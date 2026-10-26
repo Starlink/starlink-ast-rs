@@ -92,6 +92,7 @@ fn reads(fixture: &str) -> Vec<(i32, Vec<String>)> {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn reads_match_c() {
     let mut files = Vec::new();
     native_fixtures(&fixtures(), &mut files);
@@ -114,6 +115,7 @@ fn reads_match_c() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn excluded_fixtures_still_differ() {
     for (file, reason) in EXCLUDED {
         assert_ne!(

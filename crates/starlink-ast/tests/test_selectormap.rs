@@ -167,6 +167,7 @@ fn selectormap_inverse_is_an_error() {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn selectormap_simplify_inverse_cancel_fixture() {
     // The fixture: CmpMap(SelectorMap(boxes), inv(SelectorMap(boxes)), series)
     // Should simplify to UnitMap(2).

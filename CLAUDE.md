@@ -356,6 +356,14 @@ same commit range:
    `*.native`, `*.simp`, `*.fits-*`, etc.) into
    `crates/starlink-ast/tests/fixtures/`. Don't symlink to the submodule
    — fixtures must work with the submodule absent.
+   The published archive carries only the subset that
+   `tests/fixtures/DIST_MANIFEST` names (as C's `make dist` does), so a test
+   that reads any other fixture, or reads the repository outside the crate,
+   carries `#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not
+   distributed")]` (or `"needs the source repository"`); read a fixture at
+   run time, never with `include_str!`. CI's `package` job runs the suite
+   from the archive and fails otherwise; `declare_dist_tier` in `build.rs`
+   has the mechanism.
 5. For the three regression harnesses (`wcsconverter`, `simplify`,
    plot/grid smoke), don't reinvent — port to a Rust binary under
    `crates/starlink-ast/tests/` and drive with the same fixture set as

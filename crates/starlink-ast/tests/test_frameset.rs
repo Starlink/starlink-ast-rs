@@ -150,6 +150,7 @@ fn new_given_a_frameset_takes_its_variants_and_mirrors() {
 /// An inverted FrameSet given to `FrameSet::new` gives an inverted FrameSet
 /// with the same effective Base and Current, dumped as C dumps it.
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
 fn new_given_an_inverted_frameset_stays_inverted() {
     let mut old = xyz();
     old.invert();
@@ -164,10 +165,12 @@ fn new_given_an_inverted_frameset_stays_inverted() {
         fs.tran2(&[1.0], &[1.0], true).unwrap(),
         (vec![0.0], vec![-0.5])
     );
-    assert_eq!(
-        native_dump(&AnyObject::FrameSet(fs)).unwrap(),
-        include_str!("fixtures/frameset_of_inverted_frameset.native")
-    );
+    let want = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/frameset_of_inverted_frameset.native"
+    ))
+    .unwrap();
+    assert_eq!(native_dump(&AnyObject::FrameSet(fs)).unwrap(), want);
 }
 
 #[test]

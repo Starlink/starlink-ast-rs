@@ -546,6 +546,7 @@ fn count_entries(src: &str, name: &str) -> Option<usize> {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "needs the source repository")]
 fn every_relaxation_is_the_size_the_ledger_says() {
     let mut wrong = Vec::new();
     for (file, name, want, _reason) in LEDGER {
@@ -609,6 +610,7 @@ fn scanned_test_files() -> Vec<(PathBuf, String)> {
 }
 
 #[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "needs the source repository")]
 fn no_relaxation_hides_outside_the_ledger() {
     let listed: BTreeMap<(&str, &str), ()> =
         LEDGER.iter().map(|(f, n, _, _)| ((*f, *n), ())).collect();
