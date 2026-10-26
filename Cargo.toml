@@ -21,6 +21,7 @@ ndarray = "0.16"
 smallvec = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+fitsrs = "0.4"
 
 # Workspace-wide lint configuration. Mirrors CI's
 # `RUSTFLAGS=-D warnings` and `cargo clippy --workspace -- -D warnings`
