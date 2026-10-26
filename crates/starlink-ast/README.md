@@ -46,6 +46,7 @@ fn main() -> Result<(), starlink_ast::error::AstError> {
 - The [user guide](https://docs.rs/starlink-ast/latest/starlink_ast/guide/index.html), ported from the C library's manual, is the place to start, and the [API reference](https://docs.rs/starlink-ast) documents every module and item.
 - [SUN/211](https://www.starlink.ac.uk/docs/sun211.htx/sun211.html) is the C library's own guide and reference.
 - The C library's source is at [Starlink/ast](https://github.com/Starlink/ast).
+- [CHANGELOG.md](https://github.com/Starlink/starlink-ast-rs/blob/main/CHANGELOG.md) records every user-visible change by version, and each version is a [GitHub release](https://github.com/Starlink/starlink-ast-rs/releases) with the same notes.
 
 ## License
 
