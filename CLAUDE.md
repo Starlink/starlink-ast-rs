@@ -116,9 +116,10 @@ The full design is in the spec; key load-bearing facts:
   `astBegin` / `astEnd` / `astExempt` / `astSetPutErr` /
   `astStatus` all preserved exactly.
 - **Serialisation**: each class implements `to_node` / `from_node`
-  on a private `Serializable` trait once. Format-specific renderers
-  (`native`, `json`, `xml`, `yaml`, `fits_native`) walk the `Node`
-  tree. Native output is byte-exact with the C library.
+  on a private `Serializable` trait once. The Native renderer and
+  parser (`serial/`) and FitsChan's Native encoding walk the `Node`
+  tree; no JSON, XML or YAML renderer exists. Native output is
+  byte-exact with the C library.
 
 ## Hot-path constraint (do not regress)
 

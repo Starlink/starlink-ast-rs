@@ -2,6 +2,13 @@
 
 ## Revision history
 
+- **2026-10-26 (rev 42)**: status notes on delivery steps 5, 6a, 8 and
+  10 to 12, in the form step 0 already carried: the JSON renderer was
+  never built, the `wcslib` port is deferred, `YamlChan` and `StcsChan`
+  are unported along with `XmlChan`, which the step list never named
+  and `teststc` needs, and Plot, the shim and the cutover are
+  unstarted. `docs/reports/2026-10-26-spec-goals-status.md` assesses
+  the goals in scope.
 - **2026-10-24 (rev 41)**: `starlink_ast::prelude` re-exports the traits
   whose methods are called on values (`Mapping`, `Frame`, `FrameSearch`,
   `Region`, `Channel`), so one glob import makes them callable. Concrete
@@ -1582,6 +1589,8 @@ progress the same way it tracks today's Fortran → C migrations.
 4. `FrameSet` including the integrity mechanism. Run `testframeset`.
 5. Serialization: node tree, Native renderer + parser, JSON renderer +
    schema. Native round-trip regression tests go green.
+   *Status: Native is byte-exact with C; the JSON renderer was never
+   built and nothing has needed it.*
 6. Harder Mappings: `PolyMap` (+ `levenberg-marquardt`), `LutMap`,
    `MathMap`.
 6a. **Rust port of vendored `wcslib`**, with `WcsMap` as its first
@@ -1591,14 +1600,20 @@ progress the same way it tracks today's Fortran → C migrations.
     against the old C `wcslib` implementation; once green,
     `crates/starlink-ast/vendor/wcslib/` is deleted from the repo and the `cc`-driven
     `wcslib` build is removed from `starlink-ast`'s `build.rs`.
+    *Status: not started; deferred to a ticket after the parity work
+    merges (`PLAN.md`).*
 7. `SkyFrame`, `SpecFrame`, `TimeFrame`, `FluxFrame`, `SpecFluxFrame`.
    Oracle benchmarks for per-time-slice attribute mutation go green
    here.
 8. `Channel`, `FitsChan` (including FITS double formatter), `YamlChan`,
    `StcsChan`, `MocChan`.
+   *Status: `Channel`, `FitsChan` and `MocChan` are done; `YamlChan` and
+   `StcsChan` are not, nor is `XmlChan`, which this list never named and
+   which `teststc` needs.*
 9. Regions (including region integrity).
 10. `Plot` / `Plot3D` + `ast-plugins` crate (PLplot, SVG, logging
     backends).
+    *Status: not started.*
 11. **Tier-1 completeness gate.** Confirms every C test program in
     `ast_tester/` has a green Rust counterpart and every reference
     fixture has landed under `crates/starlink-ast/tests/fixtures/`. By
@@ -1612,8 +1627,11 @@ progress the same way it tracks today's Fortran → C migrations.
     reaches full export coverage and `ast-ffi-tests` (tier 3) runs
     the whole C test matrix green against the Rust-built `libast`.
     The port is not declarable complete before this step.
+    *Status: not reached. The tier-1 audit for the ported classes is
+    `PLAN.md`'s migration tracker; `starlink-ast-capi` is unstarted.*
 12. Cutover: `ast.h` now comes from the Rust build; vendored C source
     for AST itself is retired. `pal` / `erfa` remain vendored C.
+    *Status: not started.*
 
 ## Known inherited limitations
 

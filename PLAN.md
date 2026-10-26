@@ -326,13 +326,13 @@ The two halves are not equally hard:
 Deciding this before the shim is written is much cheaper than retrofitting it,
 because it constrains the registry's slot representation.
 
-Absent classes, for completeness (52,168 code lines of C, 28% of the library by
-code volume, with no Rust counterpart): `Plot` / `Plot3D` + `grf*`, `YamlChan`,
-`XmlChan`, `StcsChan`, `Table` /
-`FitsTable`. The `Mapping`-level algorithms `astResample`, `astRebin` and
-`astRebinSeq` are ported (stage 5 follow-ups in
-`docs/superpowers/plans/2026-10-09-resample-rebin.md`). Of these only
-`Table` / `FitsTable` (§3, §5) currently gate active work.
+Absent classes, for completeness (38,873 code lines of C at pin c6c60753, 21% of
+`src/*.c` by code volume, with no Rust counterpart): `Plot` / `Plot3D` + `grf*`,
+`YamlChan`, `XmlChan` with its `xml.c` parser, and `StcsChan`. `Table` /
+`FitsTable`, `Moc` / `MocChan`, `IntraMap`, `XphMap`, the `Stc*` classes and the
+`Mapping`-level algorithms `astResample`, `astRebin`, `astRebinSeq`,
+`astTranGrid` and `astQuadApprox` are ported. None of the absent classes gates
+active work; `Plot` gates only the `RegTrace` and `RegSplit` deferrals above.
 
 ## 8. Upstream syncs — done
 

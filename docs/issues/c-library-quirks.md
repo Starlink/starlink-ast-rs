@@ -2036,7 +2036,7 @@ So the port gives a NaN input the result C gives `AST__BAD`.
 Each entry names the commit that fixed it.
 Where the port mirrored the defect, the entry also records the inversion, because a mirror of a fixed bug is a bug.
 
-The four entries immediately below were found while porting `NormUnit`, are fixed on upstream branch `u/timj/norm-unit` (not yet merged), and are what the submodule pin points at.
+The four entries immediately below were found while porting `NormUnit` and were fixed on upstream branch `u/timj/norm-unit`, merged to C master on 2026-10-22 as PR #95, which the submodule pin includes.
 The three `unit.c` ones were found by reading `NormUnit(1)` from a one-axis C Frame across a table of Unit strings, now `C_ORACLE` in `crates/starlink-ast/tests/test_frame.rs`; the SkyAxis one by reading it through each class that can hold a SkyFrame axis.
 
 ### RESOLVED (upstream d9e43a6b): SkyAxis normalizes a set Unit that describes the axis values, so a picked-out RA axis reports `hh*mm*s`
