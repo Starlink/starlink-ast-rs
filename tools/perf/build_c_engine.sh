@@ -2,16 +2,22 @@
 # Copyright 2026 Association of Universities for Research in Astronomy (AURA)
 # SPDX-License-Identifier: LGPL-3.0-or-later
 
-# Build the reference C library as a runtime-loadable engine for ast-bench.
+# Build the reference C library as a runtime-loadable engine for ast-bench,
+# with the programs that go with it.
 #
-#   tools/perf/build_c_engine.sh bench   # timing build
-#   tools/perf/build_c_engine.sh count   # counts calls into libm, PAL, ERFA and wcslib
+#   tools/perf/build_c_engine.sh bench       # timing build
+#   tools/perf/build_c_engine.sh count       # counts calls into libm, PAL, ERFA and wcslib
+#   tools/perf/build_c_engine.sh nothreads   # the timing build without pthreads
 #
 # Output: target/perf/c/<variant>/libast_bench_engine.{dylib,so} and
-# build-info.txt.  The submodule is never modified: the build works on a copy.
+# build-info.txt for bench and count.  bench also writes gen_bench_fixtures,
+# gen_roman_fixtures and prof_tran; nothreads writes prof_tran alone, since
+# ast-bench times only the thread-safe library.
+# The submodule is never modified: the build works on a copy.
 set -e
-VARIANT=${1:?usage: $0 bench|count}
-case "$VARIANT" in bench|count) ;; *) echo "usage: $0 bench|count"; exit 2 ;; esac
+USAGE="usage: $0 bench|count|nothreads"
+VARIANT=${1:?$USAGE}
+case "$VARIANT" in bench|count|nothreads) ;; *) echo "$USAGE"; exit 2 ;; esac
 HERE=$(cd "$(dirname "$0")/../.." && pwd)
 SRC=$HERE/reference/starlink-ast
 DEST=$HERE/target/perf/c/$VARIANT
@@ -23,6 +29,8 @@ rm -rf "$DEST"; mkdir -p "$DEST/src"
 ( cd "$SRC" && git ls-files ) > "$DEST/.files"
 ( cd "$SRC" && tar cf - -T "$DEST/.files" ) | ( cd "$DEST/src" && tar xf - )
 
+PTHREADS=ON
+if [ "$VARIANT" = nothreads ]; then PTHREADS=OFF; fi
 EXTRA=""
 if [ "$VARIANT" = count ]; then
    python3 "$HERE/tools/perf/gen_count_header.py" "$DEST/src"
@@ -39,6 +47,7 @@ if [ "$VARIANT" = count ]; then
 fi
 
 cmake -S "$DEST/src" -B "$DEST/build" -DCMAKE_BUILD_TYPE=Release -DAST_BUILD_FORTRAN=OFF \
+   -DAST_WITH_PTHREADS=$PTHREADS \
    -DCMAKE_C_FLAGS_RELEASE="$CFLAGS_PINNED" -DCMAKE_C_FLAGS="-I$DEST/src" \
    -DCMAKE_POSITION_INDEPENDENT_CODE=ON > "$DEST/cmake.log" 2>&1 \
    || { tail -25 "$DEST/cmake.log"; exit 1; }
@@ -56,11 +65,22 @@ YAML=$(ls -d /opt/homebrew/opt/libyaml/lib /usr/local/opt/libyaml/lib 2>/dev/nul
 B=$DEST/build
 ARCHIVES=""
 for t in $LIBS; do ARCHIVES="$ARCHIVES $B/lib$t.a"; done
-# shellcheck disable=SC2086
-cc $CFLAGS_PINNED $SHARED -fPIC -o "$DEST/$LIB" \
-   -I "$B" -I "$DEST/src" -I "$DEST/src/ast_tester" -I "$HERE/crates/ast-bench/c" \
-   "$HERE/crates/ast-bench/c/bench_engine.c" "$DEST/src/ast_tester/transform_oracle_util.c" \
-   $EXTRA $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
+if [ "$VARIANT" != nothreads ]; then
+   # shellcheck disable=SC2086
+   cc $CFLAGS_PINNED $SHARED -fPIC -o "$DEST/$LIB" \
+      -I "$B" -I "$DEST/src" -I "$DEST/src/ast_tester" -I "$HERE/crates/ast-bench/c" \
+      "$HERE/crates/ast-bench/c/bench_engine.c" "$DEST/src/ast_tester/transform_oracle_util.c" \
+      $EXTRA $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
+fi
+
+if [ "$VARIANT" != count ]; then
+   # The harness that decomposes the fixed cost of a one-point astTranN.
+   # shellcheck disable=SC2086
+   cc $CFLAGS_PINNED -o "$DEST/prof_tran" \
+      -I "$B" -I "$DEST/src" -I "$DEST/src/ast_tester" \
+      "$HERE/tools/perf/prof_tran.c" "$DEST/src/ast_tester/transform_oracle_util.c" \
+      $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
+fi
 
 if [ "$VARIANT" = bench ]; then
    # The program that writes ast-bench's fixtures and their oracle.
@@ -77,5 +97,5 @@ if [ "$VARIANT" = bench ]; then
 fi
 
 { echo "variant=$VARIANT"; echo "cc=$(cc --version | head -1)"; echo "cflags=$CFLAGS_PINNED";
-  echo "submodule=$(git -C "$SRC" rev-parse HEAD)"; } > "$DEST/build-info.txt"
-echo "built $DEST/$LIB"
+  echo "pthreads=$PTHREADS"; echo "submodule=$(git -C "$SRC" rev-parse HEAD)"; } > "$DEST/build-info.txt"
+if [ "$VARIANT" = nothreads ]; then echo "built $DEST/prof_tran"; else echo "built $DEST/$LIB"; fi

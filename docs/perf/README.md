@@ -18,6 +18,7 @@ Absolute times belong to that machine; the Rust/C ratios travel better, but libm
 | `2026-10-18-macos-aarch64-roman.txt` | `be015c2d` | `ast-bench roman`, Starlink/ast pull request 51's Roman WCS benchmark, on both engines: SphMap at parity with C at large N, PolyMap 1.4x and the full 2x2 MatrixMap 3.5x faster, the diagonal 2x2 MatrixMap 0.54x C while its data fits in cache; outputs identical on all 200M values. |
 | `2026-10-19-macos-aarch64-bench.tsv` | `69c40996` | The `bench` set after the SplineMap, LutMap and PolyMap block kernels and the default NaN path: Rust/C geometric mean 0.09 at N=1, 0.33 at N=100 and 0.84 at N=1 000 000; `lsst` 0.39 forward and 0.44 inverse. Load average 6.5 to 7.6. |
 | `2026-10-19-macos-aarch64-framesets.tsv` | `69c40996` | The first record of the `framesets` set, at the same commit and load. |
+| `2026-10-26-macos-aarch64-c-fixed-cost.txt` | `9b9c58b4` | `tools/perf/prof_tran` on six `bench` fixtures, thread-safe and without pthreads, with a sampled profile of the UnitMap call: a one-point `astTranN` costs about 550 ns thread-safe and 210 ns without, most of it the two PointSet objects it creates; the arithmetic is under 40 ns for a simple Mapping. |
 
 The pre-Phase-0 run uses that commit's `starlink-ast` with the current `ast-bench` harness, built in a git worktree, since the harness did not exist yet; it uses no `starlink-ast` API newer than that commit.
 

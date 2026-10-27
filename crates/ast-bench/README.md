@@ -97,3 +97,26 @@ Regenerate the fixtures from the reference library:
 
     tools/perf/build_c_engine.sh bench
     target/perf/c/bench/gen_roman_fixtures crates/ast-bench/fixtures/roman
+
+## Where C's single-point time goes
+
+    tools/perf/build_c_engine.sh bench
+    target/perf/c/bench/prof_tran crates/ast-bench/fixtures unitmap_2d.map all
+
+`prof_tran` (`tools/perf/prof_tran.c`) repeats one operation on a fixture's Mapping for two seconds (a fourth argument changes that) and prints its mean cost in nanoseconds.
+`tran` is a one-point forward `astTranN`, the call the `c` engine times.
+`pointset`, `malloc` and `transform` are its parts: the two PointSets `astTranN` creates around the caller's arrays and deletes again, the two pointer arrays it allocates and frees, and the protected `astTransform` on PointSets built once, which is the Mapping's arithmetic.
+`getnin` and `getnin_p` compare a public attribute read, handle lookup included, with the protected one, and `loop` is the empty loop the other modes include.
+`all` runs every mode in turn.
+`tools/perf/build_c_engine.sh nothreads` builds the same library with `AST_WITH_PTHREADS=OFF` and the harness against it as `target/perf/c/nothreads/prof_tran`; the difference between the two `tran` lines is what thread safety costs per call.
+
+To see where the cycles go inside one mode, run it for longer and sample it.
+On macOS:
+
+    target/perf/c/bench/prof_tran crates/ast-bench/fixtures unitmap_2d.map tran 20 &
+    sample prof_tran 5 1 -file target/perf/sample-unitmap.txt
+
+On Linux, `perf record -g` on the same command, then `perf report --no-children`.
+The "Sort by top of stack" section at the end of `sample`'s report is the self time per function.
+Read it by grouping `pthread_getspecific` and `pthread_once`, which every `astOK` and `astGET_GLOBALS` costs in a thread-safe build; the `pthread_mutex_*` calls and `ManageLock`, the mutex each Object carries; the malloc library; and the `ast*` object functions.
+`docs/perf/2026-10-26-macos-aarch64-c-fixed-cost.txt` is one such reading.
