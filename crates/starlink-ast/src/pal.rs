@@ -34,10 +34,6 @@ unsafe extern "C" {
     fn astPalEpb(date: f64) -> f64;
     fn astPalEpb2d(epb: f64) -> f64;
 
-    // -- Spherical / Cartesian --
-    fn astPalDcs2c(a: f64, b: f64, v: *mut f64);
-    fn astPalDcc2s(v: *const f64, a: *mut f64, b: *mut f64);
-
     // -- Vector / matrix --
     fn astPalDmxv(dm: *const [f64; 3], va: *const f64, vb: *mut f64);
     fn astPalDimxv(dm: *const [f64; 3], va: *const f64, vb: *mut f64);
@@ -161,9 +157,9 @@ pub(crate) fn epb2d(epb: f64) -> f64 {
 
 /// Spherical coordinates (longitude, latitude) to direction-cosine 3-vector.
 pub(crate) fn dcs2c(a: f64, b: f64) -> [f64; 3] {
-    let mut v = [0.0; 3];
-    counted!(astPalDcs2c(a, b, v.as_mut_ptr()));
-    v
+    // palDcs2c is eraS2c.
+    crate::call_counts::hit("astPalDcs2c");
+    crate::erfa::s2c(a, b)
 }
 
 /// Direction-cosine 3-vector to spherical coordinates (longitude, latitude).
@@ -177,11 +173,9 @@ pub(crate) fn dcs2c(a: f64, b: f64) -> [f64; 3] {
 /// opposite representation from C (e.g. a Mercator fiducial at RA = 180°).
 /// `x + 0.0` is the identity for every value except `−0.0 → +0.0`.
 pub(crate) fn dcc2s(v: &[f64; 3]) -> (f64, f64) {
-    let canon = [v[0] + 0.0, v[1] + 0.0, v[2] + 0.0];
-    let mut a = 0.0;
-    let mut b = 0.0;
-    counted!(astPalDcc2s(canon.as_ptr(), &mut a, &mut b));
-    (a, b)
+    // palDcc2s is eraC2s.
+    crate::call_counts::hit("astPalDcc2s");
+    crate::erfa::c2s([v[0] + 0.0, v[1] + 0.0, v[2] + 0.0])
 }
 
 // ---------------------------------------------------------------------------
