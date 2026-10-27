@@ -254,12 +254,13 @@ pub fn assert_c_text(got: &str, want: &str, what: &str) {
 /// whitespace-separated numeric token compared by [`c_value_eq`] and every
 /// other token exactly.
 pub fn c_text_eq(got: &str, want: &str) -> bool {
-    if got == want {
-        return true;
-    }
-    if on_capture_platform() {
-        return false;
-    }
+    got == want || (!on_capture_platform() && text_numbers_match(got, want, within_libm_rounding))
+}
+
+/// Whether `got` and `want` agree line by line, every whitespace-separated
+/// token that parses as a number (ignoring commas and double quotes around
+/// it) by `eq`, and every other token exactly.
+fn text_numbers_match(got: &str, want: &str, eq: impl Fn(f64, f64) -> bool) -> bool {
     let mut g = got.lines();
     let mut w = want.lines();
     loop {
@@ -277,7 +278,7 @@ pub fn c_text_eq(got: &str, want: &str) -> bool {
                             let num =
                                 |t: &str| t.trim_matches(|c| c == ',' || c == '"').parse::<f64>();
                             match (num(a), num(b)) {
-                                (Ok(x), Ok(y)) if c_value_eq(x, y) => continue,
+                                (Ok(x), Ok(y)) if eq(x, y) => continue,
                                 _ => return false,
                             }
                         }
@@ -288,6 +289,35 @@ pub fn c_text_eq(got: &str, want: &str) -> bool {
             _ => return false,
         }
     }
+}
+
+/// Whether `got` matches the C value `want` for a case whose value goes
+/// through SphMap's forward transform.
+///
+/// That transform computes its arctangents with a vectorized kernel within
+/// 1 ULP of C's, so on every platform such a value can differ from C's by
+/// rounding carried through the stages that follow; it is compared with the
+/// tolerances [`c_value_eq`] uses for libm rounding off the capture platform.
+/// Each test names the cases it compares this way.
+pub fn sphmap_drift_eq(got: f64, want: f64) -> bool {
+    got == want || within_libm_rounding(got, want)
+}
+
+/// [`sphmap_drift_eq`] element by element, with equal lengths.
+pub fn sphmap_drift_values_eq(got: &[f64], want: &[f64]) -> bool {
+    got.len() == want.len() && got.iter().zip(want).all(|(g, w)| sphmap_drift_eq(*g, *w))
+}
+
+/// [`c_text_eq`] for a case whose numbers go through SphMap's forward
+/// transform: every numeric token by [`sphmap_drift_eq`], or within `atol`
+/// for a number that is the small remainder of a larger angle (the seconds
+/// field of a sexagesimal value), where rounding of the angle is a large
+/// fraction of the number.
+pub fn sphmap_drift_text_eq(got: &str, want: &str, atol: f64) -> bool {
+    got == want
+        || text_numbers_match(got, want, |g, w| {
+            sphmap_drift_eq(g, w) || (g - w).abs() <= atol
+        })
 }
 
 /// True for a KeyMap `MapSz` card line.

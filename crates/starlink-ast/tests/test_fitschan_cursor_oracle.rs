@@ -637,6 +637,11 @@ fn native_full_1_matches_c_but_for_process_counts() {
     assert_eq!(got, want);
 }
 
+/// Cases whose cards hold values computed through SphMap's forward transform,
+/// which is within 1 ULP of C per arctangent; their transcripts are compared
+/// by `sphmap_drift_text_eq`.
+const SPHMAP_DRIFT_LICENSED: &[&str] = &["alt_axes_alt_offset", "sky_offset_system_rw"];
+
 #[test]
 fn card_functions_match_the_c_library() {
     let mut failed = Vec::new();
@@ -645,7 +650,12 @@ fn card_functions_match_the_c_library() {
             continue;
         }
         let got = transcript(ops);
-        if !crate::common::c_text_eq(&got, want) {
+        let differs = if SPHMAP_DRIFT_LICENSED.contains(&name) {
+            !crate::common::sphmap_drift_text_eq(&got, want, 0.0)
+        } else {
+            !crate::common::c_text_eq(&got, want)
+        };
+        if differs {
             let first = got
                 .lines()
                 .zip(want.lines())
