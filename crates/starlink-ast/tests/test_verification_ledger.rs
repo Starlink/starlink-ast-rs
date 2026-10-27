@@ -40,8 +40,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "SPHMAP_DRIFT_LICENSED",
         2,
         "sky_skyref_origin and sky_alignoffset_galactic: values computed through SphMap, whose vectorized \
-         sines and cosines are within 1 ULP of C's and arctangents 2, compared with the \
-         libm-rounding tolerances used off the capture platform; interim until \
+         sines and cosines are within 1 ULP of C's and arctangents 2, compared within 3 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
     ),
@@ -50,8 +50,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "SKY_OFFSET_SPHMAP_DRIFT_LICENSED",
         5,
         "the origin, origin_lat_only, origin_refp, permuted_origin and pole offset maps: values computed through SphMap, whose vectorized \
-         sines and cosines are within 1 ULP of C's and arctangents 2, compared with the \
-         libm-rounding tolerances used off the capture platform; interim until \
+         sines and cosines are within 1 ULP of C's and arctangents 2, compared within 16 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
     ),
@@ -60,8 +60,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "SPHMAP_DRIFT_MAPS_LICENSED",
         1,
         "every case on the tan Mapping, grids and quadratic fits: values computed through SphMap, whose vectorized \
-         sines and cosines are within 1 ULP of C's and arctangents 2, compared with the \
-         libm-rounding tolerances used off the capture platform; interim until \
+         sines and cosines are within 1 ULP of C's and arctangents 2, compared within 8 ULP or 2e-18 absolute, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
     ),
@@ -70,8 +70,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "SPHMAP_DRIFT_LICENSED",
         20,
         "(header, encoding) writes of eight headers whose CRVAL or DSS plate values come through it; DSS seconds fields to 1e-10 arcsec: values computed through SphMap, whose vectorized \
-         sines and cosines are within 1 ULP of C's and arctangents 2, compared with the \
-         libm-rounding tolerances used off the capture platform; interim until \
+         sines and cosines are within 1 ULP of C's and arctangents 2, compared within 40 ULP or 1e-16 absolute, DSS seconds 3e-11, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
     ),
@@ -80,8 +80,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "SPHMAP_DRIFT_LICENSED",
         2,
         "alt_only and both_set, whose alternate CRVAL cards move: values computed through SphMap, whose vectorized \
-         sines and cosines are within 1 ULP of C's and arctangents 2, compared with the \
-         libm-rounding tolerances used off the capture platform; interim until \
+         sines and cosines are within 1 ULP of C's and arctangents 2, compared within 2 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
     ),
@@ -90,8 +90,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "SPHMAP_DRIFT_LICENSED",
         1,
         "warn_then_alt's transformed point: values computed through SphMap, whose vectorized \
-         sines and cosines are within 1 ULP of C's and arctangents 2, compared with the \
-         libm-rounding tolerances used off the capture platform; interim until \
+         sines and cosines are within 1 ULP of C's and arctangents 2, compared within 1 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
     ),
@@ -100,8 +100,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "SPHMAP_DRIFT_LICENSED",
         2,
         "alt_axes_alt_offset and sky_offset_system_rw transcripts: values computed through SphMap, whose vectorized \
-         sines and cosines are within 1 ULP of C's and arctangents 2, compared with the \
-         libm-rounding tolerances used off the capture platform; interim until \
+         sines and cosines are within 1 ULP of C's and arctangents 2, compared within 9 ULP or 1e-14 absolute, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
     ),

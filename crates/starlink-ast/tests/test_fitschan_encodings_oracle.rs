@@ -158,12 +158,23 @@ const SPHMAP_DRIFT_LICENSED: &[(&str, &str)] = &[
     ("tan_new_epoch_no_mjd", "FITS-WCS"),
 ];
 
-/// The largest difference allowed in the seconds field of a sexagesimal card
-/// (DSS `PLTRAS` and `PLTDECS`) for a case in [`SPHMAP_DRIFT_LICENSED`]: the seconds
-/// are what is left of an angle after its degrees and minutes, so a rounding
+/// The most a card value of a write in [`SPHMAP_DRIFT_LICENSED`] other than
+/// DSS moved from C: 36 ULP (`PC1_2 = 0.215` of `tan_offset_pole`), or 6e-17
+/// for a small matrix element such as `PC2_1 = -0.0016`, the difference of
+/// terms of order 1 (2026-10-27).
+const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
+    ulps: 40,
+    atol: 1.0e-16,
+};
+
+/// The same for a DSS write, whose seconds fields (`PLTRAS`, `PLTDECS`) are
+/// what is left of an angle after its degrees and minutes, so a rounding
 /// change of 1e-16 radians in the angle, 2e-11 arcseconds, is a large part of
-/// a seconds value near zero.
-const SEXAGESIMAL_SECONDS_ATOL: f64 = 1.0e-10;
+/// a seconds value near zero: the most one moved was 2.6e-11 (2026-10-27).
+const DSS_MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
+    ulps: 2,
+    atol: 3.0e-11,
+};
 
 /// Every write of every case, `(header, encoding, differs, report)`.
 fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
@@ -182,7 +193,12 @@ fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
             let text_eq = |g: &[String], w: &[String]| {
                 let (g, w) = (g.join("\n"), w.join("\n"));
                 if drift {
-                    crate::common::sphmap_drift_text_eq(&g, &w, SEXAGESIMAL_SECONDS_ATOL)
+                    let tol = if enc == "DSS" {
+                        DSS_MEASURED_BOUND
+                    } else {
+                        MEASURED_BOUND
+                    };
+                    crate::common::sphmap_drift_text_eq(&g, &w, tol)
                 } else {
                     crate::common::c_text_eq(&g, &w)
                 }
@@ -205,6 +221,19 @@ fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
                 None => {
                     (got.0, got.1, &got.3) != (want.0, want.1, &want.3) || !text_eq(&got.2, &want.2)
                 }
+            };
+            // A licensed write that now matches C exactly is reported, so the
+            // list cannot go stale.
+            let (differs, report) = if crate::common::on_capture_platform() && drift && got == want
+            {
+                (
+                    true,
+                    format!(
+                        "{name} {enc}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
+                    ),
+                )
+            } else {
+                (differs, report)
             };
             out.push((name, enc, differs, report));
         }
