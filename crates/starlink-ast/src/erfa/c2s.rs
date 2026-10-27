@@ -78,8 +78,8 @@ pub(crate) fn c2s(p: [f64; 3]) -> (f64, f64) {
 }
 
 // ERFA's body with its two atan2 calls replaced by the vectorizable
-// `vmath::atan2`, which is within 1 ULP of libm's.
-/// [`c2s`] without branches and within 1 ULP of it, for a vector
+// `vmath::atan2`, which is within 2 ULP of libm's.
+/// [`c2s`] without branches and within 2 ULP of it, for a vector
 /// [`c2s_needs_special`] accepts; a loop over many vectors vectorizes.
 #[inline(always)]
 pub(crate) fn c2s_kernel(p: [f64; 3]) -> (f64, f64) {
@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn c2s_kernel_is_within_one_ulp_of_c2s() {
+    fn c2s_kernel_is_within_two_ulp_of_c2s() {
         let mut differ = 0;
         for p in inputs(1_000_000)
             .into_iter()
@@ -149,7 +149,7 @@ mod tests {
             let (et, ef) = c2s(p);
             let (dt, df) = (ulps(t, et), ulps(f, ef));
             assert!(
-                dt <= 1 && df <= 1,
+                dt <= 2 && df <= 2,
                 "{p:?}: ({t:e}, {f:e}) vs ({et:e}, {ef:e})"
             );
             differ += usize::from(dt + df > 0);

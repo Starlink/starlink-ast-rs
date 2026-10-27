@@ -79,6 +79,7 @@ This is reassessed when the vendored-code removal is complete; one option is to 
 The 1 ULP bound applies to each elementary function a kernel replaces (an arctangent, a sine, a cosine), not to every output of a ported ERFA function.
 A function that combines several, such as `eraS2c`'s products of a sine and a cosine, can be correspondingly further from C: `eraS2c`'s x and y components were up to 3 ULP from C's over 8 million angle pairs, its z component 1 ULP.
 The user accepted this for SphMap's inverse, which went from 19.5 to 11.7 ns per point on large random point sets.
+The final review found that `vmath::atan2`, like fdlibm's, carries the rounding of `y / x` into its result and so is 2 ULP from libm for a few pairs in a hundred million; its bound is stated as 2 ULP. A residual correction of the division would restore 1 ULP at some cost in latency, and is left for the user to decide.
 
 ### Errors and status codes
 

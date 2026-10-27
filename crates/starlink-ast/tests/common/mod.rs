@@ -295,7 +295,7 @@ fn text_numbers_match(got: &str, want: &str, eq: impl Fn(f64, f64) -> bool) -> b
 /// through SphMap.
 ///
 /// SphMap computes its arctangents, sines and cosines with vectorized kernels,
-/// each within 1 ULP of C's, so on every platform such a value can differ from
+/// within 1 ULP of C's for sines and cosines and 2 for arctangents, so on every platform such a value can differ from
 /// C's by rounding carried through the stages that follow; it is compared with the
 /// tolerances [`c_value_eq`] uses for libm rounding off the capture platform.
 /// Each test names the cases it compares this way.
