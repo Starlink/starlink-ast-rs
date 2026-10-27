@@ -178,6 +178,31 @@ pub(crate) fn dcc2s(v: &[f64; 3]) -> (f64, f64) {
     crate::erfa::c2s([v[0] + 0.0, v[1] + 0.0, v[2] + 0.0])
 }
 
+/// [`dcs2c`] for every (longitude, latitude) pair of `a` and `b`, into
+/// `x`, `y` and `z`, giving each point the bits [`dcs2c`] gives it.
+///
+/// Counts no calls: a caller that skips some points afterwards, as C skips
+/// them before calling, counts the calls C makes with
+/// [`crate::call_counts::hit_n`].
+pub(crate) fn dcs2c_slice(a: &[f64], b: &[f64], x: &mut [f64], y: &mut [f64], z: &mut [f64]) {
+    let n = a.len();
+    assert!(b.len() == n && x.len() == n && y.len() == n && z.len() == n);
+    for i in 0..n {
+        [x[i], y[i], z[i]] = crate::erfa::s2c(a[i], b[i]);
+    }
+}
+
+/// [`dcc2s`] for every vector (`x[i]`, `y[i]`, `z[i]`), into `a` and `b`,
+/// giving each point the bits [`dcc2s`] gives it, signed-zero
+/// canonicalization included. Counts no calls, as [`dcs2c_slice`].
+pub(crate) fn dcc2s_slice(x: &[f64], y: &[f64], z: &[f64], a: &mut [f64], b: &mut [f64]) {
+    let n = x.len();
+    assert!(y.len() == n && z.len() == n && a.len() == n && b.len() == n);
+    for i in 0..n {
+        (a[i], b[i]) = crate::erfa::c2s([x[i] + 0.0, y[i] + 0.0, z[i] + 0.0]);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Group 3: Vector / matrix operations
 // ---------------------------------------------------------------------------
@@ -800,7 +825,64 @@ pub(crate) fn dtf2d(ihour: i32, imin: i32, sec: f64) -> (f64, i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_inputs::{angle_pairs, specials, unit_vectors};
     use std::f64::consts::{FRAC_PI_2, PI};
+
+    /// Directions and special-value triples, interleaved so special values
+    /// sit among ordinary ones.
+    fn mixed_vectors() -> Vec<[f64; 3]> {
+        let s = specials();
+        let mut out = Vec::new();
+        for (i, v) in unit_vectors(997).into_iter().enumerate() {
+            out.push(v);
+            out.push([s[i % s.len()], s[(i / 3) % s.len()], s[(i / 7) % s.len()]]);
+        }
+        out.push([-1.0, -0.0, 0.0]);
+        out
+    }
+
+    #[test]
+    fn dcc2s_slice_matches_dcc2s_per_point() {
+        let all = mixed_vectors();
+        for n in [1, 2, 3, 7, 1001, all.len()] {
+            let v = &all[all.len() - n..];
+            let x: Vec<f64> = v.iter().map(|p| p[0]).collect();
+            let y: Vec<f64> = v.iter().map(|p| p[1]).collect();
+            let z: Vec<f64> = v.iter().map(|p| p[2]).collect();
+            let (mut a, mut b) = (vec![0.0; n], vec![0.0; n]);
+            dcc2s_slice(&x, &y, &z, &mut a, &mut b);
+            for (i, p) in v.iter().enumerate() {
+                let (ea, eb) = dcc2s(p);
+                assert_eq!(
+                    (a[i].to_bits(), b[i].to_bits()),
+                    (ea.to_bits(), eb.to_bits()),
+                    "{p:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn dcs2c_slice_matches_dcs2c_per_point() {
+        let s = specials();
+        let mut all = angle_pairs(500);
+        all.extend(s.iter().flat_map(|&a| s.iter().map(move |&b| (a, b))));
+        for n in [1, 2, 3, 7, 1001, all.len()] {
+            let v = &all[all.len() - n..];
+            let a: Vec<f64> = v.iter().map(|p| p.0).collect();
+            let b: Vec<f64> = v.iter().map(|p| p.1).collect();
+            let (mut x, mut y, mut z) = (vec![0.0; n], vec![0.0; n], vec![0.0; n]);
+            dcs2c_slice(&a, &b, &mut x, &mut y, &mut z);
+            for (i, p) in v.iter().enumerate() {
+                let e = dcs2c(p.0, p.1);
+                assert_eq!(
+                    [x[i], y[i], z[i]].map(f64::to_bits),
+                    e.map(f64::to_bits),
+                    "{p:?}"
+                );
+            }
+        }
+    }
 
     const TOL: f64 = 1.0e-10;
 

@@ -65,6 +65,15 @@ mod imp {
         }
     }
 
+    /// `n` calls to `name` at once, as a slice entry point makes one per
+    /// value; traced as one call.
+    pub(crate) fn hit_n(name: &'static str, n: u64) {
+        if n > 0 {
+            hit(name);
+            COUNTS.with(|c| *c.borrow_mut().entry(name).or_default() += n - 1);
+        }
+    }
+
     /// Zero this thread's counts.
     pub fn reset() {
         COUNTS.with(|c| c.borrow_mut().clear());
@@ -83,13 +92,17 @@ mod imp {
 }
 
 #[cfg(feature = "call-counts")]
-pub(crate) use imp::hit;
+pub(crate) use imp::{hit, hit_n};
 #[cfg(feature = "call-counts")]
 pub use imp::{reset, snapshot};
 
 #[cfg(not(feature = "call-counts"))]
 #[inline(always)]
 pub(crate) fn hit(_name: &'static str) {}
+
+#[cfg(not(feature = "call-counts"))]
+#[inline(always)]
+pub(crate) fn hit_n(_name: &'static str, _n: u64) {}
 
 /// Call a PAL, ERFA or wcslib function, counting it under its symbol name for the
 /// `call-counts` feature.
@@ -103,3 +116,17 @@ macro_rules! counted_call {
     }};
 }
 pub(crate) use counted_call as counted;
+
+#[cfg(all(test, feature = "call-counts"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hit_n_counts_n_calls() {
+        reset();
+        hit_n("test_hit_n", 5);
+        hit_n("test_hit_n", 0);
+        hit("test_hit_n");
+        assert_eq!(snapshot().get("test_hit_n"), Some(&6));
+    }
+}
