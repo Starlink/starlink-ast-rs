@@ -61,8 +61,10 @@
 //
 // Ported from ERFA eraC2s (erfa/c2s.c) as vendored at reference/starlink-ast 7c12422f; unchanged in substance in ERFA v2.0.1.
 
+use crate::vmath;
+
 /// Direction to spherical coordinates: (longitude, latitude) in radians of
-/// the vector `p`, whose magnitude does not matter.
+/// the vector `p`, whose magnitude does not matter, computed as ERFA does.
 ///
 /// The longitude is 0 on the polar axis and the latitude is 0 on the
 /// equator, including for the zero vector.
@@ -75,18 +77,41 @@ pub(crate) fn c2s(p: [f64; 3]) -> (f64, f64) {
     (theta, phi)
 }
 
+// ERFA's body with its two atan2 calls replaced by the vectorizable
+// `vmath::atan2`, which is within 1 ULP of libm's.
+/// [`c2s`] without branches and within 1 ULP of it, for a vector
+/// [`c2s_needs_special`] accepts; a loop over many vectors vectorizes.
+#[inline(always)]
+pub(crate) fn c2s_kernel(p: [f64; 3]) -> (f64, f64) {
+    let [x, y, z] = p;
+    let r = (x * x + y * y).sqrt();
+    (vmath::atan2(y, x), vmath::atan2(z, r))
+}
+
+/// Whether `p` is outside [`c2s_kernel`]'s domain: a coordinate that is
+/// zero, infinite or NaN, or an x, y projection whose squared length
+/// underflows to zero or overflows. Such vectors go to [`c2s`].
+#[inline(always)]
+pub(crate) fn c2s_needs_special(p: [f64; 3]) -> bool {
+    let [x, y, z] = p;
+    let d2 = x * x + y * y;
+    // atan2_covers(z, sqrt(d2)), without the square root: sqrt(d2) is finite
+    // and non-zero exactly when d2 is.
+    !(vmath::atan2_covers(y, x) && vmath::atan2_covers(z, d2))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_inputs::{specials, unit_vectors};
+    use crate::test_inputs::{specials, ulps, unit_vectors};
 
     unsafe extern "C" {
         fn astEraC2s(p: *const f64, theta: *mut f64, phi: *mut f64);
     }
 
-    #[test]
-    fn c2s_matches_vendored_c_bit_for_bit() {
-        let mut inputs = unit_vectors(100_000);
+    /// Directions plus every triple of special values.
+    fn inputs(n: usize) -> Vec<[f64; 3]> {
+        let mut inputs = unit_vectors(n);
         let s = specials();
         for &x in &s {
             for &y in &s {
@@ -95,7 +120,12 @@ mod tests {
                 }
             }
         }
-        for p in inputs {
+        inputs
+    }
+
+    #[test]
+    fn c2s_matches_vendored_c_bit_for_bit() {
+        for p in inputs(100_000) {
             let (mut t, mut f) = (0.0, 0.0);
             // SAFETY: p holds three values; t and f are valid outputs.
             unsafe { astEraC2s(p.as_ptr(), &mut t, &mut f) };
@@ -106,5 +136,27 @@ mod tests {
                 "{p:?}"
             );
         }
+    }
+
+    #[test]
+    fn c2s_kernel_is_within_one_ulp_of_c2s() {
+        let mut differ = 0;
+        for p in inputs(1_000_000)
+            .into_iter()
+            .filter(|&p| !c2s_needs_special(p))
+        {
+            let (t, f) = c2s_kernel(p);
+            let (et, ef) = c2s(p);
+            let (dt, df) = (ulps(t, et), ulps(f, ef));
+            assert!(
+                dt <= 1 && df <= 1,
+                "{p:?}: ({t:e}, {f:e}) vs ({et:e}, {ef:e})"
+            );
+            differ += usize::from(dt + df > 0);
+        }
+        assert!(
+            differ > 0,
+            "no input differed from c2s; is the kernel in use?"
+        );
     }
 }

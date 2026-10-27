@@ -63,6 +63,7 @@ pub mod table;
 #[cfg(test)]
 pub(crate) mod test_inputs;
 pub(crate) mod units;
+pub(crate) mod vmath;
 pub(crate) mod wcslib;
 pub use channel::source_sink::{FileSink, FileSource, StringSink, StringSource};
 pub use channel::{Channel, ChannelConfig, MocChan, MocFormat, NativeChannel, Sink, Source};

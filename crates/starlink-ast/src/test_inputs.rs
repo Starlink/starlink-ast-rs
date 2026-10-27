@@ -109,3 +109,15 @@ pub(crate) fn angle_pairs(n: usize) -> Vec<(f64, f64)> {
     }
     out
 }
+
+/// The distance between two doubles in units in the last place, or
+/// `u64::MAX` when their signs differ or either is NaN.
+pub(crate) fn ulps(a: f64, b: f64) -> u64 {
+    if a.to_bits() == b.to_bits() {
+        return 0;
+    }
+    if a.is_nan() || b.is_nan() || a.is_sign_negative() != b.is_sign_negative() {
+        return u64::MAX;
+    }
+    a.to_bits().abs_diff(b.to_bits())
+}
