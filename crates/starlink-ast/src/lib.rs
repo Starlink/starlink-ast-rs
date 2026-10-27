@@ -42,6 +42,7 @@ struct ReadmeDoctests;
 pub mod channel;
 pub mod constants;
 pub mod coords;
+pub(crate) mod erfa;
 pub mod error;
 pub mod fitschan;
 pub mod fitstable;
@@ -59,6 +60,8 @@ pub mod prelude;
 pub mod regions;
 pub(crate) mod serial;
 pub mod table;
+#[cfg(test)]
+pub(crate) mod test_inputs;
 pub(crate) mod units;
 pub(crate) mod wcslib;
 pub use channel::source_sink::{FileSink, FileSource, StringSink, StringSource};
