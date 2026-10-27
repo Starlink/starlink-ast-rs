@@ -62,6 +62,17 @@ Inputs that the branchless body does not cover (zeros, infinities, NaN, `BAD_VAL
 The per-value entry branches into it; the slice entry runs the branchless body over every element and then a fix-up pass that calls the same routine for the flagged elements.
 Both paths therefore give identical bits for the same input.
 
+#### Interim: vectorized kernels in slice entries only (2026-10-27)
+
+Making the per-value entry use the vectorized kernel too moved every one-off caller (SkyFrame, SlaMap, FitsChan, Regions) by up to 1 ULP and failed 19 exact C-oracle tests.
+Until the vendored C is gone, the user has decided:
+
+- The per-value entry keeps the C operations bit for bit; only the slice entry runs the kernel, within 1 ULP of the per-value entry.
+- A slice gives each element the same bits whatever its length, and a Mapping that uses a slice sends every point through it, a single point included, so the "same bits whatever N" rule still holds per Mapping.
+- One-off callers are therefore not changed by vectorization.
+
+This is reassessed when the vendored-code removal is complete; one option is to adopt the same branchless kernels in C AST, after which the per-value entries could use them without moving away from the oracle.
+
 ### Errors and status codes
 
 A function that can genuinely fail returns `AstResult<T>`; one that cannot returns `T`.

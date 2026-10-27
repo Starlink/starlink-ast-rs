@@ -193,13 +193,22 @@ pub(crate) fn dcs2c_slice(a: &[f64], b: &[f64], x: &mut [f64], y: &mut [f64], z:
 }
 
 /// [`dcc2s`] for every vector (`x[i]`, `y[i]`, `z[i]`), into `a` and `b`,
-/// giving each point the bits [`dcc2s`] gives it, signed-zero
-/// canonicalization included. Counts no calls, as [`dcs2c_slice`].
+/// signed-zero canonicalization included, within 1 ULP of [`dcc2s`]: the
+/// slice runs a vectorizable kernel. Each point gets the same bits whatever
+/// the slice's length. Counts no calls, as [`dcs2c_slice`].
 pub(crate) fn dcc2s_slice(x: &[f64], y: &[f64], z: &[f64], a: &mut [f64], b: &mut [f64]) {
     let n = x.len();
     assert!(y.len() == n && z.len() == n && a.len() == n && b.len() == n);
+    // The branchless kernel over every point, so the loop vectorizes, then
+    // ERFA's own arithmetic for the points outside the kernel's domain.
     for i in 0..n {
-        (a[i], b[i]) = crate::erfa::c2s([x[i] + 0.0, y[i] + 0.0, z[i] + 0.0]);
+        (a[i], b[i]) = crate::erfa::c2s_kernel([x[i] + 0.0, y[i] + 0.0, z[i] + 0.0]);
+    }
+    for i in 0..n {
+        let p = [x[i] + 0.0, y[i] + 0.0, z[i] + 0.0];
+        if crate::erfa::c2s_needs_special(p) {
+            (a[i], b[i]) = crate::erfa::c2s(p);
+        }
     }
 }
 
@@ -841,24 +850,43 @@ mod tests {
         out
     }
 
+    /// `dcc2s_slice` over `v`, one point per row.
+    fn slice_c2s(v: &[[f64; 3]]) -> Vec<(f64, f64)> {
+        let x: Vec<f64> = v.iter().map(|p| p[0]).collect();
+        let y: Vec<f64> = v.iter().map(|p| p[1]).collect();
+        let z: Vec<f64> = v.iter().map(|p| p[2]).collect();
+        let (mut a, mut b) = (vec![0.0; v.len()], vec![0.0; v.len()]);
+        dcc2s_slice(&x, &y, &z, &mut a, &mut b);
+        a.into_iter().zip(b).collect()
+    }
+
     #[test]
-    fn dcc2s_slice_matches_dcc2s_per_point() {
+    fn dcc2s_slice_gives_each_point_the_same_bits_at_any_length() {
         let all = mixed_vectors();
-        for n in [1, 2, 3, 7, 1001, all.len()] {
-            let v = &all[all.len() - n..];
-            let x: Vec<f64> = v.iter().map(|p| p[0]).collect();
-            let y: Vec<f64> = v.iter().map(|p| p[1]).collect();
-            let z: Vec<f64> = v.iter().map(|p| p[2]).collect();
-            let (mut a, mut b) = (vec![0.0; n], vec![0.0; n]);
-            dcc2s_slice(&x, &y, &z, &mut a, &mut b);
-            for (i, p) in v.iter().enumerate() {
-                let (ea, eb) = dcc2s(p);
+        let whole = slice_c2s(&all);
+        for n in [1, 2, 3, 7, 1001] {
+            let start = all.len() - n;
+            for (i, r) in slice_c2s(&all[start..]).into_iter().enumerate() {
+                let w = whole[start + i];
                 assert_eq!(
-                    (a[i].to_bits(), b[i].to_bits()),
-                    (ea.to_bits(), eb.to_bits()),
-                    "{p:?}"
+                    (r.0.to_bits(), r.1.to_bits()),
+                    (w.0.to_bits(), w.1.to_bits()),
+                    "{:?}",
+                    all[start + i]
                 );
             }
+        }
+    }
+
+    #[test]
+    fn dcc2s_slice_is_within_one_ulp_of_dcc2s() {
+        let all = mixed_vectors();
+        for (p, (a, b)) in all.iter().zip(slice_c2s(&all)) {
+            let (ea, eb) = dcc2s(p);
+            assert!(
+                crate::test_inputs::ulps(a, ea) <= 1 && crate::test_inputs::ulps(b, eb) <= 1,
+                "{p:?}: ({a:e}, {b:e}) vs ({ea:e}, {eb:e})"
+            );
         }
     }
 

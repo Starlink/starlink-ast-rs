@@ -7,12 +7,15 @@
 //! notice, which its BSD terms require of redistributed source, and names
 //! the C function and version it was ported from.
 //!
-//! A function has one body. Callers that transform one value call it
-//! directly; callers that loop over whole axes call a slice entry built on
-//! the same body, so a value gives the same bits whether it is transformed
-//! alone or among many. A body ported to match C keeps C's operations in C's
-//! order; a body that replaces libm calls with a vectorizable kernel stays
-//! within 1 ULP of that.
+//! The per-value form of each function keeps ERFA's operations in ERFA's
+//! order, so one-off callers get ERFA's results. A function that callers
+//! loop over may also have a vectorizable kernel, within 1 ULP of the
+//! per-value form on a stated domain, which the slice entry point runs over
+//! every element before giving the elements outside that domain to the
+//! per-value form. A slice gives each element the same bits whatever the
+//! slice's length, so a caller that sends every point through the slice,
+//! even a single point, gets results that do not depend on how many points
+//! are transformed together.
 //!
 //! Calls made inside these functions are past the boundary where the
 //! `call-counts` feature counts calls, as the C library's counts stop at its
@@ -23,7 +26,7 @@
 mod c2s;
 mod s2c;
 
-pub(crate) use c2s::c2s;
+pub(crate) use c2s::{c2s, c2s_kernel, c2s_needs_special};
 pub(crate) use s2c::s2c;
 
 /// The sine and cosine of `x`, as an optimizing C compiler computes them for
