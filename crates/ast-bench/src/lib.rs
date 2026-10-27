@@ -23,3 +23,5 @@ pub mod snapshot;
 pub mod sweep;
 pub mod timing;
 pub mod ulps;
+#[cfg(all(target_os = "macos", feature = "vforce"))]
+pub mod vforce;

@@ -81,6 +81,14 @@ A base from before the `values` command existed is measured with this tree's `as
 The worktree is put back as the base has it afterwards.
 That needs this tree's `ast-bench` to compile against the base's `starlink-ast`.
 
+## A yardstick for vectorized SphMap
+
+    ast-bench vforce [--max-n N] [--reps R]     # macOS, needs --features vforce
+
+times SphMap both ways on `ast-bench roman`'s inputs through the port and through Apple's vForce (`vvatan2`, `vvsqrt`, `vvsincos`), and reports how far vForce's results are from the port's.
+vForce is array-only and macOS-only, so the port does not use it; the timings show how fast a vectorized `eraC2s` and `eraS2c` can be on the machine.
+The command is behind a feature because with Accelerate linked into `ast-bench`, every `rust-cols` timing at N=1 took about 11 ns longer, which `compare` reported as a slowdown of every Mapping.
+
 ## Records and the full sweep
 
     ast-bench snapshot --set bench        # needs --features c-oracle
