@@ -1,0 +1,156 @@
+# commit=9b9c58b4 date=2026-10-26 tool=tools/perf/prof_tran.c
+# machine=Apple M1 Ultra; Darwin 27.0.1; load averages 18.62 14.42 12.25, the machine shared with other work
+# c=cc=Apple clang version 21.0.0 (clang-2100.3.34.2); cflags=-O3 -ffp-contract=off; submodule=c6c60753a0422b82f367b151080e881c594378f7
+# bench variant: AST_WITH_PTHREADS=ON (the library ast-bench times); nothreads variant: AST_WITH_PTHREADS=OFF
+#
+# prof_tran crates/ast-bench/fixtures <fixture> all 2: the mean cost in ns of one operation at one
+# point, forward.  tran is the public astTranN; pointset, malloc and transform are the parts of a
+# TranN call (the two PointSets it creates around the caller's arrays, its two pointer arrays, and the
+# protected astTransform on PointSets built once); getnin and getnin_p are a public attribute read
+# and the protected one; loop is the empty loop every mode includes.  crates/ast-bench/README.md,
+# "Where C's single-point time goes", describes the harness.
+
+# bench variant (thread-safe)
+unitmap_2d.map           tran          551.3 ns per call   (out[0] = 0.3)
+unitmap_2d.map           pointset      382.1 ns per call
+unitmap_2d.map           malloc         99.4 ns per call
+unitmap_2d.map           transform      33.6 ns per call
+unitmap_2d.map           getnin        238.8 ns per call
+unitmap_2d.map           getnin_p        3.3 ns per call
+unitmap_2d.map           loop            3.6 ns per call
+zoommap_2d.map           tran          550.5 ns per call   (out[0] = 0.75)
+zoommap_2d.map           pointset      381.5 ns per call
+zoommap_2d.map           malloc         99.3 ns per call
+zoommap_2d.map           transform      31.4 ns per call
+zoommap_2d.map           getnin        241.8 ns per call
+zoommap_2d.map           getnin_p        3.3 ns per call
+zoommap_2d.map           loop            3.6 ns per call
+cmpmap_series.map        tran         1267.6 ns per call   (out[0] = 1)
+cmpmap_series.map        pointset      384.8 ns per call
+cmpmap_series.map        malloc         99.4 ns per call
+cmpmap_series.map        transform     738.3 ns per call
+cmpmap_series.map        getnin        263.9 ns per call
+cmpmap_series.map        getnin_p        3.3 ns per call
+cmpmap_series.map        loop            3.6 ns per call
+cmpmap_parallel.map      tran         1509.4 ns per call   (out[0] = 0.75)
+cmpmap_parallel.map      pointset      386.1 ns per call
+cmpmap_parallel.map      malloc         99.5 ns per call
+cmpmap_parallel.map      transform     992.3 ns per call
+cmpmap_parallel.map      getnin        260.7 ns per call
+cmpmap_parallel.map      getnin_p        3.3 ns per call
+cmpmap_parallel.map      loop            3.6 ns per call
+wcsmap_tan.map           tran          609.6 ns per call   (out[0] = 0.698971)
+wcsmap_tan.map           pointset      377.9 ns per call
+wcsmap_tan.map           malloc         99.2 ns per call
+wcsmap_tan.map           transform      97.5 ns per call
+wcsmap_tan.map           getnin        318.2 ns per call
+wcsmap_tan.map           getnin_p        3.3 ns per call
+wcsmap_tan.map           loop            3.6 ns per call
+slamap_eqgal.map         tran          581.7 ns per call   (out[0] = 2.23616)
+slamap_eqgal.map         pointset      379.0 ns per call
+slamap_eqgal.map         malloc         99.0 ns per call
+slamap_eqgal.map         transform      76.8 ns per call
+slamap_eqgal.map         getnin        239.5 ns per call
+slamap_eqgal.map         getnin_p        3.3 ns per call
+slamap_eqgal.map         loop            3.6 ns per call
+
+# nothreads variant
+unitmap_2d.map           tran          208.5 ns per call   (out[0] = 0.3)
+unitmap_2d.map           pointset      121.8 ns per call
+unitmap_2d.map           malloc         39.8 ns per call
+unitmap_2d.map           transform      33.0 ns per call
+unitmap_2d.map           getnin        154.6 ns per call
+unitmap_2d.map           getnin_p        3.3 ns per call
+unitmap_2d.map           loop            3.6 ns per call
+zoommap_2d.map           tran          208.4 ns per call   (out[0] = 0.75)
+zoommap_2d.map           pointset      121.8 ns per call
+zoommap_2d.map           malloc         39.8 ns per call
+zoommap_2d.map           transform      31.3 ns per call
+zoommap_2d.map           getnin        157.8 ns per call
+zoommap_2d.map           getnin_p        3.3 ns per call
+zoommap_2d.map           loop            3.6 ns per call
+cmpmap_series.map        tran          498.4 ns per call   (out[0] = 1)
+cmpmap_series.map        pointset      121.8 ns per call
+cmpmap_series.map        malloc         39.9 ns per call
+cmpmap_series.map        transform     328.4 ns per call
+cmpmap_series.map        getnin        154.3 ns per call
+cmpmap_series.map        getnin_p        3.3 ns per call
+cmpmap_series.map        loop            3.6 ns per call
+cmpmap_parallel.map      tran          596.7 ns per call   (out[0] = 0.75)
+cmpmap_parallel.map      pointset      121.8 ns per call
+cmpmap_parallel.map      malloc         39.5 ns per call
+cmpmap_parallel.map      transform     424.7 ns per call
+cmpmap_parallel.map      getnin        154.9 ns per call
+cmpmap_parallel.map      getnin_p        3.3 ns per call
+cmpmap_parallel.map      loop            3.6 ns per call
+wcsmap_tan.map           tran          267.6 ns per call   (out[0] = 0.698971)
+wcsmap_tan.map           pointset      121.7 ns per call
+wcsmap_tan.map           malloc         39.7 ns per call
+wcsmap_tan.map           transform      91.2 ns per call
+wcsmap_tan.map           getnin        232.5 ns per call
+wcsmap_tan.map           getnin_p        3.3 ns per call
+wcsmap_tan.map           loop            3.6 ns per call
+slamap_eqgal.map         tran          248.7 ns per call   (out[0] = 2.23616)
+slamap_eqgal.map         pointset      122.0 ns per call
+slamap_eqgal.map         malloc         39.6 ns per call
+slamap_eqgal.map         transform      75.8 ns per call
+slamap_eqgal.map         getnin        154.5 ns per call
+slamap_eqgal.map         getnin_p        3.3 ns per call
+slamap_eqgal.map         loop            3.6 ns per call
+
+# Summary, ns per one-point call, with the port's rust-cols timing of the same case from
+# 2026-10-19-macos-aarch64-bench.tsv (min_ns, forward, n=1) for comparison.
+case                     c tran   c tran  c transform  rust-cols
+                        threads nothreads      threads
+unitmap_2d.map              551      208           34         31
+zoommap_2d.map              550      208           31         30
+cmpmap_series.map          1268      498          738         95
+cmpmap_parallel.map        1509      597          992         95
+wcsmap_tan.map              610      268           98         95
+slamap_eqgal.map            582      249           77         92
+
+# Thread safety is the difference between the two tran columns: about 340 ns per call, 60% of the
+# thread-safe cost of a simple Mapping.  What remains without pthreads is the PointSet pair (122 ns),
+# the pointer arrays (40 ns) and the transform.  A two-component CmpMap repeats the object cost per
+# component inside transform: the series pair also allocates an intermediate PointSet.
+
+# Self time of the thread-safe unitmap_2d tran loop: macOS sample, 5 s at 1 ms, 3257 samples
+# in the top-of-stack list, grouped by hand.
+    938   28.8%  thread-local lookups: pthread_getspecific and pthread_once, every astOK and astGET_GLOBALS
+    818   25.1%  malloc and free: libsystem_malloc, astMalloc_, astFree_, astStore_
+    584   17.9%  per-Object mutexes: pthread_mutex_init, lock, unlock and destroy, ManageLock
+    541   16.6%  Object create, set and delete: astInitObject_, astPointSet_, astInitPointSet_, VSet, SetPoints, astDelete_, ChangeThreadVtab, strcmp, memset
+    279    8.6%  the transform path: TranN, ValidateMapping, UnitMap's Transform and the attribute getters they call
+     97    3.0%  the harness's clock
+
+# The 30 largest entries of that list.
+    504  pthread_getspecific (libsystem_pthread.dylib)
+    247  pthread_once (libsystem_pthread.dylib)
+    177  pthread_mutex_lock (libsystem_pthread.dylib)
+    129  _xzm_free_tc (libsystem_malloc.dylib)
+    119  ManageLock (prof_tran)
+    117  _xzm_malloc_tc (libsystem_malloc.dylib)
+    110  pthread_mutex_unlock (libsystem_pthread.dylib)
+    102  astFree_ (prof_tran)
+    100  DYLD-STUB$$pthread_getspecific (prof_tran)
+     97  mach_absolute_time (libsystem_kernel.dylib)
+     91  _malloc_zone_malloc (libsystem_malloc.dylib)
+     88  __xzm_xzone_free_to_freelist_chunk (libsystem_malloc.dylib)
+     87  DYLD-STUB$$pthread_once (prof_tran)
+     87  _free (libsystem_malloc.dylib)
+     77  pthread_mutex_init (libsystem_pthread.dylib)
+     74  pthread_mutex_destroy (libsystem_pthread.dylib)
+     73  Transform (prof_tran)
+     72  astMalloc_ (prof_tran)
+     63  _platform_strcmp$VARIANT$Base (libsystem_platform.dylib)
+     61  _xzm_xzone_malloc_tiny (libsystem_malloc.dylib)
+     51  astDelete_ (prof_tran)
+     42  astInitObject_ (prof_tran)
+     39  _platform_memmove (libsystem_platform.dylib)
+     38  _platform_memset (libsystem_platform.dylib)
+     34  ChangeThreadVtab (prof_tran)
+     34  astPointSet_ (prof_tran)
+     33  SetPoints (prof_tran)
+     27  VSet (prof_tran)
+     24  GetNout (prof_tran)
+     23  TranN (prof_tran)

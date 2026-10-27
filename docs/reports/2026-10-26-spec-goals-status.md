@@ -81,7 +81,7 @@ The Rust timing is `rust-cols`: the port called as a C program calls `astTranN`,
 
 Rubin's `lsst` FrameSet, the stated condition for switching to the port, runs at 0.39 of C's time forward and 0.44 inverse.
 The cases still more than 10% slower at a million points are MathMap (1.9 to 2.0×), SpecMap (1.5×), LutMap forward (1.3×), three mappings that cost under a nanosecond per point (PermMap, UnitMap and WinMap, 1.2 to 1.6×), and WcsMap and TimeMap (1.2×), the last two bound by the vendored C they call.
-The single-point advantage is C's per-call set-up, not the arithmetic: `astTranN` creates two PointSet objects around the caller's arrays and deletes them, about 500 ns in a thread-safe build and about 220 ns without pthreads, and a CmpMap repeats it per component, while the port passes the arrays down the tree as borrowed slices and allocates nothing for a simple Mapping.
+The single-point advantage is C's per-call set-up, not the arithmetic: `astTranN` creates two PointSet objects around the caller's arrays and deletes them, about 500 ns in a thread-safe build and about 220 ns without pthreads (`tools/perf/prof_tran.c`, recorded in `docs/perf/2026-10-26-macos-aarch64-c-fixed-cost.txt`), and a CmpMap repeats it per component, while the port passes the arrays down the tree as borrowed slices and allocates nothing for a simple Mapping.
 The hot-path constraint holds: `SkyFrame::set_epoch_mjd` and `set_sky_ref_is` are single field assignments with no allocation and no lock.
 What the spec asked for and does not exist: benchmarks of simplification and serialization workloads, and a CI job running the gate.
 `ast-bench compare` fails on a slowdown over 10%, but it is run by hand.
