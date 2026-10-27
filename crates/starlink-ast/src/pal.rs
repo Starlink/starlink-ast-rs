@@ -18,6 +18,8 @@
 
 use std::ffi::c_char;
 
+use crate::constants::BAD_VALUE;
+
 /// ERFA's `ERFA_DAU` (erfam.h): the astronomical unit in metres, the IAU 2012
 /// value. PAL's routines convert metres to au with it, so a caller that
 /// converts their output back must use the same value.
@@ -181,7 +183,8 @@ pub(crate) fn dcc2s(v: &[f64; 3]) -> (f64, f64) {
 /// [`dcs2c`] for every (longitude, latitude) pair of `a` and `b`, into
 /// `x`, `y` and `z`, within 3 ULP of [`dcs2c`]: the slice runs a
 /// vectorizable kernel whose sines and cosines are each within 1 ULP. Each point gets the same bits whatever the slice's
-/// length.
+/// length. A `BAD_VALUE` coordinate gives `BAD_VALUE` outputs, without the
+/// cost of computing them.
 ///
 /// Counts no calls: a caller that skips some points afterwards, as C skips
 /// them before calling, counts the calls C makes with
@@ -195,7 +198,9 @@ pub(crate) fn dcs2c_slice(a: &[f64], b: &[f64], x: &mut [f64], y: &mut [f64], z:
         [x[i], y[i], z[i]] = crate::erfa::s2c_kernel(a[i], b[i]);
     }
     for i in 0..n {
-        if crate::erfa::s2c_needs_special(a[i], b[i]) {
+        if a[i] == BAD_VALUE || b[i] == BAD_VALUE {
+            [x[i], y[i], z[i]] = [BAD_VALUE; 3];
+        } else if crate::erfa::s2c_needs_special(a[i], b[i]) {
             [x[i], y[i], z[i]] = crate::erfa::s2c(a[i], b[i]);
         }
     }
@@ -204,7 +209,8 @@ pub(crate) fn dcs2c_slice(a: &[f64], b: &[f64], x: &mut [f64], y: &mut [f64], z:
 /// [`dcc2s`] for every vector (`x[i]`, `y[i]`, `z[i]`), into `a` and `b`,
 /// signed-zero canonicalization included, within 1 ULP of [`dcc2s`]: the
 /// slice runs a vectorizable kernel. Each point gets the same bits whatever
-/// the slice's length. Counts no calls, as [`dcs2c_slice`].
+/// the slice's length. A `BAD_VALUE` coordinate gives `BAD_VALUE` outputs,
+/// as for [`dcs2c_slice`], which this also follows in counting no calls.
 pub(crate) fn dcc2s_slice(x: &[f64], y: &[f64], z: &[f64], a: &mut [f64], b: &mut [f64]) {
     let n = x.len();
     assert!(y.len() == n && z.len() == n && a.len() == n && b.len() == n);
@@ -215,7 +221,9 @@ pub(crate) fn dcc2s_slice(x: &[f64], y: &[f64], z: &[f64], a: &mut [f64], b: &mu
     }
     for i in 0..n {
         let p = [x[i] + 0.0, y[i] + 0.0, z[i] + 0.0];
-        if crate::erfa::c2s_needs_special(p) {
+        if p.contains(&BAD_VALUE) {
+            (a[i], b[i]) = (BAD_VALUE, BAD_VALUE);
+        } else if crate::erfa::c2s_needs_special(p) {
             (a[i], b[i]) = crate::erfa::c2s(p);
         }
     }
@@ -891,6 +899,9 @@ mod tests {
     fn dcc2s_slice_is_within_one_ulp_of_dcc2s() {
         let all = mixed_vectors();
         for (p, (a, b)) in all.iter().zip(slice_c2s(&all)) {
+            if p.contains(&crate::constants::BAD_VALUE) {
+                continue;
+            }
             let (ea, eb) = dcc2s(p);
             assert!(
                 crate::test_inputs::ulps(a, ea) <= 1 && crate::test_inputs::ulps(b, eb) <= 1,
@@ -921,6 +932,33 @@ mod tests {
     }
 
     #[test]
+    fn slices_give_bad_outputs_for_a_bad_coordinate() {
+        use crate::constants::BAD_VALUE;
+        let (mut a, mut b) = ([0.0; 3], [0.0; 3]);
+        dcc2s_slice(
+            &[1.0, BAD_VALUE, 1.0],
+            &[2.0, 0.5, 2.0],
+            &[3.0, 0.5, BAD_VALUE],
+            &mut a,
+            &mut b,
+        );
+        assert_eq!(
+            (a[1], b[1], a[2], b[2]),
+            (BAD_VALUE, BAD_VALUE, BAD_VALUE, BAD_VALUE)
+        );
+        assert_eq!((a[0], b[0]), dcc2s(&[1.0, 2.0, 3.0]));
+        let (mut x, mut y, mut z) = ([0.0; 2], [0.0; 2], [0.0; 2]);
+        dcs2c_slice(
+            &[BAD_VALUE, 0.5],
+            &[0.25, BAD_VALUE],
+            &mut x,
+            &mut y,
+            &mut z,
+        );
+        assert_eq!([x, y, z], [[BAD_VALUE; 2]; 3]);
+    }
+
+    #[test]
     fn dcs2c_slice_gives_each_point_the_same_bits_at_any_length() {
         let all = mixed_angles();
         let whole = slice_s2c(&all);
@@ -940,7 +978,11 @@ mod tests {
     #[test]
     fn dcs2c_slice_is_within_three_ulp_of_dcs2c() {
         let all = mixed_angles();
+        let bad = crate::constants::BAD_VALUE;
         for (p, r) in all.iter().zip(slice_s2c(&all)) {
+            if p.0 == bad || p.1 == bad {
+                continue;
+            }
             let e = dcs2c(p.0, p.1);
             for k in 0..3 {
                 let d = crate::test_inputs::ulps(r[k], e[k]);
