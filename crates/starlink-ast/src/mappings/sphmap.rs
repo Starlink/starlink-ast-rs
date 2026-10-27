@@ -325,9 +325,8 @@ impl Mapping for SphMap {
             let out0 = &mut out0[..n];
             let out1 = &mut out1[..n];
             let out2 = &mut out2[..n];
-            for i in 0..n {
-                [out0[i], out1[i], out2[i]] = pal::dcs2c(in0[i], in1[i]);
-            }
+            pal::dcs2c_slice(in0, in1, out0, out1, out2);
+            crate::call_counts::hit_n("astPalDcs2c", n as u64);
         }
         Ok(())
     }
@@ -382,18 +381,17 @@ impl Mapping for SphMap {
             let out0 = &mut out0[..n];
             let out1 = &mut out1[..n];
             let out2 = &mut out2[..n];
-            // `pal::dcs2c` calls libm's sincos, which no loop vectorizes, so
-            // a separate pass for bad points would only add a second read of
-            // the inputs.
+            pal::dcs2c_slice(in0, in1, out0, out1, out2);
+            let mut calls = n as u64;
             for i in 0..n {
                 if is_bad(in0[i]) || is_bad(in1[i]) {
                     out0[i] = BAD_VALUE;
                     out1[i] = BAD_VALUE;
                     out2[i] = BAD_VALUE;
-                } else {
-                    [out0[i], out1[i], out2[i]] = pal::dcs2c(in0[i], in1[i]);
+                    calls -= 1;
                 }
             }
+            crate::call_counts::hit_n("astPalDcs2c", calls);
         }
         Ok(())
     }

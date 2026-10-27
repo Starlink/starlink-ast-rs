@@ -27,7 +27,7 @@ mod c2s;
 mod s2c;
 
 pub(crate) use c2s::{c2s, c2s_kernel, c2s_needs_special};
-pub(crate) use s2c::s2c;
+pub(crate) use s2c::{s2c, s2c_kernel, s2c_needs_special};
 
 /// The sine and cosine of `x`, as an optimizing C compiler computes them for
 /// C code that calls `sin(x)` and `cos(x)`.

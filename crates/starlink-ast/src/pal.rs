@@ -179,7 +179,9 @@ pub(crate) fn dcc2s(v: &[f64; 3]) -> (f64, f64) {
 }
 
 /// [`dcs2c`] for every (longitude, latitude) pair of `a` and `b`, into
-/// `x`, `y` and `z`, giving each point the bits [`dcs2c`] gives it.
+/// `x`, `y` and `z`, within 3 ULP of [`dcs2c`]: the slice runs a
+/// vectorizable kernel whose sines and cosines are each within 1 ULP. Each point gets the same bits whatever the slice's
+/// length.
 ///
 /// Counts no calls: a caller that skips some points afterwards, as C skips
 /// them before calling, counts the calls C makes with
@@ -187,8 +189,15 @@ pub(crate) fn dcc2s(v: &[f64; 3]) -> (f64, f64) {
 pub(crate) fn dcs2c_slice(a: &[f64], b: &[f64], x: &mut [f64], y: &mut [f64], z: &mut [f64]) {
     let n = a.len();
     assert!(b.len() == n && x.len() == n && y.len() == n && z.len() == n);
+    // The branchless kernel over every point, so the loop vectorizes, then
+    // ERFA's own arithmetic for the points outside the kernel's domain.
     for i in 0..n {
-        [x[i], y[i], z[i]] = crate::erfa::s2c(a[i], b[i]);
+        [x[i], y[i], z[i]] = crate::erfa::s2c_kernel(a[i], b[i]);
+    }
+    for i in 0..n {
+        if crate::erfa::s2c_needs_special(a[i], b[i]) {
+            [x[i], y[i], z[i]] = crate::erfa::s2c(a[i], b[i]);
+        }
     }
 }
 
@@ -890,24 +899,52 @@ mod tests {
         }
     }
 
-    #[test]
-    fn dcs2c_slice_matches_dcs2c_per_point() {
+    /// `dcs2c_slice` over `v`, one point per row.
+    fn slice_s2c(v: &[(f64, f64)]) -> Vec<[f64; 3]> {
+        let a: Vec<f64> = v.iter().map(|p| p.0).collect();
+        let b: Vec<f64> = v.iter().map(|p| p.1).collect();
+        let n = v.len();
+        let (mut x, mut y, mut z) = (vec![0.0; n], vec![0.0; n], vec![0.0; n]);
+        dcs2c_slice(&a, &b, &mut x, &mut y, &mut z);
+        (0..n).map(|i| [x[i], y[i], z[i]]).collect()
+    }
+
+    /// Angle pairs and special-value pairs, interleaved.
+    fn mixed_angles() -> Vec<(f64, f64)> {
         let s = specials();
-        let mut all = angle_pairs(500);
-        all.extend(s.iter().flat_map(|&a| s.iter().map(move |&b| (a, b))));
-        for n in [1, 2, 3, 7, 1001, all.len()] {
-            let v = &all[all.len() - n..];
-            let a: Vec<f64> = v.iter().map(|p| p.0).collect();
-            let b: Vec<f64> = v.iter().map(|p| p.1).collect();
-            let (mut x, mut y, mut z) = (vec![0.0; n], vec![0.0; n], vec![0.0; n]);
-            dcs2c_slice(&a, &b, &mut x, &mut y, &mut z);
-            for (i, p) in v.iter().enumerate() {
-                let e = dcs2c(p.0, p.1);
+        let mut all = Vec::new();
+        for (i, p) in angle_pairs(500).into_iter().enumerate() {
+            all.push(p);
+            all.push((s[i % s.len()], s[(i / 5) % s.len()]));
+        }
+        all
+    }
+
+    #[test]
+    fn dcs2c_slice_gives_each_point_the_same_bits_at_any_length() {
+        let all = mixed_angles();
+        let whole = slice_s2c(&all);
+        for n in [1, 2, 3, 7, 1001] {
+            let start = all.len() - n;
+            for (i, r) in slice_s2c(&all[start..]).into_iter().enumerate() {
                 assert_eq!(
-                    [x[i], y[i], z[i]].map(f64::to_bits),
-                    e.map(f64::to_bits),
-                    "{p:?}"
+                    r.map(f64::to_bits),
+                    whole[start + i].map(f64::to_bits),
+                    "{:?}",
+                    all[start + i]
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn dcs2c_slice_is_within_three_ulp_of_dcs2c() {
+        let all = mixed_angles();
+        for (p, r) in all.iter().zip(slice_s2c(&all)) {
+            let e = dcs2c(p.0, p.1);
+            for k in 0..3 {
+                let d = crate::test_inputs::ulps(r[k], e[k]);
+                assert!(d <= 3, "{p:?} axis {k}: {:e} vs {:e}", r[k], e[k]);
             }
         }
     }

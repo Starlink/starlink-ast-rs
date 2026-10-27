@@ -8,9 +8,12 @@
 //! predicate that is true exactly on that domain; a caller runs the kernel
 //! over every element and then gives the elements its predicate rejects to
 //! the scalar code the kernel replaces. Within its domain a kernel is within
-//! 1 ULP of the platform's libm. Kernels never call libm, so their results
+//! 1 ULP of the platform's libm; a result built from several kernels, such as
+//! a product of a sine and a cosine, can be correspondingly further. Kernels never call libm, so their results
 //! are the same on every platform.
 
 mod atan2;
+mod sincos;
 
 pub(crate) use atan2::{atan2, atan2_covers};
+pub(crate) use sincos::{sin_cos, sin_cos_covers};
