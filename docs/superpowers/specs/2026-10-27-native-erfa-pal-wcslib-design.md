@@ -39,7 +39,8 @@ These would make the work a failure even if it ran faster.
 - A separate scalar implementation that drifts from the vector one.
 - Fixture churn accepted wholesale. Every changed fixture is inspected and shown to be ULP drift or a deliberate wcslib fix, never re-baselined in bulk.
 - Lost provenance. Code whose ancestry cannot be traced to a named C function and version.
-- A slowdown at small N. The N=1 and N=100 timings must not get worse than the baseline beyond `ast-bench`'s noise threshold.
+- A slowdown at small N relative to C. The N=1 and N=100 timings must stay faster than C's.
+  (Amended 2026-10-27: the first version asked for no slowdown against the previous port. A branchless kernel always pays its full latency, so SphMap forward on the bench points went from 23.7 to 37.7 ns at N=1 and from 12.5 to 16.3 ns per point at N=10, while staying about 15 times faster than C at N=1 and becoming 3.9 times faster than before on large random point sets. The user accepted this, to be revisited: a kernel with one division instead of two per arctangent, or a shorter polynomial evaluation, would cut the latency; switching to libm below a size threshold would not be acceptable, since a point's bits would then depend on how many points are transformed together.)
 
 ## Constraints
 
