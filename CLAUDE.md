@@ -174,6 +174,9 @@ both:
   so this is fine for that workload, but Frame-attribute integrity
   re-fusion uses 1-point probes that should stay scalar).
 
+A path chosen by point count is allowed only where both paths give the same bits: a 1-point probe must agree with the same point inside a bulk call.
+The vectorized trigonometric kernels of the native ERFA, PAL and wcslib design differ from libm in the last bit, so they run at every point count, pay their full latency at one point, and are held to a different rule: N=1 and N=100 stay faster than C (`docs/superpowers/specs/2026-10-27-native-erfa-pal-wcslib-design.md`, "Anti-goals").
+
 When adding a new `Mapping` whose math is polynomial in the inputs:
 prototype both paths behind a temporary `bench-internals` cargo
 feature, time both with `ast-bench run --set-file <set> --engine both`
