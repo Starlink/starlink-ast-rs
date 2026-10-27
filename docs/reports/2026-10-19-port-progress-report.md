@@ -187,15 +187,17 @@ The speed-ups that would also work in C are listed in §4.
 ### Where it stands today
 
 Ratios below are Rust time ÷ C time, so under 1 means the port is faster.
+The Rust timing is `rust-cols`: the port called as a C program calls `astTranN`, with one array per axis and the view over those arrays built inside the timed call, so both engines start from the same caller-owned arrays.
+At a million points it agrees with the timing whose view is built once outside the call to within 8% on every case; at one point that other timing gives 0.09, because it skips set-up that a C caller cannot skip.
 They are from `docs/perf/2026-10-19-macos-aarch64-bench.tsv` and `-framesets.tsv`, recorded for this review at `69c40996` on an Apple M1 Ultra (load average 6.5 to 7.6 from other work), comparing each engine's fastest sample.
 
 **The `bench` set, 36 Mappings and FrameSets in both directions (72 cases):**
 
 | Points | Geometric mean | Cases faster than C | Cases over 1.1× |
 |---:|---:|---:|---:|
-| 1 | 0.09 | 72 | 0 |
-| 100 | 0.33 | 70 | 2 |
-| 1,000,000 | **0.84** | 37 | 16 |
+| 1 | 0.14 | 72 | 0 |
+| 100 | 0.36 | 70 | 1 |
+| 1,000,000 | **0.84** | 38 | 14 |
 
 On the 52 cases also in the 2026-10-17 record, the geometric mean at 1M points went from 1.04 to 0.86 in two days, mostly from the PolyMap, SplineMap and LutMap kernels.
 
@@ -204,14 +206,14 @@ On the 52 cases also in the 2026-10-17 record, the geometric mean at 1M points w
 | FrameSet | Forward | Inverse | Rust ns per point, forward |
 |---|---:|---:|---:|
 | `lsst` (Rubin) | **0.39** | **0.44** | 81 |
-| `lsst2` | 0.61 | 0.67 | 244 |
-| `jan` | 0.93 | 0.93 | 50 |
+| `lsst2` | 0.62 | 0.68 | 249 |
+| `jan` | 0.92 | 0.93 | 50 |
 | `rigby` | 0.91 | 0.93 | 118 |
-| ACSIS cube | 0.94 | 0.94 | 55 |
+| ACSIS cube | 0.95 | 0.94 | 55 |
 | `dss` | 0.95 | 1.00 | 87 |
-| `timj` | 0.98 | 0.98 | 102 |
-| `brad` | 1.02 | 1.10 | 37 |
-| `lsst1` | 1.08 | 1.08 | 2.5 |
+| `timj` | 0.97 | 0.98 | 102 |
+| `brad` | 1.01 | 1.10 | 37 |
+| `lsst1` | 1.07 | 1.08 | 2.5 |
 
 Rubin's `lsst` FrameSet was the stated condition for switching to the port: it had to be faster than C.
 It is now about 2.5× faster in both directions, almost all of it from the PolyMap block evaluation.
@@ -222,15 +224,16 @@ It is now about 2.5× faster in both directions, almost all of it from the PolyM
 
 | Case | Ratio | Rust / C ns per point | Why |
 |---|---:|---:|---|
-| MathMap, linear 2-D | 1.9× | 7.5 / 3.9 | The expression evaluator; not profiled since the per-axis change |
-| SpecMap, wavenumber to frequency | 1.5× | 0.78 / 0.51 | Down from 4–5× on Oct 17 |
-| PermMap, UnitMap, WinMap | 1.2–1.5× | 0.4–0.6 / 0.3–0.5 | Under a nanosecond per point; not investigated further |
+| MathMap, linear 2-D | 2.0× | 7.6 / 3.9 | The expression evaluator; not profiled since the per-axis change |
+| SpecMap, wavenumber to frequency | 1.5× | 0.76 / 0.51 | Down from 4–5× on Oct 17 |
+| PermMap, UnitMap, WinMap | 1.2–1.6× | 0.4–0.6 / 0.3–0.5 | Under a nanosecond per point; not investigated further |
 | LutMap forward | 1.3× | 2.0 / 1.5 | |
-| WcsMap SIN inverse, TimeMap TAI to UTC | 1.2× | 8.5 / 7.1, 6.5 / 5.5 | Dominated by per-point math in vendored wcslib and ERFA |
+| WcsMap SIN inverse, TimeMap TAI to UTC | 1.2× | 8.4 / 7.1, 6.6 / 5.5 | Dominated by per-point math in vendored wcslib and ERFA |
 
 The `framesets` set also shows a parallel IntraMap at 19×, which is the benchmark harness's own test transform, not the port's code, and a cheap spectral header (`vopt-wav`) at 1.75× and 0.28 ns per point.
 Where the port is fastest is where C's per-point loop does avoidable work: NormMap 0.14×, the degree-5 PolyMap 0.20×, the full 3×3 MatrixMap 0.28×.
-Single-point calls are about 11× faster than C (geometric mean 0.09), because C's per-call set-up dominates.
+Single-point calls are about 7× faster than C (geometric mean 0.14, from 1.2× to 20×), because C's per-call set-up dominates.
+`astTranN` wraps the caller's arrays in two new PointSet objects and deletes them again, which on this machine costs about 500 ns in a thread-safe build before any arithmetic, and a CmpMap repeats it for each component; the port passes the arrays down the Mapping tree as borrowed slices.
 
 **The Roman benchmark reproduces Starlink/ast PR 51's transforms.**
 At the largest sizes the port matches C on SphMap, is about 5× faster on PolyMap (after block evaluation; the committed 2026-10-18 record predates it and shows 1.4×), 3.5× faster on the full 2×2 MatrixMap, and runs the diagonal MatrixMap at 0.54 of C's speed while the data fits in cache.

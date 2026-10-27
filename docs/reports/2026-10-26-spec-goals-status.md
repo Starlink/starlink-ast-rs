@@ -15,7 +15,7 @@ Every other figure was taken from the tree on the date above.
 Of the four goals in scope, goal 1 (the idiomatic API) is met outright.
 Goal 4 (test migration) is met for everything the ported classes enable: every fixture is mirrored, 38 of 55 C programs are fully ported, 6 more are ported except for blocks that belong to the C API, and 11 wait on Plot, the text channels or C's object model.
 Goal 3 (byte-exact serialization) is met for four of seven formats; XML, YAML and STC-S wait on their channels.
-Goal 6 (performance within 10% of C) is met in aggregate, a geometric mean of 0.84 of C's time at a million points and the Rubin FrameSet 2.5× faster, but 16 of 72 benchmark cases remain more than 10% slower.
+Goal 6 (performance within 10% of C) is met in aggregate, a geometric mean of 0.84 of C's time at a million points and the Rubin FrameSet 2.5× faster, but 14 of 72 benchmark cases remain more than 10% slower.
 
 ---
 
@@ -70,16 +70,18 @@ The JSON renderer that step 5 of the delivery order added was never built, and n
 
 ## 5. Goal 6: performance within 10% of C
 
-From `docs/perf/2026-10-19-macos-aarch64-bench.tsv`, Rust time over C time on an Apple M1 Ultra at `69c40996`:
+From `docs/perf/2026-10-19-macos-aarch64-bench.tsv`, Rust time over C time on an Apple M1 Ultra at `69c40996`.
+The Rust timing is `rust-cols`: the port called as a C program calls `astTranN`, with one array per axis and the view over those arrays built inside the timed call, so both engines start from the same caller-owned arrays.
 
 | Points | Geometric mean | Cases faster than C (of 72) | Cases over 1.1× |
 |---:|---:|---:|---:|
-| 1 | 0.09 | 72 | 0 |
-| 100 | 0.33 | 70 | 2 |
-| 1,000,000 | 0.84 | 37 | 16 |
+| 1 | 0.14 | 72 | 0 |
+| 100 | 0.36 | 70 | 1 |
+| 1,000,000 | 0.84 | 38 | 14 |
 
 Rubin's `lsst` FrameSet, the stated condition for switching to the port, runs at 0.39 of C's time forward and 0.44 inverse.
-The cases still more than 10% slower at a million points are MathMap (1.9×), SpecMap (1.5×), LutMap forward (1.3×), three mappings that cost under a nanosecond per point (PermMap, UnitMap and WinMap, 1.2 to 1.5×), and WcsMap and TimeMap (1.2×), the last two bound by the vendored C they call.
+The cases still more than 10% slower at a million points are MathMap (1.9 to 2.0×), SpecMap (1.5×), LutMap forward (1.3×), three mappings that cost under a nanosecond per point (PermMap, UnitMap and WinMap, 1.2 to 1.6×), and WcsMap and TimeMap (1.2×), the last two bound by the vendored C they call.
+The single-point advantage is C's per-call set-up, not the arithmetic: `astTranN` creates two PointSet objects around the caller's arrays and deletes them, about 500 ns in a thread-safe build and about 220 ns without pthreads, and a CmpMap repeats it per component, while the port passes the arrays down the tree as borrowed slices and allocates nothing for a simple Mapping.
 The hot-path constraint holds: `SkyFrame::set_epoch_mjd` and `set_sky_ref_is` are single field assignments with no allocation and no lock.
 What the spec asked for and does not exist: benchmarks of simplification and serialization workloads, and a CI job running the gate.
 `ast-bench compare` fails on a slowdown over 10%, but it is run by hand.
