@@ -68,6 +68,17 @@ With `--base`, it builds `ast-bench` at that commit, runs the same command there
 Use it for changes that must not alter any result, such as a change of data layout.
 The hashes depend on the platform's libm, so they are only ever compared on one machine, never committed.
 
+## Measuring how far results moved
+
+    ast-bench ulps --base <git-ref> [--max N]
+
+is for a change that is allowed to move results, such as a vectorized math kernel.
+It builds `ast-bench` at the base as `bits --base` does, runs `ast-bench values` there and here (every output value of every corpus case at its oracle rows), and prints one line per case and output axis whose values differ: how many differ and by at most how many ULP, the largest first.
+A change of sign, a NaN, or a value becoming or ceasing to be `AST__BAD` prints as a sign/NaN/BAD change.
+With `--max N`, each line over N ULP is an error.
+A case that loads or transforms on one side only, or gives a different number of values, is an error, since its values cannot be compared.
+The base must contain the `values` command.
+
 ## Records and the full sweep
 
     ast-bench snapshot --set bench        # needs --features c-oracle

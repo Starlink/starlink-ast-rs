@@ -112,23 +112,29 @@ pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> 
         .ok_or_else(|| format!("no ast-bench binary under {}", target.display()))
 }
 
-/// The output of `ast-bench bits` from the build at `git_ref`.
-pub fn bits_at(git_ref: &str) -> Result<String, String> {
+/// The output of `ast-bench <args>` from the build at `git_ref`.
+pub fn output_at(git_ref: &str, args: &[&str]) -> Result<String, String> {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let bin = build_base(&repo, git_ref)?;
     let out = Command::new(&bin)
-        .arg("bits")
+        .args(args)
         .output()
         .map_err(|e| format!("{}: {e}", bin.display()))?;
     if !out.status.success() {
         return Err(format!(
-            "{} bits failed ({}): {}",
+            "{} {} failed ({}): {}",
             bin.display(),
+            args.join(" "),
             out.status,
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The output of `ast-bench bits` from the build at `git_ref`.
+pub fn bits_at(git_ref: &str) -> Result<String, String> {
+    output_at(git_ref, &["bits"])
 }
 
 /// Run `bin` on the set file and read its TSV.
