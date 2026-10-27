@@ -61,6 +61,8 @@
 //
 // Ported from ERFA eraS2c (erfa/s2c.c) as vendored at reference/starlink-ast 7c12422f; unchanged in substance in ERFA v2.0.1.
 
+use crate::vmath;
+
 /// Spherical coordinates (longitude, latitude) in radians to the unit vector
 /// of direction cosines.
 #[inline(always)]
@@ -70,10 +72,30 @@ pub(crate) fn s2c(theta: f64, phi: f64) -> [f64; 3] {
     [ct * cp, st * cp, sp]
 }
 
+// ERFA's body with its sines and cosines from the vectorizable
+// `vmath::sin_cos`, which is within 1 ULP of libm's.
+/// [`s2c`] without branches, for angles [`s2c_needs_special`] accepts; a
+/// loop over many points vectorizes. Each sine and cosine is within 1 ULP of
+/// libm's; the z component is a sine, and the x and y components, products
+/// of two, are within 3 ULP of [`s2c`]'s.
+#[inline(always)]
+pub(crate) fn s2c_kernel(theta: f64, phi: f64) -> [f64; 3] {
+    let (st, ct) = vmath::sin_cos(theta);
+    let (sp, cp) = vmath::sin_cos(phi);
+    [ct * cp, st * cp, sp]
+}
+
+/// Whether (`theta`, `phi`) is outside [`s2c_kernel`]'s domain; such angles
+/// go to [`s2c`].
+#[inline(always)]
+pub(crate) fn s2c_needs_special(theta: f64, phi: f64) -> bool {
+    !(vmath::sin_cos_covers(theta) && vmath::sin_cos_covers(phi))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_inputs::{angle_pairs, specials};
+    use crate::test_inputs::{angle_pairs, specials, ulps};
 
     unsafe extern "C" {
         fn astEraS2c(theta: f64, phi: f64, c: *mut f64);
@@ -104,5 +126,35 @@ mod tests {
                 c.map(f64::to_bits)
             );
         }
+    }
+
+    #[test]
+    fn s2c_kernel_is_within_three_ulp_of_s2c() {
+        let mut differ = 0;
+        for (theta, phi) in angle_pairs(1_000_000)
+            .into_iter()
+            .filter(|&(t, p)| !s2c_needs_special(t, p))
+        {
+            let k = s2c_kernel(theta, phi);
+            let e = s2c(theta, phi);
+            for i in 0..3 {
+                let d = ulps(k[i], e[i]);
+                // Each sine and cosine is within 1 ULP of libm's. A product of
+                // two carries both, measured against the product's own ULP,
+                // which can be half a factor's; 3 ULP is the most seen over 8
+                // million angle pairs.
+                assert!(
+                    d <= 3,
+                    "({theta:e}, {phi:e}) axis {i}: {:e} vs {:e}",
+                    k[i],
+                    e[i]
+                );
+                differ += usize::from(d > 0);
+            }
+        }
+        assert!(
+            differ > 0,
+            "no input differed from s2c; is the kernel in use?"
+        );
     }
 }

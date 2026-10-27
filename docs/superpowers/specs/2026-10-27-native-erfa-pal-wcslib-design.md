@@ -74,6 +74,12 @@ Until the vendored C is gone, the user has decided:
 
 This is reassessed when the vendored-code removal is complete; one option is to adopt the same branchless kernels in C AST, after which the per-value entries could use them without moving away from the oracle.
 
+#### ULP bound: per elementary function (2026-10-27)
+
+The 1 ULP bound applies to each elementary function a kernel replaces (an arctangent, a sine, a cosine), not to every output of a ported ERFA function.
+A function that combines several, such as `eraS2c`'s products of a sine and a cosine, can be correspondingly further from C: `eraS2c`'s x and y components were up to 3 ULP from C's over 8 million angle pairs, its z component 1 ULP.
+The user accepted this for SphMap's inverse, which went from 19.5 to 11.7 ns per point on large random point sets.
+
 ### Errors and status codes
 
 A function that can genuinely fail returns `AstResult<T>`; one that cannot returns `T`.
