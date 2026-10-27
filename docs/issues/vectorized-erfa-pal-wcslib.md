@@ -1,7 +1,8 @@
 # Future work: a vectorized Rust rewrite of the ERFA, PAL and wcslib code the transforms use
 
-Status: future ticket, on its own branch, after the Mapping, Frame, Region and FitsChan parity work is merged.
-Nothing here is implemented; this records the investigation of 2026-10-18 so the ticket can start from it.
+Status: in progress on DM-56839; the design is `docs/superpowers/specs/2026-10-27-native-erfa-pal-wcslib-design.md` and SphMap's stage is `docs/superpowers/plans/2026-10-27-native-erfa-sphmap.md`.
+This records the investigation of 2026-10-18 the ticket started from.
+Two findings since: the branchless `atan2` must select its interval constants rather than index them (an index computed per element is a gather, which stopped the loop vectorizing), and the `sin`/`cos` reduction cannot simply take fdlibm's three rounds unconditionally, since the third assumes the second subtraction was exact; `vmath::sin_cos` carries each round's error with a two-sum instead.
 It extends `PLAN.md` §7's "wcslib Rust port (step 6a)" row to ERFA and PAL, and to bulk interfaces.
 
 ## Why
