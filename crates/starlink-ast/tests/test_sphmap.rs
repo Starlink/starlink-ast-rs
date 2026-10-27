@@ -373,3 +373,101 @@ fn serialise_transform_equivalence() {
     assert_close(out1.point(0)[0], out2.point(0)[0], TOL);
     assert_close(out1.point(0)[1], out2.point(0)[1], TOL);
 }
+
+// -----------------------------------------------------------------------
+// Bulk transforms: every point gives the bits it gives alone
+// -----------------------------------------------------------------------
+
+/// The outputs of `m` for `rows`, one row per point.
+fn bulk(m: &SphMap, rows: &[Vec<f64>], forward: bool) -> Vec<Vec<f64>> {
+    let out = m.transform(&PointSet::from_rows(rows), forward).unwrap();
+    (0..out.npoint()).map(|i| out.point(i).to_vec()).collect()
+}
+
+/// Bit patterns, so NaN and signed zeros compare exactly.
+fn bits(v: &[f64]) -> Vec<u64> {
+    v.iter().map(|x| x.to_bits()).collect()
+}
+
+/// `n` deterministic points with `ncoord` coordinates in roughly [-2, 2].
+fn points(n: usize, ncoord: usize) -> Vec<Vec<f64>> {
+    let mut s: u64 = 0x2545_f491_4f6c_dd1d;
+    (0..n)
+        .map(|_| {
+            (0..ncoord)
+                .map(|_| {
+                    s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+                    ((s >> 11) as f64 / (1u64 << 53) as f64) * 4.0 - 2.0
+                })
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn bulk_and_single_point_give_identical_bits() {
+    let m = SphMap::new();
+    for (forward, ncoord) in [(true, 3), (false, 2)] {
+        for n in [1, 2, 3, 7, 1001] {
+            let rows = points(n, ncoord);
+            let all = bulk(&m, &rows, forward);
+            for (i, row) in rows.iter().enumerate() {
+                let alone = bulk(&m, std::slice::from_ref(row), forward);
+                assert_eq!(
+                    bits(&all[i]),
+                    bits(&alone[0]),
+                    "forward={forward} n={n} i={i}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn minus_x_meridian_with_negative_zero_y_gives_plus_pi() {
+    let m = SphMap::new();
+    let mut rows = points(7, 3);
+    rows[3] = vec![-1.0, -0.0, 0.0];
+    let out = bulk(&m, &rows, true);
+    assert_eq!(out[3][0].to_bits(), PI.to_bits());
+    assert_eq!(out[3][1].to_bits(), 0.0f64.to_bits());
+}
+
+#[test]
+fn one_bad_coordinate_makes_only_that_point_bad() {
+    let m = SphMap::new();
+    let mut rows = points(7, 3);
+    rows[3][1] = BAD_VALUE;
+    let out = bulk(&m, &rows, true);
+    assert_eq!(out[3], vec![BAD_VALUE, BAD_VALUE]);
+    for i in (0..7).filter(|&i| i != 3) {
+        let alone = bulk(&m, std::slice::from_ref(&rows[i]), true);
+        assert_eq!(bits(&out[i]), bits(&alone[0]), "i={i}");
+    }
+}
+
+#[test]
+fn poles_in_a_batch_use_polar_long() {
+    let mut m = SphMap::new();
+    m.set_polar_long(0.5);
+    let mut rows = points(5, 3);
+    rows[1] = vec![0.0, 0.0, 1.0];
+    rows[2] = vec![0.0, 0.0, -1.0];
+    rows[3] = vec![1e-20, 1e-20, 1.0];
+    let out = bulk(&m, &rows, true);
+    assert_eq!(out[1], vec![0.5, FRAC_PI_2]);
+    assert_eq!(out[2], vec![0.5, -FRAC_PI_2]);
+    assert_eq!(out[3], vec![0.5, FRAC_PI_2]);
+}
+
+#[test]
+fn nan_protocol_gives_bad_for_nan_and_zero_vector_gives_zeros() {
+    let m = SphMap::new();
+    let map: &dyn Mapping = &m;
+    let rows = PointSet::from_rows([[f64::NAN, 0.0, 1.0], [1.0, 0.0, 0.0]]);
+    let out = map.transform_nan_protocol(&rows, true).unwrap();
+    assert_eq!(out.point(0).to_vec(), vec![BAD_VALUE, BAD_VALUE]);
+    assert_eq!(out.point(1).to_vec(), vec![0.0, 0.0]);
+    let zero = bulk(&m, &[vec![0.0, 0.0, 0.0], vec![1.0, 0.0, 0.0]], true);
+    assert_eq!(bits(&zero[0]), bits(&[0.0, 0.0]));
+}
