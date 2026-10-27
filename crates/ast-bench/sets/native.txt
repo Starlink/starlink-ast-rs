@@ -1,0 +1,17 @@
+# The native set: every bench transform that reaches the vendored ERFA, PAL
+# or wcslib C, and the real-world FrameSets that are the headline measure of
+# docs/superpowers/specs/2026-10-27-native-erfa-pal-wcslib-design.md.
+# Each line: <oracle> <relpath> # reason.
+bench sphmap.map # SphMap: eraC2s, eraS2c
+bench wcsmap_sin.map # WcsMap SIN: wcslib
+bench wcsmap_tan.map # WcsMap TAN: wcslib
+bench wcsmap_zpn.map # WcsMap ZPN: wcslib
+bench slamap_eqgal.map # SlaMap: PAL galactic conversion
+bench specmap_wn_to_fr.map # SpecMap
+bench timemap_taiutc.map # TimeMap: palDat
+framesets wcsconv/inputs/lsst.ast # Rubin LSST FrameSet
+framesets wcsconv/inputs/lsst2.ast # Rubin LSST FrameSet with a SplineMap distortion
+framesets wcsconv/inputs/a20070718_00010_02_cube.ast # JCMT ACSIS spectral cube
+framesets wcsconv/inputs/dss.ast # DSS plate solution
+framesets wcsconv/inputs/timj.ast # real-world celestial FrameSet
+framesets wcsconv/inputs/degen1.ast # degenerate-axis FrameSet

@@ -19,6 +19,8 @@ Absolute times belong to that machine; the Rust/C ratios travel better, but libm
 | `2026-10-19-macos-aarch64-bench.tsv` | `69c40996` | The `bench` set after the SplineMap, LutMap and PolyMap block kernels and the default NaN path: Rust/C geometric mean 0.09 at N=1, 0.33 at N=100 and 0.84 at N=1 000 000; `lsst` 0.39 forward and 0.44 inverse. Load average 6.5 to 7.6. |
 | `2026-10-19-macos-aarch64-framesets.tsv` | `69c40996` | The first record of the `framesets` set, at the same commit and load. |
 | `2026-10-26-macos-aarch64-c-fixed-cost.txt` | `9b9c58b4` | `tools/perf/prof_tran` on six `bench` fixtures, thread-safe and without pthreads, with a sampled profile of the UnitMap call: a one-point `astTranN` costs about 550 ns thread-safe and 210 ns without, most of it the two PointSet objects it creates; the arithmetic is under 40 ns for a simple Mapping. |
+| `2026-10-27-macos-aarch64-native.tsv` | `9dbd6c88` | The `native` set (`crates/ast-bench/sets/native.txt`): every bench transform that reaches the vendored ERFA, PAL or wcslib C, and the `wcsconv/inputs` FrameSets, before any of that C is replaced by Rust. The baseline for `docs/superpowers/specs/2026-10-27-native-erfa-pal-wcslib-design.md`. Load average 4.2 to 5.1. |
+| `2026-10-27-macos-aarch64-native-roman.txt` | `9dbd6c88` | `ast-bench roman` at the same commit: SphMap at parity with C at large N, 18.6 million points per second forward and about 54 inverse on both engines, because both call the same ERFA C per point. |
 
 The pre-Phase-0 run uses that commit's `starlink-ast` with the current `ast-bench` harness, built in a git worktree, since the harness did not exist yet; it uses no `starlink-ast` API newer than that commit.
 
