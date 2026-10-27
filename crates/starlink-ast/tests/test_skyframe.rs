@@ -1423,9 +1423,15 @@ fn ax_norm_on_the_longitude_axis_matches_c() {
 // sky_offset_map
 // ===========================================================================
 
-/// Offset maps whose CmpMap runs SphMap's forward transform, which is within
-/// 1 ULP of C per arctangent; compared by `sphmap_drift_values_eq`.
-const SKY_OFFSET_SPHMAP_DRIFT_LICENSED: &[&str] = &["origin", "permuted_origin", "pole"];
+/// Offset maps whose CmpMap runs SphMap, whose arctangents, sines and cosines
+/// are each within 1 ULP of C's; compared by `sphmap_drift_values_eq`.
+const SKY_OFFSET_SPHMAP_DRIFT_LICENSED: &[&str] = &[
+    "origin",
+    "origin_lat_only",
+    "origin_refp",
+    "permuted_origin",
+    "pole",
+];
 
 /// `sky_offset_map` gives the Mapping C's `astSkyOffsetMap` gives: a UnitMap
 /// without an offset coordinate system, and otherwise a CmpMap whose

@@ -292,11 +292,11 @@ fn text_numbers_match(got: &str, want: &str, eq: impl Fn(f64, f64) -> bool) -> b
 }
 
 /// Whether `got` matches the C value `want` for a case whose value goes
-/// through SphMap's forward transform.
+/// through SphMap.
 ///
-/// That transform computes its arctangents with a vectorized kernel within
-/// 1 ULP of C's, so on every platform such a value can differ from C's by
-/// rounding carried through the stages that follow; it is compared with the
+/// SphMap computes its arctangents, sines and cosines with vectorized kernels,
+/// each within 1 ULP of C's, so on every platform such a value can differ from
+/// C's by rounding carried through the stages that follow; it is compared with the
 /// tolerances [`c_value_eq`] uses for libm rounding off the capture platform.
 /// Each test names the cases it compares this way.
 pub fn sphmap_drift_eq(got: f64, want: f64) -> bool {
@@ -308,8 +308,7 @@ pub fn sphmap_drift_values_eq(got: &[f64], want: &[f64]) -> bool {
     got.len() == want.len() && got.iter().zip(want).all(|(g, w)| sphmap_drift_eq(*g, *w))
 }
 
-/// [`c_text_eq`] for a case whose numbers go through SphMap's forward
-/// transform: every numeric token by [`sphmap_drift_eq`], or within `atol`
+/// [`c_text_eq`] for a case whose numbers go through SphMap: every numeric token by [`sphmap_drift_eq`], or within `atol`
 /// for a number that is the small remainder of a larger angle (the seconds
 /// field of a sexagesimal value), where rounding of the angle is a large
 /// fraction of the number.
