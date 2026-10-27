@@ -13,6 +13,10 @@ workspace = true
 [features]
 # Load the reference C library at runtime as a second engine.
 c-oracle = ["dep:libloading"]
+# The `vforce` command (macOS only). Off by default: with Apple's Accelerate
+# framework linked in, every `rust-cols` timing at N=1 took about 11 ns
+# longer, which `compare` reported as a slowdown of every Mapping.
+vforce = []
 
 [dependencies]
 starlink-ast = { path = "../starlink-ast" }
