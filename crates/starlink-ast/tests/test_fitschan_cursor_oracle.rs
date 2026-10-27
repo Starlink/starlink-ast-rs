@@ -642,6 +642,14 @@ fn native_full_1_matches_c_but_for_process_counts() {
 /// by `sphmap_drift_text_eq`.
 const SPHMAP_DRIFT_LICENSED: &[&str] = &["alt_axes_alt_offset", "sky_offset_system_rw"];
 
+/// The most these transcripts' values moved from C was 9 ULP, or 6.3e-15 for
+/// a value near zero that is the small difference of larger terms
+/// (2026-10-27).
+const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
+    ulps: 9,
+    atol: 1.0e-14,
+};
+
 #[test]
 fn card_functions_match_the_c_library() {
     let mut failed = Vec::new();
@@ -650,8 +658,16 @@ fn card_functions_match_the_c_library() {
             continue;
         }
         let got = transcript(ops);
+        if crate::common::on_capture_platform()
+            && SPHMAP_DRIFT_LICENSED.contains(&name)
+            && got == want
+        {
+            failed.push(format!(
+                "{name}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
+            ));
+        }
         let differs = if SPHMAP_DRIFT_LICENSED.contains(&name) {
-            !crate::common::sphmap_drift_text_eq(&got, want, 0.0)
+            !crate::common::sphmap_drift_text_eq(&got, want, MEASURED_BOUND)
         } else {
             !crate::common::c_text_eq(&got, want)
         };
