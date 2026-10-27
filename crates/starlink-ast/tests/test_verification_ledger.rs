@@ -39,8 +39,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_frameset_integrity.rs",
         "SPHMAP_DRIFT_LICENSED",
         2,
-        "sky_skyref_origin and sky_alignoffset_galactic: values computed through SphMap's forward transform, whose \
-         vectorized arctangent is within 1 ULP of C's, compared with the \
+        "sky_skyref_origin and sky_alignoffset_galactic: values computed through SphMap, whose vectorized \
+         arctangents, sines and cosines are each within 1 ULP of C's, compared with the \
          libm-rounding tolerances used off the capture platform; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
@@ -48,9 +48,9 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_skyframe.rs",
         "SKY_OFFSET_SPHMAP_DRIFT_LICENSED",
-        3,
-        "the origin, permuted_origin and pole offset maps: values computed through SphMap's forward transform, whose \
-         vectorized arctangent is within 1 ULP of C's, compared with the \
+        5,
+        "the origin, origin_lat_only, origin_refp, permuted_origin and pole offset maps: values computed through SphMap, whose vectorized \
+         arctangents, sines and cosines are each within 1 ULP of C's, compared with the \
          libm-rounding tolerances used off the capture platform; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
@@ -59,8 +59,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_tran_grid_oracle.rs",
         "SPHMAP_DRIFT_MAPS_LICENSED",
         1,
-        "every case on the tan Mapping, grids and quadratic fits: values computed through SphMap's forward transform, whose \
-         vectorized arctangent is within 1 ULP of C's, compared with the \
+        "every case on the tan Mapping, grids and quadratic fits: values computed through SphMap, whose vectorized \
+         arctangents, sines and cosines are each within 1 ULP of C's, compared with the \
          libm-rounding tolerances used off the capture platform; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
@@ -69,8 +69,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_fitschan_encodings_oracle.rs",
         "SPHMAP_DRIFT_LICENSED",
         20,
-        "(header, encoding) writes of eight headers whose CRVAL or DSS plate values come through it; DSS seconds fields to 1e-10 arcsec: values computed through SphMap's forward transform, whose \
-         vectorized arctangent is within 1 ULP of C's, compared with the \
+        "(header, encoding) writes of eight headers whose CRVAL or DSS plate values come through it; DSS seconds fields to 1e-10 arcsec: values computed through SphMap, whose vectorized \
+         arctangents, sines and cosines are each within 1 ULP of C's, compared with the \
          libm-rounding tolerances used off the capture platform; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
@@ -79,8 +79,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_fitschan_alt_epoch_oracle.rs",
         "SPHMAP_DRIFT_LICENSED",
         2,
-        "alt_only and both_set, whose alternate CRVAL cards move: values computed through SphMap's forward transform, whose \
-         vectorized arctangent is within 1 ULP of C's, compared with the \
+        "alt_only and both_set, whose alternate CRVAL cards move: values computed through SphMap, whose vectorized \
+         arctangents, sines and cosines are each within 1 ULP of C's, compared with the \
          libm-rounding tolerances used off the capture platform; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
@@ -89,8 +89,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_fitschan_axis_count_oracle.rs",
         "SPHMAP_DRIFT_LICENSED",
         1,
-        "warn_then_alt's transformed point: values computed through SphMap's forward transform, whose \
-         vectorized arctangent is within 1 ULP of C's, compared with the \
+        "warn_then_alt's transformed point: values computed through SphMap, whose vectorized \
+         arctangents, sines and cosines are each within 1 ULP of C's, compared with the \
          libm-rounding tolerances used off the capture platform; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
@@ -99,8 +99,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "test_fitschan_cursor_oracle.rs",
         "SPHMAP_DRIFT_LICENSED",
         2,
-        "alt_axes_alt_offset and sky_offset_system_rw transcripts: values computed through SphMap's forward transform, whose \
-         vectorized arctangent is within 1 ULP of C's, compared with the \
+        "alt_axes_alt_offset and sky_offset_system_rw transcripts: values computed through SphMap, whose vectorized \
+         arctangents, sines and cosines are each within 1 ULP of C's, compared with the \
          libm-rounding tolerances used off the capture platform; interim until \
          the vendored-code removal is reassessed (native ERFA design, \
          2026-10-27)",
