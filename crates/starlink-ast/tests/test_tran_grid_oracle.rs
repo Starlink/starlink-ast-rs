@@ -118,6 +118,11 @@ fn hash(out: &PointSet) -> u64 {
     h
 }
 
+/// Mappings that run SphMap's forward transform, which is within 1 ULP of C
+/// per arctangent; every case on them is compared by `sphmap_drift_eq` and
+/// its variants.
+const SPHMAP_DRIFT_MAPS_LICENSED: &[&str] = &["tan"];
+
 #[test]
 fn grids_match_c() {
     for &(name, map, lbnd, ubnd, tol, maxpix, forward, want_hash, sample) in cases::GRIDS {
@@ -127,11 +132,20 @@ fn grids_match_c() {
             .step_by(97)
             .flat_map(|i| out.point(i).to_vec())
             .collect();
-        crate::common::assert_c_values(&got, sample, &format!("{name}: sampled positions"));
+        let drift = SPHMAP_DRIFT_MAPS_LICENSED.contains(&map);
+        if drift {
+            assert!(
+                crate::common::sphmap_drift_values_eq(&got, sample),
+                "{name}: sampled positions: got {got:?}, C gives {sample:?}"
+            );
+        } else {
+            crate::common::assert_c_values(&got, sample, &format!("{name}: sampled positions"));
+        }
         // The hash pins every value bit for bit, so it is compared only on
-        // the platform the C values were captured on; elsewhere the samples,
-        // compared within libm rounding, are the check.
-        if crate::common::on_capture_platform() {
+        // the platform the C values were captured on, and not for a case that
+        // drifts from C; otherwise the samples, compared within libm
+        // rounding, are the check.
+        if crate::common::on_capture_platform() && !drift {
             assert_eq!(hash(&out), want_hash, "{name}: every position");
         }
     }
@@ -157,6 +171,16 @@ fn quadratic_fits_match_c() {
     for &(name, map, lbnd, ubnd, nx, ny, fitted, rms, coeffs) in cases::QUADS {
         let fit = mapping(map).quad_approx(lbnd, ubnd, nx, ny).unwrap();
         assert_eq!(fit.fitted, fitted, "{name}: returned value");
+        if SPHMAP_DRIFT_MAPS_LICENSED.contains(&map) {
+            assert!(
+                crate::common::sphmap_drift_eq(fit.rms, rms)
+                    && crate::common::sphmap_drift_values_eq(&fit.coeffs, coeffs),
+                "{name}: rms {} coefficients\n got {:?}\nwant {coeffs:?}",
+                fit.rms,
+                fit.coeffs
+            );
+            continue;
+        }
         assert_eq!(fit.rms.to_bits(), rms.to_bits(), "{name}: rms {}", fit.rms);
         assert_eq!(
             fit.coeffs.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),

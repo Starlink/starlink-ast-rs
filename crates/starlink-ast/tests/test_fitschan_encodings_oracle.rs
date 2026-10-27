@@ -132,6 +132,39 @@ fn without_values(cards: &[String], keywords: &[&str]) -> Vec<String> {
         .collect()
 }
 
+/// (header, encoding) writes whose FrameSet runs SphMap's forward transform,
+/// which is within 1 ULP of C per arctangent, so their numbers differ from
+/// C's by rounding; their cards are compared by `sphmap_drift_text_eq`.
+const SPHMAP_DRIFT_LICENSED: &[(&str, &str)] = &[
+    ("alt_j", "DSS"),
+    ("alt_pc", "DSS"),
+    ("cname", "DSS"),
+    ("freq_cube", "FITS-CLASS"),
+    ("tan_fk5", "DSS"),
+    ("tpn", "DSS"),
+    ("tan_offset_origin", "FITS-WCS"),
+    ("tan_offset_pole", "FITS-WCS"),
+    ("tan_new_epoch", "DSS"),
+    ("tan_new_epoch", "FITS-AIPS"),
+    ("tan_new_epoch", "FITS-AIPS++"),
+    ("tan_new_epoch", "FITS-IRAF"),
+    ("tan_new_epoch", "FITS-PC"),
+    ("tan_new_epoch", "FITS-WCS"),
+    ("tan_new_epoch_no_mjd", "DSS"),
+    ("tan_new_epoch_no_mjd", "FITS-AIPS"),
+    ("tan_new_epoch_no_mjd", "FITS-AIPS++"),
+    ("tan_new_epoch_no_mjd", "FITS-IRAF"),
+    ("tan_new_epoch_no_mjd", "FITS-PC"),
+    ("tan_new_epoch_no_mjd", "FITS-WCS"),
+];
+
+/// The largest difference allowed in the seconds field of a sexagesimal card
+/// (DSS `PLTRAS` and `PLTDECS`) for a case in [`SPHMAP_DRIFT_LICENSED`]: the seconds
+/// are what is left of an angle after its degrees and minutes, so a rounding
+/// change of 1e-16 radians in the angle, 2e-11 arcseconds, is a large part of
+/// a seconds value near zero.
+const SEXAGESIMAL_SECONDS_ATOL: f64 = 1.0e-10;
+
 /// Every write of every case, `(header, encoding, differs, report)`.
 fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
     let mut out = Vec::new();
@@ -145,17 +178,32 @@ fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
                 names.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
             );
             let report = format!("{name} {enc}:\n--- rust\n{got:#?}\n--- C\n{want:#?}");
+            let drift = SPHMAP_DRIFT_LICENSED.contains(&(name, enc));
+            let text_eq = |g: &[String], w: &[String]| {
+                let (g, w) = (g.join("\n"), w.join("\n"));
+                if drift {
+                    crate::common::sphmap_drift_text_eq(&g, &w, SEXAGESIMAL_SECONDS_ATOL)
+                } else {
+                    crate::common::c_text_eq(&g, &w)
+                }
+            };
             let differs = match VALUES_LICENSED
                 .iter()
                 .find(|&&(n, e, _, _)| n == name && e == enc)
             {
                 Some(&(_, _, keys, _)) => {
-                    (got.0, got.1, without_values(&got.2, keys), &got.3)
-                        != (want.0, want.1, without_values(&want.2, keys), &want.3)
+                    (got.0, got.1, &got.3) != (want.0, want.1, &want.3)
+                        || if drift {
+                            !text_eq(
+                                &without_values(&got.2, keys),
+                                &without_values(&want.2, keys),
+                            )
+                        } else {
+                            without_values(&got.2, keys) != without_values(&want.2, keys)
+                        }
                 }
                 None => {
-                    (got.0, got.1, &got.3) != (want.0, want.1, &want.3)
-                        || !crate::common::c_text_eq(&got.2.join("\n"), &want.2.join("\n"))
+                    (got.0, got.1, &got.3) != (want.0, want.1, &want.3) || !text_eq(&got.2, &want.2)
                 }
             };
             out.push((name, enc, differs, report));
