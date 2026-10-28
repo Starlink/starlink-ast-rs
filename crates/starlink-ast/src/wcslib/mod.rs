@@ -9,10 +9,14 @@
 //! struct and the vendored wcslib projection functions it calls, which
 //! `build.rs` compiles from `vendor/wcslib/` into `libast_wcslib.a` under
 //! their `ast`-prefixed names (e.g. `astPRJset`, `astTANfwd`).
-//! `trig` holds the degree trigonometry the projections share.
+//! `trig` holds the degree trigonometry the projections share, `prj` the
+//! native projection state and dispatch, and `zenithal` the zenithal
+//! projections.
 
 pub(crate) mod ffi;
+pub(crate) mod prj;
 pub(crate) mod trig;
+mod zenithal;
 
 #[cfg(test)]
 mod difftest;
@@ -384,3 +388,11 @@ impl WcsProjection {
 /// `mxpar2` column value of `-ZPN` and `-TPN` in the `PrjInfo` table
 /// (wcsmap.c:684-716).
 const WCSLIB_MXPAR: usize = 100;
+
+/// Number of slots in a projection-parameter array.
+///
+/// C allocates `mxpar + 1` doubles per axis (wcsmap.c:5862-5863) so that
+/// index `mxpar` itself is addressable; `astGetPVMax` reports that allocation
+/// minus one (wcsmap.c:2205-2212). Every array here is sized for the largest
+/// projection, so the same indices are legal.
+pub(crate) const PRJ_PARAM_SLOTS: usize = WCSLIB_MXPAR + 1;

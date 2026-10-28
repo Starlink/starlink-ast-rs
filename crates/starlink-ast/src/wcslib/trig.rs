@@ -11,8 +11,8 @@ use crate::math;
 // `PI/180.0` and `180.0/PI` from `vendor/wcslib/wcsmath.h`, whose `PI`
 // literal rounds to `std::f64::consts::PI`.
 use std::f64::consts::PI;
-const D2R: f64 = PI / 180.0;
-const R2D: f64 = 180.0 / PI;
+pub(super) const D2R: f64 = PI / 180.0;
+pub(super) const R2D: f64 = 180.0 / PI;
 
 /// How close to the end of its range an argument of `acosd` or `asind` may
 /// be, beyond the range, and still be taken as the end (`wcstrig.h`).
