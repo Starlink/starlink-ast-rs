@@ -10,7 +10,8 @@ use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::pal;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
-use crate::wcslib::{PrjParams, WcsProjection};
+use crate::wcslib::WcsProjection;
+use crate::wcslib::ffi::PrjParams;
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
