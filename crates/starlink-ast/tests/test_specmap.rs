@@ -668,3 +668,25 @@ fn specmap_always_merges_adjacent() {
     let m = merged.unwrap();
     assert!(m.as_any().is::<SpecMap>());
 }
+
+/// Topocentric to heliocentric frequency, from `testspecmap.c`'s
+/// `check_topocentric_frequency`, with its wanted value. The observer's
+/// Earth-rotation velocity comes from PAL in au/s and is converted back to
+/// km/s with the au PAL used, ERFA's `ERFA_DAU`; a different au leaves the
+/// velocity too small by 4.7e-9 of itself, 6.9e-6 Hz here.
+#[test]
+fn topocentric_to_heliocentric_frequency() {
+    let mut spec = SpecMap::new();
+    // OBSLON, OBSLAT, OBSALT, EPOCH, RA, DEC.
+    spec.add(
+        SpecCvtType::TpF2Hl,
+        &[-2.71, 0.34, 4200.0, 60000.0, 1.570796326794896, 0.1],
+    )
+    .unwrap();
+    let out = transform_fwd(&spec, 1.0e9);
+    let want = 1000085270.7870382;
+    assert!(
+        (out - want).abs() <= 2.0e-6,
+        "TPF2HL gives {out:.17e} Hz, expected {want:.17e}"
+    );
+}

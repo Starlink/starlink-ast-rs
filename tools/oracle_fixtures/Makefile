@@ -41,7 +41,7 @@ PROGS := fitschan_read_chain_probe fitschan_labels_probe fitschan_tab_write_prob
          axis_format_probe axis_unformat_probe time_epoch_probe \
          specflux_primary_probe cmp_match_end_probe \
          time_scale_set_probe flux_badun_probe spec_origin_sor_probe use_defs_probe \
-         sky_use_defs_probe spec_use_defs_probe \
+         sky_use_defs_probe spec_use_defs_probe lsst_probe \
          region_object_probe section_load_probe sky_last_probe ident_probe frameset_current_probe sky_plain_axis_probe box_axin_probe norm_points_probe frame_api_probe region_grid_probe report_probe allow_simplify_probe lutmap_inverse_probe mapping_load_probe specmap_3d_probe tran_definedness_probe poly_bad_probe mapping_bad_probe remove_regions_probe wcsmap_pv_probe selectormap_dump_probe sky_pole_probe
 
 all: $(PROGS)
