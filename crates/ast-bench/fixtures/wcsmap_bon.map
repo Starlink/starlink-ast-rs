@@ -1,0 +1,6 @@
+ Begin WcsMap 	# FITS-WCS sky projection
+    Nin = 2 	# Number of input coordinates
+ IsA Mapping 	# Mapping between coordinate systems
+    Type = "BON" 	# Bonne's equal area projection
+    PV2_1 = 45 	# Projection parameter 1 for axis 2
+ End WcsMap
