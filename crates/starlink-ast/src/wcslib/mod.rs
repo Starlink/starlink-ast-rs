@@ -1,17 +1,21 @@
 // Copyright 2026 Association of Universities for Research in Astronomy (AURA)
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-//! Safe Rust wrappers for the vendored wcslib projection functions.
+//! FITS-WCS projections.
 //!
-//! The C wcslib library is compiled from `vendor/wcslib/{proj,tpn,wcstrig,ast_memory_stub}.c`
-//! into `libast_wcslib.a` by `build.rs`.  The C symbols keep their original
-//! `ast`-prefixed names (e.g. `astPRJset`, `astTANfwd`).
-//!
-//! This module is `pub(crate)` and provides a [`WcsProjection`] enum
-//! covering all 31 FITS-WCS projection types; `ffi` holds the safe
-//! `PrjParams` wrapper around the raw `AstPrjPrm` C struct.
+//! This module is `pub(crate)` and provides the [`WcsProjection`] enum
+//! covering all 31 FITS-WCS projection types and its per-projection tables.
+//! `ffi` holds the safe `PrjParams` wrapper around the raw `AstPrjPrm` C
+//! struct and the vendored wcslib projection functions it calls, which
+//! `build.rs` compiles from `vendor/wcslib/` into `libast_wcslib.a` under
+//! their `ast`-prefixed names (e.g. `astPRJset`, `astTANfwd`).
+//! `trig` holds the degree trigonometry the projections share.
 
 pub(crate) mod ffi;
+pub(crate) mod trig;
+
+#[cfg(test)]
+mod difftest;
 
 // ---------------------------------------------------------------------------
 // WcsProjection enum
@@ -372,7 +376,7 @@ impl WcsProjection {
 }
 
 // ---------------------------------------------------------------------------
-// Raw FFI types and extern declarations
+// Projection parameter limits
 // ---------------------------------------------------------------------------
 
 /// Largest projection-parameter index any projection accepts — C's

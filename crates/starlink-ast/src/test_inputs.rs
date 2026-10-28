@@ -121,3 +121,49 @@ pub(crate) fn ulps(a: f64, b: f64) -> u64 {
     }
     a.to_bits().abs_diff(b.to_bits())
 }
+
+/// `n` random angles in degrees within ±720, then every multiple of 45
+/// degrees in that range with each neighbor one ULP away, then
+/// [`specials`].
+pub(crate) fn degrees(n: usize) -> Vec<f64> {
+    let mut rng = SplitMix64::new(0x5eed_de65);
+    let mut out = Vec::with_capacity(n + 128);
+    for _ in 0..n {
+        out.push((rng.next_f64() * 2.0 - 1.0) * 720.0);
+    }
+    for k in -16..=16 {
+        let a = 45.0 * f64::from(k);
+        out.push(a);
+        out.push(f64::from_bits(a.to_bits().wrapping_add(1)));
+        out.push(f64::from_bits(a.to_bits().wrapping_sub(1)));
+    }
+    out.extend(specials());
+    out
+}
+
+/// `n` random values in [−1.1, 1.1], then ±1, 0, ±(1 ± `WCSTRIG_TOL`/2) and
+/// ±(1 ± 2·`WCSTRIG_TOL`), which straddle the tolerance with which the
+/// inverse trigonometric functions snap to the ends of their ranges, then
+/// [`specials`].
+pub(crate) fn unit_range(n: usize) -> Vec<f64> {
+    use crate::wcslib::trig::WCSTRIG_TOL;
+    let mut rng = SplitMix64::new(0x5eed_a0c5);
+    let mut out = Vec::with_capacity(n + 64);
+    for _ in 0..n {
+        out.push((rng.next_f64() * 2.0 - 1.0) * 1.1);
+    }
+    for s in [1.0, -1.0] {
+        out.push(s);
+        for d in [
+            WCSTRIG_TOL / 2.0,
+            -WCSTRIG_TOL / 2.0,
+            2.0 * WCSTRIG_TOL,
+            -2.0 * WCSTRIG_TOL,
+        ] {
+            out.push(s * (1.0 + d));
+        }
+    }
+    out.push(0.0);
+    out.extend(specials());
+    out
+}
