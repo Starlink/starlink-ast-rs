@@ -1,6 +1,7 @@
 # Bench fixtures
 
-One plain Mapping of each class, the simplest realistic instance, as C's own Native dump, with `bench.oracle` recording C's transform of 24 points sampled over each fixture's own domain.
+One plain Mapping of each class, the simplest realistic instance, as C's own Native dump, with `bench.oracle` recording C's transform of 24 points sampled over each fixture's own domain, and of 4096 for SphMap.
+SphMap's cost is in libm's arctangents, sines and cosines, whose branches a CPU learns over a short cycle of repeated points, so 24 points flatter a per-point libm path against a branchless one: on an Apple M1 per-point forward costs 13.6 ns per point with 24, 41 with 4096, and 53 on the Roman benchmark's points.
 They are the `bench` set `ast-bench` times (`../sets/bench.txt`).
 
 Regenerate both from the reference library:
