@@ -81,11 +81,13 @@ pub(crate) fn c2s(p: [f64; 3]) -> (f64, f64) {
 // `vmath::atan2`, which is within 1 ULP of libm's.
 /// [`c2s`] without branches and within 1 ULP of it, for a vector
 /// [`c2s_needs_special`] accepts; a loop over many vectors vectorizes.
+///
+/// `FMA` is passed to [`vmath::atan2`]; the result is the same either way.
 #[inline(always)]
-pub(crate) fn c2s_kernel(p: [f64; 3]) -> (f64, f64) {
+pub(crate) fn c2s_kernel<const FMA: bool>(p: [f64; 3]) -> (f64, f64) {
     let [x, y, z] = p;
     let r = (x * x + y * y).sqrt();
-    (vmath::atan2(y, x), vmath::atan2(z, r))
+    (vmath::atan2::<FMA>(y, x), vmath::atan2::<FMA>(z, r))
 }
 
 /// Whether `p` is outside [`c2s_kernel`]'s domain: a coordinate that is
@@ -145,7 +147,7 @@ mod tests {
             .into_iter()
             .filter(|&p| !c2s_needs_special(p))
         {
-            let (t, f) = c2s_kernel(p);
+            let (t, f) = c2s_kernel::<{ vmath::HAS_FMA }>(p);
             let (et, ef) = c2s(p);
             let (dt, df) = (ulps(t, et), ulps(f, ef));
             assert!(

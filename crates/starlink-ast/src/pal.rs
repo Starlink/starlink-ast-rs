@@ -182,14 +182,39 @@ pub(crate) fn dcc2s(v: &[f64; 3]) -> (f64, f64) {
 
 /// [`dcs2c`] for every (longitude, latitude) pair of `a` and `b`, into
 /// `x`, `y` and `z`, within 3 ULP of [`dcs2c`]: the slice runs a
-/// vectorizable kernel whose sines and cosines are each within 1 ULP. Each point gets the same bits whatever the slice's
-/// length. A `BAD_VALUE` coordinate gives `BAD_VALUE` outputs, without the
-/// cost of computing them.
+/// vectorizable kernel whose sines and cosines are each within 1 ULP. Each
+/// point gets the same bits whatever the slice's length, and whichever build
+/// of the loop runs: on x86-64 one for AVX2 and FMA when the CPU has them. A
+/// `BAD_VALUE` coordinate gives `BAD_VALUE` outputs, without the cost of
+/// computing them.
 ///
 /// Counts no calls: a caller that skips some points afterwards, as C skips
 /// them before calling, counts the calls C makes with
 /// [`crate::call_counts::hit_n`].
 pub(crate) fn dcs2c_slice(a: &[f64], b: &[f64], x: &mut [f64], y: &mut [f64], z: &mut [f64]) {
+    #[cfg(target_arch = "x86_64")]
+    if crate::vmath::x86_has_avx2_fma() {
+        // SAFETY: the CPU has AVX2 and FMA, which is all the function's
+        // target features require.
+        return unsafe { dcs2c_slice_avx2_fma(a, b, x, y, z) };
+    }
+    dcs2c_slice_body(a, b, x, y, z);
+}
+
+/// [`dcs2c_slice_body`] built for AVX2 and FMA, so its loop runs four wide.
+///
+/// # Safety
+///
+/// The CPU must have AVX2 and FMA. (An `unsafe fn` because the crate's MSRV,
+/// 1.85, predates safe functions with target features.)
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn dcs2c_slice_avx2_fma(a: &[f64], b: &[f64], x: &mut [f64], y: &mut [f64], z: &mut [f64]) {
+    dcs2c_slice_body(a, b, x, y, z);
+}
+
+#[inline(always)]
+fn dcs2c_slice_body(a: &[f64], b: &[f64], x: &mut [f64], y: &mut [f64], z: &mut [f64]) {
     let n = a.len();
     assert!(b.len() == n && x.len() == n && y.len() == n && z.len() == n);
     // The branchless kernel over every point, so the loop vectorizes, then
@@ -209,15 +234,47 @@ pub(crate) fn dcs2c_slice(a: &[f64], b: &[f64], x: &mut [f64], y: &mut [f64], z:
 /// [`dcc2s`] for every vector (`x[i]`, `y[i]`, `z[i]`), into `a` and `b`,
 /// signed-zero canonicalization included, within 1 ULP of [`dcc2s`]: the
 /// slice runs a vectorizable kernel. Each point gets the same bits whatever
-/// the slice's length. A `BAD_VALUE` coordinate gives `BAD_VALUE` outputs,
-/// as for [`dcs2c_slice`], which this also follows in counting no calls.
+/// the slice's length, and whichever build of the loop runs: on x86-64 one
+/// for AVX2 and FMA when the CPU has them. A `BAD_VALUE` coordinate gives
+/// `BAD_VALUE` outputs, as for [`dcs2c_slice`], which this also follows in
+/// counting no calls.
 pub(crate) fn dcc2s_slice(x: &[f64], y: &[f64], z: &[f64], a: &mut [f64], b: &mut [f64]) {
+    #[cfg(target_arch = "x86_64")]
+    if crate::vmath::x86_has_avx2_fma() {
+        // SAFETY: the CPU has AVX2 and FMA, which is all the function's
+        // target features require.
+        return unsafe { dcc2s_slice_avx2_fma(x, y, z, a, b) };
+    }
+    dcc2s_slice_body::<{ crate::vmath::HAS_FMA }>(x, y, z, a, b);
+}
+
+/// [`dcc2s_slice_body`] built for AVX2 and FMA, so its loop runs four wide
+/// and the arctangent's residual is one fused multiply-add.
+///
+/// # Safety
+///
+/// The CPU must have AVX2 and FMA. (An `unsafe fn` because the crate's MSRV,
+/// 1.85, predates safe functions with target features.)
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn dcc2s_slice_avx2_fma(x: &[f64], y: &[f64], z: &[f64], a: &mut [f64], b: &mut [f64]) {
+    dcc2s_slice_body::<true>(x, y, z, a, b);
+}
+
+#[inline(always)]
+fn dcc2s_slice_body<const FMA: bool>(
+    x: &[f64],
+    y: &[f64],
+    z: &[f64],
+    a: &mut [f64],
+    b: &mut [f64],
+) {
     let n = x.len();
     assert!(y.len() == n && z.len() == n && a.len() == n && b.len() == n);
     // The branchless kernel over every point, so the loop vectorizes, then
     // ERFA's own arithmetic for the points outside the kernel's domain.
     for i in 0..n {
-        (a[i], b[i]) = crate::erfa::c2s_kernel([x[i] + 0.0, y[i] + 0.0, z[i] + 0.0]);
+        (a[i], b[i]) = crate::erfa::c2s_kernel::<FMA>([x[i] + 0.0, y[i] + 0.0, z[i] + 0.0]);
     }
     for i in 0..n {
         let p = [x[i] + 0.0, y[i] + 0.0, z[i] + 0.0];
@@ -929,6 +986,55 @@ mod tests {
             all.push((s[i % s.len()], s[(i / 5) % s.len()]));
         }
         all
+    }
+
+    /// Every build of the slice loops gives the same bits: with and without
+    /// a fused multiply-add in the arctangent everywhere, and on an x86-64 CPU
+    /// with AVX2 and FMA, the copies built for them against the baseline.
+    #[test]
+    fn every_build_of_the_slice_loops_gives_the_same_bits() {
+        let v = mixed_vectors();
+        let (x, y, z): (Vec<f64>, Vec<f64>, Vec<f64>) = (
+            v.iter().map(|p| p[0]).collect(),
+            v.iter().map(|p| p[1]).collect(),
+            v.iter().map(|p| p[2]).collect(),
+        );
+        let n = v.len();
+        let c2s_with = |run: &dyn Fn(&mut [f64], &mut [f64])| {
+            let (mut a, mut b) = (vec![0.0; n], vec![0.0; n]);
+            run(&mut a, &mut b);
+            a.iter()
+                .chain(&b)
+                .map(|f| f.to_bits())
+                .collect::<Vec<u64>>()
+        };
+        let unfused = c2s_with(&|a, b| dcc2s_slice_body::<false>(&x, &y, &z, a, b));
+        let fused = c2s_with(&|a, b| dcc2s_slice_body::<true>(&x, &y, &z, a, b));
+        assert_eq!(fused, unfused, "dcc2s with and without FMA");
+
+        #[cfg(target_arch = "x86_64")]
+        if crate::vmath::x86_has_avx2_fma() {
+            // SAFETY: the CPU has AVX2 and FMA, checked just now.
+            let wide = c2s_with(&|a, b| unsafe { dcc2s_slice_avx2_fma(&x, &y, &z, a, b) });
+            assert_eq!(wide, unfused, "dcc2s built for AVX2 and FMA");
+
+            let angles = mixed_angles();
+            let (a, b): (Vec<f64>, Vec<f64>) = angles.iter().copied().unzip();
+            let m = angles.len();
+            let s2c_with = |run: &dyn Fn(&mut [f64], &mut [f64], &mut [f64])| {
+                let (mut x, mut y, mut z) = (vec![0.0; m], vec![0.0; m], vec![0.0; m]);
+                run(&mut x, &mut y, &mut z);
+                x.iter()
+                    .chain(&y)
+                    .chain(&z)
+                    .map(|f| f.to_bits())
+                    .collect::<Vec<u64>>()
+            };
+            let base = s2c_with(&|x, y, z| dcs2c_slice_body(&a, &b, x, y, z));
+            // SAFETY: as above.
+            let wide = s2c_with(&|x, y, z| unsafe { dcs2c_slice_avx2_fma(&a, &b, x, y, z) });
+            assert_eq!(wide, base, "dcs2c built for AVX2 and FMA");
+        }
     }
 
     #[test]
