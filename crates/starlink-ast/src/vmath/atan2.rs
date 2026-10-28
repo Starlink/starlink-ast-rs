@@ -57,12 +57,9 @@ fn two_sum(a: f64, b: f64) -> (f64, f64) {
     (s, (a - (s - bb)) + (b - bb))
 }
 
-/// y - q * x rounded once, by a fused multiply-add.
+/// y - q * x rounded once, by a fused multiply-add: one instruction where
+/// the code it is inlined into is built with FMA, a library call elsewhere.
 #[inline(always)]
-#[cfg_attr(
-    not(any(target_arch = "aarch64", target_feature = "fma")),
-    allow(dead_code)
-)]
 fn residual_fma(y: f64, q: f64, x: f64) -> f64 {
     (-q).mul_add(x, y)
 }
@@ -71,7 +68,6 @@ fn residual_fma(y: f64, q: f64, x: f64) -> f64 {
 /// of `y / x`: Dekker's product gives q * x as p + e exactly, `y - p` is then
 /// exact, and `(y - p) - e` is the one rounding of the exact residual.
 #[inline(always)]
-#[cfg_attr(any(target_arch = "aarch64", target_feature = "fma"), allow(dead_code))]
 fn residual_dekker(y: f64, q: f64, x: f64) -> f64 {
     const SPLIT: f64 = 134_217_729.0; // 2^27 + 1
     let split = |a: f64| {
@@ -86,17 +82,15 @@ fn residual_dekker(y: f64, q: f64, x: f64) -> f64 {
     (y - p) - e
 }
 
-/// The exact rounding error of the quotient `q = y / x`, times `x`. Where
-/// the target has no fused multiply-add (baseline x86-64), calling
-/// `mul_add` would be a library call that stops the loop vectorizing.
+/// The exact rounding error of the quotient `q = y / x`, times `x`: by a
+/// fused multiply-add when `FMA` is set, and otherwise by Dekker's product,
+/// which gives the same bits, since without FMA hardware `mul_add` is a
+/// library call that stops the loop vectorizing.
 #[inline(always)]
-fn quotient_residual(y: f64, q: f64, x: f64) -> f64 {
-    #[cfg(any(target_arch = "aarch64", target_feature = "fma"))]
-    {
+fn quotient_residual<const FMA: bool>(y: f64, q: f64, x: f64) -> f64 {
+    if FMA {
         residual_fma(y, q, x)
-    }
-    #[cfg(not(any(target_arch = "aarch64", target_feature = "fma")))]
-    {
+    } else {
         residual_dekker(y, q, x)
     }
 }
@@ -167,10 +161,15 @@ fn atan_nonneg(a: f64, da: f64) -> (f64, f64) {
 /// random directions it differs from macOS's libm for 1.6% of longitudes
 /// and 4.2% of latitudes, against 12% and 18% for fdlibm's arithmetic, and
 /// it is correctly rounded at least as often as that libm.
+///
+/// `FMA` says whether the code this is inlined into may use fused
+/// multiply-adds: [`super::HAS_FMA`] where the build guarantees them, `true`
+/// inside a function built for an FMA target feature. The result is the same
+/// either way.
 #[inline(always)]
-pub(crate) fn atan2(y: f64, x: f64) -> f64 {
+pub(crate) fn atan2<const FMA: bool>(y: f64, x: f64) -> f64 {
     let q = y / x;
-    let eq = quotient_residual(y, q, x) / x;
+    let eq = quotient_residual::<FMA>(y, q, x) / x;
     let eq = if eq.is_finite() { eq } else { 0.0 };
     let (h, t) = atan_nonneg(q.abs(), if q < 0.0 { -eq } else { eq });
     let r = if x > 0.0 {
@@ -193,6 +192,7 @@ mod tests {
     use super::*;
     use crate::math;
     use crate::test_inputs::{angle_pairs, ulps};
+    use crate::vmath::HAS_FMA;
 
     /// Ratios at each of the reduction's interval boundaries, and the three
     /// doubles either side of each.
@@ -228,11 +228,11 @@ mod tests {
         ]);
         let mut worst = 0;
         for (y, x) in pairs.into_iter().filter(|&(y, x)| atan2_covers(y, x)) {
-            let d = ulps(atan2(y, x), math::atan2(y, x));
+            let d = ulps(atan2::<HAS_FMA>(y, x), math::atan2(y, x));
             assert!(
                 d <= 1,
                 "atan2({y:e}, {x:e}) = {:e}, libm {:e}",
-                atan2(y, x),
+                atan2::<HAS_FMA>(y, x),
                 math::atan2(y, x)
             );
             worst = worst.max(d);
