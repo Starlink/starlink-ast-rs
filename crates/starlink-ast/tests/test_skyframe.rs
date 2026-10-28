@@ -1426,15 +1426,10 @@ fn ax_norm_on_the_longitude_axis_matches_c() {
 /// Offset maps whose CmpMap runs SphMap, compared by `sphmap_drift_values_eq`
 /// within [`OFFSET_MAP_MEASURED_BOUND`]; one that matches C exactly fails,
 /// so the list cannot go stale.
-const SKY_OFFSET_SPHMAP_DRIFT_LICENSED: &[&str] = &[
-    "origin",
-    "origin_lat_only",
-    "origin_refp",
-    "permuted_origin",
-    "pole",
-];
+const SKY_OFFSET_SPHMAP_DRIFT_LICENSED: &[&str] =
+    &["origin", "origin_refp", "permuted_origin", "pole"];
 
-/// The most these offset maps moved from C was 16 ULP (2026-10-27).
+/// The most these offset maps moved from C was 16 ULP (2026-10-28).
 const OFFSET_MAP_MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
     ulps: 16,
     atol: 0.0,

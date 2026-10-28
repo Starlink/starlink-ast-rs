@@ -56,14 +56,6 @@ fn read(header: &[&str]) -> (&'static str, i32, Vec<String>, Vec<i32>, Vec<f64>)
     }
 }
 
-/// Cases whose transformed point goes through SphMap's forward transform,
-/// which is within 1 ULP of C per arctangent; the point is compared by
-/// `sphmap_drift_values_eq`.
-const SPHMAP_DRIFT_LICENSED: &[&str] = &["warn_then_alt"];
-
-/// The most this case's point moved from C was 1 ULP (2026-10-27).
-const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol { ulps: 1, atol: 0.0 };
-
 #[test]
 fn axis_counts_match_c() {
     let mut failed = Vec::new();
@@ -71,21 +63,7 @@ fn axis_counts_match_c() {
         let got = read(header);
         let names = names.iter().map(|n| n.to_string()).collect();
         let want = (result, ncard, names, naxes.to_vec(), point.to_vec());
-        if crate::common::on_capture_platform()
-            && SPHMAP_DRIFT_LICENSED.contains(&name)
-            && got == want
-        {
-            failed.push(format!(
-                "{name}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
-            ));
-        }
-        let differs = if SPHMAP_DRIFT_LICENSED.contains(&name) {
-            (&got.0, got.1, &got.2, &got.3) != (&want.0, want.1, &want.2, &want.3)
-                || !crate::common::sphmap_drift_values_eq(&got.4, &want.4, MEASURED_BOUND)
-        } else {
-            got != want
-        };
-        if differs {
+        if got != want {
             failed.push(format!("{name}:\n  rust {got:?}\n  C    {want:?}"));
         }
     }

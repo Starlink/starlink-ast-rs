@@ -640,14 +640,13 @@ fn native_full_1_matches_c_but_for_process_counts() {
 /// Cases whose cards hold values computed through SphMap's forward transform,
 /// which is within 1 ULP of C per arctangent; their transcripts are compared
 /// by `sphmap_drift_text_eq`.
-const SPHMAP_DRIFT_LICENSED: &[&str] = &["alt_axes_alt_offset", "sky_offset_system_rw"];
+const SPHMAP_DRIFT_LICENSED: &[&str] = &["sky_offset_system_rw"];
 
-/// The most these transcripts' values moved from C was 9 ULP, or 6.3e-15 for
-/// a value near zero that is the small difference of larger terms
-/// (2026-10-27).
+/// The most this transcript's values moved from C was 6.3e-16, in a value
+/// of 3.2e-6 that is the small difference of terms of order 1 (2026-10-28).
 const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
-    ulps: 9,
-    atol: 1.0e-14,
+    ulps: 0,
+    atol: 7.0e-16,
 };
 
 #[test]
