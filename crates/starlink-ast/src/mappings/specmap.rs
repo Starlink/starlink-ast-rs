@@ -29,8 +29,9 @@ const H_PLANCK: f64 = 6.6260755e-34;
 /// Conversion factor: AU/s to m/s.
 const AU_TO_MS: f64 = 149.597870e9;
 
-/// Conversion factor: AU/s to km/s.
-const AU_TO_KMS: f64 = 149.597870e6;
+/// Conversion factor: AU/s to km/s, for the observer velocity from
+/// `pal::pvobs`, which converts metres to au with ERFA's `ERFA_DAU`.
+const AU_TO_KMS: f64 = crate::pal::ERFA_DAU / 1000.0;
 
 // ---------------------------------------------------------------------------
 // SpecCvtType — conversion step types

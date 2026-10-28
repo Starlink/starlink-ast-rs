@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/polygon.c
 Rust: crates/starlink-ast/src/regions/polygon.rs
 Audited: 2026-08-24 against pin 07fbe2dc
-Citations: verified against pin 3b9dc639
+Citations: verified against pin 3d3f255f
 Extension points: classified
 
 Uncited C steps:

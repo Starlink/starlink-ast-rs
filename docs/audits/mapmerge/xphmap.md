@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/xphmap.c
 Rust: crates/starlink-ast/src/mappings/xphmap.rs
 Audited: 2026-10-07 against pin 3b9dc639
-Citations: verified against pin 3b9dc639
+Citations: verified against pin 3d3f255f
 Extension points: classified
 
 Uncited C steps:

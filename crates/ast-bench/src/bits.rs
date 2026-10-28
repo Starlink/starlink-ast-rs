@@ -71,11 +71,11 @@ pub fn case_bits(case: &Case) -> (String, String) {
     (plain, nan)
 }
 
-/// `key\tplain\tnan` for every case of every oracle, in a fixed order. The
-/// key numbers repeated sections so each is distinct.
-pub fn all_bits() -> Result<String, String> {
+/// Every case of every oracle, in a fixed order, with its key: the fixture,
+/// the direction, and a number distinguishing repeated sections.
+pub fn keyed_cases() -> Result<Vec<(String, Case)>, String> {
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
-    let mut out = String::new();
+    let mut out = Vec::new();
     for case in crate::sweep::all_cases()? {
         let s = &case.section;
         let dir = if s.forward { "forward" } else { "inverse" };
@@ -83,6 +83,16 @@ pub fn all_bits() -> Result<String, String> {
         let k = seen.entry(base.clone()).or_default();
         let key = format!("{base} #{k}");
         *k += 1;
+        out.push((key, case));
+    }
+    Ok(out)
+}
+
+/// `key\tplain\tnan` for every case of every oracle, in the order of
+/// [`keyed_cases`].
+pub fn all_bits() -> Result<String, String> {
+    let mut out = String::new();
+    for (key, case) in keyed_cases()? {
         let (plain, nan) = case_bits(&case);
         out += &format!("{key}\t{plain}\t{nan}\n");
     }

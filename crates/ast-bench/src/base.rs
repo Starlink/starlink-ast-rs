@@ -95,40 +95,56 @@ pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> 
     if !status.success() {
         return Err(format!("could not build ast-bench at {git_ref}"));
     }
-    // `cargo build` puts the binary under the target triple when one is
-    // configured and directly under `release` otherwise.
-    for dir in std::fs::read_dir(&target)
+    newest_binary(&target)
+}
+
+/// The most recently built `ast-bench` under `target`. `cargo build` puts it
+/// under the target triple when one is configured and directly under
+/// `release` otherwise, and the target directory is shared by every base
+/// build, so a binary from an earlier build with the other layout can sit
+/// beside the one just built.
+fn newest_binary(target: &Path) -> Result<PathBuf, String> {
+    let mut candidates = vec![target.join("release/ast-bench")];
+    for dir in std::fs::read_dir(target)
         .map_err(|e| e.to_string())?
         .flatten()
     {
-        let bin = dir.path().join("release/ast-bench");
-        if bin.exists() {
-            return Ok(bin);
-        }
+        candidates.push(dir.path().join("release/ast-bench"));
     }
-    let bin = target.join("release/ast-bench");
-    bin.exists()
-        .then_some(bin)
+    candidates
+        .into_iter()
+        .filter_map(|p| {
+            let t = std::fs::metadata(&p).and_then(|m| m.modified()).ok()?;
+            Some((t, p))
+        })
+        .max_by_key(|(t, _)| *t)
+        .map(|(_, p)| p)
         .ok_or_else(|| format!("no ast-bench binary under {}", target.display()))
 }
 
-/// The output of `ast-bench bits` from the build at `git_ref`.
-pub fn bits_at(git_ref: &str) -> Result<String, String> {
+/// The output of `ast-bench <args>` from the build at `git_ref`.
+pub fn output_at(git_ref: &str, args: &[&str]) -> Result<String, String> {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let bin = build_base(&repo, git_ref)?;
     let out = Command::new(&bin)
-        .arg("bits")
+        .args(args)
         .output()
         .map_err(|e| format!("{}: {e}", bin.display()))?;
     if !out.status.success() {
         return Err(format!(
-            "{} bits failed ({}): {}",
+            "{} {} failed ({}): {}",
             bin.display(),
+            args.join(" "),
             out.status,
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The output of `ast-bench bits` from the build at `git_ref`.
+pub fn bits_at(git_ref: &str) -> Result<String, String> {
+    output_at(git_ref, &["bits"])
 }
 
 /// Run `bin` on the set file and read its TSV.
@@ -177,6 +193,27 @@ mod tests {
     use super::*;
     use crate::report::Row;
     use crate::timing::Stats;
+
+    #[test]
+    fn the_newest_binary_wins_over_a_stale_one_under_a_triple() {
+        let dir = std::env::temp_dir().join(format!("ast-bench-bin-{}", std::process::id()));
+        let stale = dir.join("aarch64-apple-darwin/release/ast-bench");
+        let fresh = dir.join("release/ast-bench");
+        for p in [&stale, &fresh] {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, b"").unwrap();
+        }
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(86_400);
+        std::fs::File::options()
+            .write(true)
+            .open(&stale)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let got = newest_binary(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(got.unwrap(), fresh);
+    }
 
     fn row(median: f64, min: f64) -> Row {
         Row {

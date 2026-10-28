@@ -19,6 +19,7 @@ It is opt-in because `compare` reports a timing missing from the base as unmatch
 A set is a file in `sets/` naming oracle sections, one per line with the reason it is there.
 `bench` holds one plain Mapping of each class, then the real-world FrameSets and Mappings in the core fixtures (the LSST FrameSets, `brad`, `rigby` and others), so the performance gate covers the objects users transform.
 `framesets` holds real-world FrameSets that must stay at parity with C (LSST, TNX, SIP, DSS, TAN) and the worst ratios the first full sweep found (spectral headers, parallel CmpMaps, IntraMaps).
+`native` holds every `bench` transform that reaches the vendored ERFA, PAL or wcslib C, and the real-world FrameSets in `wcsconv/inputs`; it measures the replacement of that C by Rust.
 Every case in a set must have a row that is good on both engines, since the small point counts time only such rows; a test checks this.
 
 ## Fairness rules
@@ -66,6 +67,17 @@ It fails on any case where the two paths give different bits, since the NaN prot
 With `--base`, it builds `ast-bench` at that commit, runs the same command there, and fails on any case whose hashes differ, including a case that fails to load or transform on one side only.
 Use it for changes that must not alter any result, such as a change of data layout.
 The hashes depend on the platform's libm, so they are only ever compared on one machine, never committed.
+
+## Measuring how far results moved
+
+    ast-bench ulps --base <git-ref> [--max N]
+
+is for a change that is allowed to move results, such as a vectorized math kernel.
+It builds `ast-bench` at the base as `bits --base` does, runs `ast-bench values` there and here (every output value of every corpus case at its oracle rows), and prints one line per case and output axis whose values differ: how many differ and by at most how many ULP, the largest first.
+A change of sign, a NaN, or a value becoming or ceasing to be `AST__BAD` prints as a sign/NaN/BAD change.
+With `--max N`, each line over N ULP is an error.
+A case that loads or transforms on one side only, or gives a different number of values, is an error, since its values cannot be compared.
+The base must contain the `values` command.
 
 ## Records and the full sweep
 
