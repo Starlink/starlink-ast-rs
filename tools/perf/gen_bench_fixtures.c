@@ -18,6 +18,17 @@
 #include "ast.h"
 #include "transform_oracle.h"
 
+/* The points sampled for SphMap. Its cost is in libm's arctangents, sines
+   and cosines, whose branches a CPU learns over a short cycle of repeated
+   points, so a few dozen points flatter a per-point libm path against a
+   branchless one: on an Apple M1, per-point forward costs 13.6 ns with the
+   24 points the other fixtures use, 20 with 1024, 41 with 4096 and 46 with
+   16384, against 53 on the Roman benchmark's points. 4096 takes most of the
+   bias out for a 1.2 MB oracle. */
+#ifndef SPHMAP_NPOINT
+#define SPHMAP_NPOINT 4096
+#endif
+
 static FILE *sink_fp;
 static void sink( const char *line ) { fprintf( sink_fp, "%s\n", line ); }
 
@@ -25,6 +36,8 @@ typedef struct {
    const char *name;
    AstMapping *(* build)( void );
    double lo, hi;
+   /* Points to sample, or 0 for the oracle's usual count. */
+   int npoint;
 } Fixture;
 
 static AstMapping *zoommap( void ) { return (AstMapping *) astZoomMap( 2, 2.5, " " ); }
@@ -183,7 +196,7 @@ static const Fixture FIXTURES[] = {
    { "wcsmap_tan.map", wcsmap_tan, -0.05, 0.05 },
    { "wcsmap_sin.map", wcsmap_sin, -0.05, 0.05 },
    { "wcsmap_zpn.map", wcsmap_zpn, -0.05, 0.05 },
-   { "sphmap.map", sphmap, -1.0, 1.0 },
+   { "sphmap.map", sphmap, -1.0, 1.0, SPHMAP_NPOINT },
    { "pcdmap.map", pcdmap, -0.1, 0.1 },
    { "grismmap.map", grismmap, 4.0e-7, 6.0e-7 },
    { "unitnormmap_2d.map", unitnormmap, -1.0, 1.0 },
@@ -258,9 +271,9 @@ int main( int argc, char **argv ) {
    fprintf( ofp, "# tol: rtol=1e-07 atol=1e-07  equiv_rtol=1e-09 equiv_atol=1e-09  "
                  "rtrip_rtol=1e-06 rtrip_atol=0.05\n\n" );
 
-   int np = oracle_sample_axis_count();
    for( size_t f = 0; f < sizeof FIXTURES/sizeof FIXTURES[ 0 ]; f++ ) {
       const Fixture *fx = FIXTURES + f;
+      int np = fx->npoint > 0 ? fx->npoint : oracle_sample_axis_count();
       astBegin;
       AstMapping *map = fx->build();
       if( !astOK || !map ) {
