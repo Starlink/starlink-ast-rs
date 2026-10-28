@@ -18,7 +18,7 @@ const GOLDEN_RTOL: f64 = 1e-7;
 const GOLDEN_ATOL: f64 = 1e-7;
 
 /// One per fixture and defined direction; `gen_bench_fixtures` reports it.
-const BENCH_SECTIONS: usize = 52;
+const BENCH_SECTIONS: usize = 66;
 
 fn within_tol(got: f64, reference: f64) -> bool {
     if got == BAD_VALUE || reference == BAD_VALUE {

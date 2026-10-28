@@ -6,6 +6,13 @@ bench sphmap.map # SphMap: eraC2s, eraS2c
 bench wcsmap_sin.map # WcsMap SIN: wcslib
 bench wcsmap_tan.map # WcsMap TAN: wcslib
 bench wcsmap_zpn.map # WcsMap ZPN: wcslib
+bench wcsmap_arc.map # WcsMap ARC: wcslib, zenithal
+bench wcsmap_cea.map # WcsMap CEA: wcslib, cylindrical
+bench wcsmap_ait.map # WcsMap AIT: wcslib, pseudo-cylindrical
+bench wcsmap_cod.map # WcsMap COD: wcslib, conic
+bench wcsmap_bon.map # WcsMap BON: wcslib, polyconic
+bench wcsmap_qsc.map # WcsMap QSC: wcslib, quad-cube
+bench wcsmap_hpx.map # WcsMap HPX: wcslib, HEALPix
 bench slamap_eqgal.map # SlaMap: PAL galactic conversion
 bench specmap_wn_to_fr.map # SpecMap
 bench timemap_taiutc.map # TimeMap: palDat
