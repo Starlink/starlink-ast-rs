@@ -18,7 +18,15 @@ pub const SLOWDOWN_THRESHOLD: f64 = 0.10;
 
 /// Cases allowed a larger threshold, each with the reason:
 /// `(case, threshold, reason)`. Counted in `PLAN.md` §6.
-pub const SLOWDOWN_LICENSED: &[(&str, f64, &str)] = &[];
+pub const SLOWDOWN_LICENSED: &[(&str, f64, &str)] = &[(
+    "specmap_wn_to_fr.map",
+    0.25,
+    "a loop of about 1 ns per point whose speed follows the code layout, not \
+     the code: on Linux x86-64 one vendored commit measured 1.04 ns per point \
+     forward at N=1 000 000 when built in one directory and 1.23 in another, \
+     and builds of SpecMap-neutral commits sat at one or the other; the most \
+     a compare reported was 22% (2026-10-28)",
+)];
 
 /// How many times a suspected slowdown is timed again before it is
 /// reported: it is reported only if every re-timing is slow too, as noise
