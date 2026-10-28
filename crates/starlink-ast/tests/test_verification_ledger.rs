@@ -279,6 +279,16 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          ever stops differing from its replacement",
     ),
     (
+        "test_lsst_oracle.rs",
+        "OFF_PLATFORM_DRIFT_LICENSED",
+        2,
+        "the LSST FrameSet's inverse transforms, as read and simplified, off the \
+         capture platform only: PolyMap's iterative inverse stops once a step is \
+         below the Mapping's TolInv of 1e-7 pixel, so another libm's last-bit \
+         differences move where it stops, by up to 4.5e-10 pixel on Linux x86-64 \
+         (CI, 2026-10-28); compared exactly on the capture platform",
+    ),
+    (
         "test_simplify_regression.rs",
         "NUMERIC_PLATFORM_DRIFT",
         4,
@@ -314,8 +324,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_sky_convert.rs",
         "SINCOS_MERGE_LICENSED",
-        3,
-        "AZEL results up to five units in the last place from C: Apple clang merges the \
+        1,
+        "An AZEL result one unit in the last place from C: Apple clang merges the \
          sin/cos pairs of slamap.c De2h into __sincos_stret, which an unoptimised \
          Rust build does not. A release build matches C exactly; the companion \
          test asserts both",

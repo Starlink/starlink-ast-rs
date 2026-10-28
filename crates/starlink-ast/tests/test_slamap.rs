@@ -539,8 +539,8 @@ fn fk4_fk5_round_trip() {
 
     // FK45Z then FK54Z is not a perfect inverse: the E-term and fictitious
     // proper-motion handling leaves a genuine ~6e-11 residual, present
-    // identically in the C library (both call the same vendored palFk45z /
-    // palFk54z). 1e-9 sits comfortably above that residual while still
+    // identically in the C library (both call the same vendored eraFk45z /
+    // eraFk54z). 1e-9 sits comfortably above that residual while still
     // catching a real regression.
     assert_close(back.point(0)[0], ra, 1e-9, "fk45z ra round-trip");
     assert_close(back.point(0)[1], dec, 1e-9, "fk45z dec round-trip");
@@ -872,4 +872,65 @@ fn cvt_codes_match_as_c_matches_them() {
     assert_eq!(SlaCvtType::from_code("DH2E"), None);
     assert_eq!(SlaCvtType::from_code("DE2H"), None);
     assert_eq!(SlaCvtType::from_code(" H2E"), None);
+}
+
+/// FK5 to FK4 away from B1950, and FK4 to FK5, from `testslamap.c`, with its
+/// wanted values, which are ERFA 2.0.1's `eraFk54z` and `eraFk45z`. The
+/// fictitious FK4 proper motion is applied to the Cartesian unit vector, as
+/// SLALIB's `sla_FK54Z` did; applying it linearly in (RA, Dec) differs most
+/// for points the motion carries close to a pole, by 7.1e-10 radians in RA at
+/// (0.6, -1.55) and B1980.
+#[test]
+// The wanted values are ERFA's, written with 17 significant digits as the C
+// test writes them.
+#[allow(clippy::excessive_precision)]
+fn fk4_fk5_match_erfa() {
+    let cases = [
+        (
+            SlaCvtType::Fk54z,
+            1980.0,
+            0.6,
+            -1.55,
+            0.74967952758676781,
+            -1.5538073132385521,
+            1.0e-12,
+        ),
+        (
+            SlaCvtType::Fk54z,
+            1950.0,
+            1.0,
+            0.5,
+            0.98660250110964187,
+            0.49734772100081265,
+            1.0e-14,
+        ),
+        (
+            SlaCvtType::Fk45z,
+            1980.0,
+            1.0,
+            0.5,
+            1.0134307040454991,
+            0.50259711081913927,
+            1.0e-14,
+        ),
+        (
+            SlaCvtType::Fk45z,
+            1950.0,
+            1.0,
+            0.5,
+            1.0134306526650936,
+            0.50259743655625932,
+            1.0e-14,
+        ),
+    ];
+    for (cvt, bepoch, ra, dec, ra_want, dec_want, tol) in cases {
+        let mut sla = SlaMap::new();
+        sla.add(cvt, &[bepoch]).unwrap();
+        let out = sla
+            .transform(&PointSet::from_rows([[ra, dec]]), true)
+            .unwrap();
+        let label = format!("{cvt:?} at B{bepoch}");
+        assert_close(out.point(0)[0], ra_want, tol, &format!("{label} ra"));
+        assert_close(out.point(0)[1], dec_want, tol, &format!("{label} dec"));
+    }
 }

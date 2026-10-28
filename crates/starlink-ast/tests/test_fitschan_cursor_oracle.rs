@@ -645,7 +645,7 @@ fn card_functions_match_the_c_library() {
             continue;
         }
         let got = transcript(ops);
-        if got != want {
+        if !crate::common::c_text_eq(&got, want) {
             let first = got
                 .lines()
                 .zip(want.lines())

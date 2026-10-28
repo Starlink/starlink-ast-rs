@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/stc.c
 Rust: crates/starlink-ast/src/regions/stc.rs
 Audited: 2026-10-09 against pin f24ee843
-Citations: verified against pin 3b9dc639
+Citations: verified against pin 3d3f255f
 Extension points: classified
 
 Uncited C steps:

@@ -535,6 +535,23 @@ impl WcsProjection {
             | Gls | Hpx | Unknown => 0.0,
         }
     }
+
+    /// The `tol` column of C's `PrjInfo` table (wcsmap.c:711-743): how far
+    /// past a limit of the accepted range, in degrees, a native longitude or
+    /// latitude from the reverse projection is set to the limit rather than
+    /// rejected. These are wcslib's per-projection tolerances (its
+    /// `prjbchk` calls).
+    pub(crate) fn table_tol(self) -> f64 {
+        use WcsProjection::*;
+        match self {
+            Azp | Tan | Stg | Sin | Arc | Zpn | Zea | Air | Cyp | Cea | Car | Mer | Ait | Cop
+            | Coe | Cod | Coo | Tsc | Csc | Qsc | Tpn => 1.0e-13,
+            Szp => 2.0e-13,
+            Sfl | Par | Pco | Gls | Hpx | Xph => 1.0e-12,
+            Mol | Bon => 1.0e-11,
+            Ncp | Unknown => 0.0,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
