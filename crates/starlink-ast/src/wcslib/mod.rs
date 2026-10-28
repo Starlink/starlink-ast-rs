@@ -11,10 +11,11 @@
 //! their `ast`-prefixed names (e.g. `astPRJset`, `astTANfwd`).
 //! `trig` holds the degree trigonometry the projections share, `prj` the
 //! native projection state and dispatch, and `zenithal` the zenithal
-//! projections.
+//! projections, and `tpn` the polynomial-corrected gnomonic projection.
 
 pub(crate) mod ffi;
 pub(crate) mod prj;
+mod tpn;
 pub(crate) mod trig;
 mod zenithal;
 

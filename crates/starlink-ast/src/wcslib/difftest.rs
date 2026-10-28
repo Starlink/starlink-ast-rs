@@ -19,6 +19,14 @@ use super::ffi::PrjParams;
 use super::prj::{Prj, Status};
 use crate::test_inputs::{SplitMix64, specials};
 
+// Rust (via LLVM) does not specify the sign or payload of a NaN produced by
+// arithmetic, and here folds `(-r) * c` to `-(r * c)`, so a NaN's sign can
+// differ from C's while every non-NaN result matches bit for bit.
+// AST tests only `is_nan`, never a NaN's sign.
+fn same_bits_or_both_nan(a: f64, b: f64) -> bool {
+    (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits()
+}
+
 /// Random points per direction and per parameter set.
 const RANDOM_POINTS: usize = 20_000;
 
@@ -109,6 +117,16 @@ fn params_of(pv: &[(usize, usize, f64)]) -> Vec<Vec<Option<f64>>> {
 /// projection on half-initialized constants, while the native `Prj` keeps
 /// returning the set-up status; those calls are not compared.
 pub(crate) fn check_projection(proj: WcsProjection, pv_sets: &[Vec<(usize, usize, f64)>]) {
+    check_projection_tpn(proj, pv_sets, false);
+}
+
+/// [`check_projection`] with TPN's `TPNTan` switch given: whether the
+/// transformation includes the TAN projection as well as the polynomial.
+pub(crate) fn check_projection_tpn(
+    proj: WcsProjection,
+    pv_sets: &[Vec<(usize, usize, f64)>],
+    tpn_tan: bool,
+) {
     let fwd_points = forward_points();
     let rev_points = reverse_points();
     let mut compared = (0usize, 0usize);
@@ -117,10 +135,10 @@ pub(crate) fn check_projection(proj: WcsProjection, pv_sets: &[Vec<(usize, usize
         let label = |dir: &str, a: f64, b: f64| {
             format!("{} set {set_index} {pv:?} {dir}({a:e}, {b:e})", proj.code())
         };
-        let prj = Prj::new(proj, &params, false).unwrap();
+        let prj = Prj::new(proj, &params, tpn_tan).unwrap();
         let new_c = || {
             let mut c = PrjParams::new(proj).unwrap();
-            c.init_prj_prm(&params, false);
+            c.init_prj_prm(&params, tpn_tan);
             c
         };
 
@@ -171,9 +189,8 @@ pub(crate) fn check_projection(proj: WcsProjection, pv_sets: &[Vec<(usize, usize
                 let (cs, cx, cy) = c.forward_raw(phi, theta);
                 assert_eq!(rs as i32, cs, "{}", label("fwd status", phi, theta));
                 if rs == Status::Ok {
-                    assert_eq!(
-                        (rx.to_bits(), ry.to_bits()),
-                        (cx.to_bits(), cy.to_bits()),
+                    assert!(
+                        same_bits_or_both_nan(rx, cx) && same_bits_or_both_nan(ry, cy),
                         "{}: {rx:e} {ry:e} vs {cx:e} {cy:e}",
                         label("fwd", phi, theta)
                     );
@@ -186,9 +203,8 @@ pub(crate) fn check_projection(proj: WcsProjection, pv_sets: &[Vec<(usize, usize
                 let (cs, cp, ct) = c.reverse_raw(x, y);
                 assert_eq!(rs as i32, cs, "{}", label("rev status", x, y));
                 if rs == Status::Ok {
-                    assert_eq!(
-                        (rp.to_bits(), rt.to_bits()),
-                        (cp.to_bits(), ct.to_bits()),
+                    assert!(
+                        same_bits_or_both_nan(rp, cp) && same_bits_or_both_nan(rt, ct),
                         "{}: {rp:e} {rt:e} vs {cp:e} {ct:e}",
                         label("rev", x, y)
                     );
