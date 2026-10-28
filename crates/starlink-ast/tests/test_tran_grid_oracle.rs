@@ -118,31 +118,25 @@ fn hash(out: &PointSet) -> u64 {
     h
 }
 
-/// Mappings that run SphMap: every case on them is compared with C by
-/// `sphmap_drift_eq` within [`MEASURED_BOUND`], and a case that matches C
-/// exactly fails, so the list cannot go stale.
-const SPHMAP_DRIFT_MAPS_LICENSED: &[&str] = &["tan"];
+/// Cases on a Mapping that runs SphMap whose values differ from C by
+/// rounding: each is compared with C by `sphmap_drift_eq` within
+/// [`MEASURED_BOUND`], and one that matches C exactly fails, so the list
+/// cannot go stale.
+const SPHMAP_DRIFT_LICENSED: &[&str] = &["tan_small_exact", "tan_small_divided", "tan_big"];
 
-/// The `tan` cases' values are offsets of order 1e-3 and coefficients down to
-/// 1e-14, small differences of larger terms, so they are bounded absolutely.
-/// The most any moved from C (2026-10-27): 7.1e-20 in `tan_small`, 2.2e-19 in
-/// `tan_big`, 1.5e-18 in `tan_big_loose`, whose loose linear fits carry the
-/// change further, and 3.6e-19 in a quadratic coefficient.
-const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
-    ulps: 8,
-    atol: 2.0e-18,
-};
+/// The most a licensed grid's sampled positions moved from C (2026-10-28):
+/// 1 ULP in `tan_small_exact` and `tan_small_divided`, and 4 ULP (1.1e-19) in
+/// `tan_big`, whose linear fits carry an endpoint's difference along a row.
+const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol { ulps: 4, atol: 0.0 };
 
 /// The hash of the port's own output for each grid on a Mapping in
-/// [`SPHMAP_DRIFT_MAPS_LICENSED`], which no longer matches C's hash: compared
+/// [`SPHMAP_DRIFT_LICENSED`], which no longer matches C's hash: compared
 /// on the capture platform so every position is still pinned bit for bit,
 /// as a change detector.
 const PORT_HASHES: &[(&str, u64)] = &[
-    ("tan_small", 8189778666999045637),
-    ("tan_small_exact", 6863360874701138756),
-    ("tan_small_divided", 6863360874701138756),
-    ("tan_big", 4421266326725481198),
-    ("tan_big_loose", 17034760295553908277),
+    ("tan_small_exact", 3743099716318498607),
+    ("tan_small_divided", 3743099716318498607),
+    ("tan_big", 5464972125550257172),
 ];
 
 #[test]
@@ -154,7 +148,7 @@ fn grids_match_c() {
             .step_by(97)
             .flat_map(|i| out.point(i).to_vec())
             .collect();
-        let drift = SPHMAP_DRIFT_MAPS_LICENSED.contains(&map);
+        let drift = SPHMAP_DRIFT_LICENSED.contains(&name);
         if drift {
             assert!(
                 crate::common::sphmap_drift_values_eq(&got, sample, MEASURED_BOUND),
@@ -172,7 +166,7 @@ fn grids_match_c() {
                 assert_ne!(
                     hash(&out),
                     want_hash,
-                    "{name}: matches C exactly; remove its Mapping from SPHMAP_DRIFT_MAPS_LICENSED"
+                    "{name}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
                 );
                 let port = PORT_HASHES
                     .iter()
@@ -210,7 +204,7 @@ fn quadratic_fits_match_c() {
     for &(name, map, lbnd, ubnd, nx, ny, fitted, rms, coeffs) in cases::QUADS {
         let fit = mapping(map).quad_approx(lbnd, ubnd, nx, ny).unwrap();
         assert_eq!(fit.fitted, fitted, "{name}: returned value");
-        if SPHMAP_DRIFT_MAPS_LICENSED.contains(&map) {
+        if SPHMAP_DRIFT_LICENSED.contains(&name) {
             let exact = crate::common::on_capture_platform()
                 && fit.rms.to_bits() == rms.to_bits()
                 && fit
@@ -220,7 +214,7 @@ fn quadratic_fits_match_c() {
                     .all(|(g, w)| g.to_bits() == w.to_bits());
             assert!(
                 !exact,
-                "{name}: matches C exactly; remove its Mapping from SPHMAP_DRIFT_MAPS_LICENSED"
+                "{name}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
             );
             assert!(
                 crate::common::sphmap_drift_eq(fit.rms, rms, MEASURED_BOUND)

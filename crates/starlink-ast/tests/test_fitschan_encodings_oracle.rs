@@ -136,44 +136,17 @@ fn without_values(cards: &[String], keywords: &[&str]) -> Vec<String> {
 /// which is within 1 ULP of C per arctangent, so their numbers differ from
 /// C's by rounding; their cards are compared by `sphmap_drift_text_eq`.
 const SPHMAP_DRIFT_LICENSED: &[(&str, &str)] = &[
-    ("alt_j", "DSS"),
-    ("alt_pc", "DSS"),
-    ("cname", "DSS"),
-    ("freq_cube", "FITS-CLASS"),
-    ("tan_fk5", "DSS"),
-    ("tpn", "DSS"),
     ("tan_offset_origin", "FITS-WCS"),
     ("tan_offset_pole", "FITS-WCS"),
-    ("tan_new_epoch", "DSS"),
-    ("tan_new_epoch", "FITS-AIPS"),
-    ("tan_new_epoch", "FITS-AIPS++"),
-    ("tan_new_epoch", "FITS-IRAF"),
-    ("tan_new_epoch", "FITS-PC"),
-    ("tan_new_epoch", "FITS-WCS"),
-    ("tan_new_epoch_no_mjd", "DSS"),
-    ("tan_new_epoch_no_mjd", "FITS-AIPS"),
-    ("tan_new_epoch_no_mjd", "FITS-AIPS++"),
-    ("tan_new_epoch_no_mjd", "FITS-IRAF"),
-    ("tan_new_epoch_no_mjd", "FITS-PC"),
-    ("tan_new_epoch_no_mjd", "FITS-WCS"),
 ];
 
-/// The most a card value of a write in [`SPHMAP_DRIFT_LICENSED`] other than
-/// DSS moved from C: 36 ULP (`PC1_2 = 0.215` of `tan_offset_pole`), or 6e-17
-/// for a small matrix element such as `PC2_1 = -0.0016`, the difference of
-/// terms of order 1 (2026-10-27).
+/// The most a card value of a write in [`SPHMAP_DRIFT_LICENSED`] moved from
+/// C: 1 ULP (`PC2_1 = -0.215` of `tan_offset_pole`), or 1.3e-17 for
+/// `PC2_1 = -0.0016` of `tan_offset_origin`, a small difference of terms of
+/// order 1 (2026-10-28).
 const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
-    ulps: 40,
-    atol: 1.0e-16,
-};
-
-/// The same for a DSS write, whose seconds fields (`PLTRAS`, `PLTDECS`) are
-/// what is left of an angle after its degrees and minutes, so a rounding
-/// change of 1e-16 radians in the angle, 2e-11 arcseconds, is a large part of
-/// a seconds value near zero: the most one moved was 2.6e-11 (2026-10-27).
-const DSS_MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
-    ulps: 2,
-    atol: 3.0e-11,
+    ulps: 1,
+    atol: 2.0e-17,
 };
 
 /// Every write of every case, `(header, encoding, differs, report)`.
@@ -193,12 +166,7 @@ fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
             let text_eq = |g: &[String], w: &[String]| {
                 let (g, w) = (g.join("\n"), w.join("\n"));
                 if drift {
-                    let tol = if enc == "DSS" {
-                        DSS_MEASURED_BOUND
-                    } else {
-                        MEASURED_BOUND
-                    };
-                    crate::common::sphmap_drift_text_eq(&g, &w, tol)
+                    crate::common::sphmap_drift_text_eq(&g, &w, MEASURED_BOUND)
                 } else {
                     crate::common::c_text_eq(&g, &w)
                 }

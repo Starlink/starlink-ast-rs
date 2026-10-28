@@ -59,10 +59,11 @@ fn read(header: &[&str]) -> (&'static str, i32, Vec<String>, Vec<i32>, Vec<f64>)
 /// Cases whose transformed point goes through SphMap's forward transform,
 /// which is within 1 ULP of C per arctangent; the point is compared by
 /// `sphmap_drift_values_eq`.
-const SPHMAP_DRIFT_LICENSED: &[&str] = &["warn_then_alt"];
+const SPHMAP_DRIFT_LICENSED: &[&str] = &[];
 
-/// The most this case's point moved from C was 1 ULP (2026-10-27).
-const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol { ulps: 1, atol: 0.0 };
+/// No case drifts from C (2026-10-28), so the bound admits nothing; a case
+/// added to [`SPHMAP_DRIFT_LICENSED`] needs the drift measured for it.
+const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol { ulps: 0, atol: 0.0 };
 
 #[test]
 fn axis_counts_match_c() {

@@ -94,10 +94,11 @@ fn written(mjdobs: &str, prim: f64, alt: f64, fail: bool) -> (i32, Vec<String>) 
 /// Cases whose alternate axes' CRVAL comes through SphMap's forward
 /// transform, which is within 1 ULP of C per arctangent; their cards are
 /// compared by `sphmap_drift_text_eq`.
-const SPHMAP_DRIFT_LICENSED: &[&str] = &["alt_only", "both_set"];
+const SPHMAP_DRIFT_LICENSED: &[&str] = &[];
 
-/// The most these cases' card values moved from C was 2 ULP (2026-10-27).
-const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol { ulps: 2, atol: 0.0 };
+/// No case drifts from C (2026-10-28), so the bound admits nothing; a case
+/// added to [`SPHMAP_DRIFT_LICENSED`] needs the drift measured for it.
+const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol { ulps: 0, atol: 0.0 };
 
 #[test]
 fn dates_match_c() {

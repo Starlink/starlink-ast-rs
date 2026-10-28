@@ -297,9 +297,9 @@ fn compare(name: &str, expected: Result<&[&[f64]], &str>) -> Result<(), String> 
 /// Cases whose current Frame is reached through SphMap, compared by
 /// `sphmap_drift_values_eq` within [`MEASURED_BOUND`]; a case that matches C
 /// exactly fails, so the list cannot go stale.
-const SPHMAP_DRIFT_LICENSED: &[&str] = &["sky_skyref_origin", "sky_alignoffset_galactic"];
+const SPHMAP_DRIFT_LICENSED: &[&str] = &["sky_alignoffset_galactic"];
 
-/// The most these cases moved from C was 3 ULP (1.3e-15 rad, 2026-10-27).
+/// The most this case moved from C was 3 ULP (2026-10-28).
 const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol { ulps: 3, atol: 0.0 };
 
 #[test]

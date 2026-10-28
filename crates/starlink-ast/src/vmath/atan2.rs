@@ -49,10 +49,64 @@ const AT: [f64; 11] = [
 /// The low part of pi: pi = PI + PI_LO to more than double precision.
 const PI_LO: f64 = 1.2246467991473531772e-16;
 
-/// atan(a) for a >= 0: fdlibm's reduction to one of five intervals, with
-/// the interval chosen by selects rather than branches.
+/// a + b as a rounded sum and its exact rounding error (Knuth's two-sum).
 #[inline(always)]
-fn atan_nonneg(a: f64) -> f64 {
+fn two_sum(a: f64, b: f64) -> (f64, f64) {
+    let s = a + b;
+    let bb = s - a;
+    (s, (a - (s - bb)) + (b - bb))
+}
+
+/// y - q * x rounded once, by a fused multiply-add.
+#[inline(always)]
+#[cfg_attr(
+    not(any(target_arch = "aarch64", target_feature = "fma")),
+    allow(dead_code)
+)]
+fn residual_fma(y: f64, q: f64, x: f64) -> f64 {
+    (-q).mul_add(x, y)
+}
+
+/// [`residual_fma`] without a fused multiply-add, for a `q` within a few ULP
+/// of `y / x`: Dekker's product gives q * x as p + e exactly, `y - p` is then
+/// exact, and `(y - p) - e` is the one rounding of the exact residual.
+#[inline(always)]
+#[cfg_attr(any(target_arch = "aarch64", target_feature = "fma"), allow(dead_code))]
+fn residual_dekker(y: f64, q: f64, x: f64) -> f64 {
+    const SPLIT: f64 = 134_217_729.0; // 2^27 + 1
+    let split = |a: f64| {
+        let c = SPLIT * a;
+        let hi = c - (c - a);
+        (hi, a - hi)
+    };
+    let p = q * x;
+    let (qh, ql) = split(q);
+    let (xh, xl) = split(x);
+    let e = ((qh * xh - p) + qh * xl + ql * xh) + ql * xl;
+    (y - p) - e
+}
+
+/// The exact rounding error of the quotient `q = y / x`, times `x`. Where
+/// the target has no fused multiply-add (baseline x86-64), calling
+/// `mul_add` would be a library call that stops the loop vectorizing.
+#[inline(always)]
+fn quotient_residual(y: f64, q: f64, x: f64) -> f64 {
+    #[cfg(any(target_arch = "aarch64", target_feature = "fma"))]
+    {
+        residual_fma(y, q, x)
+    }
+    #[cfg(not(any(target_arch = "aarch64", target_feature = "fma")))]
+    {
+        residual_dekker(y, q, x)
+    }
+}
+
+/// atan(a + da) for a >= 0 and a small `da`, as an unevaluated sum
+/// `(head, tail)`: fdlibm's reduction to one of five intervals, with the
+/// interval chosen by selects rather than branches, and the last addition
+/// left to the caller so that it rounds once.
+#[inline(always)]
+fn atan_nonneg(a: f64, da: f64) -> (f64, f64) {
     let (c0, c1, c2, c3) = (a < 0.4375, a < 0.6875, a < 1.1875, a < 2.4375);
     let (num, den) = if c0 {
         (a, 1.0)
@@ -90,20 +144,41 @@ fn atan_nonneg(a: f64) -> f64 {
     let w = z * z;
     let s1 = z * (AT[0] + w * (AT[2] + w * (AT[4] + w * (AT[6] + w * (AT[8] + w * AT[10])))));
     let s2 = w * (AT[1] + w * (AT[3] + w * (AT[5] + w * (AT[7] + w * AT[9]))));
-    let small = x - x * (s1 + s2);
-    let reduced = hi - ((x * (s1 + s2) - lo) - x);
-    if c0 { small } else { reduced }
+    let p = x * (s1 + s2);
+    // atan(a + da) - atan(a) is da / (1 + a^2) to far more than da's own
+    // precision; it is zero where da or the ratio is not finite.
+    let d = da / (1.0 + a * a);
+    let d = if d.is_finite() { d } else { 0.0 };
+    if c0 {
+        (x, d - p)
+    } else {
+        // fdlibm's hi - ((p - lo) - x) rounds twice; hi + x is kept exact.
+        let (h, e) = two_sum(hi, x);
+        (h, e + ((lo + d) - p))
+    }
 }
 
 /// The arctangent of `y / x` in the quadrant of (x, y), in (-pi, pi], for
 /// finite non-zero `y` and `x` (see [`atan2_covers`]); any other input gives
-/// an unspecified value. Within 2 ULP of libm: as in fdlibm, the rounding of
-/// `y / x` carries into the result, which takes it past 1 ULP for a few pairs
-/// in a hundred million.
+/// an unspecified value. Within 1 ULP of libm. fdlibm's `atan(y / x)` lets
+/// the rounding of the quotient carry into the result, which takes it to 2
+/// ULP; here the quotient's exact rounding error is carried as a correction
+/// instead, and the final additions, `pi - atan` included, round once. On
+/// random directions it differs from macOS's libm for 1.6% of longitudes
+/// and 4.2% of latitudes, against 12% and 18% for fdlibm's arithmetic, and
+/// it is correctly rounded at least as often as that libm.
 #[inline(always)]
 pub(crate) fn atan2(y: f64, x: f64) -> f64 {
-    let z = atan_nonneg((y / x).abs());
-    let r = if x > 0.0 { z } else { PI - (z - PI_LO) };
+    let q = y / x;
+    let eq = quotient_residual(y, q, x) / x;
+    let eq = if eq.is_finite() { eq } else { 0.0 };
+    let (h, t) = atan_nonneg(q.abs(), if q < 0.0 { -eq } else { eq });
+    let r = if x > 0.0 {
+        h + t
+    } else {
+        let (s, e) = two_sum(PI, -h);
+        s + (e + (PI_LO - t))
+    };
     if y < 0.0 { -r } else { r }
 }
 
@@ -132,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn atan2_is_within_two_ulp_of_libm() {
+    fn atan2_is_within_one_ulp_of_libm() {
         let mut pairs = angle_pairs(1_000_000);
         for r in boundary_ratios() {
             for (sy, sx) in [(1.0, 1.0), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
@@ -146,7 +221,7 @@ mod tests {
             (-1e300, -1e-300),
             (5e-324, 1.0),
         ]);
-        // Pairs where the rounding of y / x carries into the result.
+        // Pairs where the rounding of y / x would carry into the result.
         pairs.extend([
             (0.23205091756292417, 0.9253975077794019),
             (4.531536751418496e5, 7.249072995150625e6),
@@ -155,7 +230,7 @@ mod tests {
         for (y, x) in pairs.into_iter().filter(|&(y, x)| atan2_covers(y, x)) {
             let d = ulps(atan2(y, x), math::atan2(y, x));
             assert!(
-                d <= 2,
+                d <= 1,
                 "atan2({y:e}, {x:e}) = {:e}, libm {:e}",
                 atan2(y, x),
                 math::atan2(y, x)
@@ -166,6 +241,20 @@ mod tests {
             worst >= 1,
             "no input differed from libm; is the kernel in use?"
         );
+    }
+
+    /// The residual without a fused multiply-add gives the same bits as with
+    /// one, so a target without FMA gets the same results.
+    #[test]
+    fn dekker_residual_matches_the_fused_one() {
+        for (y, x) in angle_pairs(1_000_000)
+            .into_iter()
+            .filter(|&(y, x)| atan2_covers(y, x))
+        {
+            let q = y / x;
+            let (f, d) = (residual_fma(y, q, x), residual_dekker(y, q, x));
+            assert_eq!(f.to_bits(), d.to_bits(), "({y:e}, {x:e}): {f:e} vs {d:e}");
+        }
     }
 
     #[test]
