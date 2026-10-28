@@ -27,7 +27,7 @@ It must show the gain with recorded before/after timings.
 - Byte-exact agreement with the C oracle after vectorization. The port already differs from C between x86 and arm and between FMA and non-FMA builds; the C comparisons move to a stated ULP bound for the affected Mappings.
 - Vectorizing single calls that are not in a loop (FitsChan header analysis, Frame attribute code, one-off SkyFrame set-up). They are ported to Rust, keep a scalar call, and are not reorganized.
 - A public API. The ported libraries are private modules of `starlink-ast`; nothing in them is `pub` beyond `pub(crate)`, and no item is re-exported or reachable from outside the crate.
-- XPH. AST handles it with XphMap, not through wcslib.
+- Vectorizing XPH ahead of the other projections. (Amended 2026-10-28: the first version said AST handles XPH with XphMap, not through wcslib. C's WcsMap has routed XPH through the fork's `astXPHfwd` / `astXPHrev` since 2014, so XPH is ported with the rest of `proj.c`; XphMap is a separate class.)
 - Porting parts of wcslib 8.10 that AST's fork does not have (`cel`, `lin`, `dis`, `spc`, `tab`, `wcs`). Only the projection code and trig helpers AST's fork contains are in scope.
 - Platform intrinsics or `unsafe` SIMD. Vectorization comes from the compiler auto-vectorizing branchless loops, as in the investigation note.
 
@@ -80,6 +80,9 @@ The 1 ULP bound applies to each elementary function a kernel replaces (an arctan
 A function that combines several, such as `eraS2c`'s products of a sine and a cosine, can be correspondingly further from C: `eraS2c`'s x and y components were up to 3 ULP from C's over 8 million angle pairs, its z component 1 ULP.
 The user accepted this for SphMap's inverse, which went from 19.5 to 11.7 ns per point on large random point sets.
 The final review found that `vmath::atan2`, like fdlibm's, carries the rounding of `y / x` into its result and so is 2 ULP from libm for a few pairs in a hundred million; its bound is stated as 2 ULP. A residual correction of the division would restore 1 ULP at some cost in latency, and is left for the user to decide. (Decided 2026-10-28: `vmath::atan2` carries the quotient's rounding error as a correction and rounds its final additions once, which restores 1 ULP and brings it to within the rounding of libm for all but 1.6% of longitudes and 4.2% of latitudes, against 12% and 18% before, for 19% on SphMap's forward transform.)
+
+The bound is against the exact value, and libm is not always exact: macOS's x86-64 libm is up to about 1.5 ULP from the exact sine or cosine at large arguments, so a kernel within 1 ULP of the exact value can be 2 ULP from that libm (found 2026-10-29).
+Every drift bound derived for a projection's slice therefore takes 2 ULP per kernel sine or cosine, so that it holds on every platform rather than only where it was measured.
 
 ### Errors and status codes
 
@@ -201,6 +204,41 @@ Because the kernels are pure Rust and the port never contracts into FMA, their r
 The keep-or-reject decision for each kernel is made once, from the timings, and applied on every platform.
 A kernel that cannot be made both faster than libm and within 1 ULP stays scalar on libm; the user has said this is acceptable for `sin`/`cos` in particular.
 
+### WcsMap stage (2026-10-28)
+
+The second stage, on `tickets/DM-56839-wcsmap`, stacked on the SphMap branch, as one pull request.
+WcsMap is the only Mapping that transforms through wcslib; FitsChan uses only the `WcsProjection` enum, which stays.
+At the end of the stage `vendor/wcslib` (`proj.c`, `tpn.c`, `wcstrig.c`, `ast_memory_stub.c` and headers) is deleted, with its `build.rs` compilation, and `wcslib.rs`'s FFI layer is replaced by the native module.
+
+Two phases, in this order:
+
+1. **Bit-identical port of every projection, then vectorize TAN, TPN, SIN and ZPN.**
+   All 28 projections in the fork's `proj.c` (XPH and HPX included), plus TPN from `tpn.c`, are ported bit-identical (step 2), each projection's forward and reverse with its set-up, together with the degree trigonometry from `wcstrig.c` they call.
+   Then TAN, TPN, SIN and ZPN are vectorized (step 3): the six FrameSets in the `native` set are five TAN and one TPN, and the class cases are `wcsmap_sin`, `wcsmap_tan` and `wcsmap_zpn`.
+2. **Vectorize the remaining projections.**
+   The fixtures already cover them (`test_wcsmap_edges.rs`, the wcsconv corpus, the C-oracle tests), so the accuracy gates exist.
+   Since they have no bench cases, this phase adds one `ast-bench` class case per projection family (zenithal, cylindrical, pseudo-cylindrical, conic, polyconic, quad-cube, HEALPix) so the keep-or-reject rule has a timing to decide from; a kernel that loses to libm on its case stays scalar.
+
+**Acceptance corpus.** `crates/starlink-ast/tests/test_wcsmap_edges.rs` is the stage's acceptance corpus: the cases from `ast_tester/testwcsmap.c` at face centres, poles, longitude edges, non-default projection parameters and points just past a limit, with upstream wcslib 8.10's values.
+Every case passes at the end of each phase.
+After phase 1's bit-identical port it passes unchanged.
+ULP drift from vectorization is expected (see Non-goals); a case whose tolerance is zero or too tight for the measured drift gets a named per-case bound set from the drift measured, in the pattern of SphMap's `SPHMAP_DRIFT_LICENSED`, counted in `PLAN.md` §6.
+A case that changes between bad and good, or by more than the drift the per-function test allows through the projection's formula, is a defect, not drift.
+
+**Iterative projections.** Some projections solve for their result iteratively: TPN's forward runs Newton's method from starting values computed with `sind` and `cosd`, stopping when each step is within 1e-5 of the value (relative) or after 50 steps, and AIR's and PCO's reverses iterate similarly.
+A 1 ULP change in a starting value can add or remove one step, moving the result by up to the solver's own stopping error (about 1e-10 relative for TPN), far more than the ULP drift of a closed-form projection.
+The user decided (2026-10-28) that this is drift, not a defect: the convergence tolerance states the accuracy the solver promises, so for a case whose chain contains an iterative projection the per-case bound is derived from that solver's tolerance, with the derivation in a comment beside the bound, rather than measured in ULP.
+A point that changes between bad and good (for example by reaching the iteration cap on one side only) is still a defect and is investigated.
+These bounds, like the closed-form ones, are set by the builder from measurement and listed in the pull request; this design's call.
+
+**Exact angles.** `wcstrig.c`'s `cosd`, `sind`, `tand` and their inverses return exact results at multiples of 90° (and the inverses at ±1 and 0), and the pole and face-centre cases depend on that.
+The vectorized degree trigonometry keeps those results: those arguments go through the function's special-case routine, so the per-value and slice entries agree and the exact values survive.
+
+**Set-up.** The C fork sets a projection up lazily on its first call (`prjprm.flag`), which is why `WcsMap` holds its `PrjParams` in a `RefCell`.
+How the native port handles set-up (eagerly at construction and on each projection-parameter change, or otherwise) is the builder's call, as long as a set-up error is still reported where C reports it.
+
+**x86-64.** Vectorized slice loops follow SphMap's runtime AVX2 and FMA dispatch where a kernel uses FMA (see Platforms).
+
 ## Measurement
 
 The success measure is the real-world FrameSets in `crates/starlink-ast/tests/fixtures/wcsconv/inputs/`:
@@ -224,7 +262,8 @@ Each record gets a row in `docs/perf/README.md`, and the end of the ticket adds 
 The primary records are macOS aarch64 (the user's M1).
 x86-64 numbers come from the user's shared batch machines: at each milestone the implementer commits to the branch and hands the user the exact commands to run there (build, `snapshot`, `compare --base <ref>`), and the user returns the output, which becomes a `docs/perf/` record of its own.
 Because those machines are shared, x86-64 comparisons use `compare --base`, which alternates the two builds in one session, rather than comparing records taken at different times.
-No `target-cpu` or runtime CPU dispatch is added; the x86-64 numbers show what the default target (SSE2) gets.
+No `target-cpu` is set.
+(Amended 2026-10-28: the first version also ruled out runtime CPU dispatch. The SphMap kernels ran at 0.79 of C's speed on the default SSE2 target, so their slice loops gained a copy built with AVX2 and FMA, chosen at run time when the CPU has them, and giving the same bits as the SSE2 build; `pal.rs`'s `dcc2s_slice` is the pattern. Later stages follow it wherever a kernel uses FMA for its residuals.)
 There is no numeric pass threshold: success is the recorded gain on the six FrameSets and the class cases, with no slowdown at small N.
 
 ### ULP verification
