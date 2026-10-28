@@ -36,6 +36,87 @@ fn fixtures() -> PathBuf {
 /// Fields: source file, const name, expected entry count, reason.
 const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
+        "test_frameset_integrity.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        1,
+        "sky_alignoffset_galactic: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 3 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
+         the vendored-code removal is reassessed (native ERFA design, \
+         2026-10-28)",
+    ),
+    (
+        "test_skyframe.rs",
+        "SKY_OFFSET_SPHMAP_DRIFT_LICENSED",
+        4,
+        "the origin, origin_refp, permuted_origin and pole offset maps: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 16 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
+         the vendored-code removal is reassessed (native ERFA design, \
+         2026-10-28)",
+    ),
+    (
+        "test_tran_grid_oracle.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        3,
+        "the tan_small_exact, tan_small_divided and tan_big grids, the last carrying an endpoint's difference along each row: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 4 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
+         the vendored-code removal is reassessed (native ERFA design, \
+         2026-10-28)",
+    ),
+    (
+        "test_fitschan_encodings_oracle.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        2,
+        "the FITS-WCS writes of tan_offset_origin and tan_offset_pole, whose PC matrix comes through it: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 1 ULP or 2e-17 absolute, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
+         the vendored-code removal is reassessed (native ERFA design, \
+         2026-10-28)",
+    ),
+    (
+        "test_fitschan_alt_epoch_oracle.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        0,
+        "none; a case added here gets its own measured bound: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 0 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
+         the vendored-code removal is reassessed (native ERFA design, \
+         2026-10-28)",
+    ),
+    (
+        "test_fitschan_axis_count_oracle.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        0,
+        "none; a case added here gets its own measured bound: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 0 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
+         the vendored-code removal is reassessed (native ERFA design, \
+         2026-10-28)",
+    ),
+    (
+        "test_fitschan_cursor_oracle.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        1,
+        "the sky_offset_system_rw transcript: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 7e-16 absolute, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly; interim until \
+         the vendored-code removal is reassessed (native ERFA design, \
+         2026-10-28)",
+    ),
+    (
+        "test_lsst_oracle.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        4,
+        "the LSST FrameSet's forward transforms (one value 1 ULP from C) and inverse transforms \
+         (up to 4.5e-10 pixel), as read and simplified: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, the inverse's difference carried \
+         by PolyMap's iterative inverse, which stops at the Mapping's TolInv of 1e-7 pixel; each \
+         comparison failing if it matches C exactly; interim until the vendored-code removal is \
+         reassessed (native ERFA design, 2026-10-28)",
+    ),
+    (
         "test_transform_oracle.rs",
         "UNTRANSFORMABLE",
         11,

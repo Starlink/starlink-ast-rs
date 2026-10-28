@@ -254,12 +254,13 @@ pub fn assert_c_text(got: &str, want: &str, what: &str) {
 /// whitespace-separated numeric token compared by [`c_value_eq`] and every
 /// other token exactly.
 pub fn c_text_eq(got: &str, want: &str) -> bool {
-    if got == want {
-        return true;
-    }
-    if on_capture_platform() {
-        return false;
-    }
+    got == want || (!on_capture_platform() && text_numbers_match(got, want, within_libm_rounding))
+}
+
+/// Whether `got` and `want` agree line by line, every whitespace-separated
+/// token that parses as a number (ignoring commas and double quotes around
+/// it) by `eq`, and every other token exactly.
+fn text_numbers_match(got: &str, want: &str, eq: impl Fn(f64, f64) -> bool) -> bool {
     let mut g = got.lines();
     let mut w = want.lines();
     loop {
@@ -277,7 +278,7 @@ pub fn c_text_eq(got: &str, want: &str) -> bool {
                             let num =
                                 |t: &str| t.trim_matches(|c| c == ',' || c == '"').parse::<f64>();
                             match (num(a), num(b)) {
-                                (Ok(x), Ok(y)) if c_value_eq(x, y) => continue,
+                                (Ok(x), Ok(y)) if eq(x, y) => continue,
                                 _ => return false,
                             }
                         }
@@ -288,6 +289,55 @@ pub fn c_text_eq(got: &str, want: &str) -> bool {
             _ => return false,
         }
     }
+}
+
+/// How far a C-oracle case whose values go through SphMap may move from C.
+///
+/// SphMap computes its sines and cosines with vectorized kernels within 1 ULP
+/// of C's and its arctangents within 2, so on every platform such a value can
+/// differ from C's by rounding carried through the stages that follow. Each
+/// test that licenses such cases sets its bound from the drift measured in
+/// them: `ulps` for any value, and `atol` for a value near zero that is the
+/// small difference of larger quantities, whose ULP is tiny.
+#[derive(Clone, Copy, Debug)]
+pub struct DriftTol {
+    /// Largest difference in units in the last place.
+    pub ulps: u64,
+    /// Largest absolute difference.
+    pub atol: f64,
+}
+
+/// Whether `got` is bit for bit the C value `want`, which can only be known
+/// on the platform the C values were captured on. A test whose licensed case
+/// passes this has a stale licence.
+pub fn matches_c_bits(got: &[f64], want: &[f64]) -> bool {
+    on_capture_platform()
+        && got.len() == want.len()
+        && got
+            .iter()
+            .zip(want)
+            .all(|(g, w)| g.to_bits() == w.to_bits())
+}
+
+/// Whether `got` is within `tol` of the C value `want`; a bad value or NaN
+/// matches only itself.
+pub fn sphmap_drift_eq(got: f64, want: f64, tol: DriftTol) -> bool {
+    got == want || ulp_close(got, want, tol.ulps) || (got - want).abs() <= tol.atol
+}
+
+/// [`sphmap_drift_eq`] element by element, with equal lengths.
+pub fn sphmap_drift_values_eq(got: &[f64], want: &[f64], tol: DriftTol) -> bool {
+    got.len() == want.len()
+        && got
+            .iter()
+            .zip(want)
+            .all(|(g, w)| sphmap_drift_eq(*g, *w, tol))
+}
+
+/// [`c_text_eq`] for a case whose numbers go through SphMap: every numeric
+/// token by [`sphmap_drift_eq`], every other token exactly.
+pub fn sphmap_drift_text_eq(got: &str, want: &str, tol: DriftTol) -> bool {
+    got == want || text_numbers_match(got, want, |g, w| sphmap_drift_eq(g, w, tol))
 }
 
 /// True for a KeyMap `MapSz` card line.

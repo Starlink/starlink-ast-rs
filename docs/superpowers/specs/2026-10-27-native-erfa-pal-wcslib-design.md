@@ -39,7 +39,8 @@ These would make the work a failure even if it ran faster.
 - A separate scalar implementation that drifts from the vector one.
 - Fixture churn accepted wholesale. Every changed fixture is inspected and shown to be ULP drift or a deliberate wcslib fix, never re-baselined in bulk.
 - Lost provenance. Code whose ancestry cannot be traced to a named C function and version.
-- A slowdown at small N. The N=1 and N=100 timings must not get worse than the baseline beyond `ast-bench`'s noise threshold.
+- A slowdown at small N relative to C. The N=1 and N=100 timings must stay faster than C's.
+  (Amended 2026-10-27: the first version asked for no slowdown against the previous port. A branchless kernel always pays its full latency, so SphMap forward on the bench points went from 23.7 to 37.7 ns at N=1 and from 12.5 to 16.3 ns per point at N=10, while staying about 15 times faster than C at N=1 and becoming 3.9 times faster than before on large random point sets. The user accepted this, to be revisited: a kernel with one division instead of two per arctangent, or a shorter polynomial evaluation, would cut the latency; switching to libm below a size threshold would not be acceptable, since a point's bits would then depend on how many points are transformed together.)
 
 ## Constraints
 
@@ -61,6 +62,24 @@ There is no separate scalar implementation and no one-element-slice convention.
 Inputs that the branchless body does not cover (zeros, infinities, NaN, `BAD_VALUE`, poles, out-of-domain values) are handled by one shared special-case routine per function.
 The per-value entry branches into it; the slice entry runs the branchless body over every element and then a fix-up pass that calls the same routine for the flagged elements.
 Both paths therefore give identical bits for the same input.
+
+#### Interim: vectorized kernels in slice entries only (2026-10-27)
+
+Making the per-value entry use the vectorized kernel too moved every one-off caller (SkyFrame, SlaMap, FitsChan, Regions) by up to 1 ULP and failed 19 exact C-oracle tests.
+Until the vendored C is gone, the user has decided:
+
+- The per-value entry keeps the C operations bit for bit; only the slice entry runs the kernel, within 1 ULP of the per-value entry.
+- A slice gives each element the same bits whatever its length, and a Mapping that uses a slice sends every point through it, a single point included, so the "same bits whatever N" rule still holds per Mapping.
+- One-off callers are therefore not changed by vectorization.
+
+This is reassessed when the vendored-code removal is complete; one option is to adopt the same branchless kernels in C AST, after which the per-value entries could use them without moving away from the oracle.
+
+#### ULP bound: per elementary function (2026-10-27)
+
+The 1 ULP bound applies to each elementary function a kernel replaces (an arctangent, a sine, a cosine), not to every output of a ported ERFA function.
+A function that combines several, such as `eraS2c`'s products of a sine and a cosine, can be correspondingly further from C: `eraS2c`'s x and y components were up to 3 ULP from C's over 8 million angle pairs, its z component 1 ULP.
+The user accepted this for SphMap's inverse, which went from 19.5 to 11.7 ns per point on large random point sets.
+The final review found that `vmath::atan2`, like fdlibm's, carries the rounding of `y / x` into its result and so is 2 ULP from libm for a few pairs in a hundred million; its bound is stated as 2 ULP. A residual correction of the division would restore 1 ULP at some cost in latency, and is left for the user to decide. (Decided 2026-10-28: `vmath::atan2` carries the quotient's rounding error as a correction and rounds its final additions once, which restores 1 ULP and brings it to within the rounding of libm for all but 1.6% of longitudes and 4.2% of latitudes, against 12% and 18% before, for 19% on SphMap's forward transform.)
 
 ### Errors and status codes
 

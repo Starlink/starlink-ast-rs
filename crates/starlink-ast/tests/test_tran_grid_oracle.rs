@@ -118,6 +118,27 @@ fn hash(out: &PointSet) -> u64 {
     h
 }
 
+/// Cases on a Mapping that runs SphMap whose values differ from C by
+/// rounding: each is compared with C by `sphmap_drift_eq` within
+/// [`MEASURED_BOUND`], and one that matches C exactly fails, so the list
+/// cannot go stale.
+const SPHMAP_DRIFT_LICENSED: &[&str] = &["tan_small_exact", "tan_small_divided", "tan_big"];
+
+/// The most a licensed grid's sampled positions moved from C (2026-10-28):
+/// 1 ULP in `tan_small_exact` and `tan_small_divided`, and 4 ULP (1.1e-19) in
+/// `tan_big`, whose linear fits carry an endpoint's difference along a row.
+const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol { ulps: 4, atol: 0.0 };
+
+/// The hash of the port's own output for each grid on a Mapping in
+/// [`SPHMAP_DRIFT_LICENSED`], which no longer matches C's hash: compared
+/// on the capture platform so every position is still pinned bit for bit,
+/// as a change detector.
+const PORT_HASHES: &[(&str, u64)] = &[
+    ("tan_small_exact", 3743099716318498607),
+    ("tan_small_divided", 3743099716318498607),
+    ("tan_big", 5464972125550257172),
+];
+
 #[test]
 fn grids_match_c() {
     for &(name, map, lbnd, ubnd, tol, maxpix, forward, want_hash, sample) in cases::GRIDS {
@@ -127,12 +148,38 @@ fn grids_match_c() {
             .step_by(97)
             .flat_map(|i| out.point(i).to_vec())
             .collect();
-        crate::common::assert_c_values(&got, sample, &format!("{name}: sampled positions"));
+        let drift = SPHMAP_DRIFT_LICENSED.contains(&name);
+        if drift {
+            assert!(
+                crate::common::sphmap_drift_values_eq(&got, sample, MEASURED_BOUND),
+                "{name}: sampled positions: got {got:?}, C gives {sample:?}"
+            );
+        } else {
+            crate::common::assert_c_values(&got, sample, &format!("{name}: sampled positions"));
+        }
         // The hash pins every value bit for bit, so it is compared only on
         // the platform the C values were captured on; elsewhere the samples,
-        // compared within libm rounding, are the check.
+        // compared within libm rounding, are the check. A case that drifts
+        // from C is pinned to the port's own hash instead.
         if crate::common::on_capture_platform() {
-            assert_eq!(hash(&out), want_hash, "{name}: every position");
+            if drift {
+                assert_ne!(
+                    hash(&out),
+                    want_hash,
+                    "{name}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
+                );
+                let port = PORT_HASHES
+                    .iter()
+                    .find(|(n, _)| *n == name)
+                    .map(|&(_, h)| h);
+                assert_eq!(
+                    Some(hash(&out)),
+                    port,
+                    "{name}: every position, against the port's pinned hash"
+                );
+            } else {
+                assert_eq!(hash(&out), want_hash, "{name}: every position");
+            }
         }
     }
 }
@@ -157,6 +204,27 @@ fn quadratic_fits_match_c() {
     for &(name, map, lbnd, ubnd, nx, ny, fitted, rms, coeffs) in cases::QUADS {
         let fit = mapping(map).quad_approx(lbnd, ubnd, nx, ny).unwrap();
         assert_eq!(fit.fitted, fitted, "{name}: returned value");
+        if SPHMAP_DRIFT_LICENSED.contains(&name) {
+            let exact = crate::common::on_capture_platform()
+                && fit.rms.to_bits() == rms.to_bits()
+                && fit
+                    .coeffs
+                    .iter()
+                    .zip(coeffs.iter())
+                    .all(|(g, w)| g.to_bits() == w.to_bits());
+            assert!(
+                !exact,
+                "{name}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
+            );
+            assert!(
+                crate::common::sphmap_drift_eq(fit.rms, rms, MEASURED_BOUND)
+                    && crate::common::sphmap_drift_values_eq(&fit.coeffs, coeffs, MEASURED_BOUND),
+                "{name}: rms {} coefficients\n got {:?}\nwant {coeffs:?}",
+                fit.rms,
+                fit.coeffs
+            );
+            continue;
+        }
         assert_eq!(fit.rms.to_bits(), rms.to_bits(), "{name}: rms {}", fit.rms);
         assert_eq!(
             fit.coeffs.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),

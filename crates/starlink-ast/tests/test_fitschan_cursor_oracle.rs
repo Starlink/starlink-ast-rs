@@ -637,6 +637,18 @@ fn native_full_1_matches_c_but_for_process_counts() {
     assert_eq!(got, want);
 }
 
+/// Cases whose cards hold values computed through SphMap's forward transform,
+/// which is within 1 ULP of C per arctangent; their transcripts are compared
+/// by `sphmap_drift_text_eq`.
+const SPHMAP_DRIFT_LICENSED: &[&str] = &["sky_offset_system_rw"];
+
+/// The most this transcript's values moved from C was 6.3e-16, in a value
+/// of 3.2e-6 that is the small difference of terms of order 1 (2026-10-28).
+const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
+    ulps: 0,
+    atol: 7.0e-16,
+};
+
 #[test]
 fn card_functions_match_the_c_library() {
     let mut failed = Vec::new();
@@ -645,7 +657,20 @@ fn card_functions_match_the_c_library() {
             continue;
         }
         let got = transcript(ops);
-        if !crate::common::c_text_eq(&got, want) {
+        if crate::common::on_capture_platform()
+            && SPHMAP_DRIFT_LICENSED.contains(&name)
+            && got == want
+        {
+            failed.push(format!(
+                "{name}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
+            ));
+        }
+        let differs = if SPHMAP_DRIFT_LICENSED.contains(&name) {
+            !crate::common::sphmap_drift_text_eq(&got, want, MEASURED_BOUND)
+        } else {
+            !crate::common::c_text_eq(&got, want)
+        };
+        if differs {
             let first = got
                 .lines()
                 .zip(want.lines())

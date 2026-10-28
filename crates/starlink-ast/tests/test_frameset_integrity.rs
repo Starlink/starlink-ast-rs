@@ -270,8 +270,22 @@ fn compare(name: &str, expected: Result<&[&[f64]], &str>) -> Result<(), String> 
             let out = map.transform(&pts, true).unwrap();
             let got: Vec<Vec<f64>> = (0..input.len()).map(|i| out.point(i).to_vec()).collect();
             let want: Vec<Vec<f64>> = want.iter().map(|p| p.to_vec()).collect();
-            if got.len() == want.len() && crate::common::c_values_eq(&got.concat(), &want.concat())
+            let (got_all, want_all) = (got.concat(), want.concat());
+            if SPHMAP_DRIFT_LICENSED.contains(&name)
+                && crate::common::matches_c_bits(&got_all, &want_all)
             {
+                return Err(format!(
+                    "{name}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
+                ));
+            }
+            let eq = |g: &[f64], w: &[f64]| {
+                if SPHMAP_DRIFT_LICENSED.contains(&name) {
+                    crate::common::sphmap_drift_values_eq(g, w, MEASURED_BOUND)
+                } else {
+                    crate::common::c_values_eq(g, w)
+                }
+            };
+            if got.len() == want.len() && eq(&got_all, &want_all) {
                 Ok(())
             } else {
                 Err(format!("{name}: got {got:?}, C gives {want:?}"))
@@ -279,6 +293,14 @@ fn compare(name: &str, expected: Result<&[&[f64]], &str>) -> Result<(), String> 
         }
     }
 }
+
+/// Cases whose current Frame is reached through SphMap, compared by
+/// `sphmap_drift_values_eq` within [`MEASURED_BOUND`]; a case that matches C
+/// exactly fails, so the list cannot go stale.
+const SPHMAP_DRIFT_LICENSED: &[&str] = &["sky_alignoffset_galactic"];
+
+/// The most this case moved from C was 3 ULP (2026-10-28).
+const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol { ulps: 3, atol: 0.0 };
 
 #[test]
 fn integrity_matches_the_c_library() {

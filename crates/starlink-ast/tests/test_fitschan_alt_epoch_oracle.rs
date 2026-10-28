@@ -91,13 +91,40 @@ fn written(mjdobs: &str, prim: f64, alt: f64, fail: bool) -> (i32, Vec<String>) 
     (ret, cards)
 }
 
+/// Cases whose alternate axes' CRVAL comes through SphMap's forward
+/// transform, which is within 1 ULP of C per arctangent; their cards are
+/// compared by `sphmap_drift_text_eq`.
+const SPHMAP_DRIFT_LICENSED: &[&str] = &[];
+
+/// No case drifts from C (2026-10-28), so the bound admits nothing; a case
+/// added to [`SPHMAP_DRIFT_LICENSED`] needs the drift measured for it.
+const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol { ulps: 0, atol: 0.0 };
+
 #[test]
 fn dates_match_c() {
     let mut failed = Vec::new();
     for &(name, mjdobs, prim, alt, fail, ret, cards) in cases::CASES {
         let got = written(mjdobs, prim, alt, fail);
         let want = (ret, cards.iter().map(|c| c.to_string()).collect::<Vec<_>>());
-        if got != want {
+        if crate::common::on_capture_platform()
+            && SPHMAP_DRIFT_LICENSED.contains(&name)
+            && got == want
+        {
+            failed.push(format!(
+                "{name}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
+            ));
+        }
+        let differs = if SPHMAP_DRIFT_LICENSED.contains(&name) {
+            got.0 != want.0
+                || !crate::common::sphmap_drift_text_eq(
+                    &got.1.join("\n"),
+                    &want.1.join("\n"),
+                    MEASURED_BOUND,
+                )
+        } else {
+            got != want
+        };
+        if differs {
             failed.push(format!("{name}:\n--- rust\n{got:#?}\n--- C\n{want:#?}"));
         }
     }

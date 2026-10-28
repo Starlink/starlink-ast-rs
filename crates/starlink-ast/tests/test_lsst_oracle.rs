@@ -53,6 +53,40 @@ fn flatten_pairs(pairs: &[(f64, f64); NPTS]) -> Vec<f64> {
     pairs.iter().flat_map(|&(x, y)| [x, y]).collect()
 }
 
+/// Comparisons whose values differ from C by rounding because SphMap's
+/// vectorized kernels are within 1 ULP of libm rather than equal to it, each
+/// with the most it moved from C (2026-10-28). The forward transform runs
+/// SphMap's arctangents: one value of the twenty is 1 ULP from C. The
+/// inverse runs its sines and cosines, and then PolyMap's iterative inverse,
+/// which stops once a step is below the Mapping's TolInv (1e-7 pixel), so a
+/// 1-ULP difference in its start moves where it stops: up to 4.5e-10 pixel.
+/// A licensed comparison that matches C exactly fails, so the list cannot go
+/// stale.
+const SPHMAP_DRIFT_LICENSED: &[(&str, crate::common::DriftTol)] = &[
+    (
+        "original forward",
+        crate::common::DriftTol { ulps: 1, atol: 0.0 },
+    ),
+    (
+        "simplified forward",
+        crate::common::DriftTol { ulps: 1, atol: 0.0 },
+    ),
+    (
+        "original inverse",
+        crate::common::DriftTol {
+            ulps: 0,
+            atol: 4.5e-10,
+        },
+    ),
+    (
+        "simplified inverse",
+        crate::common::DriftTol {
+            ulps: 0,
+            atol: 4.5e-10,
+        },
+    ),
+];
+
 /// Comparisons that, off the platform the C values were captured on, differ
 /// from C by more than libm rounding, with the most measured. The inverse
 /// runs PolyMap's iterative inverse, which stops once a step is below the
@@ -65,20 +99,32 @@ const OFF_PLATFORM_DRIFT_LICENSED: &[(&str, f64)] = &[
     ("simplified inverse", 4.5e-10),
 ];
 
-/// Compare `got` with C's `want`: exactly on the capture platform, and
-/// elsewhere within the measured drift if `what` is in
-/// [`OFF_PLATFORM_DRIFT_LICENSED`] or within libm rounding if not.
+/// Compare `got` with C's `want` value by value: within the measured drift if
+/// `what` is in [`SPHMAP_DRIFT_LICENSED`], off the capture platform also
+/// within [`OFF_PLATFORM_DRIFT_LICENSED`]'s, and otherwise as every other
+/// C-oracle value.
 fn assert_matches_c(got: &[f64], want: &[f64], what: &str) {
-    match OFF_PLATFORM_DRIFT_LICENSED
+    let drift = SPHMAP_DRIFT_LICENSED
         .iter()
         .find(|(name, _)| *name == what)
-    {
-        Some(&(_, atol)) if !crate::common::on_capture_platform() => assert!(
-            got.len() == want.len() && got.iter().zip(want).all(|(g, w)| (g - w).abs() <= atol),
-            "{what}: got {got:?}, C gives {want:?}"
-        ),
-        _ => crate::common::assert_c_values(got, want, what),
-    }
+        .map(|&(_, tol)| tol);
+    let off_platform = OFF_PLATFORM_DRIFT_LICENSED
+        .iter()
+        .find(|(name, _)| *name == what && !crate::common::on_capture_platform())
+        .map(|&(_, atol)| atol);
+    assert!(
+        !(drift.is_some()
+            && crate::common::on_capture_platform()
+            && crate::common::matches_c_bits(got, want)),
+        "{what}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
+    );
+    let ok = got.len() == want.len()
+        && got.iter().zip(want).all(|(&g, &w)| {
+            drift.is_some_and(|tol| crate::common::sphmap_drift_eq(g, w, tol))
+                || off_platform.is_some_and(|atol| (g - w).abs() <= atol)
+                || crate::common::c_value_eq(g, w)
+        });
+    assert!(ok, "{what}: got {got:?}, C gives {want:?}");
 }
 
 #[test]
