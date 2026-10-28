@@ -36,6 +36,7 @@
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 
+use super::tpn::{tpn_fwd, tpn_rev, tpn_set};
 use super::trig::Libm;
 use super::zenithal::{
     air_fwd, air_rev, air_set, arc_fwd, arc_rev, arc_set, azp_fwd, azp_rev, azp_set, sin_fwd,
@@ -177,6 +178,7 @@ impl Prj {
             WcsProjection::Zpn => zpn_fwd::<Libm>(prm, phi, theta),
             WcsProjection::Zea => zea_fwd::<Libm>(prm, phi, theta),
             WcsProjection::Air => air_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Tpn => tpn_fwd::<Libm>(prm, phi, theta),
             other => todo!("{} is ported in a later step", other.code()),
         }
     }
@@ -200,6 +202,7 @@ impl Prj {
             WcsProjection::Zpn => zpn_rev::<Libm>(prm, x, y),
             WcsProjection::Zea => zea_rev::<Libm>(prm, x, y),
             WcsProjection::Air => air_rev::<Libm>(prm, x, y),
+            WcsProjection::Tpn => tpn_rev::<Libm>(prm, x, y),
             other => todo!("{} is ported in a later step", other.code()),
         }
     }
@@ -217,6 +220,7 @@ fn run_setup(proj: WcsProjection, prm: &mut PrjPrm) -> Status {
         WcsProjection::Zpn => zpn_set(prm),
         WcsProjection::Zea => zea_set(prm),
         WcsProjection::Air => air_set(prm),
+        WcsProjection::Tpn => tpn_set(prm),
         other => todo!("{} is ported in a later step", other.code()),
     }
 }
