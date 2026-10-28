@@ -11,15 +11,7 @@ use std::f64::consts::FRAC_PI_2;
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 
-use super::{WCSLIB_MXPAR, WcsProjection};
-
-/// Number of slots in a projection-parameter array.
-///
-/// C allocates `mxpar + 1` doubles per axis (wcsmap.c:5862-5863) so that
-/// index `mxpar` itself is addressable; `astGetPVMax` reports that allocation
-/// minus one (wcsmap.c:2205-2212). Every array here is sized for the largest
-/// projection, so the same indices are legal.
-const PRJ_PARAM_SLOTS: usize = WCSLIB_MXPAR + 1;
+use super::{PRJ_PARAM_SLOTS, WcsProjection};
 
 /// FFI representation of the C `struct AstPrjPrm` from `vendor/wcslib/proj.h`.
 ///
@@ -569,6 +561,7 @@ impl std::fmt::Debug for PrjParams {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wcslib::WCSLIB_MXPAR;
 
     /// The `mxpar` / `mxpar2` columns of C's `PrjInfo` table
     /// (wcsmap.c:684-716), as `astGetPVMax` reports them. Golden values come
