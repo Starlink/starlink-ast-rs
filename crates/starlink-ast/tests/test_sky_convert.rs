@@ -20,7 +20,7 @@ use starlink_ast::frames::{FrameRef, FrameSearch, SkyFrame, SkySystem};
 
 /// Cases whose AZEL result may differ from C in the last few bits.
 ///
-/// The final E2H step (slamap.c:298 `De2h`, ported as `de2h_with_aberration`)
+/// The final E2H step (slamap.c:306 `De2h`, ported as `de2h_with_aberration`)
 /// takes `sin` and `cos` of the same angles. Apple clang merges each pair into
 /// one `__sincos_stret` call when it builds the C library, and that call can
 /// round differently from separate `sin` and `cos`. A release build of this
@@ -40,32 +40,14 @@ type SincosLicence = (
     &'static str,
 );
 
-const SINCOS_MERGE_LICENSED: &[SincosLicence] = &[
-    (
-        0,
-        "AZEL",
-        "AZEL",
-        Some("FK4"),
-        5,
-        "E2H elevation, sincos merge",
-    ),
-    (
-        0,
-        "AZEL",
-        "AZEL",
-        Some("FK4-NO-E"),
-        5,
-        "E2H elevation, sincos merge",
-    ),
-    (
-        0,
-        "ICRS",
-        "AZEL",
-        Some("GAPPT"),
-        1,
-        "E2H azimuth, sincos merge",
-    ),
-];
+const SINCOS_MERGE_LICENSED: &[SincosLicence] = &[(
+    0,
+    "ICRS",
+    "AZEL",
+    Some("GAPPT"),
+    1,
+    "E2H azimuth, sincos merge",
+)];
 
 /// The licensed difference in units in the last place for a case, if any.
 fn sincos_licence(config: usize, from: &str, to: &str, align: Option<&str>) -> Option<u64> {

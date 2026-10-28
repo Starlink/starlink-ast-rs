@@ -1097,37 +1097,36 @@ impl Mapping for WcsMap {
                 let y_deg = (DR2D * factor) * v2;
                 match wcslib_result(prj.reverse_raw(x_deg, y_deg))? {
                     Some((mut longitude, mut latitude)) => {
-                        // Absorb a one-ULP rounding error at a limit of the
-                        // accepted range (wcsmap.c, upstream 460efce3). A WinMap
-                        // used by a FITS CAR mapping evaluates an expression such
-                        // as `-0.5 degree + 181 * 0.5 degree` as exactly 90
-                        // degrees where the compiler contracts the multiply and
-                        // add into a fused operation, and as one representable
-                        // double above 90 where it does not -- so without this the
-                        // validity of a header depends on the compiler and the
-                        // target. That value describes the same valid pole. Do not
-                        // admit the next representable value, which differs by
-                        // more than 90*EPSILON. Both latitude limits need it: the
-                        // accepted range is closed, so -90 and +90 are inside it.
+                        // A longitude or latitude a little past a limit of the
+                        // accepted range is set to the limit, and one further
+                        // past is rejected below (wcsmap.c Map). This is
+                        // wcslib's rule (prjbchk): rounding in a reverse
+                        // projection can land a point on the boundary, such as
+                        // the antipode of a zenithal projection or the -180
+                        // meridian of a pseudo-cylindrical one, slightly outside
+                        // it, by an amount that depends on the projection's
+                        // arithmetic, so the tolerance is wcslib's for each
+                        // projection, in degrees. It also absorbs the one-ULP
+                        // difference a fused multiply-add makes: a WinMap used by
+                        // a FITS CAR mapping evaluates `-0.5 + 181 * 0.5` degrees
+                        // as exactly 90 where the compiler contracts it and
+                        // 90.00000000000001 where it does not, so the validity of
+                        // a header does not depend on the target. Both latitude
+                        // limits need it: the accepted range is closed, so -90
+                        // and +90 are inside it.
+                        let tol = self.proj.table_tol();
                         let mut abslat = latitude.abs();
-                        if abslat > 90.0 && abslat - 90.0 <= 90.0 * f64::EPSILON {
+                        if abslat > 90.0 && abslat - 90.0 <= tol {
                             latitude = if latitude < 0.0 { -90.0 } else { 90.0 };
                             abslat = 90.0;
                         }
                         // The accepted longitude range is half-open,
-                        // [longlo,longhi), so only its lower limit needs the same
-                        // treatment. Perturbing a longitude strictly below longhi
-                        // by one ULP leaves it strictly below; a value at or above
-                        // longhi is the wrap of longlo and is clipped
-                        // deliberately, to stop a whole-sky grid mapping two
-                        // pixels to the same meridian. `long_range` returns either
-                        // [-180,180) or [0,360), so the width of the range is the
-                        // scale at which a longitude computed within it rounds.
-                        if docheck
-                            && !cyclic
-                            && longitude < longlo
-                            && longlo - longitude <= (longhi - longlo) * f64::EPSILON
-                        {
+                        // [longlo,longhi), so only its lower limit is treated
+                        // the same way. Unlike wcslib, a value at or above
+                        // longhi is not set to longhi: it is the wrap of longlo
+                        // and is clipped deliberately, to stop a whole-sky grid
+                        // mapping two pixels to the same meridian.
+                        if docheck && !cyclic && longitude < longlo && longlo - longitude <= tol {
                             longitude = longlo;
                         }
                         if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))
@@ -1228,32 +1227,22 @@ impl Mapping for WcsMap {
                         // the primary range; the latitude must be within
                         // [-90,90]. `longitude`/`latitude` are in degrees here.
                         //
-                        // Absorb a one-ULP rounding error at a limit of that
-                        // range first (upstream 460efce3). A WinMap used by a
-                        // FITS CAR mapping evaluates `-0.5 degree + 181 * 0.5
-                        // degree` as exactly 90 degrees where the compiler fuses
-                        // the multiply and add, and one representable double above
-                        // 90 where it does not, so otherwise a header's validity
-                        // depends on the compiler. That value describes the same
-                        // valid pole. The next representable value is not
-                        // admitted: it differs by more than 90*EPSILON. Both
+                        // A value a little past a limit of that range is set to
+                        // the limit first, with wcslib's tolerance for the
+                        // projection; see `transform_into_nan` for why. Both
                         // latitude limits need it, the range being closed.
+                        let tol = self.proj.table_tol();
                         let mut abslat = latitude.abs();
-                        if abslat > 90.0 && abslat - 90.0 <= 90.0 * f64::EPSILON {
+                        if abslat > 90.0 && abslat - 90.0 <= tol {
                             latitude = if latitude < 0.0 { -90.0 } else { 90.0 };
                             abslat = 90.0;
                         }
                         // The longitude range is half-open, [longlo,longhi), so
-                        // only its lower limit needs this: perturbing a value
-                        // strictly below longhi leaves it strictly below, while a
-                        // value at or above longhi is the wrap of longlo and is
+                        // only its lower limit is treated the same way: a value
+                        // at or above longhi is the wrap of longlo and is
                         // clipped deliberately, to stop a whole-sky grid mapping
                         // two pixels to the same meridian.
-                        if docheck
-                            && !cyclic
-                            && longitude < longlo
-                            && longlo - longitude <= (longhi - longlo) * f64::EPSILON
-                        {
+                        if docheck && !cyclic && longitude < longlo && longlo - longitude <= tol {
                             longitude = longlo;
                         }
                         if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))

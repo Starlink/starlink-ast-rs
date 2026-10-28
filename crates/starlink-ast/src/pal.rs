@@ -18,6 +18,11 @@
 
 use std::ffi::c_char;
 
+/// ERFA's `ERFA_DAU` (erfam.h): the astronomical unit in metres, the IAU 2012
+/// value. PAL's routines convert metres to au with it, so a caller that
+/// converts their output back must use the same value.
+pub(crate) const ERFA_DAU: f64 = 149597870.7e3;
+
 // ---------------------------------------------------------------------------
 // Raw C extern declarations (astPal-prefixed symbols)
 // ---------------------------------------------------------------------------
@@ -47,8 +52,8 @@ unsafe extern "C" {
     fn astPalEqgal(dr: f64, dd: f64, dl: *mut f64, db: *mut f64);
     fn astPalGalsup(dl: f64, db: f64, dsl: *mut f64, dsb: *mut f64);
     fn astPalSupgal(dsl: f64, dsb: f64, dl: *mut f64, db: *mut f64);
-    fn astPalFk45z(r1950: f64, d1950: f64, bepoch: f64, r2000: *mut f64, d2000: *mut f64);
-    fn astPalFk54z(
+    fn astEraFk45z(r1950: f64, d1950: f64, bepoch: f64, r2000: *mut f64, d2000: *mut f64);
+    fn astEraFk54z(
         r2000: f64,
         d2000: f64,
         bepoch: f64,
@@ -92,10 +97,6 @@ unsafe extern "C" {
     // -- Earth / observer --
     fn astPalEvp(date: f64, deqx: f64, dvb: *mut f64, dpb: *mut f64, dvh: *mut f64, dph: *mut f64);
     fn astPalGeoc(p: f64, h: f64, r: *mut f64, z: *mut f64);
-
-    // -- Horizon --
-    fn astPalDe2h(ha: f64, dec: f64, phi: f64, az: *mut f64, el: *mut f64);
-    fn astPalDh2e(az: f64, el: f64, phi: f64, ha: *mut f64, dec: *mut f64);
 
     // -- Miscellaneous --
     fn astPalDav2m(axvec: *const f64, rmat: *mut [f64; 3]);
@@ -300,22 +301,25 @@ pub(crate) fn supgal(dsl: f64, dsb: f64) -> (f64, f64) {
 }
 
 /// FK4 B1950 (ra, dec) to FK5 J2000 (ra, dec), assuming zero proper motion.
+///
+/// ERFA's `eraFk45z`, which the C library's SlaMap calls.
 pub(crate) fn fk45z(r1950: f64, d1950: f64, bepoch: f64) -> (f64, f64) {
     let mut r2000 = 0.0;
     let mut d2000 = 0.0;
-    counted!(astPalFk45z(r1950, d1950, bepoch, &mut r2000, &mut d2000));
+    counted!(astEraFk45z(r1950, d1950, bepoch, &mut r2000, &mut d2000));
     (r2000, d2000)
 }
 
 /// FK5 J2000 (ra, dec) to FK4 B1950 (ra, dec) plus proper-motion terms.
 ///
-/// Returns `(r1950, d1950, dr1950, dd1950)`.
+/// Returns `(r1950, d1950, dr1950, dd1950)`. ERFA's `eraFk54z`, which the C
+/// library's SlaMap calls.
 pub(crate) fn fk54z(r2000: f64, d2000: f64, bepoch: f64) -> (f64, f64, f64, f64) {
     let mut r1950 = 0.0;
     let mut d1950 = 0.0;
     let mut dr1950 = 0.0;
     let mut dd1950 = 0.0;
-    counted!(astPalFk54z(
+    counted!(astEraFk54z(
         r2000,
         d2000,
         bepoch,
@@ -522,31 +526,7 @@ pub(crate) fn geoc(p: f64, h: f64) -> (f64, f64) {
 }
 
 // ---------------------------------------------------------------------------
-// Group 10: Horizon
-// ---------------------------------------------------------------------------
-
-/// Equatorial (hour-angle, declination) to horizon (azimuth, elevation).
-///
-/// All arguments in radians.
-pub(crate) fn de2h(ha: f64, dec: f64, phi: f64) -> (f64, f64) {
-    let mut az = 0.0;
-    let mut el = 0.0;
-    counted!(astPalDe2h(ha, dec, phi, &mut az, &mut el));
-    (az, el)
-}
-
-/// Horizon (azimuth, elevation) to equatorial (hour-angle, declination).
-///
-/// All arguments in radians.
-pub(crate) fn dh2e(az: f64, el: f64, phi: f64) -> (f64, f64) {
-    let mut ha = 0.0;
-    let mut dec = 0.0;
-    counted!(astPalDh2e(az, el, phi, &mut ha, &mut dec));
-    (ha, dec)
-}
-
-// ---------------------------------------------------------------------------
-// Group 11: Miscellaneous
+// Group 10: Miscellaneous
 // ---------------------------------------------------------------------------
 
 /// Axial vector to rotation matrix.
@@ -560,7 +540,7 @@ pub(crate) fn dav2m(axvec: &[f64; 3]) -> [[f64; 3]; 3] {
 }
 
 // ---------------------------------------------------------------------------
-// Group 12: Time / sidereal
+// Group 11: Time / sidereal
 // ---------------------------------------------------------------------------
 
 /// TAI-UTC leap seconds for a given UTC date (MJD).
@@ -677,7 +657,7 @@ pub(crate) fn dtdb_geocentre(tdb_mjd: f64) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// Group 13: Observer / velocity
+// Group 12: Observer / velocity
 // ---------------------------------------------------------------------------
 
 /// Convert geodetic position (longitude, latitude, altitude) to a
@@ -765,7 +745,7 @@ pub(crate) fn rvlsrk(ra: f64, dec: f64) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// Group 14: Calendar / time-of-day conversions
+// Group 13: Calendar / time-of-day conversions
 // ---------------------------------------------------------------------------
 
 /// Modified Julian Date to Gregorian calendar fields.
@@ -1162,27 +1142,6 @@ mod tests {
         let (r, z) = geoc(0.0, 0.0);
         assert!(r > 0.0, "r should be positive at equator");
         assert_close(z, 0.0, 1.0e-6);
-    }
-
-    // -- Horizon --
-
-    #[test]
-    fn test_de2h_dh2e_round_trip() {
-        let ha = 1.5;
-        let dec = 0.4;
-        let phi = 0.8;
-        let (az, el) = de2h(ha, dec, phi);
-        let (ha2, dec2) = dh2e(az, el, phi);
-        assert_close(ha2, ha, TOL);
-        assert_close(dec2, dec, TOL);
-    }
-
-    #[test]
-    fn test_de2h_zenith() {
-        // Object on meridian at observer's latitude: elevation should be ~90 deg.
-        let phi = 0.8;
-        let (_, el) = de2h(0.0, phi, phi);
-        assert_close(el, FRAC_PI_2, TOL);
     }
 
     // -- Miscellaneous --

@@ -6,24 +6,29 @@ repository — they do not come from the reference submodule at build time.
 ## Source
 
 All files copied from `reference/starlink-ast/` at submodule commit
-`7c12422fbd652e10f57fb0783a8160ced89fdad3` (v9.2.10-300-g7c12422f)
-on 2026-04-27.
+`3d3f255f433906417e81d3783537b42d91d49e38` (v9.5.0-165-g3d3f255f)
+on 2026-10-28.
 
 ## pal/
 
 PAL positional-astronomy library routines used by AST.
 
 - Origin: `reference/starlink-ast/pal/`
-- Files: 37 `.c` sources, 3 headers (`pal.h`, `pal1sofa.h`, `palmac.h`)
+- Files: 29 `.c` sources, 3 headers (`pal.h`, `pal1sofa.h`, `palmac.h`);
+  `pal/` is identical to upstream PAL v0.9.10-9-g75017db, less the
+  routines AST does not call
 - Modifications: None (AST-specific symbol renaming is applied via
   `pal2ast.h` at compile time, not by modifying sources)
 
 ## erfa/
 
-ERFA (Essential Routines for Fundamental Astronomy) snapshot used by PAL.
+ERFA (Essential Routines for Fundamental Astronomy) 2.0.1, used by PAL
+and by AST directly.
 
 - Origin: `reference/starlink-ast/erfa/`
-- Files: 232 `.c` sources, 2 headers (`erfa.h`, `erfam.h`)
+- Files: 236 `.c` sources, 4 headers (`erfa.h`, `erfam.h`,
+  `erfaextra.h`, `erfadatextra.h`), copied unmodified from ERFA
+  v2.0.1-12-g1a8044c
 - Modifications: None (symbol renaming via `erfa2ast.h` at compile time)
 
 ## wcslib/
@@ -38,7 +43,7 @@ upstream wcslib: AST-prefixed symbols, dynamic `p`/`p2` arrays in the
 - Additional: `ast_memory_stub.c` — stub `astSizeOf_` implementation
   for standalone compilation
 - Modifications applied during copy:
-  - `proj.c` line 286: changed `#include "../src/memory.h"` to
+  - `proj.c` line 287: changed `#include "../src/memory.h"` to
     `#include "memory.h"` to remove AST source tree dependency
   - Added `memory.h` stub providing `astSizeOf` macro and declaration
   - Added `ast_memory_stub.c` providing minimal `astSizeOf_` implementation

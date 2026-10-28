@@ -425,7 +425,7 @@ The C ABI is **frozen**. Existing applications must keep linking.
 | String-typed `get_attr(name)` / `set_fmt(spec)` in `starlink-ast` | These exist only in `starlink-ast-capi` for the C-ABI dispatch path |
 | `Mul` / `BitOr` operator overloading for mapping composition | Use `then` / `alongside` verbs only — readability |
 | Reaching into `reference/starlink-ast/` from `starlink-ast`'s `build.rs` | The everyday build must not depend on the submodule |
-| Rewriting `crates/starlink-ast/vendor/wcslib/` in C | The Rust port is step 6a; keep the C source unchanged until then |
+| Editing the C in `crates/starlink-ast/vendor/` by hand | Fix it in C AST (`reference/starlink-ast`) and re-copy from the submodule; `vendor/README.md` lists the only local changes |
 | Symlinking test fixtures from `reference/starlink-ast/ast_tester/` | Fixtures must be committed into `crates/starlink-ast/tests/fixtures/` so tier-1 works without the submodule |
 | Hand-editing `ast_err.h` | Generated from `ast_err.msg` by `build.rs` |
 | Collapsing a per-class `MapMerge` / `RegPins` / `SubFrame` into one central `match` | These are C's extension points, not boilerplate — see "Before porting a class" |
