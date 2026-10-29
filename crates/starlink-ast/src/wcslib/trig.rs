@@ -185,7 +185,6 @@ impl Trig for Libm {
 /// `FMA` is passed to [`crate::vmath::atan2`]: whether the code this is
 /// inlined into may use fused multiply-adds. The result is the same either
 /// way.
-#[cfg_attr(not(test), allow(dead_code))] // used by the projections' slice kernels
 pub(crate) struct Kernel<const FMA: bool>;
 
 impl<const FMA: bool> Trig for Kernel<FMA> {
@@ -229,11 +228,34 @@ impl<const FMA: bool> Trig for Kernel<FMA> {
 /// Whether [`Kernel`]'s `sind` and `cosd` are valid for `angle`: not a
 /// multiple of 90 degrees, which [`Libm`] answers exactly, and within the
 /// sine and cosine kernel's domain, which excludes infinities and NaN.
-#[cfg_attr(not(test), allow(dead_code))] // used by the projections' slice kernels
+///
+/// Whether `angle` is a multiple of 90 is decided without a remainder or a
+/// rounding to an integer, which are library calls on some targets, so the
+/// predicate vectorizes with the kernels: the nearest integer `k` to
+/// `angle / 90` is exact, and so is `90 * k`, for any `angle` in the
+/// kernel's domain, so `90 * k == angle` exactly when `angle` is a multiple
+/// of 90. Outside the domain, where that can fail, the second test rejects
+/// the angle anyway.
+// `k` is `(q + TOINT) - TOINT` for `q = angle / 90`. Where |q| <= 2^51,
+// `q + TOINT` lies in [2^52, 2^53], where the doubles are the integers, so it
+// rounds to TOINT plus the nearest integer to `q`, ties to even since TOINT
+// is even, and subtracting TOINT is exact: `k` is `q.round_ties_even()`, but
+// for the sign of a zero, which `90 * k == angle` does not see. The kernel's
+// domain, |angle * D2R| <= 1e6, keeps |q| below 2^20. Outside it, `k` can be
+// anything, NaN for a NaN or infinite `angle`, but the second test is false
+// there, NaN, infinities and zeros included, so the predicate is false
+// whatever the first test gives. The predicate is therefore the same for
+// every input as with `round_ties_even`, which
+// `sincosd_covers_is_the_rounding_test_for_every_input` checks.
 #[inline(always)]
 pub(crate) fn sincosd_covers(angle: f64) -> bool {
-    angle % 90.0 != 0.0 && vmath::sin_cos_covers(angle * D2R)
+    let q = angle / 90.0;
+    ((q + TOINT - TOINT) * 90.0 != angle) & vmath::sin_cos_covers(angle * D2R)
 }
+
+/// 1.5 * 2^52: adding and subtracting it rounds a value of magnitude at
+/// most 2^51 to the nearest integer.
+const TOINT: f64 = 1.5 / f64::EPSILON;
 
 /// Whether [`Kernel`]'s `atan2d` is valid for (`y`, `x`): neither zero, which
 /// [`Libm`] answers exactly, and both finite.
@@ -358,6 +380,103 @@ mod tests {
         }
         for (name, (max, _)) in in_radians {
             assert!(max <= 1, "{name}: {max} ULP from libm before the product");
+        }
+    }
+
+    /// [`sincosd_covers`] is `angle % 90.0 != 0.0`, as [`Libm`] tests for
+    /// its exact cases, together with the kernel's domain.
+    #[test]
+    fn sincosd_covers_is_the_remainder_test_within_the_domain() {
+        let mut angles = degrees(1_000_000);
+        for k in [
+            1e5,
+            6.3e5,
+            6.4e5,
+            1e6,
+            70368744177664.0,
+            9007199254740992.0,
+            1e300f64,
+        ] {
+            for a in [90.0 * k, 90.0 * k + 0.5, 90.0 * k - 90.0] {
+                angles.extend([a, -a, f64::from_bits(a.to_bits() + 1)]);
+            }
+        }
+        angles.extend([5e-324, -5e-324, 1e-310, 1e-300]);
+        for a in angles {
+            let by_remainder = a % 90.0 != 0.0 && vmath::sin_cos_covers(a * D2R);
+            assert_eq!(sincosd_covers(a), by_remainder, "{a:e}");
+        }
+    }
+
+    /// [`sincosd_covers`] with the nearest integer taken by
+    /// `round_ties_even`, a library call on x86-64 without SSE4.1.
+    fn sincosd_covers_by_rounding(angle: f64) -> bool {
+        ((angle / 90.0).round_ties_even() * 90.0 != angle) & vmath::sin_cos_covers(angle * D2R)
+    }
+
+    /// [`sincosd_covers`] gives the same answer as
+    /// [`sincosd_covers_by_rounding`] for every input: random angles, every
+    /// multiple of 90 near zero and near the ends of the kernel's domain
+    /// with its neighbours, the angles either side of those ends, the
+    /// magnitudes where adding TOINT stops rounding to an integer, and the
+    /// zeros, subnormals, infinities and NaN. Within the domain the nearest
+    /// integers themselves agree.
+    #[test]
+    fn sincosd_covers_is_the_rounding_test_for_every_input() {
+        let step = |a: f64, n: i64| f64::from_bits(a.to_bits().wrapping_add_signed(n));
+        let mut angles = degrees(1_000_000);
+        // The largest multiple of 90 inside the domain is near 636619.77 * 90.
+        let edge = 1.0e6 * R2D;
+        let ks = (-2000i64..=2000)
+            .chain(636_000..=636_700)
+            .chain(-636_700..=-636_000);
+        for k in ks {
+            let a = 90.0 * k as f64;
+            for n in -4i64..=4 {
+                angles.push(step(a, n));
+            }
+            angles.extend([a + 45.0, a - 45.0, a + 0.5, a - 0.5]);
+        }
+        for a in [edge, -edge] {
+            for n in -4096i64..=4096 {
+                angles.push(step(a, n));
+            }
+        }
+        for e in 50u64..=54 {
+            // 2^e.
+            let q = f64::from_bits((1023 + e) << 52);
+            for a in [q * 90.0, -q * 90.0] {
+                for n in -4i64..=4 {
+                    angles.push(step(a, n));
+                }
+            }
+        }
+        angles.extend([
+            0.0,
+            -0.0,
+            5e-324,
+            -5e-324,
+            f64::MIN_POSITIVE,
+            -f64::MIN_POSITIVE,
+            1e-300,
+            f64::MAX,
+            f64::MIN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NAN,
+            -f64::NAN,
+        ]);
+        for a in angles {
+            assert_eq!(
+                sincosd_covers(a),
+                sincosd_covers_by_rounding(a),
+                "{a:e} ({:#x})",
+                a.to_bits()
+            );
+            if vmath::sin_cos_covers(a * D2R) {
+                let q = a / 90.0;
+                assert_eq!(q + TOINT - TOINT, q.round_ties_even(), "{a:e}");
+            }
         }
     }
 
