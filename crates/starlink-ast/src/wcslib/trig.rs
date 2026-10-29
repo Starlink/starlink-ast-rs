@@ -266,6 +266,19 @@ pub(crate) fn sincosd_covers(angle: f64) -> bool {
 /// most 2^51 to the nearest integer.
 const TOINT: f64 = 1.5 / f64::EPSILON;
 
+/// Whether `v`, a [`Kernel`] sine or cosine, is so near zero that
+/// [`Libm`]'s could be zero where it is not, or not where it is.
+// The kernels' sine and cosine are within 2 ULP of Libm's (see `Kernel`).
+// Where Libm's is zero, the kernels' is therefore within two of the least
+// subnormals, 2^-1074, of zero; where the kernels' is beyond that, Libm's is
+// not zero, and neither is the kernels'.
+#[inline(always)]
+pub(crate) fn sincosd_near_zero(v: f64) -> bool {
+    // False for a NaN, which is then redone.
+    let clear_of_zero = v.abs() > 2.0 * f64::from_bits(1);
+    !clear_of_zero
+}
+
 /// Whether [`Kernel`]'s `atan2d` is valid for (`y`, `x`): neither zero, which
 /// [`Libm`] answers exactly, and within [`vmath::atan2_covers`].
 #[inline(always)]

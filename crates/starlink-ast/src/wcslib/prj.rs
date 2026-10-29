@@ -54,6 +54,12 @@
 //!     its threshold within the kernels' drift; the body can instead make
 //!     that decision from a value computed exactly as [`Libm`] computes it.
 //!
+//!   A reverse projection's predicate is also true where its longitude,
+//!   when it comes from a kernel, is within twice its drift of a limit of
+//!   the longitude range a WcsMap's inverse accepts
+//!   (`phi_near_lon_limits`), since that inverse rejects a longitude outside
+//!   the range, unless the projection is cyclic.
+//!
 //!   A difference of an ULP or two in a kernel must never turn a bad point
 //!   good or a good one bad, or change which branch of the body runs: only
 //!   the outputs may move, and only by the kernels' drift. The one exception
@@ -285,12 +291,58 @@
 //! and at 41.4 against 44.0 on random points. SFL's reverse projection has
 //! only a cosine in radians, and PAR's and MOL's only arc sines, so they
 //! keep their [`Libm`] loops too.
+//!
+//! The conic projections were timed as the cylindrical ones, with the
+//! parameters of the benchmarks, standard parallels at 35 and 55 degrees,
+//! and a twenty-degree image centred on the reference point.
+//!
+//! COD's, COE's and COP's forward projections opt in, each a whole body. On
+//! the whole-sky grid they ran at 9.3, 15.4 and 18.5 ns per point against
+//! 24.6, 32.3 and 37.3 for their [`Libm`] loops, on the image at 9.3, 15.5
+//! and 18.3 against 23.5, 30.9 and 34.8, and on random points at 9.3, 15.4
+//! and 19.5 against 29.4, 37.5 and 44.9; at one point they took 57, 71 and
+//! 72 ns against 26, 34 and 39. COE's square root is of a sum that is zero
+//! where a standard parallel and the latitude are at the same pole, and a
+//! point where it is within twice the bound on its drift of zero is redone
+//! with [`Libm`], so an output is NaN exactly where [`Libm`]'s is. COP's two
+//! statuses are decided by the kernels' values: whether the cosine of the
+//! latitude less `p1` is zero, which a point redoes where the kernels'
+//! cosine is within two of the least subnormals of zero, and whether the
+//! cone's radius has the sign opposite to the cone's constant, which a point
+//! redoes where the product is within twice the bound on its drift of zero.
+//!
+//! COO's forward projection opts in the sine and cosine of `w0 phi`; the
+//! radius, from a tangent and a power of the colatitude, and the status,
+//! which depends on the latitude and the parameters alone, are computed per
+//! element with [`Libm`]. It ran at 39.6 ns per point against 54.5 on the
+//! grid, at 39.1 against 52.4 on the image and at 43.2 against 63.0 on
+//! random points, and at one point took 94 ns against 57.
+//!
+//! COO's reverse projection opts in its arc tangent, which gives the
+//! longitude; the latitude, from a power and an arc tangent of the radius,
+//! and the status, which depends on the radius alone, are computed per
+//! element with [`Libm`], so the latitude is the per-value entry's. Its
+//! [`Libm`] loop's power and arc tangent are as costly as the kernels'
+//! loop's, and in four runs it ran at 30.7 to 31.6 ns per point against 34.4
+//! to 36.1 on the grid, at 30.1 to 30.9 against 33.4 to 35.2 on the image
+//! and at 60.1 to 64.0 against 76.8 to 81.6 on random points, and at one
+//! point took 92 to 96 ns against 38 or 39.
+//!
+//! COD's, COE's and COP's reverse projections do not opt in: their only
+//! kernel function is the arc tangent that gives the longitude (and, for
+//! COP, the one that gives the latitude), and with it from the kernels they
+//! ran at 13.3, 19.8 and 19.0 ns per point against 11.2, 18.6 and 16.5 on
+//! the grid and at 13.3, 20.5 and 19.0 against 9.8, 17.4 and 15.0 on the
+//! image, though faster on random points (13.2 against 35.0, 26.0 against
+//! 47.8, 19.0 against 49.5).
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::conic::{
-    cod_fwd, cod_rev, cod_set, coe_fwd, coe_rev, coe_set, coo_fwd, coo_rev, coo_set, cop_fwd,
+    cod_fwd, cod_fwd_needs_special, cod_rev, cod_set, coe_fwd, coe_fwd_needs_special, coe_rev,
+    coe_set, coo_fwd, coo_fwd_finish, coo_fwd_front, coo_fwd_needs_special, coo_rev,
+    coo_rev_finish, coo_rev_front, coo_rev_needs_special, coo_set, cop_fwd, cop_fwd_needs_special,
     cop_rev, cop_set,
 };
 use super::cylindrical::{
@@ -756,6 +808,10 @@ impl Prj {
             WcsProjection::Tpn => kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Cyp => kernel_slice::<CypFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Ait => kernel_slice::<AitFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Cop => kernel_slice::<CopFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Coe => kernel_slice::<CoeFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Cod => kernel_slice::<CodFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Coo => kernel_slice::<CooFwd>(prm, a, b, "wcs_fwd", prep, finish),
             proj => with_fwd!(proj, |f| slice_apply(
                 a,
                 b,
@@ -795,6 +851,7 @@ impl Prj {
         let prm = &self.prm;
         match self.proj {
             WcsProjection::Szp => kernel_slice::<SzpRev>(prm, a, b, "wcs_rev", prep, finish),
+            WcsProjection::Coo => kernel_slice::<CooRev>(prm, a, b, "wcs_rev", prep, finish),
             proj => with_rev!(proj, |f| slice_apply(
                 a,
                 b,
@@ -926,6 +983,33 @@ macro_rules! kernel_body {
     };
 }
 
+/// Whether a longitude `phi` from a reverse projection's slice entry, within
+/// `drift` of the per-value entry's, is so near a limit of the longitude
+/// ranges a WcsMap's inverse accepts that the two longitudes could be
+/// accepted differently.
+// For a projection that is not cyclic, WcsMap's inverse accepts a longitude
+// in [lo, hi), which is [-180, 180) or [0, 360), and one below `lo` with `lo
+// - phi <= tol`, where `tol` is the projection's tolerance; it rejects every
+// other. So it decides `phi < hi` and `lo - phi <= tol`. `lo - phi` is exact
+// where it is near `tol` (Sterbenz for `lo = -180`; a negation for `lo =
+// 0`), so the second is `phi >= lo - tol`, whose limit rounds to the nearest
+// double, at most eps / 2 of it away (eps = 2^-52). Two longitudes within
+// `drift` of each other get the same decisions where the kernels' is beyond
+// twice `drift` of each of 180, 360, -180 - tol and -tol, plus eps of the
+// limit; twice covers evaluating the test from the kernels' longitude rather
+// than Libm's. A cyclic projection, whose longitude the inverse does not
+// test, is tested too, which costs only a few points redone with Libm.
+#[inline(always)]
+pub(super) fn phi_near_lon_limits(phi: f64, drift: f64, tol: f64) -> bool {
+    let near = |limit: f64| {
+        let margin = 2.0 * drift + f64::EPSILON * limit.abs();
+        // False for a NaN, which is then redone.
+        let clear = (phi - limit).abs() > margin;
+        !clear
+    };
+    near(180.0) | near(360.0) | near(-180.0 - tol) | near(-tol)
+}
+
 /// The `finish` of a [`KernelBody`] whose kernels run the whole body.
 #[inline(always)]
 #[allow(clippy::unnecessary_wraps)]
@@ -989,6 +1073,23 @@ kernel_body!(
 );
 kernel_body!(CypFwd, cyp_fwd, cyp_fwd_needs_special);
 kernel_body!(AitFwd, ait_fwd, ait_fwd_needs_special);
+kernel_body!(CopFwd, cop_fwd, cop_fwd_needs_special);
+kernel_body!(CoeFwd, coe_fwd, coe_fwd_needs_special);
+kernel_body!(CodFwd, cod_fwd, cod_fwd_needs_special);
+kernel_body!(
+    CooFwd,
+    coo_fwd_front,
+    coo_fwd_needs_special,
+    coo_fwd_finish,
+    coo_fwd
+);
+kernel_body!(
+    CooRev,
+    coo_rev_front,
+    coo_rev_needs_special,
+    coo_rev_finish,
+    coo_rev
+);
 kernel_body!(
     TpnFwd,
     tpn_fwd_front,
@@ -3110,5 +3211,370 @@ mod tests {
         let mut pairs = right_angle_pairs();
         pairs.extend((-4..=4).map(|k| (180.0 * f64::from(k), 30.0)));
         assert_special_points_exact::<AitFwd>(&prj(WcsProjection::Ait), &pairs, true);
+    }
+
+    use crate::wcslib::conic::{coe_fwd_radicand_near_zero, cop_fwd_r_w0_near_zero};
+    use crate::wcslib::trig::sincosd_near_zero;
+
+    /// The conic projections with the parameter sets the tests use: the
+    /// benchmarks' (45, 10) and a cone below the equator, (-30, 15), for each,
+    /// and for COE standard parallels at 70 and 90 degrees too, where the
+    /// argument of its square root is zero at the north pole.
+    fn conic_prjs() -> Vec<Prj> {
+        use WcsProjection::{Cod, Coe, Coo, Cop};
+        let mut out = Vec::new();
+        for proj in [Cop, Coe, Cod, Coo] {
+            out.push(with_params(proj, &[0.0, 45.0, 10.0]));
+            out.push(with_params(proj, &[0.0, -30.0, 15.0]));
+        }
+        out.push(with_params(Coe, &[0.0, 80.0, 10.0]));
+        out
+    }
+
+    /// The bound on the drift of a conic forward slice's outputs `x = r S`
+    /// and `y = w2 - r C` at `phi`, whose per-value outputs are (`x`, `y`),
+    /// where the radius `r` differs by at most `dr` between the two paths and
+    /// `S` and `C` are the kernels' sine and cosine of `w0 phi`, an argument
+    /// computed alike on both. Each of `S` and `C` is within 2 eps of
+    /// Libm's (eps = 2^-52), and each path rounds each operation once, eps
+    /// between the paths: to first order `x` differs by at most `|S| dr + 3
+    /// eps |x|` and `y` by `|C| dr + 3 eps |r C| + eps |y|`, plus
+    /// [`SUBNORMAL_ROUNDING`] for each operation.
+    fn conic_fwd_bound(prm: &PrjPrm, phi: f64, r: f64, dr: f64, x: f64, y: f64) -> [f64; 2] {
+        let eps = f64::EPSILON;
+        let a = prm.w[0] * phi;
+        let (s, c) = (Libm::sind(a), Libm::cosd(a));
+        [
+            s.abs() * dr + 3.0 * eps * x.abs() + SUBNORMAL_ROUNDING,
+            c.abs() * dr + 3.0 * eps * (r * c).abs() + eps * y.abs() + 2.0 * SUBNORMAL_ROUNDING,
+        ]
+    }
+
+    /// The radius of a conic forward projection at `theta` as the per-value
+    /// entry computes it, and the bound on how far the slice's can be from
+    /// it. COD's radius and COO's have no kernel value and are alike on both
+    /// paths, as is each at a pole that C treats apart. COE's radius is
+    /// `w3 sqrt(R)`, whose radicand `R = w4 - w5 sind(theta)` differs by at
+    /// most `D = eps (3 |w5 sind(theta)| + |R|)`, as
+    /// `coe_fwd_radicand_near_zero` derives, which is relative `D / (|R| -
+    /// D)` of the kernels' `R`, so the square root by half that, plus two
+    /// roundings. COP's radius `w2 - q`, with `q = w3 sind(t) / cosd(t)` and
+    /// `t = theta - p1`, differs by at most `6 eps |q| + eps |r|`, as
+    /// `cop_fwd_r_w0_near_zero` derives.
+    fn conic_fwd_radius(proj: WcsProjection, prm: &PrjPrm, theta: f64) -> (f64, f64) {
+        let eps = f64::EPSILON;
+        match proj {
+            WcsProjection::Cod => (prm.w[3] - theta, 0.0),
+            WcsProjection::Coe if theta == -90.0 => (prm.w[8], 0.0),
+            WcsProjection::Coe => {
+                let product = prm.w[5] * Libm::sind(theta);
+                let radicand = prm.w[4] - product;
+                let d = eps * (3.0 * product.abs() + radicand.abs());
+                let r = prm.w[3] * crate::wcslib::math::sqrt(radicand);
+                (r, (d / (radicand.abs() - d) / 2.0 + 2.0 * eps) * r.abs())
+            }
+            WcsProjection::Cop if theta.abs() == 90.0 => (0.0, 0.0),
+            WcsProjection::Cop => {
+                let t = theta - prm.p[1];
+                let q = prm.w[3] * Libm::sind(t) / Libm::cosd(t);
+                let r = prm.w[2] - q;
+                (r, 6.0 * eps * q.abs() + eps * r.abs())
+            }
+            WcsProjection::Coo if theta == -90.0 => (0.0, 0.0),
+            WcsProjection::Coo => {
+                let t = Libm::tand((90.0 - theta) / 2.0);
+                (prm.w[3] * crate::wcslib::math::powf(t, prm.w[0]), 0.0)
+            }
+            proj => unreachable!("{}", proj.code()),
+        }
+    }
+
+    /// The bound on the drift of COO's reverse slice's longitude at `phi`,
+    /// its per-value value: the kernels' arc tangent within 2 eps of Libm's
+    /// (eps = 2^-52) times `w1`, with the two paths' roundings of the
+    /// product, eps between them, plus [`SUBNORMAL_ROUNDING`]. Its latitude
+    /// is the per-value entry's bit for bit.
+    fn coo_rev_phi_bound(phi: f64) -> f64 {
+        3.0 * f64::EPSILON * phi.abs() + SUBNORMAL_ROUNDING
+    }
+
+    /// The conic forward slices run the kernels and are within their bounds
+    /// of the per-value entry, with the same bad points and NaN outputs. The
+    /// reverse slices of COP, COE and COD run [`Libm`] and are bit for bit
+    /// the per-value entry; COO's runs the kernels' arc tangent, its
+    /// longitude within [`coo_rev_phi_bound`] and its latitude bit for bit.
+    #[test]
+    fn conic_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let mut fwd_inputs = tan_fwd_inputs();
+        // Near the poles, where COP's cone radius is near zero and COE's
+        // radicand can be.
+        for &u in &degrees(20_000) {
+            for centre in [90.0, -90.0] {
+                let n = (u.to_bits() % 64) as i64 - 32;
+                fwd_inputs.push((u, ulps_away(centre, n)));
+                fwd_inputs.push((u, centre - c_copysign(1e-9 * (n as f64), centre)));
+            }
+        }
+        let rev_inputs = zpn_rev_inputs();
+        for p in conic_prjs() {
+            let prm = p.prm.clone();
+            let label = format!("{} {:?}", p.proj.code(), &prm.p[1..3]);
+            let (fwd_ulps, _, fwd_differ) = slice_drift(&p, &fwd_inputs, true);
+            let over = drift_over_bound(&p, &fwd_inputs, true, |u, v, x, y| {
+                let (r, dr) = conic_fwd_radius(p.proj, &prm, v);
+                conic_fwd_bound(&prm, u, r, dr, x, y)
+            });
+            assert!(
+                over <= 1.0,
+                "{label} forward: {over} of the bound ({fwd_ulps:?} ULP)"
+            );
+            assert!(fwd_differ > 0, "{label} forward: no output differs");
+            if p.proj == WcsProjection::Coo {
+                let (rev_ulps, _, rev_differ) = slice_drift(&p, &rev_inputs, false);
+                assert_eq!(rev_ulps[1], 0, "{label} reverse: the latitude moved");
+                let over = drift_over_bound(&p, &rev_inputs, false, |_, _, phi, _| {
+                    [coo_rev_phi_bound(phi), 0.0]
+                });
+                assert!(
+                    over <= 1.0,
+                    "{label} reverse: {over} of the bound ({rev_ulps:?} ULP)"
+                );
+                assert!(rev_differ > 0, "{label} reverse: no output differs");
+            } else {
+                let (rev_max, _, rev_differ) = slice_drift(&p, &rev_inputs, false);
+                assert_eq!((rev_max, rev_differ), ([0, 0], 0), "{label} reverse");
+            }
+        }
+    }
+
+    use crate::wcslib::zenithal::c_copysign;
+
+    /// Wherever a sine and cosine within 2 ULP of [`Libm`]'s could put COP's
+    /// `r w0` on the other side of zero from [`Libm`]'s, or `s` on zero,
+    /// `cop_fwd_r_w0_near_zero` or `sincosd_near_zero` redoes the point;
+    /// and a margin of zero would not. The sines are those at which
+    /// [`Libm`]'s `r` is zero or next to it, for each parameter set, and the
+    /// cosines those at and next to zero.
+    #[test]
+    fn cop_margins_cover_the_kernels_drift_and_a_zero_margin_does_not() {
+        let mut missed_by_zero_margin = [0, 0];
+        for p in conic_prjs()
+            .into_iter()
+            .filter(|p| p.proj == WcsProjection::Cop)
+        {
+            let prm = &p.prm;
+            let p_of = |st: f64, s: f64| (prm.w[2] - prm.w[3] * st / s) * prm.w[0];
+            for s in [0.25, 0.5, 0.8, -0.3] {
+                let zero_at = prm.w[2] * s / prm.w[3];
+                for n in -6i64..=6 {
+                    let st = step_ulps(zero_at, n);
+                    let p_libm = p_of(st, s);
+                    for k in within_two_ulps(st) {
+                        for c in within_two_ulps(s) {
+                            let p_kernel = p_of(k, c);
+                            if (p_libm < 0.0) != (p_kernel < 0.0)
+                                || (p_libm == 0.0) != (p_kernel == 0.0)
+                            {
+                                assert!(cop_fwd_r_w0_near_zero(prm, k, c), "{k:e}, {c:e}");
+                                missed_by_zero_margin[0] += usize::from(p_kernel != 0.0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for n in -6i64..=6 {
+            let libm = step_ulps(0.0, n);
+            for kernel in within_two_ulps(libm) {
+                if (libm == 0.0) != (kernel == 0.0) {
+                    assert!(sincosd_near_zero(kernel), "{libm:e}, {kernel:e}");
+                    missed_by_zero_margin[1] += usize::from(kernel != 0.0);
+                }
+            }
+        }
+        assert!(
+            missed_by_zero_margin.iter().all(|&m| m > 0),
+            "{missed_by_zero_margin:?}"
+        );
+    }
+
+    /// Wherever a sine within 2 ULP of [`Libm`]'s could put COE's radicand on
+    /// the other side of zero from [`Libm`]'s, or on it,
+    /// `coe_fwd_radicand_near_zero` redoes the point; and a margin of zero
+    /// would not. The sines are those at which [`Libm`]'s radicand is zero or
+    /// next to it.
+    #[test]
+    fn coe_margin_covers_the_kernels_drift_and_a_zero_margin_does_not() {
+        let mut missed_by_zero_margin = 0;
+        for p in conic_prjs()
+            .into_iter()
+            .filter(|p| p.proj == WcsProjection::Coe)
+        {
+            let prm = &p.prm;
+            let radicand = |sthe: f64| prm.w[4] - prm.w[5] * sthe;
+            let zero_at = prm.w[4] / prm.w[5];
+            for n in -6i64..=6 {
+                let libm = step_ulps(zero_at, n);
+                let r_libm = radicand(libm);
+                for kernel in within_two_ulps(libm) {
+                    let r_kernel = radicand(kernel);
+                    if (r_libm < 0.0) != (r_kernel < 0.0) || (r_libm == 0.0) != (r_kernel == 0.0) {
+                        assert!(
+                            coe_fwd_radicand_near_zero(prm, kernel),
+                            "{libm:e}, {kernel:e}"
+                        );
+                        missed_by_zero_margin += usize::from(r_kernel != 0.0);
+                    }
+                }
+            }
+        }
+        assert!(missed_by_zero_margin > 0);
+    }
+
+    /// Whether a WcsMap's inverse accepts the longitude `phi` of a projection
+    /// that is not cyclic, whose tolerance is `tol`, with the accepted range
+    /// [`lo`, `lo + 360`).
+    fn lon_accepted(phi: f64, lo: f64, tol: f64) -> bool {
+        let phi = if phi < lo && lo - phi <= tol { lo } else { phi };
+        phi < lo + 360.0 && phi >= lo
+    }
+
+    /// Each good point of `p`'s reverse slice, among `pairs`, has a
+    /// longitude a WcsMap's inverse accepts exactly when it accepts the
+    /// per-value entry's, for either range; and some point is near a limit.
+    fn assert_lon_decisions_agree(p: &Prj, pairs: &[(f64, f64)]) {
+        let tol = p.proj.table_tol();
+        let got = through_slice(p, pairs, false);
+        let mut near = 0;
+        for (&(u, v), &(phi, _)) in pairs.iter().zip(&got) {
+            let (status, want, _) = p.rev_raw(u, v);
+            if status != Status::Ok {
+                continue;
+            }
+            for lo in [-180.0, 0.0] {
+                assert_eq!(
+                    lon_accepted(phi, lo, tol),
+                    lon_accepted(want, lo, tol),
+                    "{}: ({u:e}, {v:e}) gives {phi:e} against {want:e}",
+                    p.proj.code()
+                );
+            }
+            near += usize::from((want.abs() - 180.0).abs() < 1e-10);
+        }
+        assert!(near > 0, "no longitude is near a limit");
+    }
+
+    /// Points whose reverse projection's longitude is at, a few ULP from, and
+    /// a few tolerances from the limits of the longitude ranges a WcsMap's
+    /// inverse accepts: the slice's longitude is accepted exactly when the
+    /// per-value entry's is.
+    #[test]
+    fn coo_rev_longitude_limits_agree() {
+        for p in conic_prjs()
+            .into_iter()
+            .filter(|p| p.proj == WcsProjection::Coo)
+        {
+            let prm = p.prm.clone();
+            let tol = p.proj.table_tol();
+            let mut pairs = Vec::new();
+            // The radius has the sign of `p1`.
+            for &r in &degrees(500) {
+                let r = c_copysign(1.0 + r.abs(), prm.p[1]);
+                for limit in [180.0, -180.0] {
+                    for k in -40i64..=40 {
+                        let phi = limit + k as f64 * tol / 8.0;
+                        for n in -4i64..=4 {
+                            let a = ulps_away(phi * prm.w[0], n);
+                            pairs.push((r * Libm::sind(a), prm.w[2] - r * Libm::cosd(a)));
+                        }
+                    }
+                }
+            }
+            slice_drift(&p, &pairs, false);
+            assert_lon_decisions_agree(&p, &pairs);
+        }
+    }
+
+    /// Wherever a longitude within `drift` of [`Libm`]'s could be accepted
+    /// differently by a WcsMap's inverse, `phi_near_lon_limits` says so; and
+    /// with no margin it would not.
+    #[test]
+    fn lon_limit_margin_covers_the_drift_and_a_zero_margin_does_not() {
+        let tol = 1e-13;
+        let drift = 3.0 * f64::EPSILON * 180.0;
+        let mut missed_by_zero_margin = 0;
+        for limit in [180.0, 360.0, -180.0 - tol, -tol, -180.0, 0.0] {
+            for n in -2000i64..=2000 {
+                let libm = step_ulps(limit, n);
+                for m in -8i64..=8 {
+                    let kernel = libm + drift * m as f64 / 8.0;
+                    for lo in [-180.0, 0.0] {
+                        if lon_accepted(libm, lo, tol) != lon_accepted(kernel, lo, tol) {
+                            assert!(
+                                phi_near_lon_limits(kernel, drift, tol),
+                                "{libm:e}, {kernel:e}"
+                            );
+                            missed_by_zero_margin +=
+                                usize::from(!phi_near_lon_limits(kernel, 0.0, tol));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(missed_by_zero_margin > 0);
+    }
+
+    /// The conic projections' kernel bodies, with each parameter set.
+    fn assert_conic_builds_agree(p: &Prj, inputs: &[(f64, f64)]) {
+        match p.proj {
+            WcsProjection::Cop => assert_builds_agree::<CopFwd>(p, inputs),
+            WcsProjection::Coe => assert_builds_agree::<CoeFwd>(p, inputs),
+            WcsProjection::Cod => assert_builds_agree::<CodFwd>(p, inputs),
+            WcsProjection::Coo => {
+                assert_builds_agree::<CooFwd>(p, inputs);
+                assert_builds_agree::<CooRev>(p, inputs);
+            }
+            proj => unreachable!("{}", proj.code()),
+        }
+    }
+
+    #[test]
+    fn conic_slices_give_each_point_the_same_bits_at_any_length() {
+        for p in conic_prjs() {
+            assert_same_bits_at_any_length(&p, &interleaved_inputs());
+        }
+    }
+
+    #[test]
+    fn conic_slice_builds_agree() {
+        for p in conic_prjs() {
+            assert_conic_builds_agree(&p, &interleaved_inputs());
+        }
+    }
+
+    /// Coordinates at multiples of 90 degrees and longitudes whose product
+    /// with `w0` is, which the kernels do not cover, get the per-value
+    /// entry's bits in a slice; so do reverse points on the axis `x = 0`,
+    /// whose arc tangent's argument is zero.
+    #[test]
+    fn conic_points_the_kernels_do_not_cover_are_exact_in_a_slice() {
+        for p in conic_prjs() {
+            let mut sky = right_angle_pairs();
+            sky.extend((-4..=4).map(|k| (90.0 * f64::from(k) / p.prm.w[0], 30.0)));
+            match p.proj {
+                WcsProjection::Cop => assert_special_points_exact::<CopFwd>(&p, &sky, true),
+                WcsProjection::Coe => assert_special_points_exact::<CoeFwd>(&p, &sky, true),
+                WcsProjection::Cod => assert_special_points_exact::<CodFwd>(&p, &sky, true),
+                WcsProjection::Coo => {
+                    assert_special_points_exact::<CooFwd>(&p, &sky, true);
+                    let plane: Vec<(f64, f64)> = sky
+                        .iter()
+                        .flat_map(|&(u, v)| [(0.0, v), (u, v), (0.0, p.prm.w[2])])
+                        .collect();
+                    assert_special_points_exact::<CooRev>(&p, &plane, false);
+                }
+                proj => unreachable!("{}", proj.code()),
+            }
+        }
     }
 }
