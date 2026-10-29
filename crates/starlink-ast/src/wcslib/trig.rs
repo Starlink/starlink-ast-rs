@@ -3,6 +3,7 @@
 // Derived from WCSLIB (AST's fork of wcslib 2.9, with fixes from wcslib 8.10): Copyright 1995-2002 Mark Calabretta, GNU Library General Public License version 2 or later; this port is distributed under LGPL-3.0-or-later.
 
 use super::math;
+use crate::vmath;
 
 // `PI/180.0` and `180.0/PI` from `reference/starlink-ast/wcslib/wcsmath.h`, whose `PI`
 // literal rounds to `std::f64::consts::PI`.
@@ -162,9 +163,213 @@ impl Trig for Libm {
     }
 }
 
+/// [`Trig`] by the branchless kernels of [`crate::vmath`], which vectorize
+/// when a projection body is inlined into a loop over whole arrays.
+///
+/// `sind`, `cosd`, `atan2d` and `atand` are kernels, valid where their
+/// predicates ([`sincosd_covers`], [`atan2d_covers`], [`atand_covers`])
+/// hold; the predicates reject wcslib's exact special cases and the kernels'
+/// invalid inputs, and a caller redoes the elements they reject with
+/// [`Libm`]. There `sind` and `cosd` are within 1 ULP of the exact sine and
+/// cosine of their argument in radians, rounded, on every platform, since
+/// they call no library. [`Libm`]'s are the platform libm's, which can
+/// itself be further from the exact value: macOS's on x86-64 is 2.65 ULP
+/// from the sine of -6.452961993231616e5 radians. Over angles within two
+/// turns the two were within 2 ULP of each other on every platform
+/// measured, and every drift bound derived for a projection's slice takes 2
+/// ULP per `sind` or `cosd`.
+/// `atan2d` and `atand` are an arctangent within 1 ULP of libm's times
+/// `R2D`, whose rounding can take them 2 ULP from [`Libm`]'s. `tand`,
+/// `asind` and `acosd` are [`Libm`]'s.
+///
+/// `FMA` is passed to [`crate::vmath::atan2`]: whether the code this is
+/// inlined into may use fused multiply-adds. The result is the same either
+/// way.
+#[cfg_attr(not(test), allow(dead_code))] // used by the projections' slice kernels
+pub(crate) struct Kernel<const FMA: bool>;
+
+impl<const FMA: bool> Trig for Kernel<FMA> {
+    #[inline(always)]
+    fn sind(angle: f64) -> f64 {
+        // The argument is rounded as wcslib rounds the one it gives libm.
+        vmath::sin_cos(angle * D2R).0
+    }
+
+    #[inline(always)]
+    fn cosd(angle: f64) -> f64 {
+        vmath::sin_cos(angle * D2R).1
+    }
+
+    #[inline(always)]
+    fn tand(angle: f64) -> f64 {
+        Libm::tand(angle)
+    }
+
+    #[inline(always)]
+    fn asind(v: f64) -> f64 {
+        Libm::asind(v)
+    }
+
+    #[inline(always)]
+    fn acosd(v: f64) -> f64 {
+        Libm::acosd(v)
+    }
+
+    #[inline(always)]
+    fn atand(v: f64) -> f64 {
+        vmath::atan2::<FMA>(v, 1.0) * R2D
+    }
+
+    #[inline(always)]
+    fn atan2d(y: f64, x: f64) -> f64 {
+        vmath::atan2::<FMA>(y, x) * R2D
+    }
+}
+
+/// Whether [`Kernel`]'s `sind` and `cosd` are valid for `angle`: not a
+/// multiple of 90 degrees, which [`Libm`] answers exactly, and within the
+/// sine and cosine kernel's domain, which excludes infinities and NaN.
+#[cfg_attr(not(test), allow(dead_code))] // used by the projections' slice kernels
+#[inline(always)]
+pub(crate) fn sincosd_covers(angle: f64) -> bool {
+    angle % 90.0 != 0.0 && vmath::sin_cos_covers(angle * D2R)
+}
+
+/// Whether [`Kernel`]'s `atan2d` is valid for (`y`, `x`): neither zero, which
+/// [`Libm`] answers exactly, and both finite.
+#[cfg_attr(not(test), allow(dead_code))] // used by the projections' slice kernels
+#[inline(always)]
+pub(crate) fn atan2d_covers(y: f64, x: f64) -> bool {
+    y != 0.0 && x != 0.0 && vmath::atan2_covers(y, x)
+}
+
+/// Whether [`Kernel`]'s `atand` is valid for `v`: finite and none of -1, 0
+/// and 1, which [`Libm`] answers exactly.
+#[cfg_attr(not(test), allow(dead_code))] // used by the projections' slice kernels
+#[inline(always)]
+pub(crate) fn atand_covers(v: f64) -> bool {
+    v.is_finite() && v != -1.0 && v != 0.0 && v != 1.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_inputs::{angle_pairs, degrees, ulps, unit_range};
+    use crate::vmath::HAS_FMA;
+
+    type K = Kernel<HAS_FMA>;
+
+    /// How far `atan2d` and `atand` may be from [`Libm`]'s, in ULP. Each is an
+    /// arctangent within 1 ULP of libm's, asserted separately below, times
+    /// `R2D`. The product rounds once more, and two radian values 1 ULP apart
+    /// can land 2 ULP apart in degrees, since `R2D` is about 57.3 and the
+    /// product's ULP is 32 or 64 times the radian value's. The bound is per
+    /// elementary function; 2 is the most measured.
+    const R2D_PRODUCT_ULPS: u64 = 2;
+
+    /// The largest ULP distance between two functions over `inputs`, and how
+    /// many values differ.
+    fn worst<T: Copy>(
+        inputs: &[T],
+        kernel: impl Fn(T) -> f64,
+        libm: impl Fn(T) -> f64,
+    ) -> (u64, usize) {
+        let mut max = 0;
+        let mut differ = 0;
+        for &x in inputs {
+            let d = ulps(kernel(x), libm(x));
+            max = max.max(d);
+            differ += usize::from(d != 0);
+        }
+        (max, differ)
+    }
+
+    /// How far `sind` and `cosd` may be from [`Libm`]'s over this test's
+    /// angles, within two turns, in ULP: the kernel is within 1 ULP of the
+    /// exact value, rounded, on every platform, and the two were within 2
+    /// ULP of each other there on every platform measured (macOS on arm64
+    /// and x86-64).
+    const SINCOS_LIBM_ULPS: u64 = 2;
+
+    /// `sind` and `cosd` within [`SINCOS_LIBM_ULPS`] of [`Libm`]'s, and
+    /// `atan2d` and `atand` within [`R2D_PRODUCT_ULPS`], their arctangents
+    /// in radians within 1 ULP of libm's.
+    #[test]
+    fn kernel_trig_is_within_two_ulp_of_libm_where_it_covers() {
+        let angles: Vec<f64> = degrees(2_000_000)
+            .into_iter()
+            .filter(|&a| sincosd_covers(a))
+            .collect();
+        let pairs: Vec<(f64, f64)> = angle_pairs(1_000_000)
+            .into_iter()
+            .filter(|&(y, x)| atan2d_covers(y, x))
+            .collect();
+        let mut values = unit_range(2_000_000);
+        values.extend([5e-324, -1e-300, 1e10, -1e300, f64::MAX]);
+        let values: Vec<f64> = values.into_iter().filter(|&v| atand_covers(v)).collect();
+
+        let in_degrees = [
+            (
+                "sind",
+                worst(&angles, K::sind, Libm::sind),
+                SINCOS_LIBM_ULPS,
+            ),
+            (
+                "cosd",
+                worst(&angles, K::cosd, Libm::cosd),
+                SINCOS_LIBM_ULPS,
+            ),
+            (
+                "atan2d",
+                worst(
+                    &pairs,
+                    |(y, x)| K::atan2d(y, x),
+                    |(y, x)| Libm::atan2d(y, x),
+                ),
+                R2D_PRODUCT_ULPS,
+            ),
+            (
+                "atand",
+                worst(&values, K::atand, Libm::atand),
+                R2D_PRODUCT_ULPS,
+            ),
+        ];
+        // The arctangents before the product with R2D.
+        let in_radians = [
+            (
+                "atan2d",
+                worst(
+                    &pairs,
+                    |(y, x)| vmath::atan2::<HAS_FMA>(y, x),
+                    |(y, x)| math::atan2(y, x),
+                ),
+            ),
+            (
+                "atand",
+                worst(&values, |v| vmath::atan2::<HAS_FMA>(v, 1.0), math::atan),
+            ),
+        ];
+        for (name, (max, differ), bound) in in_degrees {
+            assert!(max <= bound, "{name}: {max} ULP from libm");
+            assert!(
+                differ > 0,
+                "{name}: no value differs from libm; is the kernel in use?"
+            );
+        }
+        for (name, (max, _)) in in_radians {
+            assert!(max <= 1, "{name}: {max} ULP from libm before the product");
+        }
+    }
+
+    #[test]
+    fn covers_rejects_wcstrig_exact_arguments() {
+        for a in [0.0, -0.0, 90.0, -90.0, 180.0, 270.0, 360.0, -720.0] {
+            assert!(!sincosd_covers(a), "{a}");
+        }
+        assert!(!atan2d_covers(0.0, -1.0) && !atan2d_covers(1.0, 0.0));
+        assert!(!atand_covers(1.0) && !atand_covers(-1.0) && !atand_covers(0.0));
+        assert!(sincosd_covers(45.0) && atan2d_covers(1.0, 1.0));
+    }
 
     /// The port's own values beyond the range of an `int` quadrant count,
     /// the same on every platform.
