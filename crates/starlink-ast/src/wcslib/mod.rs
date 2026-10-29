@@ -13,14 +13,17 @@
 //! native projection state and dispatch, and `zenithal` the zenithal
 //! projections, `cylindrical` and `pseudocyl` the cylindrical and
 //! pseudo-cylindrical ones, `conic` and `polyconic` the conic and
-//! polyconic ones, and `tpn` the polynomial-corrected gnomonic projection.
+//! polyconic ones, `quadcube` and `healpix` the quad-cube and HEALPix
+//! ones, and `tpn` the polynomial-corrected gnomonic projection.
 
 mod conic;
 mod cylindrical;
 pub(crate) mod ffi;
+mod healpix;
 mod polyconic;
 pub(crate) mod prj;
 mod pseudocyl;
+mod quadcube;
 mod tpn;
 pub(crate) mod trig;
 mod zenithal;
