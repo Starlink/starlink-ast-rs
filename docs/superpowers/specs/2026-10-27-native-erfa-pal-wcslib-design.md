@@ -297,6 +297,7 @@ They go in the `bench` set and the `native` set, and their comment lines in `nat
 
 **Not in this stage.**
 "Interim: vectorized kernels in slice entries only" is to be reassessed when the vendored code is gone, which this stage completes; the reassessment is a separate decision after this pull request, and this stage keeps per-value entries bit-identical to C.
+ERFA's 3-vector and 3×3 matrix functions are hand-written on plain arrays, not taken from a linear-algebra crate; whether `nalgebra` or `glam` could replace them is recorded in `PLAN.md` §7 for later (user decision, 2026-10-29).
 
 ## Measurement
 
