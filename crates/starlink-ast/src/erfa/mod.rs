@@ -32,7 +32,7 @@ mod anp;
 mod anpm;
 mod c2s;
 #[cfg(test)]
-mod difftest;
+pub(crate) mod difftest;
 mod pas;
 mod pdp;
 mod pm;
