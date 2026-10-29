@@ -73,16 +73,43 @@ pub(crate) fn s2c(theta: f64, phi: f64) -> [f64; 3] {
 }
 
 // ERFA's body with its sines and cosines from the vectorizable
-// `vmath::sin_cos`, which is within 1 ULP of libm's.
+// `vmath::sin_cos`, which is within 1 ULP of the exact values.
 /// [`s2c`] without branches, for angles [`s2c_needs_special`] accepts; a
 /// loop over many points vectorizes. Each sine and cosine is within 1 ULP of
-/// libm's; the z component is a sine, and the x and y components, products
-/// of two, are within 3 ULP of [`s2c`]'s.
+/// the exact value, rounded; the z component is a sine, and the x and y
+/// components, products of two, are within 8 ULP of the exact products,
+/// rounded. [`s2c`] takes its sines and cosines from the platform libm, so
+/// the two also differ by libm's own error.
 #[inline(always)]
 pub(crate) fn s2c_kernel(theta: f64, phi: f64) -> [f64; 3] {
     let (st, ct) = vmath::sin_cos(theta);
     let (sp, cp) = vmath::sin_cos(phi);
     [ct * cp, st * cp, sp]
+}
+
+/// How far the x and y components of [`s2c_kernel`] may be from the exact
+/// products of the sines and cosines of its angles, rounded, in ULP.
+// Each component is a product of a sine and a cosine from `vmath::sin_cos`,
+// each within 1 ULP of its exact value rounded, and so within 1.5 ULP, at
+// most 3 * 2^-53 relative, of the exact value itself. The exact product of
+// the two kernel values is then within 6 * 2^-53 relative of the exact
+// product, to first order; the kernel rounds it once, at most 2^-53 relative,
+// and the reference rounds the exact product once, at most 2^-53 relative
+// again. That is a relative difference of up to 8 * 2^-53, and an ULP of
+// either result is more than 2^-53 of it, so the bound is 8 ULP. It holds on
+// every platform: neither side calls libm.
+#[cfg(test)]
+pub(crate) const S2C_PRODUCT_ULPS: u64 = 8;
+
+/// The direction cosines of (`theta`, `phi`) from the exact sines and
+/// cosines, each component rounded once, for comparison with
+/// [`s2c_kernel`]: see [`crate::test_inputs::sin_cos_dd`].
+#[cfg(test)]
+pub(crate) fn s2c_reference(theta: f64, phi: f64) -> [f64; 3] {
+    use crate::test_inputs::{dd_product, dd_round, sin_cos_dd};
+    let (st, ct) = sin_cos_dd(theta);
+    let (sp, cp) = sin_cos_dd(phi);
+    [dd_product(ct, cp), dd_product(st, cp), dd_round(sp)]
 }
 
 /// Whether (`theta`, `phi`) is outside [`s2c_kernel`]'s domain; such angles
@@ -128,23 +155,24 @@ mod tests {
         }
     }
 
+    /// [`s2c_kernel`]'s z component, a sine, is within 1 ULP of the exact
+    /// value, rounded, and its x and y components within
+    /// [`S2C_PRODUCT_ULPS`] of the exact products, rounded, on every
+    /// platform.
     #[test]
-    fn s2c_kernel_is_within_three_ulp_of_s2c() {
+    fn s2c_kernel_is_within_its_derived_bound_of_the_exact_value() {
         let mut differ = 0;
         for (theta, phi) in angle_pairs(1_000_000)
             .into_iter()
             .filter(|&(t, p)| !s2c_needs_special(t, p))
         {
             let k = s2c_kernel(theta, phi);
-            let e = s2c(theta, phi);
+            let e = s2c_reference(theta, phi);
             for i in 0..3 {
                 let d = ulps(k[i], e[i]);
-                // Each sine and cosine is within 1 ULP of libm's. A product of
-                // two carries both, measured against the product's own ULP,
-                // which can be half a factor's; 3 ULP is the most seen over 8
-                // million angle pairs.
+                let bound = if i == 2 { 1 } else { S2C_PRODUCT_ULPS };
                 assert!(
-                    d <= 3,
+                    d <= bound,
                     "({theta:e}, {phi:e}) axis {i}: {:e} vs {:e}",
                     k[i],
                     e[i]
@@ -154,7 +182,7 @@ mod tests {
         }
         assert!(
             differ > 0,
-            "no input differed from s2c; is the kernel in use?"
+            "no input differed from the reference; is the kernel in use?"
         );
     }
 }

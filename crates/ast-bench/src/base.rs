@@ -63,6 +63,12 @@ fn git(args: &[&str], dir: &Path) -> Result<String, String> {
 /// Build `ast-bench` at `git_ref` in a git worktree under
 /// `target/perf/base/`, reusing it if it is already there, and return the
 /// binary.
+///
+/// Each worktree builds into its own target directory. Cargo names a
+/// workspace member's build outputs without its path, so two worktrees
+/// sharing one would share the build script's output, and cargo would judge
+/// it fresh from the files of whichever worktree ran it last: a base that
+/// compiles vendored C would then link without it.
 pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> {
     let sha = git(
         &["rev-parse", "--verify", &format!("{git_ref}^{{commit}}")],
@@ -78,7 +84,7 @@ pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> 
     if !tree.join("crates/ast-bench").exists() {
         return Err(format!("{git_ref} predates ast-bench; choose a later base"));
     }
-    let target = repo.join("target/perf/base/target");
+    let target = tree.join("target");
     let status = Command::new("cargo")
         .args([
             "build",
@@ -100,9 +106,8 @@ pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> 
 
 /// The most recently built `ast-bench` under `target`. `cargo build` puts it
 /// under the target triple when one is configured and directly under
-/// `release` otherwise, and the target directory is shared by every base
-/// build, so a binary from an earlier build with the other layout can sit
-/// beside the one just built.
+/// `release` otherwise, so a binary from an earlier build with the other
+/// layout can sit beside the one just built.
 fn newest_binary(target: &Path) -> Result<PathBuf, String> {
     let mut candidates = vec![target.join("release/ast-bench")];
     for dir in std::fs::read_dir(target)

@@ -1,0 +1,7 @@
+ Begin WcsMap 	# FITS-WCS sky projection
+    Nin = 2 	# Number of input coordinates
+ IsA Mapping 	# Mapping between coordinate systems
+    Type = "COD" 	# Conical equidistant projection
+    PV2_1 = 45 	# Projection parameter 1 for axis 2
+    PV2_2 = 10 	# Projection parameter 2 for axis 2
+ End WcsMap

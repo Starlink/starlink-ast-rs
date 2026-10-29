@@ -91,15 +91,19 @@ pub(crate) fn c2s_kernel<const FMA: bool>(p: [f64; 3]) -> (f64, f64) {
 }
 
 /// Whether `p` is outside [`c2s_kernel`]'s domain: a coordinate that is
-/// zero, infinite or NaN, or an x, y projection whose squared length
-/// underflows to zero or overflows. Such vectors go to [`c2s`].
+/// zero, infinite or NaN, an x, y projection whose squared length
+/// underflows to zero or overflows, or an arctangent's arguments outside the
+/// magnitudes [`vmath::atan2_covers`] accepts. Such vectors go to [`c2s`].
 #[inline(always)]
 pub(crate) fn c2s_needs_special(p: [f64; 3]) -> bool {
     let [x, y, z] = p;
-    let d2 = x * x + y * y;
-    // atan2_covers(z, sqrt(d2)), without the square root: sqrt(d2) is finite
-    // and non-zero exactly when d2 is.
-    !(vmath::atan2_covers(y, x) && vmath::atan2_covers(z, d2))
+    // The kernel's second arctangent is of `z` and the square root of
+    // `x*x + y*y`,
+    // and its cover bounds the magnitudes of its arguments and their
+    // quotient, so it is tested on the square root itself, which the kernel
+    // computes alike.
+    let r = (x * x + y * y).sqrt();
+    !(vmath::atan2_covers(y, x) && vmath::atan2_covers(z, r))
 }
 
 #[cfg(test)]

@@ -48,11 +48,11 @@ To compare with another commit instead of a saved baseline:
 
     ast-bench compare --set bench --base main
 
-This builds `ast-bench` at that commit in a git worktree under `target/perf/base/<sha>`, times the set with that build and the current one in three alternating rounds, and compares the combined timings, so both builds see the same machine state.
+This builds `ast-bench` at that commit in a git worktree under `target/perf/base/<sha>`, into that worktree's own `target` directory, times the set with that build and the current one in three alternating rounds, and compares the combined timings, so both builds see the same machine state.
 The base must contain `ast-bench`.
 A base older than the `rust-cols` timing has no `rust-cols` rows, which `compare --base` reports as unmatched, so choose a base that has them.
 Either build failing a case, or timing a case the other does not, is an error.
-The worktree is kept for the next comparison; `git worktree remove target/perf/base/<sha>` removes it.
+The worktree and its build are kept for the next comparison; `git worktree remove target/perf/base/<sha>` removes both.
 
 A report names what got slower, not why.
 Changing one Mapping's code can move another's hot loop in the binary: making ZoomMap slower on purpose also made PolyMap's forward transform 20% slower in the same build, although PolyMap does not use ZoomMap.

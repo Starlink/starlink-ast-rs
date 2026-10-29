@@ -95,6 +95,19 @@ static AstMapping *wcsmap_sin( void ) { return (AstMapping *) astWcsMap( 2, AST_
 static AstMapping *wcsmap_zpn( void ) {
    return (AstMapping *) astWcsMap( 2, AST__ZPN, 1, 2, "PV2_1=1, PV2_3=0.05" );
 }
+static AstMapping *wcsmap_arc( void ) { return (AstMapping *) astWcsMap( 2, AST__ARC, 1, 2, " " ); }
+static AstMapping *wcsmap_cea( void ) {
+   return (AstMapping *) astWcsMap( 2, AST__CEA, 1, 2, "PV2_1=1" );
+}
+static AstMapping *wcsmap_ait( void ) { return (AstMapping *) astWcsMap( 2, AST__AIT, 1, 2, " " ); }
+static AstMapping *wcsmap_cod( void ) {
+   return (AstMapping *) astWcsMap( 2, AST__COD, 1, 2, "PV2_1=45, PV2_2=10" );
+}
+static AstMapping *wcsmap_bon( void ) {
+   return (AstMapping *) astWcsMap( 2, AST__BON, 1, 2, "PV2_1=45" );
+}
+static AstMapping *wcsmap_qsc( void ) { return (AstMapping *) astWcsMap( 2, AST__QSC, 1, 2, " " ); }
+static AstMapping *wcsmap_hpx( void ) { return (AstMapping *) astWcsMap( 2, AST__HPX, 1, 2, " " ); }
 static AstMapping *sphmap( void ) { return (AstMapping *) astSphMap( " " ); }
 static AstMapping *pcdmap( void ) {
    double c[ 2 ] = { 0.0, 0.0 };
@@ -196,6 +209,13 @@ static const Fixture FIXTURES[] = {
    { "wcsmap_tan.map", wcsmap_tan, -0.05, 0.05 },
    { "wcsmap_sin.map", wcsmap_sin, -0.05, 0.05 },
    { "wcsmap_zpn.map", wcsmap_zpn, -0.05, 0.05 },
+   { "wcsmap_arc.map", wcsmap_arc, -0.05, 0.05 },
+   { "wcsmap_cea.map", wcsmap_cea, -0.05, 0.05 },
+   { "wcsmap_ait.map", wcsmap_ait, -0.05, 0.05 },
+   { "wcsmap_cod.map", wcsmap_cod, -0.05, 0.05 },
+   { "wcsmap_bon.map", wcsmap_bon, -0.05, 0.05 },
+   { "wcsmap_qsc.map", wcsmap_qsc, -0.05, 0.05 },
+   { "wcsmap_hpx.map", wcsmap_hpx, -0.05, 0.05 },
    { "sphmap.map", sphmap, -1.0, 1.0, SPHMAP_NPOINT },
    { "pcdmap.map", pcdmap, -0.1, 0.1 },
    { "grismmap.map", grismmap, 4.0e-7, 6.0e-7 },

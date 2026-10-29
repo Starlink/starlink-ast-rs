@@ -27,6 +27,13 @@ bench unitnormmap_2d.map # one plain UnitNormMap
 bench wcsmap_sin.map # one plain WcsMap
 bench wcsmap_tan.map # one plain WcsMap
 bench wcsmap_zpn.map # one plain WcsMap
+bench wcsmap_arc.map # one plain WcsMap
+bench wcsmap_cea.map # one plain WcsMap
+bench wcsmap_ait.map # one plain WcsMap
+bench wcsmap_cod.map # one plain WcsMap
+bench wcsmap_bon.map # one plain WcsMap
+bench wcsmap_qsc.map # one plain WcsMap
+bench wcsmap_hpx.map # one plain WcsMap
 bench winmap_2d.map # one plain WinMap
 bench zoommap_2d.map # one plain ZoomMap
 # Real-world FrameSets and Mappings.

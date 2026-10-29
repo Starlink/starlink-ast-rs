@@ -3,14 +3,13 @@
 
 //! FITS-WCS sky projection mapping.
 
-use std::cell::RefCell;
-
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::pal;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
-use crate::wcslib::{PrjParams, WcsProjection};
+use crate::wcslib::WcsProjection;
+use crate::wcslib::prj::{Prj, Status};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
@@ -26,21 +25,6 @@ const DR2D: f64 = 180.0 / std::f64::consts::PI;
 /// Degrees to radians (C `AST__DD2R`).
 const DD2R: f64 = std::f64::consts::PI / 180.0;
 
-/// A wcslib projection status as C's `Map` reads it (wcsmap.c): 0 gives the
-/// projected values, 2 a point that cannot be projected (`None`), and any
-/// other status means the projection parameters are unusable, which
-/// `Transform` reports as `AST__WCSPA`.
-fn wcslib_result((status, a, b): (std::os::raw::c_int, f64, f64)) -> AstResult<Option<(f64, f64)>> {
-    match status {
-        0 => Ok(Some((a, b))),
-        2 => Ok(None),
-        _ => Err(AstError::new(
-            ErrorCode::Wcspa,
-            "WcsMap: the projection parameter values are unusable",
-        )),
-    }
-}
-
 /// The number of `ProjP<m>` keys a legacy dump can hold (wcsmap.h `AST__WCSMX`).
 const AST_WCSMX: usize = 10;
 
@@ -49,14 +33,16 @@ const AST_WCSMX: usize = 10;
 /// The WcsMap forward input is longitude and latitude in radians; WCSLIB
 /// expects degrees with the longitude in `[-180,180]` and the latitude in
 /// `[-90,90]`. Any point whose latitude falls outside `[-90,90]` is converted
-/// to the equivalent point on the complementary meridian. This mirrors
-/// wcsmap.c:2820-2839.
+/// to the equivalent point on the complementary meridian.
 ///
 /// `factor` scales the WcsMap input into radians. It is `1.0` whenever the
-/// `TPNTan` attribute is non-zero (the default), and `AST__DD2R` when `TPNTan`
-/// has been cleared, in which case the WcsMap works in degrees throughout.
+/// `TPNTan` attribute is non-zero (the default), and degrees to radians when
+/// `TPNTan` has been cleared, in which case the WcsMap works in degrees
+/// throughout.
 ///
-/// Returns `(longitude, latitude)` in degrees, ready for `WcsFwd`.
+/// Returns `(longitude, latitude)` in degrees, ready for the forward
+/// projection.
+// wcsmap.c:2820-2839.
 fn forward_prep(in0: f64, in1: f64, factor: f64) -> (f64, f64) {
     let latitude = DR2D * pal::drange(factor * in1);
     if latitude > 90.0 {
@@ -72,6 +58,24 @@ fn forward_prep(in0: f64, in1: f64, factor: f64) -> (f64, f64) {
     } else {
         (DR2D * pal::drange(factor * in0), latitude)
     }
+}
+
+/// The projection a WcsMap of type `proj` performs, with the parameters
+/// `params` and the `TPNTan` value `tpn_tan`, set up.
+///
+/// NCP and GLS are performed by SIN and SFL with the parameters a WcsMap
+/// gives them. Unknown (AST__WCSBAD) has no projection: its WcsMap is the
+/// identity, simplifies to a UnitMap and has a native latitude and longitude
+/// of 0, so it never consults the projection, and CAR is an inert placeholder.
+fn build_prj(proj: WcsProjection, params: &[Vec<Option<f64>>], tpn_tan: bool) -> Prj {
+    let underlying = match proj {
+        WcsProjection::Ncp => WcsProjection::Sin,
+        WcsProjection::Gls => WcsProjection::Sfl,
+        WcsProjection::Unknown => WcsProjection::Car,
+        other => other,
+    };
+    Prj::new(underlying, params, tpn_tan)
+        .expect("Prj::new accepts every projection but NCP, GLS and Unknown")
 }
 
 /// Implement a FITS-WCS sky projection.
@@ -143,7 +147,7 @@ pub struct WcsMap {
     /// The projection type requested at construction time.
     ///
     /// For NCP and GLS this stores the original deprecated code, while
-    /// the underlying `PrjParams` uses the equivalent SIN or SFL.
+    /// the underlying `Prj` uses the equivalent SIN or SFL.
     proj: WcsProjection,
     /// 0-based longitude axis index.
     lonax: usize,
@@ -155,9 +159,9 @@ pub struct WcsMap {
     /// `params[0]` = latitude axis (wcslib `p`), `params[1]` = longitude axis (wcslib `p2`).
     /// Each inner vec is indexed by parameter number `m`.
     params: Vec<Vec<Option<f64>>>,
-    /// wcslib C struct (interior mutability because `transform` takes `&self`
-    /// but the C code mutates internal state on first use after param changes).
-    prj: RefCell<PrjParams>,
+    /// The projection, set up from `params` and `tpn_tan`; rebuilt whenever
+    /// either changes. Boxed because its parameter arrays are large.
+    prj: Box<Prj>,
     /// Whether the mapping is inverted.
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
@@ -165,25 +169,27 @@ pub struct WcsMap {
     ident: Option<String>,
     /// The Object-class ID attribute, which a clone does not inherit.
     id: crate::object_id::ObjectId,
-    /// The flags C keeps on the base Mapping class (mapping.c).
+    /// The flags every Mapping keeps.
+    // C keeps them on the base Mapping class (mapping.c).
     mapping_flags: crate::mappings::MappingFlags,
-    /// Protected `LonCheck` attribute (wcsmap.c:4787). Controls whether the
-    /// inverse projection clips returned longitude values to the projection's
+    /// Protected `LonCheck` attribute. Controls whether the inverse
+    /// projection clips returned longitude values to the projection's
     /// primary range. `None` = unset (defaults to `true`); `Some(v)` = the
-    /// explicitly set value. Mirrors C's `loncheck` field, whose sentinel
-    /// `-INT_MAX` means "not set" (astMAKE_TEST/GET at wcsmap.c:4818-4821).
+    /// explicitly set value.
+    // wcsmap.c:4787; C's `loncheck` field uses `-INT_MAX` for "not set"
+    // (astMAKE_TEST/GET at wcsmap.c:4818-4821).
     lon_check: Option<bool>,
-    /// Protected `FITSProj` attribute (wcsmap.c:4711). Marks this WcsMap as
-    /// the one that defines the FITS-WCS projection when a compound Mapping
-    /// is written out through a FitsChan. A WcsMap used only as a distortion
-    /// correction (e.g. the polynomial part of a `-ZPX` header) has it
-    /// cleared. `None` = unset (defaults to `true`), matching C's `-INT_MAX`
-    /// sentinel (wcsmap.c:4742-4746).
+    /// Protected `FITSProj` attribute. Marks this WcsMap as the one that
+    /// defines the FITS-WCS projection when a compound Mapping is written out
+    /// through a FitsChan. A WcsMap used only as a distortion correction
+    /// (e.g. the polynomial part of a `-ZPX` header) has it cleared.
+    /// `None` = unset (defaults to `true`).
+    // wcsmap.c:4711; C's `-INT_MAX` sentinel at wcsmap.c:4742-4746.
     fits_proj: Option<bool>,
-    /// Protected `TPNTan` attribute (wcsmap.c:4750). When cleared, a TPN
-    /// projection applies only its polynomial correction and omits the TAN
-    /// projection itself. `None` = unset (defaults to `true`), matching C's
-    /// `-INT_MAX` sentinel (wcsmap.c:4780-4782).
+    /// Protected `TPNTan` attribute. When cleared, a TPN projection applies
+    /// only its polynomial correction and omits the TAN projection itself.
+    /// `None` = unset (defaults to `true`).
+    // wcsmap.c:4750; C's `-INT_MAX` sentinel at wcsmap.c:4780-4782.
     tpn_tan: Option<bool>,
 }
 
@@ -246,49 +252,13 @@ impl WcsMap {
             ));
         }
 
-        // For NCP and GLS, create the underlying projection as SIN/SFL
-        // with appropriate default parameters.
-        // For Unknown, we don't need a PrjParams — it acts as identity.
-        let underlying = match proj {
-            WcsProjection::Ncp => WcsProjection::Sin,
-            WcsProjection::Gls => WcsProjection::Sfl,
-            WcsProjection::Unknown => {
-                // Unknown projection has no wcslib implementation.
-                // It acts as an identity mapping and simplifies to UnitMap.
-                let params = vec![Vec::new(), Vec::new()];
-                // The `prj` field must hold *some* PrjParams, but it is never
-                // consulted for an Unknown WcsMap: `transform_into`/
-                // `transform_into_nan` short-circuit to an identity copy,
-                // `simplified` returns a UnitMap, and `nat_lon`/`nat_lat`
-                // return 0 directly. CAR is the cheapest inert placeholder.
-                let prj = PrjParams::new(WcsProjection::Car)?;
-                return Ok(Self {
-                    proj,
-                    lonax: lonax - 1,
-                    latax: latax - 1,
-                    ncoord,
-                    params,
-                    prj: RefCell::new(prj),
-                    inverted: false,
-                    simplified: SimplifiedRecord::default(),
-                    ident: None,
-                    id: Default::default(),
-                    mapping_flags: crate::mappings::MappingFlags::default(),
-                    lon_check: None,
-                    fits_proj: None,
-                    tpn_tan: None,
-                });
-            }
-            other => other,
-        };
-
-        let mut prj = PrjParams::new(underlying)?;
-
         // Initialize empty parameter arrays for 2 axes (lat=0, lon=1).
         let params = vec![Vec::new(), Vec::new()];
 
         // Assign default projection parameters (C astInitWcsMap_ → InitPrjPrm).
-        prj.init_prj_prm(&params, true);
+        // NCP and GLS are performed by SIN and SFL, and an Unknown WcsMap,
+        // the identity, holds an inert placeholder (see `build_prj`).
+        let prj = Box::new(build_prj(proj, &params, true));
 
         Ok(Self {
             proj,
@@ -296,7 +266,7 @@ impl WcsMap {
             latax: latax - 1,
             ncoord,
             params,
-            prj: RefCell::new(prj),
+            prj,
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
@@ -404,9 +374,7 @@ impl WcsMap {
 
         // Rebuild the wcslib parameter arrays with defaults reapplied and the
         // fwd/rev pointers reinstalled (C SetPV → InitPrjPrm, wcsmap.c:3939).
-        self.prj
-            .borrow_mut()
-            .init_prj_prm(&self.params, self.tpn_tan());
+        self.reinit_prj();
 
         Ok(())
     }
@@ -491,7 +459,7 @@ impl WcsMap {
             ));
         }
         let mut value = if axis - 1 == self.latax {
-            self.prj.borrow().get_param(0, m).unwrap_or(BAD_VALUE)
+            self.prj.get_param(0, m).unwrap_or(BAD_VALUE)
         } else {
             self.params[1]
                 .get(m)
@@ -511,15 +479,16 @@ impl WcsMap {
     }
 
     /// Whether the projection is zenithal for the purpose of FITS-WCS
-    /// LONPOLE and LATPOLE (wcsmap.c `IsZenithal`): TAN, STG, ARC, ZPN, ZEA,
-    /// AIR and TPN always, AZP when PV2_2 is zero, SIN when PV2_1 and PV2_2
-    /// are, and SZP according to its latitude parameter 2.
+    /// LONPOLE and LATPOLE: TAN, STG, ARC, ZPN, ZEA, AIR and TPN always, AZP
+    /// when PV2_2 is zero, SIN when PV2_1 and PV2_2 are, and SZP according to
+    /// its latitude parameter 2.
     ///
     /// The SZP test reads parameter 2, the native longitude of the source of
     /// projection, and compares it with +/-90, where its comment and the
     /// projection's geometry point to parameter 3, the native latitude, which
-    /// defaults to 90; the port mirrors C (`docs/issues/c-library-quirks.md`,
-    /// "`IsZenithal` tests the wrong SZP parameter").
+    /// defaults to 90; the port mirrors the C library here.
+    // wcsmap.c `IsZenithal`; docs/issues/c-library-quirks.md, "`IsZenithal`
+    // tests the wrong SZP parameter".
     pub(crate) fn is_zenithal(&self) -> bool {
         let lat = |m: usize| self.get_pv(self.latax + 1, m).unwrap_or(BAD_VALUE);
         let or = |v: f64, default: f64| if v == BAD_VALUE { default } else { v };
@@ -574,9 +543,7 @@ impl WcsMap {
         {
             *slot = None;
         }
-        self.prj
-            .borrow_mut()
-            .init_prj_prm(&self.params, self.tpn_tan());
+        self.reinit_prj();
         Ok(())
     }
 
@@ -694,9 +661,7 @@ impl WcsMap {
         // Like C, the change re-initializes the wcslib parameter block, which
         // is what tells astTPNfwd/astTPNrev which form to use.
         self.tpn_tan = Some(value);
-        self.prj
-            .borrow_mut()
-            .init_prj_prm(&self.params, self.tpn_tan());
+        self.reinit_prj();
     }
 
     /// Whether a TPN projection includes the TAN projection as well as its
@@ -718,22 +683,21 @@ impl WcsMap {
     pub fn clear_tpn_tan(&mut self) {
         // Re-initializes the wcslib parameter block, as C's ClearTPNTan does.
         self.tpn_tan = None;
-        self.prj
-            .borrow_mut()
-            .init_prj_prm(&self.params, self.tpn_tan());
+        self.reinit_prj();
     }
 
     /// Determine the acceptable longitude range and cyclicity for the
-    /// inverse (xy->sky) transformation. Port of `LongRange`
-    /// (wcsmap.c:2597).
+    /// inverse (xy->sky) transformation.
     ///
-    /// Returns `(cyclic, longhi, longlo)`. `cyclic` is true when
+    /// Returns `(cyclic, high, low)`. `cyclic` is true when
     /// `[a,0]` and `[a+2.PI,0]` map to the same Cartesian position (so the
-    /// out-of-range longitude test can be skipped). `longhi`/`longlo` bound
+    /// out-of-range longitude test can be skipped). `high` and `low` bound
     /// the primary longitude range the projection produces — either
     /// `[-180,180]` or `[0,360]` — used to reject inverse solutions that
     /// fall outside the physical domain of the projection.
-    fn long_range(&self, prj: &mut PrjParams) -> (bool, f64, f64) {
+    // Port of `LongRange` (wcsmap.c:2597), which returns `longhi` and
+    // `longlo`.
+    fn long_range(&self) -> (bool, f64, f64) {
         // Sample points near the projection origin (in degrees).
         const XX: [f64; 4] = [-1.0e-6, 0.0, 1.0e-6, 0.0];
         const YY: [f64; 4] = [0.0, 1.0e-6, 0.0, -1.0e-6];
@@ -745,11 +709,18 @@ impl WcsMap {
         // the projection uses the [0,360] range instead of [-180,180]. `bb`
         // carries the latitude of the final sample forward to the cyclic
         // test, exactly as in the C code.
+        //
+        // C reads the projected values whatever the status, so the raw
+        // entries are used, each call counted as C's `WcsRev` and `WcsFwd`
+        // calls are. Unusable parameters give status `BadParams` and zero
+        // values here, and are reported by the first good point of the
+        // transformation.
         let mut bb = 0.0;
         for point in 0..4 {
-            let (status, aa, b) = prj.reverse_raw(XX[point], YY[point]);
+            crate::call_counts::hit("wcs_rev");
+            let (status, aa, b) = self.prj.rev_raw(XX[point], YY[point]);
             bb = b;
-            if status == 0 && aa > 180.0 {
+            if status == Status::Ok && aa > 180.0 {
                 high = 360.0;
                 low = 0.0;
                 break;
@@ -758,11 +729,114 @@ impl WcsMap {
 
         // See if the projection is cyclic: transform sky positions
         // [90,bb] and [450,bb] into Cartesian and compare them.
-        let (_s0, x0, y0) = prj.forward_raw(90.0, bb);
-        let (_s1, x1, y1) = prj.forward_raw(450.0, bb);
+        crate::call_counts::hit_n("wcs_fwd", 2);
+        let (_s0, x0, y0) = self.prj.fwd_raw(90.0, bb);
+        let (_s1, x1, y1) = self.prj.fwd_raw(450.0, bb);
         let cyclic = (x0 - x1).abs() < 1.0e-10 && (y0 - y1).abs() < 1.0e-10;
 
         (cyclic, high, low)
+    }
+
+    /// How the inverse accepts the longitudes its projection gives: whether
+    /// it tests them, from the LonCheck attribute and whether the projection
+    /// is cyclic, and the range it accepts, worked out before projecting any
+    /// point.
+    // C computes `docheck`, `longhi` and `longlo` from LonCheck and
+    // LongRange at wcsmap.c:2797-2802.
+    fn lon_range(&self) -> LonRange {
+        let (cyclic, hi, lo) = self.long_range();
+        LonRange {
+            tested: self.lon_check() && !cyclic,
+            lo,
+            hi,
+            tol: self.proj.table_tol(),
+        }
+    }
+
+    /// Project the WcsMap's longitude and latitude axes, `lon` and `lat`, in
+    /// place: forward when `fwd`, from native spherical coordinates to
+    /// projection-plane ones, and inverse otherwise.
+    /// A bad input point, a point the projection cannot project and an
+    /// inverse solution outside the projection's domain give `bad` in both.
+    ///
+    /// The slice entry converts each pair to degrees, projects it and
+    /// converts it back, applying the inverse's domain checks, in one pass.
+    fn project_in_place(
+        &self,
+        lon: &mut [f64],
+        lat: &mut [f64],
+        fwd: bool,
+        bad: f64,
+    ) -> AstResult<()> {
+        self.project_in_place_with(lon, lat, fwd, bad, true)
+    }
+
+    /// [`project_in_place`](WcsMap::project_in_place), where the inverse
+    /// redoes with the per-value projection each point whose longitude from
+    /// the vectorized kernels is so near a limit of the accepted range that
+    /// the kernels' drift could change whether it is accepted only when
+    /// `lon_redo` is set.
+    fn project_in_place_with(
+        &self,
+        lon: &mut [f64],
+        lat: &mut [f64],
+        fwd: bool,
+        bad: f64,
+        lon_redo: bool,
+    ) -> AstResult<()> {
+        let n = lon.len();
+        let lat = &mut lat[..n];
+
+        // The WcsMap input and output values are normally in radians, but if
+        // TPNTan has been cleared they are in degrees; WCSLIB always works in
+        // degrees. `factor` scales the WcsMap input into radians
+        // (wcsmap.c:2808).
+        let factor = if self.tpn_tan() { 1.0 } else { DD2R };
+        // The scale from WCSLIB's degrees to the WcsMap output units.
+        let to_output = DD2R / factor;
+
+        if fwd {
+            // Forward: native spherical (lon, lat in radians) -> projected
+            // (x, y). Wrap the native longitude/latitude into the ranges
+            // WCSLIB requires, folding out-of-range latitudes onto the
+            // complementary meridian (wcsmap.c:2820-2839).
+            return self.prj.fwd_slice(
+                lon,
+                lat,
+                |lon, lat| {
+                    if is_bad(lon) || is_bad(lat) {
+                        (BAD_VALUE, BAD_VALUE)
+                    } else {
+                        forward_prep(lon, lat, factor)
+                    }
+                },
+                |x, y| {
+                    if x == BAD_VALUE && y == BAD_VALUE {
+                        (bad, bad)
+                    } else {
+                        (x * to_output, y * to_output)
+                    }
+                },
+            );
+        }
+
+        // Inverse: projected (x, y) -> native spherical (lon, lat in
+        // radians).
+        let range = self.lon_range();
+        // The scale from the WcsMap input units to WCSLIB's degrees.
+        let to_degrees = DR2D * factor;
+        let prep = |x: f64, y: f64| {
+            if is_bad(x) || is_bad(y) {
+                (BAD_VALUE, BAD_VALUE)
+            } else {
+                (x * to_degrees, y * to_degrees)
+            }
+        };
+        let finish = |longitude: f64, latitude: f64| {
+            inverse_finish(&range, to_output, bad, longitude, latitude)
+        };
+        let redo = |longitude: f64, drift: f64| lon_redo && range.near_limit(longitude, drift);
+        self.prj.rev_slice(lon, lat, prep, finish, redo)
     }
 
     /// The 1-based index of the longitude axis of the projection within the
@@ -848,10 +922,11 @@ impl WcsMap {
         CmpMap::new(Box::new(self), other, Composition::Parallel)
     }
 
-    /// C has no projection functions for NCP, so transforming through an NCP
-    /// WcsMap is an `AST__WCSTY` error (wcsmap.c `Map` returns 1, which
-    /// `Transform` reports). A FITS header's NCP projection is read as SIN
-    /// with parameters, so only a WcsMap made as NCP reaches this.
+    /// There are no projection functions for NCP, so transforming through an
+    /// NCP WcsMap is an `AST__WCSTY` error. A FITS header's NCP projection is
+    /// read as SIN with parameters, so only a WcsMap made as NCP reaches
+    /// this.
+    // wcsmap.c `Map` returns 1, which `Transform` reports.
     fn check_transformable(&self) -> AstResult<()> {
         if self.proj == WcsProjection::Ncp {
             return Err(AstError::new(
@@ -886,21 +961,11 @@ impl WcsMap {
         Ok(())
     }
 
-    /// Rebuild PrjParams from stored parameters (used by clone and simplified).
-    fn rebuild_prj(&self) -> AstResult<PrjParams> {
-        let underlying = match self.proj {
-            WcsProjection::Ncp => WcsProjection::Sin,
-            WcsProjection::Gls => WcsProjection::Sfl,
-            // Unknown (AST__WCSBAD) has no wcslib projection. The stored
-            // PrjParams is never consulted (transform is identity, simplify is
-            // a UnitMap, nat_lon/nat_lat return 0), so CAR is an inert
-            // placeholder kept only so this field is populated.
-            WcsProjection::Unknown => WcsProjection::Car,
-            other => other,
-        };
-        let mut prj = PrjParams::new(underlying)?;
-        prj.init_prj_prm(&self.params, self.tpn_tan());
-        Ok(prj)
+    /// Set the projection up again from the stored parameters and `TPNTan`,
+    /// with defaults reapplied.
+    // C's `InitPrjPrm`.
+    fn reinit_prj(&mut self) {
+        *self.prj = build_prj(self.proj, &self.params, self.tpn_tan());
     }
 
     /// Create a copy of this WcsMap with different axis assignments.
@@ -917,14 +982,13 @@ impl WcsMap {
         if new_lonax == new_latax || new_lonax >= new_ncoord || new_latax >= new_ncoord {
             return None;
         }
-        let prj = self.rebuild_prj().ok()?;
         Some(Self {
             proj: self.proj,
             lonax: new_lonax,
             latax: new_latax,
             ncoord: new_ncoord,
             params: self.params.clone(),
-            prj: RefCell::new(prj),
+            prj: self.prj.clone(),
             inverted: self.inverted,
             simplified: self.simplified,
             // C builds a fresh WcsMap for this rebuild (wcsmap.c:4667), and a
@@ -949,9 +1013,10 @@ impl WcsMap {
     }
 
     /// Whether each projection parameter is unset in both WcsMaps or set in
-    /// both to equal values, as wcsmap.c `Equal` compares them (fixed
-    /// upstream in 47826767): an unset parameter is AST__BAD, so it differs
-    /// from one set to zero.
+    /// both to equal values: an unset parameter differs from one set to
+    /// zero.
+    // As wcsmap.c `Equal` compares them (fixed upstream in 47826767): an
+    // unset parameter is AST__BAD.
     fn params_equal(&self, other: &WcsMap) -> bool {
         for axis in 0..2 {
             let p1 = self.params.get(axis).map(|v| v.as_slice()).unwrap_or(&[]);
@@ -971,16 +1036,13 @@ impl WcsMap {
 
 impl Clone for WcsMap {
     fn clone(&self) -> Self {
-        let prj = self
-            .rebuild_prj()
-            .expect("WcsMap::clone: failed to rebuild PrjParams");
         Self {
             proj: self.proj,
             lonax: self.lonax,
             latax: self.latax,
             ncoord: self.ncoord,
             params: self.params.clone(),
-            prj: RefCell::new(prj),
+            prj: self.prj.clone(),
             inverted: self.inverted,
             simplified: self.simplified,
             ident: self.ident.clone(),
@@ -1018,18 +1080,14 @@ impl Mapping for WcsMap {
         self.inverted = !self.inverted;
     }
 
-    /// NaN-as-bad fast path. Same logic as `transform_into`, but the
-    /// is_bad branch and projection-`Err` branch emit `f64::NAN` instead
-    /// of `BAD_VALUE` so downstream NaN-aware stages receive the protocol-
-    /// canonical sentinel rather than a finite -1.8e308 that would
-    /// produce numerical garbage through their arithmetic.
+    /// NaN-as-bad fast path: [`transform_into`](Mapping::transform_into)
+    /// with `f64::NAN` for every bad output, so downstream NaN-aware stages
+    /// receive the protocol's sentinel rather than a finite -1.8e308 that
+    /// would produce numerical garbage through their arithmetic.
     ///
-    /// The is_bad gate at the top is *kept* because the underlying
-    /// projection routines don't handle `BAD_VALUE` or `NaN` inputs gracefully — they may return
-    /// Err, NaN, or garbage depending on which trig path they take. Gating
-    /// here is cheap (one comparison per point per axis) and keeps the
-    /// projection math on the well-tested finite-input path.
-    // The projection routines are the wcslib port's `prj.forward`/`reverse`.
+    /// A bad input still never reaches the projection: the projection
+    /// routines may return an error, NaN or garbage for one, depending on
+    /// which trigonometric path they take.
     fn transform_into_nan(
         &self,
         pts: Points<'_>,
@@ -1041,112 +1099,17 @@ impl Mapping for WcsMap {
             out.copy_from(&pts);
             return Ok(());
         }
-
-        let fwd = self.effective_forward(forward);
-        let mut prj = self.prj.borrow_mut();
-
-        // Reverse-path longitude clipping gate — identical to
-        // `transform_into` (the C `Map` function has a single body; this
-        // NaN-as-bad variant is a Rust-side optimization and must apply the
-        // same domain check). See `long_range` and wcsmap.c:2878.
-        let (docheck, cyclic, longhi, longlo) = if fwd {
-            (false, false, 0.0, 0.0)
-        } else {
-            let (cyclic, longhi, longlo) = self.long_range(&mut prj);
-            (self.lon_check(), cyclic, longhi, longlo)
-        };
-
-        // The WcsMap input and output values are normally in radians, but if
-        // TPNTan has been cleared they are in degrees; WCSLIB always works in
-        // degrees. `factor` scales the WcsMap input into radians
-        // (wcsmap.c:2808).
-        let factor = if self.tpn_tan() { 1.0 } else { DD2R };
-
-        // Every axis passes through, then the longitude and latitude axes are
-        // overwritten point by point.
+        // C's `Map` has a single body; this NaN-as-bad variant is a
+        // Rust-side optimization and applies the same domain checks.
         out.copy_from(&pts);
-        let (ilon, ilat) = (pts.axis(self.lonax), pts.axis(self.latax));
+        let n = pts.npoint();
         let (olon, olat) = out.axis_pair_mut(self.lonax, self.latax);
-        for i in 0..pts.npoint() {
-            let v1 = ilon[i];
-            let v2 = ilat[i];
-
-            if is_bad(v1) || is_bad(v2) {
-                olon[i] = f64::NAN;
-                olat[i] = f64::NAN;
-                continue;
-            }
-
-            if fwd {
-                // Wrap the native longitude/latitude into the ranges WCSLIB
-                // requires, folding out-of-range latitudes onto the
-                // complementary meridian (wcsmap.c:2820-2839).
-                let (lon_deg, lat_deg) = forward_prep(v1, v2, factor);
-                match wcslib_result(prj.forward_raw(lon_deg, lat_deg))? {
-                    Some((x, y)) => {
-                        olon[i] = (DD2R / factor) * x;
-                        olat[i] = (DD2R / factor) * y;
-                    }
-                    None => {
-                        olon[i] = f64::NAN;
-                        olat[i] = f64::NAN;
-                    }
-                }
-            } else {
-                let x_deg = (DR2D * factor) * v1;
-                let y_deg = (DR2D * factor) * v2;
-                match wcslib_result(prj.reverse_raw(x_deg, y_deg))? {
-                    Some((mut longitude, mut latitude)) => {
-                        // A longitude or latitude a little past a limit of the
-                        // accepted range is set to the limit, and one further
-                        // past is rejected below (wcsmap.c Map). This is
-                        // wcslib's rule (prjbchk): rounding in a reverse
-                        // projection can land a point on the boundary, such as
-                        // the antipode of a zenithal projection or the -180
-                        // meridian of a pseudo-cylindrical one, slightly outside
-                        // it, by an amount that depends on the projection's
-                        // arithmetic, so the tolerance is wcslib's for each
-                        // projection, in degrees. It also absorbs the one-ULP
-                        // difference a fused multiply-add makes: a WinMap used by
-                        // a FITS CAR mapping evaluates `-0.5 + 181 * 0.5` degrees
-                        // as exactly 90 where the compiler contracts it and
-                        // 90.00000000000001 where it does not, so the validity of
-                        // a header does not depend on the target. Both latitude
-                        // limits need it: the accepted range is closed, so -90
-                        // and +90 are inside it.
-                        let tol = self.proj.table_tol();
-                        let mut abslat = latitude.abs();
-                        if abslat > 90.0 && abslat - 90.0 <= tol {
-                            latitude = if latitude < 0.0 { -90.0 } else { 90.0 };
-                            abslat = 90.0;
-                        }
-                        // The accepted longitude range is half-open,
-                        // [longlo,longhi), so only its lower limit is treated
-                        // the same way. Unlike wcslib, a value at or above
-                        // longhi is not set to longhi: it is the wrap of longlo
-                        // and is clipped deliberately, to stop a whole-sky grid
-                        // mapping two pixels to the same meridian.
-                        if docheck && !cyclic && longitude < longlo && longlo - longitude <= tol {
-                            longitude = longlo;
-                        }
-                        if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))
-                            && abslat <= 90.0
-                        {
-                            olon[i] = (DD2R / factor) * longitude;
-                            olat[i] = (DD2R / factor) * latitude;
-                        } else {
-                            olon[i] = f64::NAN;
-                            olat[i] = f64::NAN;
-                        }
-                    }
-                    None => {
-                        olon[i] = f64::NAN;
-                        olat[i] = f64::NAN;
-                    }
-                }
-            }
-        }
-        Ok(())
+        self.project_in_place(
+            &mut olon[..n],
+            &mut olat[..n],
+            self.effective_forward(forward),
+            f64::NAN,
+        )
     }
 
     fn transform_into(
@@ -1162,107 +1125,17 @@ impl Mapping for WcsMap {
             out.copy_from(&pts);
             return Ok(());
         }
-
-        let fwd = self.effective_forward(forward);
-        let mut prj = self.prj.borrow_mut();
-
-        // For the inverse (xy->sky) transformation, determine whether
-        // out-of-range longitude solutions should be rejected. C computes
-        // `docheck` from the LonCheck attribute and `cyclic`/`longhi`/
-        // `longlo` from LongRange (wcsmap.c:2797-2802). The gate is only
-        // consulted on the reverse path.
-        let (docheck, cyclic, longhi, longlo) = if fwd {
-            (false, false, 0.0, 0.0)
-        } else {
-            let (cyclic, longhi, longlo) = self.long_range(&mut prj);
-            (self.lon_check(), cyclic, longhi, longlo)
-        };
-
-        // The WcsMap input and output values are normally in radians, but if
-        // TPNTan has been cleared they are in degrees; WCSLIB always works in
-        // degrees. `factor` scales the WcsMap input into radians
-        // (wcsmap.c:2808).
-        let factor = if self.tpn_tan() { 1.0 } else { DD2R };
-
         // Every axis passes through, then the longitude and latitude axes are
-        // overwritten point by point.
+        // projected in place.
         out.copy_from(&pts);
-        let (ilon, ilat) = (pts.axis(self.lonax), pts.axis(self.latax));
+        let n = pts.npoint();
         let (olon, olat) = out.axis_pair_mut(self.lonax, self.latax);
-        for i in 0..pts.npoint() {
-            let v1 = ilon[i];
-            let v2 = ilat[i];
-
-            if is_bad(v1) || is_bad(v2) {
-                olon[i] = BAD_VALUE;
-                olat[i] = BAD_VALUE;
-                continue;
-            }
-
-            if fwd {
-                // Forward: native spherical (lon, lat in radians) -> projected (x, y).
-                // Wrap the native longitude/latitude into the ranges WCSLIB
-                // requires, folding out-of-range latitudes onto the
-                // complementary meridian (wcsmap.c:2820-2839).
-                let (lon_deg, lat_deg) = forward_prep(v1, v2, factor);
-                match wcslib_result(prj.forward_raw(lon_deg, lat_deg))? {
-                    Some((x, y)) => {
-                        olon[i] = (DD2R / factor) * x;
-                        olat[i] = (DD2R / factor) * y;
-                    }
-                    None => {
-                        olon[i] = BAD_VALUE;
-                        olat[i] = BAD_VALUE;
-                    }
-                }
-            } else {
-                // Inverse: projected (x, y) -> native spherical (lon, lat in radians)
-                let x_deg = (DR2D * factor) * v1;
-                let y_deg = (DR2D * factor) * v2;
-                match wcslib_result(prj.reverse_raw(x_deg, y_deg))? {
-                    Some((mut longitude, mut latitude)) => {
-                        // Reject solutions outside the physical domain of the
-                        // projection (wcsmap.c:2878). Non-cyclic projections
-                        // (ARC, AIT, ZPN, ...) only accept longitudes within
-                        // the primary range; the latitude must be within
-                        // [-90,90]. `longitude`/`latitude` are in degrees here.
-                        //
-                        // A value a little past a limit of that range is set to
-                        // the limit first, with wcslib's tolerance for the
-                        // projection; see `transform_into_nan` for why. Both
-                        // latitude limits need it, the range being closed.
-                        let tol = self.proj.table_tol();
-                        let mut abslat = latitude.abs();
-                        if abslat > 90.0 && abslat - 90.0 <= tol {
-                            latitude = if latitude < 0.0 { -90.0 } else { 90.0 };
-                            abslat = 90.0;
-                        }
-                        // The longitude range is half-open, [longlo,longhi), so
-                        // only its lower limit is treated the same way: a value
-                        // at or above longhi is the wrap of longlo and is
-                        // clipped deliberately, to stop a whole-sky grid mapping
-                        // two pixels to the same meridian.
-                        if docheck && !cyclic && longitude < longlo && longlo - longitude <= tol {
-                            longitude = longlo;
-                        }
-                        if (!docheck || cyclic || (longitude < longhi && longitude >= longlo))
-                            && abslat <= 90.0
-                        {
-                            olon[i] = (DD2R / factor) * longitude;
-                            olat[i] = (DD2R / factor) * latitude;
-                        } else {
-                            olon[i] = BAD_VALUE;
-                            olat[i] = BAD_VALUE;
-                        }
-                    }
-                    None => {
-                        olon[i] = BAD_VALUE;
-                        olat[i] = BAD_VALUE;
-                    }
-                }
-            }
-        }
-        Ok(())
+        self.project_in_place(
+            &mut olon[..n],
+            &mut olat[..n],
+            self.effective_forward(forward),
+            BAD_VALUE,
+        )
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -1694,5 +1567,269 @@ impl Serializable for WcsMap {
         }
 
         Ok(wcs)
+    }
+}
+
+/// How a WcsMap's inverse accepts the native longitude its projection gives.
+///
+/// Where `tested`, which is where LonCheck is set and the projection is not
+/// cyclic, a longitude is accepted in [`lo`, `hi`), which is [-180, 180) or
+/// [0, 360), and one below `lo` by at most `tol`, the projection's
+/// tolerance, is set to `lo`; any other is rejected. Elsewhere every
+/// longitude is accepted.
+#[derive(Clone, Copy, Debug)]
+struct LonRange {
+    tested: bool,
+    lo: f64,
+    hi: f64,
+    tol: f64,
+}
+
+impl LonRange {
+    /// Whether `longitude` is accepted, and the longitude to store where it
+    /// is.
+    ///
+    /// The accepted range is half-open, so only its lower limit is treated
+    /// as wcslib's bounds check treats both: rounding in a reverse
+    /// projection can land a point on the boundary, such as the -180
+    /// meridian of a pseudo-cylindrical projection, slightly outside it, by
+    /// an amount that depends on the projection's arithmetic. Unlike wcslib,
+    /// a value at or above `hi` is not set to `hi`: it is the wrap of `lo`
+    /// and is clipped deliberately, to stop a whole-sky grid mapping two
+    /// pixels to the same meridian.
+    // wcslib's bounds check is `prjbchk`.
+    #[inline(always)]
+    fn decide(&self, longitude: f64) -> (bool, f64) {
+        if !self.tested {
+            return (true, longitude);
+        }
+        let snap = longitude < self.lo && self.lo - longitude <= self.tol;
+        let longitude = if snap { self.lo } else { longitude };
+        (longitude < self.hi && longitude >= self.lo, longitude)
+    }
+
+    /// Whether [`decide`](LonRange::decide) could decide differently for a
+    /// longitude within `drift` of `longitude`.
+    // `decide` decides `longitude < hi` and, below `lo`, `lo - longitude <=
+    // tol`; `lo - longitude` is exact where it is near `tol` (Sterbenz for
+    // `lo = -180`; a negation for `lo = 0`), so that is `longitude >= lo -
+    // tol`, whose limit rounds to the nearest double, at most eps / 2 of it
+    // away (eps = 2^-52). Two longitudes within `drift` of each other are
+    // decided alike where one is beyond twice `drift` of both limits, plus
+    // eps of the limit; twice covers evaluating the test from the kernels'
+    // longitude rather than the per-value entry's. A longitude with no
+    // drift is the per-value entry's, and is decided alike.
+    #[inline(always)]
+    fn near_limit(&self, longitude: f64, drift: f64) -> bool {
+        if !self.tested || drift == 0.0 {
+            return false;
+        }
+        let near = |limit: f64| {
+            let margin = 2.0 * drift + f64::EPSILON * limit.abs();
+            // False for a NaN, which is then near.
+            let clear = (longitude - limit).abs() > margin;
+            !clear
+        };
+        near(self.hi) || near(self.lo - self.tol)
+    }
+}
+
+/// The pair a WcsMap's inverse stores for the native (`longitude`,
+/// `latitude`) in degrees its projection gives: the pair in the WcsMap's
+/// output units, scaled by `to_output`, or (`bad`, `bad`) for a bad point or
+/// one outside the projection's domain.
+///
+/// Non-cyclic projections (ARC, AIT, ZPN, ...) accept only longitudes
+/// within the range `range` gives, and every projection accepts only
+/// latitudes within [-90, 90]. A latitude a little past either limit, by at
+/// most the projection's tolerance, is set to the limit first, and one
+/// further past is rejected. This is wcslib's bounds check, and the
+/// tolerance also absorbs the one-ULP difference a fused multiply-add makes:
+/// a WinMap used by a FITS CAR mapping evaluates `-0.5 + 181 * 0.5` degrees
+/// as exactly 90 where the compiler contracts it and 90.00000000000001 where
+/// it does not, so the validity of a header does not depend on the target.
+/// Both latitude limits need it: the accepted range is closed, so -90 and
+/// +90 are inside it.
+// C's `Map` in wcsmap.c, from line 2878; wcslib's bounds check is
+// `prjbchk`.
+#[inline(always)]
+fn inverse_finish(
+    range: &LonRange,
+    to_output: f64,
+    bad: f64,
+    longitude: f64,
+    mut latitude: f64,
+) -> (f64, f64) {
+    if longitude == BAD_VALUE && latitude == BAD_VALUE {
+        return (bad, bad);
+    }
+    let mut abslat = latitude.abs();
+    if abslat > 90.0 && abslat - 90.0 <= range.tol {
+        latitude = if latitude < 0.0 { -90.0 } else { 90.0 };
+        abslat = 90.0;
+    }
+    let (accepted, longitude) = range.decide(longitude);
+    if accepted && abslat <= 90.0 {
+        (to_output * longitude, to_output * latitude)
+    } else {
+        (bad, bad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A WcsMap of `proj` with the latitude-axis parameters `pv`, from `pv[0]`,
+    /// on axes 1 and 2.
+    fn wcsmap(proj: WcsProjection, pv: &[f64]) -> WcsMap {
+        let mut map = WcsMap::new(2, proj, 1, 2).unwrap();
+        for (m, &v) in pv.iter().enumerate() {
+            map.set_pv(2, m, v).unwrap();
+        }
+        map
+    }
+
+    /// Projected (x, y), in the WcsMap's input units, of native longitudes
+    /// at, a few ULP from and a few eighths of the projection's tolerance
+    /// from each limit a WcsMap's inverse decides on, at latitudes across
+    /// the sphere, as the per-value forward projection gives them.
+    fn near_limit_inputs(map: &WcsMap) -> Vec<(f64, f64)> {
+        let tol = map.proj.table_tol();
+        let factor = if map.tpn_tan() { 1.0 } else { DD2R };
+        let mut out = Vec::new();
+        for limit in [180.0, -180.0 - tol, 360.0, -tol, -180.0] {
+            for t in 0..200 {
+                let theta = -79.5 + 159.0 * f64::from(t) / 199.0;
+                for k in -40i64..=40 {
+                    for phi in [
+                        limit + k as f64 * tol / 8.0,
+                        f64::from_bits(limit.to_bits().wrapping_add_signed(k)),
+                    ] {
+                        if let (Status::Ok, x, y) = map.prj.fwd_raw(phi, theta) {
+                            out.push((x / (DR2D * factor), y / (DR2D * factor)));
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The inverse of `map` at `pairs` through its slice entry, with the
+    /// longitude redo on or off.
+    fn inverse_slice(map: &WcsMap, pairs: &[(f64, f64)], lon_redo: bool) -> Vec<(f64, f64)> {
+        let mut lon: Vec<f64> = pairs.iter().map(|q| q.0).collect();
+        let mut lat: Vec<f64> = pairs.iter().map(|q| q.1).collect();
+        map.project_in_place_with(&mut lon, &mut lat, false, BAD_VALUE, lon_redo)
+            .unwrap();
+        lon.into_iter().zip(lat).collect()
+    }
+
+    /// The inverse of `map` at `pairs` one point at a time through the
+    /// per-value projection, which keeps wcslib's bits, and the same
+    /// [`inverse_finish`] the slice entry stores with.
+    fn inverse_per_point(map: &WcsMap, pairs: &[(f64, f64)]) -> Vec<(f64, f64)> {
+        let range = map.lon_range();
+        let factor = if map.tpn_tan() { 1.0 } else { DD2R };
+        let (to_degrees, to_output) = (DR2D * factor, DD2R / factor);
+        pairs
+            .iter()
+            .map(
+                |&(x, y)| match map.prj.rev_raw(x * to_degrees, y * to_degrees) {
+                    (Status::Ok, lon, lat) => {
+                        inverse_finish(&range, to_output, BAD_VALUE, lon, lat)
+                    }
+                    _ => (BAD_VALUE, BAD_VALUE),
+                },
+            )
+            .collect()
+    }
+
+    /// How many pairs the slice entry and the per-value path give different
+    /// bits for, and how many of them the one gives as bad and the other not.
+    fn mismatches(got: &[(f64, f64)], want: &[(f64, f64)]) -> (usize, usize) {
+        let mut differ = 0;
+        let mut bad_or_good = 0;
+        for (g, w) in got.iter().zip(want) {
+            if g.0.to_bits() != w.0.to_bits() || g.1.to_bits() != w.1.to_bits() {
+                differ += 1;
+                bad_or_good += usize::from((g.0 == BAD_VALUE) != (w.0 == BAD_VALUE));
+            }
+        }
+        (differ, bad_or_good)
+    }
+
+    /// The WcsMaps whose inverse projections' longitudes come from the
+    /// vectorized kernels and are tested against their range: COO and BON
+    /// with LonCheck set.
+    fn tested_maps() -> Vec<WcsMap> {
+        vec![
+            wcsmap(WcsProjection::Coo, &[0.0, 45.0, 10.0]),
+            wcsmap(WcsProjection::Coo, &[0.0, -30.0, 15.0]),
+            wcsmap(WcsProjection::Bon, &[0.0, 45.0]),
+            wcsmap(WcsProjection::Bon, &[0.0, -30.0]),
+        ]
+    }
+
+    /// At longitudes at and near the limits of the range a WcsMap's inverse
+    /// accepts, the slice entry, whose longitude comes from the kernels,
+    /// gives the per-value path's bad points, and its bits wherever the
+    /// longitude is near a limit; and with the longitude redo off, as if the
+    /// kernels had no drift, it gives a point bad that the per-value path
+    /// does not, or the reverse.
+    #[test]
+    fn inverse_longitudes_near_a_limit_are_decided_as_per_value() {
+        let mut flipped_without_redo = 0;
+        for map in tested_maps() {
+            let code = map.proj.code();
+            let range = map.lon_range();
+            assert!(range.tested, "{code}: the longitude is not tested");
+            let pairs = near_limit_inputs(&map);
+            let want = inverse_per_point(&map, &pairs);
+            let got = inverse_slice(&map, &pairs, true);
+            // Within the smaller of COO's and BON's longitude drifts, 3 * 2^-52
+            // of 180 degrees, of a limit, where the kernels' longitude is
+            // within twice its drift of it and the point is redone.
+            let redone = 3.0 * f64::EPSILON * 180.0;
+            let mut near = 0;
+            for (i, (g, w)) in got.iter().zip(&want).enumerate() {
+                assert_eq!(
+                    g.0 == BAD_VALUE,
+                    w.0 == BAD_VALUE,
+                    "{code}: {:?} gives {g:?} against {w:?}",
+                    pairs[i]
+                );
+                let (_, lon, _) = map.prj.rev_raw(pairs[i].0 * DR2D, pairs[i].1 * DR2D);
+                let limits = [range.hi, range.lo - range.tol];
+                if limits.iter().any(|&l| (lon - l).abs() <= redone) {
+                    near += 1;
+                    assert!(
+                        g.0.to_bits() == w.0.to_bits() && g.1.to_bits() == w.1.to_bits(),
+                        "{code}: {:?} near a limit gives {g:?} against {w:?}",
+                        pairs[i]
+                    );
+                }
+            }
+            assert!(near > 0, "{code}: no longitude is near a limit");
+            let (_, bad_or_good) = mismatches(&inverse_slice(&map, &pairs, false), &want);
+            flipped_without_redo += bad_or_good;
+        }
+        assert!(
+            flipped_without_redo > 0,
+            "the redo is never needed; is the test reaching the limits?"
+        );
+    }
+
+    /// SZP's reverse longitude comes from the kernels, but SZP is cyclic for
+    /// every parameter set the projection tests use, so a WcsMap's inverse
+    /// never tests it.
+    #[test]
+    fn szp_is_cyclic_so_its_longitude_is_not_tested() {
+        for pv in [&[][..], &[0.0, 2.0, 30.0, 60.0], &[0.0, 0.5, 0.0, -30.0]] {
+            let map = wcsmap(WcsProjection::Szp, pv);
+            assert!(map.long_range().0, "SZP {pv:?} is not cyclic");
+            assert!(!map.lon_range().tested, "SZP {pv:?}");
+        }
     }
 }
