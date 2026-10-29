@@ -837,8 +837,29 @@ pub(super) fn zpn_set(prm: &mut PrjPrm) -> Status {
 // reference/starlink-ast/wcslib/proj.c, astZPNfwd; reference/starlink-ast at 3d3f255f.
 // The loop runs from the degree `n` down, as AST's modification of wcslib
 // has it, not from the largest degree a parameter array holds.
+// C evaluates the polynomial before the sine and cosine; neither depends on
+// the other.
 #[inline(always)]
 pub(super) fn zpn_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
+    zpn_fwd_rest(prm, theta, zpn_fwd_front::<T>(prm, phi, theta))
+}
+
+/// The first stage of [`zpn_fwd`], its only trigonometry: the sine and
+/// cosine of `phi`, with [`Status::Ok`].
+#[inline(always)]
+pub(super) fn zpn_fwd_front<T: Trig>(_prm: &PrjPrm, phi: f64, _theta: f64) -> (Status, f64, f64) {
+    (Status::Ok, T::sind(phi), T::cosd(phi))
+}
+
+/// The rest of [`zpn_fwd`] at `theta`, given the sine and cosine of `phi`
+/// from [`zpn_fwd_front`]: the polynomial, its product with them, and the
+/// status.
+#[inline(always)]
+fn zpn_fwd_rest(
+    prm: &PrjPrm,
+    theta: f64,
+    (_, sphi, cphi): (Status, f64, f64),
+) -> (Status, f64, f64) {
     let s = (90.0 - theta) * D2R;
 
     let mut r = 0.0;
@@ -849,14 +870,36 @@ pub(super) fn zpn_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     }
     r *= prm.r0;
 
-    let x = r * T::sind(phi);
-    let y = -r * T::cosd(phi);
+    let x = r * sphi;
+    let y = -r * cphi;
 
     if s > prm.w[0] {
         return (Status::BadPoint, x, y);
     }
 
     (Status::Ok, x, y)
+}
+
+/// [`zpn_fwd`]'s second stage in a slice: [`zpn_fwd_rest`] on the kernels'
+/// sine and cosine of `phi`, which it never declines.
+// The status is `s > w[0]`, from `theta` alone, so the kernels cannot change
+// it, and the iteration-free polynomial has no other branch on the point.
+#[inline(always)]
+#[allow(clippy::unnecessary_wraps)]
+pub(super) fn zpn_fwd_finish(
+    prm: &PrjPrm,
+    _phi: f64,
+    theta: f64,
+    stage: (Status, f64, f64),
+) -> Option<(Status, f64, f64)> {
+    Some(zpn_fwd_rest(prm, theta, stage))
+}
+
+/// Whether [`zpn_fwd_front`] needs [`Libm`] at (`phi`, `theta`): a sine or
+/// cosine argument outside the kernels' cover.
+#[inline(always)]
+pub(super) fn zpn_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, _theta: f64) -> bool {
+    !sincosd_covers(phi)
 }
 
 // reference/starlink-ast/wcslib/proj.c, astZPNrev; reference/starlink-ast at 3d3f255f.
