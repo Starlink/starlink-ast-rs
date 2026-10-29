@@ -21,7 +21,7 @@
 use super::math;
 
 use super::prj::{PrjPrm, Status};
-use super::trig::{D2R, R2D, Trig};
+use super::trig::{D2R, R2D, Trig, sincosd_covers};
 use super::zenithal::c_copysign;
 use std::f64::consts::{PI, SQRT_2};
 
@@ -276,6 +276,43 @@ pub(super) fn ait_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     let y = w * T::sind(theta);
 
     (Status::Ok, x, y)
+}
+
+/// Whether [`ait_fwd`] needs [`Libm`](super::trig::Libm) at (`phi`,
+/// `theta`): a sine or cosine argument outside the kernels' cover, or a
+/// divisor of the square root's argument so near zero that the kernels'
+/// drift could change its sign.
+// The body has no status test and no branch, but its square root is of
+// `w0 / (1 + cthe cosd(phi / 2))`, which is NaN or infinite where that
+// divisor is negative or zero: decided by `ait_fwd_divisor_near_zero`. The
+// divisor is at least 1 for every point a WcsMap projects, whose longitude
+// and latitude are within the principal ranges.
+#[inline(always)]
+pub(super) fn ait_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+    !sincosd_covers(theta)
+        | !sincosd_covers(phi / 2.0)
+        | ait_fwd_divisor_near_zero(T::cosd(theta), T::cosd(phi / 2.0))
+}
+
+/// Whether `1 + cthe chalf`, the divisor in [`ait_fwd`], from the kernels'
+/// cosines of `theta` and `phi / 2`, is so near zero that
+/// [`Libm`](super::trig::Libm)'s could have the other sign or be zero.
+// The product `cthe chalf` of two kernel cosines, each within 2 ULP of
+// Libm's (see `Kernel`), at most 2 eps of it (eps = 2^-52), differs by at
+// most 5 eps of itself, with the two paths' roundings of the product, eps
+// between them; the sum by a further eps of itself. That is eps (5 |cthe
+// chalf| + |divisor|), to first order. The margin is twice that, which
+// covers its own evaluation from the kernels' values rather than Libm's.
+// Where the divisor is beyond it, Libm's has the kernels' sign and neither
+// is zero.
+#[inline(always)]
+pub(super) fn ait_fwd_divisor_near_zero(cthe: f64, chalf: f64) -> bool {
+    let product = cthe * chalf;
+    let divisor = 1.0 + product;
+    let margin = 2.0 * f64::EPSILON * (5.0 * product.abs() + divisor.abs());
+    // False for a NaN, which is then redone.
+    let clear_of_zero = divisor.abs() > margin;
+    !clear_of_zero
 }
 
 // reference/starlink-ast/wcslib/proj.c, astAITrev; reference/starlink-ast at 3d3f255f.
