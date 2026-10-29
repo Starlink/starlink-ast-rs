@@ -887,6 +887,8 @@ pub(super) fn tpn_fwd_step_noise(
 #[inline(always)]
 pub(super) fn tpn_fwd_finish(
     prm: &PrjPrm,
+    _phi: f64,
+    _theta: f64,
     (status, xi, eta): (Status, f64, f64),
 ) -> Option<(Status, f64, f64)> {
     if status != Status::Ok {

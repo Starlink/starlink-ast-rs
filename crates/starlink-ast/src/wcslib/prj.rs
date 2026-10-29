@@ -119,6 +119,21 @@
 //! correctly rounded `1 - v^2`, one fused multiply-add, brought both within
 //! 1 ULP, but a build without fused multiply-adds would need the same bits.
 //!
+//! ZPN's forward projection opts in its only trigonometry, the sine and
+//! cosine of the longitude; the polynomial in the colatitude, and the
+//! status, which depends on the latitude alone, are computed per element on
+//! the result. On Apple silicon, with the cubic of the benchmarks, on a 1000
+//! by 1000 grid of a one-degree image it ran at 11 ns per point against 33
+//! for its [`Libm`] loop, and at 11 against 36 on random points of the
+//! hemisphere; at one point it took 60 ns against 33.
+//! ZPN's reverse projection does not opt in. Its only trigonometry is the
+//! arc tangent that gives the longitude, after a root search that decides
+//! the status from the radius alone, so the kernel could not change a
+//! status; but on the grid it ran at 52.4 ns per point against 52.0 for its
+//! [`Libm`] loop, and at 81 against 80 on a twenty-degree image, faster only
+//! on random points (63 against 83), and at one point it took 90 ns against
+//! 48.
+//!
 //! TPN's forward projection opts in its front end, the gnomonic projection
 //! to (xi, eta); the Newton iteration that inverts the polynomial runs per
 //! element on the result, with one step fewer than the per-value entry, and
@@ -173,7 +188,7 @@ use super::zenithal::{
     sin_fwd_orthographic, sin_fwd_orthographic_needs_special, sin_fwd_synthesis,
     sin_fwd_synthesis_needs_special, sin_rev, sin_set, stg_fwd, stg_rev, stg_set, szp_fwd, szp_rev,
     szp_set, tan_fwd, tan_fwd_needs_special, tan_rev, tan_set, zea_fwd, zea_rev, zea_set, zpn_fwd,
-    zpn_rev, zpn_set,
+    zpn_fwd_finish, zpn_fwd_front, zpn_fwd_needs_special, zpn_rev, zpn_set,
 };
 use super::{PRJ_PARAM_SLOTS, WcsProjection};
 
@@ -592,6 +607,7 @@ impl Prj {
                 kernel_slice::<SinFwdOrthographic>(prm, a, b, "wcs_fwd")
             }
             WcsProjection::Sin => kernel_slice::<SinFwdSynthesis>(prm, a, b, "wcs_fwd"),
+            WcsProjection::Zpn => kernel_slice::<ZpnFwd>(prm, a, b, "wcs_fwd"),
             WcsProjection::Tpn => kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd"),
             proj => with_fwd!(proj, |f| slice_apply(a, b, "wcs_fwd", |phi, theta| f(
                 prm, phi, theta
@@ -688,19 +704,24 @@ fn slice_apply(
 /// branch runs. Both run in the vectorized loop, so neither may branch; the
 /// module documentation says how a projection meets that.
 ///
-/// `finish` completes a point from its stage's result, one point at a time,
-/// and gives `None` where it cannot rule out a different status from the one
-/// [`Libm`] would give; `libm` is the whole body as the per-value entry runs
-/// it, which redoes those points and the special ones.
+/// `finish` completes a point from its inputs and its stage's result, one
+/// point at a time, and gives `None` where it cannot rule out a different
+/// status from the one [`Libm`] would give; `libm` is the whole body as the
+/// per-value entry runs it, which redoes those points and the special ones.
 trait KernelBody {
     /// The stage of the body the kernels run.
     fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64);
     /// Whether the stage at (`u`, `v`) needs [`Libm`], where the stage runs
     /// with the trigonometry `T`.
     fn needs_special<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> bool;
-    /// The rest of the body on the stage's result, or `None` to redo the
-    /// point with [`Libm`].
-    fn finish(prm: &PrjPrm, stage: (Status, f64, f64)) -> Option<(Status, f64, f64)>;
+    /// The rest of the body at (`u`, `v`) on the stage's result, or `None`
+    /// to redo the point with [`Libm`].
+    fn finish(
+        prm: &PrjPrm,
+        u: f64,
+        v: f64,
+        stage: (Status, f64, f64),
+    ) -> Option<(Status, f64, f64)>;
     /// The whole body with [`Libm`].
     fn libm(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64);
 }
@@ -725,8 +746,13 @@ macro_rules! kernel_body {
                 $special::<T>(prm, u, v)
             }
             #[inline(always)]
-            fn finish(prm: &PrjPrm, stage: (Status, f64, f64)) -> Option<(Status, f64, f64)> {
-                $finish(prm, stage)
+            fn finish(
+                prm: &PrjPrm,
+                u: f64,
+                v: f64,
+                stage: (Status, f64, f64),
+            ) -> Option<(Status, f64, f64)> {
+                $finish(prm, u, v, stage)
             }
             #[inline(always)]
             fn libm(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64) {
@@ -741,6 +767,8 @@ macro_rules! kernel_body {
 #[allow(clippy::unnecessary_wraps)]
 fn kernel_stage_is_whole_body(
     _prm: &PrjPrm,
+    _u: f64,
+    _v: f64,
     stage: (Status, f64, f64),
 ) -> Option<(Status, f64, f64)> {
     Some(stage)
@@ -756,6 +784,13 @@ kernel_body!(
     SinFwdSynthesis,
     sin_fwd_synthesis,
     sin_fwd_synthesis_needs_special
+);
+kernel_body!(
+    ZpnFwd,
+    zpn_fwd_front,
+    zpn_fwd_needs_special,
+    zpn_fwd_finish,
+    zpn_fwd
 );
 kernel_body!(
     TpnFwd,
@@ -867,7 +902,7 @@ fn kernel_slice_body<K: KernelBody, const FMA: bool>(
             let out = if special[j] {
                 None
             } else {
-                K::finish(prm, (status[j], p[j], q[j]))
+                K::finish(prm, u[j], v[j], (status[j], p[j], q[j]))
             }
             .unwrap_or_else(|| K::libm(prm, u[j], v[j]));
             let i = index[j];
@@ -1563,6 +1598,114 @@ mod tests {
         }
     }
 
+    /// ZPN with the latitude-axis parameters `p`, from `p[0]`.
+    fn zpn_prj(p: &[f64]) -> Prj {
+        let pv: Vec<Option<f64>> = p.iter().map(|&v| Some(v)).collect();
+        Prj::new(WcsProjection::Zpn, &[pv, Vec::new()], true).unwrap()
+    }
+
+    /// The ZPN parameter sets the tests use, one per branch of the reverse
+    /// projection's root search: linear; quadratic, bad beyond 2.5 radians
+    /// from the pole; the cubic of the benchmarks, with no point of
+    /// inflection; and a quintic with a point of inflection.
+    fn zpn_prjs() -> [Prj; 4] {
+        [
+            zpn_prj(&[0.001, 1.0]),
+            zpn_prj(&[0.0, 1.0, -0.1]),
+            zpn_prj(&[0.0, 1.0, 0.0, 0.05]),
+            zpn_prj(&[0.0, 1.0, 0.0, -0.08, 0.0, 0.002]),
+        ]
+    }
+
+    /// Projected (x, y) for ZPN reverse: random values within ±720 degrees
+    /// paired out of order, pairs with magnitudes from 2^-40 to 2^40, and
+    /// every pairing of the specials and the multiples of 45 degrees.
+    fn zpn_rev_inputs() -> Vec<(f64, f64)> {
+        let d = degrees(200_000);
+        let mut out: Vec<(f64, f64)> = d.iter().copied().zip(d.iter().rev().copied()).collect();
+        out.extend(angle_pairs(100_000));
+        let mut edges = specials();
+        edges.extend((-8..=8).map(|k| 45.0 * f64::from(k)));
+        for &u in &edges {
+            for &v in &edges {
+                out.push((u, v));
+            }
+        }
+        out
+    }
+
+    /// How far ZPN's forward slice outputs may be from the per-value
+    /// entry's, in ULP. Each output is the polynomial, computed alike on
+    /// both paths, times one kernel sine or cosine, which is within 2 ULP of
+    /// libm's (see [`Kernel`]), at most 2 * 2^-52 relative. So the exact
+    /// products differ by at most 2 * 2^-52 of the output, which is at most
+    /// 4 ULP of it, and the two paths' roundings add at most 1 ULP between
+    /// them: the bound is 5 ULP. Measured (2026-10-29): 2 against macOS libm
+    /// on arm64, and 4 against its x86-64 libm.
+    const ZPN_FWD_SLICE_ULPS: u64 = 5;
+
+    /// ZPN's forward slice runs the kernels and is within
+    /// [`ZPN_FWD_SLICE_ULPS`] of the per-value entry, with the same bad
+    /// points; its reverse slice runs [`Libm`] and is bit for bit the
+    /// per-value entry.
+    #[test]
+    fn zpn_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let fwd_inputs = tan_fwd_inputs();
+        let rev_inputs = zpn_rev_inputs();
+        for p in zpn_prjs() {
+            let n = p.prm.n;
+            let (fwd_max, _, fwd_differ) = slice_drift(&p, &fwd_inputs, true);
+            assert!(
+                fwd_max.iter().all(|&m| m <= ZPN_FWD_SLICE_ULPS),
+                "degree {n} forward: {fwd_max:?} ULP"
+            );
+            assert!(fwd_differ > 0, "degree {n} forward: no output differs");
+            let (rev_max, _, rev_differ) = slice_drift(&p, &rev_inputs, false);
+            assert_eq!((rev_max, rev_differ), ([0, 0], 0), "degree {n} reverse");
+        }
+    }
+
+    #[test]
+    fn zpn_slices_give_each_point_the_same_bits_at_any_length() {
+        for p in zpn_prjs() {
+            assert_same_bits_at_any_length(&p, &interleaved_inputs());
+        }
+    }
+
+    #[test]
+    fn zpn_slice_builds_agree() {
+        for p in zpn_prjs() {
+            assert_builds_agree::<ZpnFwd>(&p, &interleaved_inputs());
+        }
+    }
+
+    /// The pole, and longitudes at multiples of 90 degrees, which the
+    /// kernels do not cover, get the per-value entry's bits in a slice.
+    #[test]
+    fn zpn_exact_points_stay_exact_in_a_slice() {
+        for p in zpn_prjs() {
+            let mut pairs = vec![(0.0, 90.0), (-0.0, 90.0), (10.0, 80.0)];
+            for k in -4..=4 {
+                let a = 90.0 * f64::from(k);
+                pairs.extend([(a, 80.0), (a, 90.0), (a, -10.0)]);
+            }
+            let got = through_slice(&p, &pairs, true);
+            for (&(u, v), &(x, y)) in pairs.iter().zip(&got) {
+                let (status, wx, wy) = p.fwd_raw(u, v);
+                let want = if status == Status::Ok {
+                    (wx, wy)
+                } else {
+                    (BAD_VALUE, BAD_VALUE)
+                };
+                assert_eq!(
+                    (x.to_bits(), y.to_bits()),
+                    (want.0.to_bits(), want.1.to_bits()),
+                    "({u}, {v})"
+                );
+            }
+        }
+    }
+
     use crate::wcslib::tpn::{
         NEWTON_MAX_ITERATIONS, NEWTON_RELATIVE_TOLERANCE, tpn_fwd_solve, tpn_fwd_step_noise,
     };
@@ -1844,7 +1987,7 @@ mod tests {
             if k < NEWTON_MAX_ITERATIONS {
                 for (sx, sy) in [(2, 2), (2, -2), (-2, 2), (-2, -2)] {
                     let nudged = (Status::Ok, ulps_away(xi, sx), ulps_away(eta, sy));
-                    let (s, x, y) = tpn_fwd_finish(&p.prm, nudged)
+                    let (s, x, y) = tpn_fwd_finish(&p.prm, phi, theta, nudged)
                         .unwrap_or_else(|| panic!("({phi}, {theta}): {nudged:?} is not accepted"));
                     assert_eq!(s, Status::Ok);
                     let over = tpn_drift_ratio(&p, phi, theta, x, y);
