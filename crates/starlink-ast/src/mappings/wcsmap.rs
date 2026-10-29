@@ -33,14 +33,16 @@ const AST_WCSMX: usize = 10;
 /// The WcsMap forward input is longitude and latitude in radians; WCSLIB
 /// expects degrees with the longitude in `[-180,180]` and the latitude in
 /// `[-90,90]`. Any point whose latitude falls outside `[-90,90]` is converted
-/// to the equivalent point on the complementary meridian. This mirrors
-/// wcsmap.c:2820-2839.
+/// to the equivalent point on the complementary meridian.
 ///
 /// `factor` scales the WcsMap input into radians. It is `1.0` whenever the
-/// `TPNTan` attribute is non-zero (the default), and `AST__DD2R` when `TPNTan`
-/// has been cleared, in which case the WcsMap works in degrees throughout.
+/// `TPNTan` attribute is non-zero (the default), and degrees to radians when
+/// `TPNTan` has been cleared, in which case the WcsMap works in degrees
+/// throughout.
 ///
-/// Returns `(longitude, latitude)` in degrees, ready for `WcsFwd`.
+/// Returns `(longitude, latitude)` in degrees, ready for the forward
+/// projection.
+// wcsmap.c:2820-2839.
 fn forward_prep(in0: f64, in1: f64, factor: f64) -> (f64, f64) {
     let latitude = DR2D * pal::drange(factor * in1);
     if latitude > 90.0 {
@@ -167,25 +169,27 @@ pub struct WcsMap {
     ident: Option<String>,
     /// The Object-class ID attribute, which a clone does not inherit.
     id: crate::object_id::ObjectId,
-    /// The flags C keeps on the base Mapping class (mapping.c).
+    /// The flags every Mapping keeps.
+    // C keeps them on the base Mapping class (mapping.c).
     mapping_flags: crate::mappings::MappingFlags,
-    /// Protected `LonCheck` attribute (wcsmap.c:4787). Controls whether the
-    /// inverse projection clips returned longitude values to the projection's
+    /// Protected `LonCheck` attribute. Controls whether the inverse
+    /// projection clips returned longitude values to the projection's
     /// primary range. `None` = unset (defaults to `true`); `Some(v)` = the
-    /// explicitly set value. Mirrors C's `loncheck` field, whose sentinel
-    /// `-INT_MAX` means "not set" (astMAKE_TEST/GET at wcsmap.c:4818-4821).
+    /// explicitly set value.
+    // wcsmap.c:4787; C's `loncheck` field uses `-INT_MAX` for "not set"
+    // (astMAKE_TEST/GET at wcsmap.c:4818-4821).
     lon_check: Option<bool>,
-    /// Protected `FITSProj` attribute (wcsmap.c:4711). Marks this WcsMap as
-    /// the one that defines the FITS-WCS projection when a compound Mapping
-    /// is written out through a FitsChan. A WcsMap used only as a distortion
-    /// correction (e.g. the polynomial part of a `-ZPX` header) has it
-    /// cleared. `None` = unset (defaults to `true`), matching C's `-INT_MAX`
-    /// sentinel (wcsmap.c:4742-4746).
+    /// Protected `FITSProj` attribute. Marks this WcsMap as the one that
+    /// defines the FITS-WCS projection when a compound Mapping is written out
+    /// through a FitsChan. A WcsMap used only as a distortion correction
+    /// (e.g. the polynomial part of a `-ZPX` header) has it cleared.
+    /// `None` = unset (defaults to `true`).
+    // wcsmap.c:4711; C's `-INT_MAX` sentinel at wcsmap.c:4742-4746.
     fits_proj: Option<bool>,
-    /// Protected `TPNTan` attribute (wcsmap.c:4750). When cleared, a TPN
-    /// projection applies only its polynomial correction and omits the TAN
-    /// projection itself. `None` = unset (defaults to `true`), matching C's
-    /// `-INT_MAX` sentinel (wcsmap.c:4780-4782).
+    /// Protected `TPNTan` attribute. When cleared, a TPN projection applies
+    /// only its polynomial correction and omits the TAN projection itself.
+    /// `None` = unset (defaults to `true`).
+    // wcsmap.c:4750; C's `-INT_MAX` sentinel at wcsmap.c:4780-4782.
     tpn_tan: Option<bool>,
 }
 
@@ -475,15 +479,16 @@ impl WcsMap {
     }
 
     /// Whether the projection is zenithal for the purpose of FITS-WCS
-    /// LONPOLE and LATPOLE (wcsmap.c `IsZenithal`): TAN, STG, ARC, ZPN, ZEA,
-    /// AIR and TPN always, AZP when PV2_2 is zero, SIN when PV2_1 and PV2_2
-    /// are, and SZP according to its latitude parameter 2.
+    /// LONPOLE and LATPOLE: TAN, STG, ARC, ZPN, ZEA, AIR and TPN always, AZP
+    /// when PV2_2 is zero, SIN when PV2_1 and PV2_2 are, and SZP according to
+    /// its latitude parameter 2.
     ///
     /// The SZP test reads parameter 2, the native longitude of the source of
     /// projection, and compares it with +/-90, where its comment and the
     /// projection's geometry point to parameter 3, the native latitude, which
-    /// defaults to 90; the port mirrors C (`docs/issues/c-library-quirks.md`,
-    /// "`IsZenithal` tests the wrong SZP parameter").
+    /// defaults to 90; the port mirrors the C library here.
+    // wcsmap.c `IsZenithal`; docs/issues/c-library-quirks.md, "`IsZenithal`
+    // tests the wrong SZP parameter".
     pub(crate) fn is_zenithal(&self) -> bool {
         let lat = |m: usize| self.get_pv(self.latax + 1, m).unwrap_or(BAD_VALUE);
         let or = |v: f64, default: f64| if v == BAD_VALUE { default } else { v };
@@ -682,15 +687,16 @@ impl WcsMap {
     }
 
     /// Determine the acceptable longitude range and cyclicity for the
-    /// inverse (xy->sky) transformation. Port of `LongRange`
-    /// (wcsmap.c:2597).
+    /// inverse (xy->sky) transformation.
     ///
-    /// Returns `(cyclic, longhi, longlo)`. `cyclic` is true when
+    /// Returns `(cyclic, high, low)`. `cyclic` is true when
     /// `[a,0]` and `[a+2.PI,0]` map to the same Cartesian position (so the
-    /// out-of-range longitude test can be skipped). `longhi`/`longlo` bound
+    /// out-of-range longitude test can be skipped). `high` and `low` bound
     /// the primary longitude range the projection produces — either
     /// `[-180,180]` or `[0,360]` — used to reject inverse solutions that
     /// fall outside the physical domain of the projection.
+    // Port of `LongRange` (wcsmap.c:2597), which returns `longhi` and
+    // `longlo`.
     fn long_range(&self) -> (bool, f64, f64) {
         // Sample points near the projection origin (in degrees).
         const XX: [f64; 4] = [-1.0e-6, 0.0, 1.0e-6, 0.0];
@@ -916,10 +922,11 @@ impl WcsMap {
         CmpMap::new(Box::new(self), other, Composition::Parallel)
     }
 
-    /// C has no projection functions for NCP, so transforming through an NCP
-    /// WcsMap is an `AST__WCSTY` error (wcsmap.c `Map` returns 1, which
-    /// `Transform` reports). A FITS header's NCP projection is read as SIN
-    /// with parameters, so only a WcsMap made as NCP reaches this.
+    /// There are no projection functions for NCP, so transforming through an
+    /// NCP WcsMap is an `AST__WCSTY` error. A FITS header's NCP projection is
+    /// read as SIN with parameters, so only a WcsMap made as NCP reaches
+    /// this.
+    // wcsmap.c `Map` returns 1, which `Transform` reports.
     fn check_transformable(&self) -> AstResult<()> {
         if self.proj == WcsProjection::Ncp {
             return Err(AstError::new(
@@ -1006,9 +1013,10 @@ impl WcsMap {
     }
 
     /// Whether each projection parameter is unset in both WcsMaps or set in
-    /// both to equal values, as wcsmap.c `Equal` compares them (fixed
-    /// upstream in 47826767): an unset parameter is AST__BAD, so it differs
-    /// from one set to zero.
+    /// both to equal values: an unset parameter differs from one set to
+    /// zero.
+    // As wcsmap.c `Equal` compares them (fixed upstream in 47826767): an
+    // unset parameter is AST__BAD.
     fn params_equal(&self, other: &WcsMap) -> bool {
         for axis in 0..2 {
             let p1 = self.params.get(axis).map(|v| v.as_slice()).unwrap_or(&[]);
