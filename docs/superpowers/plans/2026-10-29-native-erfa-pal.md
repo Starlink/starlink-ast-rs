@@ -21,7 +21,7 @@ Models: `docs/superpowers/plans/2026-10-27-native-erfa-sphmap.md` and `docs/supe
 - Branch `tickets/DM-56839-erfapal`, stacked on `tickets/DM-56839-wcsmap`; one pull request; nothing is pushed.
 - Port first, vectorize only measured hot spots (user direction, 2026-10-29): Tasks 2–12 add no kernel, no slice entry and no `vmath` call.
 - Everything in `erfa` and `pal` is `pub(crate)` or narrower; both depend only on their own types, `f64` math, `vmath` and `BAD_VALUE`, never on Mapping, Frame or `Points` types; `pal` depends on `erfa`, never the reverse.
-- The `pal` wrappers' signatures (the `pub(crate) fn` list in today's `pal.rs`) do not change, and no caller outside `pal/` changes until Task 14.
+- The `pal` wrappers' signatures (the `pub(crate) fn` list in today's `pal.rs`) do not change, and no caller outside `pal/` changes until Task 14, except where a wrapper's bare status integer becomes a typed status (Task 4: `djcl`, `cldj`, `dtf2d`; Task 6: `gd2gc`, `gc2gd` keep their `Option`).
 - Every new file opens with the two AURA/SPDX lines (`test_source_headers`).
 - Every ERFA-derived file carries ERFA's notice, copied verbatim from `src/erfa/c2s.rs` lines 3–61, then `// Ported from ERFA eraXxx (erfa/xxx.c), ERFA 2.0.1 as vendored at reference/starlink-ast 3d3f255f.`
 - Every PAL-derived file carries `// Derived from PAL: Copyright Science and Technology Facilities Council, Rutherford Appleton Laboratory, Tim Jenness and Patrick T. Wallace; GNU Lesser General Public License version 3 or later.` then `// Ported from PAL palXxx (pal/palXxx.c), PAL v0.9.10-9-g75017db as vendored at reference/starlink-ast 3d3f255f.` (this plan's call, from `COPYRIGHT`'s PAL line).
@@ -35,7 +35,7 @@ Models: `docs/superpowers/plans/2026-10-27-native-erfa-sphmap.md` and `docs/supe
   - `ERFA_*` and `PAL__*` constants come from `erfam.h` and `palmac.h` as `const`s in `erfa/mod.rs` and `pal/mod.rs`, each the C expression transcribed (so `ERFA_DAS2R` is `4.848136811095359935899141e-6`, not recomputed).
 - Bodies use `f64` methods directly (`#![allow(clippy::disallowed_methods)]` is already on `erfa`; add it to `pal`), not the counted wrappers in `crate::math`.
 - Call counts: each `pal` wrapper calls `crate::call_counts::hit("astPalXxx")` (or `"astEraXxx"`) exactly where it called `counted!` before, once per call; nothing inside `erfa` or `pal` bodies counts.
-- C status codes: a function that writes no result on failure returns `Result<T, ErfaError>` (`pub(crate) struct ErfaError(pub(crate) i32)`, C's status); a function whose C status comes with a result regardless (`cal2jd`'s −3, `tf2d`'s 1–3, `dat`) returns the result and C's status as `(T, i32)`, the spec's "value with a typed warning", the type being C's code because the PAL wrappers pass it on unchanged (this plan's call).
+- C status codes become Rust types, never bare integers (user decision, 2026-10-29). A status that means no result is an error: the function returns `Result<T, E>` with a per-function `enum E` whose variants name C's codes (`Cal2jdError::{BadYear, BadMonth}`). A status that comes with a result is a warning: the function returns the result with a per-function warning `enum` in an `Option` (`cal2jd`'s bad day, `tf2d`'s out-of-range field, `dat`'s pre-UTC date, `epv00`'s date range). Each enum's doc says which C code each variant is, in a `//` comment. Callers that tested C's integer match on the variant instead.
 - Relaxations: none are expected in this plan, since every gate is bit identity; if one is ever needed it is per case, named in source and counted in `PLAN.md` §6.
 - `cargo fmt`, `cargo clippy --workspace -- -D warnings`, `#![warn(missing_docs)]` stay clean.
 - Run cargo with conda's variables unset: `env -u CC -u CXX -u CFLAGS -u CPPFLAGS -u LDFLAGS cargo …`; the shell is zsh.
@@ -78,7 +78,7 @@ Models: `docs/superpowers/plans/2026-10-27-native-erfa-sphmap.md` and `docs/supe
 **Files:**
 - Create: `crates/starlink-ast/src/pal/mod.rs` (today's `pal.rs` less its `extern` block), `crates/starlink-ast/src/pal/ffi.rs` (the `extern` block, moved unchanged); Delete: `crates/starlink-ast/src/pal.rs`
 - Create: `crates/starlink-ast/src/erfa/difftest.rs` (`#[cfg(test)]`: `extern "C"` declarations of every `astEra*` symbol the port's differential tests call, added to as each task needs them)
-- Modify: `crates/starlink-ast/src/erfa/mod.rs` (constants, `dint`, `dnint`, `dsign`, `ErfaError`, module list)
+- Modify: `crates/starlink-ast/src/erfa/mod.rs` (constants, `dint`, `dnint`, `dsign`, module list)
 - Create, one file each: `crates/starlink-ast/src/erfa/{anp,anpm,pas,pdp,pm,pmp,pn,ppp,ppsp,pxp,sxp,sepp,seps,pv2s,s2pv,pvu,rx,ry,rz,rxp,rxpv,rxr,tr,trxp,rv2m,rm2v}.rs`
 
 **Interfaces:**
@@ -88,7 +88,8 @@ Models: `docs/superpowers/plans/2026-10-27-native-erfa-sphmap.md` and `docs/supe
   - `pv2s(pv) -> (f64, f64, f64, f64, f64, f64)` (θ, φ, r, θ̇, φ̇, ṙ), `s2pv(theta, phi, r, td, pd, rd) -> PV`, `pvu(dt, pv) -> PV`
   - `rx(phi, r: M3) -> M3`, `ry`, `rz` likewise; `rxp(r, p) -> V3`, `rxpv(r, pv) -> PV`, `rxr(a, b) -> M3`, `tr(r) -> M3`, `trxp(r, p) -> V3`, `rv2m(w) -> M3`, `rm2v(r) -> V3`
   - `type V3 = [f64; 3]; type M3 = [[f64; 3]; 3]; type PV = [[f64; 3]; 2];` in `erfa/mod.rs`
-  - `dint(a) -> f64`, `dnint(a) -> f64`, `dsign(a, b) -> f64`; `ErfaError`; the `erfam.h` constants used anywhere in the closure
+  - `dint(a) -> f64`, `dnint(a) -> f64`, `dsign(a, b) -> f64`; the `erfam.h` constants used anywhere in the closure
+- Hand-written on plain arrays, not a linear-algebra crate (user decision 2026-10-29; a crate is a `PLAN.md` §7 item for later).
 - `eraCp`, `eraCr`, `eraZp`, `eraIr` are not ported as functions: Rust arrays are `Copy`, and `[0.0; 3]` and the identity matrix are literals (this plan's call). A C function that writes its result into one of its inputs (`eraRxp(r, p, p)`) is ported to return the value, and the differential test covers the aliased call.
 - Test inputs (in `crate::test_inputs`, so they outlive `difftest.rs`): `pub(crate) fn vectors(n) -> Vec<[f64; 3]>` (unit vectors, vectors scaled by 1e-300 … 1e300, the zero vector, and every triple of `specials()`), `pub(crate) fn matrices(n) -> Vec<[[f64; 3]; 3]>` (random rotations, random general matrices, the identity, a zero matrix, matrices carrying specials).
 
@@ -127,9 +128,10 @@ Models: `docs/superpowers/plans/2026-10-27-native-erfa-sphmap.md` and `docs/supe
 - Modify: `crates/starlink-ast/src/pal/mod.rs` (wrappers `epj`, `epj2d`, `epb`, `epb2d`, `djcl`, `cldj`, `dd2tf`, `dtf2d`, `dat`), `crates/starlink-ast/src/mappings/timemap.rs` (test only, unless Step 6 shares the table)
 
 **Interfaces:**
-- Produces in `erfa`: `cal2jd(iy, im, id) -> Result<((f64, f64), i32), ErfaError>` (errors −1, −2; the −3 warning in the `i32`), `jd2cal(dj1, dj2) -> Result<(i32, i32, i32, f64), ErfaError>`, `d2tf(ndp, days) -> (char, [i32; 4])`, `tf2d(s: char, ihour, imin, sec) -> (f64, i32)`, `epb(dj1, dj2) -> f64`, `epb2jd(epb) -> (f64, f64)`, `epj(dj1, dj2) -> f64`, `epj2jd(epj) -> (f64, f64)`, `dat(iy, im, id, fd) -> Result<(f64, i32), ErfaError>` (errors −1 … −4; `i32` is 0 or 1, pre-UTC).
+- Produces in `erfa`: `cal2jd(iy, im, id) -> Result<((f64, f64), Option<BadDay>), Cal2jdError>`, `jd2cal(dj1, dj2) -> Result<(i32, i32, i32, f64), Jd2calError>`, `d2tf(ndp, days) -> (char, [i32; 4])`, `tf2d(s: char, ihour, imin, sec) -> (f64, Option<Tf2dWarning>)` (`Hour`, `Minute`, `Second`), `epb(dj1, dj2) -> f64`, `epb2jd(epb) -> (f64, f64)`, `epj(dj1, dj2) -> f64`, `epj2jd(epj) -> (f64, f64)`, `dat(iy, im, id, fd) -> Result<(f64, Option<PreUtc>), DatError>` (`DatError` covers C's −1 … −4).
+- The wrappers `cldj` and `dtf2d` return `(f64, Option<…>)` with the ERFA warning or error as an enum, and `djcl` returns `Result<(i32, i32, i32, f64), Jd2calError>`; their callers (`frames/date_time.rs`, `frames/timeframe.rs`, `fitschan/wcs_write/mod.rs`) match on the variants where they tested the integer.
 - `dat`'s table is `const CHANGES: [(i32, i32, f64); N]` and `const DRIFT: [[f64; 2]; NERA1]`, literal for literal from `dat.c`; no `IYV`, no dubious-year status, no runtime override (spec). A comment says why the table is final.
-- `pal::dat::dat(dju: f64) -> f64`: `jd2cal(PAL__MJD0, dju)` then `dat`, returning 0.0 on any error status, as C's `deltat` (Review Focus 1).
+- `pal::dat::dat(dju: f64) -> f64`: `jd2cal(PAL__MJD0, dju)` then `dat`, returning 0.0 on any error, as C's `deltat` (Review Focus 1).
 
 - [ ] **Step 1: Write the differential tests** for the nine ERFA functions and nine wrappers. Inputs: MJD 0 … 100,000 every 0.37 days plus every leap-second table date ±1 ULP and with fractions within 1 ULP of 0 and 1 (Review Focus 2); years −4800 … 3000 including invalid months and days for `cal2jd`; `tf2d` and `d2tf` over field values in and out of range and `ndp` −2 … 10; NaN, ±∞, `BAD_VALUE`, ±1e300 for every `f64` argument (Review Focus 1). For a NaN date where C reads unwritten outputs, the test asserts only that the port returns 0.0 and does not panic, with a comment.
 - [ ] **Step 2: Run them to see them fail**, then **implement**, then **run them** — expected PASS.
@@ -163,9 +165,9 @@ Models: `docs/superpowers/plans/2026-10-27-native-erfa-sphmap.md` and `docs/supe
 - Modify: `crates/starlink-ast/src/pal/mod.rs` (`gd2gc`, `gc2gd`, `geoc`, `pvobs`)
 
 **Interfaces:**
-- Produces: `erfa::eform(n) -> Result<(f64, f64), ErfaError>`, `gd2gce(a, f, elong, phi, height) -> Result<V3, ErfaError>`, `gd2gc(n, elong, phi, height) -> Result<V3, ErfaError>`, `gc2gde(a, f, xyz) -> Result<(f64, f64, f64), ErfaError>`, `gc2gd(n, xyz) -> Result<(f64, f64, f64), ErfaError>`; `pal::geoc::geoc(p, h) -> (f64, f64)`, `pal::pvobs::pvobs(p, h, stl) -> [f64; 6]`. The wrappers keep returning `Option`.
+- Produces: `erfa::Ellipsoid` (`Wgs84`, `Grs80`, `Wgs72`; C's `n` = 1, 2, 3, so an invalid `n` cannot be expressed), `eform(e: Ellipsoid) -> (f64, f64)`, `gd2gce(a, f, elong, phi, height) -> Result<V3, Gd2gceError>`, `gd2gc(e: Ellipsoid, elong, phi, height) -> Result<V3, Gd2gceError>`, `gc2gde(a, f, xyz) -> Result<(f64, f64, f64), Gc2gdeError>`, `gc2gd(e: Ellipsoid, xyz) -> Result<(f64, f64, f64), Gc2gdeError>` (this plan's call; the differential tests cover only C's valid `n`); `pal::geoc::geoc(p, h) -> (f64, f64)`, `pal::pvobs::pvobs(p, h, stl) -> [f64; 6]`. The wrappers keep returning `Option`.
 
-- [ ] **Step 1: Write the differential tests**: latitudes over ±π/2 including the poles and ±(π/2 − 1e-15), longitudes over ±2π, heights −1e4 … 1e7 m, geocentric vectors over `vectors()` scaled by 1e3 … 1e8 including points on the polar axis and at the centre, `n` = 0 … 4 (invalid ones included), plus specials.
+- [ ] **Step 1: Write the differential tests**: latitudes over ±π/2 including the poles and ±(π/2 − 1e-15), longitudes over ±2π, heights −1e4 … 1e7 m, geocentric vectors over `vectors()` scaled by 1e3 … 1e8 including points on the polar axis and at the centre, each `Ellipsoid`, plus specials.
 - [ ] **Step 2: Fail, implement, pass; switch the wrappers**; `cargo test -p starlink-ast` passes.
 - [ ] **Step 3: Commit** — "Port ERFA's geodetic conversions and PAL's observatory position to Rust", then the bits check.
 
@@ -239,7 +241,7 @@ Models: `docs/superpowers/plans/2026-10-27-native-erfa-sphmap.md` and `docs/supe
 - Modify: `crates/starlink-ast/src/pal/mod.rs` (`evp`, `mappa`, `mapqkz`, `ampqk`)
 
 **Interfaces:**
-- Produces: `erfa::epv00(date1, date2) -> ((PV, PV), i32)` (heliocentric, barycentric; C's status, 0 or the +1 date-range warning, which comes with a result); its tables `const` arrays named and sized as in `epv00.c`. The four PAL bodies keep the wrappers' signatures.
+- Produces: `erfa::epv00(date1, date2) -> ((PV, PV), Option<OutsideRange>)` (heliocentric, barycentric; C's +1 date-range warning, which comes with a result); its tables `const` arrays named and sized as in `epv00.c`. The four PAL bodies keep the wrappers' signatures.
 
 - [ ] **Step 1: Write the differential tests**: `epv00` over dates for epochs 1000 … 3000 (its warning range included); `evp` and `mappa` over the same, with equinoxes 1950, 2000 and random; `mapqkz` and `ampqk` over `angle_pairs` with `amprms` from C's `mappa` at five epochs; poles and specials (Review Focus 5).
 - [ ] **Step 2: Fail, implement, pass; switch the wrappers**. Then confirm the closure is done: `rg -n 'counted!' crates/starlink-ast/src/pal/mod.rs` prints nothing, and `cargo test -p starlink-ast` passes.
