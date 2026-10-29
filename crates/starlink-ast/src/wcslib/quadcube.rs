@@ -35,7 +35,8 @@ use super::trig::{D2R, Kernel, R2D, Trig, sincosd_covers};
 use super::zenithal::c_copysign;
 use std::f64::consts::PI;
 
-/// `SQRT2INV` of `wcsmath.h`.
+/// 1/sqrt(2).
+// `SQRT2INV` of `wcsmath.h`.
 const SQRT2INV: f64 = 1.0 / std::f64::consts::SQRT_2;
 
 // The constants the three set-up functions of this module derive: wcslib
@@ -597,8 +598,10 @@ const CSC_P05: f32 = float_of(-0.63915306);
 const CSC_P15: f32 = float_of(0.52032238);
 const CSC_P06: f32 = float_of(0.14381585);
 
-/// astCSCrev's polynomial in `u = s*s`, `v = t*t`: the series C writes out
-/// twice, once with the roles of `xx` and `yy` exchanged.
+/// CSC's reverse polynomial in `u = s*s`, `v = t*t`, which the reverse
+/// projection evaluates twice, once with the roles of `xx` and `yy`
+/// exchanged.
+// astCSCrev writes the series out twice.
 #[inline(always)]
 fn csc_series(u: f32, v: f32) -> f32 {
     let z0 = CSC_P00

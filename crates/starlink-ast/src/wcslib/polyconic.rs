@@ -7,26 +7,30 @@
 //! Each projection is a set-up function that derives constants from the
 //! parameters in a [`PrjPrm`], and a forward and a reverse function generic
 //! over the trigonometry [`Trig`].
-//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //!
-//! The tests of the form `prj->flag > 0` in the C bodies are applied
-//! unconditionally, as [`super::prj`] explains.
+//! The bounds tests apply unconditionally, as [`super::prj`] explains.
 //!
 //! # BON with a zero standard parallel
 //!
 //! Bonne's projection with `PV2_1 = 0` is Sanson-Flamsteed's.
-//! C tests `p[1] == 0` first in both `astBONfwd` and `astBONrev`, before it
-//! looks at `flag`, and hands the call to `astSFLfwd` or `astSFLrev` with
-//! BON's own struct.
-//! The first of those calls finds `flag` not naming SFL and runs
-//! `astSFLset` on the struct, which sets `phi0`, `theta0`, `r0` and `w[0]`
-//! and `w[1]` and leaves `flag` naming SFL.
-//! `astBONset` never runs for such a struct, because every BON call tests
-//! `p[1]` before it tests `flag`, and `astSFLset` does not run again,
-//! because `flag` keeps naming SFL.
-//! Every call in any order therefore sees the constants of SFL set up from
-//! the same parameters, which is what [`bon_set`] computes and what
-//! [`bon_fwd`] and [`bon_rev`] use.
+//! [`bon_set`] then sets up SFL's constants from BON's parameters, and
+//! [`bon_fwd`] and [`bon_rev`] run SFL's bodies on them, so every call, in any
+//! order, projects as SFL does.
+
+// Lineage: every function lists its source in `reference/starlink-ast` at
+// 3d3f255f; the `prj->flag > 0` tests of the C bodies are applied
+// unconditionally.
+//
+// BON with a zero standard parallel: C tests `p[1] == 0` first in both
+// `astBONfwd` and `astBONrev`, before it looks at `flag`, and hands the call
+// to `astSFLfwd` or `astSFLrev` with BON's own struct. The first of those
+// calls finds `flag` not naming SFL and runs `astSFLset` on the struct, which
+// sets `phi0`, `theta0`, `r0` and `w[0]` and `w[1]` and leaves `flag` naming
+// SFL. `astBONset` never runs for such a struct, because every BON call tests
+// `p[1]` before it tests `flag`, and `astSFLset` does not run again, because
+// `flag` keeps naming SFL. Every call in any order therefore sees the
+// constants of SFL set up from the same parameters, which is what `bon_set`
+// computes.
 
 use super::math;
 

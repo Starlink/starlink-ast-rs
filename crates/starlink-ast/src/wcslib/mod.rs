@@ -339,10 +339,11 @@ const WCSLIB_MXPAR: usize = 100;
 
 /// Number of slots in a projection-parameter array.
 ///
-/// C allocates `mxpar + 1` doubles per axis (wcsmap.c:5862-5863) so that
-/// index `mxpar` itself is addressable; `astGetPVMax` reports that allocation
-/// minus one (wcsmap.c:2205-2212). Every array here is sized for the largest
-/// projection, so the same indices are legal.
+/// One more than the largest parameter index, so that index itself is
+/// addressable. Every array here is sized for the largest projection, so
+/// the same indices are legal for every projection.
+// C allocates `mxpar + 1` doubles per axis (wcsmap.c:5862-5863);
+// `astGetPVMax` reports that allocation minus one (wcsmap.c:2205-2212).
 pub(crate) const PRJ_PARAM_SLOTS: usize = WCSLIB_MXPAR + 1;
 
 #[cfg(test)]

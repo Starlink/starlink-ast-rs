@@ -12,8 +12,9 @@
 //! every `fwd` and `rev` function calls the projection's set-up function
 //! first whenever `flag` does not name the projection.
 //! AST clears `flag` whenever a parameter changes and never sets it to a
-//! negative value, so after set-up `flag` is always positive and every test
-//! of the form `prj->flag > 0` in the projection bodies passes.
+//! negative value, so after set-up `flag` is always positive and every
+//! bounds test that the projection bodies make only when `flag` is positive
+//! is made.
 //! Here [`Prj::new`] runs the set-up once, eagerly, and the bodies apply
 //! those tests unconditionally.
 //! A set-up that fails leaves its status in [`Prj`], and every call returns
@@ -755,9 +756,9 @@ pub(crate) enum Status {
     BadPoint = 2,
 }
 
-/// The parameters of a projection and the constants derived from them:
-/// wcslib's `AstPrjPrm` without its bookkeeping (see the module
-/// documentation).
+/// The parameters of a projection and the constants derived from them,
+/// without wcslib's bookkeeping (see the module documentation).
+// wcslib's `AstPrjPrm`.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PrjPrm {
     /// Native longitude of the fiducial point, in degrees.
@@ -1539,9 +1540,7 @@ fn run_setup(proj: WcsProjection, prm: &mut PrjPrm) -> Status {
 
 /// Fill the parameter arrays from the supplied parameters, giving each
 /// parameter that was not supplied its projection's default or zero.
-///
-/// `InitPrjPrm` in `reference/starlink-ast` at 3d3f255f
-/// (`src/wcsmap.c`).
+// `InitPrjPrm` in `reference/starlink-ast` at 3d3f255f (`src/wcsmap.c`).
 fn init_params(proj: WcsProjection, prm: &mut PrjPrm, params: &[Vec<Option<f64>>], tpn_tan: bool) {
     // Make the set-up compute its constants afresh.
     prm.r0 = 0.0;

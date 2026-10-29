@@ -7,12 +7,14 @@
 //! Each projection is a set-up function that derives constants from the
 //! parameters in a [`PrjPrm`], and a forward and a reverse function generic
 //! over the trigonometry [`Trig`].
-//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //! GLS is SFL with parameters and a `WcsMap` converts it before it gets
 //! here.
 //!
-//! The tests of the form `prj->flag > 0` in the C bodies are applied
-//! unconditionally, as [`super::prj`] explains.
+//! The bounds tests apply unconditionally, as [`super::prj`] explains.
+
+// Lineage: every function lists its source in `reference/starlink-ast` at
+// 3d3f255f; the `prj->flag > 0` tests of the C bodies are applied
+// unconditionally.
 
 // The bodies keep the shape of the C they are ported from, which declares
 // each output before the branches that assign it.

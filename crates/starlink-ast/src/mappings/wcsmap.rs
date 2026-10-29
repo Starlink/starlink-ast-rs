@@ -731,10 +731,12 @@ impl WcsMap {
         (cyclic, high, low)
     }
 
-    /// How the inverse accepts the longitudes its projection gives: C
-    /// computes `docheck` from the LonCheck attribute and `cyclic`,
-    /// `longhi` and `longlo` from LongRange (wcsmap.c:2797-2802) before
-    /// projecting any point.
+    /// How the inverse accepts the longitudes its projection gives: whether
+    /// it tests them, from the LonCheck attribute and whether the projection
+    /// is cyclic, and the range it accepts, worked out before projecting any
+    /// point.
+    // C computes `docheck`, `longhi` and `longlo` from LonCheck and
+    // LongRange at wcsmap.c:2797-2802.
     fn lon_range(&self) -> LonRange {
         let (cyclic, hi, lo) = self.long_range();
         LonRange {
@@ -953,7 +955,8 @@ impl WcsMap {
     }
 
     /// Set the projection up again from the stored parameters and `TPNTan`,
-    /// with defaults reapplied (C `InitPrjPrm`).
+    /// with defaults reapplied.
+    // C's `InitPrjPrm`.
     fn reinit_prj(&mut self) {
         *self.prj = build_prj(self.proj, &self.params, self.tpn_tan());
     }
@@ -1579,13 +1582,14 @@ impl LonRange {
     /// is.
     ///
     /// The accepted range is half-open, so only its lower limit is treated
-    /// as wcslib's rule (prjbchk) treats both: rounding in a reverse
+    /// as wcslib's bounds check treats both: rounding in a reverse
     /// projection can land a point on the boundary, such as the -180
     /// meridian of a pseudo-cylindrical projection, slightly outside it, by
     /// an amount that depends on the projection's arithmetic. Unlike wcslib,
     /// a value at or above `hi` is not set to `hi`: it is the wrap of `lo`
     /// and is clipped deliberately, to stop a whole-sky grid mapping two
     /// pixels to the same meridian.
+    // wcslib's bounds check is `prjbchk`.
     #[inline(always)]
     fn decide(&self, longitude: f64) -> (bool, f64) {
         if !self.tested {
@@ -1625,19 +1629,21 @@ impl LonRange {
 /// The pair a WcsMap's inverse stores for the native (`longitude`,
 /// `latitude`) in degrees its projection gives: the pair in the WcsMap's
 /// output units, scaled by `to_output`, or (`bad`, `bad`) for a bad point or
-/// one outside the projection's domain (wcsmap.c:2878).
+/// one outside the projection's domain.
 ///
 /// Non-cyclic projections (ARC, AIT, ZPN, ...) accept only longitudes
 /// within the range `range` gives, and every projection accepts only
 /// latitudes within [-90, 90]. A latitude a little past either limit, by at
 /// most the projection's tolerance, is set to the limit first, and one
-/// further past is rejected (wcsmap.c Map). This is wcslib's rule (prjbchk),
-/// and the tolerance also absorbs the one-ULP difference a fused
-/// multiply-add makes: a WinMap used by a FITS CAR mapping evaluates `-0.5 +
-/// 181 * 0.5` degrees as exactly 90 where the compiler contracts it and
-/// 90.00000000000001 where it does not, so the validity of a header does
-/// not depend on the target. Both latitude limits need it: the accepted
-/// range is closed, so -90 and +90 are inside it.
+/// further past is rejected. This is wcslib's bounds check, and the
+/// tolerance also absorbs the one-ULP difference a fused multiply-add makes:
+/// a WinMap used by a FITS CAR mapping evaluates `-0.5 + 181 * 0.5` degrees
+/// as exactly 90 where the compiler contracts it and 90.00000000000001 where
+/// it does not, so the validity of a header does not depend on the target.
+/// Both latitude limits need it: the accepted range is closed, so -90 and
+/// +90 are inside it.
+// C's `Map` in wcsmap.c, from line 2878; wcslib's bounds check is
+// `prjbchk`.
 #[inline(always)]
 fn inverse_finish(
     range: &LonRange,
