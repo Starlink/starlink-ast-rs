@@ -56,7 +56,13 @@
 //!
 //!   A difference of an ULP or two in a kernel must never turn a bad point
 //!   good or a good one bad, or change which branch of the body runs: only
-//!   the outputs may move, and only by the kernels' drift;
+//!   the outputs may move, and only by the kernels' drift. The one exception
+//!   is an iterative solver run per element on a stage's result, as TPN's
+//!   Newton iteration is: the kernels may change the path it takes, so its
+//!   outputs may move by up to its own convergence tolerance, but its bad
+//!   side stays exact, a point the solver fed by the kernels has not settled
+//!   in one step fewer than the per-value entry allows being redone with
+//!   [`Libm`];
 //! - a body with no branch once [`Kernel`] is inlined into it, so that the
 //!   loop over the elements vectorizes (a value the body uses on one side of
 //!   a test only is computed before the test, or, where computing it costs
@@ -242,6 +248,43 @@
 //! 28.4). CAR has no trigonometry, CEA's reverse projection only an arc
 //! sine and MER's forward projection a tangent and a logarithm, none of
 //! which has a kernel, so they keep their [`Libm`] loops.
+//!
+//! The pseudo-cylindrical projections were timed as the cylindrical ones.
+//!
+//! AIT's forward projection opts in, its whole body. It has no status, but
+//! its square root is of a quotient whose divisor, one plus a product of
+//! two of the kernels' cosines, is zero at (0, 180) and (360, 0), and a
+//! point whose divisor is within twice the bound on its drift of zero is
+//! redone with [`Libm`], so an output is NaN or infinite exactly where
+//! [`Libm`]'s is. It ran at 16.5 ns per point against 34.6 for its [`Libm`]
+//! loop on the whole-sky grid, at 16.4 against 32.5 on the image and at
+//! 16.5 against 39.3 on random points, and at one point took 68 ns against
+//! 37.
+//!
+//! MOL's forward projection does not opt in. Its only trigonometry in
+//! degrees is the sine of the latitude, and a bisection of up to 48 steps
+//! of libm's sine in radians follows it. With that sine from the kernels
+//! and the bisection per element, it ran at 167 ns per point against 265
+//! for its [`Libm`] loop on the whole-sky grid, but the [`Libm`] loop's time
+//! there varied from 183 to 345 ns between builds with the code's layout;
+//! at 132 against 158 on the image; and at 790 against 805, 2% faster, on
+//! random points, and at one point took 240 ns against 206. Its drift is
+//! also far beyond that of any direction that opts in: the bisection stops
+//! anywhere its residual is within its tolerance, 1e-13, of zero, and near a
+//! pole the residual is cubic in the distance from the root, so a sine an
+//! ULP or two from libm's can stop it up to 5e-5 away in the cosine of half
+//! the angle, 8e-3 degrees in `x` at a longitude of 180.
+//!
+//! SFL's and PAR's forward projections do not opt in: like CEA's, their only
+//! trigonometry is one cosine or sine, and they ran at 8.0 and 9.0 ns per
+//! point against 4.5 and 4.2 on the whole-sky grid, 8.0 and 8.7 against 4.3
+//! and 4.2 on the image and 8.1 and 9.0 against 7.1 and 4.3 on random
+//! points. AIT's reverse projection does not either: with its arc tangent
+//! from the kernels and its arc sine per element it ran at 25.0 ns per point
+//! against 17.9 on the whole-sky grid and 21.9 against 14.1 on the image,
+//! and at 41.4 against 44.0 on random points. SFL's reverse projection has
+//! only a cosine in radians, and PAR's and MOL's only arc sines, so they
+//! keep their [`Libm`] loops too.
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -257,8 +300,8 @@ use super::cylindrical::{
 use super::healpix::{hpx_fwd, hpx_rev, hpx_set, xph_fwd, xph_rev, xph_set};
 use super::polyconic::{bon_fwd, bon_rev, bon_set, pco_fwd, pco_rev, pco_set};
 use super::pseudocyl::{
-    ait_fwd, ait_rev, ait_set, mol_fwd, mol_rev, mol_set, par_fwd, par_rev, par_set, sfl_fwd,
-    sfl_rev, sfl_set,
+    ait_fwd, ait_fwd_needs_special, ait_rev, ait_set, mol_fwd, mol_rev, mol_set, par_fwd, par_rev,
+    par_set, sfl_fwd, sfl_rev, sfl_set,
 };
 use super::quadcube::{
     csc_fwd, csc_rev, csc_set, qsc_fwd, qsc_rev, qsc_set, tsc_fwd, tsc_rev, tsc_set,
@@ -712,6 +755,7 @@ impl Prj {
             WcsProjection::Air => kernel_slice::<AirFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Tpn => kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Cyp => kernel_slice::<CypFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Ait => kernel_slice::<AitFwd>(prm, a, b, "wcs_fwd", prep, finish),
             proj => with_fwd!(proj, |f| slice_apply(
                 a,
                 b,
@@ -944,6 +988,7 @@ kernel_body!(
     air_fwd
 );
 kernel_body!(CypFwd, cyp_fwd, cyp_fwd_needs_special);
+kernel_body!(AitFwd, ait_fwd, ait_fwd_needs_special);
 kernel_body!(
     TpnFwd,
     tpn_fwd_front,
@@ -2962,5 +3007,108 @@ mod tests {
         for p in cyp_prjs() {
             assert_special_points_exact::<CypFwd>(&p, &right_angle_pairs(), true);
         }
+    }
+
+    use crate::wcslib::pseudocyl::ait_fwd_divisor_near_zero;
+
+    /// The bound on the drift of AIT's forward slice outputs at (`phi`,
+    /// `theta`), whose per-value outputs are (`x`, `y`). The divisor `1 +
+    /// cthe chalf` differs by at most `D = eps (5 |cthe chalf| + |divisor|)`
+    /// (eps = 2^-52), as `ait_fwd_divisor_near_zero` derives, so the quotient
+    /// `w0 / divisor` by at most `D / (|divisor| - D) + eps` relative and its
+    /// square root `w` by at most half that plus eps. `x` is `2 w cthe
+    /// shalf`, two more kernel values and two more operations, 6 eps; `y` is
+    /// `w sthe`, one kernel value and one operation, 3 eps. The bound is that
+    /// times the output, to first order, plus [`SUBNORMAL_ROUNDING`] for each
+    /// operation after the square root.
+    fn ait_fwd_bound(phi: f64, theta: f64, x: f64, y: f64) -> [f64; 2] {
+        let eps = f64::EPSILON;
+        let product = Libm::cosd(theta) * Libm::cosd(phi / 2.0);
+        let divisor = 1.0 + product;
+        let d = eps * (5.0 * product.abs() + divisor.abs());
+        let w = (d / (divisor.abs() - d) + eps) / 2.0 + eps;
+        [
+            (w + 6.0 * eps) * x.abs() + 3.0 * SUBNORMAL_ROUNDING,
+            (w + 3.0 * eps) * y.abs() + SUBNORMAL_ROUNDING,
+        ]
+    }
+
+    /// AIT's forward slice runs the kernels and is within [`ait_fwd_bound`]
+    /// of the per-value entry, with the same NaN outputs, among them points
+    /// near (0, 180) and (360, 0), where the divisor is zero; its reverse
+    /// slice runs [`Libm`] and is bit for bit the per-value entry.
+    #[test]
+    fn ait_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let p = prj(WcsProjection::Ait);
+        let mut fwd_inputs = tan_fwd_inputs();
+        let d = degrees(20_000);
+        for (i, &u) in d.iter().enumerate() {
+            let delta = crate::math::powf(10.0, -12.0 + 10.0 * (i % 1001) as f64 / 1000.0);
+            fwd_inputs.extend([(u / 1e6, 180.0 - delta), (360.0 - delta, u / 1e6)]);
+        }
+        let (fwd_ulps, _, fwd_differ) = slice_drift(&p, &fwd_inputs, true);
+        let over = drift_over_bound(&p, &fwd_inputs, true, ait_fwd_bound);
+        assert!(
+            over <= 1.0,
+            "forward: {over} of the bound ({fwd_ulps:?} ULP)"
+        );
+        assert!(fwd_differ > 0, "forward: no output differs");
+        let (rev_max, _, rev_differ) = slice_drift(&p, &zpn_rev_inputs(), false);
+        assert_eq!((rev_max, rev_differ), ([0, 0], 0), "reverse");
+    }
+
+    /// Wherever cosines within 2 ULP of [`Libm`]'s could put AIT's divisor on
+    /// the other side of zero from [`Libm`]'s, or on it,
+    /// `ait_fwd_divisor_near_zero` redoes the point; and a margin of zero
+    /// would not. The cosines are those at which [`Libm`]'s divisor is zero
+    /// or next to it.
+    #[test]
+    fn ait_margin_covers_the_kernels_drift_and_a_zero_margin_does_not() {
+        let mut missed_by_zero_margin = 0;
+        for (a, b) in [(-1.0, 1.0), (1.0, -1.0), (-0.5, 2.0)] {
+            for n in -6i64..=6 {
+                let cthe = step_ulps(a, n);
+                let divisor_libm = 1.0 + cthe * b;
+                for k in within_two_ulps(cthe) {
+                    for c in within_two_ulps(b) {
+                        let divisor_kernel = 1.0 + k * c;
+                        let sign = |v: f64| {
+                            if v > 0.0 {
+                                1
+                            } else if v < 0.0 {
+                                -1
+                            } else {
+                                0
+                            }
+                        };
+                        if sign(divisor_libm) != sign(divisor_kernel) {
+                            assert!(ait_fwd_divisor_near_zero(k, c), "{k:e}, {c:e}");
+                            missed_by_zero_margin += usize::from(divisor_kernel > 0.0);
+                        }
+                    }
+                }
+            }
+        }
+        assert!(missed_by_zero_margin > 0);
+    }
+
+    #[test]
+    fn ait_slices_give_each_point_the_same_bits_at_any_length() {
+        assert_same_bits_at_any_length(&prj(WcsProjection::Ait), &interleaved_inputs());
+    }
+
+    #[test]
+    fn ait_slice_builds_agree() {
+        assert_builds_agree::<AitFwd>(&prj(WcsProjection::Ait), &interleaved_inputs());
+    }
+
+    /// Coordinates at multiples of 90 degrees, and longitudes at multiples of
+    /// 180 whose halves are, which the kernels do not cover, get the
+    /// per-value entry's bits in a slice.
+    #[test]
+    fn ait_points_the_kernels_do_not_cover_are_exact_in_a_slice() {
+        let mut pairs = right_angle_pairs();
+        pairs.extend((-4..=4).map(|k| (180.0 * f64::from(k), 30.0)));
+        assert_special_points_exact::<AitFwd>(&prj(WcsProjection::Ait), &pairs, true);
     }
 }
