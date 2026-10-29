@@ -14,12 +14,17 @@
 //! projections, `cylindrical` and `pseudocyl` the cylindrical and
 //! pseudo-cylindrical ones, `conic` and `polyconic` the conic and
 //! polyconic ones, `quadcube` and `healpix` the quad-cube and HEALPix
-//! ones, and `tpn` the polynomial-corrected gnomonic projection.
+//! ones, and `tpn` the polynomial-corrected gnomonic projection; `math`
+//! holds the uncounted library functions they call.
 
 mod conic;
 mod cylindrical;
+// Outside the tests only the projection tables in `ffi` are used; the C
+// projections are the reference `difftest` checks the native ones against.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod ffi;
 mod healpix;
+mod math;
 mod polyconic;
 pub(crate) mod prj;
 mod pseudocyl;

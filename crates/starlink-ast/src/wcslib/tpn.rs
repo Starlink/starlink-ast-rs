@@ -16,13 +16,10 @@
 //! The tests of the form `prj->flag > 0` in the C bodies are applied
 //! unconditionally, as [`super::prj`] explains.
 
-// The projection is used by `WcsMap` in a later step; until then only the
-// tests use it.
-#![allow(dead_code)]
 // The bodies keep the shape of the C they are ported from.
 #![allow(clippy::needless_late_init, clippy::too_many_lines)]
 
-use crate::math;
+use super::math;
 
 use super::WCSLIB_MXPAR;
 use super::prj::{PrjPrm, Status};

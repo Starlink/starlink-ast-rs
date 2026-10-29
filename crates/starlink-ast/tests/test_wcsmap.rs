@@ -861,25 +861,20 @@ fn unusable_projection_parameters_are_errors() {
         }
     }
 
-    // wcslib records its set-up before validating it, so only the first
-    // transformation of these WcsMaps reports the unusable parameters; later
-    // ones give bad points, in C as here (`docs/issues/c-library-quirks.md`,
-    // "A WcsMap reports unusable parameters only on its first
-    // transformation"). The order below is the order C was probed in.
+    // The first forward transformation of these WcsMaps reports the unusable
+    // parameters, in C as here. C reports nothing on later transformations,
+    // where the port still does
+    // (`unusable_parameters_are_an_error_on_every_transform`).
     let azp = wcs(WcsProjection::Azp, &[(1, -1.0)]);
     assert_eq!(
         azp.transform(&pts, true).unwrap_err().code(),
         ErrorCode::Wcspa
     );
-    let out = azp.transform(&pts, false).unwrap();
-    assert_eq!(out.point(0), &[BAD_VALUE, BAD_VALUE]);
-
     let cyp = wcs(WcsProjection::Cyp, &[(1, -1.0), (2, 1.0)]);
     assert_eq!(
         cyp.transform(&pts, true).unwrap_err().code(),
         ErrorCode::Wcspa
     );
-    assert!(cyp.transform(&pts, false).is_ok());
 
     let cop = wcs(WcsProjection::Cop, &[(1, 45.0)]);
     assert!(cop.transform(&pts, true).is_ok());
@@ -897,4 +892,275 @@ fn conic_native_latitude_is_its_pv() {
     assert_eq!(cop.nat_lat(), std::f64::consts::FRAC_PI_4);
     let tan = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
     assert_eq!(tan.nat_lat(), std::f64::consts::FRAC_PI_2);
+}
+
+// ===========================================================================
+// Bulk transformation against single points
+// ===========================================================================
+
+/// A SplitMix64 generator, so the random points are the same on every run.
+struct SplitMix64(u64);
+
+impl SplitMix64 {
+    fn next_u64(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    }
+
+    /// A value in `[lo, hi)`.
+    fn uniform(&mut self, lo: f64, hi: f64) -> f64 {
+        let u = (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64;
+        lo + (hi - lo) * u
+    }
+}
+
+/// Whether two values are the same: bit for bit, except that two NaNs are
+/// the same whatever their sign and payload, which the arithmetic producing
+/// them leaves unspecified.
+fn same_value(a: f64, b: f64) -> bool {
+    (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits()
+}
+
+/// A 2-dimensional WcsMap with longitude axis 1, latitude axis 2 and the
+/// given `(axis, m, value)` projection parameters.
+fn wcs_with_pv(proj: WcsProjection, pv: &[(usize, usize, f64)]) -> WcsMap {
+    let mut m = WcsMap::new(2, proj, 1, 2).unwrap();
+    for &(axis, i, v) in pv {
+        m.set_pv(axis, i, v).unwrap();
+    }
+    m
+}
+
+/// The TPN parameters of `tests/fixtures/wcsconv/inputs/dss.ast`, the
+/// longitude axis being axis 1 and the latitude axis axis 2.
+#[allow(clippy::excessive_precision)]
+fn dss_tpn_pv() -> Vec<(usize, usize, f64)> {
+    let lon = [
+        (0, 0.00037777813768480556),
+        (1, 0.018675372165510556),
+        (2, 1.4659181119170556e-05),
+        (4, -5.6541834490241662e-09),
+        (5, -1.6598619578175834e-10),
+        (6, 3.324645548432778e-09),
+        (7, 6.8029375162963896e-10),
+        (8, -1.0315391309210556e-11),
+        (9, 6.5770184096316667e-10),
+        (10, 4.6843790588691666e-11),
+        (17, 0.0),
+        (19, 0.0),
+        (21, 0.0),
+    ];
+    let lat = [
+        (0, 0.00020734395690532499),
+        (1, 0.018675089806542779),
+        (2, -1.6578391725152224e-05),
+        (4, -5.1378767937980552e-09),
+        (5, -1.7623932712259446e-09),
+        (6, 2.7161547313251387e-10),
+        (7, 7.088907407099166e-10),
+        (8, 1.8432618513145277e-11),
+        (9, 6.8491061989569442e-10),
+        (10, 7.3325859634708332e-13),
+        (17, 0.0),
+        (19, 0.0),
+        (21, 0.0),
+    ];
+    lon.iter()
+        .map(|&(m, v)| (1, m, v))
+        .chain(lat.iter().map(|&(m, v)| (2, m, v)))
+        .collect()
+}
+
+/// Check that point `i` of `batch`, the transformation of `input`, is what
+/// `map` gives when it transforms point `i` alone.
+fn assert_batch_matches_single_points(
+    map: &WcsMap,
+    input: &PointSet,
+    forward: bool,
+    batch: &PointSet,
+    label: &str,
+) {
+    for i in 0..input.npoint() {
+        let single = map
+            .transform(&PointSet::from_rows([input.point(i)]), forward)
+            .unwrap();
+        for axis in 0..2 {
+            let (b, s) = (batch.axis(axis)[i], single.axis(axis)[0]);
+            assert!(
+                same_value(b, s),
+                "{label}: point {i} of {}, axis {axis}: batch {b:e}, alone {s:e}",
+                input.npoint()
+            );
+        }
+    }
+}
+
+/// Every point of a batch transforms as it does alone, whatever the length
+/// of the batch and for both the BAD_VALUE and NaN conventions, through the
+/// zenithal, polynomial, TPN, HEALPix and conic projections.
+#[test]
+fn bulk_and_single_point_give_identical_bits() {
+    let maps = [
+        ("TAN", wcs_with_pv(WcsProjection::Tan, &[])),
+        ("SIN", wcs_with_pv(WcsProjection::Sin, &[])),
+        (
+            "ZPN",
+            wcs_with_pv(WcsProjection::Zpn, &[(2, 1, 1.0), (2, 3, 0.05)]),
+        ),
+        ("TPN", wcs_with_pv(WcsProjection::Tpn, &dss_tpn_pv())),
+        ("HPX", wcs_with_pv(WcsProjection::Hpx, &[])),
+        (
+            "COD",
+            wcs_with_pv(WcsProjection::Cod, &[(2, 1, 45.0), (2, 2, 10.0)]),
+        ),
+    ];
+    let mut rng = SplitMix64(0x5763_734d_6170);
+    let half_pi = std::f64::consts::FRAC_PI_2;
+    let pi = std::f64::consts::PI;
+    for (name, map) in &maps {
+        for forward in [true, false] {
+            for n in [1, 2, 3, 7, 1001] {
+                let rows: Vec<[f64; 2]> = (0..n)
+                    .map(|_| {
+                        if forward {
+                            [rng.uniform(-pi, pi), rng.uniform(-half_pi, half_pi)]
+                        } else {
+                            [rng.uniform(-1.5, 1.5), rng.uniform(-1.5, 1.5)]
+                        }
+                    })
+                    .collect();
+                let input = PointSet::from_rows(&rows);
+                let label = format!("{name} forward={forward} n={n}");
+                let batch = map.transform(&input, forward).unwrap();
+                assert_batch_matches_single_points(map, &input, forward, &batch, &label);
+                let dynmap: &dyn Mapping = map;
+                let batch_nan = dynmap.transform_nan_protocol(&input, forward).unwrap();
+                assert_batch_matches_single_points(
+                    map,
+                    &input,
+                    forward,
+                    &batch_nan,
+                    &format!("{label} (NaN protocol)"),
+                );
+            }
+        }
+    }
+}
+
+/// A bad point and a NaN point in a batch transform to bad values, and the
+/// points around them transform as they do alone.
+#[test]
+fn one_bad_and_one_nan_point_leave_neighbours_alone() {
+    let map = wcs_with_pv(WcsProjection::Tan, &[]);
+    for forward in [true, false] {
+        let mut rows: Vec<[f64; 2]> = (0..7)
+            .map(|i| {
+                let t = f64::from(i);
+                if forward {
+                    [0.3 * t - 1.0, 1.0 + 0.05 * t]
+                } else {
+                    [0.1 * t - 0.3, 0.2 - 0.07 * t]
+                }
+            })
+            .collect();
+        rows[2][1] = BAD_VALUE;
+        rows[5][0] = f64::NAN;
+        let input = PointSet::from_rows(&rows);
+
+        let out = map.transform(&input, forward).unwrap();
+        for i in [2, 5] {
+            assert_eq!(out.point(i), &[BAD_VALUE, BAD_VALUE], "point {i}");
+        }
+
+        // The NaN convention: a NaN input, standing for a bad one, gives NaN
+        // outputs.
+        let mut nan_rows = rows.clone();
+        nan_rows[2][1] = f64::NAN;
+        let nan_input = PointSet::from_rows(&nan_rows);
+        let mut nan_out = PointSet::zeros(7, 2);
+        map.transform_into_nan(nan_input.as_points(), forward, nan_out.as_points_mut())
+            .unwrap();
+        for i in [2, 5] {
+            assert!(
+                nan_out.point(i).iter().all(|v| v.is_nan()),
+                "point {i}: {:?}",
+                nan_out.point(i)
+            );
+        }
+        let dynmap: &dyn Mapping = &map;
+        let protocol = dynmap.transform_nan_protocol(&input, forward).unwrap();
+        for i in [2, 5] {
+            assert_eq!(protocol.point(i), &[BAD_VALUE, BAD_VALUE], "point {i}");
+        }
+
+        for i in [0, 1, 3, 4, 6] {
+            let single = map
+                .transform(&PointSet::from_rows([rows[i]]), forward)
+                .unwrap();
+            for axis in 0..2 {
+                let s = single.axis(axis)[0];
+                assert_ne!(s, BAD_VALUE, "forward={forward} point {i}");
+                for (what, v) in [
+                    ("transform", out.axis(axis)[i]),
+                    ("transform_into_nan", nan_out.axis(axis)[i]),
+                    ("transform_nan_protocol", protocol.axis(axis)[i]),
+                ] {
+                    assert!(
+                        same_value(v, s),
+                        "forward={forward} {what} point {i} axis {axis}: {v:e}, alone {s:e}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Unusable projection parameters are reported for a point that reaches the
+/// projection; a batch of only bad points never does, and transforms to bad
+/// values.
+/// CYP with PV2_2 = 0 fails its set-up; ZPN with every coefficient zero (the
+/// default) has no polynomial to invert.
+#[test]
+fn unusable_parameters_are_an_error_only_for_good_points() {
+    let cyp = || wcs_with_pv(WcsProjection::Cyp, &[(2, 2, 0.0)]);
+    let zpn = || wcs_with_pv(WcsProjection::Zpn, &[]);
+    let good = PointSet::from_rows([[0.1, 0.2]]);
+    let bad = PointSet::from_rows([[BAD_VALUE, BAD_VALUE]]);
+    for (name, map, forward) in [("CYP", cyp(), true), ("ZPN", zpn(), false)] {
+        let err = map.transform(&good, forward).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Wcspa, "{name}");
+    }
+    for (name, map, forward) in [("CYP", cyp(), true), ("ZPN", zpn(), false)] {
+        let out = map.transform(&bad, forward).unwrap();
+        assert_eq!(out.point(0), &[BAD_VALUE, BAD_VALUE], "{name}");
+    }
+}
+
+/// Unusable projection parameters are reported by every transformation, not
+/// only the first; see `docs/issues/c-library-quirks.md`, "A WcsMap reports
+/// unusable parameters only on its first transformation", for C's behavior,
+/// which the port does not mirror.
+#[test]
+fn unusable_parameters_are_an_error_on_every_transform() {
+    let pts = PointSet::from_rows([[0.1, 0.2]]);
+    for (name, pv) in [
+        ("CYP PV2_2=0", vec![(2, 2, 0.0)]),
+        ("CYP PV2_1=-1", vec![(2, 1, -1.0), (2, 2, 1.0)]),
+    ] {
+        for (first, second) in [(true, true), (true, false), (false, true), (false, false)] {
+            let map = wcs_with_pv(WcsProjection::Cyp, &pv);
+            for forward in [first, second] {
+                let err = map.transform(&pts, forward).unwrap_err();
+                assert_eq!(err.code(), ErrorCode::Wcspa, "{name} {first} then {second}");
+            }
+        }
+    }
+    let map = wcs_with_pv(WcsProjection::Azp, &[(2, 1, -1.0)]);
+    for forward in [true, false, true] {
+        let err = map.transform(&pts, forward).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Wcspa, "AZP forward={forward}");
+    }
 }

@@ -912,11 +912,12 @@ Question for upstream: is the history dependence intended, and would an exact ca
 The set-up routines record themselves in `flag` before validating the parameters: `azpset` sets `prj->flag` and then returns 1 when `mu` is -1 (`crates/starlink-ast/vendor/wcslib/proj.c`).
 The next call therefore skips the set-up and projects with the unusable parameters, and wcslib reports a point it cannot project (status 2), which `Map` makes bad.
 An AZP WcsMap with `PV2_1 = -1` therefore raises `AST__WCSPA` on a first forward transformation and gives bad values on an inverse one after it.
-The inverse path calls the forward projection first, to find the longitude range (`LongRange`), so an inverse transformation of a fresh WcsMap fails the set-up silently there: it raises nothing and gives bad values, and a forward transformation after it projects with the partly set-up parameters, giving `(-0, 0)` for the input `(0.1, 0.2)`.
+The inverse path calls the projection first, to find the longitude range (`LongRange`), so an inverse transformation of a fresh WcsMap fails the set-up silently there: it raises nothing and gives bad values, and a forward transformation after it projects with the partly set-up parameters, giving `(-0, 0)` for the input `(0.1, 0.2)`.
 
-The port leaves `flag` clear after installing the projection functions (`PrjParams::run_setup`), as `InitPrjPrm` does, and keeps a WcsMap's parameter block across transformations, so a first forward transformation reports `AST__WCSPA` and later ones give bad values, as in C.
-It does not reproduce what C computes from partly set-up parameters: after an inverse first, its forward transformation gives bad values where C gives `(-0, 0)`.
-`unusable_projection_parameters_are_errors` in `crates/starlink-ast/tests/test_wcsmap.rs` covers the forward-first order, which C and the port agree on.
+The port does not mirror this.
+Its projection (`wcslib::prj::Prj`) runs the set-up once, when the WcsMap's parameters are set, keeps the set-up's status, and returns it from every projection call, so every transformation that has a good point reports `AST__WCSPA`, whatever the order of the transformations; a transformation whose points are all bad reports nothing and gives bad values, as in C.
+It never projects with partly set-up parameters.
+A first forward transformation agrees with C, which `unusable_projection_parameters_are_errors` in `crates/starlink-ast/tests/test_wcsmap.rs` covers; `unusable_parameters_are_an_error_on_every_transform` in the same file covers the later transformations and an inverse one first, where the port and C differ.
 
 Question for upstream: should the set-up routines leave `flag` clear when they fail, so that every transformation reports the parameters rather than projecting with them?
 

@@ -18,11 +18,7 @@
 // (`reference/starlink-ast` at 3d3f255f); the `flag > 0` tests of the C
 // bodies are applied unconditionally.
 
-// The projections are used by `WcsMap` in a later step; until then only the
-// tests use them.
-#![allow(dead_code)]
-
-use crate::math;
+use super::math;
 
 use super::prj::{PrjPrm, Status};
 use super::trig::{D2R, R2D, Trig};

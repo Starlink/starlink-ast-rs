@@ -29,10 +29,6 @@
 //! not stored: the projection is the [`WcsProjection`] and the dispatch is a
 //! `match` on it.
 
-// The projections are used by `WcsMap` in a later step; until then only the
-// tests use them.
-#![allow(dead_code)]
-
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 
@@ -61,6 +57,262 @@ use super::zenithal::{
     tan_set, zea_fwd, zea_rev, zea_set, zpn_fwd, zpn_rev, zpn_set,
 };
 use super::{PRJ_PARAM_SLOTS, WcsProjection};
+
+/// Evaluate `$body` with `$f` bound to the forward projection function of
+/// the projection `$proj`, so that `$body` is compiled once per projection
+/// and calls it statically.
+macro_rules! with_fwd {
+    ($proj:expr, |$f:ident| $body:expr) => {
+        match $proj {
+            WcsProjection::Azp => {
+                let $f = azp_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Szp => {
+                let $f = szp_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Tan => {
+                let $f = tan_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Stg => {
+                let $f = stg_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Sin => {
+                let $f = sin_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Arc => {
+                let $f = arc_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Zpn => {
+                let $f = zpn_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Zea => {
+                let $f = zea_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Air => {
+                let $f = air_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Tpn => {
+                let $f = tpn_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Cyp => {
+                let $f = cyp_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Cea => {
+                let $f = cea_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Car => {
+                let $f = car_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Mer => {
+                let $f = mer_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Sfl => {
+                let $f = sfl_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Par => {
+                let $f = par_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Mol => {
+                let $f = mol_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Ait => {
+                let $f = ait_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Cop => {
+                let $f = cop_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Coe => {
+                let $f = coe_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Cod => {
+                let $f = cod_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Coo => {
+                let $f = coo_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Bon => {
+                let $f = bon_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Pco => {
+                let $f = pco_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Tsc => {
+                let $f = tsc_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Csc => {
+                let $f = csc_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Qsc => {
+                let $f = qsc_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Hpx => {
+                let $f = hpx_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Xph => {
+                let $f = xph_fwd::<Libm>;
+                $body
+            }
+            WcsProjection::Ncp | WcsProjection::Gls | WcsProjection::Unknown => {
+                unreachable!("{} is rejected by Prj::new", $proj.code())
+            }
+        }
+    };
+}
+
+/// [`with_fwd`] for the reverse projection functions.
+macro_rules! with_rev {
+    ($proj:expr, |$f:ident| $body:expr) => {
+        match $proj {
+            WcsProjection::Azp => {
+                let $f = azp_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Szp => {
+                let $f = szp_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Tan => {
+                let $f = tan_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Stg => {
+                let $f = stg_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Sin => {
+                let $f = sin_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Arc => {
+                let $f = arc_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Zpn => {
+                let $f = zpn_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Zea => {
+                let $f = zea_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Air => {
+                let $f = air_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Tpn => {
+                let $f = tpn_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Cyp => {
+                let $f = cyp_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Cea => {
+                let $f = cea_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Car => {
+                let $f = car_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Mer => {
+                let $f = mer_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Sfl => {
+                let $f = sfl_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Par => {
+                let $f = par_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Mol => {
+                let $f = mol_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Ait => {
+                let $f = ait_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Cop => {
+                let $f = cop_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Coe => {
+                let $f = coe_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Cod => {
+                let $f = cod_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Coo => {
+                let $f = coo_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Bon => {
+                let $f = bon_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Pco => {
+                let $f = pco_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Tsc => {
+                let $f = tsc_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Csc => {
+                let $f = csc_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Qsc => {
+                let $f = qsc_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Hpx => {
+                let $f = hpx_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Xph => {
+                let $f = xph_rev::<Libm>;
+                $body
+            }
+            WcsProjection::Ncp | WcsProjection::Gls | WcsProjection::Unknown => {
+                unreachable!("{} is rejected by Prj::new", $proj.code())
+            }
+        }
+    };
+}
 
 /// The status wcslib's projection functions return.
 #[repr(u8)]
@@ -152,11 +404,6 @@ impl Prj {
         Ok(Prj { proj, prm, setup })
     }
 
-    /// The projection type.
-    pub(crate) fn proj(&self) -> WcsProjection {
-        self.proj
-    }
-
     /// Read a projection parameter: `axis` is 0 for the latitude axis and 1
     /// for the longitude axis, `m` the parameter index.
     /// `None` if either is out of range.
@@ -172,99 +419,137 @@ impl Prj {
     }
 
     /// The status of the set-up.
+    #[cfg(test)]
     pub(crate) fn setup_status(&self) -> Status {
         self.setup
     }
 
     /// Forward projection of native (`phi`, `theta`) in degrees: the status
     /// and the projected (x, y).
-    /// The outputs are meaningful only when the status is [`Status::Ok`].
+    /// The outputs are whatever the projection wrote before returning, which
+    /// callers such as the longitude-range probe read even on
+    /// [`Status::BadPoint`]; a failed set-up gives zeros.
     #[inline]
     pub(crate) fn fwd_raw(&self, phi: f64, theta: f64) -> (Status, f64, f64) {
         if self.setup != Status::Ok {
             return (self.setup, 0.0, 0.0);
         }
         let prm = &self.prm;
-        match self.proj {
-            WcsProjection::Azp => azp_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Szp => szp_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Tan => tan_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Stg => stg_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Sin => sin_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Arc => arc_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Zpn => zpn_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Zea => zea_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Air => air_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Tpn => tpn_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Cyp => cyp_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Cea => cea_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Car => car_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Mer => mer_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Sfl => sfl_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Par => par_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Mol => mol_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Ait => ait_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Cop => cop_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Coe => coe_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Cod => cod_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Coo => coo_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Bon => bon_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Pco => pco_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Tsc => tsc_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Csc => csc_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Qsc => qsc_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Hpx => hpx_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Xph => xph_fwd::<Libm>(prm, phi, theta),
-            WcsProjection::Ncp | WcsProjection::Gls | WcsProjection::Unknown => {
-                unreachable!("{} is rejected by Prj::new", self.proj.code())
-            }
-        }
+        with_fwd!(self.proj, |f| f(prm, phi, theta))
     }
 
     /// Reverse projection of (`x`, `y`): the status and the native
     /// (phi, theta) in degrees.
-    /// The outputs are meaningful only when the status is [`Status::Ok`].
+    /// The outputs are whatever the projection wrote before returning, which
+    /// callers such as the longitude-range probe read even on
+    /// [`Status::BadPoint`]; a failed set-up gives zeros.
     #[inline]
     pub(crate) fn rev_raw(&self, x: f64, y: f64) -> (Status, f64, f64) {
         if self.setup != Status::Ok {
             return (self.setup, 0.0, 0.0);
         }
         let prm = &self.prm;
-        match self.proj {
-            WcsProjection::Azp => azp_rev::<Libm>(prm, x, y),
-            WcsProjection::Szp => szp_rev::<Libm>(prm, x, y),
-            WcsProjection::Tan => tan_rev::<Libm>(prm, x, y),
-            WcsProjection::Stg => stg_rev::<Libm>(prm, x, y),
-            WcsProjection::Sin => sin_rev::<Libm>(prm, x, y),
-            WcsProjection::Arc => arc_rev::<Libm>(prm, x, y),
-            WcsProjection::Zpn => zpn_rev::<Libm>(prm, x, y),
-            WcsProjection::Zea => zea_rev::<Libm>(prm, x, y),
-            WcsProjection::Air => air_rev::<Libm>(prm, x, y),
-            WcsProjection::Tpn => tpn_rev::<Libm>(prm, x, y),
-            WcsProjection::Cyp => cyp_rev::<Libm>(prm, x, y),
-            WcsProjection::Cea => cea_rev::<Libm>(prm, x, y),
-            WcsProjection::Car => car_rev::<Libm>(prm, x, y),
-            WcsProjection::Mer => mer_rev::<Libm>(prm, x, y),
-            WcsProjection::Sfl => sfl_rev::<Libm>(prm, x, y),
-            WcsProjection::Par => par_rev::<Libm>(prm, x, y),
-            WcsProjection::Mol => mol_rev::<Libm>(prm, x, y),
-            WcsProjection::Ait => ait_rev::<Libm>(prm, x, y),
-            WcsProjection::Cop => cop_rev::<Libm>(prm, x, y),
-            WcsProjection::Coe => coe_rev::<Libm>(prm, x, y),
-            WcsProjection::Cod => cod_rev::<Libm>(prm, x, y),
-            WcsProjection::Coo => coo_rev::<Libm>(prm, x, y),
-            WcsProjection::Bon => bon_rev::<Libm>(prm, x, y),
-            WcsProjection::Pco => pco_rev::<Libm>(prm, x, y),
-            WcsProjection::Tsc => tsc_rev::<Libm>(prm, x, y),
-            WcsProjection::Csc => csc_rev::<Libm>(prm, x, y),
-            WcsProjection::Qsc => qsc_rev::<Libm>(prm, x, y),
-            WcsProjection::Hpx => hpx_rev::<Libm>(prm, x, y),
-            WcsProjection::Xph => xph_rev::<Libm>(prm, x, y),
-            WcsProjection::Ncp | WcsProjection::Gls | WcsProjection::Unknown => {
-                unreachable!("{} is rejected by Prj::new", self.proj.code())
+        with_rev!(self.proj, |f| f(prm, x, y))
+    }
+
+    /// [`fwd_raw`](Prj::fwd_raw) in place for every pair (`a[i]`, `b[i]`):
+    /// native (phi, theta) in degrees on entry, (x, y) on return.
+    ///
+    /// A pair holding [`BAD_VALUE`] or NaN, and a point the projection cannot
+    /// project, give [`BAD_VALUE`] in both.
+    /// Each pair projected counts one call of `wcs_fwd`.
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Wcspa` if the projection parameters are unusable for a
+    /// pair that is not bad; the slices then hold partial results.
+    pub(crate) fn fwd_slice(&self, a: &mut [f64], b: &mut [f64]) -> AstResult<()> {
+        if self.setup != Status::Ok {
+            // A set-up fails only for unusable parameters; any other status
+            // here would turn every good point bad without an error.
+            debug_assert_eq!(self.setup, Status::BadParams);
+            let setup = self.setup;
+            return slice_apply(a, b, "wcs_fwd", |_, _| (setup, 0.0, 0.0));
+        }
+        let prm = &self.prm;
+        with_fwd!(self.proj, |f| slice_apply(a, b, "wcs_fwd", |phi, theta| f(
+            prm, phi, theta
+        )))
+    }
+
+    /// [`rev_raw`](Prj::rev_raw) in place for every pair (`a[i]`, `b[i]`):
+    /// (x, y) on entry, native (phi, theta) in degrees on return; bad pairs,
+    /// errors and counting (of `wcs_rev`) as for
+    /// [`fwd_slice`](Prj::fwd_slice).
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Wcspa` if the projection parameters are unusable for a
+    /// pair that is not bad; the slices then hold partial results.
+    pub(crate) fn rev_slice(&self, a: &mut [f64], b: &mut [f64]) -> AstResult<()> {
+        if self.setup != Status::Ok {
+            // A set-up fails only for unusable parameters; any other status
+            // here would turn every good point bad without an error.
+            debug_assert_eq!(self.setup, Status::BadParams);
+            let setup = self.setup;
+            return slice_apply(a, b, "wcs_rev", |_, _| (setup, 0.0, 0.0));
+        }
+        let prm = &self.prm;
+        with_rev!(self.proj, |f| slice_apply(a, b, "wcs_rev", |x, y| f(
+            prm, x, y
+        )))
+    }
+}
+
+/// The error for unusable projection parameters.
+fn bad_params() -> AstError {
+    AstError::new(
+        ErrorCode::Wcspa,
+        "WcsMap: the projection parameter values are unusable",
+    )
+}
+
+/// Apply the projection call `project` in place to every pair (`a[i]`,
+/// `b[i]`) that holds neither [`BAD_VALUE`] nor NaN, writing [`BAD_VALUE`]
+/// to both for those pairs and for a point the call cannot project, and
+/// counting one call of `counter` per pair projected.
+#[inline(always)]
+fn slice_apply(
+    a: &mut [f64],
+    b: &mut [f64],
+    counter: &'static str,
+    project: impl Fn(f64, f64) -> (Status, f64, f64),
+) -> AstResult<()> {
+    let n = a.len();
+    assert_eq!(b.len(), n, "the two slices must have the same length");
+    let b = &mut b[..n];
+    let mut calls = 0u64;
+    let mut result = Ok(());
+    for i in 0..n {
+        let (u, v) = (a[i], b[i]);
+        if u == BAD_VALUE || v == BAD_VALUE || u.is_nan() || v.is_nan() {
+            a[i] = BAD_VALUE;
+            b[i] = BAD_VALUE;
+            continue;
+        }
+        calls += 1;
+        match project(u, v) {
+            (Status::Ok, p, q) => {
+                a[i] = p;
+                b[i] = q;
+            }
+            (Status::BadPoint, ..) => {
+                a[i] = BAD_VALUE;
+                b[i] = BAD_VALUE;
+            }
+            (Status::BadParams, ..) => {
+                result = Err(bad_params());
+                break;
             }
         }
     }
+    crate::call_counts::hit_n(counter, calls);
+    result
 }
 
 /// Run the set-up function of a projection.
