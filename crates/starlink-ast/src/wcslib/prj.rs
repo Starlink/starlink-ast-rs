@@ -1336,6 +1336,13 @@ kernel_body!(
 /// cache and on the stack.
 const KERNEL_BLOCK: usize = 32;
 
+/// The block of [`kernel_slice_body`] for a slice of at most this many
+/// elements. A block's buffers are set up on every call, which at
+/// [`KERNEL_BLOCK`] adds about 15 ns, as much as projecting a point; a block
+/// this short sets up a few, but runs the kernels too few at a time to
+/// vectorize them, which already costs more than that at ten elements.
+const SHORT_KERNEL_BLOCK: usize = 4;
+
 /// [`slice_apply`] for the body `K` run through the vectorizable kernels:
 /// the same `prep` and `finish`, bad pairs, errors and counting, with each
 /// output within the kernels' drift of [`Libm`]'s. Each element gets the same
@@ -1385,7 +1392,23 @@ fn kernel_loops<K: KernelBody>(
         // target features require.
         return unsafe { kernel_slice_avx2_fma::<K>(prm, a, b, counter, redo) };
     }
-    kernel_slice_body::<K, { crate::vmath::HAS_FMA }>(prm, a, b, counter, redo)
+    kernel_slice_blocks::<K, { crate::vmath::HAS_FMA }>(prm, a, b, counter, redo)
+}
+
+/// [`kernel_slice_body`] with the block that suits the slice's length.
+#[inline(always)]
+fn kernel_slice_blocks<K: KernelBody, const FMA: bool>(
+    prm: &PrjPrm,
+    a: &mut [f64],
+    b: &mut [f64],
+    counter: &'static str,
+    redo: &impl Fn(f64, f64) -> bool,
+) -> AstResult<()> {
+    if a.len() <= SHORT_KERNEL_BLOCK {
+        kernel_slice_body::<K, FMA, SHORT_KERNEL_BLOCK>(prm, a, b, counter, redo)
+    } else {
+        kernel_slice_body::<K, FMA, KERNEL_BLOCK>(prm, a, b, counter, redo)
+    }
 }
 
 /// [`kernel_slice_body`] built for AVX2 and FMA, so its kernel loop runs
@@ -1404,18 +1427,18 @@ unsafe fn kernel_slice_avx2_fma<K: KernelBody>(
     counter: &'static str,
     redo: &impl Fn(f64, f64) -> bool,
 ) -> AstResult<()> {
-    kernel_slice_body::<K, true>(prm, a, b, counter, redo)
+    kernel_slice_blocks::<K, true>(prm, a, b, counter, redo)
 }
 
-/// The loops of [`kernel_slice`], block by block: the pairs of the block
-/// that are not bad are gathered, writing [`BAD_VALUE`] for the others, so
-/// the kernels run on good pairs only; `K` with [`Kernel`] runs over every
+/// The loops of [`kernel_slice`], block by block of `BLOCK` pairs: the pairs
+/// of the block that are not bad are gathered, writing [`BAD_VALUE`] for the
+/// others, so the kernels run on good pairs only; `K` with [`Kernel`] runs over every
 /// gathered pair, branch-free so the loop vectorizes; then each result is
 /// completed by `K::finish`, redone with [`Libm`] where `K::needs_special`
 /// says, `K::finish` declines or `redo` asks, scattered back, and its status
 /// mapped as [`slice_apply`] does.
 #[inline(always)]
-fn kernel_slice_body<K: KernelBody, const FMA: bool>(
+fn kernel_slice_body<K: KernelBody, const FMA: bool, const BLOCK: usize>(
     prm: &PrjPrm,
     a: &mut [f64],
     b: &mut [f64],
@@ -1427,18 +1450,18 @@ fn kernel_slice_body<K: KernelBody, const FMA: bool>(
     let b = &mut b[..n];
     let mut calls = 0u64;
     let mut result = Ok(());
-    let mut index = [0usize; KERNEL_BLOCK];
-    let mut u = [0.0; KERNEL_BLOCK];
-    let mut v = [0.0; KERNEL_BLOCK];
-    let mut status = [Status::Ok; KERNEL_BLOCK];
-    let mut special = [false; KERNEL_BLOCK];
-    let mut p = [0.0; KERNEL_BLOCK];
-    let mut q = [0.0; KERNEL_BLOCK];
-    let mut r = [0.0; KERNEL_BLOCK];
+    let mut index = [0usize; BLOCK];
+    let mut u = [0.0; BLOCK];
+    let mut v = [0.0; BLOCK];
+    let mut status = [Status::Ok; BLOCK];
+    let mut special = [false; BLOCK];
+    let mut p = [0.0; BLOCK];
+    let mut q = [0.0; BLOCK];
+    let mut r = [0.0; BLOCK];
     // Blocks by index: zipped `chunks_mut` iterators divide by the block
     // length at run time wherever their constructor is not inlined.
-    'blocks: for start in (0..n).step_by(KERNEL_BLOCK) {
-        let end = n.min(start + KERNEL_BLOCK);
+    'blocks: for start in (0..n).step_by(BLOCK) {
+        let end = n.min(start + BLOCK);
         let (a, b) = (&mut a[start..end], &mut b[start..end]);
         let mut good = 0;
         for i in 0..a.len() {
@@ -1923,7 +1946,7 @@ mod tests {
     fn assert_same_bits_at_any_length(p: &Prj, pairs: &[(f64, f64)]) {
         for fwd in [true, false] {
             let whole = through_slice(p, pairs, fwd);
-            for len in [1, 2, 3, 7, 1001] {
+            for len in [1, 2, 3, 4, 5, 7, 1001] {
                 for (start, chunk) in pairs.chunks(len).enumerate() {
                     let got = through_slice(p, chunk, fwd);
                     for (i, (g, w)) in got.iter().zip(&whole[start * len..]).enumerate() {
@@ -1951,9 +1974,15 @@ mod tests {
             let mut b: Vec<f64> = pairs.iter().map(|q| q.1).collect();
             let prm = &p.prm;
             if fma {
-                kernel_slice_body::<K, true>(prm, &mut a, &mut b, "wcs_fwd", &no_redo).unwrap();
+                kernel_slice_body::<K, true, KERNEL_BLOCK>(
+                    prm, &mut a, &mut b, "wcs_fwd", &no_redo,
+                )
+                .unwrap();
             } else {
-                kernel_slice_body::<K, false>(prm, &mut a, &mut b, "wcs_fwd", &no_redo).unwrap();
+                kernel_slice_body::<K, false, KERNEL_BLOCK>(
+                    prm, &mut a, &mut b, "wcs_fwd", &no_redo,
+                )
+                .unwrap();
             }
             (a, b)
         };
