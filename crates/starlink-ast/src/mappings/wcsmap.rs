@@ -737,9 +737,8 @@ impl WcsMap {
     /// A bad input point, a point the projection cannot project and an
     /// inverse solution outside the projection's domain give `bad` in both.
     ///
-    /// The values are converted to degrees in one pass, projected in place
-    /// by the slice entry in a second and converted back in a third, which
-    /// applies the inverse's domain checks.
+    /// The slice entry converts each pair to degrees, projects it and
+    /// converts it back, applying the inverse's domain checks, in one pass.
     fn project_in_place(
         &self,
         lon: &mut [f64],
@@ -755,31 +754,32 @@ impl WcsMap {
         // degrees. `factor` scales the WcsMap input into radians
         // (wcsmap.c:2808).
         let factor = if self.tpn_tan() { 1.0 } else { DD2R };
+        // The scale from WCSLIB's degrees to the WcsMap output units.
+        let to_output = DD2R / factor;
 
         if fwd {
             // Forward: native spherical (lon, lat in radians) -> projected
             // (x, y). Wrap the native longitude/latitude into the ranges
             // WCSLIB requires, folding out-of-range latitudes onto the
             // complementary meridian (wcsmap.c:2820-2839).
-            for i in 0..n {
-                if is_bad(lon[i]) || is_bad(lat[i]) {
-                    lon[i] = BAD_VALUE;
-                    lat[i] = BAD_VALUE;
-                } else {
-                    (lon[i], lat[i]) = forward_prep(lon[i], lat[i], factor);
-                }
-            }
-            self.prj.fwd_slice(lon, lat)?;
-            for i in 0..n {
-                if lon[i] == BAD_VALUE && lat[i] == BAD_VALUE {
-                    lon[i] = bad;
-                    lat[i] = bad;
-                } else {
-                    lon[i] *= DD2R / factor;
-                    lat[i] *= DD2R / factor;
-                }
-            }
-            return Ok(());
+            return self.prj.fwd_slice(
+                lon,
+                lat,
+                |lon, lat| {
+                    if is_bad(lon) || is_bad(lat) {
+                        (BAD_VALUE, BAD_VALUE)
+                    } else {
+                        forward_prep(lon, lat, factor)
+                    }
+                },
+                |x, y| {
+                    if x == BAD_VALUE && y == BAD_VALUE {
+                        (bad, bad)
+                    } else {
+                        (x * to_output, y * to_output)
+                    }
+                },
+            );
         }
 
         // Inverse: projected (x, y) -> native spherical (lon, lat in
@@ -788,24 +788,20 @@ impl WcsMap {
         // before projecting any point.
         let (cyclic, longhi, longlo) = self.long_range();
         let docheck = self.lon_check();
-        for i in 0..n {
-            if is_bad(lon[i]) || is_bad(lat[i]) {
-                lon[i] = BAD_VALUE;
-                lat[i] = BAD_VALUE;
-            } else {
-                lon[i] *= DR2D * factor;
-                lat[i] *= DR2D * factor;
-            }
-        }
-        self.prj.rev_slice(lon, lat)?;
         // The projection's tolerance, in degrees; see below.
         let tol = self.proj.table_tol();
-        for i in 0..n {
-            let (mut longitude, mut latitude) = (lon[i], lat[i]);
+        // The scale from the WcsMap input units to WCSLIB's degrees.
+        let to_degrees = DR2D * factor;
+        let prep = |x: f64, y: f64| {
+            if is_bad(x) || is_bad(y) {
+                (BAD_VALUE, BAD_VALUE)
+            } else {
+                (x * to_degrees, y * to_degrees)
+            }
+        };
+        let finish = |mut longitude: f64, mut latitude: f64| {
             if longitude == BAD_VALUE && latitude == BAD_VALUE {
-                lon[i] = bad;
-                lat[i] = bad;
-                continue;
+                return (bad, bad);
             }
             // Reject solutions outside the physical domain of the projection
             // (wcsmap.c:2878). Non-cyclic projections (ARC, AIT, ZPN, ...)
@@ -841,14 +837,12 @@ impl WcsMap {
             }
             if (!docheck || cyclic || (longitude < longhi && longitude >= longlo)) && abslat <= 90.0
             {
-                lon[i] = (DD2R / factor) * longitude;
-                lat[i] = (DD2R / factor) * latitude;
+                (to_output * longitude, to_output * latitude)
             } else {
-                lon[i] = bad;
-                lat[i] = bad;
+                (bad, bad)
             }
-        }
-        Ok(())
+        };
+        self.prj.rev_slice(lon, lat, prep, finish)
     }
 
     /// The 1-based index of the longitude axis of the projection within the

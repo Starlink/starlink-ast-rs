@@ -580,11 +580,13 @@ impl Prj {
         with_rev!(self.proj, |f| f(prm, x, y))
     }
 
-    /// [`fwd_raw`](Prj::fwd_raw) in place for every pair (`a[i]`, `b[i]`):
-    /// native (phi, theta) in degrees on entry, (x, y) on return.
+    /// [`fwd_raw`](Prj::fwd_raw) in place for every pair (`a[i]`, `b[i]`),
+    /// in one pass over the slices: `prep` gives the native (phi, theta) in
+    /// degrees to project from the pair on entry, and `finish` the pair to
+    /// store from the projected (x, y).
     ///
-    /// A pair holding [`BAD_VALUE`] or NaN, and a point the projection cannot
-    /// project, give [`BAD_VALUE`] in both.
+    /// A pair that `prep` gives as [`BAD_VALUE`] or NaN, and a point the
+    /// projection cannot project, give `finish(BAD_VALUE, BAD_VALUE)`.
     /// Each pair projected counts one call of `wcs_fwd`.
     ///
     /// # Errors
@@ -592,51 +594,76 @@ impl Prj {
     /// `ErrorCode::Wcspa` if the projection parameters are unusable for a
     /// pair that is not bad; the slices then hold partial results, whose
     /// contents are unspecified.
-    pub(crate) fn fwd_slice(&self, a: &mut [f64], b: &mut [f64]) -> AstResult<()> {
+    pub(crate) fn fwd_slice(
+        &self,
+        a: &mut [f64],
+        b: &mut [f64],
+        prep: impl Fn(f64, f64) -> (f64, f64),
+        finish: impl Fn(f64, f64) -> (f64, f64),
+    ) -> AstResult<()> {
         if self.setup != Status::Ok {
             // A set-up fails only for unusable parameters; any other status
             // here would turn every good point bad without an error.
             debug_assert_eq!(self.setup, Status::BadParams);
             let setup = self.setup;
-            return slice_apply(a, b, "wcs_fwd", |_, _| (setup, 0.0, 0.0));
+            return slice_apply(a, b, "wcs_fwd", prep, |_, _| (setup, 0.0, 0.0), finish);
         }
         let prm = &self.prm;
         match self.proj {
-            WcsProjection::Tan => kernel_slice::<TanFwd>(prm, a, b, "wcs_fwd"),
+            WcsProjection::Tan => kernel_slice::<TanFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Sin if prm.w[1] == 0.0 => {
-                kernel_slice::<SinFwdOrthographic>(prm, a, b, "wcs_fwd")
+                kernel_slice::<SinFwdOrthographic>(prm, a, b, "wcs_fwd", prep, finish)
             }
-            WcsProjection::Sin => kernel_slice::<SinFwdSynthesis>(prm, a, b, "wcs_fwd"),
-            WcsProjection::Zpn => kernel_slice::<ZpnFwd>(prm, a, b, "wcs_fwd"),
-            WcsProjection::Tpn => kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd"),
-            proj => with_fwd!(proj, |f| slice_apply(a, b, "wcs_fwd", |phi, theta| f(
-                prm, phi, theta
-            ))),
+            WcsProjection::Sin => {
+                kernel_slice::<SinFwdSynthesis>(prm, a, b, "wcs_fwd", prep, finish)
+            }
+            WcsProjection::Zpn => kernel_slice::<ZpnFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Tpn => kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            proj => with_fwd!(proj, |f| slice_apply(
+                a,
+                b,
+                "wcs_fwd",
+                prep,
+                |phi, theta| f(prm, phi, theta),
+                finish
+            )),
         }
     }
 
-    /// [`rev_raw`](Prj::rev_raw) in place for every pair (`a[i]`, `b[i]`):
-    /// (x, y) on entry, native (phi, theta) in degrees on return; bad pairs,
-    /// errors and counting (of `wcs_rev`) as for
-    /// [`fwd_slice`](Prj::fwd_slice).
+    /// [`rev_raw`](Prj::rev_raw) in place for every pair (`a[i]`, `b[i]`),
+    /// in one pass over the slices: `prep` gives the (x, y) to project from
+    /// the pair on entry, and `finish` the pair to store from the native
+    /// (phi, theta) in degrees; bad pairs, errors and counting (of
+    /// `wcs_rev`) as for [`fwd_slice`](Prj::fwd_slice).
     ///
     /// # Errors
     ///
     /// `ErrorCode::Wcspa` if the projection parameters are unusable for a
     /// pair that is not bad; the slices then hold partial results, whose
     /// contents are unspecified.
-    pub(crate) fn rev_slice(&self, a: &mut [f64], b: &mut [f64]) -> AstResult<()> {
+    pub(crate) fn rev_slice(
+        &self,
+        a: &mut [f64],
+        b: &mut [f64],
+        prep: impl Fn(f64, f64) -> (f64, f64),
+        finish: impl Fn(f64, f64) -> (f64, f64),
+    ) -> AstResult<()> {
         if self.setup != Status::Ok {
             // A set-up fails only for unusable parameters; any other status
             // here would turn every good point bad without an error.
             debug_assert_eq!(self.setup, Status::BadParams);
             let setup = self.setup;
-            return slice_apply(a, b, "wcs_rev", |_, _| (setup, 0.0, 0.0));
+            return slice_apply(a, b, "wcs_rev", prep, |_, _| (setup, 0.0, 0.0), finish);
         }
         let prm = &self.prm;
-        with_rev!(self.proj, |f| slice_apply(a, b, "wcs_rev", |x, y| f(
-            prm, x, y
-        )))
+        with_rev!(self.proj, |f| slice_apply(
+            a,
+            b,
+            "wcs_rev",
+            prep,
+            |x, y| f(prm, x, y),
+            finish
+        ))
     }
 }
 
@@ -649,15 +676,18 @@ fn bad_params() -> AstError {
 }
 
 /// Apply the projection call `project` in place to every pair (`a[i]`,
-/// `b[i]`) that holds neither [`BAD_VALUE`] nor NaN, writing [`BAD_VALUE`]
-/// to both for those pairs and for a point the call cannot project, and
-/// counting one call of `counter` per pair projected.
+/// `b[i]`), in one pass: `prep` gives the pair to project, a pair holding
+/// [`BAD_VALUE`] or NaN and a point the call cannot project give
+/// ([`BAD_VALUE`], [`BAD_VALUE`]), and `finish` gives the pair stored from
+/// the result. One call of `counter` is counted per pair projected.
 #[inline(always)]
 fn slice_apply(
     a: &mut [f64],
     b: &mut [f64],
     counter: &'static str,
+    prep: impl Fn(f64, f64) -> (f64, f64),
     project: impl Fn(f64, f64) -> (Status, f64, f64),
+    finish: impl Fn(f64, f64) -> (f64, f64),
 ) -> AstResult<()> {
     let n = a.len();
     assert_eq!(b.len(), n, "the two slices must have the same length");
@@ -665,27 +695,21 @@ fn slice_apply(
     let mut calls = 0u64;
     let mut result = Ok(());
     for i in 0..n {
-        let (u, v) = (a[i], b[i]);
-        if u == BAD_VALUE || v == BAD_VALUE || u.is_nan() || v.is_nan() {
-            a[i] = BAD_VALUE;
-            b[i] = BAD_VALUE;
-            continue;
-        }
-        calls += 1;
-        match project(u, v) {
-            (Status::Ok, p, q) => {
-                a[i] = p;
-                b[i] = q;
+        let (u, v) = prep(a[i], b[i]);
+        let (p, q) = if u == BAD_VALUE || v == BAD_VALUE || u.is_nan() || v.is_nan() {
+            (BAD_VALUE, BAD_VALUE)
+        } else {
+            calls += 1;
+            match project(u, v) {
+                (Status::Ok, p, q) => (p, q),
+                (Status::BadPoint, ..) => (BAD_VALUE, BAD_VALUE),
+                (Status::BadParams, ..) => {
+                    result = Err(bad_params());
+                    break;
+                }
             }
-            (Status::BadPoint, ..) => {
-                a[i] = BAD_VALUE;
-                b[i] = BAD_VALUE;
-            }
-            (Status::BadParams, ..) => {
-                result = Err(bad_params());
-                break;
-            }
-        }
+        };
+        (a[i], b[i]) = finish(p, q);
     }
     crate::call_counts::hit_n(counter, calls);
     result
@@ -806,11 +830,39 @@ kernel_body!(
 const KERNEL_BLOCK: usize = 32;
 
 /// [`slice_apply`] for the body `K` run through the vectorizable kernels:
-/// the same bad pairs, errors and counting, with each output within the
-/// kernels' drift of [`Libm`]'s. Each element gets the same bits whatever the
-/// slice's length, and whichever build of the loop runs: on x86-64 one for
-/// AVX2 and FMA when the CPU has them.
+/// the same `prep` and `finish`, bad pairs, errors and counting, with each
+/// output within the kernels' drift of [`Libm`]'s. Each element gets the same
+/// bits whatever the slice's length, and whichever build of the loop runs: on
+/// x86-64 one for AVX2 and FMA when the CPU has them.
+///
+/// `prep` and `finish` run in passes of their own, before and after the
+/// kernel loops, which costs less at small lengths than running them inside
+/// the block loops.
 fn kernel_slice<K: KernelBody>(
+    prm: &PrjPrm,
+    a: &mut [f64],
+    b: &mut [f64],
+    counter: &'static str,
+    prep: impl Fn(f64, f64) -> (f64, f64),
+    finish: impl Fn(f64, f64) -> (f64, f64),
+) -> AstResult<()> {
+    let n = a.len();
+    assert_eq!(b.len(), n, "the two slices must have the same length");
+    let b = &mut b[..n];
+    for i in 0..n {
+        (a[i], b[i]) = prep(a[i], b[i]);
+    }
+    kernel_loops::<K>(prm, a, b, counter)?;
+    for i in 0..n {
+        (a[i], b[i]) = finish(a[i], b[i]);
+    }
+    Ok(())
+}
+
+/// The kernel loops of [`kernel_slice`], in the build of
+/// [`kernel_slice_body`] the CPU runs.
+#[inline(always)]
+fn kernel_loops<K: KernelBody>(
     prm: &PrjPrm,
     a: &mut [f64],
     b: &mut [f64],
@@ -869,8 +921,11 @@ fn kernel_slice_body<K: KernelBody, const FMA: bool>(
     let mut special = [false; KERNEL_BLOCK];
     let mut p = [0.0; KERNEL_BLOCK];
     let mut q = [0.0; KERNEL_BLOCK];
-    'blocks: for (a, b) in a.chunks_mut(KERNEL_BLOCK).zip(b.chunks_mut(KERNEL_BLOCK)) {
-        let b = &mut b[..a.len()];
+    // Blocks by index: zipped `chunks_mut` iterators divide by the block
+    // length at run time wherever their constructor is not inlined.
+    'blocks: for start in (0..n).step_by(KERNEL_BLOCK) {
+        let end = n.min(start + KERNEL_BLOCK);
+        let (a, b) = (&mut a[start..end], &mut b[start..end]);
         let mut good = 0;
         for i in 0..a.len() {
             let (x, y) = (a[i], b[i]);
@@ -1187,6 +1242,12 @@ mod tests {
     use crate::test_inputs::{angle_pairs, degrees, specials, ulps};
     use crate::wcslib::trig::{D2R, R2D};
 
+    /// The pair as given: the `prep` and `finish` of a slice entry that
+    /// stores the projection's own inputs and outputs.
+    fn unchanged(u: f64, v: f64) -> (f64, f64) {
+        (u, v)
+    }
+
     /// Bit equality, with every NaN equal to every other.
     fn same_bits_or_both_nan(a: f64, b: f64) -> bool {
         (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits()
@@ -1198,9 +1259,9 @@ mod tests {
         let mut a: Vec<f64> = pairs.iter().map(|q| q.0).collect();
         let mut b: Vec<f64> = pairs.iter().map(|q| q.1).collect();
         if fwd {
-            p.fwd_slice(&mut a, &mut b).unwrap();
+            p.fwd_slice(&mut a, &mut b, unchanged, unchanged).unwrap();
         } else {
-            p.rev_slice(&mut a, &mut b).unwrap();
+            p.rev_slice(&mut a, &mut b, unchanged, unchanged).unwrap();
         }
         a.into_iter().zip(b).collect()
     }
@@ -1399,7 +1460,8 @@ mod tests {
         let p = prj(WcsProjection::Tan);
         let mut phi = [10.0, 20.0, 30.0, 0.0, 40.0, 50.0, 60.0];
         let mut theta = [80.0, 70.0, 60.0, 90.0, 50.0, 40.0, 30.0];
-        p.fwd_slice(&mut phi, &mut theta).unwrap();
+        p.fwd_slice(&mut phi, &mut theta, unchanged, unchanged)
+            .unwrap();
         // Exactly zero, with the signs the per-value entry gives.
         let (_, wx, wy) = p.fwd_raw(0.0, 90.0);
         assert_eq!((phi[3], theta[3]), (0.0, 0.0));
@@ -1409,7 +1471,7 @@ mod tests {
         );
         let mut x = [1.0, 2.0, 3.0, 0.0, 4.0, 5.0, 6.0];
         let mut y = [-1.0, -2.0, -3.0, 0.0, -4.0, -5.0, -6.0];
-        p.rev_slice(&mut x, &mut y).unwrap();
+        p.rev_slice(&mut x, &mut y, unchanged, unchanged).unwrap();
         assert_eq!(
             (x[3].to_bits(), y[3].to_bits()),
             (0.0f64.to_bits(), 90.0f64.to_bits())
@@ -1555,7 +1617,8 @@ mod tests {
         for p in sin_prjs() {
             let mut phi = [10.0, 20.0, 30.0, 0.0, 40.0, 50.0, 60.0];
             let mut theta = [80.0, 70.0, 60.0, 90.0, 50.0, 40.0, 30.0];
-            p.fwd_slice(&mut phi, &mut theta).unwrap();
+            p.fwd_slice(&mut phi, &mut theta, unchanged, unchanged)
+                .unwrap();
             let (_, wx, wy) = p.fwd_raw(0.0, 90.0);
             assert_eq!(
                 (phi[3].to_bits(), theta[3].to_bits()),
