@@ -17,10 +17,14 @@ bench polymap_2d_deg5.map # one plain PolyMap
 bench ratemap_polymap.map # one plain RateMap
 bench shiftmap_2d.map # one plain ShiftMap
 bench slamap_eqgal.map # one plain SlaMap
+bench slamap_amp.map # SlaMap AMP: palAmpqk
+bench slamap_fk45z.map # SlaMap FK45Z: eraFk45z
+bench slamap_prec.map # SlaMap PREC: palDcs2c, palDmxv, palDcc2s
 bench specmap_wn_to_fr.map # one plain SpecMap
 bench sphmap.map # one plain SphMap
 bench splinemap_5x5_cubic.map # one plain SplineMap
 bench timemap_taiutc.map # one plain TimeMap
+bench timemap_mjdtobep.map # TimeMap MJDTOBEP: palEpb
 bench tranmap_zoom_shift.map # one plain TranMap
 bench unitmap_2d.map # one plain UnitMap
 bench unitnormmap_2d.map # one plain UnitNormMap

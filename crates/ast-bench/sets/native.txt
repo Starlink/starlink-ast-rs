@@ -14,8 +14,12 @@ bench wcsmap_bon.map # WcsMap BON: wcslib, polyconic
 bench wcsmap_qsc.map # WcsMap QSC: wcslib, quad-cube
 bench wcsmap_hpx.map # WcsMap HPX: wcslib, HEALPix
 bench slamap_eqgal.map # SlaMap: PAL galactic conversion
-bench specmap_wn_to_fr.map # SpecMap
-bench timemap_taiutc.map # TimeMap: palDat
+bench slamap_amp.map # SlaMap AMP: palAmpqk
+bench slamap_fk45z.map # SlaMap FK45Z: eraFk45z
+bench slamap_prec.map # SlaMap PREC: palDcs2c, palDmxv, palDcc2s
+bench specmap_wn_to_fr.map # SpecMap: arithmetic only, no PAL
+bench timemap_taiutc.map # TimeMap: AST's own leap-second table, no PAL
+bench timemap_mjdtobep.map # TimeMap MJDTOBEP: palEpb
 framesets wcsconv/inputs/lsst.ast # Rubin LSST FrameSet
 framesets wcsconv/inputs/lsst2.ast # Rubin LSST FrameSet with a SplineMap distortion
 framesets wcsconv/inputs/a20070718_00010_02_cube.ast # JCMT ACSIS spectral cube
