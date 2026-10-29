@@ -723,7 +723,7 @@ pub(super) fn tpn_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // trigonometry. What the Newton iteration decides from the front end's
 // output is `tpn_fwd_finish`'s concern.
 #[inline(always)]
-pub(super) fn tpn_fwd_needs_special(prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+pub(super) fn tpn_fwd_needs_special<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> bool {
     (prm.n != 0) & (!sincosd_covers(theta) | !sincosd_covers(phi))
 }
 

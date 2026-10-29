@@ -22,6 +22,11 @@ pub(crate) const WCSTRIG_TOL: f64 = 1e-10;
 /// exact results at multiples of 45 and 90 degrees and the snapping of
 /// inverse arguments within [`WCSTRIG_TOL`] of the ends of their range.
 pub(crate) trait Trig {
+    /// Whether a projection body computes a value it may not use rather than
+    /// branch around it: true for trigonometry run in a vectorized loop,
+    /// whose body must not branch, and false for [`Libm`], whose calls are
+    /// made one point at a time and would pay for the unused value.
+    const BRANCH_FREE: bool;
     /// Sine of an angle in degrees.
     fn sind(a: f64) -> f64;
     /// Cosine of an angle in degrees.
@@ -56,6 +61,8 @@ fn quadrant(floored: f64) -> i32 {
 }
 
 impl Trig for Libm {
+    const BRANCH_FREE: bool = false;
+
     // reference/starlink-ast/wcslib/wcstrig.c, astSind; reference/starlink-ast at 3d3f255f.
     #[inline(always)]
     fn sind(angle: f64) -> f64 {
@@ -188,6 +195,8 @@ impl Trig for Libm {
 pub(crate) struct Kernel<const FMA: bool>;
 
 impl<const FMA: bool> Trig for Kernel<FMA> {
+    const BRANCH_FREE: bool = true;
+
     #[inline(always)]
     fn sind(angle: f64) -> f64 {
         // The argument is rounded as wcslib rounds the one it gives libm.
@@ -267,7 +276,6 @@ pub(crate) fn atan2d_covers(y: f64, x: f64) -> bool {
 
 /// Whether [`Kernel`]'s `atand` is valid for `v`: finite and none of -1, 0
 /// and 1, which [`Libm`] answers exactly.
-#[cfg_attr(not(test), allow(dead_code))] // used by the projections' slice kernels
 #[inline(always)]
 pub(crate) fn atand_covers(v: f64) -> bool {
     v.is_finite() && v != -1.0 && v != 0.0 && v != 1.0

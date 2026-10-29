@@ -59,7 +59,9 @@
 //!   the outputs may move, and only by the kernels' drift;
 //! - a body with no branch once [`Kernel`] is inlined into it, so that the
 //!   loop over the elements vectorizes (a value the body uses on one side of
-//!   a test only is computed before the test);
+//!   a test only is computed before the test, or, where computing it costs
+//!   the per-value entry a library call, computed when `T::BRANCH_FREE` is
+//!   set or the test needs it);
 //! - for a body with a stage that cannot vectorize, such as an iteration
 //!   whose number of steps depends on the point, a split of the body into
 //!   two `#[inline(always)]` functions that both the body and the slice
@@ -71,7 +73,10 @@
 //! - a `kernel_body!` line declaring the pair, and an arm in that slice
 //!   entry's `match` that passes it to `kernel_slice`; `fwd_slice` has the
 //!   `match`, and the first reverse opt-in adds one to `rev_slice` in the
-//!   same form.
+//!   same form;
+//! - where the parameters choose between forms of the body for every point,
+//!   a body and predicate per form, each with the choice made, and an arm
+//!   per form guarded on the parameters, so that no loop tests them.
 //!
 //! A direction opts in only when that is faster than its [`Libm`] loop at a
 //! large number of points, on the smooth inputs of a real image as well as
@@ -84,6 +89,35 @@
 //! divisions in the kernel, ran at 20 ns per point against 18 on that grid,
 //! where libm's arctangent follows the same branches from point to point,
 //! and against 51 only on random points; at one point it took 40 ns more.
+//!
+//! SIN's forward projection opts in, its orthographic and synthesis forms
+//! each with its own body. The synthesis form's status compares the
+//! latitude with a limit, the arc tangent of the kernels' sine and cosine of
+//! the longitude, and a point within a margin of it, twice the bound on how
+//! far the kernels' limit can be from [`Libm`]'s, is redone with [`Libm`].
+//! On Apple silicon, on a 1000 by 1000 grid of a one-degree image the
+//! orthographic form ran at 16 ns per point against 39 for its [`Libm`]
+//! loop, and at 16 against 48 on random points of the hemisphere; the
+//! synthesis form, with NCP's parameters for a field at declination 30
+//! degrees, at 34 against 59 on the grid and 35 against 79 on random
+//! points. At one point the forms took 67 and 96 ns against 41 and 60, the
+//! set-up of the slice's loops outweighing the faster trigonometry.
+//! SIN's reverse projection does not opt in. Its orthographic form's
+//! [`Libm`] loop ran at 12 ns per point on the grid, where libm's arc
+//! tangent and arc cosine follow the same branches from point to point;
+//! with the kernels' arc tangent for the longitude it ran at 16.5 (32
+//! against 46 on random points of a hundred-degree field), and with the
+//! kernels' arc sine and arc cosine as well at 27 (28 against 46).
+//! Those arc sine and arc cosine, the kernel arc tangent of `v` and
+//! `sqrt((1 - v)(1 + v))`, were up to 2 ULP from libm's in radians over two
+//! million values in [-1.1, 1.1], for about 18% of them, and again 2 ULP
+//! with 41,600 values added at distances from 2^-52 to nearly 1 from -1, 0
+//! and 1: the arc sine 2 ULP even within 0.5 of 0, the arc cosine 1 ULP
+//! within 0.9 of 0 and 2 nearer -1 and 1. The cause is the rounding of
+//! `(1 - v)(1 + v)`, which takes them beyond the kernels' rule of 1 ULP of
+//! the exact value, so [`Kernel`]'s `asind` and `acosd` are [`Libm`]'s. A
+//! correctly rounded `1 - v^2`, one fused multiply-add, brought both within
+//! 1 ULP, but a build without fused multiply-adds would need the same bits.
 //!
 //! TPN's forward projection opts in its front end, the gnomonic projection
 //! to (xi, eta); the Newton iteration that inverts the polynomial runs per
@@ -136,8 +170,10 @@ use super::tpn::{tpn_fwd, tpn_fwd_finish, tpn_fwd_front, tpn_fwd_needs_special, 
 use super::trig::{Kernel, Libm, Trig};
 use super::zenithal::{
     air_fwd, air_rev, air_set, arc_fwd, arc_rev, arc_set, azp_fwd, azp_rev, azp_set, sin_fwd,
-    sin_rev, sin_set, stg_fwd, stg_rev, stg_set, szp_fwd, szp_rev, szp_set, tan_fwd,
-    tan_fwd_needs_special, tan_rev, tan_set, zea_fwd, zea_rev, zea_set, zpn_fwd, zpn_rev, zpn_set,
+    sin_fwd_orthographic, sin_fwd_orthographic_needs_special, sin_fwd_synthesis,
+    sin_fwd_synthesis_needs_special, sin_rev, sin_set, stg_fwd, stg_rev, stg_set, szp_fwd, szp_rev,
+    szp_set, tan_fwd, tan_fwd_needs_special, tan_rev, tan_set, zea_fwd, zea_rev, zea_set, zpn_fwd,
+    zpn_rev, zpn_set,
 };
 use super::{PRJ_PARAM_SLOTS, WcsProjection};
 
@@ -552,6 +588,10 @@ impl Prj {
         let prm = &self.prm;
         match self.proj {
             WcsProjection::Tan => kernel_slice::<TanFwd>(prm, a, b, "wcs_fwd"),
+            WcsProjection::Sin if prm.w[1] == 0.0 => {
+                kernel_slice::<SinFwdOrthographic>(prm, a, b, "wcs_fwd")
+            }
+            WcsProjection::Sin => kernel_slice::<SinFwdSynthesis>(prm, a, b, "wcs_fwd"),
             WcsProjection::Tpn => kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd"),
             proj => with_fwd!(proj, |f| slice_apply(a, b, "wcs_fwd", |phi, theta| f(
                 prm, phi, theta
@@ -655,8 +695,9 @@ fn slice_apply(
 trait KernelBody {
     /// The stage of the body the kernels run.
     fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64);
-    /// Whether the stage at (`u`, `v`) needs [`Libm`].
-    fn needs_special(prm: &PrjPrm, u: f64, v: f64) -> bool;
+    /// Whether the stage at (`u`, `v`) needs [`Libm`], where the stage runs
+    /// with the trigonometry `T`.
+    fn needs_special<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> bool;
     /// The rest of the body on the stage's result, or `None` to redo the
     /// point with [`Libm`].
     fn finish(prm: &PrjPrm, stage: (Status, f64, f64)) -> Option<(Status, f64, f64)>;
@@ -680,8 +721,8 @@ macro_rules! kernel_body {
                 $body::<T>(prm, u, v)
             }
             #[inline(always)]
-            fn needs_special(prm: &PrjPrm, u: f64, v: f64) -> bool {
-                $special(prm, u, v)
+            fn needs_special<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> bool {
+                $special::<T>(prm, u, v)
             }
             #[inline(always)]
             fn finish(prm: &PrjPrm, stage: (Status, f64, f64)) -> Option<(Status, f64, f64)> {
@@ -706,6 +747,16 @@ fn kernel_stage_is_whole_body(
 }
 
 kernel_body!(TanFwd, tan_fwd, tan_fwd_needs_special);
+kernel_body!(
+    SinFwdOrthographic,
+    sin_fwd_orthographic,
+    sin_fwd_orthographic_needs_special
+);
+kernel_body!(
+    SinFwdSynthesis,
+    sin_fwd_synthesis,
+    sin_fwd_synthesis_needs_special
+);
 kernel_body!(
     TpnFwd,
     tpn_fwd_front,
@@ -809,7 +860,7 @@ fn kernel_slice_body<K: KernelBody, const FMA: bool>(
         );
         for j in 0..good {
             (status[j], p[j], q[j]) = K::eval::<Kernel<FMA>>(prm, u[j], v[j]);
-            special[j] = K::needs_special(prm, u[j], v[j]);
+            special[j] = K::needs_special::<Kernel<FMA>>(prm, u[j], v[j]);
         }
         for j in 0..good {
             calls += 1;
@@ -1099,7 +1150,7 @@ mod tests {
     }
 
     use crate::test_inputs::{angle_pairs, degrees, specials, ulps};
-    use crate::wcslib::trig::R2D;
+    use crate::wcslib::trig::{D2R, R2D};
 
     /// Bit equality, with every NaN equal to every other.
     fn same_bits_or_both_nan(a: f64, b: f64) -> bool {
@@ -1328,6 +1379,188 @@ mod tests {
             (x[3].to_bits(), y[3].to_bits()),
             (0.0f64.to_bits(), 90.0f64.to_bits())
         );
+    }
+
+    /// SIN with the given latitude-axis parameters `p1` and `p2`: the
+    /// orthographic projection when both are zero, otherwise the synthesis
+    /// projection.
+    fn sin_prj(p1: f64, p2: f64) -> Prj {
+        Prj::new(
+            WcsProjection::Sin,
+            &[vec![None, Some(p1), Some(p2)], Vec::new()],
+            true,
+        )
+        .unwrap()
+    }
+
+    /// The SIN parameter sets the tests use: orthographic; NCP's, for a
+    /// field at declination 30 degrees; and a general synthesis projection.
+    fn sin_prjs() -> [Prj; 3] {
+        [
+            sin_prj(0.0, 0.0),
+            sin_prj(0.0, 1.0 / crate::math::tan(30.0f64.to_radians())),
+            sin_prj(0.125, -0.2),
+        ]
+    }
+
+    /// Native (phi, theta) for SIN forward: TAN's, and random longitudes at
+    /// latitudes within 1e-9 to 1e-1 degrees of either pole, at logarithmic
+    /// intervals, which straddle the change to the small angle formulae.
+    fn sin_fwd_inputs() -> Vec<(f64, f64)> {
+        let mut out = tan_fwd_inputs();
+        let d = degrees(40_000);
+        for (i, &u) in d.iter().enumerate() {
+            let t = (i % 1001) as f64 / 1000.0;
+            let delta = crate::math::powf(10.0, -9.0 + 8.0 * t);
+            let pole = if i % 2 == 0 { 90.0 } else { -90.0 };
+            out.push((u, pole - delta.copysign(pole)));
+        }
+        out
+    }
+
+    /// The largest ratio, over the outputs of SIN's forward slice that differ
+    /// from the per-value entry's, of the difference to its bound.
+    /// Each output is `r0 (a + p z)`, with `a` the product of a sine or
+    /// cosine of `phi` and `cthe`, `z` `1 - sind(theta)` and `p` the
+    /// parameter `p1` or `-p2` (away from the pole; nearer it, `cthe` and
+    /// `z` are from `theta` alone and differ less). The kernels' sine and
+    /// cosine are within 2 ULP, at most 2 * 2^-52 relative, of Libm's (see
+    /// [`Kernel`]), and each path rounds every operation once, at most
+    /// 2^-53 relative, 2^-52 between the two paths. So `a` differs by at
+    /// most 5 * 2^-52 |a| (2 for each factor and 1 for the product's
+    /// rounding); `z` by at most 2 * 2^-52 from the sine, which is at most
+    /// 1 in magnitude, and 2^-52 |z| from the subtraction, so `p z` by at
+    /// most 2^-52 |p| (2 + 2 |z|) with its product's rounding; and the sum
+    /// and the product with `r0` by at most 2^-52 of the output each. To
+    /// first order the bound is `2^-52 (r0 (5 |a| + |p| (2 + 2 |z|)) +
+    /// 2 |out|)`.
+    fn sin_fwd_drift_over_bound(p: &Prj, pairs: &[(f64, f64)]) -> f64 {
+        let got = through_slice(p, pairs, true);
+        let prm = &p.prm;
+        let mut worst = 0.0f64;
+        for (&(u, v), &(x, y)) in pairs.iter().zip(&got) {
+            let bad_in = u == BAD_VALUE || v == BAD_VALUE || u.is_nan() || v.is_nan();
+            let (status, wx, wy) = p.fwd_raw(u, v);
+            if bad_in || status != Status::Ok {
+                continue;
+            }
+            // `cthe` and `z` as the body has them, and whether `z` is from a
+            // sine.
+            let t = (90.0 - v.abs()) * D2R;
+            let (cthe, z, z_from_sine) = if t < 1.0e-5 {
+                let z = if v > 0.0 {
+                    t * t / 2.0
+                } else {
+                    2.0 - t * t / 2.0
+                };
+                (t, z, 0.0)
+            } else {
+                (Libm::cosd(v), 1.0 - Libm::sind(v), 1.0)
+            };
+            let terms = [
+                (x, wx, cthe * Libm::sind(u), prm.p[1]),
+                (y, wy, cthe * Libm::cosd(u), prm.p[2]),
+            ];
+            for (g, w, a, pz) in terms {
+                if same_bits_or_both_nan(g, w) {
+                    continue;
+                }
+                let bound = f64::EPSILON
+                    * (prm.r0 * (5.0 * a.abs() + z_from_sine * pz.abs() * (2.0 + 2.0 * z.abs()))
+                        + 2.0 * w.abs());
+                let ratio = (g - w).abs() / bound;
+                assert!(!ratio.is_nan(), "({u:e}, {v:e}): {g:e} vs {w:e}");
+                worst = worst.max(ratio);
+            }
+        }
+        worst
+    }
+
+    /// SIN's forward slice runs the kernels and is within their drift of the
+    /// per-value entry, with the same bad points, for the orthographic and
+    /// the synthesis projections.
+    #[test]
+    fn sin_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let inputs = sin_fwd_inputs();
+        for p in sin_prjs() {
+            let (fwd_ulps, _, fwd_differ) = slice_drift(&p, &inputs, true);
+            let over = sin_fwd_drift_over_bound(&p, &inputs);
+            assert!(
+                over <= 1.0,
+                "forward {:?}: {over} of the bound ({fwd_ulps:?} ULP)",
+                &p.prm.p[1..3]
+            );
+            assert!(
+                fwd_differ > 0,
+                "forward: no output differs; is the kernel in use?"
+            );
+            let (rev_ulps, _, rev_differ) = slice_drift(&p, &tan_rev_inputs(), false);
+            assert_eq!((rev_ulps, rev_differ), ([0, 0], 0), "reverse");
+        }
+    }
+
+    #[test]
+    fn sin_slices_give_each_point_the_same_bits_at_any_length() {
+        for p in sin_prjs() {
+            assert_same_bits_at_any_length(&p, &interleaved_inputs());
+        }
+    }
+
+    #[test]
+    fn sin_slice_builds_agree() {
+        let [ortho, ncp, synthesis] = sin_prjs();
+        assert_builds_agree::<SinFwdOrthographic>(&ortho, &interleaved_inputs());
+        assert_builds_agree::<SinFwdSynthesis>(&ncp, &interleaved_inputs());
+        assert_builds_agree::<SinFwdSynthesis>(&synthesis, &interleaved_inputs());
+    }
+
+    /// The pole projects to exactly the per-value entry's bits in a slice.
+    #[test]
+    fn sin_exact_points_stay_exact_in_a_slice() {
+        for p in sin_prjs() {
+            let mut phi = [10.0, 20.0, 30.0, 0.0, 40.0, 50.0, 60.0];
+            let mut theta = [80.0, 70.0, 60.0, 90.0, 50.0, 40.0, 30.0];
+            p.fwd_slice(&mut phi, &mut theta).unwrap();
+            let (_, wx, wy) = p.fwd_raw(0.0, 90.0);
+            assert_eq!(
+                (phi[3].to_bits(), theta[3].to_bits()),
+                (wx.to_bits(), wy.to_bits())
+            );
+        }
+    }
+
+    /// Points at and a few ULP either side of the synthesis projection's
+    /// lowest valid latitude, as the per-value entry computes it, are bad in
+    /// the forward slice exactly when they are bad in the per-value entry.
+    #[test]
+    fn sin_synthesis_limit_points_agree_on_bad_or_good() {
+        let [_, ncp, synthesis] = sin_prjs();
+        for p in [ncp, synthesis] {
+            let prm = &p.prm;
+            let mut pairs = Vec::new();
+            let mut bad = 0;
+            for &phi in &degrees(20_000) {
+                let limit = -Libm::atand(prm.p[1] * Libm::sind(phi) - prm.p[2] * Libm::cosd(phi));
+                // A few ULP, a few multiples of 2^-46, the ULP of a limit
+                // between 64 and 90 degrees, and up to a few times the
+                // margin within which the slice redoes the point.
+                for n in -8i32..=8 {
+                    let n64 = f64::from(n);
+                    for theta in [
+                        ulps_away(limit, i64::from(n)),
+                        limit + n64 * crate::math::powf(2.0, -46.0),
+                        limit + n64 * 1e-13,
+                    ] {
+                        bad += usize::from(p.fwd_raw(phi, theta).0 != Status::Ok);
+                        pairs.push((phi, theta));
+                    }
+                }
+            }
+            assert!(bad > 0 && bad < pairs.len(), "{bad} of {} bad", pairs.len());
+            slice_drift(&p, &pairs, true);
+            let over = sin_fwd_drift_over_bound(&p, &pairs);
+            assert!(over <= 1.0, "{over} of the bound");
+        }
     }
 
     use crate::wcslib::tpn::{
@@ -1652,7 +1885,7 @@ mod tests {
         }
         let got = through_slice(&p, &pairs, true);
         for (&(u, v), &(x, y)) in pairs.iter().zip(&got) {
-            if tpn_fwd_needs_special(&p.prm, u, v) {
+            if tpn_fwd_needs_special::<Kernel<{ crate::vmath::HAS_FMA }>>(&p.prm, u, v) {
                 let (status, wx, wy) = p.fwd_raw(u, v);
                 let want = if status == Status::Ok {
                     (wx, wy)
