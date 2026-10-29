@@ -424,6 +424,20 @@
 //! to 56 against 64 to 67 on the image, but at 100 to 103 against 102 to 104
 //! on random points, within the measurements' noise, where the choice of
 //! the face, made per element, costs most.
+//!
+//! The HEALPix projections were timed as the cylindrical ones, with the
+//! default parameters, on an image centred at a latitude of 45 degrees.
+//!
+//! HPX's and XPH's forward projections do not opt in. Their only
+//! trigonometry is the sine of the latitude, which libm computes in a few
+//! nanoseconds, less than the slice's gather, predicate and scatter. HPX's
+//! whole body, with its choice of zone a select, ran at 11.4 ns per point
+//! against 6.2 for its [`Libm`] loop on the whole-sky grid, 11.4 against 6.8
+//! on the image and 11.3 against 9.1 on random points; XPH's, whose
+//! remainders are library calls, with the sine from the kernels and the rest
+//! per element, at 12.8 against 10.0, 13.3 against 10.6 and 22.9 against
+//! 23.6. Their reverse projections' only trigonometry is an arc sine, which
+//! has no kernel, so they keep their [`Libm`] loops too.
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
