@@ -7,8 +7,7 @@
 //! Each projection is a set-up function that derives constants from the
 //! parameters in a [`PrjPrm`], and a forward and a reverse function generic
 //! over the trigonometry [`Trig`].
-//! Every function lists its source in `vendor/wcslib/proj.c` and the
-//! `reference/starlink-ast` commit that file comes from, 3d3f255f.
+//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //!
 //! The tests of the form `prj->flag > 0` in the C bodies are applied
 //! unconditionally, as [`super::prj`] explains.
@@ -22,7 +21,7 @@ use super::trig::{D2R, Libm, R2D, Trig};
 // COP: conic perspective
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astCOPset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOPset; reference/starlink-ast at 3d3f255f.
 pub(super) fn cop_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = prm.p[1];
@@ -51,7 +50,7 @@ pub(super) fn cop_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astCOPfwd; reference/starlink-ast at 3d3f255f,
+// reference/starlink-ast/wcslib/proj.c, astCOPfwd; reference/starlink-ast at 3d3f255f,
 // with the exact values at the poles, which the C comments as upstream 4.22.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
@@ -88,7 +87,7 @@ pub(super) fn cop_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astCOPrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOPrev; reference/starlink-ast at 3d3f255f.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
 #[allow(clippy::needless_late_init)]
@@ -117,7 +116,7 @@ pub(super) fn cop_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // COE: conic equal area
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astCOEset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOEset; reference/starlink-ast at 3d3f255f.
 pub(super) fn coe_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = prm.p[1];
@@ -148,7 +147,7 @@ pub(super) fn coe_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astCOEfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOEfwd; reference/starlink-ast at 3d3f255f.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
 #[allow(clippy::needless_late_init)]
@@ -168,7 +167,7 @@ pub(super) fn coe_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astCOErev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOErev; reference/starlink-ast at 3d3f255f.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
 #[allow(clippy::needless_late_init)]
@@ -216,7 +215,7 @@ pub(super) fn coe_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // COD: conic equidistant
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astCODset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCODset; reference/starlink-ast at 3d3f255f.
 pub(super) fn cod_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = prm.p[1];
@@ -242,7 +241,7 @@ pub(super) fn cod_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astCODfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCODfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn cod_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let a = prm.w[0] * phi;
@@ -254,7 +253,7 @@ pub(super) fn cod_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astCODrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCODrev; reference/starlink-ast at 3d3f255f.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
 #[allow(clippy::needless_late_init)]
@@ -283,7 +282,7 @@ pub(super) fn cod_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // COO: conic orthomorphic
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astCOOset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOOset; reference/starlink-ast at 3d3f255f.
 pub(super) fn coo_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = prm.p[1];
@@ -321,7 +320,7 @@ pub(super) fn coo_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astCOOfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOOfwd; reference/starlink-ast at 3d3f255f.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
 #[allow(clippy::needless_late_init)]
@@ -345,7 +344,7 @@ pub(super) fn coo_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astCOOrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOOrev; reference/starlink-ast at 3d3f255f.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
 #[allow(clippy::needless_late_init)]
@@ -377,66 +376,4 @@ pub(super) fn coo_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
     }
 
     (Status::Ok, phi, theta)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::WcsProjection;
-    use super::super::difftest::check_projection;
-
-    /// The parameter sets: `PV2_1` over the latitudes that matter for each
-    /// of the standard parallels `PV2_2`, with and without a second
-    /// parameter, and the sets that fail to set up.
-    fn sets(extra: &[(f64, f64)]) -> Vec<Vec<(usize, usize, f64)>> {
-        let mut sets = Vec::new();
-        for &p1 in &[-60.0, -10.0, 10.0, 45.0, 89.0] {
-            for &p2 in &[0.0, 5.0, 20.0] {
-                sets.push(vec![(2, 1, p1), (2, 2, p2)]);
-            }
-        }
-        for &(p1, p2) in extra {
-            sets.push(vec![(2, 1, p1), (2, 2, p2)]);
-        }
-        // The parameter 1 is missing: it has no default.
-        sets.push(Vec::new());
-        sets
-    }
-
-    #[test]
-    fn conic_projections_match_vendored_c() {
-        use WcsProjection::*;
-        // `cop_at_the_poles` of the WcsMap tests: a standard parallel at the
-        // pole itself, then one that makes the cone degenerate, and one
-        // whose parallels straddle the pole.
-        let cop = sets(&[
-            (90.0, 0.0),
-            (60.0, 0.0),
-            (-45.0, 5.0),
-            (45.0, 45.0),
-            (30.0, 60.0),
-            (-90.0, 0.0),
-            (0.0, 30.0),
-        ]);
-        check_projection(Cop, &cop);
-        // `PV2_1 = 0, PV2_2 = 30` makes COE's `w[0]` zero and the set-up
-        // fail.
-        let coe = sets(&[
-            (0.0, 30.0),
-            (30.0, 30.0),
-            (30.0, 60.0),
-            (-30.0, 60.0),
-            (45.0, 90.0),
-        ]);
-        check_projection(Coe, &coe);
-        let cod = sets(&[(0.0, 30.0), (30.0, 30.0), (45.0, 90.0), (-45.0, 20.0)]);
-        check_projection(Cod, &cod);
-        let coo = sets(&[
-            (0.0, 30.0),
-            (30.0, 30.0),
-            (30.0, 60.0),
-            (-45.0, 20.0),
-            (60.0, 30.0),
-        ]);
-        check_projection(Coo, &coo);
-    }
 }

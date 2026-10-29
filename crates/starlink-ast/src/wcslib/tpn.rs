@@ -10,8 +10,7 @@
 //! `prm.p` holds the coefficients of the latitude-axis polynomial and
 //! `prm.p2` those of the longitude axis; `prm.n` says whether the TAN
 //! projection is applied as well as the polynomial.
-//! Every function lists its source in `vendor/wcslib/tpn.c` and the
-//! `reference/starlink-ast` commit that file comes from, 3d3f255f.
+//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //!
 //! The tests of the form `prj->flag > 0` in the C bodies are applied
 //! unconditionally, as [`super::prj`] explains.
@@ -26,11 +25,11 @@ use super::prj::{PrjPrm, Status};
 use super::trig::{R2D, Trig};
 
 // Newton's method in `astTPNfwd` stops when both corrections are within this
-// fraction of the new coordinate (the `tol` of `vendor/wcslib/tpn.c`).
+// fraction of the new coordinate (the `tol` of `reference/starlink-ast/wcslib/tpn.c`).
 const NEWTON_RELATIVE_TOLERANCE: f64 = 1.0e-5;
 
 // The most iterations `astTPNfwd` makes before it gives up (the loop bound of
-// `vendor/wcslib/tpn.c`).
+// `reference/starlink-ast/wcslib/tpn.c`).
 const NEWTON_MAX_ITERATIONS: usize = 50;
 
 /// The powers and products of a point (x, y) the polynomial terms use, in
@@ -338,7 +337,7 @@ impl Terms {
     }
 }
 
-// vendor/wcslib/tpn.c, astTPNset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/tpn.c, astTPNset; reference/starlink-ast at 3d3f255f.
 // The branches keep the shape of the C.
 #[allow(clippy::if_same_then_else)]
 pub(super) fn tpn_set(prm: &mut PrjPrm) -> Status {
@@ -369,7 +368,7 @@ pub(super) fn tpn_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/tpn.c, astTPNfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/tpn.c, astTPNfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn tpn_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let xi;
@@ -616,7 +615,7 @@ pub(super) fn tpn_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/tpn.c, astTPNrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/tpn.c, astTPNrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn tpn_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let xi;
@@ -646,101 +645,4 @@ pub(super) fn tpn_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
     }
 
     (Status::Ok, phi, theta)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::WcsProjection;
-    use super::super::difftest::check_projection_tpn;
-    use crate::test_inputs::SplitMix64;
-
-    type Set = Vec<(usize, usize, f64)>;
-
-    /// The TPN parameters of `tests/fixtures/wcsconv/inputs/dss.ast`: the
-    /// longitude axis is axis 1 and the latitude axis axis 2.
-    // The values are written as `dss.ast` has them.
-    #[allow(clippy::excessive_precision)]
-    fn dss() -> Set {
-        let lon = [
-            (0, 0.00037777813768480556),
-            (1, 0.018675372165510556),
-            (2, 1.4659181119170556e-05),
-            (4, -5.6541834490241662e-09),
-            (5, -1.6598619578175834e-10),
-            (6, 3.324645548432778e-09),
-            (7, 6.8029375162963896e-10),
-            (8, -1.0315391309210556e-11),
-            (9, 6.5770184096316667e-10),
-            (10, 4.6843790588691666e-11),
-            (17, 0.0),
-            (19, 0.0),
-            (21, 0.0),
-        ];
-        let lat = [
-            (0, 0.00020734395690532499),
-            (1, 0.018675089806542779),
-            (2, -1.6578391725152224e-05),
-            (4, -5.1378767937980552e-09),
-            (5, -1.7623932712259446e-09),
-            (6, 2.7161547313251387e-10),
-            (7, 7.088907407099166e-10),
-            (8, 1.8432618513145277e-11),
-            (9, 6.8491061989569442e-10),
-            (10, 7.3325859634708332e-13),
-            (17, 0.0),
-            (19, 0.0),
-            (21, 0.0),
-        ];
-        lon.iter()
-            .map(|&(m, v)| (1, m, v))
-            .chain(lat.iter().map(|&(m, v)| (2, m, v)))
-            .collect()
-    }
-
-    /// Random coefficients up to 40 on each axis, of magnitude at most 1e-3;
-    /// `unit_linear` makes the linear terms 1 and 0 (as for an identity
-    /// plate solution) before adding them.
-    fn random_set(rng: &mut SplitMix64, unit_linear: bool) -> Set {
-        let mut set = Set::new();
-        for axis in [1, 2] {
-            if unit_linear {
-                set.push((axis, 1, 1.0));
-            }
-            for m in 0..40 {
-                if (m == 1 && unit_linear) || rng.next_u64() % 4 == 0 {
-                    continue;
-                }
-                let v = (rng.next_f64() * 2.0 - 1.0) * 1e-3;
-                if let Some(e) = set.iter_mut().find(|e| e.0 == axis && e.1 == m) {
-                    e.2 += v;
-                } else {
-                    set.push((axis, m, v));
-                }
-            }
-        }
-        set
-    }
-
-    #[test]
-    fn tpn_matches_vendored_c() {
-        let mut rng = SplitMix64::new(0x7a9_0001);
-        let mut sets: Vec<Set> = vec![Vec::new(), dss()];
-        // Only the unit linear terms: the simple TAN case.
-        sets.push(vec![(1, 1, 1.0), (2, 1, 1.0)]);
-        // A constant offset or a single higher term makes it polynomial.
-        sets.push(vec![(1, 0, 0.5)]);
-        sets.push(vec![(2, 99, 1e-9)]);
-        // Zero linear terms: the initial guess falls back.
-        sets.push(vec![(1, 1, 0.0), (2, 1, 0.0), (1, 0, 0.1), (2, 0, -0.2)]);
-        sets.push(vec![(1, 1, 0.0), (2, 1, 2.0), (1, 0, 0.1)]);
-        sets.push(vec![(1, 1, 2.0), (2, 1, 0.0), (2, 0, 0.1)]);
-        // Radial terms only.
-        sets.push(vec![(1, 3, 0.01), (2, 3, 0.01)]);
-        for i in 0..24 {
-            sets.push(random_set(&mut rng, i % 2 == 1));
-        }
-        for tpn_tan in [true, false] {
-            check_projection_tpn(WcsProjection::Tpn, &sets, tpn_tan);
-        }
-    }
 }

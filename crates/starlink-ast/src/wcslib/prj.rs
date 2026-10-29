@@ -418,12 +418,6 @@ impl Prj {
         }
     }
 
-    /// The status of the set-up.
-    #[cfg(test)]
-    pub(crate) fn setup_status(&self) -> Status {
-        self.setup
-    }
-
     /// Forward projection of native (`phi`, `theta`) in degrees: the status
     /// and the projected (x, y).
     /// The outputs are whatever the projection wrote before returning, which
@@ -594,7 +588,7 @@ fn run_setup(proj: WcsProjection, prm: &mut PrjPrm) -> Status {
 /// parameter that was not supplied its projection's default or zero.
 ///
 /// `InitPrjPrm` in `reference/starlink-ast` at 3d3f255f
-/// (`src/wcsmap.c`); the same as `PrjParams::init_prj_prm`.
+/// (`src/wcsmap.c`).
 fn init_params(proj: WcsProjection, prm: &mut PrjPrm, params: &[Vec<Option<f64>>], tpn_tan: bool) {
     // Make the set-up compute its constants afresh.
     prm.r0 = 0.0;
@@ -691,5 +685,122 @@ fn init_params(proj: WcsProjection, prm: &mut PrjPrm, params: &[Vec<Option<f64>>
         if !(undefaultable && i == 1) && *slot == BAD_VALUE {
             *slot = 0.0;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NO_PARAMS: [Vec<Option<f64>>; 2] = [Vec::new(), Vec::new()];
+
+    fn prj(proj: WcsProjection) -> Prj {
+        Prj::new(proj, &NO_PARAMS, true).unwrap()
+    }
+
+    #[test]
+    fn tan_reference_point() {
+        // TAN reference point is (0, 90) degrees: it projects to (0, 0).
+        let (status, x, y) = prj(WcsProjection::Tan).fwd_raw(0.0, 90.0);
+        assert_eq!(status, Status::Ok);
+        assert!(x.abs() < 1e-10, "x = {x}");
+        assert!(y.abs() < 1e-10, "y = {y}");
+    }
+
+    #[test]
+    fn round_trips() {
+        use WcsProjection::*;
+        for (proj, phi0, theta0) in [
+            (Tan, 10.0, 80.0),
+            (Car, 45.0, 30.0),
+            (Sin, 5.0, 85.0),
+            (Ait, 30.0, 45.0),
+            (Arc, 15.0, 60.0),
+            (Stg, 20.0, 70.0),
+            (Mer, 25.0, 40.0),
+            (Zea, 12.0, 55.0),
+            (Mol, 35.0, 50.0),
+        ] {
+            let p = prj(proj);
+            let (s, x, y) = p.fwd_raw(phi0, theta0);
+            assert_eq!(s, Status::Ok, "{} forward", proj.code());
+            let (s, phi, theta) = p.rev_raw(x, y);
+            assert_eq!(s, Status::Ok, "{} reverse", proj.code());
+            assert!((phi - phi0).abs() < 1e-10, "{} phi = {phi}", proj.code());
+            assert!(
+                (theta - theta0).abs() < 1e-10,
+                "{} theta = {theta}",
+                proj.code()
+            );
+        }
+    }
+
+    #[test]
+    fn ncp_gls_and_unknown_are_rejected() {
+        // These must be mapped to another projection at the WcsMap level.
+        for proj in [
+            WcsProjection::Ncp,
+            WcsProjection::Gls,
+            WcsProjection::Unknown,
+        ] {
+            assert!(Prj::new(proj, &NO_PARAMS, true).is_err());
+        }
+    }
+
+    #[test]
+    fn zpn_set_up_fails_until_a_coefficient_is_supplied() {
+        // ZPN's set-up fails while its coefficients are all zero, and every
+        // call returns that status.
+        let p = prj(WcsProjection::Zpn);
+        assert_ne!(p.fwd_raw(0.0, 80.0).0, Status::Ok);
+        assert_ne!(p.rev_raw(0.0, 0.1).0, Status::Ok);
+        // The linear coefficient makes the polynomial well defined.
+        let p = Prj::new(
+            WcsProjection::Zpn,
+            &[vec![None, Some(1.0)], Vec::new()],
+            true,
+        )
+        .unwrap();
+        assert_eq!(p.fwd_raw(0.0, 80.0).0, Status::Ok);
+    }
+
+    #[test]
+    fn get_param_out_of_range() {
+        let p = prj(WcsProjection::Tan);
+        assert!(p.get_param(0, PRJ_PARAM_SLOTS).is_none());
+        assert!(p.get_param(2, 0).is_none());
+    }
+
+    #[test]
+    #[allow(clippy::approx_constant)] // -3.14 is an opaque test parameter, not pi
+    fn supplied_parameters_are_copied() {
+        let mut lat = vec![None; 6];
+        lat[5] = Some(42.0);
+        let mut lon = vec![None; 11];
+        lon[10] = Some(-3.14);
+        let p = Prj::new(WcsProjection::Tan, &[lat, lon], true).unwrap();
+        assert_eq!(p.get_param(0, 5), Some(42.0));
+        assert_eq!(p.get_param(1, 10), Some(-3.14));
+        assert_eq!(p.get_param(0, 4), Some(0.0));
+    }
+
+    /// `tpn_tan` selects whether the transformation includes the TAN
+    /// projection as well as the polynomial.
+    /// With the default unit coefficients the polynomial is the identity,
+    /// so clearing it makes the whole projection an identity.
+    #[test]
+    fn tpn_tan_selects_polynomial_only_form() {
+        let with_tan = Prj::new(WcsProjection::Tpn, &NO_PARAMS, true).unwrap();
+        let poly_only = Prj::new(WcsProjection::Tpn, &NO_PARAMS, false).unwrap();
+        let (_, _, y_tan) = with_tan.fwd_raw(0.0, 60.0);
+        let (_, x_poly, y_poly) = poly_only.fwd_raw(0.0, 60.0);
+        assert!(
+            x_poly.abs() < 1e-10 && (y_poly - 60.0).abs() < 1e-10,
+            "polynomial-only TPN should pass its inputs through: ({x_poly}, {y_poly})"
+        );
+        assert!(
+            (y_tan - y_poly).abs() > 1.0,
+            "TPNTan should change the projection: {y_tan} vs {y_poly}"
+        );
     }
 }

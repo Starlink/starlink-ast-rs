@@ -12,7 +12,6 @@ fn main() {
 
     declare_dist_tier(&manifest_dir);
     compile_pal_erfa(&vendor_dir);
-    compile_wcslib(&vendor_dir);
     generate_error_codes(&vendor_dir);
     generate_wcsconv_tests(&manifest_dir);
     generate_guide(&manifest_dir);
@@ -167,40 +166,6 @@ fn compile_pal_erfa(vendor_dir: &Path) {
         .flag_if_supported("-ffp-contract=off")
         .warnings(false)
         .compile("ast_pal_erfa");
-}
-
-fn compile_wcslib(vendor_dir: &Path) {
-    let wcslib_dir = vendor_dir.join("wcslib");
-
-    println!(
-        "cargo::rerun-if-changed={}",
-        wcslib_dir.join("proj.c").display()
-    );
-    println!(
-        "cargo::rerun-if-changed={}",
-        wcslib_dir.join("tpn.c").display()
-    );
-    println!(
-        "cargo::rerun-if-changed={}",
-        wcslib_dir.join("wcstrig.c").display()
-    );
-    println!(
-        "cargo::rerun-if-changed={}",
-        wcslib_dir.join("ast_memory_stub.c").display()
-    );
-
-    cc::Build::new()
-        .file(wcslib_dir.join("proj.c"))
-        .file(wcslib_dir.join("tpn.c"))
-        .file(wcslib_dir.join("wcstrig.c"))
-        .file(wcslib_dir.join("ast_memory_stub.c"))
-        .include(&wcslib_dir)
-        // A fixed optimization level and no contraction, for the reasons
-        // given in `compile_pal_erfa`.
-        .opt_level(3)
-        .flag_if_supported("-ffp-contract=off")
-        .warnings(false)
-        .compile("ast_wcslib");
 }
 
 fn generate_error_codes(vendor_dir: &Path) {

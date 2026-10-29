@@ -7,8 +7,7 @@
 //! Each projection is a set-up function that derives constants from the
 //! parameters in a [`PrjPrm`], and a forward and a reverse function generic
 //! over the trigonometry [`Trig`].
-//! Every function lists its source in `vendor/wcslib/proj.c` and the
-//! `reference/starlink-ast` commit that file comes from, 3d3f255f.
+//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //!
 //! The tests of the form `prj->flag > 0` in the C bodies are applied
 //! unconditionally, as [`super::prj`] explains.
@@ -23,7 +22,7 @@ use super::zenithal::c_copysign;
 // CYP: cylindrical perspective
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astCYPset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCYPset; reference/starlink-ast at 3d3f255f.
 pub(super) fn cyp_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -63,7 +62,7 @@ pub(super) fn cyp_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astCYPfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCYPfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn cyp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let s = prm.p[1] + T::cosd(theta);
@@ -77,7 +76,7 @@ pub(super) fn cyp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astCYPrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCYPrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn cyp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // The tolerance on |a| = 1, `tol` in C.
@@ -107,7 +106,7 @@ pub(super) fn cyp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // CEA: cylindrical equal area
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astCEAset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCEAset; reference/starlink-ast at 3d3f255f.
 pub(super) fn cea_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -134,7 +133,7 @@ pub(super) fn cea_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astCEAfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCEAfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn cea_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let x = prm.w[0] * phi;
@@ -143,7 +142,7 @@ pub(super) fn cea_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astCEArev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCEArev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn cea_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // The tolerance on |s| = 1, `tol` in C.
@@ -167,7 +166,7 @@ pub(super) fn cea_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // CAR: Cartesian
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astCARset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCARset; reference/starlink-ast at 3d3f255f.
 pub(super) fn car_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -184,7 +183,7 @@ pub(super) fn car_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astCARfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCARfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn car_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let x = prm.w[0] * phi;
@@ -193,7 +192,7 @@ pub(super) fn car_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astCARrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCARrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn car_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let phi = prm.w[1] * x;
@@ -206,7 +205,7 @@ pub(super) fn car_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // MER: Mercator
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astMERset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMERset; reference/starlink-ast at 3d3f255f.
 pub(super) fn mer_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -223,7 +222,7 @@ pub(super) fn mer_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astMERfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMERfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn mer_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     if theta <= -90.0 || theta >= 90.0 {
@@ -236,66 +235,11 @@ pub(super) fn mer_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astMERrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMERrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn mer_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let phi = x * prm.w[1];
     let theta = 2.0 * T::atand(math::exp(y / prm.r0)) - 90.0;
 
     (Status::Ok, phi, theta)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::WcsProjection;
-    use super::super::difftest::check_projection;
-
-    /// The parameter sets: the defaults, then (axis, m, value) lists on the
-    /// latitude axis.
-    type Sets = Vec<Vec<(usize, usize, f64)>>;
-
-    fn sets(lists: &[&[(usize, f64)]]) -> Sets {
-        let mut out: Sets = vec![Vec::new()];
-        out.extend(
-            lists
-                .iter()
-                .map(|l| l.iter().map(|&(m, v)| (2, m, v)).collect()),
-        );
-        out
-    }
-
-    #[test]
-    fn cylindrical_projections_match_vendored_c() {
-        use WcsProjection::*;
-        check_projection(
-            Cyp,
-            &sets(&[
-                &[(1, 0.5)],
-                &[(1, 2.0), (2, 0.5)],
-                &[(1, 1.0), (2, 1.0)],
-                &[(1, -0.5), (2, 3.0)],
-                &[(1, 3.0), (2, -1.0)],
-                &[(1, 0.0), (2, 2.0)],
-                // w[0] == 0: unusable.
-                &[(2, 0.0)],
-                // w[2] == 0: unusable.
-                &[(1, -1.0), (2, 1.0)],
-            ]),
-        );
-        check_projection(
-            Cea,
-            &sets(&[
-                &[(1, 0.5)],
-                &[(1, 0.25)],
-                &[(1, 1.0)],
-                &[(1, 0.75)],
-                // Out of (0, 1]: unusable.
-                &[(1, 0.0)],
-                &[(1, 1.5)],
-                &[(1, -0.5)],
-            ]),
-        );
-        check_projection(Car, &sets(&[&[(1, 3.0)]]));
-        check_projection(Mer, &sets(&[&[(1, 3.0)]]));
-    }
 }

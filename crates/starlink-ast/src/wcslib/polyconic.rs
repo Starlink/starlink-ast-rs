@@ -7,8 +7,7 @@
 //! Each projection is a set-up function that derives constants from the
 //! parameters in a [`PrjPrm`], and a forward and a reverse function generic
 //! over the trigonometry [`Trig`].
-//! Every function lists its source in `vendor/wcslib/proj.c` and the
-//! `reference/starlink-ast` commit that file comes from, 3d3f255f.
+//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //!
 //! The tests of the form `prj->flag > 0` in the C bodies are applied
 //! unconditionally, as [`super::prj`] explains.
@@ -41,7 +40,7 @@ use std::f64::consts::PI;
 // BON: Bonne's equal area
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astBONset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astBONset; reference/starlink-ast at 3d3f255f.
 // With `p[1] == 0` the projection is SFL's, whose set-up C runs from
 // `astSFLfwd` or `astSFLrev` on BON's struct (see the module documentation).
 pub(super) fn bon_set(prm: &mut PrjPrm) -> Status {
@@ -64,7 +63,7 @@ pub(super) fn bon_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astBONfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astBONfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn bon_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     if prm.p[1] == 0.0 {
@@ -81,7 +80,7 @@ pub(super) fn bon_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astBONrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astBONrev; reference/starlink-ast at 3d3f255f.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
 #[allow(clippy::needless_late_init)]
@@ -121,7 +120,7 @@ pub(super) fn bon_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // PCO: polyconic
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astPCOset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astPCOset; reference/starlink-ast at 3d3f255f.
 pub(super) fn pco_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -141,7 +140,7 @@ pub(super) fn pco_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astPCOfwd; reference/starlink-ast at 3d3f255f,
+// reference/starlink-ast/wcslib/proj.c, astPCOfwd; reference/starlink-ast at 3d3f255f,
 // with the small-theta formula, which the C comments as upstream 4.22.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
@@ -173,7 +172,7 @@ pub(super) fn pco_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astPCOrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astPCOrev; reference/starlink-ast at 3d3f255f.
 // The clamp keeps C's comparisons, which differ from `clamp` only in
 // panicking on a bound that is NaN, and the bounds are constants.
 #[allow(clippy::manual_clamp)]
@@ -265,67 +264,4 @@ pub(super) fn pco_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
     }
 
     (Status::Ok, phi, theta)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::WcsProjection;
-    use super::super::difftest::check_projection;
-
-    #[test]
-    fn bonne_matches_vendored_c() {
-        use WcsProjection::*;
-        // `PV2_1 = 0` is Sanson-Flamsteed: C hands such calls to the SFL
-        // functions on BON's own struct, and the check reuses one C struct
-        // for forward and reverse calls in any order.
-        let mut sets: Vec<Vec<(usize, usize, f64)>> = [-60.0, -10.0, 0.0, 10.0, 45.0, 89.0]
-            .iter()
-            .map(|&p1| vec![(2, 1, p1)])
-            .collect();
-        // Parameter 1 missing has no default, so it is not zero.
-        sets.push(Vec::new());
-        check_projection(Bon, &sets);
-    }
-
-    /// With `PV2_1 = 0` every call order gives the bits of the C struct
-    /// that SFL's set-up has been run on, however the calls are ordered and
-    /// repeated: reverse first, forward first, and each repeated.
-    #[test]
-    fn bonne_with_zero_parallel_matches_c_in_any_call_order() {
-        use super::super::ffi::PrjParams;
-        use super::super::prj::Prj;
-        use WcsProjection::Bon;
-
-        let params = vec![vec![None, Some(0.0)], Vec::new()];
-        let same = |a: f64, b: f64| a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan());
-        // `F` is a forward call at (phi, theta) and `R` a reverse call at
-        // (x, y); the same orders with different points.
-        let orders: [&str; 6] = ["FR", "RF", "FFRR", "RRFF", "RFRFRF", "FRFRFR"];
-        for order in orders {
-            let prj = Prj::new(Bon, &params, false).unwrap();
-            let mut c = PrjParams::new(Bon).unwrap();
-            c.init_prj_prm(&params, false);
-            for (i, call) in order.chars().cycle().take(3 * order.len()).enumerate() {
-                let u = f64::from(i as u32) * 17.0 - 40.0;
-                let v = f64::from(i as u32) * 5.0 - 30.0;
-                if call == 'F' {
-                    let (rs, rx, ry) = prj.fwd_raw(u, v);
-                    let (cs, cx, cy) = c.forward_raw(u, v);
-                    assert_eq!(rs as i32, cs, "{order} call {i}");
-                    assert!(same(rx, cx) && same(ry, cy), "{order} call {i} fwd");
-                } else {
-                    let (rs, rx, ry) = prj.rev_raw(u, v);
-                    let (cs, cx, cy) = c.reverse_raw(u, v);
-                    assert_eq!(rs as i32, cs, "{order} call {i}");
-                    assert!(same(rx, cx) && same(ry, cy), "{order} call {i} rev");
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn polyconic_matches_vendored_c() {
-        use WcsProjection::*;
-        check_projection(Pco, &[Vec::new(), vec![(2, 1, 3.0)]]);
-    }
 }

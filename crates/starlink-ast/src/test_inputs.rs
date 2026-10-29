@@ -125,6 +125,7 @@ pub(crate) fn ulps(a: f64, b: f64) -> u64 {
 /// `n` random angles in degrees within ±720, then every multiple of 45
 /// degrees in that range with each neighbor one ULP away, then
 /// [`specials`].
+#[allow(dead_code)] // for the native trig and projection kernels' tests
 pub(crate) fn degrees(n: usize) -> Vec<f64> {
     let mut rng = SplitMix64::new(0x5eed_de65);
     let mut out = Vec::with_capacity(n + 128);
@@ -145,6 +146,7 @@ pub(crate) fn degrees(n: usize) -> Vec<f64> {
 /// ±(1 ± 2·`WCSTRIG_TOL`), which straddle the tolerance with which the
 /// inverse trigonometric functions snap to the ends of their ranges, then
 /// [`specials`].
+#[allow(dead_code)] // for the native trig and projection kernels' tests
 pub(crate) fn unit_range(n: usize) -> Vec<f64> {
     use crate::wcslib::trig::WCSTRIG_TOL;
     let mut rng = SplitMix64::new(0x5eed_a0c5);
