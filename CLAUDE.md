@@ -25,7 +25,6 @@ starlink-ast-rs/
 │   │   └── vendor/            # C source we own and build into starlink-ast
 │   │       ├── pal/           # AST's pal fork (build with cc)
 │   │       ├── erfa/          # AST's erfa fork (build with cc)
-│   │       ├── wcslib/        # AST's wcslib fork; deleted at step 6a
 │   │       └── README.md      # provenance: source, commit, mods
 │   ├── starlink-ast-capi/     # cdylib; re-exports ast.h symbols
 │   ├── ast-plugins/           # Grf / Grf3d backends (PLplot, SVG, logging)

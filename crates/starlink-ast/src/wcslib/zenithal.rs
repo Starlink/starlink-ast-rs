@@ -7,8 +7,7 @@
 //! Each projection is a set-up function that derives constants from the
 //! parameters in a [`PrjPrm`], and a forward and a reverse function generic
 //! over the trigonometry [`Trig`].
-//! Every function lists its source in `vendor/wcslib/proj.c` and the
-//! `reference/starlink-ast` commit that file comes from, 3d3f255f.
+//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //!
 //! The tests of the form `prj->flag > 0` in the C bodies are applied
 //! unconditionally, as [`super::prj`] explains.
@@ -47,7 +46,7 @@ pub(super) fn c_copysign(x: f64, y: f64) -> f64 {
 // AZP: zenithal/azimuthal perspective
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astAZPset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAZPset; reference/starlink-ast at 3d3f255f.
 pub(super) fn azp_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -82,7 +81,7 @@ pub(super) fn azp_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astAZPfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAZPfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn azp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let cphi = T::cosd(phi);
@@ -130,7 +129,7 @@ pub(super) fn azp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astAZPrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAZPrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn azp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // The tolerance on |t| = 1, `tol` in C.
@@ -181,7 +180,7 @@ pub(super) fn azp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // SZP: slant zenithal perspective
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astSZPset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSZPset; reference/starlink-ast at 3d3f255f.
 pub(super) fn szp_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -213,7 +212,7 @@ pub(super) fn szp_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astSZPfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSZPfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn szp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let cphi = T::cosd(phi);
@@ -262,7 +261,7 @@ pub(super) fn szp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astSZPrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSZPrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn szp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // How close beyond +-1 sin(theta) may be and still be taken as +-1,
@@ -332,7 +331,7 @@ pub(super) fn szp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // TAN: gnomonic
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astTANset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astTANset; reference/starlink-ast at 3d3f255f.
 pub(super) fn tan_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -344,7 +343,7 @@ pub(super) fn tan_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astTANfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astTANfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn tan_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let s = T::sind(theta);
@@ -362,7 +361,7 @@ pub(super) fn tan_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astTANrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astTANrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn tan_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let r = math::sqrt(x * x + y * y);
@@ -376,7 +375,7 @@ pub(super) fn tan_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // STG: stereographic
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astSTGset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSTGset; reference/starlink-ast at 3d3f255f.
 pub(super) fn stg_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -393,7 +392,7 @@ pub(super) fn stg_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astSTGfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSTGfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn stg_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let s = 1.0 + T::sind(theta);
@@ -409,7 +408,7 @@ pub(super) fn stg_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astSTGrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSTGrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn stg_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let r = math::sqrt(x * x + y * y);
@@ -423,7 +422,7 @@ pub(super) fn stg_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // SIN: orthographic/synthesis
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astSINset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSINset; reference/starlink-ast at 3d3f255f.
 pub(super) fn sin_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -440,7 +439,7 @@ pub(super) fn sin_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astSINfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSINfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn sin_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     // Below this angle from the pole, in radians, the small angle formulae
@@ -484,7 +483,7 @@ pub(super) fn sin_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astSINrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSINrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn sin_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // How close beyond +-1 sin(theta) may be and still be taken as +-1,
@@ -574,7 +573,7 @@ pub(super) fn sin_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // ARC: zenithal/azimuthal equidistant
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astARCset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astARCset; reference/starlink-ast at 3d3f255f.
 pub(super) fn arc_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -591,7 +590,7 @@ pub(super) fn arc_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astARCfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astARCfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn arc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let r = prm.w[0] * (90.0 - theta);
@@ -601,7 +600,7 @@ pub(super) fn arc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astARCrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astARCrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn arc_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let r = math::sqrt(x * x + y * y);
@@ -615,7 +614,7 @@ pub(super) fn arc_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // ZPN: zenithal/azimuthal polynomial
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astZPNset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZPNset; reference/starlink-ast at 3d3f255f.
 // `plen`, C's `astSizeOf(prj->p)/sizeof(double)`, is the number of slots in
 // a parameter array.
 pub(super) fn zpn_set(prm: &mut PrjPrm) -> Status {
@@ -727,7 +726,7 @@ pub(super) fn zpn_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astZPNfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZPNfwd; reference/starlink-ast at 3d3f255f.
 // The loop runs from the degree `n` down, as AST's modification of wcslib
 // has it, not from the largest degree a parameter array holds.
 #[inline(always)]
@@ -752,7 +751,7 @@ pub(super) fn zpn_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astZPNrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZPNrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn zpn_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // How far beyond a limit a root may be and still be taken as the limit,
@@ -882,7 +881,7 @@ pub(super) fn zpn_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // ZEA: zenithal/azimuthal equal area
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astZEAset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZEAset; reference/starlink-ast at 3d3f255f.
 pub(super) fn zea_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -899,7 +898,7 @@ pub(super) fn zea_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astZEAfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZEAfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn zea_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let r = prm.w[0] * T::sind((90.0 - theta) / 2.0);
@@ -909,7 +908,7 @@ pub(super) fn zea_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astZEArev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZEArev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn zea_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // How close r may be to the edge of the map, in the units of r, and be
@@ -938,7 +937,7 @@ pub(super) fn zea_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // AIR: Airy
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astAIRset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAIRset; reference/starlink-ast at 3d3f255f.
 pub(super) fn air_set(prm: &mut PrjPrm) -> Status {
     // Below this xi, in radians, the forward projection uses its small
     // angle form; `tol` in C.
@@ -971,7 +970,7 @@ pub(super) fn air_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astAIRfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAIRfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn air_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let r;
@@ -996,7 +995,7 @@ pub(super) fn air_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astAIRrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAIRrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn air_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // How close the radius of the trial solution must be to the target to
@@ -1084,109 +1083,4 @@ pub(super) fn air_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
     let theta = 90.0 - 2.0 * xi;
 
     (Status::Ok, phi, theta)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::WcsProjection;
-    use super::super::difftest::check_projection;
-
-    /// The parameter sets: the defaults, then (axis, m, value) lists.
-    type Sets = Vec<Vec<(usize, usize, f64)>>;
-
-    fn lat(pv: &[(usize, f64)]) -> Vec<(usize, usize, f64)> {
-        pv.iter().map(|&(m, v)| (2, m, v)).collect()
-    }
-
-    fn sets(lists: &[&[(usize, f64)]]) -> Sets {
-        let mut out: Sets = vec![Vec::new()];
-        out.extend(lists.iter().map(|l| lat(l)));
-        out
-    }
-
-    #[test]
-    fn zenithal_projections_match_vendored_c() {
-        use WcsProjection::*;
-        // Parameter sets the WcsMap tests use, and unusable ones.
-        check_projection(Tan, &sets(&[]));
-        check_projection(Stg, &sets(&[]));
-        check_projection(Arc, &sets(&[]));
-        check_projection(Zea, &sets(&[]));
-        check_projection(
-            Azp,
-            &sets(&[
-                &[(1, -1.0)],
-                &[(1, 0.5)],
-                &[(1, 2.0)],
-                &[(1, 3.0), (2, 30.0)],
-                &[(1, 0.0), (2, -45.0)],
-                &[(1, 0.5), (2, 90.0)],
-                &[(1, -1.0), (2, 0.0)],
-                &[(2, 20.0)],
-            ]),
-        );
-        check_projection(
-            Szp,
-            &sets(&[
-                &[(1, 0.5)],
-                &[(1, 2.0), (2, 30.0), (3, 60.0)],
-                &[(1, -3.0), (2, 200.0), (3, 45.0)],
-                &[(1, 0.1), (2, 10.0), (3, 80.0)],
-                // w[3] == 0: unusable.
-                &[(1, -2.0), (3, 30.0)],
-            ]),
-        );
-        check_projection(
-            Sin,
-            &sets(&[
-                &[(1, 0.5)],
-                &[(1, 0.0)],
-                &[(1, 0.1), (2, 0.2)],
-                &[(1, -0.3), (2, 0.7)],
-                &[(2, 0.4)],
-            ]),
-        );
-        check_projection(
-            Zpn,
-            &sets(&[
-                &[(1, 1.0)],
-                &[(0, 0.1), (1, 1.0)],
-                &[(1, 1.0), (3, 0.05)],
-                &[(1, 1.27118), (2, -0.210643)],
-                &[(1, 1.0), (2, 0.2)],
-                &[(1, 1.0), (2, -0.1), (3, 0.02)],
-                &[(1, 1.0), (3, -0.5), (5, 0.1)],
-                &[
-                    (1, 0.9),
-                    (2, 0.1),
-                    (3, 0.01),
-                    (4, -0.003),
-                    (5, 0.001),
-                    (7, 0.0001),
-                ],
-                &[(1, 1.0), (30, 1e-5)],
-                &[(1, 1.0), (100, 1e-9)],
-                &[(0, 2.0)],
-                &[(0, 2.0), (1, 1.0)],
-                // p[1] <= 0 with a higher degree: unusable.
-                &[(1, -1.0), (2, 0.1)],
-                // All coefficients zero: unusable.
-                &[(1, 0.0)],
-            ]),
-        );
-        check_projection(
-            Air,
-            &sets(&[
-                &[(1, 45.0)],
-                &[(1, 0.0)],
-                &[(1, -45.0)],
-                &[(1, 89.0)],
-                &[(1, 90.0)],
-                &[(1, -89.9)],
-                // PV2_1 <= -90: unusable.
-                &[(1, -90.0)],
-                &[(1, -120.0)],
-            ]),
-        );
-    }
 }

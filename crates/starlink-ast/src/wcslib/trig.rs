@@ -4,7 +4,7 @@
 
 use super::math;
 
-// `PI/180.0` and `180.0/PI` from `vendor/wcslib/wcsmath.h`, whose `PI`
+// `PI/180.0` and `180.0/PI` from `reference/starlink-ast/wcslib/wcsmath.h`, whose `PI`
 // literal rounds to `std::f64::consts::PI`.
 use std::f64::consts::PI;
 pub(super) const D2R: f64 = PI / 180.0;
@@ -55,7 +55,7 @@ fn quadrant(floored: f64) -> i32 {
 }
 
 impl Trig for Libm {
-    // vendor/wcslib/wcstrig.c, astSind; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astSind; reference/starlink-ast at 3d3f255f.
     #[inline(always)]
     fn sind(angle: f64) -> f64 {
         if angle % 90.0 == 0.0 {
@@ -70,7 +70,7 @@ impl Trig for Libm {
         math::sin(angle * D2R)
     }
 
-    // vendor/wcslib/wcstrig.c, astCosd; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astCosd; reference/starlink-ast at 3d3f255f.
     #[inline(always)]
     fn cosd(angle: f64) -> f64 {
         if angle % 90.0 == 0.0 {
@@ -85,7 +85,7 @@ impl Trig for Libm {
         math::cos(angle * D2R)
     }
 
-    // vendor/wcslib/wcstrig.c, astTand; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astTand; reference/starlink-ast at 3d3f255f.
     #[inline(always)]
     fn tand(angle: f64) -> f64 {
         let resid = angle % 360.0;
@@ -99,7 +99,7 @@ impl Trig for Libm {
         math::tan(angle * D2R)
     }
 
-    // vendor/wcslib/wcstrig.c, astASind; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astASind; reference/starlink-ast at 3d3f255f.
     #[inline(always)]
     fn asind(v: f64) -> f64 {
         if v <= -1.0 {
@@ -114,7 +114,7 @@ impl Trig for Libm {
         math::asin(v) * R2D
     }
 
-    // vendor/wcslib/wcstrig.c, astACosd; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astACosd; reference/starlink-ast at 3d3f255f.
     #[inline(always)]
     fn acosd(v: f64) -> f64 {
         if v >= 1.0 {
@@ -129,7 +129,7 @@ impl Trig for Libm {
         math::acos(v) * R2D
     }
 
-    // vendor/wcslib/wcstrig.c, astATand; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astATand; reference/starlink-ast at 3d3f255f.
     #[inline(always)]
     fn atand(v: f64) -> f64 {
         if v == -1.0 {
@@ -142,7 +142,7 @@ impl Trig for Libm {
         math::atan(v) * R2D
     }
 
-    // vendor/wcslib/wcstrig.c, astATan2d; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astATan2d; reference/starlink-ast at 3d3f255f.
     #[inline(always)]
     fn atan2d(y: f64, x: f64) -> f64 {
         if y == 0.0 {
@@ -165,35 +165,6 @@ impl Trig for Libm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_inputs::{degrees, unit_range};
-    use crate::wcslib::difftest::*;
-
-    /// Angles that are multiples of 90 beyond the range of an `int` quadrant
-    /// count, where C's conversion to `int` is undefined.
-    #[test]
-    fn huge_multiples_of_90_match_wcstrig() {
-        let mut p2 = 1.0f64;
-        for _ in 0..70 {
-            for m in [1.0, 3.0, 45.0, 90.0] {
-                for s in [1.0, -1.0] {
-                    let a = s * m * p2;
-                    // C's result for |angle/90| >= 2^31 is undefined behavior that
-                    // differs by architecture; the port follows aarch64 everywhere,
-                    // so only aarch64 can compare it with C.
-                    let beyond_int = (a / 90.0).abs() >= 2147483648.0;
-                    // SAFETY: pure functions of their arguments.
-                    unsafe {
-                        if !beyond_int || cfg!(target_arch = "aarch64") {
-                            same("cosd", a, Libm::cosd(a), astCosd(a));
-                            same("sind", a, Libm::sind(a), astSind(a));
-                        }
-                        same("tand", a, Libm::tand(a), astTand(a));
-                    }
-                }
-            }
-            p2 *= 2.0;
-        }
-    }
 
     /// The port's own values beyond the range of an `int` quadrant count,
     /// the same on every platform.
@@ -204,42 +175,5 @@ mod tests {
         assert_eq!(Libm::sind(a).to_bits(), 0.0f64.to_bits());
         assert_eq!(Libm::cosd(-a).to_bits(), 1.0f64.to_bits());
         assert_eq!(Libm::sind(-a).to_bits(), 1.0f64.to_bits());
-    }
-
-    fn same(name: &str, x: f64, rust: f64, c: f64) {
-        assert_eq!(
-            rust.to_bits(),
-            c.to_bits(),
-            "{name}({x:e}): {rust:e} vs {c:e}"
-        );
-    }
-
-    #[test]
-    fn libm_trig_matches_wcstrig_bit_for_bit() {
-        for a in degrees(200_000) {
-            // SAFETY: pure functions of their arguments.
-            unsafe {
-                same("cosd", a, Libm::cosd(a), astCosd(a));
-                same("sind", a, Libm::sind(a), astSind(a));
-                same("tand", a, Libm::tand(a), astTand(a));
-                same("atand", a, Libm::atand(a), astATand(a));
-            }
-        }
-        for v in unit_range(200_000) {
-            // SAFETY: pure functions of their arguments.
-            unsafe {
-                same("asind", v, Libm::asind(v), astASind(v));
-                same("acosd", v, Libm::acosd(v), astACosd(v));
-            }
-        }
-        let d = degrees(1000);
-        let step = (d.len() / 1000).max(1);
-        let thin: Vec<f64> = d.iter().copied().step_by(step).collect();
-        for &y in &thin {
-            for &x in &thin {
-                // SAFETY: pure functions of their arguments.
-                unsafe { same("atan2d", y, Libm::atan2d(y, x), astATan2d(y, x)) };
-            }
-        }
     }
 }

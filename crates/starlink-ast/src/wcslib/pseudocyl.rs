@@ -7,8 +7,7 @@
 //! Each projection is a set-up function that derives constants from the
 //! parameters in a [`PrjPrm`], and a forward and a reverse function generic
 //! over the trigonometry [`Trig`].
-//! Every function lists its source in `vendor/wcslib/proj.c` and the
-//! `reference/starlink-ast` commit that file comes from, 3d3f255f.
+//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //! GLS is SFL with parameters and a `WcsMap` converts it before it gets
 //! here.
 //!
@@ -30,7 +29,7 @@ use std::f64::consts::{PI, SQRT_2};
 // SFL: Sanson-Flamsteed
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astSFLset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSFLset; reference/starlink-ast at 3d3f255f.
 pub(super) fn sfl_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -47,7 +46,7 @@ pub(super) fn sfl_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astSFLfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSFLfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn sfl_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let x = prm.w[0] * phi * T::cosd(theta);
@@ -56,7 +55,7 @@ pub(super) fn sfl_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astSFLrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSFLrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn sfl_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let w = math::cos(y / prm.r0);
@@ -75,7 +74,7 @@ pub(super) fn sfl_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // PAR: parabolic
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astPARset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astPARset; reference/starlink-ast at 3d3f255f.
 pub(super) fn par_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -96,7 +95,7 @@ pub(super) fn par_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astPARfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astPARfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn par_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let s = T::sind(theta / 3.0);
@@ -106,7 +105,7 @@ pub(super) fn par_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astPARrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astPARrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn par_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let s = y * prm.w[3];
@@ -135,7 +134,7 @@ pub(super) fn par_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // MOL: Mollweide
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astMOLset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMOLset; reference/starlink-ast at 3d3f255f.
 // C's `SQRT2` literal rounds to `SQRT_2`.
 pub(super) fn mol_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
@@ -154,7 +153,7 @@ pub(super) fn mol_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astMOLfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMOLfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn mol_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     // The tolerance on the residual of the iteration, `tol` in C.
@@ -201,7 +200,7 @@ pub(super) fn mol_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astMOLrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMOLrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn mol_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // The tolerance on the squared radius and on |z| = 1, `tol` in C.
@@ -251,7 +250,7 @@ pub(super) fn mol_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // AIT: Hammer-Aitoff
 // ---------------------------------------------------------------------------
 
-// vendor/wcslib/proj.c, astAITset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAITset; reference/starlink-ast at 3d3f255f.
 pub(super) fn ait_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -268,7 +267,7 @@ pub(super) fn ait_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// vendor/wcslib/proj.c, astAITfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAITfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn ait_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let cthe = T::cosd(theta);
@@ -279,7 +278,7 @@ pub(super) fn ait_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// vendor/wcslib/proj.c, astAITrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAITrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn ait_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // The tolerance on u = 1/2 and on |s| = 1, `tol` in C.
@@ -314,22 +313,4 @@ pub(super) fn ait_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
     let theta = T::asind(s);
 
     (Status::Ok, phi, theta)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::WcsProjection;
-    use super::super::difftest::check_projection;
-
-    #[test]
-    fn pseudocylindrical_projections_match_vendored_c() {
-        use WcsProjection::*;
-        // These projections have no parameters; a set that supplies one
-        // checks that it is ignored.
-        let sets = vec![Vec::new(), vec![(2, 1, 3.0)]];
-        check_projection(Sfl, &sets);
-        check_projection(Par, &sets);
-        check_projection(Mol, &sets);
-        check_projection(Ait, &sets);
-    }
 }

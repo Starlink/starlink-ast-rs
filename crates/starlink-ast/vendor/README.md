@@ -31,24 +31,9 @@ and by AST directly.
   v2.0.1-12-g1a8044c
 - Modifications: None (symbol renaming via `erfa2ast.h` at compile time)
 
-## wcslib/
+## wcslib
 
-AST's fork of wcslib v2.9 (~2002). This fork diverged significantly from
-upstream wcslib: AST-prefixed symbols, dynamic `p`/`p2` arrays in the
-`prjprm` struct, and an added TPN projection.
-
-- Origin: `reference/starlink-ast/wcslib/`
-- Files: 3 `.c` sources (`proj.c`, `tpn.c`, `wcstrig.c`),
-  4 headers (`proj.h`, `wcsmath.h`, `wcstrig.h`, `memory.h`)
-- Additional: `ast_memory_stub.c` — stub `astSizeOf_` implementation
-  for standalone compilation
-- Modifications applied during copy:
-  - `proj.c` line 287: changed `#include "../src/memory.h"` to
-    `#include "memory.h"` to remove AST source tree dependency
-  - Added `memory.h` stub providing `astSizeOf` macro and declaration
-  - Added `ast_memory_stub.c` providing minimal `astSizeOf_` implementation
-- **Note:** This directory will be deleted when the Rust port of wcslib
-  lands (implementation step 6a).
+Ported to Rust in `crates/starlink-ast/src/wcslib/`; the vendored C was deleted in the commit "Delete the vendored wcslib".
 
 ## palwrap.c
 

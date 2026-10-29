@@ -5,24 +5,22 @@
 //!
 //! This module is `pub(crate)` and provides the [`WcsProjection`] enum
 //! covering all 31 FITS-WCS projection types and its per-projection tables.
-//! `ffi` holds the safe `PrjParams` wrapper around the raw `AstPrjPrm` C
-//! struct and the vendored wcslib projection functions it calls, which
-//! `build.rs` compiles from `vendor/wcslib/` into `libast_wcslib.a` under
-//! their `ast`-prefixed names (e.g. `astPRJset`, `astTANfwd`).
 //! `trig` holds the degree trigonometry the projections share, `prj` the
-//! native projection state and dispatch, and `zenithal` the zenithal
+//! projection state and dispatch, and `zenithal` the zenithal
 //! projections, `cylindrical` and `pseudocyl` the cylindrical and
 //! pseudo-cylindrical ones, `conic` and `polyconic` the conic and
 //! polyconic ones, `quadcube` and `healpix` the quad-cube and HEALPix
 //! ones, and `tpn` the polynomial-corrected gnomonic projection; `math`
 //! holds the uncounted library functions they call.
 
+use std::f64::consts::FRAC_PI_2;
+
+use crate::constants::BAD_VALUE;
+
 mod conic;
 mod cylindrical;
-// Outside the tests only the projection tables in `ffi` are used; the C
-// projections are the reference `difftest` checks the native ones against.
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) mod ffi;
+#[cfg(test)]
+mod golden_tests;
 mod healpix;
 mod math;
 mod polyconic;
@@ -33,9 +31,6 @@ mod tpn;
 pub(crate) mod trig;
 mod zenithal;
 
-#[cfg(test)]
-mod difftest;
-
 // ---------------------------------------------------------------------------
 // WcsProjection enum
 // ---------------------------------------------------------------------------
@@ -43,7 +38,7 @@ mod difftest;
 /// FITS-WCS projection type.
 ///
 /// Each variant corresponds to a 3-letter FITS projection code recognized
-/// by the vendored wcslib.  `Ncp` and `Gls` are deprecated aliases for
+/// by wcslib.  `Ncp` and `Gls` are deprecated aliases for
 /// `Sin` and `Sfl` respectively — they are handled at the `WcsMap` level
 /// by setting appropriate projection parameters before delegating to the
 /// underlying standard projection.
@@ -298,98 +293,36 @@ impl WcsProjection {
         }
     }
 
-    /// Return the integer type code used by the C wcslib.
+    /// The native latitude of the fiducial point, in radians.
     ///
-    /// These match the `WCS__*` constants in `vendor/wcslib/proj.c`.
-    /// The encoding groups projections by class (zenithal=1xx,
-    /// cylindrical=2xx, pseudo-cylindrical=3xx, etc.).
-    #[allow(dead_code)] // Used by SlaMap (Step 7a Task 4)
-    pub(crate) fn type_code(&self) -> i32 {
+    /// `BAD_VALUE` for the conics, whose fiducial latitude is a projection
+    /// parameter.
+    // C: the `theta0` column of the `PrjInfo` table (wcsmap.c:703-737),
+    // which `GetNatLat` returns.
+    pub(crate) fn table_theta0(self) -> f64 {
+        use WcsProjection::*;
         match self {
-            // Zenithal (1xx)
-            Self::Azp => 101,
-            Self::Szp => 102,
-            Self::Tan => 103,
-            Self::Stg => 104,
-            Self::Sin => 105,
-            Self::Arc => 106,
-            Self::Zpn => 107,
-            Self::Zea => 108,
-            Self::Air => 109,
-            // Cylindrical (2xx)
-            Self::Cyp => 201,
-            Self::Cea => 202,
-            Self::Car => 203,
-            Self::Mer => 204,
-            // Pseudo-cylindrical (3xx)
-            Self::Sfl => 301,
-            Self::Par => 302,
-            Self::Mol => 303,
-            // Pseudo-cylindrical (4xx)
-            Self::Ait => 401,
-            // Conic (5xx)
-            Self::Cop => 501,
-            Self::Coe => 502,
-            Self::Cod => 503,
-            Self::Coo => 504,
-            // Polyconic (6xx)
-            Self::Bon => 601,
-            Self::Pco => 602,
-            // Quad-cube (7xx)
-            Self::Tsc => 701,
-            Self::Csc => 702,
-            Self::Qsc => 703,
-            // HEALPix (8xx)
-            Self::Hpx => 801,
-            Self::Xph => 802,
-            // Deprecated (use same code as underlying projection)
-            Self::Ncp => 105, // -> SIN
-            Self::Gls => 301, // -> SFL
-            // TPN uses 999 (defined in tpn.c)
-            Self::Tpn => 999,
-            // Unknown/blank type — no valid type code.
-            Self::Unknown => 0,
+            Azp | Szp | Tan | Stg | Sin | Arc | Zpn | Zea | Air | Xph | Tpn => FRAC_PI_2,
+            Cop | Coe | Cod | Coo => BAD_VALUE,
+            Cyp | Cea | Car | Mer | Sfl | Par | Mol | Ait | Bon | Pco | Tsc | Csc | Qsc | Ncp
+            | Gls | Hpx | Unknown => 0.0,
         }
     }
 
-    /// Convert an integer type code to a projection variant.
-    ///
-    /// Returns `None` if the code is not recognized.  Note that the
-    /// deprecated `Ncp` (105) and `Gls` (301) are not returned — the
-    /// canonical `Sin` and `Sfl` are returned instead.
-    #[allow(dead_code)] // Used by SlaMap (Step 7a Task 4)
-    pub(crate) fn from_type_code(i: i32) -> Option<Self> {
-        match i {
-            101 => Some(Self::Azp),
-            102 => Some(Self::Szp),
-            103 => Some(Self::Tan),
-            104 => Some(Self::Stg),
-            105 => Some(Self::Sin),
-            106 => Some(Self::Arc),
-            107 => Some(Self::Zpn),
-            108 => Some(Self::Zea),
-            109 => Some(Self::Air),
-            201 => Some(Self::Cyp),
-            202 => Some(Self::Cea),
-            203 => Some(Self::Car),
-            204 => Some(Self::Mer),
-            301 => Some(Self::Sfl),
-            302 => Some(Self::Par),
-            303 => Some(Self::Mol),
-            401 => Some(Self::Ait),
-            501 => Some(Self::Cop),
-            502 => Some(Self::Coe),
-            503 => Some(Self::Cod),
-            504 => Some(Self::Coo),
-            601 => Some(Self::Bon),
-            602 => Some(Self::Pco),
-            701 => Some(Self::Tsc),
-            702 => Some(Self::Csc),
-            703 => Some(Self::Qsc),
-            801 => Some(Self::Hpx),
-            802 => Some(Self::Xph),
-            999 => Some(Self::Tpn),
-            _ => None,
+    /// How far past a limit of the accepted range, in degrees, a native
+    /// longitude or latitude from the reverse projection is set to the limit
+    /// rather than rejected.
+    // C: the `tol` column of the `PrjInfo` table (wcsmap.c:711-743): the
+    // per-projection tolerances of wcslib's `prjbchk` calls.
+    pub(crate) fn table_tol(self) -> f64 {
+        use WcsProjection::*;
+        match self {
+            Azp | Tan | Stg | Sin | Arc | Zpn | Zea | Air | Cyp | Cea | Car | Mer | Ait | Cop
+            | Coe | Cod | Coo | Tsc | Csc | Qsc | Tpn => 1.0e-13,
+            Szp => 2.0e-13,
+            Sfl | Par | Pco | Gls | Hpx | Xph => 1.0e-12,
+            Mol | Bon => 1.0e-11,
+            Ncp | Unknown => 0.0,
         }
     }
 }
@@ -398,10 +331,10 @@ impl WcsProjection {
 // Projection parameter limits
 // ---------------------------------------------------------------------------
 
-/// Largest projection-parameter index any projection accepts — C's
-/// `WCSLIB_MXPAR` (`vendor/wcslib/proj.h:59`), which is the `mxpar` /
-/// `mxpar2` column value of `-ZPN` and `-TPN` in the `PrjInfo` table
-/// (wcsmap.c:684-716).
+/// Largest projection-parameter index any projection accepts: the `mxpar` /
+/// `mxpar2` value of `-ZPN` and `-TPN`.
+// C: `WCSLIB_MXPAR` (proj.h:59 in reference/starlink-ast/wcslib), used in the
+// `PrjInfo` table (wcsmap.c:684-716).
 const WCSLIB_MXPAR: usize = 100;
 
 /// Number of slots in a projection-parameter array.
@@ -411,3 +344,79 @@ const WCSLIB_MXPAR: usize = 100;
 /// minus one (wcsmap.c:2205-2212). Every array here is sized for the largest
 /// projection, so the same indices are legal.
 pub(crate) const PRJ_PARAM_SLOTS: usize = WCSLIB_MXPAR + 1;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The `mxpar` / `mxpar2` columns of C's `PrjInfo` table
+    // (wcsmap.c:684-716), as `astGetPVMax` reports them. Golden values come
+    // from a probe against the reference `libast`; `mxpar2` is 4 everywhere
+    // except `-TPN`.
+    #[test]
+    fn pv_limits_match_the_c_projection_table() {
+        let cases: &[(WcsProjection, usize, usize)] = &[
+            (WcsProjection::Azp, 2, 4),
+            (WcsProjection::Szp, 3, 4),
+            (WcsProjection::Tan, 0, 4),
+            (WcsProjection::Stg, 0, 4),
+            (WcsProjection::Sin, 2, 4),
+            (WcsProjection::Arc, 0, 4),
+            (WcsProjection::Zpn, WCSLIB_MXPAR, 4),
+            (WcsProjection::Zea, 0, 4),
+            (WcsProjection::Air, 1, 4),
+            (WcsProjection::Cyp, 2, 4),
+            (WcsProjection::Cea, 1, 4),
+            (WcsProjection::Car, 0, 4),
+            (WcsProjection::Mer, 0, 4),
+            (WcsProjection::Sfl, 0, 4),
+            (WcsProjection::Par, 0, 4),
+            (WcsProjection::Mol, 0, 4),
+            (WcsProjection::Ait, 0, 4),
+            (WcsProjection::Cop, 2, 4),
+            (WcsProjection::Coe, 2, 4),
+            (WcsProjection::Cod, 2, 4),
+            (WcsProjection::Coo, 2, 4),
+            (WcsProjection::Bon, 1, 4),
+            (WcsProjection::Pco, 0, 4),
+            (WcsProjection::Tsc, 0, 4),
+            (WcsProjection::Csc, 0, 4),
+            (WcsProjection::Qsc, 0, 4),
+            (WcsProjection::Ncp, 2, 4),
+            (WcsProjection::Gls, 0, 4),
+            (WcsProjection::Hpx, 2, 4),
+            (WcsProjection::Xph, 0, 4),
+            (WcsProjection::Tpn, WCSLIB_MXPAR, WCSLIB_MXPAR),
+        ];
+        for &(proj, lat, lon) in cases {
+            assert_eq!(proj.pv_max_lat(), lat, "mxpar for {}", proj.code());
+            assert_eq!(proj.pv_max_lon(), lon, "mxpar2 for {}", proj.code());
+        }
+    }
+
+    #[test]
+    fn projection_code_round_trip() {
+        for proj in [
+            WcsProjection::Tan,
+            WcsProjection::Sin,
+            WcsProjection::Ait,
+            WcsProjection::Car,
+            WcsProjection::Azp,
+            WcsProjection::Hpx,
+            WcsProjection::Tpn,
+            WcsProjection::Ncp,
+            WcsProjection::Gls,
+        ] {
+            let code = proj.code();
+            let restored = WcsProjection::from_code(code).unwrap();
+            assert_eq!(proj, restored, "round-trip failed for {code}");
+        }
+    }
+
+    #[test]
+    fn projection_code_case_insensitive() {
+        assert_eq!(WcsProjection::from_code("tan"), Some(WcsProjection::Tan));
+        assert_eq!(WcsProjection::from_code("Ait"), Some(WcsProjection::Ait));
+        assert_eq!(WcsProjection::from_code("XYZ"), None);
+    }
+}
