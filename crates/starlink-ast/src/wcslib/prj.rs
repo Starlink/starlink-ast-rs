@@ -36,6 +36,14 @@
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 
+use super::cylindrical::{
+    car_fwd, car_rev, car_set, cea_fwd, cea_rev, cea_set, cyp_fwd, cyp_rev, cyp_set, mer_fwd,
+    mer_rev, mer_set,
+};
+use super::pseudocyl::{
+    ait_fwd, ait_rev, ait_set, mol_fwd, mol_rev, mol_set, par_fwd, par_rev, par_set, sfl_fwd,
+    sfl_rev, sfl_set,
+};
 use super::tpn::{tpn_fwd, tpn_rev, tpn_set};
 use super::trig::Libm;
 use super::zenithal::{
@@ -179,6 +187,14 @@ impl Prj {
             WcsProjection::Zea => zea_fwd::<Libm>(prm, phi, theta),
             WcsProjection::Air => air_fwd::<Libm>(prm, phi, theta),
             WcsProjection::Tpn => tpn_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Cyp => cyp_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Cea => cea_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Car => car_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Mer => mer_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Sfl => sfl_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Par => par_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Mol => mol_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Ait => ait_fwd::<Libm>(prm, phi, theta),
             other => todo!("{} is ported in a later step", other.code()),
         }
     }
@@ -203,6 +219,14 @@ impl Prj {
             WcsProjection::Zea => zea_rev::<Libm>(prm, x, y),
             WcsProjection::Air => air_rev::<Libm>(prm, x, y),
             WcsProjection::Tpn => tpn_rev::<Libm>(prm, x, y),
+            WcsProjection::Cyp => cyp_rev::<Libm>(prm, x, y),
+            WcsProjection::Cea => cea_rev::<Libm>(prm, x, y),
+            WcsProjection::Car => car_rev::<Libm>(prm, x, y),
+            WcsProjection::Mer => mer_rev::<Libm>(prm, x, y),
+            WcsProjection::Sfl => sfl_rev::<Libm>(prm, x, y),
+            WcsProjection::Par => par_rev::<Libm>(prm, x, y),
+            WcsProjection::Mol => mol_rev::<Libm>(prm, x, y),
+            WcsProjection::Ait => ait_rev::<Libm>(prm, x, y),
             other => todo!("{} is ported in a later step", other.code()),
         }
     }
@@ -221,6 +245,14 @@ fn run_setup(proj: WcsProjection, prm: &mut PrjPrm) -> Status {
         WcsProjection::Zea => zea_set(prm),
         WcsProjection::Air => air_set(prm),
         WcsProjection::Tpn => tpn_set(prm),
+        WcsProjection::Cyp => cyp_set(prm),
+        WcsProjection::Cea => cea_set(prm),
+        WcsProjection::Car => car_set(prm),
+        WcsProjection::Mer => mer_set(prm),
+        WcsProjection::Sfl => sfl_set(prm),
+        WcsProjection::Par => par_set(prm),
+        WcsProjection::Mol => mol_set(prm),
+        WcsProjection::Ait => ait_set(prm),
         other => todo!("{} is ported in a later step", other.code()),
     }
 }
