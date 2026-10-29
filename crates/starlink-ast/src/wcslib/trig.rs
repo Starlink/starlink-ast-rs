@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 // Derived from WCSLIB (AST's fork of wcslib 2.9, with fixes from wcslib 8.10): Copyright 1995-2002 Mark Calabretta, GNU Library General Public License version 2 or later; this port is distributed under LGPL-3.0-or-later.
 
-// The projections that call this are ported in later steps; until then only
-// the tests use it.
-#![allow(dead_code)]
-
-use crate::math;
+use super::math;
 
 // `PI/180.0` and `180.0/PI` from `vendor/wcslib/wcsmath.h`, whose `PI`
 // literal rounds to `std::f64::consts::PI`.

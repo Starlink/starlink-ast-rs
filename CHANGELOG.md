@@ -14,6 +14,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 - `starlink-ast`: SlaMap's FK5 to FK4 conversion (`Fk54z`) applies the fictitious FK4 proper motion to the unit vector, as ERFA and SLALIB do, rather than linearly in RA and Dec; away from B1950 this changes points the motion carries close to a pole by up to 28 mas at B1980 and 0.3 arcsec at B2050, and others by about 1e-14 radians.
 - `starlink-ast`: the vendored ERFA is version 2.0.1, with the IAU 2012 astronomical unit; spectral and time conversions give the same results as before.
 - `starlink-ast`: SphMap computes its arctangents, sines and cosines with branchless kernels that the compiler vectorizes; on large point sets its forward transform runs about three times faster and its inverse about 1.7 times on Apple silicon, and 2.4 and 3.5 times faster on x86-64, where the loops run in a build for AVX2 and FMA when the CPU has them. Each sine, cosine and arctangent may differ from earlier releases by up to 1 ULP, so a Cartesian component, the product of a sine and a cosine, by up to 3 ULP; results do not depend on how many points are transformed together.
+- `starlink-ast`: a WcsMap whose projection parameters are unusable reports `ErrorCode::Wcspa` from every transform that has a good point, rather than only from the first, after which it gave bad values; the C library reports it only once.
 
 ### Fixed
 

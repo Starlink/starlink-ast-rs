@@ -13,11 +13,7 @@
 //! The tests of the form `prj->flag > 0` in the C bodies are applied
 //! unconditionally, as [`super::prj`] explains.
 
-// The projections are used by `WcsMap` in a later step; until then only the
-// tests use them.
-#![allow(dead_code)]
-
-use crate::math;
+use super::math;
 
 use super::prj::{PrjPrm, Status};
 use super::trig::{D2R, Libm, R2D, Trig};

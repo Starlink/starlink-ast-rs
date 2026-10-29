@@ -13,14 +13,11 @@
 //! The tests of the form `prj->flag > 0` in the C bodies are applied
 //! unconditionally, as [`super::prj`] explains.
 
-// The projections are used by `WcsMap` in a later step; until then only the
-// tests use them.
-#![allow(dead_code)]
 // The bodies keep the shape of the C they are ported from, which declares
 // each output before the branches that assign it.
 #![allow(clippy::needless_late_init)]
 
-use crate::math;
+use super::math;
 
 use super::PRJ_PARAM_SLOTS;
 use super::prj::{PrjPrm, Status};
@@ -834,7 +831,14 @@ pub(super) fn zpn_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
             let mut j = 0;
             while j < MAX_ITER {
                 let mut lambda = (r2 - r) / (r2 - r1);
-                lambda = lambda.clamp(LAMBDA_MIN, LAMBDA_MAX);
+                // C's branches, not `f64::clamp`: the branches are predicted where
+                // clamp's min and max lengthen the iteration's dependency chain.
+                #[allow(clippy::manual_clamp)]
+                if lambda < LAMBDA_MIN {
+                    lambda = LAMBDA_MIN;
+                } else if lambda > LAMBDA_MAX {
+                    lambda = LAMBDA_MAX;
+                }
 
                 z = zd2 - lambda * (zd2 - zd1);
 
@@ -1041,7 +1045,14 @@ pub(super) fn air_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
         while j < MAX_ITER {
             // Weighted division of the interval.
             let mut lambda = (r2 - r) / (r2 - r1);
-            lambda = lambda.clamp(LAMBDA_MIN, LAMBDA_MAX);
+            // C's branches, not `f64::clamp`: the branches are predicted where
+            // clamp's min and max lengthen the iteration's dependency chain.
+            #[allow(clippy::manual_clamp)]
+            if lambda < LAMBDA_MIN {
+                lambda = LAMBDA_MIN;
+            } else if lambda > LAMBDA_MAX {
+                lambda = LAMBDA_MAX;
+            }
             cxi = x2 - lambda * (x2 - x1);
 
             let txi = math::sqrt(1.0 - cxi * cxi) / cxi;

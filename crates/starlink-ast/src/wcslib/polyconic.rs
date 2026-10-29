@@ -29,11 +29,7 @@
 //! the same parameters, which is what [`bon_set`] computes and what
 //! [`bon_fwd`] and [`bon_rev`] use.
 
-// The projections are used by `WcsMap` in a later step; until then only the
-// tests use them.
-#![allow(dead_code)]
-
-use crate::math;
+use super::math;
 
 use super::prj::{PrjPrm, Status};
 use super::pseudocyl::{sfl_fwd, sfl_rev, sfl_set};
