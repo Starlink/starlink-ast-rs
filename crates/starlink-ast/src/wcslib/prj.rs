@@ -71,9 +71,7 @@
 //!   change its status; a `//` comment on it argues why every element it
 //!   accepts has the per-value entry's status;
 //! - a `kernel_body!` line declaring the pair, and an arm in that slice
-//!   entry's `match` that passes it to `kernel_slice`; `fwd_slice` has the
-//!   `match`, and the first reverse opt-in adds one to `rev_slice` in the
-//!   same form;
+//!   entry's `match` that passes it to `kernel_slice`;
 //! - where the parameters choose between forms of the body for every point,
 //!   a body and predicate per form, each with the choice made, and an arm
 //!   per form guarded on the parameters, so that no loop tests them.
@@ -160,6 +158,65 @@
 //! computed the polynomial and both arctangents for every parameter set,
 //! and then ran at 39 ns per point against 54 on the grid and at 38 against
 //! 88 on random points.
+//!
+//! The other zenithal projections were timed on Apple silicon on 1000 by
+//! 1000 grids of a one-degree and a twenty-degree image and on a million
+//! random points of the hemisphere or their projections, against their
+//! [`Libm`] loops; the C library takes about 620 ns for one point.
+//!
+//! ARC's, ZEA's and STG's forward projections opt in, each a whole body.
+//! On the one-degree grid they ran at 9.1, 14.5 and 14.6 ns per point
+//! against 28.6, 34.7 and 48.6 for their [`Libm`] loops, and on random
+//! points at 8.9, 14.1 and 14.6 against 31.1, 37.3 and 56.5; at one point
+//! they took 56, 63 and 63 ns against 26, 33 and 50. STG's status, whether
+//! one plus the sine of the latitude is zero, is decided by the kernels'
+//! sine; a point where that sine is at most -1 + 2^-52, two ULP above -1,
+//! is redone with [`Libm`].
+//!
+//! AZP's and SZP's forward projections opt in their projection, whose
+//! status where the denominator is zero is decided by the kernels' values:
+//! a point whose denominator is within twice the bound on its drift of zero
+//! is redone with [`Libm`]. Their divergence and overlap tests, which most
+//! parameters need for no point, run per element with [`Libm`]'s sine and
+//! cosine of the longitude. With the default parameters AZP ran at 27.2 ns
+//! per point against 41.1 on the grid and at 34.5 against 48.4 on random
+//! points, its divergence test running for every point; with a perspective
+//! from twice the sphere's radius, tilted by 30 degrees, which needs no
+//! divergence test, at 17.2 against 38.5 and at 17.1 against 45.6. SZP ran
+//! at 16.8 against 51.9 and 59.1 with the default parameters, and at 69.9
+//! against 74.8 and 85.5 against 89.7 with its overlap test running for
+//! every point. At one point they took 73 and 68 ns against 42 and 53.
+//!
+//! AIR's forward projection opts in the sine and cosine of the longitude;
+//! the radius, from the cosine, the logarithm and the square root of the
+//! colatitude, and the status, which depends on the latitude alone, are
+//! computed per element with [`Libm`]. It ran at 32.8 ns per point against
+//! 41.4 on the grid (29.2 against 41.1 with its parameter at 45 degrees)
+//! and at 29.0 against 48.3 on random points, and at one point took 74 ns
+//! against 41.
+//!
+//! SZP's reverse projection opts in. All of it but its trigonometry is
+//! branch-free and computed alike on both paths, and decides every status;
+//! the kernels' arc tangent gives the longitude, and [`Libm`]'s arc sine,
+//! per element, the latitude, so the latitude is the per-value entry's. It ran
+//! at 29.6 ns per point against 31.4 for its [`Libm`] loop on the grid, at
+//! 28.7 against 30.5 on the twenty-degree grid and at 32.7 against 66.3 on
+//! random points, the [`Libm`] loop's quadratic and its branches costing as
+//! much as the trigonometry; at one point it took 87 ns against 32.
+//!
+//! The other zenithal reverse projections do not opt in: their only kernel
+//! function is the arc tangent that gives the longitude (and, for AZP, one
+//! that gives a term of the latitude), and on the grid libm's arc tangent
+//! follows the same branches from point to point and costs less than the
+//! kernel's. On the one-degree grid, with their arc tangents run by the
+//! kernels, ARC ran at 12.1 ns per point against 8.0, ZEA at 15.3 against
+//! 11.4, STG at 19.5 against 11.1 and AZP at 27.6 against 18.1, though
+//! faster on random points (20.5 against 26.3, 30.5 against 38.6, 34.8
+//! against 39.1 and 48.8 against 55.8). AIR's reverse projection is a root
+//! search of a hundred steps at most, each with a logarithm, before its arc
+//! tangent, and ran at 270 ns per point against 273 on the grid but 270
+//! against 265 with its parameter at 45 degrees, and at one point took 299
+//! ns against 272.
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -184,11 +241,15 @@ use super::quadcube::{
 use super::tpn::{tpn_fwd, tpn_fwd_finish, tpn_fwd_front, tpn_fwd_needs_special, tpn_rev, tpn_set};
 use super::trig::{Kernel, Libm, Trig};
 use super::zenithal::{
-    air_fwd, air_rev, air_set, arc_fwd, arc_rev, arc_set, azp_fwd, azp_rev, azp_set, sin_fwd,
-    sin_fwd_orthographic, sin_fwd_orthographic_needs_special, sin_fwd_synthesis,
-    sin_fwd_synthesis_needs_special, sin_rev, sin_set, stg_fwd, stg_rev, stg_set, szp_fwd, szp_rev,
-    szp_set, tan_fwd, tan_fwd_needs_special, tan_rev, tan_set, zea_fwd, zea_rev, zea_set, zpn_fwd,
-    zpn_fwd_finish, zpn_fwd_front, zpn_fwd_needs_special, zpn_rev, zpn_set,
+    air_fwd, air_fwd_finish, air_fwd_front, air_fwd_needs_special, air_rev, air_set, arc_fwd,
+    arc_fwd_needs_special, arc_rev, arc_set, azp_fwd, azp_fwd_finish, azp_fwd_front,
+    azp_fwd_needs_special, azp_rev, azp_set, sin_fwd, sin_fwd_orthographic,
+    sin_fwd_orthographic_needs_special, sin_fwd_synthesis, sin_fwd_synthesis_needs_special,
+    sin_rev, sin_set, stg_fwd, stg_fwd_needs_special, stg_rev, stg_set, szp_fwd, szp_fwd_finish,
+    szp_fwd_front, szp_fwd_needs_special, szp_rev, szp_rev_finish, szp_rev_front,
+    szp_rev_needs_special, szp_set, tan_fwd, tan_fwd_needs_special, tan_rev, tan_set, zea_fwd,
+    zea_fwd_needs_special, zea_rev, zea_set, zpn_fwd, zpn_fwd_finish, zpn_fwd_front,
+    zpn_fwd_needs_special, zpn_rev, zpn_set,
 };
 use super::{PRJ_PARAM_SLOTS, WcsProjection};
 
@@ -610,14 +671,20 @@ impl Prj {
         }
         let prm = &self.prm;
         match self.proj {
+            WcsProjection::Azp => kernel_slice::<AzpFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Szp => kernel_slice::<SzpFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Tan => kernel_slice::<TanFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Stg => kernel_slice::<StgFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Sin if prm.w[1] == 0.0 => {
                 kernel_slice::<SinFwdOrthographic>(prm, a, b, "wcs_fwd", prep, finish)
             }
             WcsProjection::Sin => {
                 kernel_slice::<SinFwdSynthesis>(prm, a, b, "wcs_fwd", prep, finish)
             }
+            WcsProjection::Arc => kernel_slice::<ArcFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Zpn => kernel_slice::<ZpnFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Zea => kernel_slice::<ZeaFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Air => kernel_slice::<AirFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Tpn => kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd", prep, finish),
             proj => with_fwd!(proj, |f| slice_apply(
                 a,
@@ -656,14 +723,17 @@ impl Prj {
             return slice_apply(a, b, "wcs_rev", prep, |_, _| (setup, 0.0, 0.0), finish);
         }
         let prm = &self.prm;
-        with_rev!(self.proj, |f| slice_apply(
-            a,
-            b,
-            "wcs_rev",
-            prep,
-            |x, y| f(prm, x, y),
-            finish
-        ))
+        match self.proj {
+            WcsProjection::Szp => kernel_slice::<SzpRev>(prm, a, b, "wcs_rev", prep, finish),
+            proj => with_rev!(proj, |f| slice_apply(
+                a,
+                b,
+                "wcs_rev",
+                prep,
+                |x, y| f(prm, x, y),
+                finish
+            )),
+        }
     }
 }
 
@@ -815,6 +885,37 @@ kernel_body!(
     zpn_fwd_needs_special,
     zpn_fwd_finish,
     zpn_fwd
+);
+kernel_body!(
+    AzpFwd,
+    azp_fwd_front,
+    azp_fwd_needs_special,
+    azp_fwd_finish,
+    azp_fwd
+);
+kernel_body!(
+    SzpFwd,
+    szp_fwd_front,
+    szp_fwd_needs_special,
+    szp_fwd_finish,
+    szp_fwd
+);
+kernel_body!(
+    SzpRev,
+    szp_rev_front,
+    szp_rev_needs_special,
+    szp_rev_finish,
+    szp_rev
+);
+kernel_body!(StgFwd, stg_fwd, stg_fwd_needs_special);
+kernel_body!(ArcFwd, arc_fwd, arc_fwd_needs_special);
+kernel_body!(ZeaFwd, zea_fwd, zea_fwd_needs_special);
+kernel_body!(
+    AirFwd,
+    air_fwd_front,
+    air_fwd_needs_special,
+    air_fwd_finish,
+    air_fwd
 );
 kernel_body!(
     TpnFwd,
@@ -1444,8 +1545,13 @@ mod tests {
         for i in 0..a0.len() {
             assert!(
                 same_bits_or_both_nan(a0[i], a1[i]) && same_bits_or_both_nan(b0[i], b1[i]),
-                "{:?}",
-                pairs[i]
+                "{}: {:?} gives ({:e}, {:e}) and ({:e}, {:e})",
+                p.proj.code(),
+                pairs[i],
+                a0[i],
+                b0[i],
+                a1[i],
+                b1[i]
             );
         }
     }
@@ -2103,6 +2209,599 @@ mod tests {
                     (want.0.to_bits(), want.1.to_bits()),
                     "({u}, {v})"
                 );
+            }
+        }
+    }
+
+    use crate::wcslib::zenithal::{azp_fwd_t_near_zero, stg_fwd_s_near_zero, szp_fwd_t_near_zero};
+
+    /// The largest ratio, over the outputs of `p`'s forward slice (reverse
+    /// slice when `!fwd`) that differ from the per-value entry's, of the
+    /// difference to `bound(u, v, x, y)`, the bound on each output's drift at
+    /// the input (`u`, `v`) whose per-value outputs are (`x`, `y`).
+    fn drift_over_bound(
+        p: &Prj,
+        pairs: &[(f64, f64)],
+        fwd: bool,
+        bound: impl Fn(f64, f64, f64, f64) -> [f64; 2],
+    ) -> f64 {
+        let got = through_slice(p, pairs, fwd);
+        let mut worst = 0.0f64;
+        for (&(u, v), &(x, y)) in pairs.iter().zip(&got) {
+            let bad_in = u == BAD_VALUE || v == BAD_VALUE || u.is_nan() || v.is_nan();
+            let (status, wx, wy) = if fwd {
+                p.fwd_raw(u, v)
+            } else {
+                p.rev_raw(u, v)
+            };
+            if bad_in || status != Status::Ok {
+                continue;
+            }
+            let mut b = None;
+            for (k, (g, w)) in [(x, wx), (y, wy)].into_iter().enumerate() {
+                if same_bits_or_both_nan(g, w) {
+                    continue;
+                }
+                let b = b.get_or_insert_with(|| bound(u, v, wx, wy));
+                let ratio = (g - w).abs() / b[k];
+                assert!(!ratio.is_nan(), "({u:e}, {v:e}): output {k} {g:e} vs {w:e}");
+                worst = worst.max(ratio);
+            }
+        }
+        worst
+    }
+
+    /// Each pair the predicate of `K` sends to [`Libm`] gets the per-value
+    /// entry's bits in a slice, bad or good, among others the kernels run.
+    fn assert_special_points_exact<K: KernelBody>(p: &Prj, pairs: &[(f64, f64)], fwd: bool) {
+        let got = through_slice(p, pairs, fwd);
+        let mut special = 0;
+        for (&(u, v), &(x, y)) in pairs.iter().zip(&got) {
+            if !K::needs_special::<Kernel<{ crate::vmath::HAS_FMA }>>(&p.prm, u, v) {
+                continue;
+            }
+            special += 1;
+            let (status, wx, wy) = if fwd {
+                p.fwd_raw(u, v)
+            } else {
+                p.rev_raw(u, v)
+            };
+            let want = if status == Status::Ok {
+                (wx, wy)
+            } else {
+                (BAD_VALUE, BAD_VALUE)
+            };
+            assert!(
+                same_bits_or_both_nan(x, want.0) && same_bits_or_both_nan(y, want.1),
+                "({u}, {v}): ({x:e}, {y:e}) against ({:e}, {:e})",
+                want.0,
+                want.1
+            );
+        }
+        assert!(special > 0, "no point is special; is the class exercised?");
+    }
+
+    /// Pairs with a coordinate at a multiple of 90 degrees, which the
+    /// kernels do not cover, among others they do.
+    fn right_angle_pairs() -> Vec<(f64, f64)> {
+        let mut pairs = vec![(0.0, 90.0), (-0.0, 90.0), (10.0, 80.0)];
+        for k in -8..=8 {
+            let a = 90.0 * f64::from(k);
+            pairs.extend([(a, 80.0), (a, 89.5), (a, -10.0), (10.0, a), (a, a)]);
+            pairs.push((-170.0, 89.0 + f64::from(k) / 8.0));
+        }
+        pairs
+    }
+
+    /// `prj` with the latitude-axis parameters `p`, from `p[0]`.
+    fn with_params(proj: WcsProjection, p: &[f64]) -> Prj {
+        let pv: Vec<Option<f64>> = p.iter().map(|&v| Some(v)).collect();
+        Prj::new(proj, &[pv, Vec::new()], true).unwrap()
+    }
+
+    /// The most by which the two paths' roundings of one operation can differ
+    /// where its result is subnormal, 2^-1074: there each path rounds to
+    /// within half the least subnormal of the exact result, whatever its
+    /// relative error. Every bound written as a relative one adds this per
+    /// operation.
+    const SUBNORMAL_ROUNDING: f64 = f64::from_bits(1);
+
+    /// How far ARC's and AIR's forward slice outputs may be from the
+    /// per-value entry's, in ULP. Each output is a radius, computed alike on
+    /// both paths (AIR's per point with [`Libm`]), times one kernel sine or
+    /// cosine, which is within 2 ULP of libm's (see [`Kernel`]), at most
+    /// 2 * 2^-52 relative. So the exact products differ by at most
+    /// 2 * 2^-52 of the output, which is at most 4 ULP of it, and the two
+    /// paths' roundings add at most 1 ULP between them: the bound is 5 ULP.
+    const RADIUS_TIMES_KERNEL_SLICE_ULPS: u64 = 5;
+
+    /// How far ZEA's forward slice outputs may be from the per-value entry's,
+    /// in ULP. Each output is `w0 * sind((90 - theta) / 2)` times `sind(phi)`
+    /// or `cosd(phi)`, two operations on two kernel values. Each kernel value
+    /// is within 2 ULP of libm's (see [`Kernel`]), at most 2 * 2^-52 of it,
+    /// so the exact results differ by at most 2 * 2 * 2^-52 relative; each
+    /// path rounds its two operations once each, at most 2^-53 relative
+    /// apiece, 2 * 2^-52 between the two paths. That is a relative
+    /// difference of up to 6 * 2^-52, to first order. An ULP of the output is
+    /// at least 2^-53 of it, so the bound is 12 ULP.
+    const ZEA_FWD_SLICE_ULPS: u64 = 12;
+
+    /// How far SZP's reverse slice's longitude may be from the per-value
+    /// entry's, in ULP: the arguments of its arc tangent are computed alike
+    /// on both paths, and [`Kernel`]'s `atan2d` is within 2 ULP of
+    /// [`Libm`]'s. The latitude is [`Libm`]'s on both paths, bit for bit.
+    const SZP_REV_PHI_ULPS: u64 = 2;
+
+    /// ARC's and AIR's forward slices run the kernels and are within
+    /// [`RADIUS_TIMES_KERNEL_SLICE_ULPS`] of the per-value entry, ZEA's
+    /// within [`ZEA_FWD_SLICE_ULPS`], with the same bad points; their reverse
+    /// slices run [`Libm`] and are bit for bit the per-value entry.
+    #[test]
+    fn arc_zea_and_air_slices_are_within_kernel_drift_of_the_per_value_body() {
+        use WcsProjection::{Air, Arc, Zea};
+        let fwd_inputs = tan_fwd_inputs();
+        let rev_inputs = zpn_rev_inputs();
+        for (p, bound) in [
+            (prj(Arc), RADIUS_TIMES_KERNEL_SLICE_ULPS),
+            (prj(Zea), ZEA_FWD_SLICE_ULPS),
+            (prj(Air), RADIUS_TIMES_KERNEL_SLICE_ULPS),
+            (
+                with_params(Air, &[0.0, 45.0]),
+                RADIUS_TIMES_KERNEL_SLICE_ULPS,
+            ),
+        ] {
+            let code = p.proj.code();
+            let (fwd_max, _, fwd_differ) = slice_drift(&p, &fwd_inputs, true);
+            assert!(
+                fwd_max.iter().all(|&m| m <= bound),
+                "{code} forward: {fwd_max:?} ULP"
+            );
+            assert!(fwd_differ > 0, "{code} forward: no output differs");
+            let (rev_max, _, rev_differ) = slice_drift(&p, &rev_inputs, false);
+            assert_eq!((rev_max, rev_differ), ([0, 0], 0), "{code} reverse");
+        }
+    }
+
+    /// The bound on the drift of STG's forward slice outputs at (`phi`,
+    /// `theta`), whose per-value outputs are (`x`, `y`). Each output is
+    /// `w0 * cosd(theta) / s` times `sind(phi)` or `cosd(phi)`, with `s = 1 +
+    /// sind(theta)`. With each kernel sine and cosine within 2 ULP, at most
+    /// 2 eps relative (eps = 2^-52), of Libm's (see [`Kernel`]), and each
+    /// operation rounded once on each path, eps between the paths: `s`
+    /// differs by at most `D = eps (2 |sind(theta)| + |s|)`, which is
+    /// relative `D / (|s| - D)` of the kernels' `s`; the two other kernel
+    /// values add 2 eps each and the three operations eps each. The bound is
+    /// `(7 eps + D / (|s| - D)) |out|`, to first order, plus
+    /// [`SUBNORMAL_ROUNDING`] for each operation.
+    fn stg_fwd_bound(_phi: f64, theta: f64, x: f64, y: f64) -> [f64; 2] {
+        let eps = f64::EPSILON;
+        let sthe = Libm::sind(theta);
+        let s = 1.0 + sthe;
+        let d = eps * (2.0 * sthe.abs() + s.abs());
+        let rel = 7.0 * eps + d / (s.abs() - d);
+        [
+            rel * x.abs() + 3.0 * SUBNORMAL_ROUNDING,
+            rel * y.abs() + 3.0 * SUBNORMAL_ROUNDING,
+        ]
+    }
+
+    /// STG's forward slice runs the kernels and is within [`stg_fwd_bound`]
+    /// of the per-value entry, with the same bad points, among them points
+    /// within 1e-4 degrees of the pole of the projection, where the sine of
+    /// the latitude rounds to -1; its reverse slice runs [`Libm`] and is bit
+    /// for bit the per-value entry.
+    #[test]
+    fn stg_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let p = prj(WcsProjection::Stg);
+        let mut fwd_inputs = tan_fwd_inputs();
+        let d = degrees(40_000);
+        for (i, &u) in d.iter().enumerate() {
+            let t = (i % 1001) as f64 / 1000.0;
+            fwd_inputs.push((u, -90.0 + crate::math::powf(10.0, -12.0 + 8.0 * t)));
+        }
+        let (fwd_ulps, _, fwd_differ) = slice_drift(&p, &fwd_inputs, true);
+        let over = drift_over_bound(&p, &fwd_inputs, true, stg_fwd_bound);
+        assert!(
+            over <= 1.0,
+            "forward: {over} of the bound ({fwd_ulps:?} ULP)"
+        );
+        assert!(fwd_differ > 0, "forward: no output differs");
+        let (rev_max, _, rev_differ) = slice_drift(&p, &zpn_rev_inputs(), false);
+        assert_eq!((rev_max, rev_differ), ([0, 0], 0), "reverse");
+    }
+
+    /// The bound on the drift of AZP's forward slice outputs at (`phi`,
+    /// `theta`), whose per-value outputs are (`x`, `y`). The denominator `t`
+    /// differs by at most `D = eps (2 |sthe| + |p1 + sthe| + 6 |cthe s| +
+    /// |t|)` (eps = 2^-52), as `azp_fwd_t_near_zero` derives, which is
+    /// relative `D / (|t| - D)` of the kernels' `t`. `x` is `w0 cthe / t`
+    /// times `sphi`, two more kernel values and three operations, 7 eps;
+    /// `y` is `-(w0 cthe / t) cphi w2`, two more kernel values and four
+    /// operations, 8 eps. The bound is `(7 eps + D / (|t| - D)) |x|` and
+    /// `(8 eps + D / (|t| - D)) |y|`, to first order, plus
+    /// [`SUBNORMAL_ROUNDING`] for each operation.
+    fn azp_fwd_bound(prm: &PrjPrm, phi: f64, theta: f64, x: f64, y: f64) -> [f64; 2] {
+        let eps = f64::EPSILON;
+        let sthe = Libm::sind(theta);
+        let a = prm.p[1] + sthe;
+        let b = Libm::cosd(theta) * (prm.w[1] * Libm::cosd(phi));
+        let t = a + b;
+        let d = eps * (2.0 * sthe.abs() + a.abs() + 6.0 * b.abs() + t.abs());
+        let q = d / (t.abs() - d);
+        [
+            (7.0 * eps + q) * x.abs() + 3.0 * SUBNORMAL_ROUNDING,
+            (8.0 * eps + q) * y.abs() + 4.0 * SUBNORMAL_ROUNDING,
+        ]
+    }
+
+    /// The AZP parameter sets the tests use: the default; a perspective
+    /// from beyond the sphere, tilted, without the divergence test; one from
+    /// within it, tilted, with it; and an untilted one at the sphere's
+    /// centre whose divergence limit is where the denominator is zero.
+    fn azp_prjs() -> [Prj; 4] {
+        use WcsProjection::Azp;
+        [
+            prj(Azp),
+            with_params(Azp, &[0.0, 2.0, 30.0]),
+            with_params(Azp, &[0.0, 0.5, 20.0]),
+            with_params(Azp, &[0.0, 0.0, 30.0]),
+        ]
+    }
+
+    /// AZP's forward slice runs the kernels and is within [`azp_fwd_bound`]
+    /// of the per-value entry, with the same bad points; its reverse slice
+    /// runs [`Libm`] and is bit for bit the per-value entry.
+    #[test]
+    fn azp_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let fwd_inputs = tan_fwd_inputs();
+        let rev_inputs = zpn_rev_inputs();
+        for p in azp_prjs() {
+            let prm = p.prm.clone();
+            let params = &prm.p[1..3];
+            let (fwd_ulps, _, fwd_differ) = slice_drift(&p, &fwd_inputs, true);
+            let over = drift_over_bound(&p, &fwd_inputs, true, |u, v, x, y| {
+                azp_fwd_bound(&prm, u, v, x, y)
+            });
+            assert!(
+                over <= 1.0,
+                "{params:?} forward: {over} of the bound ({fwd_ulps:?} ULP)"
+            );
+            assert!(fwd_differ > 0, "{params:?} forward: no output differs");
+            let (rev_max, _, rev_differ) = slice_drift(&p, &rev_inputs, false);
+            assert_eq!((rev_max, rev_differ), ([0, 0], 0), "{params:?} reverse");
+        }
+    }
+
+    /// Points at and a few ULP either side of AZP's divergence limit, as the
+    /// per-value entry computes it, where its denominator is near zero for
+    /// the untilted perspective from the centre: bad in the forward slice
+    /// exactly when bad in the per-value entry, and within the bound.
+    #[test]
+    fn azp_limit_points_agree_on_bad_or_good() {
+        for p in azp_prjs() {
+            let prm = p.prm.clone();
+            let divergence_test = prm.w[7] > 0.0;
+            if !divergence_test {
+                continue;
+            }
+            let mut pairs = Vec::new();
+            let mut bad = 0;
+            for &phi in &degrees(20_000) {
+                let s = prm.w[1] * Libm::cosd(phi);
+                let t = prm.p[1] / crate::math::sqrt(1.0 + s * s);
+                let (s, t) = (Libm::atand(-s), Libm::asind(t));
+                let (mut a, mut b) = (s - t, s + t + 180.0);
+                if a > 90.0 {
+                    a -= 360.0;
+                }
+                if b > 90.0 {
+                    b -= 360.0;
+                }
+                let limit = if a > b { a } else { b };
+                for n in -8i32..=8 {
+                    let n64 = f64::from(n);
+                    for theta in [
+                        ulps_away(limit, i64::from(n)),
+                        limit + n64 * crate::math::powf(2.0, -46.0),
+                        limit + n64 * 1e-13,
+                    ] {
+                        bad += usize::from(p.fwd_raw(phi, theta).0 != Status::Ok);
+                        pairs.push((phi, theta));
+                    }
+                }
+            }
+            assert!(bad > 0 && bad < pairs.len(), "{bad} of {} bad", pairs.len());
+            slice_drift(&p, &pairs, true);
+            let over = drift_over_bound(&p, &pairs, true, |u, v, x, y| {
+                azp_fwd_bound(&prm, u, v, x, y)
+            });
+            assert!(over <= 1.0, "{:?}: {over} of the bound", &prm.p[1..3]);
+        }
+    }
+
+    /// The bound on the drift of SZP's forward slice outputs at (`phi`,
+    /// `theta`), whose per-value outputs are (`x`, `y`). `s = 1 - sthe`
+    /// differs by at most `Ds = eps (2 |sthe| + |s|)` (eps = 2^-52) and the
+    /// denominator `t = w3 - s` by at most `Dt = Ds + eps |t|`, as
+    /// `szp_fwd_t_near_zero` derives. Each numerator, `w6 cthe sphi - w4 s`
+    /// or `w6 cthe cphi + w5 s`, differs by at most
+    /// `DN = 6 eps |A| + |w| Ds + eps |B| + eps |N|`, where `A` is its first
+    /// term, two kernel values and two operations, `B` its second, `w` the
+    /// parameter in it and `N` the numerator. The quotient then differs by
+    /// at most `(DN + |out| Dt) / (|t| - Dt) + eps |out|`, to first order,
+    /// plus [`SUBNORMAL_ROUNDING`] for each of its six operations.
+    fn szp_fwd_bound(prm: &PrjPrm, phi: f64, theta: f64, x: f64, y: f64) -> [f64; 2] {
+        let eps = f64::EPSILON;
+        let sthe = Libm::sind(theta);
+        let cthe = Libm::cosd(theta);
+        let s = 1.0 - sthe;
+        let ds = eps * (2.0 * sthe.abs() + s.abs());
+        let t = prm.w[3] - s;
+        let dt = ds + eps * t.abs();
+        let t_min = t.abs() - dt;
+        let mut out = [0.0; 2];
+        for (k, (trig, w, sign, value)) in [
+            (Libm::sind(phi), prm.w[4], -1.0, x),
+            (Libm::cosd(phi), prm.w[5], 1.0, y),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let a = prm.w[6] * cthe * trig;
+            let b = w * s;
+            let n = a + sign * b;
+            let dn = 6.0 * eps * a.abs() + w.abs() * ds + eps * b.abs() + eps * n.abs();
+            out[k] = (dn + value.abs() * dt) / t_min + eps * value.abs() + 6.0 * SUBNORMAL_ROUNDING;
+        }
+        out
+    }
+
+    /// The SZP parameter sets the tests use: the default, a perspective from
+    /// beyond the sphere with the overlap test, and one from within it whose
+    /// divergence limit is where the denominator is zero.
+    fn szp_prjs() -> [Prj; 3] {
+        use WcsProjection::Szp;
+        [
+            prj(Szp),
+            with_params(Szp, &[0.0, 2.0, 30.0, 60.0]),
+            with_params(Szp, &[0.0, 0.5, 0.0, -30.0]),
+        ]
+    }
+
+    /// SZP's forward slice runs the kernels and is within [`szp_fwd_bound`]
+    /// of the per-value entry; its reverse slice runs the kernels' arc
+    /// tangent, so its longitude is within [`SZP_REV_PHI_ULPS`] and its
+    /// latitude bit for bit the per-value entry's; both with the same bad
+    /// points.
+    #[test]
+    fn szp_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let fwd_inputs = tan_fwd_inputs();
+        let rev_inputs = tan_rev_inputs();
+        for p in szp_prjs() {
+            let prm = p.prm.clone();
+            let params = &prm.p[1..4];
+            let (fwd_ulps, _, fwd_differ) = slice_drift(&p, &fwd_inputs, true);
+            let over = drift_over_bound(&p, &fwd_inputs, true, |u, v, x, y| {
+                szp_fwd_bound(&prm, u, v, x, y)
+            });
+            assert!(
+                over <= 1.0,
+                "{params:?} forward: {over} of the bound ({fwd_ulps:?} ULP)"
+            );
+            assert!(fwd_differ > 0, "{params:?} forward: no output differs");
+            let ([phi_max, theta_max], _, rev_differ) = slice_drift(&p, &rev_inputs, false);
+            assert!(
+                phi_max <= SZP_REV_PHI_ULPS && theta_max == 0,
+                "{params:?} reverse: {phi_max} ULP in phi, {theta_max} in theta"
+            );
+            assert!(rev_differ > 0, "{params:?} reverse: no output differs");
+        }
+    }
+
+    /// Points at and a few ULP either side of SZP's divergence limit, where
+    /// its denominator is near zero for the perspective from within the
+    /// sphere: bad in the forward slice exactly when bad in the per-value
+    /// entry, and within the bound.
+    #[test]
+    fn szp_limit_points_agree_on_bad_or_good() {
+        let p = szp_prjs()[2].clone();
+        let prm = p.prm.clone();
+        let limit = prm.w[8];
+        let mut pairs = Vec::new();
+        let mut bad = 0;
+        for &phi in &degrees(20_000) {
+            for n in -8i32..=8 {
+                let n64 = f64::from(n);
+                for theta in [
+                    ulps_away(limit, i64::from(n)),
+                    limit + n64 * crate::math::powf(2.0, -46.0),
+                    limit + n64 * 1e-13,
+                ] {
+                    bad += usize::from(p.fwd_raw(phi, theta).0 != Status::Ok);
+                    pairs.push((phi, theta));
+                }
+            }
+        }
+        assert!(bad > 0 && bad < pairs.len(), "{bad} of {} bad", pairs.len());
+        slice_drift(&p, &pairs, true);
+        let over = drift_over_bound(&p, &pairs, true, |u, v, x, y| {
+            szp_fwd_bound(&prm, u, v, x, y)
+        });
+        assert!(over <= 1.0, "{over} of the bound");
+    }
+
+    /// The double `n` places from `v` in order, crossing zero from one sign
+    /// to the other as the doubles do (with -0 and +0 one place).
+    fn step_ulps(v: f64, n: i64) -> f64 {
+        let magnitude = (v.to_bits() & !(1 << 63)) as i64;
+        let o = if v.is_sign_negative() {
+            -magnitude
+        } else {
+            magnitude
+        } + n;
+        let magnitude = f64::from_bits(o.unsigned_abs());
+        if o < 0 { -magnitude } else { magnitude }
+    }
+
+    /// The kernel values within 2 ULP of `v`, the premise of every margin
+    /// (see [`Kernel`]).
+    fn within_two_ulps(v: f64) -> impl Iterator<Item = f64> {
+        (-2i64..=2).map(move |n| step_ulps(v, n))
+    }
+
+    /// Wherever a sine within 2 ULP of [`Libm`]'s could put STG's `s` on the
+    /// other side of zero from [`Libm`]'s, `stg_fwd_s_near_zero` redoes the
+    /// point; and a margin of zero would not.
+    #[test]
+    fn stg_margin_covers_the_kernels_drift_and_a_zero_margin_does_not() {
+        let mut missed_by_zero_margin = 0;
+        for k in 0..16 {
+            let libm = -1.0 + f64::from(k) * crate::math::powf(2.0, -53.0);
+            for kernel in within_two_ulps(libm) {
+                let (s_libm, s_kernel) = (1.0 + libm, 1.0 + kernel);
+                if (s_libm == 0.0) != (s_kernel == 0.0) {
+                    assert!(stg_fwd_s_near_zero(s_kernel), "{libm:e}, {kernel:e}");
+                    missed_by_zero_margin += usize::from(s_kernel > 0.0);
+                }
+            }
+        }
+        assert!(missed_by_zero_margin > 0);
+    }
+
+    /// Wherever sines and cosines within 2 ULP of [`Libm`]'s could put AZP's
+    /// denominator on the other side of zero from [`Libm`]'s,
+    /// `azp_fwd_t_near_zero` redoes the point; and a margin of zero would
+    /// not. The values are chosen so that [`Libm`]'s denominator is exactly
+    /// zero, or random.
+    #[test]
+    fn azp_margin_covers_the_kernels_drift_and_a_zero_margin_does_not() {
+        let mut prm = prj(WcsProjection::Azp).prm.clone();
+        prm.p[1] = 0.5;
+        prm.w[1] = 0.5;
+        let t_of = |sthe: f64, cthe: f64, cphi: f64| (prm.p[1] + sthe) + cthe * (prm.w[1] * cphi);
+        let mut values = vec![(-0.25, 0.5, -1.0), (-0.75, 0.5, 1.0), (-0.5, 0.75, 0.0)];
+        let mut rng = crate::test_inputs::SplitMix64::new(0x5eed_a2d0);
+        for _ in 0..2000 {
+            let mut r = || 2.0 * rng.next_f64() - 1.0;
+            values.push((r(), r(), r()));
+        }
+        let mut missed_by_zero_margin = 0;
+        for (sthe, cthe, cphi) in values {
+            let t_libm = t_of(sthe, cthe, cphi);
+            for s in within_two_ulps(sthe) {
+                for c in within_two_ulps(cthe) {
+                    for cp in within_two_ulps(cphi) {
+                        let t_kernel = t_of(s, c, cp);
+                        if (t_libm == 0.0) != (t_kernel == 0.0) {
+                            assert!(azp_fwd_t_near_zero(&prm, s, c, cp), "{s:e}, {c:e}, {cp:e}");
+                            missed_by_zero_margin += usize::from(t_kernel != 0.0);
+                        }
+                    }
+                }
+            }
+        }
+        assert!(missed_by_zero_margin > 0);
+    }
+
+    /// Wherever a sine within 2 ULP of [`Libm`]'s could put SZP's
+    /// denominator on the other side of zero from [`Libm`]'s,
+    /// `szp_fwd_t_near_zero` redoes the point; and a margin of zero would
+    /// not. The sines are those at which [`Libm`]'s denominator is zero or
+    /// next to it, for the default parameters, where it is the sine itself
+    /// rounded through `1 - sthe`, and for a perspective from within the
+    /// sphere.
+    #[test]
+    fn szp_margin_covers_the_kernels_drift_and_a_zero_margin_does_not() {
+        let [default, _, inside] = szp_prjs();
+        let mut missed_by_zero_margin = 0;
+        for p in [default, inside] {
+            let prm = &p.prm;
+            let zero_at = 1.0 - prm.w[3];
+            let mut sines = Vec::new();
+            for base in [
+                zero_at,
+                crate::math::powf(2.0, -54.0),
+                crate::math::powf(2.0, -53.0),
+            ] {
+                sines.extend((-6i64..=6).map(|n| step_ulps(base, n)));
+            }
+            for libm in sines {
+                let t_libm = prm.w[3] - (1.0 - libm);
+                for kernel in within_two_ulps(libm) {
+                    let t_kernel = prm.w[3] - (1.0 - kernel);
+                    if (t_libm == 0.0) != (t_kernel == 0.0) {
+                        assert!(szp_fwd_t_near_zero(prm, kernel), "{libm:e}, {kernel:e}");
+                        missed_by_zero_margin += usize::from(t_kernel != 0.0);
+                    }
+                }
+            }
+        }
+        assert!(missed_by_zero_margin > 0);
+    }
+
+    /// The zenithal projections whose forward slices run the kernels, with
+    /// their parameter sets, and SZP, whose reverse slice does too.
+    fn zenithal_kernel_prjs() -> Vec<Prj> {
+        use WcsProjection::{Air, Arc, Stg, Zea};
+        let mut out = vec![
+            prj(Arc),
+            prj(Zea),
+            prj(Stg),
+            prj(Air),
+            with_params(Air, &[0.0, 45.0]),
+        ];
+        out.extend(azp_prjs());
+        out.extend(szp_prjs());
+        out
+    }
+
+    #[test]
+    fn zenithal_slices_give_each_point_the_same_bits_at_any_length() {
+        for p in zenithal_kernel_prjs() {
+            assert_same_bits_at_any_length(&p, &interleaved_inputs());
+        }
+    }
+
+    #[test]
+    fn zenithal_slice_builds_agree() {
+        let inputs = interleaved_inputs();
+        for p in zenithal_kernel_prjs() {
+            match p.proj {
+                WcsProjection::Azp => assert_builds_agree::<AzpFwd>(&p, &inputs),
+                WcsProjection::Szp => {
+                    assert_builds_agree::<SzpFwd>(&p, &inputs);
+                    assert_builds_agree::<SzpRev>(&p, &inputs);
+                }
+                WcsProjection::Stg => assert_builds_agree::<StgFwd>(&p, &inputs),
+                WcsProjection::Arc => assert_builds_agree::<ArcFwd>(&p, &inputs),
+                WcsProjection::Zea => assert_builds_agree::<ZeaFwd>(&p, &inputs),
+                WcsProjection::Air => assert_builds_agree::<AirFwd>(&p, &inputs),
+                proj => unreachable!("{}", proj.code()),
+            }
+        }
+    }
+
+    /// The pole, and coordinates at multiples of 90 degrees, which the
+    /// kernels do not cover, get the per-value entry's bits in a slice.
+    #[test]
+    fn zenithal_points_the_kernels_do_not_cover_are_exact_in_a_slice() {
+        let sky = right_angle_pairs();
+        let plane: Vec<(f64, f64)> = sky
+            .iter()
+            .flat_map(|&(u, v)| [(u, v), (0.0, v), (u, 0.0), (0.0, 0.0)])
+            .collect();
+        for p in zenithal_kernel_prjs() {
+            match p.proj {
+                WcsProjection::Azp => assert_special_points_exact::<AzpFwd>(&p, &sky, true),
+                WcsProjection::Szp => {
+                    assert_special_points_exact::<SzpFwd>(&p, &sky, true);
+                    assert_special_points_exact::<SzpRev>(&p, &plane, false);
+                }
+                WcsProjection::Stg => assert_special_points_exact::<StgFwd>(&p, &sky, true),
+                WcsProjection::Arc => assert_special_points_exact::<ArcFwd>(&p, &sky, true),
+                WcsProjection::Zea => assert_special_points_exact::<ZeaFwd>(&p, &sky, true),
+                WcsProjection::Air => assert_special_points_exact::<AirFwd>(&p, &sky, true),
+                proj => unreachable!("{}", proj.code()),
             }
         }
     }
