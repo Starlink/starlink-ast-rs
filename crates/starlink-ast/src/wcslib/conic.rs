@@ -14,8 +14,7 @@
 
 use super::math;
 
-use super::WcsProjection;
-use super::prj::{PrjPrm, Status, phi_near_lon_limits};
+use super::prj::{PrjPrm, Status};
 use super::trig::{D2R, Libm, R2D, Trig, atan2d_covers, sincosd_covers, sincosd_near_zero};
 
 // ---------------------------------------------------------------------------
@@ -542,15 +541,9 @@ pub(super) fn coo_rev_finish(
 }
 
 /// Whether [`coo_rev_front`] needs [`Libm`] at (`x`, `y`): an arc tangent's
-/// arguments outside the kernels' cover, or a longitude so near a limit of
-/// the range a WcsMap's inverse accepts that the kernels' drift could change
-/// whether it is accepted.
+/// arguments outside the kernels' cover.
 // The stage has no status test, and its one branch, at `r == 0`, depends on
-// the input alone; there `x / r` is NaN, which the cover rejects. The
-// longitude `a w1`, with `a` the kernels' arc tangent, within 2 ULP of
-// Libm's (see `Kernel`), at most 2 eps of it (eps = 2^-52), differs by at
-// most 3 eps of itself with the two paths' roundings of the product, eps
-// between them, and by 2^-1074 more where it is subnormal.
+// the input alone; there `x / r` is NaN, which the cover rejects.
 #[inline(always)]
 pub(super) fn coo_rev_needs_special<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> bool {
     let dy = prm.w[2] - y;
@@ -558,7 +551,16 @@ pub(super) fn coo_rev_needs_special<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> bo
     if prm.p[1] < 0.0 {
         r = -r;
     }
-    let phi = T::atan2d(x / r, dy / r) * prm.w[1];
-    let drift = 3.0 * f64::EPSILON * phi.abs() + f64::from_bits(1);
-    !atan2d_covers(x / r, dy / r) | phi_near_lon_limits(phi, drift, WcsProjection::Coo.table_tol())
+    !atan2d_covers(x / r, dy / r)
+}
+
+/// The bound on how far the longitude `phi` of [`coo_rev`] from the
+/// kernels' arc tangent can be from [`Libm`]'s.
+// `phi = a w1`, with `a` the kernels' arc tangent, within 2 ULP of Libm's
+// (see `Kernel`), at most 2 eps of it (eps = 2^-52), so it differs by at
+// most 3 eps of itself with the two paths' roundings of the product, eps
+// between them, and by 2^-1074 more where it is subnormal.
+#[inline(always)]
+pub(super) fn coo_rev_lon_drift(_prm: &PrjPrm, phi: f64) -> f64 {
+    3.0 * f64::EPSILON * phi.abs() + f64::from_bits(1)
 }

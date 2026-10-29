@@ -30,8 +30,7 @@
 
 use super::math;
 
-use super::WcsProjection;
-use super::prj::{PrjPrm, Status, phi_near_lon_limits};
+use super::prj::{PrjPrm, Status};
 use super::pseudocyl::{sfl_fwd, sfl_rev, sfl_set};
 use super::trig::{D2R, Libm, R2D, Trig, atan2d_covers, sincosd_covers, sincosd_near_zero};
 use super::zenithal::c_copysign;
@@ -139,19 +138,13 @@ pub(super) fn bon_rev_conic<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f
 }
 
 /// Whether [`bon_rev_conic`] needs [`Libm`] at (`x`, `y`): an argument of
-/// the arc tangent or the cosine outside the kernels' cover, a cosine so
+/// the arc tangent or the cosine outside the kernels' cover, or a cosine so
 /// near zero that the kernels' drift could change which longitude the body
-/// gives, or a longitude so near a limit of the range a WcsMap's inverse
-/// accepts that the drift could change whether it is accepted.
+/// gives.
 // The body has no status test. Its branch at `r == 0` depends on the input
 // alone, and there `x / r` is NaN, which the cover rejects; its branch at
 // `cthe == 0`, with `cthe` the kernels' cosine of `theta`, is decided by
-// `sincosd_near_zero`. The latitude is computed alike on both paths. The
-// longitude `(a (r / r0)) / cthe`, with `a` the kernels' arc tangent, within
-// 2 ULP of Libm's (see `Kernel`), at most 2 eps of it (eps = 2^-52), and
-// `cthe` within 2 eps, differs by at most 6 eps of itself, with the two
-// paths' roundings of the product and the quotient, eps between them each,
-// and by 2^-1074 more for each where it is subnormal.
+// `sincosd_near_zero`. The latitude is computed alike on both paths.
 #[inline(always)]
 pub(super) fn bon_rev_needs_special<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> bool {
     let dy = prm.w[2] - y;
@@ -160,13 +153,19 @@ pub(super) fn bon_rev_needs_special<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> bo
         r = -r;
     }
     let theta = (prm.w[2] - r) / prm.w[1];
-    let cthe = T::cosd(theta);
-    let phi = T::atan2d(x / r, dy / r) * (r / prm.r0) / cthe;
-    let drift = 6.0 * f64::EPSILON * phi.abs() + 2.0 * f64::from_bits(1);
-    !atan2d_covers(x / r, dy / r)
-        | !sincosd_covers(theta)
-        | sincosd_near_zero(cthe)
-        | phi_near_lon_limits(phi, drift, WcsProjection::Bon.table_tol())
+    !atan2d_covers(x / r, dy / r) | !sincosd_covers(theta) | sincosd_near_zero(T::cosd(theta))
+}
+
+/// The bound on how far the longitude `phi` of [`bon_rev_conic`] from the
+/// kernels can be from [`Libm`]'s.
+// `phi = (a (r / r0)) / cthe`, with `a` the kernels' arc tangent, within 2
+// ULP of Libm's (see `Kernel`), at most 2 eps of it (eps = 2^-52), and
+// `cthe` within 2 eps, differs by at most 6 eps of itself, with the two
+// paths' roundings of the product and the quotient, eps between them each,
+// and by 2^-1074 more for each where it is subnormal.
+#[inline(always)]
+pub(super) fn bon_rev_lon_drift(_prm: &PrjPrm, phi: f64) -> f64 {
+    6.0 * f64::EPSILON * phi.abs() + 2.0 * f64::from_bits(1)
 }
 
 // ---------------------------------------------------------------------------

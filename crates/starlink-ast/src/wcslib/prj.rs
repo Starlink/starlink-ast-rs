@@ -54,11 +54,18 @@
 //!     its threshold within the kernels' drift; the body can instead make
 //!     that decision from a value computed exactly as [`Libm`] computes it.
 //!
-//!   A reverse projection's predicate is also true where its longitude,
-//!   when it comes from a kernel, is within twice its drift of a limit of
-//!   the longitude range a WcsMap's inverse accepts
-//!   (`phi_near_lon_limits`), since that inverse rejects a longitude outside
-//!   the range, unless the projection is cyclic.
+//!   A reverse projection whose longitude can come from a kernel also gives
+//!   the bound on that longitude's drift (`lon_drift`). A WcsMap's inverse
+//!   rejects a longitude outside the range it accepts, unless the
+//!   projection is cyclic, so it can turn a point bad or good after the
+//!   projection: [`Prj::rev_slice`] asks its caller, for each longitude the
+//!   kernels give, with that bound, whether to redo the point with
+//!   [`Libm`], and a WcsMap asks for a longitude within twice the bound of
+//!   a limit it decides on. Such a projection's latitude must be [`Libm`]'s
+//!   bit for bit: a WcsMap's inverse also rejects a latitude more than the
+//!   projection's tolerance beyond 90 degrees, and redoes no point near that
+//!   limit, so a latitude from the kernels could turn a point bad or good
+//!   there. The slice tests of SZP, COO and BON assert it.
 //!
 //!   A difference of an ULP or two in a kernel must never turn a bad point
 //!   good or a good one bad, or change which branch of the body runs: only
@@ -445,8 +452,8 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use super::conic::{
     cod_fwd, cod_fwd_needs_special, cod_rev, cod_set, coe_fwd, coe_fwd_needs_special, coe_rev,
     coe_set, coo_fwd, coo_fwd_finish, coo_fwd_front, coo_fwd_needs_special, coo_rev,
-    coo_rev_finish, coo_rev_front, coo_rev_needs_special, coo_set, cop_fwd, cop_fwd_needs_special,
-    cop_rev, cop_set,
+    coo_rev_finish, coo_rev_front, coo_rev_lon_drift, coo_rev_needs_special, coo_set, cop_fwd,
+    cop_fwd_needs_special, cop_rev, cop_set,
 };
 use super::cylindrical::{
     car_fwd, car_rev, car_set, cea_fwd, cea_rev, cea_set, cyp_fwd, cyp_fwd_needs_special, cyp_rev,
@@ -454,8 +461,8 @@ use super::cylindrical::{
 };
 use super::healpix::{hpx_fwd, hpx_rev, hpx_set, xph_fwd, xph_rev, xph_set};
 use super::polyconic::{
-    bon_fwd, bon_fwd_conic, bon_fwd_needs_special, bon_rev, bon_rev_conic, bon_rev_needs_special,
-    bon_set, pco_fwd, pco_rev, pco_set,
+    bon_fwd, bon_fwd_conic, bon_fwd_needs_special, bon_rev, bon_rev_conic, bon_rev_lon_drift,
+    bon_rev_needs_special, bon_set, pco_fwd, pco_rev, pco_set,
 };
 use super::pseudocyl::{
     ait_fwd, ait_fwd_needs_special, ait_rev, ait_set, mol_fwd, mol_rev, mol_set, par_fwd, par_rev,
@@ -474,9 +481,9 @@ use super::zenithal::{
     sin_fwd_orthographic_needs_special, sin_fwd_synthesis, sin_fwd_synthesis_needs_special,
     sin_rev, sin_set, stg_fwd, stg_fwd_needs_special, stg_rev, stg_set, szp_fwd, szp_fwd_finish,
     szp_fwd_front, szp_fwd_needs_special, szp_rev, szp_rev_finish, szp_rev_front,
-    szp_rev_needs_special, szp_set, tan_fwd, tan_fwd_needs_special, tan_rev, tan_set, zea_fwd,
-    zea_fwd_needs_special, zea_rev, zea_set, zpn_fwd, zpn_fwd_finish, zpn_fwd_front,
-    zpn_fwd_needs_special, zpn_rev, zpn_set,
+    szp_rev_lon_drift, szp_rev_needs_special, szp_set, tan_fwd, tan_fwd_needs_special, tan_rev,
+    tan_set, zea_fwd, zea_fwd_needs_special, zea_rev, zea_set, zpn_fwd, zpn_fwd_finish,
+    zpn_fwd_front, zpn_fwd_needs_special, zpn_rev, zpn_set,
 };
 use super::{PRJ_PARAM_SLOTS, WcsProjection};
 
@@ -898,32 +905,66 @@ impl Prj {
         }
         let prm = &self.prm;
         match self.proj {
-            WcsProjection::Azp => kernel_slice::<AzpFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Szp => kernel_slice::<SzpFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Tan => kernel_slice::<TanFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Stg => kernel_slice::<StgFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Azp => {
+                kernel_slice::<AzpFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Szp => {
+                kernel_slice::<SzpFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Tan => {
+                kernel_slice::<TanFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Stg => {
+                kernel_slice::<StgFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
             WcsProjection::Sin if prm.w[1] == 0.0 => {
-                kernel_slice::<SinFwdOrthographic>(prm, a, b, "wcs_fwd", prep, finish)
+                kernel_slice::<SinFwdOrthographic>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
             }
             WcsProjection::Sin => {
-                kernel_slice::<SinFwdSynthesis>(prm, a, b, "wcs_fwd", prep, finish)
+                kernel_slice::<SinFwdSynthesis>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
             }
-            WcsProjection::Arc => kernel_slice::<ArcFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Zpn => kernel_slice::<ZpnFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Zea => kernel_slice::<ZeaFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Air => kernel_slice::<AirFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Tpn => kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Cyp => kernel_slice::<CypFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Ait => kernel_slice::<AitFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Cop => kernel_slice::<CopFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Coe => kernel_slice::<CoeFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Cod => kernel_slice::<CodFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Coo => kernel_slice::<CooFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Arc => {
+                kernel_slice::<ArcFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Zpn => {
+                kernel_slice::<ZpnFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Zea => {
+                kernel_slice::<ZeaFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Air => {
+                kernel_slice::<AirFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Tpn => {
+                kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Cyp => {
+                kernel_slice::<CypFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Ait => {
+                kernel_slice::<AitFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Cop => {
+                kernel_slice::<CopFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Coe => {
+                kernel_slice::<CoeFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Cod => {
+                kernel_slice::<CodFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Coo => {
+                kernel_slice::<CooFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
             WcsProjection::Bon if prm.p[1] != 0.0 => {
-                kernel_slice::<BonFwd>(prm, a, b, "wcs_fwd", prep, finish)
+                kernel_slice::<BonFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
             }
-            WcsProjection::Tsc => kernel_slice::<TscFwd>(prm, a, b, "wcs_fwd", prep, finish),
-            WcsProjection::Csc => kernel_slice::<CscFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Tsc => {
+                kernel_slice::<TscFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
+            WcsProjection::Csc => {
+                kernel_slice::<CscFwd>(prm, a, b, "wcs_fwd", prep, finish, no_redo)
+            }
             proj => with_fwd!(proj, |f| slice_apply(
                 a,
                 b,
@@ -941,6 +982,11 @@ impl Prj {
     /// (phi, theta) in degrees; bad pairs, errors and counting (of
     /// `wcs_rev`) as for [`fwd_slice`](Prj::fwd_slice).
     ///
+    /// Where the projection's longitude comes from the vectorized kernels,
+    /// `redo` is given that longitude, in degrees, and the bound on how far
+    /// it can be from the per-value entry's, and a point for which it gives
+    /// true is projected as the per-value entry projects it.
+    ///
     /// # Errors
     ///
     /// `ErrorCode::Wcspa` if the projection parameters are unusable for a
@@ -952,6 +998,7 @@ impl Prj {
         b: &mut [f64],
         prep: impl Fn(f64, f64) -> (f64, f64),
         finish: impl Fn(f64, f64) -> (f64, f64),
+        redo: impl Fn(f64, f64) -> bool,
     ) -> AstResult<()> {
         if self.setup != Status::Ok {
             // A set-up fails only for unusable parameters; any other status
@@ -962,10 +1009,10 @@ impl Prj {
         }
         let prm = &self.prm;
         match self.proj {
-            WcsProjection::Szp => kernel_slice::<SzpRev>(prm, a, b, "wcs_rev", prep, finish),
-            WcsProjection::Coo => kernel_slice::<CooRev>(prm, a, b, "wcs_rev", prep, finish),
+            WcsProjection::Szp => kernel_slice::<SzpRev>(prm, a, b, "wcs_rev", prep, finish, redo),
+            WcsProjection::Coo => kernel_slice::<CooRev>(prm, a, b, "wcs_rev", prep, finish, redo),
             WcsProjection::Bon if prm.p[1] != 0.0 => {
-                kernel_slice::<BonRev>(prm, a, b, "wcs_rev", prep, finish)
+                kernel_slice::<BonRev>(prm, a, b, "wcs_rev", prep, finish, redo)
             }
             proj => with_rev!(proj, |f| slice_apply(
                 a,
@@ -1044,6 +1091,10 @@ fn slice_apply(
 /// point at a time, and gives `None` where it cannot rule out a different
 /// status from the one [`Libm`] would give; `libm` is the whole body as the
 /// per-value entry runs it, which redoes those points and the special ones.
+///
+/// In a reverse body only the longitude may drift, by at most `lon_drift`:
+/// the latitude must be [`Libm`]'s bit for bit, since a WcsMap's inverse
+/// tests it against its limits without redoing the points near them.
 trait KernelBody {
     /// The stage of the body the kernels run.
     fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> Stage;
@@ -1055,6 +1106,11 @@ trait KernelBody {
     fn finish(prm: &PrjPrm, u: f64, v: f64, stage: Stage) -> Option<(Status, f64, f64)>;
     /// The whole body with [`Libm`].
     fn libm(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64);
+    /// The bound on how far the longitude `lon` of a reverse projection,
+    /// completed by `finish` from the kernels' stage, can be from
+    /// [`Libm`]'s: zero where it has no kernel value. The latitude has no
+    /// such bound: it is [`Libm`]'s bit for bit.
+    fn lon_drift(prm: &PrjPrm, lon: f64) -> f64;
 }
 
 /// The result of a [`KernelBody`]'s stage: a status and up to three values.
@@ -1066,12 +1122,30 @@ pub(super) type Stage = (Status, f64, f64, f64);
 /// `$special`, the kernels running the whole body; or, with `$finish` and
 /// `$whole`, for the stage `$body` of the body `$whole`, completed per point
 /// by `$finish`. Those stages give a status and two values; with `wide`, the
-/// stage gives a whole [`Stage`].
+/// stage gives a whole [`Stage`]. A reverse projection whose longitude comes
+/// from a kernel names its `lon_drift` last.
 macro_rules! kernel_body {
     ($name:ident, $body:ident, $special:ident) => {
         kernel_body!($name, $body, $special, kernel_stage_is_whole_body, $body);
     };
     ($name:ident, $body:ident, $special:ident, $finish:ident, $whole:ident) => {
+        kernel_body!(
+            $name,
+            $body,
+            $special,
+            $finish,
+            $whole,
+            lon_drift = no_lon_drift
+        );
+    };
+    (
+        $name:ident,
+        $body:ident,
+        $special:ident,
+        $finish:ident,
+        $whole:ident,
+        lon_drift = $drift:ident
+    ) => {
         struct $name;
         impl KernelBody for $name {
             #[inline(always)]
@@ -1096,6 +1170,10 @@ macro_rules! kernel_body {
             fn libm(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64) {
                 $whole::<Libm>(prm, u, v)
             }
+            #[inline(always)]
+            fn lon_drift(prm: &PrjPrm, lon: f64) -> f64 {
+                $drift(prm, lon)
+            }
         }
     };
     (wide $name:ident, $body:ident, $special:ident, $finish:ident, $whole:ident) => {
@@ -1117,35 +1195,26 @@ macro_rules! kernel_body {
             fn libm(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64) {
                 $whole::<Libm>(prm, u, v)
             }
+            #[inline(always)]
+            fn lon_drift(prm: &PrjPrm, lon: f64) -> f64 {
+                no_lon_drift(prm, lon)
+            }
         }
     };
 }
 
-/// Whether a longitude `phi` from a reverse projection's slice entry, within
-/// `drift` of the per-value entry's, is so near a limit of the longitude
-/// ranges a WcsMap's inverse accepts that the two longitudes could be
-/// accepted differently.
-// For a projection that is not cyclic, WcsMap's inverse accepts a longitude
-// in [lo, hi), which is [-180, 180) or [0, 360), and one below `lo` with `lo
-// - phi <= tol`, where `tol` is the projection's tolerance; it rejects every
-// other. So it decides `phi < hi` and `lo - phi <= tol`. `lo - phi` is exact
-// where it is near `tol` (Sterbenz for `lo = -180`; a negation for `lo =
-// 0`), so the second is `phi >= lo - tol`, whose limit rounds to the nearest
-// double, at most eps / 2 of it away (eps = 2^-52). Two longitudes within
-// `drift` of each other get the same decisions where the kernels' is beyond
-// twice `drift` of each of 180, 360, -180 - tol and -tol, plus eps of the
-// limit; twice covers evaluating the test from the kernels' longitude rather
-// than Libm's. A cyclic projection, whose longitude the inverse does not
-// test, is tested too, which costs only a few points redone with Libm.
+/// The `lon_drift` of a [`KernelBody`] whose longitude never comes from a
+/// kernel, or that is a forward projection.
 #[inline(always)]
-pub(super) fn phi_near_lon_limits(phi: f64, drift: f64, tol: f64) -> bool {
-    let near = |limit: f64| {
-        let margin = 2.0 * drift + f64::EPSILON * limit.abs();
-        // False for a NaN, which is then redone.
-        let clear = (phi - limit).abs() > margin;
-        !clear
-    };
-    near(180.0) | near(360.0) | near(-180.0 - tol) | near(-tol)
+fn no_lon_drift(_prm: &PrjPrm, _lon: f64) -> f64 {
+    0.0
+}
+
+/// The `redo` of a slice whose caller never redoes a point: every forward
+/// slice.
+#[inline(always)]
+fn no_redo(_lon: f64, _drift: f64) -> bool {
+    false
 }
 
 /// The `finish` of a [`KernelBody`] whose kernels run the whole body.
@@ -1197,7 +1266,8 @@ kernel_body!(
     szp_rev_front,
     szp_rev_needs_special,
     szp_rev_finish,
-    szp_rev
+    szp_rev,
+    lon_drift = szp_rev_lon_drift
 );
 kernel_body!(StgFwd, stg_fwd, stg_fwd_needs_special);
 kernel_body!(ArcFwd, arc_fwd, arc_fwd_needs_special);
@@ -1226,10 +1296,18 @@ kernel_body!(
     coo_rev_front,
     coo_rev_needs_special,
     coo_rev_finish,
-    coo_rev
+    coo_rev,
+    lon_drift = coo_rev_lon_drift
 );
 kernel_body!(BonFwd, bon_fwd_conic, bon_fwd_needs_special);
-kernel_body!(BonRev, bon_rev_conic, bon_rev_needs_special);
+kernel_body!(
+    BonRev,
+    bon_rev_conic,
+    bon_rev_needs_special,
+    kernel_stage_is_whole_body,
+    bon_rev_conic,
+    lon_drift = bon_rev_lon_drift
+);
 kernel_body!(
     wide TscFwd,
     tsc_fwd_front,
@@ -1265,7 +1343,9 @@ const KERNEL_BLOCK: usize = 32;
 ///
 /// `prep` and `finish` run in passes of their own, before and after the
 /// kernel loops, which costs less at small lengths than running them inside
-/// the block loops.
+/// the block loops. `redo` is asked, for each point whose longitude the
+/// kernels gave, with that longitude and `K::lon_drift` of it, whether to
+/// redo the point with [`Libm`].
 fn kernel_slice<K: KernelBody>(
     prm: &PrjPrm,
     a: &mut [f64],
@@ -1273,6 +1353,7 @@ fn kernel_slice<K: KernelBody>(
     counter: &'static str,
     prep: impl Fn(f64, f64) -> (f64, f64),
     finish: impl Fn(f64, f64) -> (f64, f64),
+    redo: impl Fn(f64, f64) -> bool,
 ) -> AstResult<()> {
     let n = a.len();
     assert_eq!(b.len(), n, "the two slices must have the same length");
@@ -1280,7 +1361,7 @@ fn kernel_slice<K: KernelBody>(
     for i in 0..n {
         (a[i], b[i]) = prep(a[i], b[i]);
     }
-    kernel_loops::<K>(prm, a, b, counter)?;
+    kernel_loops::<K>(prm, a, b, counter, &redo)?;
     for i in 0..n {
         (a[i], b[i]) = finish(a[i], b[i]);
     }
@@ -1295,14 +1376,15 @@ fn kernel_loops<K: KernelBody>(
     a: &mut [f64],
     b: &mut [f64],
     counter: &'static str,
+    redo: &impl Fn(f64, f64) -> bool,
 ) -> AstResult<()> {
     #[cfg(target_arch = "x86_64")]
     if crate::vmath::x86_has_avx2_fma() {
         // SAFETY: the CPU has AVX2 and FMA, which is all the function's
         // target features require.
-        return unsafe { kernel_slice_avx2_fma::<K>(prm, a, b, counter) };
+        return unsafe { kernel_slice_avx2_fma::<K>(prm, a, b, counter, redo) };
     }
-    kernel_slice_body::<K, { crate::vmath::HAS_FMA }>(prm, a, b, counter)
+    kernel_slice_body::<K, { crate::vmath::HAS_FMA }>(prm, a, b, counter, redo)
 }
 
 /// [`kernel_slice_body`] built for AVX2 and FMA, so its kernel loop runs
@@ -1319,8 +1401,9 @@ unsafe fn kernel_slice_avx2_fma<K: KernelBody>(
     a: &mut [f64],
     b: &mut [f64],
     counter: &'static str,
+    redo: &impl Fn(f64, f64) -> bool,
 ) -> AstResult<()> {
-    kernel_slice_body::<K, true>(prm, a, b, counter)
+    kernel_slice_body::<K, true>(prm, a, b, counter, redo)
 }
 
 /// The loops of [`kernel_slice`], block by block: the pairs of the block
@@ -1328,14 +1411,15 @@ unsafe fn kernel_slice_avx2_fma<K: KernelBody>(
 /// the kernels run on good pairs only; `K` with [`Kernel`] runs over every
 /// gathered pair, branch-free so the loop vectorizes; then each result is
 /// completed by `K::finish`, redone with [`Libm`] where `K::needs_special`
-/// says or `K::finish` declines, scattered back, and its status mapped as
-/// [`slice_apply`] does.
+/// says, `K::finish` declines or `redo` asks, scattered back, and its status
+/// mapped as [`slice_apply`] does.
 #[inline(always)]
 fn kernel_slice_body<K: KernelBody, const FMA: bool>(
     prm: &PrjPrm,
     a: &mut [f64],
     b: &mut [f64],
     counter: &'static str,
+    redo: &impl Fn(f64, f64) -> bool,
 ) -> AstResult<()> {
     let n = a.len();
     assert_eq!(b.len(), n, "the two slices must have the same length");
@@ -1384,10 +1468,14 @@ fn kernel_slice_body<K: KernelBody, const FMA: bool>(
         }
         for j in 0..good {
             calls += 1;
-            let out = if special[j] {
+            let kernels = if special[j] {
                 None
             } else {
                 K::finish(prm, u[j], v[j], (status[j], p[j], q[j], r[j]))
+            };
+            let out = match kernels {
+                Some((Status::Ok, lon, _)) if redo(lon, K::lon_drift(prm, lon)) => None,
+                kernels => kernels,
             }
             .unwrap_or_else(|| K::libm(prm, u[j], v[j]));
             let i = index[j];
@@ -1691,7 +1779,8 @@ mod tests {
         if fwd {
             p.fwd_slice(&mut a, &mut b, unchanged, unchanged).unwrap();
         } else {
-            p.rev_slice(&mut a, &mut b, unchanged, unchanged).unwrap();
+            p.rev_slice(&mut a, &mut b, unchanged, unchanged, no_redo)
+                .unwrap();
         }
         a.into_iter().zip(b).collect()
     }
@@ -1863,9 +1952,9 @@ mod tests {
             let mut b: Vec<f64> = pairs.iter().map(|q| q.1).collect();
             let prm = &p.prm;
             if fma {
-                kernel_slice_body::<K, true>(prm, &mut a, &mut b, "wcs_fwd").unwrap();
+                kernel_slice_body::<K, true>(prm, &mut a, &mut b, "wcs_fwd", &no_redo).unwrap();
             } else {
-                kernel_slice_body::<K, false>(prm, &mut a, &mut b, "wcs_fwd").unwrap();
+                kernel_slice_body::<K, false>(prm, &mut a, &mut b, "wcs_fwd", &no_redo).unwrap();
             }
             (a, b)
         };
@@ -1906,7 +1995,8 @@ mod tests {
         );
         let mut x = [1.0, 2.0, 3.0, 0.0, 4.0, 5.0, 6.0];
         let mut y = [-1.0, -2.0, -3.0, 0.0, -4.0, -5.0, -6.0];
-        p.rev_slice(&mut x, &mut y, unchanged, unchanged).unwrap();
+        p.rev_slice(&mut x, &mut y, unchanged, unchanged, no_redo)
+            .unwrap();
         assert_eq!(
             (x[3].to_bits(), y[3].to_bits()),
             (0.0f64.to_bits(), 90.0f64.to_bits())
@@ -3587,99 +3677,6 @@ mod tests {
         assert!(missed_by_zero_margin > 0);
     }
 
-    /// Whether a WcsMap's inverse accepts the longitude `phi` of a projection
-    /// that is not cyclic, whose tolerance is `tol`, with the accepted range
-    /// [`lo`, `lo + 360`).
-    fn lon_accepted(phi: f64, lo: f64, tol: f64) -> bool {
-        let phi = if phi < lo && lo - phi <= tol { lo } else { phi };
-        phi < lo + 360.0 && phi >= lo
-    }
-
-    /// Each good point of `p`'s reverse slice, among `pairs`, has a
-    /// longitude a WcsMap's inverse accepts exactly when it accepts the
-    /// per-value entry's, for either range; and some point is near a limit.
-    fn assert_lon_decisions_agree(p: &Prj, pairs: &[(f64, f64)]) {
-        let tol = p.proj.table_tol();
-        let got = through_slice(p, pairs, false);
-        let mut near = 0;
-        for (&(u, v), &(phi, _)) in pairs.iter().zip(&got) {
-            let (status, want, _) = p.rev_raw(u, v);
-            if status != Status::Ok {
-                continue;
-            }
-            for lo in [-180.0, 0.0] {
-                assert_eq!(
-                    lon_accepted(phi, lo, tol),
-                    lon_accepted(want, lo, tol),
-                    "{}: ({u:e}, {v:e}) gives {phi:e} against {want:e}",
-                    p.proj.code()
-                );
-            }
-            near += usize::from((want.abs() - 180.0).abs() < 1e-10);
-        }
-        assert!(near > 0, "no longitude is near a limit");
-    }
-
-    /// Points whose reverse projection's longitude is at, a few ULP from, and
-    /// a few tolerances from the limits of the longitude ranges a WcsMap's
-    /// inverse accepts: the slice's longitude is accepted exactly when the
-    /// per-value entry's is.
-    #[test]
-    fn coo_rev_longitude_limits_agree() {
-        for p in conic_prjs()
-            .into_iter()
-            .filter(|p| p.proj == WcsProjection::Coo)
-        {
-            let prm = p.prm.clone();
-            let tol = p.proj.table_tol();
-            let mut pairs = Vec::new();
-            // The radius has the sign of `p1`.
-            for &r in &degrees(500) {
-                let r = c_copysign(1.0 + r.abs(), prm.p[1]);
-                for limit in [180.0, -180.0] {
-                    for k in -40i64..=40 {
-                        let phi = limit + k as f64 * tol / 8.0;
-                        for n in -4i64..=4 {
-                            let a = ulps_away(phi * prm.w[0], n);
-                            pairs.push((r * Libm::sind(a), prm.w[2] - r * Libm::cosd(a)));
-                        }
-                    }
-                }
-            }
-            slice_drift(&p, &pairs, false);
-            assert_lon_decisions_agree(&p, &pairs);
-        }
-    }
-
-    /// Wherever a longitude within `drift` of [`Libm`]'s could be accepted
-    /// differently by a WcsMap's inverse, `phi_near_lon_limits` says so; and
-    /// with no margin it would not.
-    #[test]
-    fn lon_limit_margin_covers_the_drift_and_a_zero_margin_does_not() {
-        let tol = 1e-13;
-        let drift = 3.0 * f64::EPSILON * 180.0;
-        let mut missed_by_zero_margin = 0;
-        for limit in [180.0, 360.0, -180.0 - tol, -tol, -180.0, 0.0] {
-            for n in -2000i64..=2000 {
-                let libm = step_ulps(limit, n);
-                for m in -8i64..=8 {
-                    let kernel = libm + drift * m as f64 / 8.0;
-                    for lo in [-180.0, 0.0] {
-                        if lon_accepted(libm, lo, tol) != lon_accepted(kernel, lo, tol) {
-                            assert!(
-                                phi_near_lon_limits(kernel, drift, tol),
-                                "{libm:e}, {kernel:e}"
-                            );
-                            missed_by_zero_margin +=
-                                usize::from(!phi_near_lon_limits(kernel, 0.0, tol));
-                        }
-                    }
-                }
-            }
-        }
-        assert!(missed_by_zero_margin > 0);
-    }
-
     /// The conic projections' kernel bodies, with each parameter set.
     fn assert_conic_builds_agree(p: &Prj, inputs: &[(f64, f64)]) {
         match p.proj {
@@ -3832,42 +3829,6 @@ mod tests {
                 let (max, _, differ) = slice_drift(&p, inputs, fwd);
                 assert_eq!((max, differ), ([0, 0], 0), "{}, fwd {fwd}", p.proj.code());
             }
-        }
-    }
-
-    /// Points whose BON reverse projection's longitude is at, a few ULP
-    /// from, and a few tolerances from the limits of the longitude ranges a
-    /// WcsMap's inverse accepts: the slice's longitude is accepted exactly
-    /// when the per-value entry's is.
-    #[test]
-    fn bon_rev_longitude_limits_agree() {
-        for p in bon_prjs()
-            .into_iter()
-            .filter(|p| p.proj == WcsProjection::Bon)
-        {
-            let prm = p.prm.clone();
-            let tol = p.proj.table_tol();
-            let mut pairs = Vec::new();
-            // A point at latitude `theta` and longitude `phi` is at the
-            // signed radius `r = w2 - theta w1` and at the angle `a = r0 phi
-            // cthe / r` from the axis.
-            for &theta in &degrees(400) {
-                let theta = theta / 8.0;
-                let r = prm.w[2] - theta * prm.w[1];
-                for limit in [180.0, -180.0] {
-                    for k in -40i64..=40 {
-                        let phi = limit + k as f64 * tol / 8.0;
-                        let a = prm.r0 * phi * Libm::cosd(theta) / r;
-                        for n in -4i64..=4 {
-                            let a = ulps_away(a, n);
-                            let (sa, ca) = (Libm::sind(a), Libm::cosd(a));
-                            pairs.push((r * sa, prm.w[2] - r * ca));
-                        }
-                    }
-                }
-            }
-            slice_drift(&p, &pairs, false);
-            assert_lon_decisions_agree(&p, &pairs);
         }
     }
 

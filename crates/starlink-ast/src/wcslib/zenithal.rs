@@ -599,6 +599,17 @@ pub(super) fn szp_rev_finish(
     Some(szp_rev_rest::<Libm>(prm, x, y, stage))
 }
 
+/// The bound on how far the longitude `phi` of [`szp_rev`] from the kernels'
+/// arc tangent can be from [`Libm`]'s.
+// `phi` is the kernels' arc tangent times R2D, within 2 ULP of Libm's (see
+// `Kernel`), at most 2 eps of it (eps = 2^-52), and 2^-1074 where it is
+// subnormal; the latitude is Libm's bit for bit. SZP is cyclic, so a
+// WcsMap's inverse never tests this longitude against its range.
+#[inline(always)]
+pub(super) fn szp_rev_lon_drift(_prm: &PrjPrm, phi: f64) -> f64 {
+    2.0 * f64::EPSILON * phi.abs() + f64::from_bits(1)
+}
+
 /// Whether [`szp_rev_front`] needs [`Libm`] at (`x`, `y`): an argument of
 /// the arc tangent outside its kernel's cover, which includes the NaN
 /// arguments of a bad point.
