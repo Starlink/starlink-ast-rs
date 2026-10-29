@@ -129,10 +129,15 @@ pub(crate) fn sin_cos_covers(x: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_inputs::{angle_pairs, specials, ulps};
+    use crate::test_inputs::{angle_pairs, sin_cos_reference, specials, ulps};
 
+    /// [`sin_cos`] is within 1 ULP of the exact sine and cosine, rounded,
+    /// on every platform. It is compared with a reference computed in
+    /// double-double arithmetic rather than with libm, which can itself be
+    /// further from the exact values: macOS's on x86-64 is 2.65 ULP from
+    /// the sine at -6.452961993231616e5.
     #[test]
-    fn sin_cos_is_within_one_ulp_of_libm() {
+    fn sin_cos_is_within_one_ulp_of_the_exact_value() {
         let mut xs: Vec<f64> = angle_pairs(500_000)
             .into_iter()
             .flat_map(|(a, b)| [a, b])
@@ -147,17 +152,18 @@ mod tests {
         let mut differ = 0;
         for x in xs.into_iter().filter(|&x| sin_cos_covers(x)) {
             let (s, c) = sin_cos(x);
-            let (es, ec) = (crate::math::sin(x), crate::math::cos(x));
+            let (es, ec) = sin_cos_reference(x);
             let (ds, dc) = (ulps(s, es), ulps(c, ec));
             assert!(
                 ds <= 1 && dc <= 1,
-                "sin_cos({x:e}) = ({s:e}, {c:e}), libm ({es:e}, {ec:e})"
+                "sin_cos({x:e}) = ({s:e}, {c:e}), exact ({es:e}, {ec:e})"
             );
             differ += usize::from(ds + dc > 0);
         }
+        // The kernel is not correctly rounded everywhere, so some differ.
         assert!(
             differ > 0,
-            "no input differed from libm; is the kernel in use?"
+            "no input differed from the reference; is the kernel in use?"
         );
     }
 
