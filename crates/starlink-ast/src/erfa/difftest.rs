@@ -52,11 +52,11 @@ unsafe extern "C" {
 /// Whether two values are the same bit for bit, any two NaNs counting as the
 /// same: the sign and payload of a NaN from arithmetic depend on operand
 /// order, which the C compiler may swap, and carry no meaning.
-pub(super) fn same(a: f64, b: f64) -> bool {
+pub(crate) fn same(a: f64, b: f64) -> bool {
     a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan())
 }
 
 /// [`same`] for every element of two vectors.
-pub(super) fn same3(a: &[f64; 3], b: &[f64; 3]) -> bool {
+pub(crate) fn same3(a: &[f64; 3], b: &[f64; 3]) -> bool {
     (0..3).all(|k| same(a[k], b[k]))
 }

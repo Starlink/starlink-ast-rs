@@ -5,6 +5,8 @@
 // etc.  Until those land, suppress dead-code warnings.
 #![allow(dead_code)]
 #![allow(clippy::disallowed_methods)]
+// PAL's constants are transcribed from palmac.h digit for digit.
+#![allow(clippy::excessive_precision, clippy::approx_constant)]
 
 //! Safe Rust wrappers for the vendored PAL (Positional Astronomy Library).
 //!
@@ -21,8 +23,16 @@ use std::ffi::c_char;
 
 use crate::constants::BAD_VALUE;
 
+mod deuler;
+mod dmat;
+mod drange;
 mod ffi;
 use ffi::*;
+
+/// PAL's `PAL__DPI` (palmac.h): pi.
+pub(crate) const PAL__DPI: f64 = 3.1415926535897932384626433832795028841971693993751;
+/// PAL's `PAL__D2PI` (palmac.h): 2 pi.
+pub(crate) const PAL__D2PI: f64 = 6.2831853071795864769252867665590057683943387987502;
 
 /// ERFA's `ERFA_DAU` (erfam.h): the astronomical unit in metres, the IAU 2012
 /// value. PAL's routines convert metres to au with it, so a caller that
@@ -203,42 +213,44 @@ fn dcc2s_slice_body<const FMA: bool>(
 
 /// Multiply a 3x3 matrix by a 3-vector (forward transformation).
 pub(crate) fn dmxv(dm: &[[f64; 3]; 3], va: &[f64; 3]) -> [f64; 3] {
-    let mut vb = [0.0; 3];
-    counted!(astPalDmxv(dm.as_ptr(), va.as_ptr(), vb.as_mut_ptr()));
-    vb
+    // palDmxv is eraRxp.
+    crate::call_counts::hit("astPalDmxv");
+    crate::erfa::rxp(dm, va)
 }
 
 /// Multiply the inverse of a 3x3 matrix by a 3-vector (backward / transpose).
 pub(crate) fn dimxv(dm: &[[f64; 3]; 3], va: &[f64; 3]) -> [f64; 3] {
-    let mut vb = [0.0; 3];
-    counted!(astPalDimxv(dm.as_ptr(), va.as_ptr(), vb.as_mut_ptr()));
-    vb
+    // palDimxv is eraTrxp.
+    crate::call_counts::hit("astPalDimxv");
+    crate::erfa::trxp(dm, va)
 }
 
 /// Multiply two 3x3 matrices: `c = a * b`.
 pub(crate) fn dmxm(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
-    let mut c = [[0.0; 3]; 3];
-    counted!(astPalDmxm(a.as_ptr(), b.as_ptr(), c.as_mut_ptr()));
-    c
+    // palDmxm is eraRxr.
+    crate::call_counts::hit("astPalDmxm");
+    crate::erfa::rxr(a, b)
 }
 
 /// Cross product of two 3-vectors.
 pub(crate) fn dvxv(va: &[f64; 3], vb: &[f64; 3]) -> [f64; 3] {
-    let mut vc = [0.0; 3];
-    counted!(astPalDvxv(va.as_ptr(), vb.as_ptr(), vc.as_mut_ptr()));
-    vc
+    // palDvxv is eraPxp.
+    crate::call_counts::hit("astPalDvxv");
+    crate::erfa::pxp(va, vb)
 }
 
 /// Dot product of two 3-vectors.
 pub(crate) fn dvdv(va: &[f64; 3], vb: &[f64; 3]) -> f64 {
-    counted!(astPalDvdv(va.as_ptr(), vb.as_ptr()))
+    // palDvdv is eraPdp.
+    crate::call_counts::hit("astPalDvdv");
+    crate::erfa::pdp(va, vb)
 }
 
 /// Normalize a 3-vector, returning (unit_vector, modulus).
 pub(crate) fn dvn(v: &[f64; 3]) -> ([f64; 3], f64) {
-    let mut uv = [0.0; 3];
-    let mut vm = 0.0;
-    counted!(astPalDvn(v.as_ptr(), uv.as_mut_ptr(), &mut vm));
+    // palDvn is eraPn, which returns the modulus first.
+    crate::call_counts::hit("astPalDvn");
+    let (vm, uv) = crate::erfa::pn(v);
     (uv, vm)
 }
 
@@ -262,19 +274,9 @@ pub(crate) fn dmat(n: usize, a: &mut [f64], y: &mut [f64]) -> bool {
 pub(crate) fn dmat_det(n: usize, a: &mut [f64], y: &mut [f64]) -> (bool, f64) {
     debug_assert_eq!(a.len(), n * n, "matrix must be n*n");
     debug_assert_eq!(y.len(), n, "rhs must have length n");
-    let mut d = 0.0_f64;
-    let mut jf = 0_i32;
-    // Pivot bookkeeping scratch used internally by palDmat.
-    let mut iw = vec![0_i32; n];
-    counted!(astPalDmat(
-        n as i32,
-        a.as_mut_ptr(),
-        y.as_mut_ptr(),
-        &mut d,
-        &mut jf,
-        iw.as_mut_ptr(),
-    ));
-    (jf == 0, d)
+    crate::call_counts::hit("astPalDmat");
+    let (singular, d) = dmat::dmat(n, a, y);
+    (!singular, d)
 }
 
 // ---------------------------------------------------------------------------
@@ -401,22 +403,8 @@ pub(crate) fn ecmat(date: f64) -> [[f64; 3]; 3] {
 /// e.g. `"XYZ"`, `"ZYZ"`.  Each character selects the axis about which
 /// the corresponding rotation is applied.
 pub(crate) fn deuler(order: &str, phi: f64, theta: f64, psi: f64) -> [[f64; 3]; 3] {
-    // Stack-allocate a small null-terminated buffer for the order string.
-    let mut buf = [0u8; 4];
-    let bytes = order.as_bytes();
-    let len = bytes.len().min(3);
-    buf[..len].copy_from_slice(&bytes[..len]);
-    // buf[len..] is already zero-filled (null terminator)
-
-    let mut m = [[0.0; 3]; 3];
-    counted!(astPalDeuler(
-        buf.as_ptr().cast::<c_char>(),
-        phi,
-        theta,
-        psi,
-        m.as_mut_ptr(),
-    ));
-    m
+    crate::call_counts::hit("astPalDeuler");
+    deuler::deuler(order, phi, theta, psi)
 }
 
 // ---------------------------------------------------------------------------
@@ -479,22 +467,29 @@ pub(crate) fn mapqkz(rm: f64, dm: f64, amprms: &[f64; 21]) -> (f64, f64) {
 
 /// Normalize an angle to the range [-pi, pi].
 pub(crate) fn drange(angle: f64) -> f64 {
-    counted!(astPalDrange(angle))
+    crate::call_counts::hit("astPalDrange");
+    drange::drange(angle)
 }
 
 /// Normalize an angle to the range [0, 2*pi].
 pub(crate) fn dranrm(angle: f64) -> f64 {
-    counted!(astPalDranrm(angle))
+    // palDranrm is eraAnp.
+    crate::call_counts::hit("astPalDranrm");
+    crate::erfa::anp(angle)
 }
 
 /// Angular separation between two points on a sphere (radians).
 pub(crate) fn dsep(al: f64, ap: f64, bl: f64, bp: f64) -> f64 {
-    counted!(astPalDsep(al, ap, bl, bp))
+    // palDsep is eraSeps.
+    crate::call_counts::hit("astPalDsep");
+    crate::erfa::seps(al, ap, bl, bp)
 }
 
 /// Bearing (position angle) of point B as seen from point A (radians).
 pub(crate) fn dbear(a1: f64, b1: f64, a2: f64, b2: f64) -> f64 {
-    counted!(astPalDbear(a1, b1, a2, b2))
+    // palDbear is eraPas.
+    crate::call_counts::hit("astPalDbear");
+    crate::erfa::pas(a1, b1, a2, b2)
 }
 
 // ---------------------------------------------------------------------------
@@ -547,9 +542,9 @@ pub(crate) fn geoc(p: f64, h: f64) -> (f64, f64) {
 /// The direction of the axial vector is the Euler axis, and its
 /// magnitude is the rotation angle in radians.
 pub(crate) fn dav2m(axvec: &[f64; 3]) -> [[f64; 3]; 3] {
-    let mut m = [[0.0; 3]; 3];
-    counted!(astPalDav2m(axvec.as_ptr(), m.as_mut_ptr()));
-    m
+    // palDav2m is eraRv2m.
+    crate::call_counts::hit("astPalDav2m");
+    crate::erfa::rv2m(axvec)
 }
 
 // ---------------------------------------------------------------------------
@@ -1494,7 +1489,8 @@ mod count_tests {
     #[test]
     fn every_ffi_call_is_counted() {
         let src = include_str!("mod.rs");
-        let body = src;
+        // The differential tests call the C routines directly, uncounted.
+        let body = src.split(concat!("mod native_", "tests {")).next().unwrap();
         let mut uncounted = Vec::new();
         for prefix in ["astPal", "astEra"] {
             for (i, _) in body.match_indices(prefix) {
@@ -1520,5 +1516,289 @@ mod count_tests {
         crate::call_counts::reset();
         let _ = super::eqgal(1.0, 0.5);
         assert_eq!(crate::call_counts::snapshot().get("astPalEqgal"), Some(&1));
+    }
+}
+
+/// Differential tests of the wrappers that run Rust against the vendored C
+/// routines they replaced.
+#[cfg(test)]
+mod native_tests {
+    use super::*;
+    use crate::erfa::difftest::{same, same3};
+    use crate::test_inputs::{SplitMix64, angle_pairs, matrices, specials, vectors};
+    use std::ffi::CString;
+
+    fn same_m(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> bool {
+        (0..3).all(|i| same3(&a[i], &b[i]))
+    }
+
+    #[test]
+    fn dmxv_matches_vendored_c_bit_for_bit() {
+        let ms = matrices(2_000);
+        for (i, p) in vectors(20_000).iter().enumerate() {
+            let m = &ms[(i * 7) % ms.len()];
+            let mut c = [0.0; 3];
+            // SAFETY: nine and three values.
+            unsafe { astPalDmxv(m.as_ptr(), p.as_ptr(), c.as_mut_ptr()) };
+            assert!(same3(&dmxv(m, p), &c), "{m:?} {p:?}");
+        }
+    }
+
+    #[test]
+    fn dimxv_matches_vendored_c_bit_for_bit() {
+        let ms = matrices(2_000);
+        for (i, p) in vectors(20_000).iter().enumerate() {
+            let m = &ms[(i * 7) % ms.len()];
+            let mut c = [0.0; 3];
+            // SAFETY: nine and three values.
+            unsafe { astPalDimxv(m.as_ptr(), p.as_ptr(), c.as_mut_ptr()) };
+            assert!(same3(&dimxv(m, p), &c), "{m:?} {p:?}");
+        }
+    }
+
+    #[test]
+    fn dmxm_matches_vendored_c_bit_for_bit() {
+        let ms = matrices(1_000);
+        for (i, a) in ms.iter().enumerate() {
+            for b in [&ms[(i * 5 + 1) % ms.len()], &ms[(i * 11 + 3) % ms.len()]] {
+                let mut c = [[0.0; 3]; 3];
+                // SAFETY: nine values each.
+                unsafe { astPalDmxm(a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) };
+                assert!(same_m(&dmxm(a, b), &c), "{a:?} {b:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn dvxv_matches_vendored_c_bit_for_bit() {
+        let vs = vectors(20_000);
+        for (i, a) in vs.iter().enumerate() {
+            let b = &vs[(i * 13 + 5) % vs.len()];
+            let mut c = [0.0; 3];
+            // SAFETY: three values each.
+            unsafe { astPalDvxv(a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) };
+            assert!(same3(&dvxv(a, b), &c), "{a:?} {b:?}");
+        }
+    }
+
+    #[test]
+    fn dvdv_matches_vendored_c_bit_for_bit() {
+        let vs = vectors(20_000);
+        for (i, a) in vs.iter().enumerate() {
+            let b = &vs[(i * 13 + 5) % vs.len()];
+            // SAFETY: three values each.
+            let c = unsafe { astPalDvdv(a.as_ptr(), b.as_ptr()) };
+            assert!(same(dvdv(a, b), c), "{a:?} {b:?}");
+        }
+    }
+
+    #[test]
+    fn dvn_matches_vendored_c_bit_for_bit() {
+        for v in vectors(20_000) {
+            let mut uv = [0.0; 3];
+            let mut vm = 0.0;
+            // SAFETY: three values and a scalar.
+            unsafe { astPalDvn(v.as_ptr(), uv.as_mut_ptr(), &mut vm) };
+            let (nuv, nvm) = dvn(&v);
+            assert!(same3(&nuv, &uv) && same(nvm, vm), "{v:?}");
+        }
+    }
+
+    #[test]
+    fn dranrm_matches_vendored_c_bit_for_bit() {
+        let mut xs = specials();
+        for (a, b) in angle_pairs(5_000) {
+            xs.push(a);
+            xs.push(b);
+        }
+        for x in xs {
+            // SAFETY: by value.
+            assert!(same(dranrm(x), unsafe { astPalDranrm(x) }), "{x:?}");
+        }
+    }
+
+    #[test]
+    fn drange_matches_vendored_c_bit_for_bit() {
+        let mut xs = specials();
+        for (a, b) in angle_pairs(5_000) {
+            xs.push(a);
+            xs.push(b);
+        }
+        for k in -20..=20 {
+            let base = f64::from(k) * std::f64::consts::PI;
+            for d in [-1e-15, 0.0, 1e-15] {
+                xs.push(base + d);
+            }
+        }
+        for x in xs {
+            // SAFETY: by value.
+            assert!(same(drange(x), unsafe { astPalDrange(x) }), "{x:?}");
+        }
+    }
+
+    #[test]
+    fn dsep_matches_vendored_c_bit_for_bit() {
+        let ps = angle_pairs(3_000);
+        for (i, &(a, b)) in ps.iter().enumerate() {
+            let (c, d) = ps[(i * 17 + 3) % ps.len()];
+            // SAFETY: by value.
+            let r = unsafe { astPalDsep(a, b, c, d) };
+            assert!(same(dsep(a, b, c, d), r), "{a:?} {b:?} {c:?} {d:?}");
+        }
+    }
+
+    #[test]
+    fn dbear_matches_vendored_c_bit_for_bit() {
+        let ps = angle_pairs(3_000);
+        for (i, &(a, b)) in ps.iter().enumerate() {
+            let (c, d) = ps[(i * 17 + 3) % ps.len()];
+            // SAFETY: by value.
+            let r = unsafe { astPalDbear(a, b, c, d) };
+            assert!(same(dbear(a, b, c, d), r), "{a:?} {b:?} {c:?} {d:?}");
+        }
+    }
+
+    #[test]
+    fn dav2m_matches_vendored_c_bit_for_bit() {
+        for v in vectors(20_000) {
+            let mut c = [[0.0; 3]; 3];
+            // SAFETY: three values and nine.
+            unsafe { astPalDav2m(v.as_ptr(), c.as_mut_ptr()) };
+            assert!(same_m(&dav2m(&v), &c), "{v:?}");
+        }
+    }
+
+    #[test]
+    fn deuler_matches_vendored_c_bit_for_bit() {
+        let orders = [
+            "", "x", "zyx", "ZXZ", "xyzx", "abc", "z1y", "XYZ", "123", "321", "zy", "Zy3", "y?z",
+            "zzz", "z\0y",
+        ];
+        let angles = angle_pairs(100);
+        for order in orders {
+            for (i, &(phi, theta)) in angles.iter().enumerate() {
+                let psi = angles[(i * 7 + 1) % angles.len()].0;
+                // The C wrapper-era call: the order's first three bytes,
+                // NUL-terminated.
+                let mut buf = [0u8; 4];
+                let n = order.len().min(3);
+                buf[..n].copy_from_slice(&order.as_bytes()[..n]);
+                let mut c = [[0.0; 3]; 3];
+                // SAFETY: `buf` is NUL-terminated; nine output values.
+                unsafe {
+                    astPalDeuler(buf.as_ptr().cast(), phi, theta, psi, c.as_mut_ptr());
+                }
+                assert!(
+                    same_m(&deuler(order, phi, theta, psi), &c),
+                    "{order:?} {phi} {theta} {psi}"
+                );
+            }
+        }
+        // The full order string through a C string, as C callers pass it.
+        let long = CString::new("zyxz").unwrap();
+        let mut c = [[0.0; 3]; 3];
+        // SAFETY: NUL-terminated string; nine output values.
+        unsafe { astPalDeuler(long.as_ptr(), 0.3, 0.4, 0.5, c.as_mut_ptr()) };
+        assert!(same_m(&deuler("zyxz", 0.3, 0.4, 0.5), &c));
+    }
+
+    /// `palDmat` through the C routine, returning the flag, determinant,
+    /// reduced matrix and vector.
+    fn c_dmat(n: usize, a: &[f64], y: &[f64]) -> (bool, f64, Vec<f64>, Vec<f64>) {
+        let (mut a, mut y) = (a.to_vec(), y.to_vec());
+        let mut iw = vec![0_i32; n];
+        let (mut d, mut jf) = (0.0, 0);
+        // SAFETY: `a` holds n*n values, `y` and `iw` n.
+        unsafe {
+            astPalDmat(
+                n as i32,
+                a.as_mut_ptr(),
+                y.as_mut_ptr(),
+                &mut d,
+                &mut jf,
+                iw.as_mut_ptr(),
+            );
+        }
+        (jf == 0, d, a, y)
+    }
+
+    fn check_dmat(n: usize, a: &[f64], y: &[f64]) {
+        let (ok, d, ca, cy) = c_dmat(n, a, y);
+        let (mut ra, mut ry) = (a.to_vec(), y.to_vec());
+        let (rok, rd) = dmat_det(n, &mut ra, &mut ry);
+        assert_eq!(rok, ok, "flag n={n} {a:?} {y:?}");
+        assert!(same(rd, d), "det n={n} {a:?} {y:?}");
+        assert!(
+            ra.iter().zip(&ca).all(|(&p, &q)| same(p, q)),
+            "a n={n} {a:?} {y:?}: {ra:?} vs {ca:?}"
+        );
+        assert!(
+            ry.iter().zip(&cy).all(|(&p, &q)| same(p, q)),
+            "y n={n} {a:?} {y:?}: {ry:?} vs {cy:?}"
+        );
+        let mut ba = a.to_vec();
+        let mut by = y.to_vec();
+        assert_eq!(dmat(n, &mut ba, &mut by), ok);
+    }
+
+    #[test]
+    fn dmat_matches_vendored_c_bit_for_bit() {
+        let mut rng = SplitMix64::new(0x5eed_d3a7);
+        let sp = specials();
+        for n in [1_usize, 2, 3, 6] {
+            for case in 0..3_000 {
+                let mut a: Vec<f64> = (0..n * n)
+                    .map(|_| (rng.next_f64() - 0.5) * [1.0, 1e-8, 1e8][case % 3])
+                    .collect();
+                let y: Vec<f64> = (0..n).map(|_| rng.next_f64() - 0.5).collect();
+                check_dmat(n, &a, &y);
+                if n >= 2 {
+                    // Two equal rows: singular.
+                    let r = case % n;
+                    let s = (r + 1 + case / n % (n - 1)) % n;
+                    let row: Vec<f64> = a[r * n..(r + 1) * n].to_vec();
+                    a[s * n..(s + 1) * n].copy_from_slice(&row);
+                    check_dmat(n, &a, &y);
+                    // Rows differing by 1e-15: near singular.
+                    for j in 0..n {
+                        a[s * n + j] += 1e-15 * (j as f64 + 1.0);
+                    }
+                    check_dmat(n, &a, &y);
+                }
+            }
+            // The zero matrix, a zero column, and a tiny matrix around the
+            // 1e-20 pivot limit.
+            let y: Vec<f64> = (0..n).map(|i| i as f64 + 1.0).collect();
+            check_dmat(n, &vec![0.0; n * n], &y);
+            let mut a = vec![0.0; n * n];
+            for i in 0..n {
+                a[i * n + i] = 1.0;
+            }
+            check_dmat(n, &a, &y);
+            for scale in [1e-19, 1e-20, 1e-21, 5e-21] {
+                let t: Vec<f64> = a.iter().map(|v| v * scale).collect();
+                check_dmat(n, &t, &y);
+            }
+            for col in 0..n {
+                let mut z = a.clone();
+                for i in 0..n {
+                    z[i * n + col] = 0.0;
+                }
+                check_dmat(n, &z, &y);
+            }
+            // Special values in each position of a diagonal-dominant matrix.
+            for &s in &sp {
+                for pos in 0..n * n {
+                    let mut z: Vec<f64> = (0..n * n)
+                        .map(|k| if k / n == k % n { 2.0 } else { 0.25 })
+                        .collect();
+                    z[pos] = s;
+                    check_dmat(n, &z, &y);
+                }
+                let mut yy = y.clone();
+                yy[n - 1] = s;
+                check_dmat(n, &a, &yy);
+            }
+        }
     }
 }
