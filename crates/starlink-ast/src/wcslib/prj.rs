@@ -77,7 +77,8 @@
 //! - for a body with a stage that cannot vectorize, such as an iteration
 //!   whose number of steps depends on the point, a split of the body into
 //!   two `#[inline(always)]` functions that both the body and the slice
-//!   call, so no arithmetic is written twice: the kernels run the first, and
+//!   call, so no arithmetic is written twice, the first giving a status and
+//!   up to three values: the kernels run the first, and
 //!   a `finish` function runs the second per element and declines, so that
 //!   the element is redone with [`Libm`], wherever the kernels' drift could
 //!   change its status; a `//` comment on it argues why every element it
@@ -377,6 +378,52 @@
 //! tangent, which takes most of its time: with them from the kernels it ran
 //! at 640 ns per point against 647 on the grid, 530 against 531 on the image
 //! and 691 against 699 on random points, within the measurements' noise.
+//!
+//! The quad-cube projections were timed as the cylindrical ones, on an image
+//! centred at (10, 20) degrees.
+//!
+//! TSC's and CSC's forward projections opt in their direction cosines, the
+//! sines and cosines of the longitude and latitude; the choice of the cube's
+//! face, the position on it and the status are computed per element with
+//! [`Libm`]. TSC's face is the largest of the direction cosines and their
+//! negations, and a point where two of them are within twice the bound on
+//! their drift of each other is redone with [`Libm`]. CSC rounds its
+//! direction cosines to single precision and computes everything after from
+//! them, so a point where the kernels' drift could change a rounding is
+//! redone, and every other point gives the per-value entry's bits. TSC ran
+//! at 21.5 to 21.8 ns per point against 40.2 to 40.7 for its [`Libm`] loop
+//! on the whole-sky grid, at 21.9 to 22.3 against 35.6 to 36.2 on the image
+//! and at 34.4 against 55.0 to 55.5 on random points; CSC at 35.4 against
+//! 45.7 to 46.5, at 34.2 to 34.4 against 41.7 to 42.4 and at 44.7 to 45.0
+//! against 62.7 to 62.8. At one point they took 76 and 96 ns against 43 and
+//! 47 to 50. The rounding tests of CSC run per element: in the vectorized
+//! loop, even one of them stopped the loop vectorizing, and CSC ran at 42 ns
+//! per point against 46 on the grid and 43 against 42 on the image.
+//!
+//! QSC's forward projection does not opt in. With its direction cosines from
+//! the kernels it ran at 37.1 to 37.6 ns per point against 61.2 to 62.4 on
+//! the grid and at 64.4 to 65.5 against 91.1 to 92.6 on random points, but
+//! near a face's centre its drift, measured against the scale of its
+//! coordinates, is far beyond that of any direction that opts in, which all
+//! stay within a few ULP of it. Its formula takes the square root of one
+//! less the largest direction cosine, which cancels there, and carries the
+//! kernels' drift to about 2e-10 degrees, bounded by 5e-10: against face
+//! coordinates of 45 to 90 degrees, whose ULP is 7.1e-15 to 1.4e-14
+//! degrees, that is 1e4 to 1e5 ULP. Redoing with [`Libm`] every point whose
+//! derived drift is beyond a few ULP of its output redid every point of a
+//! grid, and the slice ran at 131 ns per point against 62.
+//!
+//! The quad-cube reverse projections do not opt in. TSC's and CSC's only
+//! kernel function is the arc tangent that gives the longitude, after the
+//! choice of the face, and with the whole body but the arc sine from the
+//! kernels they ran at 26.0 and 53.5 ns per point against 23.9 and 56.3 on
+//! the grid, 22.0 and 48.8 against 20.9 and 49.9 on the image and 46.8 and
+//! 85.1 against 52.7 and 90.2 on random points. QSC's reverse projection,
+//! with the sine and cosine of its angle from the kernels and the rest per
+//! element, ran at 59 to 63 ns per point against 72 to 74 on the grid and 54
+//! to 56 against 64 to 67 on the image, but at 100 to 103 against 102 to 104
+//! on random points, within the measurements' noise, where the choice of
+//! the face, made per element, costs most.
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -401,7 +448,8 @@ use super::pseudocyl::{
     par_set, sfl_fwd, sfl_rev, sfl_set,
 };
 use super::quadcube::{
-    csc_fwd, csc_rev, csc_set, qsc_fwd, qsc_rev, qsc_set, tsc_fwd, tsc_rev, tsc_set,
+    csc_fwd, csc_fwd_finish, csc_fwd_front, csc_rev, csc_set, qsc_fwd, qsc_rev, qsc_set,
+    quadcube_fwd_needs_special, tsc_fwd, tsc_fwd_finish, tsc_fwd_front, tsc_rev, tsc_set,
 };
 use super::tpn::{tpn_fwd, tpn_fwd_finish, tpn_fwd_front, tpn_fwd_needs_special, tpn_rev, tpn_set};
 use super::trig::{Kernel, Libm, Trig};
@@ -860,6 +908,8 @@ impl Prj {
             WcsProjection::Bon if prm.p[1] != 0.0 => {
                 kernel_slice::<BonFwd>(prm, a, b, "wcs_fwd", prep, finish)
             }
+            WcsProjection::Tsc => kernel_slice::<TscFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Csc => kernel_slice::<CscFwd>(prm, a, b, "wcs_fwd", prep, finish),
             proj => with_fwd!(proj, |f| slice_apply(
                 a,
                 b,
@@ -982,26 +1032,27 @@ fn slice_apply(
 /// per-value entry runs it, which redoes those points and the special ones.
 trait KernelBody {
     /// The stage of the body the kernels run.
-    fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64);
+    fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> Stage;
     /// Whether the stage at (`u`, `v`) needs [`Libm`], where the stage runs
     /// with the trigonometry `T`.
     fn needs_special<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> bool;
     /// The rest of the body at (`u`, `v`) on the stage's result, or `None`
     /// to redo the point with [`Libm`].
-    fn finish(
-        prm: &PrjPrm,
-        u: f64,
-        v: f64,
-        stage: (Status, f64, f64),
-    ) -> Option<(Status, f64, f64)>;
+    fn finish(prm: &PrjPrm, u: f64, v: f64, stage: Stage) -> Option<(Status, f64, f64)>;
     /// The whole body with [`Libm`].
     fn libm(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64);
 }
 
+/// The result of a [`KernelBody`]'s stage: a status and up to three values.
+/// A stage that gives a status and two values, as most do, leaves the third
+/// zero.
+pub(super) type Stage = (Status, f64, f64, f64);
+
 /// Declare the [`KernelBody`] `$name` for the body `$body` and its predicate
 /// `$special`, the kernels running the whole body; or, with `$finish` and
 /// `$whole`, for the stage `$body` of the body `$whole`, completed per point
-/// by `$finish`.
+/// by `$finish`. Those stages give a status and two values; with `wide`, the
+/// stage gives a whole [`Stage`].
 macro_rules! kernel_body {
     ($name:ident, $body:ident, $special:ident) => {
         kernel_body!($name, $body, $special, kernel_stage_is_whole_body, $body);
@@ -1010,8 +1061,9 @@ macro_rules! kernel_body {
         struct $name;
         impl KernelBody for $name {
             #[inline(always)]
-            fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64) {
-                $body::<T>(prm, u, v)
+            fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> Stage {
+                let (status, p, q) = $body::<T>(prm, u, v);
+                (status, p, q, 0.0)
             }
             #[inline(always)]
             fn needs_special<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> bool {
@@ -1022,8 +1074,29 @@ macro_rules! kernel_body {
                 prm: &PrjPrm,
                 u: f64,
                 v: f64,
-                stage: (Status, f64, f64),
+                (status, p, q, _): Stage,
             ) -> Option<(Status, f64, f64)> {
+                $finish(prm, u, v, (status, p, q))
+            }
+            #[inline(always)]
+            fn libm(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64) {
+                $whole::<Libm>(prm, u, v)
+            }
+        }
+    };
+    (wide $name:ident, $body:ident, $special:ident, $finish:ident, $whole:ident) => {
+        struct $name;
+        impl KernelBody for $name {
+            #[inline(always)]
+            fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> Stage {
+                $body::<T>(prm, u, v)
+            }
+            #[inline(always)]
+            fn needs_special<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> bool {
+                $special::<T>(prm, u, v)
+            }
+            #[inline(always)]
+            fn finish(prm: &PrjPrm, u: f64, v: f64, stage: Stage) -> Option<(Status, f64, f64)> {
                 $finish(prm, u, v, stage)
             }
             #[inline(always)]
@@ -1144,6 +1217,20 @@ kernel_body!(
 kernel_body!(BonFwd, bon_fwd_conic, bon_fwd_needs_special);
 kernel_body!(BonRev, bon_rev_conic, bon_rev_needs_special);
 kernel_body!(
+    wide TscFwd,
+    tsc_fwd_front,
+    quadcube_fwd_needs_special,
+    tsc_fwd_finish,
+    tsc_fwd
+);
+kernel_body!(
+    wide CscFwd,
+    csc_fwd_front,
+    quadcube_fwd_needs_special,
+    csc_fwd_finish,
+    csc_fwd
+);
+kernel_body!(
     TpnFwd,
     tpn_fwd_front,
     tpn_fwd_needs_special,
@@ -1248,6 +1335,7 @@ fn kernel_slice_body<K: KernelBody, const FMA: bool>(
     let mut special = [false; KERNEL_BLOCK];
     let mut p = [0.0; KERNEL_BLOCK];
     let mut q = [0.0; KERNEL_BLOCK];
+    let mut r = [0.0; KERNEL_BLOCK];
     // Blocks by index: zipped `chunks_mut` iterators divide by the block
     // length at run time wherever their constructor is not inlined.
     'blocks: for start in (0..n).step_by(KERNEL_BLOCK) {
@@ -1266,7 +1354,7 @@ fn kernel_slice_body<K: KernelBody, const FMA: bool>(
                 good += 1;
             }
         }
-        let (index, u, v, status, special, p, q) = (
+        let (index, u, v, status, special, p, q, r) = (
             &index[..good],
             &u[..good],
             &v[..good],
@@ -1274,9 +1362,10 @@ fn kernel_slice_body<K: KernelBody, const FMA: bool>(
             &mut special[..good],
             &mut p[..good],
             &mut q[..good],
+            &mut r[..good],
         );
         for j in 0..good {
-            (status[j], p[j], q[j]) = K::eval::<Kernel<FMA>>(prm, u[j], v[j]);
+            (status[j], p[j], q[j], r[j]) = K::eval::<Kernel<FMA>>(prm, u[j], v[j]);
             special[j] = K::needs_special::<Kernel<FMA>>(prm, u[j], v[j]);
         }
         for j in 0..good {
@@ -1284,7 +1373,7 @@ fn kernel_slice_body<K: KernelBody, const FMA: bool>(
             let out = if special[j] {
                 None
             } else {
-                K::finish(prm, u[j], v[j], (status[j], p[j], q[j]))
+                K::finish(prm, u[j], v[j], (status[j], p[j], q[j], r[j]))
             }
             .unwrap_or_else(|| K::libm(prm, u[j], v[j]));
             let i = index[j];
@@ -3803,6 +3892,236 @@ mod tests {
                 plane.push((1.0, prm.w[2] - (prm.w[2] - pole * prm.w[1])));
             }
             assert_special_points_exact::<BonRev>(&p, &plane, false);
+        }
+    }
+
+    use crate::wcslib::quadcube::{cube_face_near_tie, f32_rounding_near};
+
+    /// The quad-cube projections, which have no parameters.
+    fn quadcube_prjs() -> [Prj; 3] {
+        use WcsProjection::{Csc, Qsc, Tsc};
+        [prj(Tsc), prj(Csc), prj(Qsc)]
+    }
+
+    /// The bound on the drift of TSC's forward slice outputs (`x`, `y`) =
+    /// `w0 (xf + x0, yf + y0)`. Where both paths choose the same face, each
+    /// of `xf` and `yf` is a quotient of two direction cosines that differ by
+    /// at most 5 eps of themselves (eps = 2^-52; see `cube_face_near_tie`),
+    /// so it differs by 11 eps of itself with the quotient's rounding, and
+    /// it is at most 1 in magnitude; the sum with the offset and the product
+    /// with `w0` add eps of each, plus [`SUBNORMAL_ROUNDING`] for each
+    /// operation.
+    fn tsc_fwd_bound(prm: &PrjPrm, x: f64, y: f64) -> [f64; 2] {
+        let eps = f64::EPSILON;
+        let w0 = prm.w[0];
+        let one = |v: f64| w0 * (11.0 * eps + eps * (v / w0).abs()) + eps * v.abs();
+        [
+            one(x) + 3.0 * SUBNORMAL_ROUNDING,
+            one(y) + 3.0 * SUBNORMAL_ROUNDING,
+        ]
+    }
+
+    /// Native (phi, theta) at, ULPs from and small steps from the edges and
+    /// corners of the cube's faces, where the face chosen is decided by a
+    /// near tie.
+    fn quadcube_edge_inputs() -> Vec<(f64, f64)> {
+        let mut out = Vec::new();
+        let d = degrees(4000);
+        for (i, &u) in d.iter().enumerate() {
+            let n = (i % 33) as i64 - 16;
+            let step = n as f64 * 1e-11;
+            // The edge between the faces of +l and +n: tan(theta) = cos(phi).
+            let phi = u / 16.0;
+            let edge = Libm::atand(Libm::cosd(phi));
+            out.extend([
+                (phi, ulps_away(edge, n)),
+                (phi, edge + step),
+                (phi, -edge + step),
+            ]);
+            // The edge between the faces of +l and +m, and its corners.
+            let theta = u / 32.0;
+            for corner in [45.0, 135.0, -45.0] {
+                out.extend([(ulps_away(corner, n), theta), (corner + step, theta)]);
+            }
+            let corner = Libm::atand(Libm::cosd(45.0));
+            out.push((45.0 + step, ulps_away(corner, n)));
+        }
+        out
+    }
+
+    /// TSC's and CSC's forward slices run the kernels' sines and cosines,
+    /// TSC's within [`tsc_fwd_bound`] of the per-value entry, with the same
+    /// bad points, among them points at and near the edges of the faces, and
+    /// CSC's bit for bit the per-value entry, since its single precision
+    /// values are. QSC's slices and the reverse slices run [`Libm`] and are
+    /// bit for bit the per-value entry.
+    #[test]
+    fn quadcube_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let mut fwd_inputs = tan_fwd_inputs();
+        fwd_inputs.extend(quadcube_edge_inputs());
+        let rev_inputs = zpn_rev_inputs();
+        for p in quadcube_prjs() {
+            let prm = p.prm.clone();
+            let code = p.proj.code();
+            let (fwd_ulps, _, fwd_differ) = slice_drift(&p, &fwd_inputs, true);
+            match p.proj {
+                WcsProjection::Csc | WcsProjection::Qsc => {
+                    assert_eq!((fwd_ulps, fwd_differ), ([0, 0], 0), "{code} forward");
+                }
+                _ => {
+                    let over = drift_over_bound(&p, &fwd_inputs, true, |_, _, x, y| {
+                        tsc_fwd_bound(&prm, x, y)
+                    });
+                    assert!(
+                        over <= 1.0,
+                        "{code} forward: {over} of the bound ({fwd_ulps:?} ULP)"
+                    );
+                    assert!(fwd_differ > 0, "{code} forward: no output differs");
+                }
+            }
+            let (rev_max, _, rev_differ) = slice_drift(&p, &rev_inputs, false);
+            assert_eq!((rev_max, rev_differ), ([0, 0], 0), "{code} reverse");
+        }
+    }
+
+    /// The direction cosines from sines and cosines within 2 ULP of each of
+    /// `cthe`, `cphi`, `sphi` and `sthe`, the premise of every margin (see
+    /// [`Kernel`]).
+    fn direction_cosines_within_two_ulps(
+        cthe: f64,
+        cphi: f64,
+        sphi: f64,
+        sthe: f64,
+    ) -> impl Iterator<Item = (f64, f64, f64)> {
+        within_two_ulps(cthe).flat_map(move |ct| {
+            within_two_ulps(cphi).flat_map(move |cp| {
+                within_two_ulps(sphi)
+                    .flat_map(move |sp| within_two_ulps(sthe).map(move |st| (ct * cp, ct * sp, st)))
+            })
+        })
+    }
+
+    /// The first face of the largest of `n`, `l`, `m`, `-l`, `-m`, `-n`.
+    fn first_face(l: f64, m: f64, n: f64) -> usize {
+        let c = [n, l, m, -l, -m, -n];
+        (1..6).fold(0, |f, i| if c[i] > c[f] { i } else { f })
+    }
+
+    /// Sines and cosines near ties of the cube's faces: on the edges between
+    /// the faces of +l and +m (phi = 45), of +l and +n (tan(theta) =
+    /// cos(phi)), and at the corner of the three.
+    fn face_tie_sines() -> Vec<(f64, f64, f64, f64)> {
+        let mut out = Vec::new();
+        let mut rng = crate::test_inputs::SplitMix64::new(0x5eed_c0be);
+        for _ in 0..60 {
+            let theta = 30.0 * (2.0 * rng.next_f64() - 1.0);
+            let phi = 40.0 * (2.0 * rng.next_f64() - 1.0);
+            let edge = Libm::atand(Libm::cosd(phi));
+            for k in -3i64..=3 {
+                let p = ulps_away(45.0, k);
+                out.push((
+                    Libm::cosd(theta),
+                    Libm::cosd(p),
+                    Libm::sind(p),
+                    Libm::sind(theta),
+                ));
+                let t = ulps_away(edge, k);
+                out.push((
+                    Libm::cosd(t),
+                    Libm::cosd(phi),
+                    Libm::sind(phi),
+                    Libm::sind(t),
+                ));
+            }
+        }
+        let corner = Libm::atand(Libm::cosd(45.0));
+        out.push((
+            Libm::cosd(corner),
+            Libm::cosd(45.0),
+            Libm::sind(45.0),
+            Libm::sind(corner),
+        ));
+        out
+    }
+
+    /// Wherever sines and cosines within 2 ULP of [`Libm`]'s could change the
+    /// cube face, `cube_face_near_tie` says so; and a margin of zero, which
+    /// would say so only of an exact tie, would not.
+    #[test]
+    fn cube_face_margin_covers_the_kernels_drift_and_a_zero_margin_does_not() {
+        let mut missed_by_zero_margin = 0;
+        for (ct, cp, sp, st) in face_tie_sines() {
+            let face_libm = first_face(ct * cp, ct * sp, st);
+            for (l, m, n) in direction_cosines_within_two_ulps(ct, cp, sp, st) {
+                if first_face(l, m, n) != face_libm {
+                    assert!(cube_face_near_tie(l, m, n), "{l:e}, {m:e}, {n:e}");
+                    let c = [n, l, m, -l, -m, -n];
+                    let f = first_face(l, m, n);
+                    missed_by_zero_margin += usize::from((0..6).all(|i| i == f || c[i] != c[f]));
+                }
+            }
+        }
+        assert!(missed_by_zero_margin > 0);
+    }
+
+    /// Wherever a double within 2 ULP of [`Libm`]'s could round to another
+    /// single-precision value, `f32_rounding_near` with a margin of twice
+    /// that says so; and with no margin it would not. The doubles are at and
+    /// next to midpoints between single-precision values, among them
+    /// midpoints at the edges of binades.
+    #[test]
+    fn csc_margin_covers_the_kernels_drift_and_a_zero_margin_does_not() {
+        let mut missed_by_zero_margin = 0;
+        let mut rng = crate::test_inputs::SplitMix64::new(0x5eed_f32a);
+        let mut singles: Vec<f32> = (0..400).map(|_| rng.next_f64() as f32).collect();
+        singles.extend([1.0, 0.5, 0.25, 2.0f32.powi(-20), 0.70710677]);
+        for single in singles {
+            let next = f32::from_bits(single.to_bits() + 1);
+            let midpoint = 0.5 * (f64::from(single) + f64::from(next));
+            for k in -8i64..=8 {
+                let libm = step_ulps(midpoint, k);
+                for kernel in within_two_ulps(libm) {
+                    if libm as f32 != kernel as f32 {
+                        assert!(f32_rounding_near(kernel, 4), "{libm:e}, {kernel:e}");
+                        missed_by_zero_margin += usize::from(!f32_rounding_near(kernel, 0));
+                    }
+                }
+            }
+        }
+        assert!(missed_by_zero_margin > 0);
+    }
+
+    #[test]
+    fn quadcube_slices_give_each_point_the_same_bits_at_any_length() {
+        for p in quadcube_prjs() {
+            assert_same_bits_at_any_length(&p, &interleaved_inputs());
+        }
+    }
+
+    #[test]
+    fn quadcube_slice_builds_agree() {
+        let mut inputs = interleaved_inputs();
+        inputs.extend(quadcube_edge_inputs());
+        for p in quadcube_prjs() {
+            match p.proj {
+                WcsProjection::Tsc => assert_builds_agree::<TscFwd>(&p, &inputs),
+                WcsProjection::Csc => assert_builds_agree::<CscFwd>(&p, &inputs),
+                _ => {}
+            }
+        }
+    }
+
+    /// Coordinates at multiples of 90 degrees, which the kernels do not
+    /// cover, get the per-value entry's bits in a slice.
+    #[test]
+    fn quadcube_points_the_kernels_do_not_cover_are_exact_in_a_slice() {
+        let pairs = right_angle_pairs();
+        for p in quadcube_prjs() {
+            match p.proj {
+                WcsProjection::Tsc => assert_special_points_exact::<TscFwd>(&p, &pairs, true),
+                WcsProjection::Csc => assert_special_points_exact::<CscFwd>(&p, &pairs, true),
+                _ => {}
+            }
         }
     }
 }
