@@ -42,7 +42,7 @@ fn c_min(a: f64, b: f64) -> f64 {
 /// C's `copysign` macro in `proj.c`: `x` with the sign of `y`, taking `-0.0`
 /// and NaN as non-negative.
 #[inline(always)]
-fn c_copysign(x: f64, y: f64) -> f64 {
+pub(super) fn c_copysign(x: f64, y: f64) -> f64 {
     if y < 0.0 { -x.abs() } else { x.abs() }
 }
 
