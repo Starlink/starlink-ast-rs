@@ -3,8 +3,6 @@
 
 //! Compare a run with an earlier one and report what got slower.
 
-//! Compare a run with an earlier one and report what got slower.
-
 use std::path::{Path, PathBuf};
 
 use crate::fingerprint::Fingerprint;

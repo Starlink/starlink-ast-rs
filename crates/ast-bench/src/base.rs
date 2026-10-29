@@ -85,13 +85,19 @@ fn base_tree(repo: &Path, git_ref: &str) -> Result<PathBuf, String> {
 /// binary.
 pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> {
     let tree = base_tree(repo, git_ref)?;
-    build_in(repo, &tree, git_ref)
+    build_in(&tree, git_ref)
 }
 
 /// Build the `ast-bench` whose source is in the worktree `tree` of
 /// `git_ref`, and return the binary.
-fn build_in(repo: &Path, tree: &Path, git_ref: &str) -> Result<PathBuf, String> {
-    let target = repo.join("target/perf/base/target");
+///
+/// Each worktree builds into its own target directory. Cargo names a
+/// workspace member's build outputs without its path, so two worktrees
+/// sharing one would share the build script's output, and cargo would judge
+/// it fresh from the files of whichever worktree ran it last: a base that
+/// compiles vendored C would then link without it.
+fn build_in(tree: &Path, git_ref: &str) -> Result<PathBuf, String> {
+    let target = tree.join("target");
     let status = Command::new("cargo")
         .args([
             "build",
@@ -113,9 +119,8 @@ fn build_in(repo: &Path, tree: &Path, git_ref: &str) -> Result<PathBuf, String> 
 
 /// The most recently built `ast-bench` under `target`. `cargo build` puts it
 /// under the target triple when one is configured and directly under
-/// `release` otherwise, and the target directory is shared by every base
-/// build, so a binary from an earlier build with the other layout can sit
-/// beside the one just built.
+/// `release` otherwise, so a binary from an earlier build with the other
+/// layout can sit beside the one just built.
 fn newest_binary(target: &Path) -> Result<PathBuf, String> {
     let mut candidates = vec![target.join("release/ast-bench")];
     for dir in std::fs::read_dir(target)
@@ -164,7 +169,7 @@ fn current_bench_output_at(repo: &Path, git_ref: &str, args: &[&str]) -> Result<
         std::fs::remove_dir_all(&theirs)
             .and_then(|()| copy_dir(&repo.join("crates/ast-bench"), &theirs))
             .map_err(|e| format!("copying ast-bench into {}: {e}", tree.display()))?;
-        let bin = build_in(repo, &tree, git_ref).map_err(|e| {
+        let bin = build_in(&tree, git_ref).map_err(|e| {
             format!("{e}: this tree's ast-bench does not build against the library at {git_ref}")
         })?;
         output_of(&bin, args)
@@ -213,7 +218,7 @@ pub fn values_at(git_ref: &str) -> Result<String, String> {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let tree = base_tree(&repo, git_ref)?;
     if tree.join("crates/ast-bench/src/ulps.rs").exists() {
-        output_of(&build_in(&repo, &tree, git_ref)?, &["values"])
+        output_of(&build_in(&tree, git_ref)?, &["values"])
     } else {
         current_bench_output_at(&repo, git_ref, &["values"])
     }
