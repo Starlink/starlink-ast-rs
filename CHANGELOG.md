@@ -16,6 +16,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 - `starlink-ast`: SphMap computes its arctangents, sines and cosines with branchless kernels that the compiler vectorizes; on large point sets its forward transform runs about three times faster and its inverse about 1.7 times on Apple silicon, and 2.4 and 3.5 times faster on x86-64, where the loops run in a build for AVX2 and FMA when the CPU has them. Each sine, cosine and arctangent may differ from earlier releases by up to 1 ULP, so a Cartesian component, the product of a sine and a cosine, by up to 3 ULP; results do not depend on how many points are transformed together.
 - `starlink-ast`: a WcsMap whose projection parameters are unusable reports `ErrorCode::Wcspa` from every transform that has a good point, rather than only from the first, after which it gave bad values; the C library reports it only once.
 - `starlink-ast`: every WcsMap projection, and TPN's polynomial, is Rust, and the crate no longer compiles any C for wcslib; results are bit for bit those of the C projections they replace, and WcsMap transforms whole slices through the projection kernels.
+- `starlink-ast`: WcsMap's TAN projection uses vectorizable trigonometry in bulk forward transforms (native spherical to projected coordinates), which on large point sets run between two and three times faster; results may differ from earlier releases by a few ULP.
 
 ### Fixed
 

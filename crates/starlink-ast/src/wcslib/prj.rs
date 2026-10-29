@@ -28,6 +28,53 @@
 //! The function pointers, the projection `code` and `flag` of C's struct are
 //! not stored: the projection is the [`WcsProjection`] and the dispatch is a
 //! `match` on it.
+//!
+//! # Per-value and slice entries
+//!
+//! The per-value entries, [`Prj::fwd_raw`] and [`Prj::rev_raw`], run the
+//! projection bodies with [`Libm`] and return wcslib's bits.
+//! The slice entries, [`Prj::fwd_slice`] and [`Prj::rev_slice`], do the same
+//! for most projections. For a projection that opts in, they run its body
+//! with the vectorizable [`Kernel`] trigonometry over every element, then
+//! redo with [`Libm`] each element whose trigonometric arguments the
+//! kernels do not cover, so each output is within the kernels' drift of the
+//! per-value entry's and a point is bad in one exactly when it is bad in the
+//! other.
+//!
+//! A projection opts in one direction at a time, with:
+//!
+//! - a predicate, `<code>_fwd_needs_special` or `<code>_rev_needs_special`,
+//!   written with `|` rather than `||` so that it has no branch, and true
+//!   for every input where either
+//!   - an argument of a [`Kernel`] function the body would call is outside
+//!     that function's cover, or
+//!   - a status decision, or the choice of a branch of the body, depends on
+//!     a value derived from a kernel that could land on the other side of
+//!     its threshold within the kernels' drift; the body can instead make
+//!     that decision from a value computed exactly as [`Libm`] computes it.
+//!
+//!   A difference of an ULP or two in a kernel must never turn a bad point
+//!   good or a good one bad, or change which branch of the body runs: only
+//!   the outputs may move, and only by the kernels' drift;
+//! - a body with no branch once [`Kernel`] is inlined into it, so that the
+//!   loop over the elements vectorizes (a value the body uses on one side of
+//!   a test only is computed before the test);
+//! - a `kernel_body!` line declaring the pair, and an arm in that slice
+//!   entry's `match` that passes it to `kernel_slice`; `fwd_slice` has the
+//!   `match`, and the first reverse opt-in adds one to `rev_slice` in the
+//!   same form.
+//!
+//! A direction opts in only when that is faster than its [`Libm`] loop at a
+//! large number of points, on the smooth inputs of a real image as well as
+//! on random ones, and no slower at one point than the C library.
+//!
+//! TAN's forward projection opts in: on Apple silicon, on a 1000 by 1000
+//! grid of a one-degree image it ran at 22 ns per point against 60 for its
+//! [`Libm`] loop, and at 27 against 67 on random points.
+//! TAN's reverse projection does not: its two arctangents, each about three
+//! divisions in the kernel, ran at 20 ns per point against 18 on that grid,
+//! where libm's arctangent follows the same branches from point to point,
+//! and against 51 only on random points; at one point it took 40 ns more.
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -50,11 +97,11 @@ use super::quadcube::{
     csc_fwd, csc_rev, csc_set, qsc_fwd, qsc_rev, qsc_set, tsc_fwd, tsc_rev, tsc_set,
 };
 use super::tpn::{tpn_fwd, tpn_rev, tpn_set};
-use super::trig::Libm;
+use super::trig::{Kernel, Libm, Trig};
 use super::zenithal::{
     air_fwd, air_rev, air_set, arc_fwd, arc_rev, arc_set, azp_fwd, azp_rev, azp_set, sin_fwd,
-    sin_rev, sin_set, stg_fwd, stg_rev, stg_set, szp_fwd, szp_rev, szp_set, tan_fwd, tan_rev,
-    tan_set, zea_fwd, zea_rev, zea_set, zpn_fwd, zpn_rev, zpn_set,
+    sin_rev, sin_set, stg_fwd, stg_rev, stg_set, szp_fwd, szp_rev, szp_set, tan_fwd,
+    tan_fwd_needs_special, tan_rev, tan_set, zea_fwd, zea_rev, zea_set, zpn_fwd, zpn_rev, zpn_set,
 };
 use super::{PRJ_PARAM_SLOTS, WcsProjection};
 
@@ -456,7 +503,8 @@ impl Prj {
     /// # Errors
     ///
     /// `ErrorCode::Wcspa` if the projection parameters are unusable for a
-    /// pair that is not bad; the slices then hold partial results.
+    /// pair that is not bad; the slices then hold partial results, whose
+    /// contents are unspecified.
     pub(crate) fn fwd_slice(&self, a: &mut [f64], b: &mut [f64]) -> AstResult<()> {
         if self.setup != Status::Ok {
             // A set-up fails only for unusable parameters; any other status
@@ -466,9 +514,12 @@ impl Prj {
             return slice_apply(a, b, "wcs_fwd", |_, _| (setup, 0.0, 0.0));
         }
         let prm = &self.prm;
-        with_fwd!(self.proj, |f| slice_apply(a, b, "wcs_fwd", |phi, theta| f(
-            prm, phi, theta
-        )))
+        match self.proj {
+            WcsProjection::Tan => kernel_slice::<TanFwd>(prm, a, b, "wcs_fwd"),
+            proj => with_fwd!(proj, |f| slice_apply(a, b, "wcs_fwd", |phi, theta| f(
+                prm, phi, theta
+            ))),
+        }
     }
 
     /// [`rev_raw`](Prj::rev_raw) in place for every pair (`a[i]`, `b[i]`):
@@ -479,7 +530,8 @@ impl Prj {
     /// # Errors
     ///
     /// `ErrorCode::Wcspa` if the projection parameters are unusable for a
-    /// pair that is not bad; the slices then hold partial results.
+    /// pair that is not bad; the slices then hold partial results, whose
+    /// contents are unspecified.
     pub(crate) fn rev_slice(&self, a: &mut [f64], b: &mut [f64]) -> AstResult<()> {
         if self.setup != Status::Ok {
             // A set-up fails only for unusable parameters; any other status
@@ -539,6 +591,168 @@ fn slice_apply(
             (Status::BadParams, ..) => {
                 result = Err(bad_params());
                 break;
+            }
+        }
+    }
+    crate::call_counts::hit_n(counter, calls);
+    result
+}
+
+/// A projection body in one direction that a slice entry runs through the
+/// vectorizable kernels.
+///
+/// `eval` is the body, generic over the trigonometry. `needs_special` is
+/// true where an argument of a trigonometric function the body would call
+/// lies outside that function's kernel cover, and where a status decision
+/// or a branch of the body depends on a kernel-derived value that the
+/// kernels' drift could carry across its threshold; the element is then
+/// redone with [`Libm`], so the kernels never change whether a point is bad
+/// or which branch runs. Both run in the vectorized loop, so neither may
+/// branch; the module documentation says how a projection meets that.
+trait KernelBody {
+    /// The projection body.
+    fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64);
+    /// Whether the body at (`u`, `v`) needs [`Libm`].
+    fn needs_special(prm: &PrjPrm, u: f64, v: f64) -> bool;
+}
+
+/// Declare the [`KernelBody`] `$name` for the body `$body` and its predicate
+/// `$special`.
+macro_rules! kernel_body {
+    ($name:ident, $body:ident, $special:ident) => {
+        struct $name;
+        impl KernelBody for $name {
+            #[inline(always)]
+            fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64) {
+                $body::<T>(prm, u, v)
+            }
+            #[inline(always)]
+            fn needs_special(prm: &PrjPrm, u: f64, v: f64) -> bool {
+                $special(prm, u, v)
+            }
+        }
+    };
+}
+
+kernel_body!(TanFwd, tan_fwd, tan_fwd_needs_special);
+
+/// How many elements [`kernel_slice_body`] evaluates with the kernels
+/// before fixing them up, so the kernels' outputs stay in the first-level
+/// cache and on the stack.
+const KERNEL_BLOCK: usize = 32;
+
+/// [`slice_apply`] for the body `K` run through the vectorizable kernels:
+/// the same bad pairs, errors and counting, with each output within the
+/// kernels' drift of [`Libm`]'s. Each element gets the same bits whatever the
+/// slice's length, and whichever build of the loop runs: on x86-64 one for
+/// AVX2 and FMA when the CPU has them.
+fn kernel_slice<K: KernelBody>(
+    prm: &PrjPrm,
+    a: &mut [f64],
+    b: &mut [f64],
+    counter: &'static str,
+) -> AstResult<()> {
+    #[cfg(target_arch = "x86_64")]
+    if crate::vmath::x86_has_avx2_fma() {
+        // SAFETY: the CPU has AVX2 and FMA, which is all the function's
+        // target features require.
+        return unsafe { kernel_slice_avx2_fma::<K>(prm, a, b, counter) };
+    }
+    kernel_slice_body::<K, { crate::vmath::HAS_FMA }>(prm, a, b, counter)
+}
+
+/// [`kernel_slice_body`] built for AVX2 and FMA, so its kernel loop runs
+/// four wide and the arctangent's residual is one fused multiply-add.
+///
+/// # Safety
+///
+/// The CPU must have AVX2 and FMA. (An `unsafe fn` because the crate's MSRV,
+/// 1.85, predates safe functions with target features.)
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn kernel_slice_avx2_fma<K: KernelBody>(
+    prm: &PrjPrm,
+    a: &mut [f64],
+    b: &mut [f64],
+    counter: &'static str,
+) -> AstResult<()> {
+    kernel_slice_body::<K, true>(prm, a, b, counter)
+}
+
+/// The loops of [`kernel_slice`], block by block: the pairs of the block
+/// that are not bad are gathered, writing [`BAD_VALUE`] for the others, so
+/// the kernels run on good pairs only; `K` with [`Kernel`] runs over every
+/// gathered pair, branch-free so the loop vectorizes; then each result is
+/// scattered back, redone with [`Libm`] where `K::needs_special` says, and
+/// its status mapped as [`slice_apply`] does.
+#[inline(always)]
+fn kernel_slice_body<K: KernelBody, const FMA: bool>(
+    prm: &PrjPrm,
+    a: &mut [f64],
+    b: &mut [f64],
+    counter: &'static str,
+) -> AstResult<()> {
+    let n = a.len();
+    assert_eq!(b.len(), n, "the two slices must have the same length");
+    let b = &mut b[..n];
+    let mut calls = 0u64;
+    let mut result = Ok(());
+    let mut index = [0usize; KERNEL_BLOCK];
+    let mut u = [0.0; KERNEL_BLOCK];
+    let mut v = [0.0; KERNEL_BLOCK];
+    let mut status = [Status::Ok; KERNEL_BLOCK];
+    let mut special = [false; KERNEL_BLOCK];
+    let mut p = [0.0; KERNEL_BLOCK];
+    let mut q = [0.0; KERNEL_BLOCK];
+    'blocks: for (a, b) in a.chunks_mut(KERNEL_BLOCK).zip(b.chunks_mut(KERNEL_BLOCK)) {
+        let b = &mut b[..a.len()];
+        let mut good = 0;
+        for i in 0..a.len() {
+            let (x, y) = (a[i], b[i]);
+            if x == BAD_VALUE || y == BAD_VALUE || x.is_nan() || y.is_nan() {
+                a[i] = BAD_VALUE;
+                b[i] = BAD_VALUE;
+            } else {
+                index[good] = i;
+                u[good] = x;
+                v[good] = y;
+                good += 1;
+            }
+        }
+        let (index, u, v, status, special, p, q) = (
+            &index[..good],
+            &u[..good],
+            &v[..good],
+            &mut status[..good],
+            &mut special[..good],
+            &mut p[..good],
+            &mut q[..good],
+        );
+        for j in 0..good {
+            (status[j], p[j], q[j]) = K::eval::<Kernel<FMA>>(prm, u[j], v[j]);
+            special[j] = K::needs_special(prm, u[j], v[j]);
+        }
+        for j in 0..good {
+            calls += 1;
+            let out = if special[j] {
+                K::eval::<Libm>(prm, u[j], v[j])
+            } else {
+                (status[j], p[j], q[j])
+            };
+            let i = index[j];
+            match out {
+                (Status::Ok, x, y) => {
+                    a[i] = x;
+                    b[i] = y;
+                }
+                (Status::BadPoint, ..) => {
+                    a[i] = BAD_VALUE;
+                    b[i] = BAD_VALUE;
+                }
+                (Status::BadParams, ..) => {
+                    result = Err(bad_params());
+                    break 'blocks;
+                }
             }
         }
     }
@@ -801,6 +1015,227 @@ mod tests {
         assert!(
             (y_tan - y_poly).abs() > 1.0,
             "TPNTan should change the projection: {y_tan} vs {y_poly}"
+        );
+    }
+
+    use crate::test_inputs::{angle_pairs, degrees, specials, ulps};
+    use crate::wcslib::trig::R2D;
+
+    /// Bit equality, with every NaN equal to every other.
+    fn same_bits_or_both_nan(a: f64, b: f64) -> bool {
+        (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits()
+    }
+
+    /// The pairs through `fwd_slice` (or `rev_slice` when `!fwd`) in one
+    /// slice.
+    fn through_slice(p: &Prj, pairs: &[(f64, f64)], fwd: bool) -> Vec<(f64, f64)> {
+        let mut a: Vec<f64> = pairs.iter().map(|q| q.0).collect();
+        let mut b: Vec<f64> = pairs.iter().map(|q| q.1).collect();
+        if fwd {
+            p.fwd_slice(&mut a, &mut b).unwrap();
+        } else {
+            p.rev_slice(&mut a, &mut b).unwrap();
+        }
+        a.into_iter().zip(b).collect()
+    }
+
+    /// Native (phi, theta) for TAN forward: random angles within ±720
+    /// degrees paired out of order, random directions converted to degrees
+    /// at magnitudes from 2^-40 to 2^40, and every pairing of the specials
+    /// and the multiples of 45 degrees.
+    fn tan_fwd_inputs() -> Vec<(f64, f64)> {
+        let d = degrees(1_000_000);
+        let mut out: Vec<(f64, f64)> = d.iter().copied().zip(d.iter().rev().copied()).collect();
+        out.extend(
+            angle_pairs(500_000)
+                .into_iter()
+                .map(|(u, v)| (u * R2D, v * R2D)),
+        );
+        let mut edges = specials();
+        edges.extend((-8..=8).map(|k| 45.0 * f64::from(k)));
+        for &u in &edges {
+            for &v in &edges {
+                out.push((u, v));
+            }
+        }
+        out
+    }
+
+    /// Projected (x, y) for TAN reverse: random values within ±720
+    /// degrees paired out of order, pairs with magnitudes from 2^-40 to
+    /// 2^40, and every pairing of the specials.
+    fn tan_rev_inputs() -> Vec<(f64, f64)> {
+        let d = degrees(1_000_000);
+        let mut out: Vec<(f64, f64)> = d.iter().copied().zip(d.iter().rev().copied()).collect();
+        out.extend(angle_pairs(500_000));
+        let edges = specials();
+        for &u in &edges {
+            for &v in &edges {
+                out.push((u, v));
+            }
+        }
+        out
+    }
+
+    /// The largest ULP distance of each output of a slice entry from the
+    /// per-value entry where it projects the point, and how many outputs
+    /// differ; a bad point must be bad in both.
+    fn slice_drift(p: &Prj, pairs: &[(f64, f64)], fwd: bool) -> ([u64; 2], usize) {
+        let got = through_slice(p, pairs, fwd);
+        let mut max = [0u64; 2];
+        let mut differ = 0;
+        for (&(u, v), &(x, y)) in pairs.iter().zip(&got) {
+            let bad_in = u == BAD_VALUE || v == BAD_VALUE || u.is_nan() || v.is_nan();
+            let (status, wx, wy) = if fwd {
+                p.fwd_raw(u, v)
+            } else {
+                p.rev_raw(u, v)
+            };
+            if bad_in || status == Status::BadPoint {
+                assert!(
+                    x == BAD_VALUE && y == BAD_VALUE,
+                    "({u:e}, {v:e}): slice gives ({x:e}, {y:e}) for a bad point"
+                );
+                continue;
+            }
+            assert_eq!(status, Status::Ok, "({u:e}, {v:e})");
+            assert!(
+                !(x == BAD_VALUE && y == BAD_VALUE),
+                "({u:e}, {v:e}): slice gives a bad point for ({wx:e}, {wy:e})"
+            );
+            for (k, (g, w)) in [(x, wx), (y, wy)].into_iter().enumerate() {
+                if same_bits_or_both_nan(g, w) {
+                    continue;
+                }
+                differ += 1;
+                let d = ulps(g, w);
+                assert!(d != u64::MAX, "({u:e}, {v:e}): output {k} {g:e} vs {w:e}");
+                max[k] = max[k].max(d);
+            }
+        }
+        (max, differ)
+    }
+
+    /// How far TAN's forward slice outputs may be from the per-value
+    /// entry's, in ULP. Each output is `r0 * cosd(theta) / sind(theta)`
+    /// times `sind(phi)` or `cosd(phi)`, three operations on three kernel
+    /// values. Each kernel value is within 2 ULP of libm's (see [`Kernel`]),
+    /// at most 2 * 2^-52 of it, so the exact results of the operations on
+    /// the two paths' values differ by at most 3 * 2 * 2^-52 relative; each
+    /// path rounds its three operations once each, at most 2^-53 relative
+    /// apiece, 3 * 2^-52 between the two paths, since their operands differ
+    /// and they need not round alike. That is a relative difference of up
+    /// to 9 * 2^-52, to first order. An ULP of the output is at least 2^-53
+    /// of it, so the bound is 18 ULP. Measured (2026-10-28): 5 against
+    /// macOS libm on arm64 (4 in x, 5 in y), and 6 in both against macOS's
+    /// x86-64 libm.
+    const TAN_FWD_SLICE_ULPS: u64 = 18;
+
+    /// TAN's forward slice runs the kernels and is within their drift of the
+    /// per-value entry; its reverse slice runs [`Libm`] and is bit for bit
+    /// the per-value entry.
+    #[test]
+    fn tan_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let p = prj(WcsProjection::Tan);
+        let (fwd_max, fwd_differ) = slice_drift(&p, &tan_fwd_inputs(), true);
+        assert!(
+            fwd_max.iter().all(|&m| m <= TAN_FWD_SLICE_ULPS),
+            "forward: {fwd_max:?} ULP"
+        );
+        assert!(
+            fwd_differ > 0,
+            "forward: no output differs; is the kernel in use?"
+        );
+        let (rev_max, rev_differ) = slice_drift(&p, &tan_rev_inputs(), false);
+        assert_eq!((rev_max, rev_differ), ([0, 0], 0), "reverse");
+    }
+
+    /// Inputs with specials and multiples of 90 degrees interleaved among
+    /// random angles.
+    fn interleaved_inputs() -> Vec<(f64, f64)> {
+        let d = degrees(3000);
+        let mut edges = specials();
+        edges.extend((-8..=8).map(|k| 90.0 * f64::from(k)));
+        let mut out = Vec::new();
+        for (i, &u) in d.iter().enumerate() {
+            let v = d[(i * 7 + 3) % d.len()];
+            match i % 5 {
+                0 => out.push((edges[i % edges.len()], v)),
+                1 => out.push((u, edges[(i / 5) % edges.len()])),
+                _ => out.push((u, v)),
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn tan_slices_give_each_point_the_same_bits_at_any_length() {
+        let p = prj(WcsProjection::Tan);
+        let pairs = interleaved_inputs();
+        for fwd in [true, false] {
+            let whole = through_slice(&p, &pairs, fwd);
+            for len in [1, 2, 3, 7, 1001] {
+                for (start, chunk) in pairs.chunks(len).enumerate() {
+                    let got = through_slice(&p, chunk, fwd);
+                    for (i, (g, w)) in got.iter().zip(&whole[start * len..]).enumerate() {
+                        assert!(
+                            same_bits_or_both_nan(g.0, w.0) && same_bits_or_both_nan(g.1, w.1),
+                            "fwd {fwd}, length {len}: {:?} gives {g:?} alone, {w:?} in the whole",
+                            chunk[i]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Both builds of the kernel loop, with and without fused multiply-adds,
+    /// give the same bits.
+    #[test]
+    fn tan_slice_builds_agree() {
+        let p = prj(WcsProjection::Tan);
+        let pairs = interleaved_inputs();
+        let run = |fma: bool| {
+            let mut a: Vec<f64> = pairs.iter().map(|q| q.0).collect();
+            let mut b: Vec<f64> = pairs.iter().map(|q| q.1).collect();
+            let prm = &p.prm;
+            if fma {
+                kernel_slice_body::<TanFwd, true>(prm, &mut a, &mut b, "wcs_fwd").unwrap();
+            } else {
+                kernel_slice_body::<TanFwd, false>(prm, &mut a, &mut b, "wcs_fwd").unwrap();
+            }
+            (a, b)
+        };
+        let (a0, b0) = run(false);
+        let (a1, b1) = run(true);
+        for i in 0..a0.len() {
+            assert!(
+                same_bits_or_both_nan(a0[i], a1[i]) && same_bits_or_both_nan(b0[i], b1[i]),
+                "{:?}",
+                pairs[i]
+            );
+        }
+    }
+
+    #[test]
+    fn tan_exact_points_stay_exact_in_a_slice() {
+        let p = prj(WcsProjection::Tan);
+        let mut phi = [10.0, 20.0, 30.0, 0.0, 40.0, 50.0, 60.0];
+        let mut theta = [80.0, 70.0, 60.0, 90.0, 50.0, 40.0, 30.0];
+        p.fwd_slice(&mut phi, &mut theta).unwrap();
+        // Exactly zero, with the signs the per-value entry gives.
+        let (_, wx, wy) = p.fwd_raw(0.0, 90.0);
+        assert_eq!((phi[3], theta[3]), (0.0, 0.0));
+        assert_eq!(
+            (phi[3].to_bits(), theta[3].to_bits()),
+            (wx.to_bits(), wy.to_bits())
+        );
+        let mut x = [1.0, 2.0, 3.0, 0.0, 4.0, 5.0, 6.0];
+        let mut y = [-1.0, -2.0, -3.0, 0.0, -4.0, -5.0, -6.0];
+        p.rev_slice(&mut x, &mut y).unwrap();
+        assert_eq!(
+            (x[3].to_bits(), y[3].to_bits()),
+            (0.0f64.to_bits(), 90.0f64.to_bits())
         );
     }
 }

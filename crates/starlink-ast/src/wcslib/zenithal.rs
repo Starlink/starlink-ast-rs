@@ -20,7 +20,7 @@ use super::math;
 
 use super::PRJ_PARAM_SLOTS;
 use super::prj::{PrjPrm, Status};
-use super::trig::{D2R, Libm, R2D, Trig};
+use super::trig::{D2R, Libm, R2D, Trig, sincosd_covers};
 use std::f64::consts::PI;
 
 /// C's `(a > b) ? a : b`, which differs from `f64::max` when either is NaN.
@@ -369,6 +369,24 @@ pub(super) fn tan_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
     let theta = T::atan2d(prm.r0, r);
 
     (Status::Ok, phi, theta)
+}
+
+// The predicate combines its tests with `|`, which evaluates both sides, so
+// it vectorizes with the body.
+
+/// Whether [`tan_fwd`] needs [`Libm`] at (`phi`, `theta`): a sine or cosine
+/// argument outside the kernels' cover.
+// The body's only decision is its status, from the sign of `sind(theta)`,
+// and it has no branch. A covered `theta` is not a multiple of 180, so its
+// sine is not zero, and the kernel's sine, within 2 ULP of libm's (see
+// `Kernel`), has that sine's sign: no value within 2 ULP of a non-zero
+// double has the other sign, except beside a sine of at most 2 subnormal
+// units, an argument so small that the kernel and libm both return it. The
+// kernel cannot turn a bad point good or a good one bad, so the predicate
+// needs only the covers.
+#[inline(always)]
+pub(super) fn tan_fwd_needs_special(_prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+    !sincosd_covers(theta) | !sincosd_covers(phi)
 }
 
 // ---------------------------------------------------------------------------
