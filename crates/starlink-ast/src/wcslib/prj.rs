@@ -44,10 +44,14 @@ use super::cylindrical::{
     car_fwd, car_rev, car_set, cea_fwd, cea_rev, cea_set, cyp_fwd, cyp_rev, cyp_set, mer_fwd,
     mer_rev, mer_set,
 };
+use super::healpix::{hpx_fwd, hpx_rev, hpx_set, xph_fwd, xph_rev, xph_set};
 use super::polyconic::{bon_fwd, bon_rev, bon_set, pco_fwd, pco_rev, pco_set};
 use super::pseudocyl::{
     ait_fwd, ait_rev, ait_set, mol_fwd, mol_rev, mol_set, par_fwd, par_rev, par_set, sfl_fwd,
     sfl_rev, sfl_set,
+};
+use super::quadcube::{
+    csc_fwd, csc_rev, csc_set, qsc_fwd, qsc_rev, qsc_set, tsc_fwd, tsc_rev, tsc_set,
 };
 use super::tpn::{tpn_fwd, tpn_rev, tpn_set};
 use super::trig::Libm;
@@ -206,7 +210,14 @@ impl Prj {
             WcsProjection::Coo => coo_fwd::<Libm>(prm, phi, theta),
             WcsProjection::Bon => bon_fwd::<Libm>(prm, phi, theta),
             WcsProjection::Pco => pco_fwd::<Libm>(prm, phi, theta),
-            other => todo!("{} is ported in a later step", other.code()),
+            WcsProjection::Tsc => tsc_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Csc => csc_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Qsc => qsc_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Hpx => hpx_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Xph => xph_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Ncp | WcsProjection::Gls | WcsProjection::Unknown => {
+                unreachable!("{} is rejected by Prj::new", self.proj.code())
+            }
         }
     }
 
@@ -244,7 +255,14 @@ impl Prj {
             WcsProjection::Coo => coo_rev::<Libm>(prm, x, y),
             WcsProjection::Bon => bon_rev::<Libm>(prm, x, y),
             WcsProjection::Pco => pco_rev::<Libm>(prm, x, y),
-            other => todo!("{} is ported in a later step", other.code()),
+            WcsProjection::Tsc => tsc_rev::<Libm>(prm, x, y),
+            WcsProjection::Csc => csc_rev::<Libm>(prm, x, y),
+            WcsProjection::Qsc => qsc_rev::<Libm>(prm, x, y),
+            WcsProjection::Hpx => hpx_rev::<Libm>(prm, x, y),
+            WcsProjection::Xph => xph_rev::<Libm>(prm, x, y),
+            WcsProjection::Ncp | WcsProjection::Gls | WcsProjection::Unknown => {
+                unreachable!("{} is rejected by Prj::new", self.proj.code())
+            }
         }
     }
 }
@@ -276,7 +294,14 @@ fn run_setup(proj: WcsProjection, prm: &mut PrjPrm) -> Status {
         WcsProjection::Coo => coo_set(prm),
         WcsProjection::Bon => bon_set(prm),
         WcsProjection::Pco => pco_set(prm),
-        other => todo!("{} is ported in a later step", other.code()),
+        WcsProjection::Tsc => tsc_set(prm),
+        WcsProjection::Csc => csc_set(prm),
+        WcsProjection::Qsc => qsc_set(prm),
+        WcsProjection::Hpx => hpx_set(prm),
+        WcsProjection::Xph => xph_set(prm),
+        WcsProjection::Ncp | WcsProjection::Gls | WcsProjection::Unknown => {
+            unreachable!("{} is rejected by Prj::new", proj.code())
+        }
     }
 }
 

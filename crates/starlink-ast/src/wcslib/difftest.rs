@@ -30,6 +30,24 @@ fn same_bits_or_both_nan(a: f64, b: f64) -> bool {
 /// Random points per direction and per parameter set.
 const RANDOM_POINTS: usize = 20_000;
 
+/// `v` and the values one ULP below and above it (those of zero are the
+/// smallest subnormals).
+fn with_ulps(v: f64) -> [f64; 3] {
+    let up = if v >= 0.0 {
+        f64::from_bits(v.to_bits() + 1)
+    } else {
+        f64::from_bits(v.to_bits() - 1)
+    };
+    let down = if v > 0.0 {
+        f64::from_bits(v.to_bits() - 1)
+    } else if v == 0.0 {
+        -f64::from_bits(1)
+    } else {
+        f64::from_bits(v.to_bits() + 1)
+    };
+    [down, v, up]
+}
+
 /// The (phi, theta) points the forward projection is checked at, in degrees.
 fn forward_points() -> Vec<(f64, f64)> {
     let mut rng = SplitMix64::new(0x5eed_f0d0);
@@ -50,6 +68,26 @@ fn forward_points() -> Vec<(f64, f64)> {
     for i in -8..=8 {
         for j in -4..=4 {
             out.push((45.0 * f64::from(i), 45.0 * f64::from(j)));
+        }
+    }
+    // The face centres, face edges and facet apexes of the quad-cube and
+    // HEALPix projections, and the latitude where HEALPix's equatorial zone
+    // ends, each one ULP either side.
+    let mut angles = Vec::new();
+    for i in -24..=24 {
+        angles.extend(with_ulps(7.5 * f64::from(i)));
+    }
+    angles.extend(with_ulps(
+        crate::math::asin(2.0 / 3.0) * 180.0 / std::f64::consts::PI,
+    ));
+    angles.extend(with_ulps(
+        -crate::math::asin(2.0 / 3.0) * 180.0 / std::f64::consts::PI,
+    ));
+    for &p in &angles {
+        for &t in &angles {
+            if p.abs() <= 360.0 && t.abs() <= 90.0 + 1e-9 {
+                out.push((p, t));
+            }
         }
     }
     // The specials in both coordinates.
@@ -80,10 +118,57 @@ fn reverse_points() -> Vec<(f64, f64)> {
             out.push((100.0 * f64::from(i), 100.0 * f64::from(j)));
         }
     }
+    // The edges and centres of the faces and facets, each one ULP either
+    // side.
+    let mut coords = Vec::new();
+    for i in -32..=32 {
+        coords.extend(with_ulps(11.25 * f64::from(i)));
+    }
+    for &x in &coords {
+        for &y in &coords {
+            out.push((x, y));
+        }
+    }
     let sp = specials();
     for &x in &sp {
         for &y in &sp {
             out.push((x, y));
+        }
+    }
+    out
+}
+
+/// Reverse points at the edges and apexes of the facets of a projection
+/// set up with the given parameters, each one ULP either side.
+///
+/// The lengths are the scale-free units the facets are built from: HEALPix's
+/// facet width 180/H, its polar-zone limit (K+1)/2 widths, the end of its
+/// equatorial zone, and XPH's facet width 45*sqrt(2); multiples of each and
+/// of half of each are taken in both coordinates.
+fn facet_points(prj: &Prj) -> Vec<(f64, f64)> {
+    let h = prj.get_param(0, 1).unwrap_or(0.0);
+    let k = prj.get_param(0, 2).unwrap_or(0.0);
+    let mut units = vec![45.0 * crate::math::sqrt(2.0)];
+    if h != 0.0 && h.is_finite() {
+        units.push(180.0 / h);
+        if k.is_finite() {
+            units.push((k + 1.0) / 2.0 * (180.0 / h));
+            units.push(90.0 * (k - 1.0) / h);
+            units.push(90.0 * k / h);
+        }
+    }
+    let mut out = Vec::new();
+    for unit in units {
+        for half in [1.0, 0.5] {
+            let mut coords = Vec::new();
+            for i in -8..=8 {
+                coords.extend(with_ulps(unit * half * f64::from(i)));
+            }
+            for &x in &coords {
+                for &y in &coords {
+                    out.push((x, y));
+                }
+            }
         }
     }
     out
@@ -130,6 +215,7 @@ pub(crate) fn check_projection_tpn(
     let fwd_points = forward_points();
     let rev_points = reverse_points();
     let mut compared = (0usize, 0usize);
+    let mut facet_total = 0usize;
     for (set_index, pv) in pv_sets.iter().enumerate() {
         let params = params_of(pv);
         let label = |dir: &str, a: f64, b: f64| {
@@ -172,14 +258,15 @@ pub(crate) fn check_projection_tpn(
         }
 
         let mut c = new_c();
-        // The reverse points: the forward outputs of the first set, the
-        // round trips, then the others.
+        // The reverse points: the generic ones, the facet edges and apexes
+        // of this set, then its forward outputs (the round trips).
         let mut revs = rev_points.clone();
-        if set_index == 0 {
-            for &(phi, theta) in &fwd_points {
-                if let (Status::Ok, x, y) = prj.fwd_raw(phi, theta) {
-                    revs.push((x, y));
-                }
+        let before = revs.len();
+        revs.extend(facet_points(&prj));
+        facet_total += revs.len() - before;
+        for &(phi, theta) in &fwd_points {
+            if let (Status::Ok, x, y) = prj.fwd_raw(phi, theta) {
+                revs.push((x, y));
             }
         }
         for i in 0..fwd_points.len().max(revs.len()) {
@@ -214,10 +301,11 @@ pub(crate) fn check_projection_tpn(
         }
     }
     eprintln!(
-        "{}: {} parameter sets, {} forward and {} reverse outputs compared",
+        "{}: {} parameter sets, {} forward and {} reverse outputs compared, {} facet points",
         proj.code(),
         pv_sets.len(),
         compared.0,
-        compared.1
+        compared.1,
+        facet_total
     );
 }
