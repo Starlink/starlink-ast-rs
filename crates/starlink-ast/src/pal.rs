@@ -271,16 +271,24 @@ fn dcc2s_slice_body<const FMA: bool>(
 ) {
     let n = x.len();
     assert!(y.len() == n && z.len() == n && a.len() == n && b.len() == n);
-    // The branchless kernel over every point, so the loop vectorizes, then
-    // ERFA's own arithmetic for the points outside the kernel's domain.
+    // The branchless kernel and its domain test over every point, so the loop
+    // vectorizes, marking with NaN each point outside the domain, where the
+    // kernel never gives NaN; then ERFA's own arithmetic for those points.
     for i in 0..n {
-        (a[i], b[i]) = crate::erfa::c2s_kernel::<FMA>([x[i] + 0.0, y[i] + 0.0, z[i] + 0.0]);
+        let p = [x[i] + 0.0, y[i] + 0.0, z[i] + 0.0];
+        let (theta, phi) = crate::erfa::c2s_kernel::<FMA>(p);
+        a[i] = if crate::erfa::c2s_needs_special(p) {
+            f64::NAN
+        } else {
+            theta
+        };
+        b[i] = phi;
     }
     for i in 0..n {
         let p = [x[i] + 0.0, y[i] + 0.0, z[i] + 0.0];
         if p.contains(&BAD_VALUE) {
             (a[i], b[i]) = (BAD_VALUE, BAD_VALUE);
-        } else if crate::erfa::c2s_needs_special(p) {
+        } else if a[i].is_nan() {
             (a[i], b[i]) = crate::erfa::c2s(p);
         }
     }
@@ -921,6 +929,23 @@ mod tests {
             out.push([s[i % s.len()], s[(i / 3) % s.len()], s[(i / 7) % s.len()]]);
         }
         out.push([-1.0, -0.0, 0.0]);
+        // Components whose arctangent quotients are tiny or subnormal, or
+        // whose magnitudes are near the top of the range, where the
+        // arctangent kernel's two builds would differ.
+        for (i, &tiny) in [1e-300, 1e-305, 1e-310, 3e-320, 5e-324].iter().enumerate() {
+            for &x in &[1.0, -1.0, 0.75] {
+                out.push(unit_vectors(997)[i * 7]);
+                out.push([x, tiny, 0.5]);
+                out.push([x, 0.5, tiny]);
+                out.push([x, -tiny, -tiny]);
+                out.push([tiny, x, 1e-300]);
+            }
+        }
+        for &big in &[1e300, -1e302, 1.7e308] {
+            out.push([big, 1.0, 1.0]);
+            out.push([1.0, big, 0.5]);
+            out.push([big, big / 3.0, 1e-10]);
+        }
         out
     }
 

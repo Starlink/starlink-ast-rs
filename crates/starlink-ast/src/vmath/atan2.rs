@@ -153,8 +153,8 @@ fn atan_nonneg(a: f64, da: f64) -> (f64, f64) {
 }
 
 /// The arctangent of `y / x` in the quadrant of (x, y), in (-pi, pi], for
-/// finite non-zero `y` and `x` (see [`atan2_covers`]); any other input gives
-/// an unspecified value. Within 1 ULP of libm. fdlibm's `atan(y / x)` lets
+/// (`y`, `x`) within [`atan2_covers`]; any other input gives an unspecified
+/// value. Within 1 ULP of libm. fdlibm's `atan(y / x)` lets
 /// the rounding of the quotient carry into the result, which takes it to 2
 /// ULP; here the quotient's exact rounding error is carried as a correction
 /// instead, and the final additions, `pi - atan` included, round once. On
@@ -164,8 +164,9 @@ fn atan_nonneg(a: f64, da: f64) -> (f64, f64) {
 ///
 /// `FMA` says whether the code this is inlined into may use fused
 /// multiply-adds: [`super::HAS_FMA`] where the build guarantees them, `true`
-/// inside a function built for an FMA target feature. The result is the same
-/// either way.
+/// inside a function built for an FMA target feature. Within
+/// [`atan2_covers`] the result is the same either way; outside it, the two
+/// builds can differ.
 #[inline(always)]
 pub(crate) fn atan2<const FMA: bool>(y: f64, x: f64) -> f64 {
     let q = y / x;
@@ -181,10 +182,37 @@ pub(crate) fn atan2<const FMA: bool>(y: f64, x: f64) -> f64 {
     if y < 0.0 { -r } else { r }
 }
 
-/// Whether [`atan2`] is valid for (`y`, `x`): both finite and non-zero.
+/// Whether [`atan2`] is valid for (`y`, `x`): both finite and non-zero, and
+/// within the range of magnitudes where its builds with and without fused
+/// multiply-adds give the same bits.
+// The kernel corrects the quotient `q = y / x` by its exact residual
+// `y - q x`, which a build without fused multiply-adds takes from Dekker's
+// product. That is exact only where no partial product overflows or
+// underflows. Veltkamp's split multiplies by 2^27 + 1, so `x` and `q` must be
+// below 2^996. The smallest partial product is a multiple of `ulp(q) ulp(x)`,
+// which is more than 2^-106 |q x|, about 2^-106 |y|, and must be a multiple
+// of 2^-1074, the least subnormal: so |y| at least 2^-967, with a factor of
+// two to spare for the rounding of `q`, and `q` normal. Outside that range
+// the two builds can differ, by tens of ULP of a subnormal result. The bounds
+// on `q` are tested on `|y|` against `|x|` scaled by a power of two, which is
+// exact or overflows to infinity, so the predicate needs no division: `|y|
+// 2^1022 >= |x|` exactly when `|y / x|`, and so its rounding `q`, is at least
+// 2^-1022; `|y| < |x| 2^996` exactly when `|y / x|` is below 2^996, where an
+// infinite product leaves `|x|` at least 2^28 and so `|y / x|` below 2^996
+// anyway. The rounding of `q` can take it to 2^996 itself, where the split
+// still does not overflow. A NaN or infinite argument, and a zero one, fails
+// them.
 #[inline(always)]
 pub(crate) fn atan2_covers(y: f64, x: f64) -> bool {
-    y.is_finite() && x.is_finite() && y != 0.0 && x != 0.0
+    /// 2^996.
+    const SPLIT_MAX: f64 = 6.696928794914171e299;
+    /// 2^-967.
+    const Y_MIN: f64 = 8.016673440035891e-292;
+    /// 2^1022, the reciprocal of the least normal double.
+    const NORMAL_SCALE: f64 = 4.49423283715579e307;
+    let (ay, ax) = (y.abs(), x.abs());
+    // `&` rather than `&&`, so that the tests do not branch.
+    (ax < SPLIT_MAX) & (ay >= Y_MIN) & (ay < ax * SPLIT_MAX) & (ay * NORMAL_SCALE >= ax)
 }
 
 #[cfg(test)]
@@ -193,6 +221,79 @@ mod tests {
     use crate::math;
     use crate::test_inputs::{angle_pairs, ulps};
     use crate::vmath::HAS_FMA;
+
+    /// Where [`atan2_covers`] holds, the builds with and without fused
+    /// multiply-adds give the same bits, within 1 ULP of libm; over the whole
+    /// range of magnitudes, a cover of every finite non-zero pair would admit
+    /// pairs where they differ.
+    #[test]
+    fn atan2_covers_only_where_the_builds_agree() {
+        let mut rng = crate::test_inputs::SplitMix64::new(0x5eed_a7a2);
+        let mut magnitude = || {
+            let e = (rng.next_f64() * 2098.0) as i32 - 1074;
+            let v = (1.0 + rng.next_f64()) * crate::math::powf(2.0, f64::from(e));
+            if rng.next_f64() < 0.5 { -v } else { v }
+        };
+        let mut covered = 0;
+        let mut differ_uncovered = 0;
+        for _ in 0..1_000_000 {
+            let (y, x) = (magnitude(), magnitude());
+            if !(y.is_finite() && x.is_finite() && y != 0.0 && x != 0.0) {
+                continue;
+            }
+            let (fma, dekker) = (atan2::<true>(y, x), atan2::<false>(y, x));
+            if atan2_covers(y, x) {
+                covered += 1;
+                assert_eq!(fma.to_bits(), dekker.to_bits(), "({y:e}, {x:e})");
+                assert!(ulps(fma, math::atan2(y, x)) <= 1, "({y:e}, {x:e})");
+            } else {
+                differ_uncovered += usize::from(fma.to_bits() != dekker.to_bits());
+            }
+        }
+        assert!(covered > 100_000, "{covered} covered");
+        assert!(differ_uncovered > 0);
+    }
+
+    /// At each limit of [`atan2_covers`] and the double beyond it, in every
+    /// quadrant: `x` at 2^996, `y / x` at 2^996, `y` at 2^-967 and `y / x`
+    /// either side of 2^-1022. Accepted pairs give the same bits from both
+    /// builds.
+    #[test]
+    fn atan2_covers_limits_are_exact() {
+        let pow2 = |e: i32| f64::from_bits(((1023 + e) as u64) << 52);
+        let prev = |v: f64| f64::from_bits(v.to_bits() - 1);
+        let next = |v: f64| f64::from_bits(v.to_bits() + 1);
+        let cases = [
+            // `x` at the split's limit.
+            (pow2(996), pow2(996), false),
+            (prev(pow2(996)), prev(pow2(996)), true),
+            // The quotient at the split's limit.
+            (pow2(996), 1.0, false),
+            (prev(pow2(996)), 1.0, true),
+            (pow2(997), 2.0, false),
+            (prev(pow2(997)), 2.0, true),
+            // `y` at its least.
+            (pow2(-967), 1.0, true),
+            (prev(pow2(-967)), 1.0, false),
+            // The quotient at the least normal double: exactly 2^-1022, just
+            // above it and just below it.
+            (pow2(-967), pow2(55), true),
+            (pow2(-967), prev(pow2(55)), true),
+            (pow2(-967), next(pow2(55)), false),
+            (pow2(-960), pow2(62), true),
+            (pow2(-960), next(pow2(62)), false),
+        ];
+        for (y, x, accepted) in cases {
+            for (sy, sx) in [(1.0, 1.0), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
+                let (y, x) = (sy * y, sx * x);
+                assert_eq!(atan2_covers(y, x), accepted, "({y:e}, {x:e})");
+                if accepted {
+                    let (fma, dekker) = (atan2::<true>(y, x), atan2::<false>(y, x));
+                    assert_eq!(fma.to_bits(), dekker.to_bits(), "({y:e}, {x:e})");
+                }
+            }
+        }
+    }
 
     /// Ratios at each of the reduction's interval boundaries, and the three
     /// doubles either side of each.
@@ -258,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn atan2_covers_rejects_zeros_non_finite_and_nan() {
+    fn atan2_covers_rejects_zeros_non_finite_nan_and_extremes() {
         for (y, x) in [
             (0.0, 1.0),
             (-0.0, 1.0),
@@ -268,9 +369,15 @@ mod tests {
             (f64::NAN, 1.0),
             (1.0, f64::NEG_INFINITY),
             (f64::INFINITY, 1.0),
+            // A subnormal quotient, a tiny `y`, and a `x` or quotient beyond
+            // the split's range.
+            (1e-300, -1e300),
+            (1e-300, 1.0),
+            (1.0, 1e300),
+            (1e300, 1.0),
         ] {
             assert!(!atan2_covers(y, x), "({y}, {x})");
         }
-        assert!(atan2_covers(1e-300, -1e300));
+        assert!(atan2_covers(1e-280, -1e10) && atan2_covers(1e290, 1e-5));
     }
 }
