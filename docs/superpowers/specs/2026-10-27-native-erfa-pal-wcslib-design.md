@@ -226,7 +226,7 @@ ULP drift from vectorization is expected (see Non-goals); a case whose tolerance
 A case that changes between bad and good, or by more than the drift the per-function test allows through the projection's formula, is a defect, not drift.
 
 **Iterative projections.** Some projections solve for their result iteratively: TPN's forward runs Newton's method from starting values computed with `sind` and `cosd`, stopping when each step is within 1e-5 of the value (relative) or after 50 steps, and AIR's and PCO's reverses iterate similarly.
-A 1 ULP change in a starting value can add or remove one step, moving the result by up to the solver's own stopping error (about 1e-10 relative for TPN), far more than the ULP drift of a closed-form projection.
+A 1 ULP change in a starting value can add or remove one step, moving the result by up to the solver's own stopping error, far more than the ULP drift of a closed-form projection: for TPN about 1e-10 of a coordinate plus the rounding error of its polynomials, with a point whose coordinate is so near zero that rounding decides the convergence test redone exactly as the per-value entry does it.
 The user decided (2026-10-28) that this is drift, not a defect: the convergence tolerance states the accuracy the solver promises, so for a case whose chain contains an iterative projection the per-case bound is derived from that solver's tolerance, with the derivation in a comment beside the bound, rather than measured in ULP.
 A point that changes between bad and good (for example by reaching the iteration cap on one side only) is still a defect and is investigated.
 These bounds, like the closed-form ones, are set by the builder from measurement and listed in the pull request; this design's call.
