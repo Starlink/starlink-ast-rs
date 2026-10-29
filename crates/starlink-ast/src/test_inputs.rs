@@ -110,6 +110,146 @@ pub(crate) fn angle_pairs(n: usize) -> Vec<(f64, f64)> {
     out
 }
 
+/// `n` random angles in radians, spanning 2^-40 to 2^40 in both signs, then
+/// multiples of pi and 2 pi with their neighbors one ULP away, then
+/// [`specials`].
+pub(crate) fn angles(n: usize) -> Vec<f64> {
+    let mut out: Vec<f64> = angle_pairs(n / 2)
+        .into_iter()
+        .flat_map(|(a, b)| [a, b])
+        .collect();
+    for k in -8..=8 {
+        let a = PI * f64::from(k);
+        out.push(a);
+        out.push(f64::from_bits(a.to_bits().wrapping_add(1)));
+        out.push(f64::from_bits(a.to_bits().wrapping_sub(1)));
+    }
+    out.extend(specials());
+    out
+}
+
+/// `n` pairs of points on the sphere, as ((lon, lat), (lon, lat)), then
+/// every combination of [`specials`] across the four angles' roles.
+pub(crate) fn angle_quads(n: usize) -> Vec<((f64, f64), (f64, f64))> {
+    let pairs = angle_pairs(n / 2);
+    let m = pairs.len();
+    let mut out: Vec<_> = (0..m)
+        .map(|i| (pairs[i], pairs[(i * 13 + 5) % m]))
+        .collect();
+    let s = specials();
+    for &a in &s {
+        for &b in &s {
+            out.push(((a, b), (b, a)));
+            out.push(((a, 0.0), (b, 0.0)));
+            out.push(((a, b), (a, b)));
+        }
+    }
+    out
+}
+
+/// `n` random 3-vectors: directions on the unit sphere, then vectors scaled
+/// by 1e-300 to 1e300, then the zero vector, then every triple of
+/// [`specials`].
+pub(crate) fn vectors(n: usize) -> Vec<[f64; 3]> {
+    let mut rng = SplitMix64::new(0x5eed_0ec3);
+    let mut out = Vec::with_capacity(n + 6_000);
+    let half = n / 2;
+    for _ in 0..half {
+        let lon = rng.next_f64() * 2.0 * PI;
+        let lat = (rng.next_f64() - 0.5) * PI;
+        out.push([lon.cos() * lat.cos(), lon.sin() * lat.cos(), lat.sin()]);
+    }
+    for _ in half..n {
+        let lon = rng.next_f64() * 2.0 * PI;
+        let lat = (rng.next_f64() - 0.5) * PI;
+        let scale = (10.0f64).powf((rng.next_f64() * 600.0).floor() - 300.0);
+        out.push([
+            scale * lon.cos() * lat.cos(),
+            scale * lon.sin() * lat.cos(),
+            scale * lat.sin(),
+        ]);
+    }
+    out.push([0.0; 3]);
+    let s = specials();
+    for &x in &s {
+        for &y in &s {
+            for &z in &s {
+                out.push([x, y, z]);
+            }
+        }
+    }
+    out
+}
+
+/// `n` random 3x3 matrices: rotations (from random unit quaternions), then
+/// general matrices with entries of several magnitudes, then the identity,
+/// the zero matrix, and matrices with each of [`specials`] in each position
+/// and in every position at once.
+pub(crate) fn matrices(n: usize) -> Vec<[[f64; 3]; 3]> {
+    let mut rng = SplitMix64::new(0x5eed_3a7c);
+    let mut out = Vec::with_capacity(n + 256);
+    let half = n / 2;
+    for _ in 0..half {
+        let mut q = [0.0; 4];
+        loop {
+            for x in &mut q {
+                *x = rng.next_f64() * 2.0 - 1.0;
+            }
+            let m2: f64 = q.iter().map(|x| x * x).sum();
+            if m2 > 1e-6 && m2 <= 1.0 {
+                let m = m2.sqrt();
+                q.iter_mut().for_each(|x| *x /= m);
+                break;
+            }
+        }
+        let [w, x, y, z] = q;
+        out.push([
+            [
+                1.0 - 2.0 * (y * y + z * z),
+                2.0 * (x * y - z * w),
+                2.0 * (x * z + y * w),
+            ],
+            [
+                2.0 * (x * y + z * w),
+                1.0 - 2.0 * (x * x + z * z),
+                2.0 * (y * z - x * w),
+            ],
+            [
+                2.0 * (x * z - y * w),
+                2.0 * (y * z + x * w),
+                1.0 - 2.0 * (x * x + y * y),
+            ],
+        ]);
+    }
+    for i in half..n {
+        let scale = [1.0, 1e-3, 1e3, 7.25][i % 4];
+        let mut m = [[0.0; 3]; 3];
+        for row in &mut m {
+            for e in row.iter_mut() {
+                *e = scale * (rng.next_f64() * 2.0 - 1.0);
+            }
+        }
+        out.push(m);
+    }
+    out.push([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+    out.push([[0.0; 3]; 3]);
+    out.push([[-0.0; 3]; 3]);
+    for &s in &specials() {
+        out.push([[s; 3]; 3]);
+        for k in 0..9 {
+            let mut m = [[0.0; 3]; 3];
+            for row in &mut m {
+                for e in row.iter_mut() {
+                    *e = rng.next_f64() * 2.0 - 1.0;
+                }
+            }
+            m[k / 3][k % 3] = s;
+            out.push(m);
+        }
+    }
+    out
+}
+
 /// The distance between two doubles in units in the last place, or
 /// `u64::MAX` when their signs differ or either is NaN.
 pub(crate) fn ulps(a: f64, b: f64) -> u64 {
