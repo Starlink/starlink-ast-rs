@@ -4,6 +4,7 @@
 // All wrappers are pub(crate) and will be consumed by SlaMap, SkyFrame,
 // etc.  Until those land, suppress dead-code warnings.
 #![allow(dead_code)]
+#![allow(clippy::disallowed_methods)]
 
 //! Safe Rust wrappers for the vendored PAL (Positional Astronomy Library).
 //!
@@ -20,112 +21,13 @@ use std::ffi::c_char;
 
 use crate::constants::BAD_VALUE;
 
+mod ffi;
+use ffi::*;
+
 /// ERFA's `ERFA_DAU` (erfam.h): the astronomical unit in metres, the IAU 2012
 /// value. PAL's routines convert metres to au with it, so a caller that
 /// converts their output back must use the same value.
 pub(crate) const ERFA_DAU: f64 = 149597870.7e3;
-
-// ---------------------------------------------------------------------------
-// Raw C extern declarations (astPal-prefixed symbols)
-// ---------------------------------------------------------------------------
-
-unsafe extern "C" {
-    // -- Epoch conversions --
-    fn astPalEpj(date: f64) -> f64;
-    fn astPalEpj2d(epj: f64) -> f64;
-    fn astPalEpb(date: f64) -> f64;
-    fn astPalEpb2d(epb: f64) -> f64;
-
-    // -- Vector / matrix --
-    fn astPalDmxv(dm: *const [f64; 3], va: *const f64, vb: *mut f64);
-    fn astPalDimxv(dm: *const [f64; 3], va: *const f64, vb: *mut f64);
-    fn astPalDmxm(da: *const [f64; 3], db: *const [f64; 3], dc: *mut [f64; 3]);
-    fn astPalDvxv(va: *const f64, vb: *const f64, vc: *mut f64);
-    fn astPalDvdv(va: *const f64, vb: *const f64) -> f64;
-    fn astPalDvn(v: *const f64, uv: *mut f64, vm: *mut f64);
-    fn astPalDmat(n: i32, a: *mut f64, y: *mut f64, d: *mut f64, jf: *mut i32, iw: *mut i32);
-
-    // -- Coordinate conversions --
-    fn astPalGaleq(dl: f64, db: f64, dr: *mut f64, dd: *mut f64);
-    fn astPalEqgal(dr: f64, dd: f64, dl: *mut f64, db: *mut f64);
-    fn astPalGalsup(dl: f64, db: f64, dsl: *mut f64, dsb: *mut f64);
-    fn astPalSupgal(dsl: f64, dsb: f64, dl: *mut f64, db: *mut f64);
-    fn astEraFk45z(r1950: f64, d1950: f64, bepoch: f64, r2000: *mut f64, d2000: *mut f64);
-    fn astEraFk54z(
-        r2000: f64,
-        d2000: f64,
-        bepoch: f64,
-        r1950: *mut f64,
-        d1950: *mut f64,
-        dr1950: *mut f64,
-        dd1950: *mut f64,
-    );
-    fn astPalFk5hz(r5: f64, d5: f64, epoch: f64, rh: *mut f64, dh: *mut f64);
-    fn astPalHfk5z(
-        rh: f64,
-        dh: f64,
-        epoch: f64,
-        r5: *mut f64,
-        d5: *mut f64,
-        dr5: *mut f64,
-        dd5: *mut f64,
-    );
-
-    // -- Precession matrices --
-    fn astPalPrec(ep0: f64, ep1: f64, rmatp: *mut [f64; 3]);
-    fn astPalPrebn(bep0: f64, bep1: f64, rmatp: *mut [f64; 3]);
-    fn astPalEcmat(date: f64, rmat: *mut [f64; 3]);
-
-    // -- Euler rotation --
-    fn astPalDeuler(order: *const c_char, phi: f64, theta: f64, psi: f64, rmat: *mut [f64; 3]);
-
-    // -- Aberration --
-    fn astPalAddet(rm: f64, dm: f64, eq: f64, rc: *mut f64, dc: *mut f64);
-    fn astPalSubet(rc: f64, dc: f64, eq: f64, rm: *mut f64, dm: *mut f64);
-    fn astPalMappa(eq: f64, date: f64, amprms: *mut f64);
-    fn astPalAmpqk(ra: f64, da: f64, amprms: *const f64, rm: *mut f64, dm: *mut f64);
-    fn astPalMapqkz(rm: f64, dm: f64, amprms: *const f64, ra: *mut f64, da: *mut f64);
-
-    // -- Angular normalization --
-    fn astPalDrange(angle: f64) -> f64;
-    fn astPalDranrm(angle: f64) -> f64;
-    fn astPalDsep(al: f64, ap: f64, bl: f64, bp: f64) -> f64;
-    fn astPalDbear(a1: f64, b1: f64, a2: f64, b2: f64) -> f64;
-
-    // -- Earth / observer --
-    fn astPalEvp(date: f64, deqx: f64, dvb: *mut f64, dpb: *mut f64, dvh: *mut f64, dph: *mut f64);
-    fn astPalGeoc(p: f64, h: f64, r: *mut f64, z: *mut f64);
-
-    // -- Miscellaneous --
-    fn astPalDav2m(axvec: *const f64, rmat: *mut [f64; 3]);
-
-    // -- Time / sidereal --
-    fn astPalDat(dju: f64) -> f64;
-    fn astPalGmst(ut1: f64) -> f64;
-    fn astPalEqeqx(date: f64) -> f64;
-    fn astEraDtdb(date1: f64, date2: f64, ut: f64, elong: f64, u: f64, v: f64) -> f64;
-    fn astEraGd2gc(n: i32, elong: f64, phi: f64, height: f64, xyz: *mut f64) -> i32;
-    fn astEraGc2gd(
-        n: i32,
-        xyz: *const f64,
-        elong: *mut f64,
-        phi: *mut f64,
-        height: *mut f64,
-    ) -> i32;
-
-    // -- Observer / velocity --
-    fn astPalPvobs(p: f64, h: f64, stl: f64, pv: *mut f64);
-    fn astPalRvgalc(r2000: f64, d2000: f64) -> f64;
-    fn astPalRvlg(r2000: f64, d2000: f64) -> f64;
-    fn astPalRvlsrd(r2000: f64, d2000: f64) -> f64;
-    fn astPalRvlsrk(r2000: f64, d2000: f64) -> f64;
-
-    // -- Calendar / time-of-day conversions --
-    fn astPalDjcl(djm: f64, iy: *mut i32, im: *mut i32, id: *mut i32, fd: *mut f64, j: *mut i32);
-    fn astPalCldj(iy: i32, im: i32, id: i32, djm: *mut f64, j: *mut i32);
-    fn astPalDd2tf(ndp: i32, days: f64, sign: *mut c_char, ihmsf: *mut i32);
-    fn astPalDtf2d(ihour: i32, imin: i32, sec: f64, days: *mut f64, j: *mut i32);
-}
 
 use crate::call_counts::counted;
 
@@ -1591,8 +1493,8 @@ mod count_tests {
     /// `call-counts` feature sees every call into PAL and ERFA.
     #[test]
     fn every_ffi_call_is_counted() {
-        let src = include_str!("pal.rs");
-        let body = &src[src.find("\n}\n").expect("end of the extern block")..];
+        let src = include_str!("mod.rs");
+        let body = src;
         let mut uncounted = Vec::new();
         for prefix in ["astPal", "astEra"] {
             for (i, _) in body.match_indices(prefix) {
