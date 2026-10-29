@@ -7,10 +7,12 @@
 //! Each projection is a set-up function that derives constants from the
 //! parameters in a [`PrjPrm`], and a forward and a reverse function generic
 //! over the trigonometry [`Trig`].
-//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //!
-//! The tests of the form `prj->flag > 0` in the C bodies are applied
-//! unconditionally, as [`super::prj`] explains.
+//! The bounds tests apply unconditionally, as [`super::prj`] explains.
+
+// Lineage: every function lists its source in `reference/starlink-ast` at
+// 3d3f255f; the `prj->flag > 0` tests of the C bodies are applied
+// unconditionally.
 
 use super::math;
 

@@ -10,10 +10,12 @@
 //! `prm.p` holds the coefficients of the latitude-axis polynomial and
 //! `prm.p2` those of the longitude axis; `prm.n` says whether the TAN
 //! projection is applied as well as the polynomial.
-//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //!
-//! The tests of the form `prj->flag > 0` in the C bodies are applied
-//! unconditionally, as [`super::prj`] explains.
+//! The bounds tests apply unconditionally, as [`super::prj`] explains.
+
+// Lineage: every function lists its source in `reference/starlink-ast` at
+// 3d3f255f; the `prj->flag > 0` tests of the C bodies are applied
+// unconditionally.
 
 // The bodies keep the shape of the C they are ported from.
 #![allow(clippy::needless_late_init, clippy::too_many_lines)]
@@ -32,8 +34,8 @@ pub(super) const NEWTON_RELATIVE_TOLERANCE: f64 = 1.0e-5;
 // `reference/starlink-ast/wcslib/tpn.c`).
 pub(super) const NEWTON_MAX_ITERATIONS: usize = 50;
 
-/// The powers and products of a point (x, y) the polynomial terms use, in
-/// the names and with the arithmetic of `tpn.c`.
+/// The powers and products of a point (x, y) the polynomial terms use.
+// In the names and with the arithmetic of `tpn.c`.
 struct Terms {
     x: f64,
     y: f64,

@@ -7,10 +7,12 @@
 //! Each projection is a set-up function that derives constants from the
 //! parameters in a [`PrjPrm`], and a forward and a reverse function generic
 //! over the trigonometry [`Trig`].
-//! Every function lists its source in `reference/starlink-ast` at 3d3f255f.
 //!
-//! The tests of the form `prj->flag > 0` in the C bodies are applied
-//! unconditionally, as [`super::prj`] explains.
+//! The bounds tests apply unconditionally, as [`super::prj`] explains.
+
+// Lineage: every function lists its source in `reference/starlink-ast` at
+// 3d3f255f; the `prj->flag > 0` tests of the C bodies are applied
+// unconditionally.
 
 // The bodies keep the shape of the C they are ported from, which declares
 // each output before the branches that assign it.
@@ -35,8 +37,9 @@ fn c_min(a: f64, b: f64) -> f64 {
     if a < b { a } else { b }
 }
 
-/// C's `copysign` macro in `proj.c`: `x` with the sign of `y`, taking `-0.0`
-/// and NaN as non-negative.
+/// `x` with the sign of `y`, taking `-0.0` and NaN as non-negative, which
+/// differs from `f64::copysign` for both.
+// wcslib's `copysign` macro in `proj.c`.
 #[inline(always)]
 pub(super) fn c_copysign(x: f64, y: f64) -> f64 {
     if y < 0.0 { -x.abs() } else { x.abs() }

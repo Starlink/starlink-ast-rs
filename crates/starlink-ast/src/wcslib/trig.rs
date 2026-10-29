@@ -12,7 +12,8 @@ pub(super) const D2R: f64 = PI / 180.0;
 pub(super) const R2D: f64 = 180.0 / PI;
 
 /// How close to the end of its range an argument of `acosd` or `asind` may
-/// be, beyond the range, and still be taken as the end (`wcstrig.h`).
+/// be, beyond the range, and still be taken as the end.
+// `WCSTRIG_TOL` of `wcstrig.h`.
 pub(crate) const WCSTRIG_TOL: f64 = 1e-10;
 
 /// The trigonometry the projections use, with angles in degrees.
