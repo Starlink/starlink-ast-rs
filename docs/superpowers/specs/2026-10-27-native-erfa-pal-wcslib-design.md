@@ -18,7 +18,7 @@ It must show the gain with recorded before/after timings.
 
 1. Every ERFA, PAL and wcslib function the port calls is Rust, and `vendor/erfa`, `vendor/pal`, `vendor/wcslib` and `vendor/palwrap.c` (with `pal2ast.h`, `erfa2ast.h`) are deleted.
 2. Functions called inside per-point loops have slice interfaces, and their callers are reorganized to call them once per axis set rather than once per point.
-3. Inside those functions, libm calls are replaced by branchless code the compiler vectorizes, accepting at most 1 ULP difference from today's results.
+3. Inside those functions, libm calls are replaced by branchless code the compiler vectorizes, each elementary function within 1 ULP of the exact value, rounded; a platform libm can itself be further from it (see "ULP bound: per elementary function").
 4. The gain is measured against a baseline recorded before any Rust replaces the C, on the six timeable real-world FrameSets below, and written up per milestone.
 5. The vendored libraries are brought up to date first, in C AST, and offered upstream as one pull request: wcslib's projection code picks up the upstream bug fixes since AST forked it, ERFA moves to the current release, and PAL functions that now have ERFA equivalents call them.
 
@@ -80,7 +80,7 @@ Both paths therefore give identical bits for the same input.
 Making the per-value entry use the vectorized kernel too moved every one-off caller (SkyFrame, SlaMap, FitsChan, Regions) by up to 1 ULP and failed 19 exact C-oracle tests.
 Until the vendored C is gone, the user has decided:
 
-- The per-value entry keeps the C operations bit for bit; only the slice entry runs the kernel, within 1 ULP of the per-value entry.
+- The per-value entry keeps the C operations bit for bit; only the slice entry runs the kernel, within the per-elementary-function bound below of the per-value entry.
 - A slice gives each element the same bits whatever its length, and a Mapping that uses a slice sends every point through it, a single point included, so the "same bits whatever N" rule still holds per Mapping.
 - One-off callers are therefore not changed by vectorization.
 
@@ -95,8 +95,9 @@ The final review found that `vmath::atan2`, like fdlibm's, carries the rounding 
 A residual correction of the division would restore 1 ULP at some cost in latency, and is left for the user to decide.
 (Decided 2026-10-28: `vmath::atan2` carries the quotient's rounding error as a correction and rounds its final additions once, which restores 1 ULP and brings it to within the rounding of libm for all but 1.6% of longitudes and 4.2% of latitudes, against 12% and 18% before, for 19% on SphMap's forward transform.)
 
-The bound is against the exact value, and libm is not always exact: macOS's x86-64 libm is up to about 1.5 ULP from the exact sine or cosine at large arguments, so a kernel within 1 ULP of the exact value can be 2 ULP from that libm (found 2026-10-29).
-Every drift bound derived for a projection's slice therefore takes 2 ULP per kernel sine or cosine, so that it holds on every platform rather than only where it was measured.
+The bound is against the exact value, and libm is not always exact: macOS's x86-64 libm is 2.65 ULP from the exact sine of -6.452961993231616e5, so a kernel within 1 ULP of the exact value can be 3 ULP from that libm at large arguments (found 2026-10-29).
+The tests therefore hold `vmath::sin_cos` to 1 ULP of the exact sine and cosine, rounded, computed in double-double arithmetic, and `eraS2c`'s kernel products of a sine and a cosine to 8 ULP of the exact products, rounded, derived from that; nothing compares a sine or cosine kernel with libm at 1 ULP.
+Every drift bound derived for a projection's slice takes 2 ULP per kernel sine or cosine against libm, which held over the angles within two turns that the projections' tests use on every platform measured (2026-10-29).
 
 ### Errors and status codes
 
@@ -209,7 +210,7 @@ This is this design's call.
 Replace libm calls in the slice paths with branchless kernels.
 Gated by:
 
-- A per-function test that the vectorized result is within 1 ULP of the step 2 body over the inputs above, and that the per-value and slice entries agree bit for bit for every input.
+- A per-function test that each elementary function of the vectorized result is within 1 ULP of the exact value, rounded, checked against a reference that does not depend on the platform's libm, over the inputs above, and that the per-value and slice entries agree bit for bit for every input.
 - A ULP comparison of the corpus against the parent commit, reporting the largest ULP difference per case and output axis.
   `ast-bench bits` only hashes, so it cannot tell drift from a regression; a ULP mode (a new `ast-bench` subcommand or flag) is a deliverable of this ticket and is the tool used to inspect each changed fixture.
   The bound at a chain's output is per case, chosen after inspection: one ULP of drift in one stage can grow through later stages near cancellation (outputs near zero, poles, large projection radii), and that growth is expected, not a defect, when the per-function test passes.
@@ -217,7 +218,7 @@ Gated by:
 
 Because the kernels are pure Rust and the port never contracts into FMA, their results are the same on every platform, unlike today's libm-dependent results.
 The keep-or-reject decision for each kernel is made once, from the timings, and applied on every platform.
-A kernel that cannot be made both faster than libm and within 1 ULP stays scalar on libm; the user has said this is acceptable for `sin`/`cos` in particular.
+A kernel that cannot be made both faster than libm and within 1 ULP of the exact value stays scalar on libm; the user has said this is acceptable for `sin`/`cos` in particular.
 
 ### WcsMap stage (2026-10-28)
 
@@ -251,8 +252,9 @@ These bounds, like the closed-form ones, are set by the builder from measurement
 **Exact angles.** `wcstrig.c`'s `cosd`, `sind`, `tand` and their inverses return exact results at multiples of 90° (and the inverses at ±1 and 0), and the pole and face-centre cases depend on that.
 The vectorized degree trigonometry keeps those results: those arguments go through the function's special-case routine, so the per-value and slice entries agree and the exact values survive.
 
-**Set-up.** The C fork sets a projection up lazily on its first call (`prjprm.flag`), which is why `WcsMap` holds its `PrjParams` in a `RefCell`.
-How the native port handles set-up (eagerly at construction and on each projection-parameter change, or otherwise) is the builder's call, as long as a set-up error is still reported where C reports it.
+**Set-up.** The C fork sets a projection up lazily on its first call (`prjprm.flag`).
+The native port sets it up eagerly: `WcsMap` holds a `prj: Box<Prj>`, built from the projection parameters and `TPNTan` at construction and rebuilt whenever a parameter or `TPNTan` is set or cleared.
+A set-up that fails is kept in the `Prj` and reported as `AST__WCSPA` by every transformation, so the error surfaces at the first point that reaches the projection, as in C, and at every later one, where C would run on half-initialized constants.
 
 **x86-64.** Vectorized slice loops follow SphMap's runtime AVX2 and FMA dispatch where a kernel uses FMA (see Platforms).
 
