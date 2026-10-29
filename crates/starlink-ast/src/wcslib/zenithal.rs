@@ -20,7 +20,7 @@ use super::math;
 
 use super::PRJ_PARAM_SLOTS;
 use super::prj::{PrjPrm, Status};
-use super::trig::{D2R, Libm, R2D, Trig, atand_covers, sincosd_covers};
+use super::trig::{D2R, Libm, R2D, Trig, atan2d_covers, atand_covers, sincosd_covers};
 use std::f64::consts::PI;
 
 /// C's `(a > b) ? a : b`, which differs from `f64::max` when either is NaN.
@@ -85,31 +85,77 @@ pub(super) fn azp_set(prm: &mut PrjPrm) -> Status {
 #[inline(always)]
 pub(super) fn azp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let cphi = T::cosd(phi);
-    let cthe = T::cosd(theta);
+    let stage = azp_fwd_front_at::<T>(prm, phi, theta, cphi);
+    azp_fwd_divergence::<T>(prm, theta, || azp_fwd_s(prm, cphi), stage)
+}
 
-    let mut s = prm.w[1] * cphi;
-    let mut t = (prm.p[1] + T::sind(theta)) + cthe * s;
-    if t == 0.0 {
-        return (Status::BadPoint, 0.0, 0.0);
-    }
+/// `s` of [`azp_fwd`], from the cosine of `phi`.
+#[inline(always)]
+fn azp_fwd_s(prm: &PrjPrm, cphi: f64) -> f64 {
+    prm.w[1] * cphi
+}
+
+/// The two terms whose sum is the denominator `t` of [`azp_fwd`], from the
+/// sine and cosine of `theta` and `s`.
+#[inline(always)]
+fn azp_fwd_t_terms(prm: &PrjPrm, sthe: f64, cthe: f64, s: f64) -> (f64, f64) {
+    (prm.p[1] + sthe, cthe * s)
+}
+
+/// The first stage of [`azp_fwd`], all of its trigonometry but that of the
+/// divergence test: the projection, bad where its denominator is zero or
+/// `theta` is in the overlap.
+#[inline(always)]
+pub(super) fn azp_fwd_front<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
+    azp_fwd_front_at::<T>(prm, phi, theta, T::cosd(phi))
+}
+
+/// [`azp_fwd_front`] given the cosine of `phi`.
+// C returns at `t == 0` before it computes x and y, and the outputs it
+// returns are then (0, 0); the statuses are selects, so that the body has no
+// branch on the point.
+#[inline(always)]
+fn azp_fwd_front_at<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64, cphi: f64) -> (Status, f64, f64) {
+    let cthe = T::cosd(theta);
+    let (a, b) = azp_fwd_t_terms(prm, T::sind(theta), cthe, azp_fwd_s(prm, cphi));
+    let t = a + b;
 
     let r = prm.w[0] * cthe / t;
     let x = r * T::sind(phi);
     let y = -r * cphi * prm.w[2];
 
-    // Bounds checking.
-    // Overlap.
-    if theta < prm.w[5] {
-        return (Status::BadPoint, x, y);
+    // The zero denominator, then bounds checking: the overlap.
+    if t == 0.0 {
+        (Status::BadPoint, 0.0, 0.0)
+    } else if theta < prm.w[5] {
+        (Status::BadPoint, x, y)
+    } else {
+        (Status::Ok, x, y)
+    }
+}
+
+/// The rest of [`azp_fwd`]: the divergence test of the projection `stage`
+/// from [`azp_fwd_front`], given `s` from the trigonometry `T`.
+#[inline(always)]
+fn azp_fwd_divergence<T: Trig>(
+    prm: &PrjPrm,
+    theta: f64,
+    s: impl FnOnce() -> f64,
+    stage: (Status, f64, f64),
+) -> (Status, f64, f64) {
+    let (status, x, y) = stage;
+    if status != Status::Ok {
+        return stage;
     }
 
     // Divergence.
     if prm.w[7] > 0.0 {
-        t = prm.p[1] / math::sqrt(1.0 + s * s);
+        let s = s();
+        let t = prm.p[1] / math::sqrt(1.0 + s * s);
 
         if t.abs() <= 1.0 {
-            s = T::atand(-s);
-            t = T::asind(t);
+            let s = T::atand(-s);
+            let t = T::asind(t);
             let mut a = s - t;
             let mut b = s + t + 180.0;
 
@@ -127,6 +173,65 @@ pub(super) fn azp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     }
 
     (Status::Ok, x, y)
+}
+
+/// [`azp_fwd`]'s second stage in a slice: the divergence test, with `s`
+/// from [`Libm`], so its status is the per-value entry's.
+#[inline(always)]
+#[allow(clippy::unnecessary_wraps)]
+pub(super) fn azp_fwd_finish(
+    prm: &PrjPrm,
+    phi: f64,
+    theta: f64,
+    stage: (Status, f64, f64),
+) -> Option<(Status, f64, f64)> {
+    Some(azp_fwd_divergence::<Libm>(
+        prm,
+        theta,
+        || azp_fwd_s(prm, Libm::cosd(phi)),
+        stage,
+    ))
+}
+
+/// Whether [`azp_fwd_front`] needs [`Libm`] at (`phi`, `theta`): a sine or
+/// cosine argument outside the kernels' cover, or a denominator so near
+/// zero that the kernels' drift could change whether it is zero.
+// The statuses and branches of the body:
+// - `t == 0`, from the kernels' values: decided by `azp_fwd_t_near_zero`;
+// - `theta < w[5]`, from the input and the parameters alone;
+// - the divergence test, `w[7] > 0` from the parameters, then `|t| <= 1`
+//   and `theta < max(a, b)` from `s`: in `azp_fwd_finish`, with `s` from
+//   `Libm`, so they are the per-value entry's tests on its values.
+// So the kernels cannot turn a bad point good or a good one bad.
+#[inline(always)]
+pub(super) fn azp_fwd_needs_special<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+    !sincosd_covers(theta)
+        | !sincosd_covers(phi)
+        | azp_fwd_t_near_zero(prm, T::sind(theta), T::cosd(theta), T::cosd(phi))
+}
+
+/// Whether the denominator `t` of [`azp_fwd`], from the kernels' sine and
+/// cosine of `theta` and cosine of `phi`, is so near zero that [`Libm`]'s
+/// could be zero where it is not, or not where it is.
+// `t` is `(p1 + sthe) + cthe s`, with `s = w1 cphi`. Each kernel sine and
+// cosine is within 2 ULP of Libm's (see `Kernel`), at most 2 eps of it (eps
+// = 2^-52), and each path rounds each operation once, at most eps / 2
+// relative, so eps between the two paths:
+// - `p1 + sthe` differs by at most 2 eps |sthe| + eps |p1 + sthe|;
+// - `s` by at most 3 eps |s|, and `cthe s` by at most 6 eps |cthe s|;
+// - their sum by a further eps |t|.
+// That is eps (2 |sthe| + |p1 + sthe| + 6 |cthe s| + |t|), to first order.
+// The margin is twice that, which covers its own evaluation from the
+// kernels' values rather than Libm's. Where |t| is beyond it, Libm's `t` has
+// the kernels' sign and neither is zero.
+#[inline(always)]
+pub(super) fn azp_fwd_t_near_zero(prm: &PrjPrm, sthe: f64, cthe: f64, cphi: f64) -> bool {
+    let (a, b) = azp_fwd_t_terms(prm, sthe, cthe, azp_fwd_s(prm, cphi));
+    let t = a + b;
+    let margin = 2.0 * f64::EPSILON * (2.0 * sthe.abs() + a.abs() + 6.0 * b.abs() + t.abs());
+    // False for a NaN, which is then redone.
+    let clear_of_zero = t.abs() > margin;
+    !clear_of_zero
 }
 
 // reference/starlink-ast/wcslib/proj.c, astAZPrev; reference/starlink-ast at 3d3f255f.
@@ -217,31 +322,66 @@ pub(super) fn szp_set(prm: &mut PrjPrm) -> Status {
 pub(super) fn szp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let cphi = T::cosd(phi);
     let sphi = T::sind(phi);
-    let cthe = T::cosd(theta);
-    let mut s = 1.0 - T::sind(theta);
+    let stage = szp_fwd_front_at::<T>(prm, theta, sphi, cphi);
+    szp_fwd_overlap::<T>(prm, theta, || (sphi, cphi), stage)
+}
 
-    let mut t = prm.w[3] - s;
-    if t == 0.0 {
-        return (Status::BadPoint, 0.0, 0.0);
-    }
+/// The first stage of [`szp_fwd`], all of its trigonometry but that of the
+/// overlap test: the projection, bad where its denominator is zero or
+/// `theta` is beyond the divergence.
+#[inline(always)]
+pub(super) fn szp_fwd_front<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
+    szp_fwd_front_at::<T>(prm, theta, T::sind(phi), T::cosd(phi))
+}
+
+/// [`szp_fwd_front`] given the sine and cosine of `phi`.
+// C returns at `t == 0` before it computes x and y, and the outputs it
+// returns are then (0, 0); the statuses are selects, so that the body has no
+// branch on the point.
+#[inline(always)]
+fn szp_fwd_front_at<T: Trig>(prm: &PrjPrm, theta: f64, sphi: f64, cphi: f64) -> (Status, f64, f64) {
+    let cthe = T::cosd(theta);
+    let s = 1.0 - T::sind(theta);
+
+    let t = prm.w[3] - s;
 
     let x = (prm.w[6] * cthe * sphi - prm.w[4] * s) / t;
     let y = -(prm.w[6] * cthe * cphi + prm.w[5] * s) / t;
 
-    // Bounds checking.
-    // Divergence.
-    if theta < prm.w[8] {
-        return (Status::BadPoint, x, y);
+    // The zero denominator, then bounds checking: the divergence.
+    if t == 0.0 {
+        (Status::BadPoint, 0.0, 0.0)
+    } else if theta < prm.w[8] {
+        (Status::BadPoint, x, y)
+    } else {
+        (Status::Ok, x, y)
+    }
+}
+
+/// The rest of [`szp_fwd`]: the overlap test of the projection `stage` from
+/// [`szp_fwd_front`], given the sine and cosine of `phi` from the
+/// trigonometry `T`.
+#[inline(always)]
+fn szp_fwd_overlap<T: Trig>(
+    prm: &PrjPrm,
+    theta: f64,
+    sincos_phi: impl FnOnce() -> (f64, f64),
+    stage: (Status, f64, f64),
+) -> (Status, f64, f64) {
+    let (status, x, y) = stage;
+    if status != Status::Ok {
+        return stage;
     }
 
     // Overlap.
     if prm.p[1].abs() > 1.0 {
-        s = prm.w[1] * sphi - prm.w[2] * cphi;
-        t = 1.0 / math::sqrt(prm.w[7] + s * s);
+        let (sphi, cphi) = sincos_phi();
+        let s = prm.w[1] * sphi - prm.w[2] * cphi;
+        let t = 1.0 / math::sqrt(prm.w[7] + s * s);
 
         if t.abs() <= 1.0 {
-            s = T::atan2d(s, prm.w[3] - 1.0);
-            t = T::asind(t);
+            let s = T::atan2d(s, prm.w[3] - 1.0);
+            let t = T::asind(t);
             let mut a = s - t;
             let mut b = s + t + 180.0;
 
@@ -261,30 +401,111 @@ pub(super) fn szp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
+/// [`szp_fwd`]'s second stage in a slice: the overlap test, with the sine
+/// and cosine of `phi` from [`Libm`], so its status is the per-value
+/// entry's.
+#[inline(always)]
+#[allow(clippy::unnecessary_wraps)]
+pub(super) fn szp_fwd_finish(
+    prm: &PrjPrm,
+    phi: f64,
+    theta: f64,
+    stage: (Status, f64, f64),
+) -> Option<(Status, f64, f64)> {
+    Some(szp_fwd_overlap::<Libm>(
+        prm,
+        theta,
+        || (Libm::sind(phi), Libm::cosd(phi)),
+        stage,
+    ))
+}
+
+/// Whether [`szp_fwd_front`] needs [`Libm`] at (`phi`, `theta`): a sine or
+/// cosine argument outside the kernels' cover, or a denominator so near
+/// zero that the kernels' drift could change whether it is zero.
+// The statuses and branches of the body:
+// - `t == 0`, from the kernels' sine of `theta`: decided by
+//   `szp_fwd_t_near_zero`;
+// - `theta < w[8]`, from the input and the parameters alone;
+// - the overlap test, `|p1| > 1` from the parameters, then `|t| <= 1` and
+//   `theta < max(a, b)` from the sine and cosine of `phi`: in
+//   `szp_fwd_finish`, with those from `Libm`, so they are the per-value
+//   entry's tests on its values.
+// So the kernels cannot turn a bad point good or a good one bad.
+#[inline(always)]
+pub(super) fn szp_fwd_needs_special<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+    !sincosd_covers(theta) | !sincosd_covers(phi) | szp_fwd_t_near_zero(prm, T::sind(theta))
+}
+
+/// Whether the denominator `t` of [`szp_fwd`], from the kernels' sine of
+/// `theta`, is so near zero that [`Libm`]'s could be zero where it is not,
+/// or not where it is.
+// `t` is `w3 - s`, with `s = 1 - sthe`. The kernels' sine is within 2 ULP of
+// Libm's (see `Kernel`), at most 2 eps of it (eps = 2^-52), and each path
+// rounds each operation once, at most eps / 2 relative, so eps between the
+// two paths: `s` differs by at most 2 eps |sthe| + eps |s|, and `t` by a
+// further eps |t|. That is eps (2 |sthe| + |s| + |t|), to first order. The
+// margin is twice that, which covers its own evaluation from the kernels'
+// values rather than Libm's. Where |t| is beyond it, Libm's `t` has the
+// kernels' sign and neither is zero.
+#[inline(always)]
+pub(super) fn szp_fwd_t_near_zero(prm: &PrjPrm, sthe: f64) -> bool {
+    let s = 1.0 - sthe;
+    let t = prm.w[3] - s;
+    let margin = 2.0 * f64::EPSILON * (2.0 * sthe.abs() + s.abs() + t.abs());
+    // False for a NaN, which is then redone.
+    let clear_of_zero = t.abs() > margin;
+    !clear_of_zero
+}
+
 // reference/starlink-ast/wcslib/proj.c, astSZPrev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn szp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
-    // How close beyond +-1 sin(theta) may be and still be taken as +-1,
-    // `tol` in C.
-    const TOL: f64 = 1.0e-13;
-    // Below this r^2 the small angle formula is used, the literal in C.
-    const SMALL_R2: f64 = 1.0e-10;
+    szp_rev_rest::<T>(prm, x, y, szp_rev_front::<T>(prm, x, y))
+}
 
+/// Below this r^2 [`szp_rev`] uses the small angle formula.
+// The literal in C.
+const SZP_REV_SMALL_R2: f64 = 1.0e-10;
+
+/// The scaled (x, y) of [`szp_rev`], their r^2, and whether the small angle
+/// formula applies.
+#[inline(always)]
+fn szp_rev_scaled(prm: &PrjPrm, x: f64, y: f64) -> (f64, f64, f64, bool) {
     let xp = x * prm.w[0];
     let yp = y * prm.w[0];
     let r2 = xp * xp + yp * yp;
+    (xp, yp, r2, r2 < SZP_REV_SMALL_R2)
+}
+
+/// All of [`szp_rev`] but its trigonometry: the status, the two arguments
+/// of the arc tangent that gives `phi`, and `theta` where the small angle
+/// formula applies or its sine elsewhere.
+// For a branch-free `T` both the small angle formula and the quadratic are
+// computed and one is selected, and the statuses are selects, so that the
+// body has no branch on the point; for `Libm` each is computed only where C
+// computes it. A negative discriminant gives a NaN root, which is computed
+// and unused. The arithmetic is C's, operation for operation.
+#[inline(always)]
+fn szp_rev_solve<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64, f64) {
+    // How close beyond +-1 sin(theta) may be and still be taken as +-1,
+    // `tol` in C.
+    const TOL: f64 = 1.0e-13;
+
+    let (xp, yp, r2, small) = szp_rev_scaled(prm, x, y);
 
     let x1 = (xp - prm.w[1]) / prm.w[3];
     let y1 = (yp - prm.w[2]) / prm.w[3];
     let sxy = xp * x1 + yp * y1;
 
-    let theta;
-    let z;
-    if r2 < SMALL_R2 {
-        // Use small angle formula.
-        z = r2 / 2.0;
-        theta = 90.0 - R2D * math::sqrt(r2 / (1.0 + sxy));
+    // Use small angle formula.
+    let (z_small, theta_small) = if T::BRANCH_FREE || small {
+        (r2 / 2.0, 90.0 - R2D * math::sqrt(r2 / (1.0 + sxy)))
     } else {
+        (0.0, 0.0)
+    };
+
+    let (solved, sthe) = if T::BRANCH_FREE || !small {
         let t = x1 * x1 + y1 * y1;
         let a = t + 1.0;
         let b = sxy - t;
@@ -292,9 +513,7 @@ pub(super) fn szp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
         let d = b * b - a * c;
 
         // Check for a solution.
-        if d < 0.0 {
-            return (Status::BadPoint, 0.0, 0.0);
-        }
+        let no_root = d < 0.0;
         let d = math::sqrt(d);
 
         // Choose solution closest to pole.
@@ -302,29 +521,91 @@ pub(super) fn szp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
         let sth2 = (-b - d) / a;
         let mut sthe = c_max(sth1, sth2);
         if sthe > 1.0 {
-            if sthe - 1.0 < TOL {
-                sthe = 1.0;
+            sthe = if sthe - 1.0 < TOL {
+                1.0
             } else {
-                sthe = c_min(sth1, sth2);
-            }
+                c_min(sth1, sth2)
+            };
         }
 
         if sthe < -1.0 && sthe + 1.0 > -TOL {
             sthe = -1.0;
         }
 
-        if sthe > 1.0 || sthe < -1.0 {
-            return (Status::BadPoint, 0.0, 0.0);
-        }
+        (!no_root & !(sthe > 1.0 || sthe < -1.0), sthe)
+    } else {
+        (true, 0.0)
+    };
 
-        theta = T::asind(sthe);
+    let z = if small { z_small } else { 1.0 - sthe };
+    let status = if small || solved {
+        Status::Ok
+    } else {
+        Status::BadPoint
+    };
 
-        z = 1.0 - sthe;
+    (
+        status,
+        xp - x1 * z,
+        -(yp - y1 * z),
+        if small { theta_small } else { sthe },
+    )
+}
+
+/// The first stage of [`szp_rev`], all of it but the arc sine: the status,
+/// `phi`, and `theta` where the small angle formula applies or its sine
+/// elsewhere.
+#[inline(always)]
+pub(super) fn szp_rev_front<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
+    let (status, phi_y, phi_x, theta) = szp_rev_solve::<T>(prm, x, y);
+    (status, T::atan2d(phi_y, phi_x), theta)
+}
+
+/// The rest of [`szp_rev`] at (`x`, `y`), given the result of
+/// [`szp_rev_front`]: `theta` from its sine where the small angle formula
+/// does not apply.
+// C returns at a bad point before it computes either output, and the
+// outputs it returns are then (0, 0).
+#[inline(always)]
+fn szp_rev_rest<T: Trig>(
+    prm: &PrjPrm,
+    x: f64,
+    y: f64,
+    (status, phi, theta): (Status, f64, f64),
+) -> (Status, f64, f64) {
+    if status != Status::Ok {
+        return (status, 0.0, 0.0);
     }
-
-    let phi = T::atan2d(xp - x1 * z, -(yp - y1 * z));
+    let (.., small) = szp_rev_scaled(prm, x, y);
+    let theta = if small { theta } else { T::asind(theta) };
 
     (Status::Ok, phi, theta)
+}
+
+/// [`szp_rev`]'s second stage in a slice: [`szp_rev_rest`] with [`Libm`] on
+/// the kernels' `phi`, which it never declines.
+// Every status test and branch of the body is decided from values computed
+// without trigonometry, operation for operation as `Libm` computes them, so
+// the kernels cannot change them; the arc sine is `Libm`'s, so `theta` is
+// the per-value entry's bits and only `phi` moves.
+#[inline(always)]
+#[allow(clippy::unnecessary_wraps)]
+pub(super) fn szp_rev_finish(
+    prm: &PrjPrm,
+    x: f64,
+    y: f64,
+    stage: (Status, f64, f64),
+) -> Option<(Status, f64, f64)> {
+    Some(szp_rev_rest::<Libm>(prm, x, y, stage))
+}
+
+/// Whether [`szp_rev_front`] needs [`Libm`] at (`x`, `y`): an argument of
+/// the arc tangent outside its kernel's cover, which includes the NaN
+/// arguments of a bad point.
+#[inline(always)]
+pub(super) fn szp_rev_needs_special<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> bool {
+    let (_, phi_y, phi_x, _) = szp_rev_solve::<T>(prm, x, y);
+    !atan2d_covers(phi_y, phi_x)
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +705,34 @@ pub(super) fn stg_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     }
 
     (Status::Ok, x, y)
+}
+
+/// Whether [`stg_fwd`] needs [`Libm`] at (`phi`, `theta`): a sine or cosine
+/// argument outside the kernels' cover, or a sine of `theta` so near -1 that
+/// the kernels' drift could change whether `s` is zero.
+// The body's only decision is its status, `s == 0`, with `s = 1 +
+// sind(theta)` from the kernels: decided by `stg_fwd_s_near_zero`. It has no
+// branch.
+#[inline(always)]
+pub(super) fn stg_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+    !sincosd_covers(theta) | !sincosd_covers(phi) | stg_fwd_s_near_zero(1.0 + T::sind(theta))
+}
+
+/// Whether `s`, one plus the kernels' sine of `theta` in [`stg_fwd`], is so
+/// near zero that [`Libm`]'s could be zero where it is not, or not where it
+/// is.
+// A covered `theta` is not a multiple of 90, but its sine still rounds to
+// -1 within about 6e-7 degrees of -90. The kernels' sine is within 2 ULP of
+// Libm's (see `Kernel`), and the doubles in (-1, -0.5] are 2^-53 apart. So
+// where the kernels' sine is at least -1 + 3 * 2^-53, Libm's is at least -1 +
+// 2^-53, and both sums, exact there (Sterbenz), are positive. The kernels'
+// sum is a multiple of 2^-53 there, so that is where it is above 2^-52 =
+// eps; every other point, a sum at or below zero among them, is redone.
+#[inline(always)]
+pub(super) fn stg_fwd_s_near_zero(s: f64) -> bool {
+    // False for a NaN, which is then redone.
+    let clear_of_zero = s > f64::EPSILON;
+    !clear_of_zero
 }
 
 // reference/starlink-ast/wcslib/proj.c, astSTGrev; reference/starlink-ast at 3d3f255f.
@@ -706,6 +1015,14 @@ pub(super) fn arc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     let y = -r * T::cosd(phi);
 
     (Status::Ok, x, y)
+}
+
+/// Whether [`arc_fwd`] needs [`Libm`] at (`phi`, `theta`): a sine or cosine
+/// argument outside the kernels' cover.
+// The body has no status test and no branch.
+#[inline(always)]
+pub(super) fn arc_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, _theta: f64) -> bool {
+    !sincosd_covers(phi)
 }
 
 // reference/starlink-ast/wcslib/proj.c, astARCrev; reference/starlink-ast at 3d3f255f.
@@ -1059,6 +1376,14 @@ pub(super) fn zea_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
+/// Whether [`zea_fwd`] needs [`Libm`] at (`phi`, `theta`): a sine or cosine
+/// argument outside the kernels' cover.
+// The body has no status test and no branch.
+#[inline(always)]
+pub(super) fn zea_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+    !sincosd_covers((90.0 - theta) / 2.0) | !sincosd_covers(phi)
+}
+
 // reference/starlink-ast/wcslib/proj.c, astZEArev; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn zea_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
@@ -1122,8 +1447,29 @@ pub(super) fn air_set(prm: &mut PrjPrm) -> Status {
 }
 
 // reference/starlink-ast/wcslib/proj.c, astAIRfwd; reference/starlink-ast at 3d3f255f.
+// C computes the radius before the sine and cosine of `phi`; neither depends
+// on the other.
 #[inline(always)]
 pub(super) fn air_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
+    air_fwd_rest::<T>(prm, theta, air_fwd_front::<T>(prm, phi, theta))
+}
+
+/// The first stage of [`air_fwd`]: the sine and cosine of `phi`, with
+/// [`Status::Ok`].
+#[inline(always)]
+pub(super) fn air_fwd_front<T: Trig>(_prm: &PrjPrm, phi: f64, _theta: f64) -> (Status, f64, f64) {
+    (Status::Ok, T::sind(phi), T::cosd(phi))
+}
+
+/// The rest of [`air_fwd`] at `theta`, given the sine and cosine of `phi`
+/// from [`air_fwd_front`]: the radius, its product with them, and the
+/// status.
+#[inline(always)]
+fn air_fwd_rest<T: Trig>(
+    prm: &PrjPrm,
+    theta: f64,
+    (_, sphi, cphi): (Status, f64, f64),
+) -> (Status, f64, f64) {
     let r;
     if theta == 90.0 {
         r = 0.0;
@@ -1140,10 +1486,32 @@ pub(super) fn air_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
         return (Status::BadPoint, 0.0, 0.0);
     }
 
-    let x = r * T::sind(phi);
-    let y = -r * T::cosd(phi);
+    let x = r * sphi;
+    let y = -r * cphi;
 
     (Status::Ok, x, y)
+}
+
+/// [`air_fwd`]'s second stage in a slice: [`air_fwd_rest`] with [`Libm`] on
+/// the kernels' sine and cosine of `phi`, which it never declines.
+// The status and the branches are decided from `theta` alone, so the kernels
+// cannot change them.
+#[inline(always)]
+#[allow(clippy::unnecessary_wraps)]
+pub(super) fn air_fwd_finish(
+    prm: &PrjPrm,
+    _phi: f64,
+    theta: f64,
+    stage: (Status, f64, f64),
+) -> Option<(Status, f64, f64)> {
+    Some(air_fwd_rest::<Libm>(prm, theta, stage))
+}
+
+/// Whether [`air_fwd_front`] needs [`Libm`] at (`phi`, `theta`): a sine or
+/// cosine argument outside the kernels' cover.
+#[inline(always)]
+pub(super) fn air_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, _theta: f64) -> bool {
+    !sincosd_covers(phi)
 }
 
 // reference/starlink-ast/wcslib/proj.c, astAIRrev; reference/starlink-ast at 3d3f255f.
