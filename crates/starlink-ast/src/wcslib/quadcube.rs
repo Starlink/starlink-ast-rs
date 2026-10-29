@@ -30,8 +30,8 @@
 
 use super::math;
 
-use super::prj::{PrjPrm, Status};
-use super::trig::{D2R, R2D, Trig};
+use super::prj::{PrjPrm, Stage, Status};
+use super::trig::{D2R, Kernel, R2D, Trig, sincosd_covers};
 use super::zenithal::c_copysign;
 use std::f64::consts::PI;
 
@@ -151,11 +151,34 @@ const TSC_FWD_TOL: f64 = 1.0e-12;
 // reference/starlink-ast/wcslib/proj.c, astTSCfwd; reference/starlink-ast at 3d3f255f.
 #[inline(always)]
 pub(super) fn tsc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
+    tsc_fwd_rest(prm, tsc_fwd_front::<T>(prm, phi, theta))
+}
+
+/// The first stage of [`tsc_fwd`]: [`Status::Ok`] and the direction cosines
+/// `(l, m, n)` of (`phi`, `theta`).
+#[inline(always)]
+pub(super) fn tsc_fwd_front<T: Trig>(_prm: &PrjPrm, phi: f64, theta: f64) -> Stage {
     let cthe = T::cosd(theta);
     let l = cthe * T::cosd(phi);
     let m = cthe * T::sind(phi);
     let n = T::sind(theta);
+    (Status::Ok, l, m, n)
+}
 
+/// Whether [`tsc_fwd_front`] or [`csc_fwd_front`] needs
+/// [`Libm`](super::trig::Libm) at (`phi`, `theta`): a sine or cosine argument
+/// outside the kernels' cover.
+// The stage has no status test and no branch; the face, which the drift can
+// change, is chosen per point by `tsc_fwd_finish` and `csc_fwd_finish`.
+#[inline(always)]
+pub(super) fn quadcube_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+    !sincosd_covers(theta) | !sincosd_covers(phi)
+}
+
+/// The rest of [`tsc_fwd`], given the direction cosines from
+/// [`tsc_fwd_front`]: the face, the position on it, and the status.
+#[inline(always)]
+fn tsc_fwd_rest(prm: &PrjPrm, (_, l, m, n): Stage) -> (Status, f64, f64) {
     let (face, rho) = cube_face!(l, m, n);
 
     let mut xf;
@@ -208,6 +231,51 @@ pub(super) fn tsc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     }
 
     (Status::Ok, prm.w[0] * (xf + x0), prm.w[0] * (yf + y0))
+}
+
+/// [`tsc_fwd`]'s second stage in a slice: [`tsc_fwd_rest`] on the kernels'
+/// direction cosines, or `None` where their drift could change the face.
+// The face is decided by `cube_face_near_tie`. The bounds tests never pass,
+// on either path: `xf` and `yf` are quotients by `rho` of direction cosines
+// no larger than `rho` in magnitude, `rho` being one of them, and a correctly
+// rounded quotient of such values is at most 1 in magnitude. So on the face
+// both paths choose, the status is `Ok` on both.
+#[inline(always)]
+pub(super) fn tsc_fwd_finish(
+    prm: &PrjPrm,
+    _phi: f64,
+    _theta: f64,
+    stage: Stage,
+) -> Option<(Status, f64, f64)> {
+    if cube_face_near_tie(stage.1, stage.2, stage.3) {
+        None
+    } else {
+        Some(tsc_fwd_rest(prm, stage))
+    }
+}
+
+/// Whether the drift of the kernels' direction cosines `(l, m, n)` could
+/// change the cube face chosen from them, the first of the largest of `n`,
+/// `l`, `m`, `-l`, `-m` and `-n`.
+// `l = cthe cphi` and `m = cthe sphi` are products of two kernel values,
+// each within 2 ULP of Libm's (see `Kernel`), at most 2 eps of it (eps =
+// 2^-52), with the two paths' roundings of the product, eps between them:
+// each differs by at most 5 eps of itself. `n`, a kernel value, differs by 2
+// eps of itself, less than 5. Where the chosen candidate `c_f` exceeds every
+// other `c_i` by more than 5 eps (|c_f| + |c_i|), Libm's `c_f` exceeds Libm's
+// `c_i` too, so Libm chooses the same face whatever the order of the
+// candidates. The margin is twice that, which covers its own evaluation from
+// the kernels' values rather than Libm's.
+#[inline(always)]
+pub(super) fn cube_face_near_tie(l: f64, m: f64, n: f64) -> bool {
+    let (face, rho) = cube_face!(l, m, n);
+    let mut near = false;
+    for (i, c) in [n, l, m, -l, -m, -n].into_iter().enumerate() {
+        // False for a NaN, which is then near.
+        let clear = rho - c > 10.0 * f64::EPSILON * (rho.abs() + c.abs());
+        near |= i != face && !clear;
+    }
+    near
 }
 
 // reference/starlink-ast/wcslib/proj.c, astTSCrev; reference/starlink-ast at 3d3f255f.
@@ -299,11 +367,92 @@ const CSC_C02: f32 = float_of(0.106959469314);
 // The C works in `float` throughout; see the module documentation.
 #[inline(always)]
 pub(super) fn csc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
-    let cthe = T::cosd(theta) as f32;
-    let l = (cthe as f64 * T::cosd(phi)) as f32;
-    let m = (cthe as f64 * T::sind(phi)) as f32;
-    let n = T::sind(theta) as f32;
+    csc_fwd_rest(prm, csc_fwd_front::<T>(prm, phi, theta))
+}
 
+/// The first stage of [`csc_fwd`]: [`Status::Ok`] and the direction cosines
+/// `(l, m, n)` of (`phi`, `theta`) before their rounding to single
+/// precision, `l` and `m` from the cosine of `theta` in single precision.
+#[inline(always)]
+pub(super) fn csc_fwd_front<T: Trig>(_prm: &PrjPrm, phi: f64, theta: f64) -> Stage {
+    let cthe = T::cosd(theta) as f32;
+    let l = cthe as f64 * T::cosd(phi);
+    let m = cthe as f64 * T::sind(phi);
+    let n = T::sind(theta);
+    (Status::Ok, l, m, n)
+}
+
+/// The smallest magnitude [`f32_rounding_near`] tests; below it, it reports
+/// every value near. 2^-100, far above the least normal `f32`.
+const F32_ROUNDING_FLOOR: f64 = f64::from_bits(923 << 52);
+
+/// Whether rounding the double `v` to single precision could give another
+/// value for a double within `margin` units in the last place of `v`.
+// A double from F32_ROUNDING_FLOOR to 1 in magnitude rounds to a normal
+// single-precision value, which keeps the top 24 bits of its 53-bit
+// significand, so the rounding depends on the low 29 bits: the double
+// rounds down below the halfway pattern 2^28, up above it, and to even on
+// it. Two doubles round alike unless that pattern lies between them or on
+// one. A double near the top of a binade, whose low bits are near 2^29,
+// rounds up to the power of 2 above, as does one just above that power,
+// whose low bits are near 0, so a binade's edge is no boundary. So `v` and
+// any double within `margin` ULP of it round alike where the low bits are
+// more than `margin` from 2^28.
+#[inline(always)]
+pub(super) fn f32_rounding_near(v: f64, margin: u64) -> bool {
+    const LOW_BITS: u64 = (1 << 29) - 1;
+    const HALFWAY: u64 = 1 << 28;
+    let low = v.to_bits() & LOW_BITS;
+    // `low` is outside [HALFWAY - margin, HALFWAY + margin] exactly when its
+    // wrapping difference from the lower end exceeds the window's width.
+    let outside = low.wrapping_sub(HALFWAY - margin) > 2 * margin;
+    // False for a NaN, which is then near.
+    let clear = outside & (v.abs() >= F32_ROUNDING_FLOOR);
+    !clear
+}
+
+/// [`csc_fwd`]'s second stage in a slice: [`csc_fwd_rest`] on the kernels'
+/// direction cosines, or `None` where their drift could change a value's
+/// rounding to single precision.
+// Everything after the rounding is computed from the single-precision
+// values, so where they are Libm's, the face, the status and the outputs
+// are Libm's bit for bit. The cosine of `theta`, which the stage rounds
+// before it multiplies, is recomputed here with the scalar kernel, which
+// gives the vectorized one's bits: Rust never contracts a multiply and an
+// add into a fused multiply-add, and `vmath::sin_cos` calls no `mul_add`, so
+// its operations and their roundings are the same in scalar and vector
+// code. It and `n` are kernel values, within 2
+// ULP of Libm's (see `Kernel`). `l` and `m` are that cosine in single
+// precision, alike on both paths where its rounding is, times a kernel
+// value, rounded once on each path: within 3 eps of themselves (eps =
+// 2^-52), which is at most 6 ULP, since an ULP of a double is more than eps
+// / 2 of it. Each is tested against twice its drift, which covers
+// evaluating the test from the kernels' value rather than Libm's.
+#[inline(always)]
+pub(super) fn csc_fwd_finish(
+    prm: &PrjPrm,
+    _phi: f64,
+    theta: f64,
+    stage: Stage,
+) -> Option<(Status, f64, f64)> {
+    let (_, l, m, n) = stage;
+    let cthe = Kernel::<false>::cosd(theta);
+    let near = f32_rounding_near(cthe, 4)
+        | f32_rounding_near(l, 12)
+        | f32_rounding_near(m, 12)
+        | f32_rounding_near(n, 4);
+    if near {
+        None
+    } else {
+        Some(csc_fwd_rest(prm, stage))
+    }
+}
+
+/// The rest of [`csc_fwd`], given the direction cosines from
+/// [`csc_fwd_front`]: the face, the position on it, and the status.
+#[inline(always)]
+fn csc_fwd_rest(prm: &PrjPrm, (_, l, m, n): Stage) -> (Status, f64, f64) {
+    let (l, m, n) = (l as f32, m as f32, n as f32);
     let (face, rho) = cube_face!(l, m, n);
 
     let xi: f32;
