@@ -12,10 +12,13 @@
 //! `trig` holds the degree trigonometry the projections share, `prj` the
 //! native projection state and dispatch, and `zenithal` the zenithal
 //! projections, `cylindrical` and `pseudocyl` the cylindrical and
-//! pseudo-cylindrical ones, and `tpn` the polynomial-corrected gnomonic projection.
+//! pseudo-cylindrical ones, `conic` and `polyconic` the conic and
+//! polyconic ones, and `tpn` the polynomial-corrected gnomonic projection.
 
+mod conic;
 mod cylindrical;
 pub(crate) mod ffi;
+mod polyconic;
 pub(crate) mod prj;
 mod pseudocyl;
 mod tpn;

@@ -36,10 +36,15 @@
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 
+use super::conic::{
+    cod_fwd, cod_rev, cod_set, coe_fwd, coe_rev, coe_set, coo_fwd, coo_rev, coo_set, cop_fwd,
+    cop_rev, cop_set,
+};
 use super::cylindrical::{
     car_fwd, car_rev, car_set, cea_fwd, cea_rev, cea_set, cyp_fwd, cyp_rev, cyp_set, mer_fwd,
     mer_rev, mer_set,
 };
+use super::polyconic::{bon_fwd, bon_rev, bon_set, pco_fwd, pco_rev, pco_set};
 use super::pseudocyl::{
     ait_fwd, ait_rev, ait_set, mol_fwd, mol_rev, mol_set, par_fwd, par_rev, par_set, sfl_fwd,
     sfl_rev, sfl_set,
@@ -195,6 +200,12 @@ impl Prj {
             WcsProjection::Par => par_fwd::<Libm>(prm, phi, theta),
             WcsProjection::Mol => mol_fwd::<Libm>(prm, phi, theta),
             WcsProjection::Ait => ait_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Cop => cop_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Coe => coe_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Cod => cod_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Coo => coo_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Bon => bon_fwd::<Libm>(prm, phi, theta),
+            WcsProjection::Pco => pco_fwd::<Libm>(prm, phi, theta),
             other => todo!("{} is ported in a later step", other.code()),
         }
     }
@@ -227,6 +238,12 @@ impl Prj {
             WcsProjection::Par => par_rev::<Libm>(prm, x, y),
             WcsProjection::Mol => mol_rev::<Libm>(prm, x, y),
             WcsProjection::Ait => ait_rev::<Libm>(prm, x, y),
+            WcsProjection::Cop => cop_rev::<Libm>(prm, x, y),
+            WcsProjection::Coe => coe_rev::<Libm>(prm, x, y),
+            WcsProjection::Cod => cod_rev::<Libm>(prm, x, y),
+            WcsProjection::Coo => coo_rev::<Libm>(prm, x, y),
+            WcsProjection::Bon => bon_rev::<Libm>(prm, x, y),
+            WcsProjection::Pco => pco_rev::<Libm>(prm, x, y),
             other => todo!("{} is ported in a later step", other.code()),
         }
     }
@@ -253,6 +270,12 @@ fn run_setup(proj: WcsProjection, prm: &mut PrjPrm) -> Status {
         WcsProjection::Par => par_set(prm),
         WcsProjection::Mol => mol_set(prm),
         WcsProjection::Ait => ait_set(prm),
+        WcsProjection::Cop => cop_set(prm),
+        WcsProjection::Coe => coe_set(prm),
+        WcsProjection::Cod => cod_set(prm),
+        WcsProjection::Coo => coo_set(prm),
+        WcsProjection::Bon => bon_set(prm),
+        WcsProjection::Pco => pco_set(prm),
         other => todo!("{} is ported in a later step", other.code()),
     }
 }
