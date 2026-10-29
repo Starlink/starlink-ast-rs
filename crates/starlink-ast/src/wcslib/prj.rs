@@ -34,12 +34,13 @@
 //! The per-value entries, [`Prj::fwd_raw`] and [`Prj::rev_raw`], run the
 //! projection bodies with [`Libm`] and return wcslib's bits.
 //! The slice entries, [`Prj::fwd_slice`] and [`Prj::rev_slice`], do the same
-//! for most projections. For a projection that opts in, they run its body
-//! with the vectorizable [`Kernel`] trigonometry over every element, then
-//! redo with [`Libm`] each element whose trigonometric arguments the
-//! kernels do not cover, so each output is within the kernels' drift of the
-//! per-value entry's and a point is bad in one exactly when it is bad in the
-//! other.
+//! for most projections. For a projection that opts in, they run its body,
+//! or the stage of it that holds the trigonometry, with the vectorizable
+//! [`Kernel`] trigonometry over every element, finish any later stage one
+//! element at a time, then redo with [`Libm`] each element whose
+//! trigonometric arguments the kernels do not cover, so each output is
+//! within the kernels' drift of the per-value entry's and a point is bad in
+//! one exactly when it is bad in the other.
 //!
 //! A projection opts in one direction at a time, with:
 //!
@@ -59,6 +60,14 @@
 //! - a body with no branch once [`Kernel`] is inlined into it, so that the
 //!   loop over the elements vectorizes (a value the body uses on one side of
 //!   a test only is computed before the test);
+//! - for a body with a stage that cannot vectorize, such as an iteration
+//!   whose number of steps depends on the point, a split of the body into
+//!   two `#[inline(always)]` functions that both the body and the slice
+//!   call, so no arithmetic is written twice: the kernels run the first, and
+//!   a `finish` function runs the second per element and declines, so that
+//!   the element is redone with [`Libm`], wherever the kernels' drift could
+//!   change its status; a `//` comment on it argues why every element it
+//!   accepts has the per-value entry's status;
 //! - a `kernel_body!` line declaring the pair, and an arm in that slice
 //!   entry's `match` that passes it to `kernel_slice`; `fwd_slice` has the
 //!   `match`, and the first reverse opt-in adds one to `rev_slice` in the
@@ -75,6 +84,33 @@
 //! divisions in the kernel, ran at 20 ns per point against 18 on that grid,
 //! where libm's arctangent follows the same branches from point to point,
 //! and against 51 only on random points; at one point it took 40 ns more.
+//!
+//! TPN's forward projection opts in its front end, the gnomonic projection
+//! to (xi, eta); the Newton iteration that inverts the polynomial runs per
+//! element on the result, with one step fewer than the per-value entry, and
+//! an element that has not converged by then, or whose result has a
+//! coordinate so near zero that rounding decides the iteration's
+//! convergence test, is redone with [`Libm`]. On
+//! Apple silicon, with the parameters of a DSS plate, on a 1000 by 1000 grid
+//! of the plate it ran at 168 ns per point against 208 for its [`Libm`]
+//! loop, and at 164 against 213 on random points on the plate; the
+//! iteration takes most of that time. At one point it took 249 ns against
+//! 205, the set-up of the slice's loops and the bound on the polynomials'
+//! rounding outweighing the faster trigonometry, which is lost within the
+//! 1.7 microseconds of a one-point transform through the plate's FrameSet.
+//! A point whose iteration does not converge runs it twice, since only
+//! [`Libm`]'s iteration can say it is bad: on the TNX FrameSet of the
+//! benchmarks, whose inverse has one such point in 24, the inverse at a
+//! million points ran at 995 ns per point against 915, while on its good
+//! points alone it ran at 724 against 776.
+//! TPN's reverse projection does not: it is the polynomial then TAN's two
+//! arctangents, and at one point it ran at 135 ns against 54 for its
+//! [`Libm`] loop on the plate grid and at 141 against 89 on random points,
+//! from the kernel arctangents and the set-up of the vectorized loop for the
+//! polynomial's coefficients. Its loop vectorized only once the body
+//! computed the polynomial and both arctangents for every parameter set,
+//! and then ran at 39 ns per point against 54 on the grid and at 38 against
+//! 88 on random points.
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -96,7 +132,7 @@ use super::pseudocyl::{
 use super::quadcube::{
     csc_fwd, csc_rev, csc_set, qsc_fwd, qsc_rev, qsc_set, tsc_fwd, tsc_rev, tsc_set,
 };
-use super::tpn::{tpn_fwd, tpn_rev, tpn_set};
+use super::tpn::{tpn_fwd, tpn_fwd_finish, tpn_fwd_front, tpn_fwd_needs_special, tpn_rev, tpn_set};
 use super::trig::{Kernel, Libm, Trig};
 use super::zenithal::{
     air_fwd, air_rev, air_set, arc_fwd, arc_rev, arc_set, azp_fwd, azp_rev, azp_set, sin_fwd,
@@ -516,6 +552,7 @@ impl Prj {
         let prm = &self.prm;
         match self.proj {
             WcsProjection::Tan => kernel_slice::<TanFwd>(prm, a, b, "wcs_fwd"),
+            WcsProjection::Tpn => kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd"),
             proj => with_fwd!(proj, |f| slice_apply(a, b, "wcs_fwd", |phi, theta| f(
                 prm, phi, theta
             ))),
@@ -601,25 +638,41 @@ fn slice_apply(
 /// A projection body in one direction that a slice entry runs through the
 /// vectorizable kernels.
 ///
-/// `eval` is the body, generic over the trigonometry. `needs_special` is
-/// true where an argument of a trigonometric function the body would call
-/// lies outside that function's kernel cover, and where a status decision
-/// or a branch of the body depends on a kernel-derived value that the
-/// kernels' drift could carry across its threshold; the element is then
-/// redone with [`Libm`], so the kernels never change whether a point is bad
-/// or which branch runs. Both run in the vectorized loop, so neither may
-/// branch; the module documentation says how a projection meets that.
+/// `eval` is the stage of the body the kernels run, generic over the
+/// trigonometry: for most bodies the whole body. `needs_special` is true
+/// where an argument of a trigonometric function the stage would call lies
+/// outside that function's kernel cover, and where a status decision or a
+/// branch of the stage depends on a kernel-derived value that the kernels'
+/// drift could carry across its threshold; the element is then redone with
+/// [`Libm`], so the kernels never change whether a point is bad or which
+/// branch runs. Both run in the vectorized loop, so neither may branch; the
+/// module documentation says how a projection meets that.
+///
+/// `finish` completes a point from its stage's result, one point at a time,
+/// and gives `None` where it cannot rule out a different status from the one
+/// [`Libm`] would give; `libm` is the whole body as the per-value entry runs
+/// it, which redoes those points and the special ones.
 trait KernelBody {
-    /// The projection body.
+    /// The stage of the body the kernels run.
     fn eval<T: Trig>(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64);
-    /// Whether the body at (`u`, `v`) needs [`Libm`].
+    /// Whether the stage at (`u`, `v`) needs [`Libm`].
     fn needs_special(prm: &PrjPrm, u: f64, v: f64) -> bool;
+    /// The rest of the body on the stage's result, or `None` to redo the
+    /// point with [`Libm`].
+    fn finish(prm: &PrjPrm, stage: (Status, f64, f64)) -> Option<(Status, f64, f64)>;
+    /// The whole body with [`Libm`].
+    fn libm(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64);
 }
 
 /// Declare the [`KernelBody`] `$name` for the body `$body` and its predicate
-/// `$special`.
+/// `$special`, the kernels running the whole body; or, with `$finish` and
+/// `$whole`, for the stage `$body` of the body `$whole`, completed per point
+/// by `$finish`.
 macro_rules! kernel_body {
     ($name:ident, $body:ident, $special:ident) => {
+        kernel_body!($name, $body, $special, kernel_stage_is_whole_body, $body);
+    };
+    ($name:ident, $body:ident, $special:ident, $finish:ident, $whole:ident) => {
         struct $name;
         impl KernelBody for $name {
             #[inline(always)]
@@ -630,11 +683,36 @@ macro_rules! kernel_body {
             fn needs_special(prm: &PrjPrm, u: f64, v: f64) -> bool {
                 $special(prm, u, v)
             }
+            #[inline(always)]
+            fn finish(prm: &PrjPrm, stage: (Status, f64, f64)) -> Option<(Status, f64, f64)> {
+                $finish(prm, stage)
+            }
+            #[inline(always)]
+            fn libm(prm: &PrjPrm, u: f64, v: f64) -> (Status, f64, f64) {
+                $whole::<Libm>(prm, u, v)
+            }
         }
     };
 }
 
+/// The `finish` of a [`KernelBody`] whose kernels run the whole body.
+#[inline(always)]
+#[allow(clippy::unnecessary_wraps)]
+fn kernel_stage_is_whole_body(
+    _prm: &PrjPrm,
+    stage: (Status, f64, f64),
+) -> Option<(Status, f64, f64)> {
+    Some(stage)
+}
+
 kernel_body!(TanFwd, tan_fwd, tan_fwd_needs_special);
+kernel_body!(
+    TpnFwd,
+    tpn_fwd_front,
+    tpn_fwd_needs_special,
+    tpn_fwd_finish,
+    tpn_fwd
+);
 
 /// How many elements [`kernel_slice_body`] evaluates with the kernels
 /// before fixing them up, so the kernels' outputs stay in the first-level
@@ -683,8 +761,9 @@ unsafe fn kernel_slice_avx2_fma<K: KernelBody>(
 /// that are not bad are gathered, writing [`BAD_VALUE`] for the others, so
 /// the kernels run on good pairs only; `K` with [`Kernel`] runs over every
 /// gathered pair, branch-free so the loop vectorizes; then each result is
-/// scattered back, redone with [`Libm`] where `K::needs_special` says, and
-/// its status mapped as [`slice_apply`] does.
+/// completed by `K::finish`, redone with [`Libm`] where `K::needs_special`
+/// says or `K::finish` declines, scattered back, and its status mapped as
+/// [`slice_apply`] does.
 #[inline(always)]
 fn kernel_slice_body<K: KernelBody, const FMA: bool>(
     prm: &PrjPrm,
@@ -735,10 +814,11 @@ fn kernel_slice_body<K: KernelBody, const FMA: bool>(
         for j in 0..good {
             calls += 1;
             let out = if special[j] {
-                K::eval::<Libm>(prm, u[j], v[j])
+                None
             } else {
-                (status[j], p[j], q[j])
-            };
+                K::finish(prm, (status[j], p[j], q[j]))
+            }
+            .unwrap_or_else(|| K::libm(prm, u[j], v[j]));
             let i = index[j];
             match out {
                 (Status::Ok, x, y) => {
@@ -1077,12 +1157,13 @@ mod tests {
         out
     }
 
-    /// The largest ULP distance of each output of a slice entry from the
-    /// per-value entry where it projects the point, and how many outputs
-    /// differ; a bad point must be bad in both.
-    fn slice_drift(p: &Prj, pairs: &[(f64, f64)], fwd: bool) -> ([u64; 2], usize) {
+    /// The largest ULP distance and relative difference of each output of a
+    /// slice entry from the per-value entry where it projects the point, and
+    /// how many outputs differ; a bad point must be bad in both.
+    fn slice_drift(p: &Prj, pairs: &[(f64, f64)], fwd: bool) -> ([u64; 2], [f64; 2], usize) {
         let got = through_slice(p, pairs, fwd);
         let mut max = [0u64; 2];
+        let mut rel = [0.0f64; 2];
         let mut differ = 0;
         for (&(u, v), &(x, y)) in pairs.iter().zip(&got) {
             let bad_in = u == BAD_VALUE || v == BAD_VALUE || u.is_nan() || v.is_nan();
@@ -1111,9 +1192,13 @@ mod tests {
                 let d = ulps(g, w);
                 assert!(d != u64::MAX, "({u:e}, {v:e}): output {k} {g:e} vs {w:e}");
                 max[k] = max[k].max(d);
+                // Equal values with different bits are zeros of either sign.
+                let r = if g == w { 0.0 } else { (g - w).abs() / w.abs() };
+                assert!(!r.is_nan(), "({u:e}, {v:e}): output {k} {g:e} vs {w:e}");
+                rel[k] = rel[k].max(r);
             }
         }
-        (max, differ)
+        (max, rel, differ)
     }
 
     /// How far TAN's forward slice outputs may be from the per-value
@@ -1137,7 +1222,7 @@ mod tests {
     #[test]
     fn tan_slices_are_within_kernel_drift_of_the_per_value_body() {
         let p = prj(WcsProjection::Tan);
-        let (fwd_max, fwd_differ) = slice_drift(&p, &tan_fwd_inputs(), true);
+        let (fwd_max, _, fwd_differ) = slice_drift(&p, &tan_fwd_inputs(), true);
         assert!(
             fwd_max.iter().all(|&m| m <= TAN_FWD_SLICE_ULPS),
             "forward: {fwd_max:?} ULP"
@@ -1146,7 +1231,7 @@ mod tests {
             fwd_differ > 0,
             "forward: no output differs; is the kernel in use?"
         );
-        let (rev_max, rev_differ) = slice_drift(&p, &tan_rev_inputs(), false);
+        let (rev_max, _, rev_differ) = slice_drift(&p, &tan_rev_inputs(), false);
         assert_eq!((rev_max, rev_differ), ([0, 0], 0), "reverse");
     }
 
@@ -1168,15 +1253,14 @@ mod tests {
         out
     }
 
-    #[test]
-    fn tan_slices_give_each_point_the_same_bits_at_any_length() {
-        let p = prj(WcsProjection::Tan);
-        let pairs = interleaved_inputs();
+    /// Each pair gets the same bits through either slice entry of `p`
+    /// whatever the length of the slice it is in.
+    fn assert_same_bits_at_any_length(p: &Prj, pairs: &[(f64, f64)]) {
         for fwd in [true, false] {
-            let whole = through_slice(&p, &pairs, fwd);
+            let whole = through_slice(p, pairs, fwd);
             for len in [1, 2, 3, 7, 1001] {
                 for (start, chunk) in pairs.chunks(len).enumerate() {
-                    let got = through_slice(&p, chunk, fwd);
+                    let got = through_slice(p, chunk, fwd);
                     for (i, (g, w)) in got.iter().zip(&whole[start * len..]).enumerate() {
                         assert!(
                             same_bits_or_both_nan(g.0, w.0) && same_bits_or_both_nan(g.1, w.1),
@@ -1189,20 +1273,22 @@ mod tests {
         }
     }
 
-    /// Both builds of the kernel loop, with and without fused multiply-adds,
-    /// give the same bits.
     #[test]
-    fn tan_slice_builds_agree() {
-        let p = prj(WcsProjection::Tan);
-        let pairs = interleaved_inputs();
+    fn tan_slices_give_each_point_the_same_bits_at_any_length() {
+        assert_same_bits_at_any_length(&prj(WcsProjection::Tan), &interleaved_inputs());
+    }
+
+    /// Both builds of `K`'s kernel loop, with and without fused
+    /// multiply-adds, give the same bits.
+    fn assert_builds_agree<K: KernelBody>(p: &Prj, pairs: &[(f64, f64)]) {
         let run = |fma: bool| {
             let mut a: Vec<f64> = pairs.iter().map(|q| q.0).collect();
             let mut b: Vec<f64> = pairs.iter().map(|q| q.1).collect();
             let prm = &p.prm;
             if fma {
-                kernel_slice_body::<TanFwd, true>(prm, &mut a, &mut b, "wcs_fwd").unwrap();
+                kernel_slice_body::<K, true>(prm, &mut a, &mut b, "wcs_fwd").unwrap();
             } else {
-                kernel_slice_body::<TanFwd, false>(prm, &mut a, &mut b, "wcs_fwd").unwrap();
+                kernel_slice_body::<K, false>(prm, &mut a, &mut b, "wcs_fwd").unwrap();
             }
             (a, b)
         };
@@ -1215,6 +1301,11 @@ mod tests {
                 pairs[i]
             );
         }
+    }
+
+    #[test]
+    fn tan_slice_builds_agree() {
+        assert_builds_agree::<TanFwd>(&prj(WcsProjection::Tan), &interleaved_inputs());
     }
 
     #[test]
@@ -1237,5 +1328,343 @@ mod tests {
             (x[3].to_bits(), y[3].to_bits()),
             (0.0f64.to_bits(), 90.0f64.to_bits())
         );
+    }
+
+    use crate::wcslib::tpn::{
+        NEWTON_MAX_ITERATIONS, NEWTON_RELATIVE_TOLERANCE, tpn_fwd_solve, tpn_fwd_step_noise,
+    };
+
+    /// The TPN projection of the DSS plate solution in
+    /// `tests/fixtures/wcsconv/inputs/dss.ast`: its `PV1_m`, of the
+    /// longitude axis, and `PV2_m`, of the latitude axis.
+    #[allow(clippy::excessive_precision)] // the fixture's values, as written there
+    fn dss_prj(tpn_tan: bool) -> Prj {
+        let pv1 = [
+            (0, 0.00037777813768480556),
+            (1, 0.018675372165510556),
+            (2, 1.4659181119170556e-05),
+            (4, -5.6541834490241662e-09),
+            (5, -1.6598619578175834e-10),
+            (6, 3.324645548432778e-09),
+            (7, 6.8029375162963896e-10),
+            (8, -1.0315391309210556e-11),
+            (9, 6.5770184096316667e-10),
+            (10, 4.6843790588691666e-11),
+        ];
+        let pv2 = [
+            (0, 0.00020734395690532499),
+            (1, 0.018675089806542779),
+            (2, -1.6578391725152224e-05),
+            (4, -5.1378767937980552e-09),
+            (5, -1.7623932712259446e-09),
+            (6, 2.7161547313251387e-10),
+            (7, 7.088907407099166e-10),
+            (8, 1.8432618513145277e-11),
+            (9, 6.8491061989569442e-10),
+            (10, 7.3325859634708332e-13),
+        ];
+        let axis = |pv: &[(usize, f64)]| {
+            let mut out = vec![None; 22];
+            for &(m, v) in pv {
+                out[m] = Some(v);
+            }
+            for m in [17, 19, 21] {
+                out[m] = Some(0.0);
+            }
+            out
+        };
+        Prj::new(WcsProjection::Tpn, &[axis(&pv2), axis(&pv1)], tpn_tan).unwrap()
+    }
+
+    /// Native (phi, theta) for TPN forward: random angles within ±720
+    /// degrees paired out of order; random points on a six-degree plate
+    /// about the pole; random points between the pole and 9e-11 degrees
+    /// above the equator at logarithmic intervals, where the Newton
+    /// iteration takes up to 49 steps; and every pairing of the specials
+    /// and the multiples of 45 degrees.
+    fn tpn_fwd_inputs(p: &Prj) -> Vec<(f64, f64)> {
+        let d = degrees(100_000);
+        let mut out: Vec<(f64, f64)> = d.iter().copied().zip(d.iter().rev().copied()).collect();
+        let e = degrees(100_000);
+        out.extend(d.iter().zip(&e).map(|(&u, &v)| (u, 90.0 - v.abs() / 120.0)));
+        out.extend(
+            d.iter()
+                .zip(&e)
+                .take(20_000)
+                .map(|(&u, &v)| (u, 90.0 * crate::math::powf(10.0, -12.0 * v.abs() / 720.0))),
+        );
+        out.extend(tpn_axis_images(p, &d[..20_000]));
+        let mut edges = specials();
+        edges.extend((-8..=8).map(|k| 45.0 * f64::from(k)));
+        for &u in &edges {
+            for &v in &edges {
+                out.push((u, v));
+            }
+        }
+        out
+    }
+
+    /// The native (phi, theta) of the points (0, c) and (c, 0) of the
+    /// projection plane, for each `c`: points whose forward projection has a
+    /// coordinate at zero, below the rounding floor of the Newton
+    /// iteration's convergence test.
+    fn tpn_axis_images(p: &Prj, coords: &[f64]) -> Vec<(f64, f64)> {
+        let mut out = Vec::new();
+        for &c in coords {
+            for (x, y) in [(0.0, c), (c, 0.0)] {
+                let (status, phi, theta) = p.rev_raw(x, y);
+                assert_eq!(status, Status::Ok);
+                out.push((phi, theta));
+            }
+        }
+        out
+    }
+
+    /// The largest ratio, over the outputs of TPN's forward slice that
+    /// differ from the per-value entry's, of the difference to its bound,
+    /// `NEWTON_RELATIVE_TOLERANCE^2 |x| + 2 nu`, where nu is
+    /// `tpn_fwd_step_noise` at the per-value entry's last step.
+    /// The slice runs the same Newton iteration as the per-value entry on a
+    /// front end within a few ULP of it, and accepts a point only where both
+    /// coordinates are above the floor below which rounding decides the
+    /// convergence test. Where the two iterations take the same number of
+    /// steps, the outputs differ by the two last steps' rounding, at most
+    /// nu, since Newton's method cancels an earlier difference to first
+    /// order. Where a convergence test at its threshold passes on one path
+    /// and fails on the other, the path that goes on takes one more step,
+    /// of order `NEWTON_RELATIVE_TOLERANCE^2 |x|` by quadratic convergence,
+    /// with its own rounding, at most nu.
+    fn tpn_drift_over_bound(p: &Prj, pairs: &[(f64, f64)]) -> f64 {
+        let got = through_slice(p, pairs, true);
+        pairs
+            .iter()
+            .zip(&got)
+            .map(|(&(u, v), &(x, y))| tpn_drift_ratio(p, u, v, x, y))
+            .fold(0.0, f64::max)
+    }
+
+    /// [`tpn_drift_over_bound`] for one point (`u`, `v`) given (`x`, `y`)
+    /// for it; 0 where either output is bit for bit the per-value entry's,
+    /// or where the per-value entry says the point is bad.
+    fn tpn_drift_ratio(p: &Prj, u: f64, v: f64, x: f64, y: f64) -> f64 {
+        if u == BAD_VALUE || v == BAD_VALUE || u.is_nan() || v.is_nan() {
+            return 0.0;
+        }
+        let (status, xi, eta) = tpn_fwd_front::<Libm>(&p.prm, u, v);
+        if status != Status::Ok {
+            return 0.0;
+        }
+        let solved = tpn_fwd_solve(&p.prm, xi, eta, NEWTON_MAX_ITERATIONS);
+        if solved.status != Status::Ok {
+            return 0.0;
+        }
+        let (wx, wy) = (solved.x, solved.y);
+        let jacobian = solved.jacobian.expect("TPN with a polynomial iterates");
+        let ([nu_x, nu_y], det) = tpn_fwd_step_noise(&p.prm, wx, wy, jacobian);
+        let tol2 = NEWTON_RELATIVE_TOLERANCE * NEWTON_RELATIVE_TOLERANCE;
+        let mut worst = 0.0f64;
+        for (g, w, nu) in [(x, wx, nu_x / det), (y, wy, nu_y / det)] {
+            if same_bits_or_both_nan(g, w) {
+                continue;
+            }
+            let ratio = (g - w).abs() / (tol2 * w.abs() + 2.0 * nu);
+            assert!(!ratio.is_nan(), "({u:e}, {v:e}): {g:e} vs {w:e}");
+            worst = worst.max(ratio);
+        }
+        worst
+    }
+
+    /// TPN's forward slice runs its front end with the kernels and is within
+    /// the Newton iteration's bound of the per-value entry, with the same bad
+    /// points; without the TAN term it has no trigonometry, and its reverse
+    /// slice runs [`Libm`], so those are bit for bit the per-value entry.
+    #[test]
+    fn tpn_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let p = dss_prj(true);
+        let inputs = tpn_fwd_inputs(&p);
+        let (fwd_ulps, fwd_rel, fwd_differ) = slice_drift(&p, &inputs, true);
+        let over = tpn_drift_over_bound(&p, &inputs);
+        assert!(
+            over <= 1.0,
+            "forward: {over} of the bound ({fwd_rel:?} relative, {fwd_ulps:?} ULP)"
+        );
+        assert!(
+            fwd_differ > 0,
+            "forward: no output differs; is the kernel in use?"
+        );
+        let (rev_ulps, _, rev_differ) = slice_drift(&p, &tan_rev_inputs(), false);
+        assert_eq!((rev_ulps, rev_differ), ([0, 0], 0), "reverse");
+        let (ulps, _, differ) = slice_drift(&dss_prj(false), &inputs, true);
+        assert_eq!((ulps, differ), ([0, 0], 0), "forward without the TAN term");
+    }
+
+    /// Points on the axes of the projection plane are below the floor of the
+    /// convergence test and are redone with [`Libm`], so they get the
+    /// per-value entry's bits, bad or good.
+    #[test]
+    fn tpn_axis_points_match_the_per_value_entry_in_a_slice() {
+        let p = dss_prj(true);
+        let pairs = tpn_axis_images(&p, &degrees(20_000));
+        let got = through_slice(&p, &pairs, true);
+        let mut bad = 0;
+        for (&(u, v), &(x, y)) in pairs.iter().zip(&got) {
+            let (status, wx, wy) = p.fwd_raw(u, v);
+            let want = if status == Status::Ok {
+                (wx, wy)
+            } else {
+                bad += 1;
+                (BAD_VALUE, BAD_VALUE)
+            };
+            assert_eq!(
+                (x.to_bits(), y.to_bits()),
+                (want.0.to_bits(), want.1.to_bits()),
+                "({u:e}, {v:e})"
+            );
+        }
+        // Some of these points are bad in the per-value entry, its iteration
+        // stepping about a coordinate that is rounding noise.
+        assert!(bad > 0, "no axis point is bad; is the class exercised?");
+    }
+
+    #[test]
+    fn tpn_slices_give_each_point_the_same_bits_at_any_length() {
+        assert_same_bits_at_any_length(&dss_prj(true), &interleaved_inputs());
+    }
+
+    #[test]
+    fn tpn_slice_builds_agree() {
+        assert_builds_agree::<TpnFwd>(&dss_prj(true), &interleaved_inputs());
+    }
+
+    /// `v` moved `n` ULP away from zero (towards it for negative `n`).
+    fn ulps_away(v: f64, n: i64) -> f64 {
+        f64::from_bits(v.to_bits().wrapping_add_signed(n))
+    }
+
+    /// Points just off an axis of the projection plane, from 1e-16 to 1e-6
+    /// of a plane unit from it, near the floor below which the slice redoes
+    /// a point: bad in the slice exactly when bad in the per-value entry, and
+    /// each output either the per-value entry's bits or within the bound.
+    #[test]
+    fn tpn_points_near_the_floor_agree_and_stay_within_the_bound() {
+        let p = dss_prj(true);
+        let c = degrees(4000);
+        let mut pairs = Vec::new();
+        for (i, &c) in c.iter().enumerate() {
+            let t = (i % 101) as f64 / 100.0;
+            let sign = if i % 2 == 0 { 1.0 } else { -1.0 };
+            let delta = sign * crate::math::powf(10.0, -6.0 - 10.0 * t);
+            for (x, y) in [(delta, c), (c, delta)] {
+                let (status, phi, theta) = p.rev_raw(x, y);
+                assert_eq!(status, Status::Ok);
+                pairs.push((phi, theta));
+            }
+        }
+        slice_drift(&p, &pairs, true);
+        let over = tpn_drift_over_bound(&p, &pairs);
+        assert!(over <= 1.0, "{over} of the bound");
+    }
+
+    /// Points whose per-value forward projection with [`dss_prj`]'s
+    /// parameters converges at the given Newton iteration, found by searching
+    /// random points near the equator for high iteration counts. Those
+    /// converging at the 51st are bad: the per-value entry stops at the 50th.
+    const TPN_CAP_POINTS: [(usize, f64, f64); 9] = [
+        (49, 28.458582279307073, 4.709692032133452e-11),
+        (49, -158.55330477812421, 3.7952685308572407e-11),
+        (49, -134.31793310169147, 6.35517181385545e-11),
+        (50, 55.45920210984241, 2.801028035332779e-11),
+        (50, 90.91227084307462, 3.30257334268539e-11),
+        (50, -21.350194372456656, 3.669788568433079e-11),
+        (51, -113.96782653838751, 1.1827860341910004e-11),
+        (51, -160.2045647649468, 1.5607410389929512e-11),
+        (51, -154.86670272665023, 1.827352429797668e-11),
+    ];
+
+    /// A point whose iteration converges at or next to the per-value entry's
+    /// limit is bad in the forward slice exactly when it is bad in the
+    /// per-value entry.
+    #[test]
+    fn tpn_cap_points_agree_on_bad_or_good() {
+        let p = dss_prj(true);
+        for &(k, phi, theta) in &TPN_CAP_POINTS {
+            let (status, xi, eta) = tpn_fwd_front::<Libm>(&p.prm, phi, theta);
+            assert_eq!(status, Status::Ok, "({phi}, {theta})");
+            assert_eq!(
+                (
+                    tpn_fwd_solve(&p.prm, xi, eta, k - 1).status,
+                    tpn_fwd_solve(&p.prm, xi, eta, k).status
+                ),
+                (Status::BadPoint, Status::Ok),
+                "({phi}, {theta}) should converge at iteration {k}"
+            );
+            assert_eq!(
+                p.fwd_raw(phi, theta).0 == Status::Ok,
+                k <= NEWTON_MAX_ITERATIONS,
+                "({phi}, {theta})"
+            );
+            // The slice keeps the kernel-fed iteration's result for a point
+            // that converges within its limit, so the test covers that
+            // branch and not only the redo. A front end 2 ULP from Libm's in
+            // each output stands in for the kernels', whose difference from
+            // Libm's depends on the platform's libm.
+            if k < NEWTON_MAX_ITERATIONS {
+                for (sx, sy) in [(2, 2), (2, -2), (-2, 2), (-2, -2)] {
+                    let nudged = (Status::Ok, ulps_away(xi, sx), ulps_away(eta, sy));
+                    let (s, x, y) = tpn_fwd_finish(&p.prm, nudged)
+                        .unwrap_or_else(|| panic!("({phi}, {theta}): {nudged:?} is not accepted"));
+                    assert_eq!(s, Status::Ok);
+                    let over = tpn_drift_ratio(&p, phi, theta, x, y);
+                    assert!(over <= 1.0, "({phi}, {theta}): {over} of the bound");
+                }
+            }
+        }
+        // Alone, together, and among other points and points on the axes of
+        // the projection plane; `slice_drift` asserts the agreement on bad
+        // and good.
+        let cap: Vec<(f64, f64)> = TPN_CAP_POINTS.iter().map(|&(_, u, v)| (u, v)).collect();
+        let mut mixed = interleaved_inputs();
+        mixed.extend(tpn_axis_images(&p, &degrees(2000)));
+        for (i, &q) in cap.iter().enumerate() {
+            mixed.insert(i * 97 + 5, q);
+        }
+        for pairs in cap.chunks(1).chain([&cap[..], &mixed[..]]) {
+            slice_drift(&p, pairs, true);
+            let over = tpn_drift_over_bound(&p, pairs);
+            assert!(over <= 1.0, "{over} of the bound");
+        }
+    }
+
+    /// A point with an angle at a multiple of 90 degrees, which the kernels
+    /// do not cover, gets the per-value entry's bits in a slice.
+    #[test]
+    fn tpn_points_the_kernels_do_not_cover_are_exact_in_a_slice() {
+        let p = dss_prj(true);
+        let mut pairs = Vec::new();
+        for k in -4..=4 {
+            let a = 90.0 * f64::from(k);
+            pairs.extend([
+                (a, 89.5),
+                (10.0, a),
+                (a, a),
+                (-170.0, 89.0 + f64::from(k) / 8.0),
+            ]);
+        }
+        let got = through_slice(&p, &pairs, true);
+        for (&(u, v), &(x, y)) in pairs.iter().zip(&got) {
+            if tpn_fwd_needs_special(&p.prm, u, v) {
+                let (status, wx, wy) = p.fwd_raw(u, v);
+                let want = if status == Status::Ok {
+                    (wx, wy)
+                } else {
+                    (BAD_VALUE, BAD_VALUE)
+                };
+                assert_eq!(
+                    (x.to_bits(), y.to_bits()),
+                    (want.0.to_bits(), want.1.to_bits()),
+                    "({u}, {v})"
+                );
+            }
+        }
     }
 }

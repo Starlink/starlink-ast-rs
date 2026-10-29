@@ -17,6 +17,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 - `starlink-ast`: a WcsMap whose projection parameters are unusable reports `ErrorCode::Wcspa` from every transform that has a good point, rather than only from the first, after which it gave bad values; the C library reports it only once.
 - `starlink-ast`: every WcsMap projection, and TPN's polynomial, is Rust, and the crate no longer compiles any C for wcslib; results are bit for bit those of the C projections they replace, and WcsMap transforms whole slices through the projection kernels.
 - `starlink-ast`: WcsMap's TAN projection uses vectorizable trigonometry in bulk forward transforms (native spherical to projected coordinates), which on large point sets run between two and three times faster; results may differ from earlier releases by a few ULP.
+- `starlink-ast`: WcsMap's TPN projection uses vectorizable trigonometry for the gnomonic stage of bulk forward transforms (native spherical to projected coordinates), which on large point sets run 10 to 20% faster; results may differ from earlier releases by up to 1e-10 of a coordinate, the square of the tolerance of TPN's Newton iteration, plus the rounding error of TPN's polynomials, and in tests by at most 1e-14 of a coordinate with macOS's libm on Apple silicon and 6e-13 with its x86-64 libm; points whose projection lies on or very near an axis of the projection plane give the same results as before.
 
 ### Fixed
 
