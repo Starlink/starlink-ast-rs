@@ -20,7 +20,7 @@ use super::math;
 
 use super::PRJ_PARAM_SLOTS;
 use super::prj::{PrjPrm, Status};
-use super::trig::{D2R, Libm, R2D, Trig, sincosd_covers};
+use super::trig::{D2R, Libm, R2D, Trig, atand_covers, sincosd_covers};
 use std::f64::consts::PI;
 
 /// C's `(a > b) ? a : b`, which differs from `f64::max` when either is NaN.
@@ -385,7 +385,7 @@ pub(super) fn tan_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // kernel cannot turn a bad point good or a good one bad, so the predicate
 // needs only the covers.
 #[inline(always)]
-pub(super) fn tan_fwd_needs_special(_prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+pub(super) fn tan_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, theta: f64) -> bool {
     !sincosd_covers(theta) | !sincosd_covers(phi)
 }
 
@@ -458,47 +458,137 @@ pub(super) fn sin_set(prm: &mut PrjPrm) -> Status {
 }
 
 // reference/starlink-ast/wcslib/proj.c, astSINfwd; reference/starlink-ast at 3d3f255f.
+// C tests `prj->w[1] == 0.0` for the validation only; the test is made once
+// here, which picks a body with that branch resolved.
 #[inline(always)]
 pub(super) fn sin_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
-    // Below this angle from the pole, in radians, the small angle formulae
-    // are used, the literal in C.
-    const SMALL_T: f64 = 1.0e-5;
-
-    let mut t = (90.0 - theta.abs()) * D2R;
-    let z;
-    let cthe;
-    if t < SMALL_T {
-        if theta > 0.0 {
-            z = t * t / 2.0;
-        } else {
-            z = 2.0 - t * t / 2.0;
-        }
-        cthe = t;
+    if prm.w[1] == 0.0 {
+        sin_fwd_as::<T, false>(prm, phi, theta)
     } else {
-        z = 1.0 - T::sind(theta);
-        cthe = T::cosd(theta);
+        sin_fwd_as::<T, true>(prm, phi, theta)
     }
+}
+
+/// Below this angle from the pole, in radians, [`sin_fwd`] uses the small
+/// angle formulae, the literal in C.
+const SIN_SMALL_T: f64 = 1.0e-5;
+
+/// [`sin_fwd`] for the orthographic projection, or for the synthesis
+/// projection when `SYNTHESIS` is set (`prm.w[1]` not zero).
+// For a branch-free `T`, both of C's forms of `z` and `cthe` are computed
+// and one is selected, and the status is a select, so that the body has no
+// branch on the point and vectorizes; for `Libm` the sine and cosine of
+// `theta` are computed only where C computes them. The outputs are C's.
+#[inline(always)]
+fn sin_fwd_as<T: Trig, const SYNTHESIS: bool>(
+    prm: &PrjPrm,
+    phi: f64,
+    theta: f64,
+) -> (Status, f64, f64) {
+    let t = (90.0 - theta.abs()) * D2R;
+    let small = t < SIN_SMALL_T;
+    let z_small = if theta > 0.0 {
+        t * t / 2.0
+    } else {
+        2.0 - t * t / 2.0
+    };
+    let (z_full, cthe_full) = if T::BRANCH_FREE || !small {
+        (1.0 - T::sind(theta), T::cosd(theta))
+    } else {
+        (0.0, 0.0)
+    };
+    let z = if small { z_small } else { z_full };
+    let cthe = if small { t } else { cthe_full };
 
     let cphi = T::cosd(phi);
     let sphi = T::sind(phi);
     let x = prm.r0 * (cthe * sphi + prm.p[1] * z);
     let y = -prm.r0 * (cthe * cphi - prm.p[2] * z);
 
-    // Validate this solution.
-    if prm.w[1] == 0.0 {
-        // Orthographic projection.
-        if theta < 0.0 {
-            return (Status::BadPoint, x, y);
-        }
+    // Validate this solution: the orthographic projection is bad beyond the
+    // equator, and the synthesis projection beyond the native latitude
+    // where the projection plane is tangent to the sphere.
+    let bad = if SYNTHESIS {
+        theta < -T::atand(sin_fwd_limit_tan(prm, sphi, cphi))
     } else {
-        // "Synthesis" projection.
-        t = -T::atand(prm.p[1] * sphi - prm.p[2] * cphi);
-        if theta < t {
-            return (Status::BadPoint, x, y);
-        }
-    }
+        theta < 0.0
+    };
+    let status = if bad { Status::BadPoint } else { Status::Ok };
 
-    (Status::Ok, x, y)
+    (status, x, y)
+}
+
+/// The tangent whose arc tangent, negated, is the synthesis projection's
+/// lowest valid native latitude at the longitude with sine `sphi` and
+/// cosine `cphi`.
+#[inline(always)]
+fn sin_fwd_limit_tan(prm: &PrjPrm, sphi: f64, cphi: f64) -> f64 {
+    prm.p[1] * sphi - prm.p[2] * cphi
+}
+
+/// [`sin_fwd`] for the orthographic projection.
+#[inline(always)]
+pub(super) fn sin_fwd_orthographic<T: Trig>(
+    prm: &PrjPrm,
+    phi: f64,
+    theta: f64,
+) -> (Status, f64, f64) {
+    sin_fwd_as::<T, false>(prm, phi, theta)
+}
+
+/// [`sin_fwd`] for the synthesis projection.
+#[inline(always)]
+pub(super) fn sin_fwd_synthesis<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
+    sin_fwd_as::<T, true>(prm, phi, theta)
+}
+
+/// Whether [`sin_fwd_orthographic`] needs [`Libm`] at (`phi`, `theta`): a
+/// sine or cosine argument outside the kernels' cover. The sine and cosine
+/// of `theta` are used only away from the pole.
+// The status is decided from `theta` alone, so the kernels cannot change it.
+#[inline(always)]
+pub(super) fn sin_fwd_orthographic_needs_special<T: Trig>(
+    _prm: &PrjPrm,
+    phi: f64,
+    theta: f64,
+) -> bool {
+    let near_pole = (90.0 - theta.abs()) * D2R < SIN_SMALL_T;
+    !sincosd_covers(phi) | (!near_pole & !sincosd_covers(theta))
+}
+
+/// Whether [`sin_fwd_synthesis`] needs [`Libm`] at (`phi`, `theta`): as
+/// [`sin_fwd_orthographic_needs_special`], and where the arc tangent's
+/// argument is outside its kernel's cover or `theta` is so near the lowest
+/// valid latitude that the kernels' drift could change the status.
+// The status is `theta < limit`, where `limit` is `-atand(p1 sind(phi) -
+// p2 cosd(phi))`, all of it from the kernels in the slice. Their limit
+// differs from Libm's by at most:
+// - the arc tangent's argument: each of the sine and cosine is within 2 ULP
+//   of Libm's (see `Kernel`), at most 2 * 2^-52 for a value of magnitude at
+//   most 1, so p1 sind and p2 cosd differ by at most 2 * 2^-52 (|p1| + |p2|)
+//   before rounding; each path rounds the two products and the difference
+//   once, at most 2^-53 of |p1|, |p2| and the argument, which is at most
+//   |p1| + |p2|, so 2^-52 (|p1| + |p2|) per path and 2 * 2^-52 (|p1| + |p2|)
+//   for both; the arguments differ by at most 4 * 2^-52 (|p1| + |p2|);
+// - the arc tangent, whose derivative is at most 1, carries that over, and
+//   adds 1 ULP of the kernel from libm's and 2 ULP of libm's from the exact
+//   value at the two arguments, at most 3 * 2^-52 as the result is less than
+//   2 in magnitude;
+// - the product with R2D, rounded on each path, at most 2^-47 on each since
+//   the limit is at most 90 in magnitude.
+// That is R2D * 2^-52 * (3 + 4 (|p1| + |p2|)) + 2^-46 degrees; the margin
+// used is twice that. Where `theta` is further than the margin from the
+// kernels' limit, it is on the same side of Libm's.
+#[inline(always)]
+pub(super) fn sin_fwd_synthesis_needs_special<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+    let a = sin_fwd_limit_tan(prm, T::sind(phi), T::cosd(phi));
+    let limit = -T::atand(a);
+    let margin = 2.0
+        * (R2D * f64::EPSILON * (3.0 + 4.0 * (prm.p[1].abs() + prm.p[2].abs()))
+            + 64.0 * f64::EPSILON);
+    // False for a NaN, which is then redone.
+    let clear_of_limit = (theta - limit).abs() > margin;
+    sin_fwd_orthographic_needs_special::<T>(prm, phi, theta) | !atand_covers(a) | !clear_of_limit
 }
 
 // reference/starlink-ast/wcslib/proj.c, astSINrev; reference/starlink-ast at 3d3f255f.
