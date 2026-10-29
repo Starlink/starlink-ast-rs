@@ -30,9 +30,10 @@
 
 use super::math;
 
-use super::prj::{PrjPrm, Status};
+use super::WcsProjection;
+use super::prj::{PrjPrm, Status, phi_near_lon_limits};
 use super::pseudocyl::{sfl_fwd, sfl_rev, sfl_set};
-use super::trig::{D2R, Libm, R2D, Trig};
+use super::trig::{D2R, Libm, R2D, Trig, atan2d_covers, sincosd_covers, sincosd_near_zero};
 use super::zenithal::c_copysign;
 use std::f64::consts::PI;
 
@@ -70,7 +71,13 @@ pub(super) fn bon_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
         // Sanson-Flamsteed.
         return sfl_fwd::<T>(prm, phi, theta);
     }
+    bon_fwd_conic::<T>(prm, phi, theta)
+}
 
+/// [`bon_fwd`] with a non-zero standard parallel, which is the whole of it
+/// but the hand-off to Sanson-Flamsteed's projection.
+#[inline(always)]
+pub(super) fn bon_fwd_conic<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let r = prm.w[2] - theta * prm.w[1];
     let a = prm.r0 * phi * T::cosd(theta) / r;
 
@@ -80,40 +87,86 @@ pub(super) fn bon_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
+/// Whether [`bon_fwd_conic`] needs [`Libm`] at (`phi`, `theta`): a sine or
+/// cosine argument outside the kernels' cover.
+// The body has no status test and no branch. The argument `a` of its second
+// sine and cosine comes from the kernels' cosine of `theta`, and is tested
+// as the kernels compute it; it is infinite or NaN where `r` is zero.
+#[inline(always)]
+pub(super) fn bon_fwd_needs_special<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> bool {
+    let r = prm.w[2] - theta * prm.w[1];
+    let a = prm.r0 * phi * T::cosd(theta) / r;
+    !sincosd_covers(theta) | !sincosd_covers(a)
+}
+
 // reference/starlink-ast/wcslib/proj.c, astBONrev; reference/starlink-ast at 3d3f255f.
-// The body keeps the shape of the C, which declares each output before
-// the branches that assign it.
-#[allow(clippy::needless_late_init)]
 #[inline(always)]
 pub(super) fn bon_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     if prm.p[1] == 0.0 {
         // Sanson-Flamsteed.
         return sfl_rev::<T>(prm, x, y);
     }
+    bon_rev_conic::<T>(prm, x, y)
+}
 
+/// [`bon_rev`] with a non-zero standard parallel, which is the whole of it
+/// but the hand-off to Sanson-Flamsteed's projection.
+// C computes the arc tangent only where `r` is not zero, and the longitude's
+// quotient only where `cthe` is not zero; here the arc tangent is computed
+// at `r == 0` too when `T::BRANCH_FREE` is set, and the quotient everywhere,
+// and the values are selected, so that the body has no branch on the point.
+#[inline(always)]
+pub(super) fn bon_rev_conic<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let dy = prm.w[2] - y;
     let mut r = math::sqrt(x * x + dy * dy);
     if prm.p[1] < 0.0 {
         r = -r;
     }
 
-    let a;
-    if r == 0.0 {
-        a = 0.0;
+    let a_cone = if T::BRANCH_FREE || r != 0.0 {
+        T::atan2d(x / r, dy / r)
     } else {
-        a = T::atan2d(x / r, dy / r);
-    }
+        0.0
+    };
+    let a = if r == 0.0 { 0.0 } else { a_cone };
 
     let theta = (prm.w[2] - r) / prm.w[1];
     let cthe = T::cosd(theta);
-    let phi;
-    if cthe == 0.0 {
-        phi = 0.0;
-    } else {
-        phi = a * (r / prm.r0) / cthe;
-    }
+    let phi_cone = a * (r / prm.r0) / cthe;
+    let phi = if cthe == 0.0 { 0.0 } else { phi_cone };
 
     (Status::Ok, phi, theta)
+}
+
+/// Whether [`bon_rev_conic`] needs [`Libm`] at (`x`, `y`): an argument of
+/// the arc tangent or the cosine outside the kernels' cover, a cosine so
+/// near zero that the kernels' drift could change which longitude the body
+/// gives, or a longitude so near a limit of the range a WcsMap's inverse
+/// accepts that the drift could change whether it is accepted.
+// The body has no status test. Its branch at `r == 0` depends on the input
+// alone, and there `x / r` is NaN, which the cover rejects; its branch at
+// `cthe == 0`, with `cthe` the kernels' cosine of `theta`, is decided by
+// `sincosd_near_zero`. The latitude is computed alike on both paths. The
+// longitude `(a (r / r0)) / cthe`, with `a` the kernels' arc tangent, within
+// 2 ULP of Libm's (see `Kernel`), at most 2 eps of it (eps = 2^-52), and
+// `cthe` within 2 eps, differs by at most 6 eps of itself, with the two
+// paths' roundings of the product and the quotient, eps between them each,
+// and by 2^-1074 more for each where it is subnormal.
+#[inline(always)]
+pub(super) fn bon_rev_needs_special<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> bool {
+    let dy = prm.w[2] - y;
+    let mut r = math::sqrt(x * x + dy * dy);
+    if prm.p[1] < 0.0 {
+        r = -r;
+    }
+    let theta = (prm.w[2] - r) / prm.w[1];
+    let cthe = T::cosd(theta);
+    let phi = T::atan2d(x / r, dy / r) * (r / prm.r0) / cthe;
+    let drift = 6.0 * f64::EPSILON * phi.abs() + 2.0 * f64::from_bits(1);
+    !atan2d_covers(x / r, dy / r)
+        | !sincosd_covers(theta)
+        | sincosd_near_zero(cthe)
+        | phi_near_lon_limits(phi, drift, WcsProjection::Bon.table_tol())
 }
 
 // ---------------------------------------------------------------------------

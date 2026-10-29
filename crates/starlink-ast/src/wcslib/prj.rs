@@ -335,6 +335,48 @@
 //! the grid and at 13.3, 20.5 and 19.0 against 9.8, 17.4 and 15.0 on the
 //! image, though faster on random points (13.2 against 35.0, 26.0 against
 //! 47.8, 19.0 against 49.5).
+//!
+//! The polyconic projections were timed as the conic ones, BON with the
+//! benchmarks' standard parallel at 45 degrees and PCO on an image centred
+//! at a latitude of 30 degrees.
+//!
+//! BON's forward projection opts in, a whole body, only where its standard
+//! parallel is not zero, since it is Sanson-Flamsteed's projection
+//! otherwise. The argument of its second sine and cosine comes from the
+//! kernels' cosine of the latitude and is tested for cover as the kernels
+//! compute it. It ran at 19.6 to 20.0 ns per point against 32.6 for its
+//! [`Libm`] loop on the whole-sky grid, at 19.8 to 20.0 against 31.3 to
+//! 31.6 on the image and at 20.0 against 40.2 to 40.6 on random points, and
+//! at one point took 92 ns against 36.
+//!
+//! BON's reverse projection opts in, a whole body where its standard
+//! parallel is not zero. Its latitude has no trigonometry and is the
+//! per-value entry's; its longitude's choice of form, where the cosine of
+//! the latitude is zero, is decided by the kernels' cosine, flagged where
+//! that cosine is within its drift of zero. It ran at 23.5 to 23.6 ns per
+//! point against 29.1 to 30.7 on the grid, at 23.2 to 23.6 against 30.4 to
+//! 30.7 on the image and at 23.3 to 23.6 against 48.2 to 48.4 on random
+//! points, and at one point took 96 ns against 35.
+//!
+//! PCO's forward projection does not opt in. Run whole through the kernels
+//! it ran at 21.4 to 22.1 ns per point against 36.8 to 37.5 for its [`Libm`]
+//! loop on the grid and at 21.4 to 22.0 against 45.5 to 47.0 on random
+//! points, but near the equator its drift, measured against the scale of
+//! its coordinates, is far beyond that of any direction that opts in, which
+//! all stay within a few ULP of it. There `y` takes one less the kernels'
+//! cosine of a small angle, times a large cotangent, and the cancellation
+//! carries the kernels' drift to about 7e-9 degrees, bounded by 3e-8:
+//! against the projection's radius of 57.3 degrees, whose ULP is 7.1e-15
+//! degrees, that is 1e6 ULP. Redoing with [`Libm`] every point whose derived
+//! drift is beyond a few ULP of its output redid 92% of a grid's points, and
+//! the slice ran at 61 to 62 ns per point against 37 on the grid and 69 to
+//! 70 against 46 on random points.
+//!
+//! PCO's reverse projection does not opt in either. Its trigonometry, an arc
+//! tangent and a sine, follows an iteration of up to 64 steps, each with a
+//! tangent, which takes most of its time: with them from the kernels it ran
+//! at 640 ns per point against 647 on the grid, 530 against 531 on the image
+//! and 691 against 699 on random points, within the measurements' noise.
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -350,7 +392,10 @@ use super::cylindrical::{
     cyp_set, mer_fwd, mer_rev, mer_set,
 };
 use super::healpix::{hpx_fwd, hpx_rev, hpx_set, xph_fwd, xph_rev, xph_set};
-use super::polyconic::{bon_fwd, bon_rev, bon_set, pco_fwd, pco_rev, pco_set};
+use super::polyconic::{
+    bon_fwd, bon_fwd_conic, bon_fwd_needs_special, bon_rev, bon_rev_conic, bon_rev_needs_special,
+    bon_set, pco_fwd, pco_rev, pco_set,
+};
 use super::pseudocyl::{
     ait_fwd, ait_fwd_needs_special, ait_rev, ait_set, mol_fwd, mol_rev, mol_set, par_fwd, par_rev,
     par_set, sfl_fwd, sfl_rev, sfl_set,
@@ -812,6 +857,9 @@ impl Prj {
             WcsProjection::Coe => kernel_slice::<CoeFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Cod => kernel_slice::<CodFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Coo => kernel_slice::<CooFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Bon if prm.p[1] != 0.0 => {
+                kernel_slice::<BonFwd>(prm, a, b, "wcs_fwd", prep, finish)
+            }
             proj => with_fwd!(proj, |f| slice_apply(
                 a,
                 b,
@@ -852,6 +900,9 @@ impl Prj {
         match self.proj {
             WcsProjection::Szp => kernel_slice::<SzpRev>(prm, a, b, "wcs_rev", prep, finish),
             WcsProjection::Coo => kernel_slice::<CooRev>(prm, a, b, "wcs_rev", prep, finish),
+            WcsProjection::Bon if prm.p[1] != 0.0 => {
+                kernel_slice::<BonRev>(prm, a, b, "wcs_rev", prep, finish)
+            }
             proj => with_rev!(proj, |f| slice_apply(
                 a,
                 b,
@@ -1090,6 +1141,8 @@ kernel_body!(
     coo_rev_finish,
     coo_rev
 );
+kernel_body!(BonFwd, bon_fwd_conic, bon_fwd_needs_special);
+kernel_body!(BonRev, bon_rev_conic, bon_rev_needs_special);
 kernel_body!(
     TpnFwd,
     tpn_fwd_front,
@@ -3575,6 +3628,181 @@ mod tests {
                 }
                 proj => unreachable!("{}", proj.code()),
             }
+        }
+    }
+
+    /// BON with the parameter sets the tests use: standard parallels at 45
+    /// degrees, the benchmarks', and at -30.
+    fn bon_prjs() -> Vec<Prj> {
+        use WcsProjection::Bon;
+        vec![
+            with_params(Bon, &[0.0, 45.0]),
+            with_params(Bon, &[0.0, -30.0]),
+        ]
+    }
+
+    /// How far the kernels' sine or cosine of an angle `a_k` within `da`
+    /// degrees of `a`, from a path whose argument in radians is rounded once
+    /// more, can be from [`Libm`]'s at `a`, whose value is `v`, to first
+    /// order: the arguments in radians differ by at most `D2R da + eps |D2R
+    /// a|` (eps = 2^-52), which moves a sine or cosine by at most as much;
+    /// the kernels' value is within 1 ULP of the exact one at each argument,
+    /// and within 2 ULP of [`Libm`]'s at the same argument (see [`Kernel`]),
+    /// 4 eps |v| in all.
+    fn sincosd_moved(a: f64, da: f64, v: f64) -> f64 {
+        let eps = f64::EPSILON;
+        D2R * da + eps * (D2R * a).abs() + 4.0 * eps * v.abs()
+    }
+
+    /// The bound on the drift of BON's forward slice outputs at (`phi`,
+    /// `theta`), whose per-value outputs are (`x`, `y`). `r = w2 - theta w1`
+    /// is computed alike on both paths, and `a = ((r0 phi) cthe) / r`, with
+    /// `cthe` the kernels' cosine, within 2 eps of Libm's (eps = 2^-52),
+    /// differs by at most 4 eps of itself with the two paths' roundings of
+    /// the product and the quotient; its sine `S` and cosine `C` by
+    /// [`sincosd_moved`]. So `x = r S` differs by `|r| dS + eps |x|`, and
+    /// `y = w2 - r C` by `|r| dC + eps |r C| + eps |y|`, plus
+    /// [`SUBNORMAL_ROUNDING`] for each operation.
+    fn bon_fwd_bound(prm: &PrjPrm, phi: f64, theta: f64, x: f64, y: f64) -> [f64; 2] {
+        let eps = f64::EPSILON;
+        let r = prm.w[2] - theta * prm.w[1];
+        let a = prm.r0 * phi * Libm::cosd(theta) / r;
+        let da = 4.0 * eps * a.abs();
+        let (s, c) = (Libm::sind(a), Libm::cosd(a));
+        [
+            r.abs() * sincosd_moved(a, da, s) + eps * x.abs() + 4.0 * SUBNORMAL_ROUNDING,
+            r.abs() * sincosd_moved(a, da, c)
+                + eps * ((r * c).abs() + y.abs())
+                + 5.0 * SUBNORMAL_ROUNDING,
+        ]
+    }
+
+    /// The bound on the drift of BON's reverse slice's longitude at `phi`,
+    /// its per-value value: `(a (r / r0)) / cthe`, with `a` the kernels' arc
+    /// tangent and `cthe` their cosine, each within 2 eps of Libm's (eps =
+    /// 2^-52), and the two paths' roundings of the product and the quotient,
+    /// eps between them each, plus [`SUBNORMAL_ROUNDING`] for each. Its
+    /// latitude is the per-value entry's bit for bit.
+    fn bon_rev_phi_bound(phi: f64) -> f64 {
+        6.0 * f64::EPSILON * phi.abs() + 2.0 * SUBNORMAL_ROUNDING
+    }
+
+    /// BON's forward slice runs the kernels and is within [`bon_fwd_bound`]
+    /// of the per-value entry, and its reverse slice within
+    /// [`bon_rev_phi_bound`] in its longitude and bit for bit in its
+    /// latitude; PCO's slices run [`Libm`] and are bit for bit the per-value
+    /// entry, as are both of BON's with a zero standard parallel, which is
+    /// Sanson-Flamsteed's projection.
+    #[test]
+    fn polyconic_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let fwd_inputs = tan_fwd_inputs();
+        let rev_inputs = zpn_rev_inputs();
+        for p in bon_prjs() {
+            let prm = p.prm.clone();
+            let label = format!("{} {:?}", p.proj.code(), prm.p[1]);
+            let (fwd_ulps, _, fwd_differ) = slice_drift(&p, &fwd_inputs, true);
+            let over = drift_over_bound(&p, &fwd_inputs, true, |u, v, x, y| {
+                bon_fwd_bound(&prm, u, v, x, y)
+            });
+            assert!(
+                over <= 1.0,
+                "{label} forward: {over} of the bound ({fwd_ulps:?} ULP)"
+            );
+            assert!(fwd_differ > 0, "{label} forward: no output differs");
+            let (rev_ulps, _, rev_differ) = slice_drift(&p, &rev_inputs, false);
+            assert_eq!(rev_ulps[1], 0, "{label} reverse: the latitude moved");
+            let over = drift_over_bound(&p, &rev_inputs, false, |_, _, phi, _| {
+                [bon_rev_phi_bound(phi), 0.0]
+            });
+            assert!(
+                over <= 1.0,
+                "{label} reverse: {over} of the bound ({rev_ulps:?} ULP)"
+            );
+            assert!(rev_differ > 0, "{label} reverse: no output differs");
+        }
+        let exact = [
+            with_params(WcsProjection::Bon, &[0.0, 0.0]),
+            prj(WcsProjection::Pco),
+        ];
+        for p in exact {
+            for (inputs, fwd) in [(&fwd_inputs, true), (&rev_inputs, false)] {
+                let (max, _, differ) = slice_drift(&p, inputs, fwd);
+                assert_eq!((max, differ), ([0, 0], 0), "{}, fwd {fwd}", p.proj.code());
+            }
+        }
+    }
+
+    /// Points whose BON reverse projection's longitude is at, a few ULP
+    /// from, and a few tolerances from the limits of the longitude ranges a
+    /// WcsMap's inverse accepts: the slice's longitude is accepted exactly
+    /// when the per-value entry's is.
+    #[test]
+    fn bon_rev_longitude_limits_agree() {
+        for p in bon_prjs()
+            .into_iter()
+            .filter(|p| p.proj == WcsProjection::Bon)
+        {
+            let prm = p.prm.clone();
+            let tol = p.proj.table_tol();
+            let mut pairs = Vec::new();
+            // A point at latitude `theta` and longitude `phi` is at the
+            // signed radius `r = w2 - theta w1` and at the angle `a = r0 phi
+            // cthe / r` from the axis.
+            for &theta in &degrees(400) {
+                let theta = theta / 8.0;
+                let r = prm.w[2] - theta * prm.w[1];
+                for limit in [180.0, -180.0] {
+                    for k in -40i64..=40 {
+                        let phi = limit + k as f64 * tol / 8.0;
+                        let a = prm.r0 * phi * Libm::cosd(theta) / r;
+                        for n in -4i64..=4 {
+                            let a = ulps_away(a, n);
+                            let (sa, ca) = (Libm::sind(a), Libm::cosd(a));
+                            pairs.push((r * sa, prm.w[2] - r * ca));
+                        }
+                    }
+                }
+            }
+            slice_drift(&p, &pairs, false);
+            assert_lon_decisions_agree(&p, &pairs);
+        }
+    }
+
+    #[test]
+    fn polyconic_slices_give_each_point_the_same_bits_at_any_length() {
+        for p in bon_prjs() {
+            assert_same_bits_at_any_length(&p, &interleaved_inputs());
+        }
+    }
+
+    #[test]
+    fn polyconic_slice_builds_agree() {
+        let inputs = interleaved_inputs();
+        for p in bon_prjs() {
+            assert_builds_agree::<BonFwd>(&p, &inputs);
+            assert_builds_agree::<BonRev>(&p, &inputs);
+        }
+    }
+
+    /// Coordinates at multiples of 90 degrees, which the kernels do not
+    /// cover, and BON's points where `r` is zero, whose argument `a` is not
+    /// finite, get the per-value entry's bits in a slice; so do BON's reverse
+    /// points on the axis `x = 0`, whose arc tangent's argument is zero, and
+    /// those at the poles, whose cosine's argument is a multiple of 90.
+    #[test]
+    fn polyconic_points_the_kernels_do_not_cover_are_exact_in_a_slice() {
+        for p in bon_prjs() {
+            let prm = p.prm.clone();
+            let mut sky = right_angle_pairs();
+            let apex = prm.w[2] / prm.w[1];
+            sky.extend([(10.0, apex), (-30.0, apex), (0.0, apex)]);
+            assert_special_points_exact::<BonFwd>(&p, &sky, true);
+            let mut plane: Vec<(f64, f64)> = sky.iter().map(|&(_, v)| (0.0, v)).collect();
+            for pole in [90.0, -90.0] {
+                plane.push((0.0, prm.w[2] - (prm.w[2] - pole * prm.w[1])));
+                plane.push((1.0, prm.w[2] - (prm.w[2] - pole * prm.w[1])));
+            }
+            assert_special_points_exact::<BonRev>(&p, &plane, false);
         }
     }
 }
