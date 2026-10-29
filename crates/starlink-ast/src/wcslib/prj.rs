@@ -217,6 +217,31 @@
 //! tangent, and ran at 270 ns per point against 273 on the grid but 270
 //! against 265 with its parameter at 45 degrees, and at one point took 299
 //! ns against 272.
+//!
+//! The cylindrical projections were timed on Apple silicon on a 1000 by
+//! 1000 grid of the whole sky, within 170 degrees of longitude and 80 of
+//! latitude, on a grid of a twenty-degree image and on a million random
+//! points of the sphere or their projections.
+//!
+//! CYP's forward projection opts in. Its status, whether `p1` plus the
+//! cosine of the latitude is zero, is decided by the kernels' cosine, and a
+//! point within twice the bound on that sum's drift of zero is redone with
+//! [`Libm`]. It ran at 11.0 ns per point against 25.2 for its [`Libm`] loop
+//! on the whole-sky grid, at 10.7 against 23.2 on the image and at 11.3
+//! against 27.1 on random points, and at one point took 65 ns against 29.
+//!
+//! CEA's forward projection does not opt in: its only trigonometry is one
+//! sine, which libm computes in about 4 ns on the grid, less than the
+//! slice's gather, predicate and scatter, and it ran at 8.0 ns per point
+//! against 4.5 on the whole-sky grid, 7.8 against 4.0 on the image and 8.0
+//! against 6.9 on random points. CYP's and MER's reverse projections do not
+//! either: their kernel arc tangents, of the scaled `y` and of an
+//! exponential, ran at 13.1 and 14.2 ns per point against 12.4 and 7.9 on
+//! the whole-sky grid and at 12.5 and 13.9 against 10.6 and 7.2 on the
+//! image, though faster on random points (14.2 against 23.5, 16.7 against
+//! 28.4). CAR has no trigonometry, CEA's reverse projection only an arc
+//! sine and MER's forward projection a tangent and a logarithm, none of
+//! which has a kernel, so they keep their [`Libm`] loops.
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -226,8 +251,8 @@ use super::conic::{
     cop_rev, cop_set,
 };
 use super::cylindrical::{
-    car_fwd, car_rev, car_set, cea_fwd, cea_rev, cea_set, cyp_fwd, cyp_rev, cyp_set, mer_fwd,
-    mer_rev, mer_set,
+    car_fwd, car_rev, car_set, cea_fwd, cea_rev, cea_set, cyp_fwd, cyp_fwd_needs_special, cyp_rev,
+    cyp_set, mer_fwd, mer_rev, mer_set,
 };
 use super::healpix::{hpx_fwd, hpx_rev, hpx_set, xph_fwd, xph_rev, xph_set};
 use super::polyconic::{bon_fwd, bon_rev, bon_set, pco_fwd, pco_rev, pco_set};
@@ -686,6 +711,7 @@ impl Prj {
             WcsProjection::Zea => kernel_slice::<ZeaFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Air => kernel_slice::<AirFwd>(prm, a, b, "wcs_fwd", prep, finish),
             WcsProjection::Tpn => kernel_slice::<TpnFwd>(prm, a, b, "wcs_fwd", prep, finish),
+            WcsProjection::Cyp => kernel_slice::<CypFwd>(prm, a, b, "wcs_fwd", prep, finish),
             proj => with_fwd!(proj, |f| slice_apply(
                 a,
                 b,
@@ -917,6 +943,7 @@ kernel_body!(
     air_fwd_finish,
     air_fwd
 );
+kernel_body!(CypFwd, cyp_fwd, cyp_fwd_needs_special);
 kernel_body!(
     TpnFwd,
     tpn_fwd_front,
@@ -2803,6 +2830,137 @@ mod tests {
                 WcsProjection::Air => assert_special_points_exact::<AirFwd>(&p, &sky, true),
                 proj => unreachable!("{}", proj.code()),
             }
+        }
+    }
+
+    use crate::wcslib::cylindrical::cyp_fwd_s_near_zero;
+
+    /// The bound on the drift of CYP's forward slice latitude output at
+    /// `theta`, whose per-value output is `y`; the longitude output has no
+    /// trigonometry and is bit for bit the per-value entry's. `y` is `w2
+    /// sind(theta) / s`, with `s = p1 + cosd(theta)`. The denominator differs
+    /// by at most `D = eps (2 |cosd(theta)| + |s|)` (eps = 2^-52), as
+    /// `cyp_fwd_s_near_zero` derives, which is relative `D / (|s| - D)` of the
+    /// kernels' `s`; the sine adds 2 eps and the two operations eps each. The
+    /// bound is `(4 eps + D / (|s| - D)) |y|`, to first order, plus
+    /// [`SUBNORMAL_ROUNDING`] for each operation.
+    fn cyp_fwd_bound(prm: &PrjPrm, theta: f64, y: f64) -> f64 {
+        let eps = f64::EPSILON;
+        let cthe = Libm::cosd(theta);
+        let s = prm.p[1] + cthe;
+        let d = eps * (2.0 * cthe.abs() + s.abs());
+        (4.0 * eps + d / (s.abs() - d)) * y.abs() + 2.0 * SUBNORMAL_ROUNDING
+    }
+
+    /// The CYP parameter sets the tests use: the default, Gall's, and one
+    /// whose denominator is zero at a latitude of 120 degrees, which the
+    /// kernels cover.
+    fn cyp_prjs() -> [Prj; 3] {
+        use WcsProjection::Cyp;
+        [
+            prj(Cyp),
+            with_params(Cyp, &[0.0, 1.0, std::f64::consts::FRAC_1_SQRT_2]),
+            with_params(Cyp, &[0.0, 0.5, 0.8]),
+        ]
+    }
+
+    /// CYP's forward slice runs the kernels and is within [`cyp_fwd_bound`]
+    /// of the per-value entry, with the same bad points; its reverse slice
+    /// runs [`Libm`] and is bit for bit the per-value entry.
+    #[test]
+    fn cyp_slices_are_within_kernel_drift_of_the_per_value_body() {
+        let fwd_inputs = tan_fwd_inputs();
+        let rev_inputs = zpn_rev_inputs();
+        for p in cyp_prjs() {
+            let prm = p.prm.clone();
+            let params = &prm.p[1..3];
+            let (fwd_ulps, _, fwd_differ) = slice_drift(&p, &fwd_inputs, true);
+            assert_eq!(fwd_ulps[0], 0, "{params:?} forward: the longitude moved");
+            let over = drift_over_bound(&p, &fwd_inputs, true, |_, v, _, y| {
+                [0.0, cyp_fwd_bound(&prm, v, y)]
+            });
+            assert!(
+                over <= 1.0,
+                "{params:?} forward: {over} of the bound ({fwd_ulps:?} ULP)"
+            );
+            assert!(fwd_differ > 0, "{params:?} forward: no output differs");
+            let (rev_max, _, rev_differ) = slice_drift(&p, &rev_inputs, false);
+            assert_eq!((rev_max, rev_differ), ([0, 0], 0), "{params:?} reverse");
+        }
+    }
+
+    /// Points at and a few ULP either side of the latitudes where CYP's
+    /// denominator is zero, as the per-value entry computes them: bad in
+    /// the forward slice exactly when bad in the per-value entry, and within
+    /// the bound.
+    #[test]
+    fn cyp_zero_denominator_points_agree_on_bad_or_good() {
+        for p in cyp_prjs() {
+            let prm = p.prm.clone();
+            let zero_at = Libm::acosd(-prm.p[1]);
+            let mut pairs = Vec::new();
+            for &phi in &degrees(2000) {
+                for centre in [zero_at, -zero_at] {
+                    for n in -64i64..=64 {
+                        pairs.push((phi, ulps_away(centre, n)));
+                        pairs.push((phi, centre + n as f64 * 1e-9));
+                    }
+                }
+            }
+            slice_drift(&p, &pairs, true);
+            let over = drift_over_bound(&p, &pairs, true, |_, v, _, y| {
+                [0.0, cyp_fwd_bound(&prm, v, y)]
+            });
+            assert!(over <= 1.0, "{:?}: {over} of the bound", &prm.p[1..3]);
+        }
+    }
+
+    /// Wherever a cosine within 2 ULP of [`Libm`]'s could put CYP's
+    /// denominator on the other side of zero from [`Libm`]'s,
+    /// `cyp_fwd_s_near_zero` redoes the point; and a margin of zero would
+    /// not. The cosines are those at which [`Libm`]'s denominator is zero or
+    /// next to it.
+    #[test]
+    fn cyp_margin_covers_the_kernels_drift_and_a_zero_margin_does_not() {
+        let mut missed_by_zero_margin = 0;
+        for p in cyp_prjs() {
+            let prm = &p.prm;
+            let zero_at = -prm.p[1];
+            for n in -6i64..=6 {
+                let libm = f64::from_bits(zero_at.to_bits().wrapping_add_signed(n));
+                let s_libm = prm.p[1] + libm;
+                for kernel in within_two_ulps(libm) {
+                    let s_kernel = prm.p[1] + kernel;
+                    if (s_libm == 0.0) != (s_kernel == 0.0) {
+                        assert!(cyp_fwd_s_near_zero(prm, kernel), "{libm:e}, {kernel:e}");
+                        missed_by_zero_margin += usize::from(s_kernel != 0.0);
+                    }
+                }
+            }
+        }
+        assert!(missed_by_zero_margin > 0);
+    }
+
+    #[test]
+    fn cyp_slices_give_each_point_the_same_bits_at_any_length() {
+        for p in cyp_prjs() {
+            assert_same_bits_at_any_length(&p, &interleaved_inputs());
+        }
+    }
+
+    #[test]
+    fn cyp_slice_builds_agree() {
+        for p in cyp_prjs() {
+            assert_builds_agree::<CypFwd>(&p, &interleaved_inputs());
+        }
+    }
+
+    /// Latitudes at multiples of 90 degrees, which the kernels do not
+    /// cover, get the per-value entry's bits in a slice.
+    #[test]
+    fn cyp_points_the_kernels_do_not_cover_are_exact_in_a_slice() {
+        for p in cyp_prjs() {
+            assert_special_points_exact::<CypFwd>(&p, &right_angle_pairs(), true);
         }
     }
 }
