@@ -206,6 +206,8 @@ A kernel that cannot be made both faster than libm and within 1 ULP stays scalar
 
 ### WcsMap stage (2026-10-28)
 
+Done 2026-10-29: `docs/superpowers/plans/2026-10-28-native-wcslib-wcsmap.md`.
+
 The second stage, on `tickets/DM-56839-wcsmap`, stacked on the SphMap branch, as one pull request.
 WcsMap is the only Mapping that transforms through wcslib; FitsChan uses only the `WcsProjection` enum, which stays.
 At the end of the stage `vendor/wcslib` (`proj.c`, `tpn.c`, `wcstrig.c`, `ast_memory_stub.c` and headers) is deleted, with its `build.rs` compilation, and `wcslib.rs`'s FFI layer is replaced by the native module.
