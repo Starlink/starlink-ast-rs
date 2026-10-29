@@ -247,6 +247,57 @@ A set-up that fails is kept in the `Prj` and reported as `AST__WCSPA` by every t
 
 **x86-64.** Vectorized slice loops follow SphMap's runtime AVX2 and FMA dispatch where a kernel uses FMA (see Platforms).
 
+### PAL and ERFA stage (2026-10-29)
+
+The third stage, on `tickets/DM-56839-erfapal`, stacked on the WcsMap branch, as one pull request.
+At the end of the stage `vendor/erfa`, `vendor/pal`, `palwrap.c`, `pal2ast.h` and `erfa2ast.h` are deleted, with their `build.rs` compilation and the FFI block in `pal.rs`.
+They are the last C `starlink-ast` compiles, so the `cc` build-dependency and the C toolchain requirement go with them; `vendor/` keeps only `ast_err.msg` and `README.md`, which records the deletion as it does for wcslib.
+Step 0 is already done for both libraries: the pin (`3d3f255f`, Starlink/ast#100) carries ERFA 2.0.1 and the PAL-to-ERFA changes, so every gate in this stage is against that C.
+
+**Scope: only what the port calls.**
+The roots are the 52 `astPal*` / `astEra*` entries `pal.rs` declares.
+Their transitive call graph over the vendored sources, measured 2026-10-29, is about 150 functions: 90 of ERFA's 236 files and 26 of PAL's 29, about 20,000 lines with comments, of which `eraEpv00` (2,600), `eraNut00a` (2,056) and `eraDtdb` (1,224) are mostly coefficient tables.
+The builder re-derives the closure from the tree rather than trusting these counts, and nothing outside it is ported.
+Tables are carried as `const` arrays, value for value from the C source, so their bits cannot differ.
+
+**Phase 1: bit-identical port of every function in the closure.**
+Each function is ported per step 2 and gated by its differential test against the still-linked C.
+The order is the builder's, with one constraint: the C is deleted only once every root is Rust, so the per-function differential tests run against C for the whole of phase 1.
+Interior functions (in the closure but not among the 52 roots) get differential tests too; their C halves are reached through further `extern` declarations of the `astEra*` / `astPal*` symbols `palwrap.c` already compiles, kept in the test code and deleted with the C (this design's call).
+Phase 1, phase 2 and the deletion of the C are commit groups on the one branch, in that order; "Splitting the ticket into pull requests" under "Left to the builder" does not split this stage (this design's call, following the user's "one pull request").
+SkyFrame's set-up (`palMappa`, `palEvp`, `palPrenut` and what they call), FitsChan's calls, and Frame attribute code use the per-value body only and are never vectorized in this stage.
+
+**Phase 2: vectorize real hot spots only.**
+The priority of this stage is the port to Rust; vectorizing is not attempted speculatively (user direction, 2026-10-29).
+A function gets a slice entry and a kernel only when the phase 1 timings, on the bench cases below, show its time is a real share of a per-point transform, and then per step 3 and the keep-or-reject rule.
+A function that is not a measured hot spot stays on its per-value body, called in the caller's loop, even if it runs per point.
+The candidates are the functions that run once per point in a Mapping's transform:
+
+- SlaMap, every conversion: the galactic and supergalactic rotations (`galeq`, `eqgal`, `galsup`, `supgal`), the FK4/FK5 conversions (`fk45z`, `fk54z`, `fk5hz`, `hfk5z`), the precession and ecliptic rotations through `dcs2c` / `dmxv` / `dimxv` / `dcc2s`, `addet` / `subet`, and the apparent-place pair `mapqkz` / `ampqk`.
+- TimeMap's epoch conversions (`epb`, `epj`, `epb2d`, `epj2d`); these are a line of arithmetic each, so the likely outcome is that only the caller's loop changes.
+
+Two per-point paths reach the full nutation series and are deliberately not vectorized (user decision, 2026-10-29), because no realistic fixture or bench case reaches them:
+
+- TimeMap's `LASTTOLMST` / `LMSTTOLAST` call `eqeqx` per point; only about 40 one- and two-value oracle and unit cases use them.
+- A three-input SpecMap with a topocentric rest frame calls `mappa`, `eqeqx` and `evp` per point; no fixture has a three-input SpecMap, and a one-input SpecMap computes its rest-frame correction once.
+
+Both are ported bit-identical and stay scalar.
+
+**Leap seconds.**
+`dat` follows "Leap seconds" and "Errors and status codes" above, and goes further, since the table is final: ERFA's runtime override (`eraSetLeapSeconds`, `eraGetLeapSeconds`, `eraDatini` in `erfadatextra.c`) is not ported, and the lookup is against a `const` table with nothing computed at run time that a constant could hold.
+In this stage `dat` is reached only through `palDat` in FitsChan's TDB conversion.
+TimeMap has its own TAI-UTC table (`ast_dat`, C's `astDat` in `timemap.c`), already Rust.
+If the two give identical bits for every date both accept, `ast_dat` and `dat` share one `const` table; if they differ (pre-1972 drift handling is the likely place), they stay two tables, as C has two.
+Either way the deciding comparison is written as a test, early in phase 1, when `dat` is ported.
+
+**Bench cases.**
+Of the `native` set's PAL cases, only `slamap_eqgal` reaches PAL: `specmap_wn_to_fr` is arithmetic and `timemap_taiutc` uses `ast_dat`.
+Phase 1 adds class cases, before any function is ported, so the baseline and the hot-spot decision have timings to work from: SlaMap's apparent place (`mapqkz` / `ampqk`), an FK4/FK5 conversion, a precession or ecliptic rotation, and a TimeMap epoch conversion.
+They go in the `bench` set and the `native` set, and their comment lines in `native.txt` name what they reach; the two misleading comments are corrected.
+
+**Not in this stage.**
+"Interim: vectorized kernels in slice entries only" is to be reassessed when the vendored code is gone, which this stage completes; the reassessment is a separate decision after this pull request, and this stage keeps per-value entries bit-identical to C.
+
 ## Measurement
 
 The success measure is the real-world FrameSets in `crates/starlink-ast/tests/fixtures/wcsconv/inputs/`:
