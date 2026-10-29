@@ -256,7 +256,7 @@ Step 0 is already done for both libraries: the pin (`3d3f255f`, Starlink/ast#100
 
 **Scope: only what the port calls.**
 The roots are the 52 `astPal*` / `astEra*` entries `pal.rs` declares.
-Their transitive call graph over the vendored sources, measured 2026-10-29, is about 150 functions: 90 of ERFA's 236 files and 26 of PAL's 29, about 20,000 lines with comments, of which `eraEpv00` (2,600), `eraNut00a` (2,056) and `eraDtdb` (1,224) are mostly coefficient tables.
+Their transitive call graph over the vendored sources, measured 2026-10-29, is about 130 functions: 79 ERFA functions in 81 files and 51 PAL functions in 26 files, about 20,000 lines with comments, of which `eraEpv00` (2,600), `eraNut00a` (2,056) and `eraDtdb` (1,224) are mostly coefficient tables.
 The builder re-derives the closure from the tree rather than trusting these counts, and nothing outside it is ported.
 Tables are carried as `const` arrays, value for value from the C source, so their bits cannot differ.
 
