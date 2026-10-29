@@ -267,33 +267,25 @@ pub(crate) fn sincosd_covers(angle: f64) -> bool {
 const TOINT: f64 = 1.5 / f64::EPSILON;
 
 /// Whether [`Kernel`]'s `atan2d` is valid for (`y`, `x`): neither zero, which
-/// [`Libm`] answers exactly, both finite, and within the range of
-/// magnitudes where the kernel's build without fused multiply-adds gives the
-/// bits of its build with them.
-// The kernel corrects the quotient `q = y / x` by its exact residual
-// `y - q x`, which a build without fused multiply-adds takes from Dekker's
-// product. That is exact only where no partial product overflows or
-// underflows. Veltkamp's split multiplies by 2^27 + 1, so `x` and `q` must be
-// below 2^996. The smallest partial product is a multiple of `ulp(q) ulp(x)`,
-// which is more than 2^-106 |q x|, about 2^-106 |y|, and must be a multiple
-// of 2^-1074, the least subnormal: so |y| at least 2^-967, with a factor of
-// two to spare for the rounding of `q`, and `q` normal. Outside that range
-// the two builds can differ, by tens of ULP of a subnormal result.
+/// [`Libm`] answers exactly, and within [`vmath::atan2_covers`].
 #[inline(always)]
 pub(crate) fn atan2d_covers(y: f64, x: f64) -> bool {
-    /// 2^996.
-    const SPLIT_MAX: f64 = 6.696928794914171e299;
-    /// 2^-967.
-    const Y_MIN: f64 = 8.016673440035891e-292;
-    let q = (y / x).abs();
-    y != 0.0
-        && x != 0.0
-        && vmath::atan2_covers(y, x)
-        && (x.abs() < SPLIT_MAX) & (q < SPLIT_MAX) & (y.abs() >= Y_MIN) & (q >= f64::MIN_POSITIVE)
+    y != 0.0 && x != 0.0 && vmath::atan2_covers(y, x)
 }
 
 /// Whether [`Kernel`]'s `atand` is valid for `v`: finite and none of -1, 0
 /// and 1, which [`Libm`] answers exactly.
+// No `vmath::atan2_covers(v, 1.0)` is needed. That cover keeps the
+// quotient's residual `y - q x`, which the builds with and without fused
+// multiply-adds compute differently, where both are exact. With x = 1 the
+// quotient is `v` and the residual is exactly 0 in both builds for every
+// finite `v`: the fused multiply-add gives `v - v * 1` rounded once, 0;
+// Dekker's product of `v` and 1 is `v` with an error term of 0, or NaN where
+// the split of a huge `v` overflows, and `atan2` maps a non-finite
+// correction to 0; and for a subnormal `v` the split's halves sum back to
+// `v` exactly, so the error term cancels. The two builds therefore agree
+// wherever `v` is finite, which
+// `atand_builds_agree_at_extreme_arguments` checks.
 #[inline(always)]
 pub(crate) fn atand_covers(v: f64) -> bool {
     v.is_finite() && v != -1.0 && v != 0.0 && v != 1.0
@@ -506,37 +498,31 @@ mod tests {
         }
     }
 
-    /// Where [`atan2d_covers`] holds, the arctangent kernel's builds with and
-    /// without fused multiply-adds give the same bits, within 1 ULP of libm;
-    /// over the whole range of magnitudes, which the arguments of a
-    /// projection's arc tangent can reach, a cover of every finite non-zero
-    /// pair would admit pairs where they differ.
+    /// [`Kernel`]'s `atand` gives the same bits from the builds with and
+    /// without fused multiply-adds at the extremes of the finite doubles,
+    /// where `atan2_covers(v, 1.0)` rejects `v`, at that cover's edges,
+    /// 2^-967 and 2^996, and either side of where the split of `v`
+    /// overflows, near 1.34e300.
     #[test]
-    fn atan2d_covers_only_where_the_kernel_builds_agree() {
-        let mut rng = crate::test_inputs::SplitMix64::new(0x5eed_a7a2);
-        let mut magnitude = || {
-            let e = (rng.next_f64() * 2098.0) as i32 - 1074;
-            let v = (1.0 + rng.next_f64()) * crate::math::powf(2.0, f64::from(e));
-            if rng.next_f64() < 0.5 { -v } else { v }
-        };
-        let mut covered = 0;
-        let mut differ_uncovered = 0;
-        for _ in 0..1_000_000 {
-            let (y, x) = (magnitude(), magnitude());
-            if !(y.is_finite() && x.is_finite() && y != 0.0 && x != 0.0) {
-                continue;
-            }
-            let (fma, dekker) = (vmath::atan2::<true>(y, x), vmath::atan2::<false>(y, x));
-            if atan2d_covers(y, x) {
-                covered += 1;
-                assert_eq!(fma.to_bits(), dekker.to_bits(), "({y:e}, {x:e})");
-                assert!(ulps(fma, math::atan2(y, x)) <= 1, "({y:e}, {x:e})");
-            } else {
-                differ_uncovered += usize::from(fma.to_bits() != dekker.to_bits());
-            }
+    fn atand_builds_agree_at_extreme_arguments() {
+        let mut values = vec![1e-310, 5e-324, 1e300, f64::MAX];
+        values.extend([
+            f64::MIN_POSITIVE,
+            8.016673440035891e-292,
+            6.696928794914171e299,
+            1.3e300,
+            1.4e300,
+        ]);
+        let values: Vec<f64> = values.iter().flat_map(|&v| [v, -v]).collect();
+        for v in values {
+            assert!(atand_covers(v), "{v:e}");
+            let (fma, dekker) = (Kernel::<true>::atand(v), Kernel::<false>::atand(v));
+            assert_eq!(
+                fma.to_bits(),
+                dekker.to_bits(),
+                "{v:e}: {fma:e} vs {dekker:e}"
+            );
         }
-        assert!(covered > 100_000, "{covered} covered");
-        assert!(differ_uncovered > 0);
     }
 
     #[test]
