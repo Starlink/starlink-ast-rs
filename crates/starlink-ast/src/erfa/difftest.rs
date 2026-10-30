@@ -167,6 +167,31 @@ unsafe extern "C" {
         psi: *mut f64,
     );
     pub(super) fn astEraDat(iy: i32, im: i32, id: i32, fd: f64, deltat: *mut f64) -> i32;
+    pub(super) fn astEraFad03(t: f64) -> f64;
+    pub(super) fn astEraFae03(t: f64) -> f64;
+    pub(super) fn astEraFaf03(t: f64) -> f64;
+    pub(super) fn astEraFaju03(t: f64) -> f64;
+    pub(super) fn astEraFal03(t: f64) -> f64;
+    pub(super) fn astEraFalp03(t: f64) -> f64;
+    pub(super) fn astEraFama03(t: f64) -> f64;
+    pub(super) fn astEraFame03(t: f64) -> f64;
+    pub(super) fn astEraFaom03(t: f64) -> f64;
+    pub(super) fn astEraFapa03(t: f64) -> f64;
+    pub(super) fn astEraFasa03(t: f64) -> f64;
+    pub(super) fn astEraFaur03(t: f64) -> f64;
+    pub(super) fn astEraFave03(t: f64) -> f64;
+    pub(super) fn astEraNut00a(date1: f64, date2: f64, dpsi: *mut f64, deps: *mut f64);
+    pub(super) fn astEraNut06a(date1: f64, date2: f64, dpsi: *mut f64, deps: *mut f64);
+    pub(super) fn astEraPnm06a(date1: f64, date2: f64, rbpn: *mut [f64; 3]);
+    pub(super) fn astEraBpn2xy(rbpn: *const [f64; 3], x: *mut f64, y: *mut f64);
+    pub(super) fn astEraS06(date1: f64, date2: f64, x: f64, y: f64) -> f64;
+    pub(super) fn astEraEors(rnpb: *const [f64; 3], s: f64) -> f64;
+    pub(super) fn astEraEra00(dj1: f64, dj2: f64) -> f64;
+    pub(super) fn astEraGmst06(uta: f64, utb: f64, tta: f64, ttb: f64) -> f64;
+    pub(super) fn astEraGst06(uta: f64, utb: f64, tta: f64, ttb: f64, rnpb: *const [f64; 3])
+    -> f64;
+    pub(super) fn astEraGst06a(uta: f64, utb: f64, tta: f64, ttb: f64) -> f64;
+    pub(super) fn astEraEe06a(date1: f64, date2: f64) -> f64;
 }
 
 /// Whether two values are the same bit for bit, any two NaNs counting as the
@@ -392,4 +417,49 @@ pub(crate) fn fk_dates() -> Vec<(f64, f64)> {
         out.push((2451545.0, x));
     }
     out
+}
+
+/// Times in Julian centuries for the fundamental arguments: random over plus
+/// and minus 10 centuries, J2000.0 itself, small and whole-century offsets,
+/// and the special values.
+pub(crate) fn centuries() -> Vec<f64> {
+    let mut rng = crate::test_inputs::SplitMix64::new(0x5eed_fa03);
+    let mut v: Vec<f64> = (0..20_000).map(|_| (rng.next_f64() - 0.5) * 20.0).collect();
+    for c in [0.0, 1e-12, 1e-6, 0.01, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0, 1e6] {
+        v.extend([c, -c]);
+    }
+    v.extend(crate::test_inputs::specials());
+    v
+}
+
+/// Two-part TT dates for the nutation series, which cost over a thousand
+/// terms a call: the named epochs of [`crate::test_inputs::date_pairs`],
+/// every fifth of its random epochs (rotating through its three splits),
+/// and all of its special values.
+pub(crate) fn nutation_dates() -> Vec<(f64, f64)> {
+    let all = crate::test_inputs::date_pairs();
+    let n = all.len();
+    let specials = 3 * crate::test_inputs::specials().len();
+    all.into_iter()
+        .enumerate()
+        .filter(|&(i, _)| i < 18 || i >= n - specials || i % 5 == 0)
+        .map(|(_, p)| p)
+        .collect()
+}
+
+/// UT1 and TT dates for the sidereal-time tests, `(uta, utb, tta, ttb)`: each
+/// of [`nutation_dates`] as UT1 with TT 69.184 seconds later, then the special
+/// values in each part with J2000.0 in the others.
+pub(crate) fn sidereal_dates() -> Vec<(f64, f64, f64, f64)> {
+    let mut v: Vec<_> = nutation_dates()
+        .into_iter()
+        .map(|(d1, d2)| (d1, d2, d1, d2 + 69.184 / 86400.0))
+        .collect();
+    for x in crate::test_inputs::specials() {
+        v.push((x, 0.0, 2451545.0, 0.0));
+        v.push((2451545.0, x, 2451545.0, 0.0));
+        v.push((2451545.0, 0.0, x, 0.0));
+        v.push((2451545.0, 0.0, 2451545.0, x));
+    }
+    v
 }
