@@ -240,7 +240,19 @@ mod tests {
     use super::*;
     use crate::erfa::difftest::*;
 
+    /// Whether C's `eraDat` is defined for the year and month: it returns
+    /// before `12 * iy + im` for a year before the table, and otherwise that
+    /// signed `int` arithmetic must not overflow.
+    fn dat_defined(iy: i32, im: i32) -> bool {
+        iy < 1960 || i32::try_from(12 * i64::from(iy) + i64::from(im)).is_ok()
+    }
+
     fn check(iy: i32, im: i32, id: i32, fd: f64) {
+        if !dat_defined(iy, im) {
+            // C's signed overflow is undefined: only that the port returns.
+            let _ = dat(iy, im, id, fd);
+            return;
+        }
         let mut deltat = -1.0;
         // SAFETY: the pointer is to a live local.
         let j = unsafe { astEraDat(iy, im, id, fd, &mut deltat) };
@@ -341,6 +353,11 @@ mod tests {
     /// below every table entry giving `Underflow`.
     #[test]
     fn dat_defined_results_where_c_overflows() {
+        // 12 * 178_956_970 is 2_147_483_640, so only months from 8 overflow.
+        for im in [8, 12] {
+            assert_eq!(dat(178_956_970, im, 1, 0.5), Err(DatError::Underflow));
+        }
+        assert!(dat(178_956_970, 7, 1, 0.5).is_ok());
         for iy in [178_956_971, 357_913_941, i32::MAX] {
             for im in [1, 6, 12] {
                 assert_eq!(dat(iy, im, 1, 0.5), Err(DatError::Underflow), "{iy}");
