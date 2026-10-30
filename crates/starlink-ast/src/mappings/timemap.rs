@@ -869,16 +869,31 @@ fn rcc(tdb: f64, ut1: f64, wl: f64, u: f64, v: f64) -> f64 {
 // Core transform logic
 // ---------------------------------------------------------------------------
 
-/// Apply a single conversion step in the forward direction.
-fn apply_step_forward(cvt: &TimeConversion, time: f64) -> f64 {
+/// Replace each good value `t` of `times` with `f(t)`, leaving bad ones, as
+/// C's per-step loops do. Dispatching on the step once per slice, rather than
+/// once per value, lets each step's loop compile to straight-line code.
+#[inline]
+fn for_good(times: &mut [f64], f: impl Fn(f64) -> f64) {
+    for t in times {
+        if !is_bad(*t) {
+            *t = f(*t);
+        }
+    }
+}
+
+/// Apply a single conversion step in the forward direction to every good
+/// value of `times`, in place.
+fn apply_step_forward(cvt: &TimeConversion, times: &mut [f64]) {
     let args = &cvt.args;
     match cvt.cvt_type {
-        TimeCvtType::MjdToMjd | TimeCvtType::MjdToJd | TimeCvtType::JdToMjd => time + args[2],
-        TimeCvtType::MjdToBep => pal::epb(time) + args[2],
-        TimeCvtType::BepToMjd => pal::epb2d(time) + args[2],
-        TimeCvtType::MjdToJep => pal::epj(time) + args[2],
-        TimeCvtType::JepToMjd => pal::epj2d(time) + args[2],
-        TimeCvtType::TaiToUtc => {
+        TimeCvtType::MjdToMjd | TimeCvtType::MjdToJd | TimeCvtType::JdToMjd => {
+            for_good(times, |time| time + args[2])
+        }
+        TimeCvtType::MjdToBep => for_good(times, |time| pal::epb(time) + args[2]),
+        TimeCvtType::BepToMjd => for_good(times, |time| pal::epb2d(time) + args[2]),
+        TimeCvtType::MjdToJep => for_good(times, |time| pal::epj(time) + args[2]),
+        TimeCvtType::JepToMjd => for_good(times, |time| pal::epj2d(time) + args[2]),
+        TimeCvtType::TaiToUtc => for_good(times, |time| {
             // TAI->UTC: utc = tai + (UTC-TAI)/SPD
             let delta = if is_bad(args[1]) {
                 ast_dat(time + args[0], false)
@@ -886,8 +901,8 @@ fn apply_step_forward(cvt: &TimeConversion, time: f64) -> f64 {
                 -args[1]
             };
             time + delta / SPD
-        }
-        TimeCvtType::UtcToTai => {
+        }),
+        TimeCvtType::UtcToTai => for_good(times, |time| {
             // UTC->TAI: tai = utc + (TAI-UTC)/SPD
             let delta = if is_bad(args[1]) {
                 ast_dat(time + args[0], true)
@@ -895,10 +910,10 @@ fn apply_step_forward(cvt: &TimeConversion, time: f64) -> f64 {
                 args[1]
             };
             time + delta / SPD
-        }
-        TimeCvtType::TaiToTt => time + (TTOFF / SPD),
-        TimeCvtType::TtToTai => time - (TTOFF / SPD),
-        TimeCvtType::TtToTdb => {
+        }),
+        TimeCvtType::TaiToTt => for_good(times, |time| time + (TTOFF / SPD)),
+        TimeCvtType::TtToTai => for_good(times, |time| time - (TTOFF / SPD)),
+        TimeCvtType::TtToTdb => for_good(times, |time| {
             // TT -> TDB: add relativistic correction
             let tt = time + args[0];
             let tai = tt - (TTOFF / SPD);
@@ -909,8 +924,8 @@ fn apply_step_forward(cvt: &TimeConversion, time: f64) -> f64 {
                     -args[4]
                 } / SPD;
             time + rcc(tt, utc, args[1], args[5], args[6]) / SPD
-        }
-        TimeCvtType::TdbToTt => {
+        }),
+        TimeCvtType::TdbToTt => for_good(times, |time| {
             // TDB -> TT: subtract relativistic correction
             let tdb = time + args[0];
             let tai = tdb - (TTOFF / SPD);
@@ -921,75 +936,78 @@ fn apply_step_forward(cvt: &TimeConversion, time: f64) -> f64 {
                     -args[4]
                 } / SPD;
             time - rcc(tdb, utc, args[1], args[5], args[6]) / SPD
-        }
-        TimeCvtType::TtToTcg => {
+        }),
+        TimeCvtType::TtToTcg => for_good(times, |time| {
             // TT -> TCG: C adds the correction as one term (`+=`), which rounds once
             time + (time * LG + args[1])
-        }
-        TimeCvtType::TcgToTt => {
+        }),
+        TimeCvtType::TcgToTt => for_good(times, |time| {
             // TCG -> TT: tt = (tcg - offset) / (1 + LG)
             (time - args[1]) / (1.0 + LG)
-        }
-        TimeCvtType::TdbToTcb => {
+        }),
+        TimeCvtType::TdbToTcb => for_good(times, |time| {
             // TDB -> TCB: C adds the correction as one term (`+=`), which rounds once
             time + (time * LB + args[1])
-        }
-        TimeCvtType::TcbToTdb => {
+        }),
+        TimeCvtType::TcbToTdb => for_good(times, |time| {
             // TCB -> TDB: tdb = (tcb - offset) / (1 + LB)
             (time - args[1]) / (1.0 + LB)
-        }
-        TimeCvtType::UtToGmst => gmsta(time, args[0], true),
-        TimeCvtType::GmstToUt => gmsta(time, args[0], false),
-        TimeCvtType::GmstToLmst => {
+        }),
+        TimeCvtType::UtToGmst => for_good(times, |time| gmsta(time, args[0], true)),
+        TimeCvtType::GmstToUt => for_good(times, |time| gmsta(time, args[0], false)),
+        TimeCvtType::GmstToLmst => for_good(times, |time| {
             // GMST -> LMST: subtract longitude/2pi
             time - args[1] / D2PI
-        }
-        TimeCvtType::LmstToGmst => {
+        }),
+        TimeCvtType::LmstToGmst => for_good(times, |time| {
             // LMST -> GMST: add longitude/2pi
             time + args[1] / D2PI
-        }
-        TimeCvtType::LmstToLast => {
+        }),
+        TimeCvtType::LmstToLast => for_good(times, |time| {
             // LMST -> LAST: add equation of equinoxes
             // Need to estimate TDB for eqeqx: convert LMST->GMST->UT1->~TDB
             let gmstx = time + args[1] / D2PI;
             let tdb = gmsta(gmstx, args[0], false) + args[0] + (32.0 + TTOFF) / SPD;
             time + pal::eqeqx(tdb) / D2PI
-        }
-        TimeCvtType::LastToLmst => {
+        }),
+        TimeCvtType::LastToLmst => for_good(times, |time| {
             // LAST -> LMST: subtract equation of equinoxes
             let gmstx = time + args[1] / D2PI;
             let tdb = gmsta(gmstx, args[0], false) + args[0] + (32.0 + TTOFF) / SPD;
             time - pal::eqeqx(tdb) / D2PI
-        }
-        TimeCvtType::UtToUtc => {
+        }),
+        TimeCvtType::UtToUtc => for_good(times, |time| {
             // UT1 -> UTC: subtract DUT1/86400
             time - args[0] / 86400.0
-        }
-        TimeCvtType::UtcToUt => {
+        }),
+        TimeCvtType::UtcToUt => for_good(times, |time| {
             // UTC -> UT1: add DUT1/86400
             time + args[0] / 86400.0
-        }
-        TimeCvtType::LtToUtc => {
+        }),
+        TimeCvtType::LtToUtc => for_good(times, |time| {
             // LT -> UTC: subtract LTOFF/24 (hours to days)
             time - args[0] / 24.0
-        }
-        TimeCvtType::UtcToLt => {
+        }),
+        TimeCvtType::UtcToLt => for_good(times, |time| {
             // UTC -> LT: add LTOFF/24 (hours to days)
             time + args[0] / 24.0
-        }
+        }),
     }
 }
 
-/// Apply a single conversion step in the inverse direction.
-fn apply_step_inverse(cvt: &TimeConversion, time: f64) -> f64 {
+/// Apply a single conversion step in the inverse direction to every good
+/// value of `times`, in place.
+fn apply_step_inverse(cvt: &TimeConversion, times: &mut [f64]) {
     let args = &cvt.args;
     match cvt.cvt_type {
-        TimeCvtType::MjdToMjd | TimeCvtType::MjdToJd | TimeCvtType::JdToMjd => time - args[2],
-        TimeCvtType::MjdToBep => pal::epb2d(time) + args[3],
-        TimeCvtType::BepToMjd => pal::epb(time) + args[3],
-        TimeCvtType::MjdToJep => pal::epj2d(time) + args[3],
-        TimeCvtType::JepToMjd => pal::epj(time) + args[3],
-        TimeCvtType::TaiToUtc => {
+        TimeCvtType::MjdToMjd | TimeCvtType::MjdToJd | TimeCvtType::JdToMjd => {
+            for_good(times, |time| time - args[2])
+        }
+        TimeCvtType::MjdToBep => for_good(times, |time| pal::epb2d(time) + args[3]),
+        TimeCvtType::BepToMjd => for_good(times, |time| pal::epb(time) + args[3]),
+        TimeCvtType::MjdToJep => for_good(times, |time| pal::epj2d(time) + args[3]),
+        TimeCvtType::JepToMjd => for_good(times, |time| pal::epj(time) + args[3]),
+        TimeCvtType::TaiToUtc => for_good(times, |time| {
             // Inverse of TAI->UTC is UTC->TAI
             let delta = if is_bad(args[1]) {
                 ast_dat(time + args[0], true)
@@ -997,8 +1015,8 @@ fn apply_step_inverse(cvt: &TimeConversion, time: f64) -> f64 {
                 args[1]
             };
             time + delta / SPD
-        }
-        TimeCvtType::UtcToTai => {
+        }),
+        TimeCvtType::UtcToTai => for_good(times, |time| {
             // Inverse of UTC->TAI is TAI->UTC
             let delta = if is_bad(args[1]) {
                 ast_dat(time + args[0], false)
@@ -1006,10 +1024,10 @@ fn apply_step_inverse(cvt: &TimeConversion, time: f64) -> f64 {
                 -args[1]
             };
             time + delta / SPD
-        }
-        TimeCvtType::TaiToTt => time - (TTOFF / SPD),
-        TimeCvtType::TtToTai => time + (TTOFF / SPD),
-        TimeCvtType::TtToTdb => {
+        }),
+        TimeCvtType::TaiToTt => for_good(times, |time| time - (TTOFF / SPD)),
+        TimeCvtType::TtToTai => for_good(times, |time| time + (TTOFF / SPD)),
+        TimeCvtType::TtToTdb => for_good(times, |time| {
             // Inverse of TT->TDB is TDB->TT
             let tdb = time + args[0];
             let tai = tdb - (TTOFF / SPD);
@@ -1020,8 +1038,8 @@ fn apply_step_inverse(cvt: &TimeConversion, time: f64) -> f64 {
                     -args[4]
                 } / SPD;
             time - rcc(tdb, utc, args[1], args[5], args[6]) / SPD
-        }
-        TimeCvtType::TdbToTt => {
+        }),
+        TimeCvtType::TdbToTt => for_good(times, |time| {
             // Inverse of TDB->TT is TT->TDB
             let tt = time + args[0];
             let tai = tt - (TTOFF / SPD);
@@ -1032,43 +1050,43 @@ fn apply_step_inverse(cvt: &TimeConversion, time: f64) -> f64 {
                     -args[4]
                 } / SPD;
             time + rcc(tt, utc, args[1], args[5], args[6]) / SPD
-        }
-        TimeCvtType::TtToTcg => {
+        }),
+        TimeCvtType::TtToTcg => for_good(times, |time| {
             // Inverse of TT->TCG is TCG->TT
             (time - args[1]) / (1.0 + LG)
-        }
-        TimeCvtType::TcgToTt => {
+        }),
+        TimeCvtType::TcgToTt => for_good(times, |time| {
             // Inverse of TCG->TT is TT->TCG
             time + (time * LG + args[1])
-        }
-        TimeCvtType::TdbToTcb => {
+        }),
+        TimeCvtType::TdbToTcb => for_good(times, |time| {
             // Inverse of TDB->TCB is TCB->TDB
             (time - args[1]) / (1.0 + LB)
-        }
-        TimeCvtType::TcbToTdb => {
+        }),
+        TimeCvtType::TcbToTdb => for_good(times, |time| {
             // Inverse of TCB->TDB is TDB->TCB
             time + (time * LB + args[1])
-        }
-        TimeCvtType::UtToGmst => gmsta(time, args[0], false),
-        TimeCvtType::GmstToUt => gmsta(time, args[0], true),
-        TimeCvtType::GmstToLmst => time + args[1] / D2PI,
-        TimeCvtType::LmstToGmst => time - args[1] / D2PI,
-        TimeCvtType::LmstToLast => {
+        }),
+        TimeCvtType::UtToGmst => for_good(times, |time| gmsta(time, args[0], false)),
+        TimeCvtType::GmstToUt => for_good(times, |time| gmsta(time, args[0], true)),
+        TimeCvtType::GmstToLmst => for_good(times, |time| time + args[1] / D2PI),
+        TimeCvtType::LmstToGmst => for_good(times, |time| time - args[1] / D2PI),
+        TimeCvtType::LmstToLast => for_good(times, |time| {
             // Inverse of LMST->LAST is LAST->LMST
             let gmstx = time + args[1] / D2PI;
             let tdb = gmsta(gmstx, args[0], false) + args[0] + (32.0 + TTOFF) / SPD;
             time - pal::eqeqx(tdb) / D2PI
-        }
-        TimeCvtType::LastToLmst => {
+        }),
+        TimeCvtType::LastToLmst => for_good(times, |time| {
             // Inverse of LAST->LMST is LMST->LAST
             let gmstx = time + args[1] / D2PI;
             let tdb = gmsta(gmstx, args[0], false) + args[0] + (32.0 + TTOFF) / SPD;
             time + pal::eqeqx(tdb) / D2PI
-        }
-        TimeCvtType::UtToUtc => time + args[0] / 86400.0,
-        TimeCvtType::UtcToUt => time - args[0] / 86400.0,
-        TimeCvtType::LtToUtc => time + args[0] / 24.0,
-        TimeCvtType::UtcToLt => time - args[0] / 24.0,
+        }),
+        TimeCvtType::UtToUtc => for_good(times, |time| time + args[0] / 86400.0),
+        TimeCvtType::UtcToUt => for_good(times, |time| time - args[0] / 86400.0),
+        TimeCvtType::LtToUtc => for_good(times, |time| time + args[0] / 24.0),
+        TimeCvtType::UtcToLt => for_good(times, |time| time - args[0] / 24.0),
     }
 }
 
@@ -1340,32 +1358,21 @@ impl Mapping for TimeMap {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
 
+        // As C does, each step runs over every point before the next step;
+        // a value that goes bad at one step is left alone by the rest.
         let n = pts.npoint();
-        for (o, &t) in out.axis_mut(0)[..n].iter_mut().zip(pts.axis(0)) {
-            let mut time = t;
-
-            if is_bad(time) {
-                *o = BAD_VALUE;
-                continue;
+        let times = &mut out.axis_mut(0)[..n];
+        for (o, &t) in times.iter_mut().zip(pts.axis(0)) {
+            *o = if is_bad(t) { BAD_VALUE } else { t };
+        }
+        if fwd {
+            for cvt in &self.conversions {
+                apply_step_forward(cvt, times);
             }
-
-            if fwd {
-                for cvt in &self.conversions {
-                    if is_bad(time) {
-                        break;
-                    }
-                    time = apply_step_forward(cvt, time);
-                }
-            } else {
-                for cvt in self.conversions.iter().rev() {
-                    if is_bad(time) {
-                        break;
-                    }
-                    time = apply_step_inverse(cvt, time);
-                }
+        } else {
+            for cvt in self.conversions.iter().rev() {
+                apply_step_inverse(cvt, times);
             }
-
-            *o = time;
         }
 
         Ok(())

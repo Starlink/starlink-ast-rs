@@ -147,6 +147,7 @@ In the hot-spots record, the other SlaMap cases (AMP, EQGAL, PREC) were flagged 
 
 - x86-64 record for this stage (commands below).
 - `timemap_mjdtobep.map` large-N gap to C.
+  Closed after the stage: TimeMap now runs each conversion step over every point before the next, as C does, which takes the case at N = 100 000 from 2.59 to 1.67 ns per point forward (C 1.54) and from 2.39 to 1.50 inverse (C 1.46), with N = 1 unchanged, and `timemap_taiutc.map` from 8.5 to 4.85 (C 5.7).
 - Shorter-latency `vmath::sin_cos` and `vmath::atan2` would remove the FK kernels' N = 1 cost.
 - The vendored-C rewrite ticket is superseded for PAL and ERFA by this port.
 - Interim reassessment: the spec keeps per-value entries on ERFA's exact arithmetic while the C is the oracle.
