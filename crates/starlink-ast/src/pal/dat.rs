@@ -18,6 +18,8 @@ use crate::erfa;
 /// and PAL passes whatever was in them to `eraDat`, so C's result there
 /// depends on the stack; 0.0 is what `eraDat` gives for the year, month and
 /// day fields `eraJd2cal` leaves zero, and it is what this returns.
+// Called only by tests (no mapping or frame uses it).
+#[allow(dead_code)]
 pub(crate) fn dat(dju: f64) -> f64 {
     let Ok((iy, im, id, fd)) = erfa::jd2cal(PAL__MJD0, dju) else {
         return 0.0;

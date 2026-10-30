@@ -64,6 +64,8 @@
 use super::cal2jd::{BadDay, Cal2jdError, cal2jd};
 
 /// Why [`dat`] gave no result.
+// Called only by tests (no mapping or frame uses it).
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DatError {
     /// Year earlier than -4799 (ERFA status -1).
@@ -80,6 +82,8 @@ pub(crate) enum DatError {
 }
 
 /// The warning that comes with [`dat`]'s result.
+// Called only by tests (no mapping or frame uses it).
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PreUtc {
     /// The date is before the first table entry, 1960 (ERFA status 1). The
@@ -188,6 +192,8 @@ const fn first_of_month_mjd(iy: i32, im: i32) -> f64 {
 ///
 /// A date before 1960 gives 0 with [`PreUtc`]. C also warns of a year later
 /// than 2028, which is not reproduced.
+// Called only by tests (no mapping or frame uses it).
+#[allow(dead_code)]
 pub(crate) fn dat(iy: i32, im: i32, id: i32, fd: f64) -> Result<(f64, Option<PreUtc>), DatError> {
     // If invalid fraction of a day, give up.
     if fd < 0.0 || fd > 1.0 {

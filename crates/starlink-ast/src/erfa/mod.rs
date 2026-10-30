@@ -32,7 +32,6 @@ mod c2s;
 mod cal2jd;
 mod d2tf;
 mod dat;
-mod dtdb;
 mod ee06a;
 mod eform;
 mod eors;
@@ -87,7 +86,6 @@ mod ppsp;
 mod pv2s;
 mod pvu;
 mod pxp;
-mod rm2v;
 mod rv2m;
 mod rx;
 mod rxp;
@@ -110,13 +108,9 @@ pub(crate) use anpm::anpm;
 pub(crate) use bpn2xy::bpn2xy;
 pub(crate) use cal2jd::{BadDay, Cal2jdError, cal2jd};
 pub(crate) use d2tf::d2tf;
-// The error and warning types are named by callers that match on them.
 #[cfg(test)]
 pub(crate) use dat::CHANGES;
 pub(crate) use dat::{DRIFT, LEAP_SECONDS, NERA1, dat};
-#[allow(unused_imports)]
-pub(crate) use dat::{DatError, PreUtc};
-pub(crate) use dtdb::dtdb;
 pub(crate) use ee06a::ee06a;
 pub(crate) use eform::{Ellipsoid, eform};
 pub(crate) use eors::eors;
@@ -124,8 +118,6 @@ pub(crate) use epb::epb;
 pub(crate) use epb2jd::epb2jd;
 pub(crate) use epj::epj;
 pub(crate) use epj2jd::epj2jd;
-#[allow(unused_imports)]
-pub(crate) use epv00::OutsideRange;
 pub(crate) use epv00::epv00;
 pub(crate) use era00::era00;
 pub(crate) use fad03::fad03;
@@ -173,8 +165,6 @@ pub(crate) use ppsp::ppsp;
 pub(crate) use pv2s::pv2s;
 pub(crate) use pvu::pvu;
 pub(crate) use pxp::pxp;
-#[allow(unused_imports)]
-pub(crate) use rm2v::rm2v;
 pub(crate) use rv2m::rv2m;
 pub(crate) use rx::rx;
 pub(crate) use rxp::rxp;
@@ -204,6 +194,7 @@ pub(crate) const ERFA_DPI: f64 = 3.141592653589793238462643;
 pub(crate) const ERFA_D2PI: f64 = 6.283185307179586476925287;
 #[allow(dead_code)]
 pub(crate) const ERFA_DR2D: f64 = 57.29577951308232087679815;
+#[allow(dead_code)]
 pub(crate) const ERFA_DD2R: f64 = 1.745329251994329576923691e-2;
 pub(crate) const ERFA_DR2AS: f64 = 206264.8062470963551564734;
 pub(crate) const ERFA_DAS2R: f64 = 4.848136811095359935899141e-6;
@@ -216,6 +207,7 @@ pub(crate) const ERFA_DTY: f64 = 365.242198781;
 pub(crate) const ERFA_DAYSEC: f64 = 86400.0;
 pub(crate) const ERFA_DJY: f64 = 365.25;
 pub(crate) const ERFA_DJC: f64 = 36525.0;
+#[allow(dead_code)]
 pub(crate) const ERFA_DJM: f64 = 365250.0;
 pub(crate) const ERFA_DJ00: f64 = 2451545.0;
 pub(crate) const ERFA_DJM0: f64 = 2400000.5;
