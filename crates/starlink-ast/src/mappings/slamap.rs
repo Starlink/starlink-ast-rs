@@ -1230,10 +1230,7 @@ fn apply_step_forward(
             (pal::dranrm(a), d)
         }
         SlaCvtType::Fk45z => unreachable!("FK45Z runs on slices"),
-        SlaCvtType::Fk54z => {
-            let (ra, dec, _, _) = pal::fk54z(alpha, delta, args[0]);
-            (ra, dec)
-        }
+        SlaCvtType::Fk54z => unreachable!("FK54Z runs on slices"),
         SlaCvtType::Fk5hz => pal::fk5hz(alpha, delta, args[0]),
         SlaCvtType::Hfk5z => {
             let (r5, d5, _, _) = pal::hfk5z(alpha, delta, args[0]);
@@ -1464,11 +1461,13 @@ impl Mapping for SlaMap {
                 continue;
             }
 
-            // FK45Z runs on slices, every point included, so a point's bits
-            // do not depend on how many are transformed together. It is also
-            // FK54Z's inverse, with the same epoch argument.
+            // The FK4/FK5 conversions run on slices, every point included,
+            // so a point's bits do not depend on how many are transformed
+            // together. The inverse of each is the other's forward
+            // conversion, with the same epoch argument.
             let fk_slice: Option<FkSlice> = match (cvt.cvt_type, fwd) {
                 (SlaCvtType::Fk45z, true) | (SlaCvtType::Fk54z, false) => Some(pal::fk45z_slice),
+                (SlaCvtType::Fk54z, true) | (SlaCvtType::Fk45z, false) => Some(pal::fk54z_slice),
                 _ => None,
             };
             if let Some(slice) = fk_slice {

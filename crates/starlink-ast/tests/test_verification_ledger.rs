@@ -414,8 +414,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_sky_convert.rs",
         "FK_SLICE_DRIFT_LICENSED",
-        146,
-        "conversions through FK4 whose SlaMap FK45Z step runs on vectorized \
+        306,
+        "conversions through FK4 whose SlaMap FK45Z or FK54Z step runs on vectorized \
          kernels, whose sines, cosines and arctangents are each within 1 ULP of the \
          exact value where C's come from libm: compared within 1.33e-15 radian, the \
          most measured (FK_MEASURED_BOUND), each case failing if it matches C \

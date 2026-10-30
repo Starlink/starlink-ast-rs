@@ -77,8 +77,18 @@ type FkLicence = (usize, &'static str, &'static str, Option<&'static str>);
 
 #[rustfmt::skip]
 const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
+    (0, "FK4", "FK4", None),  // 1 ULP, 1.1e-16
+    (0, "FK4", "FK4-NO-E", None),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "ICRS", None),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "J2000", None),  // 1 ULP, 1.1e-16
+    (0, "J2000", "FK4", None),  // 3 ULP, 4.4e-16
+    (0, "J2000", "FK4-NO-E", None),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "FK4", None),  // 1 ULP, 8.9e-16
+    (0, "GAPPT", "FK4-NO-E", None),  // 1 ULP, 8.9e-16
+    (0, "HELIOECLIPTIC", "FK4", None),  // 1 ULP, 8.9e-16
+    (0, "HELIOECLIPTIC", "FK4-NO-E", None),  // 1 ULP, 8.9e-16
+    (0, "SUPERGALACTIC", "FK4", None),  // 2 ULP, 4.4e-16
+    (0, "SUPERGALACTIC", "FK4-NO-E", None),  // 1 ULP, 4.4e-16
     (0, "ICRS", "ICRS", Some("FK4")),  // 1 ULP, 1.1e-16
     (0, "ICRS", "FK5", Some("FK4")),  // 1 ULP, 1.1e-16
     (0, "ICRS", "J2000", Some("FK4")),  // 1 ULP, 1.1e-16
@@ -97,14 +107,27 @@ const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
     (0, "FK4-NO-E", "ICRS", Some("FK4")),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "GALACTIC", Some("FK4")),  // 63 ULP, 1.1e-16
     (0, "FK4-NO-E", "SUPERGALACTIC", Some("FK4")),  // 1 ULP, 2.8e-17
-    (0, "GAPPT", "ICRS", Some("FK4")),  // 1 ULP, 1.1e-16
-    (0, "GAPPT", "FK5", Some("FK4")),  // 1 ULP, 1.1e-16
-    (0, "GAPPT", "GAPPT", Some("FK4")),  // 1 ULP, 1.1e-16
-    (0, "GAPPT", "ECLIPTIC", Some("FK4")),  // 1 ULP, 2.2e-16
-    (0, "GAPPT", "HELIOECLIPTIC", Some("FK4")),  // 4 ULP, 1.1e-16
-    (0, "GAPPT", "GALACTIC", Some("FK4")),  // 15 ULP, 1.1e-16
-    (0, "GAPPT", "SUPERGALACTIC", Some("FK4")),  // 1 ULP, 8.9e-16
+    (0, "GAPPT", "ICRS", Some("FK4")),  // 3 ULP, 3.3e-16
+    (0, "GAPPT", "FK4", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "FK4-NO-E", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "GAPPT", "FK5", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "J2000", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "GAPPT", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "ECLIPTIC", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "HELIOECLIPTIC", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "GALACTIC", Some("FK4")),  // 48 ULP, 1.7e-16
     (0, "GAPPT", "AZEL", Some("FK4")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "ICRS", Some("FK4")),  // 1 ULP, 2.2e-16
+    (0, "ECLIPTIC", "FK4", Some("FK4")),  // 3 ULP, 4.4e-16
+    (0, "ECLIPTIC", "FK4-NO-E", Some("FK4")),  // 2 ULP, 4.4e-16
+    (0, "ECLIPTIC", "FK5", Some("FK4")),  // 3 ULP, 6.7e-16
+    (0, "ECLIPTIC", "J2000", Some("FK4")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "GAPPT", Some("FK4")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "ECLIPTIC", Some("FK4")),  // 4 ULP, 8.9e-16
+    (0, "ECLIPTIC", "HELIOECLIPTIC", Some("FK4")),  // 2 ULP, 4.4e-16
+    (0, "ECLIPTIC", "GALACTIC", Some("FK4")),  // 7 ULP, 4.4e-16
+    (0, "ECLIPTIC", "SUPERGALACTIC", Some("FK4")),  // 12 ULP, 3.3e-16
+    (0, "ECLIPTIC", "AZEL", Some("FK4")),  // 1 ULP, 4.4e-16
     (0, "HELIOECLIPTIC", "FK5", Some("FK4")),  // 1 ULP, 2.2e-16
     (0, "HELIOECLIPTIC", "GAPPT", Some("FK4")),  // 1 ULP, 2.2e-16
     (0, "HELIOECLIPTIC", "ECLIPTIC", Some("FK4")),  // 1 ULP, 1.1e-16
@@ -121,6 +144,28 @@ const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
     (0, "GALACTIC", "GALACTIC", Some("FK4")),  // 1 ULP, 8.9e-16
     (0, "GALACTIC", "SUPERGALACTIC", Some("FK4")),  // 1 ULP, 8.9e-16
     (0, "GALACTIC", "AZEL", Some("FK4")),  // 1 ULP, 4.4e-16
+    (0, "SUPERGALACTIC", "ICRS", Some("FK4")),  // 3 ULP, 1.7e-16
+    (0, "SUPERGALACTIC", "FK4", Some("FK4")),  // 2 ULP, 1.1e-16
+    (0, "SUPERGALACTIC", "FK4-NO-E", Some("FK4")),  // 2 ULP, 1.1e-16
+    (0, "SUPERGALACTIC", "FK5", Some("FK4")),  // 3 ULP, 1.7e-16
+    (0, "SUPERGALACTIC", "J2000", Some("FK4")),  // 2 ULP, 1.1e-16
+    (0, "SUPERGALACTIC", "GAPPT", Some("FK4")),  // 4 ULP, 2.2e-16
+    (0, "SUPERGALACTIC", "ECLIPTIC", Some("FK4")),  // 3 ULP, 3.3e-16
+    (0, "SUPERGALACTIC", "HELIOECLIPTIC", Some("FK4")),  // 2 ULP, 4.4e-16
+    (0, "SUPERGALACTIC", "GALACTIC", Some("FK4")),  // 160 ULP, 2.2e-16
+    (0, "SUPERGALACTIC", "SUPERGALACTIC", Some("FK4")),  // 1 ULP, 8.9e-16
+    (0, "SUPERGALACTIC", "AZEL", Some("FK4")),  // 3 ULP, 1.7e-16
+    (0, "AZEL", "ICRS", Some("FK4")),  // 1 ULP, 4.4e-16
+    (0, "AZEL", "FK4", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "AZEL", "FK4-NO-E", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "AZEL", "FK5", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "J2000", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "GAPPT", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "AZEL", "ECLIPTIC", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "HELIOECLIPTIC", Some("FK4")),  // 5 ULP, 2.8e-16
+    (0, "AZEL", "GALACTIC", Some("FK4")),  // 2 ULP, 4.4e-16
+    (0, "AZEL", "SUPERGALACTIC", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "AZEL", Some("FK4")),  // 4 ULP, 5.6e-17
     (0, "ICRS", "ICRS", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
     (0, "ICRS", "FK5", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
     (0, "ICRS", "J2000", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
@@ -139,16 +184,27 @@ const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
     (0, "FK4-NO-E", "ICRS", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "GALACTIC", Some("FK4-NO-E")),  // 63 ULP, 1.1e-16
     (0, "FK4-NO-E", "SUPERGALACTIC", Some("FK4-NO-E")),  // 1 ULP, 2.8e-17
-    (0, "GAPPT", "ICRS", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
-    (0, "GAPPT", "FK5", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
-    (0, "GAPPT", "GAPPT", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
-    (0, "GAPPT", "ECLIPTIC", Some("FK4-NO-E")),  // 1 ULP, 2.2e-16
-    (0, "GAPPT", "HELIOECLIPTIC", Some("FK4-NO-E")),  // 4 ULP, 1.1e-16
-    (0, "GAPPT", "GALACTIC", Some("FK4-NO-E")),  // 15 ULP, 1.1e-16
-    (0, "GAPPT", "SUPERGALACTIC", Some("FK4-NO-E")),  // 1 ULP, 8.9e-16
+    (0, "GAPPT", "ICRS", Some("FK4-NO-E")),  // 3 ULP, 3.3e-16
+    (0, "GAPPT", "FK4", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "FK4-NO-E", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "GAPPT", "FK5", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "J2000", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "GAPPT", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "ECLIPTIC", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "HELIOECLIPTIC", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "GALACTIC", Some("FK4-NO-E")),  // 48 ULP, 1.7e-16
     (0, "GAPPT", "AZEL", Some("FK4-NO-E")),  // 1 ULP, 4.4e-16
-    (0, "ECLIPTIC", "FK5", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
-    (0, "ECLIPTIC", "ECLIPTIC", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "ECLIPTIC", "ICRS", Some("FK4-NO-E")),  // 1 ULP, 2.2e-16
+    (0, "ECLIPTIC", "FK4", Some("FK4-NO-E")),  // 3 ULP, 4.4e-16
+    (0, "ECLIPTIC", "FK4-NO-E", Some("FK4-NO-E")),  // 2 ULP, 4.4e-16
+    (0, "ECLIPTIC", "FK5", Some("FK4-NO-E")),  // 4 ULP, 8.9e-16
+    (0, "ECLIPTIC", "J2000", Some("FK4-NO-E")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "GAPPT", Some("FK4-NO-E")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "ECLIPTIC", Some("FK4-NO-E")),  // 4 ULP, 8.9e-16
+    (0, "ECLIPTIC", "HELIOECLIPTIC", Some("FK4-NO-E")),  // 2 ULP, 4.4e-16
+    (0, "ECLIPTIC", "GALACTIC", Some("FK4-NO-E")),  // 7 ULP, 4.4e-16
+    (0, "ECLIPTIC", "SUPERGALACTIC", Some("FK4-NO-E")),  // 12 ULP, 3.3e-16
+    (0, "ECLIPTIC", "AZEL", Some("FK4-NO-E")),  // 1 ULP, 4.4e-16
     (0, "HELIOECLIPTIC", "FK5", Some("FK4-NO-E")),  // 1 ULP, 2.2e-16
     (0, "HELIOECLIPTIC", "GAPPT", Some("FK4-NO-E")),  // 1 ULP, 2.2e-16
     (0, "HELIOECLIPTIC", "ECLIPTIC", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
@@ -165,6 +221,31 @@ const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
     (0, "GALACTIC", "GALACTIC", Some("FK4-NO-E")),  // 1 ULP, 8.9e-16
     (0, "GALACTIC", "SUPERGALACTIC", Some("FK4-NO-E")),  // 1 ULP, 8.9e-16
     (0, "GALACTIC", "AZEL", Some("FK4-NO-E")),  // 1 ULP, 4.4e-16
+    (0, "SUPERGALACTIC", "ICRS", Some("FK4-NO-E")),  // 3 ULP, 1.7e-16
+    (0, "SUPERGALACTIC", "FK4", Some("FK4-NO-E")),  // 2 ULP, 1.1e-16
+    (0, "SUPERGALACTIC", "FK4-NO-E", Some("FK4-NO-E")),  // 2 ULP, 1.1e-16
+    (0, "SUPERGALACTIC", "FK5", Some("FK4-NO-E")),  // 3 ULP, 1.7e-16
+    (0, "SUPERGALACTIC", "J2000", Some("FK4-NO-E")),  // 2 ULP, 1.1e-16
+    (0, "SUPERGALACTIC", "GAPPT", Some("FK4-NO-E")),  // 4 ULP, 2.2e-16
+    (0, "SUPERGALACTIC", "ECLIPTIC", Some("FK4-NO-E")),  // 3 ULP, 3.3e-16
+    (0, "SUPERGALACTIC", "HELIOECLIPTIC", Some("FK4-NO-E")),  // 2 ULP, 4.4e-16
+    (0, "SUPERGALACTIC", "GALACTIC", Some("FK4-NO-E")),  // 160 ULP, 2.2e-16
+    (0, "SUPERGALACTIC", "SUPERGALACTIC", Some("FK4-NO-E")),  // 1 ULP, 8.9e-16
+    (0, "SUPERGALACTIC", "AZEL", Some("FK4-NO-E")),  // 3 ULP, 1.7e-16
+    (0, "AZEL", "ICRS", Some("FK4-NO-E")),  // 1 ULP, 4.4e-16
+    (0, "AZEL", "FK4", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "AZEL", "FK4-NO-E", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "AZEL", "FK5", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "J2000", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "GAPPT", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "AZEL", "ECLIPTIC", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "HELIOECLIPTIC", Some("FK4-NO-E")),  // 5 ULP, 2.8e-16
+    (0, "AZEL", "GALACTIC", Some("FK4-NO-E")),  // 2 ULP, 4.4e-16
+    (0, "AZEL", "SUPERGALACTIC", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "AZEL", Some("FK4-NO-E")),  // 4 ULP, 5.6e-17
+    (0, "ICRS", "FK4-NO-E", Some("FK5")),  // 1 ULP, 2.2e-16
+    (0, "FK4", "FK4", Some("FK5")),  // 2 ULP, 2.2e-16
+    (0, "FK4", "FK4-NO-E", Some("FK5")),  // 2 ULP, 2.2e-16
     (0, "FK4-NO-E", "ICRS", Some("FK5")),  // 2 ULP, 2.2e-16
     (0, "FK4-NO-E", "FK4", Some("FK5")),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "FK4-NO-E", Some("FK5")),  // 2 ULP, 2.2e-16
@@ -175,9 +256,28 @@ const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
     (0, "FK4-NO-E", "HELIOECLIPTIC", Some("FK5")),  // 2 ULP, 2.2e-16
     (0, "FK4-NO-E", "GALACTIC", Some("FK5")),  // 64 ULP, 1.1e-16
     (0, "FK4-NO-E", "AZEL", Some("FK5")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "FK4", Some("FK5")),  // 2 ULP, 2.2e-16
+    (0, "ECLIPTIC", "FK4-NO-E", Some("FK5")),  // 2 ULP, 2.2e-16
+    (0, "SUPERGALACTIC", "FK4", Some("FK5")),  // 1 ULP, 4.4e-16
+    (0, "SUPERGALACTIC", "FK4-NO-E", Some("FK5")),  // 1 ULP, 4.4e-16
+    (0, "AZEL", "FK4", Some("FK5")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "FK4-NO-E", Some("FK5")),  // 2 ULP, 2.2e-16
+    (0, "FK4", "FK4", Some("J2000")),  // 1 ULP, 1.1e-16
+    (0, "FK4", "FK4-NO-E", Some("J2000")),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "ICRS", Some("J2000")),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "J2000", Some("J2000")),  // 1 ULP, 1.1e-16
+    (0, "J2000", "FK4", Some("J2000")),  // 3 ULP, 4.4e-16
+    (0, "J2000", "FK4-NO-E", Some("J2000")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "FK4", Some("J2000")),  // 1 ULP, 8.9e-16
+    (0, "GAPPT", "FK4-NO-E", Some("J2000")),  // 1 ULP, 8.9e-16
+    (0, "HELIOECLIPTIC", "FK4", Some("J2000")),  // 1 ULP, 8.9e-16
+    (0, "HELIOECLIPTIC", "FK4-NO-E", Some("J2000")),  // 1 ULP, 8.9e-16
+    (0, "SUPERGALACTIC", "FK4", Some("J2000")),  // 2 ULP, 4.4e-16
+    (0, "SUPERGALACTIC", "FK4-NO-E", Some("J2000")),  // 1 ULP, 4.4e-16
+    (0, "ICRS", "FK4", Some("GAPPT")),  // 1 ULP, 1.1e-16
+    (0, "ICRS", "FK4-NO-E", Some("GAPPT")),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "ICRS", Some("GAPPT")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "FK4-NO-E", Some("GAPPT")),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "FK5", Some("GAPPT")),  // 2 ULP, 2.2e-16
     (0, "FK4-NO-E", "J2000", Some("GAPPT")),  // 2 ULP, 2.2e-16
     (0, "FK4-NO-E", "GAPPT", Some("GAPPT")),  // 1 ULP, 1.1e-16
@@ -185,7 +285,20 @@ const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
     (0, "FK4-NO-E", "HELIOECLIPTIC", Some("GAPPT")),  // 2 ULP, 4.4e-16
     (0, "FK4-NO-E", "GALACTIC", Some("GAPPT")),  // 192 ULP, 1.7e-16
     (0, "FK4-NO-E", "SUPERGALACTIC", Some("GAPPT")),  // 1 ULP, 4.4e-16
+    (0, "J2000", "FK4", Some("GAPPT")),  // 2 ULP, 2.2e-16
+    (0, "J2000", "FK4-NO-E", Some("GAPPT")),  // 2 ULP, 2.2e-16
+    (0, "GAPPT", "FK4", Some("GAPPT")),  // 1 ULP, 2.2e-16
+    (0, "GAPPT", "FK4-NO-E", Some("GAPPT")),  // 1 ULP, 2.2e-16
+    (0, "ECLIPTIC", "FK4", Some("GAPPT")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "FK4-NO-E", Some("GAPPT")),  // 2 ULP, 4.4e-16
+    (0, "HELIOECLIPTIC", "FK4", Some("GAPPT")),  // 1 ULP, 2.2e-16
+    (0, "HELIOECLIPTIC", "FK4-NO-E", Some("GAPPT")),  // 1 ULP, 2.2e-16
+    (0, "GALACTIC", "FK4", Some("GAPPT")),  // 1 ULP, 2.2e-16
+    (0, "GALACTIC", "FK4-NO-E", Some("GAPPT")),  // 1 ULP, 2.2e-16
+    (0, "ICRS", "FK4-NO-E", Some("ECLIPTIC")),  // 1 ULP, 2.2e-16
     (0, "FK4-NO-E", "ICRS", Some("ECLIPTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "FK4", Some("ECLIPTIC")),  // 1 ULP, 5.6e-17
+    (0, "FK4-NO-E", "FK4-NO-E", Some("ECLIPTIC")),  // 1 ULP, 5.6e-17
     (0, "FK4-NO-E", "FK5", Some("ECLIPTIC")),  // 3 ULP, 3.3e-16
     (0, "FK4-NO-E", "J2000", Some("ECLIPTIC")),  // 3 ULP, 3.3e-16
     (0, "FK4-NO-E", "GAPPT", Some("ECLIPTIC")),  // 2 ULP, 2.2e-16
@@ -193,6 +306,16 @@ const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
     (0, "FK4-NO-E", "HELIOECLIPTIC", Some("ECLIPTIC")),  // 2 ULP, 2.2e-16
     (0, "FK4-NO-E", "GALACTIC", Some("ECLIPTIC")),  // 64 ULP, 1.1e-16
     (0, "FK4-NO-E", "AZEL", Some("ECLIPTIC")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "FK4", Some("ECLIPTIC")),  // 3 ULP, 3.3e-16
+    (0, "ECLIPTIC", "FK4-NO-E", Some("ECLIPTIC")),  // 3 ULP, 3.3e-16
+    (0, "SUPERGALACTIC", "FK4", Some("ECLIPTIC")),  // 1 ULP, 4.4e-16
+    (0, "SUPERGALACTIC", "FK4-NO-E", Some("ECLIPTIC")),  // 1 ULP, 4.4e-16
+    (0, "AZEL", "FK4", Some("ECLIPTIC")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "FK4-NO-E", Some("ECLIPTIC")),  // 2 ULP, 2.2e-16
+    (0, "ICRS", "FK4", Some("HELIOECLIPTIC")),  // 1 ULP, 8.9e-16
+    (0, "ICRS", "FK4-NO-E", Some("HELIOECLIPTIC")),  // 2 ULP, 8.9e-16
+    (0, "FK4", "FK4", Some("HELIOECLIPTIC")),  // 1 ULP, 4.4e-16
+    (0, "FK4", "FK4-NO-E", Some("HELIOECLIPTIC")),  // 1 ULP, 4.4e-16
     (0, "FK4-NO-E", "ICRS", Some("HELIOECLIPTIC")),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "FK4", Some("HELIOECLIPTIC")),  // 4 ULP, 4.4e-16
     (0, "FK4-NO-E", "FK4-NO-E", Some("HELIOECLIPTIC")),  // 4 ULP, 4.4e-16
@@ -202,6 +325,17 @@ const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
     (0, "FK4-NO-E", "ECLIPTIC", Some("HELIOECLIPTIC")),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "HELIOECLIPTIC", Some("HELIOECLIPTIC")),  // 3 ULP, 3.3e-16
     (0, "FK4-NO-E", "AZEL", Some("HELIOECLIPTIC")),  // 2 ULP, 1.1e-16
+    (0, "J2000", "FK4", Some("HELIOECLIPTIC")),  // 4 ULP, 4.4e-16
+    (0, "J2000", "FK4-NO-E", Some("HELIOECLIPTIC")),  // 3 ULP, 4.4e-16
+    (0, "GAPPT", "FK4", Some("HELIOECLIPTIC")),  // 1 ULP, 4.4e-16
+    (0, "GAPPT", "FK4-NO-E", Some("HELIOECLIPTIC")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "FK4", Some("HELIOECLIPTIC")),  // 1 ULP, 2.2e-16
+    (0, "ECLIPTIC", "FK4-NO-E", Some("HELIOECLIPTIC")),  // 1 ULP, 2.2e-16
+    (0, "GALACTIC", "FK4", Some("HELIOECLIPTIC")),  // 3 ULP, 3.3e-16
+    (0, "GALACTIC", "FK4-NO-E", Some("HELIOECLIPTIC")),  // 2 ULP, 2.2e-16
+    (0, "ICRS", "FK4-NO-E", Some("GALACTIC")),  // 1 ULP, 2.2e-16
+    (0, "FK4", "FK4", Some("GALACTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4", "FK4-NO-E", Some("GALACTIC")),  // 2 ULP, 2.2e-16
     (0, "FK4-NO-E", "ICRS", Some("GALACTIC")),  // 2 ULP, 2.2e-16
     (0, "FK4-NO-E", "FK4", Some("GALACTIC")),  // 1 ULP, 1.1e-16
     (0, "FK4-NO-E", "FK4-NO-E", Some("GALACTIC")),  // 2 ULP, 2.2e-16
@@ -212,6 +346,12 @@ const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
     (0, "FK4-NO-E", "HELIOECLIPTIC", Some("GALACTIC")),  // 2 ULP, 2.2e-16
     (0, "FK4-NO-E", "GALACTIC", Some("GALACTIC")),  // 64 ULP, 1.1e-16
     (0, "FK4-NO-E", "AZEL", Some("GALACTIC")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "FK4", Some("GALACTIC")),  // 2 ULP, 2.2e-16
+    (0, "ECLIPTIC", "FK4-NO-E", Some("GALACTIC")),  // 2 ULP, 2.2e-16
+    (0, "SUPERGALACTIC", "FK4", Some("GALACTIC")),  // 1 ULP, 4.4e-16
+    (0, "SUPERGALACTIC", "FK4-NO-E", Some("GALACTIC")),  // 1 ULP, 4.4e-16
+    (0, "AZEL", "FK4", Some("GALACTIC")),  // 2 ULP, 2.2e-16
+    (0, "AZEL", "FK4-NO-E", Some("GALACTIC")),  // 2 ULP, 2.2e-16
     (0, "FK4-NO-E", "ICRS", Some("AZEL")),  // 9 ULP, 1.0e-15
     (0, "FK4-NO-E", "FK4", Some("AZEL")),  // 10 ULP, 1.1e-15
     (0, "FK4-NO-E", "FK4-NO-E", Some("AZEL")),  // 10 ULP, 1.0e-15
@@ -223,6 +363,26 @@ const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
     (0, "FK4-NO-E", "GALACTIC", Some("AZEL")),  // 3 ULP, 1.3e-15
     (0, "FK4-NO-E", "SUPERGALACTIC", Some("AZEL")),  // 8 ULP, 8.9e-16
     (0, "FK4-NO-E", "AZEL", Some("AZEL")),  // 1 ULP, 4.4e-16
+    (0, "J2000", "FK4", Some("AZEL")),  // 4 ULP, 8.9e-16
+    (0, "J2000", "FK4-NO-E", Some("AZEL")),  // 4 ULP, 8.9e-16
+    (0, "ECLIPTIC", "FK4", Some("AZEL")),  // 1 ULP, 1.1e-16
+    (0, "ECLIPTIC", "FK4-NO-E", Some("AZEL")),  // 1 ULP, 1.1e-16
+    (0, "HELIOECLIPTIC", "FK4", Some("AZEL")),  // 1 ULP, 2.2e-16
+    (0, "HELIOECLIPTIC", "FK4-NO-E", Some("AZEL")),  // 1 ULP, 2.2e-16
+    (0, "GALACTIC", "FK4", Some("AZEL")),  // 1 ULP, 2.8e-17
+    (0, "GALACTIC", "FK4-NO-E", Some("AZEL")),  // 1 ULP, 2.8e-17
+    (0, "SUPERGALACTIC", "FK4", Some("AZEL")),  // 2 ULP, 8.9e-16
+    (0, "SUPERGALACTIC", "FK4-NO-E", Some("AZEL")),  // 1 ULP, 4.4e-16
+    (1, "ICRS", "FK4", None),  // 1 ULP, 2.2e-16
+    (1, "ICRS", "FK4-NO-E", None),  // 1 ULP, 2.2e-16
+    (1, "J2000", "FK4", None),  // 2 ULP, 2.2e-16
+    (1, "J2000", "FK4-NO-E", None),  // 2 ULP, 2.2e-16
+    (1, "ECLIPTIC", "FK4", None),  // 2 ULP, 2.2e-16
+    (1, "ECLIPTIC", "FK4-NO-E", None),  // 1 ULP, 1.1e-16
+    (1, "SUPERGALACTIC", "FK4", None),  // 1 ULP, 5.6e-17
+    (1, "SUPERGALACTIC", "FK4-NO-E", None),  // 1 ULP, 5.6e-17
+    (1, "AZEL", "FK4", None),  // 3 ULP, 3.3e-16
+    (1, "AZEL", "FK4-NO-E", None),  // 3 ULP, 3.3e-16
 ];
 
 /// The most an [`FK_SLICE_DRIFT_LICENSED`] case's value was measured to differ

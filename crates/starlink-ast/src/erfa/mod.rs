@@ -144,7 +144,7 @@ pub(crate) use fave03::fave03;
 pub(crate) use fk5hip::fk5hip;
 pub(crate) use fk5hz::fk5hz;
 pub(crate) use fk45z::{Fk45zEpoch, fk45z, fk45z_kernel};
-pub(crate) use fk54z::fk54z;
+pub(crate) use fk54z::{fk54z, fk54z_kernel};
 pub(crate) use fk524::fk524;
 pub(crate) use fw2m::fw2m;
 pub(crate) use gc2gd::gc2gd;
