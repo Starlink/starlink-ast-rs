@@ -57,6 +57,189 @@ fn sincos_licence(config: usize, from: &str, to: &str, align: Option<&str>) -> O
         .map(|&(.., ulps, _)| ulps)
 }
 
+/// Cases whose conversion runs an FK4/FK5 step of an SlaMap, and whose
+/// results differ from C's by that step's drift.
+///
+/// SlaMap runs those steps on vectorized kernels whose sines, cosines and
+/// arctangents are each within 1 ULP of the exact value, rounded, where C's
+/// come from libm (docs/superpowers/specs/2026-10-27-native-erfa-pal-wcslib-design.md,
+/// "ULP bound: per elementary function"), and whose outputs are within a few
+/// times 2^-53 radian of the per-value conversion on the sky. Each licensed
+/// case is compared with C by `sphmap_drift_eq` within [`FK_MEASURED_BOUND`],
+/// the most measured, or as other cases are off the capture platform, and
+/// fails if it matches C exactly, so the list cannot go stale. Each entry's
+/// comment gives its own largest difference, in ULP and in radians. Interim
+/// until the per-value entries are reassessed (the design's "Interim:
+/// vectorized kernels in slice entries only").
+///
+/// Fields: configuration, from System, to System, to AlignSystem.
+type FkLicence = (usize, &'static str, &'static str, Option<&'static str>);
+
+#[rustfmt::skip]
+const FK_SLICE_DRIFT_LICENSED: &[FkLicence] = &[
+    (0, "FK4-NO-E", "ICRS", None),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "J2000", None),  // 1 ULP, 1.1e-16
+    (0, "ICRS", "ICRS", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "ICRS", "FK5", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "ICRS", "J2000", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "ICRS", "GAPPT", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "ICRS", "HELIOECLIPTIC", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "ICRS", "GALACTIC", Some("FK4")),  // 31 ULP, 5.4e-17
+    (0, "ICRS", "SUPERGALACTIC", Some("FK4")),  // 1 ULP, 4.4e-16
+    (0, "ICRS", "AZEL", Some("FK4")),  // 1 ULP, 4.4e-16
+    (0, "FK4", "ICRS", Some("FK4")),  // 2 ULP, 4.4e-16
+    (0, "FK4", "J2000", Some("FK4")),  // 2 ULP, 4.4e-16
+    (0, "FK4", "GAPPT", Some("FK4")),  // 1 ULP, 2.2e-16
+    (0, "FK4", "HELIOECLIPTIC", Some("FK4")),  // 1 ULP, 8.9e-16
+    (0, "FK4", "GALACTIC", Some("FK4")),  // 6 ULP, 1.7e-16
+    (0, "FK4", "SUPERGALACTIC", Some("FK4")),  // 7 ULP, 1.9e-16
+    (0, "FK4", "AZEL", Some("FK4")),  // 5 ULP, 2.8e-16
+    (0, "FK4-NO-E", "ICRS", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "GALACTIC", Some("FK4")),  // 63 ULP, 1.1e-16
+    (0, "FK4-NO-E", "SUPERGALACTIC", Some("FK4")),  // 1 ULP, 2.8e-17
+    (0, "GAPPT", "ICRS", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "GAPPT", "FK5", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "GAPPT", "GAPPT", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "GAPPT", "ECLIPTIC", Some("FK4")),  // 1 ULP, 2.2e-16
+    (0, "GAPPT", "HELIOECLIPTIC", Some("FK4")),  // 4 ULP, 1.1e-16
+    (0, "GAPPT", "GALACTIC", Some("FK4")),  // 15 ULP, 1.1e-16
+    (0, "GAPPT", "SUPERGALACTIC", Some("FK4")),  // 1 ULP, 8.9e-16
+    (0, "GAPPT", "AZEL", Some("FK4")),  // 1 ULP, 4.4e-16
+    (0, "HELIOECLIPTIC", "FK5", Some("FK4")),  // 1 ULP, 2.2e-16
+    (0, "HELIOECLIPTIC", "GAPPT", Some("FK4")),  // 1 ULP, 2.2e-16
+    (0, "HELIOECLIPTIC", "ECLIPTIC", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "HELIOECLIPTIC", "HELIOECLIPTIC", Some("FK4")),  // 1 ULP, 1.1e-16
+    (0, "HELIOECLIPTIC", "GALACTIC", Some("FK4")),  // 2 ULP, 1.1e-16
+    (0, "HELIOECLIPTIC", "SUPERGALACTIC", Some("FK4")),  // 2 ULP, 1.4e-17
+    (0, "HELIOECLIPTIC", "AZEL", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "ICRS", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "FK5", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "J2000", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "GAPPT", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "ECLIPTIC", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "HELIOECLIPTIC", Some("FK4")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "GALACTIC", Some("FK4")),  // 1 ULP, 8.9e-16
+    (0, "GALACTIC", "SUPERGALACTIC", Some("FK4")),  // 1 ULP, 8.9e-16
+    (0, "GALACTIC", "AZEL", Some("FK4")),  // 1 ULP, 4.4e-16
+    (0, "ICRS", "ICRS", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "ICRS", "FK5", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "ICRS", "J2000", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "ICRS", "GAPPT", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "ICRS", "HELIOECLIPTIC", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "ICRS", "GALACTIC", Some("FK4-NO-E")),  // 31 ULP, 5.4e-17
+    (0, "ICRS", "SUPERGALACTIC", Some("FK4-NO-E")),  // 1 ULP, 4.4e-16
+    (0, "ICRS", "AZEL", Some("FK4-NO-E")),  // 1 ULP, 4.4e-16
+    (0, "FK4", "ICRS", Some("FK4-NO-E")),  // 2 ULP, 4.4e-16
+    (0, "FK4", "J2000", Some("FK4-NO-E")),  // 2 ULP, 4.4e-16
+    (0, "FK4", "GAPPT", Some("FK4-NO-E")),  // 1 ULP, 2.2e-16
+    (0, "FK4", "HELIOECLIPTIC", Some("FK4-NO-E")),  // 1 ULP, 8.9e-16
+    (0, "FK4", "GALACTIC", Some("FK4-NO-E")),  // 6 ULP, 1.7e-16
+    (0, "FK4", "SUPERGALACTIC", Some("FK4-NO-E")),  // 7 ULP, 1.9e-16
+    (0, "FK4", "AZEL", Some("FK4-NO-E")),  // 5 ULP, 2.8e-16
+    (0, "FK4-NO-E", "ICRS", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "GALACTIC", Some("FK4-NO-E")),  // 63 ULP, 1.1e-16
+    (0, "FK4-NO-E", "SUPERGALACTIC", Some("FK4-NO-E")),  // 1 ULP, 2.8e-17
+    (0, "GAPPT", "ICRS", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "GAPPT", "FK5", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "GAPPT", "GAPPT", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "GAPPT", "ECLIPTIC", Some("FK4-NO-E")),  // 1 ULP, 2.2e-16
+    (0, "GAPPT", "HELIOECLIPTIC", Some("FK4-NO-E")),  // 4 ULP, 1.1e-16
+    (0, "GAPPT", "GALACTIC", Some("FK4-NO-E")),  // 15 ULP, 1.1e-16
+    (0, "GAPPT", "SUPERGALACTIC", Some("FK4-NO-E")),  // 1 ULP, 8.9e-16
+    (0, "GAPPT", "AZEL", Some("FK4-NO-E")),  // 1 ULP, 4.4e-16
+    (0, "ECLIPTIC", "FK5", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "ECLIPTIC", "ECLIPTIC", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "HELIOECLIPTIC", "FK5", Some("FK4-NO-E")),  // 1 ULP, 2.2e-16
+    (0, "HELIOECLIPTIC", "GAPPT", Some("FK4-NO-E")),  // 1 ULP, 2.2e-16
+    (0, "HELIOECLIPTIC", "ECLIPTIC", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "HELIOECLIPTIC", "HELIOECLIPTIC", Some("FK4-NO-E")),  // 1 ULP, 1.1e-16
+    (0, "HELIOECLIPTIC", "GALACTIC", Some("FK4-NO-E")),  // 2 ULP, 1.1e-16
+    (0, "HELIOECLIPTIC", "SUPERGALACTIC", Some("FK4-NO-E")),  // 2 ULP, 1.4e-17
+    (0, "HELIOECLIPTIC", "AZEL", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "ICRS", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "FK5", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "J2000", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "GAPPT", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "ECLIPTIC", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "HELIOECLIPTIC", Some("FK4-NO-E")),  // 2 ULP, 2.2e-16
+    (0, "GALACTIC", "GALACTIC", Some("FK4-NO-E")),  // 1 ULP, 8.9e-16
+    (0, "GALACTIC", "SUPERGALACTIC", Some("FK4-NO-E")),  // 1 ULP, 8.9e-16
+    (0, "GALACTIC", "AZEL", Some("FK4-NO-E")),  // 1 ULP, 4.4e-16
+    (0, "FK4-NO-E", "ICRS", Some("FK5")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "FK4", Some("FK5")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "FK4-NO-E", Some("FK5")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "FK5", Some("FK5")),  // 3 ULP, 3.3e-16
+    (0, "FK4-NO-E", "J2000", Some("FK5")),  // 3 ULP, 3.3e-16
+    (0, "FK4-NO-E", "GAPPT", Some("FK5")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "ECLIPTIC", Some("FK5")),  // 3 ULP, 3.3e-16
+    (0, "FK4-NO-E", "HELIOECLIPTIC", Some("FK5")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "GALACTIC", Some("FK5")),  // 64 ULP, 1.1e-16
+    (0, "FK4-NO-E", "AZEL", Some("FK5")),  // 1 ULP, 4.4e-16
+    (0, "FK4-NO-E", "ICRS", Some("J2000")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "J2000", Some("J2000")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "ICRS", Some("GAPPT")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "FK5", Some("GAPPT")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "J2000", Some("GAPPT")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "GAPPT", Some("GAPPT")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "ECLIPTIC", Some("GAPPT")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "HELIOECLIPTIC", Some("GAPPT")),  // 2 ULP, 4.4e-16
+    (0, "FK4-NO-E", "GALACTIC", Some("GAPPT")),  // 192 ULP, 1.7e-16
+    (0, "FK4-NO-E", "SUPERGALACTIC", Some("GAPPT")),  // 1 ULP, 4.4e-16
+    (0, "FK4-NO-E", "ICRS", Some("ECLIPTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "FK5", Some("ECLIPTIC")),  // 3 ULP, 3.3e-16
+    (0, "FK4-NO-E", "J2000", Some("ECLIPTIC")),  // 3 ULP, 3.3e-16
+    (0, "FK4-NO-E", "GAPPT", Some("ECLIPTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "ECLIPTIC", Some("ECLIPTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "HELIOECLIPTIC", Some("ECLIPTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "GALACTIC", Some("ECLIPTIC")),  // 64 ULP, 1.1e-16
+    (0, "FK4-NO-E", "AZEL", Some("ECLIPTIC")),  // 1 ULP, 4.4e-16
+    (0, "FK4-NO-E", "ICRS", Some("HELIOECLIPTIC")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "FK4", Some("HELIOECLIPTIC")),  // 4 ULP, 4.4e-16
+    (0, "FK4-NO-E", "FK4-NO-E", Some("HELIOECLIPTIC")),  // 4 ULP, 4.4e-16
+    (0, "FK4-NO-E", "FK5", Some("HELIOECLIPTIC")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "J2000", Some("HELIOECLIPTIC")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "GAPPT", Some("HELIOECLIPTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "ECLIPTIC", Some("HELIOECLIPTIC")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "HELIOECLIPTIC", Some("HELIOECLIPTIC")),  // 3 ULP, 3.3e-16
+    (0, "FK4-NO-E", "AZEL", Some("HELIOECLIPTIC")),  // 2 ULP, 1.1e-16
+    (0, "FK4-NO-E", "ICRS", Some("GALACTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "FK4", Some("GALACTIC")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "FK4-NO-E", Some("GALACTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "FK5", Some("GALACTIC")),  // 1 ULP, 1.1e-16
+    (0, "FK4-NO-E", "J2000", Some("GALACTIC")),  // 3 ULP, 3.3e-16
+    (0, "FK4-NO-E", "GAPPT", Some("GALACTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "ECLIPTIC", Some("GALACTIC")),  // 3 ULP, 3.3e-16
+    (0, "FK4-NO-E", "HELIOECLIPTIC", Some("GALACTIC")),  // 2 ULP, 2.2e-16
+    (0, "FK4-NO-E", "GALACTIC", Some("GALACTIC")),  // 64 ULP, 1.1e-16
+    (0, "FK4-NO-E", "AZEL", Some("GALACTIC")),  // 1 ULP, 4.4e-16
+    (0, "FK4-NO-E", "ICRS", Some("AZEL")),  // 9 ULP, 1.0e-15
+    (0, "FK4-NO-E", "FK4", Some("AZEL")),  // 10 ULP, 1.1e-15
+    (0, "FK4-NO-E", "FK4-NO-E", Some("AZEL")),  // 10 ULP, 1.0e-15
+    (0, "FK4-NO-E", "FK5", Some("AZEL")),  // 8 ULP, 8.9e-16
+    (0, "FK4-NO-E", "J2000", Some("AZEL")),  // 9 ULP, 1.0e-15
+    (0, "FK4-NO-E", "GAPPT", Some("AZEL")),  // 5 ULP, 8.9e-16
+    (0, "FK4-NO-E", "ECLIPTIC", Some("AZEL")),  // 7 ULP, 7.8e-16
+    (0, "FK4-NO-E", "HELIOECLIPTIC", Some("AZEL")),  // 5 ULP, 8.9e-16
+    (0, "FK4-NO-E", "GALACTIC", Some("AZEL")),  // 3 ULP, 1.3e-15
+    (0, "FK4-NO-E", "SUPERGALACTIC", Some("AZEL")),  // 8 ULP, 8.9e-16
+    (0, "FK4-NO-E", "AZEL", Some("AZEL")),  // 1 ULP, 4.4e-16
+];
+
+/// The most an [`FK_SLICE_DRIFT_LICENSED`] case's value was measured to differ
+/// from C's: an absolute difference, the values being angles in radians, so
+/// that a value near zero is not held to its own tiny ULP.
+const FK_MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
+    ulps: 0,
+    atol: 1.3322676295501878e-15,
+};
+
+/// Whether a case is in [`FK_SLICE_DRIFT_LICENSED`].
+fn fk_licensed(config: usize, from: &str, to: &str, align: Option<&str>) -> bool {
+    FK_SLICE_DRIFT_LICENSED
+        .iter()
+        .any(|&(c, f, t, a)| c == config && f == from && t == to && a == align)
+}
+
 /// Whether two values are at most `ulps` units in the last place apart.
 fn within_ulps(a: f64, b: f64, ulps: u64) -> bool {
     a == b || (a.signum() == b.signum() && a.to_bits().abs_diff(b.to_bits()) <= ulps)
@@ -101,6 +284,20 @@ fn convert_matches_the_c_library() {
             (None, None) => {}
             (Some(_), None) => failures.push(format!("{label}: converts, C finds no conversion")),
             (None, Some(_)) => failures.push(format!("{label}: no conversion, C converts")),
+            (Some(got), Some(want)) if fk_licensed(config, from_sys, to_sys, align) => {
+                let (got, want) = (got.as_flattened(), want.as_flattened());
+                if crate::common::matches_c_bits(got, want) {
+                    failures.push(format!(
+                        "{label}: matches C exactly; remove it from FK_SLICE_DRIFT_LICENSED"
+                    ));
+                } else if !(crate::common::sphmap_drift_values_eq(got, want, FK_MEASURED_BOUND)
+                    || crate::common::c_values_eq(got, want))
+                {
+                    failures.push(format!(
+                        "{label}: got {got:?}, C gives {want:?}, beyond FK_MEASURED_BOUND"
+                    ));
+                }
+            }
             (Some(got), Some(want)) => {
                 let same = match sincos_licence(config, from_sys, to_sys, align) {
                     Some(ulps) => got.iter().zip(&want).all(|(g, w)| {

@@ -365,6 +365,78 @@ pub(crate) fn fk45z(r1950: f64, d1950: f64, bepoch: f64) -> (f64, f64) {
     crate::erfa::fk45z(r1950, d1950, bepoch)
 }
 
+/// [`fk45z`] for every position (`r1950[i]`, `d1950[i]`) at the Besselian
+/// epoch `bepoch`, into `r2000` and `d2000`: the slice runs a vectorizable
+/// kernel whose sines, cosines and arctangents are each within 1 ULP of the
+/// exact value, rounded, where [`fk45z`] takes them from the platform libm,
+/// and gives the positions outside the kernel's domain to [`fk45z`]. Each
+/// position gets the same bits whatever the slice's length, and whichever
+/// build of the loop runs: on x86-64 one for AVX2 and FMA when the CPU has
+/// them.
+///
+/// Counts one call of [`fk45z`] per position.
+pub(crate) fn fk45z_slice(
+    bepoch: f64,
+    r1950: &[f64],
+    d1950: &[f64],
+    r2000: &mut [f64],
+    d2000: &mut [f64],
+) {
+    crate::call_counts::hit_n("astEraFk45z", r1950.len() as u64);
+    #[cfg(target_arch = "x86_64")]
+    if crate::vmath::x86_has_avx2_fma() {
+        // SAFETY: the CPU has AVX2 and FMA, which is all the function's
+        // target features require.
+        return unsafe { fk45z_slice_avx2_fma(bepoch, r1950, d1950, r2000, d2000) };
+    }
+    fk45z_slice_body::<{ crate::vmath::HAS_FMA }>(bepoch, r1950, d1950, r2000, d2000);
+}
+
+/// [`fk45z_slice_body`] built for AVX2 and FMA, so its loop runs four wide
+/// and the arctangent's residual is one fused multiply-add.
+///
+/// # Safety
+///
+/// The CPU must have AVX2 and FMA. (An `unsafe fn` because the crate's MSRV,
+/// 1.85, predates safe functions with target features.)
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn fk45z_slice_avx2_fma(
+    bepoch: f64,
+    r1950: &[f64],
+    d1950: &[f64],
+    r2000: &mut [f64],
+    d2000: &mut [f64],
+) {
+    fk45z_slice_body::<true>(bepoch, r1950, d1950, r2000, d2000);
+}
+
+#[inline(always)]
+fn fk45z_slice_body<const FMA: bool>(
+    bepoch: f64,
+    r1950: &[f64],
+    d1950: &[f64],
+    r2000: &mut [f64],
+    d2000: &mut [f64],
+) {
+    let n = r1950.len();
+    assert!(d1950.len() == n && r2000.len() == n && d2000.len() == n);
+    let e = crate::erfa::Fk45zEpoch::new(bepoch);
+    // The branchless kernel over every position, so the loop vectorizes,
+    // marking with NaN each position outside its domain, where the kernel
+    // never gives NaN; then ERFA's own arithmetic for those positions.
+    for i in 0..n {
+        let (r, d, special) = crate::erfa::fk45z_kernel::<FMA>(r1950[i], d1950[i], &e);
+        r2000[i] = if special { f64::NAN } else { r };
+        d2000[i] = d;
+    }
+    for i in 0..n {
+        if r2000[i].is_nan() {
+            (r2000[i], d2000[i]) = crate::erfa::fk45z(r1950[i], d1950[i], bepoch);
+        }
+    }
+}
+
 /// FK5 J2000 (ra, dec) to FK4 B1950 (ra, dec) plus proper-motion terms.
 ///
 /// Returns `(r1950, d1950, dr1950, dd1950)`. ERFA's `eraFk54z`, which the C
@@ -1020,6 +1092,117 @@ mod tests {
                     crate::erfa::S2C_PRODUCT_ULPS
                 };
                 assert!(d <= bound, "{p:?} axis {k}: {:e} vs {:e}", r[k], e[k]);
+            }
+        }
+    }
+
+    /// An FK slice entry: epoch, input longitudes and latitudes, output
+    /// longitudes and latitudes.
+    type FkSliceFn = fn(f64, &[f64], &[f64], &mut [f64], &mut [f64]);
+
+    /// FK test positions with special values interleaved among them.
+    fn mixed_fk_positions() -> Vec<(f64, f64)> {
+        let s = specials();
+        let mut all = Vec::new();
+        for (i, p) in crate::test_inputs::fk_positions(500)
+            .into_iter()
+            .enumerate()
+        {
+            all.push(p);
+            if i % 3 == 0 {
+                all.push((s[i % s.len()], s[(i / 5) % s.len()]));
+            }
+        }
+        all
+    }
+
+    /// An FK slice entry over `v` at `bepoch`, one position per row.
+    fn through_fk_slice(slice: FkSliceFn, bepoch: f64, v: &[(f64, f64)]) -> Vec<(u64, u64)> {
+        let (a, b): (Vec<f64>, Vec<f64>) = v.iter().copied().unzip();
+        let (mut c, mut d) = (vec![0.0; v.len()], vec![0.0; v.len()]);
+        slice(bepoch, &a, &b, &mut c, &mut d);
+        c.into_iter()
+            .zip(d)
+            .map(|(c, d)| (c.to_bits(), d.to_bits()))
+            .collect()
+    }
+
+    /// Each position gets the same bits from an FK slice entry, at every test
+    /// epoch, as its own one-element slice and as part of slices of every
+    /// length from 1 to 17 and of 1,000.
+    fn assert_fk_slice_same_bits_whatever_its_length(slice: FkSliceFn) {
+        let all = mixed_fk_positions();
+        for bepoch in crate::test_inputs::fk_epochs() {
+            let alone: Vec<(u64, u64)> = all
+                .iter()
+                .map(|&p| through_fk_slice(slice, bepoch, &[p])[0])
+                .collect();
+            for len in (1..=17).chain([1000]) {
+                for (c, chunk) in all.chunks(len).enumerate() {
+                    for (i, got) in through_fk_slice(slice, bepoch, chunk)
+                        .into_iter()
+                        .enumerate()
+                    {
+                        assert_eq!(
+                            got,
+                            alone[c * len + i],
+                            "length {len} at {bepoch}: {:?}",
+                            chunk[i]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn fk45z_slice_gives_each_element_the_same_bits_whatever_its_length() {
+        assert_fk_slice_same_bits_whatever_its_length(fk45z_slice);
+    }
+
+    /// Where the kernel declines a position, [`fk45z_slice`] gives
+    /// [`fk45z`]'s bits; the kernel's own bound is tested with it.
+    #[test]
+    fn fk45z_slice_gives_fk45z_outside_the_kernel_domain() {
+        let all = mixed_fk_positions();
+        for bepoch in crate::test_inputs::fk_epochs() {
+            let e = crate::erfa::Fk45zEpoch::new(bepoch);
+            let got = through_fk_slice(fk45z_slice, bepoch, &all);
+            let mut declined = 0;
+            for (&(r, d), g) in all.iter().zip(got) {
+                if crate::erfa::fk45z_kernel::<{ crate::vmath::HAS_FMA }>(r, d, &e).2 {
+                    let (er, ed) = crate::erfa::fk45z(r, d, bepoch);
+                    assert_eq!(
+                        g,
+                        (er.to_bits(), ed.to_bits()),
+                        "({r:e}, {d:e}) at {bepoch}"
+                    );
+                    declined += 1;
+                }
+            }
+            assert!(declined > 0, "no position declined at {bepoch}");
+        }
+    }
+
+    /// Every build of the FK slice loops gives the same bits: with and
+    /// without a fused multiply-add in the arctangent everywhere, and on an
+    /// x86-64 CPU with AVX2 and FMA, the copy built for them.
+    #[test]
+    fn every_build_of_the_fk_slice_loops_gives_the_same_bits() {
+        let all = mixed_fk_positions();
+        for bepoch in crate::test_inputs::fk_epochs() {
+            let fk45z_unfused = through_fk_slice(fk45z_slice_body::<false>, bepoch, &all);
+            let fk45z_fused = through_fk_slice(fk45z_slice_body::<true>, bepoch, &all);
+            assert_eq!(fk45z_fused, fk45z_unfused, "fk45z with and without FMA");
+            #[cfg(target_arch = "x86_64")]
+            if crate::vmath::x86_has_avx2_fma() {
+                let wide = through_fk_slice(
+                    // SAFETY: the CPU has AVX2 and FMA, checked just now.
+                    |e, a, b, c, d| unsafe { fk45z_slice_avx2_fma(e, a, b, c, d) },
+                    bepoch,
+                    &all,
+                );
+                assert_eq!(wide, fk45z_unfused, "fk45z built for AVX2 and FMA");
             }
         }
     }

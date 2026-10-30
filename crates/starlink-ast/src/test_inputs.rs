@@ -293,6 +293,74 @@ pub(crate) fn sin_cos_reference(x: f64) -> (f64, f64) {
     (dd_round(s), dd_round(c))
 }
 
+/// The arctangent of `y / x` in the quadrant of (x, y), correctly rounded but
+/// at a few arguments within a hair of a midpoint between two doubles, for
+/// finite non-zero arguments whose ratio is a normal number. Libm's value `t` is only a seed: the angle from
+/// direction `t` to (x, y) is the arctangent of `(y cos t - x sin t) / (x
+/// cos t + y sin t)`, computed from [`sin_cos_dd`] in double-double
+/// arithmetic; that angle is within a few ULP of `t`, so its arctangent is
+/// the ratio itself to far better than an ULP of the result, and `t` plus the
+/// ratio is rounded once. The result does not depend on the platform's libm
+/// unless libm is wrong by more than the ratio can correct.
+pub(crate) fn atan2_reference(y: f64, x: f64) -> f64 {
+    // The arctangent depends only on the ratio, so both arguments are scaled
+    // by the power of two that brings the larger near 1, exactly unless the
+    // smaller becomes subnormal, keeping the products in range.
+    let m = y.abs().max(x.abs());
+    let scale = 2.0f64.powi(-(m.log2().floor() as i32));
+    let (y, x) = (y * scale, x * scale);
+    atan2_from_seed(y, x, y.atan2(x))
+}
+
+/// [`atan2_reference`] from the seed `t`.
+fn atan2_from_seed(y: f64, x: f64, t: f64) -> f64 {
+    let (s, c) = sin_cos_dd(t);
+    let neg = |v: Dd| (-v.0, -v.1);
+    let num = dd_add(dd_mul((y, 0.0), c), neg(dd_mul((x, 0.0), s)));
+    let den = dd_add(dd_mul((x, 0.0), c), dd_mul((y, 0.0), s));
+    let ratio = num.0 / den.0;
+    dd_round(dd_add((t, 0.0), (ratio, 0.0)))
+}
+
+/// Positions for the FK4 and FK5 conversions: [`angle_pairs`], then both
+/// poles and the latitudes one 1e-15 radian inside them, at several
+/// longitudes.
+pub(crate) fn fk_positions(n: usize) -> Vec<(f64, f64)> {
+    let mut out = angle_pairs(n);
+    for d in [
+        FRAC_PI_2,
+        -FRAC_PI_2,
+        FRAC_PI_2 - 1e-15,
+        -(FRAC_PI_2 - 1e-15),
+    ] {
+        for r in [0.0, 1.0, 3.0, 6.0] {
+            out.push((r, d));
+        }
+    }
+    out
+}
+
+/// Besselian epochs (years) for the FK4 and FK5 conversions: far from J2000
+/// and at the extremes, `BAD_VALUE` and NaN, then random epochs from 1800 to
+/// 2200.
+pub(crate) fn fk_epochs() -> Vec<f64> {
+    let mut rng = SplitMix64::new(0xf4_5e90);
+    let mut out = vec![
+        1000.0,
+        1900.0,
+        1950.0,
+        2000.0,
+        2100.0,
+        3000.0,
+        BAD_VALUE,
+        f64::NAN,
+    ];
+    for _ in 0..4 {
+        out.push(1800.0 + 400.0 * rng.next_f64());
+    }
+    out
+}
+
 /// A double-double rounded to a double, keeping the sign of a zero `hi`
 /// where `lo` is zero.
 pub(crate) fn dd_round(v: Dd) -> f64 {
@@ -365,6 +433,39 @@ mod tests {
         for (x, s, c) in cases {
             let (rs, rc) = sin_cos_reference(x);
             assert_eq!((rs.to_bits(), rc.to_bits()), (s, c), "{x:e}");
+        }
+    }
+
+    /// [`atan2_reference`] gives the correctly rounded arctangent, computed
+    /// with 90-digit decimal arithmetic, from libm's seed and from seeds
+    /// several ULP away from it in either direction.
+    #[test]
+    fn atan2_reference_is_correctly_rounded() {
+        let cases: [(f64, f64, u64); 8] = [
+            (1.0, 2.0, 0x3fddac670561bb4f),
+            (0.3, -0.7, 0x4005e4c36ca0118a),
+            (-1e-05, 0.999, 0xbee4fe154ccb19c2),
+            (0.999, 1e-07, 0x3ff921fb39655983),
+            (-0.5, -0.5, 0xc002d97c7f3321d2),
+            (2.0, 3.0, 0x3fe2d0ead6066395),
+            (1e-10, -1.0, 0x400921fb5440bd7c),
+            (
+                std::f64::consts::FRAC_1_SQRT_2,
+                0.7071067811865475,
+                0x3fe921fb54442d19,
+            ),
+        ];
+        for (y, x, bits) in cases {
+            assert_eq!(atan2_reference(y, x).to_bits(), bits, "({y:e}, {x:e})");
+            let exact = f64::from_bits(bits);
+            for step in [-5i64, -1, 1, 5] {
+                let seed = f64::from_bits(exact.to_bits().wrapping_add_signed(step));
+                assert_eq!(
+                    atan2_from_seed(y, x, seed).to_bits(),
+                    bits,
+                    "({y:e}, {x:e}) from {seed:e}"
+                );
+            }
         }
     }
 }
