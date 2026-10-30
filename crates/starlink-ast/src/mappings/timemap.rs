@@ -693,6 +693,17 @@ const TAI_STARTS: [f64; erfa::LEAP_SECONDS.len()] = {
     t
 };
 
+/// The index of the last of `starts` at or before `mjd`, or 0 when there is
+/// none or `mjd` is NaN.
+#[inline(never)]
+fn leap_entry(starts: &[f64; erfa::LEAP_SECONDS.len()], mjd: f64) -> usize {
+    if mjd.is_nan() {
+        0
+    } else {
+        starts.iter().rposition(|&s| mjd >= s).unwrap_or(0)
+    }
+}
+
 /// Return TAI-UTC (in seconds) given UTC as an absolute MJD (`forward=true`),
 /// or UTC-TAI (in seconds) given TAI as an absolute MJD (`forward=false`).
 ///
@@ -708,10 +719,7 @@ fn ast_dat(mjd: f64, forward: bool) -> f64 {
     // The last entry whose start is at or before `mjd`; NaN is at or after
     // no start, so it selects the first entry.
     let starts = if forward { &UTC_STARTS } else { &TAI_STARTS };
-    let mut i = starts.len() - 1;
-    while i > 0 && (mjd < starts[i] || mjd.is_nan()) {
-        i -= 1;
-    }
+    let i = leap_entry(starts, mjd);
     let delat = erfa::LEAP_SECONDS[i].1;
     if i < erfa::NERA1 {
         let [reference, rate] = erfa::DRIFT[i];
