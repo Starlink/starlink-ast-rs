@@ -335,10 +335,8 @@ pub(crate) fn supgal(dsl: f64, dsb: f64) -> (f64, f64) {
 ///
 /// ERFA's `eraFk45z`, which the C library's SlaMap calls.
 pub(crate) fn fk45z(r1950: f64, d1950: f64, bepoch: f64) -> (f64, f64) {
-    let mut r2000 = 0.0;
-    let mut d2000 = 0.0;
-    counted!(astEraFk45z(r1950, d1950, bepoch, &mut r2000, &mut d2000));
-    (r2000, d2000)
+    crate::call_counts::hit("astEraFk45z");
+    crate::erfa::fk45z(r1950, d1950, bepoch)
 }
 
 /// FK5 J2000 (ra, dec) to FK4 B1950 (ra, dec) plus proper-motion terms.
@@ -346,42 +344,26 @@ pub(crate) fn fk45z(r1950: f64, d1950: f64, bepoch: f64) -> (f64, f64) {
 /// Returns `(r1950, d1950, dr1950, dd1950)`. ERFA's `eraFk54z`, which the C
 /// library's SlaMap calls.
 pub(crate) fn fk54z(r2000: f64, d2000: f64, bepoch: f64) -> (f64, f64, f64, f64) {
-    let mut r1950 = 0.0;
-    let mut d1950 = 0.0;
-    let mut dr1950 = 0.0;
-    let mut dd1950 = 0.0;
-    counted!(astEraFk54z(
-        r2000,
-        d2000,
-        bepoch,
-        &mut r1950,
-        &mut d1950,
-        &mut dr1950,
-        &mut dd1950,
-    ));
-    (r1950, d1950, dr1950, dd1950)
+    crate::call_counts::hit("astEraFk54z");
+    crate::erfa::fk54z(r2000, d2000, bepoch)
 }
 
 /// FK5 J2000 to ICRS (Hipparcos frame), assuming zero proper motion.
 pub(crate) fn fk5hz(r5: f64, d5: f64, epoch: f64) -> (f64, f64) {
-    let mut rh = 0.0;
-    let mut dh = 0.0;
-    counted!(astPalFk5hz(r5, d5, epoch, &mut rh, &mut dh));
-    (rh, dh)
+    crate::call_counts::hit("astPalFk5hz");
+    // palFk5hz converts the epoch to a Julian date, then calls eraFk5hz.
+    let (date1, date2) = crate::erfa::epj2jd(epoch);
+    crate::erfa::fk5hz(r5, d5, date1, date2)
 }
 
 /// ICRS (Hipparcos frame) to FK5 J2000, assuming zero proper motion.
 ///
 /// Returns `(r5, d5, dr5, dd5)`.
 pub(crate) fn hfk5z(rh: f64, dh: f64, epoch: f64) -> (f64, f64, f64, f64) {
-    let mut r5 = 0.0;
-    let mut d5 = 0.0;
-    let mut dr5 = 0.0;
-    let mut dd5 = 0.0;
-    counted!(astPalHfk5z(
-        rh, dh, epoch, &mut r5, &mut d5, &mut dr5, &mut dd5
-    ));
-    (r5, d5, dr5, dd5)
+    crate::call_counts::hit("astPalHfk5z");
+    // palHfk5z converts the epoch to a Julian date, then calls eraHfk5z.
+    let (date1, date2) = crate::erfa::epj2jd(epoch);
+    crate::erfa::hfk5z(rh, dh, date1, date2)
 }
 
 // ---------------------------------------------------------------------------
@@ -1528,6 +1510,54 @@ mod native_tests {
 
     fn same_m(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> bool {
         (0..3).all(|i| same3(&a[i], &b[i]))
+    }
+
+    #[test]
+    fn fk_wrappers_match_vendored_c_bit_for_bit() {
+        let epochs = [
+            1000.0,
+            1900.0,
+            1950.0,
+            2000.0,
+            2100.0,
+            3000.0,
+            BAD_VALUE,
+            f64::NAN,
+        ];
+        let pos = crate::erfa::difftest::fk_positions();
+        for &(r, d) in &pos {
+            for e in epochs {
+                let mut c = [0.0; 4];
+                // SAFETY: scalar outputs.
+                unsafe { astEraFk45z(r, d, e, &mut c[0], &mut c[1]) };
+                let o = fk45z(r, d, e);
+                assert!(
+                    same(o.0, c[0]) && same(o.1, c[1]),
+                    "fk45z {r:e} {d:e} {e:e}"
+                );
+                // SAFETY: scalar outputs.
+                unsafe { astEraFk54z(r, d, e, &mut c[0], &mut c[1], &mut c[2], &mut c[3]) };
+                let o = fk54z(r, d, e);
+                assert!(
+                    same(o.0, c[0]) && same(o.1, c[1]) && same(o.2, c[2]) && same(o.3, c[3]),
+                    "fk54z {r:e} {d:e} {e:e}"
+                );
+                // SAFETY: scalar outputs.
+                unsafe { astPalFk5hz(r, d, e, &mut c[0], &mut c[1]) };
+                let o = fk5hz(r, d, e);
+                assert!(
+                    same(o.0, c[0]) && same(o.1, c[1]),
+                    "fk5hz {r:e} {d:e} {e:e}"
+                );
+                // SAFETY: scalar outputs.
+                unsafe { astPalHfk5z(r, d, e, &mut c[0], &mut c[1], &mut c[2], &mut c[3]) };
+                let o = hfk5z(r, d, e);
+                assert!(
+                    same(o.0, c[0]) && same(o.1, c[1]) && same(o.2, c[2]) && same(o.3, c[3]),
+                    "hfk5z {r:e} {d:e} {e:e}"
+                );
+            }
+        }
     }
 
     #[test]

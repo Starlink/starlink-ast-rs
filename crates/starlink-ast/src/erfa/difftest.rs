@@ -93,6 +93,48 @@ unsafe extern "C" {
         phi: *mut f64,
         height: *mut f64,
     ) -> i32;
+    pub(super) fn astEraFk45z(
+        r1950: f64,
+        d1950: f64,
+        bepoch: f64,
+        r2000: *mut f64,
+        d2000: *mut f64,
+    );
+    pub(super) fn astEraFk524(
+        r2000: f64,
+        d2000: f64,
+        dr2000: f64,
+        dd2000: f64,
+        p2000: f64,
+        v2000: f64,
+        r1950: *mut f64,
+        d1950: *mut f64,
+        dr1950: *mut f64,
+        dd1950: *mut f64,
+        p1950: *mut f64,
+        v1950: *mut f64,
+    );
+    pub(super) fn astEraFk54z(
+        r2000: f64,
+        d2000: f64,
+        bepoch: f64,
+        r1950: *mut f64,
+        d1950: *mut f64,
+        dr1950: *mut f64,
+        dd1950: *mut f64,
+    );
+    pub(super) fn astEraFk5hip(r5h: *mut [f64; 3], s5h: *mut f64);
+    pub(super) fn astEraFk5hz(r5: f64, d5: f64, date1: f64, date2: f64, rh: *mut f64, dh: *mut f64);
+    pub(super) fn astEraHfk5z(
+        rh: f64,
+        dh: f64,
+        date1: f64,
+        date2: f64,
+        r5: *mut f64,
+        d5: *mut f64,
+        dr5: *mut f64,
+        dd5: *mut f64,
+    );
     pub(super) fn astEraDat(iy: i32, im: i32, id: i32, fd: f64, deltat: *mut f64) -> i32;
 }
 
@@ -265,5 +307,58 @@ pub(crate) fn geocentric_vectors(n: usize) -> Vec<[f64; 3]> {
         }
     }
     out.push([0.0; 3]);
+    out
+}
+
+/// Positions for the FK4, FK5 and Hipparcos conversions: the shared angle
+/// pairs, then both poles and the latitudes one 1e-15 radian inside them,
+/// at several longitudes.
+pub(crate) fn fk_positions() -> Vec<(f64, f64)> {
+    use std::f64::consts::FRAC_PI_2;
+    let mut out = crate::test_inputs::angle_pairs(1_500);
+    for d in [
+        FRAC_PI_2,
+        -FRAC_PI_2,
+        FRAC_PI_2 - 1e-15,
+        -(FRAC_PI_2 - 1e-15),
+    ] {
+        for r in [0.0, 1.0, 3.0, 6.0] {
+            out.push((r, d));
+        }
+    }
+    out
+}
+
+/// Epochs (years) far from J2000 and at the extremes, then random epochs
+/// from 1800 to 2200.
+pub(crate) fn fk_epochs() -> Vec<f64> {
+    let mut rng = crate::test_inputs::SplitMix64::new(0xf4_5e90);
+    let mut out = vec![
+        1000.0,
+        1900.0,
+        1950.0,
+        2000.0,
+        2100.0,
+        3000.0,
+        crate::constants::BAD_VALUE,
+        f64::NAN,
+    ];
+    for _ in 0..4 {
+        out.push(1800.0 + 400.0 * rng.next_f64());
+    }
+    out
+}
+
+/// Two-part Julian Dates for the same epochs, split as `epj2jd` does, and
+/// with `BAD_VALUE` and NaN in each part.
+pub(crate) fn fk_dates() -> Vec<(f64, f64)> {
+    let mut out: Vec<(f64, f64)> = fk_epochs()
+        .into_iter()
+        .map(|e| (2451545.0, (e - 2000.0) * 365.25))
+        .collect();
+    for x in [crate::constants::BAD_VALUE, f64::NAN] {
+        out.push((x, 0.0));
+        out.push((2451545.0, x));
+    }
     out
 }
