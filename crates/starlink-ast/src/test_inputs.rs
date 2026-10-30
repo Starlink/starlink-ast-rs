@@ -447,6 +447,30 @@ pub(crate) fn dd_product(a: Dd, b: Dd) -> f64 {
     if p == 0.0 { p } else { dd_round(dd_mul(a, b)) }
 }
 
+/// Two-part Julian Dates `(date1, date2)` for the precession and ecliptic
+/// routines, split the ways their callers split them: J2000 plus days
+/// (`epj2jd`-style), MJD zero plus a modified Julian date, and the whole date in
+/// one part; for epochs 1000 to 3000, the epochs 1000, 1900, 1950, 2000, 2100 and
+/// 3000, and the special values (`BAD_VALUE` and NaN included).
+pub(crate) fn date_pairs() -> Vec<(f64, f64)> {
+    let mut epochs = vec![1000.0, 1900.0, 1950.0, 2000.0, 2100.0, 3000.0];
+    let mut rng = SplitMix64::new(0x5eed_da7e);
+    epochs.extend((0..4_000).map(|_| 1000.0 + rng.next_f64() * 2000.0));
+    let mut v = Vec::new();
+    for &e in &epochs {
+        let days = (e - 2000.0) * 365.25;
+        v.push((2451545.0, days));
+        v.push((2400000.5, 51544.5 + days));
+        v.push((2451545.0 + days, 0.0));
+    }
+    for &x in &specials() {
+        v.push((2451545.0, x));
+        v.push((2400000.5, x));
+        v.push((x, 0.0));
+    }
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

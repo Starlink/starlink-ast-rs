@@ -70,8 +70,11 @@ unsafe extern "C" {
     );
 
     // -- Precession matrices --
+    #[cfg(test)]
     pub(super) fn astPalPrec(ep0: f64, ep1: f64, rmatp: *mut [f64; 3]);
+    #[cfg(test)]
     pub(super) fn astPalPrebn(bep0: f64, bep1: f64, rmatp: *mut [f64; 3]);
+    #[cfg(test)]
     pub(super) fn astPalEcmat(date: f64, rmat: *mut [f64; 3]);
 
     // -- Euler rotation --
