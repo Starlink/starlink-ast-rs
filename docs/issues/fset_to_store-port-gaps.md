@@ -98,13 +98,8 @@ them. Mirrors C:37363-37372.
 
 ### `TIMESYS` — TDB↔UTC timescale conversion — DONE
 
-`crate::pal::tdb_conv(mjd, scale, from_tdb)` ports the C `TDBConv`
-for the {UTC, TAI, TT, TDB} subset that the FITS-WCS writer
-actually produces. `sky_sys` now converts the SkyFrame's stored
-TDB epoch to UTC before writing `MJD-OBS`. UT1 / LT / sidereal
-scales aren't reachable from a SkyFrame today; if they become
-reachable later, route through `TimeFrame::convert_*` instead of
-extending `tdb_conv`.
+`crate::fitschan::epoch::tdb_conv(mjd, scale, from_tdb)` ports the C `TDBConv`: it converts through the Mapping between two MJD `TimeFrame`s, as C does, so it handles every timescale.
+`sky_sys` converts the SkyFrame's stored TDB epoch to UTC before writing `MJD-OBS`.
 
 ### Unknown-system CTYPE prefix from axis `Symbol` — DONE
 

@@ -33,11 +33,7 @@ got: DATE-OBS= '2017-07-21T08:38:39.087' / Date of observation
 exp: DATE-OBS= '2017-07-21T08:38:39.870' / Date of observation
 ```
 
-The 0.783 s difference is roughly `dt(C) - dt(Rust)` between our
-`utc_mjd_to_tdb` / `tdb_mjd_to_utc` (built around `pal::dat`
-+ `pal::dtdb_geocentre`) and the C library's full `TimeMap` chain
-that goes UTC → TAI → TT → TDB with proper leap-second / TDB-TT
-handling.
+The 0.783 s difference was roughly `dt(C) - dt(Rust)` between the port's former `utc_mjd_to_tdb` / `tdb_mjd_to_utc` (built around `pal::dat` and a geocentric `dtdb`, since removed) and the C library's full `TimeMap` chain, which goes UTC → TAI → TT → TDB with proper leap-second and TDB−TT handling.
 
 **Status.**
 C's `TDBConv` is ported as `epoch::tdb_conv`, which converts through
@@ -54,8 +50,7 @@ boundaries 1972, 2017-01-01, …) and characterize the discrepancy.
 Likely failure modes:
 - `TimeMap::TtToTai` and `TaiToTt` constants vs. C's leap-second
   table.
-- `TdbToTt` formula precision (Fairhead-Bretagnon vs. our
-  `pal::dtdb_geocentre`).
+- `TdbToTt` formula precision in `TimeMap`.
 - DUT1 / Δ-AT defaulting when `obs_*` attributes aren't set on the
   TimeFrame.
 
