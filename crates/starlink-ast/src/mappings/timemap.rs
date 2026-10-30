@@ -5,6 +5,7 @@
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
+use crate::erfa;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::pal;
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
@@ -662,189 +663,67 @@ fn add_args(cvt_type: TimeCvtType, args: &mut [f64]) {
 // astDat — TAI-UTC / UTC-TAI conversion (matching C astDat_ exactly)
 // ---------------------------------------------------------------------------
 
+/// The UTC MJD at which each [`erfa::LEAP_SECONDS`] entry takes effect.
+const UTC_STARTS: [f64; erfa::LEAP_SECONDS.len()] = {
+    let mut t = [0.0; erfa::LEAP_SECONDS.len()];
+    let mut i = 0;
+    while i < t.len() {
+        t[i] = erfa::LEAP_SECONDS[i].0;
+        i += 1;
+    }
+    t
+};
+
+/// The TAI MJD at which each [`erfa::LEAP_SECONDS`] entry takes effect: the
+/// UTC instant plus the offset in seconds, which before 1972 is the value at
+/// that instant including its drift term.
+const TAI_STARTS: [f64; erfa::LEAP_SECONDS.len()] = {
+    let mut t = [0.0; erfa::LEAP_SECONDS.len()];
+    let mut i = 0;
+    while i < t.len() {
+        let (start, delat) = erfa::LEAP_SECONDS[i];
+        t[i] = if i < erfa::NERA1 {
+            let [reference, rate] = erfa::DRIFT[i];
+            start + (delat + (start - reference) * rate) / SPD
+        } else {
+            start + delat / SPD
+        };
+        i += 1;
+    }
+    t
+};
+
 /// Return TAI-UTC (in seconds) given UTC as an absolute MJD (`forward=true`),
 /// or UTC-TAI (in seconds) given TAI as an absolute MJD (`forward=false`).
 ///
-/// This is the Rust equivalent of the C `astDat_` function.
-#[allow(clippy::eq_op, clippy::if_same_then_else)]
+/// This is the Rust equivalent of the C `astDat_` function, which keeps its
+/// own table of the same leap seconds as ERFA's `dat`, written as a chain of
+/// comparisons; this reads ERFA's table, and every date from 1960 gives the
+/// bits of that chain. A date before 1960 (or NaN) takes the first entry's
+/// segment, extended backwards, as the chain's last branch does.
 fn ast_dat(mjd: f64, forward: bool) -> f64 {
     if is_bad(mjd) {
         return BAD_VALUE;
     }
-    if forward {
-        // TAI-UTC at a given UTC
-        if mjd >= 57754.0 {
-            37.0
-        } else if mjd >= 57204.0 {
-            36.0
-        } else if mjd >= 56109.0 {
-            35.0
-        } else if mjd >= 54832.0 {
-            34.0
-        } else if mjd >= 53736.0 {
-            33.0
-        } else if mjd >= 51179.0 {
-            32.0
-        } else if mjd >= 50630.0 {
-            31.0
-        } else if mjd >= 50083.0 {
-            30.0
-        } else if mjd >= 49534.0 {
-            29.0
-        } else if mjd >= 49169.0 {
-            28.0
-        } else if mjd >= 48804.0 {
-            27.0
-        } else if mjd >= 48257.0 {
-            26.0
-        } else if mjd >= 47892.0 {
-            25.0
-        } else if mjd >= 47161.0 {
-            24.0
-        } else if mjd >= 46247.0 {
-            23.0
-        } else if mjd >= 45516.0 {
-            22.0
-        } else if mjd >= 45151.0 {
-            21.0
-        } else if mjd >= 44786.0 {
-            20.0
-        } else if mjd >= 44239.0 {
-            19.0
-        } else if mjd >= 43874.0 {
-            18.0
-        } else if mjd >= 43509.0 {
-            17.0
-        } else if mjd >= 43144.0 {
-            16.0
-        } else if mjd >= 42778.0 {
-            15.0
-        } else if mjd >= 42413.0 {
-            14.0
-        } else if mjd >= 42048.0 {
-            13.0
-        } else if mjd >= 41683.0 {
-            12.0
-        } else if mjd >= 41499.0 {
-            11.0
-        } else if mjd >= 41317.0 {
-            10.0
-        } else if mjd >= 39887.0 {
-            4.2131700 + (mjd - 39126.0) * 0.002592
-        } else if mjd >= 39126.0 {
-            4.3131700 + (mjd - 39126.0) * 0.002592
-        } else if mjd >= 39004.0 {
-            3.8401300 + (mjd - 38761.0) * 0.001296
-        } else if mjd >= 38942.0 {
-            3.7401300 + (mjd - 38761.0) * 0.001296
-        } else if mjd >= 38820.0 {
-            3.6401300 + (mjd - 38761.0) * 0.001296
-        } else if mjd >= 38761.0 {
-            3.5401300 + (mjd - 38761.0) * 0.001296
-        } else if mjd >= 38639.0 {
-            3.4401300 + (mjd - 38761.0) * 0.001296
-        } else if mjd >= 38486.0 {
-            3.3401300 + (mjd - 38761.0) * 0.001296
-        } else if mjd >= 38395.0 {
-            3.2401300 + (mjd - 38761.0) * 0.001296
-        } else if mjd >= 38334.0 {
-            1.9458580 + (mjd - 37665.0) * 0.0011232
-        } else if mjd >= 37665.0 {
-            1.8458580 + (mjd - 37665.0) * 0.0011232
-        } else if mjd >= 37512.0 {
-            1.3728180 + (mjd - 37300.0) * 0.001296
-        } else if mjd >= 37300.0 {
-            1.4228180 + (mjd - 37300.0) * 0.001296
+    // The last entry whose start is at or before `mjd`; NaN is at or after
+    // no start, so it selects the first entry.
+    let starts = if forward { &UTC_STARTS } else { &TAI_STARTS };
+    let mut i = starts.len() - 1;
+    while i > 0 && (mjd < starts[i] || mjd.is_nan()) {
+        i -= 1;
+    }
+    let delat = erfa::LEAP_SECONDS[i].1;
+    if i < erfa::NERA1 {
+        let [reference, rate] = erfa::DRIFT[i];
+        if forward {
+            delat + (mjd - reference) * rate
         } else {
-            1.4178180 + (mjd - 37300.0) * 0.001296
+            -(delat + (mjd - reference) * rate) / (1.0 + rate / SPD)
         }
+    } else if forward {
+        delat
     } else {
-        // UTC-TAI at a given TAI
-        if mjd >= 57754.0 + 37.0 / SPD {
-            -37.0
-        } else if mjd >= 57204.0 + 36.0 / SPD {
-            -36.0
-        } else if mjd >= 56109.0 + 35.0 / SPD {
-            -35.0
-        } else if mjd >= 54832.0 + 34.0 / SPD {
-            -34.0
-        } else if mjd >= 53736.0 + 33.0 / SPD {
-            -33.0
-        } else if mjd >= 51179.0 + 32.0 / SPD {
-            -32.0
-        } else if mjd >= 50630.0 + 31.0 / SPD {
-            -31.0
-        } else if mjd >= 50083.0 + 30.0 / SPD {
-            -30.0
-        } else if mjd >= 49534.0 + 29.0 / SPD {
-            -29.0
-        } else if mjd >= 49169.0 + 28.0 / SPD {
-            -28.0
-        } else if mjd >= 48804.0 + 27.0 / SPD {
-            -27.0
-        } else if mjd >= 48257.0 + 26.0 / SPD {
-            -26.0
-        } else if mjd >= 47892.0 + 25.0 / SPD {
-            -25.0
-        } else if mjd >= 47161.0 + 24.0 / SPD {
-            -24.0
-        } else if mjd >= 46247.0 + 23.0 / SPD {
-            -23.0
-        } else if mjd >= 45516.0 + 22.0 / SPD {
-            -22.0
-        } else if mjd >= 45151.0 + 21.0 / SPD {
-            -21.0
-        } else if mjd >= 44786.0 + 20.0 / SPD {
-            -20.0
-        } else if mjd >= 44239.0 + 19.0 / SPD {
-            -19.0
-        } else if mjd >= 43874.0 + 18.0 / SPD {
-            -18.0
-        } else if mjd >= 43509.0 + 17.0 / SPD {
-            -17.0
-        } else if mjd >= 43144.0 + 16.0 / SPD {
-            -16.0
-        } else if mjd >= 42778.0 + 15.0 / SPD {
-            -15.0
-        } else if mjd >= 42413.0 + 14.0 / SPD {
-            -14.0
-        } else if mjd >= 42048.0 + 13.0 / SPD {
-            -13.0
-        } else if mjd >= 41683.0 + 12.0 / SPD {
-            -12.0
-        } else if mjd >= 41499.0 + 11.0 / SPD {
-            -11.0
-        } else if mjd >= 41317.0 + 10.0 / SPD {
-            -10.0
-        } else if mjd >= 39887.0 + (4.2131700 + (39887.0 - 39126.0) * 0.002592) / SPD {
-            -(4.2131700 + (mjd - 39126.0) * 0.002592) / (1.0 + 0.002592 / SPD)
-        } else if mjd >= 39126.0 + (4.3131700 + (39126.0 - 39126.0) * 0.002592) / SPD {
-            -(4.3131700 + (mjd - 39126.0) * 0.002592) / (1.0 + 0.002592 / SPD)
-        } else if mjd >= 39004.0 + (3.8401300 + (39004.0 - 38761.0) * 0.001296) / SPD {
-            -(3.8401300 + (mjd - 38761.0) * 0.001296) / (1.0 + 0.001296 / SPD)
-        } else if mjd >= 38942.0 + (3.7401300 + (38942.0 - 38761.0) * 0.001296) / SPD {
-            -(3.7401300 + (mjd - 38761.0) * 0.001296) / (1.0 + 0.001296 / SPD)
-        } else if mjd >= 38820.0 + (3.6401300 + (38820.0 - 38761.0) * 0.001296) / SPD {
-            -(3.6401300 + (mjd - 38761.0) * 0.001296) / (1.0 + 0.001296 / SPD)
-        } else if mjd >= 38761.0 + (3.5401300 + (38761.0 - 38761.0) * 0.001296) / SPD {
-            -(3.5401300 + (mjd - 38761.0) * 0.001296) / (1.0 + 0.001296 / SPD)
-        } else if mjd >= 38639.0 + (3.4401300 + (38639.0 - 38761.0) * 0.001296) / SPD {
-            -(3.4401300 + (mjd - 38761.0) * 0.001296) / (1.0 + 0.001296 / SPD)
-        } else if mjd >= 38486.0 + (3.3401300 + (38486.0 - 38761.0) * 0.001296) / SPD {
-            -(3.3401300 + (mjd - 38761.0) * 0.001296) / (1.0 + 0.001296 / SPD)
-        } else if mjd >= 38395.0 + (3.2401300 + (38395.0 - 38761.0) * 0.001296) / SPD {
-            -(3.2401300 + (mjd - 38761.0) * 0.001296) / (1.0 + 0.001296 / SPD)
-        } else if mjd >= 38334.0 + (1.9458580 + (38334.0 - 37665.0) * 0.0011232) / SPD {
-            -(1.9458580 + (mjd - 37665.0) * 0.0011232) / (1.0 + 0.0011232 / SPD)
-        } else if mjd >= 37665.0 + (1.8458580 + (37665.0 - 37665.0) * 0.0011232) / SPD {
-            -(1.8458580 + (mjd - 37665.0) * 0.0011232) / (1.0 + 0.0011232 / SPD)
-        } else if mjd >= 37512.0 + (1.3728180 + (37512.0 - 37300.0) * 0.001296) / SPD {
-            -(1.3728180 + (mjd - 37300.0) * 0.001296) / (1.0 + 0.001296 / SPD)
-        } else if mjd >= 37300.0 + (1.4228180 + (37300.0 - 37300.0) * 0.001296) / SPD {
-            -(1.4228180 + (mjd - 37300.0) * 0.001296) / (1.0 + 0.001296 / SPD)
-        } else {
-            -(1.4178180 + (mjd - 37300.0) * 0.001296) / (1.0 + 0.001296 / SPD)
-        }
+        -delat
     }
 }
 
@@ -1731,5 +1610,66 @@ impl Serializable for TimeMap {
         tm.set_has_been_simplified(base.has_been_simplified);
 
         Ok(tm)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::erfa::difftest::{down, leap_second_mjds, up};
+
+    /// 1960-01-01, the first date of ERFA's table.
+    const FIRST_TABLE_MJD: f64 = 36934.0;
+
+    /// Dates over the table's range and around each of its instants.
+    fn dates() -> Vec<f64> {
+        let mut dates: Vec<f64> = (0..)
+            .map(|k| FIRST_TABLE_MJD + f64::from(k) * 0.25)
+            .take_while(|&m| m <= 80000.0)
+            .collect();
+        for m in leap_second_mjds() {
+            for x in [m, m - 1.0, m + 1.0] {
+                dates.extend([x, up(x), down(x), up(up(x)), down(down(x))]);
+            }
+        }
+        dates
+    }
+
+    /// ERFA's `dat` has no value before 1960, where it gives 0.0 with a
+    /// warning, while `ast_dat` extrapolates its first segment backwards;
+    /// the two are compared from 1960-01-01.
+    #[test]
+    fn ast_dat_and_dat_agree_on_every_date_both_accept() {
+        let mut compared = 0;
+        for m in dates() {
+            if m < FIRST_TABLE_MJD {
+                continue;
+            }
+            let a = ast_dat(m, true);
+            let b = crate::pal::dat(m);
+            assert_eq!(a.to_bits(), b.to_bits(), "{m:e}: {a:e} vs {b:e}");
+            compared += 1;
+        }
+        assert!(compared > 170_000);
+    }
+
+    #[test]
+    fn ast_dat_and_dat_differ_before_the_table_starts() {
+        let m = FIRST_TABLE_MJD - 1.0;
+        assert_eq!(crate::pal::dat(m), 0.0);
+        assert_ne!(ast_dat(m, true), 0.0);
+    }
+
+    /// The inverse switches at each TAI instant, which is a table entry's UTC
+    /// instant plus its offset.
+    #[test]
+    fn ast_dat_inverse_switches_at_the_tai_instants() {
+        for (i, &tai) in TAI_STARTS.iter().enumerate().skip(erfa::NERA1 + 1) {
+            assert_eq!(ast_dat(tai, false), -erfa::LEAP_SECONDS[i].1);
+            assert_eq!(ast_dat(down(tai), false), -erfa::LEAP_SECONDS[i - 1].1);
+        }
+        // The forward and inverse functions are inverse across a 1972 jump.
+        let utc = 57754.0 + 0.5;
+        assert_eq!(ast_dat(utc + ast_dat(utc, true) / SPD, false), -37.0);
     }
 }

@@ -981,8 +981,8 @@ fn gregorian_to_mjd(
     // fields itself; palCldj is the same routine for a full year number (the
     // only difference, palCaldj's 2-digit-year window, is applied by
     // parse_legacy_date before we get here).
-    let (mjd0, j) = crate::pal::cldj(year, month as i32, day as i32);
-    if j != 0 {
+    let (mjd0, bad_day) = crate::pal::cldj(year, month as i32, day as i32).ok()?;
+    if bad_day.is_some() {
         return None;
     }
 
@@ -1001,8 +1001,8 @@ fn gregorian_to_mjd(
     }
     secs += f64::from(sec);
 
-    let (days, j) = crate::pal::dtf2d(hour as i32, min as i32, secs);
-    if j != 0 {
+    let (days, warning) = crate::pal::dtf2d(hour as i32, min as i32, secs);
+    if warning.is_some() {
         return None;
     }
     Some(mjd0 + days)
