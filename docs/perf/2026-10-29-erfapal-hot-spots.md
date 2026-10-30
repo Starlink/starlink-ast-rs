@@ -7,7 +7,7 @@ Nothing here is decided: the table ends with what each function would be, and th
 
 - Calls per point: `count_one` (`--features call-counts`) on each input, forward and inverse, over the 24 oracle points, steady-state second call; counts below are per point.
   The six FrameSets are `wcsconv/inputs/*.ast`; the four PAL cases are `crates/ast-bench/fixtures/{slamap_amp,slamap_fk45z,slamap_prec,timemap_mjdtobep}.map` against `bench.oracle`.
-- Timing: the Task 12 snapshot (`2026-10-29-macos-aarch64-native-erfapal-ported.tsv`, commit `168a4da0`, load average 7.1 falling to 4.8), median ns per point, Rust / C.
+- Timing: the Task 12 snapshot (`2026-10-29-macos-aarch64-native-erfapal-ported.tsv`, commit `1c707210`, load average 7.1 falling to 4.8), median ns per point, Rust / C.
   The snapshot's point counts are 1, 10, 100, 100 000 and 1 000 000; there is no 10 000 row, so 100 000 stands in for the large-N column.
 - Profile: `sample ast-bench 5 1` on `ast-bench run --engine rust --set-file <one case>` repeated in a loop (release build, load average 3.5 to 4.7), so each profile is the case's forward and inverse together at all point counts.
   Raw output is `target/perf/sample-<case>.txt` (not committed).
@@ -108,10 +108,10 @@ Neither kernel meets the N = 1 condition, and both were first reverted and recor
 The user then decided to keep them (2026-10-29): FK4/FK5 conversions are not used by large-scale surveys, which use ICRS, so the single-point slowdown does not matter; the design's anti-goal governs, that N = 1 and N = 100 must stay faster than C, which both kernels do at three to four times C's speed, not this plan's stricter "not slower at N = 1" rule.
 The per-value ports, bit for bit ERFA's, remain for one-off callers and for the positions outside a kernel's domain.
 
-Timings are median ns per point, the Rust engine, base `53db8ff8` against the tree with the kernels, from three alternating rounds of the two binaries (the fastest round's median), load average 6.4 falling to 4.8, macOS aarch64.
-Two runs of `ast-bench compare --set native --base 53db8ff8` (load average about 5) reported the same N = 1 slowdowns, `slamap_fk45z.map` forward 85 to 162 and 80 to 154, inverse 158 to 192.
+Timings are median ns per point, the Rust engine, base `19f088ac` against the tree with the kernels, from three alternating rounds of the two binaries (the fastest round's median), load average 6.4 falling to 4.8, macOS aarch64.
+Two runs of `ast-bench compare --set native --base 19f088ac` (load average about 5) reported the same N = 1 slowdowns, `slamap_fk45z.map` forward 85 to 162 and 80 to 154, inverse 158 to 192.
 Both also reported `slamap_prec.map`, which the change does not reach, 10 to 22% slower at N = 100 in both runs, which reads as a code-layout effect of the larger `SlaMap::transform_into`.
-A third run (`compare --set native --base 53db8ff8`, load 9.3 at the start and 3.3 at the end) also flagged `slamap_eqgal.map` forward N = 100 (+21%), `slamap_amp.map` forward N = 1 (+10%) and inverse N = 100 (+11%), and `slamap_prec.map` forward N = 100 (+15%), none of which reaches the new code.
+A third run (`compare --set native --base 19f088ac`, load 9.3 at the start and 3.3 at the end) also flagged `slamap_eqgal.map` forward N = 100 (+21%), `slamap_amp.map` forward N = 1 (+10%) and inverse N = 100 (+11%), and `slamap_prec.map` forward N = 100 (+15%), none of which reaches the new code.
 Two direct alternating rounds of the base and kernel binaries at load about 4 gave 0.95 to 1.04 for AMP and EQGAL at every point count and 1.00 to 1.03 for PREC except forward N = 100 at 1.08, the most seen in any direct comparison; the base binary itself measured that PREC row at 41.7 ns in `compare` and 47.4 in the direct run, so these flags are load and code layout, not a regression of those paths.
 
 ### `fk45z` (FK45Z forward, FK54Z inverse): kept by the user's decision
@@ -149,6 +149,6 @@ Every sine, cosine and arctangent it uses is within 1 ULP of the exact value, ro
 The one-point row here, (0.0112, 0.0049), is covered, so the slowdown is the latency of the kernels themselves: four sine-cosine pairs and four arctangents, two of each on the path, each about 8 ns slower than libm's.
 C takes 666 ns per point at N = 1 on this case, so the kernel stays about three times faster than C.
 
-With both kernels in place, `ast-bench ulps` against `53db8ff8` found no value changing between bad and good.
+With both kernels in place, `ast-bench ulps` against `19f088ac` found no value changing between bad and good.
 The largest movements were `timj.ast` inverse (sky to pixel), 2,952 ULP on the first pixel axis and 478 on the second, on pixel values between 1 and 1,000, so at most about 3e-10 pixel; the simplify corpus's SlaMap cases up to 28 ULP (`cap_slamap_05`); and 1 ULP on `slamap_fk45z.map` and `timj.ast` forward.
 306 of the 1,584 `test_sky_convert` cases moved off C's bits, by at most 1.33e-15 radian, each named in `FK_SLICE_DRIFT_LICENSED` with its drift (two of the 146 the FK45Z kernel had moved match C again), and no other test of the crate changed.

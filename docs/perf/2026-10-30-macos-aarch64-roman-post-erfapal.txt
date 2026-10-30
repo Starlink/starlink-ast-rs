@@ -1,4 +1,4 @@
-# commit=fde55299 date=2026-10-30 set=native engines=rust,c
+# commit=df81a4d0 date=2026-10-30 set=native engines=rust,c
 # machine=Apple M1 Ultra; Darwin 27.2.0
 # rustc=rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew) profile=release
 # load average about 4.5 throughout (Spotlight indexing, not the benchmark)

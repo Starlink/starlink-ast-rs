@@ -7,18 +7,18 @@ Plan: `docs/superpowers/plans/2026-10-29-native-erfa-pal.md`; design: "PAL and E
 
 1. Ported every PAL routine the crate calls, and the ERFA functions under them, to Rust (`crates/starlink-ast/src/pal/`, `src/erfa/`), bit for bit the vendored C's results.
    Each function has a differential test against the still-linked C, and `crates/starlink-ast/tests/erfa_pal_golden/roots.tsv` records every root's results so the check survives the C's deletion.
-2. Deleted `vendor/pal`, `vendor/erfa`, `palwrap.c` and the crate's C build (commit `168a4da0`).
+2. Deleted `vendor/pal`, `vendor/erfa`, `palwrap.c` and the crate's C build (commit `1c707210`).
    `starlink-ast` now compiles no C and needs no C compiler.
-3. Measured where PAL and ERFA time goes per point (`docs/perf/2026-10-29-erfapal-hot-spots.md`), and vectorized only `fk45z` (forward) and `fk54z` (inverse) for SlaMap's FK4/FK5 steps (`e5607c45`, `7858f26e`).
+3. Measured where PAL and ERFA time goes per point (`docs/perf/2026-10-29-erfapal-hot-spots.md`), and vectorized only `fk45z` (forward) and `fk54z` (inverse) for SlaMap's FK4/FK5 steps (`49ebb8e2`, `24427e6d`).
 
 ## Records
 
 | Record | Commit | Notes |
 |---|---|---|
 | `docs/perf/2026-10-29-macos-aarch64-native-erfapal-baseline.tsv` | `2b9edd18` (PBASE) | PAL and ERFA still C; load 5 to 6.3 |
-| `docs/perf/2026-10-29-macos-aarch64-native-erfapal-ported.tsv` | `168a4da0` | all Rust, C deleted, no kernels; load 7.1 falling to 4.8 |
-| `docs/perf/2026-10-29-macos-aarch64-native-erfapal-final.tsv` | `7858f26e` | end of stage; load 3.5 |
-| `docs/perf/2026-10-29-macos-aarch64-native-erfapal-roman.txt` | `7858f26e` | `ast-bench roman`; load 3.4 |
+| `docs/perf/2026-10-29-macos-aarch64-native-erfapal-ported.tsv` | `1c707210` | all Rust, C deleted, no kernels; load 7.1 falling to 4.8 |
+| `docs/perf/2026-10-29-macos-aarch64-native-erfapal-final.tsv` | `24427e6d` | end of stage; load 3.5 |
+| `docs/perf/2026-10-29-macos-aarch64-native-erfapal-roman.txt` | `24427e6d` | `ast-bench roman`; load 3.4 |
 
 The snapshot has no N = 10 000 row (its points are 1, 10, 100, 100 000 and 1 000 000), so N = 100 000 stands in for the large-N column, as in the hot-spots record.
 Times are median ns per point.
@@ -97,7 +97,7 @@ Reading the table:
 - The port alone moved nothing beyond noise: Rust-engine geometric mean over the 240 rows is 1.000 of the baseline (C engine 1.016).
   The largest port-only movement is the FK45Z inverse at large N, 135.4 to 140.8 (1.04; C 132.4 to 132.2), and the six FrameSets are within 1.06.
 - A TimeMap TAI to UTC slowdown (+22% to +41%, 6.6 to 8.1 ns per point) appeared in `68e71934`, where the calendar and leap-second functions were ported and TimeMap's own table lookup changed.
-  The ported record shows it; `cc7bc1bc` fixed it with no change in any bit, and the end-of-stage record no longer flags it.
+  The ported record shows it; `2168bc91` fixed it with no change in any bit, and the end-of-stage record no longer flags it.
 - At the end, Rust's geometric mean over the 240 rows is 0.96 of the baseline (C 1.00); the movement is the FK rows.
 - `timemap_mjdtobep.map` at large N is slower than C throughout (2.6 against 1.5 ns per point forward) and was before this stage; it is TimeMap's own loop plus `epb`, with no libm in it, and was not investigated.
 
@@ -135,7 +135,7 @@ In the hot-spots record, the other SlaMap cases (AMP, EQGAL, PREC) were flagged 
 
 ## Gates
 
-- `ast-bench roman` (`7858f26e`, load 3.4): SphMap forward 60.0 and inverse 76.4 million points per second at 1 048 576 points, 3.3 and 1.5 times C; degree-5 and degree-1 PolyMaps 5.1 and 5.2 times C; outputs differ from C by at most 1 ULP (SphMap forward), 3 ULP (inverse), and are identical for PolyMap and MatrixMap.
+- `ast-bench roman` (`24427e6d`, load 3.4): SphMap forward 60.0 and inverse 76.4 million points per second at 1 048 576 points, 3.3 and 1.5 times C; degree-5 and degree-1 PolyMaps 5.1 and 5.2 times C; outputs differ from C by at most 1 ULP (SphMap forward), 3 ULP (inverse), and are identical for PolyMap and MatrixMap.
 - `ast-bench compare` across the Task 14 change exits non-zero on the accepted `slamap_fk45z.map` N = 1 rows.
   The controller ruled not to add the case to `SLOWDOWN_LICENSED`, since a licence for the case would mask a regression at every N.
 - Full gates: `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo test -p starlink-ast` (4,528 tests) and `cargo doc -p starlink-ast --no-deps` pass.
