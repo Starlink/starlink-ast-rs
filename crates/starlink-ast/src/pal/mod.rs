@@ -1,8 +1,6 @@
 // Copyright 2026 Association of Universities for Research in Astronomy (AURA)
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-// Some routines have no caller outside the tests yet.
-#![allow(dead_code)]
 #![allow(clippy::disallowed_methods)]
 // PAL's constants are transcribed from palmac.h digit for digit.
 #![allow(clippy::excessive_precision, clippy::approx_constant)]
@@ -78,10 +76,10 @@ pub(crate) const PAL__CR: f64 = 499.004782;
 /// PAL's `PAL__SPD` (palmac.h): seconds per day.
 pub(crate) const PAL__SPD: f64 = 86400.0;
 
-/// ERFA's `ERFA_DAU` (erfam.h): the astronomical unit in metres, the IAU 2012
-/// value. PAL's routines convert metres to au with it, so a caller that
-/// converts their output back must use the same value.
-pub(crate) const ERFA_DAU: f64 = 149597870.7e3;
+// The astronomical unit in metres, the IAU 2012 value ERFA uses. PAL's routines
+// convert metres to au with it, so a caller that converts their output back
+// must use the same value.
+pub(crate) use crate::erfa::ERFA_DAU;
 
 // ---------------------------------------------------------------------------
 // Group 1: Epoch conversions
@@ -360,6 +358,8 @@ pub(crate) fn supgal(dsl: f64, dsb: f64) -> (f64, f64) {
 /// FK4 B1950 (ra, dec) to FK5 J2000 (ra, dec), assuming zero proper motion.
 ///
 /// ERFA's `eraFk45z`, which the C library's SlaMap calls.
+// Called only by tests (no mapping or frame uses it).
+#[allow(dead_code)]
 pub(crate) fn fk45z(r1950: f64, d1950: f64, bepoch: f64) -> (f64, f64) {
     crate::call_counts::hit("astEraFk45z");
     crate::erfa::fk45z(r1950, d1950, bepoch)
@@ -441,6 +441,8 @@ fn fk45z_slice_body<const FMA: bool>(
 ///
 /// Returns `(r1950, d1950, dr1950, dd1950)`. ERFA's `eraFk54z`, which the C
 /// library's SlaMap calls.
+// Called only by tests (no mapping or frame uses it).
+#[allow(dead_code)]
 pub(crate) fn fk54z(r2000: f64, d2000: f64, bepoch: f64) -> (f64, f64, f64, f64) {
     crate::call_counts::hit("astEraFk54z");
     crate::erfa::fk54z(r2000, d2000, bepoch)
@@ -693,6 +695,8 @@ pub(crate) fn dav2m(axvec: &[f64; 3]) -> [[f64; 3]; 3] {
 // ---------------------------------------------------------------------------
 
 /// TAI-UTC leap seconds for a given UTC date (MJD).
+// Called only by tests (no mapping or frame uses it).
+#[allow(dead_code)]
 pub(crate) fn dat(mjd: f64) -> f64 {
     crate::call_counts::hit("astPalDat");
     dat::dat(mjd)
@@ -710,105 +714,6 @@ pub(crate) fn eqeqx(date: f64) -> f64 {
     // palEqeqx is eraEe06a.
     crate::call_counts::hit("astPalEqeqx");
     crate::erfa::ee06a(PAL__MJD0, date)
-}
-
-/// Convert an MJD between the TDB timescale and one of TAI / TT /
-/// UTC / TDB. Mirrors `fitschan.c::TDBConv` for the subset of
-/// timescales that the FITS-WCS writer actually consults.
-///
-/// - `mjd`: input MJD value.
-/// - `to_scale`: the timescale of the output (or input, when
-///   `from_tdb = false`).
-/// - `from_tdb`: when `true`, `mjd` is in TDB and the result is in
-///   `to_scale`. When `false`, `mjd` is in `to_scale` and the result
-///   is in TDB.
-///
-/// Conversion chain: `TDB ↔ TT ↔ TAI ↔ UTC` via:
-///   - `TDB → TT`: subtract `dtdb_geocentre(mjd)` seconds.
-///   - `TT → TAI`: subtract 32.184 seconds.
-///   - `TAI → UTC`: subtract `dat(tai_mjd)` leap-second offset.
-///
-/// For other timescales (`UT1`, `LT`, sidereal, `TCB`, `TCG`) this
-/// returns `None`. Those cases would need the full TimeFrame
-/// conversion machinery.
-pub(crate) fn tdb_conv(mjd: f64, to_scale: TdbConvScale, from_tdb: bool) -> Option<f64> {
-    if !mjd.is_finite() {
-        return None;
-    }
-    if matches!(to_scale, TdbConvScale::Tdb) {
-        return Some(mjd);
-    }
-    if from_tdb {
-        // TDB → TT
-        let tt = mjd - dtdb_geocentre(mjd) / 86_400.0;
-        if matches!(to_scale, TdbConvScale::Tt) {
-            return Some(tt);
-        }
-        // TT → TAI
-        let tai = tt - 32.184 / 86_400.0;
-        if matches!(to_scale, TdbConvScale::Tai) {
-            return Some(tai);
-        }
-        // TAI → UTC. dat() expects a UTC MJD; near the TAI/UTC step
-        // the leap-second offset is a constant integer for the day,
-        // so feeding tai_mjd in once gives the right answer except
-        // exactly on a leap-second day boundary. The single-step
-        // approximation matches what AST does internally.
-        let leap = dat(tai);
-        Some(tai - leap / 86_400.0)
-    } else {
-        // Reverse: target_scale → TAI → TT → TDB.
-        let tai = match to_scale {
-            TdbConvScale::Tai => mjd,
-            TdbConvScale::Tt => mjd + 32.184 / 86_400.0, // TT → TAI is `-`, so reverse
-            TdbConvScale::Utc => mjd + dat(mjd) / 86_400.0,
-            TdbConvScale::Tdb => unreachable!(),
-        };
-        // TAI → TT
-        let tt = match to_scale {
-            TdbConvScale::Tt => mjd, // already TT
-            TdbConvScale::Tai => mjd + 32.184 / 86_400.0,
-            TdbConvScale::Utc => tai + 32.184 / 86_400.0,
-            TdbConvScale::Tdb => unreachable!(),
-        };
-        // TT → TDB. We need dtdb at the TDB epoch, not TT — but
-        // the offset is small enough (<2 ms) that dtdb(tt) ≈
-        // dtdb(tdb). Mirrors C's iterative-1-pass approximation.
-        Some(tt + dtdb_geocentre(tt) / 86_400.0)
-    }
-}
-
-/// Restricted timescale enum for [`tdb_conv`]. Mirrors the subset of
-/// the TimeFrame `TimeScale` enum that the FITS-WCS writer needs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TdbConvScale {
-    /// Coordinated Universal Time.
-    Utc,
-    /// International Atomic Time.
-    Tai,
-    /// Terrestrial Time.
-    Tt,
-    /// Barycentric Dynamical Time.
-    Tdb,
-}
-
-/// Difference TDB − TT in seconds at the geocenter.
-///
-/// Wraps ERFA `eraDtdb`, the full Fairhead & Bretagnon (1990) series
-/// (≤±3 ns absolute accuracy 1950-2050). At the geocenter the
-/// observer-position arguments (`elong`, `u`, `v`) are zero; UT1 is
-/// only required to ~1-day precision so the UTC fractional day is a
-/// safe approximation. Mirrors the way AST's `Rcc` is invoked from
-/// `timemap.c::AST__TDBTOTT` for a barycentric observer.
-///
-/// `tdb` is given as an MJD; the date is split into integer +
-/// fraction parts as ERFA prefers (Note 1 of `eraDtdb`).
-pub(crate) fn dtdb_geocentre(tdb_mjd: f64) -> f64 {
-    let date1 = 2_400_000.5_f64;
-    let date2 = tdb_mjd;
-    let ut_frac = tdb_mjd - tdb_mjd.floor();
-    crate::call_counts::hit("astEraDtdb");
-    crate::erfa::dtdb(date1, date2, ut_frac, 0.0, 0.0, 0.0)
 }
 
 // ---------------------------------------------------------------------------
