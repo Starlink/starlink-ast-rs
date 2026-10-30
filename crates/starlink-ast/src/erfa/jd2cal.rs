@@ -73,11 +73,13 @@ pub(crate) enum Jd2calError {
 /// Two-part Julian date to Gregorian year, month, day and fraction of a day.
 ///
 /// A NaN date passes the range check, as in ERFA, and gives the calendar
-/// date of integer part 0 and a NaN fraction.
+/// date of day number 0 and a NaN fraction. That is this port's defined
+/// result: C casts the NaN to `long`, so its result there depends on the
+/// platform.
 ///
 /// ERFA does its integer arithmetic in `long`. A two-part date whose parts
-/// cancel can give a day number far outside any real date, where C's signed
-/// overflow is undefined; the arithmetic here wraps.
+/// are too large for a `long` and cancel is likewise platform-dependent in
+/// C; here the casts saturate and the arithmetic wraps.
 pub(crate) fn jd2cal(dj1: f64, dj2: f64) -> Result<(i32, i32, i32, f64), Jd2calError> {
     // Minimum and maximum allowed JD.
     const DJMIN: f64 = -68569.5;
@@ -90,8 +92,8 @@ pub(crate) fn jd2cal(dj1: f64, dj2: f64) -> Result<(i32, i32, i32, f64), Jd2calE
     }
 
     // Separate day and fraction (where -0.5 <= fraction < 0.5). The casts
-    // from double to long are Rust's saturating `as`, which is what the
-    // aarch64 `fcvtzs` instruction C compiles to gives, with NaN as 0.
+    // from double to long are Rust's saturating `as`, with NaN as 0; C's
+    // casts of a NaN or out-of-range value are undefined.
     let mut d = dnint(dj1);
     let f1 = dj1 - d;
     let mut jd = d as i64;
@@ -166,7 +168,18 @@ mod tests {
     use super::*;
     use crate::erfa::difftest::*;
 
+    /// C's result where it is defined; where it is not (see
+    /// `jd2cal_defined`) only that the port returns without panicking, with
+    /// a NaN fraction for a NaN date.
     fn check(dj1: f64, dj2: f64) {
+        if !jd2cal_defined(dj1, dj2) {
+            if (dj1 + dj2).is_nan() {
+                assert!(jd2cal(dj1, dj2).unwrap().3.is_nan(), "{dj1:e} {dj2:e}");
+            } else {
+                let _ = jd2cal(dj1, dj2);
+            }
+            return;
+        }
         let (mut iy, mut im, mut id, mut fd) = (-77, -78, -79, -80.0);
         // SAFETY: the pointers are to live locals.
         let j = unsafe { astEraJd2cal(dj1, dj2, &mut iy, &mut im, &mut id, &mut fd) };
@@ -228,7 +241,10 @@ mod tests {
         assert_eq!(jd2cal(2400000.5, 51544.5).unwrap(), (2000, 1, 1, 0.5));
         assert!(jd2cal(2400000.5, -2400000.5 - 68570.0).is_err());
         assert!(jd2cal(0.0, 1.0e9 + 1.0).is_err());
-        // A NaN date is accepted, with a NaN fraction.
-        assert!(jd2cal(f64::NAN, 0.0).unwrap().3.is_nan());
+        // A NaN date is accepted, with a NaN fraction, on the date of day
+        // number 0.
+        let (y, m, d, f) = jd2cal(f64::NAN, 0.0).unwrap();
+        assert_eq!((y, m, d), (-4713, 11, 24));
+        assert!(f.is_nan());
     }
 }

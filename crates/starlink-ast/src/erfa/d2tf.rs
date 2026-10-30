@@ -66,10 +66,9 @@ use super::{ERFA_DAYSEC, dint, dnint};
 /// Interval in days to a sign and hours, minutes, seconds and fraction of a
 /// second, with `ndp` decimal places of seconds.
 ///
-/// The fields are converted to `i32` as `(int)` does on the platforms the
-/// C library is tested on: out-of-range values saturate and NaN is 0. A
+/// The fields are converted to `i32` by saturating, with NaN as 0, and a
 /// resolution of more than 9 places overflows ERFA's `int` unit count, which
-/// wraps here.
+/// wraps. These are the port's defined results; C's are undefined there.
 pub(crate) fn d2tf(ndp: i32, days: f64) -> (char, [i32; 4]) {
     // Handle sign.
     let sign = if days >= 0.0 { '+' } else { '-' };
@@ -164,15 +163,32 @@ mod tests {
             days.push(rng.next_f64());
         }
         let mut n = 0;
-        for ndp in -2..=10 {
+        let mut undefined = 0;
+        for ndp in -2..=12 {
             for &d in &days {
-                let (cs, ch) = c(ndp, d);
                 let (rs, rh) = d2tf(ndp, d);
-                assert_eq!((rs, rh), (cs, ch), "ndp {ndp} days {d:e}");
-                n += 1;
+                if d2tf_defined(ndp, d) {
+                    assert_eq!((rs, rh), c(ndp, d), "ndp {ndp} days {d:e}");
+                    n += 1;
+                } else {
+                    // C converts a NaN, infinite or out-of-`int`-range field
+                    // with `(int)` or overflows its `int` unit count for
+                    // `ndp` above 9, so its result depends on the platform:
+                    // only that the port returns, with a sign that follows
+                    // `days >= 0`.
+                    assert_eq!(rs, if d >= 0.0 { '+' } else { '-' });
+                    undefined += 1;
+                }
             }
         }
-        assert!(n > 70_000);
+        assert!(n > 60_000 && undefined > 100);
+    }
+
+    #[test]
+    fn d2tf_defined_results_where_c_is_undefined() {
+        assert_eq!(d2tf(3, f64::NAN), ('-', [0; 4]));
+        assert_eq!(d2tf(0, f64::INFINITY).0, '+');
+        assert_eq!(d2tf(0, 1e15).1[0], i32::MAX);
     }
 
     #[test]

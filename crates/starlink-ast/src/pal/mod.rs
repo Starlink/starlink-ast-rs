@@ -1843,12 +1843,15 @@ mod native_tests {
     #[test]
     fn dat_wrapper_matches_vendored_c_where_c_is_defined() {
         for d in dates() {
-            // SAFETY: a pure function of its argument.
-            let c = unsafe { astPalDat(d) };
-            if crate::erfa::jd2cal(PAL__MJD0, d).is_ok() {
+            if crate::erfa::difftest::jd2cal_defined(PAL__MJD0, d)
+                && crate::erfa::jd2cal(PAL__MJD0, d).is_ok()
+            {
+                // SAFETY: a pure function of its argument.
+                let c = unsafe { astPalDat(d) };
                 assert!(same(dat(d), c), "{d:e}");
             } else {
-                // C passes `eraDat` fields `eraJd2cal` did not write.
+                // C passes `eraDat` fields `eraJd2cal` did not write, or
+                // casts a NaN date to `long`; either is undefined.
                 assert_eq!(dat(d), 0.0, "{d:e}");
             }
         }
@@ -1857,6 +1860,12 @@ mod native_tests {
     #[test]
     fn djcl_matches_vendored_c_bit_for_bit() {
         for d in dates() {
+            if !crate::erfa::difftest::jd2cal_defined(PAL__MJD0, d) {
+                // A NaN date reaches C's `(long)` casts, which are
+                // platform-dependent: only that the port returns.
+                let _ = djcl(d);
+                continue;
+            }
             let (mut iy, mut im, mut id, mut fd, mut j) = (0, 0, 0, 0.0, 0);
             // SAFETY: the pointers are to live locals.
             unsafe { astPalDjcl(d, &mut iy, &mut im, &mut id, &mut fd, &mut j) };
@@ -1910,11 +1919,18 @@ mod native_tests {
         days.extend((0..2_000).map(|_| (rng.next_f64() - 0.5) * 3.0));
         for ndp in -2..=10 {
             for &d in &days {
+                let (s, f) = dd2tf(ndp, d);
+                if !crate::erfa::difftest::d2tf_defined(ndp, d) {
+                    // C's `(int)` casts of a NaN, infinite or huge field, or
+                    // its overflowing unit count for `ndp` above 9, are
+                    // undefined: only that the port returns.
+                    assert_eq!(s, if d >= 0.0 { '+' } else { '-' });
+                    continue;
+                }
                 let mut sign: c_char = 0;
                 let mut ihmsf = [0i32; 4];
                 // SAFETY: the pointers are to live locals.
                 unsafe { astPalDd2tf(ndp, d, &mut sign, ihmsf.as_mut_ptr()) };
-                let (s, f) = dd2tf(ndp, d);
                 assert_eq!((s, f), (sign as u8 as char, ihmsf), "{ndp} {d:e}");
             }
         }
@@ -1938,6 +1954,12 @@ mod native_tests {
         for h in [i32::MIN, -1, 0, 5, 23, 24, i32::MAX] {
             for m in [i32::MIN, -1, 0, 30, 59, 60, i32::MAX] {
                 for &s in &secs {
+                    if h == i32::MIN || m == i32::MIN {
+                        // C's `abs(INT_MIN)` is undefined: only that the
+                        // port returns, with the Hour or Minute warning.
+                        assert!(dtf2d(h, m, s).1.is_some());
+                        continue;
+                    }
                     let (mut days, mut j) = (0.0, 0);
                     // SAFETY: the pointers are to live locals.
                     unsafe { astPalDtf2d(h, m, s, &mut days, &mut j) };

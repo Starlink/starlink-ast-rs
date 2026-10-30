@@ -141,3 +141,26 @@ pub(crate) fn mjd_cases() -> Vec<f64> {
     ]);
     v
 }
+
+/// Whether C's `eraJd2cal` is defined on a two-part date: it is not when a
+/// NaN sum reaches the `(long)` casts or a part is too large for a `long`,
+/// where the result depends on the platform (aarch64 saturates, x86-64 gives
+/// the most negative value).
+pub(crate) fn jd2cal_defined(dj1: f64, dj2: f64) -> bool {
+    let dj = dj1 + dj2;
+    if dj.is_nan() {
+        return false;
+    }
+    if !(-68569.5..=1e9).contains(&dj) {
+        // Rejected before any cast.
+        return true;
+    }
+    dj1.abs() < 9.2e18 && dj2.abs() < 9.2e18
+}
+
+/// Whether C's `eraD2tf` is defined: the `int` unit count `10^ndp` must not
+/// overflow, and every field must be finite and fit an `int` for the `(int)`
+/// casts.
+pub(crate) fn d2tf_defined(ndp: i32, days: f64) -> bool {
+    (-9..=9).contains(&ndp) && days.is_finite() && days.abs() < 1e7
+}

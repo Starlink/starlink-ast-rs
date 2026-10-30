@@ -79,7 +79,7 @@ pub(crate) enum Tf2dWarning {
 /// reported.
 pub(crate) fn tf2d(s: char, ihour: i32, imin: i32, sec: f64) -> (f64, Option<Tf2dWarning>) {
     // Compute the interval. C's `abs` of the most negative int is undefined;
-    // the C build converts it to 2^31, which `unsigned_abs` gives.
+    // the port's defined result is 2^31, which `unsigned_abs` gives.
     let days = (if s == '-' { -1.0 } else { 1.0 })
         * (60.0 * (60.0 * f64::from(ihour.unsigned_abs()) + f64::from(imin.unsigned_abs()))
             + sec.abs())
@@ -125,10 +125,19 @@ mod tests {
             f64::NEG_INFINITY,
         ];
         let mut n = 0;
+        let mut undefined = 0;
         for s in ['+', '-', ' ', 'x'] {
             for &h in &hours {
                 for &m in &mins {
                     for &sec in &secs {
+                        // C's `abs(INT_MIN)` is undefined; the port's result
+                        // there is pinned in a known-value test.
+                        if h == i32::MIN || m == i32::MIN {
+                            let (d, _) = tf2d(s, h, m, sec);
+                            assert!(!d.is_nan() || sec.is_nan());
+                            undefined += 1;
+                            continue;
+                        }
                         let mut days = 0.0;
                         // SAFETY: the pointer is to a live local.
                         let j = unsafe { astEraTf2d(s as std::ffi::c_char, h, m, sec, &mut days) };
@@ -147,6 +156,16 @@ mod tests {
                 }
             }
         }
-        assert!(n > 7000);
+        assert!(n > 5000 && undefined > 100);
+    }
+
+    #[test]
+    fn tf2d_takes_the_magnitude_of_the_most_negative_int_as_2_pow_31() {
+        let (days, warning) = tf2d(' ', i32::MIN, 0, 0.0);
+        assert_eq!(days, 60.0 * 60.0 * 2147483648.0 / 86400.0);
+        assert_eq!(warning, Some(Tf2dWarning::Hour));
+        let (days, warning) = tf2d('-', 0, i32::MIN, 0.0);
+        assert_eq!(days, -(60.0 * 2147483648.0) / 86400.0);
+        assert_eq!(warning, Some(Tf2dWarning::Minute));
     }
 }
