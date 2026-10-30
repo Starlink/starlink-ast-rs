@@ -22,6 +22,7 @@
 use crate::constants::BAD_VALUE;
 
 mod addet;
+mod ampqk;
 mod dat;
 mod deuler;
 mod dmat;
@@ -29,10 +30,14 @@ mod drange;
 mod ecmat;
 mod eqgal;
 mod etrms;
+mod evp;
+#[cfg(test)]
 mod ffi;
 mod galeq;
 mod galsup;
 mod geoc;
+mod mappa;
+mod mapqkz;
 mod prebn;
 mod prec;
 mod prenut;
@@ -43,6 +48,7 @@ mod rvlsrd;
 mod rvlsrk;
 mod subet;
 mod supgal;
+#[cfg(test)]
 use ffi::*;
 
 /// PAL's `PAL__DPI` (palmac.h): pi.
@@ -60,12 +66,16 @@ pub(crate) const PAL__SR: f64 = 7.2921150e-5;
 /// PAL's `PAL__DAS2R` (palmac.h): arcseconds to radians.
 pub(crate) const PAL__DAS2R: f64 = 4.8481368110953599358991410235794797595635330237270e-6;
 
+/// PAL's `PAL__CR` (palmac.h): the light time for 1 au, in seconds.
+pub(crate) const PAL__CR: f64 = 499.004782;
+
+/// PAL's `PAL__SPD` (palmac.h): seconds per day.
+pub(crate) const PAL__SPD: f64 = 86400.0;
+
 /// ERFA's `ERFA_DAU` (erfam.h): the astronomical unit in metres, the IAU 2012
 /// value. PAL's routines convert metres to au with it, so a caller that
 /// converts their output back must use the same value.
 pub(crate) const ERFA_DAU: f64 = 149597870.7e3;
-
-use crate::call_counts::counted;
 
 // ---------------------------------------------------------------------------
 // Group 1: Epoch conversions
@@ -437,29 +447,24 @@ pub(crate) fn subet(rc: f64, dc: f64, eq: f64) -> (f64, f64) {
 /// Returns a 21-element array of star-independent parameters used by
 /// [`ampqk`] and [`mapqkz`].
 pub(crate) fn mappa(eq: f64, date: f64) -> [f64; 21] {
-    let mut amprms = [0.0; 21];
-    counted!(astPalMappa(eq, date, amprms.as_mut_ptr()));
-    amprms
+    crate::call_counts::hit("astPalMappa");
+    mappa::mappa(eq, date)
 }
 
 /// Quick apparent (ra, dec) to mean (ra, dec).
 ///
 /// Uses pre-computed parameters from [`mappa`].
 pub(crate) fn ampqk(ra: f64, da: f64, amprms: &[f64; 21]) -> (f64, f64) {
-    let mut rm = 0.0;
-    let mut dm = 0.0;
-    counted!(astPalAmpqk(ra, da, amprms.as_ptr(), &mut rm, &mut dm));
-    (rm, dm)
+    crate::call_counts::hit("astPalAmpqk");
+    ampqk::ampqk(ra, da, amprms)
 }
 
 /// Quick mean (ra, dec) to apparent (ra, dec), assuming zero proper motion.
 ///
 /// Uses pre-computed parameters from [`mappa`].
 pub(crate) fn mapqkz(rm: f64, dm: f64, amprms: &[f64; 21]) -> (f64, f64) {
-    let mut ra = 0.0;
-    let mut da = 0.0;
-    counted!(astPalMapqkz(rm, dm, amprms.as_ptr(), &mut ra, &mut da));
-    (ra, da)
+    crate::call_counts::hit("astPalMapqkz");
+    mapqkz::mapqkz(rm, dm, amprms)
 }
 
 // ---------------------------------------------------------------------------
@@ -505,19 +510,8 @@ pub(crate) fn dbear(a1: f64, b1: f64, a2: f64, b2: f64) -> f64 {
 /// - `dvh`: heliocentric velocity (AU/s)
 /// - `dph`: heliocentric position (AU)
 pub(crate) fn evp(date: f64, deqx: f64) -> ([f64; 3], [f64; 3], [f64; 3], [f64; 3]) {
-    let mut dvb = [0.0; 3];
-    let mut dpb = [0.0; 3];
-    let mut dvh = [0.0; 3];
-    let mut dph = [0.0; 3];
-    counted!(astPalEvp(
-        date,
-        deqx,
-        dvb.as_mut_ptr(),
-        dpb.as_mut_ptr(),
-        dvh.as_mut_ptr(),
-        dph.as_mut_ptr(),
-    ));
-    (dvb, dpb, dvh, dph)
+    crate::call_counts::hit("astPalEvp");
+    evp::evp(date, deqx)
 }
 
 /// Geodetic latitude/height to geocentric distance from spin axis and
@@ -1475,30 +1469,26 @@ mod tests {
 
 #[cfg(test)]
 mod count_tests {
-    /// Every FFI call in this file goes through `counted!`, so the
-    /// `call-counts` feature sees every call into PAL and ERFA.
+    /// No code in this file outside the differential tests calls PAL or
+    /// ERFA in C: every wrapper runs the Rust port and counts its call
+    /// itself, so the `call-counts` feature sees every call.
     #[test]
-    fn every_ffi_call_is_counted() {
+    fn no_wrapper_calls_the_c_library() {
         let src = include_str!("mod.rs");
-        // The differential tests call the C routines directly, uncounted.
+        // The differential tests call the C routines directly.
         let body = src.split(concat!("mod native_", "tests {")).next().unwrap();
-        let mut uncounted = Vec::new();
+        let mut calls = Vec::new();
         for prefix in ["astPal", "astEra"] {
             for (i, _) in body.match_indices(prefix) {
                 let name_end = body[i..]
                     .find(|c: char| !c.is_ascii_alphanumeric())
                     .map_or(body.len(), |e| i + e);
-                let is_call = body[name_end..].starts_with('(');
-                let counted = body[..i].trim_end().ends_with("counted!(");
-                if is_call && !counted {
-                    uncounted.push(&body[i..name_end]);
+                if body[name_end..].starts_with('(') {
+                    calls.push(&body[i..name_end]);
                 }
             }
         }
-        assert!(
-            uncounted.is_empty(),
-            "uncounted PAL/ERFA calls: {uncounted:?}"
-        );
+        assert!(calls.is_empty(), "calls into C PAL/ERFA: {calls:?}");
     }
 
     #[cfg(feature = "call-counts")]

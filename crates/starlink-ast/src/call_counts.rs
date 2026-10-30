@@ -106,6 +106,8 @@ pub(crate) fn hit_n(_name: &'static str, _n: u64) {}
 
 /// Call a PAL, ERFA or wcslib function, counting it under its symbol name for the
 /// `call-counts` feature.
+// No wrapper calls into C through this macro at present.
+#[allow(unused_macros)]
 macro_rules! counted_call {
     ($f:ident ( $($arg:expr),* $(,)? )) => {{
         crate::call_counts::hit(stringify!($f));
@@ -115,6 +117,7 @@ macro_rules! counted_call {
         unsafe { $f($($arg),*) }
     }};
 }
+#[allow(unused_imports)]
 pub(crate) use counted_call as counted;
 
 #[cfg(all(test, feature = "call-counts"))]
