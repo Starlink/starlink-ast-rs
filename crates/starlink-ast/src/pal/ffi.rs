@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 //! Raw C declarations of the vendored PAL and ERFA symbols (`astPal`- and
-//! `astEra`-prefixed) that the wrappers in the parent module call.
+//! `astEra`-prefixed) that the differential tests in the parent module call.
 
 use std::ffi::c_char;
 
@@ -95,8 +95,11 @@ unsafe extern "C" {
     pub(super) fn astPalAddet(rm: f64, dm: f64, eq: f64, rc: *mut f64, dc: *mut f64);
     #[cfg(test)]
     pub(super) fn astPalSubet(rc: f64, dc: f64, eq: f64, rm: *mut f64, dm: *mut f64);
+    #[cfg(test)]
     pub(super) fn astPalMappa(eq: f64, date: f64, amprms: *mut f64);
+    #[cfg(test)]
     pub(super) fn astPalAmpqk(ra: f64, da: f64, amprms: *const f64, rm: *mut f64, dm: *mut f64);
+    #[cfg(test)]
     pub(super) fn astPalMapqkz(rm: f64, dm: f64, amprms: *const f64, ra: *mut f64, da: *mut f64);
 
     // -- Angular normalization --
@@ -106,6 +109,7 @@ unsafe extern "C" {
     pub(super) fn astPalDbear(a1: f64, b1: f64, a2: f64, b2: f64) -> f64;
 
     // -- Earth / observer --
+    #[cfg(test)]
     pub(super) fn astPalEvp(
         date: f64,
         deqx: f64,

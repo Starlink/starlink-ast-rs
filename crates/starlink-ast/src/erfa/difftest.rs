@@ -192,6 +192,12 @@ unsafe extern "C" {
     -> f64;
     pub(super) fn astEraGst06a(uta: f64, utb: f64, tta: f64, ttb: f64) -> f64;
     pub(super) fn astEraEe06a(date1: f64, date2: f64) -> f64;
+    pub(super) fn astEraEpv00(
+        date1: f64,
+        date2: f64,
+        pvh: *mut [f64; 3],
+        pvb: *mut [f64; 3],
+    ) -> i32;
 }
 
 /// Whether two values are the same bit for bit, any two NaNs counting as the
