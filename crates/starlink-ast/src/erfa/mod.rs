@@ -106,7 +106,7 @@ mod trxp;
 pub(crate) use anp::anp;
 pub(crate) use anpm::anpm;
 pub(crate) use bpn2xy::bpn2xy;
-pub(crate) use cal2jd::{BadDay, Cal2jdError, cal2jd};
+pub(crate) use cal2jd::{Cal2jdError, Cal2jdWarning, cal2jd};
 pub(crate) use d2tf::d2tf;
 #[cfg(test)]
 pub(crate) use dat::CHANGES;

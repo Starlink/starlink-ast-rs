@@ -165,12 +165,12 @@ fn run(root: &str, x: &[f64]) -> Vec<f64> {
             Err(_) => vec![-1.0],
         },
         "cldj" => {
-            use crate::erfa::{BadDay, Cal2jdError};
+            use crate::erfa::{Cal2jdError, Cal2jdWarning};
             match cldj(x[0] as i32, x[1] as i32, x[2] as i32) {
                 Err(Cal2jdError::BadYear) => vec![-1.0],
                 Err(Cal2jdError::BadMonth) => vec![-2.0],
                 Ok((m, None)) => vec![0.0, m],
-                Ok((m, Some(BadDay::OutOfRange))) => vec![-3.0, m],
+                Ok((m, Some(Cal2jdWarning::BadDay))) => vec![-3.0, m],
             }
         }
         "dd2tf" => {

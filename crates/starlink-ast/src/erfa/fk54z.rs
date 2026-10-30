@@ -155,8 +155,7 @@ pub(crate) fn fk54z_kernel_with<T: KernelTrig>(
 mod tests {
     use super::*;
     use crate::erfa::CheckedTrig;
-    use crate::erfa::fk45z::tests::sky_terms;
-    use crate::test_inputs::{fk_epochs, fk_positions};
+    use crate::test_inputs::{fk_epochs, fk_positions, sky_terms};
 
     /// How far [`fk54z_kernel`]'s (R.A., Dec) may be from [`fk54z`]'s, in
     /// radians on the sky, measured as for `FK45Z_SKY_BOUND`.

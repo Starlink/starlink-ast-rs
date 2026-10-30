@@ -61,7 +61,7 @@
 //
 // Ported from ERFA eraDat (erfa/dat.c), ERFA 2.0.1 as vendored at reference/starlink-ast 3d3f255f.
 
-use super::cal2jd::{BadDay, Cal2jdError, cal2jd};
+use super::cal2jd::{Cal2jdError, Cal2jdWarning, cal2jd};
 
 /// Why [`dat`] gave no result.
 // Called only by tests (no mapping or frame uses it).
@@ -85,7 +85,7 @@ pub(crate) enum DatError {
 // Called only by tests (no mapping or frame uses it).
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PreUtc {
+pub(crate) enum DatWarning {
     /// The date is before the first table entry, 1960 (ERFA status 1). The
     /// value is 0.
     BeforeTable,
@@ -190,11 +190,16 @@ const fn first_of_month_mjd(iy: i32, im: i32) -> f64 {
 
 /// TAI minus UTC, in seconds, at a Gregorian date and fraction of a day.
 ///
-/// A date before 1960 gives 0 with [`PreUtc`]. C also warns of a year later
+/// A date before 1960 gives 0 with [`DatWarning`]. C also warns of a year later
 /// than 2028, which is not reproduced.
 // Called only by tests (no mapping or frame uses it).
 #[allow(dead_code)]
-pub(crate) fn dat(iy: i32, im: i32, id: i32, fd: f64) -> Result<(f64, Option<PreUtc>), DatError> {
+pub(crate) fn dat(
+    iy: i32,
+    im: i32,
+    id: i32,
+    fd: f64,
+) -> Result<(f64, Option<DatWarning>), DatError> {
     // If invalid fraction of a day, give up.
     if fd < 0.0 || fd > 1.0 {
         return Err(DatError::BadFraction);
@@ -204,13 +209,13 @@ pub(crate) fn dat(iy: i32, im: i32, id: i32, fd: f64) -> Result<(f64, Option<Pre
     let djm = match cal2jd(iy, im, id) {
         Err(Cal2jdError::BadYear) => return Err(DatError::BadYear),
         Err(Cal2jdError::BadMonth) => return Err(DatError::BadMonth),
-        Ok((_, Some(BadDay::OutOfRange))) => return Err(DatError::BadDay),
+        Ok((_, Some(Cal2jdWarning::BadDay))) => return Err(DatError::BadDay),
         Ok(((_, djm), None)) => djm,
     };
 
     // If pre-UTC year, give up.
     if iy < CHANGES[0].0 {
-        return Ok((0.0, Some(PreUtc::BeforeTable)));
+        return Ok((0.0, Some(DatWarning::BeforeTable)));
     }
 
     // Combine year and month to form a date-ordered integer... (C's int
@@ -272,7 +277,10 @@ mod tests {
     fn dat_known_values() {
         assert_eq!(dat(2017, 1, 1, 0.0), Ok((37.0, None)));
         assert_eq!(dat(2016, 12, 31, 0.5), Ok((36.0, None)));
-        assert_eq!(dat(1959, 12, 31, 0.0), Ok((0.0, Some(PreUtc::BeforeTable))));
+        assert_eq!(
+            dat(1959, 12, 31, 0.0),
+            Ok((0.0, Some(DatWarning::BeforeTable)))
+        );
         assert_eq!(dat(2000, 1, 1, 1.5), Err(DatError::BadFraction));
         assert_eq!(dat(2000, 2, 30, 0.0), Err(DatError::BadDay));
     }

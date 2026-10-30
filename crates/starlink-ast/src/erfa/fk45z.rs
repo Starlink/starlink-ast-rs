@@ -219,10 +219,10 @@ pub(crate) fn fk45z_kernel_with<T: KernelTrig>(
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
     use crate::erfa::CheckedTrig;
-    use crate::test_inputs::{fk_epochs, fk_positions};
+    use crate::test_inputs::{fk_epochs, fk_positions, sky_terms};
 
     /// How far [`fk45z_kernel`]'s (R.A., Dec) may be from [`fk45z`]'s, in
     /// radians on the sky: the difference in Dec, and the difference in R.A.
@@ -251,17 +251,6 @@ pub(crate) mod tests {
     // cosine, which is below 40u wherever the Dec rounds to within 1e-15 of
     // the pole. The bound is 40u for both.
     const FK45Z_SKY_BOUND: f64 = 40.0 * f64::EPSILON / 2.0;
-
-    /// The sky distance of [`FK45Z_SKY_BOUND`] between two (R.A., Dec)
-    /// pairs, as (R.A. term, Dec term).
-    pub(crate) fn sky_terms(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
-        let tau = 2.0 * std::f64::consts::PI;
-        let mut da = (a.0 - b.0).abs();
-        if da > std::f64::consts::PI {
-            da = tau - da;
-        }
-        (da * b.1.cos(), (a.1 - b.1).abs())
-    }
 
     /// Every sine, cosine and arctangent [`fk45z_kernel`] uses is within 1
     /// ULP of the exact value, rounded, which [`CheckedTrig`] asserts at

@@ -74,10 +74,10 @@ pub(crate) enum Cal2jdError {
 
 /// A warning that comes with [`cal2jd`]'s result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BadDay {
+pub(crate) enum Cal2jdWarning {
     /// The day is not a day of the month (ERFA status -3). The result is the
     /// date the arithmetic gives, as for a valid day.
-    OutOfRange,
+    BadDay,
 }
 
 /// Gregorian calendar date to a two-part Julian date `(2400000.5, MJD)`.
@@ -85,7 +85,7 @@ pub(crate) fn cal2jd(
     iy: i32,
     im: i32,
     id: i32,
-) -> Result<((f64, f64), Option<BadDay>), Cal2jdError> {
+) -> Result<((f64, f64), Option<Cal2jdWarning>), Cal2jdError> {
     // Earliest year allowed (4800BC).
     const IYMIN: i32 = -4799;
 
@@ -105,7 +105,7 @@ pub(crate) fn cal2jd(
 
     // Validate day, taking into account leap years.
     let warning = if id < 1 || id > MTAB[(im - 1) as usize] + ly {
-        Some(BadDay::OutOfRange)
+        Some(Cal2jdWarning::BadDay)
     } else {
         None
     };
