@@ -1,5 +1,6 @@
-    Finished `release` profile [optimized] target(s) in 0.14s
-     Running `target/release/ast-bench roman -o /private/tmp/claude-501/roman.csv`
+# commit=7858f26e date=2026-10-30 set=native engines=rust,c
+# machine=Apple M1 Ultra; Darwin 27.2.0
+# rustc=rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew) profile=release
   sphmap_fwd     rust N=1         median=    0.000077 ms (    13.0 Mpx/s)
   sphmap_fwd     c    N=1         median=    0.000567 ms (     1.8 Mpx/s)
   sphmap_fwd     rust N=4         median=    0.000109 ms (    36.6 Mpx/s)
@@ -313,4 +314,3 @@ poly5_fwd: Rust and C outputs identical (33423488 values)
 poly1_fwd: Rust and C outputs identical (33423488 values)
 matdiag2_fwd: Rust and C outputs identical (33423488 values)
 matfull2_fwd: Rust and C outputs identical (33423488 values)
-wrote /private/tmp/claude-501/roman.csv
