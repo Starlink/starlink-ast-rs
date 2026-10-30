@@ -13,8 +13,8 @@
 //!     cargo run -p starlink-ast --features call-counts --example count_one -- \
 //!         slamap_amp.map forward crates/ast-bench/fixtures/bench.oracle
 //!
-//! Set `AST_COUNT_BACKTRACE=<name>`
-//! to print where the first call to `<name>` comes from.
+//! Set `AST_COUNT_BACKTRACE=<name>` to print where the first call to `<name>`
+//! comes from.
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
