@@ -12,9 +12,9 @@ The port derives from the C library, whose copyright holders are:
 - David Stuart Berry
 - Tim Jenness
 
-The starlink-ast crate carries the C sources of two libraries, compiled by its build script, each under its own license as stated in the files themselves:
+The starlink-ast crate contains Rust code derived from two libraries, each under its own license, which each derived file states in its header:
 
-- PAL, in crates/starlink-ast/vendor/pal: Copyright Science and Technology Facilities Council, Rutherford Appleton Laboratory, Tim Jenness and Patrick T. Wallace; GNU Lesser General Public License, version 3 or later.
-- ERFA, in crates/starlink-ast/vendor/erfa: Copyright 2013-2016 NumFOCUS Foundation; the three-clause BSD license in crates/starlink-ast/vendor/erfa/LICENSE, derived from the IAU SOFA license.
+- PAL, in crates/starlink-ast/src/pal: Copyright Science and Technology Facilities Council, Rutherford Appleton Laboratory, Tim Jenness and Patrick T. Wallace; GNU Lesser General Public License, version 3 or later.
+- ERFA, in crates/starlink-ast/src/erfa: Copyright 2013-2016 NumFOCUS Foundation; the three-clause BSD license, derived from the IAU SOFA license, which is in the header of each file.
 
 The projections in crates/starlink-ast/src/wcslib are Rust ported from WCSLIB, in AST's fork: Copyright 1995-2002 Mark Calabretta; GNU Library General Public License, version 2 or later.

@@ -82,18 +82,3 @@ pub(crate) fn fk5hip() -> (M3, V3) {
     // Hipparcos wrt FK5 spin expressed as an r-vector.
     (r5h, [omx, omy, omz])
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn fk5hip_matches_vendored_c_bit_for_bit() {
-        let mut c = ([[0.0; 3]; 3], [0.0; 3]);
-        // SAFETY: nine and three values.
-        unsafe { astEraFk5hip(c.0.as_mut_ptr(), c.1.as_mut_ptr()) };
-        let (r, s) = fk5hip();
-        assert!((0..3).all(|i| same3(&r[i], &c.0[i])) && same3(&s, &c.1));
-    }
-}

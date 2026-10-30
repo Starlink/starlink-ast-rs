@@ -250,27 +250,3 @@ pub(crate) fn s06(date1: f64, date2: f64, x: f64, y: f64) -> f64 {
 
     (w0 + (w1 + (w2 + (w3 + (w4 + w5 * t) * t) * t) * t) * t) * ERFA_DAS2R - x * y / 2.0
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn s06_matches_vendored_c_bit_for_bit() {
-        let mut rng = SplitMix64::new(0x5eed_5060);
-        let sp = specials();
-        for (k, (d1, d2)) in date_pairs().into_iter().enumerate() {
-            // CIP coordinates of a few milliradians, and the specials.
-            let (x, y) = if k % 7 == 0 {
-                (sp[k % sp.len()], sp[(k / 7) % sp.len()])
-            } else {
-                ((rng.next_f64() - 0.5) * 0.02, (rng.next_f64() - 0.5) * 0.02)
-            };
-            // SAFETY: a pure function of its arguments.
-            let c = unsafe { astEraS06(d1, d2, x, y) };
-            assert!(same(s06(d1, d2, x, y), c), "{d1:e} {d2:e} {x:e} {y:e}");
-        }
-    }
-}

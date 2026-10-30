@@ -77,31 +77,3 @@ pub(crate) fn fw2m(gamb: f64, phib: f64, psi: f64, eps: f64) -> M3 {
     r = rz(-psi, r);
     rx(-eps, r)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn fw2m_matches_vendored_c_bit_for_bit() {
-        for (a, b) in angle_pairs(5_000) {
-            let (c, d) = (a * 0.5 + 0.1, b - 0.3);
-            let mut m = [[0.0; 3]; 3];
-            // SAFETY: nine outputs.
-            unsafe { astEraFw2m(a, b, c, d, m.as_mut_ptr()) };
-            let r = fw2m(a, b, c, d);
-            assert!((0..3).all(|i| same3(&r[i], &m[i])), "{a:e} {b:e}");
-        }
-        for &a in &specials() {
-            for &b in &specials() {
-                let mut m = [[0.0; 3]; 3];
-                // SAFETY: nine outputs.
-                unsafe { astEraFw2m(a, b, a, b, m.as_mut_ptr()) };
-                let r = fw2m(a, b, a, b);
-                assert!((0..3).all(|i| same3(&r[i], &m[i])), "{a:e} {b:e}");
-            }
-        }
-    }
-}

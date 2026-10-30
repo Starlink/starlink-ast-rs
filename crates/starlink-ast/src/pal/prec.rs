@@ -29,35 +29,3 @@ pub(crate) fn prec(ep0: f64, ep1: f64) -> M3 {
         erfa::rxr(&rmatp, &rmatq)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::same3;
-    use crate::test_inputs::{SplitMix64, specials};
-
-    #[test]
-    fn prec_matches_vendored_c_bit_for_bit() {
-        let mut epochs = vec![1000.0, 1900.0, 1950.0, 2000.0, 2100.0, 3000.0];
-        let mut rng = SplitMix64::new(77);
-        epochs.extend((0..300).map(|_| 1000.0 + rng.next_f64() * 2000.0));
-        epochs.extend(specials());
-        let mut pairs = Vec::new();
-        for &a in &epochs {
-            for &b in &[1000.0, 1950.0, 2000.0, 2100.0, 3000.0, 1999.5, f64::NAN] {
-                pairs.push((a, b));
-                pairs.push((b, a));
-            }
-        }
-        for k in 0..2_000 {
-            pairs.push((epochs[k % epochs.len()], epochs[(k * 7 + 3) % epochs.len()]));
-        }
-        for (a, b) in pairs {
-            let mut c = [[0.0; 3]; 3];
-            // SAFETY: nine outputs.
-            unsafe { super::super::astPalPrec(a, b, c.as_mut_ptr()) };
-            let r = prec(a, b);
-            assert!((0..3).all(|i| same3(&r[i], &c[i])), "{a:e} {b:e}");
-        }
-    }
-}

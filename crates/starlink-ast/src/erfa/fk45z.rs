@@ -121,22 +121,3 @@ pub(crate) fn fk45z(r1950: f64, d1950: f64, bepoch: f64) -> (f64, f64) {
     let (w, d2000) = c2s(pv[0]);
     (anp(w), d2000)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn fk45z_matches_vendored_c_bit_for_bit() {
-        for (r, d) in fk_positions() {
-            for e in fk_epochs() {
-                let (mut cr, mut cd) = (0.0, 0.0);
-                // SAFETY: two scalar outputs.
-                unsafe { astEraFk45z(r, d, e, &mut cr, &mut cd) };
-                let (pr, pd) = fk45z(r, d, e);
-                assert!(same(pr, cr) && same(pd, cd), "{r:e} {d:e} {e:e}");
-            }
-        }
-    }
-}

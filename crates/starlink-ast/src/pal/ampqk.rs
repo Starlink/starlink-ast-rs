@@ -56,27 +56,3 @@ pub(crate) fn ampqk(ra: f64, da: f64, amprms: &[f64; 21]) -> (f64, f64) {
     let (rm, dm) = erfa::c2s(p);
     (erfa::anp(rm), dm)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::same;
-    use crate::pal::mappa::tests::c_amprms;
-    use crate::pal::mapqkz::tests::place_inputs;
-
-    #[test]
-    fn ampqk_matches_vendored_c_bit_for_bit() {
-        for amprms in c_amprms() {
-            for &(ra, da) in &place_inputs() {
-                let (mut c1, mut c2) = (0.0, 0.0);
-                // SAFETY: 21 inputs and scalar outputs.
-                unsafe { super::super::astPalAmpqk(ra, da, amprms.as_ptr(), &mut c1, &mut c2) };
-                let r = ampqk(ra, da, &amprms);
-                assert!(
-                    same(r.0, c1) && same(r.1, c2),
-                    "{ra:e} {da:e} {amprms:?}: {r:?} vs C ({c1:e}, {c2:e})"
-                );
-            }
-        }
-    }
-}

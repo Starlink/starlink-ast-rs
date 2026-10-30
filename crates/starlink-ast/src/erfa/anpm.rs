@@ -72,24 +72,3 @@ pub(crate) fn anpm(a: f64) -> f64 {
     }
     w
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn anpm_matches_vendored_c_bit_for_bit() {
-        for a in angles(20_000) {
-            // SAFETY: a pure function of its argument.
-            let c = unsafe { astEraAnpm(a) };
-            assert!(
-                same(anpm(a), c),
-                "{a:e}: {:x} vs C {:x}",
-                anpm(a).to_bits(),
-                c.to_bits()
-            );
-        }
-    }
-}

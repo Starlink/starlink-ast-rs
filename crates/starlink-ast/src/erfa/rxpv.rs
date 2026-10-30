@@ -68,33 +68,3 @@ use super::{M3, PV, rxp};
 pub(crate) fn rxpv(r: &M3, pv: &PV) -> PV {
     [rxp(r, &pv[0]), rxp(r, &pv[1])]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn rxpv_matches_vendored_c_bit_for_bit() {
-        let ms = matrices(2_000);
-        let vs = vectors(20_000);
-        let n = vs.len();
-        for i in 0..n {
-            let m = &ms[(i * 7) % ms.len()];
-            let pv: PV = [vs[i], vs[(i * 31 + 7) % n]];
-            let mut c = [[0.0; 3]; 2];
-            // SAFETY: the matrix holds nine values, the pv-vectors six.
-            unsafe { astEraRxpv(m.as_ptr(), pv.as_ptr(), c.as_mut_ptr()) };
-            let r = rxpv(m, &pv);
-            assert!(same3(&r[0], &c[0]) && same3(&r[1], &c[1]), "{m:?} {pv:?}");
-            let mut x = pv;
-            // SAFETY: as above, reading and writing the same pv-vector.
-            unsafe { astEraRxpv(m.as_ptr(), x.as_ptr(), x.as_mut_ptr()) };
-            assert!(
-                same3(&r[0], &x[0]) && same3(&r[1], &x[1]),
-                "aliased {m:?} {pv:?}"
-            );
-        }
-    }
-}

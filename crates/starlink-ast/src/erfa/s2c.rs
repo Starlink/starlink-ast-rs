@@ -122,38 +122,7 @@ pub(crate) fn s2c_needs_special(theta: f64, phi: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_inputs::{angle_pairs, specials, ulps};
-
-    unsafe extern "C" {
-        fn astEraS2c(theta: f64, phi: f64, c: *mut f64);
-    }
-
-    #[test]
-    fn s2c_matches_vendored_c_bit_for_bit() {
-        let mut inputs = angle_pairs(100_000);
-        let s = specials();
-        for &a in &s {
-            for &b in &s {
-                inputs.push((a, b));
-            }
-        }
-        for (theta, phi) in inputs {
-            let mut c = [0.0; 3];
-            // SAFETY: c holds the three values astEraS2c writes.
-            unsafe { astEraS2c(theta, phi, c.as_mut_ptr()) };
-            let r = s2c(theta, phi);
-            // Bit for bit, but any NaN matches any NaN: the sign of a NaN
-            // from a product depends on its operand order, which the C
-            // compiler may swap, and carries no meaning.
-            let same = |a: f64, b: f64| a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan());
-            assert!(
-                (0..3).all(|k| same(r[k], c[k])),
-                "({theta}, {phi}): {:?} vs C {:?}",
-                r.map(f64::to_bits),
-                c.map(f64::to_bits)
-            );
-        }
-    }
+    use crate::test_inputs::{angle_pairs, ulps};
 
     /// [`s2c_kernel`]'s z component, a sine, is within 1 ULP of the exact
     /// value, rounded, and its x and y components within

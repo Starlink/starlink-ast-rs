@@ -18,25 +18,3 @@ pub(crate) fn ecmat(date: f64) -> M3 {
     // Matrix.
     deuler("X", eps0, 0.0, 0.0)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::same3;
-    use crate::test_inputs::{SplitMix64, specials};
-
-    #[test]
-    fn ecmat_matches_vendored_c_bit_for_bit() {
-        let mut dates = vec![-313_000.0, 15_020.0, 33_282.0, 51_544.5, 88_069.0, 1.4e6];
-        let mut rng = SplitMix64::new(79);
-        dates.extend((0..20_000).map(|_| -3.0e5 + rng.next_f64() * 1.4e6));
-        dates.extend(specials());
-        for d in dates {
-            let mut c = [[0.0; 3]; 3];
-            // SAFETY: nine outputs.
-            unsafe { super::super::astPalEcmat(d, c.as_mut_ptr()) };
-            let r = ecmat(d);
-            assert!((0..3).all(|i| same3(&r[i], &c[i])), "{d:e}");
-        }
-    }
-}

@@ -67,25 +67,3 @@ use super::{ERFA_DJ00, ERFA_DJY};
 pub(crate) fn epj(dj1: f64, dj2: f64) -> f64 {
     2000.0 + ((dj1 - ERFA_DJ00) + dj2) / ERFA_DJY
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn epj_matches_vendored_c_bit_for_bit() {
-        let mut xs = specials();
-        xs.extend([2400000.5, 2451545.0, 51544.5, 1e300, -1e300]);
-        let mut rng = SplitMix64::new(7);
-        xs.extend((0..2000).map(|_| (rng.next_f64() - 0.3) * 5e6));
-        for &a in &xs {
-            for &b in &xs {
-                // SAFETY: a pure function of its arguments.
-                let c = unsafe { astEraEpj(a, b) };
-                assert!(same(epj(a, b), c), "{a:e} {b:e}");
-            }
-        }
-    }
-}

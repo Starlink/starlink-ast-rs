@@ -67,25 +67,3 @@ use super::{ERFA_DJM00, ERFA_DJM0};
 pub(crate) fn epj2jd(epj: f64) -> (f64, f64) {
     (ERFA_DJM0, ERFA_DJM00 + (epj - 2000.0) * 365.25)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn epj2jd_matches_vendored_c_bit_for_bit() {
-        let mut xs = specials();
-        xs.extend([1900.0, 1950.0, 2000.0, 1e300, -1e300, 1e18, 3000.0, 1000.0]);
-        let mut rng = SplitMix64::new(9);
-        xs.extend((0..20_000).map(|_| 1000.0 + rng.next_f64() * 2500.0));
-        for &e in &xs {
-            let (mut m0, mut m) = (0.0, 0.0);
-            // SAFETY: the pointers are to live locals.
-            unsafe { astEraEpj2jd(e, &mut m0, &mut m) };
-            let (r0, r) = epj2jd(e);
-            assert!(same(r0, m0) && same(r, m), "{e:e}");
-        }
-    }
-}

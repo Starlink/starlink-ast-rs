@@ -72,34 +72,3 @@ pub(crate) fn gd2gc(e: Ellipsoid, elong: f64, phi: f64, height: f64) -> Result<V
     let (a, f) = eform(e);
     gd2gce(a, f, elong, phi, height)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn gd2gc_matches_vendored_c_bit_for_bit() {
-        let lats = geodetic_latitudes(1500);
-        let lons = geodetic_longitudes(60);
-        let hs = geodetic_heights();
-        for (n, e) in [
-            (1, Ellipsoid::Wgs84),
-            (2, Ellipsoid::Grs80),
-            (3, Ellipsoid::Wgs72),
-        ] {
-            for &phi in &lats {
-                for &lon in lons.iter().step_by(5) {
-                    for &h in &hs {
-                        let mut c = [0.0; 3];
-                        // SAFETY: the output holds three doubles.
-                        let status = unsafe { astEraGd2gc(n, lon, phi, h, c.as_mut_ptr()) };
-                        let r = gd2gc(e, lon, phi, h).expect("valid ellipsoids do not fail");
-                        assert_eq!(status, 0);
-                        assert!(same3(&r, &c), "{n} {lon:e} {phi:e} {h:e}: {r:?} vs C {c:?}");
-                    }
-                }
-            }
-        }
-    }
-}

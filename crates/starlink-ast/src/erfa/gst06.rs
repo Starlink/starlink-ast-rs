@@ -78,29 +78,3 @@ pub(crate) fn gst06(uta: f64, utb: f64, tta: f64, ttb: f64, rnpb: &M3) -> f64 {
     let eors = eors(rnpb, s);
     anp(era - eors)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn gst06_matches_vendored_c_bit_for_bit() {
-        let ms = matrices(500);
-        for (k, (ut1, ut2, tt1, tt2)) in sidereal_dates().into_iter().enumerate() {
-            // The matrix for the TT date, and an arbitrary one.
-            let mut m = [[0.0; 3]; 3];
-            // SAFETY: nine outputs.
-            unsafe { astEraPnm06a(tt1, tt2, m.as_mut_ptr()) };
-            for m in [m, ms[k % ms.len()]] {
-                // SAFETY: nine inputs; a pure function of its arguments.
-                let c = unsafe { astEraGst06(ut1, ut2, tt1, tt2, m.as_ptr()) };
-                assert!(
-                    same(gst06(ut1, ut2, tt1, tt2, &m), c),
-                    "{ut1:e} {ut2:e} {tt1:e} {tt2:e} {m:?}"
-                );
-            }
-        }
-    }
-}

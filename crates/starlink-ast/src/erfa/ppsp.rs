@@ -69,27 +69,3 @@ pub(crate) fn ppsp(a: &V3, s: f64, b: &V3) -> V3 {
     let sb = sxp(s, b);
     ppp(a, &sb)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn ppsp_matches_vendored_c_bit_for_bit() {
-        let vs = vectors(20_000);
-        let n = vs.len();
-        for i in 0..n {
-            let (a, s, b) = (vs[i], vs[(i * 17 + 3) % n][1], vs[(i * 31 + 7) % n]);
-            let mut c = [0.0; 3];
-            // SAFETY: each vector holds three values.
-            unsafe { astEraPpsp(a.as_ptr(), s, b.as_ptr(), c.as_mut_ptr()) };
-            assert!(same3(&ppsp(&a, s, &b), &c), "{a:?} {s:e} {b:?}");
-            let mut x = a;
-            // SAFETY: as above, reading and writing the same vector.
-            unsafe { astEraPpsp(x.as_ptr(), s, b.as_ptr(), x.as_mut_ptr()) };
-            assert!(same3(&ppsp(&a, s, &b), &x), "aliased {a:?} {s:e} {b:?}");
-        }
-    }
-}

@@ -62,7 +62,6 @@
 // Ported from ERFA eraDat (erfa/dat.c), ERFA 2.0.1 as vendored at reference/starlink-ast 3d3f255f.
 
 use super::cal2jd::{BadDay, Cal2jdError, cal2jd};
-use super::jd2cal::jd2cal;
 
 /// Why [`dat`] gave no result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -238,116 +237,6 @@ pub(crate) fn dat(iy: i32, im: i32, id: i32, fd: f64) -> Result<(f64, Option<Pre
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::erfa::difftest::*;
-
-    /// Whether C's `eraDat` is defined for the year and month: it returns
-    /// before `12 * iy + im` for a year before the table, and otherwise that
-    /// signed `int` arithmetic must not overflow.
-    fn dat_defined(iy: i32, im: i32) -> bool {
-        iy < 1960 || i32::try_from(12 * i64::from(iy) + i64::from(im)).is_ok()
-    }
-
-    fn check(iy: i32, im: i32, id: i32, fd: f64) {
-        if !dat_defined(iy, im) {
-            // C's signed overflow is undefined: only that the port returns.
-            let _ = dat(iy, im, id, fd);
-            return;
-        }
-        let mut deltat = -1.0;
-        // SAFETY: the pointer is to a live local.
-        let j = unsafe { astEraDat(iy, im, id, fd, &mut deltat) };
-        let r = dat(iy, im, id, fd);
-        let what = format!("{iy}-{im}-{id} {fd:e}: C status {j} {deltat:e}, port {r:?}");
-        match j {
-            -1 => assert_eq!(r, Err(DatError::BadYear), "{what}"),
-            -2 => assert_eq!(r, Err(DatError::BadMonth), "{what}"),
-            -3 => assert_eq!(r, Err(DatError::BadDay), "{what}"),
-            -4 => assert_eq!(r, Err(DatError::BadFraction), "{what}"),
-            -5 => assert_eq!(r, Err(DatError::Underflow), "{what}"),
-            // C's warning for a year after 2028 is not reproduced, and the
-            // pre-UTC warning is the only one for an earlier year.
-            0 | 1 => {
-                let (da, w) = r.unwrap_or_else(|e| panic!("{what}: {e:?}"));
-                assert!(same(da, deltat), "{what}");
-                assert_eq!(w.is_some(), iy < 1960 && j == 1, "{what}");
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn dat_matches_vendored_c_bit_for_bit() {
-        let fds = [
-            0.0,
-            -0.0,
-            1e-300,
-            0.25,
-            0.5,
-            1.0 - f64::EPSILON,
-            1.0 - f64::EPSILON / 2.0,
-            1.0,
-            up(1.0),
-            -1e-300,
-            -1.0,
-            2.0,
-            crate::constants::BAD_VALUE,
-            f64::NAN,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-        ];
-        let mut n = 0;
-        for iy in (-4801..=3000).chain([i32::MIN, i32::MAX, 178_956_970, 178_956_971, 357_913_941])
-        {
-            for im in [-1, 0, 1, 2, 3, 6, 7, 8, 11, 12, 13] {
-                for id in [0, 1, 15, 28, 29, 30, 31, 32] {
-                    for fd in [0.0, 0.5, 1.0] {
-                        check(iy, im, id, fd);
-                        n += 1;
-                    }
-                }
-            }
-        }
-        // Every day of the pre-1972 months, where the drift applies.
-        for iy in 1959..=1973 {
-            for im in 1..=12 {
-                for id in 1..=31 {
-                    for &fd in &fds {
-                        check(iy, im, id, fd);
-                        n += 1;
-                    }
-                }
-            }
-        }
-        // Every table month's first day and the day before it, at fractions
-        // of the day around 1.0.
-        for &(iy, im, _) in &CHANGES {
-            for &fd in &fds {
-                check(iy, im, 1, fd);
-                check(iy, im, 2, fd);
-                check(
-                    if im == 1 { iy - 1 } else { iy },
-                    if im == 1 { 12 } else { im - 1 },
-                    28,
-                    fd,
-                );
-                check(
-                    if im == 1 { iy - 1 } else { iy },
-                    if im == 1 { 12 } else { im - 1 },
-                    30,
-                    fd,
-                );
-                check(
-                    if im == 1 { iy - 1 } else { iy },
-                    if im == 1 { 12 } else { im - 1 },
-                    31,
-                    fd,
-                );
-                n += 5;
-            }
-        }
-        assert!(n > 20_000);
-    }
-
     /// Years for which C's `12 * iy + im` overflows a signed `int`, which is
     /// undefined: only that the port returns, with the wrapped month number
     /// below every table entry giving `Underflow`.

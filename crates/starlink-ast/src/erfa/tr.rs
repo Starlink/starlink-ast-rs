@@ -74,25 +74,3 @@ pub(crate) fn tr(r: &M3) -> M3 {
     }
     wm
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn tr_matches_vendored_c_bit_for_bit() {
-        for m in matrices(2_000) {
-            let mut c = [[0.0; 3]; 3];
-            // SAFETY: each matrix holds nine values.
-            unsafe { astEraTr(m.as_ptr(), c.as_mut_ptr()) };
-            let r = tr(&m);
-            assert!((0..3).all(|j| same3(&r[j], &c[j])), "{m:?}");
-            let mut x = m;
-            // SAFETY: as above, reading and writing the same matrix.
-            unsafe { astEraTr(x.as_ptr(), x.as_mut_ptr()) };
-            assert!((0..3).all(|j| same3(&r[j], &x[j])), "aliased {m:?}");
-        }
-    }
-}

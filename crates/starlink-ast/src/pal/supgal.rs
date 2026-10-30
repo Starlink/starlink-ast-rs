@@ -21,36 +21,3 @@ pub(crate) fn supgal(dsl: f64, dsb: f64) -> (f64, f64) {
     let (a, b) = erfa::c2s(v2);
     (erfa::anp(a), erfa::anpm(b))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::same;
-    use crate::test_inputs::{angle_pairs, specials};
-
-    #[test]
-    fn supgal_matches_vendored_c_bit_for_bit() {
-        let mut pairs = angle_pairs(20_000);
-        for &a in &specials() {
-            for &b in &specials() {
-                pairs.push((a, b));
-            }
-        }
-        let pole = std::f64::consts::FRAC_PI_2;
-        for d in [pole, -pole, pole - 1e-15, -(pole - 1e-15)] {
-            for a in [0.0, 1.0, 3.0, 6.0] {
-                pairs.push((a, d));
-            }
-        }
-        for (a, b) in pairs {
-            let (mut c1, mut c2) = (0.0, 0.0);
-            // SAFETY: scalar outputs.
-            unsafe { super::super::astPalSupgal(a, b, &mut c1, &mut c2) };
-            let r = supgal(a, b);
-            assert!(
-                same(r.0, c1) && same(r.1, c2),
-                "{a:e} {b:e}: {r:?} vs C ({c1:e}, {c2:e})"
-            );
-        }
-    }
-}

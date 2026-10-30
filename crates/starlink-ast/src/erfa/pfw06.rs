@@ -92,24 +92,3 @@ pub(crate) fn pfw06(date1: f64, date2: f64) -> (f64, f64, f64, f64) {
     let epsa = obl06(date1, date2);
     (gamb, phib, psib, epsa)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn pfw06_matches_vendored_c_bit_for_bit() {
-        for (d1, d2) in date_pairs() {
-            let mut c = [0.0; 4];
-            // SAFETY: four scalar outputs.
-            unsafe { astEraPfw06(d1, d2, &mut c[0], &mut c[1], &mut c[2], &mut c[3]) };
-            let r = pfw06(d1, d2);
-            assert!(
-                same(r.0, c[0]) && same(r.1, c[1]) && same(r.2, c[2]) && same(r.3, c[3]),
-                "{d1:e} {d2:e}"
-            );
-        }
-    }
-}

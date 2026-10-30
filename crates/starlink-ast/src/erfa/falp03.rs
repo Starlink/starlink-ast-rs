@@ -71,18 +71,3 @@ pub(crate) fn falp03(t: f64) -> f64 {
         % ERFA_TURNAS)
         * ERFA_DAS2R
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn falp03_matches_vendored_c_bit_for_bit() {
-        for t in centuries() {
-            // SAFETY: a pure function of its argument.
-            let c = unsafe { astEraFalp03(t) };
-            assert!(same(falp03(t), c), "{t:e}");
-        }
-    }
-}

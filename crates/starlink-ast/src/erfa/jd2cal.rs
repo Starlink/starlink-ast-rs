@@ -166,73 +166,21 @@ pub(crate) fn jd2cal(dj1: f64, dj2: f64) -> Result<(i32, i32, i32, f64), Jd2calE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::erfa::difftest::*;
-
-    /// C's result where it is defined; where it is not (see
-    /// `jd2cal_defined`) only that the port returns without panicking, with
-    /// a NaN fraction for a NaN date.
-    fn check(dj1: f64, dj2: f64) {
-        if !jd2cal_defined(dj1, dj2) {
-            if (dj1 + dj2).is_nan() {
-                assert!(jd2cal(dj1, dj2).unwrap().3.is_nan(), "{dj1:e} {dj2:e}");
-            } else {
-                let _ = jd2cal(dj1, dj2);
-            }
-            return;
-        }
-        let (mut iy, mut im, mut id, mut fd) = (-77, -78, -79, -80.0);
-        // SAFETY: the pointers are to live locals.
-        let j = unsafe { astEraJd2cal(dj1, dj2, &mut iy, &mut im, &mut id, &mut fd) };
-        match jd2cal(dj1, dj2) {
-            Err(Jd2calError::UnacceptableDate) => assert_eq!(j, -1, "{dj1:e} {dj2:e}"),
-            Ok((a, b, c, f)) => {
-                assert_eq!(j, 0, "{dj1:e} {dj2:e}");
-                assert_eq!((a, b, c), (iy, im, id), "{dj1:e} {dj2:e}");
-                assert!(same(f, fd), "{dj1:e} {dj2:e}: {f:e} vs C {fd:e}");
-            }
-        }
-    }
-
+    /// Dates on which C's result depends on the platform: a NaN sum reaches
+    /// its `(long)` casts, and so does a part too large for a `long` whose
+    /// sum is in range.
+    /// The port returns, with a NaN fraction for a NaN date.
     #[test]
-    fn jd2cal_matches_vendored_c_bit_for_bit() {
-        let jd0 = 2400000.5;
-        for m in mjd_cases() {
-            check(jd0, m);
-            check(m, jd0);
-            check(m + jd0, 0.0);
+    fn jd2cal_returns_where_c_is_undefined() {
+        for (dj1, dj2) in [
+            (f64::NAN, 0.0),
+            (0.0, f64::NAN),
+            (2400000.5, f64::NAN),
+            (f64::INFINITY, f64::NEG_INFINITY),
+        ] {
+            assert!(jd2cal(dj1, dj2).unwrap().3.is_nan(), "{dj1:e} {dj2:e}");
         }
-        // Two-part dates with the fraction within an ULP of a whole day, on
-        // the days either side of every leap-second instant.
-        let eps = f64::EPSILON / 2.0;
-        for m in leap_second_mjds() {
-            for f in [
-                0.0,
-                eps,
-                1.0 - eps,
-                1.0,
-                1.0 + eps,
-                -eps,
-                0.5,
-                0.5 - eps,
-                0.5 + eps,
-            ] {
-                for dm in [m - 1.0, m] {
-                    check(jd0 + dm, f);
-                    check(jd0 + dm, f - 1.0);
-                    check(dm, jd0 + f);
-                    check(jd0, dm + f);
-                }
-            }
-        }
-        // Parts that cancel to a date in range, where each part alone is far
-        // out of range for a `long`: a NaN or saturated cast must give C's
-        // day, month and year or at least not panic.
-        for big in [1e18, 1e19, 1e20, 1e300, f64::MAX] {
-            check(big, -big);
-            check(-big, big);
-            check(big, -big + 2451545.0);
-            check(big, big);
-        }
+        let _ = jd2cal(1e19, -1e19);
     }
 
     #[test]

@@ -104,26 +104,3 @@ pub(crate) fn hfk5z(rh: f64, dh: f64, date1: f64, date2: f64) -> (f64, f64, f64,
     let (w, d5, _r, dr5, dd5, _v) = pv2s(&pv5e);
     (anp(w), d5, dr5, dd5)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn hfk5z_matches_vendored_c_bit_for_bit() {
-        for (r, d) in fk_positions() {
-            for (d1, d2) in fk_dates() {
-                let mut c = [0.0; 4];
-                // SAFETY: four scalar outputs.
-                unsafe { astEraHfk5z(r, d, d1, d2, &mut c[0], &mut c[1], &mut c[2], &mut c[3]) };
-                let o = hfk5z(r, d, d1, d2);
-                let o = [o.0, o.1, o.2, o.3];
-                assert!(
-                    (0..4).all(|k| same(o[k], c[k])),
-                    "{r:e} {d:e} {d1:e} {d2:e}"
-                );
-            }
-        }
-    }
-}

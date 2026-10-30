@@ -68,19 +68,3 @@ use super::V3;
 pub(crate) fn pm(p: &V3) -> f64 {
     (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn pm_matches_vendored_c_bit_for_bit() {
-        for p in vectors(20_000) {
-            // SAFETY: a pure function of its argument.
-            let c = unsafe { astEraPm(p.as_ptr()) };
-            assert!(same(pm(&p), c), "{p:?}");
-        }
-    }
-}

@@ -1616,7 +1616,7 @@ impl Serializable for TimeMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::erfa::difftest::{down, leap_second_mjds, up};
+    use crate::test_inputs::{down, leap_second_mjds, up};
 
     /// 1960-01-01, the first date of ERFA's table.
     const FIRST_TABLE_MJD: f64 = 36934.0;

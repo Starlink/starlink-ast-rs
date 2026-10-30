@@ -111,10 +111,6 @@ mod tests {
     use super::*;
     use crate::test_inputs::{specials, ulps, unit_vectors};
 
-    unsafe extern "C" {
-        fn astEraC2s(p: *const f64, theta: *mut f64, phi: *mut f64);
-    }
-
     /// Directions plus every triple of special values.
     fn inputs(n: usize) -> Vec<[f64; 3]> {
         let mut inputs = unit_vectors(n);
@@ -127,21 +123,6 @@ mod tests {
             }
         }
         inputs
-    }
-
-    #[test]
-    fn c2s_matches_vendored_c_bit_for_bit() {
-        for p in inputs(100_000) {
-            let (mut t, mut f) = (0.0, 0.0);
-            // SAFETY: p holds three values; t and f are valid outputs.
-            unsafe { astEraC2s(p.as_ptr(), &mut t, &mut f) };
-            let (rt, rf) = c2s(p);
-            assert_eq!(
-                (rt.to_bits(), rf.to_bits()),
-                (t.to_bits(), f.to_bits()),
-                "{p:?}"
-            );
-        }
     }
 
     #[test]

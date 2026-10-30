@@ -73,21 +73,3 @@ pub(crate) fn gst06a(uta: f64, utb: f64, tta: f64, ttb: f64) -> f64 {
     // Greenwich apparent sidereal time.
     gst06(uta, utb, tta, ttb, &rnpb)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn gst06a_matches_vendored_c_bit_for_bit() {
-        for (ut1, ut2, tt1, tt2) in sidereal_dates() {
-            // SAFETY: a pure function of its arguments.
-            let c = unsafe { astEraGst06a(ut1, ut2, tt1, tt2) };
-            assert!(
-                same(gst06a(ut1, ut2, tt1, tt2), c),
-                "{ut1:e} {ut2:e} {tt1:e} {tt2:e}"
-            );
-        }
-    }
-}

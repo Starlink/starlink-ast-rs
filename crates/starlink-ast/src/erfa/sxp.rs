@@ -68,27 +68,3 @@ use super::V3;
 pub(crate) fn sxp(s: f64, p: &V3) -> V3 {
     [s * p[0], s * p[1], s * p[2]]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn sxp_matches_vendored_c_bit_for_bit() {
-        let vs = vectors(20_000);
-        let n = vs.len();
-        for i in 0..n {
-            let (s, p) = (vs[(i * 31 + 7) % n][0], vs[i]);
-            let mut c = [0.0; 3];
-            // SAFETY: each vector holds three values.
-            unsafe { astEraSxp(s, p.as_ptr(), c.as_mut_ptr()) };
-            assert!(same3(&sxp(s, &p), &c), "{s:e} {p:?}");
-            let mut x = p;
-            // SAFETY: as above, reading and writing the same vector.
-            unsafe { astEraSxp(s, x.as_ptr(), x.as_mut_ptr()) };
-            assert!(same3(&sxp(s, &p), &x), "aliased {s:e} {p:?}");
-        }
-    }
-}

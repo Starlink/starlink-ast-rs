@@ -78,21 +78,3 @@ pub(crate) fn gmst06(uta: f64, utb: f64, tta: f64, ttb: f64) -> f64 {
                 * t)
             * ERFA_DAS2R)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn gmst06_matches_vendored_c_bit_for_bit() {
-        for (ut1, ut2, tt1, tt2) in sidereal_dates() {
-            // SAFETY: a pure function of its arguments.
-            let c = unsafe { astEraGmst06(ut1, ut2, tt1, tt2) };
-            assert!(
-                same(gmst06(ut1, ut2, tt1, tt2), c),
-                "{ut1:e} {ut2:e} {tt1:e} {tt2:e}"
-            );
-        }
-    }
-}

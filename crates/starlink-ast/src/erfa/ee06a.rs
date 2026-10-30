@@ -74,18 +74,3 @@ pub(crate) fn ee06a(date1: f64, date2: f64) -> f64 {
     // Equation of the equinoxes.
     anpm(gst06a - gmst06)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn ee06a_matches_vendored_c_bit_for_bit() {
-        for (d1, d2) in nutation_dates() {
-            // SAFETY: a pure function of its arguments.
-            let c = unsafe { astEraEe06a(d1, d2) };
-            assert!(same(ee06a(d1, d2), c), "{d1:e} {d2:e}");
-        }
-    }
-}

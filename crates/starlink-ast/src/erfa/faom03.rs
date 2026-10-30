@@ -72,18 +72,3 @@ pub(crate) fn faom03(t: f64) -> f64 {
         % ERFA_TURNAS)
         * ERFA_DAS2R
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn faom03_matches_vendored_c_bit_for_bit() {
-        for t in centuries() {
-            // SAFETY: a pure function of its argument.
-            let c = unsafe { astEraFaom03(t) };
-            assert!(same(faom03(t), c), "{t:e}");
-        }
-    }
-}

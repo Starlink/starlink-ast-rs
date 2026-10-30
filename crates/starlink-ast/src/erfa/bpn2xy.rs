@@ -69,21 +69,3 @@ pub(crate) fn bpn2xy(rbpn: &M3) -> (f64, f64) {
     // Extract the X,Y coordinates.
     (rbpn[2][0], rbpn[2][1])
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn bpn2xy_matches_vendored_c_bit_for_bit() {
-        for m in matrices(2_000) {
-            let (mut x, mut y) = (0.0, 0.0);
-            // SAFETY: nine inputs and two scalar outputs.
-            unsafe { astEraBpn2xy(m.as_ptr(), &mut x, &mut y) };
-            let (rx, ry) = bpn2xy(&m);
-            assert!(same(rx, x) && same(ry, y), "{m:?}");
-        }
-    }
-}

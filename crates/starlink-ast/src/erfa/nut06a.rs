@@ -79,20 +79,3 @@ pub(crate) fn nut06a(date1: f64, date2: f64) -> (f64, f64) {
     // Apply P03 adjustments (Wallace & Capitaine, 2006, Eqs.5).
     (dp + dp * (0.4697e-6 + fj2), de + de * fj2)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn nut06a_matches_vendored_c_bit_for_bit() {
-        for (d1, d2) in nutation_dates() {
-            let (mut dp, mut de) = (0.0, 0.0);
-            // SAFETY: two scalar outputs.
-            unsafe { astEraNut06a(d1, d2, &mut dp, &mut de) };
-            let (rp, re) = nut06a(d1, d2);
-            assert!(same(rp, dp) && same(re, de), "{d1:e} {d2:e}");
-        }
-    }
-}

@@ -9,6 +9,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Changed
 
+- `starlink-ast`: building no longer needs a C compiler: PAL and ERFA are now Rust, bit for bit the results of the C they replace.
 - `starlink-ast`: WcsMap projections give upstream wcslib 8.10's results where the wcslib code AST carries had differed: QSC within 0.008 degrees of face 4's centre, HPX with H and K other than 4 and 3, at the poles, on facet edges and at native longitude +180, ZPN with a degree-2 polynomial on the far side (now bad), PCO near the equator, COP at the poles, and MER near the pole.
 - `starlink-ast`: a WcsMap reverse projection that lands a native longitude or latitude just past a limit, by up to wcslib's tolerance for the projection (1e-13 to 1e-11 degrees), returns the limit rather than bad, as wcslib does.
 - `starlink-ast`: SlaMap's FK5 to FK4 conversion (`Fk54z`) applies the fictitious FK4 proper motion to the unit vector, as ERFA and SLALIB do, rather than linearly in RA and Dec; away from B1950 this changes points the motion carries close to a pole by up to 28 mas at B1980 and 0.3 arcsec at B2050, and others by about 1e-14 radians.
