@@ -1,5 +1,5 @@
-# The native set: every bench transform that reaches the vendored ERFA, PAL
-# or wcslib C, and the real-world FrameSets that are the headline measure of
+# The native set: every bench transform that reaches the code ported from
+# ERFA, PAL or wcslib, and the real-world FrameSets that are the headline measure of
 # docs/superpowers/specs/2026-10-27-native-erfa-pal-wcslib-design.md.
 # Each line: <oracle> <relpath> # reason.
 bench sphmap.map # SphMap: eraC2s, eraS2c

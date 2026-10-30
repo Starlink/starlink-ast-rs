@@ -19,7 +19,7 @@ It is opt-in because `compare` reports a timing missing from the base as unmatch
 A set is a file in `sets/` naming oracle sections, one per line with the reason it is there.
 `bench` holds one plain Mapping of each class, then the real-world FrameSets and Mappings in the core fixtures (the LSST FrameSets, `brad`, `rigby` and others), so the performance gate covers the objects users transform.
 `framesets` holds real-world FrameSets that must stay at parity with C (LSST, TNX, SIP, DSS, TAN) and the worst ratios the first full sweep found (spectral headers, parallel CmpMaps, IntraMaps).
-`native` holds every `bench` transform that reaches the vendored ERFA, PAL or wcslib C, and the real-world FrameSets in `wcsconv/inputs`; it measures the replacement of that C by Rust.
+`native` holds every `bench` transform that reaches the code ported from ERFA, PAL or wcslib, and the real-world FrameSets in `wcsconv/inputs`; it measures that code against the C library it replaced.
 Every case in a set must have a row that is good on both engines, since the small point counts time only such rows; a test checks this.
 
 ## Fairness rules
