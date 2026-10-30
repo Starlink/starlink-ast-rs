@@ -29,9 +29,7 @@ use starlink_ast::frames::{FrameRef, FrameSearch, SkyFrame, SkySystem};
 /// case is compared with C by `sphmap_drift_eq` within [`FK_MEASURED_BOUND`],
 /// the most measured, or as other cases are off the capture platform, and
 /// fails if it matches C exactly, so the list cannot go stale. Each entry's
-/// comment gives its own largest difference, in ULP and in radians. Interim
-/// until the per-value entries are reassessed (the design's "Interim:
-/// vectorized kernels in slice entries only").
+/// comment gives its own largest difference, in ULP and in radians.
 ///
 /// Fields: configuration, from System, to System, to AlignSystem.
 type FkLicence = (usize, &'static str, &'static str, Option<&'static str>);
@@ -406,9 +404,7 @@ fn convert_matches_the_c_library() {
                     failures.push(format!(
                         "{label}: matches C exactly; remove it from FK_SLICE_DRIFT_LICENSED"
                     ));
-                } else if !(crate::common::sphmap_drift_values_eq(got, want, FK_MEASURED_BOUND)
-                    || crate::common::c_values_eq(got, want))
-                {
+                } else if !crate::common::sphmap_drift_values_eq(got, want, FK_MEASURED_BOUND) {
                     failures.push(format!(
                         "{label}: got {got:?}, C gives {want:?}, beyond FK_MEASURED_BOUND"
                     ));
@@ -428,4 +424,20 @@ fn convert_matches_the_c_library() {
         cases::CASES.len(),
         failures.join("\n")
     );
+}
+
+/// Every `FK_SLICE_DRIFT_LICENSED` entry names a case of the corpus that
+/// converts, so a renamed or removed case cannot leave a dead licence.
+#[test]
+fn fk_licences_name_existing_cases() {
+    for &(config, from_sys, to_sys, align) in FK_SLICE_DRIFT_LICENSED {
+        assert!(
+            cases::CASES.iter().any(|c| c.0 == config
+                && c.1 == from_sys
+                && c.2 == to_sys
+                && c.3 == align
+                && c.4.is_some()),
+            "FK_SLICE_DRIFT_LICENSED names config {config} {from_sys} -> {to_sys} align {align:?}, which is not a converting case of the corpus"
+        );
+    }
 }
