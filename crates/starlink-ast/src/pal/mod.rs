@@ -36,6 +36,8 @@ mod ffi;
 mod galeq;
 mod galsup;
 mod geoc;
+#[cfg(test)]
+mod golden_tests;
 mod mappa;
 mod mapqkz;
 mod prebn;

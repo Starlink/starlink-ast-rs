@@ -19,8 +19,9 @@ autotests = false
 # tests/fixtures/DIST_MANIFEST names, as the C library's `make dist` does;
 # tests/test_dist_manifest.rs fails if the two lists differ. tests/DIST_TIER
 # stays behind: its absence tells build.rs the tree is cut down.
-# tests/wcslib_golden/, the projections' bits captured from the wcslib C, stays
-# behind too.
+# tests/wcslib_golden/, the projections' bits captured from the wcslib C, and
+# tests/erfa_pal_golden/, the PAL routines' bits captured from the PAL and ERFA C,
+# stay behind too.
 include = [
     "/build.rs",
     "/clippy.toml",
@@ -34,6 +35,7 @@ include = [
     "!/tests/DIST_TIER",
     "!/tests/fixtures/**",
     "!/tests/wcslib_golden/**",
+    "!/tests/erfa_pal_golden/**",
     # DIST_MANIFEST, entry for entry.
     "/tests/fixtures/DIST_MANIFEST",
     "/tests/fixtures/programs/**",
