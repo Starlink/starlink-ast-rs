@@ -135,6 +135,37 @@ unsafe extern "C" {
         dr5: *mut f64,
         dd5: *mut f64,
     );
+    pub(super) fn astEraObl06(date1: f64, date2: f64) -> f64;
+    pub(super) fn astEraPfw06(
+        date1: f64,
+        date2: f64,
+        gamb: *mut f64,
+        phib: *mut f64,
+        psib: *mut f64,
+        epsa: *mut f64,
+    );
+    pub(super) fn astEraFw2m(gamb: f64, phib: f64, psi: f64, eps: f64, r: *mut [f64; 3]);
+    pub(super) fn astEraPmat06(date1: f64, date2: f64, rbp: *mut [f64; 3]);
+    pub(super) fn astEraP06e(
+        date1: f64,
+        date2: f64,
+        eps0: *mut f64,
+        psia: *mut f64,
+        oma: *mut f64,
+        bpa: *mut f64,
+        bqa: *mut f64,
+        pia: *mut f64,
+        bpia: *mut f64,
+        epsa: *mut f64,
+        chia: *mut f64,
+        za: *mut f64,
+        zetaa: *mut f64,
+        thetaa: *mut f64,
+        pa: *mut f64,
+        gam: *mut f64,
+        phi: *mut f64,
+        psi: *mut f64,
+    );
     pub(super) fn astEraDat(iy: i32, im: i32, id: i32, fd: f64, deltat: *mut f64) -> i32;
 }
 

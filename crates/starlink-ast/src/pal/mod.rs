@@ -26,12 +26,15 @@ mod dat;
 mod deuler;
 mod dmat;
 mod drange;
+mod ecmat;
 mod eqgal;
 mod etrms;
 mod ffi;
 mod galeq;
 mod galsup;
 mod geoc;
+mod prebn;
+mod prec;
 mod pvobs;
 mod rvgalc;
 mod rvlg;
@@ -378,23 +381,20 @@ pub(crate) fn hfk5z(rh: f64, dh: f64, epoch: f64) -> (f64, f64, f64, f64) {
 
 /// Julian (FK5) precession matrix from epoch `ep0` to `ep1` (Julian epochs).
 pub(crate) fn prec(ep0: f64, ep1: f64) -> [[f64; 3]; 3] {
-    let mut m = [[0.0; 3]; 3];
-    counted!(astPalPrec(ep0, ep1, m.as_mut_ptr()));
-    m
+    crate::call_counts::hit("astPalPrec");
+    prec::prec(ep0, ep1)
 }
 
 /// Besselian (FK4) precession matrix from epoch `bep0` to `bep1`.
 pub(crate) fn prebn(bep0: f64, bep1: f64) -> [[f64; 3]; 3] {
-    let mut m = [[0.0; 3]; 3];
-    counted!(astPalPrebn(bep0, bep1, m.as_mut_ptr()));
-    m
+    crate::call_counts::hit("astPalPrebn");
+    prebn::prebn(bep0, bep1)
 }
 
 /// Equatorial to ecliptic rotation matrix for a given TDB date (MJD).
 pub(crate) fn ecmat(date: f64) -> [[f64; 3]; 3] {
-    let mut m = [[0.0; 3]; 3];
-    counted!(astPalEcmat(date, m.as_mut_ptr()));
-    m
+    crate::call_counts::hit("astPalEcmat");
+    ecmat::ecmat(date)
 }
 
 // ---------------------------------------------------------------------------
