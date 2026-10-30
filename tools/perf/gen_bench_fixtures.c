@@ -156,6 +156,30 @@ static AstMapping *timemap( void ) {
    astTimeAdd( m, "TAITOUTC", 2, a );
    return (AstMapping *) m;
 }
+static AstMapping *slamap_amp( void ) {
+   double a[ 2 ] = { 55000.0, 2000.0 };
+   AstSlaMap *m = astSlaMap( 0, " " );
+   astSlaAdd( m, "AMP", 2, a );
+   return (AstMapping *) m;
+}
+static AstMapping *slamap_fk45z( void ) {
+   double a[ 1 ] = { 1950.0 };
+   AstSlaMap *m = astSlaMap( 0, " " );
+   astSlaAdd( m, "FK45Z", 1, a );
+   return (AstMapping *) m;
+}
+static AstMapping *slamap_prec( void ) {
+   double a[ 2 ] = { 1950.0, 2000.0 };
+   AstSlaMap *m = astSlaMap( 0, " " );
+   astSlaAdd( m, "PREC", 2, a );
+   return (AstMapping *) m;
+}
+static AstMapping *timemap_mjdtobep( void ) {
+   double a[ 2 ] = { 0.0, 0.0 };
+   AstTimeMap *m = astTimeMap( 0, " " );
+   astTimeAdd( m, "MJDTOBEP", 2, a );
+   return (AstMapping *) m;
+}
 static AstMapping *specmap( void ) {
    AstSpecMap *m = astSpecMap( 1, 0, " " );
    astSpecAdd( m, "WNTOFR", 0, NULL );
@@ -225,6 +249,10 @@ static const Fixture FIXTURES[] = {
    { "ratemap_polymap.map", ratemap, -0.5, 0.5 },
    { "slamap_eqgal.map", slamap, 0.0, 1.5 },
    { "timemap_taiutc.map", timemap, 50000.0, 50100.0 },
+   { "slamap_amp.map", slamap_amp, 0.0, 1.5 },
+   { "slamap_fk45z.map", slamap_fk45z, 0.0, 1.5 },
+   { "slamap_prec.map", slamap_prec, 0.0, 1.5 },
+   { "timemap_mjdtobep.map", timemap_mjdtobep, 50000.0, 50100.0 },
    { "specmap_wn_to_fr.map", specmap, 1.0, 1000.0 },
    { "splinemap_5x5_cubic.map", splinemap, 0.1, 0.9 },
    { "mathmap_2d_linear.map", mathmap, -1.0, 1.0 },

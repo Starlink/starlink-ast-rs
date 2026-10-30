@@ -6,7 +6,7 @@
 //! [`read_date_time`] ports `astReadDateTime` (frame.c:8892): it parses a
 //! date/time string in any of the formats AST accepts and returns the
 //! equivalent Modified Julian Date. All calendar arithmetic is delegated to
-//! the vendored PAL via [`crate::pal`]; only the format dispatch is ported.
+//! the ported PAL in [`crate::pal`]; only the format dispatch is ported.
 
 use crate::pal;
 
@@ -209,8 +209,8 @@ fn read_gregorian(value: &str) -> Option<f64> {
 
     // Convert years, months and integral days to an MJD.
     let iday = day as i32;
-    let (mut mjd, stat) = pal::cldj(year, month, iday);
-    if stat != 0 {
+    let (mut mjd, bad_day) = pal::cldj(year, month, iday).ok()?;
+    if bad_day.is_some() {
         return None;
     }
 
@@ -218,8 +218,8 @@ fn read_gregorian(value: &str) -> Option<f64> {
     mjd += day - iday as f64;
 
     // Convert hours, minutes and seconds to a fraction of a day.
-    let (hms, stat) = pal::dtf2d(hour, minute, sec);
-    if stat != 0 {
+    let (hms, warning) = pal::dtf2d(hour, minute, sec);
+    if warning.is_some() {
         return None;
     }
     mjd += hms;

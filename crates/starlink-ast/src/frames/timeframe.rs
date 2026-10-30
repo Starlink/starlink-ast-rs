@@ -1137,7 +1137,8 @@ impl TimeFrame {
     /// formats with `ndp < 0`).
     fn format_iso0_zero(&self) -> AstResult<String> {
         let mjd = self.value_to_mjd(0.0)?;
-        let (iy, im, id, fd, _j) = crate::pal::djcl(mjd);
+        // An unconvertible date leaves C's outputs as the zeros they start as.
+        let (iy, im, id, fd) = crate::pal::djcl(mjd).unwrap_or((0, 0, 0, 0.0));
         let (_sign, ihmsf) = crate::pal::dd2tf(0, fd);
         Ok(format!(
             "{iy:4}-{im:02}-{id:02} {:02}:{:02}:{:02}",
@@ -1859,7 +1860,8 @@ impl Frame for TimeFrame {
             mjd = mjd.round();
         }
 
-        let (iy, im, id, fd, _j) = crate::pal::djcl(mjd);
+        // An unconvertible date leaves C's outputs as the zeros they start as.
+        let (iy, im, id, fd) = crate::pal::djcl(mjd).unwrap_or((0, 0, 0, 0.0));
         // "%4d-%2.2d-%2.2d" — the year is space-padded to width 4.
         let mut out = format!("{iy:4}-{im:02}-{id:02}");
 

@@ -1229,11 +1229,8 @@ fn apply_step_forward(
             let (a, d) = pal::dcc2s(&pal::dmxv(step.matrix(), &v));
             (pal::dranrm(a), d)
         }
-        SlaCvtType::Fk45z => pal::fk45z(alpha, delta, args[0]),
-        SlaCvtType::Fk54z => {
-            let (ra, dec, _, _) = pal::fk54z(alpha, delta, args[0]);
-            (ra, dec)
-        }
+        SlaCvtType::Fk45z => unreachable!("FK45Z runs on slices"),
+        SlaCvtType::Fk54z => unreachable!("FK54Z runs on slices"),
         SlaCvtType::Fk5hz => pal::fk5hz(alpha, delta, args[0]),
         SlaCvtType::Hfk5z => {
             let (r5, d5, _, _) = pal::hfk5z(alpha, delta, args[0]);
@@ -1283,6 +1280,72 @@ fn apply_step_forward(
         | SlaCvtType::Eqhpc
         | SlaCvtType::Eqhpr
         | SlaCvtType::Eqhe => stp_apply(step.matrix(), alpha, delta),
+    }
+}
+
+/// An FK4/FK5 slice entry of [`pal`]: epoch, input longitudes and
+/// latitudes, output longitudes and latitudes.
+type FkSlice = fn(f64, &[f64], &[f64], &mut [f64], &mut [f64]);
+
+/// How many points [`apply_fk_step`] gathers for each call of its slice.
+const FK_BLOCK: usize = 32;
+
+/// The block of [`apply_fk_step`] for a transform of at most this many
+/// points, whose buffers cost less to set up.
+const SHORT_FK_BLOCK: usize = 4;
+
+/// An FK4/FK5 conversion step at the Besselian epoch `bepoch`, in place on
+/// `oa` and `od`, with C's per-point bad-value test: a point with either axis
+/// bad becomes bad on both, and the others go through `slice`, a block at a
+/// time. Each good point counts as one call of the PAL function `name`.
+fn apply_fk_step(slice: FkSlice, name: &'static str, bepoch: f64, oa: &mut [f64], od: &mut [f64]) {
+    if oa.len() <= SHORT_FK_BLOCK {
+        apply_fk_step_blocks::<SHORT_FK_BLOCK>(slice, name, bepoch, oa, od);
+    } else {
+        apply_fk_step_blocks::<FK_BLOCK>(slice, name, bepoch, oa, od);
+    }
+}
+
+/// [`apply_fk_step`] in blocks of `BLOCK` points.
+#[inline(always)]
+fn apply_fk_step_blocks<const BLOCK: usize>(
+    slice: FkSlice,
+    name: &'static str,
+    bepoch: f64,
+    oa: &mut [f64],
+    od: &mut [f64],
+) {
+    let n = oa.len();
+    let od = &mut od[..n];
+    let mut index = [0usize; BLOCK];
+    let (mut ia, mut id) = ([0.0; BLOCK], [0.0; BLOCK]);
+    let (mut ra, mut rd) = ([0.0; BLOCK], [0.0; BLOCK]);
+    for start in (0..n).step_by(BLOCK) {
+        let end = n.min(start + BLOCK);
+        let mut good = 0;
+        for i in start..end {
+            if is_bad(oa[i]) || is_bad(od[i]) {
+                oa[i] = BAD_VALUE;
+                od[i] = BAD_VALUE;
+            } else {
+                index[good] = i;
+                ia[good] = oa[i];
+                id[good] = od[i];
+                good += 1;
+            }
+        }
+        slice(
+            bepoch,
+            &ia[..good],
+            &id[..good],
+            &mut ra[..good],
+            &mut rd[..good],
+        );
+        crate::call_counts::hit_n(name, good as u64);
+        for j in 0..good {
+            oa[index[j]] = ra[j];
+            od[index[j]] = rd[j];
+        }
     }
 }
 
@@ -1397,6 +1460,24 @@ impl Mapping for SlaMap {
             if cvt.args.iter().take(nargs).any(|&a| is_bad(a)) {
                 oa.fill(BAD_VALUE);
                 od.fill(BAD_VALUE);
+                continue;
+            }
+
+            // The FK4/FK5 conversions run on slices, every point included,
+            // so a point's bits do not depend on how many are transformed
+            // together. The inverse of each is the other's forward
+            // conversion, with the same epoch argument.
+            let fk_slice: Option<(FkSlice, &'static str)> = match (cvt.cvt_type, fwd) {
+                (SlaCvtType::Fk45z, true) | (SlaCvtType::Fk54z, false) => {
+                    Some((pal::fk45z_slice, "astEraFk45z"))
+                }
+                (SlaCvtType::Fk54z, true) | (SlaCvtType::Fk45z, false) => {
+                    Some((pal::fk54z_slice, "astEraFk54z"))
+                }
+                _ => None,
+            };
+            if let Some((slice, name)) = fk_slice {
+                apply_fk_step(slice, name, cvt.args[0], oa, od);
                 continue;
             }
 

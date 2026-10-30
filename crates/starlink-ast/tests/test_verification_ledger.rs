@@ -412,6 +412,17 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          test asserts both",
     ),
     (
+        "test_sky_convert.rs",
+        "FK_SLICE_DRIFT_LICENSED",
+        306,
+        "conversions through FK4 whose SlaMap FK45Z or FK54Z step runs on vectorized \
+         kernels, whose sines, cosines and arctangents are each within 1 ULP of the \
+         exact value where C's come from libm: compared within 1.33e-15 radian, the \
+         most measured (FK_MEASURED_BOUND), each case failing if it matches C \
+         exactly; no value changes between bad and good; interim until the \
+         per-value entries are reassessed (native ERFA design)",
+    ),
+    (
         "test_frame_in_map_slot.rs",
         "FRAME_IN_MAP_SLOT_DECLINED",
         1,

@@ -14,68 +14,68 @@ SpecMap: gather the conversion steps of a run of adjacent TimeMaps, normalize
 each for its applied direction, drop no-effect steps and cancel adjacent inverse
 pairs until nothing more goes, then rebuild one TimeMap or a UnitMap.
 
-`TimeMap::map_merge` (`timemap.rs:1511-1518 (fn map_merge)`) delegates to `time_map_merge`
-(`timemap.rs:1347-1397 (fn time_map_merge)`); the helpers are `time_normalized_steps`
-(`timemap.rs:1197-1236 (fn time_normalized_steps)`), `time_steps_cancel`
-(`timemap.rs:1239-1276 (fn time_steps_cancel)`), `time_step_is_no_effect`
-(`timemap.rs:1281-1293 (fn time_step_is_no_effect)`) and `time_simplify_steps`
-(`timemap.rs:1300-1337 (fn time_simplify_steps)`).
+`TimeMap::map_merge` (`timemap.rs:1405-1412 (fn map_merge)`) delegates to `time_map_merge`
+(`timemap.rs:1252-1302 (fn time_map_merge)`); the helpers are `time_normalized_steps`
+(`timemap.rs:1102-1141 (fn time_normalized_steps)`), `time_steps_cancel`
+(`timemap.rs:1144-1181 (fn time_steps_cancel)`), `time_step_is_no_effect`
+(`timemap.rs:1186-1198 (fn time_step_is_no_effect)`) and `time_simplify_steps`
+(`timemap.rs:1205-1242 (fn time_simplify_steps)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
 | 1 | Initialize the returned result to -1 | timemap.c:2109-2111 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | timemap.c:2112-2114 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | TimeMaps merge only in series, or when only one Mapping is present | timemap.c:2115-2119 (fn MapMerge) | timemap.rs:1352-1354 (fn time_map_merge) | architecture | ported |
-| 4 | Initialize the step count to the number in the nominated TimeMap | timemap.c:2120-2123 (fn MapMerge) | timemap.rs:1369 (fn time_map_merge),1375 (fn time_map_merge) | architecture | ported |
-| 5 | Search adjacent lower-numbered Mappings for TimeMaps, accumulating their step counts | timemap.c:2124-2134 (fn MapMerge) | timemap.rs:1359-1362 (fn time_map_merge) | architecture | ported |
-| 6 | Search adjacent higher-numbered Mappings the same way | timemap.c:2135-2143 (fn MapMerge) | timemap.rs:1363-1366 (fn time_map_merge) | architecture | ported |
-| 7 | Remember the initial number of transformation steps | timemap.c:2144-2146 (fn MapMerge) | timemap.rs:1369 (fn time_map_merge),1375 (fn time_map_merge) | architecture | ported |
+| 3 | TimeMaps merge only in series, or when only one Mapping is present | timemap.c:2115-2119 (fn MapMerge) | timemap.rs:1257-1259 (fn time_map_merge) | architecture | ported |
+| 4 | Initialize the step count to the number in the nominated TimeMap | timemap.c:2120-2123 (fn MapMerge) | timemap.rs:1274 (fn time_map_merge),1280 (fn time_map_merge) | architecture | ported |
+| 5 | Search adjacent lower-numbered Mappings for TimeMaps, accumulating their step counts | timemap.c:2124-2134 (fn MapMerge) | timemap.rs:1264-1267 (fn time_map_merge) | architecture | ported |
+| 6 | Search adjacent higher-numbered Mappings the same way | timemap.c:2135-2143 (fn MapMerge) | timemap.rs:1268-1271 (fn time_map_merge) | architecture | ported |
+| 7 | Remember the initial number of transformation steps | timemap.c:2144-2146 (fn MapMerge) | timemap.rs:1274 (fn time_map_merge),1280 (fn time_map_merge) | architecture | ported |
 | 8 | Allocate memory for the accumulated step list | timemap.c:2147-2153 (fn MapMerge) | -- | ceremony | n/a: a `Vec` grows as the steps are appended |
-| 9 | Loop to obtain the transformation data for each TimeMap being merged | timemap.c:2154-2157 (fn MapMerge) | timemap.rs:1371-1378 (fn time_map_merge) | architecture | ported |
-| 10 | Take each TimeMap and note whether it is being applied in its inverse direction | timemap.c:2158-2162 (fn MapMerge) | timemap.rs:1372-1374 (fn time_map_merge) | architecture | ported |
-| 11 | Set loop limits and an increment so the steps are scanned forward or in reverse as that direction dictates | timemap.c:2163-2169 (fn MapMerge) | timemap.rs:1201-1203 (fn time_normalized_steps) | architecture | ported |
-| 12 | Loop through each transformation step in the TimeMap | timemap.c:2170-2172 (fn MapMerge) | timemap.rs:1201-1204 (fn time_normalized_steps) | architecture | ported |
-| 13 | Store the step's type code, obtain its argument count from `CvtString`, and copy the arguments | timemap.c:2173-2183 (fn MapMerge) | timemap.rs:1216-1226 (fn time_normalized_steps) | architecture | ported |
-| 14 | An inverted TimeMap must not only accumulate its steps in reverse but apply each in reverse; define macros for the changes that needs | timemap.c:2184-2190 (fn MapMerge) | timemap.rs:1198-1200 (fn time_normalized_steps),1203-1204 (fn time_normalized_steps) | architecture | ported |
-| 15 | Macro exchanging a transformation type code for its inverse | timemap.c:2191-2201 (fn MapMerge) | timemap.rs:1205 (fn time_normalized_steps),1228 (fn time_normalized_steps) | architecture | ported |
-| 16 | Macro exchanging the code and swapping the order of its two arguments | timemap.c:2202-2218 (fn MapMerge) | timemap.rs:1206-1222 (fn time_normalized_steps) | architecture | ported |
-| 17 | Apply the macros only where the TimeMap is inverted | timemap.c:2219-2221 (fn MapMerge) | timemap.rs:1198-1200 (fn time_normalized_steps) | architecture | ported |
-| 18 | Exchange the ten code pairs whose inversion leaves the arguments alone | timemap.c:2222-2233 (fn MapMerge) | timemap.rs:1205 (fn time_normalized_steps) | architecture | ported |
-| 19 | Exchange the four code pairs whose inversion also swaps the offset values | timemap.c:2234-2242 (fn MapMerge) | timemap.rs:1206-1222 (fn time_normalized_steps) | architecture | ported |
+| 9 | Loop to obtain the transformation data for each TimeMap being merged | timemap.c:2154-2157 (fn MapMerge) | timemap.rs:1276-1283 (fn time_map_merge) | architecture | ported |
+| 10 | Take each TimeMap and note whether it is being applied in its inverse direction | timemap.c:2158-2162 (fn MapMerge) | timemap.rs:1277-1279 (fn time_map_merge) | architecture | ported |
+| 11 | Set loop limits and an increment so the steps are scanned forward or in reverse as that direction dictates | timemap.c:2163-2169 (fn MapMerge) | timemap.rs:1106-1108 (fn time_normalized_steps) | architecture | ported |
+| 12 | Loop through each transformation step in the TimeMap | timemap.c:2170-2172 (fn MapMerge) | timemap.rs:1106-1109 (fn time_normalized_steps) | architecture | ported |
+| 13 | Store the step's type code, obtain its argument count from `CvtString`, and copy the arguments | timemap.c:2173-2183 (fn MapMerge) | timemap.rs:1121-1131 (fn time_normalized_steps) | architecture | ported |
+| 14 | An inverted TimeMap must not only accumulate its steps in reverse but apply each in reverse; define macros for the changes that needs | timemap.c:2184-2190 (fn MapMerge) | timemap.rs:1103-1105 (fn time_normalized_steps),1108-1109 (fn time_normalized_steps) | architecture | ported |
+| 15 | Macro exchanging a transformation type code for its inverse | timemap.c:2191-2201 (fn MapMerge) | timemap.rs:1110 (fn time_normalized_steps),1133 (fn time_normalized_steps) | architecture | ported |
+| 16 | Macro exchanging the code and swapping the order of its two arguments | timemap.c:2202-2218 (fn MapMerge) | timemap.rs:1111-1127 (fn time_normalized_steps) | architecture | ported |
+| 17 | Apply the macros only where the TimeMap is inverted | timemap.c:2219-2221 (fn MapMerge) | timemap.rs:1103-1105 (fn time_normalized_steps) | architecture | ported |
+| 18 | Exchange the ten code pairs whose inversion leaves the arguments alone | timemap.c:2222-2233 (fn MapMerge) | timemap.rs:1110 (fn time_normalized_steps) | architecture | ported |
+| 19 | Exchange the four code pairs whose inversion also swaps the offset values | timemap.c:2234-2242 (fn MapMerge) | timemap.rs:1111-1127 (fn time_normalized_steps) | architecture | ported |
 | 20 | Undefine the local macros | timemap.c:2243-2246 (fn MapMerge) | -- | ceremony | n/a: the Rust code has no macros to scope |
-| 21 | Count the accumulated transformation steps | timemap.c:2247-2251 (fn MapMerge) | timemap.rs:1376-1377 (fn time_map_merge) | architecture | ported |
-| 22 | Loop, simplifying the step sequence until no further improvement is possible | timemap.c:2252-2256 (fn MapMerge) | timemap.rs:1302-1335 (fn time_simplify_steps) | architecture | ported |
-| 23 | Examine each remaining transformation step in turn | timemap.c:2257-2260 (fn MapMerge) | timemap.rs:1306-1322 (fn time_simplify_steps) | architecture | ported |
+| 21 | Count the accumulated transformation steps | timemap.c:2247-2251 (fn MapMerge) | timemap.rs:1281-1282 (fn time_map_merge) | architecture | ported |
+| 22 | Loop, simplifying the step sequence until no further improvement is possible | timemap.c:2252-2256 (fn MapMerge) | timemap.rs:1207-1240 (fn time_simplify_steps) | architecture | ported |
+| 23 | Examine each remaining transformation step in turn | timemap.c:2257-2260 (fn MapMerge) | timemap.rs:1211-1227 (fn time_simplify_steps) | architecture | ported |
 | 24 | Initially assume the current step will be retained | timemap.c:2261-2263 (fn MapMerge) | -- | ceremony | n/a: the Rust passes remove the eliminated steps instead of marking the survivors |
-| 25 | Eliminate a change of system that has no effect: MJDTOMJD, MJDTOJD or JDTOMJD with a zero net offset | timemap.c:2264-2270 (fn MapMerge) | timemap.rs:1281-1293 (fn time_step_is_no_effect) | architecture | ported |
-| 26 | Every other simplification combines adjacent steps, so apply them only while two steps remain | timemap.c:2271-2275 (fn MapMerge) | timemap.rs:1307 (fn time_simplify_steps) | architecture | ported |
-| 27 | Macro testing whether two adjacent type codes have given values | timemap.c:2276-2281 (fn MapMerge) | timemap.rs:1244 (fn time_steps_cancel) | architecture | ported |
-| 28 | Macro testing the same pair either way round | timemap.c:2282-2287 (fn MapMerge) | timemap.rs:1244 (fn time_steps_cancel),1250-1259 (fn time_steps_cancel) | architecture | ported |
-| 29 | Eliminate a correction followed by its inverse where the one user-supplied argument is unchanged | timemap.c:2288-2302 (fn MapMerge) | timemap.rs:1269-1275 (fn time_steps_cancel) | architecture | ported |
-| 30 | The same for conversions with two user-supplied arguments that inversion swaps | timemap.c:2303-2315 (fn MapMerge) | timemap.rs:1251-1267 (fn time_steps_cancel) | architecture | ported |
-| 31 | The same for two user-supplied arguments that inversion does not swap | timemap.c:2316-2325 (fn MapMerge) | timemap.rs:1269-1275 (fn time_steps_cancel) | architecture | ported |
-| 32 | The same with three user-supplied arguments | timemap.c:2326-2338 (fn MapMerge) | timemap.rs:1269-1275 (fn time_steps_cancel) | architecture | ported |
-| 33 | The same with five user-supplied arguments | timemap.c:2339-2354 (fn MapMerge) | timemap.rs:1269-1275 (fn time_steps_cancel) | architecture | ported |
+| 25 | Eliminate a change of system that has no effect: MJDTOMJD, MJDTOJD or JDTOMJD with a zero net offset | timemap.c:2264-2270 (fn MapMerge) | timemap.rs:1186-1198 (fn time_step_is_no_effect) | architecture | ported |
+| 26 | Every other simplification combines adjacent steps, so apply them only while two steps remain | timemap.c:2271-2275 (fn MapMerge) | timemap.rs:1212 (fn time_simplify_steps) | architecture | ported |
+| 27 | Macro testing whether two adjacent type codes have given values | timemap.c:2276-2281 (fn MapMerge) | timemap.rs:1149 (fn time_steps_cancel) | architecture | ported |
+| 28 | Macro testing the same pair either way round | timemap.c:2282-2287 (fn MapMerge) | timemap.rs:1149 (fn time_steps_cancel),1155-1164 (fn time_steps_cancel) | architecture | ported |
+| 29 | Eliminate a correction followed by its inverse where the one user-supplied argument is unchanged | timemap.c:2288-2302 (fn MapMerge) | timemap.rs:1174-1180 (fn time_steps_cancel) | architecture | ported |
+| 30 | The same for conversions with two user-supplied arguments that inversion swaps | timemap.c:2303-2315 (fn MapMerge) | timemap.rs:1156-1172 (fn time_steps_cancel) | architecture | ported |
+| 31 | The same for two user-supplied arguments that inversion does not swap | timemap.c:2316-2325 (fn MapMerge) | timemap.rs:1174-1180 (fn time_steps_cancel) | architecture | ported |
+| 32 | The same with three user-supplied arguments | timemap.c:2326-2338 (fn MapMerge) | timemap.rs:1174-1180 (fn time_steps_cancel) | architecture | ported |
+| 33 | The same with five user-supplied arguments | timemap.c:2339-2354 (fn MapMerge) | timemap.rs:1174-1180 (fn time_steps_cancel) | architecture | ported |
 | 34 | Undefine the local macros | timemap.c:2355-2359 (fn MapMerge) | -- | ceremony | n/a: the Rust code has no macros to scope |
-| 35 | A step being kept advances the index identifying its new location | timemap.c:2360-2365 (fn MapMerge) | timemap.rs:1317 (fn time_simplify_steps),1327 (fn time_simplify_steps) | architecture | ported |
-| 36 | Copy the step's data down when its new location differs from its current one | timemap.c:2366-2378 (fn MapMerge) | timemap.rs:1309-1310 (fn time_simplify_steps),1323 (fn time_simplify_steps) | architecture | ported |
-| 37 | Quit when a pass reduced no steps | timemap.c:2379-2383 (fn MapMerge) | timemap.rs:1332-1334 (fn time_simplify_steps) | architecture | ported |
+| 35 | A step being kept advances the index identifying its new location | timemap.c:2360-2365 (fn MapMerge) | timemap.rs:1222 (fn time_simplify_steps),1232 (fn time_simplify_steps) | architecture | ported |
+| 36 | Copy the step's data down when its new location differs from its current one | timemap.c:2366-2378 (fn MapMerge) | timemap.rs:1214-1215 (fn time_simplify_steps),1228 (fn time_simplify_steps) | architecture | ported |
+| 37 | Quit when a pass reduced no steps | timemap.c:2379-2383 (fn MapMerge) | timemap.rs:1237-1239 (fn time_simplify_steps) | architecture | ported |
 | 38 | Note how many transformation steps now remain | timemap.c:2384-2387 (fn MapMerge) | -- | ceremony | n/a: the surviving steps are the `Vec`'s contents, so its length is the count |
-| 39 | Determine how many Mappings condensing the run eliminates | timemap.c:2388-2392 (fn MapMerge) | timemap.rs:1380 (fn time_map_merge) | architecture | ported |
-| 40 | Determine whether the replacement can be a UnitMap, which needs every step eliminated | timemap.c:2393-2397 (fn MapMerge) | timemap.rs:1382 (fn time_map_merge) | architecture | ported |
-| 41 | Determine whether simplification is possible, on any of the four clauses | timemap.c:2398-2406 (fn MapMerge) | timemap.rs:1383 (fn time_map_merge) | architecture | ported |
-| 42 | Do nothing more unless simplification is possible | timemap.c:2407-2409 (fn MapMerge) | timemap.rs:1384-1386 (fn time_map_merge) | architecture | ported |
-| 43 | Create the UnitMap replacement where that is the answer | timemap.c:2410-2414 (fn MapMerge) | timemap.rs:1388-1389 (fn time_map_merge) | architecture | ported |
-| 44 | Otherwise create a replacement TimeMap and add each surviving step to it | timemap.c:2415-2424 (fn MapMerge) | timemap.rs:1390-1394 (fn time_map_merge) | architecture | ported |
+| 39 | Determine how many Mappings condensing the run eliminates | timemap.c:2388-2392 (fn MapMerge) | timemap.rs:1285 (fn time_map_merge) | architecture | ported |
+| 40 | Determine whether the replacement can be a UnitMap, which needs every step eliminated | timemap.c:2393-2397 (fn MapMerge) | timemap.rs:1287 (fn time_map_merge) | architecture | ported |
+| 41 | Determine whether simplification is possible, on any of the four clauses | timemap.c:2398-2406 (fn MapMerge) | timemap.rs:1288 (fn time_map_merge) | architecture | ported |
+| 42 | Do nothing more unless simplification is possible | timemap.c:2407-2409 (fn MapMerge) | timemap.rs:1289-1291 (fn time_map_merge) | architecture | ported |
+| 43 | Create the UnitMap replacement where that is the answer | timemap.c:2410-2414 (fn MapMerge) | timemap.rs:1293-1294 (fn time_map_merge) | architecture | ported |
+| 44 | Otherwise create a replacement TimeMap and add each surviving step to it | timemap.c:2415-2424 (fn MapMerge) | timemap.rs:1295-1299 (fn time_map_merge) | architecture | ported |
 | 45 | Annul the pointers to the Mappings being eliminated | timemap.c:2425-2430 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 46 | Insert the replacement pointer with a cleared invert value | timemap.c:2431-2434 (fn MapMerge) | timemap.rs:1395 (fn time_map_merge) | architecture | ported |
-| 47 | Move the subsequent Mapping information down to close the gap | timemap.c:2435-2440 (fn MapMerge) | timemap.rs:1395 (fn time_map_merge) | architecture | ported |
+| 46 | Insert the replacement pointer with a cleared invert value | timemap.c:2431-2434 (fn MapMerge) | timemap.rs:1300 (fn time_map_merge) | architecture | ported |
+| 47 | Move the subsequent Mapping information down to close the gap | timemap.c:2435-2440 (fn MapMerge) | timemap.rs:1300 (fn time_map_merge) | architecture | ported |
 | 48 | Blank out the information left at the end of the arrays | timemap.c:2441-2446 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so the removed entries leave no slots to blank |
-| 49 | Decrement the Mapping count and return the index of the first eliminated Mapping | timemap.c:2447-2451 (fn MapMerge) | timemap.rs:1395-1396 (fn time_map_merge) | architecture | ported |
+| 49 | Decrement the Mapping count and return the index of the first eliminated Mapping | timemap.c:2447-2451 (fn MapMerge) | timemap.rs:1300-1301 (fn time_map_merge) | architecture | ported |
 | 50 | Annul the new Mapping if an error occurred | timemap.c:2452-2458 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
 | 51 | Free the memory used for the transformation steps | timemap.c:2459-2465 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 52 | Clear the returned value if an error occurred | timemap.c:2466-2468 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 53 | Return the result | timemap.c:2469-2470 (fn MapMerge) | timemap.rs:1396 (fn time_map_merge) | ceremony | ported |
+| 53 | Return the result | timemap.c:2469-2470 (fn MapMerge) | timemap.rs:1301 (fn time_map_merge) | ceremony | ported |
 
 ## Row 25 — the test is on the derived offset, not the supplied pair
 
@@ -92,8 +92,8 @@ absorbs that constant is a no-op only the derived value can see.
 
 C separates two-argument conversions into those inversion swaps and those it does
 not, and then handles three and five arguments. `time_steps_cancel`
-(`timemap.rs:1239-1276 (fn time_steps_cancel)`) carries the swapping set explicitly
-(`timemap.rs:1251-1260 (fn time_steps_cancel)`) and otherwise compares `nargs()` arguments in
+(`timemap.rs:1144-1181 (fn time_steps_cancel)`) carries the swapping set explicitly
+(`timemap.rs:1156-1165 (fn time_steps_cancel)`) and otherwise compares `nargs()` arguments in
 order, which covers the remaining counts without enumerating them. The set is the
 same one row 19 uses for the inversion itself, which is why the two lists agree
 term for term.

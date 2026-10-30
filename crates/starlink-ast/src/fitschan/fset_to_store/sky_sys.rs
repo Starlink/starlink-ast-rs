@@ -10,11 +10,8 @@
 //! `CTYPE`-comment / `CNAME` / `CUNIT` / `RADESYS` / `EQUINOX` /
 //! `MJD-OBS` / `TIMESYS`) into a [`FitsStore`].
 //!
-//! All known C branches in `SkySys` are now ported. The only
-//! remaining infrastructure gap is the multi-timescale `TIMESYS`
-//! header — `tdb_conv` covers `UTC / TAI / TT / TDB` (the timescales
-//! the writer actually produces); `UT1` / `LT` / sidereal scales
-//! aren't reachable from a SkyFrame today.
+//! All known C branches in `SkySys` are ported. `tdb_conv` converts
+//! through a `TimeFrame`, as C does, so it handles every timescale.
 
 // Wired in by celestial_axes (Task 5.3); until then nothing here
 // is reachable from the crate's non-test code.

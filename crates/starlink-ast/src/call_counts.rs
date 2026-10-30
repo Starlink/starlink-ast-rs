@@ -10,9 +10,9 @@
 //! To find where a counted call comes from, set `AST_COUNT_BACKTRACE` to its name as the counts report it (for example `pow`): the first such call on each thread after a `reset` prints a backtrace to stderr.
 //! Set `AST_COUNT_TRACE_ALL` to a name instead to print, for every such call after a `reset`, one line naming the `starlink_ast` functions on the stack, which `sort | uniq -c` turns into a count per call path.
 
-// The names are the symbols the C library calls (the vendored PAL and ERFA
-// routines carry their `astPal` / `astEra` prefixes), so the counts line up
-// with those from an instrumented build of the C library.
+// The names are the symbols the C library calls (the PAL and ERFA routines
+// carry their `astPal` / `astEra` prefixes), so the counts line up with those
+// from an instrumented build of the C library.
 
 #[cfg(feature = "call-counts")]
 mod imp {
@@ -103,19 +103,6 @@ pub(crate) fn hit(_name: &'static str) {}
 #[cfg(not(feature = "call-counts"))]
 #[inline(always)]
 pub(crate) fn hit_n(_name: &'static str, _n: u64) {}
-
-/// Call a PAL, ERFA or wcslib function, counting it under its symbol name for the
-/// `call-counts` feature.
-macro_rules! counted_call {
-    ($f:ident ( $($arg:expr),* $(,)? )) => {{
-        crate::call_counts::hit(stringify!($f));
-        // SAFETY: the arguments are the ones the calling wrapper documents
-        // for this C function: valid pointers to buffers of the sizes it
-        // writes, and plain values otherwise.
-        unsafe { $f($($arg),*) }
-    }};
-}
-pub(crate) use counted_call as counted;
 
 #[cfg(all(test, feature = "call-counts"))]
 mod tests {

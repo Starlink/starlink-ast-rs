@@ -8,8 +8,7 @@
 //! license, in the comment syntax of the file's language and after the
 //! shebang where there is one. A `cases.rs` that a probe in
 //! `tools/oracle_fixtures` generates is exempt, its copyright being the
-//! probe's. The vendored C under `crates/starlink-ast/vendor` carries its own
-//! notices and is skipped, as are the fixture trees.
+//! probe's, and the fixture trees are skipped.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,10 +16,9 @@ use std::path::{Path, PathBuf};
 const HOLDER: &str = "Association of Universities for Research in Astronomy (AURA)";
 const SPDX: &str = "SPDX-License-Identifier: LGPL-3.0-or-later";
 const EXTENSIONS: [&str; 5] = ["rs", "c", "h", "py", "sh"];
-/// Directories whose files are not this repository's source: the vendored C
-/// with its own notices, the fixture tree mirrored from upstream, and build
-/// output.
-const FOREIGN_DIRS: [&str; 3] = ["vendor", "fixtures", "target"];
+/// Directories whose files are not this repository's source: the fixture tree
+/// mirrored from upstream, and build output.
+const FOREIGN_DIRS: [&str; 2] = ["fixtures", "target"];
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

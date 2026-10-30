@@ -14,7 +14,7 @@ TimeMap: gather the conversion steps of a run of adjacent SlaMaps, normalize
 each for its applied direction, simplify the accumulated list until nothing more
 goes, and rebuild one SlaMap or a UnitMap.
 
-`SlaMap::map_merge` (`slamap.rs:1429-1436 (fn map_merge)`) delegates to `sla_map_merge`
+`SlaMap::map_merge` (`slamap.rs:1510-1517 (fn map_merge)`) delegates to `sla_map_merge`
 (`slamap.rs:734-786 (fn sla_map_merge)`); the helpers are `sla_normalized_steps`
 (`slamap.rs:622-649 (fn sla_normalized_steps)`), `sla_simplify_steps`
 (`slamap.rs:656-724 (fn sla_simplify_steps)`) and `try_cancel_pair`

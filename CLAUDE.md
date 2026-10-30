@@ -22,10 +22,8 @@ starlink-ast-rs/
 ├── Cargo.toml                 # workspace root
 ├── crates/
 │   ├── starlink-ast/          # pure-Rust idiomatic API (rlib)
-│   │   └── vendor/            # C source we own and build into starlink-ast
-│   │       ├── pal/           # AST's pal fork (build with cc)
-│   │       ├── erfa/          # AST's erfa fork (build with cc)
-│   │       └── README.md      # provenance: source, commit, mods
+│   │   └── vendor/            # ast_err.msg (build.rs makes the error codes) and its provenance README;
+│   │                          #   the crate compiles no C: PAL, ERFA and wcslib are Rust
 │   ├── starlink-ast-capi/     # cdylib; re-exports ast.h symbols
 │   ├── ast-plugins/           # Grf / Grf3d backends (PLplot, SVG, logging)
 │   ├── ast-ffi-tests/         # builds starlink-ast-capi, runs C ast_tester programs
@@ -46,9 +44,11 @@ starlink-ast-rs/
 
 Two principles:
 
-1. **`crates/starlink-ast/vendor/` is owned by this repo.** Everyday
-   `cargo build` / `cargo test` works on a fresh clone with no submodule
-   init, and it sits inside the crate so the published archive carries it.
+1. **`crates/starlink-ast/vendor/` is owned by this repo.** It holds
+   `ast_err.msg`, which `build.rs` turns into the error codes; the crate
+   compiles no C. Everyday `cargo build` / `cargo test` works on a fresh
+   clone with no submodule init, and it sits inside the crate so the
+   published archive carries it.
 2. **`reference/starlink-ast/` is opt-in.** Initialised only for
    tier-3 (`ast-ffi-tests`) and tier-4 (`ast-oracle-tests`), and for
    the fixture-mirror check. **CI runs neither tier.** The workflow
@@ -196,12 +196,10 @@ on those grounds; do not re-prototype it without new motivation.
   exempt, their copyright being the probe's.
 - `cargo fmt` is enforced. `cargo clippy --workspace -- -D warnings`
   is a CI gate.
-- C99 is the language used in `crates/starlink-ast/vendor/`. Don't add C++ to vendored
-  sources; if you need to wrap C++ for a plugin, do it in a separate
-  crate.
-- `unsafe` is allowed in `starlink-ast-capi` (the entire crate is FFI) and in
-  the private vendored-C FFI module of `starlink-ast`. Anywhere else,
-  `unsafe` requires a justifying comment and review.
+- `starlink-ast` contains no C. If you need to wrap C++ for a plugin, do it in
+  a separate crate.
+- `unsafe` is allowed in `starlink-ast-capi` (the entire crate is FFI).
+  Anywhere else, `unsafe` requires a justifying comment and review.
 - Public item names: AST attribute names → snake_case (`SkyRefIs` →
   `set_sky_ref_is`). Class names stay PascalCase (`PolyMap`,
   `SkyFrame`). Concrete-class types disambiguate from traits where
@@ -424,7 +422,6 @@ The C ABI is **frozen**. Existing applications must keep linking.
 | String-typed `get_attr(name)` / `set_fmt(spec)` in `starlink-ast` | These exist only in `starlink-ast-capi` for the C-ABI dispatch path |
 | `Mul` / `BitOr` operator overloading for mapping composition | Use `then` / `alongside` verbs only — readability |
 | Reaching into `reference/starlink-ast/` from `starlink-ast`'s `build.rs` | The everyday build must not depend on the submodule |
-| Editing the C in `crates/starlink-ast/vendor/` by hand | Fix it in C AST (`reference/starlink-ast`) and re-copy from the submodule; `vendor/README.md` lists the only local changes |
 | Symlinking test fixtures from `reference/starlink-ast/ast_tester/` | Fixtures must be committed into `crates/starlink-ast/tests/fixtures/` so tier-1 works without the submodule |
 | Hand-editing `ast_err.h` | Generated from `ast_err.msg` by `build.rs` |
 | Collapsing a per-class `MapMerge` / `RegPins` / `SubFrame` into one central `match` | These are C's extension points, not boilerplate — see "Before porting a class" |
@@ -490,9 +487,8 @@ The C ABI is **frozen**. Existing applications must keep linking.
   `libast` and call the same functions. Records the stale-conda-libast
   trap and how to call protected APIs (`astGetBounded_` etc.) via
   `astMakePointer`.
-- **Vendored C provenance**: `crates/starlink-ast/vendor/README.md` records where each
-  vendored directory was copied from and what AST-specific local
-  modifications were applied.
+- **Vendored file provenance**: `crates/starlink-ast/vendor/README.md` records where
+  `ast_err.msg` was copied from, and the commits that replaced the vendored C with Rust.
 - **AST documentation**: one LaTeX source,
   `reference/starlink-ast/sun_master.tex`, is built by `builddocs` into
   two editions of the same guide and reference:
