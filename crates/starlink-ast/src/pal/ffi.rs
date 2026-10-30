@@ -30,9 +30,13 @@ unsafe extern "C" {
     );
 
     // -- Coordinate conversions --
+    #[cfg(test)]
     pub(super) fn astPalGaleq(dl: f64, db: f64, dr: *mut f64, dd: *mut f64);
+    #[cfg(test)]
     pub(super) fn astPalEqgal(dr: f64, dd: f64, dl: *mut f64, db: *mut f64);
+    #[cfg(test)]
     pub(super) fn astPalGalsup(dl: f64, db: f64, dsl: *mut f64, dsb: *mut f64);
+    #[cfg(test)]
     pub(super) fn astPalSupgal(dsl: f64, dsb: f64, dl: *mut f64, db: *mut f64);
     #[cfg(test)]
     pub(super) fn astEraFk45z(
@@ -80,7 +84,11 @@ unsafe extern "C" {
     );
 
     // -- Aberration --
+    #[cfg(test)]
+    pub(super) fn astPalEtrms(ep: f64, ev: *mut f64);
+    #[cfg(test)]
     pub(super) fn astPalAddet(rm: f64, dm: f64, eq: f64, rc: *mut f64, dc: *mut f64);
+    #[cfg(test)]
     pub(super) fn astPalSubet(rc: f64, dc: f64, eq: f64, rm: *mut f64, dm: *mut f64);
     pub(super) fn astPalMappa(eq: f64, date: f64, amprms: *mut f64);
     pub(super) fn astPalAmpqk(ra: f64, da: f64, amprms: *const f64, rm: *mut f64, dm: *mut f64);
@@ -113,9 +121,13 @@ unsafe extern "C" {
 
     // -- Observer / velocity --
     pub(super) fn astPalPvobs(p: f64, h: f64, stl: f64, pv: *mut f64);
+    #[cfg(test)]
     pub(super) fn astPalRvgalc(r2000: f64, d2000: f64) -> f64;
+    #[cfg(test)]
     pub(super) fn astPalRvlg(r2000: f64, d2000: f64) -> f64;
+    #[cfg(test)]
     pub(super) fn astPalRvlsrd(r2000: f64, d2000: f64) -> f64;
+    #[cfg(test)]
     pub(super) fn astPalRvlsrk(r2000: f64, d2000: f64) -> f64;
 
     // -- Calendar / time-of-day conversions --

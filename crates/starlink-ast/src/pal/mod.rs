@@ -21,13 +21,24 @@
 
 use crate::constants::BAD_VALUE;
 
+mod addet;
 mod dat;
 mod deuler;
 mod dmat;
 mod drange;
+mod eqgal;
+mod etrms;
 mod ffi;
+mod galeq;
+mod galsup;
 mod geoc;
 mod pvobs;
+mod rvgalc;
+mod rvlg;
+mod rvlsrd;
+mod rvlsrk;
+mod subet;
+mod supgal;
 use ffi::*;
 
 /// PAL's `PAL__DPI` (palmac.h): pi.
@@ -41,6 +52,9 @@ pub(crate) const PAL__D2PI: f64 = 6.28318530717958647692528676655900576839433879
 /// PAL's `PAL__SR` (palmac.h): the Earth's rotation rate in radians per
 /// second.
 pub(crate) const PAL__SR: f64 = 7.2921150e-5;
+
+/// PAL's `PAL__DAS2R` (palmac.h): arcseconds to radians.
+pub(crate) const PAL__DAS2R: f64 = 4.8481368110953599358991410235794797595635330237270e-6;
 
 /// ERFA's `ERFA_DAU` (erfam.h): the astronomical unit in metres, the IAU 2012
 /// value. PAL's routines convert metres to au with it, so a caller that
@@ -301,34 +315,26 @@ pub(crate) fn dmat_det(n: usize, a: &mut [f64], y: &mut [f64]) -> (bool, f64) {
 
 /// Galactic (l, b) to FK5 J2000 (ra, dec).  All radians.
 pub(crate) fn galeq(dl: f64, db: f64) -> (f64, f64) {
-    let mut dr = 0.0;
-    let mut dd = 0.0;
-    counted!(astPalGaleq(dl, db, &mut dr, &mut dd));
-    (dr, dd)
+    crate::call_counts::hit("astPalGaleq");
+    galeq::galeq(dl, db)
 }
 
 /// FK5 J2000 (ra, dec) to Galactic (l, b).  All radians.
 pub(crate) fn eqgal(dr: f64, dd: f64) -> (f64, f64) {
-    let mut dl = 0.0;
-    let mut db = 0.0;
-    counted!(astPalEqgal(dr, dd, &mut dl, &mut db));
-    (dl, db)
+    crate::call_counts::hit("astPalEqgal");
+    eqgal::eqgal(dr, dd)
 }
 
 /// Galactic (l, b) to Supergalactic (sl, sb).  All radians.
 pub(crate) fn galsup(dl: f64, db: f64) -> (f64, f64) {
-    let mut dsl = 0.0;
-    let mut dsb = 0.0;
-    counted!(astPalGalsup(dl, db, &mut dsl, &mut dsb));
-    (dsl, dsb)
+    crate::call_counts::hit("astPalGalsup");
+    galsup::galsup(dl, db)
 }
 
 /// Supergalactic (sl, sb) to Galactic (l, b).  All radians.
 pub(crate) fn supgal(dsl: f64, dsb: f64) -> (f64, f64) {
-    let mut dl = 0.0;
-    let mut db = 0.0;
-    counted!(astPalSupgal(dsl, dsb, &mut dl, &mut db));
-    (dl, db)
+    crate::call_counts::hit("astPalSupgal");
+    supgal::supgal(dsl, dsb)
 }
 
 /// FK4 B1950 (ra, dec) to FK5 J2000 (ra, dec), assuming zero proper motion.
@@ -413,20 +419,16 @@ pub(crate) fn deuler(order: &str, phi: f64, theta: f64, psi: f64) -> [[f64; 3]; 
 ///
 /// Returns `(rc, dc)` — the apparent (ra, dec) with E-terms added.
 pub(crate) fn addet(rm: f64, dm: f64, eq: f64) -> (f64, f64) {
-    let mut rc = 0.0;
-    let mut dc = 0.0;
-    counted!(astPalAddet(rm, dm, eq, &mut rc, &mut dc));
-    (rc, dc)
+    crate::call_counts::hit("astPalAddet");
+    addet::addet(rm, dm, eq)
 }
 
 /// Remove E-terms of aberration.
 ///
 /// Returns `(rm, dm)` — the mean (ra, dec) with E-terms removed.
 pub(crate) fn subet(rc: f64, dc: f64, eq: f64) -> (f64, f64) {
-    let mut rm = 0.0;
-    let mut dm = 0.0;
-    counted!(astPalSubet(rc, dc, eq, &mut rm, &mut dm));
-    (rm, dm)
+    crate::call_counts::hit("astPalSubet");
+    subet::subet(rc, dc, eq)
 }
 
 /// Compute mean-to-apparent parameters for a given equinox and date.
@@ -708,7 +710,8 @@ pub(crate) fn pvobs(lat: f64, alt: f64, lst: f64) -> [f64; 6] {
 /// - `ra`: J2000 right ascension (radians)
 /// - `dec`: J2000 declination (radians)
 pub(crate) fn rvgalc(ra: f64, dec: f64) -> f64 {
-    counted!(astPalRvgalc(ra, dec))
+    crate::call_counts::hit("astPalRvgalc");
+    rvgalc::rvgalc(ra, dec)
 }
 
 /// Velocity component of the Local Group motion toward the source (km/s).
@@ -716,7 +719,8 @@ pub(crate) fn rvgalc(ra: f64, dec: f64) -> f64 {
 /// - `ra`: J2000 right ascension (radians)
 /// - `dec`: J2000 declination (radians)
 pub(crate) fn rvlg(ra: f64, dec: f64) -> f64 {
-    counted!(astPalRvlg(ra, dec))
+    crate::call_counts::hit("astPalRvlg");
+    rvlg::rvlg(ra, dec)
 }
 
 /// Velocity component of the dynamical LSR toward the source (km/s).
@@ -724,7 +728,8 @@ pub(crate) fn rvlg(ra: f64, dec: f64) -> f64 {
 /// - `ra`: J2000 right ascension (radians)
 /// - `dec`: J2000 declination (radians)
 pub(crate) fn rvlsrd(ra: f64, dec: f64) -> f64 {
-    counted!(astPalRvlsrd(ra, dec))
+    crate::call_counts::hit("astPalRvlsrd");
+    rvlsrd::rvlsrd(ra, dec)
 }
 
 /// Velocity component of the kinematic LSR toward the source (km/s).
@@ -732,7 +737,8 @@ pub(crate) fn rvlsrd(ra: f64, dec: f64) -> f64 {
 /// - `ra`: J2000 right ascension (radians)
 /// - `dec`: J2000 declination (radians)
 pub(crate) fn rvlsrk(ra: f64, dec: f64) -> f64 {
-    counted!(astPalRvlsrk(ra, dec))
+    crate::call_counts::hit("astPalRvlsrk");
+    rvlsrk::rvlsrk(ra, dec)
 }
 
 // ---------------------------------------------------------------------------
