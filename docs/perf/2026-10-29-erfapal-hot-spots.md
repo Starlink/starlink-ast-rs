@@ -17,7 +17,7 @@ Nothing here is decided: the table ends with what each function would be, and th
 
 `Dcs2c` and `Dcc2s` from `SphMap` are the slice kernels (`dcs2c_slice`, `dcc2s_slice`), which already go through `vmath`; they are counted under the scalar names.
 `Dmat` is `pal::dmat`/`dmat_det` and is reached from `PolyMap` and `SplineMap` inverse iterations, which solve a small system per point per iteration.
-`Drange` comes from `WcsMap`'s forward preparation.
+`Drange` comes from `WcsMap`'s `forward_prep`, which runs when the FrameSet is transformed in its inverse direction (sky to pixel), so it appears only in the inverse column.
 
 | Input | Forward, per point | Inverse, per point |
 |---|---|---|
@@ -53,8 +53,9 @@ Median ns per point, Rust / C, forward then inverse.
 | `slamap_prec.map` | 132 / 630, 125 / 645 | 52 / 58, 51 / 58 | 51 / 52, 50 / 52 |
 | `timemap_mjdtobep.map` | 14.1 / 554, 13.9 / 555 | 2.9 / 7.2, 2.6 / 7.0 | 2.7 / 1.6, 2.4 / 1.5 |
 
-At large N the Rust engine is within noise of C on every PAL case and no slower than C on any FrameSet.
-Rust is ahead of C on the FrameSets because of the earlier native stages, not because of this one.
+At large N the Rust engine is within noise of C on the three `SlaMap` cases and no slower than C on any FrameSet.
+`timemap_mjdtobep.map` is the exception: at N = 100 000 Rust takes 2.7 ns per point against C's 1.6 forward and 2.4 against 1.5 inverse, about 1.6 to 1.7 times slower.
+That case is `TimeMap`'s own loop plus `epb`, at 2 to 3 ns per point, and the profile shows no libm in it; this stage did not change it, and the cause was not investigated.
 
 ## Where the time goes (profile, forward and inverse together)
 
@@ -81,14 +82,14 @@ A function is proposed only if a realistic input reaches it per point and its li
 | Function | Per-point callers | Calls per point | Share of time | libm share | Proposal |
 |---|---|---|---|---|---|
 | `pal::fk54z` and `pal::fk45z` | `SlaMap` FK45Z/FK54Z; `timj.ast` | 1 on `timj.ast` and on `slamap_fk45z.map` | `timj.ast` about 64% (body 12.5%, libm 52%); `slamap_fk45z.map` about 95% | about 50% of `timj.ast`, 74% of the case | Vectorize: reached by a real FrameSet and libm is half its time. |
-| `pal::ampqk` and `pal::mapqkz` | `SlaMap` AMP/MAP only; no FrameSet | 1 | 27% body, 67% libm of `slamap_amp.map` | 67% of the case | Vectorize, class route only: no FrameSet reaches it, but `SlaMap` apparent-place conversions are per point in pipelines; the user decides whether the class counts. |
-| `pal::dcs2c`, `pal::dmxv`, `pal::dcc2s`, `pal::dranrm` as `SlaMap`'s rotation step (PREC, EQGAL, GALEQ, GALSUP, ...) | `SlaMap` conversions; `timj.ast` does not use them | 1 each | about 100% of `slamap_prec.map`; inlined into `SlaMap`'s step loop | 83% of the case | Vectorize, class route only: `dcs2c_slice` and `dcc2s_slice` already exist for `SphMap`, so the work is a `SlaMap` step kernel on slices, not new math. No FrameSet reaches it. |
-| `pal::dcs2c_slice`, `pal::dcc2s_slice` | `SphMap`; all six FrameSets | 1 each | 5% to 39% by input | already vectorized | Already done; nothing to propose. |
-| `pal::dmat`, `pal::dmat_det` | `PolyMap` and `SplineMap` inverse iterations; `lsst.ast`, `lsst2.ast` | 3.1 and 4.1 inverse | 18% of `lsst.ast`, 1.7% of `lsst2.ast` | 0 (arithmetic only) | Scalar: no libm; the cost is a per-point allocation and a small solve inside `PolyMap`, which a `PolyMap`-level change would address, not a vector `dmat`. |
+| `pal::ampqk` and `pal::mapqkz` | `SlaMap` AMP/MAP only; no FrameSet | 1 | 27% body, 67% libm of `slamap_amp.map` | 67% of the case | Vectorize, class route only: no FrameSet reaches it, so the case rests on the argument that `SlaMap` AMP/MAP conversions are per-point work; that is for the user to weigh, not something measured here. |
+| `pal::dcs2c`, `pal::dmxv`, `pal::dcc2s`, `pal::dranrm` as `SlaMap`'s rotation step (PREC, EQGAL, GALEQ, GALSUP, ...) | `SlaMap` conversions; `timj.ast` does not use them | 1 each | `slamap_prec.map`: bodies 1%, the rest inlined into `SlaMap`'s step loop (libm 83%, other 16%) | 83% of the case | Vectorize, class route only: `dcs2c_slice` and `dcc2s_slice` already exist for `SphMap`, so the work is a `SlaMap` step kernel on slices, not new math. No FrameSet reaches it. |
+| `pal::dcs2c_slice`, `pal::dcc2s_slice` | `SphMap`; all six FrameSets | 1 each | 8.5% to 39% by input | already vectorized | Already done; nothing to propose. |
+| `pal::dmat`, `pal::dmat_det` | `PolyMap` and `SplineMap` inverse iterations; `lsst.ast`, `lsst2.ast` | 3.1 and 4.1 inverse | 18% of `lsst.ast`, 1.7% of `lsst2.ast` | 0 (arithmetic only) | Scalar: no libm; the profile shows `dmat` at 18% of `lsst.ast` and nothing more, and a remedy would be at `PolyMap` level, not a vector `dmat`. |
 | `pal::drange` | `WcsMap` forward preparation; five FrameSets | 2 inverse | not visible as self time | not visible (a `%`/`fmod` at most) | Scalar: below the profile's resolution. |
 | `pal::epb`, `pal::epb2d` | `TimeMap` MJD to Besselian epoch | 1 | 0: the case is `TimeMap`'s own loop, 2.7 ns per point | 0 | Scalar: no libm and already at memory-bound speed. |
 | `pal::prec` | `SlaMap` PREC set-up | once per transform | 0 | 0 | Scalar: set-up, not per point. |
-| `pal::dat`, `erfa::dtdb`, `erfa::nut00a`, `pal::nut`, `pal::evp`, `erfa::epv00`, `pal::mappa` | `TimeMap` LAST/LMST, three-input topocentric `SpecMap`, `SkyFrame` set-up | nutation per point for LAST/LMST and topocentric `SpecMap`; the rest once | not reached by any realistic input | not measured | Scalar: the user decided TimeMap LAST/LMST and topocentric `SpecMap` stay scalar; set-up runs once. |
+| `pal::dat`, `erfa::dtdb`, `erfa::nut00a`, `pal::nut`, `pal::evp`, `erfa::epv00`, `pal::mappa` | `TimeMap` LAST/LMST and three-input topocentric `SpecMap` (nutation per point); `SkyFrame` set-up (once) | per point on those two paths, once for set-up | none of the six FrameSets reaches the per-point paths | not profiled: the user ruled these scalar on 2026-10-29 | Scalar: the user's ruling; set-up runs once. |
 | The remaining ERFA and PAL functions (calendar, `tdb_conv`, matrices, `galeq` family, `addet`/`subet`, `fk5hz`/`hfk5z`) | `SlaMap`, `TimeMap`, `SpecMap` conversions | 0 on every input here | 0 | not measured | Scalar: no realistic input reaches them per point. |
 
 ## Honest summary
