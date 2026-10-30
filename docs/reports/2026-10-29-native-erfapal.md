@@ -139,7 +139,9 @@ In the hot-spots record, the other SlaMap cases (AMP, EQGAL, PREC) were flagged 
 - `ast-bench compare` across the Task 14 change exits non-zero on the accepted `slamap_fk45z.map` N = 1 rows.
   The controller ruled not to add the case to `SLOWDOWN_LICENSED`, since a licence for the case would mask a regression at every N.
 - Full gates: `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo test -p starlink-ast` (4,528 tests) and `cargo doc -p starlink-ast --no-deps` pass.
-- Tier 4 (`cargo test -p ast-oracle-tests --no-fail-fast`): everything passes except `call_count_parity`, whose 28 differing sections all differ on `astPalDeuler` alone (Rust 1, C 0), a difference that predates this stage and is not caused by it, and is tracked in a `PLAN.md` §6 row ("`call_count_parity` fails on `astPalDeuler`").
+- Tier 4 (`cargo test -p ast-oracle-tests --no-fail-fast`): everything passes except `call_count_parity`, whose 28 differing sections all differed on `astPalDeuler` alone (Rust 1, C 0).
+  This stage caused it: the Rust `pal::prebn` and `pal::ecmat` called the counting `pal::deuler` wrapper, where C's counting build counts no call PAL makes internally.
+  They now call the uncounted body and `call_count_parity` passes (`PLAN.md` §6 row "`call_count_parity` fails on `astPalDeuler`").
 
 ## Open items
 
