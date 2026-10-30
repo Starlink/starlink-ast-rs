@@ -143,7 +143,7 @@ pub(crate) use faur03::faur03;
 pub(crate) use fave03::fave03;
 pub(crate) use fk5hip::fk5hip;
 pub(crate) use fk5hz::fk5hz;
-pub(crate) use fk45z::fk45z;
+pub(crate) use fk45z::{Fk45zEpoch, fk45z, fk45z_kernel};
 pub(crate) use fk54z::fk54z;
 pub(crate) use fk524::fk524;
 pub(crate) use fw2m::fw2m;
@@ -275,6 +275,65 @@ pub(crate) use s2c::{s2c, s2c_kernel, s2c_needs_special};
 #[inline(always)]
 pub(super) fn sincos(x: f64) -> (f64, f64) {
     crate::math::sincos_as_c_uncounted(x)
+}
+
+/// The elementary functions a kernel body takes from outside, so the body
+/// is written once and its tests can check every value it uses.
+pub(crate) trait KernelTrig {
+    /// The sine and cosine of `x`.
+    fn sin_cos(x: f64) -> (f64, f64);
+    /// The arctangent of `y / x` in the quadrant of (x, y).
+    fn atan2(y: f64, x: f64) -> f64;
+}
+
+/// [`KernelTrig`] by the vectorizable kernels of [`crate::vmath`], each
+/// within 1 ULP of the exact value, rounded, where its `*_covers` predicate
+/// holds. `FMA` is passed to [`crate::vmath::atan2`].
+pub(crate) struct VmathTrig<const FMA: bool>;
+
+impl<const FMA: bool> KernelTrig for VmathTrig<FMA> {
+    #[inline(always)]
+    fn sin_cos(x: f64) -> (f64, f64) {
+        crate::vmath::sin_cos(x)
+    }
+
+    #[inline(always)]
+    fn atan2(y: f64, x: f64) -> f64 {
+        crate::vmath::atan2::<FMA>(y, x)
+    }
+}
+
+/// [`VmathTrig`] that asserts, at every argument its kernels cover, that
+/// each value is within 1 ULP of the exact value, rounded: for checking the
+/// elementary functions inside a kernel body over its test inputs. The
+/// references use no libm except to seed the arctangent's refinement.
+#[cfg(test)]
+pub(crate) struct CheckedTrig;
+
+#[cfg(test)]
+impl KernelTrig for CheckedTrig {
+    fn sin_cos(x: f64) -> (f64, f64) {
+        use crate::test_inputs::{sin_cos_reference, ulps};
+        let (s, c) = crate::vmath::sin_cos(x);
+        if crate::vmath::sin_cos_covers(x) {
+            let (rs, rc) = sin_cos_reference(x);
+            assert!(
+                ulps(s, rs) <= 1 && ulps(c, rc) <= 1,
+                "sin_cos({x:e}) = ({s:e}, {c:e}), exact ({rs:e}, {rc:e})"
+            );
+        }
+        (s, c)
+    }
+
+    fn atan2(y: f64, x: f64) -> f64 {
+        use crate::test_inputs::{atan2_reference, ulps};
+        let a = crate::vmath::atan2::<{ crate::vmath::HAS_FMA }>(y, x);
+        if crate::vmath::atan2_covers(y, x) {
+            let r = atan2_reference(y, x);
+            assert!(ulps(a, r) <= 1, "atan2({y:e}, {x:e}) = {a:e}, exact {r:e}");
+        }
+        a
+    }
 }
 
 #[cfg(test)]
