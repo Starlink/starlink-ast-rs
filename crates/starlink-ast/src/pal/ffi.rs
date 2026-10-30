@@ -106,14 +106,6 @@ unsafe extern "C" {
     pub(super) fn astPalDat(dju: f64) -> f64;
     pub(super) fn astPalGmst(ut1: f64) -> f64;
     pub(super) fn astPalEqeqx(date: f64) -> f64;
-    pub(super) fn astEraGd2gc(n: i32, elong: f64, phi: f64, height: f64, xyz: *mut f64) -> i32;
-    pub(super) fn astEraGc2gd(
-        n: i32,
-        xyz: *const f64,
-        elong: *mut f64,
-        phi: *mut f64,
-        height: *mut f64,
-    ) -> i32;
 
     // -- Observer / velocity --
     pub(super) fn astPalPvobs(p: f64, h: f64, stl: f64, pv: *mut f64);

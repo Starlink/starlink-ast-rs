@@ -69,6 +69,30 @@ unsafe extern "C" {
     pub(super) fn astEraEpj(dj1: f64, dj2: f64) -> f64;
     pub(super) fn astEraEpj2jd(epj: f64, djm0: *mut f64, djm: *mut f64);
     pub(super) fn astEraDtdb(date1: f64, date2: f64, ut: f64, elong: f64, u: f64, v: f64) -> f64;
+    pub(super) fn astEraGd2gc(n: i32, elong: f64, phi: f64, height: f64, xyz: *mut f64) -> i32;
+    pub(super) fn astEraGd2gce(
+        a: f64,
+        f: f64,
+        elong: f64,
+        phi: f64,
+        height: f64,
+        xyz: *mut f64,
+    ) -> i32;
+    pub(super) fn astEraGc2gd(
+        n: i32,
+        xyz: *const f64,
+        elong: *mut f64,
+        phi: *mut f64,
+        height: *mut f64,
+    ) -> i32;
+    pub(super) fn astEraGc2gde(
+        a: f64,
+        f: f64,
+        xyz: *const f64,
+        elong: *mut f64,
+        phi: *mut f64,
+        height: *mut f64,
+    ) -> i32;
     pub(super) fn astEraDat(iy: i32, im: i32, id: i32, fd: f64, deltat: *mut f64) -> i32;
 }
 
@@ -164,4 +188,82 @@ pub(crate) fn jd2cal_defined(dj1: f64, dj2: f64) -> bool {
 /// casts.
 pub(crate) fn d2tf_defined(ndp: i32, days: f64) -> bool {
     (-9..=9).contains(&ndp) && days.is_finite() && days.abs() < 1e7
+}
+
+/// Geodetic latitudes: random over plus and minus pi/2, the poles and the
+/// points just short of them, the equator, and the special angles.
+pub(crate) fn geodetic_latitudes(n: usize) -> Vec<f64> {
+    use crate::test_inputs::{SplitMix64, specials};
+    use std::f64::consts::FRAC_PI_2;
+    let mut rng = SplitMix64::new(0x5eed_6e0d);
+    let mut v: Vec<f64> = (0..n)
+        .map(|_| (rng.next_f64() - 0.5) * 2.0 * FRAC_PI_2)
+        .collect();
+    for d in [0.0, 1e-15, 1e-12, 1e-9, 1e-6, 1e-3] {
+        v.extend([FRAC_PI_2 - d, -(FRAC_PI_2 - d)]);
+    }
+    v.push(0.0);
+    v.push(-0.0);
+    v.extend(specials());
+    v
+}
+
+/// Geodetic longitudes over plus and minus 2 pi, with the special angles.
+pub(crate) fn geodetic_longitudes(n: usize) -> Vec<f64> {
+    use crate::test_inputs::{SplitMix64, specials};
+    let mut rng = SplitMix64::new(0x5eed_10a9);
+    let mut v: Vec<f64> = (0..n)
+        .map(|_| (rng.next_f64() - 0.5) * 4.0 * std::f64::consts::PI)
+        .collect();
+    v.extend(specials());
+    v
+}
+
+/// Heights from -1e4 to 1e7 metres, and values no height should be.
+pub(crate) fn geodetic_heights() -> Vec<f64> {
+    vec![
+        -1e4,
+        -100.0,
+        -1.0,
+        0.0,
+        -0.0,
+        1.0,
+        4205.0,
+        1e4,
+        1e5,
+        1e6,
+        1e7,
+        f64::NAN,
+        f64::INFINITY,
+        crate::constants::BAD_VALUE,
+    ]
+}
+
+/// Geocentric vectors in metres: the shared vectors scaled by 1e3 to 1e8,
+/// points on the polar axis, in the equatorial plane, and the centre.
+pub(crate) fn geocentric_vectors(n: usize) -> Vec<[f64; 3]> {
+    use crate::test_inputs::vectors;
+    let mut out = Vec::new();
+    let vs = vectors(n);
+    for (i, v) in vs.iter().enumerate() {
+        let scale = 10f64.powi(3 + (i % 6) as i32);
+        out.push([v[0] * scale, v[1] * scale, v[2] * scale]);
+    }
+    for scale in [1e3, 1e5, 6.356752e6, 6.378137e6, 1e7, 1e8] {
+        for z in [scale, -scale, 0.0, -0.0] {
+            out.push([0.0, 0.0, z]);
+            out.push([-0.0, 0.0, z]);
+        }
+        out.push([scale, 0.0, 0.0]);
+        out.push([0.0, -scale, 0.0]);
+    }
+    // Within the polar-case threshold of the axis, and just outside it.
+    for p in [1e-17, 1e-12, 1e-9, 1e-6, 1e-3] {
+        for z in [6.3e6, -6.3e6] {
+            out.push([p, 0.0, z]);
+            out.push([0.0, p, z]);
+        }
+    }
+    out.push([0.0; 3]);
+    out
 }
