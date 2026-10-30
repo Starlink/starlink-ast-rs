@@ -110,7 +110,8 @@ The other five FrameSets spend their PAL time in the SphMap slice kernels (alrea
 User decisions, 2026-10-29:
 
 - Task 14 covers `fk45z` and `fk54z` only.
-- The kernels were first rejected under the plan's rule, faster at N = 100 and large N and not slower at N = 1, and recorded as staying scalar.
+- The plan's rule required a kernel to be faster at N = 100 and large N and not slower at N = 1.
+  The `fk45z` and `fk54z` kernels failed it at N = 1, so they were first recorded as staying scalar.
   The user then kept them: FK4/FK5 is not used by large surveys (they use ICRS), and the spec's anti-goal, that N = 1 and N = 100 stay faster than C, governs; both kernels stay 3 to 4 times faster than C at N = 1.
 - SlaMap AMP/MAP and rotation-step kernels: not done (user's choice).
 - TimeMap LAST/LMST and topocentric SpecMap nutation: scalar by decision; no realistic input reaches them per point.
@@ -146,6 +147,8 @@ In the hot-spots record, the other SlaMap cases (AMP, EQGAL, PREC) were flagged 
 - `timemap_mjdtobep.map` large-N gap to C.
 - Shorter-latency `vmath::sin_cos` and `vmath::atan2` would remove the FK kernels' N = 1 cost.
 - The vendored-C rewrite ticket is superseded for PAL and ERFA by this port.
+- Interim reassessment: the spec keeps per-value entries on ERFA's exact arithmetic while the C is the oracle.
+  Whether to move them onto kernels now that the C is gone is a separate decision, to be made after this pull request.
 
 ## x86-64 commands
 
@@ -155,6 +158,10 @@ cargo run --release -p ast-bench -- compare --set native --base tickets/DM-56839
 cargo run --release -p ast-bench --features c-oracle -- snapshot --set native
 cargo run --release -p ast-bench --features c-oracle -- roman -o roman.csv
 cargo test -p starlink-ast
+env -u CC -u CXX -u CFLAGS -u CPPFLAGS -u LDFLAGS cargo test -p starlink-ast --lib roots_match -- --ignored
 ```
 
+The last command prints the per-root ULP summary, which records how far glibc moves the ports from the captured C values.
+
 `compare` is expected to report `slamap_fk45z.map` forward and inverse N = 1 slower and `slamap_fk45z.map` and `timj.ast` faster at N >= 100.
+By the user's decision, `ast-bench compare --base tickets/DM-56839-wcsmap` (or `--base main`) is expected to flag `slamap_fk45z.map` at N = 1.
