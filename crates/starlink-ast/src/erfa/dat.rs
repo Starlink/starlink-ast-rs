@@ -336,6 +336,18 @@ mod tests {
         assert!(n > 20_000);
     }
 
+    /// Years for which C's `12 * iy + im` overflows a signed `int`, which is
+    /// undefined: only that the port returns, with the wrapped month number
+    /// below every table entry giving `Underflow`.
+    #[test]
+    fn dat_defined_results_where_c_overflows() {
+        for iy in [178_956_971, 357_913_941, i32::MAX] {
+            for im in [1, 6, 12] {
+                assert_eq!(dat(iy, im, 1, 0.5), Err(DatError::Underflow), "{iy}");
+            }
+        }
+    }
+
     #[test]
     fn leap_seconds_are_the_first_days_of_the_table_months() {
         for (i, &(iy, im, delat)) in CHANGES.iter().enumerate() {

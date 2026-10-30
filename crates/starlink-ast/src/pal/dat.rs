@@ -38,14 +38,16 @@ mod tests {
         let mut defined = 0;
         let mut undefined = 0;
         for m in mjd_cases() {
-            // SAFETY: a pure function of its argument.
-            let c = unsafe { super::super::astPalDat(m) };
-            if erfa::jd2cal(PAL__MJD0, m).is_ok() {
+            if jd2cal_defined(PAL__MJD0, m) && erfa::jd2cal(PAL__MJD0, m).is_ok() {
+                // SAFETY: a pure function of its argument.
+                let c = unsafe { super::super::astPalDat(m) };
                 assert!(same(dat(m), c), "{m:e}: {:e} vs C {c:e}", dat(m));
                 defined += 1;
             } else {
-                // C reads the calendar fields `eraJd2cal` did not write, so
-                // its result is whatever the stack held; the port gives 0.0.
+                // Either `eraJd2cal` fails and C passes `eraDat` fields it
+                // did not write (the stack's contents), or a NaN date
+                // reaches its `(long)` casts, whose result depends on the
+                // platform; the port gives 0.0 for both.
                 assert_eq!(dat(m).to_bits(), 0.0_f64.to_bits(), "{m:e}");
                 undefined += 1;
             }
