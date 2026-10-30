@@ -252,6 +252,7 @@ A set-up that fails is kept in the `Prj` and reported as `AST__WCSPA` by every t
 The third stage, on `tickets/DM-56839-erfapal`, stacked on the WcsMap branch, as one pull request.
 At the end of the stage `vendor/erfa`, `vendor/pal`, `palwrap.c`, `pal2ast.h` and `erfa2ast.h` are deleted, with their `build.rs` compilation and the FFI block in `pal.rs`.
 They are the last C `starlink-ast` compiles, so the `cc` build-dependency and the C toolchain requirement go with them; `vendor/` keeps only `ast_err.msg` and `README.md`, which records the deletion as it does for wcslib.
+Done 2026-10-29 by `docs/superpowers/plans/2026-10-29-native-erfa-pal.md`: every function in the closure is Rust, bit for bit the C's, the C is deleted, and only `fk45z` and `fk54z` were vectorized (the measured hot spot `docs/perf/2026-10-29-erfapal-hot-spots.md` found; the user chose that scope, and kept both kernels despite their slower single-point time); `docs/reports/2026-10-29-native-erfapal.md` has the measurements.
 Step 0 is already done for both libraries: the pin (`3d3f255f`, Starlink/ast#100) carries ERFA 2.0.1 and the PAL-to-ERFA changes, so every gate in this stage is against that C.
 
 **Scope: only what the port calls.**

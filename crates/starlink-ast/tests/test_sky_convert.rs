@@ -481,6 +481,22 @@ fn convert_matches_the_c_library() {
     );
 }
 
+/// Every `FK_SLICE_DRIFT_LICENSED` entry names a case of the corpus that
+/// converts, so a renamed or removed case cannot leave a dead licence.
+#[test]
+fn fk_licences_name_existing_cases() {
+    for &(config, from_sys, to_sys, align) in FK_SLICE_DRIFT_LICENSED {
+        assert!(
+            cases::CASES.iter().any(|c| c.0 == config
+                && c.1 == from_sys
+                && c.2 == to_sys
+                && c.3 == align
+                && c.4.is_some()),
+            "FK_SLICE_DRIFT_LICENSED names config {config} {from_sys} -> {to_sys} align {align:?}, which is not a converting case of the corpus"
+        );
+    }
+}
+
 /// Each licensed case still needs its license in an unoptimized build, and
 /// matches C exactly in an optimized one; a case that stops differing in the
 /// unoptimized build must be removed from `SINCOS_MERGE_LICENSED`.

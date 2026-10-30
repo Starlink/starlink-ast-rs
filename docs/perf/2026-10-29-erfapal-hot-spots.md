@@ -111,6 +111,8 @@ The per-value ports, bit for bit ERFA's, remain for one-off callers and for the 
 Timings are median ns per point, the Rust engine, base `53db8ff8` against the tree with the kernels, from three alternating rounds of the two binaries (the fastest round's median), load average 6.4 falling to 4.8, macOS aarch64.
 Two runs of `ast-bench compare --set native --base 53db8ff8` (load average about 5) reported the same N = 1 slowdowns, `slamap_fk45z.map` forward 85 to 162 and 80 to 154, inverse 158 to 192.
 Both also reported `slamap_prec.map`, which the change does not reach, 10 to 22% slower at N = 100 in both runs, which reads as a code-layout effect of the larger `SlaMap::transform_into`.
+A third run (`compare --set native --base 53db8ff8`, load 9.3 at the start and 3.3 at the end) also flagged `slamap_eqgal.map` forward N = 100 (+21%), `slamap_amp.map` forward N = 1 (+10%) and inverse N = 100 (+11%), and `slamap_prec.map` forward N = 100 (+15%), none of which reaches the new code.
+Two direct alternating rounds of the base and kernel binaries at load about 4 gave 0.95 to 1.04 for AMP and EQGAL at every point count and 1.00 to 1.03 for PREC except forward N = 100 at 1.08, the most seen in any direct comparison; the base binary itself measured that PREC row at 41.7 ns in `compare` and 47.4 in the direct run, so these flags are load and code layout, not a regression of those paths.
 
 ### `fk45z` (FK45Z forward, FK54Z inverse): kept by the user's decision
 
