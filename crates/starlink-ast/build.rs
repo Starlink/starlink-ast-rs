@@ -11,7 +11,6 @@ fn main() {
     let vendor_dir = manifest_dir.join("vendor");
 
     declare_dist_tier(&manifest_dir);
-    compile_pal_erfa(&vendor_dir);
     generate_error_codes(&vendor_dir);
     generate_wcsconv_tests(&manifest_dir);
     generate_guide(&manifest_dir);
@@ -43,7 +42,7 @@ fn declare_dist_tier(manifest_dir: &Path) {
         Ok(text) => {
             // Watched only while it exists: cargo treats a watched file that
             // is missing as always changed, which would rerun this script,
-            // and so recompile the vendored C, on every build of a cut-down
+            // and so run this script again, on every build of a cut-down
             // tree.
             println!("cargo::rerun-if-changed={}", marker.display());
             let tier = text.trim().to_string();
@@ -137,35 +136,6 @@ fn sanitise_test_name(name: &str) -> String {
         }
     }
     s
-}
-
-fn compile_pal_erfa(vendor_dir: &Path) {
-    println!(
-        "cargo::rerun-if-changed={}",
-        vendor_dir.join("palwrap.c").display()
-    );
-
-    // Floating-point contraction is switched off so that the vendored C
-    // computes what its source says on every platform, as Rust code does.
-    // Some of its results feed exact comparisons: palDvxv of two identical
-    // vectors is exactly zero only without a fused multiply-add, and
-    // SkyFrame's Offset tests for exactly that (skyframe.c:7709).
-    //
-    // The optimization level is fixed, not taken from the cargo profile,
-    // because it changes results: an optimizing compiler replaces a `sin`
-    // and `cos` of one angle by one `sincos` call, and `pow(10, x)` by
-    // `exp10`, which on macOS can differ in the last bit. The C library the
-    // oracle fixtures come from is built optimized, so the vendored C must
-    // be too, in debug builds as in release ones.
-    cc::Build::new()
-        .file(vendor_dir.join("palwrap.c"))
-        .include(vendor_dir)
-        .include(vendor_dir.join("pal"))
-        .include(vendor_dir.join("erfa"))
-        .opt_level(3)
-        .flag_if_supported("-ffp-contract=off")
-        .warnings(false)
-        .compile("ast_pal_erfa");
 }
 
 fn generate_error_codes(vendor_dir: &Path) {

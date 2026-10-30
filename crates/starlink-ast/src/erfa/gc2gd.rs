@@ -76,29 +76,6 @@ pub(crate) fn gc2gd(e: Ellipsoid, xyz: &V3) -> Result<(f64, f64, f64), Gc2gdeErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn gc2gd_matches_vendored_c_bit_for_bit() {
-        let vs = geocentric_vectors(10_000);
-        for (n, e) in [
-            (1, Ellipsoid::Wgs84),
-            (2, Ellipsoid::Grs80),
-            (3, Ellipsoid::Wgs72),
-        ] {
-            for v in &vs {
-                let (mut l, mut p, mut h) = (0.0, 0.0, 0.0);
-                // SAFETY: the vector holds three doubles; each output is one double.
-                let status = unsafe { astEraGc2gd(n, v.as_ptr(), &mut l, &mut p, &mut h) };
-                let r = gc2gd(e, v).expect("valid ellipsoids do not fail");
-                assert_eq!(status, 0);
-                assert!(
-                    same(r.0, l) && same(r.1, p) && same(r.2, h),
-                    "{n} {v:?}: {r:?} vs C ({l:e}, {p:e}, {h:e})"
-                );
-            }
-        }
-    }
 
     #[test]
     fn gc2gd_inverts_gd2gc_to_rounding() {

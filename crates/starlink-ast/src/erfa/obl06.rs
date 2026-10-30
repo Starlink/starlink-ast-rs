@@ -77,19 +77,3 @@ pub(crate) fn obl06(date1: f64, date2: f64) -> f64 {
             * t)
         * ERFA_DAS2R
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn obl06_matches_vendored_c_bit_for_bit() {
-        for (d1, d2) in date_pairs() {
-            // SAFETY: scalar arguments.
-            let c = unsafe { astEraObl06(d1, d2) };
-            assert!(same(obl06(d1, d2), c), "{d1:e} {d2:e}");
-        }
-    }
-}

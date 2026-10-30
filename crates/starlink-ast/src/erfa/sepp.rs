@@ -79,28 +79,3 @@ pub(crate) fn sepp(a: &V3, b: &V3) -> f64 {
         0.0
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn sepp_matches_vendored_c_bit_for_bit() {
-        let vs = vectors(20_000);
-        let n = vs.len();
-        for i in 0..n {
-            let (a, b) = (vs[i], vs[(i * 31 + 7) % n]);
-            // SAFETY: a pure function of its arguments.
-            let c = unsafe { astEraSepp(a.as_ptr(), b.as_ptr()) };
-            let r = sepp(&a, &b);
-            assert!(
-                same(r, c),
-                "{a:?} {b:?}: {:x} vs C {:x}",
-                r.to_bits(),
-                c.to_bits()
-            );
-        }
-    }
-}

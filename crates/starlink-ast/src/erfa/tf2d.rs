@@ -101,63 +101,6 @@ pub(crate) fn tf2d(s: char, ihour: i32, imin: i32, sec: f64) -> (f64, Option<Tf2
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn tf2d_matches_vendored_c_bit_for_bit() {
-        let hours = [i32::MIN, -25, -24, -1, 0, 1, 12, 23, 24, 25, 100, i32::MAX];
-        let mins = [i32::MIN, -61, -60, -1, 0, 1, 30, 59, 60, 61, i32::MAX];
-        let secs = [
-            0.0,
-            -0.0,
-            1.0,
-            -1.0,
-            0.5,
-            59.999999999999,
-            60.0,
-            60.5,
-            -1e-300,
-            1e300,
-            -1e300,
-            crate::constants::BAD_VALUE,
-            f64::NAN,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-        ];
-        let mut n = 0;
-        let mut undefined = 0;
-        for s in ['+', '-', ' ', 'x'] {
-            for &h in &hours {
-                for &m in &mins {
-                    for &sec in &secs {
-                        // C's `abs(INT_MIN)` is undefined; the port's result
-                        // there is pinned in a known-value test.
-                        if h == i32::MIN || m == i32::MIN {
-                            let (d, _) = tf2d(s, h, m, sec);
-                            assert!(!d.is_nan() || sec.is_nan());
-                            undefined += 1;
-                            continue;
-                        }
-                        let mut days = 0.0;
-                        // SAFETY: the pointer is to a live local.
-                        let j = unsafe { astEraTf2d(s as std::ffi::c_char, h, m, sec, &mut days) };
-                        let (d, w) = tf2d(s, h, m, sec);
-                        let expected = match j {
-                            0 => None,
-                            1 => Some(Tf2dWarning::Hour),
-                            2 => Some(Tf2dWarning::Minute),
-                            3 => Some(Tf2dWarning::Second),
-                            _ => unreachable!(),
-                        };
-                        assert_eq!(w, expected, "{s:?} {h} {m} {sec:e}");
-                        assert!(same(d, days), "{s:?} {h} {m} {sec:e}: {d:e} vs C {days:e}");
-                        n += 1;
-                    }
-                }
-            }
-        }
-        assert!(n > 5000 && undefined > 100);
-    }
 
     #[test]
     fn tf2d_takes_the_magnitude_of_the_most_negative_int_as_2_pow_31() {

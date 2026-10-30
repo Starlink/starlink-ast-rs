@@ -1863,20 +1863,3 @@ pub(crate) fn nut00a(date1: f64, date2: f64) -> (f64, f64) {
     // Add luni-solar and planetary components.
     (dpsils + dpsipl, depsls + depspl)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn nut00a_matches_vendored_c_bit_for_bit() {
-        for (d1, d2) in nutation_dates() {
-            let (mut dp, mut de) = (0.0, 0.0);
-            // SAFETY: two scalar outputs.
-            unsafe { astEraNut00a(d1, d2, &mut dp, &mut de) };
-            let (rp, re) = nut00a(d1, d2);
-            assert!(same(rp, dp) && same(re, de), "{d1:e} {d2:e}");
-        }
-    }
-}

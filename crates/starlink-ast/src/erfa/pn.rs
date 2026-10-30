@@ -71,26 +71,3 @@ pub(crate) fn pn(p: &V3) -> (f64, V3) {
     let u = if w == 0.0 { [0.0; 3] } else { sxp(1.0 / w, p) };
     (w, u)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn pn_matches_vendored_c_bit_for_bit() {
-        for p in vectors(20_000) {
-            let (mut r, mut u) = (0.0, [0.0; 3]);
-            // SAFETY: the vector holds three values.
-            unsafe { astEraPn(p.as_ptr(), &mut r, u.as_mut_ptr()) };
-            let (rr, ur) = pn(&p);
-            assert!(same(rr, r) && same3(&ur, &u), "{p:?}");
-            let mut x = p;
-            let mut r2 = 0.0;
-            // SAFETY: as above, reading and writing the same vector.
-            unsafe { astEraPn(x.as_ptr(), &mut r2, x.as_mut_ptr()) };
-            assert!(same(rr, r2) && same3(&ur, &x), "aliased {p:?}");
-        }
-    }
-}

@@ -67,18 +67,3 @@
 pub(crate) fn fapa03(t: f64) -> f64 {
     (0.024381750 + 0.00000538691 * t) * t
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn fapa03_matches_vendored_c_bit_for_bit() {
-        for t in centuries() {
-            // SAFETY: a pure function of its argument.
-            let c = unsafe { astEraFapa03(t) };
-            assert!(same(fapa03(t), c), "{t:e}");
-        }
-    }
-}

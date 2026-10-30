@@ -66,6 +66,7 @@ use super::{M3, V3};
 /// Expresses an r-matrix as an r-vector, the rotation vector of the
 /// rotation it represents.
 #[inline]
+#[allow(dead_code)]
 pub(crate) fn rm2v(r: &M3) -> V3 {
     let x = r[1][2] - r[2][1];
     let y = r[2][0] - r[0][2];
@@ -78,22 +79,5 @@ pub(crate) fn rm2v(r: &M3) -> V3 {
         [x * f, y * f, z * f]
     } else {
         [0.0; 3]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn rm2v_matches_vendored_c_bit_for_bit() {
-        for m in matrices(2_000) {
-            let mut c = [0.0; 3];
-            // SAFETY: the matrix holds nine values, the vector three.
-            unsafe { astEraRm2v(m.as_ptr(), c.as_mut_ptr()) };
-            assert!(same3(&rm2v(&m), &c), "{m:?}");
-        }
     }
 }

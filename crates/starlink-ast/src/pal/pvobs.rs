@@ -22,31 +22,3 @@ pub(crate) fn pvobs(p: f64, h: f64, stl: f64) -> [f64; 6] {
     let v = PAL__SR * r;
     [r * c, r * s, z, -v * s, v * c, 0.0]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::{geodetic_heights, geodetic_latitudes, same};
-    use crate::test_inputs::*;
-
-    #[test]
-    fn pvobs_matches_vendored_c_bit_for_bit() {
-        let lats = geodetic_latitudes(300);
-        let heights = geodetic_heights();
-        let sts = angles(40);
-        for &p in &lats {
-            for &h in &heights {
-                for &stl in &sts {
-                    let mut c = [0.0; 6];
-                    // SAFETY: the output holds six doubles.
-                    unsafe { super::super::astPalPvobs(p, h, stl, c.as_mut_ptr()) };
-                    let r = pvobs(p, h, stl);
-                    assert!(
-                        (0..6).all(|k| same(r[k], c[k])),
-                        "{p:e} {h:e} {stl:e}: {r:?} vs C {c:?}"
-                    );
-                }
-            }
-        }
-    }
-}

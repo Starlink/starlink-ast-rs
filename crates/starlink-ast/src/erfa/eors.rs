@@ -80,39 +80,3 @@ pub(crate) fn eors(rnpb: &M3, s: f64) -> f64 {
         s
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn eors_matches_vendored_c_bit_for_bit() {
-        let mut ms = matrices(2_000);
-        ms.extend(nutation_dates().into_iter().step_by(10).map(|(d1, d2)| {
-            let mut m = [[0.0; 3]; 3];
-            // SAFETY: nine outputs.
-            unsafe { astEraPnm06a(d1, d2, m.as_mut_ptr()) };
-            m
-        }));
-        // Both of p and q zero, so the locator is returned unchanged.
-        ms.push([[0.0; 3]; 3]);
-        ms.push([[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
-        let ss = [
-            0.0,
-            -0.0,
-            1e-8,
-            -3e-8,
-            1.0,
-            f64::NAN,
-            crate::constants::BAD_VALUE,
-        ];
-        for (k, m) in ms.iter().enumerate() {
-            let s = ss[k % ss.len()];
-            // SAFETY: nine inputs; a pure function of them.
-            let c = unsafe { astEraEors(m.as_ptr(), s) };
-            assert!(same(eors(m, s), c), "{m:?} {s:e}");
-        }
-    }
-}

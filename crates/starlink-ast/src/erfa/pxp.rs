@@ -70,28 +70,3 @@ pub(crate) fn pxp(a: &V3, b: &V3) -> V3 {
     let (xb, yb, zb) = (b[0], b[1], b[2]);
     [ya * zb - za * yb, za * xb - xa * zb, xa * yb - ya * xb]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn pxp_matches_vendored_c_bit_for_bit() {
-        let vs = vectors(20_000);
-        let n = vs.len();
-        for i in 0..n {
-            let (a, b) = (vs[i], vs[(i * 31 + 7) % n]);
-            let mut c = [0.0; 3];
-            // SAFETY: each vector holds three values.
-            unsafe { astEraPxp(a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) };
-            assert!(same3(&pxp(&a, &b), &c), "{a:?} {b:?}");
-            // The C function with its output aliasing its first input.
-            let mut x = a;
-            // SAFETY: as above, reading and writing the same vector.
-            unsafe { astEraPxp(x.as_ptr(), b.as_ptr(), x.as_mut_ptr()) };
-            assert!(same3(&pxp(&a, &b), &x), "aliased {a:?} {b:?}");
-        }
-    }
-}

@@ -94,22 +94,3 @@ pub(crate) fn fk5hz(r5: f64, d5: f64, date1: f64, date2: f64) -> (f64, f64) {
     let (w, dh) = c2s(ph);
     (anp(w), dh)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn fk5hz_matches_vendored_c_bit_for_bit() {
-        for (r, d) in fk_positions() {
-            for (d1, d2) in fk_dates() {
-                let (mut cr, mut cd) = (0.0, 0.0);
-                // SAFETY: two scalar outputs.
-                unsafe { astEraFk5hz(r, d, d1, d2, &mut cr, &mut cd) };
-                let (pr, pd) = fk5hz(r, d, d1, d2);
-                assert!(same(pr, cr) && same(pd, cd), "{r:e} {d:e} {d1:e} {d2:e}");
-            }
-        }
-    }
-}

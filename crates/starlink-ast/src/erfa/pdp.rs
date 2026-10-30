@@ -68,22 +68,3 @@ use super::V3;
 pub(crate) fn pdp(a: &V3, b: &V3) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn pdp_matches_vendored_c_bit_for_bit() {
-        let vs = vectors(20_000);
-        let n = vs.len();
-        for i in 0..n {
-            let (a, b) = (vs[i], vs[(i * 31 + 7) % n]);
-            // SAFETY: a pure function of its arguments.
-            let c = unsafe { astEraPdp(a.as_ptr(), b.as_ptr()) };
-            assert!(same(pdp(&a, &b), c), "{a:?} {b:?}");
-        }
-    }
-}

@@ -22,7 +22,7 @@ For background on the motivation for the port see [DMTN-349](https://dmtn-349.ls
 starlink-ast = "0.1"
 ```
 
-The crate carries the C sources of the PAL, ERFA and WCSLIB routines it still uses and compiles them in its build script, so building needs a C compiler and nothing else.
+The crate is Rust throughout, including the PAL, ERFA and WCSLIB routines it uses, so building needs a Rust toolchain and no C compiler.
 
 A first program converts a position from FK5 equatorial coordinates to Galactic coordinates:
 

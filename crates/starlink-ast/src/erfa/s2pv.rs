@@ -79,38 +79,3 @@ pub(crate) fn s2pv(theta: f64, phi: f64, r: f64, td: f64, pd: f64, rd: f64) -> P
         [-y * td - w * ct, x * td - w * st, rpd * cp + sp * rd],
     ]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn s2pv_matches_vendored_c_bit_for_bit() {
-        let pairs = angle_pairs(10_000);
-        let n = pairs.len();
-        let sp = specials();
-        let mut rng = SplitMix64::new(0x5eed_5291);
-        let mut cases: Vec<[f64; 6]> = Vec::new();
-        for i in 0..n {
-            let (a, b) = (pairs[i], pairs[(i * 31 + 7) % n]);
-            let c = pairs[(i * 17 + 3) % n];
-            cases.push([a.0, a.1, c.0, b.0, b.1, c.1]);
-        }
-        for _ in 0..20_000 {
-            let mut v = [0.0; 6];
-            for x in &mut v {
-                *x = sp[(rng.next_u64() % sp.len() as u64) as usize];
-            }
-            cases.push(v);
-        }
-        for a in cases {
-            let mut c = [[0.0; 3]; 2];
-            // SAFETY: the output holds six values.
-            unsafe { astEraS2pv(a[0], a[1], a[2], a[3], a[4], a[5], c.as_mut_ptr()) };
-            let r = s2pv(a[0], a[1], a[2], a[3], a[4], a[5]);
-            assert!(same3(&r[0], &c[0]) && same3(&r[1], &c[1]), "{a:?}");
-        }
-    }
-}

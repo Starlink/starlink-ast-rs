@@ -69,32 +69,3 @@ use super::{PV, ppsp};
 pub(crate) fn pvu(dt: f64, pv: &PV) -> PV {
     [ppsp(&pv[0], dt, &pv[1]), pv[1]]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn pvu_matches_vendored_c_bit_for_bit() {
-        let vs = vectors(20_000);
-        let n = vs.len();
-        for i in 0..n {
-            let pv: PV = [vs[i], vs[(i * 31 + 7) % n]];
-            let dt = vs[(i * 17 + 3) % n][2];
-            let mut c = [[0.0; 3]; 2];
-            // SAFETY: each pv-vector holds six values.
-            unsafe { astEraPvu(dt, pv.as_ptr(), c.as_mut_ptr()) };
-            let r = pvu(dt, &pv);
-            assert!(same3(&r[0], &c[0]) && same3(&r[1], &c[1]), "{dt:e} {pv:?}");
-            let mut x = pv;
-            // SAFETY: as above, reading and writing the same pv-vector.
-            unsafe { astEraPvu(dt, x.as_ptr(), x.as_mut_ptr()) };
-            assert!(
-                same3(&r[0], &x[0]) && same3(&r[1], &x[1]),
-                "aliased {dt:e} {pv:?}"
-            );
-        }
-    }
-}

@@ -15,31 +15,3 @@ pub(crate) fn rvgalc(r2000: f64, d2000: f64) -> f64 {
     let vb = erfa::s2c(r2000, d2000);
     erfa::pdp(&VA, &vb)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::same;
-    use crate::test_inputs::{angle_pairs, specials};
-
-    #[test]
-    fn rvgalc_matches_vendored_c_bit_for_bit() {
-        let mut pairs = angle_pairs(20_000);
-        for &a in &specials() {
-            for &b in &specials() {
-                pairs.push((a, b));
-            }
-        }
-        let pole = std::f64::consts::FRAC_PI_2;
-        for d in [pole, -pole, pole - 1e-15, -(pole - 1e-15)] {
-            for a in [0.0, 1.0, 3.0, 6.0] {
-                pairs.push((a, d));
-            }
-        }
-        for (a, d) in pairs {
-            // SAFETY: scalar arguments.
-            let c = unsafe { super::super::astPalRvgalc(a, d) };
-            assert!(same(rvgalc(a, d), c), "{a:e} {d:e}");
-        }
-    }
-}

@@ -88,23 +88,3 @@ pub(crate) fn fk54z(r2000: f64, d2000: f64, bepoch: f64) -> (f64, f64, f64, f64)
     let (w, d1950) = c2s(p);
     (anp(w), d1950, pr, pd)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn fk54z_matches_vendored_c_bit_for_bit() {
-        for (r, d) in fk_positions() {
-            for e in fk_epochs() {
-                let mut c = [0.0; 4];
-                // SAFETY: four scalar outputs.
-                unsafe { astEraFk54z(r, d, e, &mut c[0], &mut c[1], &mut c[2], &mut c[3]) };
-                let o = fk54z(r, d, e);
-                let o = [o.0, o.1, o.2, o.3];
-                assert!((0..4).all(|k| same(o[k], c[k])), "{r:e} {d:e} {e:e}");
-            }
-        }
-    }
-}

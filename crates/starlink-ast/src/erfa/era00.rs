@@ -76,21 +76,3 @@ pub(crate) fn era00(dj1: f64, dj2: f64) -> f64 {
     // Earth rotation angle at this UT1.
     anp(ERFA_D2PI * (f + 0.7790572732640 + 0.00273781191135448 * t))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn era00_matches_vendored_c_bit_for_bit() {
-        for (d1, d2) in date_pairs() {
-            for (a, b) in [(d1, d2), (d2, d1)] {
-                // SAFETY: a pure function of its arguments.
-                let c = unsafe { astEraEra00(a, b) };
-                assert!(same(era00(a, b), c), "{a:e} {b:e}");
-            }
-        }
-    }
-}

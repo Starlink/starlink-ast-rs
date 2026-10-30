@@ -70,18 +70,3 @@ use super::ERFA_D2PI;
 pub(crate) fn fasa03(t: f64) -> f64 {
     (0.874016757 + 21.3299104960 * t) % ERFA_D2PI
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn fasa03_matches_vendored_c_bit_for_bit() {
-        for t in centuries() {
-            // SAFETY: a pure function of its argument.
-            let c = unsafe { astEraFasa03(t) };
-            assert!(same(fasa03(t), c), "{t:e}");
-        }
-    }
-}

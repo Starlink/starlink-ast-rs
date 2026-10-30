@@ -1,7 +1,7 @@
 // Copyright 2026 Association of Universities for Research in Astronomy (AURA)
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-//! Rust ports of the ERFA functions the crate uses, replacing the vendored C.
+//! Rust ports of the ERFA functions the crate uses, replacing the C library AST once compiled.
 //!
 //! One file per ERFA function. Each carries ERFA's copyright and licence
 //! notice, which its BSD terms require of redistributed source, and names
@@ -22,9 +22,6 @@
 //! calls into ERFA, so they use the `f64` methods directly rather than the
 //! counted wrappers in `crate::math`.
 #![allow(clippy::disallowed_methods)]
-// Ports are `pub(crate)` for callers elsewhere in the crate, and the
-// differential tests exercise each of them.
-#![allow(dead_code, unused_imports)]
 // The constants are `erfam.h`'s literals character for character.
 #![allow(clippy::excessive_precision, clippy::approx_constant)]
 
@@ -35,8 +32,6 @@ mod c2s;
 mod cal2jd;
 mod d2tf;
 mod dat;
-#[cfg(test)]
-pub(crate) mod difftest;
 mod dtdb;
 mod ee06a;
 mod eform;
@@ -115,7 +110,12 @@ pub(crate) use anpm::anpm;
 pub(crate) use bpn2xy::bpn2xy;
 pub(crate) use cal2jd::{BadDay, Cal2jdError, cal2jd};
 pub(crate) use d2tf::d2tf;
-pub(crate) use dat::{CHANGES, DRIFT, DatError, LEAP_SECONDS, NERA1, PreUtc, dat};
+// The error and warning types are named by callers that match on them.
+#[cfg(test)]
+pub(crate) use dat::CHANGES;
+pub(crate) use dat::{DRIFT, LEAP_SECONDS, NERA1, dat};
+#[allow(unused_imports)]
+pub(crate) use dat::{DatError, PreUtc};
 pub(crate) use dtdb::dtdb;
 pub(crate) use ee06a::ee06a;
 pub(crate) use eform::{Ellipsoid, eform};
@@ -124,7 +124,9 @@ pub(crate) use epb::epb;
 pub(crate) use epb2jd::epb2jd;
 pub(crate) use epj::epj;
 pub(crate) use epj2jd::epj2jd;
-pub(crate) use epv00::{OutsideRange, epv00};
+#[allow(unused_imports)]
+pub(crate) use epv00::OutsideRange;
+pub(crate) use epv00::epv00;
 pub(crate) use era00::era00;
 pub(crate) use fad03::fad03;
 pub(crate) use fae03::fae03;
@@ -171,6 +173,7 @@ pub(crate) use ppsp::ppsp;
 pub(crate) use pv2s::pv2s;
 pub(crate) use pvu::pvu;
 pub(crate) use pxp::pxp;
+#[allow(unused_imports)]
 pub(crate) use rm2v::rm2v;
 pub(crate) use rv2m::rv2m;
 pub(crate) use rx::rx;
@@ -195,14 +198,19 @@ pub(crate) type M3 = [[f64; 3]; 3];
 /// A pv-vector: position, then velocity.
 pub(crate) type PV = [[f64; 3]; 2];
 
+// The constants of `erfam.h` the ports use, and the ones beside them that
+// no port uses yet, which carry `allow(dead_code)`.
 pub(crate) const ERFA_DPI: f64 = 3.141592653589793238462643;
 pub(crate) const ERFA_D2PI: f64 = 6.283185307179586476925287;
+#[allow(dead_code)]
 pub(crate) const ERFA_DR2D: f64 = 57.29577951308232087679815;
 pub(crate) const ERFA_DD2R: f64 = 1.745329251994329576923691e-2;
 pub(crate) const ERFA_DR2AS: f64 = 206264.8062470963551564734;
 pub(crate) const ERFA_DAS2R: f64 = 4.848136811095359935899141e-6;
+#[allow(dead_code)]
 pub(crate) const ERFA_DS2R: f64 = 7.272205216643039903848712e-5;
 pub(crate) const ERFA_TURNAS: f64 = 1296000.0;
+#[allow(dead_code)]
 pub(crate) const ERFA_DMAS2R: f64 = ERFA_DAS2R / 1e3;
 pub(crate) const ERFA_DTY: f64 = 365.242198781;
 pub(crate) const ERFA_DAYSEC: f64 = 86400.0;
@@ -212,15 +220,24 @@ pub(crate) const ERFA_DJM: f64 = 365250.0;
 pub(crate) const ERFA_DJ00: f64 = 2451545.0;
 pub(crate) const ERFA_DJM0: f64 = 2400000.5;
 pub(crate) const ERFA_DJM00: f64 = 51544.5;
+#[allow(dead_code)]
 pub(crate) const ERFA_DJM77: f64 = 43144.0;
+#[allow(dead_code)]
 pub(crate) const ERFA_TTMTAI: f64 = 32.184;
 pub(crate) const ERFA_DAU: f64 = 149597870.7e3;
+#[allow(dead_code)]
 pub(crate) const ERFA_CMPS: f64 = 299792458.0;
+#[allow(dead_code)]
 pub(crate) const ERFA_AULT: f64 = ERFA_DAU / ERFA_CMPS;
+#[allow(dead_code)]
 pub(crate) const ERFA_DC: f64 = ERFA_DAYSEC / ERFA_AULT;
+#[allow(dead_code)]
 pub(crate) const ERFA_ELG: f64 = 6.969290134e-10;
+#[allow(dead_code)]
 pub(crate) const ERFA_ELB: f64 = 1.550519768e-8;
+#[allow(dead_code)]
 pub(crate) const ERFA_TDB0: f64 = -6.55e-5;
+#[allow(dead_code)]
 pub(crate) const ERFA_SRS: f64 = 1.97412574336e-8;
 
 /// Truncates towards zero.

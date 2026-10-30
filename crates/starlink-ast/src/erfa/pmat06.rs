@@ -73,21 +73,3 @@ pub(crate) fn pmat06(date1: f64, date2: f64) -> M3 {
     // Form the matrix.
     fw2m(gamb, phib, psib, epsa)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn pmat06_matches_vendored_c_bit_for_bit() {
-        for (d1, d2) in date_pairs() {
-            let mut m = [[0.0; 3]; 3];
-            // SAFETY: nine outputs.
-            unsafe { astEraPmat06(d1, d2, m.as_mut_ptr()) };
-            let r = pmat06(d1, d2);
-            assert!((0..3).all(|i| same3(&r[i], &m[i])), "{d1:e} {d2:e}");
-        }
-    }
-}

@@ -21,27 +21,3 @@ pub(crate) fn geoc(p: f64, h: f64) -> (f64, f64) {
     // PAL divides by `cos(elong)` for a longitude that is the constant 0.
     (xyz[0] / (au * f64::cos(elong)), xyz[2] / au)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::{geodetic_heights, geodetic_latitudes, same};
-
-    #[test]
-    fn geoc_matches_vendored_c_bit_for_bit() {
-        let lats = geodetic_latitudes(3000);
-        let heights = geodetic_heights();
-        for &p in &lats {
-            for &h in &heights {
-                let (mut r, mut z) = (0.0, 0.0);
-                // SAFETY: both outputs are one double.
-                unsafe { super::super::astPalGeoc(p, h, &mut r, &mut z) };
-                let (pr, pz) = geoc(p, h);
-                assert!(
-                    same(pr, r) && same(pz, z),
-                    "{p:e} {h:e}: ({pr:e}, {pz:e}) vs C ({r:e}, {z:e})"
-                );
-            }
-        }
-    }
-}

@@ -67,8 +67,10 @@ pub(crate) enum Ellipsoid {
     /// WGS84 (ERFA's `ERFA_WGS84`, 1).
     Wgs84,
     /// GRS80 (ERFA's `ERFA_GRS80`, 2).
+    #[allow(dead_code)] // Only WGS84 has a caller; the others complete the choice.
     Grs80,
     /// WGS72 (ERFA's `ERFA_WGS72`, 3).
+    #[allow(dead_code)] // As for GRS80.
     Wgs72,
 }
 

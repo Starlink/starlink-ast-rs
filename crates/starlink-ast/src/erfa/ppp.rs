@@ -68,28 +68,3 @@ use super::V3;
 pub(crate) fn ppp(a: &V3, b: &V3) -> V3 {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn ppp_matches_vendored_c_bit_for_bit() {
-        let vs = vectors(20_000);
-        let n = vs.len();
-        for i in 0..n {
-            let (a, b) = (vs[i], vs[(i * 31 + 7) % n]);
-            let mut c = [0.0; 3];
-            // SAFETY: each vector holds three values.
-            unsafe { astEraPpp(a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) };
-            assert!(same3(&ppp(&a, &b), &c), "{a:?} {b:?}");
-            // The C function with its output aliasing its first input.
-            let mut x = a;
-            // SAFETY: as above, reading and writing the same vector.
-            unsafe { astEraPpp(x.as_ptr(), b.as_ptr(), x.as_mut_ptr()) };
-            assert!(same3(&ppp(&a, &b), &x), "aliased {a:?} {b:?}");
-        }
-    }
-}

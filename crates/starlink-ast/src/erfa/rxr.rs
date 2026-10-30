@@ -78,35 +78,3 @@ pub(crate) fn rxr(a: &M3, b: &M3) -> M3 {
     }
     wm
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn rxr_matches_vendored_c_bit_for_bit() {
-        let ms = matrices(2_000);
-        let n = ms.len();
-        for i in 0..n {
-            for k in 0..8 {
-                let (a, b) = (&ms[i], &ms[(i * 31 + 7 + k * 101) % n]);
-                let mut c = [[0.0; 3]; 3];
-                // SAFETY: each matrix holds nine values.
-                unsafe { astEraRxr(a.as_ptr(), b.as_ptr(), c.as_mut_ptr()) };
-                let r = rxr(a, b);
-                assert!((0..3).all(|j| same3(&r[j], &c[j])), "{a:?} {b:?}");
-                // The C function with its output aliasing each input.
-                let mut x = *a;
-                // SAFETY: as above, reading and writing the same matrix.
-                unsafe { astEraRxr(x.as_ptr(), b.as_ptr(), x.as_mut_ptr()) };
-                assert!((0..3).all(|j| same3(&r[j], &x[j])), "aliased a {a:?} {b:?}");
-                let mut y = *b;
-                // SAFETY: as above.
-                unsafe { astEraRxr(a.as_ptr(), y.as_ptr(), y.as_mut_ptr()) };
-                assert!((0..3).all(|j| same3(&r[j], &y[j])), "aliased b {a:?} {b:?}");
-            }
-        }
-    }
-}

@@ -17,7 +17,7 @@ For background on the motivation for the port see [DMTN-349](https://dmtn-349.ls
 
 ## Building
 
-Requires a C compiler (for vendored PAL, ERFA, and wcslib) and a Rust toolchain. The minimum supported Rust version is pinned in `rust-toolchain.toml`.
+Requires a Rust toolchain and no C compiler. The minimum supported Rust version is pinned in `rust-toolchain.toml`.
 
 ```shell
 cargo build                    # build the default crates
@@ -71,7 +71,7 @@ This builds rustdoc for all crates and opens the result in a browser. The `starl
 starlink-ast-rs/
 ├── crates/
 │   ├── starlink-ast/      # pure-Rust idiomatic API
-│   │   └── vendor/        # vendored C sources (pal, erfa, wcslib)
+│   │   └── vendor/        # ast_err.msg, which build.rs turns into the error codes
 │   ├── starlink-ast-capi/ # cdylib; re-exports ast.h symbols
 │   ├── ast-plugins/       # Grf / Grf3d backends
 │   ├── ast-ffi-tests/     # tier 3: C tests vs Rust libast

@@ -76,20 +76,3 @@ pub(crate) fn pnm06a(date1: f64, date2: f64) -> M3 {
     // Equinox based nutation x precession x bias matrix.
     fw2m(gamb, phib, psib + dp, epsa + de)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-
-    #[test]
-    fn pnm06a_matches_vendored_c_bit_for_bit() {
-        for (d1, d2) in nutation_dates() {
-            let mut c = [[0.0; 3]; 3];
-            // SAFETY: nine outputs.
-            unsafe { astEraPnm06a(d1, d2, c.as_mut_ptr()) };
-            let r = pnm06a(d1, d2);
-            assert!((0..3).all(|i| same3(&r[i], &c[i])), "{d1:e} {d2:e}");
-        }
-    }
-}

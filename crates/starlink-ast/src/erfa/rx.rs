@@ -79,26 +79,3 @@ pub(crate) fn rx(angle: f64, mut r: M3) -> M3 {
     r[2] = [a20, a21, a22];
     r
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn rx_matches_vendored_c_bit_for_bit() {
-        let ms = matrices(2_000);
-        let angles = angles(2_000);
-        for (i, m) in ms.iter().enumerate() {
-            for k in 0..8 {
-                let a = angles[(i * 8 + k) % angles.len()];
-                let mut c = *m;
-                // SAFETY: the matrix holds nine values.
-                unsafe { astEraRx(a, c.as_mut_ptr()) };
-                let r = rx(a, *m);
-                assert!((0..3).all(|j| same3(&r[j], &c[j])), "{a:e} {m:?}");
-            }
-        }
-    }
-}

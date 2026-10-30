@@ -6,7 +6,7 @@
 //! [`read_date_time`] ports `astReadDateTime` (frame.c:8892): it parses a
 //! date/time string in any of the formats AST accepts and returns the
 //! equivalent Modified Julian Date. All calendar arithmetic is delegated to
-//! the vendored PAL via [`crate::pal`]; only the format dispatch is ported.
+//! the ported PAL in [`crate::pal`]; only the format dispatch is ported.
 
 use crate::pal;
 

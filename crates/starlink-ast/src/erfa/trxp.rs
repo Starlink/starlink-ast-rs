@@ -68,27 +68,3 @@ use super::{M3, V3, rxp, tr};
 pub(crate) fn trxp(r: &M3, p: &V3) -> V3 {
     rxp(&tr(r), p)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn trxp_matches_vendored_c_bit_for_bit() {
-        let ms = matrices(2_000);
-        let vs = vectors(20_000);
-        for (i, p) in vs.iter().enumerate() {
-            let m = &ms[(i * 7) % ms.len()];
-            let mut c = [0.0; 3];
-            // SAFETY: the matrix holds nine values, the vectors three.
-            unsafe { astEraTrxp(m.as_ptr(), p.as_ptr(), c.as_mut_ptr()) };
-            assert!(same3(&trxp(m, p), &c), "{m:?} {p:?}");
-            let mut x = *p;
-            // SAFETY: as above, reading and writing the same vector.
-            unsafe { astEraTrxp(m.as_ptr(), x.as_ptr(), x.as_mut_ptr()) };
-            assert!(same3(&trxp(m, p), &x), "aliased {m:?} {p:?}");
-        }
-    }
-}

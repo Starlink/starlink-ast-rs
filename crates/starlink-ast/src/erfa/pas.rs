@@ -79,25 +79,3 @@ pub(crate) fn pas(al: f64, ap: f64, bl: f64, bp: f64) -> f64 {
         0.0
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn pas_matches_vendored_c_bit_for_bit() {
-        for (a, b) in angle_quads(20_000) {
-            // SAFETY: a pure function of its arguments.
-            let c = unsafe { astEraPas(a.0, a.1, b.0, b.1) };
-            let r = pas(a.0, a.1, b.0, b.1);
-            assert!(
-                same(r, c),
-                "{a:?} {b:?}: {:x} vs C {:x}",
-                r.to_bits(),
-                c.to_bits()
-            );
-        }
-    }
-}

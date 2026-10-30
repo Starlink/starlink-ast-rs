@@ -921,61 +921,9 @@ pub(crate) fn dtdb(date1: f64, date2: f64, ut: f64, elong: f64, u: f64, v: f64) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
 
     #[test]
     fn table_has_787_rows() {
         assert_eq!(FAIRHD.len(), 787);
-    }
-
-    #[test]
-    fn dtdb_matches_vendored_c_bit_for_bit() {
-        let mut rng = SplitMix64::new(11);
-        let check = |d1: f64, d2: f64, ut: f64, el: f64, u: f64, v: f64| {
-            // SAFETY: a pure function of its arguments.
-            let c = unsafe { astEraDtdb(d1, d2, ut, el, u, v) };
-            assert!(
-                same(dtdb(d1, d2, ut, el, u, v), c),
-                "{d1:e} {d2:e} {ut:e} {el:e} {u:e} {v:e}"
-            );
-        };
-        for _ in 0..4_000 {
-            let d2 = 2_400_000.5 + rng.next_f64() * 100_000.0;
-            let ut = rng.next_f64();
-            let el = (rng.next_f64() * 2.0 - 1.0) * std::f64::consts::PI;
-            let u = rng.next_f64() * 6400.0;
-            let v = (rng.next_f64() * 2.0 - 1.0) * 6400.0;
-            check(2_400_000.5, d2 - 2_400_000.5, ut, el, u, v);
-            check(d2, 0.0, ut, el, u, v);
-            check(
-                2_451_545.0,
-                rng.next_f64() * 40000.0 - 20000.0,
-                ut,
-                el,
-                u,
-                v,
-            );
-        }
-        // Specials in each argument, one at a time against a typical rest.
-        let sp = specials();
-        for &x in &sp {
-            check(x, 0.0, 0.5, 0.3, 4000.0, 3000.0);
-            check(2_451_545.0, x, 0.5, 0.3, 4000.0, 3000.0);
-            check(2_451_545.0, 0.5, x, 0.3, 4000.0, 3000.0);
-            check(2_451_545.0, 0.5, 0.5, x, 4000.0, 3000.0);
-            check(2_451_545.0, 0.5, 0.5, 0.3, x, 3000.0);
-            check(2_451_545.0, 0.5, 0.5, 0.3, 4000.0, x);
-        }
-        for &(a, b) in &[
-            (2_451_545.0, 0.0),
-            (2_400_000.5, 51_544.5),
-            (0.0, 0.0),
-            (1e300, 0.0),
-        ] {
-            for &ut in &[0.0, 1.0, -0.25, 3.75] {
-                check(a, b, ut, 0.0, 0.0, 0.0);
-            }
-        }
     }
 }

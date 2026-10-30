@@ -539,8 +539,8 @@ fn fk4_fk5_round_trip() {
 
     // FK45Z then FK54Z is not a perfect inverse: the E-term and fictitious
     // proper-motion handling leaves a genuine ~6e-11 residual, present
-    // identically in the C library (both call the same vendored eraFk45z /
-    // eraFk54z). 1e-9 sits comfortably above that residual while still
+    // identically in the C library (the port of eraFk45z and eraFk54z is bit
+    // for bit C's). 1e-9 sits comfortably above that residual while still
     // catching a real regression.
     assert_close(back.point(0)[0], ra, 1e-9, "fk45z ra round-trip");
     assert_close(back.point(0)[1], dec, 1e-9, "fk45z dec round-trip");
@@ -723,8 +723,8 @@ fn matrix_op_longitude_is_normalized_to_0_2pi() {
     // evaluates the precession polynomials even at t=0, so PREC(2000,2000)
     // carries an ~1e-7 rotation. The exact C-oracle output for this point is
     // 5.2831853953259547 (palDranrm applied to the precessed longitude), which
-    // Rust reproduces to the last bit because pal::prec calls the same
-    // vendored palPrec. Assert against that golden, not the raw input.
+    // Rust reproduces to the last bit because pal::prec is a bit-for-bit
+    // port of palPrec. Assert against that golden, not the raw input.
     // Shortest literal that round-trips to the same f64 as the C printout.
     const GOLDEN_PREC_LON: f64 = 5.283_185_395_325_955;
     assert_close(got, GOLDEN_PREC_LON, 1e-9, "PREC lon matches C golden");

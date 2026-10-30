@@ -33,33 +33,3 @@ pub(crate) fn etrms(ep: f64) -> V3 {
     let (se0, ce0) = erfa::sincos(e0);
     [ek * sp, -ek * cp * ce0, -ek * cp * se0]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::same3;
-    use crate::test_inputs::angles;
-
-    #[test]
-    fn etrms_matches_vendored_c_bit_for_bit() {
-        let mut eps = angles(2_000);
-        eps.extend([
-            1000.0,
-            1900.0,
-            1950.0,
-            2000.0,
-            2100.0,
-            3000.0,
-            crate::constants::BAD_VALUE,
-        ]);
-        for k in 0..2_000 {
-            eps.push(1000.0 + f64::from(k) * 1.0037);
-        }
-        for ep in eps {
-            let mut c = [0.0; 3];
-            // SAFETY: the output holds three doubles.
-            unsafe { super::super::ffi::astPalEtrms(ep, c.as_mut_ptr()) };
-            assert!(same3(&etrms(ep), &c), "{ep:e}: {:?} vs C {c:?}", etrms(ep));
-        }
-    }
-}

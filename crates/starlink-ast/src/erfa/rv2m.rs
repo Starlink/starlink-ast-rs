@@ -88,21 +88,3 @@ pub(crate) fn rv2m(w: &V3) -> M3 {
         [z * x * f + y * s, z * y * f - x * s, z * z * f + c],
     ]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::erfa::difftest::*;
-    use crate::test_inputs::*;
-
-    #[test]
-    fn rv2m_matches_vendored_c_bit_for_bit() {
-        for w in vectors(20_000) {
-            let mut c = [[0.0; 3]; 3];
-            // SAFETY: the vector holds three values, the matrix nine.
-            unsafe { astEraRv2m(w.as_ptr(), c.as_mut_ptr()) };
-            let r = rv2m(&w);
-            assert!((0..3).all(|j| same3(&r[j], &c[j])), "{w:?}");
-        }
-    }
-}
