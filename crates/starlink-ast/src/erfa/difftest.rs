@@ -47,6 +47,28 @@ unsafe extern "C" {
     pub(super) fn astEraTrxp(r: *const [f64; 3], p: *const f64, trp: *mut f64);
     pub(super) fn astEraRv2m(w: *const f64, r: *mut [f64; 3]);
     pub(super) fn astEraRm2v(r: *const [f64; 3], w: *mut f64);
+    pub(super) fn astEraCal2jd(iy: i32, im: i32, id: i32, djm0: *mut f64, djm: *mut f64) -> i32;
+    pub(super) fn astEraJd2cal(
+        dj1: f64,
+        dj2: f64,
+        iy: *mut i32,
+        im: *mut i32,
+        id: *mut i32,
+        fd: *mut f64,
+    ) -> i32;
+    pub(super) fn astEraD2tf(ndp: i32, days: f64, sign: *mut std::ffi::c_char, ihmsf: *mut i32);
+    pub(super) fn astEraTf2d(
+        s: std::ffi::c_char,
+        ihour: i32,
+        imin: i32,
+        sec: f64,
+        days: *mut f64,
+    ) -> i32;
+    pub(super) fn astEraEpb(dj1: f64, dj2: f64) -> f64;
+    pub(super) fn astEraEpb2jd(epb: f64, djm0: *mut f64, djm: *mut f64);
+    pub(super) fn astEraEpj(dj1: f64, dj2: f64) -> f64;
+    pub(super) fn astEraEpj2jd(epj: f64, djm0: *mut f64, djm: *mut f64);
+    pub(super) fn astEraDat(iy: i32, im: i32, id: i32, fd: f64, deltat: *mut f64) -> i32;
 }
 
 /// Whether two values are the same bit for bit, any two NaNs counting as the
@@ -59,4 +81,63 @@ pub(crate) fn same(a: f64, b: f64) -> bool {
 /// [`same`] for every element of two vectors.
 pub(crate) fn same3(a: &[f64; 3], b: &[f64; 3]) -> bool {
     (0..3).all(|k| same(a[k], b[k]))
+}
+
+/// The next double above `x` (not for NaN or infinities).
+pub(crate) fn up(x: f64) -> f64 {
+    if x == 0.0 {
+        f64::from_bits(1)
+    } else if x > 0.0 {
+        f64::from_bits(x.to_bits() + 1)
+    } else {
+        f64::from_bits(x.to_bits() - 1)
+    }
+}
+
+/// The next double below `x` (not for NaN or infinities).
+pub(crate) fn down(x: f64) -> f64 {
+    -up(-x)
+}
+
+/// The MJD of the start of each leap-second table entry.
+pub(crate) fn leap_second_mjds() -> Vec<f64> {
+    super::CHANGES
+        .iter()
+        .map(|&(iy, im, _)| super::cal2jd(iy, im, 1).unwrap().0.1)
+        .collect()
+}
+
+/// MJDs for the calendar tests: a regular grid over 0 to 100,000 days, every
+/// leap-second instant with one and two ULP either side, the days around
+/// the range limits, and the values no date can be.
+pub(crate) fn mjd_cases() -> Vec<f64> {
+    let mut v: Vec<f64> = (0..270_271).map(|k| f64::from(k) * 0.37).collect();
+    for m in leap_second_mjds() {
+        for x in [m, m - 1.0, m + 1.0] {
+            v.extend([x, up(x), down(x), up(up(x)), down(down(x))]);
+        }
+        // Just under the next midnight: the fraction of the day is within an
+        // ULP of 1.0, where the day rounding decides the month.
+        v.push(down(m));
+    }
+    v.extend([
+        -68569.5 - 2400000.5,
+        -68569.5 - 2400000.5 - 1e-9,
+        1e9 - 2400000.5,
+        1e9 - 2400000.5 + 1e-3,
+        -1e9,
+        1e9,
+        2.0e9,
+        0.0,
+        -0.0,
+        crate::constants::BAD_VALUE,
+        1e300,
+        -1e300,
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::MAX,
+        f64::MIN_POSITIVE,
+    ]);
+    v
 }

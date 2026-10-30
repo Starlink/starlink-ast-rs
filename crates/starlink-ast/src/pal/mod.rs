@@ -19,10 +19,9 @@
 //! that hide the raw pointer gymnastics.  Angles are in radians,
 //! dates are MJD, and 3-vectors / 3x3 matrices use fixed-size arrays.
 
-use std::ffi::c_char;
-
 use crate::constants::BAD_VALUE;
 
+mod dat;
 mod deuler;
 mod dmat;
 mod drange;
@@ -31,6 +30,9 @@ use ffi::*;
 
 /// PAL's `PAL__DPI` (palmac.h): pi.
 pub(crate) const PAL__DPI: f64 = 3.1415926535897932384626433832795028841971693993751;
+/// PAL's `PAL__MJD0` (palmac.h): the zero point of the Modified Julian Date, as a
+/// Julian Date.
+pub(crate) const PAL__MJD0: f64 = 2400000.5;
 /// PAL's `PAL__D2PI` (palmac.h): 2 pi.
 pub(crate) const PAL__D2PI: f64 = 6.2831853071795864769252867665590057683943387987502;
 
@@ -47,22 +49,30 @@ use crate::call_counts::counted;
 
 /// Convert Modified Julian Date to Julian epoch.
 pub(crate) fn epj(date: f64) -> f64 {
-    counted!(astPalEpj(date))
+    // palEpj is eraEpj.
+    crate::call_counts::hit("astPalEpj");
+    crate::erfa::epj(PAL__MJD0, date)
 }
 
 /// Convert Julian epoch to Modified Julian Date.
 pub(crate) fn epj2d(epj: f64) -> f64 {
-    counted!(astPalEpj2d(epj))
+    // palEpj2d is eraEpj2jd's MJD part.
+    crate::call_counts::hit("astPalEpj2d");
+    crate::erfa::epj2jd(epj).1
 }
 
 /// Convert Modified Julian Date to Besselian epoch.
 pub(crate) fn epb(date: f64) -> f64 {
-    counted!(astPalEpb(date))
+    // palEpb is eraEpb.
+    crate::call_counts::hit("astPalEpb");
+    crate::erfa::epb(PAL__MJD0, date)
 }
 
 /// Convert Besselian epoch to Modified Julian Date.
 pub(crate) fn epb2d(epb: f64) -> f64 {
-    counted!(astPalEpb2d(epb))
+    // palEpb2d is eraEpb2jd's MJD part.
+    crate::call_counts::hit("astPalEpb2d");
+    crate::erfa::epb2jd(epb).1
 }
 
 // ---------------------------------------------------------------------------
@@ -553,7 +563,8 @@ pub(crate) fn dav2m(axvec: &[f64; 3]) -> [[f64; 3]; 3] {
 
 /// TAI-UTC leap seconds for a given UTC date (MJD).
 pub(crate) fn dat(mjd: f64) -> f64 {
-    counted!(astPalDat(mjd))
+    crate::call_counts::hit("astPalDat");
+    dat::dat(mjd)
 }
 
 /// Greenwich Mean Sidereal Time (radians) for a given UT1 date (MJD).
@@ -758,53 +769,49 @@ pub(crate) fn rvlsrk(ra: f64, dec: f64) -> f64 {
 
 /// Modified Julian Date to Gregorian calendar fields.
 ///
-/// Wraps `palDjcl`. Returns `(year, month, day, day_fraction, status)`
-/// where `status` is 0 on success or non-zero if `djm` is out of the
-/// range supported by the underlying ERFA conversion.
-pub(crate) fn djcl(djm: f64) -> (i32, i32, i32, f64, i32) {
-    let mut iy = 0;
-    let mut im = 0;
-    let mut id = 0;
-    let mut fd = 0.0;
-    let mut j = 0;
-    counted!(astPalDjcl(djm, &mut iy, &mut im, &mut id, &mut fd, &mut j));
-    (iy, im, id, fd, j)
+/// Returns `(year, month, day, day_fraction)`, or the error when `djm` is
+/// outside the range the conversion supports. A NaN date is accepted, as
+/// in ERFA, and gives a NaN fraction.
+pub(crate) fn djcl(djm: f64) -> Result<(i32, i32, i32, f64), crate::erfa::Jd2calError> {
+    // palDjcl is eraJd2cal with the MJD zero point.
+    crate::call_counts::hit("astPalDjcl");
+    crate::erfa::jd2cal(PAL__MJD0, djm)
 }
 
 /// Gregorian calendar date to Modified Julian Date.
 ///
-/// Wraps `palCldj`. Returns `(mjd, status)` where `status` is 0 on
-/// success, or non-zero for an invalid year/month/day.
-pub(crate) fn cldj(iy: i32, im: i32, id: i32) -> (f64, i32) {
-    let mut djm = 0.0;
-    let mut j = 0;
-    counted!(astPalCldj(iy, im, id, &mut djm, &mut j));
-    (djm, j)
+/// Returns the MJD, with the warning [`crate::erfa::BadDay`] when the day is
+/// not a day of that month, or the error for an invalid year or month.
+pub(crate) fn cldj(
+    iy: i32,
+    im: i32,
+    id: i32,
+) -> Result<(f64, Option<crate::erfa::BadDay>), crate::erfa::Cal2jdError> {
+    // palCldj is eraCal2jd's MJD part.
+    crate::call_counts::hit("astPalCldj");
+    let ((_, djm), warning) = crate::erfa::cal2jd(iy, im, id)?;
+    Ok((djm, warning))
 }
 
 /// Day fraction to hours, minutes, seconds.
 ///
-/// Wraps `palDd2tf`. `ndp` is the number of decimal places of seconds.
-/// Returns `(sign, [hours, minutes, seconds, fraction])` where `sign`
-/// is `'+'` or `'-'` and the fraction is the `ndp`-digit fractional
-/// seconds field as an integer.
+/// `ndp` is the number of decimal places of seconds. Returns
+/// `(sign, [hours, minutes, seconds, fraction])` where `sign` is `'+'` or
+/// `'-'` and the fraction is the `ndp`-digit fractional seconds field as an
+/// integer.
 pub(crate) fn dd2tf(ndp: i32, days: f64) -> (char, [i32; 4]) {
-    let mut sign: c_char = 0;
-    let mut ihmsf = [0i32; 4];
-    counted!(astPalDd2tf(ndp, days, &mut sign, ihmsf.as_mut_ptr()));
-    let sign = if sign == b'-' as c_char { '-' } else { '+' };
-    (sign, ihmsf)
+    // palDd2tf is eraD2tf.
+    crate::call_counts::hit("astPalDd2tf");
+    crate::erfa::d2tf(ndp, days)
 }
 
 /// Hours, minutes, seconds to a day fraction.
 ///
-/// Wraps `palDtf2d`. Returns `(days, status)` where `status` is 0 on
-/// success, or non-zero for out-of-range hours/minutes/seconds.
-pub(crate) fn dtf2d(ihour: i32, imin: i32, sec: f64) -> (f64, i32) {
-    let mut days = 0.0;
-    let mut j = 0;
-    counted!(astPalDtf2d(ihour, imin, sec, &mut days, &mut j));
-    (days, j)
+/// Returns the days, with the warning for the first out-of-range field.
+pub(crate) fn dtf2d(ihour: i32, imin: i32, sec: f64) -> (f64, Option<crate::erfa::Tf2dWarning>) {
+    // palDtf2d is eraTf2d with a blank sign.
+    crate::call_counts::hit("astPalDtf2d");
+    crate::erfa::tf2d(' ', ihour, imin, sec)
 }
 
 // ---------------------------------------------------------------------------
@@ -1431,28 +1438,29 @@ mod tests {
     #[test]
     fn djcl_known_date() {
         // MJD 51544.0 is 2000-01-01 (J2000.0 epoch is 51544.5 = noon).
-        let (iy, im, id, fd, j) = super::djcl(51544.0);
-        assert_eq!(j, 0);
+        let (iy, im, id, fd) = super::djcl(51544.0).unwrap();
         assert_eq!((iy, im, id), (2000, 1, 1));
         assert!(fd.abs() < 1e-9);
         // The 0.5-day fraction gives midday.
-        let (_, _, _, fd2, _) = super::djcl(51544.5);
+        let (_, _, _, fd2) = super::djcl(51544.5).unwrap();
         assert!((fd2 - 0.5).abs() < 1e-9);
     }
 
     #[test]
     fn cldj_round_trips_djcl() {
-        let (mjd, j) = super::cldj(2000, 1, 1);
-        assert_eq!(j, 0);
+        let (mjd, warning) = super::cldj(2000, 1, 1).unwrap();
+        assert_eq!(warning, None);
         assert!((mjd - 51544.0).abs() < 1e-9);
-        let (iy, im, id, _, _) = super::djcl(mjd);
+        let (iy, im, id, _) = super::djcl(mjd).unwrap();
         assert_eq!((iy, im, id), (2000, 1, 1));
     }
 
     #[test]
     fn cldj_rejects_bad_month() {
-        let (_, j) = super::cldj(2000, 13, 1);
-        assert_ne!(j, 0);
+        assert_eq!(
+            super::cldj(2000, 13, 1),
+            Err(crate::erfa::Cal2jdError::BadMonth)
+        );
     }
 
     #[test]
@@ -1462,8 +1470,8 @@ mod tests {
         assert_eq!(sign, '+');
         assert_eq!([ihmsf[0], ihmsf[1], ihmsf[2]], [12, 0, 0]);
         // Reconstruct the day fraction from h:m:s.
-        let (days, j) = super::dtf2d(ihmsf[0], ihmsf[1], ihmsf[2] as f64);
-        assert_eq!(j, 0);
+        let (days, warning) = super::dtf2d(ihmsf[0], ihmsf[1], ihmsf[2] as f64);
+        assert_eq!(warning, None);
         assert!((days - 0.5).abs() < 1e-9);
     }
 
@@ -1526,7 +1534,7 @@ mod native_tests {
     use super::*;
     use crate::erfa::difftest::{same, same3};
     use crate::test_inputs::{SplitMix64, angle_pairs, matrices, specials, vectors};
-    use std::ffi::CString;
+    use std::ffi::{CString, c_char};
 
     fn same_m(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> bool {
         (0..3).all(|i| same3(&a[i], &b[i]))
@@ -1798,6 +1806,151 @@ mod native_tests {
                 let mut yy = y.clone();
                 yy[n - 1] = s;
                 check_dmat(n, &a, &yy);
+            }
+        }
+    }
+
+    // -- Epoch, calendar and time-of-day wrappers against the C routines --
+
+    /// Dates and epochs, including the values no date can be.
+    fn dates() -> Vec<f64> {
+        let mut v = crate::erfa::difftest::mjd_cases();
+        let mut rng = SplitMix64::new(11);
+        v.extend((0..5_000).map(|_| (rng.next_f64() - 0.2) * 100_000.0));
+        v.extend(specials());
+        v
+    }
+
+    #[test]
+    fn epoch_wrappers_match_vendored_c_bit_for_bit() {
+        let mut epochs: Vec<f64> = (0..=40).map(|k| 1000.0 + f64::from(k) * 50.0).collect();
+        epochs.extend(specials());
+        epochs.extend([1e300, -1e300, 1900.0, 1950.0, 2000.0]);
+        for d in dates() {
+            // SAFETY: pure functions of their arguments.
+            let (j, b) = unsafe { (astPalEpj(d), astPalEpb(d)) };
+            assert!(same(epj(d), j), "epj {d:e}");
+            assert!(same(epb(d), b), "epb {d:e}");
+        }
+        for e in epochs {
+            // SAFETY: pure functions of their arguments.
+            let (j, b) = unsafe { (astPalEpj2d(e), astPalEpb2d(e)) };
+            assert!(same(epj2d(e), j), "epj2d {e:e}");
+            assert!(same(epb2d(e), b), "epb2d {e:e}");
+        }
+    }
+
+    #[test]
+    fn dat_wrapper_matches_vendored_c_where_c_is_defined() {
+        for d in dates() {
+            // SAFETY: a pure function of its argument.
+            let c = unsafe { astPalDat(d) };
+            if crate::erfa::jd2cal(PAL__MJD0, d).is_ok() {
+                assert!(same(dat(d), c), "{d:e}");
+            } else {
+                // C passes `eraDat` fields `eraJd2cal` did not write.
+                assert_eq!(dat(d), 0.0, "{d:e}");
+            }
+        }
+    }
+
+    #[test]
+    fn djcl_matches_vendored_c_bit_for_bit() {
+        for d in dates() {
+            let (mut iy, mut im, mut id, mut fd, mut j) = (0, 0, 0, 0.0, 0);
+            // SAFETY: the pointers are to live locals.
+            unsafe { astPalDjcl(d, &mut iy, &mut im, &mut id, &mut fd, &mut j) };
+            match djcl(d) {
+                Err(crate::erfa::Jd2calError::UnacceptableDate) => {
+                    assert_eq!(j, -1, "{d:e}");
+                    // C wrote none of its outputs.
+                    assert_eq!((iy, im, id, fd.to_bits()), (0, 0, 0, 0), "{d:e}");
+                }
+                Ok((a, b, c, f)) => {
+                    assert_eq!(j, 0, "{d:e}");
+                    assert_eq!((a, b, c), (iy, im, id), "{d:e}");
+                    assert!(same(f, fd), "{d:e}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cldj_matches_vendored_c_bit_for_bit() {
+        use crate::erfa::{BadDay, Cal2jdError};
+        let mut n = 0;
+        for iy in (-4801..=2100)
+            .step_by(7)
+            .chain([i32::MIN, 1999, 2000, 2100, i32::MAX])
+        {
+            for im in -1..=14 {
+                for id in [-1, 0, 1, 28, 29, 30, 31, 32] {
+                    let (mut djm, mut j) = (0.0, 0);
+                    // SAFETY: the pointers are to live locals.
+                    unsafe { astPalCldj(iy, im, id, &mut djm, &mut j) };
+                    let r = cldj(iy, im, id);
+                    match (j, r) {
+                        (-1, Err(Cal2jdError::BadYear)) | (-2, Err(Cal2jdError::BadMonth)) => {}
+                        (0, Ok((m, None))) | (-3, Ok((m, Some(BadDay::OutOfRange)))) => {
+                            assert!(same(m, djm), "{iy}-{im}-{id}");
+                        }
+                        _ => panic!("{iy}-{im}-{id}: C status {j}, port {r:?}"),
+                    }
+                    n += 1;
+                }
+            }
+        }
+        assert!(n > 10_000);
+    }
+
+    #[test]
+    fn dd2tf_matches_vendored_c_bit_for_bit() {
+        let mut days = specials();
+        let mut rng = SplitMix64::new(12);
+        days.extend((0..2_000).map(|_| (rng.next_f64() - 0.5) * 3.0));
+        for ndp in -2..=10 {
+            for &d in &days {
+                let mut sign: c_char = 0;
+                let mut ihmsf = [0i32; 4];
+                // SAFETY: the pointers are to live locals.
+                unsafe { astPalDd2tf(ndp, d, &mut sign, ihmsf.as_mut_ptr()) };
+                let (s, f) = dd2tf(ndp, d);
+                assert_eq!((s, f), (sign as u8 as char, ihmsf), "{ndp} {d:e}");
+            }
+        }
+    }
+
+    #[test]
+    fn dtf2d_matches_vendored_c_bit_for_bit() {
+        use crate::erfa::Tf2dWarning;
+        let secs = [
+            0.0,
+            1.0,
+            -1.0,
+            59.5,
+            60.0,
+            61.0,
+            1e300,
+            BAD_VALUE,
+            f64::NAN,
+            f64::INFINITY,
+        ];
+        for h in [i32::MIN, -1, 0, 5, 23, 24, i32::MAX] {
+            for m in [i32::MIN, -1, 0, 30, 59, 60, i32::MAX] {
+                for &s in &secs {
+                    let (mut days, mut j) = (0.0, 0);
+                    // SAFETY: the pointers are to live locals.
+                    unsafe { astPalDtf2d(h, m, s, &mut days, &mut j) };
+                    let (d, w) = dtf2d(h, m, s);
+                    let expected = match j {
+                        0 => None,
+                        1 => Some(Tf2dWarning::Hour),
+                        2 => Some(Tf2dWarning::Minute),
+                        _ => Some(Tf2dWarning::Second),
+                    };
+                    assert_eq!(w, expected, "{h} {m} {s:e}");
+                    assert!(same(d, days), "{h} {m} {s:e}");
+                }
             }
         }
     }

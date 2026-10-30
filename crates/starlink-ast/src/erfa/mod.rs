@@ -31,8 +31,16 @@
 mod anp;
 mod anpm;
 mod c2s;
+mod cal2jd;
+mod d2tf;
+mod dat;
 #[cfg(test)]
 pub(crate) mod difftest;
+mod epb;
+mod epb2jd;
+mod epj;
+mod epj2jd;
+mod jd2cal;
 mod pas;
 mod pdp;
 mod pm;
@@ -56,11 +64,20 @@ mod s2pv;
 mod sepp;
 mod seps;
 mod sxp;
+mod tf2d;
 mod tr;
 mod trxp;
 
 pub(crate) use anp::anp;
 pub(crate) use anpm::anpm;
+pub(crate) use cal2jd::{BadDay, Cal2jdError, cal2jd};
+pub(crate) use d2tf::d2tf;
+pub(crate) use dat::{CHANGES, DRIFT, DatError, LEAP_SECONDS, NERA1, PreUtc, dat};
+pub(crate) use epb::epb;
+pub(crate) use epb2jd::epb2jd;
+pub(crate) use epj::epj;
+pub(crate) use epj2jd::epj2jd;
+pub(crate) use jd2cal::{Jd2calError, jd2cal};
 pub(crate) use pas::pas;
 pub(crate) use pdp::pdp;
 pub(crate) use pm::pm;
@@ -83,6 +100,7 @@ pub(crate) use s2pv::s2pv;
 pub(crate) use sepp::sepp;
 pub(crate) use seps::seps;
 pub(crate) use sxp::sxp;
+pub(crate) use tf2d::{Tf2dWarning, tf2d};
 pub(crate) use tr::tr;
 pub(crate) use trxp::trxp;
 
@@ -156,4 +174,66 @@ pub(crate) use s2c::{s2c, s2c_kernel, s2c_needs_special};
 #[inline(always)]
 pub(super) fn sincos(x: f64) -> (f64, f64) {
     crate::math::sincos_as_c_uncounted(x)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `dint`, `dnint` and `dsign` against `erfam.h`'s macros, written out
+    /// with the C library functions' semantics.
+    #[test]
+    fn rounding_macros_match_erfam_h() {
+        let values = [
+            0.0,
+            -0.0,
+            0.5,
+            -0.5,
+            0.49999999999999994,
+            -0.49999999999999994,
+            1.5,
+            -1.5,
+            2.5,
+            -2.5,
+            1e15 + 0.5,
+            4503599627370497.5,
+            1e300,
+            -1e300,
+            f64::MAX,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ];
+        for &a in &values {
+            // ERFA_DINT: ((A)<0.0?ceil(A):floor(A))
+            let dint_c = if a < 0.0 { a.ceil() } else { a.floor() };
+            // ERFA_DNINT: (fabs(A)<0.5?0.0:(A)<0.0?ceil((A)-0.5):floor((A)+0.5))
+            let dnint_c = if a.abs() < 0.5 {
+                0.0
+            } else if a < 0.0 {
+                (a - 0.5).ceil()
+            } else {
+                (a + 0.5).floor()
+            };
+            assert_eq!(dint(a).to_bits(), dint_c.to_bits(), "dint {a:e}");
+            assert_eq!(dnint(a).to_bits(), dnint_c.to_bits(), "dnint {a:e}");
+            for &b in &values {
+                // ERFA_DSIGN: ((B)<0.0?-fabs(A):fabs(A))
+                let c = if b < 0.0 { -a.abs() } else { a.abs() };
+                assert_eq!(dsign(a, b).to_bits(), c.to_bits(), "dsign {a:e} {b:e}");
+            }
+        }
+        // Spot values with their known results.
+        assert_eq!(dint(-2.7), -2.0);
+        assert_eq!(dint(2.7), 2.0);
+        assert_eq!(dnint(2.5), 3.0);
+        assert_eq!(dnint(-2.5), -3.0);
+        assert_eq!(dnint(-0.4).to_bits(), 0.0_f64.to_bits());
+        // The sum a + 0.5 rounds up for the largest double below 0.5, so a
+        // value just under a half-integer boundary shows the macro's form.
+        assert_eq!(dnint(0.49999999999999994), 0.0);
+        assert_eq!(dnint(1.4999999999999998), 1.0);
+        assert_eq!(dsign(3.0, -0.0), 3.0);
+        assert_eq!(dsign(-3.0, -1.0), -3.0);
+    }
 }
