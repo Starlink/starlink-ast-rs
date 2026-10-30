@@ -35,6 +35,7 @@ mod galsup;
 mod geoc;
 mod prebn;
 mod prec;
+mod prenut;
 mod pvobs;
 mod rvgalc;
 mod rvlg;
@@ -557,12 +558,16 @@ pub(crate) fn dat(mjd: f64) -> f64 {
 
 /// Greenwich Mean Sidereal Time (radians) for a given UT1 date (MJD).
 pub(crate) fn gmst(ut1: f64) -> f64 {
-    counted!(astPalGmst(ut1))
+    // palGmst is eraGmst06 with UT1 standing in for TT.
+    crate::call_counts::hit("astPalGmst");
+    crate::erfa::gmst06(PAL__MJD0, ut1, PAL__MJD0, ut1)
 }
 
 /// Equation of the equinoxes (radians) for a given TDB date (MJD).
 pub(crate) fn eqeqx(date: f64) -> f64 {
-    counted!(astPalEqeqx(date))
+    // palEqeqx is eraEe06a.
+    crate::call_counts::hit("astPalEqeqx");
+    crate::erfa::ee06a(PAL__MJD0, date)
 }
 
 /// Convert an MJD between the TDB timescale and one of TAI / TT /
@@ -1880,6 +1885,35 @@ mod native_tests {
                 // casts a NaN date to `long`; either is undefined.
                 assert_eq!(dat(d), 0.0, "{d:e}");
             }
+        }
+    }
+
+    /// MJDs from 0 to 100,000 for the sidereal-time wrappers, which sum the
+    /// nutation series per call, then the values no date can be.
+    fn sidereal_mjds() -> Vec<f64> {
+        let mut rng = SplitMix64::new(0x5eed_6357);
+        let mut v: Vec<f64> = (0..=100).map(|k| f64::from(k) * 1000.0).collect();
+        v.extend((0..2_000).map(|_| rng.next_f64() * 100_000.0));
+        v.extend([51544.5, 51544.5 + 1e-9, 51544.0, 60000.25]);
+        v.extend(specials());
+        v
+    }
+
+    #[test]
+    fn gmst_matches_vendored_c_bit_for_bit() {
+        for d in sidereal_mjds() {
+            // SAFETY: a pure function of its argument.
+            let c = unsafe { astPalGmst(d) };
+            assert!(same(gmst(d), c), "{d:e}");
+        }
+    }
+
+    #[test]
+    fn eqeqx_matches_vendored_c_bit_for_bit() {
+        for d in sidereal_mjds() {
+            // SAFETY: a pure function of its argument.
+            let c = unsafe { astPalEqeqx(d) };
+            assert!(same(eqeqx(d), c), "{d:e}");
         }
     }
 

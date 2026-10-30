@@ -76,6 +76,8 @@ unsafe extern "C" {
     pub(super) fn astPalPrebn(bep0: f64, bep1: f64, rmatp: *mut [f64; 3]);
     #[cfg(test)]
     pub(super) fn astPalEcmat(date: f64, rmat: *mut [f64; 3]);
+    #[cfg(test)]
+    pub(super) fn astPalPrenut(epoch: f64, date: f64, rmatpn: *mut [f64; 3]);
 
     // -- Euler rotation --
     pub(super) fn astPalDeuler(
@@ -119,7 +121,9 @@ unsafe extern "C" {
 
     // -- Time / sidereal --
     pub(super) fn astPalDat(dju: f64) -> f64;
+    #[cfg(test)]
     pub(super) fn astPalGmst(ut1: f64) -> f64;
+    #[cfg(test)]
     pub(super) fn astPalEqeqx(date: f64) -> f64;
 
     // -- Observer / velocity --
