@@ -837,8 +837,9 @@ For two identical points the cross product is exactly zero only when each compon
 On arm64 macOS, where clang contracts by default, the C library at the submodule pin returns `(0.1 + pi, 0)` for `astOffset` from `(0.1, 0)` to itself by pi; built without contraction it returns bad coordinates, as the source prescribes.
 This is the same failure as the `UnitNormMap` entry above: a guard that must hold exactly, written against a contractable expression.
 
-**Rust behavior (no mirror):** the port calls the vendored PAL for the cross product, so it inherited the platform's answer, and `offset_normalises_the_longitude_it_returns` in `crates/starlink-ast/tests/test_skyframe.rs` failed on arm64 (it is what failed CI on `macos-latest`).
-`crates/starlink-ast/build.rs` now compiles the vendored PAL, ERFA and wcslib with `-ffp-contract=off`, so the port computes what the C source says on every platform, as its Rust code already does.
+**Rust behavior (no mirror):** the port computes the cross product in Rust, and Rust never contracts a multiply and an add into a fused multiply-add, so it computes what the source says on every platform.
+Before PAL was ported, the port called the vendored C PAL and inherited the platform's answer; `offset_normalises_the_longitude_it_returns` in `crates/starlink-ast/tests/test_skyframe.rs` failed on arm64 for that reason (it is what failed CI on `macos-latest`).
+The crate now compiles no C.
 
 To be raised upstream, with the `UnitNormMap` entry: building AST with `-ffp-contract=off`, or writing both guards against uncontracted expressions, would settle both.
 

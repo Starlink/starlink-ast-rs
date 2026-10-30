@@ -400,7 +400,7 @@ The numerical TDB↔UTC drift questions are already tracked in `docs/issues/time
 - **[MED] TimeFrame — iso-date Format/Unformat.** *(FIXED 2026-06-13.)*
   C overrides `Format`/`Unformat` so that `Format="iso.N[T]"` renders and parses calendar date strings (`timeframe.c` Format:1597 / Unformat:6062 / DateFormat:813). Fully ported:
   - The bare-number default routes through `axis_format::format_value("%1.7G", …)` (7 significant digits).
-  - The vendored pal calendar helpers `palDjcl`/`palCldj`/`palDd2tf`/`palDtf2d` are exposed in `crates/starlink-ast/src/pal.rs` as `djcl`/`cldj`/`dd2tf`/`dtf2d` (C retained and wrapped, not reimplemented).
+  - The PAL calendar routines `palDjcl`/`palCldj`/`palDd2tf`/`palDtf2d` are Rust ports in `crates/starlink-ast/src/pal/`, exposed as `djcl`/`cldj`/`dd2tf`/`dtf2d`.
   - `frames/date_time.rs::read_date_time` ports `astReadDateTime` (frame.c:8892): B/J epochs, decimal years (IAU-1984), MJD, JD, and Gregorian dates with named months / `-`/`/`/`:`/space / `T` separators / decimal-day or h:m:s fractions.
   - `TimeFrame` gained per-instance Unit and Format storage; `make_map` mirrors C `MakeMap` (timeframe.c:3505) with `unit_mapper` bracketing so `unit=s` etc. convert correctly; `date_format`/`value_to_mjd`/`mjd_to_value` drive the iso Format/Unformat; the axis label becomes `Date/Time`/`Date` under a date Format.
   - Oracle-matched against `testtime.c` errors 26-34 and a byte-identical native dump for `unit=s,format=iso.2`.
