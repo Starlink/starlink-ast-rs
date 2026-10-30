@@ -1,4 +1,4 @@
-# commit=7858f26e date=2026-10-30 set=native engines=rust,c
+# commit=24427e6d date=2026-10-30 set=native engines=rust,c
 # machine=Apple M1 Ultra; Darwin 27.2.0
 # rustc=rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew) profile=release
 # c=variant=bench; cc=Apple clang version 21.0.0 (clang-2100.3.34.2); cflags=-O3 -ffp-contract=off; pthreads=ON; submodule=3d3f255f433906417e81d3783537b42d91d49e38
