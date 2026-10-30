@@ -34,6 +34,7 @@ unsafe extern "C" {
     pub(super) fn astPalEqgal(dr: f64, dd: f64, dl: *mut f64, db: *mut f64);
     pub(super) fn astPalGalsup(dl: f64, db: f64, dsl: *mut f64, dsb: *mut f64);
     pub(super) fn astPalSupgal(dsl: f64, dsb: f64, dl: *mut f64, db: *mut f64);
+    #[cfg(test)]
     pub(super) fn astEraFk45z(
         r1950: f64,
         d1950: f64,
@@ -41,6 +42,7 @@ unsafe extern "C" {
         r2000: *mut f64,
         d2000: *mut f64,
     );
+    #[cfg(test)]
     pub(super) fn astEraFk54z(
         r2000: f64,
         d2000: f64,
@@ -50,7 +52,9 @@ unsafe extern "C" {
         dr1950: *mut f64,
         dd1950: *mut f64,
     );
+    #[cfg(test)]
     pub(super) fn astPalFk5hz(r5: f64, d5: f64, epoch: f64, rh: *mut f64, dh: *mut f64);
+    #[cfg(test)]
     pub(super) fn astPalHfk5z(
         rh: f64,
         dh: f64,
