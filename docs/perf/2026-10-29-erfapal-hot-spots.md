@@ -99,3 +99,33 @@ A function is proposed only if a realistic input reaches it per point and its li
   Their libm time is `WcsMap`'s projection, which is outside this stage.
 - The `SlaMap` cases are libm-bound (67% to 83%) and are where a vector kernel would pay, but they are reached only by the Mapping class, not by any of the six FrameSets.
 - A decision for the user: vectorize `fk54z`/`fk45z` only (the one FrameSet-backed case), or also the `SlaMap` AMP/MAP and rotation-step kernels on the class argument.
+
+## Outcome: the kernels tried and why they stay scalar
+
+The user chose `fk45z` and `fk54z` from the table above.
+Each was given a vectorized slice entry in the SphMap pattern and measured against the rule this stage set for keeping a kernel: faster on `slamap_fk45z.map` (and on `timj.ast`) at N = 100 and at large N, and not slower at N = 1.
+Neither kernel meets the N = 1 condition, so both were reverted and the per-value ports, bit for bit ERFA's, stay in `SlaMap`'s per-point loop.
+
+Timings are median ns per point, the Rust engine, base `53db8ff8` against the tree with the kernels, from three alternating rounds of the two binaries (the fastest round's median), load average 6.4 falling to 4.8, macOS aarch64.
+Two runs of `ast-bench compare --set native --base 53db8ff8` (load average about 5) reported the same N = 1 slowdowns, `slamap_fk45z.map` forward 85 to 162 and 80 to 154, inverse 158 to 192.
+Both also reported `slamap_prec.map`, which the change does not reach, 10 to 22% slower at N = 100 in both runs, which reads as a code-layout effect of the larger `SlaMap::transform_into`.
+
+### `fk45z` (FK45Z forward, FK54Z inverse)
+
+The kernel ran eraFk45z's body with eraS2c's two sines and cosines and eraC2s's two arctangents from `vmath`, the epoch terms (the adjusted A vector and the fictitious-motion interval) computed once per slice, which gives the same bits as per point, and eraAnp's `fmod` dropped, since an arctangent is already within 2 pi and `fmod` returns it exactly.
+Positions outside the kernel's domain (an input angle of zero or beyond 1e6, or a final vector with a zero or extreme component) went to the per-value body.
+`SlaMap` gathered the good points of each block of 32 (4 for transforms of at most 4 points) into the slice.
+
+Every sine, cosine and arctangent it used was within 1 ULP of the exact value, rounded, at every call over the FK test positions and epochs (3,016 random and polar positions at 12 epochs); against the per-value body the largest difference was 8 * 2^-53 radians in R.A. times cos Dec and 3 * 2^-53 in Dec (2 and 4 ULP of the outputs), against a derived bound of 40 * 2^-53.
+
+| Case | N = 1 | N = 10 | N = 100 | N = 100 000 | N = 1 000 000 |
+|---|---|---|---|---|---|
+| `slamap_fk45z.map` forward | 96.0 → 163.0 (1.70) | 62.2 → 56.8 (0.91) | 58.9 → 47.8 (0.81) | 59.3 → 46.6 (0.79) | 59.3 → 46.6 (0.79) |
+| `timj.ast` forward | 2638 → 2613 (0.99) | 357 → 342 (0.96) | 132 → 121 (0.92) | 105.5 → 95.2 (0.90) | 105.6 → 95.7 (0.91) |
+
+The bench case's one-point row is (0, 0), which the sine kernel does not cover, so that point pays for the kernel and then for the per-value body.
+A covered point is slower too: one point through the slice took 95 to 98 ns against 67 ns for the per-value body, measured as a dependent chain, since each `vmath` sine-cosine pair and arctangent has a latency of about 36 ns against libm's 29 ns, and two of each lie on the path.
+No change inside this function can remove that; a shorter-latency `vmath::sin_cos` and `vmath::atan2`, the remedy the native design names for SphMap's N = 1 cost, could.
+C takes 605 ns per point at N = 1 on this case, so the kernel would have stayed about four times faster than C.
+
+With this kernel alone, 146 of the 1,584 cases of the C-oracle `test_sky_convert` moved off C's bits, every one converting through FK4, in the last one or two digits of a value; the kernel would have needed a measured licence for each.
