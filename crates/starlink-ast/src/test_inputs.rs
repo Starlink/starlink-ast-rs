@@ -340,6 +340,17 @@ pub(crate) fn fk_positions(n: usize) -> Vec<(f64, f64)> {
     out
 }
 
+/// The sky distance between two (R.A., Dec) pairs `a` and `b`, as
+/// (R.A. term, Dec term): the difference in R.A. modulo 2 pi times the cosine
+/// of `b`'s Dec, and the difference in Dec.
+pub(crate) fn sky_terms(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    let mut da = (a.0 - b.0).abs();
+    if da > PI {
+        da = 2.0 * PI - da;
+    }
+    (da * b.1.cos(), (a.1 - b.1).abs())
+}
+
 /// Besselian epochs (years) for the FK4 and FK5 conversions: far from J2000
 /// and at the extremes, `BAD_VALUE` and NaN, then random epochs from 1800 to
 /// 2200.

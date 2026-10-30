@@ -1297,12 +1297,12 @@ const SHORT_FK_BLOCK: usize = 4;
 /// An FK4/FK5 conversion step at the Besselian epoch `bepoch`, in place on
 /// `oa` and `od`, with C's per-point bad-value test: a point with either axis
 /// bad becomes bad on both, and the others go through `slice`, a block at a
-/// time.
-fn apply_fk_step(slice: FkSlice, bepoch: f64, oa: &mut [f64], od: &mut [f64]) {
+/// time. Each good point counts as one call of the PAL function `name`.
+fn apply_fk_step(slice: FkSlice, name: &'static str, bepoch: f64, oa: &mut [f64], od: &mut [f64]) {
     if oa.len() <= SHORT_FK_BLOCK {
-        apply_fk_step_blocks::<SHORT_FK_BLOCK>(slice, bepoch, oa, od);
+        apply_fk_step_blocks::<SHORT_FK_BLOCK>(slice, name, bepoch, oa, od);
     } else {
-        apply_fk_step_blocks::<FK_BLOCK>(slice, bepoch, oa, od);
+        apply_fk_step_blocks::<FK_BLOCK>(slice, name, bepoch, oa, od);
     }
 }
 
@@ -1310,6 +1310,7 @@ fn apply_fk_step(slice: FkSlice, bepoch: f64, oa: &mut [f64], od: &mut [f64]) {
 #[inline(always)]
 fn apply_fk_step_blocks<const BLOCK: usize>(
     slice: FkSlice,
+    name: &'static str,
     bepoch: f64,
     oa: &mut [f64],
     od: &mut [f64],
@@ -1340,6 +1341,7 @@ fn apply_fk_step_blocks<const BLOCK: usize>(
             &mut ra[..good],
             &mut rd[..good],
         );
+        crate::call_counts::hit_n(name, good as u64);
         for j in 0..good {
             oa[index[j]] = ra[j];
             od[index[j]] = rd[j];
@@ -1465,13 +1467,17 @@ impl Mapping for SlaMap {
             // so a point's bits do not depend on how many are transformed
             // together. The inverse of each is the other's forward
             // conversion, with the same epoch argument.
-            let fk_slice: Option<FkSlice> = match (cvt.cvt_type, fwd) {
-                (SlaCvtType::Fk45z, true) | (SlaCvtType::Fk54z, false) => Some(pal::fk45z_slice),
-                (SlaCvtType::Fk54z, true) | (SlaCvtType::Fk45z, false) => Some(pal::fk54z_slice),
+            let fk_slice: Option<(FkSlice, &'static str)> = match (cvt.cvt_type, fwd) {
+                (SlaCvtType::Fk45z, true) | (SlaCvtType::Fk54z, false) => {
+                    Some((pal::fk45z_slice, "astEraFk45z"))
+                }
+                (SlaCvtType::Fk54z, true) | (SlaCvtType::Fk45z, false) => {
+                    Some((pal::fk54z_slice, "astEraFk54z"))
+                }
                 _ => None,
             };
-            if let Some(slice) = fk_slice {
-                apply_fk_step(slice, cvt.args[0], oa, od);
+            if let Some((slice, name)) = fk_slice {
+                apply_fk_step(slice, name, cvt.args[0], oa, od);
                 continue;
             }
 

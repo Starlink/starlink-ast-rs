@@ -374,7 +374,7 @@ pub(crate) fn fk45z(r1950: f64, d1950: f64, bepoch: f64) -> (f64, f64) {
 /// build of the loop runs: on x86-64 one for AVX2 and FMA when the CPU has
 /// them.
 ///
-/// Counts one call of [`fk45z`] per position.
+/// Counts no calls, as [`dcs2c_slice`] does.
 pub(crate) fn fk45z_slice(
     bepoch: f64,
     r1950: &[f64],
@@ -382,7 +382,6 @@ pub(crate) fn fk45z_slice(
     r2000: &mut [f64],
     d2000: &mut [f64],
 ) {
-    crate::call_counts::hit_n("astEraFk45z", r1950.len() as u64);
     #[cfg(target_arch = "x86_64")]
     if crate::vmath::x86_has_avx2_fma() {
         // SAFETY: the CPU has AVX2 and FMA, which is all the function's
@@ -457,7 +456,7 @@ pub(crate) fn fk54z(r2000: f64, d2000: f64, bepoch: f64) -> (f64, f64, f64, f64)
 /// and whichever build of the loop runs: on x86-64 one for AVX2 and FMA when
 /// the CPU has them.
 ///
-/// Counts one call of [`fk54z`] per position.
+/// Counts no calls, as [`dcs2c_slice`] does.
 pub(crate) fn fk54z_slice(
     bepoch: f64,
     r2000: &[f64],
@@ -465,7 +464,6 @@ pub(crate) fn fk54z_slice(
     r1950: &mut [f64],
     d1950: &mut [f64],
 ) {
-    crate::call_counts::hit_n("astEraFk54z", r2000.len() as u64);
     #[cfg(target_arch = "x86_64")]
     if crate::vmath::x86_has_avx2_fma() {
         // SAFETY: the CPU has AVX2 and FMA, which is all the function's
@@ -810,13 +808,13 @@ pub(crate) fn djcl(djm: f64) -> Result<(i32, i32, i32, f64), crate::erfa::Jd2cal
 
 /// Gregorian calendar date to Modified Julian Date.
 ///
-/// Returns the MJD, with the warning [`crate::erfa::BadDay`] when the day is
+/// Returns the MJD, with the warning [`crate::erfa::Cal2jdWarning`] when the day is
 /// not a day of that month, or the error for an invalid year or month.
 pub(crate) fn cldj(
     iy: i32,
     im: i32,
     id: i32,
-) -> Result<(f64, Option<crate::erfa::BadDay>), crate::erfa::Cal2jdError> {
+) -> Result<(f64, Option<crate::erfa::Cal2jdWarning>), crate::erfa::Cal2jdError> {
     // palCldj is eraCal2jd's MJD part.
     crate::call_counts::hit("astPalCldj");
     let ((_, djm), warning) = crate::erfa::cal2jd(iy, im, id)?;

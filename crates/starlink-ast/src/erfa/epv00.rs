@@ -65,7 +65,7 @@ use super::{ERFA_DJ00, ERFA_DJY, PV, sincos};
 
 /// The warning that comes with [`epv00`]'s result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OutsideRange {
+pub(crate) enum Epv00Warning {
     /// The date is more than 100 Julian years from J2000.0, outside the
     /// years 1900 to 2100 the series was fitted over (ERFA status +1); the
     /// result is still given, less accurately.
@@ -2333,7 +2333,7 @@ const CS2: [&[f64]; 3] = [&S2X, &S2Y, &S2Z];
 /// Returns `((heliocentric, barycentric), warning)`; the warning is given
 /// for a date outside 1900 to 2100, where the result is still computed but
 /// its errors grow, by a factor of about 60 at 1000 and 3000.
-pub(crate) fn epv00(date1: f64, date2: f64) -> ((PV, PV), Option<OutsideRange>) {
+pub(crate) fn epv00(date1: f64, date2: f64) -> ((PV, PV), Option<Epv00Warning>) {
     // Time since reference epoch, Julian years.
     let t = ((date1 - ERFA_DJ00) + date2) / ERFA_DJY;
     let t2 = t * t;
@@ -2342,7 +2342,7 @@ pub(crate) fn epv00(date1: f64, date2: f64) -> ((PV, PV), Option<OutsideRange>) 
     let jstat = if t.abs() <= 100.0 {
         None
     } else {
-        Some(OutsideRange::Not1900To2100)
+        Some(Epv00Warning::Not1900To2100)
     };
 
     let mut ph = [0.0; 3];
