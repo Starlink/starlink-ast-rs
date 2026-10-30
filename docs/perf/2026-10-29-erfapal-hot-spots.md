@@ -132,12 +132,12 @@ C takes 605 ns per point at N = 1 on this case, so the kernel stays about four t
 
 With this kernel alone, 146 of the 1,584 cases of the C-oracle `test_sky_convert` moved off C's bits, every one converting through FK4, in the last one or two digits of a value; each is named in `FK_SLICE_DRIFT_LICENSED` with its measured drift.
 
-### `fk54z` (FK54Z forward, FK45Z inverse)
+### `fk54z` (FK54Z forward, FK45Z inverse): kept by the user's decision
 
-The kernel ran eraFk54z's body over a kernel of eraFk524 for a star with zero proper motion, parallax and radial velocity: eraS2pv's two sines and cosines and eraPv2s's two arctangents from `vmath`, eraPv2s's null-vector and polar-axis branches left to the domain test, and the parallax update, which a zero parallax never makes, left out; then eraS2c's sines and cosines of the FK4 position, which eraFk54z takes a second time for the fictitious proper motion and the kernel took once, and eraC2s's two arctangents, from `vmath`; eraAnp's `fmod` dropped as for `fk45z`.
-`SlaMap` used it as for `fk45z`.
+The kernel runs eraFk54z's body over a kernel of eraFk524 for a star with zero proper motion, parallax and radial velocity: eraS2pv's two sines and cosines and eraPv2s's two arctangents from `vmath`, eraPv2s's null-vector and polar-axis branches left to the domain test, and the parallax update, which a zero parallax never makes, left out; then eraS2c's sines and cosines of the FK4 position, which eraFk54z takes a second time for the fictitious proper motion and the kernel takes once, and eraC2s's two arctangents, from `vmath`; eraAnp's `fmod` dropped as for `fk45z`.
+`SlaMap` uses it as for `fk45z`.
 
-Every sine, cosine and arctangent it used was within 1 ULP of the exact value, rounded, at every call over the same test positions and epochs; against the per-value body the largest difference was 16 * 2^-53 radians in R.A. times cos Dec and 4 * 2^-53 in Dec (3 and 4 ULP of the outputs), against a derived bound of 80 * 2^-53.
+Every sine, cosine and arctangent it uses is within 1 ULP of the exact value, rounded, at every call over the same test positions and epochs; against the per-value body the largest difference was 16 * 2^-53 radians in R.A. times cos Dec and 4 * 2^-53 in Dec (3 and 4 ULP of the outputs), against a derived bound of 80 * 2^-53.
 
 | Case | N = 1 | N = 10 | N = 100 | N = 100 000 | N = 1 000 000 |
 |---|---|---|---|---|---|
@@ -145,8 +145,8 @@ Every sine, cosine and arctangent it used was within 1 ULP of the exact value, r
 | `timj.ast` inverse | 2690 → 2714 (1.01) | 452 → 404 (0.89) | 225 → 181 (0.80) | 198.9 → 154.2 (0.78) | 198.9 → 154.0 (0.77) |
 
 The one-point row here, (0.0112, 0.0049), is covered, so the slowdown is the latency of the kernels themselves: four sine-cosine pairs and four arctangents, two of each on the path, each about 8 ns slower than libm's.
-C takes 666 ns per point at N = 1 on this case, so the kernel would have stayed about three times faster than C.
+C takes 666 ns per point at N = 1 on this case, so the kernel stays about three times faster than C.
 
 With both kernels in place, `ast-bench ulps` against `53db8ff8` found no value changing between bad and good.
 The largest movements were `timj.ast` inverse (sky to pixel), 2,952 ULP on the first pixel axis and 478 on the second, on pixel values between 1 and 1,000, so at most about 3e-10 pixel; the simplify corpus's SlaMap cases up to 28 ULP (`cap_slamap_05`); and 1 ULP on `slamap_fk45z.map` and `timj.ast` forward.
-306 of the 1,584 `test_sky_convert` cases moved off C's bits, by at most 1.3e-15 radian, and no other test of the crate changed.
+306 of the 1,584 `test_sky_convert` cases moved off C's bits, by at most 1.33e-15 radian, each named in `FK_SLICE_DRIFT_LICENSED` with its drift (two of the 146 the FK45Z kernel had moved match C again), and no other test of the crate changed.
