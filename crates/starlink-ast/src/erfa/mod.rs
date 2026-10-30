@@ -36,6 +36,7 @@ mod d2tf;
 mod dat;
 #[cfg(test)]
 pub(crate) mod difftest;
+mod dtdb;
 mod epb;
 mod epb2jd;
 mod epj;
@@ -73,6 +74,7 @@ pub(crate) use anpm::anpm;
 pub(crate) use cal2jd::{BadDay, Cal2jdError, cal2jd};
 pub(crate) use d2tf::d2tf;
 pub(crate) use dat::{CHANGES, DRIFT, DatError, LEAP_SECONDS, NERA1, PreUtc, dat};
+pub(crate) use dtdb::dtdb;
 pub(crate) use epb::epb;
 pub(crate) use epb2jd::epb2jd;
 pub(crate) use epj::epj;

@@ -106,7 +106,6 @@ unsafe extern "C" {
     pub(super) fn astPalDat(dju: f64) -> f64;
     pub(super) fn astPalGmst(ut1: f64) -> f64;
     pub(super) fn astPalEqeqx(date: f64) -> f64;
-    pub(super) fn astEraDtdb(date1: f64, date2: f64, ut: f64, elong: f64, u: f64, v: f64) -> f64;
     pub(super) fn astEraGd2gc(n: i32, elong: f64, phi: f64, height: f64, xyz: *mut f64) -> i32;
     pub(super) fn astEraGc2gd(
         n: i32,

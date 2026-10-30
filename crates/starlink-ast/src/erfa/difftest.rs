@@ -68,6 +68,7 @@ unsafe extern "C" {
     pub(super) fn astEraEpb2jd(epb: f64, djm0: *mut f64, djm: *mut f64);
     pub(super) fn astEraEpj(dj1: f64, dj2: f64) -> f64;
     pub(super) fn astEraEpj2jd(epj: f64, djm0: *mut f64, djm: *mut f64);
+    pub(super) fn astEraDtdb(date1: f64, date2: f64, ut: f64, elong: f64, u: f64, v: f64) -> f64;
     pub(super) fn astEraDat(iy: i32, im: i32, id: i32, fd: f64, deltat: *mut f64) -> i32;
 }
 
