@@ -26,6 +26,8 @@ mod deuler;
 mod dmat;
 mod drange;
 mod ffi;
+mod geoc;
+mod pvobs;
 use ffi::*;
 
 /// PAL's `PAL__DPI` (palmac.h): pi.
@@ -35,6 +37,10 @@ pub(crate) const PAL__DPI: f64 = 3.141592653589793238462643383279502884197169399
 pub(crate) const PAL__MJD0: f64 = 2400000.5;
 /// PAL's `PAL__D2PI` (palmac.h): 2 pi.
 pub(crate) const PAL__D2PI: f64 = 6.2831853071795864769252867665590057683943387987502;
+
+/// PAL's `PAL__SR` (palmac.h): the Earth's rotation rate in radians per
+/// second.
+pub(crate) const PAL__SR: f64 = 7.2921150e-5;
 
 /// ERFA's `ERFA_DAU` (erfam.h): the astronomical unit in metres, the IAU 2012
 /// value. PAL's routines convert metres to au with it, so a caller that
@@ -537,10 +543,8 @@ pub(crate) fn evp(date: f64, deqx: f64) -> ([f64; 3], [f64; 3], [f64; 3], [f64; 
 ///
 /// Returns `(r, z)` in meters.
 pub(crate) fn geoc(p: f64, h: f64) -> (f64, f64) {
-    let mut r = 0.0;
-    let mut z = 0.0;
-    counted!(astPalGeoc(p, h, &mut r, &mut z));
-    (r, z)
+    crate::call_counts::hit("astPalGeoc");
+    geoc::geoc(p, h)
 }
 
 // ---------------------------------------------------------------------------
@@ -691,9 +695,8 @@ pub(crate) fn dtdb_geocentre(tdb_mjd: f64) -> f64 {
 /// Returns the 3-vector `[x, y, z]` in meters, or `None` if the ERFA
 /// routine signaled an error (e.g. latitude out of range).
 pub(crate) fn gd2gc(lon: f64, lat: f64, height: f64) -> Option<[f64; 3]> {
-    let mut xyz = [0.0_f64; 3];
-    let status = counted!(astEraGd2gc(1, lon, lat, height, xyz.as_mut_ptr()));
-    if status == 0 { Some(xyz) } else { None }
+    crate::call_counts::hit("astEraGd2gc");
+    crate::erfa::gd2gc(crate::erfa::Ellipsoid::Wgs84, lon, lat, height).ok()
 }
 
 /// Geocentric Cartesian → geodetic longitude/latitude/height. Mirrors
@@ -702,21 +705,8 @@ pub(crate) fn gd2gc(lon: f64, lat: f64, height: f64) -> Option<[f64; 3]> {
 /// Returns `Some((lon_radians, lat_radians, height_metres))` or
 /// `None` on error.
 pub(crate) fn gc2gd(xyz: [f64; 3]) -> Option<(f64, f64, f64)> {
-    let mut elong = 0.0_f64;
-    let mut phi = 0.0_f64;
-    let mut height = 0.0_f64;
-    let status = counted!(astEraGc2gd(
-        1,
-        xyz.as_ptr(),
-        &mut elong,
-        &mut phi,
-        &mut height
-    ));
-    if status == 0 {
-        Some((elong, phi, height))
-    } else {
-        None
-    }
+    crate::call_counts::hit("astEraGc2gd");
+    crate::erfa::gc2gd(crate::erfa::Ellipsoid::Wgs84, &xyz).ok()
 }
 
 /// Observer position and velocity as a 6-vector.
@@ -727,9 +717,8 @@ pub(crate) fn gc2gd(xyz: [f64; 3]) -> Option<(f64, f64, f64)> {
 ///
 /// Returns a 6-element array: [x, y, z, xdot, ydot, zdot] in AU and AU/s.
 pub(crate) fn pvobs(lat: f64, alt: f64, lst: f64) -> [f64; 6] {
-    let mut pv = [0.0; 6];
-    counted!(astPalPvobs(lat, alt, lst, pv.as_mut_ptr()));
-    pv
+    crate::call_counts::hit("astPalPvobs");
+    pvobs::pvobs(lat, alt, lst)
 }
 
 /// Component of galactic rotation velocity toward the source (km/s).
