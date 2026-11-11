@@ -37,7 +37,7 @@ Work top to bottom; each entry cites the detailed section.
     - **TimeFrame — FIXED 2026-06-13**: bare-number Format `%1.7G`, the full `iso`/`iso.N`/`iso.NT` calendar Format and the 7-format date/time Unformat (via the now-exposed vendored pal calendar wrappers `pal::djcl`/`cldj`/`dd2tf`/`dtf2d` + a `read_date_time` port of `astReadDateTime`), per-instance Unit (with `make_map` unit bracketing) and Format storage, the `Date/Time`/`Date` axis-label override, and Epoch-from-TimeOrigin (TimeOrigin→TDB MJD) all landed and oracle-matched (`testtime.c` errors 26-34; native dump byte-identical for `unit=s,format=iso.2`). A suspected Besselian-epoch `astUnformat` "C bug" was later withdrawn (FIXED 2026-06-25): it was a missing `TimeOrigin` re-expression in the Rust port (C `OriginScale`/`OriginSystem`), now added on `set_system`/`set_timescale`/`clear_*`; see `c-library-quirks.md` (RESOLVED) and `timeframe-unformat-findings.md`. The GetTitle "offset from <date>" Title default is also ported and oracle byte-matched. Remaining 6f work is Plot-only (`Gap`/`Centre`/`Abbrev`/`Fields`). Tests: `tests/test_timeframe.rs`, `date_time` unit tests.
     - **FluxFrame `MakeFluxMapping` — FIXED** (oracle-verified). **CmpMap chain-rule `rate` — RESOLVED (no change needed) 2026-06-13**: instrumented the C oracle and found C's chain-rule `Rate` override is *defined but never installed* (`cmpmap.c:892` comments out `mapping->Rate = Rate`), so C uses whole-map numeric differentiation — exactly what Rust's `numeric_rate` already does (oracle-confirmed bit-identical: dsbydx `-2.11061140544971257e8` in both). The earlier "AIPS card mark/sweep bug" was a misdiagnosis: there is no card-sweep bug; both libraries recompute CDELT3 ≈ 999.99999888, both fail `astEQUAL` vs the input 1000.0, both correctly rewrite the comment to "Pixel size". Porting the override would *diverge* from C. Logged in `c-library-quirks.md`; `cmpmap.rs::rate` keeps `numeric_rate` with a note. **SpecFluxFrame `MakeSFMapping`** — FIXED 2026-06-14 (section 1): the full cross-system (spec, flux) conversion is ported and oracle-verified against `testspecflux.c`.
 11. **Re-verify the 2026-05-08 mapping audit** (section 4) — several items are confirmed fixed (2.1, 2.2, 2.4, 2.5, 3.11, 4.1-4.3, 4.8-4.9, 5.1 partially; 2.3 half-fixed, see 6l); strike the stale ones and fold survivors into the simplify backlog (6g pairwise-protocol note).
-12. **Deferred with their delivery steps**: Rebin/Resample, Plot-support Frame methods (Gap/Abbrev/Fields/FrameGrid/LineDef family), Moc, wcslib 6a, JSON renderer, PLAN.md reconstruction (section 1/2).
+12. **Deferred with their delivery steps**: Rebin/Resample, Plot-support Frame methods (Gap/Abbrev/Fields/FrameGrid/LineDef family), Moc, JSON renderer, PLAN.md reconstruction (section 1/2).
 
 ## 1. Verified missing functionality (fix these)
 
@@ -115,7 +115,7 @@ Ordered roughly by impact.
 - **IntraMap**: ported 2026-10-08 as `mappings/intramap.rs`, with the spec's `Arc<dyn IntraTransform>` and a per-Channel `IntraRegistry` (`Channel::register_intra`).
 - **Moc**/**MocChan**: absent. XphMap, whose only C creator is `moc.c`, is ported (2026-10-07).
 - **Stc\*** classes and **YamlChan/StcsChan/XmlChan**: absent (step 8/9 remainder).
-- **wcslib**: still vendored C behind FFI (`src/wcslib.rs`); step 6a (Rust port, delete `crates/starlink-ast/vendor/wcslib/`) not started — by design, do not rewrite piecemeal.
+- **wcslib**: ported to Rust on DM-56839 (`crates/starlink-ast/src/wcslib/`); the vendored C is deleted.
 
 ## 3. Deliberate divergences (do NOT "fix")
 
@@ -400,7 +400,7 @@ The numerical TDB↔UTC drift questions are already tracked in `docs/issues/time
 - **[MED] TimeFrame — iso-date Format/Unformat.** *(FIXED 2026-06-13.)*
   C overrides `Format`/`Unformat` so that `Format="iso.N[T]"` renders and parses calendar date strings (`timeframe.c` Format:1597 / Unformat:6062 / DateFormat:813). Fully ported:
   - The bare-number default routes through `axis_format::format_value("%1.7G", …)` (7 significant digits).
-  - The vendored pal calendar helpers `palDjcl`/`palCldj`/`palDd2tf`/`palDtf2d` are exposed in `crates/starlink-ast/src/pal.rs` as `djcl`/`cldj`/`dd2tf`/`dtf2d` (C retained and wrapped, not reimplemented).
+  - The PAL calendar routines `palDjcl`/`palCldj`/`palDd2tf`/`palDtf2d` are Rust ports in `crates/starlink-ast/src/pal/`, exposed as `djcl`/`cldj`/`dd2tf`/`dtf2d`.
   - `frames/date_time.rs::read_date_time` ports `astReadDateTime` (frame.c:8892): B/J epochs, decimal years (IAU-1984), MJD, JD, and Gregorian dates with named months / `-`/`/`/`:`/space / `T` separators / decimal-day or h:m:s fractions.
   - `TimeFrame` gained per-instance Unit and Format storage; `make_map` mirrors C `MakeMap` (timeframe.c:3505) with `unit_mapper` bracketing so `unit=s` etc. convert correctly; `date_format`/`value_to_mjd`/`mjd_to_value` drive the iso Format/Unformat; the axis label becomes `Date/Time`/`Date` under a date Format.
   - Oracle-matched against `testtime.c` errors 26-34 and a byte-identical native dump for `unit=s,format=iso.2`.

@@ -26,6 +26,9 @@ commands:
   sweep [--nan]
   snapshot --set <name>
   bits [--base <git-ref>]
+  values
+  ulps --base <git-ref> [--max N]
+  vforce [--max-n N] [--reps R]
   roman [--engine rust|c|both] [--max-n N] [--reps R] [--markdown] [-o file.csv]
 ";
 
@@ -233,6 +236,77 @@ fn bits(args: &[String]) -> Result<Vec<String>, String> {
     }
 }
 
+/// `ulps`: how far every corpus output moved from the build at `--base`, one
+/// line per changed (case, axis), the largest first; with `--max N`, an
+/// error for each line over N ULP.
+fn ulps(args: &[String]) -> Result<Vec<String>, String> {
+    check_not_counting()?;
+    let git_ref = opt(args, "--base").ok_or("ulps needs --base <git-ref>")?;
+    let max = opt(args, "--max")
+        .map(|m| m.parse::<u64>().map_err(|e| format!("--max {m:?}: {e}")))
+        .transpose()?;
+    let cur = ast_bench::ulps::all_values()?;
+    let base = ast_bench::base::values_at(git_ref)?;
+    let mut errors = Vec::new();
+    for d in ast_bench::ulps::diff_ulps(&base, &cur)? {
+        let by = if d.max_ulps == u64::MAX {
+            "sign/NaN/BAD change".to_string()
+        } else {
+            format!("{} ULP", d.max_ulps)
+        };
+        let line = format!(
+            "{} axis {}: {} of {} differ, by at most {by}",
+            d.key, d.axis, d.differ, d.values
+        );
+        println!("{line}");
+        if max.is_some_and(|m| d.max_ulps > m) {
+            errors.push(format!("over the limit: {line}"));
+        }
+    }
+    Ok(errors)
+}
+
+/// `vforce`: SphMap through the port and through Apple's vForce, as a
+/// yardstick for the vectorized port (macOS, with the `vforce` feature).
+#[cfg(all(target_os = "macos", feature = "vforce"))]
+fn vforce(args: &[String]) -> Result<Vec<String>, String> {
+    check_not_counting()?;
+    let max_n = match opt(args, "--max-n") {
+        Some(v) => v.parse().map_err(|e| format!("--max-n {v:?}: {e}"))?,
+        None => 1_048_576,
+    };
+    let reps = match opt(args, "--reps") {
+        Some(v) => v.parse().map_err(|e| format!("--reps {v:?}: {e}"))?,
+        None => 5,
+    };
+    println!(
+        "{:<12} {:>9} {:>12} {:>12} {:>8}",
+        "transform", "N", "port ns/pt", "vForce ns/pt", "port/vF"
+    );
+    let checks = ast_bench::vforce::run(max_n, reps, &mut |t| {
+        println!(
+            "{:<12} {:>9} {:>12.2} {:>12.2} {:>7.2}x",
+            t.label,
+            t.n,
+            t.port_ns,
+            t.vforce_ns,
+            t.port_ns / t.vforce_ns
+        );
+    })?;
+    for (label, c) in checks {
+        println!(
+            "{label}: {} of {} output values differ between the port and vForce, by at most {} ULP",
+            c.differ, c.values, c.max_ulps
+        );
+    }
+    Ok(Vec::new())
+}
+
+#[cfg(not(all(target_os = "macos", feature = "vforce")))]
+fn vforce(_args: &[String]) -> Result<Vec<String>, String> {
+    Err("vforce needs macOS and --features vforce (Apple's Accelerate framework)".into())
+}
+
 /// `roman`: Starlink/ast pull request 51's benchmark of the Roman WCS
 /// transforms, on the engines named; prints the summary and how the engines'
 /// outputs compare, and with `-o` writes the pull request's CSV.
@@ -321,6 +395,14 @@ fn main() -> ExitCode {
         Some("snapshot") => snapshot(&args[1..]),
         Some("sweep") => sweep(&args[1..]),
         Some("bits") => bits(&args[1..]),
+        Some("values") => check_not_counting()
+            .and_then(|()| ast_bench::ulps::all_values())
+            .map(|v| {
+                print!("{v}");
+                Vec::new()
+            }),
+        Some("ulps") => ulps(&args[1..]),
+        Some("vforce") => vforce(&args[1..]),
         Some("roman") => roman(&args[1..]),
         Some(other) => Err(format!("unknown command {other:?}\n{USAGE}")),
     };

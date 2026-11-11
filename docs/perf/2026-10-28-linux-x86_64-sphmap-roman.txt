@@ -1,0 +1,313 @@
+  sphmap_fwd     rust N=1         median=    0.000120 ms (     8.3 Mpx/s)
+  sphmap_fwd     c    N=1         median=    0.000627 ms (     1.6 Mpx/s)
+  sphmap_fwd     rust N=4         median=    0.000158 ms (    25.3 Mpx/s)
+  sphmap_fwd     c    N=4         median=    0.000743 ms (     5.4 Mpx/s)
+  sphmap_fwd     rust N=8         median=    0.000242 ms (    33.1 Mpx/s)
+  sphmap_fwd     c    N=8         median=    0.000902 ms (     8.9 Mpx/s)
+  sphmap_fwd     rust N=16        median=    0.000408 ms (    39.2 Mpx/s)
+  sphmap_fwd     c    N=16        median=    0.001210 ms (    13.2 Mpx/s)
+  sphmap_fwd     rust N=32        median=    0.000750 ms (    42.7 Mpx/s)
+  sphmap_fwd     c    N=32        median=    0.001839 ms (    17.4 Mpx/s)
+  sphmap_fwd     rust N=64        median=    0.001415 ms (    45.2 Mpx/s)
+  sphmap_fwd     c    N=64        median=    0.003097 ms (    20.7 Mpx/s)
+  sphmap_fwd     rust N=128       median=    0.002731 ms (    46.9 Mpx/s)
+  sphmap_fwd     c    N=128       median=    0.005592 ms (    22.9 Mpx/s)
+  sphmap_fwd     rust N=256       median=    0.005389 ms (    47.5 Mpx/s)
+  sphmap_fwd     c    N=256       median=    0.010683 ms (    24.0 Mpx/s)
+  sphmap_fwd     rust N=512       median=    0.010654 ms (    48.1 Mpx/s)
+  sphmap_fwd     c    N=512       median=    0.021216 ms (    24.1 Mpx/s)
+  sphmap_fwd     rust N=1024      median=    0.021346 ms (    48.0 Mpx/s)
+  sphmap_fwd     c    N=1024      median=    0.045696 ms (    22.4 Mpx/s)
+  sphmap_fwd     rust N=4096      median=    0.088049 ms (    46.5 Mpx/s)
+  sphmap_fwd     c    N=4096      median=    0.200880 ms (    20.4 Mpx/s)
+  sphmap_fwd     rust N=16384     median=    0.346514 ms (    47.3 Mpx/s)
+  sphmap_fwd     c    N=16384     median=    0.825694 ms (    19.8 Mpx/s)
+  sphmap_fwd     rust N=65536     median=    1.377582 ms (    47.6 Mpx/s)
+  sphmap_fwd     c    N=65536     median=    3.304942 ms (    19.8 Mpx/s)
+  sphmap_fwd     rust N=262144    median=    5.516670 ms (    47.5 Mpx/s)
+  sphmap_fwd     c    N=262144    median=   13.235117 ms (    19.8 Mpx/s)
+  sphmap_fwd     rust N=1048576   median=   22.086750 ms (    47.5 Mpx/s)
+  sphmap_fwd     c    N=1048576   median=   52.897439 ms (    19.8 Mpx/s)
+  sphmap_fwd     rust N=4194304   median=   92.601625 ms (    45.3 Mpx/s)
+  sphmap_fwd     c    N=4194304   median=  213.162219 ms (    19.7 Mpx/s)
+  sphmap_fwd     rust N=16711744  median=  353.213627 ms (    47.3 Mpx/s)
+  sphmap_fwd     c    N=16711744  median=  842.438662 ms (    19.8 Mpx/s)
+  sphmap_inv     rust N=1         median=    0.000104 ms (     9.7 Mpx/s)
+  sphmap_inv     c    N=1         median=    0.000620 ms (     1.6 Mpx/s)
+  sphmap_inv     rust N=4         median=    0.000126 ms (    31.7 Mpx/s)
+  sphmap_inv     c    N=4         median=    0.000711 ms (     5.6 Mpx/s)
+  sphmap_inv     rust N=8         median=    0.000182 ms (    44.0 Mpx/s)
+  sphmap_inv     c    N=8         median=    0.000852 ms (     9.4 Mpx/s)
+  sphmap_inv     rust N=16        median=    0.000302 ms (    52.9 Mpx/s)
+  sphmap_inv     c    N=16        median=    0.001129 ms (    14.2 Mpx/s)
+  sphmap_inv     rust N=32        median=    0.000521 ms (    61.4 Mpx/s)
+  sphmap_inv     c    N=32        median=    0.001657 ms (    19.3 Mpx/s)
+  sphmap_inv     rust N=64        median=    0.000964 ms (    66.4 Mpx/s)
+  sphmap_inv     c    N=64        median=    0.002770 ms (    23.1 Mpx/s)
+  sphmap_inv     rust N=128       median=    0.001853 ms (    69.1 Mpx/s)
+  sphmap_inv     c    N=128       median=    0.004975 ms (    25.7 Mpx/s)
+  sphmap_inv     rust N=256       median=    0.003611 ms (    70.9 Mpx/s)
+  sphmap_inv     c    N=256       median=    0.009338 ms (    27.4 Mpx/s)
+  sphmap_inv     rust N=512       median=    0.007219 ms (    70.9 Mpx/s)
+  sphmap_inv     c    N=512       median=    0.018026 ms (    28.4 Mpx/s)
+  sphmap_inv     rust N=1024      median=    0.014811 ms (    69.1 Mpx/s)
+  sphmap_inv     c    N=1024      median=    0.035479 ms (    28.9 Mpx/s)
+  sphmap_inv     rust N=4096      median=    0.057285 ms (    71.5 Mpx/s)
+  sphmap_inv     c    N=4096      median=    0.140310 ms (    29.2 Mpx/s)
+  sphmap_inv     rust N=16384     median=    0.228263 ms (    71.8 Mpx/s)
+  sphmap_inv     c    N=16384     median=    0.777681 ms (    21.1 Mpx/s)
+  sphmap_inv     rust N=65536     median=    0.914250 ms (    71.7 Mpx/s)
+  sphmap_inv     c    N=65536     median=    3.193531 ms (    20.5 Mpx/s)
+  sphmap_inv     rust N=262144    median=    3.655220 ms (    71.7 Mpx/s)
+  sphmap_inv     c    N=262144    median=   12.829464 ms (    20.4 Mpx/s)
+  sphmap_inv     rust N=1048576   median=   14.490881 ms (    72.4 Mpx/s)
+  sphmap_inv     c    N=1048576   median=   51.433535 ms (    20.4 Mpx/s)
+  sphmap_inv     rust N=4194304   median=   58.914925 ms (    71.2 Mpx/s)
+  sphmap_inv     c    N=4194304   median=  206.489224 ms (    20.3 Mpx/s)
+  sphmap_inv     rust N=16711744  median=  231.288637 ms (    72.3 Mpx/s)
+  sphmap_inv     c    N=16711744  median=  818.905117 ms (    20.4 Mpx/s)
+  poly5_fwd      rust N=1         median=    0.000199 ms (     5.0 Mpx/s)
+  poly5_fwd      c    N=1         median=    0.000709 ms (     1.4 Mpx/s)
+  poly5_fwd      rust N=4         median=    0.000311 ms (    12.9 Mpx/s)
+  poly5_fwd      c    N=4         median=    0.000838 ms (     4.8 Mpx/s)
+  poly5_fwd      rust N=8         median=    0.000483 ms (    16.5 Mpx/s)
+  poly5_fwd      c    N=8         median=    0.000998 ms (     8.0 Mpx/s)
+  poly5_fwd      rust N=16        median=    0.000559 ms (    28.6 Mpx/s)
+  poly5_fwd      c    N=16        median=    0.001309 ms (    12.2 Mpx/s)
+  poly5_fwd      rust N=32        median=    0.000757 ms (    42.3 Mpx/s)
+  poly5_fwd      c    N=32        median=    0.001941 ms (    16.5 Mpx/s)
+  poly5_fwd      rust N=64        median=    0.001015 ms (    63.0 Mpx/s)
+  poly5_fwd      c    N=64        median=    0.003181 ms (    20.1 Mpx/s)
+  poly5_fwd      rust N=128       median=    0.001707 ms (    75.0 Mpx/s)
+  poly5_fwd      c    N=128       median=    0.005683 ms (    22.5 Mpx/s)
+  poly5_fwd      rust N=256       median=    0.003156 ms (    81.1 Mpx/s)
+  poly5_fwd      c    N=256       median=    0.010679 ms (    24.0 Mpx/s)
+  poly5_fwd      rust N=512       median=    0.005822 ms (    87.9 Mpx/s)
+  poly5_fwd      c    N=512       median=    0.020602 ms (    24.9 Mpx/s)
+  poly5_fwd      rust N=1024      median=    0.011029 ms (    92.8 Mpx/s)
+  poly5_fwd      c    N=1024      median=    0.040670 ms (    25.2 Mpx/s)
+  poly5_fwd      rust N=4096      median=    0.042588 ms (    96.2 Mpx/s)
+  poly5_fwd      c    N=4096      median=    0.160090 ms (    25.6 Mpx/s)
+  poly5_fwd      rust N=16384     median=    0.169697 ms (    96.5 Mpx/s)
+  poly5_fwd      c    N=16384     median=    0.636239 ms (    25.8 Mpx/s)
+  poly5_fwd      rust N=65536     median=    0.688697 ms (    95.2 Mpx/s)
+  poly5_fwd      c    N=65536     median=    2.541712 ms (    25.8 Mpx/s)
+  poly5_fwd      rust N=262144    median=    2.734373 ms (    95.9 Mpx/s)
+  poly5_fwd      c    N=262144    median=   10.157750 ms (    25.8 Mpx/s)
+  poly5_fwd      rust N=1048576   median=   11.798736 ms (    88.9 Mpx/s)
+  poly5_fwd      c    N=1048576   median=   40.773748 ms (    25.7 Mpx/s)
+  poly5_fwd      rust N=4194304   median=   49.049385 ms (    85.5 Mpx/s)
+  poly5_fwd      c    N=4194304   median=  163.197160 ms (    25.7 Mpx/s)
+  poly5_fwd      rust N=16711744  median=  197.362251 ms (    84.7 Mpx/s)
+  poly5_fwd      c    N=16711744  median=  649.388527 ms (    25.7 Mpx/s)
+  poly1_fwd      rust N=1         median=    0.000180 ms (     5.6 Mpx/s)
+  poly1_fwd      c    N=1         median=    0.000684 ms (     1.5 Mpx/s)
+  poly1_fwd      rust N=4         median=    0.000241 ms (    16.6 Mpx/s)
+  poly1_fwd      c    N=4         median=    0.000743 ms (     5.4 Mpx/s)
+  poly1_fwd      rust N=8         median=    0.000332 ms (    24.1 Mpx/s)
+  poly1_fwd      c    N=8         median=    0.000833 ms (     9.6 Mpx/s)
+  poly1_fwd      rust N=16        median=    0.000447 ms (    35.8 Mpx/s)
+  poly1_fwd      c    N=16        median=    0.000998 ms (    16.0 Mpx/s)
+  poly1_fwd      rust N=32        median=    0.000598 ms (    53.5 Mpx/s)
+  poly1_fwd      c    N=32        median=    0.001314 ms (    24.4 Mpx/s)
+  poly1_fwd      rust N=64        median=    0.000781 ms (    82.0 Mpx/s)
+  poly1_fwd      c    N=64        median=    0.001946 ms (    32.9 Mpx/s)
+  poly1_fwd      rust N=128       median=    0.001114 ms (   114.9 Mpx/s)
+  poly1_fwd      c    N=128       median=    0.003251 ms (    39.4 Mpx/s)
+  poly1_fwd      rust N=256       median=    0.001929 ms (   132.7 Mpx/s)
+  poly1_fwd      c    N=256       median=    0.005750 ms (    44.5 Mpx/s)
+  poly1_fwd      rust N=512       median=    0.003442 ms (   148.8 Mpx/s)
+  poly1_fwd      c    N=512       median=    0.011003 ms (    46.5 Mpx/s)
+  poly1_fwd      rust N=1024      median=    0.006441 ms (   159.0 Mpx/s)
+  poly1_fwd      c    N=1024      median=    0.021103 ms (    48.5 Mpx/s)
+  poly1_fwd      rust N=4096      median=    0.023990 ms (   170.7 Mpx/s)
+  poly1_fwd      c    N=4096      median=    0.082286 ms (    49.8 Mpx/s)
+  poly1_fwd      rust N=16384     median=    0.096625 ms (   169.6 Mpx/s)
+  poly1_fwd      c    N=16384     median=    0.327797 ms (    50.0 Mpx/s)
+  poly1_fwd      rust N=65536     median=    0.388410 ms (   168.7 Mpx/s)
+  poly1_fwd      c    N=65536     median=    1.315887 ms (    49.8 Mpx/s)
+  poly1_fwd      rust N=262144    median=    1.555880 ms (   168.5 Mpx/s)
+  poly1_fwd      c    N=262144    median=    5.253617 ms (    49.9 Mpx/s)
+  poly1_fwd      rust N=1048576   median=    6.759524 ms (   155.1 Mpx/s)
+  poly1_fwd      c    N=1048576   median=   21.026558 ms (    49.9 Mpx/s)
+  poly1_fwd      rust N=4194304   median=   29.652659 ms (   141.4 Mpx/s)
+  poly1_fwd      c    N=4194304   median=   83.997343 ms (    49.9 Mpx/s)
+  poly1_fwd      rust N=16711744  median=  119.133788 ms (   140.3 Mpx/s)
+  poly1_fwd      c    N=16711744  median=  334.132896 ms (    50.0 Mpx/s)
+  matdiag2_fwd   rust N=1         median=    0.000078 ms (    12.8 Mpx/s)
+  matdiag2_fwd   c    N=1         median=    0.000594 ms (     1.7 Mpx/s)
+  matdiag2_fwd   rust N=4         median=    0.000082 ms (    48.7 Mpx/s)
+  matdiag2_fwd   c    N=4         median=    0.000597 ms (     6.7 Mpx/s)
+  matdiag2_fwd   rust N=8         median=    0.000084 ms (    94.9 Mpx/s)
+  matdiag2_fwd   c    N=8         median=    0.000607 ms (    13.2 Mpx/s)
+  matdiag2_fwd   rust N=16        median=    0.000094 ms (   170.9 Mpx/s)
+  matdiag2_fwd   c    N=16        median=    0.000614 ms (    26.1 Mpx/s)
+  matdiag2_fwd   rust N=32        median=    0.000107 ms (   300.4 Mpx/s)
+  matdiag2_fwd   c    N=32        median=    0.000638 ms (    50.1 Mpx/s)
+  matdiag2_fwd   rust N=64        median=    0.000134 ms (   478.3 Mpx/s)
+  matdiag2_fwd   c    N=64        median=    0.000681 ms (    94.0 Mpx/s)
+  matdiag2_fwd   rust N=128       median=    0.000188 ms (   682.6 Mpx/s)
+  matdiag2_fwd   c    N=128       median=    0.000780 ms (   164.1 Mpx/s)
+  matdiag2_fwd   rust N=256       median=    0.000300 ms (   853.5 Mpx/s)
+  matdiag2_fwd   c    N=256       median=    0.000943 ms (   271.5 Mpx/s)
+  matdiag2_fwd   rust N=512       median=    0.000518 ms (   988.6 Mpx/s)
+  matdiag2_fwd   c    N=512       median=    0.001274 ms (   401.8 Mpx/s)
+  matdiag2_fwd   rust N=1024      median=    0.001024 ms (  1000.3 Mpx/s)
+  matdiag2_fwd   c    N=1024      median=    0.001940 ms (   527.8 Mpx/s)
+  matdiag2_fwd   rust N=4096      median=    0.003866 ms (  1059.5 Mpx/s)
+  matdiag2_fwd   c    N=4096      median=    0.005954 ms (   687.9 Mpx/s)
+  matdiag2_fwd   rust N=16384     median=    0.015438 ms (  1061.3 Mpx/s)
+  matdiag2_fwd   c    N=16384     median=    0.022512 ms (   727.8 Mpx/s)
+  matdiag2_fwd   rust N=65536     median=    0.061663 ms (  1062.8 Mpx/s)
+  matdiag2_fwd   c    N=65536     median=    0.086836 ms (   754.7 Mpx/s)
+  matdiag2_fwd   rust N=262144    median=    0.242965 ms (  1078.9 Mpx/s)
+  matdiag2_fwd   c    N=262144    median=    0.344130 ms (   761.8 Mpx/s)
+  matdiag2_fwd   rust N=1048576   median=    1.069819 ms (   980.1 Mpx/s)
+  matdiag2_fwd   c    N=1048576   median=    1.489985 ms (   703.7 Mpx/s)
+  matdiag2_fwd   rust N=4194304   median=    6.162703 ms (   680.6 Mpx/s)
+  matdiag2_fwd   c    N=4194304   median=    6.409809 ms (   654.4 Mpx/s)
+  matdiag2_fwd   rust N=16711744  median=   19.688659 ms (   848.8 Mpx/s)
+  matdiag2_fwd   c    N=16711744  median=   23.561072 ms (   709.3 Mpx/s)
+  matfull2_fwd   rust N=1         median=    0.000091 ms (    11.0 Mpx/s)
+  matfull2_fwd   c    N=1         median=    0.000592 ms (     1.7 Mpx/s)
+  matfull2_fwd   rust N=4         median=    0.000108 ms (    37.0 Mpx/s)
+  matfull2_fwd   c    N=4         median=    0.000618 ms (     6.5 Mpx/s)
+  matfull2_fwd   rust N=8         median=    0.000113 ms (    70.8 Mpx/s)
+  matfull2_fwd   c    N=8         median=    0.000641 ms (    12.5 Mpx/s)
+  matfull2_fwd   rust N=16        median=    0.000128 ms (   125.3 Mpx/s)
+  matfull2_fwd   c    N=16        median=    0.000686 ms (    23.3 Mpx/s)
+  matfull2_fwd   rust N=32        median=    0.000169 ms (   189.1 Mpx/s)
+  matfull2_fwd   c    N=32        median=    0.000767 ms (    41.7 Mpx/s)
+  matfull2_fwd   rust N=64        median=    0.000247 ms (   258.7 Mpx/s)
+  matfull2_fwd   c    N=64        median=    0.000964 ms (    66.4 Mpx/s)
+  matfull2_fwd   rust N=128       median=    0.000398 ms (   321.5 Mpx/s)
+  matfull2_fwd   c    N=128       median=    0.001268 ms (   100.9 Mpx/s)
+  matfull2_fwd   rust N=256       median=    0.000729 ms (   350.9 Mpx/s)
+  matfull2_fwd   c    N=256       median=    0.001990 ms (   128.6 Mpx/s)
+  matfull2_fwd   rust N=512       median=    0.001409 ms (   363.5 Mpx/s)
+  matfull2_fwd   c    N=512       median=    0.003420 ms (   149.7 Mpx/s)
+  matfull2_fwd   rust N=1024      median=    0.002596 ms (   394.5 Mpx/s)
+  matfull2_fwd   c    N=1024      median=    0.006041 ms (   169.5 Mpx/s)
+  matfull2_fwd   rust N=4096      median=    0.010227 ms (   400.5 Mpx/s)
+  matfull2_fwd   c    N=4096      median=    0.022820 ms (   179.5 Mpx/s)
+  matfull2_fwd   rust N=16384     median=    0.042351 ms (   386.9 Mpx/s)
+  matfull2_fwd   c    N=16384     median=    0.097122 ms (   168.7 Mpx/s)
+  matfull2_fwd   rust N=65536     median=    0.163046 ms (   401.9 Mpx/s)
+  matfull2_fwd   c    N=65536     median=    0.417073 ms (   157.1 Mpx/s)
+  matfull2_fwd   rust N=262144    median=    0.657556 ms (   398.7 Mpx/s)
+  matfull2_fwd   c    N=262144    median=    1.685502 ms (   155.5 Mpx/s)
+  matfull2_fwd   rust N=1048576   median=    2.645054 ms (   396.4 Mpx/s)
+  matfull2_fwd   c    N=1048576   median=    6.585558 ms (   159.2 Mpx/s)
+  matfull2_fwd   rust N=4194304   median=   12.462174 ms (   336.6 Mpx/s)
+  matfull2_fwd   c    N=4194304   median=   27.729959 ms (   151.3 Mpx/s)
+  matfull2_fwd   rust N=16711744  median=   41.471702 ms (   403.0 Mpx/s)
+  matfull2_fwd   c    N=16711744  median=  115.466810 ms (   144.7 Mpx/s)
+transform              N   rust Mpx/s      c Mpx/s  rust/c speed
+sphmap_fwd             1          8.3          1.6         5.23x
+sphmap_fwd             4         25.3          5.4         4.70x
+sphmap_fwd             8         33.1          8.9         3.73x
+sphmap_fwd            16         39.2         13.2         2.96x
+sphmap_fwd            32         42.7         17.4         2.45x
+sphmap_fwd            64         45.2         20.7         2.19x
+sphmap_fwd           128         46.9         22.9         2.05x
+sphmap_fwd           256         47.5         24.0         1.98x
+sphmap_fwd           512         48.1         24.1         1.99x
+sphmap_fwd          1024         48.0         22.4         2.14x
+sphmap_fwd          4096         46.5         20.4         2.28x
+sphmap_fwd         16384         47.3         19.8         2.38x
+sphmap_fwd         65536         47.6         19.8         2.40x
+sphmap_fwd        262144         47.5         19.8         2.40x
+sphmap_fwd       1048576         47.5         19.8         2.39x
+sphmap_fwd       4194304         45.3         19.7         2.30x
+sphmap_fwd      16711744         47.3         19.8         2.39x
+sphmap_inv             1          9.7          1.6         5.99x
+sphmap_inv             4         31.7          5.6         5.63x
+sphmap_inv             8         44.0          9.4         4.68x
+sphmap_inv            16         52.9         14.2         3.73x
+sphmap_inv            32         61.4         19.3         3.18x
+sphmap_inv            64         66.4         23.1         2.87x
+sphmap_inv           128         69.1         25.7         2.68x
+sphmap_inv           256         70.9         27.4         2.59x
+sphmap_inv           512         70.9         28.4         2.50x
+sphmap_inv          1024         69.1         28.9         2.40x
+sphmap_inv          4096         71.5         29.2         2.45x
+sphmap_inv         16384         71.8         21.1         3.41x
+sphmap_inv         65536         71.7         20.5         3.49x
+sphmap_inv        262144         71.7         20.4         3.51x
+sphmap_inv       1048576         72.4         20.4         3.55x
+sphmap_inv       4194304         71.2         20.3         3.50x
+sphmap_inv      16711744         72.3         20.4         3.54x
+poly5_fwd              1          5.0          1.4         3.56x
+poly5_fwd              4         12.9          4.8         2.69x
+poly5_fwd              8         16.5          8.0         2.06x
+poly5_fwd             16         28.6         12.2         2.34x
+poly5_fwd             32         42.3         16.5         2.56x
+poly5_fwd             64         63.0         20.1         3.13x
+poly5_fwd            128         75.0         22.5         3.33x
+poly5_fwd            256         81.1         24.0         3.38x
+poly5_fwd            512         87.9         24.9         3.54x
+poly5_fwd           1024         92.8         25.2         3.69x
+poly5_fwd           4096         96.2         25.6         3.76x
+poly5_fwd          16384         96.5         25.8         3.75x
+poly5_fwd          65536         95.2         25.8         3.69x
+poly5_fwd         262144         95.9         25.8         3.71x
+poly5_fwd        1048576         88.9         25.7         3.46x
+poly5_fwd        4194304         85.5         25.7         3.33x
+poly5_fwd       16711744         84.7         25.7         3.29x
+poly1_fwd              1          5.6          1.5         3.80x
+poly1_fwd              4         16.6          5.4         3.08x
+poly1_fwd              8         24.1          9.6         2.51x
+poly1_fwd             16         35.8         16.0         2.23x
+poly1_fwd             32         53.5         24.4         2.20x
+poly1_fwd             64         82.0         32.9         2.49x
+poly1_fwd            128        114.9         39.4         2.92x
+poly1_fwd            256        132.7         44.5         2.98x
+poly1_fwd            512        148.8         46.5         3.20x
+poly1_fwd           1024        159.0         48.5         3.28x
+poly1_fwd           4096        170.7         49.8         3.43x
+poly1_fwd          16384        169.6         50.0         3.39x
+poly1_fwd          65536        168.7         49.8         3.39x
+poly1_fwd         262144        168.5         49.9         3.38x
+poly1_fwd        1048576        155.1         49.9         3.11x
+poly1_fwd        4194304        141.4         49.9         2.83x
+poly1_fwd       16711744        140.3         50.0         2.80x
+matdiag2_fwd           1         12.8          1.7         7.59x
+matdiag2_fwd           4         48.7          6.7         7.27x
+matdiag2_fwd           8         94.9         13.2         7.20x
+matdiag2_fwd          16        170.9         26.1         6.55x
+matdiag2_fwd          32        300.4         50.1         5.99x
+matdiag2_fwd          64        478.3         94.0         5.09x
+matdiag2_fwd         128        682.6        164.1         4.16x
+matdiag2_fwd         256        853.5        271.5         3.14x
+matdiag2_fwd         512        988.6        401.8         2.46x
+matdiag2_fwd        1024       1000.3        527.8         1.90x
+matdiag2_fwd        4096       1059.5        687.9         1.54x
+matdiag2_fwd       16384       1061.3        727.8         1.46x
+matdiag2_fwd       65536       1062.8        754.7         1.41x
+matdiag2_fwd      262144       1078.9        761.8         1.42x
+matdiag2_fwd     1048576        980.1        703.7         1.39x
+matdiag2_fwd     4194304        680.6        654.4         1.04x
+matdiag2_fwd    16711744        848.8        709.3         1.20x
+matfull2_fwd           1         11.0          1.7         6.49x
+matfull2_fwd           4         37.0          6.5         5.72x
+matfull2_fwd           8         70.8         12.5         5.67x
+matfull2_fwd          16        125.3         23.3         5.37x
+matfull2_fwd          32        189.1         41.7         4.53x
+matfull2_fwd          64        258.7         66.4         3.90x
+matfull2_fwd         128        321.5        100.9         3.19x
+matfull2_fwd         256        350.9        128.6         2.73x
+matfull2_fwd         512        363.5        149.7         2.43x
+matfull2_fwd        1024        394.5        169.5         2.33x
+matfull2_fwd        4096        400.5        179.5         2.23x
+matfull2_fwd       16384        386.9        168.7         2.29x
+matfull2_fwd       65536        401.9        157.1         2.56x
+matfull2_fwd      262144        398.7        155.5         2.56x
+matfull2_fwd     1048576        396.4        159.2         2.49x
+matfull2_fwd     4194304        336.6        151.3         2.23x
+matfull2_fwd    16711744        403.0        144.7         2.78x
+sphmap_fwd: 523948 of 33423488 output values differ between Rust and C, by at most 1 ULP
+sphmap_inv: 2340812 of 50135232 output values differ between Rust and C, by at most 3 ULP
+poly5_fwd: Rust and C outputs identical (33423488 values)
+poly1_fwd: Rust and C outputs identical (33423488 values)
+matdiag2_fwd: Rust and C outputs identical (33423488 values)
+matfull2_fwd: Rust and C outputs identical (33423488 values)

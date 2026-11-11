@@ -1759,14 +1759,14 @@ fn diagonal_inverse(m: &Array2<f64>) -> Array2<f64> {
     inv
 }
 
-/// Compute the inverse of a square matrix by delegating to the vendored
-/// PAL routine `palDmat` (via [`crate::pal::dmat`]).
+/// Compute the inverse of a square matrix by delegating to the port of the
+/// PAL routine `palDmat` ([`crate::pal::dmat`]).
 ///
 /// C `matrixmap.c::InvertMatrix` (matrixmap.c:1436) inverts a full matrix
 /// with `palDmat`, and AST stores that result verbatim in a MatrixMap's
 /// `IMn` dump fields. Byte-exact serialization therefore requires the
-/// *same* arithmetic, so we call the same C routine rather than a
-/// Rust-side re-derivation (an independent Gauss-Jordan gives an inverse
+/// *same* arithmetic, so we call the port of the same C routine rather than a
+/// re-derivation (an independent Gauss-Jordan gives an inverse
 /// equal to ~1e-16 but rounds near-zero elements differently, which is
 /// visible in the native dump — e.g. `IM5` of a galactic rotation matrix).
 ///

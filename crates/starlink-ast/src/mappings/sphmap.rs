@@ -236,6 +236,29 @@ impl Default for SphMap {
     }
 }
 
+impl SphMap {
+    /// The output for a point at a pole, or `None` for any other point: C's
+    /// test, with x and y effectively zero relative to z, i.e. both below
+    /// `|1000 z| * DBL_EPSILON`. When z is also zero that bound is zero and
+    /// no point passes, so the zero vector goes to `pal::dcc2s`, which
+    /// returns (0, 0); `zero` is kept for that branch to match C.
+    #[inline(always)]
+    fn pole(&self, x: f64, y: f64, z: f64, zero: f64) -> Option<(f64, f64)> {
+        let mxerr = (1000.0 * z).abs() * f64::EPSILON;
+        if x.abs() < mxerr && y.abs() < mxerr {
+            Some(if z < 0.0 {
+                (self.polar_long, -std::f64::consts::FRAC_PI_2)
+            } else if z > 0.0 {
+                (self.polar_long, std::f64::consts::FRAC_PI_2)
+            } else {
+                (zero, zero)
+            })
+        } else {
+            None
+        }
+    }
+}
+
 impl Mapping for SphMap {
     fn mapping_flags(&self) -> &crate::mappings::MappingFlags {
         &self.mapping_flags
@@ -261,13 +284,11 @@ impl Mapping for SphMap {
         self.inverted = !self.inverted;
     }
 
-    /// NaN-as-bad fast path. Drops the per-point `point_has_bad` gates.
-    /// The forward pole-detection branch (`|x| < mxerr && |y| < mxerr`)
-    /// uses ordered comparisons against `mxerr`, which is `NaN` when any
-    /// of x/y/z is NaN — every such comparison is false, so NaN inputs
-    /// fall through to `pal::dcc2s` which returns `(NaN, NaN)`
-    /// (atan2 / sqrt propagate NaN cleanly). Inverse direction just calls
-    /// `pal::dcs2c` directly; same story.
+    /// NaN-as-bad fast path: no bad-value tests. The pole test uses ordered
+    /// comparisons against `mxerr`, which is NaN when z is, so a point with a
+    /// NaN coordinate is never a pole and keeps the NaN results of
+    /// `pal::dcc2s` (atan2 and sqrt propagate NaN). The inverse is
+    /// `pal::dcs2c` alone.
     fn transform_into_nan(
         &self,
         pts: Points<'_>,
@@ -275,9 +296,8 @@ impl Mapping for SphMap {
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         let fwd = self.effective_forward(forward);
+        let n = pts.npoint();
         if fwd {
-            let polarlong = self.polar_long;
-            let n = pts.npoint();
             let in0 = &pts.axis(0)[..n];
             let in1 = &pts.axis(1)[..n];
             let in2 = &pts.axis(2)[..n];
@@ -286,33 +306,17 @@ impl Mapping for SphMap {
             };
             let out0 = &mut out0[..n];
             let out1 = &mut out1[..n];
+            pal::dcc2s_slice(in0, in1, in2, out0, out1);
+            let mut calls = n as u64;
             for i in 0..n {
-                let x = in0[i];
-                let y = in1[i];
-                let z = in2[i];
-                let mxerr = (1000.0 * z).abs() * f64::EPSILON;
-                if x.abs() < mxerr && y.abs() < mxerr {
-                    // Pole branch: only entered when x,y,z are all finite
-                    // (NaN comparisons against mxerr are false).
-                    if z < 0.0 {
-                        out0[i] = polarlong;
-                        out1[i] = -std::f64::consts::FRAC_PI_2;
-                    } else if z > 0.0 {
-                        out0[i] = polarlong;
-                        out1[i] = std::f64::consts::FRAC_PI_2;
-                    } else {
-                        out0[i] = f64::NAN;
-                        out1[i] = f64::NAN;
-                    }
-                } else {
-                    let v = [x, y, z];
-                    let (lon, lat) = pal::dcc2s(&v);
+                if let Some((lon, lat)) = self.pole(in0[i], in1[i], in2[i], f64::NAN) {
                     out0[i] = lon;
                     out1[i] = lat;
+                    calls -= 1;
                 }
             }
+            crate::call_counts::hit_n("astPalDcc2s", calls);
         } else {
-            let n = pts.npoint();
             let in0 = &pts.axis(0)[..n];
             let in1 = &pts.axis(1)[..n];
             let Some([out0, out1, out2]) = out.first_axes_mut() else {
@@ -321,12 +325,8 @@ impl Mapping for SphMap {
             let out0 = &mut out0[..n];
             let out1 = &mut out1[..n];
             let out2 = &mut out2[..n];
-            for i in 0..n {
-                let v = pal::dcs2c(in0[i], in1[i]);
-                out0[i] = v[0];
-                out1[i] = v[1];
-                out2[i] = v[2];
-            }
+            pal::dcs2c_slice(in0, in1, out0, out1, out2);
+            crate::call_counts::hit_n("astPalDcs2c", n as u64);
         }
         Ok(())
     }
@@ -339,11 +339,15 @@ impl Mapping for SphMap {
     ) -> AstResult<()> {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
         let fwd = self.effective_forward(forward);
+        let n = pts.npoint();
 
         if fwd {
+            // Every point goes through the slice entry, which a loop of
+            // independent points lets the compiler vectorize; bad and pole
+            // points are then overwritten with what C gives them without
+            // calling PAL. Computing a bad point is harmless: the arithmetic
+            // does not trap.
             // Forward: Cartesian (x, y, z) -> Spherical (lon, lat)
-            let polarlong = self.polar_long;
-            let n = pts.npoint();
             let in0 = &pts.axis(0)[..n];
             let in1 = &pts.axis(1)[..n];
             let in2 = &pts.axis(2)[..n];
@@ -352,48 +356,23 @@ impl Mapping for SphMap {
             };
             let out0 = &mut out0[..n];
             let out1 = &mut out1[..n];
+            pal::dcc2s_slice(in0, in1, in2, out0, out1);
+            let mut calls = n as u64;
             for i in 0..n {
-                if is_bad(in0[i]) || is_bad(in1[i]) || is_bad(in2[i]) {
-                    out0[i] = BAD_VALUE;
-                    out1[i] = BAD_VALUE;
+                let fixed = if is_bad(in0[i]) || is_bad(in1[i]) || is_bad(in2[i]) {
+                    Some((BAD_VALUE, BAD_VALUE))
                 } else {
-                    let x = in0[i];
-                    let y = in1[i];
-                    let z = in2[i];
-
-                    // Check for pole: x and y are effectively zero
-                    // relative to z.  Use the same criterion as the C
-                    // library: |x| < mxerr && |y| < mxerr where
-                    // mxerr = |1000 * z| * DBL_EPSILON.
-                    // When z is also zero, mxerr is 0 and `0 < 0` is
-                    // false, so the zero-vector falls through to
-                    // palDcc2s (which returns (0, 0)).
-                    let mxerr = (1000.0 * z).abs() * f64::EPSILON;
-                    if x.abs() < mxerr && y.abs() < mxerr {
-                        if z < 0.0 {
-                            out0[i] = polarlong;
-                            out1[i] = -std::f64::consts::FRAC_PI_2;
-                        } else if z > 0.0 {
-                            out0[i] = polarlong;
-                            out1[i] = std::f64::consts::FRAC_PI_2;
-                        } else {
-                            // z == 0.0 (all three zero) — should not
-                            // be reachable since mxerr would be 0, but
-                            // kept for safety to match C behavior.
-                            out0[i] = BAD_VALUE;
-                            out1[i] = BAD_VALUE;
-                        }
-                    } else {
-                        let v = [x, y, z];
-                        let (lon, lat) = pal::dcc2s(&v);
-                        out0[i] = lon;
-                        out1[i] = lat;
-                    }
+                    self.pole(in0[i], in1[i], in2[i], BAD_VALUE)
+                };
+                if let Some((lon, lat)) = fixed {
+                    out0[i] = lon;
+                    out1[i] = lat;
+                    calls -= 1;
                 }
             }
+            crate::call_counts::hit_n("astPalDcc2s", calls);
         } else {
             // Inverse: Spherical (lon, lat) -> Cartesian (x, y, z)
-            let n = pts.npoint();
             let in0 = &pts.axis(0)[..n];
             let in1 = &pts.axis(1)[..n];
             let Some([out0, out1, out2]) = out.first_axes_mut() else {
@@ -402,20 +381,17 @@ impl Mapping for SphMap {
             let out0 = &mut out0[..n];
             let out1 = &mut out1[..n];
             let out2 = &mut out2[..n];
+            pal::dcs2c_slice(in0, in1, out0, out1, out2);
+            let mut calls = n as u64;
             for i in 0..n {
                 if is_bad(in0[i]) || is_bad(in1[i]) {
                     out0[i] = BAD_VALUE;
                     out1[i] = BAD_VALUE;
                     out2[i] = BAD_VALUE;
-                } else {
-                    let lon = in0[i];
-                    let lat = in1[i];
-                    let v = pal::dcs2c(lon, lat);
-                    out0[i] = v[0];
-                    out1[i] = v[1];
-                    out2[i] = v[2];
+                    calls -= 1;
                 }
             }
+            crate::call_counts::hit_n("astPalDcs2c", calls);
         }
         Ok(())
     }
@@ -792,5 +768,31 @@ mod tests {
         let out = m.transform(&pts, true).unwrap();
         assert_close(out.axis(0)[0], 0.0, TOL);
         assert_close(out.axis(1)[0], 0.0, TOL);
+    }
+}
+
+#[cfg(all(test, feature = "call-counts"))]
+mod count_tests {
+    use super::*;
+    use crate::coords::PointSet;
+
+    /// C calls palDcc2s and palDcs2c only for points that are neither bad
+    /// nor, forward, at a pole; the counts say the same of the port.
+    #[test]
+    fn counts_only_the_calls_c_makes() {
+        let m = SphMap::new();
+        let fwd = PointSet::from_rows([
+            [1.0, 2.0, 3.0],
+            [BAD_VALUE, 2.0, 3.0],
+            [0.0, 0.0, 1.0],
+            [-1.0, 0.5, 0.25],
+        ]);
+        crate::call_counts::reset();
+        m.transform(&fwd, true).unwrap();
+        assert_eq!(crate::call_counts::snapshot().get("astPalDcc2s"), Some(&2));
+        let inv = PointSet::from_rows([[1.0, 0.5], [BAD_VALUE, 0.5], [2.0, -0.5]]);
+        crate::call_counts::reset();
+        m.transform(&inv, false).unwrap();
+        assert_eq!(crate::call_counts::snapshot().get("astPalDcs2c"), Some(&2));
     }
 }

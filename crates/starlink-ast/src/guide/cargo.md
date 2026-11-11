@@ -15,8 +15,8 @@ To build against the development version instead, name the repository:
 starlink-ast = { git = "https://github.com/Starlink/starlink-ast-rs" }
 ```
 
-The library includes the C sources of the PAL, ERFA and WCSLIB libraries it uses, and its build script compiles them.
-Building it needs a C compiler, and nothing else installed.
+The library is Rust throughout, including the PAL, ERFA and WCSLIB routines it uses.
+Building it needs a Rust toolchain and no C compiler.
 
 The traits whose methods are called on Mappings, Frames, Regions and Channels are re-exported by `starlink_ast::prelude`, so one `use starlink_ast::prelude::*;` makes them all callable.
 The types are named from their modules.

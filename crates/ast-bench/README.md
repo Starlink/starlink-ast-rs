@@ -19,6 +19,7 @@ It is opt-in because `compare` reports a timing missing from the base as unmatch
 A set is a file in `sets/` naming oracle sections, one per line with the reason it is there.
 `bench` holds one plain Mapping of each class, then the real-world FrameSets and Mappings in the core fixtures (the LSST FrameSets, `brad`, `rigby` and others), so the performance gate covers the objects users transform.
 `framesets` holds real-world FrameSets that must stay at parity with C (LSST, TNX, SIP, DSS, TAN) and the worst ratios the first full sweep found (spectral headers, parallel CmpMaps, IntraMaps).
+`native` holds every `bench` transform that reaches the code ported from ERFA, PAL or wcslib, and the real-world FrameSets in `wcsconv/inputs`; it measures that code against the C library it replaced.
 Every case in a set must have a row that is good on both engines, since the small point counts time only such rows; a test checks this.
 
 ## Fairness rules
@@ -47,11 +48,11 @@ To compare with another commit instead of a saved baseline:
 
     ast-bench compare --set bench --base main
 
-This builds `ast-bench` at that commit in a git worktree under `target/perf/base/<sha>`, times the set with that build and the current one in three alternating rounds, and compares the combined timings, so both builds see the same machine state.
+This builds `ast-bench` at that commit in a git worktree under `target/perf/base/<sha>`, into that worktree's own `target` directory, times the set with that build and the current one in three alternating rounds, and compares the combined timings, so both builds see the same machine state.
 The base must contain `ast-bench`.
 A base older than the `rust-cols` timing has no `rust-cols` rows, which `compare --base` reports as unmatched, so choose a base that has them.
 Either build failing a case, or timing a case the other does not, is an error.
-The worktree is kept for the next comparison; `git worktree remove target/perf/base/<sha>` removes it.
+The worktree and its build are kept for the next comparison; `git worktree remove target/perf/base/<sha>` removes both.
 
 A report names what got slower, not why.
 Changing one Mapping's code can move another's hot loop in the binary: making ZoomMap slower on purpose also made PolyMap's forward transform 20% slower in the same build, although PolyMap does not use ZoomMap.
@@ -66,6 +67,27 @@ It fails on any case where the two paths give different bits, since the NaN prot
 With `--base`, it builds `ast-bench` at that commit, runs the same command there, and fails on any case whose hashes differ, including a case that fails to load or transform on one side only.
 Use it for changes that must not alter any result, such as a change of data layout.
 The hashes depend on the platform's libm, so they are only ever compared on one machine, never committed.
+
+## Measuring how far results moved
+
+    ast-bench ulps --base <git-ref> [--max N]
+
+is for a change that is allowed to move results, such as a vectorized math kernel.
+It builds `ast-bench` at the base as `bits --base` does, runs `ast-bench values` there and here (every output value of every corpus case at its oracle rows), and prints one line per case and output axis whose values differ: how many differ and by at most how many ULP, the largest first.
+A change of sign, a NaN, or a value becoming or ceasing to be `AST__BAD` prints as a sign/NaN/BAD change.
+With `--max N`, each line over N ULP is an error.
+A case that loads or transforms on one side only, or gives a different number of values, is an error, since its values cannot be compared.
+A base from before the `values` command existed is measured with this tree's `ast-bench`, built against the base's library in the base's worktree and run there, so it reads this tree's `fixtures/` and the base's `starlink-ast` test fixtures.
+The worktree is put back as the base has it afterwards.
+That needs this tree's `ast-bench` to compile against the base's `starlink-ast`.
+
+## A yardstick for vectorized SphMap
+
+    ast-bench vforce [--max-n N] [--reps R]     # macOS, needs --features vforce
+
+times SphMap both ways on `ast-bench roman`'s inputs through the port and through Apple's vForce (`vvatan2`, `vvsqrt`, `vvsincos`), and reports how far vForce's results are from the port's.
+vForce is array-only and macOS-only, so the port does not use it; the timings show how fast a vectorized `eraC2s` and `eraS2c` can be on the machine.
+The command is behind a feature because with Accelerate linked into `ast-bench`, every `rust-cols` timing at N=1 took about 11 ns longer, which `compare` reported as a slowdown of every Mapping.
 
 ## Records and the full sweep
 

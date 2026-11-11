@@ -22,11 +22,8 @@ starlink-ast-rs/
 ├── Cargo.toml                 # workspace root
 ├── crates/
 │   ├── starlink-ast/          # pure-Rust idiomatic API (rlib)
-│   │   └── vendor/            # C source we own and build into starlink-ast
-│   │       ├── pal/           # AST's pal fork (build with cc)
-│   │       ├── erfa/          # AST's erfa fork (build with cc)
-│   │       ├── wcslib/        # AST's wcslib fork; deleted at step 6a
-│   │       └── README.md      # provenance: source, commit, mods
+│   │   └── vendor/            # ast_err.msg (build.rs makes the error codes) and its provenance README;
+│   │                          #   the crate compiles no C: PAL, ERFA and wcslib are Rust
 │   ├── starlink-ast-capi/     # cdylib; re-exports ast.h symbols
 │   ├── ast-plugins/           # Grf / Grf3d backends (PLplot, SVG, logging)
 │   ├── ast-ffi-tests/         # builds starlink-ast-capi, runs C ast_tester programs
@@ -47,9 +44,11 @@ starlink-ast-rs/
 
 Two principles:
 
-1. **`crates/starlink-ast/vendor/` is owned by this repo.** Everyday
-   `cargo build` / `cargo test` works on a fresh clone with no submodule
-   init, and it sits inside the crate so the published archive carries it.
+1. **`crates/starlink-ast/vendor/` is owned by this repo.** It holds
+   `ast_err.msg`, which `build.rs` turns into the error codes; the crate
+   compiles no C. Everyday `cargo build` / `cargo test` works on a fresh
+   clone with no submodule init, and it sits inside the crate so the
+   published archive carries it.
 2. **`reference/starlink-ast/` is opt-in.** Initialised only for
    tier-3 (`ast-ffi-tests`) and tier-4 (`ast-oracle-tests`), and for
    the fixture-mirror check. **CI runs neither tier.** The workflow
@@ -71,6 +70,8 @@ cargo test -p starlink-ast --test meta test_simplify_regression::  # tier 2: nat
 git submodule update --init reference/starlink-ast
 cargo test -p ast-ffi-tests                  # tier 3: C tests vs Rust libast
 cargo test -p ast-oracle-tests               # tier 4: bit/ULP comparison
+./tools/oracle_fixtures/recapture_wcslib_golden.sh --compare  # native projections vs this platform's C, bit for bit
+./tools/oracle_fixtures/recapture_erfa_pal_golden.sh --compare  # native PAL and ERFA vs this platform's C, bit for bit
 cargo run --release -p ast-bench -- help     # tier 5: transform benchmarks
 ```
 
@@ -174,6 +175,9 @@ both:
   so this is fine for that workload, but Frame-attribute integrity
   re-fusion uses 1-point probes that should stay scalar).
 
+A path chosen by point count is allowed only where both paths give the same bits: a 1-point probe must agree with the same point inside a bulk call.
+The vectorized trigonometric kernels of the native ERFA, PAL and wcslib design differ from libm in the last bit, so they run at every point count, pay their full latency at one point, and are held to a different rule: N=1 and N=100 stay faster than C (`docs/superpowers/specs/2026-10-27-native-erfa-pal-wcslib-design.md`, "Anti-goals").
+
 When adding a new `Mapping` whose math is polynomial in the inputs:
 prototype both paths behind a temporary `bench-internals` cargo
 feature, time both with `ast-bench run --set-file <set> --engine both`
@@ -197,12 +201,10 @@ on those grounds; do not re-prototype it without new motivation.
   exempt, their copyright being the probe's.
 - `cargo fmt` is enforced. `cargo clippy --workspace -- -D warnings`
   is a CI gate.
-- C99 is the language used in `crates/starlink-ast/vendor/`. Don't add C++ to vendored
-  sources; if you need to wrap C++ for a plugin, do it in a separate
-  crate.
-- `unsafe` is allowed in `starlink-ast-capi` (the entire crate is FFI) and in
-  the private vendored-C FFI module of `starlink-ast`. Anywhere else,
-  `unsafe` requires a justifying comment and review.
+- `starlink-ast` contains no C. If you need to wrap C++ for a plugin, do it in
+  a separate crate.
+- `unsafe` is allowed in `starlink-ast-capi` (the entire crate is FFI).
+  Anywhere else, `unsafe` requires a justifying comment and review.
 - Public item names: AST attribute names → snake_case (`SkyRefIs` →
   `set_sky_ref_is`). Class names stay PascalCase (`PolyMap`,
   `SkyFrame`). Concrete-class types disambiguate from traits where
@@ -425,7 +427,6 @@ The C ABI is **frozen**. Existing applications must keep linking.
 | String-typed `get_attr(name)` / `set_fmt(spec)` in `starlink-ast` | These exist only in `starlink-ast-capi` for the C-ABI dispatch path |
 | `Mul` / `BitOr` operator overloading for mapping composition | Use `then` / `alongside` verbs only — readability |
 | Reaching into `reference/starlink-ast/` from `starlink-ast`'s `build.rs` | The everyday build must not depend on the submodule |
-| Rewriting `crates/starlink-ast/vendor/wcslib/` in C | The Rust port is step 6a; keep the C source unchanged until then |
 | Symlinking test fixtures from `reference/starlink-ast/ast_tester/` | Fixtures must be committed into `crates/starlink-ast/tests/fixtures/` so tier-1 works without the submodule |
 | Hand-editing `ast_err.h` | Generated from `ast_err.msg` by `build.rs` |
 | Collapsing a per-class `MapMerge` / `RegPins` / `SubFrame` into one central `match` | These are C's extension points, not boilerplate — see "Before porting a class" |
@@ -454,6 +455,8 @@ The C ABI is **frozen**. Existing applications must keep linking.
   platform-drifted in its values: take the cards from a fresh capture and keep
   the values, which is what `tools/oracle_fixtures/merge_card_hunks.py` does.
   Regenerate in the same commit range as the pin move.
+  If the range touches `wcslib/`, run `tools/oracle_fixtures/recapture_wcslib_golden.sh` on macOS aarch64 and commit the rewritten `tests/wcslib_golden/projections.tsv` in that range too; `projections_match_the_captured_wcslib_values` then fails until the Rust projections follow the C.
+  Likewise, if it touches `pal/`, `erfa/` or `palwrap.c`, run `tools/oracle_fixtures/recapture_erfa_pal_golden.sh` and commit the rewritten `tests/erfa_pal_golden/roots.tsv`; `roots_match_the_captured_c_values` then fails until the Rust routines follow the C.
   Also run `tools/oracle_fixtures/check_c_headers_fresh.sh`; a new C documentation header needs a row in `docs/audits/c-docs/ledger.tsv`, and a header whose body changed (its `digest` column differs) needs its row re-reviewed against the new C text and the Rust docs updated to match.
   The user guide in `starlink_ast::guide` is ported from `sun_master.tex` at the commit recorded in `crates/starlink-ast/src/guide/README.md`; run `git -C reference/starlink-ast diff <that commit>..<new pin> -- sun_master.tex`, port each changed section into the guide chapter the README names for it, and record the new commit.
 - **Design spec** (authoritative for API shape and the reasoning behind it):
@@ -491,9 +494,8 @@ The C ABI is **frozen**. Existing applications must keep linking.
   `libast` and call the same functions. Records the stale-conda-libast
   trap and how to call protected APIs (`astGetBounded_` etc.) via
   `astMakePointer`.
-- **Vendored C provenance**: `crates/starlink-ast/vendor/README.md` records where each
-  vendored directory was copied from and what AST-specific local
-  modifications were applied.
+- **Vendored file provenance**: `crates/starlink-ast/vendor/README.md` records where
+  `ast_err.msg` was copied from, and the commits that replaced the vendored C with Rust.
 - **AST documentation**: one LaTeX source,
   `reference/starlink-ast/sun_master.tex`, is built by `builddocs` into
   two editions of the same guide and reference:

@@ -140,6 +140,8 @@ mod test_unitmap;
 mod test_unitnormmap;
 #[path = "../test_wcsmap.rs"]
 mod test_wcsmap;
+#[path = "../test_wcsmap_edges.rs"]
+mod test_wcsmap_edges;
 #[path = "../test_wcsmap_pv.rs"]
 mod test_wcsmap_pv;
 #[path = "../test_winmap.rs"]

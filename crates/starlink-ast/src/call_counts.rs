@@ -10,9 +10,9 @@
 //! To find where a counted call comes from, set `AST_COUNT_BACKTRACE` to its name as the counts report it (for example `pow`): the first such call on each thread after a `reset` prints a backtrace to stderr.
 //! Set `AST_COUNT_TRACE_ALL` to a name instead to print, for every such call after a `reset`, one line naming the `starlink_ast` functions on the stack, which `sort | uniq -c` turns into a count per call path.
 
-// The names are the symbols the C library calls (the vendored PAL and ERFA
-// routines carry their `astPal` / `astEra` prefixes), so the counts line up
-// with those from an instrumented build of the C library.
+// The names are the symbols the C library calls (the PAL and ERFA routines
+// carry their `astPal` / `astEra` prefixes), so the counts line up with those
+// from an instrumented build of the C library.
 
 #[cfg(feature = "call-counts")]
 mod imp {
@@ -65,6 +65,15 @@ mod imp {
         }
     }
 
+    /// `n` calls to `name` at once, as a slice entry point makes one per
+    /// value; traced as one call.
+    pub(crate) fn hit_n(name: &'static str, n: u64) {
+        if n > 0 {
+            hit(name);
+            COUNTS.with(|c| *c.borrow_mut().entry(name).or_default() += n - 1);
+        }
+    }
+
     /// Zero this thread's counts.
     pub fn reset() {
         COUNTS.with(|c| c.borrow_mut().clear());
@@ -83,7 +92,7 @@ mod imp {
 }
 
 #[cfg(feature = "call-counts")]
-pub(crate) use imp::hit;
+pub(crate) use imp::{hit, hit_n};
 #[cfg(feature = "call-counts")]
 pub use imp::{reset, snapshot};
 
@@ -91,15 +100,20 @@ pub use imp::{reset, snapshot};
 #[inline(always)]
 pub(crate) fn hit(_name: &'static str) {}
 
-/// Call a PAL, ERFA or wcslib function, counting it under its symbol name for the
-/// `call-counts` feature.
-macro_rules! counted_call {
-    ($f:ident ( $($arg:expr),* $(,)? )) => {{
-        crate::call_counts::hit(stringify!($f));
-        // SAFETY: the arguments are the ones the calling wrapper documents
-        // for this C function: valid pointers to buffers of the sizes it
-        // writes, and plain values otherwise.
-        unsafe { $f($($arg),*) }
-    }};
+#[cfg(not(feature = "call-counts"))]
+#[inline(always)]
+pub(crate) fn hit_n(_name: &'static str, _n: u64) {}
+
+#[cfg(all(test, feature = "call-counts"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hit_n_counts_n_calls() {
+        reset();
+        hit_n("test_hit_n", 5);
+        hit_n("test_hit_n", 0);
+        hit("test_hit_n");
+        assert_eq!(snapshot().get("test_hit_n"), Some(&6));
+    }
 }
-pub(crate) use counted_call as counted;

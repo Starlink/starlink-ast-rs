@@ -132,6 +132,23 @@ fn without_values(cards: &[String], keywords: &[&str]) -> Vec<String> {
         .collect()
 }
 
+/// (header, encoding) writes whose FrameSet runs SphMap's forward transform,
+/// which is within 1 ULP of C per arctangent, so their numbers differ from
+/// C's by rounding; their cards are compared by `sphmap_drift_text_eq`.
+const SPHMAP_DRIFT_LICENSED: &[(&str, &str)] = &[
+    ("tan_offset_origin", "FITS-WCS"),
+    ("tan_offset_pole", "FITS-WCS"),
+];
+
+/// The most a card value of a write in [`SPHMAP_DRIFT_LICENSED`] moved from
+/// C: 1 ULP (`PC2_1 = -0.215` of `tan_offset_pole`), or 1.3e-17 for
+/// `PC2_1 = -0.0016` of `tan_offset_origin`, a small difference of terms of
+/// order 1 (2026-10-28).
+const MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
+    ulps: 1,
+    atol: 2.0e-17,
+};
+
 /// Every write of every case, `(header, encoding, differs, report)`.
 fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
     let mut out = Vec::new();
@@ -145,18 +162,46 @@ fn compare_all() -> Vec<(&'static str, &'static str, bool, String)> {
                 names.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
             );
             let report = format!("{name} {enc}:\n--- rust\n{got:#?}\n--- C\n{want:#?}");
+            let drift = SPHMAP_DRIFT_LICENSED.contains(&(name, enc));
+            let text_eq = |g: &[String], w: &[String]| {
+                let (g, w) = (g.join("\n"), w.join("\n"));
+                if drift {
+                    crate::common::sphmap_drift_text_eq(&g, &w, MEASURED_BOUND)
+                } else {
+                    crate::common::c_text_eq(&g, &w)
+                }
+            };
             let differs = match VALUES_LICENSED
                 .iter()
                 .find(|&&(n, e, _, _)| n == name && e == enc)
             {
                 Some(&(_, _, keys, _)) => {
-                    (got.0, got.1, without_values(&got.2, keys), &got.3)
-                        != (want.0, want.1, without_values(&want.2, keys), &want.3)
+                    (got.0, got.1, &got.3) != (want.0, want.1, &want.3)
+                        || if drift {
+                            !text_eq(
+                                &without_values(&got.2, keys),
+                                &without_values(&want.2, keys),
+                            )
+                        } else {
+                            without_values(&got.2, keys) != without_values(&want.2, keys)
+                        }
                 }
                 None => {
-                    (got.0, got.1, &got.3) != (want.0, want.1, &want.3)
-                        || !crate::common::c_text_eq(&got.2.join("\n"), &want.2.join("\n"))
+                    (got.0, got.1, &got.3) != (want.0, want.1, &want.3) || !text_eq(&got.2, &want.2)
                 }
+            };
+            // A licensed write that now matches C exactly is reported, so the
+            // list cannot go stale.
+            let (differs, report) = if crate::common::on_capture_platform() && drift && got == want
+            {
+                (
+                    true,
+                    format!(
+                        "{name} {enc}: matches C exactly; remove it from SPHMAP_DRIFT_LICENSED"
+                    ),
+                )
+            } else {
+                (differs, report)
             };
             out.push((name, enc, differs, report));
         }

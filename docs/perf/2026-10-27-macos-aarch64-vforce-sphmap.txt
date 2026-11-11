@@ -1,0 +1,33 @@
+transform            N   port ns/pt vForce ns/pt  port/vF
+sphmap_fwd           1        85.88        24.82    3.46x
+sphmap_fwd           4        27.63        10.91    2.53x
+sphmap_fwd           8        22.01         7.44    2.96x
+sphmap_fwd          16        17.40         6.29    2.76x
+sphmap_fwd          32        15.28         5.84    2.62x
+sphmap_fwd          64        14.44         5.61    2.57x
+sphmap_fwd         128        13.87         5.56    2.49x
+sphmap_fwd         256        13.64         5.55    2.46x
+sphmap_fwd         512        13.23         5.55    2.38x
+sphmap_fwd        1024        13.16         5.51    2.39x
+sphmap_fwd        4096        13.29         5.48    2.42x
+sphmap_fwd       16384        13.25         5.63    2.35x
+sphmap_fwd       65536        13.28         5.65    2.35x
+sphmap_fwd      262144        13.34         5.69    2.34x
+sphmap_fwd     1048576        13.36         5.72    2.34x
+sphmap_inv           1        79.47        90.64    0.88x
+sphmap_inv           4        25.86        25.32    1.02x
+sphmap_inv           8        18.57         5.66    3.28x
+sphmap_inv          16        15.26         4.73    3.22x
+sphmap_inv          32        13.39         4.13    3.24x
+sphmap_inv          64        12.51         3.88    3.22x
+sphmap_inv         128        12.28         3.75    3.28x
+sphmap_inv         256        11.96         3.68    3.25x
+sphmap_inv         512        12.02         3.65    3.29x
+sphmap_inv        1024        11.77         3.65    3.22x
+sphmap_inv        4096        11.87         4.05    2.93x
+sphmap_inv       16384        11.83         3.79    3.12x
+sphmap_inv       65536        11.71         3.78    3.10x
+sphmap_inv      262144        12.00         3.87    3.10x
+sphmap_inv     1048576        11.80         3.83    3.08x
+sphmap_fwd: 382450 of 2097152 output values differ between the port and vForce, by at most 2 ULP
+sphmap_inv: 2076918 of 3145728 output values differ between the port and vForce, by at most 6 ULP

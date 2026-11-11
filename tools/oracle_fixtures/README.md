@@ -170,6 +170,74 @@ by a platform difference in the same file:
 Run this whenever the submodule pin moves. It belongs in the upstream-sync
 protocol in `CLAUDE.md`.
 
+## `recapture_wcslib_golden.sh` — are the wcslib golden values still what C computes?
+
+`crates/starlink-ast/tests/wcslib_golden/projections.tsv` holds the results of the reference library's wcslib projections, which `src/wcslib/golden_tests.rs` compares the native projections against bit for bit.
+The file carries its own test vectors, so it is the tool's input as well as its output.
+The shared inputs (`FI`, `RI`), the parameter sets (`S`) and the inputs of the `X` lines are kept, and `recapture_wcslib_golden.c` computes every `A`, `E`, `F` and `R` line and every `X` result afresh, whatever the file held for it.
+The header comment that names `reference/starlink-ast at <commit>` gets the commit the reference checkout is at.
+
+```shell
+./tools/oracle_fixtures/recapture_wcslib_golden.sh --check          # fail, showing the first differences, if the file is not a fresh capture
+./tools/oracle_fixtures/recapture_wcslib_golden.sh                  # rewrite the file in place
+./tools/oracle_fixtures/recapture_wcslib_golden.sh --output <path>  # write the capture to another file
+./tools/oracle_fixtures/recapture_wcslib_golden.sh --compare        # run the golden test against a capture from this platform
+```
+
+Run it after moving the `reference/starlink-ast` pin if the range touches `wcslib/proj.c`, `wcslib/tpn.c`, `wcslib/wcstrig.c` or their headers (`proj.h`, `wcstrig.h`, `wcsmath.h`), and commit the rewritten file in the same commit range as the pin move.
+After a pin move that touches none of them, only the commit in the header changes.
+
+The script copies those six files to a scratch directory and builds them there with `-O3 -ffp-contract=off`, the flags the file's header records; the submodule is never modified.
+`proj.c` includes the library's `src/memory.h` for `astSizeOf`, and that header needs the configured library, so the scratch copy has a three-line `memory.h` in its place and the tool defines `astSizeOf_`: every parameter array it hands to a projection holds `WCSLIB_MXPAR + 1` values.
+The script stops if the checkout's `wcslib/` has uncommitted changes, because the commit in the header would not describe the capture.
+`AST_REFERENCE` names a reference checkout other than `reference/starlink-ast`, and `--golden <path>` a file to read, and to check or rewrite, other than the committed one.
+
+The values are those of the capture platform's libm, and the committed ones are those of macOS on aarch64.
+On any other platform the script neither rewrites nor checks the file.
+`--output <path>` writes that platform's capture, whose header names the platform, with the glibc version where the C library is glibc.
+`--compare` is the check for such a platform: it captures to a temporary file and runs `projections_match_the_captured_wcslib_values` against it, through `AST_WCSLIB_GOLDEN`, in a debug and in a release build.
+It passes when the native projections give, bit for bit, what the C gives on the platform it runs on.
+No file of another platform's values is committed, because they change with the libm version as well as the platform.
+
+The tool stops, naming the line, at a line of an unknown type, an unknown projection code, a malformed input or a line out of place.
+A parameter set whose set-up starts or stops failing changes shape, between one `E` line and its `F`, `R` and `X` lines; the tool says so, and it cannot invent the `X` lines of a set that had only an `E` line.
+
+## `recapture_erfa_pal_golden.sh` — are the PAL and ERFA golden values still what C computes?
+
+`crates/starlink-ast/tests/erfa_pal_golden/roots.tsv` holds the outputs C gives for 180 to 900 calls of each PAL and ERFA routine the port uses, and `src/pal/golden_tests.rs` compares the port against them bit for bit.
+The file's input columns are the test vectors.
+The script builds the reference checkout's `palwrap.c`, calls each routine again on the inputs of every line, and writes the file with the outputs it got and with the reference commit in its header.
+Nothing else in the file changes, so a run against an unchanged reference leaves it byte for byte as it was.
+
+```shell
+./tools/oracle_fixtures/recapture_erfa_pal_golden.sh --check                  # exit non-zero if the file is not what C gives
+./tools/oracle_fixtures/recapture_erfa_pal_golden.sh                          # rewrite the file in place
+./tools/oracle_fixtures/recapture_erfa_pal_golden.sh --output /tmp/roots.tsv  # write the capture somewhere else
+./tools/oracle_fixtures/recapture_erfa_pal_golden.sh --compare                # run the golden test against a capture from this platform
+```
+
+`--check` prints how many lines differ, the numbers of the first few, and a count for each routine.
+`--golden <path>` names a golden file to read, and to check or rewrite, other than the committed one, and `AST_REFERENCE` names a reference checkout other than `reference/starlink-ast`.
+The checkout is only read: the objects go to a temporary directory.
+A checkout with uncommitted changes to its PAL or ERFA sources is refused, because the header names the commit the values came from.
+
+Run `--check` after every move of the `reference/starlink-ast` pin.
+It always reports the header line, which names the old commit.
+If that is the only line it reports, the routines give what they gave before, and a rewrite only records the new commit.
+Lines of a routine are reported when the range touched `pal/`, `erfa/`, `palwrap.c`, `pal2ast.h` or `erfa2ast.h` in a way that changes results; rewrite the file and commit it in the same range as the pin move, and expect `roots_match_the_captured_c_values` to fail until the port follows the C.
+
+The C is compiled `-O3 -ffp-contract=off`, the flags the file's header records, and both change results: at `3d3f255f`, 77 lines differ at `-O0` and 2947 with contraction left on.
+The values also depend on the platform's libm.
+The committed ones are macOS aarch64's, which is where the golden test runs, so on any other platform the script neither rewrites nor checks the file.
+`--output <path>` writes that platform's capture, whose header names the platform, with the glibc version where the C library is glibc.
+`--compare` is the check for such a platform: it runs `roots_match_the_captured_c_values` against the capture, through `AST_ERFA_PAL_GOLDEN`, in a debug and in a release build.
+It passes when the port gives, bit for bit, what the C gives on the platform it runs on.
+No file of another platform's values is committed, because they change with the libm version as well as the platform.
+
+`recapture_erfa_pal_golden.c` maps each root to its C routine as `run()` in `golden_tests.rs` maps it to the port's, and a root it does not know is an error naming the line.
+A new root needs an entry in both.
+To add calls, write their lines with the inputs and any well-formed output, such as `nan`, and run the script: it replaces the outputs.
+
 ## `build_simplify_trace.sh` — watch C simplify
 
 When a question is "does C reach this node, and in what state?", reasoning about

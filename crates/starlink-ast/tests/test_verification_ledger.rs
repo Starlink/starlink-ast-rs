@@ -36,6 +36,56 @@ fn fixtures() -> PathBuf {
 /// Fields: source file, const name, expected entry count, reason.
 const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
+        "test_frameset_integrity.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        1,
+        "sky_alignoffset_galactic: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 3 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly",
+    ),
+    (
+        "test_skyframe.rs",
+        "SKY_OFFSET_SPHMAP_DRIFT_LICENSED",
+        4,
+        "the origin, origin_refp, permuted_origin and pole offset maps: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 16 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly",
+    ),
+    (
+        "test_tran_grid_oracle.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        3,
+        "the tan_small_exact, tan_small_divided and tan_big grids, the last carrying an endpoint's difference along each row: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 4 ULP, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly",
+    ),
+    (
+        "test_fitschan_encodings_oracle.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        2,
+        "the FITS-WCS writes of tan_offset_origin and tan_offset_pole, whose PC matrix comes through it: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 1 ULP or 2e-17 absolute, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly",
+    ),
+    (
+        "test_fitschan_cursor_oracle.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        1,
+        "the sky_offset_system_rw transcript: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, compared within 7e-16 absolute, the most measured \
+         (MEASURED_BOUND), each case failing if it matches C exactly",
+    ),
+    (
+        "test_lsst_oracle.rs",
+        "SPHMAP_DRIFT_LICENSED",
+        4,
+        "the LSST FrameSet's forward transforms (one value 1 ULP from C) and inverse transforms \
+         (up to 4.5e-10 pixel), as read and simplified: values computed through SphMap, whose vectorized \
+         sines, cosines and arctangents are each within 1 ULP of C's, the inverse's difference carried \
+         by PolyMap's iterative inverse, which stops at the Mapping's TolInv of 1e-7 pixel; each \
+         comparison failing if it matches C exactly",
+    ),
+    (
         "test_transform_oracle.rs",
         "UNTRANSFORMABLE",
         11,
@@ -279,6 +329,16 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          ever stops differing from its replacement",
     ),
     (
+        "test_lsst_oracle.rs",
+        "OFF_PLATFORM_DRIFT_LICENSED",
+        2,
+        "the LSST FrameSet's inverse transforms, as read and simplified, off the \
+         capture platform only: PolyMap's iterative inverse stops once a step is \
+         below the Mapping's TolInv of 1e-7 pixel, so another libm's last-bit \
+         differences move where it stops, by up to 4.5e-10 pixel on Linux x86-64 \
+         (CI, 2026-10-28); compared exactly on the capture platform",
+    ),
+    (
         "test_simplify_regression.rs",
         "NUMERIC_PLATFORM_DRIFT",
         4,
@@ -313,12 +373,13 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "test_sky_convert.rs",
-        "SINCOS_MERGE_LICENSED",
-        3,
-        "AZEL results up to five units in the last place from C: Apple clang merges the \
-         sin/cos pairs of slamap.c De2h into __sincos_stret, which an unoptimised \
-         Rust build does not. A release build matches C exactly; the companion \
-         test asserts both",
+        "FK_SLICE_DRIFT_LICENSED",
+        306,
+        "conversions through FK4 whose SlaMap FK45Z or FK54Z step runs on vectorized \
+         kernels, whose sines, cosines and arctangents are each within 1 ULP of the \
+         exact value where C's come from libm: compared within 1.33e-15 radian, the \
+         most measured (FK_MEASURED_BOUND), each case failing if it matches C \
+         exactly; no value changes between bad and good",
     ),
     (
         "test_frame_in_map_slot.rs",

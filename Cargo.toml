@@ -14,7 +14,6 @@ license = "LGPL-3.0-or-later"
 repository = "https://github.com/Starlink/starlink-ast-rs"
 
 [workspace.dependencies]
-cc = "1"
 levenberg-marquardt = "0.15"
 nalgebra = { version = "0.34", default-features = false, features = ["std"] }
 ndarray = "0.16"

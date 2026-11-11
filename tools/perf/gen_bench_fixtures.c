@@ -18,6 +18,17 @@
 #include "ast.h"
 #include "transform_oracle.h"
 
+/* The points sampled for SphMap. Its cost is in libm's arctangents, sines
+   and cosines, whose branches a CPU learns over a short cycle of repeated
+   points, so a few dozen points flatter a per-point libm path against a
+   branchless one: on an Apple M1, per-point forward costs 13.6 ns with the
+   24 points the other fixtures use, 20 with 1024, 41 with 4096 and 46 with
+   16384, against 53 on the Roman benchmark's points. 4096 takes most of the
+   bias out for a 1.2 MB oracle. */
+#ifndef SPHMAP_NPOINT
+#define SPHMAP_NPOINT 4096
+#endif
+
 static FILE *sink_fp;
 static void sink( const char *line ) { fprintf( sink_fp, "%s\n", line ); }
 
@@ -25,6 +36,8 @@ typedef struct {
    const char *name;
    AstMapping *(* build)( void );
    double lo, hi;
+   /* Points to sample, or 0 for the oracle's usual count. */
+   int npoint;
 } Fixture;
 
 static AstMapping *zoommap( void ) { return (AstMapping *) astZoomMap( 2, 2.5, " " ); }
@@ -82,6 +95,19 @@ static AstMapping *wcsmap_sin( void ) { return (AstMapping *) astWcsMap( 2, AST_
 static AstMapping *wcsmap_zpn( void ) {
    return (AstMapping *) astWcsMap( 2, AST__ZPN, 1, 2, "PV2_1=1, PV2_3=0.05" );
 }
+static AstMapping *wcsmap_arc( void ) { return (AstMapping *) astWcsMap( 2, AST__ARC, 1, 2, " " ); }
+static AstMapping *wcsmap_cea( void ) {
+   return (AstMapping *) astWcsMap( 2, AST__CEA, 1, 2, "PV2_1=1" );
+}
+static AstMapping *wcsmap_ait( void ) { return (AstMapping *) astWcsMap( 2, AST__AIT, 1, 2, " " ); }
+static AstMapping *wcsmap_cod( void ) {
+   return (AstMapping *) astWcsMap( 2, AST__COD, 1, 2, "PV2_1=45, PV2_2=10" );
+}
+static AstMapping *wcsmap_bon( void ) {
+   return (AstMapping *) astWcsMap( 2, AST__BON, 1, 2, "PV2_1=45" );
+}
+static AstMapping *wcsmap_qsc( void ) { return (AstMapping *) astWcsMap( 2, AST__QSC, 1, 2, " " ); }
+static AstMapping *wcsmap_hpx( void ) { return (AstMapping *) astWcsMap( 2, AST__HPX, 1, 2, " " ); }
 static AstMapping *sphmap( void ) { return (AstMapping *) astSphMap( " " ); }
 static AstMapping *pcdmap( void ) {
    double c[ 2 ] = { 0.0, 0.0 };
@@ -128,6 +154,30 @@ static AstMapping *timemap( void ) {
    double a[ 2 ] = { 0.0, AST__BAD };
    AstTimeMap *m = astTimeMap( 0, " " );
    astTimeAdd( m, "TAITOUTC", 2, a );
+   return (AstMapping *) m;
+}
+static AstMapping *slamap_amp( void ) {
+   double a[ 2 ] = { 55000.0, 2000.0 };
+   AstSlaMap *m = astSlaMap( 0, " " );
+   astSlaAdd( m, "AMP", 2, a );
+   return (AstMapping *) m;
+}
+static AstMapping *slamap_fk45z( void ) {
+   double a[ 1 ] = { 1950.0 };
+   AstSlaMap *m = astSlaMap( 0, " " );
+   astSlaAdd( m, "FK45Z", 1, a );
+   return (AstMapping *) m;
+}
+static AstMapping *slamap_prec( void ) {
+   double a[ 2 ] = { 1950.0, 2000.0 };
+   AstSlaMap *m = astSlaMap( 0, " " );
+   astSlaAdd( m, "PREC", 2, a );
+   return (AstMapping *) m;
+}
+static AstMapping *timemap_mjdtobep( void ) {
+   double a[ 2 ] = { 0.0, 0.0 };
+   AstTimeMap *m = astTimeMap( 0, " " );
+   astTimeAdd( m, "MJDTOBEP", 2, a );
    return (AstMapping *) m;
 }
 static AstMapping *specmap( void ) {
@@ -183,7 +233,14 @@ static const Fixture FIXTURES[] = {
    { "wcsmap_tan.map", wcsmap_tan, -0.05, 0.05 },
    { "wcsmap_sin.map", wcsmap_sin, -0.05, 0.05 },
    { "wcsmap_zpn.map", wcsmap_zpn, -0.05, 0.05 },
-   { "sphmap.map", sphmap, -1.0, 1.0 },
+   { "wcsmap_arc.map", wcsmap_arc, -0.05, 0.05 },
+   { "wcsmap_cea.map", wcsmap_cea, -0.05, 0.05 },
+   { "wcsmap_ait.map", wcsmap_ait, -0.05, 0.05 },
+   { "wcsmap_cod.map", wcsmap_cod, -0.05, 0.05 },
+   { "wcsmap_bon.map", wcsmap_bon, -0.05, 0.05 },
+   { "wcsmap_qsc.map", wcsmap_qsc, -0.05, 0.05 },
+   { "wcsmap_hpx.map", wcsmap_hpx, -0.05, 0.05 },
+   { "sphmap.map", sphmap, -1.0, 1.0, SPHMAP_NPOINT },
    { "pcdmap.map", pcdmap, -0.1, 0.1 },
    { "grismmap.map", grismmap, 4.0e-7, 6.0e-7 },
    { "unitnormmap_2d.map", unitnormmap, -1.0, 1.0 },
@@ -192,6 +249,10 @@ static const Fixture FIXTURES[] = {
    { "ratemap_polymap.map", ratemap, -0.5, 0.5 },
    { "slamap_eqgal.map", slamap, 0.0, 1.5 },
    { "timemap_taiutc.map", timemap, 50000.0, 50100.0 },
+   { "slamap_amp.map", slamap_amp, 0.0, 1.5 },
+   { "slamap_fk45z.map", slamap_fk45z, 0.0, 1.5 },
+   { "slamap_prec.map", slamap_prec, 0.0, 1.5 },
+   { "timemap_mjdtobep.map", timemap_mjdtobep, 50000.0, 50100.0 },
    { "specmap_wn_to_fr.map", specmap, 1.0, 1000.0 },
    { "splinemap_5x5_cubic.map", splinemap, 0.1, 0.9 },
    { "mathmap_2d_linear.map", mathmap, -1.0, 1.0 },
@@ -258,9 +319,9 @@ int main( int argc, char **argv ) {
    fprintf( ofp, "# tol: rtol=1e-07 atol=1e-07  equiv_rtol=1e-09 equiv_atol=1e-09  "
                  "rtrip_rtol=1e-06 rtrip_atol=0.05\n\n" );
 
-   int np = oracle_sample_axis_count();
    for( size_t f = 0; f < sizeof FIXTURES/sizeof FIXTURES[ 0 ]; f++ ) {
       const Fixture *fx = FIXTURES + f;
+      int np = fx->npoint > 0 ? fx->npoint : oracle_sample_axis_count();
       astBegin;
       AstMapping *map = fx->build();
       if( !astOK || !map ) {

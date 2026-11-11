@@ -31,6 +31,10 @@ rm -rf "$DEST"; mkdir -p "$DEST/src"
 
 PTHREADS=ON
 if [ "$VARIANT" = nothreads ]; then PTHREADS=OFF; fi
+# A threaded AST calls pthreads, which glibc before 2.34 keeps in a separate
+# libpthread; -pthread links it wherever it is needed and is harmless elsewhere.
+THREADS=""
+if [ "$PTHREADS" = ON ]; then THREADS=-pthread; fi
 EXTRA=""
 if [ "$VARIANT" = count ]; then
    python3 "$HERE/tools/perf/gen_count_header.py" "$DEST/src"
@@ -70,7 +74,7 @@ if [ "$VARIANT" != nothreads ]; then
    cc $CFLAGS_PINNED $SHARED -fPIC -o "$DEST/$LIB" \
       -I "$B" -I "$DEST/src" -I "$DEST/src/ast_tester" -I "$HERE/crates/ast-bench/c" \
       "$HERE/crates/ast-bench/c/bench_engine.c" "$DEST/src/ast_tester/transform_oracle_util.c" \
-      $EXTRA $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
+      $EXTRA $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm $THREADS
 fi
 
 if [ "$VARIANT" != count ]; then
@@ -79,7 +83,7 @@ if [ "$VARIANT" != count ]; then
    cc $CFLAGS_PINNED -o "$DEST/prof_tran" \
       -I "$B" -I "$DEST/src" -I "$DEST/src/ast_tester" \
       "$HERE/tools/perf/prof_tran.c" "$DEST/src/ast_tester/transform_oracle_util.c" \
-      $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
+      $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm $THREADS
 fi
 
 if [ "$VARIANT" = bench ]; then
@@ -88,12 +92,12 @@ if [ "$VARIANT" = bench ]; then
    cc $CFLAGS_PINNED -o "$DEST/gen_bench_fixtures" \
       -I "$B" -I "$DEST/src" -I "$DEST/src/ast_tester" \
       "$HERE/tools/perf/gen_bench_fixtures.c" "$DEST/src/ast_tester/transform_oracle_util.c" \
-      $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
+      $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm $THREADS
    # The program that writes the Roman benchmark's fixtures.
    # shellcheck disable=SC2086
    cc $CFLAGS_PINNED -o "$DEST/gen_roman_fixtures" \
       -I "$B" -I "$DEST/src" "$HERE/tools/perf/gen_roman_fixtures.c" \
-      $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm
+      $ARCHIVES ${YAML:+-L "$YAML"} -lyaml -lm $THREADS
 fi
 
 { echo "variant=$VARIANT"; echo "cc=$(cc --version | head -1)"; echo "cflags=$CFLAGS_PINNED";

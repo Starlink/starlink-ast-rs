@@ -1423,6 +1423,18 @@ fn ax_norm_on_the_longitude_axis_matches_c() {
 // sky_offset_map
 // ===========================================================================
 
+/// Offset maps whose CmpMap runs SphMap, compared by `sphmap_drift_values_eq`
+/// within [`OFFSET_MAP_MEASURED_BOUND`]; one that matches C exactly fails,
+/// so the list cannot go stale.
+const SKY_OFFSET_SPHMAP_DRIFT_LICENSED: &[&str] =
+    &["origin", "origin_refp", "permuted_origin", "pole"];
+
+/// The most these offset maps moved from C was 16 ULP (2026-10-28).
+const OFFSET_MAP_MEASURED_BOUND: crate::common::DriftTol = crate::common::DriftTol {
+    ulps: 16,
+    atol: 0.0,
+};
+
 /// `sky_offset_map` gives the Mapping C's `astSkyOffsetMap` gives: a UnitMap
 /// without an offset coordinate system, and otherwise a CmpMap whose
 /// transformations match the C library's.
@@ -1581,16 +1593,32 @@ fn sky_offset_map_follows_the_c_library() {
         } else {
             assert!(map.as_ref().as_any().is::<CmpMap>(), "{name}: a CmpMap");
         }
+        let licensed = SKY_OFFSET_SPHMAP_DRIFT_LICENSED.contains(&name);
+        let mut exact = true;
         for (forward, want) in [(true, fwd), (false, inv)] {
             let out = map.transform(&input, forward).unwrap();
             for (i, w) in want.iter().enumerate() {
-                crate::common::assert_c_values(
-                    &out.point(i),
-                    w,
-                    &format!("{name} forward={forward} point {i}"),
+                exact &= crate::common::matches_c_bits(&out.point(i), w);
+                let ok = if licensed {
+                    crate::common::sphmap_drift_values_eq(
+                        &out.point(i),
+                        w,
+                        OFFSET_MAP_MEASURED_BOUND,
+                    )
+                } else {
+                    crate::common::c_values_eq(&out.point(i), w)
+                };
+                assert!(
+                    ok,
+                    "{name} forward={forward} point {i}: got {:?}, C gives {w:?}",
+                    out.point(i)
                 );
             }
         }
+        assert!(
+            !(licensed && exact),
+            "{name}: matches C exactly; remove it from SKY_OFFSET_SPHMAP_DRIFT_LICENSED"
+        );
     }
 
     // A SkyRefP that coincides with SkyRef defines no orientation.
