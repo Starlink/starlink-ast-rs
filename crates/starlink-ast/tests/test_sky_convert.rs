@@ -18,50 +18,6 @@ mod cases;
 
 use starlink_ast::frames::{FrameRef, FrameSearch, SkyFrame, SkySystem};
 
-/// Cases whose AZEL result may differ from C in the last few bits.
-///
-/// The final E2H step (slamap.c:306 `De2h`, ported as `de2h_with_aberration`)
-/// takes `sin` and `cos` of the same angles. Apple clang merges each pair into
-/// one `__sincos_stret` call when it builds the C library, and that call can
-/// round differently from separate `sin` and `cos`. A release build of this
-/// crate makes the same merge and reproduces C exactly; an unoptimized test
-/// build does not. The steps before E2H agree bit for bit. One unit in the
-/// last place of an intermediate becomes up to five in the elevation, which
-/// `atan2` takes from a small `z`; each case records the bound measured for it.
-///
-/// Fields: configuration, from System, to System, to AlignSystem, maximum
-/// difference in units in the last place, reason.
-type SincosLicence = (
-    usize,
-    &'static str,
-    &'static str,
-    Option<&'static str>,
-    u64,
-    &'static str,
-);
-
-const SINCOS_MERGE_LICENSED: &[SincosLicence] = &[(
-    0,
-    "ICRS",
-    "AZEL",
-    Some("GAPPT"),
-    1,
-    "E2H azimuth, sincos merge",
-)];
-
-/// The licensed difference in units in the last place for a case, if any.
-fn sincos_licence(config: usize, from: &str, to: &str, align: Option<&str>) -> Option<u64> {
-    SINCOS_MERGE_LICENSED
-        .iter()
-        .find(|&&(c, f, t, a, _, _)| c == config && f == from && t == to && a == align)
-        .map(|&(.., ulps, _)| ulps)
-}
-
-/// Whether two values are at most `ulps` units in the last place apart.
-fn within_ulps(a: f64, b: f64, ulps: u64) -> bool {
-    a == b || (a.signum() == b.signum() && a.to_bits().abs_diff(b.to_bits()) <= ulps)
-}
-
 fn convert(
     config: usize,
     from_sys: &str,
@@ -102,14 +58,7 @@ fn convert_matches_the_c_library() {
             (Some(_), None) => failures.push(format!("{label}: converts, C finds no conversion")),
             (None, Some(_)) => failures.push(format!("{label}: no conversion, C converts")),
             (Some(got), Some(want)) => {
-                let same = match sincos_licence(config, from_sys, to_sys, align) {
-                    Some(ulps) => got.iter().zip(&want).all(|(g, w)| {
-                        (within_ulps(g[0], w[0], ulps) && within_ulps(g[1], w[1], ulps))
-                            || crate::common::c_values_eq(g, w)
-                    }),
-                    None => crate::common::c_values_eq(got.as_flattened(), want.as_flattened()),
-                };
-                if !same {
+                if !crate::common::c_values_eq(got.as_flattened(), want.as_flattened()) {
                     failures.push(format!("{label}: got {got:?}, C gives {want:?}"));
                 }
             }
@@ -122,25 +71,4 @@ fn convert_matches_the_c_library() {
         cases::CASES.len(),
         failures.join("\n")
     );
-}
-
-/// Each licensed case still needs its license in an unoptimized build, and
-/// matches C exactly in an optimized one; a case that stops differing in the
-/// unoptimized build must be removed from `SINCOS_MERGE_LICENSED`.
-#[test]
-fn sincos_licences_are_still_needed() {
-    for &(config, from_sys, to_sys, align, _, reason) in SINCOS_MERGE_LICENSED {
-        let want = cases::CASES
-            .iter()
-            .find(|c| c.0 == config && c.1 == from_sys && c.2 == to_sys && c.3 == align)
-            .and_then(|c| c.4)
-            .expect("licensed case is in the corpus and converts");
-        let got = convert(config, from_sys, to_sys, align).expect("converts");
-        let exact = got == want;
-        assert_eq!(
-            exact,
-            !cfg!(debug_assertions),
-            "config {config} {from_sys} -> {to_sys} align {align:?} ({reason}): exact match is {exact}"
-        );
-    }
 }

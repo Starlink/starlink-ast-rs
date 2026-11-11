@@ -14,7 +14,7 @@ TimeMap: gather the conversion steps of a run of adjacent SlaMaps, normalize
 each for its applied direction, simplify the accumulated list until nothing more
 goes, and rebuild one SlaMap or a UnitMap.
 
-`SlaMap::map_merge` (`slamap.rs:1429-1436 (fn map_merge)`) delegates to `sla_map_merge`
+`SlaMap::map_merge` (`slamap.rs:1423-1430 (fn map_merge)`) delegates to `sla_map_merge`
 (`slamap.rs:734-786 (fn sla_map_merge)`); the helpers are `sla_normalized_steps`
 (`slamap.rs:622-649 (fn sla_normalized_steps)`), `sla_simplify_steps`
 (`slamap.rs:656-724 (fn sla_simplify_steps)`) and `try_cancel_pair`
@@ -34,7 +34,7 @@ goes, and rebuild one SlaMap or a UnitMap.
 | 10 | Take each SlaMap and note whether it is being applied in its inverse direction | slamap.c:2757-2761 (fn MapMerge) | slamap.rs:759-761 (fn sla_map_merge) | architecture | ported |
 | 11 | Set loop limits and an increment so the steps are scanned forward or in reverse as that direction dictates | slamap.c:2762-2768 (fn MapMerge) | slamap.rs:623-628 (fn sla_normalized_steps) | architecture | ported |
 | 12 | Loop through each transformation step in the SlaMap | slamap.c:2769-2771 (fn MapMerge) | slamap.rs:626-629 (fn sla_normalized_steps) | architecture | ported |
-| 13 | Free any extra information cached with the conversion step | slamap.c:2772-2775 (fn MapMerge) | slamap.rs:1158-1167 (fn new) | ceremony | n/a: the star-independent parameters are rebuilt on each transform rather than stored on the step, and the per-thread `palMappa` cache is keyed by the arguments, so a merge has no cache to discard |
+| 13 | Free any extra information cached with the conversion step | slamap.c:2772-2775 (fn MapMerge) | slamap.rs:1152-1161 (fn new) | ceremony | n/a: the star-independent parameters are rebuilt on each transform rather than stored on the step, and the per-thread `palMappa` cache is keyed by the arguments, so a merge has no cache to discard |
 | 14 | Store the step's type code, obtain its argument count from `CvtString`, and copy the arguments | slamap.c:2776-2785 (fn MapMerge) | slamap.rs:630 (fn sla_normalized_steps),633-643 (fn sla_normalized_steps) | architecture | ported |
 | 15 | An inverted SlaMap must not only accumulate its steps in reverse but apply each in reverse; define macros for the changes that needs | slamap.c:2786-2792 (fn MapMerge) | slamap.rs:623-625 (fn sla_normalized_steps),626 (fn sla_normalized_steps) | architecture | ported |
 | 16 | Macro swapping two nominated arguments where the type code matches | slamap.c:2793-2801 (fn MapMerge) | slamap.rs:635-639 (fn sla_normalized_steps) | architecture | ported |
@@ -95,7 +95,7 @@ goes, and rebuild one SlaMap or a UnitMap.
 `AST__SLA_AMP( DATE, EQ )` and `AST__SLA_MAP( EQ, DATE )` carry the same pair of
 numbers in opposite orders (`slamap.c:698 (fn AddSlaCvt)`,692), and the transform reads
 them that way round: the port's `pal::mappa` call takes `(args[0], args[1])` for
-`Map` and `(args[1], args[0])` for `Amp` (`slamap.rs:1161 (fn new)`,1040). So
+`Map` and `(args[1], args[0])` for `Amp` (`slamap.rs:1155 (fn new)`,1040). So
 inverting such a step means exchanging its two arguments as well as its type
 code, which is why C pairs `SWAP_CODES( AST__SLA_AMP, AST__SLA_MAP )` with
 `SWAP_ARGS` on both codes. Those are two of only four `SWAP_ARGS` invocations in
@@ -166,7 +166,7 @@ every leaf to forward.
 C stores the `palMappa` parameter array alongside the conversion step and frees it
 here, because the merge may change the step's arguments and would otherwise leave
 a cache that no longer matches them. The port builds that array per transform
-call (`slamap.rs:1158-1167 (fn new)`), reusing a per-thread copy only while the
+call (`slamap.rs:1152-1161 (fn new)`), reusing a per-thread copy only while the
 arguments repeat, so there is nothing held across a merge to invalidate.
 
 ## Row 3 — the `*nmap == 1` disjunct is unreachable

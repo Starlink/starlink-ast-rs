@@ -1035,12 +1035,9 @@ fn stp_apply(mat4: &[[f64; 3]; 3], alpha: f64, delta: f64) -> (f64, f64) {
 /// Apply the AST De2h conversion: apparent (ha, dec) to topocentric (az, el)
 /// including diurnal aberration correction.
 fn de2h_with_aberration(ha: f64, dec: f64, phi: f64, diurab: f64) -> (f64, f64) {
-    let sh = crate::math::sin(ha);
-    let ch = crate::math::cos(ha);
-    let sd = crate::math::sin(dec);
-    let cd = crate::math::cos(dec);
-    let sp = crate::math::sin(phi);
-    let cp = crate::math::cos(phi);
+    let (sh, ch) = crate::math::sincos_as_c(ha);
+    let (sd, cd) = crate::math::sincos_as_c(dec);
+    let (sp, cp) = crate::math::sincos_as_c(phi);
 
     // Components of Cartesian (-ha, dec) vector.
     let xhd = ch * cd;
@@ -1075,12 +1072,9 @@ fn de2h_with_aberration(ha: f64, dec: f64, phi: f64, diurab: f64) -> (f64, f64) 
 /// Apply the AST Dh2e conversion: topocentric (az, el) to apparent (ha, dec)
 /// including diurnal aberration correction.
 fn dh2e_with_aberration(az: f64, el: f64, phi: f64, diurab: f64) -> (f64, f64) {
-    let sa = crate::math::sin(az);
-    let ca = crate::math::cos(az);
-    let se = crate::math::sin(el);
-    let ce = crate::math::cos(el);
-    let sp = crate::math::sin(phi);
-    let cp = crate::math::cos(phi);
+    let (sa, ca) = crate::math::sincos_as_c(az);
+    let (se, ce) = crate::math::sincos_as_c(el);
+    let (sp, cp) = crate::math::sincos_as_c(phi);
 
     // Cartesian (az, el) to Cartesian (ha, dec) — note, +ha not -ha.
     let xmhda = -ca * ce * sp + se * cp;

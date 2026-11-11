@@ -372,15 +372,6 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          only gate — which is why the set is pinned on its own",
     ),
     (
-        "test_sky_convert.rs",
-        "SINCOS_MERGE_LICENSED",
-        1,
-        "An AZEL result one unit in the last place from C: Apple clang merges the \
-         sin/cos pairs of slamap.c De2h into __sincos_stret, which an unoptimised \
-         Rust build does not. A release build matches C exactly; the companion \
-         test asserts both",
-    ),
-    (
         "test_frame_in_map_slot.rs",
         "FRAME_IN_MAP_SLOT_DECLINED",
         1,
