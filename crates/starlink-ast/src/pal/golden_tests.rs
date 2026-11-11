@@ -13,6 +13,9 @@
 //! line holds.
 //! `tools/oracle_fixtures/recapture_erfa_pal_golden.sh` recomputes the file's
 //! outputs from the reference C library.
+//! `AST_ERFA_PAL_GOLDEN` names a file to read in place of it, which is how
+//! that script's `--compare` checks the routines against a capture from the
+//! platform it runs on.
 //! The published archive does not carry it, so the test is ignored there.
 //! Every result is compared before the test fails, and the failure names the
 //! first few that differ and counts the rest, with each routine's largest
@@ -224,10 +227,10 @@ struct Tally {
     max_ulps: u64,
 }
 
-// The values were captured with Apple's libm, and the routines call the
-// platform libm for the trigonometric functions, whose last bit can differ
-// elsewhere; run with `--ignored` on another platform to check whether it
-// agrees there too.
+// The committed values were captured with Apple's libm, and the routines call
+// the platform libm for the trigonometric functions, whose last bit differs
+// elsewhere. On another platform `recapture_erfa_pal_golden.sh --compare` runs
+// this against a capture from that platform's C.
 #[test]
 #[cfg_attr(
     all(
@@ -238,10 +241,12 @@ struct Tally {
 )]
 #[cfg_attr(ast_dist_tier = "cutdown", ignore = "golden values not distributed")]
 fn roots_match_the_captured_c_values() {
-    let path = format!(
-        "{}/tests/erfa_pal_golden/roots.tsv",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let path = std::env::var("AST_ERFA_PAL_GOLDEN").unwrap_or_else(|_| {
+        format!(
+            "{}/tests/erfa_pal_golden/roots.tsv",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    });
     let golden = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let mut tally: BTreeMap<String, Tally> = BTreeMap::new();
     let mut diffs = Differences::default();

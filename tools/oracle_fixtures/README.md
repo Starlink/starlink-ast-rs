@@ -213,6 +213,7 @@ Nothing else in the file changes, so a run against an unchanged reference leaves
 ./tools/oracle_fixtures/recapture_erfa_pal_golden.sh --check                  # exit non-zero if the file is not what C gives
 ./tools/oracle_fixtures/recapture_erfa_pal_golden.sh                          # rewrite the file in place
 ./tools/oracle_fixtures/recapture_erfa_pal_golden.sh --output /tmp/roots.tsv  # write the capture somewhere else
+./tools/oracle_fixtures/recapture_erfa_pal_golden.sh --compare                # run the golden test against a capture from this platform
 ```
 
 `--check` prints how many lines differ, the numbers of the first few, and a count for each routine.
@@ -227,7 +228,11 @@ Lines of a routine are reported when the range touched `pal/`, `erfa/`, `palwrap
 
 The C is compiled `-O3 -ffp-contract=off`, the flags the file's header records, and both change results: at `3d3f255f`, 77 lines differ at `-O0` and 2947 with contraction left on.
 The values also depend on the platform's libm.
-The committed ones are macOS aarch64's, which is where the golden test runs, so on any other platform the script accepts only `--output` and prints the platform it captured on.
+The committed ones are macOS aarch64's, which is where the golden test runs, so on any other platform the script neither rewrites nor checks the file.
+`--output <path>` writes that platform's capture, whose header names the platform, with the glibc version where the C library is glibc.
+`--compare` is the check for such a platform: it runs `roots_match_the_captured_c_values` against the capture, through `AST_ERFA_PAL_GOLDEN`, in a debug and in a release build.
+It passes when the port gives, bit for bit, what the C gives on the platform it runs on.
+No file of another platform's values is committed, because they change with the libm version as well as the platform.
 
 `recapture_erfa_pal_golden.c` maps each root to its C routine as `run()` in `golden_tests.rs` maps it to the port's, and a root it does not know is an error naming the line.
 A new root needs an entry in both.

@@ -71,6 +71,7 @@ git submodule update --init reference/starlink-ast
 cargo test -p ast-ffi-tests                  # tier 3: C tests vs Rust libast
 cargo test -p ast-oracle-tests               # tier 4: bit/ULP comparison
 ./tools/oracle_fixtures/recapture_wcslib_golden.sh --compare  # native projections vs this platform's C, bit for bit
+./tools/oracle_fixtures/recapture_erfa_pal_golden.sh --compare  # native PAL and ERFA vs this platform's C, bit for bit
 cargo run --release -p ast-bench -- help     # tier 5: transform benchmarks
 ```
 
