@@ -11,6 +11,8 @@
 //! them, singular matrices, and the special values (`BAD_VALUE`, infinities,
 //! NaN, subnormals) wherever C is defined on them; its header says what each
 //! line holds.
+//! `tools/oracle_fixtures/recapture_erfa_pal_golden.sh` recomputes the file's
+//! outputs from the reference C library.
 //! The published archive does not carry it, so the test is ignored there.
 //! Every result is compared before the test fails, and the failure names the
 //! first few that differ and counts the rest, with each routine's largest

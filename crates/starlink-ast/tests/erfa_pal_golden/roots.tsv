@@ -1,5 +1,6 @@
 # Golden values for the native PAL and ERFA ports.
-# Captured from the vendored PAL and ERFA C (AST's fork, reference/starlink-ast at 3d3f255f) built -O3 -ffp-contract=off on macOS aarch64.
+# Captured from the PAL and ERFA C of AST's fork (reference/starlink-ast at 3d3f255f) built -O3 -ffp-contract=off on macOS aarch64,
+# by tools/oracle_fixtures/recapture_erfa_pal_golden.sh, which recomputes every output from the inputs below.
 # Used by src/pal/golden_tests.rs.
 # Each routine has 450 calls (180 when a call has many doubles; 900 for dat and djcl, which keep every leap-second instant and its neighbors),
 # thinned evenly from the differential tests' inputs, keeping those with a zero, subnormal, huge, BAD_VALUE or non-finite value.

@@ -202,6 +202,37 @@ No file of another platform's values is committed, because they change with the 
 The tool stops, naming the line, at a line of an unknown type, an unknown projection code, a malformed input or a line out of place.
 A parameter set whose set-up starts or stops failing changes shape, between one `E` line and its `F`, `R` and `X` lines; the tool says so, and it cannot invent the `X` lines of a set that had only an `E` line.
 
+## `recapture_erfa_pal_golden.sh` — are the PAL and ERFA golden values still what C computes?
+
+`crates/starlink-ast/tests/erfa_pal_golden/roots.tsv` holds the outputs C gives for 180 to 900 calls of each PAL and ERFA routine the port uses, and `src/pal/golden_tests.rs` compares the port against them bit for bit.
+The file's input columns are the test vectors.
+The script builds the reference checkout's `palwrap.c`, calls each routine again on the inputs of every line, and writes the file with the outputs it got and with the reference commit in its header.
+Nothing else in the file changes, so a run against an unchanged reference leaves it byte for byte as it was.
+
+```shell
+./tools/oracle_fixtures/recapture_erfa_pal_golden.sh --check                  # exit non-zero if the file is not what C gives
+./tools/oracle_fixtures/recapture_erfa_pal_golden.sh                          # rewrite the file in place
+./tools/oracle_fixtures/recapture_erfa_pal_golden.sh --output /tmp/roots.tsv  # write the capture somewhere else
+```
+
+`--check` prints how many lines differ, the numbers of the first few, and a count for each routine.
+`--golden <path>` names a golden file to read, and to check or rewrite, other than the committed one, and `AST_REFERENCE` names a reference checkout other than `reference/starlink-ast`.
+The checkout is only read: the objects go to a temporary directory.
+A checkout with uncommitted changes to its PAL or ERFA sources is refused, because the header names the commit the values came from.
+
+Run `--check` after every move of the `reference/starlink-ast` pin.
+It always reports the header line, which names the old commit.
+If that is the only line it reports, the routines give what they gave before, and a rewrite only records the new commit.
+Lines of a routine are reported when the range touched `pal/`, `erfa/`, `palwrap.c`, `pal2ast.h` or `erfa2ast.h` in a way that changes results; rewrite the file and commit it in the same range as the pin move, and expect `roots_match_the_captured_c_values` to fail until the port follows the C.
+
+The C is compiled `-O3 -ffp-contract=off`, the flags the file's header records, and both change results: at `3d3f255f`, 77 lines differ at `-O0` and 2947 with contraction left on.
+The values also depend on the platform's libm.
+The committed ones are macOS aarch64's, which is where the golden test runs, so on any other platform the script accepts only `--output` and prints the platform it captured on.
+
+`recapture_erfa_pal_golden.c` maps each root to its C routine as `run()` in `golden_tests.rs` maps it to the port's, and a root it does not know is an error naming the line.
+A new root needs an entry in both.
+To add calls, write their lines with the inputs and any well-formed output, such as `nan`, and run the script: it replaces the outputs.
+
 ## `build_simplify_trace.sh` — watch C simplify
 
 When a question is "does C reach this node, and in what state?", reasoning about

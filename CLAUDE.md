@@ -455,6 +455,7 @@ The C ABI is **frozen**. Existing applications must keep linking.
   the values, which is what `tools/oracle_fixtures/merge_card_hunks.py` does.
   Regenerate in the same commit range as the pin move.
   If the range touches `wcslib/`, run `tools/oracle_fixtures/recapture_wcslib_golden.sh` on macOS aarch64 and commit the rewritten `tests/wcslib_golden/projections.tsv` in that range too; `projections_match_the_captured_wcslib_values` then fails until the Rust projections follow the C.
+  Likewise, if it touches `pal/`, `erfa/` or `palwrap.c`, run `tools/oracle_fixtures/recapture_erfa_pal_golden.sh` and commit the rewritten `tests/erfa_pal_golden/roots.tsv`; `roots_match_the_captured_c_values` then fails until the Rust routines follow the C.
   Also run `tools/oracle_fixtures/check_c_headers_fresh.sh`; a new C documentation header needs a row in `docs/audits/c-docs/ledger.tsv`, and a header whose body changed (its `digest` column differs) needs its row re-reviewed against the new C text and the Rust docs updated to match.
   The user guide in `starlink_ast::guide` is ported from `sun_master.tex` at the commit recorded in `crates/starlink-ast/src/guide/README.md`; run `git -C reference/starlink-ast diff <that commit>..<new pin> -- sun_master.tex`, port each changed section into the guide chapter the README names for it, and record the new commit.
 - **Design spec** (authoritative for API shape and the reasoning behind it):
