@@ -77,7 +77,9 @@ It builds `ast-bench` at the base as `bits --base` does, runs `ast-bench values`
 A change of sign, a NaN, or a value becoming or ceasing to be `AST__BAD` prints as a sign/NaN/BAD change.
 With `--max N`, each line over N ULP is an error.
 A case that loads or transforms on one side only, or gives a different number of values, is an error, since its values cannot be compared.
-The base must contain the `values` command.
+A base from before the `values` command existed is measured with this tree's `ast-bench`, built against the base's library in the base's worktree and run there, so it reads this tree's `fixtures/` and the base's `starlink-ast` test fixtures.
+The worktree is put back as the base has it afterwards.
+That needs this tree's `ast-bench` to compile against the base's `starlink-ast`.
 
 ## Records and the full sweep
 

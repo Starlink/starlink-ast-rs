@@ -245,7 +245,7 @@ fn ulps(args: &[String]) -> Result<Vec<String>, String> {
         .map(|m| m.parse::<u64>().map_err(|e| format!("--max {m:?}: {e}")))
         .transpose()?;
     let cur = ast_bench::ulps::all_values()?;
-    let base = ast_bench::base::output_at(git_ref, &["values"])?;
+    let base = ast_bench::base::values_at(git_ref)?;
     let mut errors = Vec::new();
     for d in ast_bench::ulps::diff_ulps(&base, &cur)? {
         let by = if d.max_ulps == u64::MAX {

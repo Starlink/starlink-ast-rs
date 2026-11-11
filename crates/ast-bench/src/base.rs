@@ -60,10 +60,9 @@ fn git(args: &[&str], dir: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// Build `ast-bench` at `git_ref` in a git worktree under
-/// `target/perf/base/`, reusing it if it is already there, and return the
-/// binary.
-pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> {
+/// The git worktree of `git_ref` under `target/perf/base/`, made if it is
+/// not already there.
+fn base_tree(repo: &Path, git_ref: &str) -> Result<PathBuf, String> {
     let sha = git(
         &["rev-parse", "--verify", &format!("{git_ref}^{{commit}}")],
         repo,
@@ -78,6 +77,20 @@ pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> 
     if !tree.join("crates/ast-bench").exists() {
         return Err(format!("{git_ref} predates ast-bench; choose a later base"));
     }
+    Ok(tree)
+}
+
+/// Build `ast-bench` at `git_ref` in a git worktree under
+/// `target/perf/base/`, reusing it if it is already there, and return the
+/// binary.
+pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> {
+    let tree = base_tree(repo, git_ref)?;
+    build_in(repo, &tree, git_ref)
+}
+
+/// Build the `ast-bench` whose source is in the worktree `tree` of
+/// `git_ref`, and return the binary.
+fn build_in(repo: &Path, tree: &Path, git_ref: &str) -> Result<PathBuf, String> {
     let target = repo.join("target/perf/base/target");
     let status = Command::new("cargo")
         .args([
@@ -89,7 +102,7 @@ pub(crate) fn build_base(repo: &Path, git_ref: &str) -> Result<PathBuf, String> 
             "--target-dir",
         ])
         .arg(&target)
-        .current_dir(&tree)
+        .current_dir(tree)
         .status()
         .map_err(|e| format!("cargo build at {git_ref}: {e}"))?;
     if !status.success() {
@@ -122,11 +135,49 @@ fn newest_binary(target: &Path) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("no ast-bench binary under {}", target.display()))
 }
 
-/// The output of `ast-bench <args>` from the build at `git_ref`.
-pub fn output_at(git_ref: &str, args: &[&str]) -> Result<String, String> {
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let bin = build_base(&repo, git_ref)?;
-    let out = Command::new(&bin)
+/// Copy the directory `from` and everything under it to `to`.
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let dest = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &dest)?;
+        } else {
+            std::fs::copy(entry.path(), &dest)?;
+        }
+    }
+    Ok(())
+}
+
+/// The output of this tree's `ast-bench <args>` built against the library
+/// at `git_ref`.
+///
+/// The worktree's `crates/ast-bench` is replaced by this tree's for the
+/// build and the run, so the command reads the fixtures its own source
+/// expects, and is put back as `git_ref` has it afterwards, whether or not
+/// either succeeds, so a later build there is the base's own again.
+fn current_bench_output_at(repo: &Path, git_ref: &str, args: &[&str]) -> Result<String, String> {
+    let tree = base_tree(repo, git_ref)?;
+    let theirs = tree.join("crates/ast-bench");
+    let run = || {
+        std::fs::remove_dir_all(&theirs)
+            .and_then(|()| copy_dir(&repo.join("crates/ast-bench"), &theirs))
+            .map_err(|e| format!("copying ast-bench into {}: {e}", tree.display()))?;
+        let bin = build_in(repo, &tree, git_ref).map_err(|e| {
+            format!("{e}: this tree's ast-bench does not build against the library at {git_ref}")
+        })?;
+        output_of(&bin, args)
+    };
+    let out = run();
+    git(&["checkout", "--", "crates/ast-bench"], &tree)?;
+    git(&["clean", "-fdq", "crates/ast-bench"], &tree)?;
+    out
+}
+
+/// Run `bin <args>` and return what it prints.
+fn output_of(bin: &Path, args: &[&str]) -> Result<String, String> {
+    let out = Command::new(bin)
         .args(args)
         .output()
         .map_err(|e| format!("{}: {e}", bin.display()))?;
@@ -142,9 +193,30 @@ pub fn output_at(git_ref: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// The output of `ast-bench <args>` from the build at `git_ref`.
+pub fn output_at(git_ref: &str, args: &[&str]) -> Result<String, String> {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    output_of(&build_base(&repo, git_ref)?, args)
+}
+
 /// The output of `ast-bench bits` from the build at `git_ref`.
 pub fn bits_at(git_ref: &str) -> Result<String, String> {
     output_at(git_ref, &["bits"])
+}
+
+/// The output of `ast-bench values` for the library at `git_ref`.
+///
+/// A base whose own `ast-bench` has the command runs it. An older base does
+/// not have it, so this tree's `ast-bench` is built against that base's
+/// library and run instead: the values are still the base library's.
+pub fn values_at(git_ref: &str) -> Result<String, String> {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tree = base_tree(&repo, git_ref)?;
+    if tree.join("crates/ast-bench/src/ulps.rs").exists() {
+        output_of(&build_in(&repo, &tree, git_ref)?, &["values"])
+    } else {
+        current_bench_output_at(&repo, git_ref, &["values"])
+    }
 }
 
 /// Run `bin` on the set file and read its TSV.
