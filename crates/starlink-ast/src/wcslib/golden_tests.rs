@@ -10,6 +10,8 @@
 //! multiples of 45 degrees, the edges of the quad-cube and HEALPix facets,
 //! and points outside each projection's domain; its header says what each
 //! line holds.
+//! `tools/oracle_fixtures/recapture_wcslib_golden.sh` recomputes the file's
+//! results from the reference C library.
 //! The published archive does not carry it, so the test is ignored there.
 //! Every result is compared before the test fails, and the failure names the
 //! first few that differ (projection, parameter set and input) and counts the

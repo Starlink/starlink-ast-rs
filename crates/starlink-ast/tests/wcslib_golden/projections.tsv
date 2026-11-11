@@ -1,5 +1,6 @@
 # Golden values for the native wcslib projections.
-# Captured from the vendored wcslib C (AST's fork, reference/starlink-ast at 3d3f255f, as vendored in commit 31b6f78e) built -O3 -ffp-contract=off on macOS aarch64.
+# Captured from the wcslib C of AST's fork (reference/starlink-ast at 3d3f255f) built -O3 -ffp-contract=off on macOS aarch64,
+# by tools/oracle_fixtures/recapture_wcslib_golden.sh, which recomputes every result from the inputs below.
 # Used by src/wcslib/golden_tests.rs.
 # Every double is its IEEE 754 bit pattern in 16 hex digits; "nan" stands for any NaN.
 # FI phi theta        shared forward inputs, degrees.
