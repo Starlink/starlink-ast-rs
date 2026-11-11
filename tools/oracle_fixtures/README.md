@@ -181,6 +181,7 @@ The header comment that names `reference/starlink-ast at <commit>` gets the comm
 ./tools/oracle_fixtures/recapture_wcslib_golden.sh --check          # fail, showing the first differences, if the file is not a fresh capture
 ./tools/oracle_fixtures/recapture_wcslib_golden.sh                  # rewrite the file in place
 ./tools/oracle_fixtures/recapture_wcslib_golden.sh --output <path>  # write the capture to another file
+./tools/oracle_fixtures/recapture_wcslib_golden.sh --compare        # run the golden test against a capture from this platform
 ```
 
 Run it after moving the `reference/starlink-ast` pin if the range touches `wcslib/proj.c`, `wcslib/tpn.c`, `wcslib/wcstrig.c` or their headers (`proj.h`, `wcstrig.h`, `wcsmath.h`), and commit the rewritten file in the same commit range as the pin move.
@@ -192,8 +193,11 @@ The script stops if the checkout's `wcslib/` has uncommitted changes, because th
 `AST_REFERENCE` names a reference checkout other than `reference/starlink-ast`, and `--golden <path>` a file to read, and to check or rewrite, other than the committed one.
 
 The values are those of the capture platform's libm, and the committed ones are those of macOS on aarch64.
-On any other platform the script neither rewrites nor checks the file: only `--output <path>` works there, and it prints the platform it captured on.
-The file it writes keeps the committed header, which still names macOS aarch64.
+On any other platform the script neither rewrites nor checks the file.
+`--output <path>` writes that platform's capture, whose header names the platform, with the glibc version where the C library is glibc.
+`--compare` is the check for such a platform: it captures to a temporary file and runs `projections_match_the_captured_wcslib_values` against it, through `AST_WCSLIB_GOLDEN`, in a debug and in a release build.
+It passes when the native projections give, bit for bit, what the C gives on the platform it runs on.
+No file of another platform's values is committed, because they change with the libm version as well as the platform.
 
 The tool stops, naming the line, at a line of an unknown type, an unknown projection code, a malformed input or a line out of place.
 A parameter set whose set-up starts or stops failing changes shape, between one `E` line and its `F`, `R` and `X` lines; the tool says so, and it cannot invent the `X` lines of a set that had only an `E` line.

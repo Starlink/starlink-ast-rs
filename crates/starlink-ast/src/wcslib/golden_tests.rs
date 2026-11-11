@@ -12,6 +12,9 @@
 //! line holds.
 //! `tools/oracle_fixtures/recapture_wcslib_golden.sh` recomputes the file's
 //! results from the reference C library.
+//! `AST_WCSLIB_GOLDEN` names a file to read in place of it, which is how that
+//! script's `--compare` checks the projections against a capture from the
+//! platform it runs on.
 //! The published archive does not carry it, so the test is ignored there.
 //! Every result is compared before the test fails, and the failure names the
 //! first few that differ (projection, parameter set and input) and counts the
@@ -147,9 +150,10 @@ impl Tally {
     }
 }
 
-// The values were captured with Apple's libm, and the projections call the
-// platform libm, whose last bit can differ elsewhere; run with `--ignored` on
-// another platform to check whether it agrees there too.
+// The committed values were captured with Apple's libm, and the projections
+// call the platform libm, whose last bit differs elsewhere. On another
+// platform `recapture_wcslib_golden.sh --compare` runs this against a capture
+// from that platform's C.
 #[test]
 #[cfg_attr(
     all(
@@ -160,10 +164,12 @@ impl Tally {
 )]
 #[cfg_attr(ast_dist_tier = "cutdown", ignore = "golden values not distributed")]
 fn projections_match_the_captured_wcslib_values() {
-    let path = format!(
-        "{}/tests/wcslib_golden/projections.tsv",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let path = std::env::var("AST_WCSLIB_GOLDEN").unwrap_or_else(|_| {
+        format!(
+            "{}/tests/wcslib_golden/projections.tsv",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    });
     let golden = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let mut fwd_inputs = Vec::new();
     let mut rev_inputs = Vec::new();

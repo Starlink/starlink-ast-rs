@@ -16,6 +16,10 @@
 #        differences, if the golden file is not that capture.
 #   ./tools/oracle_fixtures/recapture_wcslib_golden.sh --output <path>
 #        Write the capture to <path> and leave the golden file alone.
+#   ./tools/oracle_fixtures/recapture_wcslib_golden.sh --compare
+#        Capture to a temporary file and run the golden test against it, in a
+#        debug and in a release build: do the native projections give, bit for
+#        bit, what the C gives on this platform?
 #
 # --golden <path> names the file to read, and to check or rewrite, in place of
 # the committed one. AST_REFERENCE names the reference checkout, by default
@@ -23,14 +27,15 @@
 #
 # The results are the capture platform's: the projections call its libm, whose
 # last bit differs between platforms, and the golden values are those of macOS
-# on aarch64. On any other platform only --output is allowed.
+# on aarch64. On any other platform only --output and --compare are allowed,
+# and the header of a capture names the platform it is from.
 #
 # The reference checkout is never modified: its sources are copied to a
 # scratch directory and built there.
 set -e
 
 usage() {
-   echo "usage: $0 [--check | --output <path>] [--golden <path>]" >&2
+   echo "usage: $0 [--check | --compare | --output <path>] [--golden <path>]" >&2
    exit 2
 }
 
@@ -39,26 +44,37 @@ TOOL=$HERE/tools/oracle_fixtures/recapture_wcslib_golden.c
 GOLDEN=$HERE/crates/starlink-ast/tests/wcslib_golden/projections.tsv
 SRC=${AST_REFERENCE:-$HERE/reference/starlink-ast}
 CHECK=
+COMPARE=
 OUTPUT=
 while [ $# -gt 0 ]; do
    case $1 in
       --check) CHECK=1 ;;
+      --compare) COMPARE=1 ;;
       --output) [ $# -ge 2 ] || usage; OUTPUT=$2; shift ;;
       --golden) [ $# -ge 2 ] || usage; GOLDEN=$2; shift ;;
       *) usage ;;
    esac
    shift
 done
-[ -z "$CHECK" ] || [ -z "$OUTPUT" ] || usage
+[ -z "$CHECK$COMPARE" ] || [ -z "$OUTPUT" ] || usage
+[ -z "$CHECK" ] || [ -z "$COMPARE" ] || usage
 
 [ -f "$SRC/wcslib/proj.c" ] || { echo "reference submodule not initialised: $SRC" >&2; exit 1; }
 [ -f "$GOLDEN" ] || { echo "no golden file: $GOLDEN" >&2; exit 1; }
 
+# The platform as a capture's header names it: the C library too where it is
+# glibc, whose results have changed between versions.
 PLATFORM=$(uname -sm)
-if [ "$PLATFORM" != "Darwin arm64" ] && [ -z "$OUTPUT" ]; then
-   echo "this platform is $PLATFORM: the golden values are those of macOS on aarch64" >&2
-   echo "(Darwin arm64), so they are neither rewritten nor checked here; --output <path>" >&2
-   echo "captures this platform's values to a file of its own" >&2
+if [ "$PLATFORM" = "Darwin arm64" ]; then
+   PLATFORM="macOS aarch64"
+elif LIBC=$(getconf GNU_LIBC_VERSION 2>/dev/null); then
+   PLATFORM="$PLATFORM with $LIBC"
+fi
+if [ "$PLATFORM" != "macOS aarch64" ] && [ -z "$OUTPUT$COMPARE" ]; then
+   echo "this platform is $PLATFORM: the golden values are those of macOS aarch64," >&2
+   echo "so they are neither rewritten nor checked here; --output <path> captures this" >&2
+   echo "platform's values to a file of its own, and --compare checks the native" >&2
+   echo "projections against them" >&2
    exit 1
 fi
 
@@ -100,8 +116,15 @@ done
 $CC $FLAGS -Wall -Wextra -I "$WORK/wcslib" -c "$TOOL" -o "$WORK/tool.o"
 $CC "$WORK/proj.o" "$WORK/tpn.o" "$WORK/wcstrig.o" "$WORK/tool.o" -o "$WORK/recapture" -lm
 
+# The header line that names the commit also names the platform the values are
+# from.
 NEW=$WORK/projections.tsv
-"$WORK/recapture" "$GOLDEN" "$PIN" > "$NEW"
+"$WORK/recapture" "$GOLDEN" "$PIN" > "$WORK/capture"
+sed "s/^\\(# Captured from .* built .* on \\)[^,]*,\$/\\1$PLATFORM,/" "$WORK/capture" > "$NEW"
+[ "$(grep -c "^# Captured from .* built .* on $PLATFORM,\$" "$NEW")" = 1 ] || {
+   echo "$GOLDEN has no one header line \"# Captured from ... built ... on <platform>,\"" >&2
+   exit 1
+}
 
 # Say how far the golden file is from the capture, with the first differences.
 summarize() {
@@ -114,6 +137,24 @@ summarize() {
 if [ -n "$OUTPUT" ]; then
    cp "$NEW" "$OUTPUT"
    echo "captured on $PLATFORM with the reference at $PIN: wrote $OUTPUT"
+elif [ -n "$COMPARE" ]; then
+   echo "captured on $PLATFORM with the reference at $PIN"
+   TEST=wcslib::golden_tests::projections_match_the_captured_wcslib_values
+   for profile in debug release; do
+      flag=
+      [ "$profile" = debug ] || flag=--release
+      echo "building and running the golden test ($profile)"
+#     One test must have run and passed: a filter that matches nothing passes too.
+#     shellcheck disable=SC2086
+      if ! ( cd "$HERE" && AST_WCSLIB_GOLDEN=$NEW cargo test $flag -p starlink-ast --lib "$TEST" -- \
+               --exact --include-ignored ) > "$WORK/test.out" 2>&1 ||
+            ! grep -q '^test result: ok\. 1 passed' "$WORK/test.out"; then
+         cat "$WORK/test.out" >&2
+         echo "$profile: the native projections do not give the capture" >&2
+         exit 1
+      fi
+      echo "$profile: the native projections give the capture bit for bit"
+   done
 elif cmp -s "$GOLDEN" "$NEW"; then
    echo "$GOLDEN is the capture on $PLATFORM with the reference at $PIN"
 elif [ -n "$CHECK" ]; then
