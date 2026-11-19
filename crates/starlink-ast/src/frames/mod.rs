@@ -2070,6 +2070,22 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         AxisKind::Plain
     }
 
+    /// This Frame as the FrameSet it is, if it is one: a FrameSet, or a
+    /// class built on a FrameSet, such as a Plot.
+    ///
+    /// Code that treats a FrameSet specially, such as a conversion that
+    /// searches every Frame of a FrameSet, uses this so that a Plot is
+    /// treated as the FrameSet it holds.
+    // C: astIsAFrameSet, true for a FrameSet and any subclass of it.
+    fn as_frameset(&self) -> Option<&FrameSet> {
+        None
+    }
+
+    /// [`as_frameset`](Frame::as_frameset), mutably.
+    fn as_frameset_mut(&mut self) -> Option<&mut FrameSet> {
+        None
+    }
+
     /// Choose a "nice" gap between major tick marks on an axis.
     ///
     /// Returns the round number closest to `gap` that suits the axis, in
@@ -2887,10 +2903,10 @@ pub trait FrameSearch: Frame {
         let Some(route) = find_frame::convert_route(self.as_dyn_frame(), &*to, &domainlist)? else {
             return Ok(None);
         };
-        if let Some(fs) = self.as_any_mut().downcast_mut::<FrameSet>() {
+        if let Some(fs) = self.as_frameset_mut() {
             fs.set_base(FrameRef::Index(route.from_frame))?;
         }
-        if let Some(fs) = to.as_any_mut().downcast_mut::<FrameSet>() {
+        if let Some(fs) = to.as_frameset_mut() {
             fs.set_base(FrameRef::Index(route.to_frame))?;
         }
         Ok(Some(route.fs))
@@ -3037,7 +3053,7 @@ pub trait FrameSearch: Frame {
         else {
             return Ok(None);
         };
-        if let Some(fs) = self.as_any_mut().downcast_mut::<FrameSet>() {
+        if let Some(fs) = self.as_frameset_mut() {
             fs.set_current(FrameRef::Index(iframe))?;
         }
         Ok(Some(found))

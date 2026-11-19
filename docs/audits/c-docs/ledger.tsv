@@ -161,7 +161,7 @@ function	astGetFrame	frameset.c	FrameSet::frame;FrameSet::frame_mut		yes	frame g
 function	astGetMapping	frameset.c	FrameSet::mapping		yes
 function	astMirrorVariants	frameset.c	FrameSet::mirror_variants		yes	C's AST__NOFRAME is giving the current Frame
 function	astRemapFrame	frameset.c	FrameSet::remap_frame		yes
-function	astRemoveFrame	frameset.c	FrameSet::remove_frame		yes
+function	astRemoveFrame	frameset.c	FrameSet::remove_frame;Plot::remove_frame		yes
 attribute	AllVariants	frameset.c	FrameSet::all_variants		yes
 attribute	Base	frameset.c	FrameSet::set_base;FrameSet::base_index;FrameSet::set_base_by_domain		yes	base gives the Frame; setting by Domain name is set_base_by_domain
 attribute	Current	frameset.c	FrameSet::set_current;FrameSet::current_index;FrameSet::set_current_by_domain		yes	current gives the Frame; setting by Domain name is set_current_by_domain
@@ -349,7 +349,7 @@ attribute	PcdCen	pcdmap.c	PcdMap::pcdcen		yes	The getter returns both axes; C's 
 function	astPcdMap	pcdmap.c	PcdMap::new		yes	The options string is replaced by the typed setters
 class	PermMap	permmap.c	PermMap		yes
 function	astPermMap	permmap.c	PermMap::new;PermMap::with_null_perms		yes
-class	Plot	plot.c		not-ported	yes
+class	Plot	plot.c	Plot		yes	Drawing methods arrive in later stages (2026-10-30-plot-design.md)
 attribute	Tol	plot.c		not-ported	yes
 attribute	Grid	plot.c		not-ported	yes
 attribute	Invisible	plot.c		not-ported	yes
@@ -404,7 +404,7 @@ function	astPolyCurve	plot.c		not-ported	yes
 function	astRegionOutline	plot.c		not-ported	yes
 function	astStripEscapes	plot.c		not-ported	yes
 function	astText	plot.c		not-ported	yes
-function	astPlot	plot.c		not-ported	yes
+function	astPlot	plot.c	Plot::new		yes	A NULL Frame is Plot::default_frame
 class	Plot3D	plot3d.c		not-ported	yes
 attribute	RootCorner	plot3d.c		not-ported	yes
 attribute	Norm	plot3d.c		not-ported	yes
