@@ -20,6 +20,7 @@
 //!
 //! - [`LogGrf`] draws nothing and writes a line of text for each call, which
 //!   is useful for testing a Plot and for seeing what it asks of a backend.
+//! - [`SvgGrf`] draws to SVG.
 //!
 //! Both model the same page: graphics coordinates from 0 to 1 on each axis
 //! of a page 200 mm square, with characters 4 mm high at a text size of 1
@@ -29,8 +30,10 @@
 
 mod log;
 mod page;
+mod svg;
 
 pub use log::LogGrf;
+pub use svg::{SvgGrf, SvgOptions};
 
 use crate::error::{AstError, AstResult, ErrorCode};
 

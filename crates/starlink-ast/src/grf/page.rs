@@ -67,6 +67,18 @@ impl VirtualPage {
         }
     }
 
+    /// The value of an attribute of a primitive.
+    pub(crate) fn get(&self, attr: GrfAttr, prim: GrfPrimitive) -> f64 {
+        let values = match attr {
+            GrfAttr::Style => &self.style,
+            GrfAttr::Width => &self.width,
+            GrfAttr::Size => &self.size,
+            GrfAttr::Font => &self.font,
+            GrfAttr::Colour => &self.colour,
+        };
+        values[prim as usize]
+    }
+
     /// Query and set an attribute, returning its previous value and
     /// whether a value was set. A value of `BAD_VALUE` queries, as C's does.
     // C: astGAttr (grf_log.c:364).

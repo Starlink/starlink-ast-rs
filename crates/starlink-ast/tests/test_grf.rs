@@ -11,14 +11,14 @@
 
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
-// SVG is checked once SvgGrf exists.
-#[allow(dead_code)]
 #[path = "grf_log_oracle/cases.rs"]
 mod cases;
 
 use cases::{Call, Expected};
 use starlink_ast::error::ErrorCode;
-use starlink_ast::grf::{Grf, GrfAttr, GrfCap, GrfPrimitive, Justification, LogGrf};
+use starlink_ast::grf::{
+    Grf, GrfAttr, GrfCap, GrfPrimitive, Justification, LogGrf, SvgGrf, SvgOptions,
+};
 
 fn attr(name: &str) -> GrfAttr {
     match name {
@@ -120,6 +120,31 @@ fn log_grf_matches_the_c_library() {
     replay(&mut grf);
     let log = String::from_utf8(grf.finish().unwrap()).unwrap();
     assert_lines_eq(&log, cases::LOG, "log");
+}
+
+#[test]
+fn svg_grf_matches_the_c_library() {
+    let mut grf = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
+    replay(&mut grf);
+    let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
+    assert_lines_eq(&svg, cases::SVG, "svg");
+}
+
+/// The page size can be set field by field, which is how options added
+/// later stay compatible.
+#[test]
+fn svg_options_set_the_page_size() {
+    let mut options = SvgOptions::default();
+    assert_eq!((options.width, options.height), (720, 540));
+    options.width = 800;
+    options.height = 600;
+    let grf = SvgGrf::new(Vec::new(), options).unwrap();
+    let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
+    assert!(
+        svg.contains("width=\"800\" height=\"600\" viewBox=\"0 0 800 600\""),
+        "{svg}"
+    );
+    assert!(svg.ends_with("</svg>\n"), "{svg}");
 }
 
 #[test]
