@@ -34,9 +34,11 @@
 //   Get/Set/Test/ClearAttrib dispatch, which become typed accessors.
 
 mod attrs;
+mod elements;
 mod forward;
 
 pub use attrs::{Edge, Labelling, TextGapType};
+pub use elements::PlotElement;
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{PointSet, Points, PointsMut};

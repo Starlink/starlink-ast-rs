@@ -34,7 +34,7 @@ use starlink_ast::frames::{
     BasicFrameBuilder, CmpFrame, Frame, FrameRef, FrameSet, SkyFrame, SpecFrame,
 };
 use starlink_ast::mappings::Mapping;
-use starlink_ast::plot::{Edge, Labelling, Plot, TextGapType};
+use starlink_ast::plot::{Edge, Labelling, Plot, PlotElement, TextGapType};
 
 fn read_head(name: &str) -> FrameSet {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -551,6 +551,112 @@ fn plot_attributes_match_the_c_library() {
                 failures.push(format!(
                     "{what}: point {k} goes to {out:?}, C gives {:?}",
                     sc.forward[k]
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// A style attribute name as C writes it, `Colour(Axes)`, split into its
+/// lower-case attribute name and its element, `None` for a name C does
+/// not know.
+fn split_style(name: &str) -> (String, Option<PlotElement>) {
+    let (attr, element) = name.split_once('(').unwrap();
+    let element = element.trim_end_matches(')');
+    let found = PlotElement::ALL
+        .into_iter()
+        .find(|e| e.name().eq_ignore_ascii_case(element));
+    (attr.to_lowercase(), found)
+}
+
+fn set_style_attr(plot: &mut Plot, setting: &str) -> AstResult<()> {
+    let (name, value) = setting.split_once('=').unwrap();
+    let (attr, element) = split_style(name);
+    let Some(element) = element else {
+        return Err(starlink_ast::error::AstError::new(
+            ErrorCode::Badat,
+            format!("unknown element in {name}"),
+        ));
+    };
+    let int = || value.trim().parse::<i32>().unwrap();
+    let real = || value.trim().parse::<f64>().unwrap();
+    match attr.as_str() {
+        "style" => plot.set_style(element, int()),
+        "font" => plot.set_font(element, int()),
+        "colour" => plot.set_colour(element, int()),
+        "width" => return plot.set_width(element, real()),
+        "size" => return plot.set_size(element, real()),
+        _ => panic!("unknown style attribute {attr}"),
+    }
+    Ok(())
+}
+
+fn clear_style_attr(plot: &mut Plot, name: &str) {
+    let (attr, element) = split_style(name);
+    let element = element.unwrap();
+    match attr.as_str() {
+        "style" => plot.clear_style(element),
+        "font" => plot.clear_font(element),
+        "colour" => plot.clear_colour(element),
+        "width" => plot.clear_width(element),
+        "size" => plot.clear_size(element),
+        _ => panic!("unknown style attribute {attr}"),
+    }
+}
+
+fn query_style_attr(plot: &Plot, attr: &str, element: PlotElement) -> (bool, attrs::Value) {
+    match attr {
+        "Style" => (
+            plot.test_style(element),
+            attrs::Value::I(plot.style(element)),
+        ),
+        "Font" => (plot.test_font(element), attrs::Value::I(plot.font(element))),
+        "Colour" => (
+            plot.test_colour(element),
+            attrs::Value::I(plot.colour(element)),
+        ),
+        "Width" => (
+            plot.test_width(element),
+            attrs::Value::D(plot.width(element)),
+        ),
+        "Size" => (plot.test_size(element), attrs::Value::D(plot.size(element))),
+        _ => panic!("unknown style attribute {attr}"),
+    }
+}
+
+#[test]
+fn plot_styles_match_the_c_library() {
+    let mut failures = Vec::new();
+    for (n, sc) in attrs::STYLE_SCENARIOS.iter().enumerate() {
+        let mut plot = attrs_plot("basic2");
+        let mut result = Ok(());
+        for setting in sc.set.split(',').filter(|s| !s.is_empty()) {
+            result = result.and_then(|_| set_style_attr(&mut plot, setting));
+        }
+        if result.is_ok() {
+            for name in sc.clear.split(',').filter(|s| !s.is_empty()) {
+                clear_style_attr(&mut plot, name);
+            }
+        }
+        let what = format!("style scenario {n} (\"{}\" clear \"{}\")", sc.set, sc.clear);
+        let Some(want) = sc.attrs else {
+            if result.is_ok() {
+                failures.push(format!("{what}: C rejects it, the port accepts it"));
+            }
+            continue;
+        };
+        if let Err(e) = result {
+            failures.push(format!("{what}: {e}"));
+            continue;
+        }
+        for (attr, element, want_set, want_value) in want {
+            let element = split_style(&format!("{attr}({element})")).1.unwrap();
+            let (set, value) = query_style_attr(&plot, attr, element);
+            if set != *want_set || value != *want_value {
+                failures.push(format!(
+                    "{what}: {attr}({}) got ({set}, {value:?}), C gives ({want_set}, {want_value:?})",
+                    element.name()
                 ));
             }
         }

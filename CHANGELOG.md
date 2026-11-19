@@ -9,6 +9,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Added
 
+- `starlink-ast`: Plot's per-element style attributes `Style`, `Font`, `Colour`, `Width` and `Size`, which take a `PlotElement`; setting, testing or reading a group such as `PlotElement::Axes` acts on each of its members, as the C library's `Colour(Axes)` does.
 - `starlink-ast`: Plot's own attributes, from `Tol` to `LogPlot`, with the C library's defaults; setting `LogPlot` maps an axis of the plotting area logarithmically, as in C. `Gap`, `Centre` and `Abbrev` are `tick_gap`, `tick_centre` and `abbreviate`, since `Frame` already has `gap`, `centre` and `abbrev`. Until grids are drawn, an unset attribute reads as its fixed default, not as the value a grid would use.
 - `starlink-ast`: `Plot`, a FrameSet whose base Frame is a graphics coordinate system, built from a Frame, FrameSet, Region or Plot as the C library's `astPlot` builds it; it transforms and is searched as a FrameSet. Drawing is not yet available.
 - `starlink-ast`: `Frame::as_frameset` and `Mapping::as_frameset`, which give the FrameSet a Frame or Mapping is, so that code treating FrameSets specially treats a Plot as the FrameSet it holds.

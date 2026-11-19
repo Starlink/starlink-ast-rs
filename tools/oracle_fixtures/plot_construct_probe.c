@@ -18,12 +18,16 @@
  * directory, so run it from there:
  *
  *   cc -ffp-contract=off -O3 -I. ../../../tools/oracle_fixtures/plot_construct_probe.c \
- *      -L. -last -Wl,-force_load,libast_err.a -lm -Wl,-rpath,$PWD \
+ *      -L. -last -Wl,-force_load,libast_err.a \
+ *      -Wl,-force_load,libast_grf_2.0.a -Wl,-force_load,libast_grf_3.2.a \
+ *      -Wl,-force_load,libast_grf_5.6.a -Wl,-force_load,libast_grf3d.a \
+ *      -lm -Wl,-rpath,$PWD \
  *      -o ../../../tools/oracle_fixtures/plot_construct_probe
  *   ../../../tools/oracle_fixtures/plot_construct_probe > ...
  *
- * On Linux, link the error library with
- * -Wl,--whole-archive -last_err -Wl,--no-whole-archive.
+ * On Linux, link the error and graphics stub libraries with
+ * -Wl,--whole-archive -last_err -last_grf_2.0 -last_grf_3.2 -last_grf_5.6
+ * -last_grf3d -Wl,--no-whole-archive.
  */
 #include <float.h>
 #include <stdio.h>
