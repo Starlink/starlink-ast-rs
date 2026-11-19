@@ -209,6 +209,14 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          8 ULP of the current time and the division count exactly",
     ),
     (
+        "test_plot.rs",
+        "UNINITIALISED_SET_STATE_EXCLUDED",
+        1,
+        "ForceExterior's set state on a new Plot: C's astInitPlot never \
+         initialises it (c-library-quirks.md); its value is still compared, and \
+         uninitialised_set_states_still_differ_from_c fails when C agrees",
+    ),
+    (
         "test_fitschan_errors.rs",
         "FITSCHAN_ERRORS_EXCLUDED",
         3,
@@ -243,11 +251,10 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_fitschan_tab_read_oracle.rs",
         "ULP_LICENSED",
-        1,
-        "celestial_iwc: one WinMap shift 1 ULP from C's, which the port's \
-         simplifier folds in another order; the same Mapping is \
-         fitschan_tab_celestial_iwc in the simplify corpus, which passes \
-         within that harness's 4 ULP token bound",
+        0,
+        "empty: celestial_iwc, its one entry, matches C since the simplifier \
+         forms an inverted WinMap's shift as C's astWinTerms does; kept so a \
+         newly diagnosed rounding difference has a home",
     ),
     (
         "test_wcsconv.rs",

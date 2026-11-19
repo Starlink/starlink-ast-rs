@@ -9,6 +9,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Added
 
+- `starlink-ast`: Plot's own attributes, from `Tol` to `LogPlot`, with the C library's defaults; setting `LogPlot` maps an axis of the plotting area logarithmically, as in C. `Gap`, `Centre` and `Abbrev` are `tick_gap`, `tick_centre` and `abbreviate`, since `Frame` already has `gap`, `centre` and `abbrev`. Until grids are drawn, an unset attribute reads as its fixed default, not as the value a grid would use.
 - `starlink-ast`: `Plot`, a FrameSet whose base Frame is a graphics coordinate system, built from a Frame, FrameSet, Region or Plot as the C library's `astPlot` builds it; it transforms and is searched as a FrameSet. Drawing is not yet available.
 - `starlink-ast`: `Frame::as_frameset` and `Mapping::as_frameset`, which give the FrameSet a Frame or Mapping is, so that code treating FrameSets specially treats a Plot as the FrameSet it holds.
 - `starlink-ast`: the `grf` module: the `Grf` trait, through which a Plot will draw, and `LogGrf`, a backend that logs each drawing call as the C library's logging graphics module does.
@@ -40,6 +41,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: simplifying a Mapping that holds an inverted WinMap forms the inverse shift as the C library does, as the shift times minus the reciprocal scale, so the simplified WinMap can differ from earlier releases, and now agrees with C, in the last bit of a shift.
 - `starlink-ast`: a SkyFrame's `line_crossing` gives the crossing's longitude as the C library does when the crossing lies opposite its first estimate on the -x meridian, -pi where it gave +pi.
 - `starlink-ast`: the line methods `line_contains` and `line_crossing` report `ErrorCode::Inter`, as the C library does, when given a line that a different kind of Frame made: a great-circle line made by a SkyFrame given to a plain Frame, or the reverse.
 - `starlink-ast`: a date whose day is outside its month, such as `2012-03-00` or `2012-02-30`, reads as the C library reads it, counting on from the start of the month, where it was not read at all.
