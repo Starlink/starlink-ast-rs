@@ -215,14 +215,6 @@ impl<W: Write> Grf for LogGrf<W> {
         cap == GrfCap::Scales
     }
 
-    fn begin_buffer(&mut self) -> AstResult<()> {
-        Ok(())
-    }
-
-    fn end_buffer(&mut self) -> AstResult<()> {
-        Ok(())
-    }
-
     fn flush(&mut self) -> AstResult<()> {
         self.write("GFlush\n")?;
         self.out.flush().map_err(io_error)
