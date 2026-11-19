@@ -984,3 +984,16 @@ fn test_set_system_reexpresses_time_origin() {
         "TimeOrigin should be re-expressed in MJD, got {origin}"
     );
 }
+
+/// A day of the month outside the month counts on from its start, as C
+/// reads it: day 0 of March 2012 is 29 February, and 30 February is 1
+/// March. A month outside 1 to 12 is not read as a date (C's value is
+/// undefined there).
+#[test]
+fn unformat_counts_days_outside_the_month_from_its_start() {
+    let mut f = TimeFrame::unset_system();
+    f.set_format_str(1, "iso.0").unwrap();
+    assert_eq!(f.unformat(1, "2012-03-00 00:00:00").unwrap(), (55986.0, 19));
+    assert_eq!(f.unformat(1, "2012-02-30").unwrap(), (55987.0, 10));
+    assert_ne!(f.unformat(1, "2012-00-01").unwrap().1, 10);
+}

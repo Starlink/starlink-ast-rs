@@ -15,7 +15,9 @@
 #[path = "plot_frame_methods_oracle/cases.rs"]
 mod cases;
 
-use starlink_ast::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem, pick_axes};
+use starlink_ast::frames::{
+    BasicFrameBuilder, Frame, SkyFrame, SkySystem, TimeFrame, TimeSystem, pick_axes,
+};
 
 /// The Frame a probe case id names, built as the probe builds it.
 fn frame(id: &str) -> Box<dyn Frame> {
@@ -48,9 +50,64 @@ fn frame(id: &str) -> Box<dyn Frame> {
             f.set_system(SkySystem::Galactic);
             Box::new(f)
         }
+        "time" => Box::new(TimeFrame::unset_system()),
+        id if id.starts_with("time_") => Box::new(time_frame(id)),
         "basic_skyaxis_ra" => pick_axes(&SkyFrame::unset_system(), &[1]).unwrap().0,
         "basic_skyaxis_dec" => pick_axes(&SkyFrame::unset_system(), &[2]).unwrap().0,
         _ => panic!("unknown frame id {id}"),
+    }
+}
+
+/// A TimeFrame the probe builds with a date Format.
+fn time_frame(id: &str) -> TimeFrame {
+    let mut f = TimeFrame::unset_system();
+    match id {
+        "time_iso" => f.set_format_str(1, "iso.0").unwrap(),
+        "time_iso2" => f.set_format_str(1, "iso.2").unwrap(),
+        "time_isodate" => f.set_format_str(1, "iso").unwrap(),
+        "time_jd_iso" => {
+            f.set_system(TimeSystem::Jd).unwrap();
+            f.set_unit(1, "d").unwrap();
+            f.set_format_str(1, "iso.0").unwrap();
+        }
+        "time_origin_iso" => {
+            f.set_time_origin(56000.0);
+            f.set_format_str(1, "iso.0").unwrap();
+        }
+        "time_unit_h_iso" => {
+            f.set_unit(1, "h").unwrap();
+            f.set_format_str(1, "iso.0").unwrap();
+        }
+        _ => panic!("unknown frame id {id}"),
+    }
+    f
+}
+
+/// Frames whose `gap` C and the port measure from the current time, each
+/// reading the clock when it runs.
+///
+/// A TimeFrame with a date Format finds the gap by converting the current
+/// time and the current time plus the gap to MJD and back, so the result
+/// carries the rounding of values the size of the current time, which
+/// differs between the moment the probe ran and the moment the test runs.
+/// These cases are compared within 8 ULP of the current time on the axis,
+/// far below the one-second difference between neighboring steps of the
+/// gap ladder; the division count is still compared exactly.
+const CLOCK_GAP_LICENSED: &[&str] = &[
+    "time_iso",
+    "time_iso2",
+    "time_isodate",
+    "time_jd_iso",
+    "time_origin_iso",
+    "time_unit_h_iso",
+];
+
+fn gap_eq(id: &str, got: f64, want: f64) -> bool {
+    if CLOCK_GAP_LICENSED.contains(&id) {
+        let now = time_frame(id).current_time().unwrap();
+        (got - want).abs() <= 8.0 * now.abs() * f64::EPSILON
+    } else {
+        crate::common::c_value_eq(got, want)
     }
 }
 
@@ -59,7 +116,7 @@ fn gap_matches_the_c_library() {
     let mut failures = Vec::new();
     for &(id, axis, gap, want, want_ntick) in cases::GAP_CASES {
         let (got, ntick) = frame(id).gap(axis, gap).unwrap();
-        if !crate::common::c_value_eq(got, want) || ntick != want_ntick {
+        if !gap_eq(id, got, want) || ntick != want_ntick {
             failures.push(format!(
                 "{id} axis {axis} gap {gap}: got ({got}, {ntick:?}), C gives ({want}, {want_ntick:?})"
             ));
@@ -183,4 +240,14 @@ fn sky_fields_without_a_named_separator_find_none() {
     assert!(split.fields.is_empty());
     assert_eq!(split.value, starlink_ast::constants::BAD_VALUE);
     assert_eq!(f.abbrev(1, "hms", "12", "12:34:56").unwrap(), 0);
+}
+
+/// A TimeFrame's date centre that changes the month zeroes the month, and
+/// the date it then reads is not valid. C reads an undefined value without
+/// complaint; the port reports the error C's own check is written to give.
+#[test]
+fn time_centre_across_a_month_reports_an_error() {
+    let f = time_frame("time_iso");
+    let err = f.centre(1, 56000.37, 30.0).unwrap_err();
+    assert_eq!(err.code(), starlink_ast::error::ErrorCode::Inter);
 }

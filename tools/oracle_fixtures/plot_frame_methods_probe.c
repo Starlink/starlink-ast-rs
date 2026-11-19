@@ -71,6 +71,19 @@ static AstFrame *make_frame( const char *id ) {
    if( !strcmp( id, "sky_digits" ) ) return (AstFrame *) astSkyFrame( "Digits=10" );
    if( !strcmp( id, "sky_axdigits" ) ) return (AstFrame *) astSkyFrame( "Digits(1)=3" );
    if( !strcmp( id, "sky_gal" ) ) return (AstFrame *) astSkyFrame( "System=Galactic" );
+   if( !strcmp( id, "time" ) ) return (AstFrame *) astTimeFrame( " " );
+   if( !strcmp( id, "time_iso" ) ) return (AstFrame *) astTimeFrame( "Format=iso.0" );
+   if( !strcmp( id, "time_iso2" ) ) return (AstFrame *) astTimeFrame( "Format=iso.2" );
+   if( !strcmp( id, "time_isodate" ) ) return (AstFrame *) astTimeFrame( "Format=iso" );
+   if( !strcmp( id, "time_jd_iso" ) ) {
+      return (AstFrame *) astTimeFrame( "System=JD,Unit=d,Format=iso.0" );
+   }
+   if( !strcmp( id, "time_origin_iso" ) ) {
+      return (AstFrame *) astTimeFrame( "TimeOrigin=56000,Format=iso.0" );
+   }
+   if( !strcmp( id, "time_unit_h_iso" ) ) {
+      return (AstFrame *) astTimeFrame( "Unit=h,Format=iso.0" );
+   }
    if( !strcmp( id, "basic_skyaxis_ra" ) || !strcmp( id, "basic_skyaxis_dec" ) ) {
       int axes[ 1 ];
       AstFrame *sky = (AstFrame *) astSkyFrame( " " ), *f;
@@ -100,7 +113,37 @@ static const double centres[][ 2 ] = {
    { 1.2, 0.1 }, { 4.0, -3.0 }
 };
 
+/* Gap sizes tried on TimeFrames, kept away from the thresholds of
+   timeframe.c Gap's ladder: with a date Format the gap is measured from the
+   current time, so the rounding of a value at a threshold depends on the
+   clock. */
+static const double time_gaps[] = {
+   0.0, 1.0E-7, 1.0E-5, 3.0E-5, 6.0E-5, 1.2E-4, 2.5E-4, 5.0E-4, 1.0E-3,
+   2.5E-3, 5.0E-3, 0.01, 0.02, 0.03, 0.06, 0.1, 0.2, 0.3, 0.6, 1.0, 1.7,
+   2.5, 3.7, 5.2, 8.0, 13.0, 20.0, 25.0, 50.0, 100.0, 200.0, 300.0, 400.0,
+   1000.0, 5000.0, -1.0, -0.3
+};
+
+struct time_centre_case { const char *id; double value; double gap; };
+/* A date Format makes C format the value a gap either side; a bad value, or
+   a gap too small to change the formatted text, sends timeframe.c Centre
+   past the end of its strings, and a gap that changes the month makes it
+   read a date with month zero, for which astReadDateTime returns an
+   uninitialized value. None of these appears here. */
+static const struct time_centre_case time_centres[] = {
+   { "time", 56000.37, 0.1 }, { "time", 56000.37, 0.0 },
+   { "time_iso", 56000.37, 0.001 }, { "time_iso", 56000.37, 0.1 },
+   { "time_iso", 56000.37, 1.0 }, { "time_iso", 56000.37, -1.0 },
+   { "time_iso2", 56000.37, 1.0E-4 }, { "time_isodate", 56000.37, 3.0 },
+   { "time_jd_iso", 2456000.87, 1.0 }, { "time_origin_iso", 0.37, 1.0 },
+   { "time_unit_h_iso", 1344008.88, 2.0 },
+};
+
 struct axis_case { const char *id; int axis; };
+static const struct axis_case time_axes[] = {
+   { "time", 1 }, { "time_iso", 1 }, { "time_iso2", 1 }, { "time_isodate", 1 },
+   { "time_jd_iso", 1 }, { "time_origin_iso", 1 }, { "time_unit_h_iso", 1 },
+};
 static const struct axis_case axes[] = {
    { "basic2", 1 }, { "basic2", 2 },
    { "sky", 1 }, { "sky", 2 }, { "sky_perm", 1 }, { "sky_perm", 2 },
@@ -136,6 +179,15 @@ static const struct abbrev_case abbrevs[] = {
    { "sky_perm", 1, "dms", "10:20:30", "10:20:31" },
    { "basic_skyaxis_dec", 1, "dms", "-01:02:03", "-01:02:09" },
    { "basic_skyaxis_ra", 1, "hms.1", "01:02:03.4", "01:02:03.5" },
+   { "time_iso", 1, "iso.0", "2012-03-14 08:52:48", "2012-03-14 08:53:00" },
+   { "time_iso", 1, "iso.0", "2012-03-14 08:52:48", "2012-03-15 00:00:00" },
+   { "time_iso", 1, "iso.0", "2012-03-14 08:52:48", "2012-03-14 08:52:48" },
+   { "time_iso", 1, "iso.0", "2012-03-14 08:52:48", "2013-03-14 08:52:48" },
+   { "time_iso", 1, "iso.2", "2012-03-14 08:52:48.25", "2012-03-14 08:52:48.50" },
+   { "time_iso", 1, "iso.0", "  2012-03-14", "2012-03-14 08:00:00" },
+   { "time_iso", 1, "iso.0T", "2012-03-14T08:52:48", "2012-03-14T09:00:00" },
+   { "time_iso", 1, "%g", "1.5", "1.5" },
+   { "time", 1, "%1.7G", "56000.5", "56000.5" },
 };
 
 struct fields_case { const char *id; int axis; const char *fmt;
@@ -183,6 +235,15 @@ static const struct fields_case fieldss[] = {
    { "sky_axdigits", 1, "hms.*", "12:34:56.7", 3 },
    { "basic_skyaxis_dec", 1, "dms", "-01:02:03", 3 },
    { "basic_skyaxis_ra", 1, "hms", "01:02:03", 3 },
+   { "time_iso", 1, "iso.0", "2012-03-14 08:52:48", 20 },
+   { "time_iso", 1, "iso.0", "2012-03-14 08:52:48", 3 },
+   { "time_iso", 1, "iso.0", "2012-03-14x", 20 },
+   { "time_iso", 1, "iso", "2012-03-14", 20 },
+   { "time_iso", 1, "iso.0", "2012-03-14 08:52:48  ", 20 },
+   { "time_iso2", 1, "iso.2", "2012-03-14T08:52:48.25", 20 },
+   { "time_iso", 1, "%g", "56000.5", 20 },
+   { "time", 1, "%1.7G", "56000.5", 20 },
+   { "time", 1, "iso.0", "2012-03-14 08:52:48", 20 },
 };
 
 #define NUMOF(a) ( (int)( sizeof( a ) / sizeof( ( a )[ 0 ] ) ) )
@@ -221,6 +282,24 @@ int main( void ) {
       }
       f = astAnnul( f );
    }
+   for( i = 0; i < NUMOF( time_axes ); i++ ) {
+      AstFrame *f = make_frame( time_axes[ i ].id );
+      void *fp = astMakePointer( f );
+      for( j = 0; j < NUMOF( time_gaps ); j++ ) {
+         int ntick = -999;
+         double r;
+         /* One hour is the ladder's 1/24-day threshold, so which step it
+            takes depends on the clock. */
+         if( !strcmp( time_axes[ i ].id, "time_unit_h_iso" ) &&
+             time_gaps[ j ] == 1.0 ) continue;
+         r = astGap_( fp, 0, time_gaps[ j ], &ntick, &status );
+         printf( "    (" ); rstr( time_axes[ i ].id ); printf( ", 1, " );
+         flit( time_gaps[ j ] ); printf( ", " ); flit( r ); printf( ", " );
+         if( ntick == -999 ) printf( "None" ); else printf( "Some(%d)", ntick );
+         printf( "),\n" );
+      }
+      f = astAnnul( f );
+   }
    printf( "];\n\npub const CENTRE_CASES: &[CentreCase] = &[\n" );
    for( i = 0; i < NUMOF( axes ); i++ ) {
       AstFrame *f = make_frame( axes[ i ].id );
@@ -232,6 +311,15 @@ int main( void ) {
          flit( centres[ j ][ 0 ] ); printf( ", " ); flit( centres[ j ][ 1 ] );
          printf( ", " ); flit( r ); printf( "),\n" );
       }
+      f = astAnnul( f );
+   }
+   for( i = 0; i < NUMOF( time_centres ); i++ ) {
+      const struct time_centre_case *c = time_centres + i;
+      AstFrame *f = make_frame( c->id );
+      double r = astCentre_( astMakePointer( f ), 0, c->value, c->gap, &status );
+      printf( "    (" ); rstr( c->id ); printf( ", 1, " );
+      flit( c->value ); printf( ", " ); flit( c->gap ); printf( ", " );
+      flit( r ); printf( "),\n" );
       f = astAnnul( f );
    }
    printf( "];\n\npub const ABBREV_CASES: &[AbbrevCase] = &[\n" );

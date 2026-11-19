@@ -200,6 +200,15 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          fails when C agrees",
     ),
     (
+        "test_plot_frame_methods.rs",
+        "CLOCK_GAP_LICENSED",
+        6,
+        "the six TimeFrames with a date Format: their gap is measured from the \
+         current time, which C and the port read at different moments, so values \
+         are compared within 8 ULP of the current time and the division count \
+         exactly",
+    ),
+    (
         "test_fitschan_errors.rs",
         "FITSCHAN_ERRORS_EXCLUDED",
         3,

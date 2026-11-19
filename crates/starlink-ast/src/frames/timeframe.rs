@@ -6,7 +6,7 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::{DynFrame, Frame};
+use crate::frames::{DynFrame, FieldSplit, Frame};
 use crate::mappings::helpers::{ast_equals, is_bad};
 use crate::mappings::{
     CmpMap, Composition, DynMapping, Mapping, ShiftMap, TimeCvtType, TimeMap, UnitMap,
@@ -1829,6 +1829,278 @@ impl Frame for TimeFrame {
             }
         }
         Ok(())
+    }
+
+    /// With a date Format, the gap is a round number of calendar units (a
+    /// number of years, or 180, 120, 60, 30, 15, 10, 5, 4, 2 or 1 days, or
+    /// a round number of hours, minutes or seconds), measured from the
+    /// current time; otherwise it is chosen as for a plain axis.
+    // C: timeframe.c `Gap` (timeframe.c:1838). Below half a second C hands
+    // the parent `Gap` the gap divided by 86400 where seconds would be the
+    // gap multiplied by it, and scales the result back up, so the gap stays
+    // a power of ten times 1, 2 or 5 of a smaller unit; the port mirrors it.
+    // A negative gap fails every comparison of the ladder and takes that
+    // branch too.
+    fn gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        let (df, ndp, _) = date_format(&self.format_str(1)?);
+        if !df {
+            return self.axis_gap(axis, gap);
+        }
+        let ts = self.timescale();
+        let unit = Frame::unit(self, 1)?;
+        let map = self.make_map(
+            self.system(),
+            TimeSystem::Mjd,
+            ts,
+            ts,
+            self.time_origin(),
+            0.0,
+            &unit,
+            "d",
+        )?;
+        let now = self.current_time()?;
+        let xout = map.transform(&PointSet::from_rows([[now], [now + gap]]), true)?;
+        let (x0, x1) = (xout.point(0)[0], xout.point(1)[0]);
+        let mut mjdgap = x1 - x0;
+        let mut ntick = None;
+        let mut set = |g: f64, n: i32| {
+            ntick = Some(n);
+            g
+        };
+        mjdgap = if mjdgap >= 365.25 {
+            let (g, n) = self.axis_gap(axis, mjdgap / 365.25)?;
+            ntick = n.or(ntick);
+            365.25 * g
+        } else if mjdgap > 270.0 {
+            set(365.25, 4)
+        } else if mjdgap > 150.0 {
+            set(180.0, 6)
+        } else if mjdgap > 90.0 {
+            set(120.0, 4)
+        } else if mjdgap > 45.0 {
+            set(60.0, 2)
+        } else if mjdgap > 22.0 {
+            set(30.0, 3)
+        } else if mjdgap > 12.0 {
+            set(15.0, 3)
+        } else if mjdgap > 7.5 {
+            set(10.0, 5)
+        } else if mjdgap > 4.5 {
+            set(5.0, 5)
+        } else if mjdgap > 3.0 {
+            set(4.0, 4)
+        } else if mjdgap > 1.5 {
+            set(2.0, 2)
+        } else if mjdgap > 0.5 {
+            set(1.0, 4)
+        } else if ndp < 0 {
+            // The Format has no time field.
+            set(1.0, 2)
+        } else if mjdgap >= 6.0 / 24.0 {
+            set(12.0 / 24.0, 4)
+        } else if mjdgap >= 3.0 / 24.0 {
+            set(6.0 / 24.0, 3)
+        } else if mjdgap >= 1.0 / 24.0 {
+            set(2.0 / 24.0, 4)
+        } else if mjdgap >= 30.0 / 1440.0 {
+            set(60.0 / 1440.0, 4)
+        } else if mjdgap >= 15.0 / 1440.0 {
+            set(30.0 / 1440.0, 3)
+        } else if mjdgap >= 5.0 / 1440.0 {
+            set(10.0 / 1440.0, 5)
+        } else if mjdgap >= 2.5 / 1440.0 {
+            set(5.0 / 1440.0, 5)
+        } else if mjdgap >= 1.0 / 1440.0 {
+            set(2.0 / 1440.0, 4)
+        } else if mjdgap >= 0.5 / 1440.0 {
+            set(1.0 / 1440.0, 4)
+        } else if mjdgap >= 15.0 / 86400.0 {
+            set(30.0 / 86400.0, 3)
+        } else if mjdgap >= 5.0 / 86400.0 {
+            set(10.0 / 86400.0, 5)
+        } else if mjdgap >= 2.5 / 86400.0 {
+            set(5.0 / 86400.0, 5)
+        } else if mjdgap >= 1.0 / 86400.0 {
+            set(2.0 / 86400.0, 4)
+        } else if mjdgap >= 0.5 / 86400.0 {
+            set(1.0 / 86400.0, 4)
+        } else {
+            let (g, n) = self.axis_gap(axis, mjdgap / 86400.0)?;
+            ntick = n.or(ntick);
+            86400.0 * g
+        };
+        let xin = map.transform(&PointSet::from_rows([[x0], [x0 + mjdgap]]), false)?;
+        Ok((xin.point(1)[0] - xin.point(0)[0], ntick))
+    }
+
+    /// With a date Format, the value formatted a gap either side is
+    /// compared field by field, and the first field that differs, and every
+    /// field after it, is set to zero.
+    // C: timeframe.c `Centre` (timeframe.c:603). When the two formatted
+    // values are identical C reads past the end of both strings; the port
+    // stops at the end and returns the value unchanged.
+    fn centre(&self, axis: usize, value: f64, gap: f64) -> AstResult<f64> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        if !date_format(&self.format_str(1)?).0 {
+            return self.axis_centre(axis, value, gap);
+        }
+        let date1 = self.format(1, value - gap)?;
+        let date2 = self.format(1, value + gap)?;
+        let (b1, b2) = (date1.as_bytes(), date2.as_bytes());
+        let at = |b: &[u8], i: usize| b.get(i).copied().unwrap_or(0);
+        // C's `atoi` on a run of digits.
+        let atoi = |b: &[u8], i: usize| {
+            b[i..]
+                .iter()
+                .take_while(|c| c.is_ascii_digit())
+                .fold(0_i64, |v, c| v * 10 + i64::from(c - b'0'))
+        };
+        let (mut p1, mut p2) = (0, 0);
+        let (mut f1, mut f2): (Option<usize>, Option<usize>) = (None, None);
+        let (mut nc1, mut nc2) = (0, 0);
+        let mut first_differing = None;
+        loop {
+            for (b, p, f, nc) in [
+                (b1, &mut p1, &mut f1, &mut nc1),
+                (b2, &mut p2, &mut f2, &mut nc2),
+            ] {
+                if *nc == 0 {
+                    let c = at(b, *p);
+                    match *f {
+                        None if c.is_ascii_digit() => *f = Some(*p),
+                        Some(start) if !c.is_ascii_digit() => *nc = *p - start,
+                        _ => {}
+                    }
+                    *p += 1;
+                }
+            }
+            if nc1 > 0 && nc2 > 0 {
+                let (s1, s2) = (f1.unwrap_or_default(), f2.unwrap_or_default());
+                if atoi(b1, s1) != atoi(b2, s2) {
+                    first_differing = Some(s1);
+                    break;
+                }
+                (nc1, nc2) = (0, 0);
+                (f1, f2) = (None, None);
+                if p1 >= b1.len() || p2 >= b2.len() {
+                    break;
+                }
+            }
+            if p1 > b1.len() && p2 > b2.len() {
+                break;
+            }
+        }
+        let Some(start) = first_differing else {
+            return Ok(value);
+        };
+        let fres: String = date1
+            .char_indices()
+            .map(|(i, c)| {
+                if i >= start && c.is_ascii_digit() {
+                    '0'
+                } else {
+                    c
+                }
+            })
+            .collect();
+        let (result, nread) = self.unformat(1, &fres)?;
+        if nread != fres.len() {
+            return Err(AstError::new(
+                ErrorCode::Inter,
+                format!(
+                    "astCentre(TimeFrame): Error unformatting the central time axis value \
+                     '{fres}' (internal AST programming error)."
+                ),
+            ));
+        }
+        Ok(result)
+    }
+
+    /// With a date Format, `str2` is abbreviated by skipping the leading
+    /// numeric fields it shares with `str1`.
+    // C: timeframe.c `Abbrev` (timeframe.c:439). A date field is a run of
+    // digits and dots, so seconds and their fraction are one field.
+    fn abbrev(&self, axis: usize, fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        if !date_format(fmt).0 {
+            return self.axis_abbrev(axis, fmt, str1, str2);
+        }
+        let is_field = |c: &u8| c.is_ascii_digit() || *c == b'.';
+        let (b1, b2) = (str1.as_bytes(), str2.as_bytes());
+        let skip_space = |b: &[u8]| {
+            b.iter()
+                .take_while(|&&c| super::axis_format::is_c_space(c))
+                .count()
+        };
+        let (mut p1, mut p2) = (skip_space(b1), skip_space(b2));
+        let mut result = p2;
+        while p1 < b1.len() && p2 < b2.len() {
+            let nc1 = b1[p1..].iter().take_while(|c| is_field(c)).count();
+            let nc2 = b2[p2..].iter().take_while(|c| is_field(c)).count();
+            if nc1 != nc2 || b1[p1..p1 + nc1] != b2[p2..p2 + nc1] {
+                break;
+            }
+            p1 += nc1;
+            p2 += nc2;
+            p1 += b1[p1..].iter().take_while(|c| !is_field(c)).count();
+            p2 += b2[p2..].iter().take_while(|c| !is_field(c)).count();
+            result = p2;
+        }
+        Ok(result)
+    }
+
+    /// With a date Format, no fields are returned, but the value is: C
+    /// checks that the text is a date and time of the form
+    /// `yyyy-mm-dd[ hh:mm:ss[.s]]` and reads it, but never counts the
+    /// fields it finds.
+    // C: timeframe.c `Fields` (timeframe.c:1306), whose result stays 0 on the
+    // date path; mirrored because Plot acts on the count
+    // (c-library-quirks.md).
+    fn fields(&self, axis: usize, fmt: &str, text: &str, maxfld: usize) -> AstResult<FieldSplit> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        if !date_format(fmt).0 {
+            return self.axis_fields(axis, fmt, text, maxfld);
+        }
+        let space = super::axis_format::is_c_space;
+        let mut bad = false;
+        let mut state = 0;
+        let mut ifld = 0;
+        for &c in text.as_bytes() {
+            if ifld >= maxfld || bad {
+                break;
+            }
+            let digit = c.is_ascii_digit();
+            // Each even state wants the first digit of a field; each odd
+            // one reads digits until the separator that leads to the next.
+            let (sep_ok, next) = match state {
+                1 | 3 => (c == b'-', state + 1),
+                5 => (c == b' ' || c == b'T', 6),
+                7 | 9 => (c == b':', state + 1),
+                11 => (c == b'.', 12),
+                _ => (false, state),
+            };
+            match state {
+                0 if digit => state = 1,
+                0 if space(c) => {}
+                2 | 4 | 6 | 8 | 10 | 12 if digit => state += 1,
+                13 if digit || space(c) => {}
+                1 | 3 | 5 | 7 | 9 | 11 if digit => {}
+                1 | 3 | 5 | 7 | 9 | 11 if sep_ok => {
+                    state = next;
+                    ifld += 1;
+                }
+                _ => bad = true,
+            }
+        }
+        Ok(FieldSplit {
+            fields: Vec::new(),
+            value: if bad {
+                BAD_VALUE
+            } else {
+                self.unformat(axis, text)?.0
+            },
+        })
     }
 
     fn format(&self, axis: usize, value: f64) -> AstResult<String> {
