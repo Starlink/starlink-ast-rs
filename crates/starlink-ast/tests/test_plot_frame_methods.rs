@@ -16,8 +16,11 @@
 mod cases;
 
 use starlink_ast::frames::{
-    BasicFrameBuilder, Frame, SkyFrame, SkySystem, TimeFrame, TimeSystem, pick_axes,
+    BasicFrameBuilder, CmpFrame, FluxFrame, Frame, FrameRef, FrameSet, SkyFrame, SkySystem,
+    SpecFluxFrame, SpecFrame, TimeFrame, TimeSystem, pick_axes,
 };
+use starlink_ast::mappings::UnitMap;
+use starlink_ast::regions::BoxRegionBuilder;
 
 /// The Frame a probe case id names, built as the probe builds it.
 fn frame(id: &str) -> Box<dyn Frame> {
@@ -52,6 +55,39 @@ fn frame(id: &str) -> Box<dyn Frame> {
         }
         "time" => Box::new(TimeFrame::unset_system()),
         id if id.starts_with("time_") => Box::new(time_frame(id)),
+        "cmp_sky_time" | "cmp_perm" => {
+            let mut f = CmpFrame::new(
+                Box::new(SkyFrame::unset_system()),
+                Box::new(time_frame("time_iso")),
+            );
+            f.set_digits(10).unwrap();
+            if id == "cmp_perm" {
+                f.perm_axes(&[3, 1, 2]).unwrap();
+            }
+            Box::new(f)
+        }
+        "specflux" => Box::new(SpecFluxFrame::new(
+            SpecFrame::unset_system(),
+            FluxFrame::unset_system(),
+        )),
+        "frameset_sky" => {
+            let mut fs = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build().unwrap()));
+            fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), frame("sky_fmt"))
+                .unwrap();
+            Box::new(fs)
+        }
+        "box_time_iso" => Box::new(
+            BoxRegionBuilder::from_bounds(time_frame("time_iso"), &[56000.0], &[56001.0])
+                .unwrap()
+                .build()
+                .unwrap(),
+        ),
+        "box_sky" => Box::new(
+            BoxRegionBuilder::from_bounds(SkyFrame::unset_system(), &[0.0, 0.0], &[0.1, 0.1])
+                .unwrap()
+                .build()
+                .unwrap(),
+        ),
         "basic_skyaxis_ra" => pick_axes(&SkyFrame::unset_system(), &[1]).unwrap().0,
         "basic_skyaxis_dec" => pick_axes(&SkyFrame::unset_system(), &[2]).unwrap().0,
         _ => panic!("unknown frame id {id}"),
@@ -60,6 +96,10 @@ fn frame(id: &str) -> Box<dyn Frame> {
 
 /// A TimeFrame the probe builds with a date Format.
 fn time_frame(id: &str) -> TimeFrame {
+    let id = match id {
+        "cmp_sky_time" | "cmp_perm" | "box_time_iso" => "time_iso",
+        id => id,
+    };
     let mut f = TimeFrame::unset_system();
     match id {
         "time_iso" => f.set_format_str(1, "iso.0").unwrap(),
@@ -93,17 +133,20 @@ fn time_frame(id: &str) -> TimeFrame {
 /// These cases are compared within 8 ULP of the current time on the axis,
 /// far below the one-second difference between neighboring steps of the
 /// gap ladder; the division count is still compared exactly.
-const CLOCK_GAP_LICENSED: &[&str] = &[
-    "time_iso",
-    "time_iso2",
-    "time_isodate",
-    "time_jd_iso",
-    "time_origin_iso",
-    "time_unit_h_iso",
+const CLOCK_GAP_LICENSED: &[(&str, usize)] = &[
+    ("time_iso", 1),
+    ("time_iso2", 1),
+    ("time_isodate", 1),
+    ("time_jd_iso", 1),
+    ("time_origin_iso", 1),
+    ("time_unit_h_iso", 1),
+    ("cmp_sky_time", 3),
+    ("cmp_perm", 1),
+    ("box_time_iso", 1),
 ];
 
-fn gap_eq(id: &str, got: f64, want: f64) -> bool {
-    if CLOCK_GAP_LICENSED.contains(&id) {
+fn gap_eq(id: &str, axis: usize, got: f64, want: f64) -> bool {
+    if CLOCK_GAP_LICENSED.contains(&(id, axis)) {
         let now = time_frame(id).current_time().unwrap();
         (got - want).abs() <= 8.0 * now.abs() * f64::EPSILON
     } else {
@@ -116,7 +159,7 @@ fn gap_matches_the_c_library() {
     let mut failures = Vec::new();
     for &(id, axis, gap, want, want_ntick) in cases::GAP_CASES {
         let (got, ntick) = frame(id).gap(axis, gap).unwrap();
-        if !gap_eq(id, got, want) || ntick != want_ntick {
+        if !gap_eq(id, axis, got, want) || ntick != want_ntick {
             failures.push(format!(
                 "{id} axis {axis} gap {gap}: got ({got}, {ntick:?}), C gives ({want}, {want_ntick:?})"
             ));
@@ -250,4 +293,27 @@ fn time_centre_across_a_month_reports_an_error() {
     let f = time_frame("time_iso");
     let err = f.centre(1, 56000.37, 30.0).unwrap_err();
     assert_eq!(err.code(), starlink_ast::error::ErrorCode::Inter);
+}
+
+/// A Region's `fields` reaches its Frame's Axis object, as C's does, so a
+/// Region on a TimeFrame splits a date as a plain axis would, finding
+/// nothing, where the TimeFrame itself reads it.
+#[test]
+fn region_fields_bypass_timeframe_date_splitting() {
+    let date = "2012-03-14 08:52:48";
+    let region = frame("box_time_iso");
+    let plain = BasicFrameBuilder::new(1).build().unwrap();
+    let via_region = region.fields(1, "iso.0", date, 20).unwrap();
+    assert_eq!(via_region, plain.fields(1, "iso.0", date, 20).unwrap());
+    let direct = time_frame("time_iso").fields(1, "iso.0", date, 20).unwrap();
+    assert_ne!(via_region.value, direct.value);
+}
+
+/// A TimeFrame's date centre of a bad value, which formats as `<bad>` with
+/// no numeric field to compare, is the value itself. C reads past the end
+/// of the formatted text here.
+#[test]
+fn time_centre_of_a_bad_value_is_the_value() {
+    let bad = starlink_ast::constants::BAD_VALUE;
+    assert_eq!(time_frame("time_iso").centre(1, bad, 1.0).unwrap(), bad);
 }

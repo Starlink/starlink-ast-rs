@@ -84,6 +84,52 @@ static AstFrame *make_frame( const char *id ) {
    if( !strcmp( id, "time_unit_h_iso" ) ) {
       return (AstFrame *) astTimeFrame( "Unit=h,Format=iso.0" );
    }
+   if( !strcmp( id, "cmp_sky_time" ) || !strcmp( id, "cmp_perm" ) ) {
+      AstFrame *sky = (AstFrame *) astSkyFrame( " " );
+      AstFrame *time = (AstFrame *) astTimeFrame( "Format=iso.0" );
+      AstFrame *f = (AstFrame *) astCmpFrame( sky, time, "Digits=10" );
+      if( !strcmp( id, "cmp_perm" ) ) {
+         int perm[ 3 ] = { 3, 1, 2 };
+         astPermAxes( f, perm );
+      }
+      sky = astAnnul( sky );
+      time = astAnnul( time );
+      return f;
+   }
+   if( !strcmp( id, "specflux" ) ) {
+      AstFrame *spec = (AstFrame *) astSpecFrame( " " );
+      AstFrame *flux = (AstFrame *) astFluxFrame( AST__BAD, NULL, " " );
+      AstFrame *f = (AstFrame *) astSpecFluxFrame( (AstSpecFrame *) spec,
+                                                   (AstFluxFrame *) flux, " " );
+      spec = astAnnul( spec );
+      flux = astAnnul( flux );
+      return f;
+   }
+   if( !strcmp( id, "frameset_sky" ) ) {
+      AstFrame *base = astFrame( 2, " " );
+      AstFrame *sky = make_frame( "sky_fmt" );
+      AstUnitMap *um = astUnitMap( 2, " " );
+      AstFrameSet *fs = astFrameSet( base, " " );
+      astAddFrame( fs, AST__BASE, um, sky );
+      base = astAnnul( base );
+      sky = astAnnul( sky );
+      um = astAnnul( um );
+      return (AstFrame *) fs;
+   }
+   if( !strcmp( id, "box_time_iso" ) ) {
+      AstFrame *time = make_frame( "time_iso" );
+      double lo[ 1 ] = { 56000.0 }, hi[ 1 ] = { 56001.0 };
+      AstFrame *f = (AstFrame *) astBox( time, 1, lo, hi, NULL, " " );
+      time = astAnnul( time );
+      return f;
+   }
+   if( !strcmp( id, "box_sky" ) ) {
+      AstFrame *sky = make_frame( "sky" );
+      double lo[ 2 ] = { 0.0, 0.0 }, hi[ 2 ] = { 0.1, 0.1 };
+      AstFrame *f = (AstFrame *) astBox( sky, 1, lo, hi, NULL, " " );
+      sky = astAnnul( sky );
+      return f;
+   }
    if( !strcmp( id, "basic_skyaxis_ra" ) || !strcmp( id, "basic_skyaxis_dec" ) ) {
       int axes[ 1 ];
       AstFrame *sky = (AstFrame *) astSkyFrame( " " ), *f;
@@ -137,6 +183,13 @@ static const struct time_centre_case time_centres[] = {
    { "time_iso2", 56000.37, 1.0E-4 }, { "time_isodate", 56000.37, 3.0 },
    { "time_jd_iso", 2456000.87, 1.0 }, { "time_origin_iso", 0.37, 1.0 },
    { "time_unit_h_iso", 1344008.88, 2.0 },
+   { "box_time_iso", 56000.37, 1.0 }, { "cmp_perm", 56000.37, 1.0 },
+};
+
+/* TimeFrames inside compound Frames, as (frame id, axis): their gap is
+   measured from the current time as the TimeFrame's own is. */
+static const struct { const char *id; int axis; } compound_time_axes[] = {
+   { "cmp_sky_time", 3 }, { "cmp_perm", 1 }, { "box_time_iso", 1 },
 };
 
 struct axis_case { const char *id; int axis; };
@@ -151,6 +204,10 @@ static const struct axis_case axes[] = {
    { "sky_digits", 2 }, { "sky_axdigits", 1 }, { "sky_axdigits", 2 },
    { "sky_gal", 1 }, { "sky_gal", 2 }, { "basic_skyaxis_ra", 1 },
    { "basic_skyaxis_dec", 1 },
+   { "cmp_sky_time", 1 }, { "cmp_sky_time", 2 },
+   { "cmp_perm", 2 }, { "cmp_perm", 3 }, { "specflux", 1 }, { "specflux", 2 },
+   { "frameset_sky", 1 }, { "frameset_sky", 2 }, { "box_sky", 1 },
+   { "box_sky", 2 },
 };
 
 struct abbrev_case { const char *id; int axis; const char *fmt;
@@ -188,6 +245,14 @@ static const struct abbrev_case abbrevs[] = {
    { "time_iso", 1, "iso.0T", "2012-03-14T08:52:48", "2012-03-14T09:00:00" },
    { "time_iso", 1, "%g", "1.5", "1.5" },
    { "time", 1, "%1.7G", "56000.5", "56000.5" },
+   { "cmp_sky_time", 1, "hms", "12:34:56", "12:34:57" },
+   { "cmp_sky_time", 3, "iso.0", "2012-03-14 08:52:48", "2012-03-14 08:53:00" },
+   { "cmp_perm", 1, "iso.0", "2012-03-14 08:52:48", "2012-03-14 08:53:00" },
+   { "cmp_perm", 3, "dms", "-01:02:03", "-01:02:04" },
+   { "specflux", 1, "%g", "1.5", "1.5" },
+   { "frameset_sky", 1, "hms", "12:34:56", "12:35:00" },
+   { "box_time_iso", 1, "iso.0", "2012-03-14 08:52:48", "2012-03-14 08:53:00" },
+   { "box_sky", 2, "dms", "-01:02:03", "-01:02:04" },
 };
 
 struct fields_case { const char *id; int axis; const char *fmt;
@@ -244,6 +309,18 @@ static const struct fields_case fieldss[] = {
    { "time_iso", 1, "%g", "56000.5", 20 },
    { "time", 1, "%1.7G", "56000.5", 20 },
    { "time", 1, "iso.0", "2012-03-14 08:52:48", 20 },
+   { "cmp_sky_time", 1, "hms", "12:34:56", 3 },
+   { "cmp_sky_time", 3, "iso.0", "2012-03-14 08:52:48", 20 },
+   { "cmp_perm", 1, "iso.0", "2012-03-14 08:52:48", 20 },
+   { "cmp_perm", 2, "hms", "12:34:56", 3 },
+   { "specflux", 2, "%g", "1.5", 3 },
+   { "frameset_sky", 2, "dms", "-01:02:03", 3 },
+   { "frameset_sky", 1, "hms", "12:34:56", 3 },
+   /* A Region's Fields is frame.c's, which reaches the TimeFrame's plain
+      Axis rather than TimeFrame Fields. */
+   { "box_time_iso", 1, "iso.0", "2012-03-14 08:52:48", 20 },
+   { "box_time_iso", 1, "%g", "56000.5", 20 },
+   { "box_sky", 1, "hms", "12:34:56", 3 },
 };
 
 #define NUMOF(a) ( (int)( sizeof( a ) / sizeof( ( a )[ 0 ] ) ) )
@@ -294,6 +371,21 @@ int main( void ) {
              time_gaps[ j ] == 1.0 ) continue;
          r = astGap_( fp, 0, time_gaps[ j ], &ntick, &status );
          printf( "    (" ); rstr( time_axes[ i ].id ); printf( ", 1, " );
+         flit( time_gaps[ j ] ); printf( ", " ); flit( r ); printf( ", " );
+         if( ntick == -999 ) printf( "None" ); else printf( "Some(%d)", ntick );
+         printf( "),\n" );
+      }
+      f = astAnnul( f );
+   }
+   for( i = 0; i < NUMOF( compound_time_axes ); i++ ) {
+      AstFrame *f = make_frame( compound_time_axes[ i ].id );
+      void *fp = astMakePointer( f );
+      for( j = 0; j < NUMOF( time_gaps ); j++ ) {
+         int ntick = -999;
+         double r = astGap_( fp, compound_time_axes[ i ].axis - 1, time_gaps[ j ],
+                             &ntick, &status );
+         printf( "    (" ); rstr( compound_time_axes[ i ].id );
+         printf( ", %d, ", compound_time_axes[ i ].axis );
          flit( time_gaps[ j ] ); printf( ", " ); flit( r ); printf( ", " );
          if( ntick == -999 ) printf( "None" ); else printf( "Some(%d)", ntick );
          printf( "),\n" );

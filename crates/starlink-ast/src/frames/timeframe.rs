@@ -1938,8 +1938,9 @@ impl Frame for TimeFrame {
     /// compared field by field, and the first field that differs, and every
     /// field after it, is set to zero.
     // C: timeframe.c `Centre` (timeframe.c:603). When the two formatted
-    // values are identical C reads past the end of both strings; the port
-    // stops at the end and returns the value unchanged.
+    // values are identical, or one runs out of numeric fields first (a bad
+    // value formats as "<bad>"), C reads past the end of the strings; the
+    // port stops at the end and returns the value unchanged.
     fn centre(&self, axis: usize, value: f64, gap: f64) -> AstResult<f64> {
         super::frame_attrs::validate_axis(axis, 1)?;
         if !date_format(&self.format_str(1)?).0 {
@@ -1987,7 +1988,9 @@ impl Frame for TimeFrame {
                     break;
                 }
             }
-            if p1 > b1.len() && p2 > b2.len() {
+            // C runs on past the end of a string that has no further
+            // numeric field; the port stops.
+            if (nc1 == 0 && p1 > b1.len()) || (nc2 == 0 && p2 > b2.len()) {
                 break;
             }
         }
