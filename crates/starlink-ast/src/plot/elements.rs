@@ -76,7 +76,7 @@ pub enum PlotElement {
 
 /// The number of single elements, which are the first variants.
 // C: AST__NPID.
-const NPID: usize = 20;
+pub(crate) const NPID: usize = 20;
 
 impl PlotElement {
     /// Every element and group, in the order of their C identifiers.
@@ -134,6 +134,35 @@ impl PlotElement {
         } as usize;
         (0..nax.min(3)).map(|k| first + k).collect()
     }
+}
+
+/// The description C gives single element `id` in error messages and
+/// saved Plots, and the 0-based axis it belongs to, if any.
+// C: GrfItem (plot.c:17984).
+pub(crate) fn grf_item(id: usize) -> (&'static str, Option<usize>) {
+    const ITEMS: [(&str, Option<usize>); NPID] = [
+        ("Border", None),
+        ("Curve", None),
+        ("Title", None),
+        ("Markers", None),
+        ("Text string", None),
+        ("Axis 1", Some(0)),
+        ("Axis 2", Some(1)),
+        ("Axis 3", Some(2)),
+        ("Axis 1 numerical labels", Some(0)),
+        ("Axis 2 numerical labels", Some(1)),
+        ("Axis 3 numerical labels", Some(2)),
+        ("Axis 1 textual label", Some(0)),
+        ("Axis 2 textual label", Some(1)),
+        ("Axis 3 textual label", Some(2)),
+        ("Axis 1 tick marks", Some(0)),
+        ("Axis 2 tick marks", Some(1)),
+        ("Axis 3 tick marks", Some(2)),
+        ("Axis 1 gridline", Some(0)),
+        ("Axis 2 gridline", Some(1)),
+        ("Axis 3 gridline", Some(2)),
+    ];
+    ITEMS[id]
 }
 
 /// The style attributes of each single element, `None` when unset.
@@ -196,7 +225,7 @@ macro_rules! style_rest {
                             $name,
                             $sep,
                             $name,
-                            PlotElement::ALL[id].name()
+                            grf_item(id).0
                         ),
                     ));
                 }

@@ -217,6 +217,16 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          uninitialised_set_states_still_differ_from_c fails when C agrees",
     ),
     (
+        "test_plot.rs",
+        "UNINITIALISED_FORCE_EXTERIOR_LICENSED",
+        1,
+        "the FrcExt line of C's dump of a Plot that did not set ForceExterior: \
+         C's astInitPlot never initialises it, so C dumps it as set (to 0 here) \
+         where the port leaves it unset (c-library-quirks.md); compared as the \
+         line C writes for an unset ForceExterior, and \
+         uninitialised_force_exterior_still_dumps_as_set_in_c fails when C agrees",
+    ),
+    (
         "test_fitschan_errors.rs",
         "FITSCHAN_ERRORS_EXCLUDED",
         3,

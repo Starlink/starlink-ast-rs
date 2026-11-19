@@ -24,6 +24,7 @@ use crate::mappings::{
     SwitchMap, TimeMap, TranMap, UnitMap, UnitNormMap, WcsMap, WinMap, XphMap, ZoomMap,
 };
 use crate::mappings::{IntraMap, IntraRegistry};
+use crate::plot::Plot;
 use crate::regions::data::{RegionData, check_fill_factor};
 use crate::regions::{
     BoxRegion, Circle, CmpOperator, CmpRegion, CmpRegionBuilder, DynRegion, Ellipse, Interval, Moc,
@@ -397,6 +398,7 @@ fn mapping_from_node_inner(node: &Node) -> AstResult<DynMapping> {
         "SelectorMap" => Ok(Box::new(SelectorMap::from_node(node)?)),
         "SwitchMap" => Ok(Box::new(SwitchMap::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
+        "Plot" => Ok(Box::new(Plot::from_node(node)?)),
         // Regions implement Mapping.
         "Circle" => Ok(Box::new(Circle::from_node(node)?)),
         "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
@@ -518,6 +520,9 @@ impl MappingToNode for dyn Mapping {
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
             return Serializable::to_node(f);
         }
+        if let Some(f) = self.as_any().downcast_ref::<Plot>() {
+            return Serializable::to_node(f);
+        }
         // Regions implement Mapping.
         if let Some(r) = self.as_any().downcast_ref::<Circle>() {
             return Serializable::to_node(r);
@@ -607,6 +612,9 @@ impl FrameToNode for dyn Frame {
         if let Some(f) = self.as_any().downcast_ref::<FrameSet>() {
             return Serializable::to_node(f);
         }
+        if let Some(f) = self.as_any().downcast_ref::<Plot>() {
+            return Serializable::to_node(f);
+        }
         // Regions implement Frame.
         if let Some(r) = self.as_any().downcast_ref::<Circle>() {
             return Serializable::to_node(r);
@@ -669,6 +677,7 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
         "SpecFluxFrame" => Ok(Box::new(SpecFluxFrame::from_node(node)?)),
         "CmpFrame" => Ok(Box::new(CmpFrame::from_node(node)?)),
         "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
+        "Plot" => Ok(Box::new(Plot::from_node(node)?)),
         // Regions implement Frame.
         "Circle" => Ok(Box::new(Circle::from_node(node)?)),
         "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
@@ -1902,9 +1911,11 @@ impl Serializable for Prism {
 /// # See also
 ///
 /// - `astCopy`: [`Clone`].
+// Non-exhaustive so that each class the port adds is not a breaking change.
 #[doc(alias = "Object")]
 #[doc(alias = "astCopy")]
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum AnyObject {
     /// A [`UnitMap`] (identity mapping).
     UnitMap(UnitMap),
@@ -1980,6 +1991,8 @@ pub enum AnyObject {
     CmpFrame(CmpFrame),
     /// A [`FrameSet`] (frame + inter-frame mappings).
     FrameSet(FrameSet),
+    /// A [`Plot`] (FrameSet for drawing coordinate grids).
+    Plot(Box<Plot>),
     /// A [`Circle`] (circular / spherical-cap region).
     Circle(Circle),
     /// A [`BoxRegion`] (axis-aligned box region).
@@ -2143,6 +2156,9 @@ impl AnyObject {
         if let Some(x) = m.as_any().downcast_ref::<FrameSet>() {
             return Some(AnyObject::FrameSet(wrapped(x)));
         }
+        if let Some(x) = m.as_any().downcast_ref::<Plot>() {
+            return Some(AnyObject::Plot(Box::new(wrapped(x))));
+        }
         if let Some(x) = m.as_any().downcast_ref::<Circle>() {
             return Some(AnyObject::Circle(wrapped(x)));
         }
@@ -2231,6 +2247,7 @@ impl AnyObject {
             AnyObject::SelectorMap(m) => Some(m),
             AnyObject::SwitchMap(m) => Some(m),
             AnyObject::FrameSet(f) => Some(f),
+            AnyObject::Plot(f) => Some(f.as_ref()),
             // Regions implement Mapping.
             AnyObject::Circle(r) => Some(r),
             AnyObject::BoxRegion(r) => Some(r),
@@ -2283,6 +2300,7 @@ impl AnyObject {
             AnyObject::SpecFluxFrame(f) => Some(f.as_ref()),
             AnyObject::CmpFrame(f) => Some(f),
             AnyObject::FrameSet(f) => Some(f),
+            AnyObject::Plot(f) => Some(f.as_ref()),
             // Regions implement Frame.
             AnyObject::Circle(r) => Some(r),
             AnyObject::BoxRegion(r) => Some(r),
@@ -2368,6 +2386,7 @@ impl AnyObject {
             AnyObject::SelectorMap(m) => Some(Box::new(m)),
             AnyObject::SwitchMap(m) => Some(Box::new(m)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
+            AnyObject::Plot(f) => Some(f),
             // Regions implement Mapping.
             AnyObject::Circle(r) => Some(Box::new(r)),
             AnyObject::BoxRegion(r) => Some(Box::new(r)),
@@ -2413,6 +2432,7 @@ impl AnyObject {
             AnyObject::SpecFluxFrame(f) => Some(f),
             AnyObject::CmpFrame(f) => Some(Box::new(f)),
             AnyObject::FrameSet(f) => Some(Box::new(f)),
+            AnyObject::Plot(f) => Some(f),
             // Regions implement Frame.
             AnyObject::Circle(r) => Some(Box::new(r)),
             AnyObject::BoxRegion(r) => Some(Box::new(r)),
@@ -2583,6 +2603,7 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
         ))),
         "CmpFrame" => Ok(AnyObject::CmpFrame(CmpFrame::from_node(node)?)),
         "FrameSet" => Ok(AnyObject::FrameSet(FrameSet::from_node(node)?)),
+        "Plot" => Ok(AnyObject::Plot(Box::new(Plot::from_node(node)?))),
         // Regions.
         "Circle" => Ok(AnyObject::Circle(Circle::from_node(node)?)),
         "Box" => Ok(AnyObject::BoxRegion(BoxRegion::from_node(node)?)),
@@ -2675,6 +2696,7 @@ pub(crate) fn any_object_to_node(obj: &AnyObject) -> AstResult<Node> {
         AnyObject::SpecFluxFrame(f) => Serializable::to_node(f.as_ref()),
         AnyObject::CmpFrame(f) => Serializable::to_node(f),
         AnyObject::FrameSet(f) => Serializable::to_node(f),
+        AnyObject::Plot(f) => Serializable::to_node(f.as_ref()),
         // Regions.
         AnyObject::Circle(r) => Serializable::to_node(r),
         AnyObject::BoxRegion(r) => Serializable::to_node(r),

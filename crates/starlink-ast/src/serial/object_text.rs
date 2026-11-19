@@ -247,6 +247,7 @@ object_text! {
     SpecFluxFrame: super::SpecFluxFrame = "SpecFluxFrame", boxed;
     CmpFrame: super::CmpFrame = "CmpFrame";
     FrameSet: super::FrameSet = "FrameSet";
+    Plot: super::Plot = "Plot", boxed;
     Circle: super::Circle = "Circle";
     BoxRegion: super::BoxRegion = "Box";
     Ellipse: super::Ellipse = "Ellipse";
@@ -442,7 +443,14 @@ mod tests {
             vec![0.0, 0.0, 1.0, 1.0],
         )
         .unwrap();
+        let plot = crate::plot::Plot::new(
+            &SkyFrame::new(SkySystem::Icrs),
+            [0.1, 0.1, 0.9, 0.9],
+            [0.0, -0.5, 1.0, 0.5],
+        )
+        .unwrap();
         vec![
+            ("Plot", AnyObject::Plot(Box::new(plot))),
             ("SphMap", AnyObject::SphMap(SphMap::new())),
             (
                 "XphMap",

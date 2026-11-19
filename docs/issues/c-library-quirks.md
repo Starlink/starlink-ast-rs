@@ -20,6 +20,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ### [Open questions for upstream](#open-questions-for-upstream)
 
 - [`astInitPlot` never initialises ForceExterior](#astinitplot-never-initialises-forceexterior)
+- [Plot's per-axis attributes read past their arrays for a fourth input](#plots-per-axis-attributes-read-past-their-arrays-for-a-fourth-input)
+- [Plot `Dump` writes Gap and LogGap with the set flag left by the Centre loop](#plot-dump-writes-gap-and-loggap-with-the-set-flag-left-by-the-centre-loop)
 - [A Plot built from a Plot never checks its last Frame's Domain](#a-plot-built-from-a-plot-never-checks-its-last-frames-domain)
 - [Plot `Trans` normalises the caller's input and clips only some output axes](#plot-trans-normalises-the-callers-input-and-clips-only-some-output-axes)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
@@ -214,6 +216,23 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 `plot.c` `astInitPlot_` (plot.c:30676) sets every attribute of a new Plot to its "unset" value except `forceexterior`, which it never assigns, so a new Plot reads uninitialised memory for it: `astTestForceExterior` reports whatever the allocator left (a zeroed page reads as set, with value 0), and `Dump` writes `FrcExt` as set.
 This is an uninitialised read, a candidate for the hardening sweep; the fix is `new->forceexterior = -1;` beside the other attributes.
 The port starts ForceExterior unset, its value still 0 by default, and `UNINITIALISED_SET_STATE_EXCLUDED` in `crates/starlink-ast/tests/test_plot.rs` names the set state of a new Plot as differing from C, with a companion test that fails when C agrees.
+The same holds for dumps: C writes `FrcExt = 0` as an active line for every Plot that did not set ForceExterior, and the port writes it commented as a default.
+`UNINITIALISED_FORCE_EXTERIOR_LICENSED` in the same file compares those dumps with C's line replaced by the commented one, and `uninitialised_force_exterior_still_dumps_as_set_in_c` fails when C agrees.
+A C dump read back keeps the value as set, so a Plot read from C re-dumps byte for byte.
+
+### Plot's per-axis attributes read past their arrays for a fourth input
+
+`plot.c` keeps each per-axis attribute (`LabelAt`, `Gap`, `Edge` and the rest) in an array of three, and its accessors check the axis only against the Plot's number of inputs (plot.c `MAKE_GET` and the other attribute macros).
+A Plot whose current Frame has more than three axes, used inverted so that those are its inputs, accepts a fourth axis and reads or writes past the array, and `Dump` writes `Cen4`, `DrwAxs4` and the rest from past it.
+The port rejects an axis above three with `AST__AXIIN` and dumps three axes at most (`a_fourth_axis_of_a_plot_attribute_is_rejected` in `crates/starlink-ast/tests/test_plot.rs`).
+The fix is to check the axis against `min( nin, 3 )`.
+
+### Plot `Dump` writes Gap and LogGap with the set flag left by the Centre loop
+
+`plot.c` `Dump` (plot.c:30020) writes `Gap` and `LogGap` only when `astTestGap` or `astTestLogGap` says they are set, but passes `astWriteDouble` the variable `set` without assigning it, so the flag is the one the preceding `Centre` loop left: whether the last axis's `Centre` is set.
+When that `Centre` is unset, a set `Gap` or `LogGap` is written as an unhelpful default, so a default Channel leaves it out and a reader that sees it ignores it: the gap is lost on a save and restore.
+The port mirrors this, since it decides what a dump holds (`crates/starlink-ast/src/plot/serial.rs`); `plot_native_probe.c` pins it with a Plot that sets only `Gap(1)` and `LogGap(2)`, one that also sets `Centre(1)`, and one that sets `Centre(2)`.
+The fix is `set = 1;` inside each `if( astTestGap( this, axis ) )` and `if( astTestLogGap( this, axis ) )`.
 
 ### A Plot built from a Plot never checks its last Frame's Domain
 
@@ -226,6 +245,7 @@ The port mirrors the loop (`Plot::new` in `crates/starlink-ast/src/plot/mod.rs`)
 
 `plot.c` `Trans` (plot.c:28181), the body of a Plot's `Transform`, finds the positions in the clipping Frame by taking a clone of the input PointSet when the clipping Frame is the base Frame (going forward) or the current Frame (going backward), and then normalises them in place, so the caller's input points are changed by the call.
 The port normalises a copy, so its input is unchanged; the transformed points are the same.
+Going backward with the base Frame as the clipping Frame, C clones the result instead, so the points it returns are normalised in the base Frame, which a backward transform does not otherwise do; the port normalises its result there too, since that is the output (`plot_native_probe.c`'s "car1 clipped about RA 6.16", through the inverted Plot).
 When a point is clipped, C sets the first `naxes` output coordinates bad, `naxes` being the number of axes of the clipping Frame, not of the output: a clipping Frame with fewer axes than the current Frame leaves the remaining output coordinates of a clipped point good, and one with more writes past the output arrays.
 The port sets the first `min(naxes, nout)` coordinates bad, which is C's result wherever C's is defined (`Plot::trans`).
 

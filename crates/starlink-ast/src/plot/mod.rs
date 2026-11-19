@@ -36,6 +36,7 @@
 mod attrs;
 mod elements;
 mod forward;
+mod serial;
 
 pub use attrs::{Edge, Labelling, TextGapType};
 pub use elements::PlotElement;
@@ -50,8 +51,9 @@ use crate::mappings::{DynMapping, Mapping, PermMap, ViaSimplify, WinMap};
 /// falls outside bounds on each of its axes are bad.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ClipRegion {
-    /// The 1-based index of the clipping Frame.
-    pub(crate) frame: usize,
+    /// The 1-based index of the clipping Frame. A loaded Plot may hold any
+    /// index, which a transform then reports as invalid.
+    pub(crate) frame: i32,
     /// The lower bound on each axis of the clipping Frame.
     pub(crate) lbnd: Vec<f64>,
     /// The upper bound on each axis of the clipping Frame.
@@ -93,8 +95,20 @@ pub struct Plot {
     /// x2, y2.
     bbox: [f64; 4],
     clip: Option<ClipRegion>,
+    /// Major and minor tick values given for each axis, to be drawn in
+    /// place of those a grid would choose.
+    // C: majtickval and mintickval, set by the protected astSetTickValues,
+    // which Plot3D calls.
+    tick_values: [TickValues; 3],
     /// Plot's own attributes.
     pub(crate) attrs: attrs::PlotAttrs,
+}
+
+/// Tick values given for one axis of a Plot.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct TickValues {
+    pub(crate) major: Vec<f64>,
+    pub(crate) minor: Vec<f64>,
 }
 
 /// The FrameSet `fs` with a 2-D base Frame: unchanged if its base Frame is
@@ -261,6 +275,7 @@ impl Plot {
             yrev,
             bbox: basebox,
             clip: None,
+            tick_values: Default::default(),
             attrs: attrs::PlotAttrs::default(),
         })
     }
@@ -297,6 +312,40 @@ impl Plot {
         self.bbox
     }
 
+    /// Add a Frame, as [`FrameSet::add_frame`] does.
+    ///
+    /// # Errors
+    ///
+    /// As for [`FrameSet::add_frame`].
+    // C's Plot inherits AddFrame from FrameSet; a new Frame goes at the end,
+    // so the clipping region's Frame index still holds.
+    pub fn add_frame(
+        &mut self,
+        anchor: FrameRef,
+        map: DynMapping,
+        new_frame: DynFrame,
+    ) -> AstResult<()> {
+        self.frameset.add_frame(anchor, map, new_frame)
+    }
+
+    /// Select the base Frame, as [`FrameSet::set_base`] does.
+    ///
+    /// # Errors
+    ///
+    /// As for [`FrameSet::set_base`].
+    pub fn set_base(&mut self, which: FrameRef) -> AstResult<()> {
+        self.frameset.set_base(which)
+    }
+
+    /// Select the current Frame, as [`FrameSet::set_current`] does.
+    ///
+    /// # Errors
+    ///
+    /// As for [`FrameSet::set_current`].
+    pub fn set_current(&mut self, which: FrameRef) -> AstResult<()> {
+        self.frameset.set_current(which)
+    }
+
     /// Remove a Frame, as [`FrameSet::remove_frame`] does.
     ///
     /// If the Plot has a clipping region, removing its Frame removes the
@@ -316,6 +365,7 @@ impl Plot {
             _ => self.frameset.current_index(),
         };
         self.frameset.remove_frame(which)?;
+        let ifrm = ifrm as i32;
         if let Some(clip) = &mut self.clip {
             if ifrm < clip.frame {
                 clip.frame -= 1;
@@ -352,8 +402,15 @@ impl Plot {
         let Some(clip) = &self.clip else {
             return Ok(result);
         };
+        // C: astValidateFrameIndex, which takes AST__BASE (0) and
+        // AST__CURRENT (-1) as the Frames they name now.
         let nframe = self.frameset.nframe();
-        if clip.frame < 1 || clip.frame > nframe {
+        let clip_frame = match clip.frame {
+            0 => self.frameset.base_index() as i32,
+            -1 => self.frameset.current_index() as i32,
+            f => f,
+        };
+        if clip_frame < 1 || clip_frame as usize > nframe {
             return Err(AstError::new(
                 ErrorCode::Frmin,
                 format!(
@@ -363,7 +420,8 @@ impl Plot {
                 ),
             ));
         }
-        let fr = self.frameset.frame(FrameRef::Index(clip.frame))?;
+        let clip_frame = clip_frame as usize;
+        let fr = self.frameset.frame(FrameRef::Index(clip_frame))?;
         let naxes = fr.naxes();
         if naxes != clip.lbnd.len() {
             return Err(AstError::new(
@@ -379,12 +437,24 @@ impl Plot {
         // The positions in the clipping Frame. C uses the input or result
         // PointSet itself when the clipping Frame is the base or current
         // Frame, and so normalises the caller's input in place; the port
-        // normalises a copy (c-library-quirks.md).
+        // normalises a copy of the input (c-library-quirks.md). Going
+        // backwards with the base Frame clipping, it normalises the result
+        // itself, which the caller receives normalised, as from C.
         let (base, current) = (self.frameset.base_index(), self.frameset.current_index());
         let mut clip_norm = true;
-        let mut clip_pts = if clip.frame == base {
-            if forward { pts.clone() } else { result.clone() }
-        } else if clip.frame == current {
+        let mut clip_pts = if clip_frame == base {
+            if forward {
+                pts.clone()
+            } else {
+                for i in 0..npoint {
+                    let mut work = result.point(i).to_vec();
+                    fr.norm(&mut work)?;
+                    result.set_point(i, &work);
+                }
+                clip_norm = false;
+                result.clone()
+            }
+        } else if clip_frame == current {
             if forward {
                 clip_norm = false;
                 result.clone()
@@ -397,7 +467,7 @@ impl Plot {
             } else {
                 FrameRef::Base
             };
-            let map = self.frameset.mapping(from, FrameRef::Index(clip.frame))?;
+            let map = self.frameset.mapping(from, FrameRef::Index(clip_frame))?;
             map.transform(&result, true)?
         };
         if clip_norm {

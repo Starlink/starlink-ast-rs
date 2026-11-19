@@ -2082,6 +2082,11 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     }
 
     /// [`as_frameset`](Frame::as_frameset), mutably.
+    ///
+    /// For a class built on a FrameSet, changes made through it bypass what
+    /// that class does itself: removing a Frame of a Plot this way does not
+    /// keep its clipping region on the right Frame, which
+    /// [`Plot::remove_frame`](crate::plot::Plot::remove_frame) does.
     fn as_frameset_mut(&mut self) -> Option<&mut FrameSet> {
         None
     }
