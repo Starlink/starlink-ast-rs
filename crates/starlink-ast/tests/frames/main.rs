@@ -82,6 +82,8 @@ mod test_norm_points;
 mod test_overlay;
 #[path = "../test_picked_skyaxis.rs"]
 mod test_picked_skyaxis;
+#[path = "../test_plot_frame_methods.rs"]
+mod test_plot_frame_methods;
 #[path = "../test_system_change.rs"]
 mod test_system_change;
 #[path = "../test_unit_mapper.rs"]

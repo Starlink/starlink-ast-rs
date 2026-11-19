@@ -19,6 +19,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Open questions for upstream](#open-questions-for-upstream)
 
+- [`AxisFields` reads past the end of a value with leading spaces](#axisfields-reads-past-the-end-of-a-value-with-leading-spaces)
 - [A PointList's `Transform` moves its shared uncertainty Region twice per list point](#a-pointlists-transform-moves-its-shared-uncertainty-region-twice-per-list-point)
 - [SelectorMap's `Transform` negates and re-closes each selector Region in place](#selectormaps-transform-negates-and-re-closes-each-selector-region-in-place)
 - [`CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column](#compressmatrix-recomputes-sqrt-dbl_epsilon--for-every-row-and-column)
@@ -200,6 +201,16 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ---
 
 ## Open questions for upstream
+
+### `AxisFields` reads past the end of a value with leading spaces
+
+`axis.c` `AxisFields` (axis.c:414, the decimal branch) skips the leading spaces of the formatted value, then finds the end of the field with `p += len`, where `len` is the length of the whole string.
+Starting from the first non-blank character, that lands past the terminating null by the number of leading spaces, and the trailing-space loop then reads the bytes beyond the string.
+The field length returned is the length of the whole string, plus or minus whatever spaces follow it in memory, rather than the length of the value.
+Observed through `astFields` on a plain Frame with `"  -7 "`: C returns one field of 5 characters starting at offset 2 (`tools/oracle_fixtures/plot_frame_methods_probe.c`).
+A value only has leading spaces when its Format pads it (`%10.3f`, say); Plot passes such a label's fields to its abbreviation and log-label logic.
+The fix is `p = str + len` before the trailing-space loop.
+The port does not mirror the read: `axis::plain_axis_fields` returns the field from the first to the last non-blank character, and `FIELDS_EXCLUDED` in `crates/starlink-ast/tests/test_plot_frame_methods.rs` names the C cases it differs on.
 
 ### A PointList's `Transform` moves its shared uncertainty Region twice per list point
 

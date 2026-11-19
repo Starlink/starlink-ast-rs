@@ -7,6 +7,10 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ## [Unreleased]
 
+### Added
+
+- `starlink-ast`: `Frame::gap`, `centre`, `abbrev` and `fields`, which choose tick spacing and split and abbreviate formatted axis values for plot annotation, as the C library's do, with `FieldSplit` to hold the fields of a value.
+
 ### Changed
 
 - `starlink-ast`: building no longer needs a C compiler: PAL and ERFA are now Rust, bit for bit the results of the C they replace.

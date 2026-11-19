@@ -191,6 +191,15 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          it closes",
     ),
     (
+        "test_plot_frame_methods.rs",
+        "FIELDS_EXCLUDED",
+        2,
+        "astFields on \"  -7 \" with maxfld 20 and 1: C's AxisFields reads past \
+         the end of a value with leading spaces (c-library-quirks.md); the port \
+         returns the value's own span. fields_excluded_cases_still_differ_from_c \
+         fails when C agrees",
+    ),
+    (
         "test_fitschan_errors.rs",
         "FITSCHAN_ERRORS_EXCLUDED",
         3,

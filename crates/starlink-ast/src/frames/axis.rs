@@ -396,3 +396,120 @@ pub(crate) fn axis_in(lo: f64, hi: f64, val: f64, closed: bool) -> bool {
         lo < val && val < hi
     }
 }
+
+/// C's `sscanf( s, "%lg%n", ... )`: skip leading white space, then read a
+/// floating constant as `strtod` does. Returns the value and the number of
+/// bytes consumed, white space included.
+fn scan_lg(s: &[u8]) -> Option<(f64, usize)> {
+    let ws = s
+        .iter()
+        .take_while(|&&b| super::axis_format::is_c_space(b))
+        .count();
+    super::axis_format::c_strtod(&s[ws..]).map(|(v, n)| (v, ws + n))
+}
+
+/// A "nice" gap size close to `gap` for a plain axis, and the number of
+/// minor divisions to draw within it.
+/// The minor count is `None` when `gap` is zero, where C leaves it unchanged.
+// C: axis.c `AxisGap` (axis.c:915). A bad gap is not tested for, so
+// BAD_VALUE (-DBL_MAX) gives -infinity, as in C.
+pub(crate) fn plain_axis_gap(gap: f64) -> (f64, Option<i32>) {
+    const TABLE1: [f64; 10] = [1.0, 2.0, 2.0, 5.0, 5.0, 5.0, 5.0, 10.0, 10.0, 10.0];
+    const TABLE2: [i32; 10] = [5, 4, 4, 5, 5, 5, 5, 5, 5, 5];
+    if gap == 0.0 {
+        return (0.0, None);
+    }
+    let positive = gap >= 0.0;
+    let absgap = if positive { gap } else { -gap };
+    let b = crate::math::powf(10.0, crate::math::log10(absgap).floor());
+    let index = ((absgap / b).round() as i32 - 1) as usize;
+    let result = b * TABLE1[index];
+    (if positive { result } else { -result }, Some(TABLE2[index]))
+}
+
+/// A "nice" axis value close to `value`: an integral number of gaps from
+/// the origin, so the origin falls on a major tick.
+/// Zero if `gap` is zero or bad, or `value` is bad.
+// C: axis.c `AxisCentre` (axis.c:853).
+pub(crate) fn plain_axis_centre(value: f64, gap: f64) -> f64 {
+    use crate::mappings::helpers::is_bad;
+    if gap != 0.0 && !is_bad(gap) && !is_bad(value) {
+        gap * (0.5 + value / gap).floor()
+    } else {
+        0.0
+    }
+}
+
+/// The byte offset into `str2` of the text that differs from `str1`, for a
+/// plain axis, whose formatted values have a single field: zero, unless
+/// the strings are identical, when it is the length of `str2`.
+// C: axis.c `AxisAbbrev` (axis.c:273).
+pub(crate) fn plain_axis_abbrev(str1: &str, str2: &str) -> usize {
+    if str1 == str2 { str2.len() } else { 0 }
+}
+
+/// Split a value formatted with `fmt` on a plain axis into its fields, up
+/// to `maxfld` of them.
+/// A decimal value is one field.
+/// A value in log form (`fmt` with the `&` flag) is two, `10` and the
+/// exponent, except that zero, never written as a power, is one.
+// C: axis.c `AxisFields` (axis.c:414). Only the `log` flag of the parsed
+// Format is used, so the Digits handed to `ParseAxisFormat` do not matter.
+// The log delimiter is the one used without graphical escapes.
+pub(crate) fn plain_axis_fields(fmt: &str, text: &str, maxfld: usize) -> super::FieldSplit {
+    use crate::constants::BAD_VALUE;
+    let mut out = super::FieldSplit {
+        fields: Vec::new(),
+        value: BAD_VALUE,
+    };
+    let parsed = super::axis_format::parse_axis_format(fmt, AXIS_DIGITS);
+    let s = text.as_bytes();
+    if parsed.log {
+        if maxfld <= 1 {
+            return out;
+        }
+        let start = s.iter().take_while(|&&b| b == b' ').count();
+        let mut p = start;
+        let neg = s.get(p) == Some(&b'-');
+        if neg || s.get(p) == Some(&b'+') {
+            p += 1;
+        }
+        let del = super::axis_format::LOG_TXT.as_bytes();
+        if s[p..].starts_with(del) {
+            // C counts two characters past the sign, the "10", whatever the
+            // delimiter's length.
+            let nc0 = p + 2 - start;
+            p += del.len();
+            if let Some((value, n)) = scan_lg(&s[p..]) {
+                out.fields = vec![start..start + nc0, p..p + n];
+                let v = crate::math::powf(10.0, value);
+                out.value = if neg { -v } else { v };
+            } else if s[p..].starts_with(b"<bad>") {
+                out.fields = vec![start..start + nc0, p..p + 5];
+                out.value = 0.0;
+            }
+        } else if let Some((value, n)) = scan_lg(&s[p..]) {
+            if value == 0.0 {
+                out.fields = std::iter::once(start..p + n).collect();
+                out.value = 0.0;
+            }
+        }
+    } else if let Some((value, n)) = scan_lg(s) {
+        // `"%lg %n"`: the space before `%n` also consumes trailing white
+        // space, and the whole string must be read.
+        let n = n + s[n..]
+            .iter()
+            .take_while(|&&b| super::axis_format::is_c_space(b))
+            .count();
+        if n >= s.len() && maxfld > 0 {
+            let start = s.iter().take_while(|&&b| b == b' ').count();
+            let mut end = s.len();
+            while end > 0 && s[end - 1] == b' ' {
+                end -= 1;
+            }
+            out.fields = std::iter::once(start..end).collect();
+            out.value = value;
+        }
+    }
+    out
+}

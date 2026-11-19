@@ -279,6 +279,17 @@ pub(crate) fn simplify_frame_via_mapping(m: &dyn Mapping) -> AstResult<Option<Dy
     Ok(AnyObject::from_mapping(simplified.as_ref()).and_then(|o| o.into_frame()))
 }
 
+/// The fields of a formatted axis value, as [`Frame::fields`] finds them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldSplit {
+    /// The byte range of each field within the text, most significant
+    /// first.
+    pub fields: Vec<std::ops::Range<usize>>,
+    /// The axis value the text represents, or `BAD_VALUE` when it cannot be
+    /// read.
+    pub value: f64,
+}
+
 /// A cached description of a line segment within a 2-D [`Frame`].
 ///
 /// Created by [`Frame::line_def`] and consumed by [`Frame::line_crossing`]
@@ -2011,6 +2022,166 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     // C: the `GetAxis` overrides route to the axis's true owner.
     fn get_axis(&self, _axis: usize) -> AxisKind {
         AxisKind::Plain
+    }
+
+    /// Choose a "nice" gap between major tick marks on an axis.
+    ///
+    /// Returns the round number closest to `gap` that suits the axis, in
+    /// the axis's units, with the same sign as `gap`, and the number of
+    /// divisions to draw between major ticks with that gap.
+    /// A plain axis uses 1, 2, 5 or 10 times a power of ten; a sky axis
+    /// uses whole degrees, minutes or seconds of arc or of time, and a
+    /// TimeFrame formatting dates uses calendar-like steps.
+    ///
+    /// The division count is `None` when the axis gives none, as for a
+    /// `gap` of zero, where the gap returned is also zero.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use starlink_ast::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(2).build().unwrap();
+    /// assert_eq!(frame.gap(1, 3.7).unwrap(), (5.0, Some(5)));
+    /// assert_eq!(frame.gap(1, 0.0).unwrap(), (0.0, None));
+    /// ```
+    fn gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
+        // C: frame.c `Gap` (frame.c:4595) hands the request to the Axis
+        // object, lending it nothing (Format, by contrast, lends Digits).
+        frame_attrs::validate_axis(axis, self.naxes())?;
+        self.axis_gap(axis, gap)
+    }
+
+    /// Choose a "nice" axis value close to `value` at which to put a major
+    /// tick mark, given the gap between major ticks.
+    ///
+    /// The result is an integral number of gaps from the origin, so that
+    /// the origin falls on a major tick.
+    /// It is zero when `value` is bad or `gap` is zero or bad.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use starlink_ast::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(1).build().unwrap();
+    /// assert_eq!(frame.centre(1, 17.3, 5.0).unwrap(), 15.0);
+    /// ```
+    fn centre(&self, axis: usize, value: f64, gap: f64) -> AstResult<f64> {
+        // C: frame.c `Centre` (frame.c:1849).
+        frame_attrs::validate_axis(axis, self.naxes())?;
+        self.axis_centre(axis, value, gap)
+    }
+
+    /// Abbreviate a formatted axis value by skipping its leading fields
+    /// that are the same as those of another formatted value.
+    ///
+    /// `str1` and `str2` are values on the 1-based `axis` formatted with
+    /// `fmt`, such as neighboring tick labels.
+    /// Returns the byte offset into `str2` of the first field that differs
+    /// from the matching field of `str1`, which is zero when the first
+    /// fields differ.
+    /// A plain axis has a single field, so the offset is zero unless the
+    /// strings are identical, when it is the length of `str2`.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use starlink_ast::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(1).build().unwrap();
+    /// assert_eq!(frame.abbrev(1, "%g", "1.5", "2.5").unwrap(), 0);
+    /// ```
+    fn abbrev(&self, axis: usize, fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
+        // C: frame.c `Abbrev` (frame.c:1039).
+        frame_attrs::validate_axis(axis, self.naxes())?;
+        self.axis_abbrev(axis, fmt, str1, str2)
+    }
+
+    /// Split a formatted axis value into its fields.
+    ///
+    /// `text` is a value on the 1-based `axis` formatted with `fmt`.
+    /// Returns the byte range in `text` of each field found, at most
+    /// `maxfld` of them, most significant first, and the axis value they
+    /// represent, or `BAD_VALUE` when `text` cannot be read.
+    /// A plain axis has one field, or two for a value in log form (a Format
+    /// with the `&` flag, such as `10^4`): `10` with its sign, and the
+    /// exponent.
+    /// A sky axis has up to three, such as hours, minutes and seconds.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use starlink_ast::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(1).build().unwrap();
+    /// let split = frame.fields(1, "%&g", "10^4", 3).unwrap();
+    /// assert_eq!(split.fields, vec![0..2, 3..4]);
+    /// assert_eq!(split.value, 1.0e4);
+    /// ```
+    fn fields(&self, axis: usize, fmt: &str, text: &str, maxfld: usize) -> AstResult<FieldSplit> {
+        // C: frame.c `Fields` (frame.c:3648).
+        frame_attrs::validate_axis(axis, self.naxes())?;
+        self.axis_fields(axis, fmt, text, maxfld)
+    }
+
+    /// [`gap`](Frame::gap) as the Axis object attached to `axis` computes
+    /// it, without the adjustments a Frame class makes.
+    ///
+    /// The base Frame's `gap` calls this.
+    /// A compound Frame routes it to the Frame that owns the axis, as
+    /// [`get_axis`](Frame::get_axis) is routed.
+    // C: `astAxisGap` on the Axis object `astGetAxis` returns. Classes whose
+    // Axis objects are plain take this default, axis.c `AxisGap`.
+    fn axis_gap(&self, _axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
+        Ok(axis::plain_axis_gap(gap))
+    }
+
+    /// [`centre`](Frame::centre) as the Axis object attached to `axis`
+    /// computes it; see [`axis_gap`](Frame::axis_gap).
+    // C: `astAxisCentre`, axis.c `AxisCentre`; no Axis class overrides it.
+    fn axis_centre(&self, _axis: usize, value: f64, gap: f64) -> AstResult<f64> {
+        Ok(axis::plain_axis_centre(value, gap))
+    }
+
+    /// [`abbrev`](Frame::abbrev) as the Axis object attached to `axis`
+    /// computes it; see [`axis_gap`](Frame::axis_gap).
+    // C: `astAxisAbbrev`, axis.c `AxisAbbrev` for a plain Axis.
+    fn axis_abbrev(&self, _axis: usize, _fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
+        Ok(axis::plain_axis_abbrev(str1, str2))
+    }
+
+    /// [`fields`](Frame::fields) as the Axis object attached to `axis`
+    /// computes it; see [`axis_gap`](Frame::axis_gap).
+    // C: `astAxisFields`, axis.c `AxisFields` for a plain Axis.
+    fn axis_fields(
+        &self,
+        _axis: usize,
+        fmt: &str,
+        text: &str,
+        maxfld: usize,
+    ) -> AstResult<FieldSplit> {
+        Ok(axis::plain_axis_fields(fmt, text, maxfld))
     }
 
     /// Normalize a collection of points.

@@ -917,6 +917,36 @@ impl Frame for BasicFrame {
             .unwrap_or(AxisKind::Plain)
     }
 
+    /// A SkyAxis chooses gaps, abbreviations and fields as a sky axis does.
+    // C: frame.c `Gap` and its siblings reach the Axis object, which may be
+    // a SkyAxis picked out of a SkyFrame.
+    fn axis_gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
+        match self.axis_object(axis)? {
+            FrameAxis::Plain(_) => Ok(super::axis::plain_axis_gap(gap)),
+            FrameAxis::Sky(_) => todo!("sky axis gap"),
+        }
+    }
+
+    fn axis_abbrev(&self, axis: usize, _fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
+        match self.axis_object(axis)? {
+            FrameAxis::Plain(_) => Ok(super::axis::plain_axis_abbrev(str1, str2)),
+            FrameAxis::Sky(_) => todo!("sky axis abbrev"),
+        }
+    }
+
+    fn axis_fields(
+        &self,
+        axis: usize,
+        fmt: &str,
+        text: &str,
+        maxfld: usize,
+    ) -> AstResult<super::FieldSplit> {
+        match self.axis_object(axis)? {
+            FrameAxis::Plain(_) => Ok(super::axis::plain_axis_fields(fmt, text, maxfld)),
+            FrameAxis::Sky(_) => todo!("sky axis fields"),
+        }
+    }
+
     fn set_active_unit(&mut self, value: bool) {
         self.attrs.active_unit = Some(value);
     }
