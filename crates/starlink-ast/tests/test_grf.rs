@@ -201,3 +201,60 @@ fn provided_backends_take_a_bad_value_as_a_query() {
     let log = String::from_utf8(log.finish().unwrap()).unwrap();
     assert_eq!(log, "GAttr COLOUR=3.0000 prim=LINE\n");
 }
+
+/// A backend need not write the buffering and flushing methods, whose
+/// defaults do nothing.
+#[test]
+fn buffering_and_flushing_default_to_nothing() {
+    use starlink_ast::error::AstResult;
+    use starlink_ast::grf::TextBox;
+
+    struct Minimal;
+    impl Grf for Minimal {
+        fn line(&mut self, _x: &[f32], _y: &[f32]) -> AstResult<()> {
+            Ok(())
+        }
+        fn mark(&mut self, _x: &[f32], _y: &[f32], _marker: i32) -> AstResult<()> {
+            Ok(())
+        }
+        fn text(
+            &mut self,
+            _t: &str,
+            _x: f32,
+            _y: f32,
+            _j: Justification,
+            _up: [f32; 2],
+        ) -> AstResult<()> {
+            Ok(())
+        }
+        fn text_extent(
+            &mut self,
+            _t: &str,
+            _x: f32,
+            _y: f32,
+            _j: Justification,
+            _up: [f32; 2],
+        ) -> AstResult<TextBox> {
+            Ok(TextBox {
+                x: [0.0; 4],
+                y: [0.0; 4],
+            })
+        }
+        fn char_height(&mut self) -> AstResult<[f32; 2]> {
+            Ok([0.01, 0.01])
+        }
+        fn scales(&mut self) -> AstResult<[f32; 2]> {
+            Ok([1.0, 1.0])
+        }
+        fn attr(&mut self, _a: GrfAttr, _v: Option<f64>, _p: GrfPrimitive) -> AstResult<f64> {
+            Ok(1.0)
+        }
+        fn cap(&mut self, _c: GrfCap, _v: i32) -> bool {
+            false
+        }
+    }
+    let mut grf = Minimal;
+    grf.begin_buffer().unwrap();
+    grf.end_buffer().unwrap();
+    grf.flush().unwrap();
+}

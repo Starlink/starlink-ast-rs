@@ -306,24 +306,37 @@ pub trait Grf {
 
     /// Start buffering output, so that what follows appears at once.
     ///
+    /// The default does nothing, for a backend with no buffering.
+    ///
     /// # Errors
     ///
     /// - `ErrorCode::Grfer` when the graphics system fails.
-    fn begin_buffer(&mut self) -> AstResult<()>;
+    fn begin_buffer(&mut self) -> AstResult<()> {
+        Ok(())
+    }
 
     /// End buffering started by [`begin_buffer`](Grf::begin_buffer).
     ///
+    /// The default does nothing, for a backend with no buffering.
+    ///
     /// # Errors
     ///
     /// - `ErrorCode::Grfer` when the graphics system fails.
-    fn end_buffer(&mut self) -> AstResult<()>;
+    fn end_buffer(&mut self) -> AstResult<()> {
+        Ok(())
+    }
 
     /// Bring the output up to date.
     ///
+    /// The default does nothing, for a backend whose output is always up to
+    /// date.
+    ///
     /// # Errors
     ///
     /// - `ErrorCode::Grfer` when the graphics system fails.
-    fn flush(&mut self) -> AstResult<()>;
+    fn flush(&mut self) -> AstResult<()> {
+        Ok(())
+    }
 }
 
 /// An I/O error from a backend's output, as a graphics error.
