@@ -2158,6 +2158,41 @@ impl Frame for SkyFrame {
         }
     }
 
+    /// The gap suits the SkyFrame's Format for the axis, set or default,
+    /// rather than the Axis object's own default.
+    // C: skyframe.c `Gap` (skyframe.c:2314) lends the SkyFrame's Format to
+    // the axis for the duration of the parent `Gap`; the SkyAxis then reads
+    // its own Digits.
+    fn gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
+        let phys = self.physical_axis(axis)?;
+        Ok(match &self.axes[phys] {
+            FrameAxis::Plain(_) => super::axis::plain_axis_gap(gap),
+            FrameAxis::Sky(s) => super::skyaxis::sky_axis_gap(
+                &self.phys_format(phys),
+                s.digits_value(super::axis::AXIS_DIGITS),
+                gap,
+            ),
+        })
+    }
+
+    fn axis_gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
+        Ok(self.axes[self.physical_axis(axis)?].axis_gap(gap))
+    }
+
+    fn axis_abbrev(&self, axis: usize, fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
+        Ok(self.axes[self.physical_axis(axis)?].axis_abbrev(fmt, str1, str2))
+    }
+
+    fn axis_fields(
+        &self,
+        axis: usize,
+        fmt: &str,
+        text: &str,
+        maxfld: usize,
+    ) -> AstResult<super::FieldSplit> {
+        Ok(self.axes[self.physical_axis(axis)?].axis_fields(fmt, text, maxfld))
+    }
+
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
         if !(1..=2).contains(&axis) {
             return Err(AstError::new_tracked(

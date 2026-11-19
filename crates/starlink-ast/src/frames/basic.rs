@@ -921,17 +921,11 @@ impl Frame for BasicFrame {
     // C: frame.c `Gap` and its siblings reach the Axis object, which may be
     // a SkyAxis picked out of a SkyFrame.
     fn axis_gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
-        match self.axis_object(axis)? {
-            FrameAxis::Plain(_) => Ok(super::axis::plain_axis_gap(gap)),
-            FrameAxis::Sky(_) => todo!("sky axis gap"),
-        }
+        Ok(self.axis_object(axis)?.axis_gap(gap))
     }
 
-    fn axis_abbrev(&self, axis: usize, _fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
-        match self.axis_object(axis)? {
-            FrameAxis::Plain(_) => Ok(super::axis::plain_axis_abbrev(str1, str2)),
-            FrameAxis::Sky(_) => todo!("sky axis abbrev"),
-        }
+    fn axis_abbrev(&self, axis: usize, fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
+        Ok(self.axis_object(axis)?.axis_abbrev(fmt, str1, str2))
     }
 
     fn axis_fields(
@@ -941,10 +935,7 @@ impl Frame for BasicFrame {
         text: &str,
         maxfld: usize,
     ) -> AstResult<super::FieldSplit> {
-        match self.axis_object(axis)? {
-            FrameAxis::Plain(_) => Ok(super::axis::plain_axis_fields(fmt, text, maxfld)),
-            FrameAxis::Sky(_) => todo!("sky axis fields"),
-        }
+        Ok(self.axis_object(axis)?.axis_fields(fmt, text, maxfld))
     }
 
     fn set_active_unit(&mut self, value: bool) {

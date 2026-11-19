@@ -15,12 +15,41 @@
 #[path = "plot_frame_methods_oracle/cases.rs"]
 mod cases;
 
-use starlink_ast::frames::{BasicFrameBuilder, Frame};
+use starlink_ast::frames::{BasicFrameBuilder, Frame, SkyFrame, SkySystem, pick_axes};
 
 /// The Frame a probe case id names, built as the probe builds it.
 fn frame(id: &str) -> Box<dyn Frame> {
     match id {
         "basic2" => Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+        "sky" => Box::new(SkyFrame::unset_system()),
+        "sky_perm" => {
+            let mut f = SkyFrame::unset_system();
+            f.perm_axes(&[2, 1]).unwrap();
+            Box::new(f)
+        }
+        "sky_fmt" => {
+            let mut f = SkyFrame::unset_system();
+            f.set_format_str(1, "hms.2").unwrap();
+            f.set_format_str(2, "dms.1").unwrap();
+            Box::new(f)
+        }
+        "sky_digits" => {
+            let mut f = SkyFrame::unset_system();
+            f.set_digits(10).unwrap();
+            Box::new(f)
+        }
+        "sky_axdigits" => {
+            let mut f = SkyFrame::unset_system();
+            f.set_axis_digits(1, 3).unwrap();
+            Box::new(f)
+        }
+        "sky_gal" => {
+            let mut f = SkyFrame::unset_system();
+            f.set_system(SkySystem::Galactic);
+            Box::new(f)
+        }
+        "basic_skyaxis_ra" => pick_axes(&SkyFrame::unset_system(), &[1]).unwrap().0,
+        "basic_skyaxis_dec" => pick_axes(&SkyFrame::unset_system(), &[2]).unwrap().0,
         _ => panic!("unknown frame id {id}"),
     }
 }
@@ -143,4 +172,15 @@ fn fields_with_leading_spaces_end_at_the_last_non_blank() {
     let split = f.fields(1, "%g", "  -7 ", 20).unwrap();
     assert_eq!(split.fields, vec![2..4]);
     assert_eq!(split.value, -7.0);
+}
+
+/// A sky value missing a separator its Format names has no fields. C
+/// dereferences a null pointer here, so there is no C case to compare with.
+#[test]
+fn sky_fields_without_a_named_separator_find_none() {
+    let f = SkyFrame::unset_system();
+    let split = f.fields(1, "hms", "12:34", 3).unwrap();
+    assert!(split.fields.is_empty());
+    assert_eq!(split.value, starlink_ast::constants::BAD_VALUE);
+    assert_eq!(f.abbrev(1, "hms", "12", "12:34:56").unwrap(), 0);
 }

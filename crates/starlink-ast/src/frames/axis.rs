@@ -329,6 +329,41 @@ impl FrameAxis {
         }
     }
 
+    /// `astAxisGap` on this Axis object, with its own Format and Digits.
+    // C: axis.c `AxisGap`, or skyaxis.c `AxisGap`, which reads the SkyAxis's
+    // own Format (`GetAxisFormat`) and Digits (`astGetAxisDigits`), both
+    // defaulting without anything lent by a Frame.
+    pub(crate) fn axis_gap(&self, gap: f64) -> (f64, Option<i32>) {
+        match self {
+            FrameAxis::Plain(_) => plain_axis_gap(gap),
+            FrameAxis::Sky(s) => super::skyaxis::sky_axis_gap(
+                &s.format_value(AXIS_DIGITS),
+                s.digits_value(AXIS_DIGITS),
+                gap,
+            ),
+        }
+    }
+
+    /// `astAxisAbbrev` on this Axis object.
+    pub(crate) fn axis_abbrev(&self, fmt: &str, str1: &str, str2: &str) -> usize {
+        match self {
+            FrameAxis::Plain(_) => plain_axis_abbrev(str1, str2),
+            FrameAxis::Sky(s) => {
+                super::skyaxis::sky_axis_abbrev(fmt, s.digits_value(AXIS_DIGITS), str1, str2)
+            }
+        }
+    }
+
+    /// `astAxisFields` on this Axis object.
+    pub(crate) fn axis_fields(&self, fmt: &str, text: &str, maxfld: usize) -> super::FieldSplit {
+        match self {
+            FrameAxis::Plain(_) => plain_axis_fields(fmt, text, maxfld),
+            FrameAxis::Sky(s) => {
+                super::skyaxis::sky_axis_fields(fmt, s.digits_value(AXIS_DIGITS), text, maxfld)
+            }
+        }
+    }
+
     /// The kind of Axis, as `Frame::get_axis` reports it.
     pub(crate) fn kind(&self) -> super::AxisKind {
         match self {

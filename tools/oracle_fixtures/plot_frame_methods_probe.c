@@ -58,6 +58,27 @@ static void rstr( const char *s ) {
 /* The Frame a case id names. */
 static AstFrame *make_frame( const char *id ) {
    if( !strcmp( id, "basic2" ) ) return astFrame( 2, " " );
+   if( !strcmp( id, "sky" ) ) return (AstFrame *) astSkyFrame( " " );
+   if( !strcmp( id, "sky_perm" ) ) {
+      int perm[ 2 ] = { 2, 1 };
+      AstFrame *f = (AstFrame *) astSkyFrame( " " );
+      astPermAxes( f, perm );
+      return f;
+   }
+   if( !strcmp( id, "sky_fmt" ) ) {
+      return (AstFrame *) astSkyFrame( "Format(1)=hms.2,Format(2)=dms.1" );
+   }
+   if( !strcmp( id, "sky_digits" ) ) return (AstFrame *) astSkyFrame( "Digits=10" );
+   if( !strcmp( id, "sky_axdigits" ) ) return (AstFrame *) astSkyFrame( "Digits(1)=3" );
+   if( !strcmp( id, "sky_gal" ) ) return (AstFrame *) astSkyFrame( "System=Galactic" );
+   if( !strcmp( id, "basic_skyaxis_ra" ) || !strcmp( id, "basic_skyaxis_dec" ) ) {
+      int axes[ 1 ];
+      AstFrame *sky = (AstFrame *) astSkyFrame( " " ), *f;
+      axes[ 0 ] = strcmp( id, "basic_skyaxis_ra" ) ? 2 : 1;
+      f = astPickAxes( sky, 1, axes, NULL );
+      sky = astAnnul( sky );
+      return f;
+   }
    printf( "unknown frame id %s\n", id );
    return NULL;
 }
@@ -66,7 +87,10 @@ static AstFrame *make_frame( const char *id ) {
 static const double gaps[] = {
    0.0, AST__BAD, 1.0E-300, -1.0E-300, 1.0E-9, 0.0037, -0.0037, 1.0, -1.0,
    1.4, 1.6, 2.4, 2.6, 3.4, 3.6, 4.4, 4.6, 5.4, 5.6, 6.4, 6.6, 7.4, 7.6,
-   8.4, 8.6, 9.4, 9.6, -9.6, 0.25, 0.5, 0.75, 1.5, 7.4, 123.0, 1.0E300
+   8.4, 8.6, 9.4, 9.6, -9.6, 0.25, 0.5, 0.75, 1.5, 7.4, 123.0, 1.0E300,
+   1.0E-7, 3.0E-6, 5.0E-6, 2.0E-5, 6.0E-5, 1.0E-4, 3.0E-4, 6.0E-4, 1.0E-3,
+   3.0E-3, 6.0E-3, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.8, 2.0, 3.0, 6.0,
+   -0.3, 7.0, 100.0
 };
 
 /* (value, gap) pairs tried for astCentre on every axis of every Frame. */
@@ -79,6 +103,11 @@ static const double centres[][ 2 ] = {
 struct axis_case { const char *id; int axis; };
 static const struct axis_case axes[] = {
    { "basic2", 1 }, { "basic2", 2 },
+   { "sky", 1 }, { "sky", 2 }, { "sky_perm", 1 }, { "sky_perm", 2 },
+   { "sky_fmt", 1 }, { "sky_fmt", 2 }, { "sky_digits", 1 },
+   { "sky_digits", 2 }, { "sky_axdigits", 1 }, { "sky_axdigits", 2 },
+   { "sky_gal", 1 }, { "sky_gal", 2 }, { "basic_skyaxis_ra", 1 },
+   { "basic_skyaxis_dec", 1 },
 };
 
 struct abbrev_case { const char *id; int axis; const char *fmt;
@@ -89,6 +118,24 @@ static const struct abbrev_case abbrevs[] = {
    { "basic2", 1, "%g", "1.5", "2.5" },
    { "basic2", 2, "%g", "", "" },
    { "basic2", 2, "%&g", "10^4", "10^4" },
+   /* A sky axis value with fewer separators than its Format names makes C
+      dereference a null pointer (skyaxis.c AxisFields), so every sky string
+      here is complete. */
+   { "sky", 1, "hms", "12:34:56", "12:34:57" },
+   { "sky", 1, "hms", "12:34:56", "12:35:00" },
+   { "sky", 1, "hms", "12:34:56", "13:00:00" },
+   { "sky", 1, "hms", "12:34:56", "12:34:56" },
+   { "sky", 1, "hms", "12:34:56", "a:b:c" },
+   { "sky", 1, "lhms", "12h34m56s", "12h34m58s" },
+   { "sky", 1, "lhms", "12h34m56s", "12h34m56s" },
+   { "sky", 2, "dms", "-01:02:03", "-01:02:04" },
+   { "sky", 2, "dms", "01:02:03", "-01:02:03" },
+   { "sky", 2, "dm", "-01:02", "-01:03" },
+   { "sky", 2, "d", "-01.5", "-01.5" },
+   { "sky", 1, "%g", "1.5", "1.5" },
+   { "sky_perm", 1, "dms", "10:20:30", "10:20:31" },
+   { "basic_skyaxis_dec", 1, "dms", "-01:02:03", "-01:02:09" },
+   { "basic_skyaxis_ra", 1, "hms.1", "01:02:03.4", "01:02:03.5" },
 };
 
 struct fields_case { const char *id; int axis; const char *fmt;
@@ -111,6 +158,31 @@ static const struct fields_case fieldss[] = {
    { "basic2", 2, "%&g", "7", 20 },
    { "basic2", 2, "%&g", "10^x", 20 },
    { "basic2", 2, "%+&g", "10^ 4 tail", 20 },
+   { "sky", 1, "hms", "12:34:56", 3 },
+   { "sky", 1, "hms", "12:34:56", 1 },
+   { "sky", 1, "hms", "12:34:56", 0 },
+   { "sky", 1, "hms.2", "12:34:56.78", 3 },
+   { "sky", 1, "lhms", "12h34m56s", 3 },
+   { "sky", 1, "hms", "12:34:56 x", 3 },
+   { "sky", 1, "hms", "a:b:c", 3 },
+   { "sky", 1, "%g", "1.5", 3 },
+   { "sky", 1, "ms", "34:56", 3 },
+   { "sky", 1, "hm", "12:34", 3 },
+   { "sky", 1, "h", "12.5", 3 },
+   { "sky", 2, "dms", "-01:02:03", 3 },
+   { "sky", 2, "+zdms", "+01:02:03", 3 },
+   { "sky", 2, "bdms", "-1 02 03", 3 },
+   { "sky", 2, "ldms", "-1d02m03s", 3 },
+   { "sky", 2, "d", "-12.5", 3 },
+   { "sky", 2, "d", "+12.5 ", 3 },
+   { "sky", 2, "d", "  -12.5  ", 3 },
+   { "sky", 2, "dm", "12:", 3 },
+   { "sky", 2, "dms.1", "  -00:00:01.5", 3 },
+   { "sky", 2, "dms.*", "-00:00:01.5", 3 },
+   { "sky_perm", 1, "dms", "10:20:30", 3 },
+   { "sky_axdigits", 1, "hms.*", "12:34:56.7", 3 },
+   { "basic_skyaxis_dec", 1, "dms", "-01:02:03", 3 },
+   { "basic_skyaxis_ra", 1, "hms", "01:02:03", 3 },
 };
 
 #define NUMOF(a) ( (int)( sizeof( a ) / sizeof( ( a )[ 0 ] ) ) )

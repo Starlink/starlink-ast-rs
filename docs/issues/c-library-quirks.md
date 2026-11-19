@@ -20,6 +20,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ### [Open questions for upstream](#open-questions-for-upstream)
 
 - [`AxisFields` reads past the end of a value with leading spaces](#axisfields-reads-past-the-end-of-a-value-with-leading-spaces)
+- [SkyAxis `AxisFields` dereferences a null pointer when a separator is missing](#skyaxis-axisfields-dereferences-a-null-pointer-when-a-separator-is-missing)
 - [A PointList's `Transform` moves its shared uncertainty Region twice per list point](#a-pointlists-transform-moves-its-shared-uncertainty-region-twice-per-list-point)
 - [SelectorMap's `Transform` negates and re-closes each selector Region in place](#selectormaps-transform-negates-and-re-closes-each-selector-region-in-place)
 - [`CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column](#compressmatrix-recomputes-sqrt-dbl_epsilon--for-every-row-and-column)
@@ -201,6 +202,15 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ---
 
 ## Open questions for upstream
+
+### SkyAxis `AxisFields` dereferences a null pointer when a separator is missing
+
+`skyaxis.c` `AxisFields` (skyaxis.c:479) finds the end of each terminated field with `t = strstr( p, term )`, sets `ok = 0` when `t` is null, and then still computes `p = t + strlen( term )` and later calls `astChrLen( p )`.
+A value lacking a separator its Format names, such as `"12:34"` split with `hms`, therefore reads through an invalid pointer; on macOS arm64 the process crashes.
+Plot splits labels it formatted itself with the same Format, so its own calls do not meet this, but `astAbbrev` and `astFields` take any string.
+Two smaller defects sit beside it: with a `+` sign and a single unterminated field (Format `d` or `h`), `p` is advanced one byte past the field, past the terminating null when there is no trailing space; and when the text is blank before any field is read, `sscanf` returns `EOF`, which the code takes as success with `dval` uninitialized.
+The port returns no fields for a missing separator or blank text, and ends a `+`-signed field at its last non-blank character, which is what C gives whenever its read stays inside the string (`skyaxis::sky_axis_fields`); the first is pinned by `sky_fields_without_a_named_separator_find_none` in `crates/starlink-ast/tests/test_plot_frame_methods.rs`; the probe avoids them.
+Where `EOF` arrives in a later field `dval` holds the previous field's value, which is defined, and the port mirrors it: `"12:"` split with `dm` is 12 degrees 12 minutes.
 
 ### `AxisFields` reads past the end of a value with leading spaces
 
