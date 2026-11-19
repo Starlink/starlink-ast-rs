@@ -2946,18 +2946,11 @@ impl Frame for SkyFrame {
     }
 
     fn line_crossing(&self, l1: &LineDef, l2: &LineDef) -> AstResult<(bool, [f64; 2], f64)> {
-        let sl1 = l1.sky.as_ref().ok_or_else(|| {
-            AstError::new(
-                ErrorCode::Inter,
-                "line_crossing: line 1 is not a SkyFrame line",
-            )
-        })?;
-        let sl2 = l2.sky.as_ref().ok_or_else(|| {
-            AstError::new(
-                ErrorCode::Inter,
-                "line_crossing: line 2 is not a SkyFrame line",
-            )
-        })?;
+        super::line_owned_by(self, l1, "astLineCrossing", "First supplied line", true)?;
+        super::line_owned_by(self, l2, "astLineCrossing", "Second supplied line", true)?;
+        let (Some(sl1), Some(sl2)) = (l1.sky.as_ref(), l2.sky.as_ref()) else {
+            unreachable!("line_owned_by checked both lines");
+        };
 
         // The two great circles intersect along the direction perpendicular to
         // both poles.
@@ -2988,19 +2981,21 @@ impl Frame for SkyFrame {
             }
         }
 
-        let (lon, lat) = pal::dcc2s(&b);
+        // `palDcc2s` is plain `eraC2s`. `pal::dcc2s` also turns a -0 into +0
+        // to suit the rotation pipeline's summation order, which would flip
+        // the longitude of a negated crossing vector with a genuine -0 y
+        // component from -pi to +pi.
+        let (lon, lat) = crate::erfa::c2s(b);
         let p = [lon, lat];
         let perm = self.perm;
         Ok((result, [p[perm[0]], p[perm[1]]], dist))
     }
 
     fn line_contains(&self, l: &LineDef, point: &[f64]) -> AstResult<bool> {
-        let sl = l.sky.as_ref().ok_or_else(|| {
-            AstError::new(
-                ErrorCode::Inter,
-                "line_contains: line is not a SkyFrame line",
-            )
-        })?;
+        super::line_owned_by(self, l, "astLineContains", "The supplied line", true)?;
+        let Some(sl) = l.sky.as_ref() else {
+            unreachable!("line_owned_by checked the line");
+        };
         if is_bad(point[0]) || is_bad(point[1]) {
             return Ok(false);
         }

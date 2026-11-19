@@ -70,6 +70,8 @@ mod test_frameset_repair;
 mod test_frameset_variants;
 #[path = "../test_ident.rs"]
 mod test_ident;
+#[path = "../test_line_geometry.rs"]
+mod test_line_geometry;
 #[path = "../test_match_axes.rs"]
 mod test_match_axes;
 #[path = "../test_min_max_axes.rs"]

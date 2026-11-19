@@ -326,6 +326,34 @@ pub struct LineDef {
     pub sky: Option<SkyLineDef>,
 }
 
+/// Check that `line` was made by a Frame of the same kind as `frame`: a
+/// great-circle line for a SkyFrame (`sky` is `true`), a planar one
+/// otherwise. `what` names the line in the message, as C's does.
+// C: the line methods compare the LineDef's Frame pointer with `this`
+// (frame.c:6544, :6666; skyframe.c:5414, :5551). Rust objects have no
+// identity that survives a clone, so the port checks the part of that test
+// it can: a line of the other kind of geometry, whose cached state the
+// method would misread. `astLineOffset` makes no such check in C.
+pub(crate) fn line_owned_by(
+    frame: &dyn Frame,
+    line: &LineDef,
+    method: &str,
+    what: &str,
+    sky: bool,
+) -> AstResult<()> {
+    if line.sky.is_some() == sky {
+        return Ok(());
+    }
+    let class = class_name(frame);
+    Err(AstError::new(
+        ErrorCode::Inter,
+        format!(
+            "{method}({class}): {what} does not relate to the supplied {class} \
+             (AST internal programming error)."
+        ),
+    ))
+}
+
 /// Great-circle description of a line segment within a SkyFrame.
 ///
 /// Positions are held as 3-D unit vectors rather than (lon, lat) pairs.
@@ -1954,6 +1982,20 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
                 "line_crossing can only be used with 2-dimensional Frames",
             ));
         }
+        line_owned_by(
+            self.as_dyn_frame(),
+            l1,
+            "astLineCrossing",
+            "First supplied line",
+            false,
+        )?;
+        line_owned_by(
+            self.as_dyn_frame(),
+            l2,
+            "astLineCrossing",
+            "Second supplied line",
+            false,
+        )?;
         // Each line is "p = start + t.dir". Solve start1 + t1.d1 = start2 +
         // t2.d2 for t1 and t2.
         let den = l1.dir[0] * l2.dir[1] - l2.dir[0] * l1.dir[1];
@@ -1994,6 +2036,13 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
                 "line_contains can only be used with 2-dimensional Frames",
             ));
         }
+        line_owned_by(
+            self.as_dyn_frame(),
+            l,
+            "astLineContains",
+            "The supplied line",
+            false,
+        )?;
         if is_bad(point[0]) || is_bad(point[1]) {
             return Ok(false);
         }
