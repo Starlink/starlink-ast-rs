@@ -90,6 +90,32 @@ static AstObject *make_frame( const char *id ) {
       p = astAnnul( p );
       return c;
    }
+   if( !strcmp( id, "fs_cube" ) ) {
+      AstFrame *b = astFrame( 3, "Domain=CUBE" );
+      AstFrame *w = astFrame( 3, "Domain=WORLD" );
+      AstMapping *m = (AstMapping *) astZoomMap( 3, 2.0, " " );
+      AstFrameSet *fs = astFrameSet( b, " " );
+      astAddFrame( fs, AST__BASE, m, w );
+      b = astAnnul( b );
+      w = astAnnul( w );
+      m = astAnnul( m );
+      return (AstObject *) fs;
+   }
+   if( !strcmp( id, "fs_sky_spec" ) ) {
+      AstFrame *s = (AstFrame *) astSkyFrame( " " );
+      AstFrame *p = (AstFrame *) astSpecFrame( " " );
+      AstFrame *c = (AstFrame *) astCmpFrame( s, p, " " );
+      AstFrame *w = astFrame( 3, "Domain=WORLD" );
+      AstMapping *m = (AstMapping *) astUnitMap( 3, " " );
+      AstFrameSet *fs = astFrameSet( c, " " );
+      astAddFrame( fs, AST__BASE, m, w );
+      s = astAnnul( s );
+      p = astAnnul( p );
+      c = astAnnul( c );
+      w = astAnnul( w );
+      m = astAnnul( m );
+      return (AstObject *) fs;
+   }
    if( !strcmp( id, "car1" ) ) {
       return (AstObject *) read_head( "../ast_tester/fixtures/wcsconv/inputs/car1.head" );
    }
@@ -118,6 +144,8 @@ static const struct construct_case cases[] = {
    { "sky_spec", { 0.1f, 0.1f, 0.9f, 0.9f }, { 0.0, -0.5, 1.0, 0.5 } },
    { "car1", { 0.1f, 0.1f, 0.9f, 0.9f }, { 0.0, 0.0, 2962.0, 562.0 } },
    { "plot_of_sky", { 0.2f, 0.2f, 0.8f, 0.8f }, { 0.0, 0.0, 1.0, 1.0 } },
+   { "fs_cube", { 0.1f, 0.1f, 0.9f, 0.9f }, { 0.0, 0.0, 10.0, 10.0 } },
+   { "fs_sky_spec", { 0.1f, 0.1f, 0.9f, 0.9f }, { 0.0, -0.5, 1.0, 0.5 } },
 };
 #define NCASE ( (int)( sizeof( cases ) / sizeof( cases[ 0 ] ) ) )
 

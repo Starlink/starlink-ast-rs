@@ -103,7 +103,8 @@ pub(crate) struct PlotAttrs {
     pub(crate) num_lab: [Option<bool>; 3],
     pub(crate) text_lab: [Option<bool>; 3],
     pub(crate) label_units: [Option<bool>; 3],
-    pub(crate) log_plot: [Option<bool>; 3],
+    // C keeps the integer a dump gives, not just whether it is non-zero.
+    pub(crate) log_plot: [Option<i32>; 3],
     pub(crate) log_ticks: [Option<bool>; 3],
     pub(crate) log_label: [Option<bool>; 3],
     pub(crate) label_at: [Option<f64>; 3],
@@ -193,8 +194,11 @@ impl Plot {
     /// The 0-based index of a 1-based axis of a per-axis attribute.
     // C: the axis check of the MAKE_GET etc. macros (plot.c:929), against
     // astGetNin, which is 2 for a Plot.
+    // C checks only against the number of inputs and then indexes arrays
+    // of three, reading past them for a fourth axis of a Plot with more
+    // inputs (c-library-quirks.md); the port stops at three.
     fn attr_axis(&self, op: &str, name: &str, axis: usize) -> AstResult<usize> {
-        let nin = Mapping::nin(self);
+        let nin = Mapping::nin(self).min(3);
         if axis < 1 || axis > nin {
             return Err(AstError::new(
                 ErrorCode::Axiin,
@@ -890,7 +894,7 @@ impl Plot {
     #[doc(alias = "LogPlot")]
     pub fn log_plot(&self, axis: usize) -> AstResult<bool> {
         let i = self.attr_axis("Get", "LogPlot", axis)?;
-        Ok(self.attrs.log_plot[i].unwrap_or(false))
+        Ok(self.attrs.log_plot[i].is_some_and(|v| v != 0))
     }
 
     /// Set [`log_plot`](Plot::log_plot), remapping the axis.
@@ -902,10 +906,10 @@ impl Plot {
     // C: SetLogPlot (plot.c:25507).
     pub fn set_log_plot(&mut self, axis: usize, value: bool) -> AstResult<()> {
         let i = self.log_plot_axis("Set", axis)?;
-        let oldval = self.log_plot(axis)?;
-        if value != oldval {
-            if self.toggle_log_lin(axis, oldval)? {
-                self.attrs.log_plot[i] = Some(!oldval);
+        let oldval = self.attrs.log_plot[i].unwrap_or(0);
+        if value != (oldval != 0) {
+            if self.toggle_log_lin(axis, oldval != 0)? {
+                self.attrs.log_plot[i] = Some(i32::from(oldval == 0));
             }
         } else {
             self.attrs.log_plot[i] = Some(oldval);
@@ -938,7 +942,7 @@ impl Plot {
         };
         self.attrs.log_plot[i] = None;
         let newval = self.log_plot(axis)?;
-        if oldval != newval && !self.toggle_log_lin(axis, oldval)? {
+        if (oldval != 0) != newval && !self.toggle_log_lin(axis, oldval != 0)? {
             self.attrs.log_plot[i] = Some(oldval);
         }
         Ok(())

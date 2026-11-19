@@ -179,6 +179,9 @@ Each stage is one PR on a branch stacked on the previous one.
 3. **Plot as an object.**
    Construction from a FrameSet with a graphics box and a plot box, every attribute, Native save and load.
    Gate 4.
+   *Done 2026-11-19 (`docs/superpowers/plans/2026-11-19-plot-stage3-object.md`).
+   Per-element styles take a `PlotElement`, C's twenty elements and five groups, with each group resolved for every accessor as C's string interface resolves it.
+   Clipped Plots and Plots with tick values are checked by reading C's dumps, since `clip` comes with stage 6 and tick values with `Plot3D`.*
 4. **`grid`.**
    Gates 1 and 2.
 5. **`RegTrace` and `RegSplit`.**

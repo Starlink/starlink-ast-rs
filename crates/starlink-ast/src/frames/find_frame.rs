@@ -822,6 +822,8 @@ pub(crate) fn frame_class_name(frame: &dyn Frame) -> &'static str {
         "CmpFrame"
     } else if any.is::<FrameSet>() {
         "FrameSet"
+    } else if any.is::<crate::plot::Plot>() {
+        "Plot"
     } else {
         "Frame"
     }
