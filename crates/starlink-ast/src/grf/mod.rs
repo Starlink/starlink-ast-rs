@@ -66,8 +66,13 @@ pub enum GrfPrimitive {
 }
 
 /// A capability a backend may or may not have.
-// C: GRF__ESC, GRF__MJUST, GRF__SCALES.
+///
+/// More capabilities may be added, so a backend answers `false` for any it
+/// does not know.
+// C: GRF__ESC, GRF__MJUST, GRF__SCALES; C added the last two after the
+// first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum GrfCap {
     /// The backend interprets the escape sequences a Plot can embed in text
     /// to change its appearance, such as superscripts.
@@ -270,6 +275,10 @@ pub trait Grf {
     /// Only the ratio matters, and a negative value means the axis runs
     /// the other way on the page.
     ///
+    /// A Plot calls this only when [`cap`](Grf::cap) reports
+    /// [`GrfCap::Scales`], so a backend without the capability may return
+    /// an error.
+    ///
     /// # Errors
     ///
     /// - `ErrorCode::Grfer` when the graphics system fails.
@@ -278,8 +287,8 @@ pub trait Grf {
     /// Query and set the attribute `attr` of the primitive `prim`.
     ///
     /// Returns the value the attribute had, and sets it to `value` unless
-    /// `value` is `None` (or `BAD_VALUE`, as in the C library), so one call
-    /// can both query and set.
+    /// `value` is `None`, so one call can both query and set.
+    /// A Plot queries with `None`; it never passes `BAD_VALUE`.
     ///
     /// # Errors
     ///
@@ -288,8 +297,11 @@ pub trait Grf {
 
     /// Whether the backend has the capability `cap`.
     ///
-    /// For [`GrfCap::Escapes`], `value` tells a backend that has the
-    /// capability whether text it is given will carry escape sequences.
+    /// For [`GrfCap::Escapes`], `value` also instructs a backend that has
+    /// the capability: non-zero to interpret escape sequences in the text
+    /// of later [`text`](Grf::text) and [`text_extent`](Grf::text_extent)
+    /// calls, zero to draw them as ordinary characters.
+    /// For the other capabilities `value` is not used.
     fn cap(&mut self, cap: GrfCap, value: i32) -> bool;
 
     /// Start buffering output, so that what follows appears at once.
