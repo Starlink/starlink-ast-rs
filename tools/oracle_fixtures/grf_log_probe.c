@@ -103,6 +103,9 @@ static const struct call calls[] = {
    TA( "a-12", 0.5f, 0.5f, "CC", -12.0 ),
    TA( "a92.3", 0.5f, 0.5f, "CC", 92.3 ),
    TA( "a180", 0.5f, 0.5f, "CC", 180.0 ),
+   TA( "a3", 0.5f, 0.5f, "CC", 3.0 ),
+   TA( "a94", 0.5f, 0.5f, "CC", 94.0 ),
+   TA( "a-94", 0.5f, 0.5f, "CC", -94.0 ),
    TU( "", 0.5f, 0.5f, "CC", 0.0f, 1.0f ),
    TU( "\xc2\xb0", 0.25f, 0.75f, "BL", 0.0f, 1.0f ),
    /* Lines: none, one point, two, a closed polygon, an open polyline. */
@@ -143,6 +146,16 @@ static const struct call calls[] = {
    TU( "Default", 0.5f, 0.7f, "CC", 0.0f, 1.0f ),
    AT( GRF__SIZE, 2.3, GRF__TEXT ),
    TU( "Large", 0.5f, 0.8f, "CC", 0.0f, 1.0f ),
+   /* Colour 0, and half-way values, which round away from zero. */
+   AT( GRF__COLOUR, 0.0, GRF__LINE ),
+   AT( GRF__WIDTH, 2.5, GRF__LINE ),
+   { LINE, NULL, 0, 0, NULL, 0, 0, NOANG, 2, {0.3f, 0.7f}, {0.5f, 0.5f}, 0, 0.0, 0 },
+   AT( GRF__COLOUR, 2.5, GRF__MARK ),
+   { MARK, NULL, 0, 0, NULL, 0, 0, NOANG, 1, {0.25f}, {0.25f}, 4, 0.0, 0 },
+   AT( GRF__SIZE, 1.25, GRF__TEXT ),
+   /* Text holding characters that XML and the log quote, written raw. */
+   TU( "a<b & \"c\"", 0.5f, 0.9f, "CC", 0.0f, 1.0f ),
+   TX( "a<b & \"c\"", 0.5f, 0.9f, "CC", 0.0f, 1.0f ),
    /* Capabilities, buffering, flushing. */
    { CAP, NULL, 0, 0, NULL, 0, 0, NOANG, 0, {0}, {0}, GRF__ESC, 0.0, 1 },
    { CAP, NULL, 0, 0, NULL, 0, 0, NOANG, 0, {0}, {0}, GRF__MJUST, 0.0, 0 },
