@@ -68,6 +68,8 @@ mod test_frameset_integrity;
 mod test_frameset_repair;
 #[path = "../test_frameset_variants.rs"]
 mod test_frameset_variants;
+#[path = "../test_grf.rs"]
+mod test_grf;
 #[path = "../test_ident.rs"]
 mod test_ident;
 #[path = "../test_line_geometry.rs"]
