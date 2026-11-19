@@ -2,6 +2,13 @@
 
 ## Revision history
 
+- **2026-11-19 (rev 43)**: The logging and SVG graphics backends,
+  `LogGrf` and `SvgGrf`, live in `starlink-ast` (module `grf`, beside the
+  `Grf` trait), not in `ast-plugins`: they need no other crate, the
+  crate's own Plot tests draw through them, and a crates.io user gets
+  SVG output without a second crate. `ast-plugins` keeps backends that
+  need other crates; what it holds is decided with the Plot demo
+  (`2026-10-30-plot-design.md`, stage 7).
 - **2026-10-26 (rev 42)**: status notes on delivery steps 5, 6a, 8 and
   10 to 12, in the form step 0 already carried: the JSON renderer was
   never built, the `wcslib` port is deferred, `YamlChan` and `StcsChan`
@@ -566,7 +573,7 @@ starlink-ast-rs/                # new fresh repo, Rust-only history
 │   │       ├── wcslib/        #   AST's wcslib fork, pre-port (deleted at step 6a)
 │   │       └── README.md      #   provenance notes: where each came from, what was changed
 │   ├── starlink-ast-capi/     # cdylib; re-exports ast.h symbols
-│   ├── ast-plugins/           # optional Grf / Grf3d backends (PLplot, SVG, logging)
+│   ├── ast-plugins/           # optional Grf / Grf3d backends that need other crates
 │   ├── ast-ffi-tests/         # builds starlink-ast-capi, runs C ast_tester programs
 │   ├── ast-oracle-tests/      # links starlink-ast + reference libast.a
 │   └── ast-bench/             # transform benches: Rust, optionally vs C
@@ -1611,8 +1618,8 @@ progress the same way it tracks today's Fortran → C migrations.
    `StcsChan` are not, nor is `XmlChan`, which this list never named and
    which `teststc` needs.*
 9. Regions (including region integrity).
-10. `Plot` / `Plot3D` + `ast-plugins` crate (PLplot, SVG, logging
-    backends).
+10. `Plot` / `Plot3D`, with the logging and SVG backends in
+    `starlink-ast` and backends that need other crates in `ast-plugins`.
     *Status: not started.*
 11. **Tier-1 completeness gate.** Confirms every C test program in
     `ast_tester/` has a green Rust counterpart and every reference
