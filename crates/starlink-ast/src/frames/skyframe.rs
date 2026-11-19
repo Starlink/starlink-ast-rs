@@ -3372,6 +3372,7 @@ fn skyframe_overlay(
             if is_equatorial(new_system) != is_equatorial(old_system) || skyref_changed {
                 // C clears AsTime, Direction, Format, Label, Symbol and
                 // Unit, and keeps Digits.
+                #[allow(clippy::needless_range_loop)]
                 for axis in 0..2 {
                     let ax = &mut result_sky.axes[axis];
                     let attrs = ax.axis_mut();
@@ -3976,6 +3977,7 @@ impl Serializable for SkyFrame {
 
         // Read SkyAxis children. Axes are stored in internal (physical)
         // order (0 = lon, 1 = lat).
+        #[allow(clippy::needless_range_loop)]
         for i in 0..2 {
             let key = format!("Ax{}", i + 1);
             // An Axis object of either class; with none, astLoadFrame

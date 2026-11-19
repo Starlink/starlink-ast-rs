@@ -1250,6 +1250,7 @@ impl Serializable for BasicFrame {
 
         // The permutation, `Prm{n}` being the 1-based internal axis of
         // external axis n.
+        #[allow(clippy::needless_range_loop)]
         for ext in 0..naxes {
             let p = node.get_int(&format!("Prm{}", ext + 1), ext as i64 + 1);
             if p >= 1 && (p as usize) <= naxes {

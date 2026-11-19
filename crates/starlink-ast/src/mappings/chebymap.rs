@@ -1180,6 +1180,7 @@ impl Serializable for ChebyMap {
         node.push_isa("PolyMap", Some("Polynomial transformation".to_string()));
 
         // --- ChebyMap section: forward and inverse scale/offset ---
+        #[allow(clippy::needless_range_loop)]
         for i in 0..base_nin {
             node.push_double(
                 &format!("FSCL{}", i + 1),
@@ -1187,6 +1188,7 @@ impl Serializable for ChebyMap {
                 Some(format!("Scale factor on input {}", i + 1)),
             );
         }
+        #[allow(clippy::needless_range_loop)]
         for i in 0..base_nin {
             node.push_double(
                 &format!("FOFF{}", i + 1),

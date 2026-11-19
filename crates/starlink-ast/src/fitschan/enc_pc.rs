@@ -96,6 +96,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         store.cunit[i] = cards.get_string(&key);
 
         // PC matrix: try 3-digit format first (`PC001001`), then underscore (`PC1_1`)
+        #[allow(clippy::needless_range_loop)]
         for j in 0..naxis {
             let col_num = j + 1;
             let key_3digit = format!("PC{axis_num:03}{col_num:03}");

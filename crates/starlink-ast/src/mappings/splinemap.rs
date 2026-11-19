@@ -1261,6 +1261,7 @@ impl Serializable for SplineMap {
         );
 
         // Knots
+        #[allow(clippy::needless_range_loop)]
         for i in 0..self.nx + self.kx {
             node.push_double(
                 &format!("TX{}", i + 1),
@@ -1268,6 +1269,7 @@ impl Serializable for SplineMap {
                 Some(format!("Knot {} x position", i + 1)),
             );
         }
+        #[allow(clippy::needless_range_loop)]
         for i in 0..self.ny + self.ky {
             node.push_double(
                 &format!("TY{}", i + 1),
@@ -1278,6 +1280,7 @@ impl Serializable for SplineMap {
 
         // Coefficients
         let nc = self.nx * self.ny;
+        #[allow(clippy::needless_range_loop)]
         for i in 0..nc {
             node.push_double(
                 &format!("CU{}", i + 1),
@@ -1285,6 +1288,7 @@ impl Serializable for SplineMap {
                 Some(format!("X coeff {}", i + 1)),
             );
         }
+        #[allow(clippy::needless_range_loop)]
         for i in 0..nc {
             node.push_double(
                 &format!("CV{}", i + 1),

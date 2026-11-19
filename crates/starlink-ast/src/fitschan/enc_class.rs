@@ -175,6 +175,7 @@ pub(crate) fn write_to_cards(
     // unchanged or stay absent).
 
     // CRPIXi (C:6730-6739)
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
             let key = key_for("CRPIX", Some(i + 1), s);
@@ -183,6 +184,7 @@ pub(crate) fn write_to_cards(
     }
 
     // CRVALi (C:6744-6757) — subtract RESTFREQ from spectral axis
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(val) = store.crval[i] {
             let output_val = if Some(i) == spec_idx {
@@ -204,6 +206,7 @@ pub(crate) fn write_to_cards(
     }
 
     // CTYPEi (C:6763-6784) — translate SFL→GLS, AIT→ATF for CLASS
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(ref ctype) = store.ctype[i] {
             let class_ctype = translate_class_projection_write(ctype);
@@ -217,6 +220,7 @@ pub(crate) fn write_to_cards(
     }
 
     // CDELTi (C:6786-6791)
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(val) = store.cdelt[i] {
             let key = key_for("CDELT", Some(i + 1), s);

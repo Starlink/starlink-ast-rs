@@ -2049,10 +2049,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         let dx = point[0] - l.start[0];
         let dy = point[1] - l.start[1];
         let p = dx * l.dir[0] + dy * l.dir[1];
-        if p >= 0.0 && p < l.length && (dx * l.q[0] + dy * l.q[1]).abs() <= 1.0e-7 * l.length {
-            return Ok(true);
-        }
-        Ok(false)
+        Ok(p >= 0.0 && p < l.length && (dx * l.q[0] + dy * l.q[1]).abs() <= 1.0e-7 * l.length)
     }
 
     /// The kind of Axis object attached to a 1-based `axis` of this Frame.

@@ -287,6 +287,7 @@ pub(crate) fn invert_constants(node: &mut Box<UnitNode>) -> Option<()> {
         // A constant numerator is a coefficient just as a constant factor
         // is ("2/m" is "2*m**-1"), and a constant denominator is the
         // reciprocal of one, so both are inverted.
+        #[allow(clippy::needless_range_loop)]
         for i in 0..2 {
             if node.arg[i].con != BAD_VALUE {
                 if node.arg[i].con == 0.0 {

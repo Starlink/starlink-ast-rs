@@ -408,6 +408,7 @@ fn amd_from_pv(amd: &mut [f64; 20], pv: &[f64; 22]) {
 /// Returns 0 when no PV term is set.
 fn max_pv_index(store: &FitsStore) -> usize {
     let mut max = 0;
+    #[allow(clippy::needless_range_loop)]
     for axis in 0..store.pv.len() {
         for (m, slot) in store.pv[axis].iter().enumerate() {
             if slot.is_some() {
