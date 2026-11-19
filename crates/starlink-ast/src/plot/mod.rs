@@ -33,7 +33,10 @@
 // - Ceremony: the per-attribute Get/Set/Test/Clear functions and the string
 //   Get/Set/Test/ClearAttrib dispatch, which become typed accessors.
 
+mod attrs;
 mod forward;
+
+pub use attrs::{Edge, Labelling, TextGapType};
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{PointSet, Points, PointsMut};
@@ -88,8 +91,8 @@ pub struct Plot {
     /// x2, y2.
     bbox: [f64; 4],
     clip: Option<ClipRegion>,
-    /// The ClipOp attribute: combine the clipping axes with OR.
-    pub(crate) clip_op: Option<bool>,
+    /// Plot's own attributes.
+    pub(crate) attrs: attrs::PlotAttrs,
 }
 
 /// The FrameSet `fs` with a 2-D base Frame: unchanged if its base Frame is
@@ -256,7 +259,7 @@ impl Plot {
             yrev,
             bbox: basebox,
             clip: None,
-            clip_op: None,
+            attrs: attrs::PlotAttrs::default(),
         })
     }
 
@@ -402,7 +405,7 @@ impl Plot {
                 clip_pts.set_point(i, &work);
             }
         }
-        let clip_or = self.clip_op.unwrap_or(false);
+        let clip_or = self.clip_op();
         // C sets the first `naxes` output coordinates bad, which are all of
         // them only when the clipping Frame has as many axes as the current
         // Frame (c-library-quirks.md).

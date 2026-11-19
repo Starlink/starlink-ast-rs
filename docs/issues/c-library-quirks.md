@@ -19,6 +19,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Open questions for upstream](#open-questions-for-upstream)
 
+- [`astInitPlot` never initialises ForceExterior](#astinitplot-never-initialises-forceexterior)
 - [A Plot built from a Plot never checks its last Frame's Domain](#a-plot-built-from-a-plot-never-checks-its-last-frames-domain)
 - [Plot `Trans` normalises the caller's input and clips only some output axes](#plot-trans-normalises-the-callers-input-and-clips-only-some-output-axes)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
@@ -207,6 +208,12 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ---
 
 ## Open questions for upstream
+
+### `astInitPlot` never initialises ForceExterior
+
+`plot.c` `astInitPlot_` (plot.c:30676) sets every attribute of a new Plot to its "unset" value except `forceexterior`, which it never assigns, so a new Plot reads uninitialised memory for it: `astTestForceExterior` reports whatever the allocator left (a zeroed page reads as set, with value 0), and `Dump` writes `FrcExt` as set.
+This is an uninitialised read, a candidate for the hardening sweep; the fix is `new->forceexterior = -1;` beside the other attributes.
+The port starts ForceExterior unset, its value still 0 by default, and `UNINITIALISED_SET_STATE_EXCLUDED` in `crates/starlink-ast/tests/test_plot.rs` names the set state of a new Plot as differing from C, with a companion test that fails when C agrees.
 
 ### A Plot built from a Plot never checks its last Frame's Domain
 
