@@ -36,7 +36,9 @@ const CMAP0: [&str; 16] = [
 /// options.width = 1024;
 /// options.height = 768;
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// Only Debug and Clone are derived, so that options of any type can be
+// added without removing a derive.
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct SvgOptions {
     /// The width of the image in pixels; graphics x coordinates 0 to 1 span
@@ -62,8 +64,11 @@ impl Default for SvgOptions {
 /// Lines and markers are drawn in the colour their colour attribute
 /// indexes in PLplot's 16-colour map (any other index draws in red),
 /// markers as small filled circles of every type, and text in a
-/// sans-serif font 14 pixels high at a text size of 1, rotated to the
-/// nearest 5 degrees.
+/// sans-serif font 14 pixels high at a text size of 1.
+/// Text is rotated by a multiple of 5 degrees: its angle is truncated
+/// towards zero to a multiple of 5, and a negative angle whose whole
+/// degrees are not that multiple goes 5 degrees further, so 94 degrees
+/// draws at 90 and -12 at -15.
 /// Line styles and fonts are not drawn.
 /// Queries are answered from the page described in the [module
 /// documentation](super), so a Plot lays out its drawing for a 200 mm

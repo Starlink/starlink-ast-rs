@@ -11,11 +11,19 @@
  *   ./grf_log_probe > ../../crates/starlink-ast/tests/grf_log_oracle/cases.rs
  *
  * Build from reference/starlink-ast/build (configured with
- * -DCMAKE_C_FLAGS=-ffp-contract=off), compiling grf_log.c in:
+ * -DCMAKE_C_FLAGS=-ffp-contract=off), compiling grf_log.c in. grf_log.c needs
+ * the generated headers in build/src and HAVE_CONFIG_H, and its error path
+ * calls astPutErr, which the ast_err library supplies and must be linked
+ * whole:
  *
- *   cc -ffp-contract=off -I. -I../src ../../../tools/oracle_fixtures/grf_log_probe.c \
- *      ../src/grf_log.c -L. -last -lm -Wl,-rpath,$PWD \
+ *   cc -ffp-contract=off -O3 -DHAVE_CONFIG_H -I. -Isrc -I../src -I.. \
+ *      ../../../tools/oracle_fixtures/grf_log_probe.c ../src/grf_log.c \
+ *      -L. -last -Wl,-force_load,libast_err.a -lm -Wl,-rpath,$PWD \
  *      -o ../../../tools/oracle_fixtures/grf_log_probe
+ *
+ * On Linux, link the error library with
+ * -Wl,--whole-archive -last_err -Wl,--no-whole-archive in place of
+ * -Wl,-force_load,libast_err.a.
  */
 #include <float.h>
 #include <math.h>

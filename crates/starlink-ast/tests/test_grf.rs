@@ -177,3 +177,27 @@ fn mismatched_points_are_an_error() {
         ErrorCode::Grfer
     );
 }
+
+/// The provided backends take `BAD_VALUE` as a query, as the C library
+/// does: nothing is set and nothing is logged.
+#[test]
+fn provided_backends_take_a_bad_value_as_a_query() {
+    use starlink_ast::constants::BAD_VALUE;
+    let mut log = LogGrf::new(Vec::new());
+    let mut svg = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
+    for grf in [&mut log as &mut dyn Grf, &mut svg as &mut dyn Grf] {
+        grf.attr(GrfAttr::Colour, Some(3.0), GrfPrimitive::Line)
+            .unwrap();
+        assert_eq!(
+            grf.attr(GrfAttr::Colour, Some(BAD_VALUE), GrfPrimitive::Line)
+                .unwrap(),
+            3.0
+        );
+        assert_eq!(
+            grf.attr(GrfAttr::Colour, None, GrfPrimitive::Line).unwrap(),
+            3.0
+        );
+    }
+    let log = String::from_utf8(log.finish().unwrap()).unwrap();
+    assert_eq!(log, "GAttr COLOUR=3.0000 prim=LINE\n");
+}
