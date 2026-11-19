@@ -9,6 +9,8 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Added
 
+- `starlink-ast`: `Plot`, a FrameSet whose base Frame is a graphics coordinate system, built from a Frame, FrameSet, Region or Plot as the C library's `astPlot` builds it; it transforms and is searched as a FrameSet. Drawing is not yet available.
+- `starlink-ast`: `Frame::as_frameset` and `Mapping::as_frameset`, which give the FrameSet a Frame or Mapping is, so that code treating FrameSets specially treats a Plot as the FrameSet it holds.
 - `starlink-ast`: the `grf` module: the `Grf` trait, through which a Plot will draw, and `LogGrf`, a backend that logs each drawing call as the C library's logging graphics module does.
 - `starlink-ast`: `SvgGrf`, a `Grf` backend that draws to SVG as the C library's logging graphics module does, with `SvgOptions` for the image size.
 - `starlink-ast`: `Frame::gap`, `centre`, `abbrev` and `fields`, which choose tick spacing and split and abbreviate formatted axis values for plot annotation, as the C library's do, with `FieldSplit` to hold the fields of a value.

@@ -327,7 +327,7 @@ impl FrameSet {
     pub fn new(mut base: DynFrame) -> Self {
         // C: frameset.c `astInitFrameSet` takes the arrays of a FrameSet
         // argument and copies only its `base`, `current` and a set Invert.
-        if let Some(old) = base.as_mut().as_any_mut().downcast_mut::<FrameSet>() {
+        if let Some(old) = base.as_frameset_mut() {
             return Self::taking_frames_of(old);
         }
         Self {
@@ -677,7 +677,7 @@ impl FrameSet {
         }
         // C uses a FrameSet given as the Mapping as the Mapping from its
         // base Frame to its current Frame (frameset.c AddFrame).
-        let map = match map.as_ref().as_any().downcast_ref::<FrameSet>() {
+        let map = match map.as_frameset() {
             Some(fs) => fs.mapping(FrameRef::Base, FrameRef::Current)?,
             None => map,
         };
@@ -707,7 +707,7 @@ impl FrameSet {
             ));
         }
         // C merges a FrameSet given as the new Frame.
-        if let Some(other) = new_frame.as_ref().as_any().downcast_ref::<FrameSet>() {
+        if let Some(other) = new_frame.as_frameset() {
             return self.add_frameset(anchor, map, other.clone());
         }
         let anchor_node = self.node_map[anchor_idx];
@@ -2124,6 +2124,14 @@ impl Frame for FrameSet {
         self.without_regions().map(|fs| Box::new(fs) as DynFrame)
     }
 
+    fn as_frameset(&self) -> Option<&FrameSet> {
+        Some(self)
+    }
+
+    fn as_frameset_mut(&mut self) -> Option<&mut FrameSet> {
+        Some(self)
+    }
+
     fn snapshot(&self) -> DynFrame {
         // A copy of a FrameSet is a FrameSet, as C `astCopy` gives
         // (`object.c:1174`): the class has to survive, because a FrameSet used
@@ -2147,7 +2155,7 @@ impl Frame for FrameSet {
         // The Frame-level state a FrameSet presents is its current Frame's, so
         // a delta against an earlier FrameSet is a delta between the two
         // current Frames.
-        if let Some(previous) = previous.as_any().downcast_ref::<FrameSet>() {
+        if let Some(previous) = previous.as_frameset() {
             return self.current().map_from(previous.current());
         }
         self.current().map_from(previous)
@@ -2376,8 +2384,8 @@ pub(crate) fn frameset_convert_x(
     from: &dyn Frame,
     domainlist: &str,
 ) -> AstResult<Option<crate::frames::find_frame::ConvertRoute>> {
-    let from_fs = from.as_any().downcast_ref::<FrameSet>();
-    let to_fs = to.as_any().downcast_ref::<FrameSet>();
+    let from_fs = from.as_frameset();
+    let to_fs = to.as_frameset();
 
     // The 1-based search order: the base Frame, then the others in
     // ascending index order (descending while the FrameSet is inverted),
@@ -2661,6 +2669,10 @@ impl Mapping for FrameSet {
         } else {
             (self.clone_box(), false)
         })
+    }
+
+    fn as_frameset(&self) -> Option<&FrameSet> {
+        Some(self)
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

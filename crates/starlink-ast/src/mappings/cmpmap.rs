@@ -228,7 +228,7 @@ impl CmpMap {
         // A FrameSet component is replaced by its base-to-current Mapping, as
         // C's astInitCmpMap does.
         let as_mapping = |map: DynMapping| -> AstResult<DynMapping> {
-            match map.as_any().downcast_ref::<crate::frames::FrameSet>() {
+            match map.as_frameset() {
                 Some(fs) => fs.mapping(
                     crate::frames::FrameRef::Base,
                     crate::frames::FrameRef::Current,

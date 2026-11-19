@@ -19,6 +19,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Open questions for upstream](#open-questions-for-upstream)
 
+- [A Plot built from a Plot never checks its last Frame's Domain](#a-plot-built-from-a-plot-never-checks-its-last-frames-domain)
+- [Plot `Trans` normalises the caller's input and clips only some output axes](#plot-trans-normalises-the-callers-input-and-clips-only-some-output-axes)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -205,6 +207,20 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 ---
 
 ## Open questions for upstream
+
+### A Plot built from a Plot never checks its last Frame's Domain
+
+`plot.c` `astInitPlot_` (plot.c:30676), given a Plot, clears the Domain of each Frame whose Domain is `GRAPHICS` with `for( i = 0; i < astGetNframe( fset ); i++ ) graphicsframe = astGetFrame( fset, i );`.
+Frame indices are 1-based and 0 is `AST__BASE`, so the loop visits the base Frame and then Frames 1 to Nframe-1: the last Frame is never examined.
+A Plot whose last Frame has the Domain `GRAPHICS` (for instance a Plot to which a graphics Frame was added) keeps that Domain in the new Plot.
+The port mirrors the loop (`Plot::new` in `crates/starlink-ast/src/plot/mod.rs`); the fix is `i = 1; i <= astGetNframe( fset )`.
+
+### Plot `Trans` normalises the caller's input and clips only some output axes
+
+`plot.c` `Trans` (plot.c:28181), the body of a Plot's `Transform`, finds the positions in the clipping Frame by taking a clone of the input PointSet when the clipping Frame is the base Frame (going forward) or the current Frame (going backward), and then normalises them in place, so the caller's input points are changed by the call.
+The port normalises a copy, so its input is unchanged; the transformed points are the same.
+When a point is clipped, C sets the first `naxes` output coordinates bad, `naxes` being the number of axes of the clipping Frame, not of the output: a clipping Frame with fewer axes than the current Frame leaves the remaining output coordinates of a clipped point good, and one with more writes past the output arrays.
+The port sets the first `min(naxes, nout)` coordinates bad, which is C's result wherever C's is defined (`Plot::trans`).
 
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 

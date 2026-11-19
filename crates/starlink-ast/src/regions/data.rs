@@ -224,7 +224,7 @@ impl Clone for RegionData {
 fn resolve_supplied_frame(frame: DynFrame) -> DynFrame {
     if let Some(region) = crate::regions::any_as_region(frame.as_ref().as_any()) {
         region.get_region_frame()
-    } else if let Some(fs) = frame.as_ref().as_any().downcast_ref::<FrameSet>() {
+    } else if let Some(fs) = frame.as_frameset() {
         fs.current().snapshot()
     } else {
         frame
