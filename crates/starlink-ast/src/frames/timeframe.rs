@@ -2021,21 +2021,35 @@ impl Frame for TimeFrame {
     }
 
     /// With a date Format, `str2` is abbreviated by skipping the leading
-    /// numeric fields it shares with `str1`.
+    /// numeric fields it shares with `str1`, or with no `str1` to its last
+    /// numeric field.
     // C: timeframe.c `Abbrev` (timeframe.c:439). A date field is a run of
     // digits and dots, so seconds and their fraction are one field.
-    fn abbrev(&self, axis: usize, fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
+    fn abbrev(&self, axis: usize, fmt: &str, str1: Option<&str>, str2: &str) -> AstResult<usize> {
         super::frame_attrs::validate_axis(axis, 1)?;
         if !date_format(fmt).0 {
             return self.axis_abbrev(axis, fmt, str1, str2);
         }
         let is_field = |c: &u8| c.is_ascii_digit() || *c == b'.';
-        let (b1, b2) = (str1.as_bytes(), str2.as_bytes());
         let skip_space = |b: &[u8]| {
             b.iter()
                 .take_while(|&&c| super::axis_format::is_c_space(c))
                 .count()
         };
+        let b2 = str2.as_bytes();
+        let Some(str1) = str1 else {
+            // The start of the last field: step over each field and the
+            // delimiters after it.
+            let mut p2 = skip_space(b2);
+            let mut result = 0;
+            while p2 < b2.len() {
+                result = p2;
+                p2 += b2[p2..].iter().take_while(|c| is_field(c)).count();
+                p2 += b2[p2..].iter().take_while(|c| !is_field(c)).count();
+            }
+            return Ok(result);
+        };
+        let b1 = str1.as_bytes();
         let (mut p1, mut p2) = (skip_space(b1), skip_space(b2));
         let mut result = p2;
         while p1 < b1.len() && p2 < b2.len() {

@@ -1084,11 +1084,15 @@ fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
 /// The byte offset into `str2` of the first of its fields that differs
 /// from the matching field of `str1`, both values formatted with `fmt` on a
 /// sky axis whose Digits is `digits`; the length of `str2` when every field
-/// matches.
+/// matches. With no `str1`, the offset of the last field of `str2`.
 // C: skyaxis.c `AxisAbbrev` (skyaxis.c:307), which splits each string into
-// at most three fields with `AxisFields`.
-pub(crate) fn sky_axis_abbrev(fmt: &str, digits: i32, str1: &str, str2: &str) -> usize {
+// at most three fields with `AxisFields`. With no `str1` and no field in
+// `str2`, C indexes before the start of its field array; the port gives 0.
+pub(crate) fn sky_axis_abbrev(fmt: &str, digits: i32, str1: Option<&str>, str2: &str) -> usize {
     let f2 = sky_axis_fields(fmt, digits, str2, 3).fields;
+    let Some(str1) = str1 else {
+        return f2.last().map_or(0, |r| r.start);
+    };
     let f1 = sky_axis_fields(fmt, digits, str1, 3).fields;
     let mut result = 0;
     for (i, (a, b)) in f1.iter().zip(&f2).enumerate() {

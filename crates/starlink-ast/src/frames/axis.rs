@@ -345,7 +345,7 @@ impl FrameAxis {
     }
 
     /// `astAxisAbbrev` on this Axis object.
-    pub(crate) fn axis_abbrev(&self, fmt: &str, str1: &str, str2: &str) -> usize {
+    pub(crate) fn axis_abbrev(&self, fmt: &str, str1: Option<&str>, str2: &str) -> usize {
         match self {
             FrameAxis::Plain(_) => plain_axis_abbrev(str1, str2),
             FrameAxis::Sky(s) => {
@@ -477,10 +477,11 @@ pub(crate) fn plain_axis_centre(value: f64, gap: f64) -> f64 {
 
 /// The byte offset into `str2` of the text that differs from `str1`, for a
 /// plain axis, whose formatted values have a single field: zero, unless
-/// the strings are identical, when it is the length of `str2`.
+/// the strings are identical, when it is the length of `str2`. With no
+/// `str1` it is zero, the start of the only field.
 // C: axis.c `AxisAbbrev` (axis.c:273).
-pub(crate) fn plain_axis_abbrev(str1: &str, str2: &str) -> usize {
-    if str1 == str2 { str2.len() } else { 0 }
+pub(crate) fn plain_axis_abbrev(str1: Option<&str>, str2: &str) -> usize {
+    if str1 == Some(str2) { str2.len() } else { 0 }
 }
 
 /// Split a value formatted with `fmt` on a plain axis into its fields, up

@@ -2139,9 +2139,10 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// `fmt`, such as neighboring tick labels.
     /// Returns the byte offset into `str2` of the first field that differs
     /// from the matching field of `str1`, which is zero when the first
-    /// fields differ.
+    /// fields differ, and the length of `str2` when every field matches.
+    /// With `str1` `None`, returns the offset of the last field of `str2`.
     /// A plain axis has a single field, so the offset is zero unless the
-    /// strings are identical, when it is the length of `str2`.
+    /// strings are identical.
     ///
     /// # Errors
     ///
@@ -2154,9 +2155,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// use starlink_ast::frames::{BasicFrameBuilder, Frame};
     ///
     /// let frame = BasicFrameBuilder::new(1).build().unwrap();
-    /// assert_eq!(frame.abbrev(1, "%g", "1.5", "2.5").unwrap(), 0);
+    /// assert_eq!(frame.abbrev(1, "%g", Some("1.5"), "2.5").unwrap(), 0);
     /// ```
-    fn abbrev(&self, axis: usize, fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
+    fn abbrev(&self, axis: usize, fmt: &str, str1: Option<&str>, str2: &str) -> AstResult<usize> {
         // C: frame.c `Abbrev` (frame.c:1039).
         frame_attrs::validate_axis(axis, self.naxes())?;
         self.axis_abbrev(axis, fmt, str1, str2)
@@ -2216,7 +2217,13 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// [`abbrev`](Frame::abbrev) as the Axis object attached to `axis`
     /// computes it; see [`axis_gap`](Frame::axis_gap).
     // C: `astAxisAbbrev`, axis.c `AxisAbbrev` for a plain Axis.
-    fn axis_abbrev(&self, _axis: usize, _fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
+    fn axis_abbrev(
+        &self,
+        _axis: usize,
+        _fmt: &str,
+        str1: Option<&str>,
+        str2: &str,
+    ) -> AstResult<usize> {
         Ok(axis::plain_axis_abbrev(str1, str2))
     }
 

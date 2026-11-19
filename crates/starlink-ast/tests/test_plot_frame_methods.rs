@@ -282,7 +282,7 @@ fn sky_fields_without_a_named_separator_find_none() {
     let split = f.fields(1, "hms", "12:34", 3).unwrap();
     assert!(split.fields.is_empty());
     assert_eq!(split.value, starlink_ast::constants::BAD_VALUE);
-    assert_eq!(f.abbrev(1, "hms", "12", "12:34:56").unwrap(), 0);
+    assert_eq!(f.abbrev(1, "hms", Some("12"), "12:34:56").unwrap(), 0);
 }
 
 /// A TimeFrame's date centre that changes the month zeroes the month, and

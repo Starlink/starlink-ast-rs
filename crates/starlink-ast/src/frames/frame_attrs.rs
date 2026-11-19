@@ -1746,7 +1746,7 @@ macro_rules! cmp_frame_plot_methods {
             &self,
             axis: usize,
             fmt: &str,
-            str1: &str,
+            str1: Option<&str>,
             str2: &str,
         ) -> $crate::error::AstResult<usize> {
             let (f, a) = self.axis_component(axis)?;
@@ -1778,7 +1778,7 @@ macro_rules! cmp_frame_plot_methods {
             &self,
             axis: usize,
             fmt: &str,
-            str1: &str,
+            str1: Option<&str>,
             str2: &str,
         ) -> $crate::error::AstResult<usize> {
             let (f, a) = self.axis_component(axis)?;
@@ -1817,7 +1817,7 @@ macro_rules! forward_plot_methods {
             &self,
             axis: usize,
             fmt: &str,
-            str1: &str,
+            str1: Option<&str>,
             str2: &str,
         ) -> $crate::error::AstResult<usize> {
             $crate::frames::frame_attrs::validate_axis(axis, self.naxes())?;
@@ -1842,7 +1842,7 @@ macro_rules! forward_plot_methods {
             &self,
             axis: usize,
             fmt: &str,
-            str1: &str,
+            str1: Option<&str>,
             str2: &str,
         ) -> $crate::error::AstResult<usize> {
             forward_plot_methods!(@cur $kind self).axis_abbrev(axis, fmt, str1, str2)

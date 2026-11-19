@@ -45,6 +45,9 @@ static void flit( double value ) {
    if( !strpbrk( buf, ".en" ) ) fputs( ".0", stdout );
 }
 
+/* A Rust Option<&str> literal, None for a null pointer. */
+static void ropt( const char *s );
+
 /* A Rust string literal. */
 static void rstr( const char *s ) {
    putchar( '"' );
@@ -53,6 +56,11 @@ static void rstr( const char *s ) {
       putchar( *s );
    }
    putchar( '"' );
+}
+
+static void ropt( const char *s ) {
+   if( !s ) { fputs( "None", stdout ); return; }
+   fputs( "Some(", stdout ); rstr( s ); putchar( ')' );
 }
 
 /* The Frame a case id names. */
@@ -245,6 +253,19 @@ static const struct abbrev_case abbrevs[] = {
    { "time_iso", 1, "iso.0T", "2012-03-14T08:52:48", "2012-03-14T09:00:00" },
    { "time_iso", 1, "%g", "1.5", "1.5" },
    { "time", 1, "%1.7G", "56000.5", "56000.5" },
+   /* A null str1 asks for the start of the last field of str2 (plot.c uses
+      this to find the least significant field of a label). */
+   { "basic2", 1, "%g", NULL, "1.5" },
+   { "sky", 1, "hms", NULL, "12:34:56" },
+   { "sky", 1, "lhms", NULL, "12h34m56s" },
+   { "sky", 2, "dms", NULL, "-01:02:03" },
+   { "sky", 2, "d", NULL, "-01.5" },
+   { "sky", 1, "%g", NULL, "1.5" },
+   { "time_iso", 1, "iso.0", NULL, "2012-03-14 08:52:48" },
+   { "time_iso", 1, "iso.2", NULL, "2012-03-14 08:52:48.25" },
+   { "time_iso", 1, "iso.0", NULL, "  2012-03-14" },
+   { "time_iso", 1, "iso.0", NULL, "" },
+   { "time", 1, "%1.7G", NULL, "56000.5" },
    { "cmp_sky_time", 1, "hms", "12:34:56", "12:34:57" },
    { "cmp_sky_time", 3, "iso.0", "2012-03-14 08:52:48", "2012-03-14 08:53:00" },
    { "cmp_perm", 1, "iso.0", "2012-03-14 08:52:48", "2012-03-14 08:53:00" },
@@ -339,8 +360,9 @@ int main( void ) {
            "pub type GapCase = (&'static str, usize, f64, f64, Option<i32>);\n\n"
            "/// `(frame id, axis, value, gap, result)` from astCentre.\n"
            "pub type CentreCase = (&'static str, usize, f64, f64, f64);\n\n"
-           "/// `(frame id, axis, fmt, str1, str2, offset into str2)` from astAbbrev.\n"
-           "pub type AbbrevCase = (&'static str, usize, &'static str, &'static str, &'static str, usize);\n\n"
+           "/// `(frame id, axis, fmt, str1, str2, offset into str2)` from astAbbrev;\n"
+           "/// `str1` is `None` where C is given a null pointer.\n"
+           "pub type AbbrevCase = (&'static str, usize, &'static str, Option<&'static str>, &'static str, usize);\n\n"
            "/// `(frame id, axis, fmt, text, maxfld, (start, len) per field, value)`\n"
            "/// from astFields.\n"
            "pub type FieldsCase = (&'static str, usize, &'static str, &'static str, usize, &'static [(usize, usize)], f64);\n\n" );
@@ -422,7 +444,7 @@ int main( void ) {
       const char *r = astAbbrev_( fp, c->axis - 1, c->fmt, c->str1, c->str2,
                                   &status );
       printf( "    (" ); rstr( c->id ); printf( ", %d, ", c->axis );
-      rstr( c->fmt ); printf( ", " ); rstr( c->str1 ); printf( ", " );
+      rstr( c->fmt ); printf( ", " ); ropt( c->str1 ); printf( ", " );
       rstr( c->str2 ); printf( ", %d),\n", (int)( r - c->str2 ) );
       f = astAnnul( f );
    }

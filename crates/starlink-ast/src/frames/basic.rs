@@ -924,7 +924,13 @@ impl Frame for BasicFrame {
         Ok(self.axis_object(axis)?.axis_gap(gap))
     }
 
-    fn axis_abbrev(&self, axis: usize, fmt: &str, str1: &str, str2: &str) -> AstResult<usize> {
+    fn axis_abbrev(
+        &self,
+        axis: usize,
+        fmt: &str,
+        str1: Option<&str>,
+        str2: &str,
+    ) -> AstResult<usize> {
         Ok(self.axis_object(axis)?.axis_abbrev(fmt, str1, str2))
     }
 
