@@ -23,11 +23,15 @@
  * ../ast_tester/fixtures/wcsconv/inputs/car1.head:
  *
  *   cc -ffp-contract=off -O3 -I. ../../../tools/oracle_fixtures/plot_attrs_probe.c \
- *      -L. -last -Wl,-force_load,libast_err.a -lm -Wl,-rpath,$PWD \
+ *      -L. -last -Wl,-force_load,libast_err.a \
+ *      -Wl,-force_load,libast_grf_2.0.a -Wl,-force_load,libast_grf_3.2.a \
+ *      -Wl,-force_load,libast_grf_5.6.a -Wl,-force_load,libast_grf3d.a \
+ *      -lm -Wl,-rpath,$PWD \
  *      -o ../../../tools/oracle_fixtures/plot_attrs_probe
  *
- * On Linux, link the error library with
- * -Wl,--whole-archive -last_err -Wl,--no-whole-archive.
+ * On Linux, link the error and graphics stub libraries with
+ * -Wl,--whole-archive -last_err -last_grf_2.0 -last_grf_3.2 -last_grf_5.6
+ * -last_grf3d -Wl,--no-whole-archive.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -235,6 +239,83 @@ static void query( AstPlot *p, const struct attr *a, int axis, int *status ) {
    printf( "),\n" );
 }
 
+/* The graphical elements, in the order of their ids (plot.c GrfLabels),
+   and the per-element style attributes. */
+static const char *elements[] = {
+   "Border", "Curves", "Title", "Markers", "Strings", "Axis1", "Axis2", "Axis3",
+   "NumLab1", "NumLab2", "NumLab3", "TextLab1", "TextLab2", "TextLab3",
+   "Ticks1", "Ticks2", "Ticks3", "Grid1", "Grid2", "Grid3", "Axes", "NumLab",
+   "TextLab", "Grid", "Ticks",
+};
+static const struct attr styles[] = {
+   { "Style", 'i' }, { "Font", 'i' }, { "Colour", 'i' }, { "Width", 'd' },
+   { "Size", 'd' },
+};
+
+/* Plot style scenarios: an astSet string and an astClear string on a Plot
+   of a 2-D Frame, then every style attribute of every element, read through
+   the string interface, which is where element groups are resolved. */
+static const char *style_sets[][ 2 ] = {
+   { "", "" },
+   { "Colour(Axes)=3", "" },
+   { "Colour(Axes)=3", "Colour(Axes)" },
+   { "Colour(Axis2)=4", "" },
+   { "Width(Grid1)=2.5,Size(Strings)=0.8,Style(Ticks2)=4,Font(Title)=3", "" },
+   { "Font(TextLab)=2,Font(TextLab1)=5", "" },
+   { "Style(Ticks)=-1", "" },
+   { "Size(Markers)=-1.5,Width(Border)=0.25", "" },
+   { "Width(Border)=0", "" },
+   { "Size(Title)=0", "" },
+   { "Colour(NumLab)=6,Width(GridLine)=2", "" },
+   { "Colour(Axis3)=7,Width(Ticks3)=3", "" },
+};
+
+static void style_scenarios( int *status ) {
+   int s, e, a;
+   printf( "/// A Plot of a 2-D Frame with an astSet and an astClear string, then\n"
+           "/// each style attribute of each element, as `(attribute, element,\n"
+           "/// set, value)`; `None` when C rejected the setting.\n"
+           "pub struct StyleScenario {\n"
+           "    pub set: &'static str,\n"
+           "    pub clear: &'static str,\n"
+           "    pub attrs: Option<&'static [(&'static str, &'static str, bool, Value)]>,\n"
+           "}\n\n"
+           "pub const STYLE_SCENARIOS: &[StyleScenario] = &[\n" );
+   for( s = 0; s < NUMOF( style_sets ); s++ ) {
+      AstPlot *p = make_plot( "basic2" );
+      printf( "    StyleScenario {\n        set: " ); rstr( style_sets[ s ][ 0 ] );
+      printf( ",\n        clear: " ); rstr( style_sets[ s ][ 1 ] ); printf( ",\n" );
+      if( style_sets[ s ][ 0 ][ 0 ] ) astSet( p, "%s", style_sets[ s ][ 0 ] );
+      if( astOK && style_sets[ s ][ 1 ][ 0 ] ) astClear( p, style_sets[ s ][ 1 ] );
+      if( !astOK ) {
+         astClearStatus;
+         printf( "        attrs: None,\n    },\n" );
+         p = astAnnul( p );
+         continue;
+      }
+      printf( "        attrs: Some(&[\n" );
+      for( a = 0; a < NUMOF( styles ); a++ ) {
+         for( e = 0; e < NUMOF( elements ); e++ ) {
+            char name[ 40 ];
+            int set;
+            snprintf( name, sizeof( name ), "%s(%s)", styles[ a ].name, elements[ e ] );
+            set = astTest( p, name );
+            printf( "            (\"%s\", \"%s\", %s, ", styles[ a ].name, elements[ e ],
+                    set ? "true" : "false" );
+            if( styles[ a ].kind == 'i' ) {
+               printf( "Value::I(%d)", astGetI( p, name ) );
+            } else {
+               printf( "Value::D(" ); flit( astGetD( p, name ) ); printf( ")" );
+            }
+            printf( "),\n" );
+         }
+      }
+      printf( "        ]),\n    },\n" );
+      p = astAnnul( p );
+   }
+   printf( "];\n" );
+}
+
 int main( void ) {
    int status = 0, s, i, ax;
    double gx[ 3 ] = { 0.15, 0.5, 0.85 }, gy[ 3 ] = { 0.2, 0.5, 0.8 };
@@ -294,6 +375,7 @@ int main( void ) {
       printf( "],\n    },\n" );
       p = astAnnul( p );
    }
-   printf( "];\n" );
+   printf( "];\n\n" );
+   style_scenarios( &status );
    return astOK ? 0 : 1;
 }

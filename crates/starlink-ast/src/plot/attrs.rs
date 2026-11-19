@@ -83,6 +83,7 @@ impl TextGapType {
 /// The storage of Plot's own attributes, `None` when unset.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct PlotAttrs {
+    pub(crate) styles: super::elements::ElementStyles,
     pub(crate) tol: Option<f64>,
     pub(crate) grid: Option<bool>,
     pub(crate) tick_all: Option<bool>,
