@@ -921,7 +921,7 @@ impl Frame for BasicFrame {
     // C: frame.c `Gap` and its siblings reach the Axis object, which may be
     // a SkyAxis picked out of a SkyFrame.
     fn axis_gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
-        Ok(self.axis_object(axis)?.axis_gap(gap))
+        self.axis_object(axis)?.axis_gap(gap)
     }
 
     fn axis_abbrev(

@@ -317,3 +317,24 @@ fn time_centre_of_a_bad_value_is_the_value() {
     let bad = starlink_ast::constants::BAD_VALUE;
     assert_eq!(time_frame("time_iso").centre(1, bad, 1.0).unwrap(), bad);
 }
+
+/// A gap that is not finite, or so small that its power of ten underflows,
+/// cannot be made nice: C converts a NaN or infinite ratio to `int` there,
+/// which is undefined, and the port reports a bad parameter.
+#[test]
+fn gap_that_cannot_be_made_nice_is_an_error() {
+    use starlink_ast::error::ErrorCode;
+    let plain = frame("basic2");
+    for gap in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 5e-324, 1e-323] {
+        assert_eq!(
+            plain.gap(1, gap).unwrap_err().code(),
+            ErrorCode::Bdpar,
+            "gap {gap}"
+        );
+    }
+    let time = time_frame("time_iso");
+    assert_eq!(
+        time.gap(1, f64::INFINITY).unwrap_err().code(),
+        ErrorCode::Bdpar
+    );
+}

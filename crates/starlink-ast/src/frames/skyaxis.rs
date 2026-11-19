@@ -812,11 +812,11 @@ const FIELD_ID_LIST: [usize; 12] = [0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3];
 // before testing for a `%` Format and discards the result; that call has no
 // visible effect, because the plain `AxisGap` then sets the division count
 // whenever `DHmsGap` would have.
-pub(crate) fn sky_axis_gap(fmt: &str, digits: i32, gap: f64) -> (f64, Option<i32>) {
+pub(crate) fn sky_axis_gap(fmt: &str, digits: i32, gap: f64) -> AstResult<(f64, Option<i32>)> {
     if fmt.starts_with('%') {
         super::axis::plain_axis_gap(gap)
     } else {
-        dhms_gap(fmt, digits, gap)
+        Ok(dhms_gap(fmt, digits, gap))
     }
 }
 

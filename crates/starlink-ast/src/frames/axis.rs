@@ -9,6 +9,7 @@
 //! Label, the Frame's Digits for an axis without its own) rather than the
 //! Axis class's.
 
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::Node;
 
 /// The Digits of an Axis object that has none set (axis.c `GetAxisDigits`).
@@ -333,7 +334,7 @@ impl FrameAxis {
     // C: axis.c `AxisGap`, or skyaxis.c `AxisGap`, which reads the SkyAxis's
     // own Format (`GetAxisFormat`) and Digits (`astGetAxisDigits`), both
     // defaulting without anything lent by a Frame.
-    pub(crate) fn axis_gap(&self, gap: f64) -> (f64, Option<i32>) {
+    pub(crate) fn axis_gap(&self, gap: f64) -> AstResult<(f64, Option<i32>)> {
         match self {
             FrameAxis::Plain(_) => plain_axis_gap(gap),
             FrameAxis::Sky(s) => super::skyaxis::sky_axis_gap(
@@ -446,20 +447,32 @@ fn scan_lg(s: &[u8]) -> Option<(f64, usize)> {
 /// A "nice" gap size close to `gap` for a plain axis, and the number of
 /// minor divisions to draw within it.
 /// The minor count is `None` when `gap` is zero, where C leaves it unchanged.
+///
+/// # Errors
+///
+/// - `ErrorCode::Bdpar` when `gap` is not finite, or so small that its
+///   power of ten underflows to zero.
 // C: axis.c `AxisGap` (axis.c:915). A bad gap is not tested for, so
-// BAD_VALUE (-DBL_MAX) gives -infinity, as in C.
-pub(crate) fn plain_axis_gap(gap: f64) -> (f64, Option<i32>) {
+// BAD_VALUE (-DBL_MAX) gives -infinity, as in C. For the inputs the error
+// covers C converts a NaN or infinite ratio to `int`, which is undefined.
+pub(crate) fn plain_axis_gap(gap: f64) -> AstResult<(f64, Option<i32>)> {
     const TABLE1: [f64; 10] = [1.0, 2.0, 2.0, 5.0, 5.0, 5.0, 5.0, 10.0, 10.0, 10.0];
     const TABLE2: [i32; 10] = [5, 4, 4, 5, 5, 5, 5, 5, 5, 5];
     if gap == 0.0 {
-        return (0.0, None);
+        return Ok((0.0, None));
     }
     let positive = gap >= 0.0;
     let absgap = if positive { gap } else { -gap };
     let b = crate::math::powf(10.0, crate::math::log10(absgap).floor());
+    if !gap.is_finite() || b == 0.0 {
+        return Err(AstError::new(
+            ErrorCode::Bdpar,
+            format!("astGap: no nice gap can be found close to {gap}."),
+        ));
+    }
     let index = ((absgap / b).round() as i32 - 1) as usize;
     let result = b * TABLE1[index];
-    (if positive { result } else { -result }, Some(TABLE2[index]))
+    Ok((if positive { result } else { -result }, Some(TABLE2[index])))
 }
 
 /// A "nice" axis value close to `value`: an integral number of gaps from

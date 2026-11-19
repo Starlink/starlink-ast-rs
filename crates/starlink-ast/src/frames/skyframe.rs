@@ -2165,18 +2165,18 @@ impl Frame for SkyFrame {
     // its own Digits.
     fn gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
         let phys = self.physical_axis(axis)?;
-        Ok(match &self.axes[phys] {
+        match &self.axes[phys] {
             FrameAxis::Plain(_) => super::axis::plain_axis_gap(gap),
             FrameAxis::Sky(s) => super::skyaxis::sky_axis_gap(
                 &self.phys_format(phys),
                 s.digits_value(super::axis::AXIS_DIGITS),
                 gap,
             ),
-        })
+        }
     }
 
     fn axis_gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
-        Ok(self.axes[self.physical_axis(axis)?].axis_gap(gap))
+        self.axes[self.physical_axis(axis)?].axis_gap(gap)
     }
 
     fn axis_abbrev(

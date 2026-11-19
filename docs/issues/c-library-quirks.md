@@ -21,6 +21,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
+- [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
 - [`AxisFields` reads past the end of a value with leading spaces](#axisfields-reads-past-the-end-of-a-value-with-leading-spaces)
 - [SkyAxis `AxisFields` dereferences a null pointer when a separator is missing](#skyaxis-axisfields-dereferences-a-null-pointer-when-a-separator-is-missing)
 - [A PointList's `Transform` moves its shared uncertainty Region twice per list point](#a-pointlists-transform-moves-its-shared-uncertainty-region-twice-per-list-point)
@@ -210,9 +211,16 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 `frame.c` `astReadDateTime` (frame.c:9282) converts the calendar date with `palCaldj` and reports an invalid year, month or day for a status of 1, 2 or 3, SLALIB's codes.
 `palCaldj` now returns `eraCal2jd`'s codes, -1, -2 and -3, so none of those errors is ever reported.
 For a bad day (-3) ERFA still computes the MJD, counting on from the month's start, so `2012-03-00` reads as 29 February and `2012-02-30` as 1 March.
-For a bad year or month (-1, -2) ERFA returns before setting the MJD, and the uninitialized value is returned as the result: TimeFrame `Centre` on a date axis whose gap changes the month zeroes the month and reads such a date, giving values like `3.4e301` (`plot_frame_methods_probe.c`).
+For a bad year or month (-1, -2) ERFA returns before setting the MJD, and the uninitialized value is returned as the result: TimeFrame `Centre` on a date axis zeroes every field from the first that differs between the value a gap below and a gap above, so whenever those two fall in different months or years, at any gap size, it reads a date with month zero, giving values like `3.4e301` (`plot_frame_methods_probe.c`). A Plot of a date axis that spans a month boundary meets this.
 The port reads a bad day as C does (`date_time.rs`, `unformat_counts_days_outside_the_month_from_its_start` in `test_timeframe.rs`) and does not read a bad year or month, so TimeFrame `centre` there reports the `AST__INTER` error C's own check after the read is written to give (`time_centre_across_a_month_reports_an_error` in `test_plot_frame_methods.rs`).
 The fix is to switch on -1, -2 and -3; whether a bad day should then be an error is a question for upstream, since rejecting it would change what `Centre` gives for every date gap that changes the day.
+
+### TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply
+
+`timeframe.c` `Gap` (timeframe.c:1838), for a date Format and a gap under half a second, finds a nice value with `86400*parent_gap( mjdgap/86400 )`.
+Converting days to seconds is a multiplication, so the parent is handed the gap in units of 86400 days rather than in seconds, and the nice value it chooses is a round number of those units, not of seconds: a 0.1 second gap becomes about 0.0746 seconds.
+A negative gap fails every step of the ladder above it and takes this branch too, unless the Format has no time field.
+The port mirrors this (`TimeFrame::gap` in `timeframe.rs`), so the gaps match C's; if upstream changes it to `86400*parent_gap( mjdgap*86400 )/86400`-style seconds, the port must follow.
 
 ### TimeFrame `Fields` never counts the fields of a date
 

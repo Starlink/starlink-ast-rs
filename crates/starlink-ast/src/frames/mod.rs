@@ -2089,6 +2089,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// - `ErrorCode::Axiin` when `axis` is not between 1 and
     ///   [`naxes`](Frame::naxes).
+    /// - `ErrorCode::Bdpar` when no nice gap can be found: for a plain axis,
+    ///   a `gap` that is not finite or is below about 1e-323.
     ///
     /// # Examples
     ///
@@ -2204,7 +2206,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     // C: `astAxisGap` on the Axis object `astGetAxis` returns. Classes whose
     // Axis objects are plain take this default, axis.c `AxisGap`.
     fn axis_gap(&self, _axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
-        Ok(axis::plain_axis_gap(gap))
+        axis::plain_axis_gap(gap)
     }
 
     /// [`centre`](Frame::centre) as the Axis object attached to `axis`
