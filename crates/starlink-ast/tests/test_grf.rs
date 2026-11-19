@@ -167,15 +167,18 @@ fn justification_round_trips_its_code() {
 
 #[test]
 fn mismatched_points_are_an_error() {
-    let mut grf = LogGrf::new(Vec::new());
-    assert_eq!(
-        grf.line(&[0.1, 0.2], &[0.1]).unwrap_err().code(),
-        ErrorCode::Grfer
-    );
-    assert_eq!(
-        grf.mark(&[0.1], &[], 1).unwrap_err().code(),
-        ErrorCode::Grfer
-    );
+    let mut log = LogGrf::new(Vec::new());
+    let mut svg = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
+    for grf in [&mut log as &mut dyn Grf, &mut svg as &mut dyn Grf] {
+        assert_eq!(
+            grf.line(&[0.1, 0.2], &[0.1]).unwrap_err().code(),
+            ErrorCode::Grfer
+        );
+        assert_eq!(
+            grf.mark(&[0.1], &[], 1).unwrap_err().code(),
+            ErrorCode::Grfer
+        );
+    }
 }
 
 /// The provided backends take `BAD_VALUE` as a query, as the C library

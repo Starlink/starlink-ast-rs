@@ -76,6 +76,9 @@ pub const CALLS: &[(Call, Expected)] = &[
     (Call::Text("a-12", 0.5, 0.5, "CC", [0.207911685, 0.978147626]), Expected::Done),
     (Call::Text("a92.3", 0.5, 0.5, "CC", [-0.999194384, -0.0401317924]), Expected::Done),
     (Call::Text("a180", 0.5, 0.5, "CC", [-1.22464685e-16, -1.0]), Expected::Done),
+    (Call::Text("a3", 0.5, 0.5, "CC", [-0.0523359552, 0.99862951]), Expected::Done),
+    (Call::Text("a94", 0.5, 0.5, "CC", [-0.997564077, -0.0697564706]), Expected::Done),
+    (Call::Text("a-94", 0.5, 0.5, "CC", [0.997564077, -0.0697564706]), Expected::Done),
     (Call::Text("", 0.5, 0.5, "CC", [0.0, 1.0]), Expected::Done),
     (Call::Text("°", 0.25, 0.75, "BL", [0.0, 1.0]), Expected::Done),
     (Call::Line(&[], &[]), Expected::Done),
@@ -108,6 +111,14 @@ pub const CALLS: &[(Call, Expected)] = &[
     (Call::Text("Default", 0.5, 0.699999988, "CC", [0.0, 1.0]), Expected::Done),
     (Call::Attr("Size", Some(2.2999999999999998), "Text"), Expected::Previous(0.0)),
     (Call::Text("Large", 0.5, 0.800000012, "CC", [0.0, 1.0]), Expected::Done),
+    (Call::Attr("Colour", Some(0.0), "Line"), Expected::Previous(16.0)),
+    (Call::Attr("Width", Some(2.5), "Line"), Expected::Previous(0.5)),
+    (Call::Line(&[0.300000012, 0.699999988], &[0.5, 0.5]), Expected::Done),
+    (Call::Attr("Colour", Some(2.5), "Mark"), Expected::Previous(2.6000000000000001)),
+    (Call::Mark(&[0.25], &[0.25], 4), Expected::Done),
+    (Call::Attr("Size", Some(1.25), "Text"), Expected::Previous(2.2999999999999998)),
+    (Call::Text("a<b & \"c\"", 0.5, 0.899999976, "CC", [0.0, 1.0]), Expected::Done),
+    (Call::TxExt("a<b & \"c\"", 0.5, 0.899999976, "CC", [0.0, 1.0]), Expected::Box(&[0.430000007, 0.569999993, 0.569999993, 0.430000007], &[0.882499993, 0.882499993, 0.912499964, 0.912499964])),
     (Call::Cap("Escapes", 1), Expected::Cap(false)),
     (Call::Cap("MJust", 0), Expected::Cap(false)),
     (Call::Cap("Scales", 0), Expected::Cap(true)),
@@ -181,6 +192,9 @@ GText "a-10.5" x=0.500 y=0.500 just=CC up=(0.182,0.983)
 GText "a-12" x=0.500 y=0.500 just=CC up=(0.208,0.978)
 GText "a92.3" x=0.500 y=0.500 just=CC up=(-0.999,-0.040)
 GText "a180" x=0.500 y=0.500 just=CC up=(-0.000,-1.000)
+GText "a3" x=0.500 y=0.500 just=CC up=(-0.052,0.999)
+GText "a94" x=0.500 y=0.500 just=CC up=(-0.998,-0.070)
+GText "a-94" x=0.500 y=0.500 just=CC up=(0.998,-0.070)
 GText "" x=0.500 y=0.500 just=CC up=(0.000,1.000)
 GText "°" x=0.250 y=0.750 just=BL up=(0.000,1.000)
 GLine from=(0.100,0.200) to=(0.900,0.800)
@@ -205,6 +219,15 @@ GAttr SIZE=0.0000 prim=TEXT
 GText "Default" x=0.500 y=0.700 just=CC up=(0.000,1.000)
 GAttr SIZE=2.3000 prim=TEXT
 GText "Large" x=0.500 y=0.800 just=CC up=(0.000,1.000)
+GAttr COLOUR=0.0000 prim=LINE
+GAttr WIDTH=2.5000 prim=LINE
+GLine from=(0.300,0.500) to=(0.700,0.500)
+GAttr COLOUR=2.5000 prim=MARK
+GMark type=4 at=(0.250,0.250)
+GAttr SIZE=1.2500 prim=TEXT
+GText "a<b & "c"" x=0.500 y=0.900 just=CC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "a<b & "c"" x=0.500 y=0.900 just=CC box=(0.430,0.882)-(0.570,0.882)-(0.570,0.912)-(0.430,0.912)
 GFlush
 "##;
 
@@ -225,6 +248,9 @@ pub const SVG: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
 <text x="360" y="270" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="central" transform="rotate(-15,360,270)">a-12</text>
 <text x="360" y="270" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="central" transform="rotate(90,360,270)">a92.3</text>
 <text x="360" y="270" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="central" transform="rotate(180,360,270)">a180</text>
+<text x="360" y="270" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="central" transform="rotate(0,360,270)">a3</text>
+<text x="360" y="270" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="central" transform="rotate(90,360,270)">a94</text>
+<text x="360" y="270" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="central" transform="rotate(-95,360,270)">a-94</text>
 <text x="180" y="135" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="start" dominant-baseline="alphabetic">°</text>
 <polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,432 648,108 "/>
 <polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,486 648,486 360,54 72,486 "/>
@@ -239,5 +265,8 @@ pub const SVG: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
 <polyline fill="none" stroke="#ff0000" stroke-width="1" points="216,324 504,324 "/>
 <text x="360" y="162" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="central">Default</text>
 <text x="360" y="108" font-family="sans-serif" font-size="32" fill="#ff0000" text-anchor="middle" dominant-baseline="central">Large</text>
+<polyline fill="none" stroke="#000000" stroke-width="3" points="216,270 504,270 "/>
+<circle cx="180" cy="405" r="2" fill="#00ff00"/>
+<text x="360" y="54" font-family="sans-serif" font-size="18" fill="#ff0000" text-anchor="middle" dominant-baseline="central">a<b & "c"</text>
 </svg>
 "##;
