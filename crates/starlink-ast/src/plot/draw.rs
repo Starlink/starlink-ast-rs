@@ -63,13 +63,53 @@ pub trait Draw {
     /// - `ErrorCode::Cvbrk` when the curve has more than 1000 breaks.
     /// - Any error the backend reports.
     #[doc(alias = "astGridLine")]
-    fn grid_line(
+    fn draw_grid_line(
         &mut self,
         grf: &mut dyn Grf,
         axis: usize,
         start: &[f64],
         length: f64,
     ) -> AstResult<()>;
+
+    /// Draw the border of the regions of the plotting area where the
+    /// current Frame's coordinates are valid, in the style of
+    /// [`Border`](crate::plot::PlotElement::Border).
+    ///
+    /// The border follows the edges of the plotting area where coordinates
+    /// are valid there, and the boundary between valid and invalid
+    /// coordinates inside it, traced to within the Plot's
+    /// [`tol`](Plot::tol). Returns whether any invalid coordinates were
+    /// found.
+    ///
+    /// A current Frame of more than two axes is drawn through its first
+    /// two.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the base Frame, or the current Frame, has
+    ///   fewer or more than two axes.
+    /// - `ErrorCode::Inter` when the current Frame is a Region, whose
+    ///   border cannot be drawn yet.
+    /// - `ErrorCode::Cvbrk` when an edge has more than 1000 breaks.
+    /// - Any error the backend reports.
+    #[doc(alias = "astBorder")]
+    fn draw_border(&mut self, grf: &mut dyn Grf) -> AstResult<bool>;
+}
+
+impl Draw for Plot {
+    fn draw_grid_line(
+        &mut self,
+        grf: &mut dyn Grf,
+        axis: usize,
+        start: &[f64],
+        length: f64,
+    ) -> AstResult<()> {
+        self.grid_line_impl(grf, axis, start, length)
+    }
+
+    fn draw_border(&mut self, grf: &mut dyn Grf) -> AstResult<bool> {
+        self.border_impl(grf)
+    }
 }
 
 /// The state C keeps in globals while a Plot draws.
@@ -105,7 +145,7 @@ pub(crate) struct DrawState {
     // C: grfattrs_nesting, grfattrs_attrs.
     pub(crate) grfattrs_nesting: i32,
     pub(crate) grfattrs_saved: [Option<f64>; 5],
-    /// The description of the last curve `grid_line` drew.
+    /// The description of the last curve `draw_grid_line` drew.
     // C: Curve_data.
     pub(crate) curve_data: CurveData,
 }

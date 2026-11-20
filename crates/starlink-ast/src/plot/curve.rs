@@ -11,7 +11,7 @@
 use std::cmp::Ordering;
 
 use super::Plot;
-use super::draw::{Draw, fmax, fmin};
+use super::draw::{fmax, fmin};
 use super::elements::PlotElement;
 use super::qsort::qsort;
 use crate::constants::BAD_VALUE;
@@ -107,6 +107,10 @@ pub(crate) enum CurveMap {
         /// Whether positions that normalisation changes are bad.
         norm: bool,
     },
+    /// A straight line in graphics coordinates, from `(x0, y0)` at distance
+    /// 0 to `(x0 + dx, y0 + dy)` at 1, bad where the physical position is.
+    // C: Map2, with Map2_x0, Map2_y0, Map2_deltax and Map2_deltay.
+    Line { x0: f64, y0: f64, dx: f64, dy: f64 },
 }
 
 /// The state the tracer keeps while drawing one curve.
@@ -148,6 +152,48 @@ pub(crate) struct Crv {
     nent: i32,
     /// The public method drawing, for error messages.
     method: &'static str,
+}
+
+impl Crv {
+    /// The tracer state for a curve on `plot`: segments shorter than
+    /// `limit_tol` are drawn straight, gaps wider than `gap_tol` are
+    /// breaks.
+    // C: the Crv_* globals as AxPlot, LinePlot and DrawRegion set them.
+    pub(crate) fn new(
+        plot: &Plot,
+        limit_tol: f64,
+        gap_tol: f64,
+        ink: bool,
+        method: &'static str,
+    ) -> AstResult<Self> {
+        Ok(Crv {
+            scerr: if plot.log_plot(1)? || plot.log_plot(2)? {
+                100.0
+            } else {
+                1.5
+            },
+            ux0: BAD_VALUE,
+            uy0: BAD_VALUE,
+            tol: gap_tol,
+            limit: 0.5 * limit_tol * limit_tol,
+            ink,
+            xlo: plot.xlo,
+            xhi: plot.xhi,
+            ylo: plot.ylo,
+            yhi: plot.yhi,
+            clip: plot.clip() & 1 != 0,
+            out: true,
+            xl: 0.0,
+            yl: 0.0,
+            vxl: 0.0,
+            vyl: 0.0,
+            len: 0.0,
+            brk: CurveData::default(),
+            nbrk: 0,
+            nent: 0,
+            method,
+        })
+    }
 }
 
 /// What `crv`'s recursive calls share.
@@ -431,6 +477,29 @@ impl Plot {
                             .zip(&orig)
                             .any(|(&w, &o)| !ast_equals(w, o, 1.0e8))
                         {
+                            x[i] = BAD_VALUE;
+                            y[i] = BAD_VALUE;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            // C: Map2 (plot.c:21975).
+            CurveMap::Line {
+                x0,
+                y0,
+                dx: deltax,
+                dy: deltay,
+            } => {
+                for (i, &di) in d.iter().enumerate() {
+                    x[i] = x0 + deltax * di;
+                    y[i] = y0 + deltay * di;
+                }
+                let graph = PointSet::from_columns(&[x, y])?;
+                let phys = self.trans_with(None, &graph, true, false)?;
+                for j in 0..phys.ncoord() {
+                    for (i, &p) in phys.axis(j).iter().enumerate() {
+                        if p == BAD_VALUE {
                             x[i] = BAD_VALUE;
                             y[i] = BAD_VALUE;
                         }
@@ -778,13 +847,12 @@ impl Plot {
         ink: bool,
         method: &'static str,
     ) -> AstResult<CurveData> {
-        let mut cdata = CurveData {
-            out: true,
-            ..CurveData::default()
-        };
         let naxes = Mapping::nout(self);
         if start[..naxes].contains(&BAD_VALUE) || length == BAD_VALUE {
-            return Ok(cdata);
+            return Ok(CurveData {
+                out: true,
+                ..CurveData::default()
+            });
         }
         let gridid = if axis == 0 {
             PlotElement::Grid2
@@ -803,42 +871,26 @@ impl Plot {
             norm,
         };
         let tol = self.tol() * dmax(self.xhi - self.xlo, self.yhi - self.ylo);
-        let mut crv = Crv {
-            scerr: if self.log_plot(1)? || self.log_plot(2)? {
-                100.0
-            } else {
-                1.5
-            },
-            ux0: BAD_VALUE,
-            uy0: BAD_VALUE,
-            tol,
-            limit: 0.5 * tol * tol,
-            ink,
-            xlo: self.xlo,
-            xhi: self.xhi,
-            ylo: self.ylo,
-            yhi: self.yhi,
-            clip: self.clip() & 1 != 0,
-            out: true,
-            xl: 0.0,
-            yl: 0.0,
-            vxl: 0.0,
-            vyl: 0.0,
-            len: 0.0,
-            brk: CurveData::default(),
-            nbrk: 0,
-            nent: 0,
-            method,
-        };
+        let mut crv = Crv::new(self, tol, tol, ink, method)?;
+        let cdata = self.trace(&map, &mut crv)?;
+        self.grf_attrs(grf, gridid, false, GrfPrimitive::Line)?;
+        Ok(cdata)
+    }
+    /// Trace a curve with the tracer state `crv`, from distance 0 to 1,
+    /// returning where it breaks.
+    // C: the part AxPlot (plot.c:4575), LinePlot (:21288) and DrawRegion
+    // (:9583) share: Crv over CRV_NPNT points, Opoly, the final break and
+    // PurgeCdata.
+    pub(crate) fn trace(&mut self, map: &CurveMap, crv: &mut Crv) -> AstResult<CurveData> {
         let d: Vec<f64> = (0..CRV_NPNT).map(|i| i as f64 / CRV_NSEG as f64).collect();
         let mut x = vec![0.0; CRV_NPNT];
         let mut y = vec![0.0; CRV_NPNT];
-        self.curve_map(&map, &d, &mut x, &mut y)?;
+        self.curve_map(map, &d, &mut x, &mut y)?;
         let mut shared = CrvShared {
             limit2: 0.0,
             all_bad: false,
         };
-        self.crv(&map, &mut crv, &mut shared, &d, &x, &y, false, None)?;
+        self.crv(map, crv, &mut shared, &d, &x, &y, false, None)?;
         self.opoly();
         if crv.out {
             crv.nbrk = 0;
@@ -849,7 +901,10 @@ impl Plot {
             if crv.nbrk > CRV_MXBRK {
                 return Err(AstError::new(
                     ErrorCode::Cvbrk,
-                    format!("{method}(Plot): Number of breaks in curve exceeds {CRV_MXBRK}."),
+                    format!(
+                        "{}(Plot): Number of breaks in curve exceeds {CRV_MXBRK}.",
+                        crv.method
+                    ),
                 ));
             }
             crv.brk.push(
@@ -859,18 +914,45 @@ impl Plot {
                 -crv.vyl as f32,
             );
         }
-        cdata = crv.brk;
+        let mut cdata = std::mem::take(&mut crv.brk);
         cdata.length = crv.len;
         cdata.out = crv.out;
         cdata.purge();
-        self.grf_attrs(grf, gridid, false, GrfPrimitive::Line)?;
         Ok(cdata)
     }
-}
 
-impl Draw for Plot {
+    /// Trace, and draw if `ink`, the straight line in graphics coordinates
+    /// from `(xa, ya)` to `(xb, yb)` where its physical positions are good,
+    /// returning where it breaks.
+    // C: LinePlot (plot.c:21288).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn line_plot(
+        &mut self,
+        grf: &mut dyn Grf,
+        xa: f64,
+        ya: f64,
+        xb: f64,
+        yb: f64,
+        ink: bool,
+        method: &'static str,
+    ) -> AstResult<CurveData> {
+        if xa == BAD_VALUE || ya == BAD_VALUE || xb == BAD_VALUE || yb == BAD_VALUE {
+            return Ok(CurveData::default());
+        }
+        let tol = self.tol() * dmax(self.xhi - self.xlo, self.yhi - self.ylo);
+        self.g_scales(grf)?;
+        let mut crv = Crv::new(self, tol, tol, ink, method)?;
+        let map = CurveMap::Line {
+            x0: xa,
+            y0: ya,
+            dx: xb - xa,
+            dy: yb - ya,
+        };
+        self.trace(&map, &mut crv)
+    }
+
     // C: GridLine (plot.c:18636).
-    fn grid_line(
+    pub(crate) fn grid_line_impl(
         &mut self,
         grf: &mut dyn Grf,
         axis: usize,

@@ -125,6 +125,59 @@ static AstPlot *testgrid_plot( const char *head, const char *fattr,
    return pl;
 }
 
+/* One row of ast_tester/fixtures/plot/cases.txt, the grid test cases. */
+struct grid_case {
+   char name[ 64 ];
+   char head[ 128 ];   /* file name under HEADS */
+   char attr[ 512 ];
+   char fattr[ 128 ];
+   int has_box;
+   double box[ 4 ];
+};
+
+/* Strips leading and trailing blanks in place. */
+static char *trim( char *s ) {
+   char *e;
+   while( *s == ' ' || *s == '\t' ) s++;
+   e = s + strlen( s );
+   while( e > s && ( e[ -1 ] == ' ' || e[ -1 ] == '\t' || e[ -1 ] == '\n' ) ) *--e = 0;
+   return s;
+}
+
+/* Reads cases.txt into "cases", returning how many there are. */
+static int read_grid_cases( struct grid_case *cases, int max ) {
+   char line[ 1024 ];
+   int n = 0;
+   FILE *fp = fopen( "../ast_tester/fixtures/plot/cases.txt", "r" );
+   if( !fp ) { fprintf( stderr, "cannot open cases.txt\n" ); exit( 1 ); }
+   while( n < max && fgets( line, sizeof( line ), fp ) ) {
+      char *field[ 7 ] = { 0 };
+      char *p = line, *bar;
+      int i, nf = 0;
+      if( line[ 0 ] == '#' || !strchr( line, '|' ) ) continue;
+      while( nf < 7 ) {
+         field[ nf++ ] = p;
+         bar = strchr( p, '|' );
+         if( !bar ) break;
+         *bar = 0;
+         p = bar + 1;
+      }
+      struct grid_case *c = cases + n++;
+      memset( c, 0, sizeof( *c ) );
+      snprintf( c->name, sizeof( c->name ), "%s", trim( field[ 0 ] ) );
+      p = trim( field[ 1 ] );
+      if( strrchr( p, '/' ) ) p = strrchr( p, '/' ) + 1;
+      snprintf( c->head, sizeof( c->head ), "%s", p );
+      snprintf( c->attr, sizeof( c->attr ), "%s", trim( field[ 2 ] ) );
+      snprintf( c->fattr, sizeof( c->fattr ), "%s", trim( field[ 3 ] ) );
+      p = trim( field[ 4 ] );
+      c->has_box = ( *p != 0 );
+      for( i = 0; c->has_box && i < 4; i++ ) c->box[ i ] = strtod( p, &p );
+   }
+   fclose( fp );
+   return n;
+}
+
 /* Capture of one case's log and SVG. */
 static FILE *capture_log, *capture_svg;
 
@@ -144,16 +197,52 @@ static void raw_file( FILE *fp ) {
    fputs( "\"##", stdout );
 }
 
-/* Ends the capture and prints "log: ..., svg: ...," fields. */
+/* The 64-bit FNV-1a hash of a captured file, and its length. */
+static unsigned long long fnv1a( FILE *fp, long *len ) {
+   unsigned long long h = 0xcbf29ce484222325ULL;
+   int c;
+   *len = 0;
+   rewind( fp );
+   while( ( c = fgetc( fp ) ) != EOF ) {
+      h ^= (unsigned char) c;
+      h *= 0x100000001b3ULL;
+      ( *len )++;
+   }
+   return h;
+}
+
+/* SVGs longer than this are recorded by their hash. */
+#define SVG_TEXT_MAX 200000
+
+/* Ends the capture and prints "log: ..., svg: ...," fields; the SVG is
+   Svg::Text, or Svg::Fnv1a with its hash when it is long. */
 static void capture_end( void ) {
+   long len;
+   unsigned long long h;
    astGrfLogClose();
    fputs( "        log: ", stdout );
    raw_file( capture_log );
    fputs( ",\n        svg: ", stdout );
-   raw_file( capture_svg );
+   h = fnv1a( capture_svg, &len );
+   if( len > SVG_TEXT_MAX ) {
+      printf( "Svg::Fnv1a(0x%016llx)", h );
+   } else {
+      fputs( "Svg::Text(", stdout );
+      raw_file( capture_svg );
+      fputs( ")", stdout );
+   }
    fputs( ",\n", stdout );
    fclose( capture_log );
    fclose( capture_svg );
 }
+
+/* The Rust declaration of Svg, for a probe's preamble. */
+#define SVG_DECL \
+   "/// The SVG grf_log wrote: its text, or the 64-bit FNV-1a hash of a\n" \
+   "/// long one.\n" \
+   "pub enum Svg {\n" \
+   "    Text(&'static str),\n" \
+   "    Fnv1a(u64),\n" \
+   "}\n\n"
 
 #endif
