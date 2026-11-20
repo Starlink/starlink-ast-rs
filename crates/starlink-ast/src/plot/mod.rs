@@ -39,14 +39,17 @@ mod curve;
 mod draw;
 mod elements;
 mod forward;
+mod grid;
 mod qsort;
 mod sample;
 mod serial;
 mod text;
+mod ticks;
 
 pub use attrs::{Edge, Labelling, TextGapType};
 pub use draw::Draw;
 pub use elements::PlotElement;
+pub use grid::UsedValues;
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{PointSet, Points, PointsMut};
@@ -111,6 +114,8 @@ pub struct Plot {
     pub(crate) attrs: attrs::PlotAttrs,
     /// What C keeps in globals while drawing.
     pub(crate) draw: draw::DrawState,
+    /// The values the last grid used for attributes left unset.
+    pub(crate) used: grid::UsedState,
 }
 
 /// Tick values given for one axis of a Plot.
@@ -301,6 +306,7 @@ impl Plot {
             clip: None,
             tick_values: Default::default(),
             draw: Default::default(),
+            used: Default::default(),
             attrs: attrs::PlotAttrs::default(),
         })
     }
