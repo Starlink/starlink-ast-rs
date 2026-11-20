@@ -836,7 +836,6 @@ impl Plot {
         let _escapes = crate::escapes::set_escapes(true);
         self.reset_boxp();
         self.reset_grf();
-        self.grf_attrs(grf, PlotElement::Strings, true, GrfPrimitive::Text)?;
         let ncoord = Mapping::nout(self);
         if pos.len() < ncoord {
             return Err(AstError::new(
@@ -848,6 +847,7 @@ impl Plot {
                 ),
             ));
         }
+        self.grf_attrs(grf, PlotElement::Strings, true, GrfPrimitive::Text)?;
         let phys = PointSet::from_rows([&pos[..ncoord]]);
         let graph = self.trans_with(None, &phys, false, false)?;
         let (gx, gy) = (graph.axis(0)[0], graph.axis(1)[0]);

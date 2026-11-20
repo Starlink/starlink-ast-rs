@@ -43,6 +43,28 @@ use crate::serial::native_write::format_double_g;
 
 /// The methods that draw a Plot through a graphics backend.
 pub trait Draw {
+    /// Draw an annotated coordinate grid of the current Frame: grid lines
+    /// or tick marks along each axis, numerical labels at the major ticks,
+    /// a descriptive label for each axis, a title and a border, each as the
+    /// Plot's attributes ask, with what they leave unset chosen to suit the
+    /// coordinates, as [`used_values`](Plot::used_values) reports.
+    ///
+    /// A current Frame of more than two axes is drawn through its first
+    /// two.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the base Frame, or the current Frame, does
+    ///   not have two axes.
+    /// - `ErrorCode::Vsmal`, `ErrorCode::Zerax`, `ErrorCode::Attin` or
+    ///   `ErrorCode::Plfmt` when no usable ticks or labels can be found for
+    ///   an axis.
+    /// - `ErrorCode::Inter` when the current Frame is a Region, whose
+    ///   border cannot be drawn yet.
+    /// - Any error the backend reports.
+    #[doc(alias = "astGrid")]
+    fn draw_grid(&mut self, grf: &mut dyn Grf) -> AstResult<()>;
+
     /// Draw a curve along which one axis of the current Frame varies and
     /// the others stay at the values of `start`.
     ///
@@ -131,6 +153,11 @@ pub trait Draw {
 }
 
 impl Draw for Plot {
+    fn draw_grid(&mut self, grf: &mut dyn Grf) -> AstResult<()> {
+        self.begin_drawing();
+        self.grid_impl(grf, true)
+    }
+
     fn draw_grid_line(
         &mut self,
         grf: &mut dyn Grf,
@@ -138,10 +165,12 @@ impl Draw for Plot {
         start: &[f64],
         length: f64,
     ) -> AstResult<()> {
+        self.begin_drawing();
         self.grid_line_impl(grf, axis, start, length)
     }
 
     fn draw_border(&mut self, grf: &mut dyn Grf) -> AstResult<bool> {
+        self.begin_drawing();
         self.border_impl(grf)
     }
 
@@ -153,12 +182,13 @@ impl Draw for Plot {
         up: [f32; 2],
         just: Justification,
     ) -> AstResult<()> {
+        self.begin_drawing();
         self.text_impl(grf, text, pos, up, just)
     }
 }
 
 /// The state C keeps in globals while a Plot draws.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct DrawState {
     /// Character heights, `AST__BAD` until asked for.
     // C: Grf_chh, Grf_chv.
@@ -199,6 +229,35 @@ pub(crate) struct DrawState {
     /// The text attributes saved by `%-` escape sequences.
     // C: the Plot's gat and ngat.
     pub(crate) gat: Vec<super::text::Gat>,
+    /// The tick marks the last grid drew.
+    pub(crate) ticks: super::axes::DrawnTicks,
+}
+
+// C: astCopy of a Plot (plot.c Copy) starts the copy with an empty stack of
+// pushed text attributes, and copies the rest.
+impl Clone for DrawState {
+    fn clone(&self) -> Self {
+        Self {
+            chh: self.chh,
+            chv: self.chv,
+            alpha: self.alpha,
+            beta: self.beta,
+            box_lbnd: self.box_lbnd,
+            box_ubnd: self.box_ubnd,
+            boxp_lbnd: self.boxp_lbnd,
+            boxp_ubnd: self.boxp_ubnd,
+            boxp_freeze: self.boxp_freeze,
+            poly_x: self.poly_x.clone(),
+            poly_y: self.poly_y.clone(),
+            polys: self.polys.clone(),
+            grfattrs_nesting: self.grfattrs_nesting,
+            grfattrs_saved: self.grfattrs_saved,
+            curve_data: self.curve_data.clone(),
+            hmark: self.hmark,
+            gat: Vec::new(),
+            ticks: self.ticks.clone(),
+        }
+    }
 }
 
 impl Default for DrawState {
@@ -221,6 +280,7 @@ impl Default for DrawState {
             curve_data: CurveData::default(),
             hmark: (f32::MAX, f32::MAX),
             gat: Vec::new(),
+            ticks: Default::default(),
         }
     }
 }
@@ -236,6 +296,43 @@ pub(crate) fn fmax(a: f32, b: f32) -> f32 {
 }
 
 impl Plot {
+    /// Start a public drawing method with no style settings nested and no
+    /// polylines waiting, as C's globals are after any drawing that ends
+    /// without an error.
+    // C's nesting count and polyline buffer are left as they were by a
+    // drawing that stops on an error; the port does not carry them on.
+    pub(crate) fn begin_drawing(&mut self) {
+        self.draw.grfattrs_nesting = 0;
+        self.draw.poly_x.clear();
+        self.draw.poly_y.clear();
+        self.draw.polys.clear();
+    }
+
+    /// Hand the drawing state to `copy`, a copy of this Plot with fewer
+    /// axes that a drawing method draws through. What C keeps in globals
+    /// moves with the drawing; what C keeps in the Plot (the pushed text
+    /// attributes, the `%h+` mark and the drawn ticks) stays here, the copy
+    /// holding its own, with no pushed attributes, as C's copy does.
+    // C: Fset2D returns astCopy of the Plot when it must reduce the current
+    // Frame.
+    pub(crate) fn lend_draw_state(&mut self, copy: &mut Plot) {
+        let mut d = std::mem::take(&mut self.draw);
+        self.draw.gat = std::mem::take(&mut d.gat);
+        self.draw.hmark = d.hmark;
+        self.draw.ticks = d.ticks.clone();
+        copy.draw = d;
+    }
+
+    /// Take back the drawing state lent with `lend_draw_state`, keeping
+    /// this Plot's own fields.
+    pub(crate) fn return_draw_state(&mut self, copy: &mut Plot) {
+        let mut d = std::mem::take(&mut copy.draw);
+        d.gat = std::mem::take(&mut self.draw.gat);
+        d.hmark = self.draw.hmark;
+        d.ticks = std::mem::take(&mut self.draw.ticks);
+        self.draw = d;
+    }
+
     /// Forget the backend values cached during a drawing.
     // C: RESET_GRF.
     pub(crate) fn reset_grf(&mut self) {

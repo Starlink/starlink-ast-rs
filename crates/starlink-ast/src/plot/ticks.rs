@@ -16,7 +16,6 @@
 use std::cmp::Ordering;
 
 use super::Plot;
-use super::qsort::qsort;
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -53,8 +52,7 @@ pub(crate) struct TickInfo {
     pub(crate) length: Vec<f64>,
     /// The number of sections.
     pub(crate) nsect: usize,
-    /// The Format the labels were made with, which drawing them reads.
-    #[allow(dead_code)]
+    /// The Format the labels were made with.
     pub(crate) fmt: Option<String>,
     /// The gap between major ticks.
     pub(crate) gap: f64,
@@ -314,7 +312,7 @@ impl Plot {
         let mut inval = false;
         let mut sorted = [phys.axis(0).to_vec(), phys.axis(1).to_vec()];
         for j in 0..2 {
-            qsort(&mut sorted[j], &mut compared);
+            sorted[j].sort_by(compared);
             ngood[j] = count_good(&sorted[j]);
             if ngood[j] < psize {
                 inval = true;
@@ -348,7 +346,7 @@ impl Plot {
                     qgap.push(sorted[j][k] - sorted[j][k - dk]);
                     k += dk;
                 }
-                qsort(&mut qgap, &mut compared);
+                qgap.sort_by(compared);
                 gaps[j] = qgap[qgap.len() / 2];
                 if gaps[j] <= 0.0 {
                     gaps[j] = (sorted[j][ngood[j] - 1] - sorted[j][0]) / MAJTICKS_OPT as f64;
@@ -550,7 +548,7 @@ impl Plot {
                 }
             }
         }
-        qsort(&mut ticks, &mut compared);
+        ticks.sort_by(compared);
         // Drop duplicates and bad values; C keeps the first value even if
         // every value is bad.
         let mut w = 0;

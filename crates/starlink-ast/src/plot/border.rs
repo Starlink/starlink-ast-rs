@@ -33,8 +33,9 @@ impl Plot {
         }
         match self.fset_2d_current()? {
             Some(mut plot) => {
+                self.lend_draw_state(&mut plot);
                 let result = plot.border_2d(grf);
-                self.draw = std::mem::take(&mut plot.draw);
+                self.return_draw_state(&mut plot);
                 result
             }
             None => self.border_2d(grf),

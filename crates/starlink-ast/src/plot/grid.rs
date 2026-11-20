@@ -12,11 +12,12 @@
 use super::Plot;
 use super::attrs::{Edge, Labelling};
 use super::curve::CurveData;
+use super::elements::PlotElement;
 use super::ticks::TickInfo;
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::grf::Grf;
+use crate::grf::{Grf, GrfPrimitive};
 use crate::mappings::Mapping;
 use crate::math::sqrt;
 
@@ -120,7 +121,7 @@ fn edge_of(code: i32) -> Edge {
 }
 
 /// C's integer code of an edge.
-fn edge_code(edge: Edge) -> i32 {
+pub(crate) fn edge_code(edge: Edge) -> i32 {
     match edge {
         Edge::Left => 0,
         Edge::Top => 1,
@@ -129,9 +130,8 @@ fn edge_code(edge: Edge) -> i32 {
     }
 }
 
-/// One label that edge labelling would draw.
-// C: LabelList. Its fields are read when the labels are drawn.
-#[allow(dead_code)]
+/// One numerical label to draw.
+// C: LabelList, without the fields PlotLabels adds.
 #[derive(Debug, Clone)]
 pub(crate) struct EdgeLabel {
     pub(crate) index: f64,
@@ -210,8 +210,9 @@ impl Plot {
     /// area: whether enough grid lines cross the edges chosen (or `force`).
     /// With `ink` the labels are drawn.
     // C: EdgeLabels (plot.c:10897).
-    fn edge_labels(
+    pub(crate) fn edge_labels(
         &mut self,
+        grf: &mut dyn Grf,
         ink: bool,
         grid: &[TickInfo; 2],
         cdata: &[Vec<CurveData>; 2],
@@ -349,10 +350,18 @@ impl Plot {
         let edgelabs =
             (medge[0] > need(self.log_ticks(1)?) && medge[1] > need(self.log_ticks(2)?)) || force;
         if edgelabs && ink {
-            return Err(AstError::new(
-                ErrorCode::Inter,
-                "astGrid(Plot): drawing numerical labels is not yet supported.",
-            ));
+            let esc = self.escape();
+            let mut boxes = super::labels::LabelBoxes::new();
+            let numlab_id = [PlotElement::NumLab1, PlotElement::NumLab2];
+            for (axis, labels) in llist.into_iter().enumerate() {
+                self.grf_attrs(grf, numlab_id[axis], true, GrfPrimitive::Text)?;
+                let fmt = match &grid[axis].fmt {
+                    Some(f) => f.clone(),
+                    None => self.frameset.current().format_str(axis + 1)?,
+                };
+                self.plot_labels(grf, esc, axis, labels, &fmt, &mut boxes)?;
+                self.grf_attrs(grf, numlab_id[axis], false, GrfPrimitive::Text)?;
+            }
         }
         Ok(edgelabs)
     }
@@ -464,16 +473,29 @@ impl Plot {
         let logticksset = [self.test_log_ticks(1)?, self.test_log_ticks(2)?];
         let loglabelset = [self.test_log_label(1)?, self.test_log_label(2)?];
         self.reset_grf();
-        match self.fset_2d_current()? {
+        // C sets and clears attributes of the Plot and its current Frame as
+        // it goes, and on an error skips the clearing; the port puts them
+        // back, and forgets any polylines not yet drawn.
+        let (attrs, frameset) = (self.attrs.clone(), self.frameset.clone());
+        let result = match self.fset_2d_current()? {
             Some(mut plot) => {
-                plot.draw = std::mem::take(&mut self.draw);
+                self.lend_draw_state(&mut plot);
                 let result = plot.grid_2d(grf, ink, logticksset, loglabelset);
-                self.draw = std::mem::take(&mut plot.draw);
+                self.return_draw_state(&mut plot);
                 self.used = plot.used.clone();
                 result
             }
             None => self.grid_2d(grf, ink, logticksset, loglabelset),
+        };
+        if result.is_err() {
+            self.attrs = attrs;
+            self.frameset = frameset;
+            self.draw.poly_x.clear();
+            self.draw.poly_y.clear();
+            self.draw.polys.clear();
+            self.draw.grfattrs_nesting = 0;
         }
+        result
     }
 
     /// The rest of `grid_impl`, on a Plot whose current Frame has no more
@@ -515,12 +537,12 @@ impl Plot {
         if labelling == Labelling::Interior {
             edgeticks = false;
         } else {
-            edgeticks = self.edge_labels(false, &grid, &cdata, false)?;
+            edgeticks = self.edge_labels(grf, false, &grid, &cdata, false)?;
             if !edgeticks && !self.test_edge(1)? && !self.test_edge(2)? {
                 let (e0, e1) = (self.edge(1)?, self.edge(2)?);
                 self.set_edge(1, e1)?;
                 self.set_edge(2, e0)?;
-                edgeticks = self.edge_labels(false, &grid, &cdata, false)?;
+                edgeticks = self.edge_labels(grf, false, &grid, &cdata, false)?;
                 if edgeticks {
                     clredge = true;
                 } else {
@@ -530,7 +552,7 @@ impl Plot {
             }
         }
         if !edgeticks && self.force_exterior() {
-            edgeticks = self.edge_labels(false, &grid, &cdata, true)?;
+            edgeticks = self.edge_labels(grf, false, &grid, &cdata, true)?;
         }
         if !edgeticks
             && !self.test_edge(1)?
@@ -547,7 +569,7 @@ impl Plot {
             let useint = self.labelat(&grid, &cdata, &mut labelat)?;
             if !useint && labelling == Labelling::Exterior {
                 labelat = [BAD_VALUE; 2];
-                edgeticks = self.edge_labels(false, &grid, &cdata, true)?;
+                edgeticks = self.edge_labels(grf, false, &grid, &cdata, true)?;
             }
         }
         let border = if self.test_border() {
@@ -557,10 +579,13 @@ impl Plot {
         };
         let dounits = [self.label_units(1)?, self.label_units(2)?];
         if ink {
-            return Err(AstError::new(
-                ErrorCode::Inter,
-                "astGrid(Plot): drawing a grid is not yet supported.",
-            ));
+            self.draw_ticks(grf, &grid, drawgrid, &labelat, &gap)?;
+            self.draw_axis(grf, &grid, &labelat, &gap)?;
+            if border {
+                super::Draw::draw_border(self, grf)?;
+            }
+            self.labels(grf, &grid, &cdata, &gap, &labelat)?;
+            self.text_labels(grf, edgeticks, dounits)?;
         }
         self.fpoly(grf)?;
         for axis in 0..2 {
@@ -578,12 +603,17 @@ impl Plot {
             self.used.label_at[axis] = labelat[axis];
             self.used.label_units[axis] = i32::from(dounits[axis]);
             let info = &grid[axis];
-            self.used.min_tick[axis] = if !info.minticks.is_empty() {
+            // C: SetUsedMinTick stores at least 1. With explicit ticks C
+            // divides by one less than the number of major ticks, which for
+            // a single tick gives 0 on arm64 (and traps on x86); the port
+            // takes 0 there.
+            let min_tick = if !info.minticks.is_empty() {
                 let (nminor, nmajor) = (info.nminor, info.nmajor() as i32);
-                (nminor + nmajor) / (nmajor - 1)
+                (nminor + nmajor).checked_div(nmajor - 1).unwrap_or(0)
             } else {
                 info.nminor
             };
+            self.used.min_tick[axis] = min_tick.max(1);
             self.used.text_lab[axis] = i32::from(if self.test_text_lab(a1)? {
                 self.text_lab(a1)?
             } else {
@@ -656,6 +686,7 @@ impl Plot {
                 || !self.test_maj_tick_len(a)?;
         }
         if any_unset {
+            self.begin_drawing();
             self.grid_impl(grf, false)?;
         }
         let u = self.used.clone();

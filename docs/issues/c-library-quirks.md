@@ -28,6 +28,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Plot's bounding boxes start their upper bounds at `FLT_MIN`](#plots-bounding-boxes-start-their-upper-bounds-at-flt_min)
 - [Plot `Boundary` sizes its tracing tolerance from the x extent twice](#plot-boundary-sizes-its-tracing-tolerance-from-the-x-extent-twice)
 - [`astFindEscape` takes any character after the digits as the closing `+`](#astfindescape-takes-any-character-after-the-digits-as-the-closing-)
+- [Plot reads past its tick arrays for an axis with one major tick](#plot-reads-past-its-tick-arrays-for-an-axis-with-one-major-tick)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -259,7 +260,7 @@ The port sets the first `min(naxes, nout)` coordinates bad, which is C's result 
 Each joined line starts from the first polyline not yet drawn, and C then sets `drawn[ 0 ]` where it means `drawn[ ipoly ]`.
 A joined line starting from any polyline but the first is therefore still undrawn when the search for a polyline ending where the line has reached runs, and that search finds the starting polyline itself, so it is appended to itself reversed: the curve is drawn out and back over the same points.
 The search also takes the first of several equal x coordinates in the order `qsort` leaves them, which is not stable, so where several polylines start or end at the same x the result depends on the platform's `qsort`.
-The port mirrors both: `Plot::fpoly` (`crates/starlink-ast/src/plot/curve.rs`) marks polyline 0, and sorts with a port of the macOS `qsort` (`plot/qsort.rs`), so it draws what C on macOS draws; C on Linux, whose `qsort` is a merge sort, can join polylines in another order.
+The port mirrors the first (`Plot::fpoly` in `crates/starlink-ast/src/plot/curve.rs` marks polyline 0) and sorts stably for the second; with either order, every grid test case and drawing probe gives the call log C gives on macOS, so the order has not been seen to matter.
 `plot_curve_probe.c`'s `aitoff`, `polco` and `hpx` cases draw doubled-back curves, which `grid_lines_match_the_c_library` pins.
 The fix is `drawn[ ipoly ] = 1`; a stable order would need a tie-break, such as the polyline index, in `Fpoly_scmp` and `Fpoly_ecmp`.
 
@@ -283,6 +284,18 @@ It then skips `nd + 1` characters, so the character after the digits is consumed
 Where the digits end the string, the count runs one past its terminating null, and `DrawText` reads beyond the string.
 The port mirrors the first (`find_escape` in `crates/starlink-ast/src/plot/text.rs`, pinned by `plot_text_probe.c`'s `escapes` case) and stops at the end of the string for the second.
 The fix is to require the `+`, for instance by reading `%d%n` and testing the character at `nd`.
+
+### Plot reads past its tick arrays for an axis with one major tick
+
+Three places in `plot.c` index tick arrays without checking their length:
+
+- `Labelat` (plot.c:20613) takes the zero tolerance from the first two ticks of the other axis, `value[ 1 ] - value[ 0 ]`, whether or not there is a second.
+- `Labels` (plot.c:20871) works out from the middle tick in two passes; with one major tick the second pass starts at index -1 and reads `value[ -1 ]` and `labels[ -1 ]`.
+- `DrawTicks` (plot.c:10148), drawing interior ticks from explicit tick values (which only a 3-D Plot sets), loops to `<= nmajor` and `<= nminor`, one past each list, and uses whatever `logticks` an earlier axis left.
+
+An axis with a single major tick arises with a very small plotting area or explicit ticks; none of the grid test cases has one.
+The port stops at the ends of the arrays: `Labelat` takes the tolerance to be zero, `Labels` ends at the first pass, and `DrawTicks` draws the ticks the lists hold (`crates/starlink-ast/src/plot/grid.rs`, `labels.rs`, `axes.rs`); it keeps C's leftover `logticks`.
+The fix is to test the counts before indexing.
 
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 

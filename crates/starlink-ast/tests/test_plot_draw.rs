@@ -30,11 +30,14 @@ mod border;
 mod text;
 
 use starlink_ast::error::{AstResult, ErrorCode};
-use starlink_ast::frames::BasicFrameBuilder;
+use starlink_ast::frames::{BasicFrameBuilder, CmpFrame, FrameRef};
 use starlink_ast::grf::{Grf, Justification, LogGrf, SvgGrf, SvgOptions};
+use starlink_ast::mappings::PermMap;
 use starlink_ast::plot::{Draw, Plot};
 
-use crate::common::plot::{apply_settings, fnv1a, grid_cases, read_head, testgrid_plot};
+use crate::common::plot::{
+    FailingGrf, apply_settings, fnv1a, grid_cases, read_head, testgrid_plot,
+};
 
 /// A Plot of a header under `fixtures/wcsconv/inputs`, or of a 2-D Frame.
 fn plot_of(head: Option<&str>, gbox: [f32; 4], pbox: [f64; 4]) -> Plot {
@@ -189,8 +192,65 @@ fn border_plot(name: &str) -> Plot {
             .unwrap();
             plot
         }
+        "car3_3d" => car3_3d(),
         _ => testgrid_plot(grid_cases().iter().find(|c| c.name == name).unwrap()),
     }
+}
+
+/// The car3 grid test Plot with a 3-D current Frame added: a CmpFrame of
+/// its sky Frame and a 1-D Frame, joined by a PermMap giving the third
+/// axis 0, as the border probe builds it.
+fn car3_3d() -> Plot {
+    let mut plot = testgrid_plot(grid_cases().iter().find(|c| c.name == "car3").unwrap());
+    let sky = plot.frameset().current().snapshot();
+    let one = Box::new(BasicFrameBuilder::new(1).build().unwrap());
+    let cube = CmpFrame::new(sky, one);
+    let pm = PermMap::new(&[1, 2], &[1, 2, -1], &[0.0]).unwrap();
+    plot.add_frame(FrameRef::Current, Box::new(pm), Box::new(cube))
+        .unwrap();
+    plot
+}
+
+#[test]
+fn a_three_dimensional_current_frame_is_drawn_through_two_axes() {
+    let mut failures = Vec::new();
+    let (log, svg) = log_and_svg(&car3_3d(), |plot, grf| plot.draw_grid(grf));
+    compare(
+        "car3_3d grid",
+        &log,
+        &svg,
+        border::GRID_3D.0,
+        (&border::GRID_3D.1).into(),
+        &mut failures,
+    );
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// A Plot that is not 2-D gives C's messages: a base Frame of three axes,
+/// and a current Frame of one.
+#[test]
+fn drawing_a_plot_that_is_not_two_dimensional_gives_c_messages() {
+    let mut plot = car3_3d();
+    plot.set_base(FrameRef::Current).unwrap();
+    let err = plot.draw_grid(&mut LogGrf::new(Vec::new())).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Naxin);
+    assert_eq!(
+        err.message(),
+        "astGrid(Plot): Number of axes (3) in the base Frame of the supplied Plot is invalid - \
+         this number should be 2."
+    );
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let pm = PermMap::new(&[1, -1], &[1], &[0.0]).unwrap();
+    let one = Box::new(BasicFrameBuilder::new(1).build().unwrap());
+    plot.add_frame(FrameRef::Current, Box::new(pm), one)
+        .unwrap();
+    let err = plot.draw_border(&mut LogGrf::new(Vec::new())).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Naxin);
+    assert_eq!(
+        err.message(),
+        "astBorder(Plot): Number of axes (1) in the current Frame of the supplied Plot is \
+         invalid - this number should be 2."
+    );
 }
 
 #[test]
@@ -244,4 +304,87 @@ fn text_matches_the_c_library() {
         );
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// The call log of drawing on `plot` with `draw`.
+fn log_of(plot: &mut Plot, draw: impl FnOnce(&mut Plot, &mut dyn Grf) -> AstResult<()>) -> String {
+    let mut log = LogGrf::new(Vec::new());
+    draw(plot, &mut log).unwrap();
+    String::from_utf8(log.finish().unwrap()).unwrap()
+}
+
+/// A drawing method that fails part way leaves no trace on the next: the
+/// next drawing sets the same styles as on a fresh Plot.
+#[test]
+fn a_failed_drawing_does_not_change_the_next() {
+    let gbox = [0.1, 0.1, 0.9, 0.9];
+    let pbox = [0.0, 0.0, 10.0, 10.0];
+    let just = Justification::from_code("CC").unwrap();
+    let styled = || {
+        let mut plot = plot_of(None, gbox, pbox);
+        apply_settings(
+            &mut plot,
+            "Colour(Border)=4,Colour(Strings)=3,Colour(Grid1)=2",
+        )
+        .unwrap();
+        plot
+    };
+    let fail = || FailingGrf {
+        inner: LogGrf::new(Vec::new()),
+        lines_left: 0,
+    };
+
+    let want = log_of(&mut styled(), |p, g| p.draw_border(g).map(|_| ()));
+    let mut plot = styled();
+    assert!(plot.draw_border(&mut fail()).is_err());
+    assert_eq!(log_of(&mut plot, |p, g| p.draw_border(g).map(|_| ())), want);
+
+    let want = log_of(&mut styled(), |p, g| {
+        p.draw_grid_line(g, 2, &[1.0, 2.0], 6.0)
+    });
+    let mut plot = styled();
+    assert!(
+        plot.draw_grid_line(&mut fail(), 2, &[1.0, 2.0], 6.0)
+            .is_err()
+    );
+    assert_eq!(
+        log_of(&mut plot, |p, g| p.draw_grid_line(g, 2, &[1.0, 2.0], 6.0)),
+        want
+    );
+
+    let text =
+        |p: &mut Plot, g: &mut dyn Grf| p.draw_text(g, "Label", &[5.0, 5.0], [0.0, 1.0], just);
+    let want = log_of(&mut styled(), text);
+    let mut plot = styled();
+    let err = plot
+        .draw_text(
+            &mut LogGrf::new(Vec::new()),
+            "Label",
+            &[5.0],
+            [0.0, 1.0],
+            just,
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Ncpin);
+    assert_eq!(log_of(&mut plot, text), want);
+}
+
+/// Text attributes pushed by an unbalanced `%-` stay with the Plot, but a
+/// copy starts with none, as C's copy of a Plot does: a `%+` on the copy
+/// restores the normal colour, not the pushed one.
+#[test]
+fn a_copied_plot_starts_with_no_pushed_text_attributes() {
+    let just = Justification::from_code("BL").unwrap();
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let mut log = LogGrf::new(Vec::new());
+    plot.draw_text(&mut log, "a%c3+%-b", &[2.0, 2.0], [0.0, 1.0], just)
+        .unwrap();
+    let pop = |p: &mut Plot| {
+        log_of(p, |p, g| {
+            p.draw_text(g, "%+c", &[2.0, 5.0], [0.0, 1.0], just)
+        })
+    };
+    let mut copy = plot.clone();
+    assert!(pop(&mut plot).contains("GAttr COLOUR=3.0000"));
+    assert!(!pop(&mut copy).contains("GAttr COLOUR=3.0000"));
 }

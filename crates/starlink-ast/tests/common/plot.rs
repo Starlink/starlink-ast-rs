@@ -324,3 +324,62 @@ fn set_component_system(plot: &mut Plot, value: &str) -> AstResult<()> {
         spec.set_system(SpecSystem::parse(value).expect("a spectral system"))
     })
 }
+
+/// A backend that reports a failure from its `n`th polyline on.
+pub struct FailingGrf {
+    pub inner: starlink_ast::grf::LogGrf<Vec<u8>>,
+    pub lines_left: usize,
+}
+
+impl starlink_ast::grf::Grf for FailingGrf {
+    fn line(&mut self, x: &[f32], y: &[f32]) -> starlink_ast::error::AstResult<()> {
+        if self.lines_left == 0 {
+            return Err(starlink_ast::error::AstError::new(
+                starlink_ast::error::ErrorCode::Grfer,
+                "out of ink",
+            ));
+        }
+        self.lines_left -= 1;
+        self.inner.line(x, y)
+    }
+    fn mark(&mut self, x: &[f32], y: &[f32], m: i32) -> starlink_ast::error::AstResult<()> {
+        self.inner.mark(x, y, m)
+    }
+    fn text(
+        &mut self,
+        t: &str,
+        x: f32,
+        y: f32,
+        j: starlink_ast::grf::Justification,
+        up: [f32; 2],
+    ) -> starlink_ast::error::AstResult<()> {
+        self.inner.text(t, x, y, j, up)
+    }
+    fn text_extent(
+        &mut self,
+        t: &str,
+        x: f32,
+        y: f32,
+        j: starlink_ast::grf::Justification,
+        up: [f32; 2],
+    ) -> starlink_ast::error::AstResult<starlink_ast::grf::TextBox> {
+        self.inner.text_extent(t, x, y, j, up)
+    }
+    fn char_height(&mut self) -> starlink_ast::error::AstResult<[f32; 2]> {
+        self.inner.char_height()
+    }
+    fn scales(&mut self) -> starlink_ast::error::AstResult<[f32; 2]> {
+        self.inner.scales()
+    }
+    fn attr(
+        &mut self,
+        a: starlink_ast::grf::GrfAttr,
+        v: Option<f64>,
+        p: starlink_ast::grf::GrfPrimitive,
+    ) -> starlink_ast::error::AstResult<f64> {
+        self.inner.attr(a, v, p)
+    }
+    fn cap(&mut self, c: starlink_ast::grf::GrfCap, v: i32) -> bool {
+        self.inner.cap(c, v)
+    }
+}
