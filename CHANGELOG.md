@@ -46,6 +46,8 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a TimeFrame's `centre` with a date Format, across a month or year end, gives a date (the start of the month or year) where it reported `Inter`; a gap across a day boundary now centres on the first of the month, not the last day of the month before. This follows the C library's fix on the reference branch `u/timj/timeframe-centre-date`.
+- `starlink-ast`: a date read from text with a year of two digits or fewer is in the C library's century, 2000 to 2049 for 0 to 49 and 1950 to 1999 for 50 to 99, as the C library's `astReadDateTime` reads it.
 - `starlink-ast`: simplifying a WinMap next to a parallel CmpMap keeps each simplified half in the orientation the simplifier returned it, as the C library does, so a Native dump of the result records `Invert` and `IsSimp` on that half as C's does; transforms are unchanged.
 - `starlink-ast`: simplifying a Mapping that holds an inverted WinMap forms the inverse shift as the C library does, as the shift times minus the reciprocal scale, so the simplified WinMap can differ from earlier releases, and now agrees with C, in the last bit of a shift.
 - `starlink-ast`: a SkyFrame's `line_crossing` gives the crossing's longitude as the C library does when the crossing lies opposite its first estimate on the -x meridian, -pi where it gave +pi.

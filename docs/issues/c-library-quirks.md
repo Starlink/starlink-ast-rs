@@ -289,8 +289,12 @@ The fix is to require the `+`, for instance by reading `%d%n` and testing the ch
 `frame.c` `astReadDateTime` (frame.c:9282) converts the calendar date with `palCaldj` and reports an invalid year, month or day for a status of 1, 2 or 3, SLALIB's codes.
 `palCaldj` now returns `eraCal2jd`'s codes, -1, -2 and -3, so none of those errors is ever reported.
 For a bad day (-3) ERFA still computes the MJD, counting on from the month's start, so `2012-03-00` reads as 29 February and `2012-02-30` as 1 March.
-For a bad year or month (-1, -2) ERFA returns before setting the MJD, and the uninitialized value is returned as the result: TimeFrame `Centre` on a date axis zeroes every field from the first that differs between the value a gap below and a gap above, so whenever those two fall in different months or years, at any gap size, it reads a date with month zero, giving values like `3.4e301` (`plot_frame_methods_probe.c`). A Plot of a date axis that spans a month boundary meets this.
-The port reads a bad day as C does (`date_time.rs`, `unformat_counts_days_outside_the_month_from_its_start` in `test_timeframe.rs`) and does not read a bad year or month, so TimeFrame `centre` there reports the `AST__INTER` error C's own check after the read is written to give (`time_centre_across_a_month_reports_an_error` in `test_plot_frame_methods.rs`).
+For a bad year or month (-1, -2) ERFA returns before setting the MJD, and the uninitialized value is returned as the result.
+TimeFrame `Centre` on a date axis zeroes every field from the first that differs between the value a gap below and a gap above, so whenever those two fell in different months or years it read a date with month zero, giving values like `3.4e301`; a Plot of a date axis spanning a month boundary met this.
+`Centre` is fixed on the submodule branch `u/timj/timeframe-centre-date` (timeframe.c History, 20-NOV-2026): a zeroed month or day now ends in 1, so the date it reads is valid, and a gap that changes the day now centres on the first of the month rather than the last day of the one before.
+The port follows the fixed C (`TimeFrame::centre`, pinned by `plot_frame_methods_probe.c`'s month, year and day cases, generated from that branch, and `plot_grid_values_probe.c`'s `timeplot_month_end`); until the pin moves to include it, those cases need the branch to regenerate.
+A zeroed year reads as 2000, through `palCaldj`'s rule that years 0 to 49 are 2000 to 2049, which `astReadDateTime` uses and the port now does too (`pal::caldj`).
+The port reads a bad day as C does (`date_time.rs`, `unformat_counts_days_outside_the_month_from_its_start` in `test_timeframe.rs`) and does not read a bad year or month.
 The fix is to switch on -1, -2 and -3; whether a bad day should then be an error is a question for upstream, since rejecting it would change what `Centre` gives for every date gap that changes the day.
 
 ### TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply
