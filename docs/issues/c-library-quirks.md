@@ -27,6 +27,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Plot `Fpoly` marks polyline 0 drawn instead of the one it starts from](#plot-fpoly-marks-polyline-0-drawn-instead-of-the-one-it-starts-from)
 - [Plot's bounding boxes start their upper bounds at `FLT_MIN`](#plots-bounding-boxes-start-their-upper-bounds-at-flt_min)
 - [Plot `Boundary` sizes its tracing tolerance from the x extent twice](#plot-boundary-sizes-its-tracing-tolerance-from-the-x-extent-twice)
+- [`astFindEscape` takes any character after the digits as the closing `+`](#astfindescape-takes-any-character-after-the-digits-as-the-closing-)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -274,6 +275,14 @@ The port mirrors this (`DrawState` in `crates/starlink-ast/src/plot/draw.rs`); t
 A plotting area taller than it is wide is traced more coarsely than its height calls for.
 The port mirrors this (`Plot::boundary` in `crates/starlink-ast/src/plot/border.rs`), since it decides where the border's line segments fall; `plot_border_probe.c`'s `car4` and `car5` cases, taller than wide, pin it.
 The fix is `dy = fabs( this->yhi - this->ylo )`.
+
+### `astFindEscape` takes any character after the digits as the closing `+`
+
+`plot.c` `astFindEscape` (plot.c:12086) reads the number of an escape sequence such as `%s70+` with `astSscanf( a, "%d%n+", value, &nd )` and accepts it whenever the `%d` converts, since `sscanf` counts conversions and the literal `+` after `%n` is never checked.
+It then skips `nd + 1` characters, so the character after the digits is consumed whatever it is: `%s70x trick` sets the size to 70% and draws " trick".
+Where the digits end the string, the count runs one past its terminating null, and `DrawText` reads beyond the string.
+The port mirrors the first (`find_escape` in `crates/starlink-ast/src/plot/text.rs`, pinned by `plot_text_probe.c`'s `escapes` case) and stops at the end of the string for the second.
+The fix is to require the `+`, for instance by reading `%d%n` and testing the character at `nd`.
 
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 

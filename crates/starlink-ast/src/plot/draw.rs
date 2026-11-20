@@ -38,7 +38,7 @@ use super::Plot;
 use super::curve::CurveData;
 use super::elements::PlotElement;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::grf::{Grf, GrfAttr, GrfCap, GrfPrimitive};
+use crate::grf::{Grf, GrfAttr, GrfCap, GrfPrimitive, Justification};
 use crate::serial::native_write::format_double_g;
 
 /// The methods that draw a Plot through a graphics backend.
@@ -94,6 +94,40 @@ pub trait Draw {
     /// - Any error the backend reports.
     #[doc(alias = "astBorder")]
     fn draw_border(&mut self, grf: &mut dyn Grf) -> AstResult<bool>;
+
+    /// Draw `text` at `pos`, a position in the current Frame, justified
+    /// about it by `just`, with its up direction along `up`, a vector in
+    /// graphics coordinates, in the style of
+    /// [`Strings`](crate::plot::PlotElement::Strings).
+    ///
+    /// Trailing white space is ignored. Unless the Plot's
+    /// [`escape`](Plot::escape) attribute is cleared, escape sequences in
+    /// the text change its appearance part way through: `%^50+` raises the
+    /// baseline by half a character height and `%v50+` lowers it, `%>30+`
+    /// and `%<30+` move along it, `%s150+`, `%w200+`, `%f2+`, `%c3+` and
+    /// `%t2+` change the size, width, font, colour and style, `%h+` marks a
+    /// position that `%g+` returns to, `%-` and `%+` push and pop the
+    /// attributes, and `%%` is a percent sign; a `+` in place of the
+    /// number restores the normal value.
+    ///
+    /// Nothing is drawn where `pos` has no graphics position, for empty
+    /// text, or for a zero up-vector.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    /// - `ErrorCode::Ncpin` when `pos` has fewer values than the current
+    ///   Frame has axes.
+    /// - Any error the backend reports.
+    #[doc(alias = "astText")]
+    fn draw_text(
+        &mut self,
+        grf: &mut dyn Grf,
+        text: &str,
+        pos: &[f64],
+        up: [f32; 2],
+        just: Justification,
+    ) -> AstResult<()>;
 }
 
 impl Draw for Plot {
@@ -109,6 +143,17 @@ impl Draw for Plot {
 
     fn draw_border(&mut self, grf: &mut dyn Grf) -> AstResult<bool> {
         self.border_impl(grf)
+    }
+
+    fn draw_text(
+        &mut self,
+        grf: &mut dyn Grf,
+        text: &str,
+        pos: &[f64],
+        up: [f32; 2],
+        just: Justification,
+    ) -> AstResult<()> {
+        self.text_impl(grf, text, pos, up, just)
     }
 }
 
@@ -148,6 +193,12 @@ pub(crate) struct DrawState {
     /// The description of the last curve `draw_grid_line` drew.
     // C: Curve_data.
     pub(crate) curve_data: CurveData,
+    /// The position marked by a `%h+` escape sequence, `f32::MAX` if none.
+    // C: the Plot's hmarkx and hmarky.
+    pub(crate) hmark: (f32, f32),
+    /// The text attributes saved by `%-` escape sequences.
+    // C: the Plot's gat and ngat.
+    pub(crate) gat: Vec<super::text::Gat>,
 }
 
 impl Default for DrawState {
@@ -168,6 +219,8 @@ impl Default for DrawState {
             grfattrs_nesting: 0,
             grfattrs_saved: [None; 5],
             curve_data: CurveData::default(),
+            hmark: (f32::MAX, f32::MAX),
+            gat: Vec::new(),
         }
     }
 }

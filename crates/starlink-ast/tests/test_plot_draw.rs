@@ -8,7 +8,9 @@
 //! it writes: `plot_curve_oracle/cases.rs` by `plot_curve_probe.c`, which
 //! draws grid lines, and `plot_border_oracle/cases.rs` by
 //! `plot_border_probe.c`, which draws the borders of the grid test Plots of
-//! `fixtures/plot/cases.txt`, built as C's `testgrid.c` builds them. The port draws the same Plots through
+//! `fixtures/plot/cases.txt`, built as C's `testgrid.c` builds them, and
+//! `plot_text_oracle/cases.rs` by `plot_text_probe.c`, which draws text with
+//! each justification, rotated, and with each escape sequence. The port draws the same Plots through
 //! [`LogGrf`](starlink_ast::grf::LogGrf) and
 //! [`SvgGrf`](starlink_ast::grf::SvgGrf), and both outputs must be identical.
 
@@ -22,9 +24,14 @@ mod curve;
 #[path = "plot_border_oracle/cases.rs"]
 mod border;
 
+#[rustfmt::skip]
+#[allow(dead_code)]
+#[path = "plot_text_oracle/cases.rs"]
+mod text;
+
 use starlink_ast::error::{AstResult, ErrorCode};
 use starlink_ast::frames::BasicFrameBuilder;
-use starlink_ast::grf::{Grf, LogGrf, SvgGrf, SvgOptions};
+use starlink_ast::grf::{Grf, Justification, LogGrf, SvgGrf, SvgOptions};
 use starlink_ast::plot::{Draw, Plot};
 
 use crate::common::plot::{apply_settings, fnv1a, grid_cases, read_head, testgrid_plot};
@@ -79,6 +86,15 @@ impl From<&curve::Svg> for WantSvg {
         match svg {
             curve::Svg::Text(t) => WantSvg::Text(t),
             curve::Svg::Fnv1a(h) => WantSvg::Hash(*h),
+        }
+    }
+}
+
+impl From<&text::Svg> for WantSvg {
+    fn from(svg: &text::Svg) -> Self {
+        match svg {
+            text::Svg::Text(t) => WantSvg::Text(t),
+            text::Svg::Fnv1a(h) => WantSvg::Hash(*h),
         }
     }
 }
@@ -193,6 +209,31 @@ fn borders_match_the_c_library() {
                 case.name, case.inval
             ));
         }
+        compare(
+            case.name,
+            &log,
+            &svg,
+            case.log,
+            (&case.svg).into(),
+            &mut failures,
+        );
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn text_matches_the_c_library() {
+    let mut failures = Vec::new();
+    for case in text::CASES {
+        let mut plot = plot_of(case.head, case.gbox, case.pbox);
+        apply_settings(&mut plot, case.attr).unwrap();
+        let (log, svg) = log_and_svg(&plot, |plot, grf| {
+            for &(string, pos, up, just) in case.texts {
+                let just = Justification::from_code(&just.to_uppercase()).unwrap();
+                plot.draw_text(grf, string, &pos, up, just)?;
+            }
+            Ok(())
+        });
         compare(
             case.name,
             &log,
