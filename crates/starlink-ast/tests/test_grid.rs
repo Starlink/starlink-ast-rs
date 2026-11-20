@@ -30,9 +30,15 @@ fn values_plot(name: &str) -> Plot {
     if let Some(case) = cases.iter().find(|c| c.name == name) {
         return testgrid_plot(case);
     }
-    let &(_, base, extra) = values::VARIANTS.iter().find(|v| v.0 == name).unwrap();
+    let &(_, base, extra, pbox) = values::VARIANTS.iter().find(|v| v.0 == name).unwrap();
     let mut plot = match base {
-        Some(base) => testgrid_plot(cases.iter().find(|c| c.name == base).unwrap()),
+        Some(base) => {
+            let mut case = cases.into_iter().find(|c| c.name == base).unwrap();
+            if pbox.is_some() {
+                case.pbox = pbox;
+            }
+            testgrid_plot(&case)
+        }
         None => {
             let pbox = if extra.contains("LogPlot") {
                 [1.0, 0.0, 1000.0, 10.0]

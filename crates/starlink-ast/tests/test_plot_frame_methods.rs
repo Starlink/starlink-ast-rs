@@ -285,14 +285,12 @@ fn sky_fields_without_a_named_separator_find_none() {
     assert_eq!(f.abbrev(1, "hms", Some("12"), "12:34:56").unwrap(), 0);
 }
 
-/// A TimeFrame's date centre that changes the month zeroes the month, and
-/// the date it then reads is not valid. C reads an undefined value without
-/// complaint; the port reports the error C's own check is written to give.
+/// A TimeFrame's date centre across a month end zeroes the month and the
+/// fields after it to their first values, giving the start of the year.
 #[test]
-fn time_centre_across_a_month_reports_an_error() {
+fn time_centre_across_a_month_is_the_start_of_the_year() {
     let f = time_frame("time_iso");
-    let err = f.centre(1, 56000.37, 30.0).unwrap_err();
-    assert_eq!(err.code(), starlink_ast::error::ErrorCode::Inter);
+    assert_eq!(f.centre(1, 56000.37, 30.0).unwrap(), 55927.0);
 }
 
 /// A Region's `fields` reaches its Frame's Axis object, as C's does, so a
