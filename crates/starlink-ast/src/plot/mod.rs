@@ -34,13 +34,14 @@
 //   Get/Set/Test/ClearAttrib dispatch, which become typed accessors.
 
 mod attrs;
+mod axes;
 mod border;
 mod curve;
 mod draw;
 mod elements;
 mod forward;
 mod grid;
-mod qsort;
+mod labels;
 mod sample;
 mod serial;
 mod text;

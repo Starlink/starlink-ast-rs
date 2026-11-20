@@ -284,6 +284,21 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
         "no skip mode: kept empty and gated against refilling",
     ),
     (
+        "test_grid.rs",
+        "GRID_LOG_EXCLUDED",
+        0,
+        "no skip mode: kept empty and gated against refilling",
+    ),
+    (
+        "test_grid.rs",
+        "GRID_LABELS_EXCLUDED",
+        1,
+        "cobe, which C's own grid test leaves out (skip_text_compare): its \
+         degree symbol lands on a half-pixel boundary, so the reference SVG's \
+         rounded position depends on whether the C build fused multiply-adds; \
+         gated against starting to match",
+    ),
+    (
         "test_simplify_regression.rs",
         "ABANDONED_PROBE_STAMP_LICENSED",
         5,

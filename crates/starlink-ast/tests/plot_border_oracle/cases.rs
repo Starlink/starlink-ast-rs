@@ -2,8 +2,11 @@
 // Do not edit.
 
 /// What C's astBorder returned for a Plot, and what grf_log wrote.
-/// A name is a case of fixtures/plot/cases.txt, or one of the 2-D
-/// Frame Plots `frame`, `frame_log` and `frame_styles`.
+/// A name is a case of fixtures/plot/cases.txt, one of the 2-D
+/// Frame Plots `frame`, `frame_log` and `frame_styles`, or
+/// `car3_3d`, the car3 Plot with a 3-D current Frame: a CmpFrame of
+/// its sky Frame and a 1-D Frame, joined by a PermMap giving the
+/// third axis 0.
 pub struct BorderCase {
     pub name: &'static str,
     pub inval: bool,
@@ -268,6 +271,18 @@ GLine from=(0.464,0.154) to=(0.464,0.154)
 "##),
     },
     BorderCase {
+        name: "car3_3d",
+        inval: false,
+        log: r##"GScales alpha=200.000 beta=200.000
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,486 113,486 154,486 195,486 237,486 278,486 319,486 360,486 401,486 442,486 483,486 525,486 566,486 607,486 648,486 648,455 648,424 648,393 648,363 648,332 648,301 648,270 648,239 648,208 648,177 648,147 648,116 648,85 648,54 607,54 566,54 525,54 483,54 442,54 401,54 360,54 319,54 278,54 237,54 195,54 154,54 113,54 72,54 72,85 72,116 72,147 72,177 72,208 72,239 72,270 72,301 72,332 72,363 72,393 72,424 72,455 72,486 "/>
+</svg>
+"##),
+    },
+    BorderCase {
         name: "frame",
         inval: false,
         log: r##"GScales alpha=200.000 beta=200.000
@@ -310,3 +325,476 @@ GAttr COLOUR=1.0000 prim=LINE
 "##),
     },
 ];
+
+/// astGrid of the car3 Plot with a 3-D current Frame.
+pub const GRID_3D: (&str, Svg) = (
+    r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.456,0.100) to=(0.413,0.900)
+GLine from=(0.366,0.100) to=(0.238,0.900)
+GLine from=(0.273,0.100) to=(0.100,0.755)
+GLine from=(0.172,0.100) to=(0.100,0.282)
+GLine from=(0.828,0.100) to=(0.900,0.282)
+GLine from=(0.727,0.100) to=(0.900,0.755)
+GLine from=(0.634,0.100) to=(0.762,0.900)
+GLine from=(0.544,0.100) to=(0.587,0.900)
+GLine from=(0.549,0.179) to=(0.108,0.100)
+GLine from=(0.892,0.100) to=(0.451,0.179)
+GLine from=(0.553,0.259) to=(0.100,0.184)
+GLine from=(0.900,0.184) to=(0.447,0.259)
+GLine from=(0.557,0.339) to=(0.100,0.270)
+GLine from=(0.900,0.270) to=(0.443,0.339)
+GLine from=(0.561,0.418) to=(0.100,0.354)
+GLine from=(0.900,0.354) to=(0.439,0.418)
+GLine from=(0.566,0.498) to=(0.100,0.438)
+GLine from=(0.900,0.438) to=(0.434,0.498)
+GLine from=(0.570,0.578) to=(0.100,0.522)
+GLine from=(0.900,0.522) to=(0.430,0.578)
+GLine from=(0.574,0.658) to=(0.100,0.605)
+GLine from=(0.900,0.605) to=(0.426,0.658)
+GLine from=(0.578,0.738) to=(0.100,0.688)
+GLine from=(0.900,0.688) to=(0.422,0.738)
+GLine from=(0.582,0.818) to=(0.100,0.771)
+GLine from=(0.900,0.771) to=(0.418,0.818)
+GLine from=(0.587,0.898) to=(0.100,0.853)
+GLine from=(0.900,0.853) to=(0.413,0.898)
+GLine from=(0.526,0.100) to=(0.527,0.106)
+GLine from=(0.100,0.114) to=(0.105,0.117)
+GLine from=(0.552,0.900) to=(0.552,0.894)
+GLine from=(0.900,0.114) to=(0.895,0.116)
+GScales alpha=200.000 beta=200.000
+GScales alpha=200.000 beta=200.000
+GQch chv=0.020000 chh=0.020000
+GScales alpha=200.000 beta=200.000
+GTxExt "200" x=0.366 y=0.092 just=BL box=(0.366,0.088)-(0.406,0.088)-(0.406,0.112)-(0.366,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "200" x=0.366 y=0.092 just=TC box=(0.346,0.068)-(0.386,0.068)-(0.386,0.092)-(0.346,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "190" x=0.456 y=0.092 just=BL box=(0.456,0.088)-(0.496,0.088)-(0.496,0.112)-(0.456,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "190" x=0.456 y=0.092 just=TC box=(0.436,0.068)-(0.476,0.068)-(0.476,0.092)-(0.436,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "180" x=0.544 y=0.092 just=BL box=(0.544,0.088)-(0.584,0.088)-(0.584,0.112)-(0.544,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "180" x=0.544 y=0.092 just=TC box=(0.524,0.068)-(0.564,0.068)-(0.564,0.092)-(0.524,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "170" x=0.634 y=0.092 just=BL box=(0.634,0.088)-(0.674,0.088)-(0.674,0.112)-(0.634,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "170" x=0.634 y=0.092 just=TC box=(0.614,0.068)-(0.654,0.068)-(0.654,0.092)-(0.614,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "160" x=0.727 y=0.092 just=BL box=(0.727,0.088)-(0.767,0.088)-(0.767,0.112)-(0.727,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "160" x=0.727 y=0.092 just=TC box=(0.707,0.068)-(0.747,0.068)-(0.747,0.092)-(0.707,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "150" x=0.828 y=0.092 just=BL box=(0.828,0.088)-(0.868,0.088)-(0.868,0.112)-(0.828,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "150" x=0.828 y=0.092 just=TC box=(0.808,0.068)-(0.848,0.068)-(0.848,0.092)-(0.808,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "210" x=0.273 y=0.092 just=BL box=(0.273,0.088)-(0.313,0.088)-(0.313,0.112)-(0.273,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "210" x=0.273 y=0.092 just=TC box=(0.253,0.068)-(0.293,0.068)-(0.293,0.092)-(0.253,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "220" x=0.172 y=0.092 just=BL box=(0.172,0.088)-(0.212,0.088)-(0.212,0.112)-(0.172,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "220" x=0.172 y=0.092 just=TC box=(0.152,0.068)-(0.192,0.068)-(0.192,0.092)-(0.152,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "220" x=0.172 y=0.092 just=BL box=(0.172,0.088)-(0.212,0.088)-(0.212,0.112)-(0.172,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "220" x=0.172 y=0.092 just=TC box=(0.152,0.068)-(0.192,0.068)-(0.192,0.092)-(0.152,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "220" x=0.172 y=0.092 just=BL box=(0.172,0.088)-(0.212,0.088)-(0.212,0.112)-(0.172,0.112)
+GText "220" x=0.172 y=0.092 just=TC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "220" x=0.172 y=0.092 just=TC box=(0.152,0.068)-(0.192,0.068)-(0.192,0.092)-(0.152,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "210" x=0.273 y=0.092 just=BL box=(0.273,0.088)-(0.313,0.088)-(0.313,0.112)-(0.273,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "210" x=0.273 y=0.092 just=TC box=(0.253,0.068)-(0.293,0.068)-(0.293,0.092)-(0.253,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "210" x=0.273 y=0.092 just=BL box=(0.273,0.088)-(0.313,0.088)-(0.313,0.112)-(0.273,0.112)
+GText "210" x=0.273 y=0.092 just=TC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "210" x=0.273 y=0.092 just=TC box=(0.253,0.068)-(0.293,0.068)-(0.293,0.092)-(0.253,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "200" x=0.366 y=0.092 just=BL box=(0.366,0.088)-(0.406,0.088)-(0.406,0.112)-(0.366,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "200" x=0.366 y=0.092 just=TC box=(0.346,0.068)-(0.386,0.068)-(0.386,0.092)-(0.346,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "200" x=0.366 y=0.092 just=BL box=(0.366,0.088)-(0.406,0.088)-(0.406,0.112)-(0.366,0.112)
+GText "200" x=0.366 y=0.092 just=TC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "200" x=0.366 y=0.092 just=TC box=(0.346,0.068)-(0.386,0.068)-(0.386,0.092)-(0.346,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "190" x=0.456 y=0.092 just=BL box=(0.456,0.088)-(0.496,0.088)-(0.496,0.112)-(0.456,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "190" x=0.456 y=0.092 just=TC box=(0.436,0.068)-(0.476,0.068)-(0.476,0.092)-(0.436,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "190" x=0.456 y=0.092 just=BL box=(0.456,0.088)-(0.496,0.088)-(0.496,0.112)-(0.456,0.112)
+GText "190" x=0.456 y=0.092 just=TC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "190" x=0.456 y=0.092 just=TC box=(0.436,0.068)-(0.476,0.068)-(0.476,0.092)-(0.436,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "180" x=0.544 y=0.092 just=BL box=(0.544,0.088)-(0.584,0.088)-(0.584,0.112)-(0.544,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "180" x=0.544 y=0.092 just=TC box=(0.524,0.068)-(0.564,0.068)-(0.564,0.092)-(0.524,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "180" x=0.544 y=0.092 just=BL box=(0.544,0.088)-(0.584,0.088)-(0.584,0.112)-(0.544,0.112)
+GText "180" x=0.544 y=0.092 just=TC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "180" x=0.544 y=0.092 just=TC box=(0.524,0.068)-(0.564,0.068)-(0.564,0.092)-(0.524,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "170" x=0.634 y=0.092 just=BL box=(0.634,0.088)-(0.674,0.088)-(0.674,0.112)-(0.634,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "170" x=0.634 y=0.092 just=TC box=(0.614,0.068)-(0.654,0.068)-(0.654,0.092)-(0.614,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "170" x=0.634 y=0.092 just=BL box=(0.634,0.088)-(0.674,0.088)-(0.674,0.112)-(0.634,0.112)
+GText "170" x=0.634 y=0.092 just=TC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "170" x=0.634 y=0.092 just=TC box=(0.614,0.068)-(0.654,0.068)-(0.654,0.092)-(0.614,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "160" x=0.727 y=0.092 just=BL box=(0.727,0.088)-(0.767,0.088)-(0.767,0.112)-(0.727,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "160" x=0.727 y=0.092 just=TC box=(0.707,0.068)-(0.747,0.068)-(0.747,0.092)-(0.707,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "160" x=0.727 y=0.092 just=BL box=(0.727,0.088)-(0.767,0.088)-(0.767,0.112)-(0.727,0.112)
+GText "160" x=0.727 y=0.092 just=TC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "160" x=0.727 y=0.092 just=TC box=(0.707,0.068)-(0.747,0.068)-(0.747,0.092)-(0.707,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "150" x=0.828 y=0.092 just=BL box=(0.828,0.088)-(0.868,0.088)-(0.868,0.112)-(0.828,0.112)
+GScales alpha=200.000 beta=200.000
+GTxExt "150" x=0.828 y=0.092 just=TC box=(0.808,0.068)-(0.848,0.068)-(0.848,0.092)-(0.808,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "150" x=0.828 y=0.092 just=BL box=(0.828,0.088)-(0.868,0.088)-(0.868,0.112)-(0.828,0.112)
+GText "150" x=0.828 y=0.092 just=TC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "150" x=0.828 y=0.092 just=TC box=(0.808,0.068)-(0.848,0.068)-(0.848,0.092)-(0.808,0.092)
+GScales alpha=200.000 beta=200.000
+GTxExt "-50" x=0.092 y=0.184 just=BL box=(0.092,0.180)-(0.132,0.180)-(0.132,0.204)-(0.092,0.204)
+GScales alpha=200.000 beta=200.000
+GTxExt "-50" x=0.092 y=0.184 just=CR box=(0.052,0.170)-(0.092,0.170)-(0.092,0.194)-(0.052,0.194)
+GScales alpha=200.000 beta=200.000
+GTxExt "-40" x=0.092 y=0.354 just=BL box=(0.092,0.350)-(0.132,0.350)-(0.132,0.374)-(0.092,0.374)
+GScales alpha=200.000 beta=200.000
+GTxExt "-40" x=0.092 y=0.354 just=CR box=(0.052,0.340)-(0.092,0.340)-(0.092,0.364)-(0.052,0.364)
+GScales alpha=200.000 beta=200.000
+GTxExt "-30" x=0.092 y=0.522 just=BL box=(0.092,0.518)-(0.132,0.518)-(0.132,0.542)-(0.092,0.542)
+GScales alpha=200.000 beta=200.000
+GTxExt "-30" x=0.092 y=0.522 just=CR box=(0.052,0.508)-(0.092,0.508)-(0.092,0.532)-(0.052,0.532)
+GScales alpha=200.000 beta=200.000
+GTxExt "-30" x=0.092 y=0.522 just=BL box=(0.092,0.518)-(0.132,0.518)-(0.132,0.542)-(0.092,0.542)
+GScales alpha=200.000 beta=200.000
+GTxExt "-30" x=0.092 y=0.522 just=CR box=(0.052,0.508)-(0.092,0.508)-(0.092,0.532)-(0.052,0.532)
+GScales alpha=200.000 beta=200.000
+GTxExt "-25" x=0.092 y=0.605 just=BL box=(0.092,0.601)-(0.132,0.601)-(0.132,0.625)-(0.092,0.625)
+GScales alpha=200.000 beta=200.000
+GTxExt "-25" x=0.092 y=0.605 just=CR box=(0.052,0.591)-(0.092,0.591)-(0.092,0.615)-(0.052,0.615)
+GScales alpha=200.000 beta=200.000
+GTxExt "-20" x=0.092 y=0.688 just=BL box=(0.092,0.684)-(0.132,0.684)-(0.132,0.708)-(0.092,0.708)
+GScales alpha=200.000 beta=200.000
+GTxExt "-20" x=0.092 y=0.688 just=CR box=(0.052,0.674)-(0.092,0.674)-(0.092,0.698)-(0.052,0.698)
+GScales alpha=200.000 beta=200.000
+GTxExt "-15" x=0.092 y=0.771 just=BL box=(0.092,0.767)-(0.132,0.767)-(0.132,0.791)-(0.092,0.791)
+GScales alpha=200.000 beta=200.000
+GTxExt "-15" x=0.092 y=0.771 just=CR box=(0.052,0.757)-(0.092,0.757)-(0.092,0.781)-(0.052,0.781)
+GScales alpha=200.000 beta=200.000
+GTxExt "-10" x=0.092 y=0.853 just=BL box=(0.092,0.849)-(0.132,0.849)-(0.132,0.873)-(0.092,0.873)
+GScales alpha=200.000 beta=200.000
+GTxExt "-10" x=0.092 y=0.853 just=CR box=(0.052,0.839)-(0.092,0.839)-(0.092,0.863)-(0.052,0.863)
+GScales alpha=200.000 beta=200.000
+GTxExt "-35" x=0.092 y=0.438 just=BL box=(0.092,0.434)-(0.132,0.434)-(0.132,0.458)-(0.092,0.458)
+GScales alpha=200.000 beta=200.000
+GTxExt "-35" x=0.092 y=0.438 just=CR box=(0.052,0.424)-(0.092,0.424)-(0.092,0.448)-(0.052,0.448)
+GScales alpha=200.000 beta=200.000
+GTxExt "-40" x=0.092 y=0.354 just=BL box=(0.092,0.350)-(0.132,0.350)-(0.132,0.374)-(0.092,0.374)
+GScales alpha=200.000 beta=200.000
+GTxExt "-40" x=0.092 y=0.354 just=CR box=(0.052,0.340)-(0.092,0.340)-(0.092,0.364)-(0.052,0.364)
+GScales alpha=200.000 beta=200.000
+GTxExt "-45" x=0.092 y=0.270 just=BL box=(0.092,0.266)-(0.132,0.266)-(0.132,0.290)-(0.092,0.290)
+GScales alpha=200.000 beta=200.000
+GTxExt "-45" x=0.092 y=0.270 just=CR box=(0.052,0.256)-(0.092,0.256)-(0.092,0.280)-(0.052,0.280)
+GScales alpha=200.000 beta=200.000
+GTxExt "-50" x=0.092 y=0.184 just=BL box=(0.092,0.180)-(0.132,0.180)-(0.132,0.204)-(0.092,0.204)
+GScales alpha=200.000 beta=200.000
+GTxExt "-50" x=0.092 y=0.184 just=CR box=(0.052,0.170)-(0.092,0.170)-(0.092,0.194)-(0.052,0.194)
+GScales alpha=200.000 beta=200.000
+GTxExt "-50" x=0.092 y=0.184 just=BL box=(0.092,0.180)-(0.132,0.180)-(0.132,0.204)-(0.092,0.204)
+GScales alpha=200.000 beta=200.000
+GTxExt "-50" x=0.092 y=0.184 just=CR box=(0.052,0.170)-(0.092,0.170)-(0.092,0.194)-(0.052,0.194)
+GScales alpha=200.000 beta=200.000
+GTxExt "-50" x=0.092 y=0.184 just=BL box=(0.092,0.180)-(0.132,0.180)-(0.132,0.204)-(0.092,0.204)
+GText "-50" x=0.092 y=0.184 just=CR up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "-50" x=0.092 y=0.184 just=CR box=(0.052,0.170)-(0.092,0.170)-(0.092,0.194)-(0.052,0.194)
+GScales alpha=200.000 beta=200.000
+GTxExt "-45" x=0.092 y=0.270 just=BL box=(0.092,0.266)-(0.132,0.266)-(0.132,0.290)-(0.092,0.290)
+GScales alpha=200.000 beta=200.000
+GTxExt "-45" x=0.092 y=0.270 just=CR box=(0.052,0.256)-(0.092,0.256)-(0.092,0.280)-(0.052,0.280)
+GScales alpha=200.000 beta=200.000
+GTxExt "-45" x=0.092 y=0.270 just=BL box=(0.092,0.266)-(0.132,0.266)-(0.132,0.290)-(0.092,0.290)
+GText "-45" x=0.092 y=0.270 just=CR up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "-45" x=0.092 y=0.270 just=CR box=(0.052,0.256)-(0.092,0.256)-(0.092,0.280)-(0.052,0.280)
+GScales alpha=200.000 beta=200.000
+GTxExt "-40" x=0.092 y=0.354 just=BL box=(0.092,0.350)-(0.132,0.350)-(0.132,0.374)-(0.092,0.374)
+GScales alpha=200.000 beta=200.000
+GTxExt "-40" x=0.092 y=0.354 just=CR box=(0.052,0.340)-(0.092,0.340)-(0.092,0.364)-(0.052,0.364)
+GScales alpha=200.000 beta=200.000
+GTxExt "-40" x=0.092 y=0.354 just=BL box=(0.092,0.350)-(0.132,0.350)-(0.132,0.374)-(0.092,0.374)
+GText "-40" x=0.092 y=0.354 just=CR up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "-40" x=0.092 y=0.354 just=CR box=(0.052,0.340)-(0.092,0.340)-(0.092,0.364)-(0.052,0.364)
+GScales alpha=200.000 beta=200.000
+GTxExt "-35" x=0.092 y=0.438 just=BL box=(0.092,0.434)-(0.132,0.434)-(0.132,0.458)-(0.092,0.458)
+GScales alpha=200.000 beta=200.000
+GTxExt "-35" x=0.092 y=0.438 just=CR box=(0.052,0.424)-(0.092,0.424)-(0.092,0.448)-(0.052,0.448)
+GScales alpha=200.000 beta=200.000
+GTxExt "-35" x=0.092 y=0.438 just=BL box=(0.092,0.434)-(0.132,0.434)-(0.132,0.458)-(0.092,0.458)
+GText "-35" x=0.092 y=0.438 just=CR up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "-35" x=0.092 y=0.438 just=CR box=(0.052,0.424)-(0.092,0.424)-(0.092,0.448)-(0.052,0.448)
+GScales alpha=200.000 beta=200.000
+GTxExt "-30" x=0.092 y=0.522 just=BL box=(0.092,0.518)-(0.132,0.518)-(0.132,0.542)-(0.092,0.542)
+GScales alpha=200.000 beta=200.000
+GTxExt "-30" x=0.092 y=0.522 just=CR box=(0.052,0.508)-(0.092,0.508)-(0.092,0.532)-(0.052,0.532)
+GScales alpha=200.000 beta=200.000
+GTxExt "-30" x=0.092 y=0.522 just=BL box=(0.092,0.518)-(0.132,0.518)-(0.132,0.542)-(0.092,0.542)
+GText "-30" x=0.092 y=0.522 just=CR up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "-30" x=0.092 y=0.522 just=CR box=(0.052,0.508)-(0.092,0.508)-(0.092,0.532)-(0.052,0.532)
+GScales alpha=200.000 beta=200.000
+GTxExt "-25" x=0.092 y=0.605 just=BL box=(0.092,0.601)-(0.132,0.601)-(0.132,0.625)-(0.092,0.625)
+GScales alpha=200.000 beta=200.000
+GTxExt "-25" x=0.092 y=0.605 just=CR box=(0.052,0.591)-(0.092,0.591)-(0.092,0.615)-(0.052,0.615)
+GScales alpha=200.000 beta=200.000
+GTxExt "-25" x=0.092 y=0.605 just=BL box=(0.092,0.601)-(0.132,0.601)-(0.132,0.625)-(0.092,0.625)
+GText "-25" x=0.092 y=0.605 just=CR up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "-25" x=0.092 y=0.605 just=CR box=(0.052,0.591)-(0.092,0.591)-(0.092,0.615)-(0.052,0.615)
+GScales alpha=200.000 beta=200.000
+GTxExt "-20" x=0.092 y=0.688 just=BL box=(0.092,0.684)-(0.132,0.684)-(0.132,0.708)-(0.092,0.708)
+GScales alpha=200.000 beta=200.000
+GTxExt "-20" x=0.092 y=0.688 just=CR box=(0.052,0.674)-(0.092,0.674)-(0.092,0.698)-(0.052,0.698)
+GScales alpha=200.000 beta=200.000
+GTxExt "-20" x=0.092 y=0.688 just=BL box=(0.092,0.684)-(0.132,0.684)-(0.132,0.708)-(0.092,0.708)
+GText "-20" x=0.092 y=0.688 just=CR up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "-20" x=0.092 y=0.688 just=CR box=(0.052,0.674)-(0.092,0.674)-(0.092,0.698)-(0.052,0.698)
+GScales alpha=200.000 beta=200.000
+GTxExt "-15" x=0.092 y=0.771 just=BL box=(0.092,0.767)-(0.132,0.767)-(0.132,0.791)-(0.092,0.791)
+GScales alpha=200.000 beta=200.000
+GTxExt "-15" x=0.092 y=0.771 just=CR box=(0.052,0.757)-(0.092,0.757)-(0.092,0.781)-(0.052,0.781)
+GScales alpha=200.000 beta=200.000
+GTxExt "-15" x=0.092 y=0.771 just=BL box=(0.092,0.767)-(0.132,0.767)-(0.132,0.791)-(0.092,0.791)
+GText "-15" x=0.092 y=0.771 just=CR up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "-15" x=0.092 y=0.771 just=CR box=(0.052,0.757)-(0.092,0.757)-(0.092,0.781)-(0.052,0.781)
+GScales alpha=200.000 beta=200.000
+GTxExt "-10" x=0.092 y=0.853 just=BL box=(0.092,0.849)-(0.132,0.849)-(0.132,0.873)-(0.092,0.873)
+GScales alpha=200.000 beta=200.000
+GTxExt "-10" x=0.092 y=0.853 just=CR box=(0.052,0.839)-(0.092,0.839)-(0.092,0.863)-(0.052,0.863)
+GScales alpha=200.000 beta=200.000
+GTxExt "-10" x=0.092 y=0.853 just=BL box=(0.092,0.849)-(0.132,0.849)-(0.132,0.873)-(0.092,0.873)
+GText "-10" x=0.092 y=0.853 just=CR up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "-10" x=0.092 y=0.853 just=CR box=(0.052,0.839)-(0.092,0.839)-(0.092,0.863)-(0.052,0.863)
+GScales alpha=200.000 beta=200.000
+GTxExt "Galactic longitude" x=0.500 y=0.060 just=BL box=(0.500,0.056)-(0.720,0.056)-(0.720,0.080)-(0.500,0.080)
+GText "Galactic longitude" x=0.500 y=0.060 just=TC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "Galactic longitude" x=0.500 y=0.060 just=TC box=(0.390,0.036)-(0.610,0.036)-(0.610,0.060)-(0.390,0.060)
+GScales alpha=200.000 beta=200.000
+GTxExt "Galactic latitude" x=0.044 y=0.500 just=BL box=(0.048,0.500)-(0.048,0.708)-(0.024,0.708)-(0.024,0.500)
+GText "Galactic latitude" x=0.040 y=0.500 just=BC up=(-1.000,0.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "Galactic latitude" x=0.040 y=0.500 just=BC box=(0.044,0.396)-(0.044,0.604)-(0.020,0.604)-(0.020,0.396)
+GScales alpha=200.000 beta=200.000
+GTxExt "A FITS test" x=0.500 y=0.940 just=BL box=(0.500,0.936)-(0.636,0.936)-(0.636,0.960)-(0.500,0.960)
+GText "A FITS test" x=0.500 y=0.944 just=BC up=(0.000,1.000)
+GScales alpha=200.000 beta=200.000
+GTxExt "A FITS test" x=0.500 y=0.944 just=BC box=(0.432,0.940)-(0.568,0.940)-(0.568,0.964)-(0.432,0.964)
+"##,
+    Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="328,486 325,443 322,400 319,357 316,314 313,271 310,228 307,185 304,141 301,98 297,55 297,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="264,486 255,449 245,406 236,363 228,321 219,278 210,235 202,192 193,150 184,107 174,64 171,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="196,486 186,459 170,417 155,376 141,334 126,292 112,250 98,208 84,166 72,132 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="124,486 117,475 96,434 75,394 72,387 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="596,486 603,475 624,434 645,394 648,387 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="524,486 534,459 550,417 565,376 579,334 594,292 608,250 622,208 636,166 648,132 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="456,486 465,449 475,406 484,363 492,321 501,278 510,235 518,192 527,150 536,107 546,64 549,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="392,486 395,443 398,400 401,357 404,314 407,271 410,228 413,185 416,141 419,98 423,55 423,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="360,486 360,486 360,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="360,486 360,486 360,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="395,443 360,443 325,443 290,445 255,449 220,453 186,459 151,466 117,475 84,484 78,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="642,486 636,484 603,475 569,466 534,459 500,453 465,449 430,445 395,443 360,443 325,443 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="398,400 360,400 322,400 283,402 245,406 207,411 170,417 133,425 96,434 72,441 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,441 624,434 587,425 550,417 513,411 475,406 437,402 398,400 360,400 322,400 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="401,357 360,356 319,357 277,359 236,363 195,369 155,376 115,384 75,394 72,394 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,394 645,394 605,384 565,376 525,369 484,363 443,359 401,357 360,356 319,357 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="404,314 360,313 316,314 272,317 228,321 184,326 141,334 98,343 72,349 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,349 622,343 579,334 536,326 492,321 448,317 404,314 360,313 316,314 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="407,271 360,270 313,271 266,274 219,278 172,284 126,292 81,301 72,303 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,303 639,301 594,292 548,284 501,278 454,274 407,271 360,270 313,271 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="410,228 360,227 310,228 260,231 210,235 161,242 112,250 72,258 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,258 608,250 559,242 510,235 460,231 410,228 360,227 310,228 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="413,185 360,184 307,185 254,188 202,192 150,199 98,208 72,213 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,213 622,208 570,199 518,192 466,188 413,185 360,184 307,185 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="416,141 360,140 304,141 248,145 193,150 138,157 84,166 72,169 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,169 636,166 582,157 527,150 472,145 416,141 360,140 304,141 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="419,98 360,97 301,98 242,102 184,107 126,115 72,124 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,124 594,115 536,107 478,102 419,98 360,97 301,98 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="423,55 360,54 297,55 235,59 174,64 113,72 72,79 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,79 607,72 546,64 485,59 423,55 360,54 297,55 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="379,486 379,483 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="366,486 366,483 366,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="354,486 354,483 354,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="341,486 341,483 341,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="315,486 315,483 315,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="303,486 302,483 303,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="290,486 289,483 290,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="277,486 276,483 277,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="250,486 250,483 250,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="237,486 236,483 237,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="224,486 223,483 224,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="210,486 209,483 210,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="182,486 181,483 182,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="168,486 167,483 168,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="154,486 152,483 154,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="139,486 137,483 139,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="109,486 107,483 109,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="93,486 91,483 93,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="77,486 76,483 77,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="643,486 644,483 643,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="627,486 629,483 627,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="611,486 613,483 611,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="581,486 583,483 581,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="566,486 568,483 566,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="552,486 553,483 552,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="538,486 539,483 538,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="510,486 511,483 510,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="496,486 497,483 496,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="483,486 484,483 483,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="470,486 470,483 470,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="443,486 444,483 443,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="430,486 431,483 430,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="417,486 418,483 417,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="405,486 405,483 405,486 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,478 76,477 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,469 76,468 72,469 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,459 76,458 72,459 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,450 76,449 72,450 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,431 76,430 72,431 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,422 76,421 72,422 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,413 76,412 72,413 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,404 76,402 72,404 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,385 76,384 72,385 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,376 76,375 72,376 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,367 76,366 72,367 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,358 76,357 72,358 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,339 76,339 72,339 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,330 76,329 72,330 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,321 76,320 72,321 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,312 76,311 72,312 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,294 76,293 72,294 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,285 76,284 72,285 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,276 76,275 72,276 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,267 76,266 72,267 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,249 76,248 72,249 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,240 76,239 72,240 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,231 76,230 72,231 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,222 76,221 72,222 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,204 76,203 72,204 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,195 76,194 72,195 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,186 76,186 72,186 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,177 76,177 72,177 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,159 76,159 72,159 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,151 76,150 72,151 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,142 76,141 72,142 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,133 76,132 72,133 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,115 76,114 72,115 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,106 76,105 72,106 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,97 76,96 72,97 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,88 76,87 72,88 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,70 76,70 72,70 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,61 76,61 72,61 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="398,54 397,57 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="373,54 372,57 373,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="347,54 348,57 347,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="322,54 323,57 322,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="272,54 273,57 272,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="247,54 248,57 247,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="222,54 222,57 222,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="197,54 197,57 197,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="146,54 146,57 146,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="120,54 121,57 120,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="94,54 95,57 94,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="626,54 625,57 626,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="600,54 599,57 600,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="574,54 574,57 574,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="523,54 523,57 523,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="498,54 498,57 498,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="473,54 472,57 473,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="448,54 447,57 448,54 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,478 644,477 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,469 644,468 648,469 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,459 644,458 648,459 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,450 644,449 648,450 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,431 644,430 648,431 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,422 644,421 648,422 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,413 644,412 648,413 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,404 644,403 648,404 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,385 644,384 648,385 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,376 644,375 648,376 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,367 644,366 648,367 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,358 644,357 648,358 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,339 644,339 648,339 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,330 644,329 648,330 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,321 644,320 648,321 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,312 644,311 648,312 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,294 644,293 648,294 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,285 644,284 648,285 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,276 644,275 648,276 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,267 644,266 648,267 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,249 644,248 648,249 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,240 644,239 648,240 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,231 644,230 648,231 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,222 644,221 648,222 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,204 644,203 648,204 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,195 644,195 648,195 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,186 644,186 648,186 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,177 644,177 648,177 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,159 644,159 648,159 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,151 644,150 648,151 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,142 644,141 648,142 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,133 644,132 648,133 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,115 644,114 648,115 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,106 644,105 648,106 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,97 644,96 648,97 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,88 644,87 648,88 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,70 644,70 648,70 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="648,61 644,61 648,61 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,486 113,486 154,486 195,486 237,486 278,486 319,486 360,486 401,486 442,486 483,486 525,486 566,486 607,486 648,486 648,455 648,424 648,393 648,363 648,332 648,301 648,270 648,239 648,208 648,177 648,147 648,116 648,85 648,54 607,54 566,54 525,54 483,54 442,54 401,54 360,54 319,54 278,54 237,54 195,54 154,54 113,54 72,54 72,85 72,116 72,147 72,177 72,208 72,239 72,270 72,301 72,332 72,363 72,393 72,424 72,455 72,486 "/>
+<text x="124" y="490" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="hanging">220</text>
+<text x="196" y="490" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="hanging">210</text>
+<text x="264" y="490" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="hanging">200</text>
+<text x="328" y="490" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="hanging">190</text>
+<text x="392" y="490" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="hanging">180</text>
+<text x="456" y="490" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="hanging">170</text>
+<text x="524" y="490" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="hanging">160</text>
+<text x="596" y="490" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="hanging">150</text>
+<text x="66" y="441" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="end" dominant-baseline="central">-50</text>
+<text x="66" y="394" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="end" dominant-baseline="central">-45</text>
+<text x="66" y="349" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="end" dominant-baseline="central">-40</text>
+<text x="66" y="303" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="end" dominant-baseline="central">-35</text>
+<text x="66" y="258" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="end" dominant-baseline="central">-30</text>
+<text x="66" y="213" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="end" dominant-baseline="central">-25</text>
+<text x="66" y="169" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="end" dominant-baseline="central">-20</text>
+<text x="66" y="124" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="end" dominant-baseline="central">-15</text>
+<text x="66" y="79" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="end" dominant-baseline="central">-10</text>
+<text x="360" y="508" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="hanging">Galactic longitude</text>
+<text x="29" y="270" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="alphabetic" transform="rotate(90,29,270)">Galactic latitude</text>
+<text x="360" y="30" font-family="sans-serif" font-size="14" fill="#ff0000" text-anchor="middle" dominant-baseline="alphabetic">A FITS test</text>
+</svg>
+"##),
+);

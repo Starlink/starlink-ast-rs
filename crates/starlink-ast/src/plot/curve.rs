@@ -13,7 +13,6 @@ use std::cmp::Ordering;
 use super::Plot;
 use super::draw::{fmax, fmin};
 use super::elements::PlotElement;
-use super::qsort::qsort;
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
@@ -227,9 +226,12 @@ fn fcmp(a: f32, b: f32) -> Ordering {
     }
 }
 
-/// C's `astEQUALS` with a tolerance of 1e8, on floats.
+/// C's `astEQUALS` with a tolerance of 1e8, on floats: the difference is
+/// taken in float, the rest in double, as C's macro does with float
+/// arguments.
 fn feq(a: f32, b: f32) -> bool {
-    ast_equals(f64::from(a), f64::from(b), 1.0e8)
+    let tol = (1.0e8 * ((f64::from(a).abs() + f64::from(b).abs()) * f64::EPSILON)).max(1.0e-12);
+    f64::from(a - b).abs() <= tol
 }
 
 impl Plot {
@@ -281,7 +283,9 @@ impl Plot {
     // first polyline of each joined line (c-library-quirks.md), so a
     // polyline that starts a joined line, other than the first, is found
     // again by the search for one ending where the line has reached, and
-    // is drawn a second time, reversed, on the end of itself.
+    // is drawn a second time, reversed, on the end of itself. C sorts with
+    // qsort, whose order of equal values depends on the platform; the port
+    // sorts stably.
     pub(crate) fn fpoly(&mut self, grf: &mut dyn Grf) -> AstResult<()> {
         self.opoly();
         let polys = std::mem::take(&mut self.draw.polys);
@@ -298,13 +302,9 @@ impl Plot {
             (polys[p].0[n], polys[p].1[n])
         };
         let mut skey: Vec<usize> = (0..npoly).collect();
-        qsort(&mut skey, &mut |a: &usize, b: &usize| {
-            fcmp(first(*a).0, first(*b).0)
-        });
+        skey.sort_by(|a, b| fcmp(first(*a).0, first(*b).0));
         let mut ekey: Vec<usize> = (0..npoly).collect();
-        qsort(&mut ekey, &mut |a: &usize, b: &usize| {
-            fcmp(last(*a).0, last(*b).0)
-        });
+        ekey.sort_by(|a, b| fcmp(last(*a).0, last(*b).0));
         let mut drawn = vec![false; npoly];
         while let Some(ipoly) = (0..npoly).find(|&p| !drawn[p]) {
             // Entries are polyline indices, negated for a polyline joined

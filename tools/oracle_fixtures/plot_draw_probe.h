@@ -236,6 +236,28 @@ static void capture_end( void ) {
    fclose( capture_svg );
 }
 
+/* Ends the capture and prints the log and SVG as the two members of a
+   tuple. */
+static void capture_end_tuple( void ) {
+   long len;
+   unsigned long long h;
+   astGrfLogClose();
+   fputs( "    ", stdout );
+   raw_file( capture_log );
+   fputs( ",\n    ", stdout );
+   h = fnv1a( capture_svg, &len );
+   if( len > SVG_TEXT_MAX ) {
+      printf( "Svg::Fnv1a(0x%016llx)", h );
+   } else {
+      fputs( "Svg::Text(", stdout );
+      raw_file( capture_svg );
+      fputs( ")", stdout );
+   }
+   fputs( ",\n", stdout );
+   fclose( capture_log );
+   fclose( capture_svg );
+}
+
 /* The Rust declaration of Svg, for a probe's preamble. */
 #define SVG_DECL \
    "/// The SVG grf_log wrote: its text, or the 64-bit FNV-1a hash of a\n" \
