@@ -398,7 +398,7 @@ function	astGrfPop	plot.c		not-ported	yes
 function	astGrfPush	plot.c		not-ported	yes
 function	astGrfSet	plot.c		not-ported	yes
 function	astGrid	plot.c		not-ported	yes
-function	astGridLine	plot.c		not-ported	yes
+function	astGridLine	plot.c	Draw::grid_line		yes
 function	astMark	plot.c		not-ported	yes
 function	astPolyCurve	plot.c		not-ported	yes
 function	astRegionOutline	plot.c		not-ported	yes

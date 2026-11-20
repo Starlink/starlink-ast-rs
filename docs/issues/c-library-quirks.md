@@ -24,6 +24,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Plot `Dump` writes Gap and LogGap with the set flag left by the Centre loop](#plot-dump-writes-gap-and-loggap-with-the-set-flag-left-by-the-centre-loop)
 - [A Plot built from a Plot never checks its last Frame's Domain](#a-plot-built-from-a-plot-never-checks-its-last-frames-domain)
 - [Plot `Trans` normalises the caller's input and clips only some output axes](#plot-trans-normalises-the-callers-input-and-clips-only-some-output-axes)
+- [Plot `Fpoly` marks polyline 0 drawn instead of the one it starts from](#plot-fpoly-marks-polyline-0-drawn-instead-of-the-one-it-starts-from)
+- [Plot's bounding boxes start their upper bounds at `FLT_MIN`](#plots-bounding-boxes-start-their-upper-bounds-at-flt_min)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -248,6 +250,22 @@ The port normalises a copy, so its input is unchanged; the transformed points ar
 Going backward with the base Frame as the clipping Frame, C clones the result instead, so the points it returns are normalised in the base Frame, which a backward transform does not otherwise do; the port normalises its result there too, since that is the output (`plot_native_probe.c`'s "car1 clipped about RA 6.16", through the inverted Plot).
 When a point is clipped, C sets the first `naxes` output coordinates bad, `naxes` being the number of axes of the clipping Frame, not of the output: a clipping Frame with fewer axes than the current Frame leaves the remaining output coordinates of a clipped point good, and one with more writes past the output arrays.
 The port sets the first `min(naxes, nout)` coordinates bad, which is C's result wherever C's is defined (`Plot::trans`).
+
+### Plot `Fpoly` marks polyline 0 drawn instead of the one it starts from
+
+`plot.c` `Fpoly` (plot.c:13273) draws the polylines a drawing method has buffered, joining those whose ends meet.
+Each joined line starts from the first polyline not yet drawn, and C then sets `drawn[ 0 ]` where it means `drawn[ ipoly ]`.
+A joined line starting from any polyline but the first is therefore still undrawn when the search for a polyline ending where the line has reached runs, and that search finds the starting polyline itself, so it is appended to itself reversed: the curve is drawn out and back over the same points.
+The search also takes the first of several equal x coordinates in the order `qsort` leaves them, which is not stable, so where several polylines start or end at the same x the result depends on the platform's `qsort`.
+The port mirrors both: `Plot::fpoly` (`crates/starlink-ast/src/plot/curve.rs`) marks polyline 0, and sorts with a port of the macOS `qsort` (`plot/qsort.rs`), so it draws what C on macOS draws; C on Linux, whose `qsort` is a merge sort, can join polylines in another order.
+`plot_curve_probe.c`'s `aitoff`, `polco` and `hpx` cases draw doubled-back curves, which `grid_lines_match_the_c_library` pins.
+The fix is `drawn[ ipoly ] = 1`; a stable order would need a tie-break, such as the polyline index, in `Fpoly_scmp` and `Fpoly_ecmp`.
+
+### Plot's bounding boxes start their upper bounds at `FLT_MIN`
+
+`plot.c` starts the upper bounds of `Box_ubnd` and `Boxp_ubnd`, the bounding boxes of what a grid and a drawing method draw, at `FLT_MIN` (plot.c:1923, :1929, and where `Grid`, `GridLine` and the other drawing methods reset them), which is the smallest positive float, not the most negative.
+A drawing entirely at negative graphics coordinates therefore has an upper bound of `FLT_MIN` rather than its true maximum.
+The port mirrors this (`DrawState` in `crates/starlink-ast/src/plot/draw.rs`); the fix is `-FLT_MAX`.
 
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 
