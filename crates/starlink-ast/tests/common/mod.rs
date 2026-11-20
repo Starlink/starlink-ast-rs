@@ -9,6 +9,8 @@
 //! so the module is annotated to allow it.
 #![allow(dead_code)]
 
+pub mod plot;
+
 /// Compare two native (`.ast`) serializations: byte-equal, except that a
 /// number may differ in value by up to `max_ulps` ULP. This absorbs the
 /// last-bit libm drift that differs between platforms (and between the Rust

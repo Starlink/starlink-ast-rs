@@ -34,11 +34,15 @@
 //   Get/Set/Test/ClearAttrib dispatch, which become typed accessors.
 
 mod attrs;
+mod curve;
+mod draw;
 mod elements;
 mod forward;
+mod qsort;
 mod serial;
 
 pub use attrs::{Edge, Labelling, TextGapType};
+pub use draw::Draw;
 pub use elements::PlotElement;
 
 use crate::constants::BAD_VALUE;
@@ -102,6 +106,8 @@ pub struct Plot {
     tick_values: [TickValues; 3],
     /// Plot's own attributes.
     pub(crate) attrs: attrs::PlotAttrs,
+    /// What C keeps in globals while drawing.
+    pub(crate) draw: draw::DrawState,
 }
 
 /// Tick values given for one axis of a Plot.
@@ -276,6 +282,7 @@ impl Plot {
             bbox: basebox,
             clip: None,
             tick_values: Default::default(),
+            draw: Default::default(),
             attrs: attrs::PlotAttrs::default(),
         })
     }

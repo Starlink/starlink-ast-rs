@@ -88,6 +88,8 @@ mod test_overlay;
 mod test_picked_skyaxis;
 #[path = "../test_plot.rs"]
 mod test_plot;
+#[path = "../test_plot_draw.rs"]
+mod test_plot_draw;
 #[path = "../test_plot_frame_methods.rs"]
 mod test_plot_frame_methods;
 #[path = "../test_system_change.rs"]

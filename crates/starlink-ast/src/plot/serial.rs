@@ -586,6 +586,7 @@ impl Serializable for Plot {
             bbox: [BAD_VALUE; 4],
             clip: None,
             tick_values: Default::default(),
+            draw: Default::default(),
             attrs: Default::default(),
         };
 
