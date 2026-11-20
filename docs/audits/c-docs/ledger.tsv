@@ -387,7 +387,7 @@ attribute	Colour	plot.c	Plot::colour		yes	Per element: takes a PlotElement, grou
 attribute	Width	plot.c	Plot::width		yes	Per element: takes a PlotElement, groups resolved as C's string interface resolves them
 attribute	Size	plot.c	Plot::size		yes	Per element: takes a PlotElement, groups resolved as C's string interface resolves them
 function	astBBuf	plot.c		not-ported	yes
-function	astBorder	plot.c		not-ported	yes
+function	astBorder	plot.c	Draw::draw_border		yes
 function	astBoundingBox	plot.c		not-ported	yes
 function	astClip	plot.c		not-ported	yes
 function	astCurve	plot.c		not-ported	yes
@@ -398,7 +398,7 @@ function	astGrfPop	plot.c		not-ported	yes
 function	astGrfPush	plot.c		not-ported	yes
 function	astGrfSet	plot.c		not-ported	yes
 function	astGrid	plot.c		not-ported	yes
-function	astGridLine	plot.c	Draw::grid_line		yes
+function	astGridLine	plot.c	Draw::draw_grid_line		yes
 function	astMark	plot.c		not-ported	yes
 function	astPolyCurve	plot.c		not-ported	yes
 function	astRegionOutline	plot.c		not-ported	yes

@@ -26,6 +26,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Plot `Trans` normalises the caller's input and clips only some output axes](#plot-trans-normalises-the-callers-input-and-clips-only-some-output-axes)
 - [Plot `Fpoly` marks polyline 0 drawn instead of the one it starts from](#plot-fpoly-marks-polyline-0-drawn-instead-of-the-one-it-starts-from)
 - [Plot's bounding boxes start their upper bounds at `FLT_MIN`](#plots-bounding-boxes-start-their-upper-bounds-at-flt_min)
+- [Plot `Boundary` sizes its tracing tolerance from the x extent twice](#plot-boundary-sizes-its-tracing-tolerance-from-the-x-extent-twice)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -266,6 +267,13 @@ The fix is `drawn[ ipoly ] = 1`; a stable order would need a tie-break, such as 
 `plot.c` starts the upper bounds of `Box_ubnd` and `Boxp_ubnd`, the bounding boxes of what a grid and a drawing method draw, at `FLT_MIN` (plot.c:1923, :1929, and where `Grid`, `GridLine` and the other drawing methods reset them), which is the smallest positive float, not the most negative.
 A drawing entirely at negative graphics coordinates therefore has an upper bound of `FLT_MIN` rather than its true maximum.
 The port mirrors this (`DrawState` in `crates/starlink-ast/src/plot/draw.rs`); the fix is `-FLT_MAX`.
+
+### Plot `Boundary` sizes its tracing tolerance from the x extent twice
+
+`plot.c` `Boundary` (plot.c:4870) turns the border's tracing tolerance into graphics units with the larger of the plotting area's width and height, but computes both as `fabs( this->xhi - this->xlo )`, so the height is never used.
+A plotting area taller than it is wide is traced more coarsely than its height calls for.
+The port mirrors this (`Plot::boundary` in `crates/starlink-ast/src/plot/border.rs`), since it decides where the border's line segments fall; `plot_border_probe.c`'s `car4` and `car5` cases, taller than wide, pin it.
+The fix is `dy = fabs( this->yhi - this->ylo )`.
 
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 

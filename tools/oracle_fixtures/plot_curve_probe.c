@@ -90,8 +90,9 @@ int main( void ) {
            "    pub attr: &'static str,\n"
            "    pub lines: &'static [Line],\n"
            "    pub log: &'static str,\n"
-           "    pub svg: &'static str,\n"
+           "    pub svg: Svg,\n"
            "}\n\n"
+           SVG_DECL
            "pub const CASES: &[Case] = &[\n" );
 
    for( icase = 0; icase < sizeof( cases ) / sizeof( cases[ 0 ] ); icase++ ) {
