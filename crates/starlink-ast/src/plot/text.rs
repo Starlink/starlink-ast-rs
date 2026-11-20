@@ -833,6 +833,7 @@ impl Plot {
                 ),
             ));
         }
+        let _escapes = crate::escapes::set_escapes(true);
         self.reset_boxp();
         self.reset_grf();
         self.grf_attrs(grf, PlotElement::Strings, true, GrfPrimitive::Text)?;

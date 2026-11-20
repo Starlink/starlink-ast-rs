@@ -16,8 +16,8 @@
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// The text `AxisFormat` writes between "10" and the exponent of a log
-/// Format when graphical escapes are not retained, which is the default
-/// (axis.c:157, object.c:418). Escapes are a Plot feature, not yet ported.
+/// Format when graphical escapes are off, which is the default (axis.c:157,
+/// object.c:418); with them on it writes `crate::escapes::EXDEL`.
 pub(crate) const LOG_TXT: &str = "10^";
 
 /// The escape sequence `AxisFormat` appends to a log Format, which resets
@@ -159,7 +159,12 @@ pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<Stri
             x = crate::math::log10(magnitude(-value));
             buf = vec![b'-'];
         }
-        buf.extend_from_slice(LOG_TXT.as_bytes());
+        // C: the exdel delimiter when escape sequences are on.
+        if crate::escapes::escapes() {
+            buf.extend_from_slice(crate::escapes::EXDEL.as_bytes());
+        } else {
+            buf.extend_from_slice(LOG_TXT.as_bytes());
+        }
         if x.abs() < 1.0e-10 {
             x = 0.0;
         }
