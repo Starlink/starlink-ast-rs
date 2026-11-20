@@ -128,6 +128,7 @@ pub fn set_attr(plot: &mut Plot, setting: &str) -> AstResult<()> {
         ("edge", Some(a)) => plot.set_edge(a, edge_named(value))?,
         ("format", Some(a)) => plot.set_format_str(a, value)?,
         ("bottom", Some(a)) => plot.set_bottom(a, num())?,
+        ("digits", Some(a)) => plot.set_axis_digits(a, int())?,
         ("title", None) => plot.set_title(value)?,
         ("system", None) => set_component_system(plot, value)?,
         _ => panic!("no setter for {setting}"),
