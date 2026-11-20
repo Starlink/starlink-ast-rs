@@ -403,7 +403,7 @@ function	astMark	plot.c		not-ported	yes
 function	astPolyCurve	plot.c		not-ported	yes
 function	astRegionOutline	plot.c		not-ported	yes
 function	astStripEscapes	plot.c		not-ported	yes
-function	astText	plot.c		not-ported	yes
+function	astText	plot.c	Draw::draw_text		yes
 function	astPlot	plot.c	Plot::new		yes	A NULL Frame is Plot::default_frame
 class	Plot3D	plot3d.c		not-ported	yes
 attribute	RootCorner	plot3d.c		not-ported	yes

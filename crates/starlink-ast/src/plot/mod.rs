@@ -42,6 +42,7 @@ mod forward;
 mod qsort;
 mod sample;
 mod serial;
+mod text;
 
 pub use attrs::{Edge, Labelling, TextGapType};
 pub use draw::Draw;
