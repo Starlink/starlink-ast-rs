@@ -258,6 +258,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ast-plotter-wasm"
+version = "0.1.0"
+dependencies = [
+ "starlink-ast",
+]
+
+[[package]]
 name = "ast-plugins"
 version = "0.1.0"
 

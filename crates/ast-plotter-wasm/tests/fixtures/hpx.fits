@@ -1,0 +1,11 @@
+NAXIS1  =                  300                                                  
+NAXIS2  =                  200                                                  
+CTYPE1  = 'GLON-HPX'           / Type of co-ordinate on axis 1                  
+CTYPE2  = 'GLAT-HPX'           / Type of co-ordinate on axis 2                  
+CRVAL1  =            210.43134 / Value at ref. pixel on axis 1                  
+CRVAL2  =           -19.758201 / Value at ref. pixel on axis 2                  
+CRPIX1  =                150.5 / Reference pixel on axis 1                      
+CRPIX2  =                100.5 / Reference pixel on axis 2                      
+CDELT1  =                 -1.2 / Pixel size on axis 1                           
+CDELT2  =                  1.2 / Pixel size on axis 2                           
+WCSAXES =                    2 / Number of WCS axes                             

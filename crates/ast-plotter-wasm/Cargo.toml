@@ -1,0 +1,21 @@
+[package]
+name = "ast-plotter-wasm"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "The AST FITS plotter page's work in Rust: a FITS header in, a grid as SVG and the header and FrameSet as text out"
+
+[lib]
+name = "ast_plotter"
+
+[dependencies]
+starlink-ast = { path = "../starlink-ast", features = ["attribute-strings"] }
+
+[features]
+# Adds a function that panics, for the page's smoke test of trap recovery.
+smoke-test = []
+
+[lints]
+workspace = true

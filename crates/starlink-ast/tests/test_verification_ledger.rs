@@ -217,6 +217,17 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          xml_escape_exclusions_still_differ fails when it matches C again",
     ),
     (
+        "../../ast-plotter-wasm/tests/test_plotter.rs",
+        "PLOTTER_EXCLUDED",
+        7,
+        "outputs of the FITS plotter that differ from fplottest.f run on the C \
+         library: SOLAR's FITS-WCS write puts PV2_1B after the CDELTs, not over \
+         the card the read used (3 cases); SOLAR's heliographic rotation \
+         MatrixMap has an inverse 1 to 2 ULP from C's (3 cases); COBE's grid, on \
+         this case's plot box, draws 12 polylines and 2 labels unlike C's. \
+         exclusions_still_differ fails when one matches C",
+    ),
+    (
         "test_grf.rs",
         "TEXT_WIDTH_EXCLUDED",
         2,
@@ -745,6 +756,10 @@ fn scanned_test_files() -> Vec<(PathBuf, String)> {
         (
             tests_dir().join("../../ast-bench/tests"),
             "../../ast-bench/tests/",
+        ),
+        (
+            tests_dir().join("../../ast-plotter-wasm/tests"),
+            "../../ast-plotter-wasm/tests/",
         ),
     ] {
         for entry in std::fs::read_dir(&dir).expect("tests dir readable") {
