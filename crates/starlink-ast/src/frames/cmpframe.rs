@@ -81,6 +81,10 @@ pub struct CmpFrame {
     /// Cache for the computed default Domain (`"<dom1>-<dom2>"` / `"CMP"`),
     /// invalidated whenever a component becomes reachable mutably.
     domain_default: std::cell::OnceCell<String>,
+    /// Whether System and AlignSystem are set. Their value is always
+    /// "Compound", but C records that they were set, and dumps them.
+    system_set: bool,
+    align_system_set: bool,
 }
 
 impl Clone for CmpFrame {
@@ -91,6 +95,8 @@ impl Clone for CmpFrame {
             perm: self.perm.clone(),
             attrs: self.attrs.clone(),
             domain_default: self.domain_default.clone(),
+            system_set: self.system_set,
+            align_system_set: self.align_system_set,
         }
     }
 }
@@ -123,6 +129,8 @@ impl CmpFrame {
             frame2,
             perm: (0..naxes).collect(),
             domain_default: std::cell::OnceCell::new(),
+            system_set: false,
+            align_system_set: false,
         }
     }
 
@@ -248,6 +256,26 @@ impl CmpFrame {
     pub fn frame2_mut(&mut self) -> &mut dyn Frame {
         self.domain_default = std::cell::OnceCell::new();
         self.frame2.as_mut()
+    }
+
+    /// Whether System is set: it reads as "Compound" either way.
+    pub(crate) fn system_flag(&self) -> bool {
+        self.system_set
+    }
+
+    /// Record whether System is set.
+    pub(crate) fn set_system_flag(&mut self, set: bool) {
+        self.system_set = set;
+    }
+
+    /// Whether AlignSystem is set.
+    pub(crate) fn align_system_flag(&self) -> bool {
+        self.align_system_set
+    }
+
+    /// Record whether AlignSystem is set.
+    pub(crate) fn set_align_system_flag(&mut self, set: bool) {
+        self.align_system_set = set;
     }
 
     /// Validate that `axis` is in 1..=naxes, returning an error if not.
@@ -511,6 +539,47 @@ impl Frame for CmpFrame {
 
     cmp_frame_axis_attrs!();
     cmp_frame_plot_methods!();
+
+    fn primary_frame_mut(&mut self, axis: usize) -> (&mut dyn Frame, usize) {
+        let internal = self.perm[axis];
+        let n1 = self.naxes1();
+        if internal < n1 {
+            self.frame1_mut().primary_frame_mut(internal)
+        } else {
+            self.frame2_mut().primary_frame_mut(internal - n1)
+        }
+    }
+
+    // The attribute strings of C's CmpFrame class.
+    fn attr_set(&mut self, setting: &str) -> AstResult<()> {
+        crate::attributes::cmpframe::cmpframe_set(self, setting)
+    }
+    fn attr_get(&self, name: &str) -> AstResult<String> {
+        crate::attributes::cmpframe::cmpframe_get(self, name)
+    }
+    fn attr_test(&self, name: &str) -> AstResult<bool> {
+        crate::attributes::cmpframe::cmpframe_test(self, name)
+    }
+    fn attr_clear(&mut self, name: &str) -> AstResult<()> {
+        crate::attributes::cmpframe::cmpframe_clear(self, name)
+    }
+    // A CmpFrame's Axis objects are its components'.
+    fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
+        crate::attributes::frame::validate_axis(self, axis as i32, "astGetAxis")?;
+        match self.component_axis(axis) {
+            Some((1, a)) => self.frame1.attr_axis(a),
+            Some((_, a)) => self.frame2.attr_axis(a),
+            None => unreachable!("a validated axis has a component"),
+        }
+    }
+    fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
+        crate::attributes::frame::validate_axis(self, axis as i32, "astGetAxis")?;
+        match self.component_axis(axis) {
+            Some((1, a)) => self.frame1_mut().attr_axis_mut(a),
+            Some((_, a)) => self.frame2_mut().attr_axis_mut(a),
+            None => unreachable!("a validated axis has a component"),
+        }
+    }
 
     fn system_string(&self) -> AstResult<Option<&str>> {
         Ok(Some("Compound"))
@@ -1181,8 +1250,8 @@ impl Serializable for CmpFrame {
             &super::frame_attrs::TraitDump {
                 frame: self,
                 attrs: &self.attrs,
-                system: (false, "Compound".to_string()),
-                align_system: (false, "Compound".to_string()),
+                system: (self.system_set, "Compound".to_string()),
+                align_system: (self.align_system_set, "Compound".to_string()),
                 perm: self.perm.clone(),
                 is_frame: true,
                 own_naxes: 0,
@@ -1263,6 +1332,15 @@ impl Serializable for CmpFrame {
         // Ident, UseDefs and the matching attributes, which the CmpFrame
         // does not forward to its components.
         let attrs = super::frame_attrs::read_frame_attrs(whole);
+        // A CmpFrame's only System is "Compound" (cmpframe.c `SystemCode`).
+        let compound = |name: &str| crate::fitschan::chr_match("Compound", name).then_some(());
+        let frame_part = whole.section("Frame");
+        cmp.system_set =
+            super::frame_attrs::read_system_item(&frame_part, "System", "System", compound)?
+                .is_some();
+        cmp.align_system_set =
+            super::frame_attrs::read_system_item(&frame_part, "AlSys", "AlignSystem", compound)?
+                .is_some();
         cmp.attrs.active_unit = attrs.active_unit;
         cmp.attrs.digits = attrs.digits;
         cmp.attrs.domain = attrs.domain;

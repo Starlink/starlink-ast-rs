@@ -71,6 +71,7 @@ const OBJECT_AND_MAPPING: &[&str] = &["frame2_", "frame1_object"];
 const FRAME: &[&str] = &["frame_"];
 const SKY: &[&str] = &["sky_"];
 const SPECTRAL: &[&str] = &["spec_", "dsb_"];
+const TIME_AND_COMPOUND: &[&str] = &["time_", "cmp_"];
 
 /// What the Rust library did with an operation.
 #[derive(Debug, Clone, PartialEq)]
@@ -221,6 +222,11 @@ fn spectral_names_match_the_c_library() {
     replay(SPECTRAL);
 }
 
+#[test]
+fn time_and_compound_names_match_the_c_library() {
+    replay(TIME_AND_COMPOUND);
+}
+
 /// C's attribute functions call each other without end for a Top, Bottom
 /// or Direction given without an index and with a value that is not a
 /// number, on a Frame class of one axis that takes those names without an
@@ -244,6 +250,19 @@ fn an_unreadable_axis_value_without_an_index_is_an_error() {
     // A value that can be read still goes through.
     spec.set_attributes("Top=5").unwrap();
     assert_eq!(spec.get_attribute("Top").unwrap(), "5");
+    // Through a CmpFrame, which hands the setting to the SpecFrame, the
+    // error is the CmpFrame's own.
+    let mut cmp = starlink_ast::frames::CmpFrame::new(
+        Box::new(spec),
+        Box::new(starlink_ast::frames::SkyFrame::new(
+            starlink_ast::frames::SkySystem::Icrs,
+        )),
+    );
+    let err = cmp.set_attributes("Top(1)=high").unwrap_err();
+    assert_eq!(
+        err.message(),
+        "astSet: The attribute setting \"top(1)=high\" is invalid for the given CmpFrame."
+    );
 }
 
 #[test]
@@ -268,7 +287,7 @@ fn cases_with_no_rust_value_still_differ() {
 
 #[test]
 fn every_case_is_replayed() {
-    let replayed = [OBJECT_AND_MAPPING, FRAME, SKY, SPECTRAL];
+    let replayed = [OBJECT_AND_MAPPING, FRAME, SKY, SPECTRAL, TIME_AND_COMPOUND];
     for case in CASES {
         assert!(
             replayed

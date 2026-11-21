@@ -1702,6 +1702,32 @@ fn date_format(fmt: &str) -> (bool, i32, char) {
 // ---------------------------------------------------------------------------
 
 impl Frame for TimeFrame {
+    // The attribute strings of C's TimeFrame class.
+    fn attr_set(&mut self, setting: &str) -> AstResult<()> {
+        crate::attributes::timeframe::timeframe_set(self, setting)
+    }
+    fn attr_get(&self, name: &str) -> AstResult<String> {
+        crate::attributes::timeframe::timeframe_get(self, name)
+    }
+    fn attr_test(&self, name: &str) -> AstResult<bool> {
+        crate::attributes::timeframe::timeframe_test(self, name)
+    }
+    fn attr_clear(&mut self, name: &str) -> AstResult<()> {
+        crate::attributes::timeframe::timeframe_clear(self, name)
+    }
+    fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
+        crate::attributes::frame::validate_axis(self, axis as i32, "astGetAxis")?;
+        Ok(super::axis::AxisHandle(super::axis::AxisRef::Plain(
+            &self.axis,
+        )))
+    }
+    fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
+        crate::attributes::frame::validate_axis(self, axis as i32, "astGetAxis")?;
+        Ok(super::axis::AxisHandleMut(super::axis::AxisMut::Plain(
+            &mut self.axis,
+        )))
+    }
+
     /// Always true: a TimeFrame always uses active units, and reports the
     /// flag as not set.
     // C: timeframe.c `GetActiveUnit`, `TestActiveUnit`.

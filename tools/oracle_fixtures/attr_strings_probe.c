@@ -60,7 +60,7 @@ struct op { int kind; const char *a; const char *b; };
 /* Set an attribute, look at it, clear it and look again. */
 #define CYCLE( n, setting ) SET( setting ), SEE( n ), CLEAR( n ), SEE( n )
 
-#define MAXOP 160
+#define MAXOP 200
 struct acase {
    const char *name;
    const char *object;
@@ -549,6 +549,143 @@ static const struct acase cases[] = {
       SET( "DSBCentre=345,IF=-5,SideBand=USB,AlignSideBand=1,RestFreq=345.8,"
            "StdOfRest=LSRK,Title=dsb" ),
    } },
+
+/* TimeFrame's own attributes. */
+   { "time_own", "time", {
+      SEE( "TimeScale" ), SET( "TimeScale=TAI" ), SEE( "TimeScale" ),
+      SET( "TimeScale=bad" ), SET( "TimeScale=utc " ), GET( "TimeScale" ),
+      SET( "TimeScale= TT" ), SET( "TimeScale=TT" ), GET( "TimeScale" ),
+      SET( "TimeScale=TDB" ), GET( "TimeScale" ), SET( "TimeScale=TCB" ),
+      GET( "TimeScale" ), SET( "TimeScale=TCG" ), GET( "TimeScale" ),
+      SET( "TimeScale=UT1" ), GET( "TimeScale" ), SET( "TimeScale=LAST" ),
+      GET( "TimeScale" ), SET( "TimeScale=LMST" ), GET( "TimeScale" ),
+      SET( "TimeScale=GMST" ), GET( "TimeScale" ), SET( "TimeScale=LT" ),
+      GET( "TimeScale" ), CLEAR( "TimeScale" ), SEE( "TimeScale" ),
+      SEE( "AlignTimeScale" ), CYCLE( "AlignTimeScale", "AlignTimeScale=TDB" ),
+      SET( "AlignTimeScale=bad" ),
+      SEE( "System" ), SET( "System=JD" ), SEE( "System" ), GET( "Unit" ),
+      SET( "System=JEPOCH" ), GET( "System" ), GET( "Unit" ),
+      SET( "System=BEPOCH" ), GET( "System" ), SET( "System=MJD" ),
+      GET( "System" ), SET( "System=nonsense" ), SET( "System=Julian" ),
+      CLEAR( "System" ), SEE( "System" ), SEE( "AlignSystem" ),
+      CYCLE( "AlignSystem", "AlignSystem=JD" ), SET( "AlignSystem=bad" ),
+      SEE( "LTOffset" ), CYCLE( "LTOffset", "LTOffset=-10" ),
+      SET( "LTOffset=x" ),
+      SEE( "ClockLat" ), SET( "ClockLat=N19" ), SEE( "ClockLat" ),
+      GET( "ObsLat" ), SEE( "ClockLon" ), SET( "ClockLon=W155:28" ),
+      SEE( "ClockLon" ), GET( "ObsLon" ), SET( "ClockLat=bad" ),
+      CLEAR( "ClockLat" ), SEE( "ClockLat" ), CLEAR( "ClockLon" ),
+      SEE( "ObsLon" ),
+   } },
+   { "time_origin", "time", {
+      SEE( "TimeOrigin" ), SET( "TimeOrigin=55197" ), SEE( "TimeOrigin" ),
+      SET( "TimeOrigin=2010-01-01" ), GET( "TimeOrigin" ),
+      SET( "TimeOrigin=55198 d" ), GET( "TimeOrigin" ),
+      SET( "TimeOrigin=150 yr" ), GET( "TimeOrigin" ),
+      SET( "TimeOrigin=24 h" ), GET( "TimeOrigin" ), SET( "TimeOrigin=5 km" ),
+      SET( "TimeOrigin=nonsense" ), SET( "TimeOrigin=1996-Oct-2 12:30" ),
+      GET( "TimeOrigin" ), SET( "TimeOrigin=J2000" ), GET( "TimeOrigin" ),
+      SET( "TimeOrigin=2010 Jan" ), SET( "TimeOrigin=2010 Jan 5" ),
+      GET( "TimeOrigin" ), SET( "TimeOrigin=2010-01-01 25:00" ),
+      SET( "Unit=h" ), GET( "Unit" ), SET( "TimeOrigin=24" ),
+      GET( "TimeOrigin" ), CLEAR( "Unit" ), GET( "TimeOrigin" ),
+      SET( "System=JEPOCH" ), GET( "TimeOrigin" ),
+      SET( "TimeOrigin=2010-01-01" ), GET( "TimeOrigin" ),
+      SET( "System=JD" ), GET( "TimeOrigin" ), SET( "TimeOrigin=B1950" ),
+      GET( "TimeOrigin" ), CLEAR( "TimeOrigin" ), SEE( "TimeOrigin" ),
+   } },
+
+/* The axis attributes of a TimeFrame without an index, and what it
+   inherits. Top, Bottom and Direction with a value that is not a number
+   are left out, as for a SpecFrame. */
+   { "time_axis", "time", {
+      SET( "Unit=s" ), SEE( "Unit" ), SET( "Label=Time" ), SEE( "Label" ),
+      SET( "Symbol=t" ), SEE( "Symbol" ), SET( "Format=iso.2" ),
+      SEE( "Format" ), SET( "Direction=0" ), SEE( "Direction" ),
+      SET( "Top=60000" ), SEE( "Top" ), SET( "Bottom=50000" ), SEE( "Bottom" ),
+      CLEAR( "Format" ), SEE( "Format" ), CLEAR( "Unit" ), SEE( "Unit" ),
+      CLEAR( "Label" ), SEE( "Label" ), GET( "Class" ), GET( "Class(1)" ),
+      GET( "Title" ), GET( "Domain" ), GET( "Naxes" ), SET( "Fred=1" ),
+      GET( "Fred" ), TEST( "Fred" ), CLEAR( "Fred" ), SET( "Epoch=2001" ),
+      GET( "Epoch" ), GET( "Digits" ), SET( "Unit(2)=x" ), GET( "NormUnit" ),
+      GET( "InternalUnit" ), SET( "System=BEPOCH" ), SET( "Unit=d" ),
+      GET( "Unit" ), SET( "Ident(1)=t axis" ), GET( "Ident(1)" ),
+      GET( "Nout" ),
+   } },
+   { "time_dump", "time", {
+      SET( "System=JD,TimeScale=TAI,TimeOrigin=2455000,LTOffset=-10,"
+           "AlignTimeScale=UTC,AlignSystem=MJD,Unit=d,Label=T,ClockLat=N20,"
+           "ObsLon=W155,Title=A time,Ident=tf" ),
+   } },
+
+/* A CmpFrame of a SpecFrame and a SkyFrame: names go to the CmpFrame as a
+   Frame first, then to the Frames its axes belong to. "Top(1)=high" is left
+   out: it reaches the SpecFrame, where C never returns. */
+   { "cmp_spec_sky", "cmp_spec_sky", {
+      GET( "Class" ), GET( "Naxes" ), GET( "Title" ), GET( "Domain" ),
+      SET( "System(1)=wave" ), GET( "System(1)" ), GET( "System" ),
+      GET( "System(2)" ), SET( "System=FK4" ), GET( "System(2)" ),
+      GET( "System(3)" ), GET( "System" ), SET( "System=nonsense" ),
+      SET( "System(2)=Galactic" ), GET( "System(3)" ), TEST( "System(1)" ),
+      TEST( "System" ), CLEAR( "System(2)" ), GET( "System(2)" ),
+      SET( "Label(2)=x" ), GET( "Label(2)" ), SEE( "Label(1)" ),
+      GET( "Label(3)" ), SET( "Label(4)=x" ), GET( "Label(4)" ),
+      TEST( "Label(4)" ), CLEAR( "Label(4)" ), GET( "Unit(1)" ),
+      GET( "Unit(2)" ), GET( "Format(2)" ), SET( "Epoch=2000" ),
+      SEE( "Epoch" ), GET( "Epoch(1)" ), SET( "RestFreq=230.5" ),
+      GET( "RestFreq" ), TEST( "RestFreq" ), SET( "RestFreq=bad" ),
+      SET( "Fred=1" ), GET( "Fred" ), TEST( "Fred" ), CLEAR( "Fred" ),
+      SET( "Fred(1)=1" ), GET( "Fred(1)" ), TEST( "Fred(1)" ),
+      CLEAR( "Fred(1)" ), SET( "Fred(9)=1" ), GET( "Fred(9)" ),
+      TEST( "Fred(9)" ), CLEAR( "Fred(9)" ),
+      SET( "Equinox=B1950" ), GET( "Equinox" ), GET( "Equinox(2)" ),
+      GET( "Equinox(1)" ), SET( "StdOfRest=LSRK" ), SEE( "StdOfRest" ),
+      CLEAR( "StdOfRest" ), SEE( "StdOfRest" ), SET( "SkyRef(2)=0.5" ),
+      GET( "SkyRef(2)" ), GET( "SkyRef" ), SET( "AsTime(3)=1" ),
+      GET( "AsTime(3)" ), GET( "Digits" ), SET( "Digits=5" ),
+      GET( "Digits(2)" ), SET( "Digits(2)=8" ), GET( "Digits(2)" ),
+      GET( "Format(2)" ), SET( "Ident(2)=axis" ), GET( "Ident(2)" ),
+      GET( "Class(1)" ), GET( "Class(2)" ), SET( "Title=compound" ),
+      GET( "Title" ), GET( "Title(1)" ), SET( "Domain=CMP" ), GET( "Domain" ),
+      GET( "Domain(2)" ), SET( "ObsLat=N19" ), GET( "ObsLat" ),
+      GET( "ObsLat(1)" ), GET( "Nin" ), GET( "MaxAxes" ), GET( "LatAxis" ),
+      GET( "LonAxis" ), GET( "IsLatAxis(3)" ), SET( "Projection=a b" ),
+      GET( "Projection" ), SET( "Label=every" ), GET( "Label(1)" ),
+      GET( "Label(2)" ), GET( "Label(3)" ), CLEAR( "Label" ),
+      GET( "Label(1)" ), TEST( "Label" ), GET( "Label" ), SET( "Unit=GHz" ),
+      GET( "Unit(1)" ), GET( "Unit(2)" ), SET( "NegLon=1" ), SEE( "NegLon" ),
+      CLEAR( "NegLon" ), SEE( "NegLon" ), SET( "Nin=3" ), CLEAR( "Naxes" ),
+   } },
+
+/* A CmpFrame of two plain Frames of one axis. */
+   { "cmp_1_1", "cmp_1_1", {
+      GET( "Label(1)" ), GET( "Label(2)" ), SET( "Label(2)=x" ),
+      SEE( "Label(2)" ), CLEAR( "Label(2)" ), SEE( "Label(2)" ),
+      GET( "Symbol(2)" ), GET( "Unit(2)" ), SET( "Digits(2)=4" ),
+      SEE( "Digits(2)" ), GET( "Format(2)" ), GET( "Title" ),
+      SET( "Title=t" ), GET( "Title" ), GET( "Domain" ), SET( "Domain=A" ),
+      GET( "Domain(1)" ), SEE( "System" ), SET( "System=Cartesian" ),
+      SEE( "System" ), GET( "System(1)" ), SET( "System=Compound" ),
+      SEE( "System" ), CLEAR( "System" ), SEE( "AlignSystem" ),
+      SET( "AlignSystem=Compound" ), SEE( "AlignSystem" ), SET( "Top(2)=5" ),
+      GET( "Top(2)" ), GET( "Top(1)" ), SET( "Fred(1)=1" ), GET( "Fred(1)" ),
+      TEST( "Fred(1)" ), CLEAR( "Fred(1)" ), SET( "Fred(3)=1" ),
+      GET( "Fred(3)" ), TEST( "Fred(3)" ), CLEAR( "Fred(3)" ),
+      GET( "Naxes" ), GET( "Ident(1)" ), SET( "Ident=whole" ), GET( "Ident" ),
+      SET( "Ident(1)=ax1" ), GET( "Ident(1)" ), GET( "Class(1)" ),
+      SEE( "UseDefs" ), SET( "UseDefs=0" ), SEE( "UseDefs" ), GET( "ID" ),
+      SET( "Epoch=2001" ), GET( "Epoch" ), SET( "MatchEnd=1" ),
+      GET( "MatchEnd" ), GET( "MinAxes" ), GET( "NormUnit(1)" ), GET( " " ),
+      TEST( "" ), SET( "Label=both" ), GET( "Label(1)" ), GET( "Label(2)" ),
+      TEST( "Label" ), GET( "Label" ), CLEAR( "Label" ), GET( "Label(1)" ),
+      SET( "Fred=1" ), GET( "Fred" ), TEST( "Fred" ), CLEAR( "Fred" ),
+      SET( "Label(2)=two words" ), GET( "Label(2)" ),
+   } },
+   { "cmp_dump", "cmp_spec_sky", {
+      SET( "System(1)=FREQ,System(2)=Galactic,Label(2)=lon,Epoch=2005,"
+           "RestFreq=115.27,StdOfRest=LSRK,Equinox=J2010,Title=cube,"
+           "Domain=CUBE,Digits=6,Digits(3)=9,Ident=cmp,Unit(1)=GHz" ),
+   } },
 };
 
 /* The object a case starts from. */
@@ -564,6 +701,13 @@ static AstObject *make( const char *id ) {
    }
    if( !strcmp( id, "spec" ) ) return (AstObject *) astSpecFrame( " " );
    if( !strcmp( id, "dsb" ) ) return (AstObject *) astDSBSpecFrame( " " );
+   if( !strcmp( id, "time" ) ) return (AstObject *) astTimeFrame( " " );
+   if( !strcmp( id, "cmp_spec_sky" ) ) {
+      return (AstObject *) astCmpFrame( astSpecFrame( " " ), astSkyFrame( " " ), " " );
+   }
+   if( !strcmp( id, "cmp_1_1" ) ) {
+      return (AstObject *) astCmpFrame( astFrame( 1, " " ), astFrame( 1, " " ), " " );
+   }
    if( !strcmp( id, "skyaxis1" ) ) {
       int axes[ 1 ] = { 1 };
       AstSkyFrame *sky = astSkyFrame( " " );

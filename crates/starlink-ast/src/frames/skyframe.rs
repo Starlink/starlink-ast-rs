@@ -1925,6 +1925,11 @@ impl Frame for SkyFrame {
         (self, self.axis_permutation()[axis])
     }
 
+    fn primary_frame_mut(&mut self, axis: usize) -> (&mut dyn Frame, usize) {
+        let internal = self.axis_permutation()[axis];
+        (self, internal)
+    }
+
     /// Display an axis in the conventional direction? See
     /// [`Frame::direction`].
     ///

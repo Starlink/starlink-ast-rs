@@ -38,6 +38,7 @@
 // the `AstError`'s message and the others are its context, in order.
 
 pub(crate) mod axis;
+pub(crate) mod cmpframe;
 pub(crate) mod frame;
 pub(crate) mod mapping;
 pub(crate) mod object;
@@ -45,6 +46,7 @@ pub(crate) mod object;
 mod public;
 pub(crate) mod skyframe;
 pub(crate) mod specframe;
+pub(crate) mod timeframe;
 
 #[cfg(feature = "attribute-strings")]
 pub use public::Attributes;
@@ -258,7 +260,6 @@ impl Scan {
     }
 
     /// The `%s` or `%[` field stored through argument `i`.
-    #[allow(dead_code)]
     pub(crate) fn text(&self, i: usize) -> &str {
         match self.fields.get(i) {
             Some(Field::Text(v)) => v,

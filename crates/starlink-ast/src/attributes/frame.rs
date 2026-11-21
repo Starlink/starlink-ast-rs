@@ -71,6 +71,25 @@ pub(crate) fn validate_axis<F: Frame + ?Sized>(
     }
 }
 
+/// The axis index, as the primary Frame's attribute strings number its
+/// axes (1-based, external), of the axis `primary_frame` gives as `paxis`.
+// C: astValidateAxis( pfrm, paxis, 0, ... ) + 1, which turns the internal
+// index astPrimaryFrame gives into an external one. Of the Rust classes only
+// SkyFrame's `primary_frame` gives an internal index; the others give the
+// external one.
+pub(crate) fn primary_axis_index(primary: &dyn Frame, paxis: usize) -> usize {
+    match primary.as_any().downcast_ref::<SkyFrame>() {
+        Some(sky) => {
+            sky.axis_permutation()
+                .iter()
+                .position(|&p| p == paxis)
+                .unwrap_or(paxis)
+                + 1
+        }
+        None => paxis + 1,
+    }
+}
+
 /// The FK5 SkyFrame C formats and reads an observer's latitude and
 /// longitude with, as degrees, arcminutes and arcseconds to two places.
 // C: the static "skyframe" of frame.c,
@@ -271,9 +290,8 @@ fn axis_path_set<F: FrameClass + ?Sized>(frame: &mut F, setting: &str) -> Option
         let (primary, paxis) = frame.primary_frame_mut(axis - 1);
         let mut used = false;
         if !std::ptr::eq(std::ptr::from_mut(primary).cast::<()>(), this) {
-            used = primary
-                .attr_set(&format!("{name}({}){value}", paxis + 1))
-                .is_ok();
+            let index = primary_axis_index(primary, paxis);
+            used = primary.attr_set(&format!("{name}({index}){value}")).is_ok();
         }
         if !used {
             used = primary.attr_set(&axis_setting).is_ok();
@@ -399,7 +417,8 @@ fn axis_path_get<F: FrameClass + ?Sized>(frame: &F, name: &str) -> Option<AstRes
         let (primary, paxis) = frame.primary_frame(axis - 1);
         let this = std::ptr::from_ref(frame).cast::<()>();
         if !std::ptr::eq(std::ptr::from_ref(primary).cast::<()>(), this) {
-            if let Ok(value) = primary.attr_get(&format!("{attr}({})", paxis + 1)) {
+            let index = primary_axis_index(primary, paxis);
+            if let Ok(value) = primary.attr_get(&format!("{attr}({index})")) {
                 return Ok(value);
             }
         }
@@ -496,7 +515,8 @@ fn axis_path_test<F: FrameClass + ?Sized>(frame: &F, name: &str) -> Option<AstRe
         let (primary, paxis) = frame.primary_frame(axis - 1);
         let this = std::ptr::from_ref(frame).cast::<()>();
         if !std::ptr::eq(std::ptr::from_ref(primary).cast::<()>(), this) {
-            if let Ok(value) = primary.attr_test(&format!("{attr}({})", paxis + 1)) {
+            let index = primary_axis_index(primary, paxis);
+            if let Ok(value) = primary.attr_test(&format!("{attr}({index})")) {
                 return Ok(value);
             }
         }
@@ -596,9 +616,8 @@ fn axis_path_clear<F: FrameClass + ?Sized>(frame: &mut F, name: &str) -> Option<
         let (primary, paxis) = frame.primary_frame_mut(axis - 1);
         let mut used = false;
         if !std::ptr::eq(std::ptr::from_mut(primary).cast::<()>(), this) {
-            used = primary
-                .attr_clear(&format!("{attr}({})", paxis + 1))
-                .is_ok();
+            let index = primary_axis_index(primary, paxis);
+            used = primary.attr_clear(&format!("{attr}({index})")).is_ok();
         }
         if !used {
             used = primary.attr_clear(attr).is_ok();

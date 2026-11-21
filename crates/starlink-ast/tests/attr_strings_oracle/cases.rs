@@ -2692,4 +2692,802 @@ pub const CASES: &[Case] = &[
  End DSBSpecFrame
 "###,
     },
+    Case {
+        name: "time_own",
+        fitschan: false,
+        object: r###" Begin TimeFrame 	# Description of time coordinate system
+#   Title = "Modified Julian Date" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "TIME" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Modified Julian Date" 	# Label for axis 1
+#   System = "MJD" 	# Coordinate system type
+#   Uni1 = "d" 	# Units for axis 1 (day)
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   TmScl = "TAI" 	# Time scale
+ End TimeFrame
+"###,
+        ops: &[
+            (Op::Get("TimeScale"), Out::Value("TAI")),
+            (Op::Test("TimeScale"), Out::Flag(false)),
+            (Op::Set("TimeScale=TAI"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("TAI")),
+            (Op::Test("TimeScale"), Out::Flag(true)),
+            (Op::Set("TimeScale=bad"), Out::Err(E::Attin, &["astSetAttrib(TimeFrame): Invalid time scale description \"bad\"."])),
+            (Op::Set("TimeScale=utc "), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("UTC")),
+            (Op::Set("TimeScale= TT"), Out::Err(E::Attin, &["astSetAttrib(TimeFrame): Invalid time scale description \" TT\"."])),
+            (Op::Set("TimeScale=TT"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("TT")),
+            (Op::Set("TimeScale=TDB"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("TDB")),
+            (Op::Set("TimeScale=TCB"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("TCB")),
+            (Op::Set("TimeScale=TCG"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("TCG")),
+            (Op::Set("TimeScale=UT1"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("UT1")),
+            (Op::Set("TimeScale=LAST"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("LAST")),
+            (Op::Set("TimeScale=LMST"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("LMST")),
+            (Op::Set("TimeScale=GMST"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("GMST")),
+            (Op::Set("TimeScale=LT"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("LT")),
+            (Op::Clear("TimeScale"), Out::Done),
+            (Op::Get("TimeScale"), Out::Value("TAI")),
+            (Op::Test("TimeScale"), Out::Flag(false)),
+            (Op::Get("AlignTimeScale"), Out::Value("TAI")),
+            (Op::Test("AlignTimeScale"), Out::Flag(false)),
+            (Op::Set("AlignTimeScale=TDB"), Out::Done),
+            (Op::Get("AlignTimeScale"), Out::Value("TDB")),
+            (Op::Test("AlignTimeScale"), Out::Flag(true)),
+            (Op::Clear("AlignTimeScale"), Out::Done),
+            (Op::Get("AlignTimeScale"), Out::Value("TAI")),
+            (Op::Test("AlignTimeScale"), Out::Flag(false)),
+            (Op::Set("AlignTimeScale=bad"), Out::Err(E::Attin, &["astSetAttrib(TimeFrame): Invalid time scale description \"bad\"."])),
+            (Op::Get("System"), Out::Value("MJD")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Set("System=JD"), Out::Done),
+            (Op::Get("System"), Out::Value("JD")),
+            (Op::Test("System"), Out::Flag(true)),
+            (Op::Get("Unit"), Out::Value("d")),
+            (Op::Set("System=JEPOCH"), Out::Done),
+            (Op::Get("System"), Out::Value("JEPOCH")),
+            (Op::Get("Unit"), Out::Value("yr")),
+            (Op::Set("System=BEPOCH"), Out::Done),
+            (Op::Get("System"), Out::Value("BEPOCH")),
+            (Op::Set("System=MJD"), Out::Done),
+            (Op::Get("System"), Out::Value("MJD")),
+            (Op::Set("System=nonsense"), Out::Err(E::Attin, &["astSetAttrib(TimeFrame): Invalid System description \"nonsense\"."])),
+            (Op::Set("System=Julian"), Out::Err(E::Attin, &["astSetAttrib(TimeFrame): Invalid System description \"Julian\"."])),
+            (Op::Clear("System"), Out::Done),
+            (Op::Get("System"), Out::Value("MJD")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Get("AlignSystem"), Out::Value("MJD")),
+            (Op::Test("AlignSystem"), Out::Flag(false)),
+            (Op::Set("AlignSystem=JD"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("JD")),
+            (Op::Test("AlignSystem"), Out::Flag(true)),
+            (Op::Clear("AlignSystem"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("MJD")),
+            (Op::Test("AlignSystem"), Out::Flag(false)),
+            (Op::Set("AlignSystem=bad"), Out::Err(E::Attin, &["astSetAttrib(TimeFrame): Invalid AlignSystem description \"bad\"."])),
+            (Op::Get("LTOffset"), Out::Value("0")),
+            (Op::Test("LTOffset"), Out::Flag(false)),
+            (Op::Set("LTOffset=-10"), Out::Done),
+            (Op::Get("LTOffset"), Out::Value("-10")),
+            (Op::Test("LTOffset"), Out::Flag(true)),
+            (Op::Clear("LTOffset"), Out::Done),
+            (Op::Get("LTOffset"), Out::Value("0")),
+            (Op::Test("LTOffset"), Out::Flag(false)),
+            (Op::Set("LTOffset=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"ltoffset=x\" is invalid for a TimeFrame."])),
+            (Op::Get("ClockLat"), Out::Value("N0:00:00.00")),
+            (Op::Test("ClockLat"), Out::Flag(false)),
+            (Op::Set("ClockLat=N19"), Out::Done),
+            (Op::Get("ClockLat"), Out::Value("N19:00:00.00")),
+            (Op::Test("ClockLat"), Out::Flag(true)),
+            (Op::Get("ObsLat"), Out::Value("N19:00:00.00")),
+            (Op::Get("ClockLon"), Out::Value("E0:00:00.00")),
+            (Op::Test("ClockLon"), Out::Flag(false)),
+            (Op::Set("ClockLon=W155:28"), Out::Done),
+            (Op::Get("ClockLon"), Out::Value("W155:28:00.00")),
+            (Op::Test("ClockLon"), Out::Flag(true)),
+            (Op::Get("ObsLon"), Out::Value("W155:28:00.00")),
+            (Op::Set("ClockLat=bad"), Out::Err(E::Attin, &["astSetAttrib(TimeFrame): Invalid value for ObsLat (observers latitude) \"bad\"."])),
+            (Op::Clear("ClockLat"), Out::Done),
+            (Op::Get("ClockLat"), Out::Value("N0:00:00.00")),
+            (Op::Test("ClockLat"), Out::Flag(false)),
+            (Op::Clear("ClockLon"), Out::Done),
+            (Op::Get("ObsLon"), Out::Value("E0:00:00.00")),
+            (Op::Test("ObsLon"), Out::Flag(false)),
+        ],
+        dump: r###" Begin TimeFrame 	# Description of time coordinate system
+#   Title = "Modified Julian Date [TT]" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "TIME" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Modified Julian Date" 	# Label for axis 1
+#   System = "MJD" 	# Coordinate system type
+#   Uni1 = "yr" 	# Units for axis 1 (year)
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Unit = "yr" 	# Axis units (year)
+       End Axis
+ IsA Frame 	# Coordinate system description
+    TmScl = "TT" 	# Time scale
+ End TimeFrame
+"###,
+    },
+    Case {
+        name: "time_origin",
+        fitschan: false,
+        object: r###" Begin TimeFrame 	# Description of time coordinate system
+#   Title = "Modified Julian Date" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "TIME" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Modified Julian Date" 	# Label for axis 1
+#   System = "MJD" 	# Coordinate system type
+#   Uni1 = "d" 	# Units for axis 1 (day)
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   TmScl = "TAI" 	# Time scale
+ End TimeFrame
+"###,
+        ops: &[
+            (Op::Get("TimeOrigin"), Out::Value("0")),
+            (Op::Test("TimeOrigin"), Out::Flag(false)),
+            (Op::Set("TimeOrigin=55197"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("55197")),
+            (Op::Test("TimeOrigin"), Out::Flag(true)),
+            (Op::Set("TimeOrigin=2010-01-01"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("55197")),
+            (Op::Set("TimeOrigin=55198 d"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("55198")),
+            (Op::Set("TimeOrigin=150 yr"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("54787.5")),
+            (Op::Set("TimeOrigin=24 h"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("1")),
+            (Op::Set("TimeOrigin=5 km"), Out::Err(E::Attin, &["Date/time does not have the correct form.", "astSetAttrib(TimeFrame): Invalid TimeOrigin value \"5 km\" given."])),
+            (Op::Set("TimeOrigin=nonsense"), Out::Err(E::Attin, &["Date/time does not have the correct form.", "astSetAttrib(TimeFrame): Invalid TimeOrigin value \"nonsense\" given."])),
+            (Op::Set("TimeOrigin=1996-Oct-2 12:30"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("50358.520833333336")),
+            (Op::Set("TimeOrigin=J2000"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("51544.5")),
+            (Op::Set("TimeOrigin=2010 Jan"), Out::Err(E::Attin, &["Date/time does not have the correct form.", "astSetAttrib(TimeFrame): Invalid TimeOrigin value \"2010 Jan\" given."])),
+            (Op::Set("TimeOrigin=2010 Jan 5"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("55201")),
+            (Op::Set("TimeOrigin=2010-01-01 25:00"), Out::Err(E::Attin, &["Hour value (25) is invalid.", "astSetAttrib(TimeFrame): Invalid TimeOrigin value \"2010-01-01 25:00\" given."])),
+            (Op::Set("Unit=h"), Out::Done),
+            (Op::Get("Unit"), Out::Value("h")),
+            (Op::Set("TimeOrigin=24"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("24")),
+            (Op::Clear("Unit"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("1")),
+            (Op::Set("System=JEPOCH"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("1858.8815879534566")),
+            (Op::Set("TimeOrigin=2010-01-01"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("2010")),
+            (Op::Set("System=JD"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("2455197.5")),
+            (Op::Set("TimeOrigin=B1950"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("2433282.4234590498")),
+            (Op::Clear("TimeOrigin"), Out::Done),
+            (Op::Get("TimeOrigin"), Out::Value("0")),
+            (Op::Test("TimeOrigin"), Out::Flag(false)),
+        ],
+        dump: r###" Begin TimeFrame 	# Description of time coordinate system
+#   Title = "Julian Date" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "TIME" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Julian Date" 	# Label for axis 1
+    System = "JD" 	# Coordinate system type
+#   Uni1 = "d" 	# Units for axis 1 (day)
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   TmScl = "TAI" 	# Time scale
+ End TimeFrame
+"###,
+    },
+    Case {
+        name: "time_axis",
+        fitschan: false,
+        object: r###" Begin TimeFrame 	# Description of time coordinate system
+#   Title = "Modified Julian Date" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "TIME" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Modified Julian Date" 	# Label for axis 1
+#   System = "MJD" 	# Coordinate system type
+#   Uni1 = "d" 	# Units for axis 1 (day)
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   TmScl = "TAI" 	# Time scale
+ End TimeFrame
+"###,
+        ops: &[
+            (Op::Set("Unit=s"), Out::Done),
+            (Op::Get("Unit"), Out::Value("s")),
+            (Op::Test("Unit"), Out::Flag(true)),
+            (Op::Set("Label=Time"), Out::Done),
+            (Op::Get("Label"), Out::Value("Time")),
+            (Op::Test("Label"), Out::Flag(true)),
+            (Op::Set("Symbol=t"), Out::Done),
+            (Op::Get("Symbol"), Out::Value("t")),
+            (Op::Test("Symbol"), Out::Flag(true)),
+            (Op::Set("Format=iso.2"), Out::Done),
+            (Op::Get("Format"), Out::Value("iso.2")),
+            (Op::Test("Format"), Out::Flag(true)),
+            (Op::Set("Direction=0"), Out::Done),
+            (Op::Get("Direction"), Out::Value("0")),
+            (Op::Test("Direction"), Out::Flag(true)),
+            (Op::Set("Top=60000"), Out::Done),
+            (Op::Get("Top"), Out::Value("60000")),
+            (Op::Test("Top"), Out::Flag(true)),
+            (Op::Set("Bottom=50000"), Out::Done),
+            (Op::Get("Bottom"), Out::Value("50000")),
+            (Op::Test("Bottom"), Out::Flag(true)),
+            (Op::Clear("Format"), Out::Done),
+            (Op::Get("Format"), Out::Value("%1.7G")),
+            (Op::Test("Format"), Out::Flag(false)),
+            (Op::Clear("Unit"), Out::Done),
+            (Op::Get("Unit"), Out::Value("d")),
+            (Op::Test("Unit"), Out::Flag(false)),
+            (Op::Clear("Label"), Out::Done),
+            (Op::Get("Label"), Out::Value("Modified Julian Date")),
+            (Op::Test("Label"), Out::Flag(false)),
+            (Op::Get("Class"), Out::Value("TimeFrame")),
+            (Op::Get("Class(1)"), Out::Value("Axis")),
+            (Op::Get("Title"), Out::Value("Modified Julian Date")),
+            (Op::Get("Domain"), Out::Value("TIME")),
+            (Op::Get("Naxes"), Out::Value("1")),
+            (Op::Set("Fred=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a TimeFrame."])),
+            (Op::Get("Fred"), Out::Err(E::Badat, &["astGet: The TimeFrame given does not have an attribute called \"fred\"."])),
+            (Op::Test("Fred"), Out::Err(E::Badat, &["astTest: The attribute name \"fred\" is invalid for a TimeFrame."])),
+            (Op::Clear("Fred"), Out::Err(E::Badat, &["astClear: The attribute name \"fred\" is invalid for a TimeFrame."])),
+            (Op::Set("Epoch=2001"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2001.0")),
+            (Op::Get("Digits"), Out::Value("7")),
+            (Op::Set("Unit(2)=x"), Out::Err(E::Axiin, &["astSetUnit(TimeFrame): Axis index (2) invalid - it should be in the range 1 to 1."])),
+            (Op::Get("NormUnit"), Out::Value("d")),
+            (Op::Get("InternalUnit"), Out::Value("d")),
+            (Op::Set("System=BEPOCH"), Out::Done),
+            (Op::Set("Unit=d"), Out::Err(E::Attin, &["astSetUnit(TimeFrame): Supplied Unit (d) cannot be used because the TimeFrame represents Besselian Epoch which is defined in units of years (yr)."])),
+            (Op::Get("Unit"), Out::Value("yr")),
+            (Op::Set("Ident(1)=t axis"), Out::Done),
+            (Op::Get("Ident(1)"), Out::Value("t axis")),
+            (Op::Get("Nout"), Out::Value("1")),
+        ],
+        dump: r###" Begin TimeFrame 	# Description of time coordinate system
+#   Title = "Besselian Epoch" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "TIME" 	# Coordinate system domain
+    Epoch = 2001 	# Julian epoch of observation
+#   Lbl1 = "Besselian Epoch" 	# Label for axis 1
+    System = "BEPOCH" 	# Coordinate system type
+#   Uni1 = "yr" 	# Units for axis 1 (year)
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot1 = 50000 	# Lowest legal axis value
+#   Top1 = 60000 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Ident = "t axis" 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Unit = "yr" 	# Axis units (year)
+          Dirn = 0 	# Plot in reverse direction (hint)
+          Top = 60000 	# Maximum legal axis value
+          Bottom = 50000 	# Minimum legal axis value
+       End Axis
+ IsA Frame 	# Coordinate system description
+    TmScl = "TT" 	# Time scale
+ End TimeFrame
+"###,
+    },
+    Case {
+        name: "time_dump",
+        fitschan: false,
+        object: r###" Begin TimeFrame 	# Description of time coordinate system
+#   Title = "Modified Julian Date" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "TIME" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Modified Julian Date" 	# Label for axis 1
+#   System = "MJD" 	# Coordinate system type
+#   Uni1 = "d" 	# Units for axis 1 (day)
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   TmScl = "TAI" 	# Time scale
+ End TimeFrame
+"###,
+        ops: &[
+            (Op::Set("System=JD,TimeScale=TAI,TimeOrigin=2455000,LTOffset=-10,AlignTimeScale=UTC,AlignSystem=MJD,Unit=d,Label=T,ClockLat=N20,ObsLon=W155,Title=A time,Ident=tf"), Out::Done),
+        ],
+        dump: r###" Begin TimeFrame 	# Description of time coordinate system
+    Ident = "tf" 	# Permanent Object identification string
+ IsA Object 	# AST Object
+    Title = "A time" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "TIME" 	# Coordinate system domain
+#   Epoch = 2009.4592754894065 	# Julian epoch of observation
+#   Lbl1 = "T" 	# Label for axis 1
+    System = "JD" 	# Coordinate system type
+    AlSys = "MJD" 	# Alignment coordinate system
+#   Uni1 = "d" 	# Units for axis 1 (day)
+    ObsLat = 0.3490658503988659 	# Observers geodetic latitude (rads)
+    ObsLon = -2.7052603405912108 	# Observers geodetic longitude (rads)
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Label = "T" 	# Axis Label
+          Unit = "d" 	# Axis units (day)
+       End Axis
+ IsA Frame 	# Coordinate system description
+    TmScl = "TAI" 	# Time scale
+    ATmScl = "UTC" 	# Alignment time scale
+    TmOrg = 2455000 	# Time offset
+    LTOff = -10 	# Local Time offset from UTC
+ End TimeFrame
+"###,
+    },
+    Case {
+        name: "cmp_spec_sky",
+        fitschan: false,
+        object: r###" Begin CmpFrame 	# Compound coordinate system description
+#   Title = "3-d compound coordinate system" 	# Title of coordinate system
+#   Naxes = 3 	# Number of coordinate axes
+#   Domain = "SPECTRUM-SKY" 	# Coordinate system domain
+#   Lbl1 = "Wavelength" 	# Label for axis 1
+#   Lbl2 = "Right ascension" 	# Label for axis 2
+#   Lbl3 = "Declination" 	# Label for axis 3
+#   Uni1 = "Angstrom" 	# Units for axis 1
+#   Uni2 = "hh:mm:ss.s" 	# Units for axis 2
+#   Uni3 = "ddd:mm:ss" 	# Units for axis 3
+#   Dir2 = 0 	# Plot axis 2 in reverse direction
+ IsA Frame 	# Coordinate system description
+    FrameA = 	# First component Frame
+       Begin SpecFrame 	# Description of spectral coordinate system
+          Naxes = 1 	# Number of coordinate axes
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+       IsA Frame 	# Coordinate system description
+       End SpecFrame
+    FrameB = 	# Second component Frame
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+       End SkyFrame
+ End CmpFrame
+"###,
+        ops: &[
+            (Op::Get("Class"), Out::Value("CmpFrame")),
+            (Op::Get("Naxes"), Out::Value("3")),
+            (Op::Get("Title"), Out::Value("3-d compound coordinate system")),
+            (Op::Get("Domain"), Out::Value("SPECTRUM-SKY")),
+            (Op::Set("System(1)=wave"), Out::Done),
+            (Op::Get("System(1)"), Out::Value("WAVE")),
+            (Op::Get("System"), Out::Value("Compound")),
+            (Op::Get("System(2)"), Out::Value("ICRS")),
+            (Op::Set("System=FK4"), Out::Done),
+            (Op::Get("System(2)"), Out::Value("FK4")),
+            (Op::Get("System(3)"), Out::Value("FK4")),
+            (Op::Get("System"), Out::Value("Compound")),
+            (Op::Set("System=nonsense"), Out::Err(E::Badat, &["astSet: The attribute setting \"system=nonsense\" is invalid for the given CmpFrame."])),
+            (Op::Set("System(2)=Galactic"), Out::Done),
+            (Op::Get("System(3)"), Out::Value("GALACTIC")),
+            (Op::Test("System(1)"), Out::Flag(true)),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Clear("System(2)"), Out::Done),
+            (Op::Get("System(2)"), Out::Value("ICRS")),
+            (Op::Set("Label(2)=x"), Out::Done),
+            (Op::Get("Label(2)"), Out::Value("x")),
+            (Op::Get("Label(1)"), Out::Value("Wavelength")),
+            (Op::Test("Label(1)"), Out::Flag(false)),
+            (Op::Get("Label(3)"), Out::Value("Declination")),
+            (Op::Set("Label(4)=x"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (4) invalid - it should be in the range 1 to 3."])),
+            (Op::Get("Label(4)"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (4) invalid - it should be in the range 1 to 3."])),
+            (Op::Test("Label(4)"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (4) invalid - it should be in the range 1 to 3."])),
+            (Op::Clear("Label(4)"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (4) invalid - it should be in the range 1 to 3."])),
+            (Op::Get("Unit(1)"), Out::Value("Angstrom")),
+            (Op::Get("Unit(2)"), Out::Value("hh:mm:ss.s")),
+            (Op::Get("Format(2)"), Out::Value("hms.1")),
+            (Op::Set("Epoch=2000"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2000.0")),
+            (Op::Test("Epoch"), Out::Flag(true)),
+            (Op::Get("Epoch(1)"), Out::Value("2000.0")),
+            (Op::Set("RestFreq=230.5"), Out::Done),
+            (Op::Get("RestFreq"), Out::Value("230.50000000000003")),
+            (Op::Test("RestFreq"), Out::Flag(true)),
+            (Op::Set("RestFreq=bad"), Out::Err(E::Badat, &["astSet: The attribute setting \"restfreq=bad\" is invalid for the given CmpFrame."])),
+            (Op::Set("Fred=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for the given CmpFrame."])),
+            (Op::Get("Fred"), Out::Err(E::Badat, &["astGet: The CmpFrame given does not have an attribute called \"fred\"."])),
+            (Op::Test("Fred"), Out::Err(E::Badat, &["astTest: The CmpFrame given does not have an attribute called \"fred\"."])),
+            (Op::Clear("Fred"), Out::Err(E::Badat, &["astClear: The CmpFrame given does not have an attribute called \"fred\"."])),
+            (Op::Set("Fred(1)=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred(1)=1\" is invalid for the given CmpFrame."])),
+            (Op::Get("Fred(1)"), Out::Err(E::Badat, &["astGet: The CmpFrame given does not have an attribute called \"fred(1)\"."])),
+            (Op::Test("Fred(1)"), Out::Err(E::Badat, &["astTest: The CmpFrame given does not have an attribute called \"fred(1)\"."])),
+            (Op::Clear("Fred(1)"), Out::Err(E::Badat, &["astClear: The CmpFrame given does not have an attribute called \"fred(1)\"."])),
+            (Op::Set("Fred(9)=1"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (9) invalid - it should be in the range 1 to 3."])),
+            (Op::Get("Fred(9)"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (9) invalid - it should be in the range 1 to 3."])),
+            (Op::Test("Fred(9)"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (9) invalid - it should be in the range 1 to 3."])),
+            (Op::Clear("Fred(9)"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (9) invalid - it should be in the range 1 to 3."])),
+            (Op::Set("Equinox=B1950"), Out::Done),
+            (Op::Get("Equinox"), Out::Value("1950.0")),
+            (Op::Get("Equinox(2)"), Out::Value("1950.0")),
+            (Op::Get("Equinox(1)"), Out::Err(E::Badat, &["astGet: The CmpFrame given does not have an attribute called \"equinox(1)\"."])),
+            (Op::Set("StdOfRest=LSRK"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("LSRK")),
+            (Op::Test("StdOfRest"), Out::Flag(true)),
+            (Op::Clear("StdOfRest"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("Heliocentric")),
+            (Op::Test("StdOfRest"), Out::Flag(false)),
+            (Op::Set("SkyRef(2)=0.5"), Out::Done),
+            (Op::Get("SkyRef(2)"), Out::Value("0.5")),
+            (Op::Get("SkyRef"), Out::Value("1:54:35.5, 0:00:00")),
+            (Op::Set("AsTime(3)=1"), Out::Done),
+            (Op::Get("AsTime(3)"), Out::Value("1")),
+            (Op::Get("Digits"), Out::Value("7")),
+            (Op::Set("Digits=5"), Out::Done),
+            (Op::Get("Digits(2)"), Out::Value("7")),
+            (Op::Set("Digits(2)=8"), Out::Done),
+            (Op::Get("Digits(2)"), Out::Value("8")),
+            (Op::Get("Format(2)"), Out::Value("hms.2")),
+            (Op::Set("Ident(2)=axis"), Out::Done),
+            (Op::Get("Ident(2)"), Out::Value("axis")),
+            (Op::Get("Class(1)"), Out::Value("Axis")),
+            (Op::Get("Class(2)"), Out::Value("SkyAxis")),
+            (Op::Set("Title=compound"), Out::Done),
+            (Op::Get("Title"), Out::Value("compound")),
+            (Op::Get("Title(1)"), Out::Value("Wavelength")),
+            (Op::Set("Domain=CMP"), Out::Done),
+            (Op::Get("Domain"), Out::Value("CMP")),
+            (Op::Get("Domain(2)"), Out::Value("SKY")),
+            (Op::Set("ObsLat=N19"), Out::Done),
+            (Op::Get("ObsLat"), Out::Value("N19:00:00.00")),
+            (Op::Get("ObsLat(1)"), Out::Value("N19:00:00.00")),
+            (Op::Get("Nin"), Out::Value("3")),
+            (Op::Get("MaxAxes"), Out::Value("1000000")),
+            (Op::Get("LatAxis"), Out::Value("2")),
+            (Op::Get("LonAxis"), Out::Value("1")),
+            (Op::Get("IsLatAxis(3)"), Out::Value("1")),
+            (Op::Set("Projection=a b"), Out::Done),
+            (Op::Get("Projection"), Out::Value("a b")),
+            (Op::Set("Label=every"), Out::Done),
+            (Op::Get("Label(1)"), Out::Value("every")),
+            (Op::Get("Label(2)"), Out::Value("x")),
+            (Op::Get("Label(3)"), Out::Value("Declination")),
+            (Op::Clear("Label"), Out::Done),
+            (Op::Get("Label(1)"), Out::Value("Wavelength")),
+            (Op::Test("Label"), Out::Flag(false)),
+            (Op::Get("Label"), Out::Value("Wavelength")),
+            (Op::Set("Unit=GHz"), Out::Done),
+            (Op::Get("Unit(1)"), Out::Value("GHz")),
+            (Op::Get("Unit(2)"), Out::Value("hh:mm:ss.ss")),
+            (Op::Set("NegLon=1"), Out::Done),
+            (Op::Get("NegLon"), Out::Value("1")),
+            (Op::Test("NegLon"), Out::Flag(true)),
+            (Op::Clear("NegLon"), Out::Done),
+            (Op::Get("NegLon"), Out::Value("0")),
+            (Op::Test("NegLon"), Out::Flag(false)),
+            (Op::Set("Nin=3"), Out::Err(E::Badat, &["astSet: The attribute setting \"nin=3\" is invalid for the given CmpFrame."])),
+            (Op::Clear("Naxes"), Out::Err(E::Badat, &["astClear: The CmpFrame given does not have an attribute called \"naxes\"."])),
+        ],
+        dump: r###" Begin CmpFrame 	# Compound coordinate system description
+    Title = "compound" 	# Title of coordinate system
+#   Naxes = 3 	# Number of coordinate axes
+    Domain = "CMP" 	# Coordinate system domain
+    Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Wavelength" 	# Label for axis 1
+#   Lbl2 = "x" 	# Label for axis 2
+#   Lbl3 = "Declination" 	# Label for axis 3
+#   Uni1 = "GHz" 	# Units for axis 1
+#   Uni2 = "hh:mm:ss.ss" 	# Units for axis 2
+#   Uni3 = "hh:mm:ss" 	# Units for axis 3
+#   Dig2 = 8 	# Individual precision for axis 2
+    Digits = 5 	# Default formatting precision
+#   Fmt2 = "hms.2" 	# Format specifier for axis 2
+#   Dir2 = 0 	# Plot axis 2 in reverse direction
+    ObsLat = 0.33161255787892263 	# Observers geodetic latitude (rads)
+ IsA Frame 	# Coordinate system description
+    FrameA = 	# First component Frame
+       Begin SpecFrame 	# Description of spectral coordinate system
+          Naxes = 1 	# Number of coordinate axes
+          Epoch = 2000 	# Julian epoch of observation
+          System = "WAVE" 	# Coordinate system type
+          ObsLat = 0.33161255787892263 	# Observers geodetic latitude (rads)
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Unit = "GHz" 	# Axis units
+             End Axis
+       IsA Frame 	# Coordinate system description
+          RstFrq = 230500000000 	# Rest frequency (Hz)
+          UWave = "GHz" 	# Preferred units for wavelength
+       End SpecFrame
+    FrameB = 	# Second component Frame
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Epoch = 2000 	# Julian epoch of observation
+          ObsLat = 0.33161255787892263 	# Observers geodetic latitude (rads)
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+                Ident = "axis" 	# Permanent Object identification string
+             IsA Object 	# AST Object
+                Label = "x" 	# Axis Label
+                Digits = 8 	# Default formatting precision
+             IsA Axis 	# Coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+                AsTime = 1 	# Display values as times (not angles)
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "a b" 	# Description of sky projection
+          Eqnox = 1950 	# Besselian epoch of mean equinox
+          SRef1 = 0.5 	# Ref. pos. RA 1:54:35.49
+       End SkyFrame
+ End CmpFrame
+"###,
+    },
+    Case {
+        name: "cmp_1_1",
+        fitschan: false,
+        object: r###" Begin CmpFrame 	# Compound coordinate system description
+#   Title = "2-d compound coordinate system" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "CMP" 	# Coordinate system domain
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+ IsA Frame 	# Coordinate system description
+    FrameA = 	# First component Frame
+       Begin Frame 	# Coordinate system description
+          Naxes = 1 	# Number of coordinate axes
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    FrameB = 	# Second component Frame
+       Begin Frame 	# Coordinate system description
+          Naxes = 1 	# Number of coordinate axes
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+ End CmpFrame
+"###,
+        ops: &[
+            (Op::Get("Label(1)"), Out::Value("Axis 1")),
+            (Op::Get("Label(2)"), Out::Value("Axis 1")),
+            (Op::Set("Label(2)=x"), Out::Done),
+            (Op::Get("Label(2)"), Out::Value("x")),
+            (Op::Test("Label(2)"), Out::Flag(true)),
+            (Op::Clear("Label(2)"), Out::Done),
+            (Op::Get("Label(2)"), Out::Value("Axis 1")),
+            (Op::Test("Label(2)"), Out::Flag(false)),
+            (Op::Get("Symbol(2)"), Out::Value("x1")),
+            (Op::Get("Unit(2)"), Out::Value("")),
+            (Op::Set("Digits(2)=4"), Out::Done),
+            (Op::Get("Digits(2)"), Out::Value("4")),
+            (Op::Test("Digits(2)"), Out::Flag(true)),
+            (Op::Get("Format(2)"), Out::Value("%1.4G")),
+            (Op::Get("Title"), Out::Value("2-d compound coordinate system")),
+            (Op::Set("Title=t"), Out::Done),
+            (Op::Get("Title"), Out::Value("t")),
+            (Op::Get("Domain"), Out::Value("CMP")),
+            (Op::Set("Domain=A"), Out::Done),
+            (Op::Get("Domain(1)"), Out::Value("")),
+            (Op::Get("System"), Out::Value("Compound")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Set("System=Cartesian"), Out::Done),
+            (Op::Get("System"), Out::Value("Compound")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Get("System(1)"), Out::Value("Cartesian")),
+            (Op::Set("System=Compound"), Out::Done),
+            (Op::Get("System"), Out::Value("Compound")),
+            (Op::Test("System"), Out::Flag(true)),
+            (Op::Clear("System"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("Compound")),
+            (Op::Test("AlignSystem"), Out::Flag(false)),
+            (Op::Set("AlignSystem=Compound"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("Compound")),
+            (Op::Test("AlignSystem"), Out::Flag(true)),
+            (Op::Set("Top(2)=5"), Out::Done),
+            (Op::Get("Top(2)"), Out::Value("5")),
+            (Op::Get("Top(1)"), Out::Value("1.7976931348623157e+308")),
+            (Op::Set("Fred(1)=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred(1)=1\" is invalid for the given CmpFrame."])),
+            (Op::Get("Fred(1)"), Out::Err(E::Badat, &["astGet: The CmpFrame given does not have an attribute called \"fred(1)\"."])),
+            (Op::Test("Fred(1)"), Out::Err(E::Badat, &["astTest: The CmpFrame given does not have an attribute called \"fred(1)\"."])),
+            (Op::Clear("Fred(1)"), Out::Err(E::Badat, &["astClear: The CmpFrame given does not have an attribute called \"fred(1)\"."])),
+            (Op::Set("Fred(3)=1"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Fred(3)"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("Fred(3)"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("Fred(3)"), Out::Err(E::Axiin, &["astPrimaryFrame(CmpFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Naxes"), Out::Value("2")),
+            (Op::Get("Ident(1)"), Out::Value("")),
+            (Op::Set("Ident=whole"), Out::Done),
+            (Op::Get("Ident"), Out::Value("whole")),
+            (Op::Set("Ident(1)=ax1"), Out::Done),
+            (Op::Get("Ident(1)"), Out::Value("ax1")),
+            (Op::Get("Class(1)"), Out::Value("Axis")),
+            (Op::Get("UseDefs"), Out::Value("1")),
+            (Op::Test("UseDefs"), Out::Flag(false)),
+            (Op::Set("UseDefs=0"), Out::Done),
+            (Op::Get("UseDefs"), Out::Value("0")),
+            (Op::Test("UseDefs"), Out::Flag(true)),
+            (Op::Get("ID"), Out::Value("")),
+            (Op::Set("Epoch=2001"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2001.0")),
+            (Op::Set("MatchEnd=1"), Out::Done),
+            (Op::Get("MatchEnd"), Out::Value("1")),
+            (Op::Get("MinAxes"), Out::Value("0")),
+            (Op::Get("NormUnit(1)"), Out::Value("")),
+            (Op::Get(" "), Out::Err(E::Badat, &["astGet(CmpFrame): A blank attribute name was given."])),
+            (Op::Test(""), Out::Err(E::Badat, &["astTest: The CmpFrame given does not have an attribute called \"\"."])),
+            (Op::Set("Label=both"), Out::Done),
+            (Op::Get("Label(1)"), Out::Value("both")),
+            (Op::Get("Label(2)"), Out::Value("both")),
+            (Op::Test("Label"), Out::Flag(true)),
+            (Op::Get("Label"), Out::Value("both")),
+            (Op::Clear("Label"), Out::Done),
+            (Op::Get("Label(1)"), Out::Value("Axis 1")),
+            (Op::Set("Fred=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for the given CmpFrame."])),
+            (Op::Get("Fred"), Out::Err(E::Badat, &["astGet: The CmpFrame given does not have an attribute called \"fred\"."])),
+            (Op::Test("Fred"), Out::Err(E::Badat, &["astTest: The CmpFrame given does not have an attribute called \"fred\"."])),
+            (Op::Clear("Fred"), Out::Err(E::Badat, &["astClear: The CmpFrame given does not have an attribute called \"fred\"."])),
+            (Op::Set("Label(2)=two words"), Out::Done),
+            (Op::Get("Label(2)"), Out::Value("two words")),
+        ],
+        dump: r###" Begin CmpFrame 	# Compound coordinate system description
+    Ident = "whole" 	# Permanent Object identification string
+    UseDfs = 0 	# Default values cannot be used
+ IsA Object 	# AST Object
+    Title = "t" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+    Domain = "A" 	# Coordinate system domain
+    Epoch = 2001 	# Julian epoch of observation
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "two words" 	# Label for axis 2
+    AlSys = "Compound" 	# Alignment coordinate system
+#   Dig2 = 4 	# Individual precision for axis 2
+#   Digits = 7 	# Default formatting precision
+#   Fmt2 = "%1.4G" 	# Format specifier for axis 2
+#   Top2 = 5 	# Highest legal axis value
+    MchEnd = 1 	# Match final target axes
+ IsA Frame 	# Coordinate system description
+    FrameA = 	# First component Frame
+       Begin Frame 	# Coordinate system description
+          Naxes = 1 	# Number of coordinate axes
+          Epoch = 2001 	# Julian epoch of observation
+          System = "Cartesian" 	# Coordinate system type
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Ident = "ax1" 	# Permanent Object identification string
+             IsA Object 	# AST Object
+             End Axis
+       End Frame
+    FrameB = 	# Second component Frame
+       Begin Frame 	# Coordinate system description
+          Naxes = 1 	# Number of coordinate axes
+          Epoch = 2001 	# Julian epoch of observation
+          System = "Cartesian" 	# Coordinate system type
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "two words" 	# Axis Label
+                Digits = 4 	# Default formatting precision
+                Top = 5 	# Maximum legal axis value
+             End Axis
+       End Frame
+ End CmpFrame
+"###,
+    },
+    Case {
+        name: "cmp_dump",
+        fitschan: false,
+        object: r###" Begin CmpFrame 	# Compound coordinate system description
+#   Title = "3-d compound coordinate system" 	# Title of coordinate system
+#   Naxes = 3 	# Number of coordinate axes
+#   Domain = "SPECTRUM-SKY" 	# Coordinate system domain
+#   Lbl1 = "Wavelength" 	# Label for axis 1
+#   Lbl2 = "Right ascension" 	# Label for axis 2
+#   Lbl3 = "Declination" 	# Label for axis 3
+#   Uni1 = "Angstrom" 	# Units for axis 1
+#   Uni2 = "hh:mm:ss.s" 	# Units for axis 2
+#   Uni3 = "ddd:mm:ss" 	# Units for axis 3
+#   Dir2 = 0 	# Plot axis 2 in reverse direction
+ IsA Frame 	# Coordinate system description
+    FrameA = 	# First component Frame
+       Begin SpecFrame 	# Description of spectral coordinate system
+          Naxes = 1 	# Number of coordinate axes
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+       IsA Frame 	# Coordinate system description
+       End SpecFrame
+    FrameB = 	# Second component Frame
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+       End SkyFrame
+ End CmpFrame
+"###,
+        ops: &[
+            (Op::Set("System(1)=FREQ,System(2)=Galactic,Label(2)=lon,Epoch=2005,RestFreq=115.27,StdOfRest=LSRK,Equinox=J2010,Title=cube,Domain=CUBE,Digits=6,Digits(3)=9,Ident=cmp,Unit(1)=GHz"), Out::Done),
+        ],
+        dump: r###" Begin CmpFrame 	# Compound coordinate system description
+    Ident = "cmp" 	# Permanent Object identification string
+ IsA Object 	# AST Object
+    Title = "cube" 	# Title of coordinate system
+#   Naxes = 3 	# Number of coordinate axes
+    Domain = "CUBE" 	# Coordinate system domain
+    Epoch = 2005 	# Julian epoch of observation
+#   Lbl1 = "Frequency" 	# Label for axis 1
+#   Lbl2 = "lon" 	# Label for axis 2
+#   Lbl3 = "Galactic latitude" 	# Label for axis 3
+#   Uni1 = "GHz" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Uni3 = "degrees" 	# Units for axis 3
+#   Dig3 = 9 	# Individual precision for axis 3
+    Digits = 6 	# Default formatting precision
+#   Fmt3 = "d.6" 	# Format specifier for axis 3
+#   Dir2 = 0 	# Plot axis 2 in reverse direction
+ IsA Frame 	# Coordinate system description
+    FrameA = 	# First component Frame
+       Begin SpecFrame 	# Description of spectral coordinate system
+          Naxes = 1 	# Number of coordinate axes
+          Epoch = 2005 	# Julian epoch of observation
+          System = "FREQ" 	# Coordinate system type
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Unit = "GHz" 	# Axis units
+             End Axis
+       IsA Frame 	# Coordinate system description
+          SoR = "LSRK" 	# Standard of rest
+          RstFrq = 115270000000 	# Rest frequency (Hz)
+          UFreq = "GHz" 	# Preferred units for frequency
+       End SpecFrame
+    FrameB = 	# Second component Frame
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Epoch = 2005 	# Julian epoch of observation
+          System = "GALACTIC" 	# Coordinate system type
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+                Label = "lon" 	# Axis Label
+             IsA Axis 	# Coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+                Digits = 9 	# Default formatting precision
+             IsA Axis 	# Coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Eqnox = 2010 	# Julian epoch of mean equinox
+       End SkyFrame
+ End CmpFrame
+"###,
+    },
 ];
