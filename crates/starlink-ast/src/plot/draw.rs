@@ -37,6 +37,7 @@
 use super::Plot;
 use super::curve::CurveData;
 use super::elements::PlotElement;
+use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::grf::{Grf, GrfAttr, GrfCap, GrfPrimitive, Justification};
 use crate::serial::native_write::format_double_g;
@@ -157,6 +158,59 @@ pub trait Draw {
         up: [f32; 2],
         just: Justification,
     ) -> AstResult<()>;
+
+    /// Draw the geodesic curve from `start` to `finish`, two positions in
+    /// the current Frame, in the style of
+    /// [`Curves`](crate::plot::PlotElement::Curves).
+    ///
+    /// The curve is the shortest path between the two positions in the
+    /// current Frame (a great circle on the sky, a straight line in a plain
+    /// Frame), traced to within the Plot's [`tol`](Plot::tol) and broken
+    /// where its graphics positions are undefined. It is clipped at the
+    /// edges of the plotting area when bit 1 of the Plot's
+    /// [`clip`](Plot::clip) attribute is set, and by any clip region.
+    ///
+    /// Nothing is drawn if any value of `start` or `finish` is bad.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    /// - `ErrorCode::Ncpin` when `start` or `finish` has fewer values than
+    ///   the current Frame has axes.
+    /// - `ErrorCode::Cvbrk` when the curve has more than 1000 breaks.
+    /// - Any error the backend reports.
+    #[doc(alias = "astCurve")]
+    fn draw_curve(&mut self, grf: &mut dyn Grf, start: &[f64], finish: &[f64]) -> AstResult<()>;
+
+    /// Draw a curve through `positions`, one axis of the PointSet per axis
+    /// of the current Frame, made of the geodesic between each position and
+    /// the next, in the style of [`Curves`](crate::plot::PlotElement::Curves).
+    ///
+    /// Each segment is drawn as [`draw_curve`](Draw::draw_curve) draws a
+    /// curve, and the segments are joined into one line. A segment with a
+    /// bad value at either end is left out, breaking the line there.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D, or when
+    ///   `positions` does not have one axis per axis of the current Frame.
+    /// - `ErrorCode::Cvbrk` when a segment has more than 1000 breaks.
+    /// - Any error the backend reports.
+    #[doc(alias = "astPolyCurve")]
+    fn draw_poly_curve(&mut self, grf: &mut dyn Grf, positions: &PointSet) -> AstResult<()>;
+
+    /// The bounds of a box in graphics coordinates that encloses what the
+    /// last drawing method called on this Plot drew, as `(lbnd, ubnd)`.
+    ///
+    /// A drawing method that drew nothing leaves lower bounds of `f32::MAX`
+    /// and upper bounds of `f32::MIN_POSITIVE`. Lines and markers drawn in
+    /// invisible ink count, as if they had been drawn.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    #[doc(alias = "astBoundingBox")]
+    fn bounding_box(&self) -> AstResult<([f32; 2], [f32; 2])>;
 }
 
 impl Draw for Plot {
@@ -191,6 +245,31 @@ impl Draw for Plot {
     ) -> AstResult<()> {
         self.begin_drawing();
         self.text_impl(grf, text, pos, up, just)
+    }
+
+    fn draw_curve(&mut self, grf: &mut dyn Grf, start: &[f64], finish: &[f64]) -> AstResult<()> {
+        self.begin_drawing();
+        self.curve_impl(grf, start, finish)
+    }
+
+    fn draw_poly_curve(&mut self, grf: &mut dyn Grf, positions: &PointSet) -> AstResult<()> {
+        self.begin_drawing();
+        self.poly_curve_impl(grf, positions)
+    }
+
+    // C: BoundingBox (plot.c:5228).
+    fn bounding_box(&self) -> AstResult<([f32; 2], [f32; 2])> {
+        let naxes = crate::mappings::Mapping::nin(self);
+        if naxes != 2 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "astBoundingBox(Plot): Number of axes ({naxes}) in the base Frame of the \
+                     supplied Plot is invalid - this number should be 2."
+                ),
+            ));
+        }
+        Ok((self.draw.boxp_lbnd, self.draw.boxp_ubnd))
     }
 }
 
