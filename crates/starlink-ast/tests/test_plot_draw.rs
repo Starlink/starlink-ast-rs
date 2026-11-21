@@ -10,7 +10,10 @@
 //! `plot_border_probe.c`, which draws the borders of the grid test Plots of
 //! `fixtures/plot/cases.txt`, built as C's `testgrid.c` builds them, and
 //! `plot_text_oracle/cases.rs` by `plot_text_probe.c`, which draws text with
-//! each justification, rotated, and with each escape sequence. The port draws the same Plots through
+//! each justification, rotated, and with each escape sequence, and
+//! `plot_methods_oracle/cases.rs` by `plot_methods_probe.c`, which draws
+//! curves, polycurves, curves given by a Mapping, markers and Region
+//! outlines, with and without a clip region. The port draws the same Plots through
 //! [`LogGrf`](starlink_ast::grf::LogGrf) and
 //! [`SvgGrf`](starlink_ast::grf::SvgGrf), and both outputs must be identical.
 
@@ -29,10 +32,18 @@ mod border;
 #[path = "plot_text_oracle/cases.rs"]
 mod text;
 
+#[rustfmt::skip]
+#[allow(dead_code)]
+#[path = "plot_methods_oracle/cases.rs"]
+mod methods;
+
+use starlink_ast::AnyObject;
+use starlink_ast::constants::BAD_VALUE;
+use starlink_ast::coords::PointSet;
 use starlink_ast::error::{AstResult, ErrorCode};
 use starlink_ast::frames::{BasicFrameBuilder, CmpFrame, FrameRef, SkyFrame, SkySystem};
 use starlink_ast::grf::{Grf, Justification, LogGrf, SvgGrf, SvgOptions};
-use starlink_ast::mappings::PermMap;
+use starlink_ast::mappings::{PermMap, PolyMap, PolyTerm, UnitMap};
 use starlink_ast::plot::{Draw, Plot};
 use starlink_ast::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, DynRegion, EllipseBuilder,
@@ -42,6 +53,7 @@ use starlink_ast::regions::{
 use crate::common::plot::{
     FailingGrf, apply_settings, fnv1a, grid_cases, read_head, testgrid_plot,
 };
+use crate::common::{assert_c_text, native_dump};
 
 /// A Plot of a header under `fixtures/wcsconv/inputs`, or of a 2-D Frame.
 fn plot_of(head: Option<&str>, gbox: [f32; 4], pbox: [f64; 4]) -> Plot {
@@ -102,6 +114,15 @@ impl From<&text::Svg> for WantSvg {
         match svg {
             text::Svg::Text(t) => WantSvg::Text(t),
             text::Svg::Fnv1a(h) => WantSvg::Hash(*h),
+        }
+    }
+}
+
+impl From<&methods::Svg> for WantSvg {
+    fn from(svg: &methods::Svg) -> Self {
+        match svg {
+            methods::Svg::Text(t) => WantSvg::Text(t),
+            methods::Svg::Fnv1a(h) => WantSvg::Hash(*h),
         }
     }
 }
@@ -515,4 +536,305 @@ fn a_copied_plot_starts_with_no_pushed_text_attributes() {
     let mut copy = plot.clone();
     assert!(pop(&mut plot).contains("GAttr COLOUR=3.0000"));
     assert!(!pop(&mut copy).contains("GAttr COLOUR=3.0000"));
+}
+
+/// The Mapping from distance to position that `plot_methods_probe.c`
+/// builds for `id`.
+fn method_map(id: &str) -> PolyMap {
+    // Each term is a coefficient, its 1-based output and the power of t.
+    let terms: &[(f64, usize, usize)] = match id {
+        "parabola" => &[(1.0, 1, 0), (8.0, 1, 1), (2.0, 2, 0), (6.0, 2, 2)],
+        "sky_arc" => &[(0.5, 1, 0), (1.0, 1, 1), (0.2, 2, 0), (0.4, 2, 1)],
+        other => panic!("no Mapping {other}"),
+    };
+    let forward: Vec<PolyTerm> = terms
+        .iter()
+        .map(|&(coeff, out_axis, power)| PolyTerm {
+            coeff,
+            powers: vec![power],
+            out_axis,
+        })
+        .collect();
+    PolyMap::new(1, 2, &forward, None).unwrap()
+}
+
+/// The Region whose outline `plot_methods_probe.c` draws for `id`.
+fn method_region(id: &str) -> DynRegion {
+    let f2 = || BasicFrameBuilder::new(2).build().unwrap();
+    let gal = || SkyFrame::new(SkySystem::Galactic);
+    let circle = |f: Box<dyn starlink_ast::frames::Frame>, c: [f64; 2], r: f64| -> DynRegion {
+        Box::new(
+            CircleBuilder::from_dyn(f, c.to_vec())
+                .unwrap()
+                .radius(r)
+                .build()
+                .unwrap(),
+        )
+    };
+    fn polygon(f: impl starlink_ast::frames::Frame + 'static, xs: &[f64], ys: &[f64]) -> DynRegion {
+        let vertices = xs.iter().zip(ys).map(|(&x, &y)| vec![x, y]).collect();
+        Box::new(PolygonBuilder::new(f, vertices).unwrap().build().unwrap())
+    }
+    let interval = |lo: [f64; 2], hi: [f64; 2]| -> DynRegion {
+        Box::new(
+            IntervalBuilder::new(f2(), lo.to_vec(), hi.to_vec())
+                .unwrap()
+                .build()
+                .unwrap(),
+        )
+    };
+    let cmp = |a: DynRegion, b: DynRegion, oper| -> DynRegion {
+        Box::new(
+            CmpRegionBuilder::from_dyn(a, b, oper)
+                .unwrap()
+                .build()
+                .unwrap(),
+        )
+    };
+    match id {
+        "box" => Box::new(
+            BoxRegionBuilder::from_bounds(f2(), &[2.0, 3.0], &[7.0, 6.0])
+                .unwrap()
+                .build()
+                .unwrap(),
+        ),
+        "circle" => circle(Box::new(f2()), [5.0, 5.0], 3.0),
+        "ellipse" => Box::new(
+            EllipseBuilder::new(f2(), vec![5.0, 5.0], [3.0, 1.5], 0.5)
+                .unwrap()
+                .build()
+                .unwrap(),
+        ),
+        "interval" => interval([2.0, 3.0], [8.0, 7.0]),
+        "interval_open" => interval([2.0, BAD_VALUE], [8.0, 7.0]),
+        "polygon" => polygon(
+            f2(),
+            &[2.0, 5.0, 8.0, 9.5, 8.0, 5.0, 2.6],
+            &[2.0, 0.5, 2.0, 5.0, 8.0, 7.4, 5.0],
+        ),
+        "and_overlap" => cmp(
+            circle(Box::new(f2()), [4.0, 5.0], 2.0),
+            circle(Box::new(f2()), [6.0, 5.0], 2.0),
+            CmpOperator::And,
+        ),
+        "or_disjoint" => cmp(
+            circle(Box::new(f2()), [3.0, 3.0], 1.5),
+            circle(Box::new(f2()), [7.0, 7.0], 1.5),
+            CmpOperator::Or,
+        ),
+        "sky_circle" => circle(Box::new(gal()), [-2.75, -0.45], 0.1),
+        "sky_polygon" => polygon(gal(), &[-2.3, -2.2, -2.4, -2.5], &[-0.2, -0.4, -0.5, -0.3]),
+        "icrs_circle" => circle(
+            Box::new(SkyFrame::new(SkySystem::Icrs)),
+            [1.512434, -0.106751],
+            0.08,
+        ),
+        "moc" => {
+            let mut moc = Moc::new();
+            moc.add_moc_string(
+                CmpOperator::Or,
+                false,
+                -1,
+                "3/356,358 4/1413,1415,1421,1436",
+            )
+            .unwrap();
+            Box::new(moc)
+        }
+        other => panic!("no Region {other}"),
+    }
+}
+
+/// Draw the operations of a `plot_methods_probe.c` case on `plot`.
+fn run_ops(plot: &mut Plot, grf: &mut dyn Grf, ops: &[methods::Op]) -> AstResult<()> {
+    for op in ops {
+        match op {
+            methods::Op::Curve(start, finish) => plot.draw_curve(grf, start, finish)?,
+            methods::Op::PolyCurve(axes) => {
+                plot.draw_poly_curve(grf, &PointSet::from_columns(axes)?)?
+            }
+            methods::Op::GenCurve(id) => plot.draw_gen_curve(grf, &method_map(id))?,
+            methods::Op::Mark(axes, marker) => {
+                plot.draw_mark(grf, &PointSet::from_columns(axes)?, *marker)?
+            }
+            methods::Op::Clip(frame, lbnd, ubnd) => {
+                let frame = match frame {
+                    methods::ClipFrame::None => {
+                        plot.clear_clip_region()?;
+                        continue;
+                    }
+                    methods::ClipFrame::Base => FrameRef::Base,
+                    methods::ClipFrame::Current => FrameRef::Current,
+                    methods::ClipFrame::Index(i) => FrameRef::Index(*i),
+                };
+                plot.set_clip_region(frame, lbnd, ubnd)?
+            }
+            methods::Op::Outline(id) => {
+                plot.draw_region_outline(grf, method_region(id).as_ref())?
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn methods_match_the_c_library() {
+    let mut failures = Vec::new();
+    for case in methods::CASES {
+        let mut plot = plot_of(case.head, case.gbox, case.pbox);
+        apply_settings(&mut plot, case.attr).unwrap();
+        let (log, svg) = log_and_svg(&plot, |plot, grf| run_ops(plot, grf, case.ops));
+        compare(
+            case.name,
+            &log,
+            &svg,
+            case.log,
+            (&case.svg).into(),
+            &mut failures,
+        );
+        let mut drawn = plot.clone();
+        run_ops(&mut drawn, &mut LogGrf::new(Vec::new()), case.ops).unwrap();
+        let (lbnd, ubnd) = drawn.bounding_box().unwrap();
+        let got = [lbnd[0], lbnd[1], ubnd[0], ubnd[1]];
+        if got.map(f32::to_bits) != case.bbox.map(f32::to_bits) {
+            failures.push(format!(
+                "{}: bounding box {got:?}, C gives {:?}",
+                case.name, case.bbox
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn draw_curve_rejects_a_short_start() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let err = plot
+        .draw_curve(&mut LogGrf::new(Vec::new()), &[1.0], &[2.0, 3.0])
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Ncpin);
+}
+
+#[test]
+fn draw_poly_curve_rejects_the_wrong_axis_count() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let positions = PointSet::from_columns(&[&[1.0, 2.0], &[1.0, 2.0], &[1.0, 2.0]]).unwrap();
+    let err = plot
+        .draw_poly_curve(&mut LogGrf::new(Vec::new()), &positions)
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Naxin);
+    assert_eq!(
+        err.message(),
+        "astPolyCurve(Plot): Number of axes (2) in the current Frame of the supplied Plot is \
+         invalid - this number should be 3 (possible programming error)."
+    );
+}
+
+#[test]
+fn draw_gen_curve_rejects_a_two_input_mapping() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let err = plot
+        .draw_gen_curve(&mut LogGrf::new(Vec::new()), &UnitMap::new(2))
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Ncpin);
+}
+
+/// C's `FrcExt` line for a Plot that never set ForceExterior, and the line
+/// the port writes. The same licence as `UNINITIALISED_FORCE_EXTERIOR_LICENSED`
+/// in `test_plot.rs`: C's `astInitPlot` never initialises it, so C dumps it
+/// as set to whatever the allocator left (c-library-quirks.md).
+const FORCE_EXTERIOR_LICENSED: (&str, &str) = (
+    "    FrcExt = 0 \t# Force exterior labelling?\n",
+    "#   FrcExt = 0 \t# Force exterior labelling?\n",
+);
+
+#[test]
+fn dumps_after_drawing_match_the_c_library() {
+    for &(name, want) in methods::DUMPS {
+        let case = methods::CASES.iter().find(|c| c.name == name).unwrap();
+        let mut plot = plot_of(case.head, case.gbox, case.pbox);
+        apply_settings(&mut plot, case.attr).unwrap();
+        run_ops(&mut plot, &mut LogGrf::new(Vec::new()), case.ops).unwrap();
+        let got = native_dump(&AnyObject::Plot(Box::new(plot))).unwrap();
+        let (c_line, line) = FORCE_EXTERIOR_LICENSED;
+        assert_eq!(
+            want.matches(c_line).count(),
+            1,
+            "{name}: C now dumps ForceExterior as unset; remove the licence"
+        );
+        assert_c_text(&got, &want.replace(c_line, line), name);
+    }
+}
+
+#[test]
+fn set_clip_region_rejects_bounds_of_the_wrong_length() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let err = plot
+        .set_clip_region(FrameRef::Current, &[1.0], &[2.0, 3.0])
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Clpax);
+}
+
+#[test]
+fn set_clip_region_rejects_an_invalid_frame() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let err = plot
+        .set_clip_region(FrameRef::Index(9), &[1.0, 1.0], &[2.0, 2.0])
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Frmin);
+    assert_eq!(
+        err.message(),
+        "astClip(Plot): Invalid Frame index (9) given. This value should be in the range 1 to 2 \
+         (or AST__CURRENT or AST__BASE)."
+    );
+}
+
+#[test]
+fn draw_region_outline_leaves_the_plot_as_it_was() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let zoom = starlink_ast::mappings::ZoomMap::new(2, 2.0).unwrap();
+    plot.add_frame(
+        FrameRef::Current,
+        Box::new(zoom),
+        Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+    )
+    .unwrap();
+    plot.set_current(FrameRef::Index(2)).unwrap();
+    plot.set_clip_region(FrameRef::Index(3), &[0.0, 0.0], &[12.0, 12.0])
+        .unwrap();
+    let before = native_dump(&AnyObject::Plot(Box::new(plot.clone()))).unwrap();
+    plot.draw_region_outline(
+        &mut LogGrf::new(Vec::new()),
+        method_region("circle").as_ref(),
+    )
+    .unwrap();
+    assert_eq!(plot.frameset().nframe(), 3);
+    assert_eq!(plot.frameset().base_index(), 1);
+    assert_eq!(plot.frameset().current_index(), 2);
+    // Restoring the base Frame marks it set, as C's astSetBase does, so
+    // the dump writes it as set; nothing else changes.
+    let after = native_dump(&AnyObject::Plot(Box::new(plot))).unwrap();
+    assert_eq!(after, before.replacen("#   Base = 1 ", "    Base = 1 ", 1));
+}
+
+#[test]
+fn draw_region_outline_rejects_a_region_it_cannot_convert() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let cube = BoxRegionBuilder::from_bounds(
+        BasicFrameBuilder::new(3).build().unwrap(),
+        &[0.0, 0.0, 0.0],
+        &[1.0, 1.0, 1.0],
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+    let err = plot
+        .draw_region_outline(&mut LogGrf::new(Vec::new()), &cube)
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Nocnv);
+    assert_eq!(
+        err.message(),
+        "astRegionOutline(Plot): Cannot find a mapping from the 2-dimensional Plot coordinate \
+         system (2-d coordinate system) to the 3-dimensional Region coordinate system (3-d \
+         coordinate system)."
+    );
 }

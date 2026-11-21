@@ -37,8 +37,11 @@
 use super::Plot;
 use super::curve::CurveData;
 use super::elements::PlotElement;
+use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::frames::FrameRef;
 use crate::grf::{Grf, GrfAttr, GrfCap, GrfPrimitive, Justification};
+use crate::mappings::Mapping;
 use crate::serial::native_write::format_double_g;
 
 /// The methods that draw a Plot through a graphics backend.
@@ -157,6 +160,130 @@ pub trait Draw {
         up: [f32; 2],
         just: Justification,
     ) -> AstResult<()>;
+
+    /// Draw the geodesic curve from `start` to `finish`, two positions in
+    /// the current Frame, in the style of
+    /// [`Curves`](crate::plot::PlotElement::Curves).
+    ///
+    /// The curve is the shortest path between the two positions in the
+    /// current Frame (a great circle on the sky, a straight line in a plain
+    /// Frame), traced to within the Plot's [`tol`](Plot::tol) and broken
+    /// where its graphics positions are undefined. It is clipped at the
+    /// edges of the plotting area when the Plot's [`clip`](Plot::clip)
+    /// attribute includes 1, for curves, and by any clip region.
+    ///
+    /// Nothing is drawn if any value of `start` or `finish` is bad.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    /// - `ErrorCode::Ncpin` when `start` or `finish` has fewer values than
+    ///   the current Frame has axes.
+    /// - `ErrorCode::Cvbrk` when the curve has more than 1000 breaks.
+    /// - Any error the backend reports.
+    #[doc(alias = "astCurve")]
+    fn draw_curve(&mut self, grf: &mut dyn Grf, start: &[f64], finish: &[f64]) -> AstResult<()>;
+
+    /// Draw a curve through `positions`, one axis of the PointSet per axis
+    /// of the current Frame, made of the geodesic between each position and
+    /// the next, in the style of [`Curves`](crate::plot::PlotElement::Curves).
+    ///
+    /// Each segment is drawn as [`draw_curve`](Draw::draw_curve) draws a
+    /// curve, and the segments are joined into one line. A segment with a
+    /// bad value at either end is left out, breaking the line there.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D, or when
+    ///   `positions` does not have one axis per axis of the current Frame.
+    /// - `ErrorCode::Cvbrk` when a segment has more than 1000 breaks.
+    /// - Any error the backend reports.
+    #[doc(alias = "astPolyCurve")]
+    fn draw_poly_curve(&mut self, grf: &mut dyn Grf, positions: &PointSet) -> AstResult<()>;
+
+    /// Draw the curve that `map` describes, in the style of
+    /// [`Curves`](crate::plot::PlotElement::Curves).
+    ///
+    /// `map` has one input, a distance along the curve from 0 at its start
+    /// to 1 at its end, and one output per axis of the current Frame, the
+    /// position at that distance. The curve is traced to within the Plot's
+    /// [`tol`](Plot::tol), broken where `map` gives bad positions or their
+    /// graphics positions are undefined, and clipped as
+    /// [`draw_curve`](Draw::draw_curve) clips.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    /// - The error transforming through `map` gives when it does not have
+    ///   one input and one output per axis of the current Frame.
+    /// - `ErrorCode::Cvbrk` when the curve has more than 1000 breaks.
+    /// - Any error the backend reports.
+    #[doc(alias = "astGenCurve")]
+    fn draw_gen_curve(&mut self, grf: &mut dyn Grf, map: &dyn Mapping) -> AstResult<()>;
+
+    /// Draw a marker of type `marker` at each of `positions`, one axis of
+    /// the PointSet per axis of the current Frame, in the style of
+    /// [`Markers`](crate::plot::PlotElement::Markers).
+    ///
+    /// What each marker type looks like is up to the backend. Positions
+    /// with no graphics position are left out, and so, when the Plot's
+    /// [`clip`](Plot::clip) attribute includes 2, for markers, are those
+    /// outside the plotting area; any clip region also removes markers.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    /// - The error transforming `positions` gives when it does not have one
+    ///   axis per axis of the current Frame.
+    /// - Any error the backend reports.
+    #[doc(alias = "astMark")]
+    fn draw_mark(&mut self, grf: &mut dyn Grf, positions: &PointSet, marker: i32) -> AstResult<()>;
+
+    /// Clip what the Plot draws to a box in one of its Frames: positions
+    /// whose coordinates in Frame `frame` fall outside `lbnd` to `ubnd` (one
+    /// value per axis of that Frame) are not drawn.
+    ///
+    /// A bad bound leaves that side of the box open. Whether a position is
+    /// clipped when it is outside the bounds on any axis, or only when it is
+    /// outside them on every axis, is set by the Plot's
+    /// [`clip_op`](Plot::clip_op) attribute. The box replaces any set
+    /// before; it is kept with the Plot when it is saved, and it applies to
+    /// lines, markers and text alike, whatever the Plot's
+    /// [`clip`](Plot::clip) attribute, which controls clipping at the edges
+    /// of the plotting area.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    /// - `ErrorCode::Frmin` when `frame` is not a Frame of the Plot.
+    /// - `ErrorCode::Clpax` when `lbnd` or `ubnd` does not have one value
+    ///   per axis of the Frame.
+    ///
+    /// The Plot is left unchanged if there is an error.
+    #[doc(alias = "astClip")]
+    fn set_clip_region(&mut self, frame: FrameRef, lbnd: &[f64], ubnd: &[f64]) -> AstResult<()>;
+
+    /// Remove the clip region [`set_clip_region`](Draw::set_clip_region)
+    /// set, if any.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    #[doc(alias = "astClip")]
+    fn clear_clip_region(&mut self) -> AstResult<()>;
+
+    /// The bounds of a box in graphics coordinates that encloses what the
+    /// last drawing method called on this Plot drew, as `(lbnd, ubnd)`.
+    ///
+    /// A drawing method that drew nothing leaves lower bounds of `f32::MAX`
+    /// and upper bounds of `f32::MIN_POSITIVE`. Lines and markers drawn in
+    /// invisible ink count, as if they had been drawn.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    #[doc(alias = "astBoundingBox")]
+    fn bounding_box(&self) -> AstResult<([f32; 2], [f32; 2])>;
 }
 
 impl Draw for Plot {
@@ -191,6 +318,92 @@ impl Draw for Plot {
     ) -> AstResult<()> {
         self.begin_drawing();
         self.text_impl(grf, text, pos, up, just)
+    }
+
+    fn draw_curve(&mut self, grf: &mut dyn Grf, start: &[f64], finish: &[f64]) -> AstResult<()> {
+        self.begin_drawing();
+        self.curve_impl(grf, start, finish)
+    }
+
+    fn draw_poly_curve(&mut self, grf: &mut dyn Grf, positions: &PointSet) -> AstResult<()> {
+        self.begin_drawing();
+        self.poly_curve_impl(grf, positions)
+    }
+
+    fn draw_gen_curve(&mut self, grf: &mut dyn Grf, map: &dyn Mapping) -> AstResult<()> {
+        self.begin_drawing();
+        self.gen_curve_impl(grf, map)
+    }
+
+    fn draw_mark(&mut self, grf: &mut dyn Grf, positions: &PointSet, marker: i32) -> AstResult<()> {
+        self.begin_drawing();
+        self.mark_impl(grf, positions, marker)
+    }
+
+    // C: Clip (plot.c:7030), with a Frame.
+    fn set_clip_region(&mut self, frame: FrameRef, lbnd: &[f64], ubnd: &[f64]) -> AstResult<()> {
+        self.check_base_2d("astClip")?;
+        // C: astValidateFrameIndex.
+        let nframe = self.frameset.nframe();
+        let index = match frame {
+            FrameRef::Base => self.frameset.base_index(),
+            FrameRef::Current => self.frameset.current_index(),
+            FrameRef::Index(i) if (1..=nframe).contains(&i) => i,
+            FrameRef::Index(i) => {
+                return Err(AstError::new(
+                    ErrorCode::Frmin,
+                    format!(
+                        "astClip(Plot): Invalid Frame index ({i}) given. This value should be in \
+                         the range 1 to {nframe} (or AST__CURRENT or AST__BASE)."
+                    ),
+                ));
+            }
+            FrameRef::AllFrames => {
+                return Err(AstError::new(
+                    ErrorCode::Frmin,
+                    "astClip(Plot): AST__ALLFRAMES does not identify a single Frame.",
+                ));
+            }
+        };
+        let naxes = self.frameset.frame(FrameRef::Index(index))?.naxes();
+        for (name, bnd) in [("lower", lbnd), ("upper", ubnd)] {
+            if bnd.len() != naxes {
+                return Err(AstError::new(
+                    ErrorCode::Clpax,
+                    format!(
+                        "astClip(Plot): {} values were supplied for the {name} bounds of the \
+                         clipping volume, but the clipping Frame has {naxes} axes.",
+                        bnd.len()
+                    ),
+                ));
+            }
+        }
+        let or_open = |v: f64, limit: f64| {
+            if v == crate::constants::BAD_VALUE {
+                limit
+            } else {
+                v
+            }
+        };
+        self.clip = Some(super::ClipRegion {
+            frame: index as i32,
+            lbnd: lbnd.iter().map(|&v| or_open(v, -f64::MAX)).collect(),
+            ubnd: ubnd.iter().map(|&v| or_open(v, f64::MAX)).collect(),
+        });
+        Ok(())
+    }
+
+    // C: Clip (plot.c:7030), with AST__NOFRAME.
+    fn clear_clip_region(&mut self) -> AstResult<()> {
+        self.check_base_2d("astClip")?;
+        self.clip = None;
+        Ok(())
+    }
+
+    // C: BoundingBox (plot.c:5228).
+    fn bounding_box(&self) -> AstResult<([f32; 2], [f32; 2])> {
+        self.check_base_2d("astBoundingBox")?;
+        Ok((self.draw.boxp_lbnd, self.draw.boxp_ubnd))
     }
 }
 
@@ -376,6 +589,22 @@ impl Plot {
     pub(crate) fn g_line(&mut self, grf: &mut dyn Grf, x: &[f32], y: &[f32]) -> AstResult<()> {
         if !self.invisible() {
             grf.line(x, y)?;
+        }
+        self.extend_boxp(x, y);
+        Ok(())
+    }
+
+    /// Draw markers, unless the Plot draws in invisible ink.
+    // C: GMark (plot.c:15060).
+    pub(crate) fn g_mark(
+        &mut self,
+        grf: &mut dyn Grf,
+        x: &[f32],
+        y: &[f32],
+        marker: i32,
+    ) -> AstResult<()> {
+        if !self.invisible() {
+            grf.mark(x, y, marker)?;
         }
         self.extend_boxp(x, y);
         Ok(())

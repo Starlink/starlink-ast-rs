@@ -33,6 +33,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [CmpRegion `RegTrace` tests its first component twice](#cmpregion-regtrace-tests-its-first-component-twice)
 - [CmpRegion `RegSplit` maps an unsplit CmpRegion into its own Frame again](#cmpregion-regsplit-maps-an-unsplit-cmpregion-into-its-own-frame-again)
 - [CmpRegion `RegSplit` ignores the CmpRegion's own Negated](#cmpregion-regsplit-ignores-the-cmpregions-own-negated)
+- [A curve clipped into arcs shorter than Crv's sample spacing is not drawn](#a-curve-clipped-into-arcs-shorter-than-crvs-sample-spacing-is-not-drawn)
+- [`astRegionOutline` leaves the Plot's Base set](#astregionoutline-leaves-the-plots-base-set)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -335,6 +337,21 @@ A negated OR of two disjoint Circles, the area outside both, comes back as the t
 The one caller outside the class is the Plot's drawing of a Region's border, which traces only the boundaries of the parts, and a Region and its negation share their boundary, so the border is drawn correctly; the split itself never reaches a negated CmpRegion through its own recursion, since a negated component stops the split.
 The port mirrors this (`CmpRegion::reg_split`, pinned by the `or_disjoint_neg` case of `reg_split_matches_the_c_library` in `test_region_trace.rs`).
 The fix is to test the CmpRegion's Negated too, or to negate each part.
+
+### A curve clipped into arcs shorter than Crv's sample spacing is not drawn
+
+`plot.c` `Crv` (plot.c:8051) subdivides the segments it cannot draw straight only when `nlong > nshort`, and it counts only segments whose two ends are both good.
+When a clip box cuts a curve into pieces each shorter than the spacing of Crv's first samples (a fifteenth of the curve), no segment has two good ends, both counts are zero, and nothing is drawn, though parts of the curve lie inside the box.
+A Region outline drawn with `astRegionOutline` on a Plot with a clip box from 0.3 to 0.7 in graphics coordinates, or from 2.5 to 7.5 in the current Frame, cutting a circle of radius 3 into four short arcs, draws nothing; a slightly larger box draws the clipped arcs.
+The port mirrors this (`Plot::crv` in `crates/starlink-ast/src/plot/curve.rs`), pinned by the `frame_outline_clipped` and `frame_outline_short_arcs` cases of `tools/oracle_fixtures/plot_methods_probe.c`.
+The fix is to subdivide a segment with one good end even when no segment has two.
+
+### `astRegionOutline` leaves the Plot's Base set
+
+`plot.c` `RegionOutline` (plot.c:24538) notes the Plot's base Frame index before `astConvert` changes it and puts it back with `astSetBase`, which also marks the Base attribute as set.
+A Plot whose Base was a default before an outline has it set afterwards, so `astTestBase` is true and its Native dump writes `Base` as an active line.
+The port mirrors this (`Plot::draw_region_outline` in `crates/starlink-ast/src/plot/border.rs`), and `draw_region_outline_leaves_the_plot_as_it_was` in `tests/test_plot_draw.rs` allows for that one line.
+The fix is to save and restore Base's set state as well as its value, or to clear Base when it was not set.
 
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 

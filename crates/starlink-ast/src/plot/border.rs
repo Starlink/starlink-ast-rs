@@ -2,21 +2,75 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 //! The border round the regions of valid coordinates.
-// C: plot.c Border (:5062), Boundary (:4870) and TraceBorder (:27696).
+// C: plot.c Border (:5062), Boundary (:4870), TraceBorder (:27696) and
+// RegionOutline (:24538).
 // A current Frame that is a Region is traced by DrawRegion (:9583), in
 // curve.rs, where its class can trace its boundary.
 
 use super::Plot;
+use super::draw::Draw;
 use super::elements::PlotElement;
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::FrameRef;
+use crate::frames::{Frame, FrameRef, FrameSearch};
 use crate::grf::{Grf, GrfPrimitive};
 use crate::mappings::Mapping;
 use crate::math::{powf, sqrt};
-use crate::regions::{any_as_region, remove_regions};
+use crate::regions::{Region, any_as_region, remove_regions};
 
 impl Plot {
+    /// Draw the outline of `region` in the style of
+    /// [`Border`](crate::plot::PlotElement::Border).
+    ///
+    /// The Region is converted into the Plot's current Frame, as
+    /// [`convert_to`](crate::frames::FrameSearch::convert_to) converts
+    /// between coordinate systems, and its boundary is drawn as
+    /// [`draw_border`](Draw::draw_border) draws the border of a Plot whose
+    /// current Frame is a Region: traced along the Region's own boundary
+    /// where its class can do that, and found by searching a grid of
+    /// positions where it cannot. Where the Region extends past the
+    /// plotting area, the outline is cut off there, and the edges of the
+    /// plotting area that lie inside the Region are drawn as part of it. The
+    /// Plot is left as it was, except that
+    /// its [`Base`](crate::frames::FrameSet::set_base) attribute is marked
+    /// set, as the C library leaves it.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Nocnv` when there is no conversion from the Plot's
+    ///   current Frame to the Region.
+    /// - Any error [`draw_border`](Draw::draw_border) gives.
+    #[doc(alias = "astRegionOutline")]
+    pub fn draw_region_outline(&mut self, grf: &mut dyn Grf, region: &dyn Region) -> AstResult<()> {
+        let mut frame = region.snapshot();
+        let ibase = self.frameset.base_index();
+        let cvt = self.convert_to(frame.as_mut(), &[]);
+        self.set_base(FrameRef::Index(ibase))?;
+        let Some(cvt) = cvt? else {
+            return Err(AstError::new(
+                ErrorCode::Nocnv,
+                format!(
+                    "astRegionOutline(Plot): Cannot find a mapping from the {}-dimensional \
+                     Plot coordinate system ({}) to the {}-dimensional Region coordinate \
+                     system ({}).",
+                    Mapping::nout(self),
+                    Frame::title(self)?,
+                    Mapping::nout(region),
+                    Frame::title(region)?,
+                ),
+            ));
+        };
+        let icurr = self.frameset.current_index();
+        let map = cvt.mapping(FrameRef::Base, FrameRef::Current)?;
+        self.add_frame(FrameRef::Index(icurr), map, frame)?;
+        // C makes no more calls once the border fails, leaving the Region in
+        // the Plot; the port removes it whether or not the border is drawn.
+        let drawn = self.draw_border(grf);
+        self.remove_frame(FrameRef::Current)?;
+        self.set_current(FrameRef::Index(icurr))?;
+        drawn.map(|_| ())
+    }
+
     // C: Border (plot.c:5062).
     pub(crate) fn border_impl(&mut self, grf: &mut dyn Grf) -> AstResult<bool> {
         self.reset_boxp();
