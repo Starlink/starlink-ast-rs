@@ -39,11 +39,6 @@ pub fn split_name(name: &str) -> (String, Option<usize>) {
     }
 }
 
-/// Apply one setting, `Name(axis)=value`, as C's `astSet` applies it.
-pub fn set_attr(plot: &mut Plot, setting: &str) -> AstResult<()> {
-    plot.set_attributes(setting)
-}
-
 /// A style attribute name as C writes it, `Colour(Axes)`, split into its
 /// lower-case attribute name and its element, `None` for a name C does
 /// not know.
@@ -54,11 +49,6 @@ pub fn split_style(name: &str) -> (String, Option<PlotElement>) {
         .into_iter()
         .find(|e| e.name().eq_ignore_ascii_case(element));
     (attr.to_lowercase(), found)
-}
-
-/// Apply one style setting, `Colour(Axes)=2`, as C's `astSet` applies it.
-pub fn set_style_attr(plot: &mut Plot, setting: &str) -> AstResult<()> {
-    plot.set_attributes(setting)
 }
 
 /// Apply an `astSet` string of Plot attributes.
