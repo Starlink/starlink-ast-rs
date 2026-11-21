@@ -1049,6 +1049,16 @@ impl Region for Interval {
         Some(&self.data.def_unc)
     }
 
+    /// interval.c `RegTrace`: the trace of the equivalent Box, which
+    /// represents the same area in the same Frame, and `None` for an
+    /// Interval that is not equivalent to a Box.
+    fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
+        match self.cache()?.2 {
+            Some(bbox) => bbox.reg_trace(dist),
+            None => Ok(None),
+        }
+    }
+
     fn explicit_unc(&self) -> Option<&DynRegion> {
         self.data.uncertainty.as_ref()
     }

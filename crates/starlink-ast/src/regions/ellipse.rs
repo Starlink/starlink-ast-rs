@@ -823,6 +823,32 @@ impl Region for Ellipse {
         Some(&self.data.def_unc)
     }
 
+    /// ellipse.c `RegTrace`. A distance is the parametric angle `phi` of
+    /// the ellipse `dx = a.cos(phi)`, `dy = b.sin(phi)`, a full turn over the
+    /// boundary: the base Frame's `offset2` moves `dx` from the centre along
+    /// the primary axis, then `dy` at right angles to the curve there. Like
+    /// C, it does not check that the base Frame is 2-D, which an Ellipse's
+    /// always is.
+    fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
+        super::traced_positions(self, dist, || {
+            let (a, b, angle) = self.cache()?;
+            let frm = self.data.frameset.base();
+            let centre = &self.data.points[0];
+            let mut x = Vec::with_capacity(dist.len());
+            let mut y = Vec::with_capacity(dist.len());
+            for &di in dist {
+                let phi = di * 2.0 * PI;
+                let dx = a * crate::math::cos(phi);
+                let dy = b * crate::math::sin(phi);
+                let (p, ang) = frm.offset2(centre, angle, dx)?;
+                let (p2, _) = frm.offset2(&p, ang + DPIBY2, dy)?;
+                x.push(p2[0]);
+                y.push(p2[1]);
+            }
+            Ok([x, y])
+        })
+    }
+
     fn explicit_unc(&self) -> Option<&DynRegion> {
         self.data.uncertainty.as_ref()
     }

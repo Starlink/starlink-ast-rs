@@ -18,17 +18,16 @@
 //! The per-class methods moc.c gives a Moc, and how they map here:
 //!
 //! - Architecture, each a trait method: `Transform` (through
-//!   `reg_base_inside`), `Equal`, `RegBaseBox`, `RegBaseMesh`, `RegPins` and
-//!   `GetDefUnc`. A Moc inherits region.c's `Simplify` and `GetBounded`.
+//!   `reg_base_inside`), `Equal`, `RegBaseBox`, `RegBaseMesh`, `RegPins`,
+//!   `RegTrace` and `GetDefUnc`. A Moc inherits region.c's `Simplify` and
+//!   `GetBounded`.
 //! - Ceremony: the attribute string dispatch (`MaxOrder`, `MaxRes`,
 //!   `MinOrder`, `MinRes`, `MocArea`, `MocLength`, `MocType` are typed
 //!   accessors), the copy constructor and destructor, and the dump and load
 //!   functions.
 //!
-//! Not ported yet: `RegTrace`, which only `Plot` uses, and with it the trace
-//! of each perimeter that moc.c `RegBaseMesh` makes after the mesh points are
-//! found (moc.c:7672-8170, the `dist` and `meshdist` values). The mesh points
-//! themselves do not depend on it.
+//! After finding the mesh points, `RegBaseMesh` walks round each perimeter
+//! to order them (moc.c `meshdist`), which `RegTrace` interpolates along.
 //!
 //! The MOC forms are `add_moc_string`, `get_moc_string`, `add_moc_data`,
 //! `get_moc_data` and `get_moc_header`, with the text reader and writer
@@ -208,8 +207,10 @@ struct MocCache {
     /// The normalized form (moc.c `inorm` or `knorm`) and whether it uses 4
     /// byte values.
     norm: Option<(Vec<i64>, bool)>,
-    /// The boundary mesh in ICRS.
-    basemesh: Option<Vec<Vec<f64>>>,
+    /// The boundary mesh in ICRS, and with it the mesh indices in order
+    /// round each perimeter (moc.c `meshdist`), a negative index starting
+    /// another perimeter.
+    basemesh: Option<(Vec<Vec<f64>>, Vec<i32>)>,
     /// The bounding box in ICRS.
     bounds: Option<([f64; 2], [f64; 2])>,
     /// The area, in square arc-minutes.
@@ -1148,7 +1149,33 @@ struct MeshCorner {
     cells: Vec<usize>,
     interior: bool,
     isolated: bool,
+    /// The distance round the perimeter, in corners, at which the corner is
+    /// reached, negative at the start of each perimeter after the first,
+    /// and the distance at which it is reached again where two perimeters
+    /// touch; [`UNREACHED`] until then.
+    dist: i32,
+    dist2: i32,
+    /// The index of the corner in the mesh, counting the corners that are
+    /// not interior.
+    icorner: i32,
+    /// The walk's record for stepping back from a dead end: the corner the
+    /// perimeter through this one started at, the corner before this one,
+    /// the distance before it, and the onward corners already found to go
+    /// over the perimeter again.
+    path_start: Option<usize>,
+    path_backtrack: Option<usize>,
+    prev_dist_backtrack: i32,
+    path_wrong: [Option<usize>; 4],
 }
+
+/// moc.c's `INT_MAX` for a corner the perimeter walk has not reached.
+const UNREACHED: i32 = i32::MAX;
+
+/// The positions of a cell's corners in [`MeshCell::corners`].
+const BL: usize = 0;
+const TL: usize = 1;
+const TR: usize = 2;
+const BR: usize = 3;
 
 /// moc.c `Comp_corner`: Dec first, within `tol`, then RA, within `tol`
 /// scaled by the larger cos(Dec) unless `exact`; RA taken in [-PI,PI[ for
@@ -1313,6 +1340,9 @@ impl Mesh<'_> {
                     dec,
                     cosdec: crate::math::cos(dec),
                     cells: vec![c],
+                    dist: UNREACHED,
+                    dist2: UNREACHED,
+                    prev_dist_backtrack: UNREACHED,
                     ..Default::default()
                 });
                 let id = self.corners.len() - 1;
@@ -1425,6 +1455,330 @@ impl Mesh<'_> {
         Ok(list)
     }
 
+    /// The part of moc.c `RegBaseMesh` that walks round each perimeter of
+    /// the cells in `chain`, whose corners `list` holds in C's order, and
+    /// returns its `meshdist`: the index in the mesh of each corner, in order
+    /// round each perimeter, a negative index starting each perimeter after
+    /// the first and each perimeter closed by repeating its first index.
+    /// Isolated cells, which touch the rest only at a corner, or not at all,
+    /// are each a perimeter of their four corners at the end.
+    fn trace_perimeters(&mut self, list: &[usize], chain: &[usize]) -> AstResult<Vec<i32>> {
+        let err = |what: &str| {
+            AstError::new(
+                ErrorCode::Inter,
+                format!("astRegBaseMesh(Moc): {what} (internal programming error)."),
+            )
+        };
+
+        // The distance to each corner on a perimeter, starting each
+        // perimeter at the first corner in the list not yet reached.
+        let mut dist: i32 = 0;
+        while let Some(&start) = list.iter().find(|&&k| {
+            let c = &self.corners[k];
+            !(c.interior || c.isolated || c.dist != UNREACHED)
+        }) {
+            let mut corner = start;
+            let mut old_corner: Option<usize> = None;
+            let mut prev_dist = UNREACHED;
+            let mut is_backtrack = false;
+            loop {
+                if is_backtrack {
+                    prev_dist = self.corners[corner].prev_dist_backtrack;
+                    is_backtrack = false;
+                } else {
+                    let c = &mut self.corners[corner];
+                    if c.dist == UNREACHED {
+                        c.dist = dist;
+                        dist += 1;
+                        if old_corner.is_none() {
+                            c.dist = -c.dist;
+                        }
+                    } else if c.dist2 == UNREACHED {
+                        c.dist2 = dist;
+                        dist += 1;
+                    } else {
+                        return Err(err("Corner found in more than 2 regions"));
+                    }
+                    if let Some(old) = old_corner {
+                        c.path_start = Some(start);
+                        c.path_backtrack = Some(old);
+                        c.prev_dist_backtrack = prev_dist;
+                    } else {
+                        c.path_backtrack = None;
+                        c.prev_dist_backtrack = UNREACHED;
+                    }
+                    c.path_wrong = [None; 4];
+                }
+
+                // The cells to look for the next corner in, in order of
+                // preference: away from the cell holding the previous corner,
+                // and, at a corner of three cells, first to the cell
+                // diagonally opposite that one.
+                let used = self.corners[corner].cells.clone();
+                let holds_old =
+                    |cell: usize| old_corner.is_some_and(|o| self.cells[cell].corners.contains(&o));
+                let mut cells: [Option<usize>; 3] = [None; 3];
+                match used.len() {
+                    1 => cells[0] = Some(used[0]),
+                    2 => {
+                        if holds_old(used[0]) {
+                            cells[0] = Some(used[1]);
+                            cells[1] = Some(used[0]);
+                        } else {
+                            cells[0] = Some(used[0]);
+                            cells[1] = Some(used[1]);
+                        }
+                    }
+                    3 => {
+                        let icell = if old_corner.is_some() {
+                            (0..3)
+                                .find(|&i| holds_old(used[i]))
+                                .ok_or_else(|| err("Old corner not found"))?
+                        } else {
+                            0
+                        };
+                        cells[2] = Some(used[icell]);
+                        cells[0] = Some(used[(icell + 1) % 3]);
+                        cells[1] = Some(used[(icell + 2) % 3]);
+                        let k2 = self.cells[used[icell]].corners;
+                        let k1 = self.cells[used[(icell + 2) % 3]].corners;
+                        if (k2[TR] == corner && k1[BL] == corner)
+                            || (k2[BR] == corner && k1[TL] == corner)
+                            || (k2[BL] == corner && k1[TR] == corner)
+                            || (k2[TL] == corner && k1[BR] == corner)
+                        {
+                            cells.swap(0, 1);
+                        }
+                    }
+                    n => {
+                        return Err(err(&format!("Boundary corner used by {n} cells")));
+                    }
+                }
+
+                // The next corner clockwise round a cell that is on the
+                // boundary and not yet on this perimeter. The second pass
+                // allows a corner another perimeter reached, where two touch;
+                // a step back over the perimeter just walked is remembered as
+                // wrong and the search tried again.
+                let mut new_corner: Option<usize> = None;
+                let mut i_try = 0;
+                while i_try < 4 && new_corner.is_none() {
+                    let mut i_pass = 0;
+                    while i_pass < 2 && new_corner.is_none() {
+                        let mut icell = 0;
+                        while icell < 3 && new_corner.is_none() {
+                            if let Some(cell) = cells[icell] {
+                                let k = self.cells[cell].corners;
+                                let interior = |i: usize| self.corners[k[i]].interior;
+                                new_corner = if corner == k[BL] && !interior(TL) {
+                                    Some(k[TL])
+                                } else if corner == k[TL] && !interior(TR) {
+                                    Some(k[TR])
+                                } else if corner == k[TR] && !interior(BR) {
+                                    Some(k[BR])
+                                } else if corner == k[BR] && !interior(BL) {
+                                    Some(k[BL])
+                                } else {
+                                    None
+                                };
+                                if let Some(nc) = new_corner {
+                                    let n = &self.corners[nc];
+                                    let reached = if i_pass == 1 {
+                                        n.dist2 != UNREACHED
+                                    } else {
+                                        n.dist != UNREACHED
+                                    };
+                                    if n.path_start == Some(start)
+                                        || reached
+                                        || self.corners[corner].path_wrong.contains(&Some(nc))
+                                    {
+                                        new_corner = None;
+                                    }
+                                }
+                                // The boundary cannot run between two corners
+                                // of a neighbouring cell.
+                                for other in [cells[(icell + 1) % 3], cells[(icell + 2) % 3]] {
+                                    if let (Some(nc), Some(oc)) = (new_corner, other)
+                                        && self.cells[oc].corners.contains(&nc)
+                                    {
+                                        new_corner = None;
+                                    }
+                                }
+                            }
+                            icell += 1;
+                        }
+                        if let Some(nc) = new_corner {
+                            if i_pass == 1 {
+                                let new_dist = self.corners[nc].dist;
+                                if new_dist != UNREACHED
+                                    && prev_dist != UNREACHED
+                                    && (new_dist == prev_dist.abs() + 1
+                                        || prev_dist == new_dist.abs() + 1)
+                                {
+                                    self.corners[corner].path_wrong[i_try] = Some(nc);
+                                    new_corner = None;
+                                    break;
+                                }
+                                prev_dist = new_dist;
+                            } else {
+                                prev_dist = UNREACHED;
+                            }
+                        }
+                        i_pass += 1;
+                    }
+                    i_try += 1;
+                }
+
+                if new_corner == Some(start) {
+                    break;
+                }
+                let Some(next) = new_corner else {
+                    // A dead end, such as a one-corner link into a hole:
+                    // undo this corner's distance and step back.
+                    let Some(back) = self.corners[corner].path_backtrack else {
+                        return Err(err("Next perimeter corner is undefined"));
+                    };
+                    dist -= 1;
+                    let c = &mut self.corners[corner];
+                    if c.dist2 == dist {
+                        c.dist2 = UNREACHED;
+                    } else if c.dist == dist {
+                        c.dist = UNREACHED;
+                    }
+                    corner = back;
+                    old_corner = self.corners[corner].path_backtrack;
+                    is_backtrack = true;
+                    continue;
+                };
+                if self.corners[next].interior {
+                    return Err(err("Next perimeter corner is interior"));
+                }
+                old_corner = Some(corner);
+                corner = next;
+            }
+        }
+
+        // Isolated cells whose corners a perimeter has walked round in order
+        // are on it; the others are drawn separately.
+        for &k in list {
+            if !self.corners[k].interior {
+                self.corners[k].isolated = false;
+            }
+        }
+        let consecutive = |a: &MeshCorner, b: &MeshCorner| {
+            (a.dist.abs() == b.dist.abs() + 1)
+                || (b.dist.abs() == a.dist.abs() + 1)
+                || (a.dist2 != UNREACHED
+                    && (a.dist2 == b.dist.abs() + 1 || b.dist.abs() == a.dist2 + 1))
+                || (b.dist2 != UNREACHED
+                    && (a.dist.abs() == b.dist2 + 1 || b.dist2 == a.dist.abs() + 1))
+                || (a.dist2 != UNREACHED
+                    && b.dist2 != UNREACHED
+                    && (a.dist2 == b.dist2 + 1 || b.dist2 == a.dist2 + 1))
+        };
+        let mut nisolated = 0;
+        for &cell in chain.iter().rev() {
+            if !self.cells[cell].isolated {
+                continue;
+            }
+            let k = self.cells[cell].corners;
+            let c = |i: usize| &self.corners[k[i]];
+            if k.iter().all(|&i| self.corners[i].dist != UNREACHED)
+                && consecutive(c(TL), c(TR))
+                && consecutive(c(TR), c(BR))
+                && consecutive(c(BR), c(BL))
+                && consecutive(c(BL), c(TL))
+            {
+                self.cells[cell].isolated = false;
+            } else {
+                nisolated += 1;
+                for i in [TL, TR, BR, BL] {
+                    self.corners[k[i]].isolated = true;
+                }
+            }
+        }
+
+        // The number of corners in the mesh, and of places on a perimeter.
+        let mut npoint1 = 0;
+        let mut npoint2 = 0;
+        for &k in list {
+            let c = &self.corners[k];
+            if c.interior {
+                continue;
+            }
+            npoint1 += 1;
+            if c.dist != UNREACHED {
+                npoint2 += 1;
+                if c.dist2 != UNREACHED {
+                    npoint2 += 1;
+                }
+            } else if !c.isolated {
+                return Err(err("Non-isolated exterior cell was not assigned to a path"));
+            }
+        }
+
+        // Invert the distances into mesh indices in order round the
+        // perimeters, then add the isolated cells.
+        let npoint = npoint2 + 4 * nisolated;
+        let mut meshdist = vec![0_i32; npoint];
+        let length_err = || err("Initial mesh distance array has wrong length");
+        let mut ndis = 1;
+        let mut icorner: i32 = 0;
+        for &k in list {
+            if self.corners[k].interior {
+                continue;
+            }
+            let (d, d2) = (self.corners[k].dist, self.corners[k].dist2);
+            if d != UNREACHED {
+                if d >= 0 {
+                    *meshdist.get_mut(d as usize).ok_or_else(length_err)? = icorner;
+                } else {
+                    *meshdist.get_mut((-d) as usize).ok_or_else(length_err)? = -icorner;
+                    ndis += 1;
+                }
+                if d2 != UNREACHED {
+                    *meshdist.get_mut(d2 as usize).ok_or_else(length_err)? = icorner;
+                }
+            }
+            self.corners[k].icorner = icorner;
+            icorner += 1;
+        }
+        for &cell in chain.iter().rev() {
+            if !self.cells[cell].isolated {
+                continue;
+            }
+            ndis += 1;
+            let k = self.cells[cell].corners;
+            for (i, sign) in [(TL, -1), (TR, 1), (BR, 1), (BL, 1)] {
+                *meshdist.get_mut(dist as usize).ok_or_else(length_err)? =
+                    sign * self.corners[k[i]].icorner;
+                dist += 1;
+            }
+        }
+        if icorner != npoint1 {
+            return Err(err("PointSet array has wrong length"));
+        }
+        if dist as usize != npoint {
+            return Err(length_err());
+        }
+
+        // Close each perimeter by repeating its first index after its last.
+        let mut newdist = Vec::with_capacity(npoint + ndis);
+        let mut dstart = meshdist.first().copied().unwrap_or(0);
+        for &m in &meshdist {
+            if m < 0 {
+                newdist.push(dstart);
+                dstart = -m;
+            }
+            newdist.push(m);
+        }
+        newdist.push(dstart);
+        if newdist.len() != npoint + ndis {
+            return Err(err("Mesh distance array has wrong length"));
+        }
+        Ok(newdist)
+    }
+
     /// moc.c `AppendChildren`: the four cells at `order + 1` into which
     /// `cell` divides, appended to `chain`, interior if it is.
     fn append_children(&mut self, cell: usize, chain: &mut Vec<usize>) {
@@ -1446,6 +1800,14 @@ impl Moc {
     /// [0, 2PI[. An empty Moc, or one of the whole sky, has no boundary and
     /// gives one bad point. MeshSize is not used.
     fn base_mesh_rows(&self) -> AstResult<Vec<Vec<f64>>> {
+        Ok(self.base_mesh_and_dist()?.0)
+    }
+
+    /// [`base_mesh_rows`](Self::base_mesh_rows) with moc.c's `meshdist`:
+    /// the mesh indices in order round each perimeter, a negative one
+    /// starting another perimeter, each perimeter closed by repeating its
+    /// first index. A Moc with no boundary has the one index 0.
+    fn base_mesh_and_dist(&self) -> AstResult<(Vec<Vec<f64>>, Vec<i32>)> {
         if let Some(mesh) = &self.cache.borrow().basemesh {
             return Ok(mesh.clone());
         }
@@ -1454,7 +1816,7 @@ impl Moc {
             && self.range[0] == 0
             && self.range[1] == 12 * (1_i64 << (2 * maxorder_attr)) - 1;
         let mesh = if self.nrange() == 0 || full_sky {
-            vec![vec![BAD_VALUE, BAD_VALUE]]
+            (vec![vec![BAD_VALUE, BAD_VALUE]], vec![0])
         } else {
             self.trace_mesh()?
         };
@@ -1462,7 +1824,7 @@ impl Moc {
         Ok(mesh)
     }
 
-    fn trace_mesh(&self) -> AstResult<Vec<Vec<f64>>> {
+    fn trace_mesh(&self) -> AstResult<(Vec<Vec<f64>>, Vec<i32>)> {
         let tol = 0.1 * DD2R * order_to_res(self.max_order()) / 3600.0;
         let mut mesh = Mesh {
             moc: self,
@@ -1527,11 +1889,13 @@ impl Moc {
 
         let chain = std::mem::take(&mut chains[maxorder as usize]);
         let corners = mesh.make_corners(maxorder, &chain, true, true)?;
-        Ok(corners
+        let meshdist = mesh.trace_perimeters(&corners, &chain)?;
+        let rows = corners
             .iter()
             .filter(|&&k| !mesh.corners[k].interior)
             .map(|&k| vec![mesh.corners[k].ra, mesh.corners[k].dec])
-            .collect())
+            .collect();
+        Ok((rows, meshdist))
     }
 }
 
@@ -3255,6 +3619,54 @@ impl RegionGeometry for Moc {
 impl Region for Moc {
     fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
         Some(&self.data.def_unc)
+    }
+
+    /// moc.c `RegTrace`: interpolated linearly between the boundary mesh
+    /// points in order round each perimeter, the whole distance covering
+    /// every perimeter in turn. A distance between the end of one perimeter
+    /// and the start of the next is bad, so that a curve drawn through the
+    /// positions breaks there.
+    fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
+        super::traced_positions(self, dist, || {
+            let (mesh, meshdist) = self.base_mesh_and_dist()?;
+            let len = meshdist.len();
+            // C indexes the mesh with `meshdist[0]` for a distance below 0,
+            // reading before the start of the mesh when that is negative;
+            // that position is bad here.
+            let at = |imesh: i32| -> [f64; 2] {
+                match usize::try_from(imesh) {
+                    Ok(i) => [mesh[i][0], mesh[i][1]],
+                    Err(_) => [BAD_VALUE, BAD_VALUE],
+                }
+            };
+            let mut x = Vec::with_capacity(dist.len());
+            let mut y = Vec::with_capacity(dist.len());
+            for &di in dist {
+                let xd = di * (len as f64 - 1.0);
+                // C's (int) cast, which truncates.
+                let jlo = xd as i32;
+                let jhi = jlo + 1;
+                let whi = xd - f64::from(jlo);
+                let wlo = 1.0 - whi;
+                let p = if jlo < 0 {
+                    at(meshdist[0])
+                } else if jhi as usize >= len {
+                    at(meshdist[len - 1])
+                } else {
+                    let imesh_hi = meshdist[jhi as usize];
+                    if imesh_hi < 0 {
+                        [BAD_VALUE, BAD_VALUE]
+                    } else {
+                        let lo = &mesh[meshdist[jlo as usize].unsigned_abs() as usize];
+                        let hi = &mesh[imesh_hi as usize];
+                        [wlo * lo[0] + whi * hi[0], wlo * lo[1] + whi * hi[1]]
+                    }
+                };
+                x.push(p[0]);
+                y.push(p[1]);
+            }
+            Ok([x, y])
+        })
     }
 
     fn explicit_unc(&self) -> Option<&DynRegion> {

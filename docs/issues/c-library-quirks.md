@@ -29,6 +29,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Plot `Boundary` sizes its tracing tolerance from the x extent twice](#plot-boundary-sizes-its-tracing-tolerance-from-the-x-extent-twice)
 - [`astFindEscape` takes any character after the digits as the closing `+`](#astfindescape-takes-any-character-after-the-digits-as-the-closing-)
 - [Plot reads past its tick arrays for an axis with one major tick](#plot-reads-past-its-tick-arrays-for-an-axis-with-one-major-tick)
+- [A Moc's `RegTrace` reads before its mesh for a distance below zero](#a-mocs-regtrace-reads-before-its-mesh-for-a-distance-below-zero)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -296,6 +297,15 @@ Three places in `plot.c` index tick arrays without checking their length:
 An axis with a single major tick arises with a very small plotting area or explicit ticks; none of the grid test cases has one.
 The port stops at the ends of the arrays: `Labelat` takes the tolerance to be zero, `Labels` ends at the first pass, and `DrawTicks` draws the ticks the lists hold (`crates/starlink-ast/src/plot/grid.rs`, `labels.rs`, `axes.rs`); it keeps C's leftover `logticks`.
 The fix is to test the counts before indexing.
+
+### A Moc's `RegTrace` reads before its mesh for a distance below zero
+
+`moc.c` `RegTrace` (moc.c:8778) takes the position for a distance below zero from the mesh point `meshdist[ 0 ]` names, without the sign test it makes elsewhere.
+`RegBaseMesh` makes `meshdist[ 0 ]` negative when the Moc's first perimeter is an isolated cell (one touching the rest of the Moc at most at a corner, such as a Moc of one cell), so C then reads before the start of the mesh.
+The same layout gives such a Moc a break at the start of its trace: `RegBaseMesh` closes each perimeter by inserting a copy of its first index before the negative index that starts the next, and does so before the first perimeter too, so distances from 0 to the first mesh step are bad.
+The break is harmless, since the end of the trace closes the cell, and the port keeps it.
+Distances below zero are outside what `RegTrace` accepts, and a Plot never passes one; the port returns a bad position there (`Moc::reg_trace` in `crates/starlink-ast/src/regions/moc.rs`).
+The fix is to take the absolute value, as the interpolating branch does.
 
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 

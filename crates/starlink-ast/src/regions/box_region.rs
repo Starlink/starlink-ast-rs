@@ -1158,6 +1158,45 @@ impl Region for BoxRegion {
         Some(&self.data.def_unc)
     }
 
+    /// box.c `RegTrace`: a 2-D Box only. Each edge covers a quarter of the
+    /// distance, whatever its length: the bottom edge right to left from 0,
+    /// the left edge upwards from 0.25, the top edge left to right from 0.5
+    /// and the right edge downwards from 0.75.
+    fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
+        if self.data.frameset.base().naxes() != 2 {
+            return Ok(None);
+        }
+        super::traced_positions(self, dist, || {
+            let (lbnd, ubnd) = self.reg_base_box()?;
+            let mut x = Vec::with_capacity(dist.len());
+            let mut y = Vec::with_capacity(dist.len());
+            for &di in dist {
+                let mut d = 4.0 * di - 3.0;
+                if d > 0.0 {
+                    x.push(ubnd[0]);
+                    y.push((1.0 - d) * ubnd[1] + d * lbnd[1]);
+                    continue;
+                }
+                d += 1.0;
+                if d > 0.0 {
+                    x.push((1.0 - d) * lbnd[0] + d * ubnd[0]);
+                    y.push(ubnd[1]);
+                    continue;
+                }
+                d += 1.0;
+                if d > 0.0 {
+                    x.push(lbnd[0]);
+                    y.push((1.0 - d) * lbnd[1] + d * ubnd[1]);
+                    continue;
+                }
+                d += 1.0;
+                x.push((1.0 - d) * ubnd[0] + d * lbnd[0]);
+                y.push(lbnd[1]);
+            }
+            Ok([x, y])
+        })
+    }
+
     fn explicit_unc(&self) -> Option<&DynRegion> {
         self.data.uncertainty.as_ref()
     }
