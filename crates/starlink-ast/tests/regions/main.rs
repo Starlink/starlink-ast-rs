@@ -106,6 +106,8 @@ mod test_region_polygon_oracle;
 mod test_region_showmesh_oracle;
 #[path = "../test_region_stc_oracle.rs"]
 mod test_region_stc_oracle;
+#[path = "../test_region_trace.rs"]
+mod test_region_trace;
 #[path = "../test_regions.rs"]
 mod test_regions;
 #[path = "../test_regions_c.rs"]

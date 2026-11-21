@@ -634,6 +634,29 @@ impl Region for Circle {
         Some(&self.data.def_unc)
     }
 
+    /// circle.c `RegTrace`: a 2-D Circle only. A distance is an angle round
+    /// the centre, a full turn over the boundary, at which the base Frame's
+    /// `offset2` moves one radius out.
+    fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
+        let frm = self.data.frameset.base();
+        if frm.naxes() != 2 {
+            return Ok(None);
+        }
+        super::traced_positions(self, dist, || {
+            let centre = &self.data.points[0];
+            let radius = self.radius()?;
+            let mut x = Vec::with_capacity(dist.len());
+            let mut y = Vec::with_capacity(dist.len());
+            for &di in dist {
+                let angle = di * 2.0 * PI;
+                let (p, _) = frm.offset2(centre, angle, radius)?;
+                x.push(p[0]);
+                y.push(p[1]);
+            }
+            Ok([x, y])
+        })
+    }
+
     fn explicit_unc(&self) -> Option<&DynRegion> {
         self.data.uncertainty.as_ref()
     }
