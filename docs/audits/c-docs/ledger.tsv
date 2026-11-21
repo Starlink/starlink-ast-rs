@@ -401,7 +401,7 @@ function	astGrid	plot.c	Draw::draw_grid		yes
 function	astGridLine	plot.c	Draw::draw_grid_line		yes
 function	astMark	plot.c	Draw::draw_mark		yes
 function	astPolyCurve	plot.c	Draw::draw_poly_curve		yes
-function	astRegionOutline	plot.c		not-ported	yes
+function	astRegionOutline	plot.c	Plot::draw_region_outline		yes
 function	astStripEscapes	plot.c		not-ported	yes
 function	astText	plot.c	Draw::draw_text		yes
 function	astPlot	plot.c	Plot::new		yes	A NULL Frame is Plot::default_frame

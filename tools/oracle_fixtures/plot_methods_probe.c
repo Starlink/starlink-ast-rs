@@ -54,6 +54,7 @@ struct method_case {
 
 #define CURVE( x0, y0, x1, y1 ) { OP_CURVE, 2, { x0, y0 }, { x1, y1 }, 0, 0, NULL }
 #define GEN( id ) { OP_GEN, 0, { 0 }, { 0 }, 0, 0, id }
+#define OUTLINE( id ) { OP_OUTLINE, 0, { 0 }, { 0 }, 0, 0, id }
 #define CLIP( f, l0, l1, u0, u1 ) { OP_CLIP, 0, { l0, l1 }, { u0, u1 }, 0, f, NULL }
 /* A curve, a polycurve and markers that cross the clip boxes below. */
 #define FRAME_DRAWING CURVE( 1.0, 1.0, 9.0, 9.0 ), \
@@ -124,9 +125,33 @@ static const struct method_case cases[] = {
    { "frame_clip_cleared", NULL, FRAME_BOX, "", 0, 5,
      { CLIP( AST__CURRENT, 3.0, 3.0, 7.0, 7.0 ), CLIP( NOFRAME, 0.0, 0.0, 0.0, 0.0 ),
        FRAME_DRAWING } },
+   { "frame_outline_simple", NULL, FRAME_BOX, "", 1, 4,
+     { OUTLINE( "box" ), OUTLINE( "circle" ), OUTLINE( "ellipse" ),
+       OUTLINE( "interval" ) } },
+   { "frame_outline_polygon", NULL, FRAME_BOX, "", 0, 1, { OUTLINE( "polygon" ) } },
+   { "frame_outline_cmp", NULL, FRAME_BOX, "", 0, 2,
+     { OUTLINE( "and_overlap" ), OUTLINE( "or_disjoint" ) } },
+   { "frame_outline_open", NULL, FRAME_BOX, "", 0, 1, { OUTLINE( "interval_open" ) } },
+   /* The clip box cuts the circle into four arcs, each shorter than the
+      spacing of Crv's first samples, so no segment has two good ends and
+      Crv draws nothing (c-library-quirks.md). The short-arcs case shows the
+      same with a box in the current Frame. */
+   { "frame_outline_clipped", NULL, FRAME_BOX, "", 0, 2,
+     { CLIP( AST__BASE, 0.3, 0.3, 0.7, 0.7 ), OUTLINE( "circle" ) } },
+   { "frame_outline_short_arcs", NULL, FRAME_BOX, "", 0, 2,
+     { CLIP( AST__CURRENT, 2.5, 2.5, 7.5, 7.5 ), OUTLINE( "circle" ) } },
+   { "frame_outline_clipped_current", NULL, FRAME_BOX, "", 0, 2,
+     { CLIP( AST__CURRENT, 0.0, 0.0, 5.0, 10.0 ), OUTLINE( "circle" ) } },
+   { "aitoff_outline", "aitoff.head", AITOFF_BOX, "", 0, 4,
+     { OUTLINE( "sky_circle" ), OUTLINE( "sky_polygon" ), OUTLINE( "icrs_circle" ),
+       OUTLINE( "moc" ) } },
    { "aitoff_clip", "aitoff.head", AITOFF_BOX, "", 1, 3,
      { CLIP( 3, 2.0, -0.2, 2.8, 0.4 ), CURVE( 1.8, 0.0, 3.0, 0.3 ),
        { OP_MARK, 4, { 1.9, 2.2, 2.6, 2.9 }, { 0.0, 0.1, 0.2, 0.3 }, 1, 0, NULL } } },
+   /* Frame 2 is the pixel Frame, neither the base nor the current Frame. */
+   { "aitoff_clip_pixel", "aitoff.head", AITOFF_BOX, "", 0, 3,
+     { CLIP( 2, 80.0, BAD, 230.0, BAD ), CURVE( -2.5, 0.0, 2.5, 0.3 ),
+       { OP_MARK, 4, { 0.5, 1.5, -2.0, 3.5 }, { 0.2, 0.6, -0.4, 0.0 }, 2, 0, NULL } } },
 };
 
 /* The ClipFrame a frame index is written as. */
@@ -190,9 +215,63 @@ static AstMapping *make_map( const char *id ) {
 }
 
 /* The Region astRegionOutline draws for an id. */
+static AstRegion *circle( AstFrame *f, double x, double y, double r ) {
+   double c[ 2 ];
+   c[ 0 ] = x;
+   c[ 1 ] = y;
+   return (AstRegion *) astCircle( f, 1, c, &r, NULL, "" );
+}
+
 static AstRegion *make_region( const char *id ) {
-   fprintf( stderr, "unknown Region %s\n", id );
-   exit( 1 );
+   AstFrame *f2 = astFrame( 2, "" );
+   AstFrame *gal = (AstFrame *) astSkyFrame( "System=Galactic" );
+   AstFrame *icrs = (AstFrame *) astSkyFrame( "System=ICRS" );
+   AstRegion *reg = NULL;
+   if( !strcmp( id, "box" ) ) {
+      double p1[] = { 2.0, 3.0 }, p2[] = { 7.0, 6.0 };
+      reg = (AstRegion *) astBox( f2, 1, p1, p2, NULL, "" );
+   } else if( !strcmp( id, "circle" ) ) {
+      reg = circle( f2, 5.0, 5.0, 3.0 );
+   } else if( !strcmp( id, "ellipse" ) ) {
+      double c[] = { 5.0, 5.0 }, ab[] = { 3.0, 1.5 }, ang = 0.5;
+      reg = (AstRegion *) astEllipse( f2, 1, c, ab, &ang, NULL, "" );
+   } else if( !strcmp( id, "interval" ) ) {
+      double lo[] = { 2.0, 3.0 }, hi[] = { 8.0, 7.0 };
+      reg = (AstRegion *) astInterval( f2, lo, hi, NULL, "" );
+   } else if( !strcmp( id, "interval_open" ) ) {
+      double lo[] = { 2.0, BAD }, hi[] = { 8.0, 7.0 };
+      reg = (AstRegion *) astInterval( f2, lo, hi, NULL, "" );
+   } else if( !strcmp( id, "polygon" ) ) {
+      double p[] = { 2.0, 5.0, 8.0, 9.5, 8.0, 5.0, 2.6,
+                     2.0, 0.5, 2.0, 5.0, 8.0, 7.4, 5.0 };
+      reg = (AstRegion *) astPolygon( f2, 7, 7, p, NULL, "" );
+   } else if( !strcmp( id, "and_overlap" ) || !strcmp( id, "or_disjoint" ) ) {
+      int and = !strcmp( id, "and_overlap" );
+      AstRegion *a = and ? circle( f2, 4.0, 5.0, 2.0 ) : circle( f2, 3.0, 3.0, 1.5 );
+      AstRegion *b = and ? circle( f2, 6.0, 5.0, 2.0 ) : circle( f2, 7.0, 7.0, 1.5 );
+      reg = (AstRegion *) astCmpRegion( a, b, and ? AST__AND : AST__OR, "" );
+      a = astAnnul( a );
+      b = astAnnul( b );
+   } else if( !strcmp( id, "sky_circle" ) ) {
+      reg = circle( gal, -2.75, -0.45, 0.1 );
+   } else if( !strcmp( id, "sky_polygon" ) ) {
+      double p[] = { -2.3, -2.2, -2.4, -2.5,  -0.2, -0.4, -0.5, -0.3 };
+      reg = (AstRegion *) astPolygon( gal, 4, 4, p, NULL, "" );
+   } else if( !strcmp( id, "icrs_circle" ) ) {
+      reg = circle( icrs, 1.512434, -0.106751, 0.08 );
+   } else if( !strcmp( id, "moc" ) ) {
+      const char *text = "3/356,358 4/1413,1415,1421,1436";
+      int json;
+      reg = (AstRegion *) astMoc( "" );
+      astAddMocString( (AstMoc *) reg, AST__OR, 0, -1, strlen( text ), text, &json );
+   } else {
+      fprintf( stderr, "unknown Region %s\n", id );
+      exit( 1 );
+   }
+   f2 = astAnnul( f2 );
+   gal = astAnnul( gal );
+   icrs = astAnnul( icrs );
+   return reg;
 }
 
 static void run_op( AstPlot *pl, const struct op *op ) {
@@ -355,7 +434,7 @@ int main( void ) {
    printf( "];\n\n" );
 
    printf( "/// `(case name, Native dump of the Plot after its operations)`.\n"
-           "pub const CLIP_DUMPS: &[(&str, &str)] = &[\n" );
+           "pub const DUMPS: &[(&str, &str)] = &[\n" );
    for( icase = 0; icase < sizeof( cases ) / sizeof( cases[ 0 ] ); icase++ ) {
       const struct method_case *c = cases + icase;
       AstPlot *pl;

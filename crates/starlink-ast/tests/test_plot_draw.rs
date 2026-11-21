@@ -38,6 +38,7 @@ mod text;
 mod methods;
 
 use starlink_ast::AnyObject;
+use starlink_ast::constants::BAD_VALUE;
 use starlink_ast::coords::PointSet;
 use starlink_ast::error::{AstResult, ErrorCode};
 use starlink_ast::frames::{BasicFrameBuilder, CmpFrame, FrameRef, SkyFrame, SkySystem};
@@ -557,6 +558,92 @@ fn method_map(id: &str) -> PolyMap {
     PolyMap::new(1, 2, &forward, None).unwrap()
 }
 
+/// The Region whose outline `plot_methods_probe.c` draws for `id`.
+fn method_region(id: &str) -> DynRegion {
+    let f2 = || BasicFrameBuilder::new(2).build().unwrap();
+    let gal = || SkyFrame::new(SkySystem::Galactic);
+    let circle = |f: Box<dyn starlink_ast::frames::Frame>, c: [f64; 2], r: f64| -> DynRegion {
+        Box::new(
+            CircleBuilder::from_dyn(f, c.to_vec())
+                .unwrap()
+                .radius(r)
+                .build()
+                .unwrap(),
+        )
+    };
+    fn polygon(f: impl starlink_ast::frames::Frame + 'static, xs: &[f64], ys: &[f64]) -> DynRegion {
+        let vertices = xs.iter().zip(ys).map(|(&x, &y)| vec![x, y]).collect();
+        Box::new(PolygonBuilder::new(f, vertices).unwrap().build().unwrap())
+    }
+    let interval = |lo: [f64; 2], hi: [f64; 2]| -> DynRegion {
+        Box::new(
+            IntervalBuilder::new(f2(), lo.to_vec(), hi.to_vec())
+                .unwrap()
+                .build()
+                .unwrap(),
+        )
+    };
+    let cmp = |a: DynRegion, b: DynRegion, oper| -> DynRegion {
+        Box::new(
+            CmpRegionBuilder::from_dyn(a, b, oper)
+                .unwrap()
+                .build()
+                .unwrap(),
+        )
+    };
+    match id {
+        "box" => Box::new(
+            BoxRegionBuilder::from_bounds(f2(), &[2.0, 3.0], &[7.0, 6.0])
+                .unwrap()
+                .build()
+                .unwrap(),
+        ),
+        "circle" => circle(Box::new(f2()), [5.0, 5.0], 3.0),
+        "ellipse" => Box::new(
+            EllipseBuilder::new(f2(), vec![5.0, 5.0], [3.0, 1.5], 0.5)
+                .unwrap()
+                .build()
+                .unwrap(),
+        ),
+        "interval" => interval([2.0, 3.0], [8.0, 7.0]),
+        "interval_open" => interval([2.0, BAD_VALUE], [8.0, 7.0]),
+        "polygon" => polygon(
+            f2(),
+            &[2.0, 5.0, 8.0, 9.5, 8.0, 5.0, 2.6],
+            &[2.0, 0.5, 2.0, 5.0, 8.0, 7.4, 5.0],
+        ),
+        "and_overlap" => cmp(
+            circle(Box::new(f2()), [4.0, 5.0], 2.0),
+            circle(Box::new(f2()), [6.0, 5.0], 2.0),
+            CmpOperator::And,
+        ),
+        "or_disjoint" => cmp(
+            circle(Box::new(f2()), [3.0, 3.0], 1.5),
+            circle(Box::new(f2()), [7.0, 7.0], 1.5),
+            CmpOperator::Or,
+        ),
+        "sky_circle" => circle(Box::new(gal()), [-2.75, -0.45], 0.1),
+        "sky_polygon" => polygon(gal(), &[-2.3, -2.2, -2.4, -2.5], &[-0.2, -0.4, -0.5, -0.3]),
+        "icrs_circle" => circle(
+            Box::new(SkyFrame::new(SkySystem::Icrs)),
+            [1.512434, -0.106751],
+            0.08,
+        ),
+        "moc" => {
+            let mut moc = Moc::new();
+            moc.add_moc_string(
+                CmpOperator::Or,
+                false,
+                -1,
+                "3/356,358 4/1413,1415,1421,1436",
+            )
+            .unwrap();
+            Box::new(moc)
+        }
+        other => panic!("no Region {other}"),
+    }
+}
+
 /// Draw the operations of a `plot_methods_probe.c` case on `plot`.
 fn run_ops(plot: &mut Plot, grf: &mut dyn Grf, ops: &[methods::Op]) -> AstResult<()> {
     for op in ops {
@@ -581,7 +668,9 @@ fn run_ops(plot: &mut Plot, grf: &mut dyn Grf, ops: &[methods::Op]) -> AstResult
                 };
                 plot.set_clip_region(frame, lbnd, ubnd)?
             }
-            other => unimplemented!("{:?}", std::mem::discriminant(other)),
+            methods::Op::Outline(id) => {
+                plot.draw_region_outline(grf, method_region(id).as_ref())?
+            }
         }
     }
     Ok(())
@@ -659,8 +748,8 @@ const FORCE_EXTERIOR_LICENSED: (&str, &str) = (
 );
 
 #[test]
-fn clip_dumps_match_the_c_library() {
-    for &(name, want) in methods::CLIP_DUMPS {
+fn dumps_after_drawing_match_the_c_library() {
+    for &(name, want) in methods::DUMPS {
         let case = methods::CASES.iter().find(|c| c.name == name).unwrap();
         let mut plot = plot_of(case.head, case.gbox, case.pbox);
         apply_settings(&mut plot, case.attr).unwrap();
@@ -692,4 +781,60 @@ fn set_clip_region_rejects_an_invalid_frame() {
         .set_clip_region(FrameRef::Index(9), &[1.0, 1.0], &[2.0, 2.0])
         .unwrap_err();
     assert_eq!(err.code(), ErrorCode::Frmin);
+    assert_eq!(
+        err.message(),
+        "astClip(Plot): Invalid Frame index (9) given. This value should be in the range 1 to 2 \
+         (or AST__CURRENT or AST__BASE)."
+    );
+}
+
+#[test]
+fn draw_region_outline_leaves_the_plot_as_it_was() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let zoom = starlink_ast::mappings::ZoomMap::new(2, 2.0).unwrap();
+    plot.add_frame(
+        FrameRef::Current,
+        Box::new(zoom),
+        Box::new(BasicFrameBuilder::new(2).build().unwrap()),
+    )
+    .unwrap();
+    plot.set_current(FrameRef::Index(2)).unwrap();
+    plot.set_clip_region(FrameRef::Index(3), &[0.0, 0.0], &[12.0, 12.0])
+        .unwrap();
+    let before = native_dump(&AnyObject::Plot(Box::new(plot.clone()))).unwrap();
+    plot.draw_region_outline(
+        &mut LogGrf::new(Vec::new()),
+        method_region("circle").as_ref(),
+    )
+    .unwrap();
+    assert_eq!(plot.frameset().nframe(), 3);
+    assert_eq!(plot.frameset().base_index(), 1);
+    assert_eq!(plot.frameset().current_index(), 2);
+    // Restoring the base Frame marks it set, as C's astSetBase does, so
+    // the dump writes it as set; nothing else changes.
+    let after = native_dump(&AnyObject::Plot(Box::new(plot))).unwrap();
+    assert_eq!(after, before.replacen("#   Base = 1 ", "    Base = 1 ", 1));
+}
+
+#[test]
+fn draw_region_outline_rejects_a_region_it_cannot_convert() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let cube = BoxRegionBuilder::from_bounds(
+        BasicFrameBuilder::new(3).build().unwrap(),
+        &[0.0, 0.0, 0.0],
+        &[1.0, 1.0, 1.0],
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+    let err = plot
+        .draw_region_outline(&mut LogGrf::new(Vec::new()), &cube)
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Nocnv);
+    assert_eq!(
+        err.message(),
+        "astRegionOutline(Plot): Cannot find a mapping from the 2-dimensional Plot coordinate \
+         system (2-d coordinate system) to the 3-dimensional Region coordinate system (3-d \
+         coordinate system)."
+    );
 }

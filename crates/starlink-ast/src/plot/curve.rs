@@ -1246,19 +1246,27 @@ impl Plot {
         self.g_scales(grf)?;
         let mut crv = self.curve_crv(true, METHOD)?;
         self.grf_attrs(grf, PlotElement::Curves, true, GrfPrimitive::Line)?;
+        let mut segment = CurveMap::Geodesic {
+            origin: Vec::new(),
+            end: Vec::new(),
+            scale: 0.0,
+            map,
+        };
         for i in 1..positions.npoint() {
             let start = positions.point(i - 1);
             let finish = positions.point(i);
             if start.iter().chain(finish.iter()).any(|&v| v == BAD_VALUE) {
                 continue;
             }
-            let scale = self.frameset.current().distance(&start, &finish)?;
-            let segment = CurveMap::Geodesic {
-                origin: start.to_vec(),
-                end: finish.to_vec(),
-                scale,
-                map: map.clone(),
+            let CurveMap::Geodesic {
+                origin, end, scale, ..
+            } = &mut segment
+            else {
+                unreachable!("segment is built as a geodesic");
             };
+            *scale = self.frameset.current().distance(&start, &finish)?;
+            *origin = start.to_vec();
+            *end = finish.to_vec();
             crv.start_segment();
             self.crv_pass(&segment, &mut crv)?;
             self.draw.curve_data = self.end_curve(&mut crv)?;

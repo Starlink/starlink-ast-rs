@@ -196,6 +196,10 @@ Each stage is one PR on a branch stacked on the previous one.
 6. **The other drawing methods.**
    `curve`, `gen_curve`, `poly_curve`, `mark`, `bounding_box`, `clip` and `region_outline`.
    Gate 5.
+   *Done 2026-11-20 (`docs/superpowers/plans/2026-11-20-plot-stage6-drawing.md`), as `draw_curve`, `draw_gen_curve`, `draw_poly_curve`, `draw_mark`, `bounding_box`, `set_clip_region` and `clear_clip_region` on `Draw`, and the inherent `Plot::draw_region_outline`, which Plot3D does not override.
+   C's RegionOutline reaches Border through the vtab, so on a Plot3D it draws Plot3D's border; the inherent Rust method calls Plot's `draw_border`, so `Plot3D` needs its own outline entry point that calls its own `draw_border`.
+   `clip` is the Clip attribute's getter, so the region setter has its own name.
+   Every case is drawn call for call against C by `tools/oracle_fixtures/plot_methods_probe.c`; its fixtures have not been offered upstream, as stage 4's and 5's have not.*
 7. **egui demo.**
    A window that lets the user pick one of the `cases.txt` headers and its attributes, and draws the grid through a `Grf` written against egui's painter, using egui's real font metrics for `GTxExt`.
    It redraws on resize.

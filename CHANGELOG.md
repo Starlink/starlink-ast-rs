@@ -9,6 +9,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Added
 
+- `starlink-ast`: `Plot::draw_region_outline`, which draws the outline of a Region in a Plot's current Frame, as the C library's `astRegionOutline` does, call for call.
 - `starlink-ast`: `Draw::set_clip_region` and `Draw::clear_clip_region`, which clip what a Plot draws to a box in any of its Frames, as the C library's `astClip` does.
 - `starlink-ast`: `Draw::draw_gen_curve`, which draws the curve a Mapping from distance to position describes, and `Draw::draw_mark`, which draws markers, as the C library's `astGenCurve` and `astMark` do, call for call.
 - `starlink-ast`: `Draw::draw_curve`, which draws the geodesic between two positions in the current Frame, `Draw::draw_poly_curve`, which draws the geodesics joining a list of positions as one line, and `Draw::bounding_box`, the box enclosing what a Plot last drew, each as the C library's `astCurve`, `astPolyCurve` and `astBoundingBox` do, call for call.
@@ -18,7 +19,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 - `starlink-ast`: a Plot is saved and restored in the Native form as the C library writes and reads it, through any Channel and as `AnyObject::Plot`, with its attributes, clipping region and graphics box.
 - `starlink-ast`: Plot's per-element style attributes `Style`, `Font`, `Colour`, `Width` and `Size`, which take a `PlotElement`; setting, testing or reading a group such as `PlotElement::Axes` acts on each of its members, as the C library's `Colour(Axes)` does.
 - `starlink-ast`: Plot's own attributes, from `Tol` to `LogPlot`, with the C library's defaults; setting `LogPlot` maps an axis of the plotting area logarithmically, as in C. `Gap`, `Centre` and `Abbrev` are `tick_gap`, `tick_centre` and `abbreviate`, since `Frame` already has `gap`, `centre` and `abbrev`. Until grids are drawn, an unset attribute reads as its fixed default, not as the value a grid would use.
-- `starlink-ast`: `Plot`, a FrameSet whose base Frame is a graphics coordinate system, built from a Frame, FrameSet, Region or Plot as the C library's `astPlot` builds it; it transforms and is searched as a FrameSet. Frames are added, removed and selected through the Plot itself. Drawing is not yet available.
+- `starlink-ast`: `Plot`, a FrameSet whose base Frame is a graphics coordinate system, built from a Frame, FrameSet, Region or Plot as the C library's `astPlot` builds it; it transforms and is searched as a FrameSet. Frames are added, removed and selected through the Plot itself.
 - `starlink-ast`: `Frame::as_frameset` and `Mapping::as_frameset`, which give the FrameSet a Frame or Mapping is, so that code treating FrameSets specially treats a Plot as the FrameSet it holds.
 - `starlink-ast`: the `grf` module: the `Grf` trait, through which a Plot will draw, and `LogGrf`, a backend that logs each drawing call as the C library's logging graphics module does.
 - `starlink-ast`: `SvgGrf`, a `Grf` backend that draws to SVG as the C library's logging graphics module does, with `SvgOptions` for the image size.
