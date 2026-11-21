@@ -36,6 +36,7 @@ OWN_FRAME = {
     "simplify_frame": "self.plot_simplify_frame()",
     "as_frameset": "Some(&self.frameset)",
     "as_frameset_mut": "Some(&mut self.frameset)",
+    "attr_class": '"Plot"',
 }
 OWN_MAPPING = {
     "transform": "self.plot_transform(pts, forward)",
