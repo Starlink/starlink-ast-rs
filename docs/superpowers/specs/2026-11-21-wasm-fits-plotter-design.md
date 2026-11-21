@@ -166,3 +166,188 @@ CI builds the binding for `wasm32-unknown-unknown` and runs its native tests; th
 - The page's default width and height, and the redraw delay.
 - Whether drawing runs on the page's main thread or in a worker, provided the page stays responsive.
 - How the examples are stored in the page source.
+
+## Appendix: the CGI page's examples
+
+The eight examples' headers and Plot settings, copied verbatim from the `loadExample` function of <https://starlink.eao.hawaii.edu/cgi-bin/ast/fits-plotter> on 2026-11-21 (`VERSION` is the axis version character, `PATTRS` the Plot settings, `HEADER` the header; NCP also ticks the normalised-headers output).
+
+```javascript
+   function loadExample( example ){
+      var f = document.form1;
+      f.VERSION.value = " ";
+
+      if( example == "AITOFF" ) {
+         f.HEADER.value =
+"NAXIS1  =                  300\n"+
+"NAXIS2  =                  300\n"+
+"CTYPE1  = 'GLON-AIT'\n"+
+"CTYPE2  = 'GLAT-AIT'\n"+
+"CRVAL1  =           -149.56866\n"+
+"CRVAL2  =           -19.758201\n"+
+"CRPIX1  =              150.500\n"+
+"CRPIX2  =              150.500\n"+
+"CDELT1  =             -1.20000\n"+
+"CDELT2  =              1.20000";
+         f.PATTRS.value = "System=ICRS, Grid=1, Tickall=0, Border=1";
+
+      } else if( example == "COBE" ) {
+         f.HEADER.value =
+"NAXIS1  =                  300 \n"+
+"NAXIS2  =                  300 \n"+
+"CTYPE1  = 'GLON-ZEA'           \n"+
+"CTYPE2  = 'GLAT-ZEA'           \n"+
+"CRVAL1  =           -149.56866 \n"+
+"CRVAL2  =           -19.758201 \n"+
+"CRPIX1  =              150.500 \n"+
+"CRPIX2  =              150.500 \n"+
+"CDELT1  =             -0.80000 \n"+
+"CDELT2  =              0.80000 \n";
+         f.PATTRS.value = "Format(1)=gd, Format(2)=gd, Grid=1, Tickall=0, Width(axes)=3, Colour(axes)=2";
+
+      } else if( example == "HPX" ) {
+         f.HEADER.value =
+"NAXIS1  =                  300 \n"+
+"NAXIS2  =                  200 \n"+
+"CTYPE1  = 'GLON-HPX'           \n"+
+"CTYPE2  = 'GLAT-HPX'           \n"+
+"CRVAL1  =           -149.56866 \n"+
+"CRVAL2  =           -19.758201 \n"+
+"CRPIX1  =              150.500 \n"+
+"CRPIX2  =              100.500 \n"+
+"CDELT1  =             -1.20000 \n"+
+"CDELT2  =              1.20000 \n";
+         f.PATTRS.value = "Format(1)=gd, Format(2)=gd, Grid=1, Tickall=0, Width(axes)=3, Colour(axes)=2";
+
+      } else if( example == "ORIGIN" ) {
+         f.HEADER.value =
+"NAXIS1  =                  500 \n"+
+"NAXIS2  =                  500 \n"+
+"EPOCH   =         1.977780E+03 \n"+
+"RADESYS = 'ICRS    '           \n"+
+"CRVAL1  =                  0.0 \n"+
+"CRPIX1  =                  250 \n"+
+"CTYPE1  = 'RA---ARC'           \n"+
+"CRVAL2  =                  0.0 \n"+
+"CRPIX2  =                  250 \n"+
+"CTYPE2  = 'DEC--ARC'           \n"+
+"CDELT1  = 0.001                \n"+
+"CDELT2  = 0.001                \n";
+         f.PATTRS.value = "Format(1)=ghms, Format(2)=gdm, Edge(2)=r, Tickall=0";
+
+      } else if( example == "SCP" ) {
+         f.HEADER.value =
+"NAXIS1  =                  900 \n"+
+"NAXIS2  =                  850 \n"+
+"MJD-OBS =   4.342657300880E+04 \n"+
+"RADESYS = 'FK5     '           \n"+
+"CRVAL1  =   0.000000000000E+00 \n"+
+"CRPIX1  =   5.936318379289E+02 \n"+
+"CTYPE1  = 'RA---TAN'           \n"+
+"CRVAL2  =  -9.000000018364E+01 \n"+
+"CRPIX2  =   3.238380193875E+02 \n"+
+"CTYPE2  = 'DEC--TAN'           \n"+
+"CD1_1   =  -1.864642639667E-04 \n"+
+"CD1_2   =  -9.188369023766E-07 \n"+
+"CD2_1   =  -1.038232462415E-06 \n"+
+"CD2_2   =   1.866269837741E-04 \n"+
+"EQUINOX =         2.000000E+03 \n";
+         f.PATTRS.value = "Grid=1, Labelling=int";
+
+      } else if( example == "SPEC2D" ) {
+         f.HEADER.value =
+"NAXIS1  = 1000\n"+
+"NAXIS2  = 200\n"+
+"CRPIX1  =                500.0 \n"+
+"CRVAL1  =           10000000.0   \n"+
+"CDELT1  =             138000.0 \n"+
+"CTYPE1  = 'FREQ-LOG'             \n"+
+"CUNIT1  = 'MHz      '          \n"+
+"CTYPE2  = 'SLIT'\n"+
+"CNAME2  = 'Distance along slit'\n"+
+"CUNIT2  = 'mm'\n"+
+"CRPIX2  = 1.0\n"+
+"CRVAL2  = 0.0\n"+
+"CDELT2  = 0.1\n";
+         f.PATTRS.value = "System(1)=wave, LogTicks(1)=1, LabelUnits=1, "+
+                          "MinTickLen=0.02, MajTickLen=0.05, NumLabGap=0.1, "+
+                          "Title=Logarithmic axis example";
+
+      } else if( example == "SOLAR" ) {
+         f.HEADER.value =
+
+"SIMPLE  =  T         /Simple FITS file\n"+
+"BITPIX  =  -32       /Real*4 (Floating point)\n"+
+"NAXIS   =  2         /Two-dimensional image\n"+
+"NAXIS1  =  1024      /Number of pixels per column\n"+
+"NAXIS2  =  1024      /Number of pixels per row\n"+
+"\n"+
+"COMMENT Heliocentric-Cartesian coordinates\n"+
+"\n"+
+"CTYPE1  = 'SOLX    ' /Coordinate axis labels\n"+
+"CTYPE2  = 'SOLY    ' /\n"+
+"CRPIX1  = 512.5      /Reference pixel is center of CCD\n"+
+"CRPIX2  =  512.5     /\n"+
+"CUNIT1  = 'solRad  ' /Coordinates are in solar radii\n"+
+"CUNIT2  = 'solRad  ' /\n"+
+"CD1_1   = 0.00375    /Plate scale in solar radii per pixel\n"+
+"CD2_2   = 0.00375    /\n"+
+"CRVAL1  = 0.0        /Reference pixel is Sun center\n"+
+"CRVAL2  = 0.0        /\n"+
+"\n"+
+"COMMENT Helioprojective-Cartesian coordinates\n"+
+"\n"+
+"CTYPE1A = 'HPLN-TAN' /Coordinate axis labels (Theta-X)\n"+
+"CTYPE2A = 'HPLT-TAN' /  (Theta-Y)\n"+
+"CRPIX1A =  512.5     /Reference pixel is center of CCD\n"+
+"CRPIX2A =  512.5     /\n"+
+"CUNIT1A = 'deg     ' /Angles are in degrees\n"+
+"CUNIT2A = 'deg     ' /\n"+
+"CD1_1A  =  0.001     /Plate scale in degrees per pixel\n"+
+"CD2_2A  =  0.001     /\n"+
+"CRVAL1A =    0.0     /Reference pixel is Sun center\n"+
+"CRVAL2A =    0.0     /\n"+
+"\n"+
+"COMMENT Heliographic coordinates\n"+
+"CTYPE1B = 'HGLN-AZP' /Heliographic longitude\n"+
+"CTYPE2B = 'HGLT-AZP' /  latitude\n"+
+"CRPIX1B =    512.5   /Reference pixel is center of CCD\n"+
+"CRPIX2B =    512.5   /\n"+
+"CUNIT1B = 'deg     ' /Angles are in degrees\n"+
+"CUNIT2B = 'deg     ' /\n"+
+"CD1_1B  =  0.2139    /Plate scale proportional to (Dsun/Rsun - 1)\n"+
+"CD2_2B  =  0.2139    /\n"+
+"CRVAL1B =      0.0   /Reference pixel is central meridian\n"+
+"CRVAL2B =      6.5   /Latitude of sub-earth point (BO)\n"+
+"PV2_1B  =  -214.9    /Negative ratio of Dsun/Rsun\n"+
+"\n"+
+"END";
+
+         f.PATTRS.value = "";
+
+
+      } else if( example == "NCP" ) {
+         f.HEADER.value =
+"SIMPLE  =                    T          \n"+
+"BITPIX  =                  -32          \n"+
+"NAXIS   =                    2          \n"+
+"NAXIS1  =                  256          \n"+
+"NAXIS2  =                  256          \n"+
+"DATE-OBS= '1995-08-03                  '\n"+
+"EQUINOX =        2000.0                 \n"+
+"CTYPE1  = 'RA---NCP                    '\n"+
+"CRVAL1  =        .32577585E+03          \n"+
+"CRPIX1  =        .12900000E+03          \n"+
+"CDELT1  =       -.55555496E-02          \n"+
+"CTYPE2  = 'DEC--NCP                    '\n"+
+"CRVAL2  =        .66115555E+02          \n"+
+"CRPIX2  =        .12900000E+03          \n"+
+"CDELT2  =        .55555496E-02          \n"+
+"CROTA2  =        30.000000E+00          \n";
+         f.F.checked= true;
+         f.PATTRS.value = "";
+
+      } else {
+         alert("Example \""+example+"\" not available." );
+      }
+  }
+```
