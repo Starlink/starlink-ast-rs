@@ -169,8 +169,8 @@ pub trait Draw {
     /// current Frame (a great circle on the sky, a straight line in a plain
     /// Frame), traced to within the Plot's [`tol`](Plot::tol) and broken
     /// where its graphics positions are undefined. It is clipped at the
-    /// edges of the plotting area when bit 1 of the Plot's
-    /// [`clip`](Plot::clip) attribute is set, and by any clip region.
+    /// edges of the plotting area when the Plot's [`clip`](Plot::clip)
+    /// attribute includes 1, for curves, and by any clip region.
     ///
     /// Nothing is drawn if any value of `start` or `finish` is bad.
     ///
@@ -226,9 +226,9 @@ pub trait Draw {
     /// [`Markers`](crate::plot::PlotElement::Markers).
     ///
     /// What each marker type looks like is up to the backend. Positions
-    /// with no graphics position are left out, and so, when bit 2 of the
-    /// Plot's [`clip`](Plot::clip) attribute is set, are those outside the
-    /// plotting area; any clip region also removes markers.
+    /// with no graphics position are left out, and so, when the Plot's
+    /// [`clip`](Plot::clip) attribute includes 2, for markers, are those
+    /// outside the plotting area; any clip region also removes markers.
     ///
     /// # Errors
     ///
@@ -343,13 +343,29 @@ impl Draw for Plot {
     // C: Clip (plot.c:7030), with a Frame.
     fn set_clip_region(&mut self, frame: FrameRef, lbnd: &[f64], ubnd: &[f64]) -> AstResult<()> {
         self.check_base_2d("astClip")?;
-        let naxes = self.frameset.frame(frame)?.naxes();
+        // C: astValidateFrameIndex.
+        let nframe = self.frameset.nframe();
         let index = match frame {
             FrameRef::Base => self.frameset.base_index(),
             FrameRef::Current => self.frameset.current_index(),
-            FrameRef::Index(i) => i,
-            FrameRef::AllFrames => unreachable!("FrameSet::frame rejects AllFrames"),
+            FrameRef::Index(i) if (1..=nframe).contains(&i) => i,
+            FrameRef::Index(i) => {
+                return Err(AstError::new(
+                    ErrorCode::Frmin,
+                    format!(
+                        "astClip(Plot): Invalid Frame index ({i}) given. This value should be in \
+                         the range 1 to {nframe} (or AST__CURRENT or AST__BASE)."
+                    ),
+                ));
+            }
+            FrameRef::AllFrames => {
+                return Err(AstError::new(
+                    ErrorCode::Frmin,
+                    "astClip(Plot): AST__ALLFRAMES does not identify a single Frame.",
+                ));
+            }
         };
+        let naxes = self.frameset.frame(FrameRef::Index(index))?.naxes();
         for (name, bnd) in [("lower", lbnd), ("upper", ubnd)] {
             if bnd.len() != naxes {
                 return Err(AstError::new(
@@ -362,17 +378,17 @@ impl Draw for Plot {
                 ));
             }
         }
-        let open = |v: f64, open: f64| {
+        let or_open = |v: f64, limit: f64| {
             if v == crate::constants::BAD_VALUE {
-                open
+                limit
             } else {
                 v
             }
         };
         self.clip = Some(super::ClipRegion {
             frame: index as i32,
-            lbnd: lbnd.iter().map(|&v| open(v, -f64::MAX)).collect(),
-            ubnd: ubnd.iter().map(|&v| open(v, f64::MAX)).collect(),
+            lbnd: lbnd.iter().map(|&v| or_open(v, -f64::MAX)).collect(),
+            ubnd: ubnd.iter().map(|&v| or_open(v, f64::MAX)).collect(),
         });
         Ok(())
     }
@@ -386,16 +402,7 @@ impl Draw for Plot {
 
     // C: BoundingBox (plot.c:5228).
     fn bounding_box(&self) -> AstResult<([f32; 2], [f32; 2])> {
-        let naxes = Mapping::nin(self);
-        if naxes != 2 {
-            return Err(AstError::new(
-                ErrorCode::Naxin,
-                format!(
-                    "astBoundingBox(Plot): Number of axes ({naxes}) in the base Frame of the \
-                     supplied Plot is invalid - this number should be 2."
-                ),
-            ));
-        }
+        self.check_base_2d("astBoundingBox")?;
         Ok((self.draw.boxp_lbnd, self.draw.boxp_ubnd))
     }
 }
