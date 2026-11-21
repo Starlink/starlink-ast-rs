@@ -389,7 +389,7 @@ attribute	Size	plot.c	Plot::size		yes	Per element: takes a PlotElement, groups r
 function	astBBuf	plot.c		not-ported	yes
 function	astBorder	plot.c	Draw::draw_border		yes
 function	astBoundingBox	plot.c	Draw::bounding_box		yes
-function	astClip	plot.c		not-ported	yes
+function	astClip	plot.c	Draw::set_clip_region;Draw::clear_clip_region		yes	clear_clip_region is astClip with AST__NOFRAME
 function	astCurve	plot.c	Draw::draw_curve		yes
 function	astEBuf	plot.c		not-ported	yes
 function	astGetGrfContext	plot.c		not-ported	yes
