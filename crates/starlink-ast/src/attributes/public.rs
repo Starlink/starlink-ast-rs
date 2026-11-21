@@ -14,10 +14,19 @@ use crate::frames::Frame;
 /// Set, get, test and clear an object's attributes by name, from strings.
 ///
 /// The names, the syntax and the values are those of the AST documentation's
-/// attribute reference, and every result and error message is the C
+/// attribute reference, and the results and error messages are the C
 /// library's: a program that takes attribute settings as text can pass them
 /// straight through.
 /// Names are not case sensitive and may contain white space.
+///
+/// A few errors have no C counterpart: the not-yet-supported error for a
+/// class whose attributes cannot be reached yet; a get of `Nobject`,
+/// `ObjSize` or `RefCount`, which count the C library's handles and memory;
+/// and setting or clearing `Invert` or `Report` on a Frame that is not a
+/// `FrameSet` or `Plot`, which stores no Mapping flags here.
+///
+/// Values may hold any Unicode text, such as accented labels and titles;
+/// the C library, written before Unicode, handles them byte by byte.
 ///
 /// It is implemented for `Plot`, `FrameSet` and every Frame, including a
 /// `dyn Frame`, and for `FitsChan`.
@@ -76,7 +85,9 @@ pub trait Attributes {
     ///
     /// The value of an attribute that is not set is its default.
     /// Graphical escape sequences are removed from the value, as the C
-    /// library removes them.
+    /// library removes them; a value that has any is then cut to its first
+    /// 50 bytes, as C cuts it, before any character that would not fit
+    /// whole.
     ///
     /// It takes the object mutably because some attributes are found by
     /// working on it: a `FitsChan`'s gets read its cards.
