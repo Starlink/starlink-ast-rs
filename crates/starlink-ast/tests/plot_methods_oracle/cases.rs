@@ -286,6 +286,185 @@ GLine from=(0.122,0.516) to=(0.119,0.519)
 "##),
         bbox: [0.11857561022043228, 0.51610451936721802, 0.85677838325500488, 0.60714513063430786],
     },
+    Case {
+        name: "frame_gen_curve",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "",
+        ops: &[
+            Op::GenCurve("parabola"),
+        ],
+        log: r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.180,0.260) to=(0.820,0.740)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="130,400 163,398 195,394 228,388 261,378 294,367 327,352 360,335 393,315 426,292 459,267 492,240 525,209 557,176 590,140 "/>
+</svg>
+"##),
+        bbox: [0.17999999225139618, 0.25999999046325684, 0.81999999284744263, 0.74000000953674316],
+    },
+    Case {
+        name: "frame_gen_curve_styles",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "Colour(curves)=2,Width(curves)=3,Style(curves)=2",
+        ops: &[
+            Op::GenCurve("parabola"),
+        ],
+        log: r##"GAttr STYLE=2.0000 prim=LINE
+GAttr WIDTH=3.0000 prim=LINE
+GAttr COLOUR=2.0000 prim=LINE
+GScales alpha=200.000 beta=200.000
+GLine from=(0.180,0.260) to=(0.820,0.740)
+GAttr STYLE=1.0000 prim=LINE
+GAttr WIDTH=1.0000 prim=LINE
+GAttr COLOUR=1.0000 prim=LINE
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ffff00" stroke-width="3" points="130,400 163,398 195,394 228,388 261,378 294,367 327,352 360,335 393,315 426,292 459,267 492,240 525,209 557,176 590,140 "/>
+</svg>
+"##),
+        bbox: [0.17999999225139618, 0.25999999046325684, 0.81999999284744263, 0.74000000953674316],
+    },
+    Case {
+        name: "aitoff_gen_curve",
+        head: Some("aitoff.head"),
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [10.0, -10.0, 300.0, 280.0],
+        attr: "",
+        ops: &[
+            Op::GenCurve("sky_arc"),
+        ],
+        log: r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.122,0.516) to=(0.119,0.518)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="88,261 87,261 87,261 86,261 86,261 86,260 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="616,260 616,260 616,259 616,259 615,259 615,259 615,258 615,258 614,258 614,258 614,258 614,257 613,257 613,257 613,257 612,256 612,256 612,256 612,256 611,256 611,255 607,252 603,249 598,246 593,242 588,239 583,235 577,232 571,229 565,225 559,222 553,218 546,215 553,218 559,222 565,225 571,229 577,232 583,235 588,239 593,242 598,246 603,249 607,252 611,255 611,256 612,256 612,256 612,256 612,256 613,257 613,257 613,257 614,257 614,258 614,258 614,258 615,258 615,258 615,259 615,259 616,259 616,259 616,260 616,260 "/>
+</svg>
+"##),
+        bbox: [0.11892034113407135, 0.51610451936721802, 0.85618394613265991, 0.60216110944747925],
+    },
+    Case {
+        name: "frame_mark",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "",
+        ops: &[
+            Op::Mark(&[&[1.0, 5.0, -1.7976931348623157e+308, 12.0, 8.0], &[1.0, 5.0, 3.0, 5.0, 9.0]], 1),
+            Op::Mark(&[&[2.0, 4.0, 6.0], &[7.0, 7.5, 8.0]], 3),
+        ],
+        log: r##"GMark type=1 at=(0.180,0.180)
+GMark type=3 at=(0.260,0.660)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<circle cx="130" cy="443" r="2" fill="#ff0000"/>
+<circle cx="360" cy="270" r="2" fill="#ff0000"/>
+<circle cx="763" cy="270" r="2" fill="#ff0000"/>
+<circle cx="533" cy="97" r="2" fill="#ff0000"/>
+<circle cx="187" cy="184" r="2" fill="#ff0000"/>
+<circle cx="302" cy="162" r="2" fill="#ff0000"/>
+<circle cx="418" cy="140" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.25999999046325684, 0.65999996662139893, 0.57999998331069946, 0.74000000953674316],
+    },
+    Case {
+        name: "frame_mark_clip",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "Clip=2",
+        ops: &[
+            Op::Mark(&[&[1.0, 5.0, -1.7976931348623157e+308, 12.0, 8.0], &[1.0, 5.0, 3.0, 5.0, 9.0]], 1),
+        ],
+        log: r##"GMark type=1 at=(0.180,0.180)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<circle cx="130" cy="443" r="2" fill="#ff0000"/>
+<circle cx="360" cy="270" r="2" fill="#ff0000"/>
+<circle cx="533" cy="97" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.17999999225139618, 0.17999999225139618, 0.74000000953674316, 0.81999999284744263],
+    },
+    Case {
+        name: "frame_mark_styles",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "Colour(markers)=4,Size(markers)=2",
+        ops: &[
+            Op::Mark(&[&[2.0, 4.0, 6.0], &[7.0, 7.5, 8.0]], 3),
+        ],
+        log: r##"GAttr SIZE=2.0000 prim=MARK
+GAttr COLOUR=4.0000 prim=MARK
+GMark type=3 at=(0.260,0.660)
+GAttr SIZE=1.0000 prim=MARK
+GAttr COLOUR=1.0000 prim=MARK
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<circle cx="187" cy="184" r="2" fill="#7fffd4"/>
+<circle cx="302" cy="162" r="2" fill="#7fffd4"/>
+<circle cx="418" cy="140" r="2" fill="#7fffd4"/>
+</svg>
+"##),
+        bbox: [0.25999999046325684, 0.65999996662139893, 0.57999998331069946, 0.74000000953674316],
+    },
+    Case {
+        name: "frame_mark_invisible",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "Invisible=1",
+        ops: &[
+            Op::Mark(&[&[2.0, 4.0, 6.0], &[7.0, 7.5, 8.0]], 3),
+        ],
+        log: r##""##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+</svg>
+"##),
+        bbox: [0.25999999046325684, 0.65999996662139893, 0.57999998331069946, 0.74000000953674316],
+    },
+    Case {
+        name: "aitoff_mark",
+        head: Some("aitoff.head"),
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [10.0, -10.0, 300.0, 280.0],
+        attr: "",
+        ops: &[
+            Op::Mark(&[&[0.5, 1.5, -2.0, 3.5], &[0.20000000000000001, 0.59999999999999998, -0.40000000000000002, 0.0]], 2),
+        ],
+        log: r##"GMark type=2 at=(0.122,0.516)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<circle cx="88" cy="261" r="2" fill="#ff0000"/>
+<circle cx="546" cy="215" r="2" fill="#ff0000"/>
+<circle cx="298" cy="255" r="2" fill="#ff0000"/>
+<circle cx="368" cy="223" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.12175719439983368, 0.51610451936721802, 0.7580762505531311, 0.60216110944747925],
+    },
 ];
 
 /// `(case name, Native dump of the Plot after its operations)`.

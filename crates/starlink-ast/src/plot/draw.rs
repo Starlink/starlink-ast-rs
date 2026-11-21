@@ -40,6 +40,7 @@ use super::elements::PlotElement;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::grf::{Grf, GrfAttr, GrfCap, GrfPrimitive, Justification};
+use crate::mappings::Mapping;
 use crate::serial::native_write::format_double_g;
 
 /// The methods that draw a Plot through a graphics backend.
@@ -199,6 +200,44 @@ pub trait Draw {
     #[doc(alias = "astPolyCurve")]
     fn draw_poly_curve(&mut self, grf: &mut dyn Grf, positions: &PointSet) -> AstResult<()>;
 
+    /// Draw the curve that `map` describes, in the style of
+    /// [`Curves`](crate::plot::PlotElement::Curves).
+    ///
+    /// `map` has one input, a distance along the curve from 0 at its start
+    /// to 1 at its end, and one output per axis of the current Frame, the
+    /// position at that distance. The curve is traced to within the Plot's
+    /// [`tol`](Plot::tol), broken where `map` gives bad positions or their
+    /// graphics positions are undefined, and clipped as
+    /// [`draw_curve`](Draw::draw_curve) clips.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    /// - The error transforming through `map` gives when it does not have
+    ///   one input and one output per axis of the current Frame.
+    /// - `ErrorCode::Cvbrk` when the curve has more than 1000 breaks.
+    /// - Any error the backend reports.
+    #[doc(alias = "astGenCurve")]
+    fn draw_gen_curve(&mut self, grf: &mut dyn Grf, map: &dyn Mapping) -> AstResult<()>;
+
+    /// Draw a marker of type `marker` at each of `positions`, one axis of
+    /// the PointSet per axis of the current Frame, in the style of
+    /// [`Markers`](crate::plot::PlotElement::Markers).
+    ///
+    /// What each marker type looks like is up to the backend. Positions
+    /// with no graphics position are left out, and so, when bit 2 of the
+    /// Plot's [`clip`](Plot::clip) attribute is set, are those outside the
+    /// plotting area; any clip region also removes markers.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    /// - The error transforming `positions` gives when it does not have one
+    ///   axis per axis of the current Frame.
+    /// - Any error the backend reports.
+    #[doc(alias = "astMark")]
+    fn draw_mark(&mut self, grf: &mut dyn Grf, positions: &PointSet, marker: i32) -> AstResult<()>;
+
     /// The bounds of a box in graphics coordinates that encloses what the
     /// last drawing method called on this Plot drew, as `(lbnd, ubnd)`.
     ///
@@ -257,9 +296,19 @@ impl Draw for Plot {
         self.poly_curve_impl(grf, positions)
     }
 
+    fn draw_gen_curve(&mut self, grf: &mut dyn Grf, map: &dyn Mapping) -> AstResult<()> {
+        self.begin_drawing();
+        self.gen_curve_impl(grf, map)
+    }
+
+    fn draw_mark(&mut self, grf: &mut dyn Grf, positions: &PointSet, marker: i32) -> AstResult<()> {
+        self.begin_drawing();
+        self.mark_impl(grf, positions, marker)
+    }
+
     // C: BoundingBox (plot.c:5228).
     fn bounding_box(&self) -> AstResult<([f32; 2], [f32; 2])> {
-        let naxes = crate::mappings::Mapping::nin(self);
+        let naxes = Mapping::nin(self);
         if naxes != 2 {
             return Err(AstError::new(
                 ErrorCode::Naxin,
@@ -455,6 +504,22 @@ impl Plot {
     pub(crate) fn g_line(&mut self, grf: &mut dyn Grf, x: &[f32], y: &[f32]) -> AstResult<()> {
         if !self.invisible() {
             grf.line(x, y)?;
+        }
+        self.extend_boxp(x, y);
+        Ok(())
+    }
+
+    /// Draw markers, unless the Plot draws in invisible ink.
+    // C: GMark (plot.c:15060).
+    pub(crate) fn g_mark(
+        &mut self,
+        grf: &mut dyn Grf,
+        x: &[f32],
+        y: &[f32],
+        marker: i32,
+    ) -> AstResult<()> {
+        if !self.invisible() {
+            grf.mark(x, y, marker)?;
         }
         self.extend_boxp(x, y);
         Ok(())

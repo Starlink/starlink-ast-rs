@@ -128,6 +128,11 @@ pub(crate) enum CurveMap {
         scale: f64,
         map: DynMapping,
     },
+    /// The positions in the current Frame that `umap` gives for each
+    /// distance, mapped into graphics coordinates by `map`, the Plot's base
+    /// to current Mapping.
+    // C: Map4, with Map4_umap and Map4_map.
+    User { umap: DynMapping, map: DynMapping },
 }
 
 /// The state the tracer keeps while drawing one curve.
@@ -544,6 +549,15 @@ impl Plot {
                     }
                     bad
                 });
+                let graph = self.trans_with(Some(map.as_ref()), None, &phys, false, true)?;
+                x.copy_from_slice(graph.axis(0));
+                y.copy_from_slice(graph.axis(1));
+                Ok(())
+            }
+            // C: Map4 (plot.c:22368).
+            CurveMap::User { umap, map } => {
+                let dist = PointSet::from_columns(&[d])?;
+                let phys = umap.transform(&dist, true)?;
                 let graph = self.trans_with(Some(map.as_ref()), None, &phys, false, true)?;
                 x.copy_from_slice(graph.axis(0));
                 y.copy_from_slice(graph.axis(1));
@@ -1252,5 +1266,57 @@ impl Plot {
         self.opoly();
         self.fpoly(grf)?;
         self.grf_attrs(grf, PlotElement::Curves, false, GrfPrimitive::Line)
+    }
+
+    // C: GenCurve (plot.c:14432).
+    pub(crate) fn gen_curve_impl(
+        &mut self,
+        grf: &mut dyn Grf,
+        umap: &dyn Mapping,
+    ) -> AstResult<()> {
+        const METHOD: &str = "astGenCurve";
+        self.check_base_2d(METHOD)?;
+        self.reset_boxp();
+        self.reset_grf();
+        self.grf_attrs(grf, PlotElement::Curves, true, GrfPrimitive::Line)?;
+        self.g_scales(grf)?;
+        let map = CurveMap::User {
+            umap: umap.clone_box(),
+            map: self.frameset.mapping(FrameRef::Base, FrameRef::Current)?,
+        };
+        let mut crv = self.curve_crv(true, METHOD)?;
+        self.draw.curve_data = self.trace(&map, &mut crv)?;
+        self.fpoly(grf)?;
+        self.grf_attrs(grf, PlotElement::Curves, false, GrfPrimitive::Line)
+    }
+
+    // C: Mark (plot.c:22711).
+    pub(crate) fn mark_impl(
+        &mut self,
+        grf: &mut dyn Grf,
+        positions: &PointSet,
+        marker: i32,
+    ) -> AstResult<()> {
+        const METHOD: &str = "astMark";
+        self.check_base_2d(METHOD)?;
+        self.reset_boxp();
+        self.reset_grf();
+        self.grf_attrs(grf, PlotElement::Markers, true, GrfPrimitive::Mark)?;
+        let map = self.frameset.mapping(FrameRef::Base, FrameRef::Current)?;
+        let graph = self.trans_with(Some(map.as_ref()), None, positions, false, false)?;
+        let clip = self.clip() & 2 != 0;
+        let mut x = Vec::with_capacity(graph.npoint());
+        let mut y = Vec::with_capacity(graph.npoint());
+        for (&xx, &yy) in graph.axis(0).iter().zip(graph.axis(1)) {
+            if xx != BAD_VALUE
+                && yy != BAD_VALUE
+                && (!clip || (xx >= self.xlo && xx <= self.xhi && yy >= self.ylo && yy <= self.yhi))
+            {
+                x.push(xx as f32);
+                y.push(yy as f32);
+            }
+        }
+        self.g_mark(grf, &x, &y, marker)?;
+        self.grf_attrs(grf, PlotElement::Markers, false, GrfPrimitive::Mark)
     }
 }

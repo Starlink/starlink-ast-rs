@@ -393,13 +393,13 @@ function	astClip	plot.c		not-ported	yes
 function	astCurve	plot.c	Draw::draw_curve		yes
 function	astEBuf	plot.c		not-ported	yes
 function	astGetGrfContext	plot.c		not-ported	yes
-function	astGenCurve	plot.c		not-ported	yes
+function	astGenCurve	plot.c	Draw::draw_gen_curve		yes
 function	astGrfPop	plot.c		not-ported	yes
 function	astGrfPush	plot.c		not-ported	yes
 function	astGrfSet	plot.c		not-ported	yes
 function	astGrid	plot.c	Draw::draw_grid		yes
 function	astGridLine	plot.c	Draw::draw_grid_line		yes
-function	astMark	plot.c		not-ported	yes
+function	astMark	plot.c	Draw::draw_mark		yes
 function	astPolyCurve	plot.c	Draw::draw_poly_curve		yes
 function	astRegionOutline	plot.c		not-ported	yes
 function	astStripEscapes	plot.c		not-ported	yes
