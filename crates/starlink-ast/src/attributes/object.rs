@@ -11,6 +11,7 @@ use super::{
     unknown_clear, unknown_get, unknown_set, unknown_test,
 };
 use crate::error::AstResult;
+#[cfg(feature = "attribute-strings")]
 use crate::frames::Frame;
 
 /// The Object attributes of a class as the functions of this file read
@@ -50,6 +51,7 @@ pub(crate) trait ObjectAttrs: ObjectRead {
     fn obj_clear_use_defs(&mut self) -> AstResult<()>;
 }
 
+#[cfg(feature = "attribute-strings")]
 impl<T: Frame + ?Sized> ObjectRead for T {
     fn obj_class(&self) -> &'static str {
         self.attr_class()
@@ -74,6 +76,7 @@ impl<T: Frame + ?Sized> ObjectRead for T {
     }
 }
 
+#[cfg(feature = "attribute-strings")]
 impl<T: Frame + ?Sized> ObjectAttrs for T {
     fn obj_set_id(&mut self, id: &str) -> AstResult<()> {
         self.set_id(id)

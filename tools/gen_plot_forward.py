@@ -54,6 +54,21 @@ OWN_MAPPING = {
     "as_frameset": "Some(&self.frameset)",
 }
 
+# The hidden Frame methods of the attribute-string layer, which exist only
+# with the attribute-strings feature.
+FEATURE_GATED = {
+    "attr_class",
+    "attr_vset",
+    "attr_set",
+    "attr_get",
+    "attr_test",
+    "attr_clear_list",
+    "attr_clear",
+    "attr_axis",
+    "attr_axis_mut",
+    "primary_frame_mut",
+}
+
 # Methods a Plot inherits from the Mapping class rather than from FrameSet,
 # which does not override them in C (frameset.c's vtab overrides only Rate,
 # MapSplit, Simplify and Transform among Mapping's methods). Their default
@@ -175,7 +190,8 @@ def forward(trait, name, generics, params, ret, where, body=None):
         sig += f" {ret}"
     if where:
         sig += f" {where}"
-    return f"    {sig} {{\n        {call}\n    }}\n"
+    gate = '    #[cfg(feature = "attribute-strings")]\n' if name in FEATURE_GATED else ""
+    return f"{gate}    {sig} {{\n        {call}\n    }}\n"
 
 
 def generate():

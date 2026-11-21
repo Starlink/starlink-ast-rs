@@ -17,6 +17,8 @@
 //! `SpecFrame`, `DSBSpecFrame`, `TimeFrame` and `CmpFrame`, and `FitsChan`.
 //! Used on any other class it fails with an error saying that the class is
 //! not yet supported.
+// Without the feature only FitsChan's chain uses these helpers.
+#![cfg_attr(not(feature = "attribute-strings"), allow(dead_code))]
 // The rest of the module is private to the crate; a class's own names are in
 // the file named after it.
 //
@@ -37,18 +39,29 @@
 // C reports an error as a series of messages under one status. The first is
 // the `AstError`'s message and the others are its context, in order.
 
+#[cfg(feature = "attribute-strings")]
 pub(crate) mod axis;
+// FitsChan applies FITSCHAN_OPTIONS through its chain whether or not the
+// feature is on; the other classes' chains exist only with it.
 pub(crate) mod channel;
+#[cfg(feature = "attribute-strings")]
 pub(crate) mod cmpframe;
+#[cfg(feature = "attribute-strings")]
 pub(crate) mod frame;
+#[cfg(feature = "attribute-strings")]
 pub(crate) mod frameset;
+#[cfg(feature = "attribute-strings")]
 pub(crate) mod mapping;
 pub(crate) mod object;
+#[cfg(feature = "attribute-strings")]
 pub(crate) mod plot;
 #[cfg(feature = "attribute-strings")]
 mod public;
+#[cfg(feature = "attribute-strings")]
 pub(crate) mod skyframe;
+#[cfg(feature = "attribute-strings")]
 pub(crate) mod specframe;
+#[cfg(feature = "attribute-strings")]
 pub(crate) mod timeframe;
 
 #[cfg(feature = "attribute-strings")]
@@ -175,7 +188,6 @@ pub(crate) fn split_settings(settings: &str) -> Vec<String> {
 // astSet with the format "<name>=%*s"; VSet looks for separating commas in
 // that format, before the value is put into it, and turns each "\r" back
 // into a comma as it normalises an assignment.
-#[cfg_attr(not(feature = "attribute-strings"), allow(dead_code))]
 pub(crate) fn split_setting_c(name: &str, value: &str) -> (Vec<String>, String) {
     let name = &name[..chr_len(name)];
     let mut buf = format!("{name}=").into_bytes();
@@ -648,7 +660,6 @@ pub(crate) fn fmt_decimal_yr(year: f64, digits: usize) -> String {
 // C: plot.c astStripEscapes_. Its buffer holds 50 bytes, so a value that
 // has escape sequences is also cut to that length (c-library-quirks.md); the
 // port cuts text that is not ASCII at a character boundary within them.
-#[cfg_attr(not(feature = "attribute-strings"), allow(dead_code))]
 pub(crate) fn strip_escapes(text: &str) -> String {
     const BUFF_LEN: usize = 50;
     if crate::escapes::escapes() || !crate::plot::text::has_escapes(text) {
@@ -720,7 +731,6 @@ pub(crate) fn unknown_clear(name: &str, class: &str) -> AstError {
 }
 
 /// A get of a name that is blank.
-#[cfg_attr(not(feature = "attribute-strings"), allow(dead_code))]
 pub(crate) fn blank_get(class: &str) -> AstError {
     AstError::new(
         ErrorCode::Badat,

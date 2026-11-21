@@ -259,21 +259,25 @@ impl CmpFrame {
     }
 
     /// Whether System is set: it reads as "Compound" either way.
+    #[cfg(feature = "attribute-strings")]
     pub(crate) fn system_flag(&self) -> bool {
         self.system_set
     }
 
     /// Record whether System is set.
+    #[cfg(feature = "attribute-strings")]
     pub(crate) fn set_system_flag(&mut self, set: bool) {
         self.system_set = set;
     }
 
     /// Whether AlignSystem is set.
+    #[cfg(feature = "attribute-strings")]
     pub(crate) fn align_system_flag(&self) -> bool {
         self.align_system_set
     }
 
     /// Record whether AlignSystem is set.
+    #[cfg(feature = "attribute-strings")]
     pub(crate) fn set_align_system_flag(&mut self, set: bool) {
         self.align_system_set = set;
     }
@@ -540,6 +544,7 @@ impl Frame for CmpFrame {
     cmp_frame_axis_attrs!();
     cmp_frame_plot_methods!();
 
+    #[cfg(feature = "attribute-strings")]
     fn primary_frame_mut(&mut self, axis: usize) -> (&mut dyn Frame, usize) {
         let internal = self.perm[axis];
         let n1 = self.naxes1();
@@ -551,19 +556,24 @@ impl Frame for CmpFrame {
     }
 
     // The attribute strings of C's CmpFrame class.
+    #[cfg(feature = "attribute-strings")]
     fn attr_set(&mut self, setting: &str) -> AstResult<()> {
         crate::attributes::cmpframe::cmpframe_set(self, setting)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_get(&self, name: &str) -> AstResult<String> {
         crate::attributes::cmpframe::cmpframe_get(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_test(&self, name: &str) -> AstResult<bool> {
         crate::attributes::cmpframe::cmpframe_test(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_clear(&mut self, name: &str) -> AstResult<()> {
         crate::attributes::cmpframe::cmpframe_clear(self, name)
     }
     // A CmpFrame's Axis objects are its components'.
+    #[cfg(feature = "attribute-strings")]
     fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
         crate::attributes::frame::validate_axis(self, axis as i32, "astGetAxis")?;
         match self.component_axis(axis) {
@@ -572,6 +582,7 @@ impl Frame for CmpFrame {
             None => unreachable!("a validated axis has a component"),
         }
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
         crate::attributes::frame::validate_axis(self, axis as i32, "astGetAxis")?;
         match self.component_axis(axis) {

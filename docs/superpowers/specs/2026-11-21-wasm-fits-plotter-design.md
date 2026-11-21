@@ -98,7 +98,7 @@ When the chain reaches a class not yet covered, the operation fails with an erro
 Object's `RefCount`, `Nobject` and `ObjSize` have no value in the Rust library (`PLAN.md` records them under `starlink-ast-capi`); getting them fails with an error saying so, and they are listed as a named exception in the C comparison.
 
 The layer lives in `starlink-ast`, because it needs the crate's internals (FrameSet integrity when a Frame attribute is set through it, the Axis objects, typed test and clear methods the public API has only for some attributes) and because the FitsChan constructor already applies `FITSCHAN_OPTIONS` through a copy of part of it.
-The per-class chain is hidden trait methods, implemented per class and always compiled, which the FitsChan constructor uses.
+The per-class chain is hidden trait methods, implemented per class and compiled only with the feature, except FitsChan's, which is always compiled because the FitsChan constructor applies `FITSCHAN_OPTIONS` through it.
 The four operations are public, for the covered classes on the objects the Rust API already has (`Plot`, `FrameSet`, the Frame types, `FitsChan`), only with a new Cargo feature that is off by default; the new public items are additions for semver, with a `CHANGELOG.md` entry.
 CLAUDE.md's rule against string-typed attribute access in `starlink-ast` ("What NOT to do" and the architecture notes) is amended in the same stage to say so.
 `fitschan/options.rs`, the demo's `settings.rs` and the test helper's parser are replaced by it, and the `PLAN.md` row about them is closed.

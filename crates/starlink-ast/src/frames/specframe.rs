@@ -2223,24 +2223,30 @@ impl SpecFrame {
 
 impl Frame for SpecFrame {
     // The attribute strings of C's SpecFrame class.
+    #[cfg(feature = "attribute-strings")]
     fn attr_set(&mut self, setting: &str) -> AstResult<()> {
         crate::attributes::specframe::specframe_set(self, setting)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_get(&self, name: &str) -> AstResult<String> {
         crate::attributes::specframe::specframe_get(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_test(&self, name: &str) -> AstResult<bool> {
         crate::attributes::specframe::specframe_test(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_clear(&mut self, name: &str) -> AstResult<()> {
         crate::attributes::specframe::specframe_clear(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
         crate::attributes::frame::validate_axis(self, axis as i32, "astGetAxis")?;
         Ok(super::axis::AxisHandle(super::axis::AxisRef::Plain(
             &self.axis,
         )))
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
         crate::attributes::frame::validate_axis(self, axis as i32, "astGetAxis")?;
         Ok(super::axis::AxisHandleMut(super::axis::AxisMut::Plain(

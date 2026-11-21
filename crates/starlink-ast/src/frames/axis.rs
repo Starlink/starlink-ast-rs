@@ -49,6 +49,7 @@ pub(crate) struct Axis {
     pub use_defs: Option<bool>,
 }
 
+#[cfg(feature = "attribute-strings")]
 /// The Axis object of one axis of a Frame, for reading.
 // C: the AstAxis pointer astGetAxis returns, of class Axis or SkyAxis.
 #[derive(Debug, Clone, Copy)]
@@ -59,6 +60,7 @@ pub(crate) enum AxisRef<'a> {
     Sky(&'a super::skyaxis::SkyAxis),
 }
 
+#[cfg(feature = "attribute-strings")]
 impl AxisRef<'_> {
     /// The Axis-class part of the object.
     pub(crate) fn axis(&self) -> &Axis {
@@ -69,6 +71,7 @@ impl AxisRef<'_> {
     }
 }
 
+#[cfg(feature = "attribute-strings")]
 /// The Axis object of one axis of a Frame, for changing.
 #[derive(Debug)]
 pub(crate) enum AxisMut<'a> {
@@ -78,6 +81,7 @@ pub(crate) enum AxisMut<'a> {
     Sky(&'a mut super::skyaxis::SkyAxis),
 }
 
+#[cfg(feature = "attribute-strings")]
 impl AxisMut<'_> {
     /// The Axis-class part of the object.
     pub(crate) fn axis_mut(&mut self) -> &mut Axis {
@@ -96,17 +100,20 @@ impl AxisMut<'_> {
     }
 }
 
+#[cfg(feature = "attribute-strings")]
 /// An [`AxisRef`] as the hidden `Frame::attr_axis` returns it: the trait is
 /// public, so its methods cannot name a type private to the crate.
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
 pub struct AxisHandle<'a>(pub(crate) AxisRef<'a>);
 
+#[cfg(feature = "attribute-strings")]
 /// An [`AxisMut`] as the hidden `Frame::attr_axis_mut` returns it.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct AxisHandleMut<'a>(pub(crate) AxisMut<'a>);
 
+#[cfg(feature = "attribute-strings")]
 impl FrameAxis {
     /// This axis as the Axis object an attribute string reaches.
     pub(crate) fn attr_ref(&self) -> AxisHandle<'_> {

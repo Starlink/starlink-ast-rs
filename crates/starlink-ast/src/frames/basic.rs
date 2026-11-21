@@ -765,6 +765,7 @@ pub(crate) fn axis_unformat(text: &str) -> (f64, usize) {
     (BAD_VALUE, 0)
 }
 
+#[cfg(feature = "attribute-strings")]
 impl crate::attributes::frame::FrameClass for BasicFrame {
     // C: frame.c SystemCode, which knows only "Cartesian".
     fn set_system_text(&mut self, text: &str) -> AstResult<bool> {
@@ -805,21 +806,27 @@ impl crate::attributes::frame::FrameClass for BasicFrame {
 
 impl Frame for BasicFrame {
     // A plain Frame's attribute strings are those of C's Frame class.
+    #[cfg(feature = "attribute-strings")]
     fn attr_set(&mut self, setting: &str) -> AstResult<()> {
         crate::attributes::frame::frame_set(self, setting)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_get(&self, name: &str) -> AstResult<String> {
         crate::attributes::frame::frame_get(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_test(&self, name: &str) -> AstResult<bool> {
         crate::attributes::frame::frame_test(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_clear(&mut self, name: &str) -> AstResult<()> {
         crate::attributes::frame::frame_clear(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
         Ok(self.axis_object(axis)?.attr_ref())
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
         let internal = self.internal(axis)?;
         Ok(self.axes[internal].attr_mut())

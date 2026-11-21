@@ -668,6 +668,7 @@ impl FrameToNode for dyn Frame {
 /// The C class name of a Frame, as the `Begin` line of its dump gives it,
 /// from the Frame as [`AsAny`](crate::mappings::AsAny) gives it.
 /// A class the serialiser does not know is a plain "Frame".
+#[cfg(feature = "attribute-strings")]
 pub(crate) fn frame_class_name(frame: &dyn std::any::Any) -> &'static str {
     macro_rules! name_of {
         ($($class:ty),* $(,)?) => {

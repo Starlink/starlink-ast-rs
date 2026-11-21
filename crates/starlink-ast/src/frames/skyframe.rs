@@ -1793,21 +1793,27 @@ impl SkyFrame {
 
 impl Frame for SkyFrame {
     // The attribute strings of C's SkyFrame class.
+    #[cfg(feature = "attribute-strings")]
     fn attr_set(&mut self, setting: &str) -> AstResult<()> {
         crate::attributes::skyframe::skyframe_set(self, setting)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_get(&self, name: &str) -> AstResult<String> {
         crate::attributes::skyframe::skyframe_get(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_test(&self, name: &str) -> AstResult<bool> {
         crate::attributes::skyframe::skyframe_test(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_clear(&mut self, name: &str) -> AstResult<()> {
         crate::attributes::skyframe::skyframe_clear(self, name)
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
         Ok(self.axes[self.physical_axis(axis)?].attr_ref())
     }
+    #[cfg(feature = "attribute-strings")]
     fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
         let phys = self.physical_axis(axis)?;
         Ok(self.axes[phys].attr_mut())
@@ -1925,6 +1931,7 @@ impl Frame for SkyFrame {
         (self, self.axis_permutation()[axis])
     }
 
+    #[cfg(feature = "attribute-strings")]
     fn primary_frame_mut(&mut self, axis: usize) -> (&mut dyn Frame, usize) {
         let internal = self.axis_permutation()[axis];
         (self, internal)

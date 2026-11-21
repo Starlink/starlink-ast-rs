@@ -83,6 +83,7 @@ impl Plot {
     }
 }
 
+#[cfg(feature = "attribute-strings")]
 impl crate::attributes::frameset::FrameSetClass for Plot {
     fn fs(&self) -> &FrameSet {
         &self.frameset
