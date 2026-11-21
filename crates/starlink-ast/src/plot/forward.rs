@@ -377,6 +377,15 @@ impl Frame for Plot {
     fn axis_object_bottom(&self, axis: usize) -> AstResult<f64> {
         Frame::axis_object_bottom(&self.frameset, axis)
     }
+    fn attr_axis(&self, _axis: usize) -> AstResult<axis::AxisHandle<'_>> {
+        Frame::attr_axis(&self.frameset, _axis)
+    }
+    fn attr_axis_mut(&mut self, _axis: usize) -> AstResult<axis::AxisHandleMut<'_>> {
+        Frame::attr_axis_mut(&mut self.frameset, _axis)
+    }
+    fn primary_frame_mut(&mut self, axis: usize) -> (&mut dyn Frame, usize) {
+        Frame::primary_frame_mut(&mut self.frameset, axis)
+    }
     fn attr_class(&self) -> &'static str {
         "Plot"
     }

@@ -37,6 +37,8 @@
 // C reports an error as a series of messages under one status. The first is
 // the `AstError`'s message and the others are its context, in order.
 
+pub(crate) mod axis;
+pub(crate) mod frame;
 pub(crate) mod mapping;
 pub(crate) mod object;
 #[cfg(feature = "attribute-strings")]
@@ -490,11 +492,42 @@ pub(crate) fn string_value<'a>(setting: &'a str, name: &str) -> Option<&'a str> 
 
 /// The value of `"<name>= %n%*s %n"`: a setting of one word, from its first
 /// character to the end of the setting, so with any white space after it.
-#[allow(dead_code)]
 pub(crate) fn keyword_value<'a>(setting: &'a str, name: &str) -> Option<&'a str> {
     named(setting, name)?;
     let scan = scan_whole(setting, &format!("{name}= %n%*s %n"), 0)?;
     setting.get(scan.count(0)..)
+}
+
+/// The axis and value of `"<name>(%d)= %d %n"`: an integer setting of an
+/// attribute with an axis index.
+pub(crate) fn axis_int_value(setting: &str, name: &str) -> Option<(i32, i32)> {
+    indexed(setting, name)?;
+    scan_whole(setting, &format!("{name}(%d)= %d %n"), 2).map(|s| (s.int(0), s.int(1)))
+}
+
+/// The axis and value of `"<name>(%d)= %lg %n"`.
+pub(crate) fn axis_double_value(setting: &str, name: &str) -> Option<(i32, f64)> {
+    indexed(setting, name)?;
+    scan_whole(setting, &format!("{name}(%d)= %lg %n"), 2).map(|s| (s.int(0), s.double(1)))
+}
+
+/// The axis and value of `"<name>(%d)=%n%*[^\n]%n"`.
+pub(crate) fn axis_string_value<'a>(setting: &'a str, name: &str) -> Option<(i32, &'a str)> {
+    indexed(setting, name)?;
+    let scan = scan_whole(setting, &format!("{name}(%d)=%n%*[^\n]%n"), 1)?;
+    Some((scan.int(0), setting.get(scan.count(1)..)?))
+}
+
+/// The axis of `"<name>(%d)%n"`: the name of an attribute with an axis
+/// index, as a get, test or clear is given it.
+pub(crate) fn axis_name(attrib: &str, name: &str) -> Option<i32> {
+    indexed(attrib, name)?;
+    scan_whole(attrib, &format!("{name}(%d)%n"), 1).map(|s| s.int(0))
+}
+
+/// A quick test that `text` starts with `name` and then `(`.
+fn indexed(text: &str, name: &str) -> Option<()> {
+    text.strip_prefix(name)?.starts_with('(').then_some(())
 }
 
 /// Whether the setting is of the read-only attribute `name`:
@@ -528,7 +561,6 @@ pub(crate) fn fmt_int(value: i32) -> String {
 
 /// C's `sprintf( buff, "%.*g", AST__DBL_DIG, value )`, the form every
 /// floating point attribute is returned in.
-#[allow(dead_code)]
 pub(crate) fn fmt_double(value: f64) -> String {
     format_double_g_signed(value, crate::serial::native_write::DBL_DIG)
 }
@@ -642,6 +674,18 @@ pub(crate) fn read_only_clear(name: &str, class: &str) -> AstError {
         format!("astClear: Invalid attempt to clear the \"{name}\" value for a {class}."),
     )
     .with_context("This is a read-only attribute.")
+}
+
+/// An axis index outside the Frame's axes, as C's `astValidateAxis` reports
+/// it for the function `method`.
+pub(crate) fn axis_invalid(method: &str, class: &str, axis: i32, naxes: usize) -> AstError {
+    AstError::new(
+        ErrorCode::Axiin,
+        format!(
+            "{method}({class}): Axis index ({axis}) invalid - it should be in the range 1 to \
+             {naxes}."
+        ),
+    )
 }
 
 /// An operation on an object of a class whose attributes cannot yet be

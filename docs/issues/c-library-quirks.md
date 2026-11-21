@@ -1809,8 +1809,22 @@ The port mirrors it in `attributes::strip_escapes`, pinned by the `frame2_object
 
 `astFmtDecimalYr` (`frame.c`) prints a year with `%#.*g`, removes every trailing `0` and puts one back if the text then ends with the decimal point.
 A year too large to print without an exponent ends with the exponent's own digits, so `1e20` printed as `1.0000000000000000e+20` loses the `0` of `+20`.
-No epoch or equinox in use reaches this; it is read from the source, not probed.
-The port's `attributes::fmt_decimal_yr` does the same.
+No epoch or equinox in use reaches this.
+Oracle-verified: after `astSet( frame, "Epoch=1e20" )`, `astGetC( frame, "Epoch" )` is `1.0000000000000000e+2`.
+The port's `attributes::fmt_decimal_yr` does the same, pinned by the `frame_title` case of `crates/starlink-ast/tests/test_attr_strings.rs`.
+
+### `astClearUnit` reports a bad axis index as `astSetUnit`
+
+Frame's `ClearUnit` (`frame.c`) validates its axis with the method name `"astSetUnit"`, so `astClear( frame, "Unit(3)" )` on a Frame of two axes reports `astSetUnit(Frame): Axis index (3) invalid - it should be in the range 1 to 2.`, where every other clear names its own function (`astClearLabel`, `astClearSymbol`).
+Oracle-verified.
+The port's attribute-string layer gives the same text (`attributes::frame`), pinned by the `frame_axis_attrs` case of `crates/starlink-ast/tests/test_attr_strings.rs`.
+
+### `ObsLat=N` stores a value that was never assigned
+
+Frame's `SetAttrib` (`frame.c`) reads an `ObsLat` or `ObsLon` setting by stepping over an optional `N`, `S`, `E` or `W` and passing the rest to `astUnformat`, and accepts the value when the number of characters `astUnformat` read equals the length of that rest.
+For a setting that is only the letter, `ObsLat=N`, the rest is empty, `astUnformat` reads nothing and returns zero characters, the lengths agree, and `astSetObsLat` is called with a local `double` that nothing assigned.
+Oracle-verified as far as it can be: the setting is accepted without an error.
+The port accepts it too and stores zero (`attributes::frame`), since there is no value to mirror.
 
 ## Addressed here, and not going upstream
 

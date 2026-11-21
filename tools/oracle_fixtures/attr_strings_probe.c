@@ -60,7 +60,7 @@ struct op { int kind; const char *a; const char *b; };
 /* Set an attribute, look at it, clear it and look again. */
 #define CYCLE( n, setting ) SET( setting ), SEE( n ), CLEAR( n ), SEE( n )
 
-#define MAXOP 96
+#define MAXOP 160
 struct acase {
    const char *name;
    const char *object;
@@ -151,12 +151,182 @@ static const struct acase cases[] = {
       CYCLE( "ID", "ID=x" ), CYCLE( "Ident", "Ident=i" ),
       CYCLE( "UseDefs", "UseDefs=0" ), SET( "Nin=1" ), CLEAR( "Class" ),
    } },
+
+/* Frame attributes on a plain Frame. */
+   { "frame_title", "frame2", {
+      SEE( "Title" ), CYCLE( "Title", "Title=My title" ),
+      SEE( "Domain" ), CYCLE( "Domain", "Domain=my dom" ),
+      SEE( "Epoch" ), SET( "Epoch=J2000" ), SEE( "Epoch" ),
+      SET( "Epoch=2010-03-01" ), GET( "Epoch" ), SET( "Epoch=B1950" ),
+      GET( "Epoch" ), SET( "Epoch=1983.5" ), GET( "Epoch" ),
+      SET( "Epoch= 2001.25 " ), GET( "Epoch" ),
+      SET( "Epoch=nonsense" ), GET( "Epoch" ), SET( "Epoch=1e20" ),
+      GET( "Epoch" ), CLEAR( "Epoch" ), SEE( "Epoch" ),
+      SEE( "Naxes" ), SET( "Naxes=3" ), CLEAR( "Naxes" ),
+   } },
+   { "frame_digits", "frame2", {
+      SEE( "Digits" ), CYCLE( "Digits", "Digits=4" ), SET( "Digits=0" ),
+      GET( "Digits" ), SET( "Digits=-3" ), GET( "Digits" ),
+      SET( "Digits=x" ), SEE( "Digits(1)" ), SET( "Digits(1)=9" ),
+      SEE( "Digits(1)" ), SEE( "Digits(2)" ), GET( "Digits" ),
+      GET( "Format(1)" ), GET( "Format(2)" ), SET( "Digits(2)=0" ),
+      GET( "Digits(2)" ), CLEAR( "Digits(1)" ), SEE( "Digits(1)" ),
+      SET( "Digits(3)=2" ), GET( "Digits(3)" ), TEST( "Digits(0)" ),
+      CLEAR( "Digits(-1)" ), SET( "Digits( 1 )=6" ), GET( "Digits(+1)" ),
+      GET( "Digits(1" ), GET( "Digits(1)x" ), GET( "Digits()" ),
+   } },
+   { "frame_axis_attrs", "frame2", {
+      SEE( "Direction(1)" ), SET( "Direction(1)=0" ), SEE( "Direction(1)" ),
+      SET( "Direction(1)=7" ), GET( "Direction(1)" ), CLEAR( "Direction(1)" ),
+      SEE( "Direction(1)" ), SET( "Direction(3)=1" ), GET( "Direction(3)" ),
+      TEST( "Direction(3)" ), CLEAR( "Direction(3)" ),
+      SET( "Direction(1)=abc" ), SET( "Direction=1" ), GET( "Direction" ),
+      SEE( "Top(1)" ), CYCLE( "Top(2)", "Top(2)=10.5" ), SEE( "Bottom(2)" ),
+      CYCLE( "Bottom(1)", "Bottom(1)=-1e3" ), SET( "Top(3)=1" ),
+      GET( "Bottom(0)" ), TEST( "Top(9)" ), CLEAR( "Bottom(9)" ),
+      SET( "Top(1)=high" ),
+      SEE( "Format(1)" ), CYCLE( "Format(1)", "Format(1)=%6.2f" ),
+      GET( "Format(3)" ), SET( "Format(3)=%g" ), TEST( "Format(3)" ),
+      CLEAR( "Format(3)" ),
+      SEE( "Label(1)" ), CYCLE( "Label(2)", "Label(2)=Y axis" ),
+      SET( "Label(3)=x" ), GET( "Label(3)" ), TEST( "Label(3)" ),
+      CLEAR( "Label(3)" ), SET( "Label=x" ), GET( "Label" ), TEST( "Label" ),
+      CLEAR( "Label" ), SET( "Label(1)=" ), SEE( "Label(1)" ),
+      SEE( "Symbol(2)" ), CYCLE( "Symbol(1)", "Symbol(1)=sym" ),
+      SET( "Symbol(3)=x" ), GET( "Symbol(3)" ), TEST( "Symbol(3)" ),
+      CLEAR( "Symbol(3)" ),
+      SEE( "Unit(1)" ), CYCLE( "Unit(1)", "Unit(1)=km" ), SET( "Unit(3)=x" ),
+      GET( "Unit(3)" ), TEST( "Unit(3)" ), CLEAR( "Unit(3)" ),
+      SEE( "NormUnit(1)" ), SEE( "InternalUnit(1)" ), SET( "Unit(2)=km/s" ),
+      GET( "NormUnit(2)" ), GET( "InternalUnit(2)" ), SET( "NormUnit(1)=m" ),
+      CLEAR( "NormUnit(1)" ), SET( "InternalUnit(1)=m" ),
+      CLEAR( "internalunit(1)" ), SET( "normunitfoo=1" ), SET( "normunit" ),
+      CLEAR( "normunit" ), TEST( "normunitxyz" ), CLEAR( "internalunitq" ),
+      GET( "NormUnit(3)" ), GET( "NormUnit" ), GET( "InternalUnit(3)" ),
+   } },
+   { "frame_flags", "frame2", {
+      SEE( "MatchEnd" ), CYCLE( "MatchEnd", "MatchEnd=1" ),
+      SET( "MatchEnd=7" ), GET( "MatchEnd" ), SET( "MatchEnd=yes" ),
+      SEE( "MaxAxes" ), SEE( "MinAxes" ), SET( "MaxAxes=5" ), SEE( "MaxAxes" ),
+      SEE( "MinAxes" ), SET( "MinAxes=7" ), SEE( "MinAxes" ), SEE( "MaxAxes" ),
+      SET( "MaxAxes=1" ), GET( "MinAxes" ), GET( "MaxAxes" ),
+      SET( "MinAxes=-2" ), GET( "MinAxes" ), GET( "MaxAxes" ),
+      SET( "MaxAxes=-4" ), GET( "MinAxes" ), GET( "MaxAxes" ),
+      CLEAR( "MinAxes,MaxAxes" ), SEE( "MinAxes" ), SEE( "MaxAxes" ),
+      SEE( "Permute" ), CYCLE( "Permute", "Permute=0" ),
+      SEE( "PreserveAxes" ), CYCLE( "PreserveAxes", "PreserveAxes=1" ),
+      SET( "PreserveAxes=-1" ), GET( "PreserveAxes" ),
+   } },
+   { "frame_system", "frame2", {
+      SEE( "System" ), CYCLE( "System", "System=Cartesian" ),
+      SET( "System= cartesian " ), SEE( "System" ), SET( "System=nonsense" ),
+      SET( "System=two words" ), SET( "System=" ),
+      SEE( "AlignSystem" ), CYCLE( "AlignSystem", "AlignSystem=Cartesian" ),
+      SET( "AlignSystem=bad" ), SET( "AlignSystem=CART" ),
+   } },
+   { "frame_observer", "frame2", {
+      SEE( "ObsLat" ), SET( "ObsLat=N19:49:31" ), SEE( "ObsLat" ),
+      SET( "ObsLat=S19:49:31.5" ), GET( "ObsLat" ), SET( "ObsLat=-30" ),
+      GET( "ObsLat" ), SET( "ObsLat=n45 " ), GET( "ObsLat" ),
+      SET( "ObsLat=19:49:31 x" ), GET( "ObsLat" ), SET( "ObsLat=bad" ),
+      SET( "ObsLat= 10" ), GET( "ObsLat" ), SET( "ObsLat=N" ),
+      SET( "ObsLat=" ), CLEAR( "ObsLat" ), SEE( "ObsLat" ),
+      SEE( "ObsLon" ), SET( "ObsLon=W155:28:22" ), SEE( "ObsLon" ),
+      SET( "ObsLon=E10" ), GET( "ObsLon" ), SET( "ObsLon=200" ),
+      GET( "ObsLon" ), SET( "ObsLon=w0:30" ), GET( "ObsLon" ),
+      SET( "ObsLon=bad" ), CLEAR( "ObsLon" ), SEE( "ObsLon" ),
+      SEE( "ObsAlt" ), CYCLE( "ObsAlt", "ObsAlt=4200" ), SET( "ObsAlt=x" ),
+      SET( "ObsAlt=1e3 " ), GET( "ObsAlt" ),
+      SEE( "Dtai" ), CYCLE( "Dtai", "Dtai=37" ),
+      SEE( "Dut1" ), CYCLE( "Dut1", "Dut1=-0.25" ),
+   } },
+
+/* Names with an axis index that Frame does not own go to the Axis object,
+   then to the Frame itself without the index. */
+   { "frame_axis_path", "frame2", {
+      SET( "Ident(2)=x" ), SEE( "Ident(2)" ), SEE( "Ident(1)" ),
+      SEE( "Ident" ), SET( "ID(1)=axid" ), SEE( "ID(1)" ), GET( "ID" ),
+      SEE( "UseDefs(1)" ), SET( "UseDefs(1)=0" ), SEE( "UseDefs(1)" ),
+      GET( "UseDefs" ), CLEAR( "UseDefs(1)" ), SEE( "UseDefs(1)" ),
+      CLEAR( "ID(1)" ), SEE( "ID(1)" ),
+      SEE( "Class(1)" ), SET( "Class(1)=x" ), CLEAR( "Class(2)" ),
+      SET( "Fred(1)=2" ), GET( "Fred(1)" ), TEST( "Fred(1)" ),
+      CLEAR( "Fred(1)" ), SET( "Fred(3)=2" ), GET( "Fred(3)" ),
+      TEST( "Fred(3)" ), CLEAR( "Fred(3)" ), GET( "Fred(1" ),
+      SET( "Fred(1)x=2" ), SET( "Fred(x)=2" ), GET( "Fred(x)" ),
+      GET( "Nin(1)" ), TEST( "Nin(1)" ), SET( "Nin(1)=4" ), CLEAR( "Nin(2)" ),
+      SET( "Title(1)=via axis" ), SEE( "Title(2)" ), SEE( "Title" ),
+      CLEAR( "Title(1)" ), SEE( "Title" ), GET( "Naxes(1)" ),
+      SET( "Epoch(2)=2001" ), GET( "Epoch(1)" ), GET( "Epoch" ),
+      GET( "IsLatitude(1)" ), SET( "AsTime(1)=1" ), GET( "Domain(2)" ),
+      SET( "Label(1)(2)=x" ), GET( "Label(1)(2)" ),
+      SET( "Direction(1)=abc" ),
+   } },
+
+/* A dump with one of everything set. */
+   { "frame_dump", "frame2", {
+      SET( "Title=T,Domain=D,Epoch=2020,Digits=5,Digits(1)=3,Direction(2)=0,"
+           "Format(2)=%.3e,Label(1)=L,Symbol(2)=s,Unit(2)=m/s,Top(2)=4,"
+           "Bottom(1)=-1,MatchEnd=1,MaxAxes=4,MinAxes=2,Permute=0,"
+           "PreserveAxes=1,ObsLat=-30,ObsLon=120,ObsAlt=100,Dtai=36,"
+           "Dut1=-0.1,System=Cartesian,AlignSystem=Cartesian,"
+           "Ident(2)=axis two,UseDefs(1)=0,Ident=whole,UseDefs=0" ),
+   } },
+
+/* Dates C's reader rejects with a message of its own, and other forms. */
+   { "frame_epoch_forms", "frame2", {
+      SET( "Epoch=2010-Xyz-01" ), SET( "Epoch=2010-03-01 25:00" ),
+      SET( "Epoch=2010-03-01 10:61" ), SET( "Epoch=2010-03-01 10:10:61.5" ),
+      GET( "Epoch" ), SET( "Epoch=2010-03-45" ), GET( "Epoch" ),
+      SET( "Epoch=MJD 55000" ), GET( "Epoch" ), SET( "Epoch=JD 2455000.5" ),
+      GET( "Epoch" ), SET( "Epoch=1996-Oct-2 12:30" ), GET( "Epoch" ),
+      SET( "Epoch=1996-10-2T12:30:10.5" ), GET( "Epoch" ),
+      SET( "Epoch=b1975.5" ), GET( "Epoch" ),
+   } },
+
+/* The SkyAxis of an axis picked from a SkyFrame into a plain Frame. */
+   { "frame_skyaxis", "skyaxis1", {
+      GET( "Class" ), GET( "Class(1)" ), SEE( "IsLatitude(1)" ),
+      SEE( "CentreZero(1)" ), SEE( "AsTime(1)" ), SET( "IsLatitude(1)=1" ),
+      SEE( "IsLatitude(1)" ), SEE( "CentreZero(1)" ), SEE( "AsTime(1)" ),
+      SET( "CentreZero(1)=0" ), SEE( "CentreZero(1)" ), SET( "AsTime(1)=5" ),
+      SEE( "AsTime(1)" ), GET( "Format(1)" ), GET( "Label(1)" ),
+      GET( "Unit(1)" ), CLEAR( "IsLatitude(1)" ), SEE( "IsLatitude(1)" ),
+      CLEAR( "AsTime(1)" ), SEE( "AsTime(1)" ), SET( "IsLatitude(1)=0" ),
+      GET( "AsTime(1)" ), CLEAR( "CentreZero(1)" ), SEE( "CentreZero(1)" ),
+      SET( "Fred(1)=1" ), GET( "Fred(1)" ), SET( "IsLatitude=1" ),
+      GET( "IsLatitude" ), SET( "IsLatitude(1)=x" ), SET( "Ident(1)=sky" ),
+      GET( "Ident(1)" ), SET( "AsTime(1)=1" ),
+   } },
+
+/* A Frame of one axis takes an axis attribute without its index. */
+   { "frame_one_axis", "frame1", {
+      SET( "Label=x" ), SEE( "Label" ), GET( "Label(1)" ), CLEAR( "Label" ),
+      SEE( "Label" ), SET( "Unit=km" ), SEE( "Unit" ), GET( "NormUnit" ),
+      GET( "InternalUnit" ), TEST( "NormUnit" ), SET( "NormUnit=x" ),
+      CLEAR( "NormUnit" ), SET( "Top=5" ), SEE( "Top" ), SET( "Bottom=-1" ),
+      SEE( "Bottom" ), SET( "Direction=0" ), SEE( "Direction" ),
+      SET( "Format=%5.1f" ), SEE( "Format" ), SET( "Symbol=s" ),
+      SEE( "Symbol" ), SET( "Digits=3" ), SEE( "Digits" ), SEE( "Digits(1)" ),
+      SET( "Fred=1" ), GET( "Fred" ), TEST( "Fred" ), CLEAR( "Fred" ),
+      SET( "Label(2)=x" ), GET( "Label(2)" ), SEE( "Ident(1)" ),
+      SET( "Ident=whole" ), GET( "Ident" ), GET( "Ident(1)" ),
+      SET( "Label=" ), GET( "Label" ), SET( "Top=high" ), SET( "Label" ),
+      GET( "Title" ), SET( "Title=one" ), GET( "Title" ),
+   } },
 };
 
 /* The object a case starts from. */
 static AstObject *make( const char *id ) {
    if( !strcmp( id, "frame2" ) ) return (AstObject *) astFrame( 2, " " );
    if( !strcmp( id, "frame1" ) ) return (AstObject *) astFrame( 1, " " );
+   if( !strcmp( id, "skyaxis1" ) ) {
+      int axes[ 1 ] = { 1 };
+      AstSkyFrame *sky = astSkyFrame( " " );
+      AstObject *obj = (AstObject *) astPickAxes( sky, 1, axes, NULL );
+      sky = astAnnul( sky );
+      return obj;
+   }
    fprintf( stderr, "unknown object %s\n", id );
    exit( 1 );
 }

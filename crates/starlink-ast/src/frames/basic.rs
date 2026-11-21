@@ -765,20 +765,64 @@ pub(crate) fn axis_unformat(text: &str) -> (f64, usize) {
     (BAD_VALUE, 0)
 }
 
+impl crate::attributes::frame::FrameClass for BasicFrame {
+    // C: frame.c SystemCode, which knows only "Cartesian".
+    fn set_system_text(&mut self, text: &str) -> AstResult<bool> {
+        if !crate::fitschan::chr_match("Cartesian", text) {
+            return Ok(false);
+        }
+        self.set_system(FrameSystem::Cartesian);
+        Ok(true)
+    }
+    fn set_align_system_text(&mut self, text: &str) -> AstResult<bool> {
+        if !crate::fitschan::chr_match("Cartesian", text) {
+            return Ok(false);
+        }
+        self.set_align_system(FrameSystem::Cartesian);
+        Ok(true)
+    }
+    fn system_text(&self) -> AstResult<String> {
+        Ok(self.system().as_str().to_string())
+    }
+    fn align_system_text(&self) -> AstResult<String> {
+        Ok(self.align_system().as_str().to_string())
+    }
+    fn test_system_attr(&self) -> bool {
+        self.test_system()
+    }
+    fn test_align_system_attr(&self) -> bool {
+        self.test_align_system()
+    }
+    fn clear_system_attr(&mut self) -> AstResult<()> {
+        self.clear_system();
+        Ok(())
+    }
+    fn clear_align_system_attr(&mut self) -> AstResult<()> {
+        self.clear_align_system();
+        Ok(())
+    }
+}
+
 impl Frame for BasicFrame {
-    // A plain Frame's attribute strings: C's Frame class, whose parent is
-    // Mapping.
+    // A plain Frame's attribute strings are those of C's Frame class.
     fn attr_set(&mut self, setting: &str) -> AstResult<()> {
-        crate::attributes::mapping::mapping_set(self, setting)
+        crate::attributes::frame::frame_set(self, setting)
     }
     fn attr_get(&self, name: &str) -> AstResult<String> {
-        crate::attributes::mapping::mapping_get(self, name)
+        crate::attributes::frame::frame_get(self, name)
     }
     fn attr_test(&self, name: &str) -> AstResult<bool> {
-        crate::attributes::mapping::mapping_test(self, name)
+        crate::attributes::frame::frame_test(self, name)
     }
     fn attr_clear(&mut self, name: &str) -> AstResult<()> {
-        crate::attributes::mapping::mapping_clear(self, name)
+        crate::attributes::frame::frame_clear(self, name)
+    }
+    fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
+        Ok(self.axis_object(axis)?.attr_ref())
+    }
+    fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
+        let internal = self.internal(axis)?;
+        Ok(self.axes[internal].attr_mut())
     }
 
     fn axis_perm(&self) -> Vec<usize> {

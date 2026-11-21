@@ -424,4 +424,941 @@ pub const CASES: &[Case] = &[
  End Frame
 "###,
     },
+    Case {
+        name: "frame_title",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+        ops: &[
+            (Op::Get("Title"), Out::Value("2-d coordinate system")),
+            (Op::Test("Title"), Out::Flag(false)),
+            (Op::Set("Title=My title"), Out::Done),
+            (Op::Get("Title"), Out::Value("My title")),
+            (Op::Test("Title"), Out::Flag(true)),
+            (Op::Clear("Title"), Out::Done),
+            (Op::Get("Title"), Out::Value("2-d coordinate system")),
+            (Op::Test("Title"), Out::Flag(false)),
+            (Op::Get("Domain"), Out::Value("")),
+            (Op::Test("Domain"), Out::Flag(false)),
+            (Op::Set("Domain=my dom"), Out::Done),
+            (Op::Get("Domain"), Out::Value("MYDOM")),
+            (Op::Test("Domain"), Out::Flag(true)),
+            (Op::Clear("Domain"), Out::Done),
+            (Op::Get("Domain"), Out::Value("")),
+            (Op::Test("Domain"), Out::Flag(false)),
+            (Op::Get("Epoch"), Out::Value("2000.0")),
+            (Op::Test("Epoch"), Out::Flag(false)),
+            (Op::Set("Epoch=J2000"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2000.0")),
+            (Op::Test("Epoch"), Out::Flag(true)),
+            (Op::Set("Epoch=2010-03-01"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2010.1615331964408")),
+            (Op::Set("Epoch=B1950"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("1950.0")),
+            (Op::Set("Epoch=1983.5"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("1983.5")),
+            (Op::Set("Epoch= 2001.25 "), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2001.25")),
+            (Op::Set("Epoch=nonsense"), Out::Err(E::Attin, &["Date/time does not have the correct form.", "astSetAttrib(Frame): Invalid epoch value \"nonsense\" given for coordinate system."])),
+            (Op::Get("Epoch"), Out::Value("2001.25")),
+            (Op::Set("Epoch=1e20"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("1.0000000000000000e+2")),
+            (Op::Clear("Epoch"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2000.0")),
+            (Op::Test("Epoch"), Out::Flag(false)),
+            (Op::Get("Naxes"), Out::Value("2")),
+            (Op::Test("Naxes"), Out::Flag(false)),
+            (Op::Set("Naxes=3"), Out::Err(E::Nowrt, &["astSet: The setting \"naxes=3\" is invalid for a Frame.", "This is a read-only attribute."])),
+            (Op::Clear("Naxes"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"naxes\" value for a Frame.", "This is a read-only attribute."])),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+    },
+    Case {
+        name: "frame_digits",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+        ops: &[
+            (Op::Get("Digits"), Out::Value("7")),
+            (Op::Test("Digits"), Out::Flag(false)),
+            (Op::Set("Digits=4"), Out::Done),
+            (Op::Get("Digits"), Out::Value("4")),
+            (Op::Test("Digits"), Out::Flag(true)),
+            (Op::Clear("Digits"), Out::Done),
+            (Op::Get("Digits"), Out::Value("7")),
+            (Op::Test("Digits"), Out::Flag(false)),
+            (Op::Set("Digits=0"), Out::Done),
+            (Op::Get("Digits"), Out::Value("1")),
+            (Op::Set("Digits=-3"), Out::Done),
+            (Op::Get("Digits"), Out::Value("1")),
+            (Op::Set("Digits=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"digits=x\" is invalid for a Frame."])),
+            (Op::Get("Digits(1)"), Out::Value("1")),
+            (Op::Test("Digits(1)"), Out::Flag(false)),
+            (Op::Set("Digits(1)=9"), Out::Done),
+            (Op::Get("Digits(1)"), Out::Value("9")),
+            (Op::Test("Digits(1)"), Out::Flag(true)),
+            (Op::Get("Digits(2)"), Out::Value("1")),
+            (Op::Test("Digits(2)"), Out::Flag(false)),
+            (Op::Get("Digits"), Out::Value("1")),
+            (Op::Get("Format(1)"), Out::Value("%1.9G")),
+            (Op::Get("Format(2)"), Out::Value("%1.1G")),
+            (Op::Set("Digits(2)=0"), Out::Done),
+            (Op::Get("Digits(2)"), Out::Value("1")),
+            (Op::Clear("Digits(1)"), Out::Done),
+            (Op::Get("Digits(1)"), Out::Value("1")),
+            (Op::Test("Digits(1)"), Out::Flag(false)),
+            (Op::Set("Digits(3)=2"), Out::Err(E::Axiin, &["astSetDigits(axis)(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Digits(3)"), Out::Err(E::Axiin, &["astGetDigits(axis)(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("Digits(0)"), Out::Err(E::Axiin, &["astTestDigits(axis)(Frame): Axis index (0) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("Digits(-1)"), Out::Err(E::Axiin, &["astClearDigits(axis)(Frame): Axis index (-1) invalid - it should be in the range 1 to 2."])),
+            (Op::Set("Digits( 1 )=6"), Out::Done),
+            (Op::Get("Digits(+1)"), Out::Value("6")),
+            (Op::Get("Digits(1"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"digits(1\"."])),
+            (Op::Get("Digits(1)x"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"digits(1)x\"."])),
+            (Op::Get("Digits()"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"digits()\"."])),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+#   Dig1 = 6 	# Individual precision for axis 1
+#   Dig2 = 1 	# Individual precision for axis 2
+    Digits = 1 	# Default formatting precision
+#   Fmt1 = "%1.6G" 	# Format specifier for axis 1
+#   Fmt2 = "%1.1G" 	# Format specifier for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Digits = 6 	# Default formatting precision
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+          Digits = 1 	# Default formatting precision
+       End Axis
+ End Frame
+"###,
+    },
+    Case {
+        name: "frame_axis_attrs",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+        ops: &[
+            (Op::Get("Direction(1)"), Out::Value("1")),
+            (Op::Test("Direction(1)"), Out::Flag(false)),
+            (Op::Set("Direction(1)=0"), Out::Done),
+            (Op::Get("Direction(1)"), Out::Value("0")),
+            (Op::Test("Direction(1)"), Out::Flag(true)),
+            (Op::Set("Direction(1)=7"), Out::Done),
+            (Op::Get("Direction(1)"), Out::Value("1")),
+            (Op::Clear("Direction(1)"), Out::Done),
+            (Op::Get("Direction(1)"), Out::Value("1")),
+            (Op::Test("Direction(1)"), Out::Flag(false)),
+            (Op::Set("Direction(3)=1"), Out::Err(E::Axiin, &["astSetDirection(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Direction(3)"), Out::Err(E::Axiin, &["astGetDirection(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("Direction(3)"), Out::Err(E::Axiin, &["astTestDirection(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("Direction(3)"), Out::Err(E::Axiin, &["astClearDirection(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Set("Direction(1)=abc"), Out::Err(E::Badat, &["astSet: The attribute setting \"direction=abc\" is invalid for a Axis."])),
+            (Op::Set("Direction=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"direction=1\" is invalid for a Frame."])),
+            (Op::Get("Direction"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"direction\"."])),
+            (Op::Get("Top(1)"), Out::Value("1.7976931348623157e+308")),
+            (Op::Test("Top(1)"), Out::Flag(false)),
+            (Op::Set("Top(2)=10.5"), Out::Done),
+            (Op::Get("Top(2)"), Out::Value("10.5")),
+            (Op::Test("Top(2)"), Out::Flag(true)),
+            (Op::Clear("Top(2)"), Out::Done),
+            (Op::Get("Top(2)"), Out::Value("1.7976931348623157e+308")),
+            (Op::Test("Top(2)"), Out::Flag(false)),
+            (Op::Get("Bottom(2)"), Out::Value("-1.7976931348623157e+308")),
+            (Op::Test("Bottom(2)"), Out::Flag(false)),
+            (Op::Set("Bottom(1)=-1e3"), Out::Done),
+            (Op::Get("Bottom(1)"), Out::Value("-1000")),
+            (Op::Test("Bottom(1)"), Out::Flag(true)),
+            (Op::Clear("Bottom(1)"), Out::Done),
+            (Op::Get("Bottom(1)"), Out::Value("-1.7976931348623157e+308")),
+            (Op::Test("Bottom(1)"), Out::Flag(false)),
+            (Op::Set("Top(3)=1"), Out::Err(E::Axiin, &["astSetTop(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Bottom(0)"), Out::Err(E::Axiin, &["astGetBottom(Frame): Axis index (0) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("Top(9)"), Out::Err(E::Axiin, &["astTestTop(Frame): Axis index (9) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("Bottom(9)"), Out::Err(E::Axiin, &["astClearBottom(Frame): Axis index (9) invalid - it should be in the range 1 to 2."])),
+            (Op::Set("Top(1)=high"), Out::Err(E::Badat, &["astSet: The attribute setting \"top=high\" is invalid for a Axis."])),
+            (Op::Get("Format(1)"), Out::Value("%1.7G")),
+            (Op::Test("Format(1)"), Out::Flag(false)),
+            (Op::Set("Format(1)=%6.2f"), Out::Done),
+            (Op::Get("Format(1)"), Out::Value("%6.2f")),
+            (Op::Test("Format(1)"), Out::Flag(true)),
+            (Op::Clear("Format(1)"), Out::Done),
+            (Op::Get("Format(1)"), Out::Value("%1.7G")),
+            (Op::Test("Format(1)"), Out::Flag(false)),
+            (Op::Get("Format(3)"), Out::Err(E::Axiin, &["astGetFormat(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Set("Format(3)=%g"), Out::Err(E::Axiin, &["astSetFormat(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("Format(3)"), Out::Err(E::Axiin, &["astTestFormat(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("Format(3)"), Out::Err(E::Axiin, &["astClearFormat(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Label(1)"), Out::Value("Axis 1")),
+            (Op::Test("Label(1)"), Out::Flag(false)),
+            (Op::Set("Label(2)=Y axis"), Out::Done),
+            (Op::Get("Label(2)"), Out::Value("Y axis")),
+            (Op::Test("Label(2)"), Out::Flag(true)),
+            (Op::Clear("Label(2)"), Out::Done),
+            (Op::Get("Label(2)"), Out::Value("Axis 2")),
+            (Op::Test("Label(2)"), Out::Flag(false)),
+            (Op::Set("Label(3)=x"), Out::Err(E::Axiin, &["astSetLabel(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Label(3)"), Out::Err(E::Axiin, &["astGetLabel(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("Label(3)"), Out::Err(E::Axiin, &["astTestLabel(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("Label(3)"), Out::Err(E::Axiin, &["astClearLabel(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Set("Label=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"label=x\" is invalid for a Frame."])),
+            (Op::Get("Label"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"label\"."])),
+            (Op::Test("Label"), Out::Err(E::Badat, &["astTest: The attribute name \"label\" is invalid for a Frame."])),
+            (Op::Clear("Label"), Out::Err(E::Badat, &["astClear: The attribute name \"label\" is invalid for a Frame."])),
+            (Op::Set("Label(1)="), Out::Done),
+            (Op::Get("Label(1)"), Out::Value(" ")),
+            (Op::Test("Label(1)"), Out::Flag(true)),
+            (Op::Get("Symbol(2)"), Out::Value("x2")),
+            (Op::Test("Symbol(2)"), Out::Flag(false)),
+            (Op::Set("Symbol(1)=sym"), Out::Done),
+            (Op::Get("Symbol(1)"), Out::Value("sym")),
+            (Op::Test("Symbol(1)"), Out::Flag(true)),
+            (Op::Clear("Symbol(1)"), Out::Done),
+            (Op::Get("Symbol(1)"), Out::Value("x1")),
+            (Op::Test("Symbol(1)"), Out::Flag(false)),
+            (Op::Set("Symbol(3)=x"), Out::Err(E::Axiin, &["astSetSymbol(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Symbol(3)"), Out::Err(E::Axiin, &["astGetSymbol(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("Symbol(3)"), Out::Err(E::Axiin, &["astTestSymbol(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("Symbol(3)"), Out::Err(E::Axiin, &["astClearSymbol(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Unit(1)"), Out::Value("")),
+            (Op::Test("Unit(1)"), Out::Flag(false)),
+            (Op::Set("Unit(1)=km"), Out::Done),
+            (Op::Get("Unit(1)"), Out::Value("km")),
+            (Op::Test("Unit(1)"), Out::Flag(true)),
+            (Op::Clear("Unit(1)"), Out::Done),
+            (Op::Get("Unit(1)"), Out::Value("")),
+            (Op::Test("Unit(1)"), Out::Flag(false)),
+            (Op::Set("Unit(3)=x"), Out::Err(E::Axiin, &["astSetUnit(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Unit(3)"), Out::Err(E::Axiin, &["astGetUnit(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("Unit(3)"), Out::Err(E::Axiin, &["astTestUnit(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("Unit(3)"), Out::Err(E::Axiin, &["astSetUnit(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("NormUnit(1)"), Out::Value("")),
+            (Op::Test("NormUnit(1)"), Out::Flag(false)),
+            (Op::Get("InternalUnit(1)"), Out::Value("")),
+            (Op::Test("InternalUnit(1)"), Out::Flag(false)),
+            (Op::Set("Unit(2)=km/s"), Out::Done),
+            (Op::Get("NormUnit(2)"), Out::Value("km/s")),
+            (Op::Get("InternalUnit(2)"), Out::Value("km/s")),
+            (Op::Set("NormUnit(1)=m"), Out::Err(E::Nowrt, &["astSet: The setting \"normunit(1)=m\" is invalid for a Frame.", "This is a read-only attribute."])),
+            (Op::Clear("NormUnit(1)"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"normunit(1)\" value for a Frame.", "This is a read-only attribute."])),
+            (Op::Set("InternalUnit(1)=m"), Out::Err(E::Nowrt, &["astSet: The setting \"internalunit(1)=m\" is invalid for a Frame.", "This is a read-only attribute."])),
+            (Op::Clear("internalunit(1)"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"internalunit(1)\" value for a Frame.", "This is a read-only attribute."])),
+            (Op::Set("normunitfoo=1"), Out::Err(E::Nowrt, &["astSet: The setting \"normunitfoo=1\" is invalid for a Frame.", "This is a read-only attribute."])),
+            (Op::Set("normunit"), Out::Err(E::Nowrt, &["astSet: The setting \"normunit\" is invalid for a Frame.", "This is a read-only attribute."])),
+            (Op::Clear("normunit"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"normunit\" value for a Frame.", "This is a read-only attribute."])),
+            (Op::Test("normunitxyz"), Out::Flag(false)),
+            (Op::Clear("internalunitq"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"internalunitq\" value for a Frame.", "This is a read-only attribute."])),
+            (Op::Get("NormUnit(3)"), Out::Err(E::Axiin, &["astGetNormUnit(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("NormUnit"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"normunit\"."])),
+            (Op::Get("InternalUnit(3)"), Out::Err(E::Axiin, &["astGetInternalUnit(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = " " 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+#   Uni2 = "km/s" 	# Units for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Label = " " 	# Axis Label
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+          Unit = "km/s" 	# Axis units
+       End Axis
+ End Frame
+"###,
+    },
+    Case {
+        name: "frame_flags",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+        ops: &[
+            (Op::Get("MatchEnd"), Out::Value("0")),
+            (Op::Test("MatchEnd"), Out::Flag(false)),
+            (Op::Set("MatchEnd=1"), Out::Done),
+            (Op::Get("MatchEnd"), Out::Value("1")),
+            (Op::Test("MatchEnd"), Out::Flag(true)),
+            (Op::Clear("MatchEnd"), Out::Done),
+            (Op::Get("MatchEnd"), Out::Value("0")),
+            (Op::Test("MatchEnd"), Out::Flag(false)),
+            (Op::Set("MatchEnd=7"), Out::Done),
+            (Op::Get("MatchEnd"), Out::Value("1")),
+            (Op::Set("MatchEnd=yes"), Out::Err(E::Badat, &["astSet: The attribute setting \"matchend=yes\" is invalid for a Frame."])),
+            (Op::Get("MaxAxes"), Out::Value("2")),
+            (Op::Test("MaxAxes"), Out::Flag(false)),
+            (Op::Get("MinAxes"), Out::Value("2")),
+            (Op::Test("MinAxes"), Out::Flag(false)),
+            (Op::Set("MaxAxes=5"), Out::Done),
+            (Op::Get("MaxAxes"), Out::Value("5")),
+            (Op::Test("MaxAxes"), Out::Flag(true)),
+            (Op::Get("MinAxes"), Out::Value("2")),
+            (Op::Test("MinAxes"), Out::Flag(false)),
+            (Op::Set("MinAxes=7"), Out::Done),
+            (Op::Get("MinAxes"), Out::Value("7")),
+            (Op::Test("MinAxes"), Out::Flag(true)),
+            (Op::Get("MaxAxes"), Out::Value("7")),
+            (Op::Test("MaxAxes"), Out::Flag(true)),
+            (Op::Set("MaxAxes=1"), Out::Done),
+            (Op::Get("MinAxes"), Out::Value("1")),
+            (Op::Get("MaxAxes"), Out::Value("1")),
+            (Op::Set("MinAxes=-2"), Out::Done),
+            (Op::Get("MinAxes"), Out::Value("0")),
+            (Op::Get("MaxAxes"), Out::Value("1")),
+            (Op::Set("MaxAxes=-4"), Out::Done),
+            (Op::Get("MinAxes"), Out::Value("0")),
+            (Op::Get("MaxAxes"), Out::Value("0")),
+            (Op::Clear("MinAxes,MaxAxes"), Out::Done),
+            (Op::Get("MinAxes"), Out::Value("2")),
+            (Op::Test("MinAxes"), Out::Flag(false)),
+            (Op::Get("MaxAxes"), Out::Value("2")),
+            (Op::Test("MaxAxes"), Out::Flag(false)),
+            (Op::Get("Permute"), Out::Value("1")),
+            (Op::Test("Permute"), Out::Flag(false)),
+            (Op::Set("Permute=0"), Out::Done),
+            (Op::Get("Permute"), Out::Value("0")),
+            (Op::Test("Permute"), Out::Flag(true)),
+            (Op::Clear("Permute"), Out::Done),
+            (Op::Get("Permute"), Out::Value("1")),
+            (Op::Test("Permute"), Out::Flag(false)),
+            (Op::Get("PreserveAxes"), Out::Value("0")),
+            (Op::Test("PreserveAxes"), Out::Flag(false)),
+            (Op::Set("PreserveAxes=1"), Out::Done),
+            (Op::Get("PreserveAxes"), Out::Value("1")),
+            (Op::Test("PreserveAxes"), Out::Flag(true)),
+            (Op::Clear("PreserveAxes"), Out::Done),
+            (Op::Get("PreserveAxes"), Out::Value("0")),
+            (Op::Test("PreserveAxes"), Out::Flag(false)),
+            (Op::Set("PreserveAxes=-1"), Out::Done),
+            (Op::Get("PreserveAxes"), Out::Value("1")),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Presrv = 1 	# Preserve target axes
+    MchEnd = 1 	# Match final target axes
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+    },
+    Case {
+        name: "frame_system",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+        ops: &[
+            (Op::Get("System"), Out::Value("Cartesian")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Set("System=Cartesian"), Out::Done),
+            (Op::Get("System"), Out::Value("Cartesian")),
+            (Op::Test("System"), Out::Flag(true)),
+            (Op::Clear("System"), Out::Done),
+            (Op::Get("System"), Out::Value("Cartesian")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Set("System= cartesian "), Out::Done),
+            (Op::Get("System"), Out::Value("Cartesian")),
+            (Op::Test("System"), Out::Flag(true)),
+            (Op::Set("System=nonsense"), Out::Err(E::Attin, &["astSetAttrib(Frame): Invalid System description \"nonsense\"."])),
+            (Op::Set("System=two words"), Out::Err(E::Badat, &["astSet: The attribute setting \"system=two words\" is invalid for a Frame."])),
+            (Op::Set("System="), Out::Err(E::Badat, &["astSet: The attribute setting \"system= \" is invalid for a Frame."])),
+            (Op::Get("AlignSystem"), Out::Value("Cartesian")),
+            (Op::Test("AlignSystem"), Out::Flag(false)),
+            (Op::Set("AlignSystem=Cartesian"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("Cartesian")),
+            (Op::Test("AlignSystem"), Out::Flag(true)),
+            (Op::Clear("AlignSystem"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("Cartesian")),
+            (Op::Test("AlignSystem"), Out::Flag(false)),
+            (Op::Set("AlignSystem=bad"), Out::Err(E::Attin, &["astSetAttrib(Frame): Invalid AlignSystem description \"bad\"."])),
+            (Op::Set("AlignSystem=CART"), Out::Err(E::Attin, &["astSetAttrib(Frame): Invalid AlignSystem description \"CART\"."])),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    System = "Cartesian" 	# Coordinate system type
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+    },
+    Case {
+        name: "frame_observer",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+        ops: &[
+            (Op::Get("ObsLat"), Out::Value("N0:00:00.00")),
+            (Op::Test("ObsLat"), Out::Flag(false)),
+            (Op::Set("ObsLat=N19:49:31"), Out::Done),
+            (Op::Get("ObsLat"), Out::Value("N19:49:31.00")),
+            (Op::Test("ObsLat"), Out::Flag(true)),
+            (Op::Set("ObsLat=S19:49:31.5"), Out::Done),
+            (Op::Get("ObsLat"), Out::Value("S19:49:31.50")),
+            (Op::Set("ObsLat=-30"), Out::Done),
+            (Op::Get("ObsLat"), Out::Value("S30:00:00.00")),
+            (Op::Set("ObsLat=n45 "), Out::Err(E::Attin, &["astSetAttrib(Frame): Invalid value for ObsLat (observers latitude) \"n45 \"."])),
+            (Op::Get("ObsLat"), Out::Value("S30:00:00.00")),
+            (Op::Set("ObsLat=19:49:31 x"), Out::Err(E::Attin, &["astSetAttrib(Frame): Invalid value for ObsLat (observers latitude) \"19:49:31 x\"."])),
+            (Op::Get("ObsLat"), Out::Value("S30:00:00.00")),
+            (Op::Set("ObsLat=bad"), Out::Err(E::Attin, &["astSetAttrib(Frame): Invalid value for ObsLat (observers latitude) \"bad\"."])),
+            (Op::Set("ObsLat= 10"), Out::Done),
+            (Op::Get("ObsLat"), Out::Value("N10:00:00.00")),
+            (Op::Set("ObsLat=N"), Out::Done),
+            (Op::Set("ObsLat="), Out::Err(E::Badat, &["astSet: The attribute setting \"obslat= \" is invalid for a Frame."])),
+            (Op::Clear("ObsLat"), Out::Done),
+            (Op::Get("ObsLat"), Out::Value("N0:00:00.00")),
+            (Op::Test("ObsLat"), Out::Flag(false)),
+            (Op::Get("ObsLon"), Out::Value("E0:00:00.00")),
+            (Op::Test("ObsLon"), Out::Flag(false)),
+            (Op::Set("ObsLon=W155:28:22"), Out::Done),
+            (Op::Get("ObsLon"), Out::Value("W155:28:22.00")),
+            (Op::Test("ObsLon"), Out::Flag(true)),
+            (Op::Set("ObsLon=E10"), Out::Done),
+            (Op::Get("ObsLon"), Out::Value("E10:00:00.00")),
+            (Op::Set("ObsLon=200"), Out::Done),
+            (Op::Get("ObsLon"), Out::Value("W160:00:00.00")),
+            (Op::Set("ObsLon=w0:30"), Out::Done),
+            (Op::Get("ObsLon"), Out::Value("W0:30:00.00")),
+            (Op::Set("ObsLon=bad"), Out::Err(E::Attin, &["astSetAttrib(Frame): Invalid value for ObsLon (observers longitude) \"bad\"."])),
+            (Op::Clear("ObsLon"), Out::Done),
+            (Op::Get("ObsLon"), Out::Value("E0:00:00.00")),
+            (Op::Test("ObsLon"), Out::Flag(false)),
+            (Op::Get("ObsAlt"), Out::Value("0")),
+            (Op::Test("ObsAlt"), Out::Flag(false)),
+            (Op::Set("ObsAlt=4200"), Out::Done),
+            (Op::Get("ObsAlt"), Out::Value("4200")),
+            (Op::Test("ObsAlt"), Out::Flag(true)),
+            (Op::Clear("ObsAlt"), Out::Done),
+            (Op::Get("ObsAlt"), Out::Value("0")),
+            (Op::Test("ObsAlt"), Out::Flag(false)),
+            (Op::Set("ObsAlt=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"obsalt=x\" is invalid for a Frame."])),
+            (Op::Set("ObsAlt=1e3 "), Out::Done),
+            (Op::Get("ObsAlt"), Out::Value("1000")),
+            (Op::Get("Dtai"), Out::Value("-1.7976931348623157e+308")),
+            (Op::Test("Dtai"), Out::Flag(false)),
+            (Op::Set("Dtai=37"), Out::Done),
+            (Op::Get("Dtai"), Out::Value("37")),
+            (Op::Test("Dtai"), Out::Flag(true)),
+            (Op::Clear("Dtai"), Out::Done),
+            (Op::Get("Dtai"), Out::Value("-1.7976931348623157e+308")),
+            (Op::Test("Dtai"), Out::Flag(false)),
+            (Op::Get("Dut1"), Out::Value("0")),
+            (Op::Test("Dut1"), Out::Flag(false)),
+            (Op::Set("Dut1=-0.25"), Out::Done),
+            (Op::Get("Dut1"), Out::Value("-0.25")),
+            (Op::Test("Dut1"), Out::Flag(true)),
+            (Op::Clear("Dut1"), Out::Done),
+            (Op::Get("Dut1"), Out::Value("0")),
+            (Op::Test("Dut1"), Out::Flag(false)),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    ObsAlt = 1000 	# Observers geodetic altitude (metres)
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+    },
+    Case {
+        name: "frame_axis_path",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+        ops: &[
+            (Op::Set("Ident(2)=x"), Out::Done),
+            (Op::Get("Ident(2)"), Out::Value("x")),
+            (Op::Test("Ident(2)"), Out::Flag(true)),
+            (Op::Get("Ident(1)"), Out::Value("")),
+            (Op::Test("Ident(1)"), Out::Flag(false)),
+            (Op::Get("Ident"), Out::Value("")),
+            (Op::Test("Ident"), Out::Flag(false)),
+            (Op::Set("ID(1)=axid"), Out::Done),
+            (Op::Get("ID(1)"), Out::Value("axid")),
+            (Op::Test("ID(1)"), Out::Flag(true)),
+            (Op::Get("ID"), Out::Value("")),
+            (Op::Get("UseDefs(1)"), Out::Value("1")),
+            (Op::Test("UseDefs(1)"), Out::Flag(false)),
+            (Op::Set("UseDefs(1)=0"), Out::Done),
+            (Op::Get("UseDefs(1)"), Out::Value("0")),
+            (Op::Test("UseDefs(1)"), Out::Flag(true)),
+            (Op::Get("UseDefs"), Out::Value("1")),
+            (Op::Clear("UseDefs(1)"), Out::Done),
+            (Op::Get("UseDefs(1)"), Out::Value("1")),
+            (Op::Test("UseDefs(1)"), Out::Flag(false)),
+            (Op::Clear("ID(1)"), Out::Done),
+            (Op::Get("ID(1)"), Out::Value("")),
+            (Op::Test("ID(1)"), Out::Flag(false)),
+            (Op::Get("Class(1)"), Out::Value("Axis")),
+            (Op::Test("Class(1)"), Out::Flag(false)),
+            (Op::Set("Class(1)=x"), Out::Err(E::Nowrt, &["astSet: The setting \"class=x\" is invalid for a Axis.", "This is a read-only attribute."])),
+            (Op::Clear("Class(2)"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"class\" value for a Axis.", "This is a read-only attribute."])),
+            (Op::Set("Fred(1)=2"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=2\" is invalid for a Axis."])),
+            (Op::Get("Fred(1)"), Out::Err(E::Badat, &["astGet: The Axis given does not have an attribute called \"fred\"."])),
+            (Op::Test("Fred(1)"), Out::Err(E::Badat, &["astTest: The attribute name \"fred\" is invalid for a Axis."])),
+            (Op::Clear("Fred(1)"), Out::Err(E::Badat, &["astClear: The attribute name \"fred\" is invalid for a Axis."])),
+            (Op::Set("Fred(3)=2"), Out::Err(E::Axiin, &["astSet(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Fred(3)"), Out::Err(E::Axiin, &["astGet(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("Fred(3)"), Out::Err(E::Axiin, &["astTest(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("Fred(3)"), Out::Err(E::Axiin, &["astClear(Frame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("Fred(1"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"fred(1\"."])),
+            (Op::Set("Fred(1)x=2"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred(1)x=2\" is invalid for a Frame."])),
+            (Op::Set("Fred(x)=2"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred(x)=2\" is invalid for a Frame."])),
+            (Op::Get("Fred(x)"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"fred(x)\"."])),
+            (Op::Get("Nin(1)"), Out::Value("2")),
+            (Op::Test("Nin(1)"), Out::Flag(false)),
+            (Op::Set("Nin(1)=4"), Out::Err(E::Badat, &["astSet: The attribute setting \"nin=4\" is invalid for a Axis."])),
+            (Op::Clear("Nin(2)"), Out::Err(E::Badat, &["astClear: The attribute name \"nin\" is invalid for a Axis."])),
+            (Op::Set("Title(1)=via axis"), Out::Done),
+            (Op::Get("Title(2)"), Out::Value("via axis")),
+            (Op::Test("Title(2)"), Out::Flag(true)),
+            (Op::Get("Title"), Out::Value("via axis")),
+            (Op::Test("Title"), Out::Flag(true)),
+            (Op::Clear("Title(1)"), Out::Done),
+            (Op::Get("Title"), Out::Value("2-d coordinate system")),
+            (Op::Test("Title"), Out::Flag(false)),
+            (Op::Get("Naxes(1)"), Out::Value("2")),
+            (Op::Set("Epoch(2)=2001"), Out::Done),
+            (Op::Get("Epoch(1)"), Out::Value("2001.0")),
+            (Op::Get("Epoch"), Out::Value("2001.0")),
+            (Op::Get("IsLatitude(1)"), Out::Err(E::Badat, &["astGet: The Axis given does not have an attribute called \"islatitude\"."])),
+            (Op::Set("AsTime(1)=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"astime=1\" is invalid for a Axis."])),
+            (Op::Get("Domain(2)"), Out::Value("")),
+            (Op::Set("Label(1)(2)=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"label(1)(2)=x\" is invalid for a Frame."])),
+            (Op::Get("Label(1)(2)"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"label(1)(2)\"."])),
+            (Op::Set("Direction(1)=abc"), Out::Err(E::Badat, &["astSet: The attribute setting \"direction=abc\" is invalid for a Axis."])),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+    Epoch = 2001 	# Julian epoch of observation
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+          Ident = "x" 	# Permanent Object identification string
+       IsA Object 	# AST Object
+       End Axis
+ End Frame
+"###,
+    },
+    Case {
+        name: "frame_dump",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+        ops: &[
+            (Op::Set("Title=T,Domain=D,Epoch=2020,Digits=5,Digits(1)=3,Direction(2)=0,Format(2)=%.3e,Label(1)=L,Symbol(2)=s,Unit(2)=m/s,Top(2)=4,Bottom(1)=-1,MatchEnd=1,MaxAxes=4,MinAxes=2,Permute=0,PreserveAxes=1,ObsLat=-30,ObsLon=120,ObsAlt=100,Dtai=36,Dut1=-0.1,System=Cartesian,AlignSystem=Cartesian,Ident(2)=axis two,UseDefs(1)=0,Ident=whole,UseDefs=0"), Out::Done),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+    Ident = "whole" 	# Permanent Object identification string
+    UseDfs = 0 	# Default values cannot be used
+ IsA Object 	# AST Object
+    Title = "T" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+    Domain = "D" 	# Coordinate system domain
+    Epoch = 2020 	# Julian epoch of observation
+#   Lbl1 = "L" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    System = "Cartesian" 	# Coordinate system type
+    AlSys = "Cartesian" 	# Alignment coordinate system
+#   Uni2 = "m/s" 	# Units for axis 2
+#   Dig1 = 3 	# Individual precision for axis 1
+    Digits = 5 	# Default formatting precision
+#   Fmt1 = "%1.3G" 	# Format specifier for axis 1
+#   Dir2 = 0 	# Plot axis 2 in reverse direction
+#   Bot1 = -1 	# Lowest legal axis value
+#   Top2 = 4 	# Highest legal axis value
+    Presrv = 1 	# Preserve target axes
+    Permut = 0 	# Axes may not be permuted match
+    MinAx = 2 	# Minimum number of axes to match
+    MaxAx = 4 	# Maximum number of axes to match
+    MchEnd = 1 	# Match final target axes
+    ObsLat = -0.52359877559829882 	# Observers geodetic latitude (rads)
+    ObsLon = 2.0943951023931953 	# Observers geodetic longitude (rads)
+    ObsAlt = 100 	# Observers geodetic altitude (metres)
+    Dtai = 36 	# TAI-UTC in seconds
+    Dut1 = -0.10000000000000001 	# UT1-UTC in seconds
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          UseDfs = 0 	# Default values cannot be used
+       IsA Object 	# AST Object
+          Label = "L" 	# Axis Label
+          Digits = 3 	# Default formatting precision
+          Bottom = -1 	# Minimum legal axis value
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+          Ident = "axis two" 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Symbol = "s" 	# Axis symbol
+          Unit = "m/s" 	# Axis units
+          Format = "%.3e" 	# Format specifier
+          Dirn = 0 	# Plot in reverse direction (hint)
+          Top = 4 	# Maximum legal axis value
+       End Axis
+ End Frame
+"###,
+    },
+    Case {
+        name: "frame_epoch_forms",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+        ops: &[
+            (Op::Set("Epoch=2010-Xyz-01"), Out::Err(E::Attin, &["Month value \"Xyz\" is invalid.", "astSetAttrib(Frame): Invalid epoch value \"2010-Xyz-01\" given for coordinate system."])),
+            (Op::Set("Epoch=2010-03-01 25:00"), Out::Err(E::Attin, &["Hour value (25) is invalid.", "astSetAttrib(Frame): Invalid epoch value \"2010-03-01 25:00\" given for coordinate system."])),
+            (Op::Set("Epoch=2010-03-01 10:61"), Out::Err(E::Attin, &["Minute value (61) is invalid.", "astSetAttrib(Frame): Invalid epoch value \"2010-03-01 10:61\" given for coordinate system."])),
+            (Op::Set("Epoch=2010-03-01 10:10:61.5"), Out::Err(E::Attin, &["Seconds value (61.5) is invalid.", "astSetAttrib(Frame): Invalid epoch value \"2010-03-01 10:10:61.5\" given for coordinate system."])),
+            (Op::Get("Epoch"), Out::Value("2000.0")),
+            (Op::Set("Epoch=2010-03-45"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2010.2819986310747")),
+            (Op::Set("Epoch=MJD 55000"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2009.460643394935")),
+            (Op::Set("Epoch=JD 2455000.5"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2009.460643394935")),
+            (Op::Set("Epoch=1996-Oct-2 12:30"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("1996.7529660050193")),
+            (Op::Set("Epoch=1996-10-2T12:30:10.5"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("1996.7529663377443")),
+            (Op::Set("Epoch=b1975.5"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("1975.5")),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+    Epoch = 1975.5 	# Besselian epoch of observation
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+    Ax2 = 	# Axis number 2
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+    },
+    Case {
+        name: "frame_skyaxis",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+    Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+    Domain = "SKY" 	# Coordinate system domain
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+    ActUnt = 0 	# Unit strings do not affect alignment
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+          Label = "Right ascension" 	# Axis Label
+          Symbol = "RA" 	# Axis symbol
+          Unit = "hh:mm:ss.s" 	# Axis units
+       IsA Axis 	# Coordinate axis
+          Format = "hms.1" 	# Format specifier
+          IsLat = 0 	# Longitude axis (not latitude)
+          CnZer = 0 	# Display axis values in range 0 -> 2.PI
+          AsTime = 1 	# Display values as times (not angles)
+       End SkyAxis
+ End Frame
+"###,
+        ops: &[
+            (Op::Get("Class"), Out::Value("Frame")),
+            (Op::Get("Class(1)"), Out::Value("SkyAxis")),
+            (Op::Get("IsLatitude(1)"), Out::Value("0")),
+            (Op::Test("IsLatitude(1)"), Out::Flag(true)),
+            (Op::Get("CentreZero(1)"), Out::Value("0")),
+            (Op::Test("CentreZero(1)"), Out::Flag(true)),
+            (Op::Get("AsTime(1)"), Out::Value("1")),
+            (Op::Test("AsTime(1)"), Out::Flag(true)),
+            (Op::Set("IsLatitude(1)=1"), Out::Done),
+            (Op::Get("IsLatitude(1)"), Out::Value("1")),
+            (Op::Test("IsLatitude(1)"), Out::Flag(true)),
+            (Op::Get("CentreZero(1)"), Out::Value("0")),
+            (Op::Test("CentreZero(1)"), Out::Flag(true)),
+            (Op::Get("AsTime(1)"), Out::Value("1")),
+            (Op::Test("AsTime(1)"), Out::Flag(true)),
+            (Op::Set("CentreZero(1)=0"), Out::Done),
+            (Op::Get("CentreZero(1)"), Out::Value("0")),
+            (Op::Test("CentreZero(1)"), Out::Flag(true)),
+            (Op::Set("AsTime(1)=5"), Out::Done),
+            (Op::Get("AsTime(1)"), Out::Value("1")),
+            (Op::Test("AsTime(1)"), Out::Flag(true)),
+            (Op::Get("Format(1)"), Out::Value("hms.1")),
+            (Op::Get("Label(1)"), Out::Value("Right ascension")),
+            (Op::Get("Unit(1)"), Out::Value("hh:mm:ss.s")),
+            (Op::Clear("IsLatitude(1)"), Out::Done),
+            (Op::Get("IsLatitude(1)"), Out::Value("0")),
+            (Op::Test("IsLatitude(1)"), Out::Flag(false)),
+            (Op::Clear("AsTime(1)"), Out::Done),
+            (Op::Get("AsTime(1)"), Out::Value("0")),
+            (Op::Test("AsTime(1)"), Out::Flag(false)),
+            (Op::Set("IsLatitude(1)=0"), Out::Done),
+            (Op::Get("AsTime(1)"), Out::Value("1")),
+            (Op::Clear("CentreZero(1)"), Out::Done),
+            (Op::Get("CentreZero(1)"), Out::Value("0")),
+            (Op::Test("CentreZero(1)"), Out::Flag(false)),
+            (Op::Set("Fred(1)=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a SkyAxis."])),
+            (Op::Get("Fred(1)"), Out::Err(E::Badat, &["astGet: The SkyAxis given does not have an attribute called \"fred\"."])),
+            (Op::Set("IsLatitude=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"islatitude=1\" is invalid for a Frame."])),
+            (Op::Get("IsLatitude"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"islatitude\"."])),
+            (Op::Set("IsLatitude(1)=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"islatitude=x\" is invalid for a SkyAxis."])),
+            (Op::Set("Ident(1)=sky"), Out::Done),
+            (Op::Get("Ident(1)"), Out::Value("sky")),
+            (Op::Set("AsTime(1)=1"), Out::Done),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+    Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+    Domain = "SKY" 	# Coordinate system domain
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+    ActUnt = 0 	# Unit strings do not affect alignment
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+          Ident = "sky" 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Label = "Right ascension" 	# Axis Label
+          Symbol = "RA" 	# Axis symbol
+          Unit = "hh:mm:ss.s" 	# Axis units
+       IsA Axis 	# Coordinate axis
+          Format = "hms.1" 	# Format specifier
+          IsLat = 0 	# Longitude axis (not latitude)
+          AsTime = 1 	# Display values as times (not angles)
+       End SkyAxis
+ End Frame
+"###,
+    },
+    Case {
+        name: "frame_one_axis",
+        fitschan: false,
+        object: r###" Begin Frame 	# Coordinate system description
+#   Title = "1-d coordinate system" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ End Frame
+"###,
+        ops: &[
+            (Op::Set("Label=x"), Out::Done),
+            (Op::Get("Label"), Out::Value("x")),
+            (Op::Test("Label"), Out::Flag(true)),
+            (Op::Get("Label(1)"), Out::Value("x")),
+            (Op::Clear("Label"), Out::Done),
+            (Op::Get("Label"), Out::Value("Axis 1")),
+            (Op::Test("Label"), Out::Flag(false)),
+            (Op::Set("Unit=km"), Out::Done),
+            (Op::Get("Unit"), Out::Value("km")),
+            (Op::Test("Unit"), Out::Flag(true)),
+            (Op::Get("NormUnit"), Out::Value("km")),
+            (Op::Get("InternalUnit"), Out::Value("km")),
+            (Op::Test("NormUnit"), Out::Flag(false)),
+            (Op::Set("NormUnit=x"), Out::Err(E::Nowrt, &["astSet: The setting \"normunit=x\" is invalid for a Frame.", "This is a read-only attribute."])),
+            (Op::Clear("NormUnit"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"normunit\" value for a Frame.", "This is a read-only attribute."])),
+            (Op::Set("Top=5"), Out::Done),
+            (Op::Get("Top"), Out::Value("5")),
+            (Op::Test("Top"), Out::Flag(true)),
+            (Op::Set("Bottom=-1"), Out::Done),
+            (Op::Get("Bottom"), Out::Value("-1")),
+            (Op::Test("Bottom"), Out::Flag(true)),
+            (Op::Set("Direction=0"), Out::Done),
+            (Op::Get("Direction"), Out::Value("0")),
+            (Op::Test("Direction"), Out::Flag(true)),
+            (Op::Set("Format=%5.1f"), Out::Done),
+            (Op::Get("Format"), Out::Value("%5.1f")),
+            (Op::Test("Format"), Out::Flag(true)),
+            (Op::Set("Symbol=s"), Out::Done),
+            (Op::Get("Symbol"), Out::Value("s")),
+            (Op::Test("Symbol"), Out::Flag(true)),
+            (Op::Set("Digits=3"), Out::Done),
+            (Op::Get("Digits"), Out::Value("3")),
+            (Op::Test("Digits"), Out::Flag(true)),
+            (Op::Get("Digits(1)"), Out::Value("3")),
+            (Op::Test("Digits(1)"), Out::Flag(false)),
+            (Op::Set("Fred=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a Frame."])),
+            (Op::Get("Fred"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"fred\"."])),
+            (Op::Test("Fred"), Out::Err(E::Badat, &["astTest: The attribute name \"fred\" is invalid for a Frame."])),
+            (Op::Clear("Fred"), Out::Err(E::Badat, &["astClear: The attribute name \"fred\" is invalid for a Frame."])),
+            (Op::Set("Label(2)=x"), Out::Err(E::Axiin, &["astSetLabel(Frame): Axis index (2) invalid - it should be in the range 1 to 1."])),
+            (Op::Get("Label(2)"), Out::Err(E::Axiin, &["astGetLabel(Frame): Axis index (2) invalid - it should be in the range 1 to 1."])),
+            (Op::Get("Ident(1)"), Out::Value("")),
+            (Op::Test("Ident(1)"), Out::Flag(false)),
+            (Op::Set("Ident=whole"), Out::Done),
+            (Op::Get("Ident"), Out::Value("whole")),
+            (Op::Get("Ident(1)"), Out::Value("")),
+            (Op::Set("Label="), Out::Done),
+            (Op::Get("Label"), Out::Value(" ")),
+            (Op::Set("Top=high"), Out::Err(E::Badat, &["astSet: The attribute setting \"top=high\" is invalid for a Frame."])),
+            (Op::Set("Label"), Out::Err(E::Badat, &["astSet: The attribute setting \"label\" is invalid for a Frame."])),
+            (Op::Get("Title"), Out::Value("1-d coordinate system")),
+            (Op::Set("Title=one"), Out::Done),
+            (Op::Get("Title"), Out::Value("one")),
+        ],
+        dump: r###" Begin Frame 	# Coordinate system description
+    Ident = "whole" 	# Permanent Object identification string
+ IsA Object 	# AST Object
+    Title = "one" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Lbl1 = " " 	# Label for axis 1
+#   Uni1 = "km" 	# Units for axis 1
+    Digits = 3 	# Default formatting precision
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot1 = -1 	# Lowest legal axis value
+#   Top1 = 5 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Label = " " 	# Axis Label
+          Symbol = "s" 	# Axis symbol
+          Unit = "km" 	# Axis units
+          Format = "%5.1f" 	# Format specifier
+          Dirn = 0 	# Plot in reverse direction (hint)
+          Top = 5 	# Maximum legal axis value
+          Bottom = -1 	# Minimum legal axis value
+       End Axis
+ End Frame
+"###,
+    },
 ];

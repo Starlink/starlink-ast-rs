@@ -387,10 +387,15 @@ pub(crate) const INTFLAG: u32 = 1;
 pub trait AsDynFrame {
     /// `self` as `&dyn Frame`.
     fn as_dyn_frame(&self) -> &dyn Frame;
+    /// `self` as `&mut dyn Frame`.
+    fn as_dyn_frame_mut(&mut self) -> &mut dyn Frame;
 }
 
 impl<T: Frame> AsDynFrame for T {
     fn as_dyn_frame(&self) -> &dyn Frame {
+        self
+    }
+    fn as_dyn_frame_mut(&mut self) -> &mut dyn Frame {
         self
     }
 }
@@ -1539,6 +1544,36 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     #[doc(hidden)]
     fn axis_object_bottom(&self, axis: usize) -> AstResult<f64> {
         self.bottom(axis)
+    }
+
+    /// The Axis object of a 1-based axis, for the attributes an attribute
+    /// string hands to it, such as `Ident(2)`.
+    /// A class that keeps no Axis objects has no such attributes.
+    // C: astGetAxis.
+    #[doc(hidden)]
+    fn attr_axis(&self, _axis: usize) -> AstResult<axis::AxisHandle<'_>> {
+        Err(crate::attributes::not_supported(
+            "astGet",
+            self.attr_class(),
+        ))
+    }
+
+    /// [`attr_axis`](Self::attr_axis), for changing the Axis object.
+    #[doc(hidden)]
+    fn attr_axis_mut(&mut self, _axis: usize) -> AstResult<axis::AxisHandleMut<'_>> {
+        Err(crate::attributes::not_supported(
+            "astSet",
+            self.attr_class(),
+        ))
+    }
+
+    /// [`primary_frame`](Self::primary_frame), for changing the primary
+    /// Frame: the Frame an axis (0-based) belongs to, and its axis there.
+    /// A Frame that is not made of others is its own primary Frame.
+    // C: astPrimaryFrame.
+    #[doc(hidden)]
+    fn primary_frame_mut(&mut self, axis: usize) -> (&mut dyn Frame, usize) {
+        (self.as_dyn_frame_mut(), axis)
     }
 
     /// The C name of this Frame's class, which is its Class attribute and

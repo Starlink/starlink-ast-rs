@@ -13,73 +13,82 @@ use super::{
 use crate::error::AstResult;
 use crate::frames::Frame;
 
-/// The Object attributes of a class, for the functions of this file.
-pub(crate) trait ObjectAttrs {
+/// The Object attributes of a class as the functions of this file read
+/// them.
+pub(crate) trait ObjectRead {
     /// The C class name, which is the Class attribute and the name errors
     /// give.
     fn obj_class(&self) -> &'static str;
     /// The ID attribute.
     fn obj_id(&self) -> String;
-    /// Set the ID attribute.
-    fn obj_set_id(&mut self, id: &str) -> AstResult<()>;
     /// Whether the ID attribute is set.
     fn obj_test_id(&self) -> bool;
-    /// Clear the ID attribute.
-    fn obj_clear_id(&mut self) -> AstResult<()>;
     /// The Ident attribute.
     fn obj_ident(&self) -> String;
-    /// Set the Ident attribute.
-    fn obj_set_ident(&mut self, ident: &str) -> AstResult<()>;
     /// Whether the Ident attribute is set.
     fn obj_test_ident(&self) -> bool;
-    /// Clear the Ident attribute.
-    fn obj_clear_ident(&mut self) -> AstResult<()>;
     /// The UseDefs attribute.
     fn obj_use_defs(&self) -> bool;
-    /// Set the UseDefs attribute.
-    fn obj_set_use_defs(&mut self, value: bool) -> AstResult<()>;
     /// Whether the UseDefs attribute is set.
     fn obj_test_use_defs(&self) -> bool;
+}
+
+/// The Object attributes of a class as the functions of this file change
+/// them.
+pub(crate) trait ObjectAttrs: ObjectRead {
+    /// Set the ID attribute.
+    fn obj_set_id(&mut self, id: &str) -> AstResult<()>;
+    /// Clear the ID attribute.
+    fn obj_clear_id(&mut self) -> AstResult<()>;
+    /// Set the Ident attribute.
+    fn obj_set_ident(&mut self, ident: &str) -> AstResult<()>;
+    /// Clear the Ident attribute.
+    fn obj_clear_ident(&mut self) -> AstResult<()>;
+    /// Set the UseDefs attribute.
+    fn obj_set_use_defs(&mut self, value: bool) -> AstResult<()>;
     /// Clear the UseDefs attribute.
     fn obj_clear_use_defs(&mut self) -> AstResult<()>;
 }
 
-impl<T: Frame + ?Sized> ObjectAttrs for T {
+impl<T: Frame + ?Sized> ObjectRead for T {
     fn obj_class(&self) -> &'static str {
         self.attr_class()
     }
     fn obj_id(&self) -> String {
         self.id().to_string()
     }
-    fn obj_set_id(&mut self, id: &str) -> AstResult<()> {
-        self.set_id(id)
-    }
     fn obj_test_id(&self) -> bool {
         self.test_id()
-    }
-    fn obj_clear_id(&mut self) -> AstResult<()> {
-        self.clear_id()
     }
     fn obj_ident(&self) -> String {
         self.ident().to_string()
     }
-    fn obj_set_ident(&mut self, ident: &str) -> AstResult<()> {
-        self.set_ident(ident)
-    }
     fn obj_test_ident(&self) -> bool {
         self.test_ident()
-    }
-    fn obj_clear_ident(&mut self) -> AstResult<()> {
-        self.clear_ident()
     }
     fn obj_use_defs(&self) -> bool {
         self.use_defs()
     }
-    fn obj_set_use_defs(&mut self, value: bool) -> AstResult<()> {
-        self.set_use_defs(value)
-    }
     fn obj_test_use_defs(&self) -> bool {
         self.test_use_defs()
+    }
+}
+
+impl<T: Frame + ?Sized> ObjectAttrs for T {
+    fn obj_set_id(&mut self, id: &str) -> AstResult<()> {
+        self.set_id(id)
+    }
+    fn obj_clear_id(&mut self) -> AstResult<()> {
+        self.clear_id()
+    }
+    fn obj_set_ident(&mut self, ident: &str) -> AstResult<()> {
+        self.set_ident(ident)
+    }
+    fn obj_clear_ident(&mut self) -> AstResult<()> {
+        self.clear_ident()
+    }
+    fn obj_set_use_defs(&mut self, value: bool) -> AstResult<()> {
+        self.set_use_defs(value)
     }
     fn obj_clear_use_defs(&mut self) -> AstResult<()> {
         self.clear_use_defs()
@@ -105,7 +114,7 @@ pub(crate) fn object_set<O: ObjectAttrs + ?Sized>(obj: &mut O, setting: &str) ->
 }
 
 /// Object's `GetAttrib`: any other name is an error.
-pub(crate) fn object_get<O: ObjectAttrs + ?Sized>(obj: &O, name: &str) -> AstResult<String> {
+pub(crate) fn object_get<O: ObjectRead + ?Sized>(obj: &O, name: &str) -> AstResult<String> {
     match name {
         "class" => Ok(obj.obj_class().to_string()),
         "id" => Ok(obj.obj_id()),
@@ -121,7 +130,7 @@ pub(crate) fn object_get<O: ObjectAttrs + ?Sized>(obj: &O, name: &str) -> AstRes
 
 /// Object's `TestAttrib`: a read-only attribute is never set, and any
 /// other name is an error.
-pub(crate) fn object_test<O: ObjectAttrs + ?Sized>(obj: &O, name: &str) -> AstResult<bool> {
+pub(crate) fn object_test<O: ObjectRead + ?Sized>(obj: &O, name: &str) -> AstResult<bool> {
     match name {
         "id" => Ok(obj.obj_test_id()),
         "ident" => Ok(obj.obj_test_ident()),

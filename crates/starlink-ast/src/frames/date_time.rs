@@ -8,6 +8,7 @@
 //! equivalent Modified Julian Date. All calendar arithmetic is delegated to
 //! the ported PAL in [`crate::pal`]; only the format dispatch is ported.
 
+use crate::erfa::Tf2dWarning;
 use crate::pal;
 
 /// Convert a decimal-year epoch (e.g. an `EQUINOX = 1950.0` FITS
@@ -47,17 +48,23 @@ pub(crate) fn year_to_mjd_iau1984(year: f64) -> f64 {
 // Wired into TimeFrame::unformat in a later step of the iso-date port.
 #[allow(dead_code)]
 pub(crate) fn read_date_time(value: &str) -> Option<f64> {
+    read_date_time_checked(value).ok()
+}
+
+/// [`read_date_time`], with the message C reports for a value it cannot
+/// read, under its `AST__DTERR` status.
+pub(crate) fn read_date_time_checked(value: &str) -> Result<f64, String> {
     let b = value.as_bytes();
     let len = b.len();
 
     // Besselian epoch: " %*1[Bb] %lf %n".
     if let Some(epoch) = scan_prefixed_value(b, b"Bb") {
-        return Some(pal::epb2d(epoch));
+        return Ok(pal::epb2d(epoch));
     }
 
     // Julian epoch: " %*1[Jj] %lf %n".
     if let Some(epoch) = scan_prefixed_value(b, b"Jj") {
-        return Some(pal::epj2d(epoch));
+        return Ok(pal::epj2d(epoch));
     }
 
     // Decimal years: " %lf %n".
@@ -67,19 +74,19 @@ pub(crate) fn read_date_time(value: &str) -> Option<f64> {
         if let Some(epoch) = read_f64(b, &mut i) {
             skip_ws(b, &mut i);
             if i >= len {
-                return Some(year_to_mjd_iau1984(epoch));
+                return Ok(year_to_mjd_iau1984(epoch));
             }
         }
     }
 
     // Modified Julian Date: " %*1[Mm] %*1[Jj] %*1[Dd] %lf %n".
     if let Some(mjd) = scan_tagged_value(b, &[b"Mm", b"Jj", b"Dd"]) {
-        return Some(mjd);
+        return Ok(mjd);
     }
 
     // Julian Date: " %*1[Jj] %*1[Dd] %lf %n".
     if let Some(jd) = scan_tagged_value(b, &[b"Jj", b"Dd"]) {
-        return Some(jd - 2_400_000.5);
+        return Ok(jd - 2_400_000.5);
     }
 
     // Gregorian calendar date (and optional time).
@@ -122,12 +129,14 @@ fn scan_tagged_value(b: &[u8], tags: &[&[u8]]) -> Option<f64> {
 
 /// Port of the Gregorian-calendar branch of `astReadDateTime`
 /// (frame.c:9051-9321).
-fn read_gregorian(value: &str) -> Option<f64> {
+fn read_gregorian(value: &str) -> Result<f64, String> {
+    // The text matches none of the forms C looks for.
+    let form = || "Date/time does not have the correct form.".to_string();
     let owned;
     let mut b: &[u8] = value.as_bytes();
 
     // Identify the year and month.
-    let (year, cmonth, mut month, ym_nc) = scan_year_month(b)?;
+    let (year, cmonth, mut month, ym_nc) = scan_year_month(b).ok_or_else(form)?;
 
     // Advance past the matched "year sep month sep".
     let mut pos = ym_nc;
@@ -154,10 +163,10 @@ fn read_gregorian(value: &str) -> Option<f64> {
     if form_is_number(rest, 0, l) {
         let mut i = 0;
         skip_ws(rest, &mut i);
-        day = read_f64(rest, &mut i)?;
+        day = read_f64(rest, &mut i).ok_or_else(form)?;
         skip_ws(rest, &mut i);
         if i != l {
-            return None;
+            return Err(form());
         }
     } else {
         // Day plus hours:minutes(:seconds). Try with a trailing seconds field
@@ -178,20 +187,20 @@ fn read_gregorian(value: &str) -> Option<f64> {
             let tail = &rest[pos..];
             let tl = tail.len();
             if !form_is_number(tail, 0, tl) {
-                return None;
+                return Err(form());
             }
             let mut i = 0;
             skip_ws(tail, &mut i);
-            sec = read_f64(tail, &mut i)?;
+            sec = read_f64(tail, &mut i).ok_or_else(form)?;
             skip_ws(tail, &mut i);
             if i != tl {
-                return None;
+                return Err(form());
             }
         } else {
             // No seconds field: " %2d%*1[ ] %2d %1[:/-] %2d %n" fully matched.
-            let (iday, h, _s3, m, nc) = scan_day_hm(rest)?;
+            let (iday, h, _s3, m, nc) = scan_day_hm(rest).ok_or_else(form)?;
             if nc != l {
-                return None;
+                return Err(form());
             }
             day = iday as f64;
             hour = h;
@@ -203,7 +212,9 @@ fn read_gregorian(value: &str) -> Option<f64> {
     if let Some(name) = cmonth {
         const TABLE: &str = "jan feb mar apr may jun jul aug sep oct nov dec";
         let lc = name.to_ascii_lowercase();
-        let idx = TABLE.find(&lc)?;
+        let idx = TABLE
+            .find(&lc)
+            .ok_or_else(|| format!("Month value \"{name}\" is invalid."))?;
         month = 1 + (idx / 4) as i32;
     }
 
@@ -215,19 +226,27 @@ fn read_gregorian(value: &str) -> Option<f64> {
     // A bad year or month (-1, -2) leaves C's MJD unset; the port does not
     // read the value.
     let iday = day as i32;
-    let (mut mjd, _bad_day) = pal::caldj(year, month, iday).ok()?;
+    let (mut mjd, _bad_day) = pal::caldj(year, month, iday).map_err(|_| form())?;
 
     // Add any fractional part of the day.
     mjd += day - iday as f64;
 
     // Convert hours, minutes and seconds to a fraction of a day.
     let (hms, warning) = pal::dtf2d(hour, minute, sec);
-    if warning.is_some() {
-        return None;
+    match warning {
+        None => {}
+        Some(Tf2dWarning::Hour) => return Err(format!("Hour value ({hour}) is invalid.")),
+        Some(Tf2dWarning::Minute) => return Err(format!("Minute value ({minute}) is invalid.")),
+        Some(Tf2dWarning::Second) => {
+            return Err(format!(
+                "Seconds value ({}) is invalid.",
+                crate::serial::native_write::format_double_g_signed(sec, 17)
+            ));
+        }
     }
     mjd += hms;
 
-    Some(mjd)
+    Ok(mjd)
 }
 
 /// Match the year/month head of a Gregorian date. Returns
