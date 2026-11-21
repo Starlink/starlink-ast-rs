@@ -2071,4 +2071,625 @@ pub const CASES: &[Case] = &[
  End SkyFrame
 "###,
     },
+    Case {
+        name: "spec_system",
+        fitschan: false,
+        object: r###" Begin SpecFrame 	# Description of spectral coordinate system
+#   Title = "Wavelength" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "SPECTRUM" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Wavelength" 	# Label for axis 1
+#   System = "WAVE" 	# Coordinate system type
+#   Uni1 = "Angstrom" 	# Units for axis 1
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   SoR = "Heliocentric" 	# Standard of rest
+ End SpecFrame
+"###,
+        ops: &[
+            (Op::Get("System"), Out::Value("WAVE")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Set("System=wave"), Out::Done),
+            (Op::Get("System"), Out::Value("WAVE")),
+            (Op::Test("System"), Out::Flag(true)),
+            (Op::Get("Unit"), Out::Value("Angstrom")),
+            (Op::Get("Label"), Out::Value("Wavelength")),
+            (Op::Set("System=FREQ"), Out::Done),
+            (Op::Get("System"), Out::Value("FREQ")),
+            (Op::Set("System=vrad"), Out::Done),
+            (Op::Get("System"), Out::Value("VRAD")),
+            (Op::Get("Unit"), Out::Value("km/s")),
+            (Op::Set("System=nonsense"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid System description \"nonsense\"."])),
+            (Op::Set("System=ENER"), Out::Done),
+            (Op::Get("System"), Out::Value("ENER")),
+            (Op::Set("System=VOPT"), Out::Done),
+            (Op::Get("System"), Out::Value("VOPT")),
+            (Op::Set("System=zopt"), Out::Done),
+            (Op::Get("System"), Out::Value("ZOPT")),
+            (Op::Set("System=beta"), Out::Done),
+            (Op::Get("System"), Out::Value("BETA")),
+            (Op::Set("System=VELO"), Out::Done),
+            (Op::Get("System"), Out::Value("VELO")),
+            (Op::Set("System=awav"), Out::Done),
+            (Op::Get("System"), Out::Value("AWAV")),
+            (Op::Set("System=wavn"), Out::Done),
+            (Op::Get("System"), Out::Value("WAVN")),
+            (Op::Set("System=VRADIO"), Out::Done),
+            (Op::Get("System"), Out::Value("VRAD")),
+            (Op::Set("System=redshift"), Out::Done),
+            (Op::Get("System"), Out::Value("ZOPT")),
+            (Op::Set("System=Cartesian"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid System description \"Cartesian\"."])),
+            (Op::Clear("System"), Out::Done),
+            (Op::Get("System"), Out::Value("WAVE")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Get("AlignSystem"), Out::Value("WAVE")),
+            (Op::Test("AlignSystem"), Out::Flag(false)),
+            (Op::Set("AlignSystem=freq"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("FREQ")),
+            (Op::Test("AlignSystem"), Out::Flag(true)),
+            (Op::Clear("AlignSystem"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("WAVE")),
+            (Op::Test("AlignSystem"), Out::Flag(false)),
+            (Op::Set("AlignSystem=bad"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid AlignSystem description \"bad\"."])),
+            (Op::Get("StdOfRest"), Out::Value("Heliocentric")),
+            (Op::Test("StdOfRest"), Out::Flag(false)),
+            (Op::Set("StdOfRest=LSRK"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("LSRK")),
+            (Op::Test("StdOfRest"), Out::Flag(true)),
+            (Op::Set("StdOfRest=topo"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("Topocentric")),
+            (Op::Set("StdOfRest=nonsense"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid standard of rest description \"nonsense\"."])),
+            (Op::Set("StdOfRest= LSRD"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid standard of rest description \" LSRD\"."])),
+            (Op::Get("StdOfRest"), Out::Value("Topocentric")),
+            (Op::Set("StdOfRest=LSRD "), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("LSRD")),
+            (Op::Set("StdOfRest=geo"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("Geocentric")),
+            (Op::Set("StdOfRest=BARY"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("Barycentric")),
+            (Op::Set("StdOfRest=helio"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("Heliocentric")),
+            (Op::Set("StdOfRest=galactic"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("Galactic")),
+            (Op::Set("StdOfRest=Local_group"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("Local_group")),
+            (Op::Set("StdOfRest=source"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("Source")),
+            (Op::Set("StdOfRest=LSR"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("LSRK")),
+            (Op::Clear("StdOfRest"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("Heliocentric")),
+            (Op::Test("StdOfRest"), Out::Flag(false)),
+            (Op::Get("AlignStdOfRest"), Out::Value("Heliocentric")),
+            (Op::Test("AlignStdOfRest"), Out::Flag(false)),
+            (Op::Set("AlignStdOfRest=bary"), Out::Done),
+            (Op::Get("AlignStdOfRest"), Out::Value("Barycentric")),
+            (Op::Test("AlignStdOfRest"), Out::Flag(true)),
+            (Op::Clear("AlignStdOfRest"), Out::Done),
+            (Op::Get("AlignStdOfRest"), Out::Value("Heliocentric")),
+            (Op::Test("AlignStdOfRest"), Out::Flag(false)),
+            (Op::Set("AlignStdOfRest=bad"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid standard of rest description \"bad\"."])),
+            (Op::Set("AlignStdOfRest= bary"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid standard of rest description \" bary\"."])),
+            (Op::Get("AlignSpecOffset"), Out::Value("0")),
+            (Op::Test("AlignSpecOffset"), Out::Flag(false)),
+            (Op::Set("AlignSpecOffset=1"), Out::Done),
+            (Op::Get("AlignSpecOffset"), Out::Value("1")),
+            (Op::Test("AlignSpecOffset"), Out::Flag(true)),
+            (Op::Clear("AlignSpecOffset"), Out::Done),
+            (Op::Get("AlignSpecOffset"), Out::Value("0")),
+            (Op::Test("AlignSpecOffset"), Out::Flag(false)),
+        ],
+        dump: r###" Begin SpecFrame 	# Description of spectral coordinate system
+#   Title = "Wavelength" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "SPECTRUM" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Wavelength" 	# Label for axis 1
+#   System = "WAVE" 	# Coordinate system type
+#   Uni1 = "Angstrom" 	# Units for axis 1
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   SoR = "Heliocentric" 	# Standard of rest
+ End SpecFrame
+"###,
+    },
+    Case {
+        name: "spec_values",
+        fitschan: false,
+        object: r###" Begin SpecFrame 	# Description of spectral coordinate system
+#   Title = "Wavelength" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "SPECTRUM" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Wavelength" 	# Label for axis 1
+#   System = "WAVE" 	# Coordinate system type
+#   Uni1 = "Angstrom" 	# Units for axis 1
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   SoR = "Heliocentric" 	# Standard of rest
+ End SpecFrame
+"###,
+        ops: &[
+            (Op::Get("RestFreq"), Out::Value("100000")),
+            (Op::Test("RestFreq"), Out::Flag(false)),
+            (Op::Set("RestFreq=230.5"), Out::Done),
+            (Op::Get("RestFreq"), Out::Value("230.50000000000003")),
+            (Op::Test("RestFreq"), Out::Flag(true)),
+            (Op::Set("RestFreq=1.3 mm"), Out::Done),
+            (Op::Get("RestFreq"), Out::Value("230.60958307692306")),
+            (Op::Set("RestFreq=345 GHz"), Out::Done),
+            (Op::Get("RestFreq"), Out::Value("344.99999999999994")),
+            (Op::Set("RestFreq=1e-3 eV"), Out::Done),
+            (Op::Get("RestFreq"), Out::Value("241.79883401570055")),
+            (Op::Set("RestFreq=1 kg"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Rest frequency given in an unsupported system of units \"1 kg\"."])),
+            (Op::Set("RestFreq=0 m"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid rest wavelength \"0 m\" supplied."])),
+            (Op::Set("RestFreq=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"restfreq=x\" is invalid for a SpecFrame."])),
+            (Op::Set("RestFreq=5 nonsense"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Rest frequency given in an unsupported system of units \"5 nonsense\"."])),
+            (Op::Set("RestFreq= 115.27 "), Out::Done),
+            (Op::Get("RestFreq"), Out::Value("115.27000000000001")),
+            (Op::Clear("RestFreq"), Out::Done),
+            (Op::Get("RestFreq"), Out::Value("100000")),
+            (Op::Test("RestFreq"), Out::Flag(false)),
+            (Op::Get("SourceVel"), Out::Value("0")),
+            (Op::Test("SourceVel"), Out::Flag(false)),
+            (Op::Get("SourceSys"), Out::Value("VELO")),
+            (Op::Test("SourceSys"), Out::Flag(false)),
+            (Op::Set("SourceVel=20"), Out::Done),
+            (Op::Get("SourceVel"), Out::Value("20")),
+            (Op::Test("SourceVel"), Out::Flag(true)),
+            (Op::Set("SourceSys=VRAD"), Out::Done),
+            (Op::Get("SourceSys"), Out::Value("VRAD")),
+            (Op::Test("SourceSys"), Out::Flag(true)),
+            (Op::Get("SourceVel"), Out::Value("19.999332916312561")),
+            (Op::Set("SourceVel=30"), Out::Done),
+            (Op::Get("SourceVel"), Out::Value("30")),
+            (Op::Set("SourceSys=ZOPT"), Out::Done),
+            (Op::Get("SourceVel"), Out::Value("0.00010007924341204344")),
+            (Op::Set("SourceSys=bad"), Out::Err(E::Attin, &["astSetSourceSys(SpecFrame): Bad value (-1) given for SourceSys attribute."])),
+            (Op::Get("SourceSys"), Out::Value("ZOPT")),
+            (Op::Set("SourceSys=FREQ"), Out::Err(E::Attin, &["astSetSourceSys(SpecFrame): Bad value (1) given for SourceSys attribute."])),
+            (Op::Get("SourceSys"), Out::Value("ZOPT")),
+            (Op::Clear("SourceSys"), Out::Done),
+            (Op::Get("SourceSys"), Out::Value("VELO")),
+            (Op::Test("SourceSys"), Out::Flag(false)),
+            (Op::Clear("SourceVel"), Out::Done),
+            (Op::Get("SourceVel"), Out::Value("0")),
+            (Op::Test("SourceVel"), Out::Flag(false)),
+            (Op::Get("SourceVRF"), Out::Value("Heliocentric")),
+            (Op::Test("SourceVRF"), Out::Flag(false)),
+            (Op::Set("SourceVRF=LSRK"), Out::Done),
+            (Op::Get("SourceVRF"), Out::Value("LSRK")),
+            (Op::Test("SourceVRF"), Out::Flag(true)),
+            (Op::Clear("SourceVRF"), Out::Done),
+            (Op::Get("SourceVRF"), Out::Value("Heliocentric")),
+            (Op::Test("SourceVRF"), Out::Flag(false)),
+            (Op::Set("SourceVRF=bad"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid standard of rest description \"bad\"."])),
+            (Op::Get("SpecOrigin"), Out::Value("0")),
+            (Op::Test("SpecOrigin"), Out::Flag(false)),
+            (Op::Set("SpecOrigin=230 GHz"), Out::Err(E::Badun, &["astSetSpecOrigin(SpecFrame): Cannot convert the supplied attribute value from units of GHz to Angstrom."])),
+            (Op::Get("SpecOrigin"), Out::Value("0")),
+            (Op::Test("SpecOrigin"), Out::Flag(false)),
+            (Op::Set("SpecOrigin=100"), Out::Done),
+            (Op::Get("SpecOrigin"), Out::Value("100")),
+            (Op::Set("Unit=MHz"), Out::Done),
+            (Op::Get("SpecOrigin"), Out::Err(E::Badun, &["astGetSpecOrigin(SpecFrame): The current units (MHz) are not suitable for a SpecFrame."])),
+            (Op::Set("SpecOrigin=5 km/s"), Out::Err(E::Badun, &["astSetSpecOrigin(SpecFrame): Cannot convert the supplied attribute value from units of km/s to Angstrom."])),
+            (Op::Set("SpecOrigin=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"specorigin=x\" is invalid for a SpecFrame."])),
+            (Op::Get("SpecOrigin"), Out::Err(E::Badun, &["astGetSpecOrigin(SpecFrame): The current units (MHz) are not suitable for a SpecFrame."])),
+            (Op::Clear("SpecOrigin"), Out::Done),
+            (Op::Get("SpecOrigin"), Out::Value("0")),
+            (Op::Test("SpecOrigin"), Out::Flag(false)),
+            (Op::Get("RefRA"), Out::Value("0:00:00.0")),
+            (Op::Test("RefRA"), Out::Flag(false)),
+            (Op::Get("RefDec"), Out::Value("0:00:00")),
+            (Op::Test("RefDec"), Out::Flag(false)),
+            (Op::Set("RefRA=10:00:00"), Out::Done),
+            (Op::Get("RefRA"), Out::Value("10:00:00.0")),
+            (Op::Test("RefRA"), Out::Flag(true)),
+            (Op::Set("RefDec=-20:30:00"), Out::Done),
+            (Op::Get("RefDec"), Out::Value("-20:30:00")),
+            (Op::Test("RefDec"), Out::Flag(true)),
+            (Op::Set("RefRA=bad"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid reference right ascension \"bad\"."])),
+            (Op::Set("RefDec=bad"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid reference declination \"bad\"."])),
+            (Op::Set("RefRA=10:00:00 x"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid reference right ascension \"10:00:00 x\"."])),
+            (Op::Set("RefRA= 1:00"), Out::Done),
+            (Op::Get("RefRA"), Out::Value("1:00:00.0")),
+            (Op::Set("RefDec=45"), Out::Done),
+            (Op::Get("RefDec"), Out::Value("45:00:00")),
+            (Op::Clear("RefRA"), Out::Done),
+            (Op::Clear("RefDec"), Out::Done),
+            (Op::Get("RefRA"), Out::Value("0:00:00.0")),
+            (Op::Test("RefRA"), Out::Flag(false)),
+            (Op::Get("RefDec"), Out::Value("0:00:00")),
+            (Op::Test("RefDec"), Out::Flag(false)),
+            (Op::Get("GeoLat"), Out::Value("N0:00:00.00")),
+            (Op::Test("GeoLat"), Out::Flag(false)),
+            (Op::Set("GeoLat=N19:49:31"), Out::Done),
+            (Op::Get("GeoLat"), Out::Value("N19:49:31.00")),
+            (Op::Test("GeoLat"), Out::Flag(true)),
+            (Op::Get("ObsLat"), Out::Value("N19:49:31.00")),
+            (Op::Get("GeoLon"), Out::Value("E0:00:00.00")),
+            (Op::Test("GeoLon"), Out::Flag(false)),
+            (Op::Set("GeoLon=W155:28:22"), Out::Done),
+            (Op::Get("GeoLon"), Out::Value("W155:28:22.00")),
+            (Op::Test("GeoLon"), Out::Flag(true)),
+            (Op::Get("ObsLon"), Out::Value("W155:28:22.00")),
+            (Op::Set("GeoLat=bad"), Out::Err(E::Attin, &["astSetAttrib(SpecFrame): Invalid value for ObsLat (observers latitude) \"bad\"."])),
+            (Op::Clear("GeoLat"), Out::Done),
+            (Op::Get("GeoLat"), Out::Value("N0:00:00.00")),
+            (Op::Test("GeoLat"), Out::Flag(false)),
+            (Op::Clear("GeoLon"), Out::Done),
+            (Op::Get("ObsLon"), Out::Value("E0:00:00.00")),
+            (Op::Test("ObsLon"), Out::Flag(false)),
+        ],
+        dump: r###" Begin SpecFrame 	# Description of spectral coordinate system
+#   Title = "Wavelength" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "SPECTRUM" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Wavelength" 	# Label for axis 1
+#   System = "WAVE" 	# Coordinate system type
+#   Uni1 = "MHz" 	# Units for axis 1
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Unit = "MHz" 	# Axis units
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   SoR = "Heliocentric" 	# Standard of rest
+    UWave = "MHz" 	# Preferred units for wavelength
+ End SpecFrame
+"###,
+    },
+    Case {
+        name: "spec_axis",
+        fitschan: false,
+        object: r###" Begin SpecFrame 	# Description of spectral coordinate system
+#   Title = "Wavelength" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "SPECTRUM" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Wavelength" 	# Label for axis 1
+#   System = "WAVE" 	# Coordinate system type
+#   Uni1 = "Angstrom" 	# Units for axis 1
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   SoR = "Heliocentric" 	# Standard of rest
+ End SpecFrame
+"###,
+        ops: &[
+            (Op::Set("Unit=GHz"), Out::Done),
+            (Op::Get("Unit"), Out::Value("GHz")),
+            (Op::Test("Unit"), Out::Flag(true)),
+            (Op::Get("Unit(1)"), Out::Value("GHz")),
+            (Op::Set("Label=Freq"), Out::Done),
+            (Op::Get("Label"), Out::Value("Freq")),
+            (Op::Test("Label"), Out::Flag(true)),
+            (Op::Set("Symbol=f"), Out::Done),
+            (Op::Get("Symbol"), Out::Value("f")),
+            (Op::Test("Symbol"), Out::Flag(true)),
+            (Op::Set("Format=%.3f"), Out::Done),
+            (Op::Get("Format"), Out::Value("%.3f")),
+            (Op::Test("Format"), Out::Flag(true)),
+            (Op::Set("Direction=0"), Out::Done),
+            (Op::Get("Direction"), Out::Value("0")),
+            (Op::Test("Direction"), Out::Flag(true)),
+            (Op::Set("Top=500"), Out::Done),
+            (Op::Get("Top"), Out::Value("500")),
+            (Op::Test("Top"), Out::Flag(true)),
+            (Op::Set("Bottom=1"), Out::Done),
+            (Op::Get("Bottom"), Out::Value("1")),
+            (Op::Test("Bottom"), Out::Flag(true)),
+            (Op::Clear("Unit"), Out::Done),
+            (Op::Get("Unit"), Out::Value("Angstrom")),
+            (Op::Test("Unit"), Out::Flag(false)),
+            (Op::Clear("Label"), Out::Done),
+            (Op::Get("Label"), Out::Value("Wavelength")),
+            (Op::Test("Label"), Out::Flag(false)),
+            (Op::Clear("Symbol"), Out::Done),
+            (Op::Get("Symbol"), Out::Value("WAVE")),
+            (Op::Test("Symbol"), Out::Flag(false)),
+            (Op::Clear("Format"), Out::Done),
+            (Op::Get("Format"), Out::Value("%1.7G")),
+            (Op::Test("Format"), Out::Flag(false)),
+            (Op::Clear("Direction"), Out::Done),
+            (Op::Clear("Top"), Out::Done),
+            (Op::Clear("Bottom"), Out::Done),
+            (Op::Get("Top"), Out::Value("1.7976931348623157e+308")),
+            (Op::Test("Top"), Out::Flag(false)),
+            (Op::Set("Unit(1)=MHz"), Out::Done),
+            (Op::Get("Unit"), Out::Value("MHz")),
+            (Op::Set("Unit=furlongs"), Out::Done),
+            (Op::Get("Unit"), Out::Value("furlongs")),
+            (Op::Set("Unit(2)=x"), Out::Err(E::Axiin, &["astSetUnit(SpecFrame): Axis index (2) invalid - it should be in the range 1 to 1."])),
+            (Op::Set("Label(1)=L1"), Out::Done),
+            (Op::Get("Label(1)"), Out::Value("L1")),
+            (Op::Get("Digits"), Out::Value("7")),
+            (Op::Test("Digits"), Out::Flag(false)),
+            (Op::Set("Digits=5"), Out::Done),
+            (Op::Get("Digits(1)"), Out::Value("5")),
+            (Op::Get("Class"), Out::Value("SpecFrame")),
+            (Op::Get("Class(1)"), Out::Value("Axis")),
+            (Op::Set("Ident(1)=ax"), Out::Done),
+            (Op::Get("Ident(1)"), Out::Value("ax")),
+            (Op::Get("Naxes"), Out::Value("1")),
+            (Op::Get("Title"), Out::Value("Wavelength")),
+            (Op::Get("Domain"), Out::Value("SPECTRUM")),
+            (Op::Set("Epoch=2001"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("2001.0")),
+            (Op::Set("Fred=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a SpecFrame."])),
+            (Op::Get("Fred"), Out::Err(E::Badat, &["astGet: The SpecFrame given does not have an attribute called \"fred\"."])),
+            (Op::Test("Fred"), Out::Err(E::Badat, &["astTest: The attribute name \"fred\" is invalid for a SpecFrame."])),
+            (Op::Clear("Fred"), Out::Err(E::Badat, &["astClear: The attribute name \"fred\" is invalid for a SpecFrame."])),
+            (Op::Get("NormUnit"), Out::Value("furlongs")),
+            (Op::Get("InternalUnit"), Out::Value("furlongs")),
+            (Op::Set("System(1)=wave"), Out::Done),
+            (Op::Get("System"), Out::Value("WAVE")),
+            (Op::Get("Nin"), Out::Value("1")),
+            (Op::Get("MaxAxes"), Out::Value("1")),
+            (Op::Set("Unit="), Out::Done),
+            (Op::Get("Unit"), Out::Value("")),
+        ],
+        dump: r###" Begin SpecFrame 	# Description of spectral coordinate system
+#   Title = "Wavelength" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "SPECTRUM" 	# Coordinate system domain
+    Epoch = 2001 	# Julian epoch of observation
+#   Lbl1 = "L1" 	# Label for axis 1
+    System = "WAVE" 	# Coordinate system type
+    Digits = 5 	# Default formatting precision
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Ident = "ax" 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Label = "L1" 	# Axis Label
+          Unit = "" 	# Axis units
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   SoR = "Heliocentric" 	# Standard of rest
+    UWave = " " 	# Preferred units for wavelength
+ End SpecFrame
+"###,
+    },
+    Case {
+        name: "spec_dump",
+        fitschan: false,
+        object: r###" Begin SpecFrame 	# Description of spectral coordinate system
+#   Title = "Wavelength" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "SPECTRUM" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Wavelength" 	# Label for axis 1
+#   System = "WAVE" 	# Coordinate system type
+#   Uni1 = "Angstrom" 	# Units for axis 1
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   SoR = "Heliocentric" 	# Standard of rest
+ End SpecFrame
+"###,
+        ops: &[
+            (Op::Set("System=VRAD,StdOfRest=LSRK,RestFreq=230.538,SourceVel=10,SourceVRF=BARY,SourceSys=VRAD,RefRA=10:00:00,RefDec=20:00:00,SpecOrigin=5,AlignSpecOffset=1,AlignStdOfRest=Topo,AlignSystem=FREQ,Unit=km/s,Label=Vel,Epoch=2005,ObsLat=N20,GeoLon=W155,Ident=sp,Title=A spectrum"), Out::Done),
+        ],
+        dump: r###" Begin SpecFrame 	# Description of spectral coordinate system
+    Ident = "sp" 	# Permanent Object identification string
+ IsA Object 	# AST Object
+    Title = "A spectrum" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "SPECTRUM" 	# Coordinate system domain
+    Epoch = 2005 	# Julian epoch of observation
+#   Lbl1 = "Vel" 	# Label for axis 1
+    System = "VRAD" 	# Coordinate system type
+    AlSys = "FREQ" 	# Alignment coordinate system
+#   Uni1 = "km/s" 	# Units for axis 1
+    ObsLat = 0.3490658503988659 	# Observers geodetic latitude (rads)
+    ObsLon = -2.7052603405912108 	# Observers geodetic longitude (rads)
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Label = "Vel" 	# Axis Label
+          Unit = "km/s" 	# Axis units
+       End Axis
+ IsA Frame 	# Coordinate system description
+    SoR = "LSRK" 	# Standard of rest
+    AlSoR = "Topocentric" 	# Alignment standard of rest
+    RefRA = 2.617993877991494 	# Reference RA (rads, FK5 J2000)
+    RefDec = 0.3490658503988659 	# Reference Dec (rads, FK5 J2000)
+    RstFrq = 230538000000 	# Rest frequency (Hz)
+    SrcVel = 10009.145365172326 	# Source velocity (m/s)
+    SrcVRF = "Barycentric" 	# Source velocity rest frame
+    SrcSys = "VRAD" 	# Source velocity spectral system
+    AlSpOf = 1 	# Align in offset coords
+    UVrad = "km/s" 	# Preferred units for radio velocity
+    SpOrg = 5 	# Spec offset
+ End SpecFrame
+"###,
+    },
+    Case {
+        name: "dsb_own",
+        fitschan: false,
+        object: r###" Begin DSBSpecFrame 	# Dual sideband spectral axis
+#   Title = "Wavelength" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "DSBSPECTRUM" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Wavelength (LSB)" 	# Label for axis 1
+#   System = "WAVE" 	# Coordinate system type
+#   Uni1 = "Angstrom" 	# Units for axis 1
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   SoR = "Heliocentric" 	# Standard of rest
+ IsA SpecFrame 	# Description of spectral coordinate system
+#   DSBCen = 30000000000 	# Central frequency (Hz topo)
+#   IF = 4000000000 	# Intermediate frequency (Hz)
+#   SideBn = "LSB" 	# Represents lower sideband
+#   AlSdBn = 0 	# Align sidebands?
+ End DSBSpecFrame
+"###,
+        ops: &[
+            (Op::Get("DSBCentre"), Out::Value("99921040.848607361")),
+            (Op::Test("DSBCentre"), Out::Flag(false)),
+            (Op::Set("DSBCentre=230"), Out::Done),
+            (Op::Get("DSBCentre"), Out::Value("230")),
+            (Op::Test("DSBCentre"), Out::Flag(true)),
+            (Op::Get("IF"), Out::Value("4")),
+            (Op::Test("IF"), Out::Flag(false)),
+            (Op::Set("IF=4"), Out::Done),
+            (Op::Get("IF"), Out::Value("4")),
+            (Op::Test("IF"), Out::Flag(true)),
+            (Op::Get("ImagFreq"), Out::Value("25968917.392087247")),
+            (Op::Test("ImagFreq"), Out::Flag(false)),
+            (Op::Set("IF=4 GHz"), Out::Done),
+            (Op::Get("IF"), Out::Value("3.9999999999999996")),
+            (Op::Set("IF=4000 MHz"), Out::Done),
+            (Op::Get("IF"), Out::Value("4")),
+            (Op::Set("IF=-4"), Out::Done),
+            (Op::Get("IF"), Out::Value("-4")),
+            (Op::Get("ImagFreq"), Out::Value("25968901.390521452")),
+            (Op::Set("IF=3 m"), Out::Err(E::Attin, &["astSetAttrib(DSBSpecFrame): Intermediate frequency given in an inappropriate system of units \"3 m\"."])),
+            (Op::Set("IF=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"if=x\" is invalid for a DSBSpecFrame."])),
+            (Op::Get("SideBand"), Out::Value("USB")),
+            (Op::Test("SideBand"), Out::Flag(false)),
+            (Op::Set("SideBand=lsb"), Out::Done),
+            (Op::Get("SideBand"), Out::Value("LSB")),
+            (Op::Test("SideBand"), Out::Flag(true)),
+            (Op::Get("ImagFreq"), Out::Value("25968901.390521452")),
+            (Op::Set("SideBand=USB"), Out::Done),
+            (Op::Get("SideBand"), Out::Value("USB")),
+            (Op::Set("SideBand=lo"), Out::Done),
+            (Op::Get("SideBand"), Out::Value("LO")),
+            (Op::Set("SideBand=observed"), Out::Done),
+            (Op::Get("SideBand"), Out::Value("USB")),
+            (Op::Set("SideBand=image"), Out::Done),
+            (Op::Get("SideBand"), Out::Value("LSB")),
+            (Op::Set("SideBand=bad"), Out::Err(E::Attin, &["astSetAttrib(DSBSpecFrame): The setting \"sideband=bad\" is invalid for a DSBSpecFrame."])),
+            (Op::Set("SideBand= usb "), Out::Done),
+            (Op::Get("SideBand"), Out::Value("USB")),
+            (Op::Clear("SideBand"), Out::Done),
+            (Op::Get("SideBand"), Out::Value("USB")),
+            (Op::Test("SideBand"), Out::Flag(false)),
+            (Op::Get("AlignSideBand"), Out::Value("0")),
+            (Op::Test("AlignSideBand"), Out::Flag(false)),
+            (Op::Set("AlignSideBand=1"), Out::Done),
+            (Op::Get("AlignSideBand"), Out::Value("1")),
+            (Op::Test("AlignSideBand"), Out::Flag(true)),
+            (Op::Clear("AlignSideBand"), Out::Done),
+            (Op::Get("AlignSideBand"), Out::Value("0")),
+            (Op::Test("AlignSideBand"), Out::Flag(false)),
+            (Op::Set("DSBCentre=230 GHz"), Out::Err(E::Attin, &["astSetAttrib(DSBSpecFrame): Value supplied for attribute \"DSBCentre\" (230 GHz) uses units which are inappropriate for the current spectral system (Wavelength)."])),
+            (Op::Get("DSBCentre"), Out::Value("230")),
+            (Op::Set("DSBCentre=1.3 mm"), Out::Done),
+            (Op::Set("DSBCentre=x"), Out::Err(E::Attin, &["astSetAttrib(DSBSpecFrame): The setting \"dsbcentre=x\" is invalid for a DSBSpecFrame."])),
+            (Op::Set("DSBCentre=230000 MHz"), Out::Err(E::Attin, &["astSetAttrib(DSBSpecFrame): Value supplied for attribute \"DSBCentre\" (230000 MHz) uses units which are inappropriate for the current spectral system (Wavelength)."])),
+            (Op::Get("DSBCentre"), Out::Value("13000000")),
+            (Op::Set("ImagFreq=1"), Out::Err(E::Nowrt, &["astSet: The setting \"imagfreq=1\" is invalid for a DSBSpecFrame.", "This is a read-only attribute."])),
+            (Op::Clear("ImagFreq"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"imagfreq\" value for a DSBSpecFrame.", "This is a read-only attribute."])),
+            (Op::Test("ImagFreq"), Out::Flag(false)),
+            (Op::Clear("DSBCentre"), Out::Done),
+            (Op::Get("DSBCentre"), Out::Value("99921040.848607361")),
+            (Op::Test("DSBCentre"), Out::Flag(false)),
+            (Op::Clear("IF"), Out::Done),
+            (Op::Get("IF"), Out::Value("4")),
+            (Op::Test("IF"), Out::Flag(false)),
+            (Op::Set("RestFreq=230.5"), Out::Done),
+            (Op::Get("RestFreq"), Out::Value("230.50000000000003")),
+            (Op::Set("DSBCentre=231"), Out::Done),
+            (Op::Set("System=wave"), Out::Done),
+            (Op::Get("DSBCentre"), Out::Value("231.00000000000003")),
+            (Op::Set("DSBCentre=0.0013"), Out::Done),
+            (Op::Get("DSBCentre"), Out::Value("0.0013000000000000004")),
+            (Op::Get("Class"), Out::Value("DSBSpecFrame")),
+            (Op::Set("Fred=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a DSBSpecFrame."])),
+            (Op::Get("Fred"), Out::Err(E::Badat, &["astGet: The DSBSpecFrame given does not have an attribute called \"fred\"."])),
+            (Op::Set("Label=LSB freq"), Out::Done),
+            (Op::Get("Label"), Out::Value("LSB freq")),
+            (Op::Set("StdOfRest=LSRK"), Out::Done),
+            (Op::Get("StdOfRest"), Out::Value("LSRK")),
+            (Op::Set("GeoLat=N19"), Out::Done),
+            (Op::Get("ObsLat"), Out::Value("N19:00:00.00")),
+            (Op::Get("Unit"), Out::Value("Angstrom")),
+            (Op::Get("Title"), Out::Value("Wavelength (LSRK)")),
+        ],
+        dump: r###" Begin DSBSpecFrame 	# Dual sideband spectral axis
+#   Title = "Wavelength (LSRK)" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "DSBSPECTRUM" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "LSB freq" 	# Label for axis 1
+    System = "WAVE" 	# Coordinate system type
+#   Uni1 = "Angstrom" 	# Units for axis 1
+    ObsLat = 0.33161255787892263 	# Observers geodetic latitude (rads)
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+          Label = "LSB freq" 	# Axis Label
+       End Axis
+ IsA Frame 	# Coordinate system description
+    SoR = "LSRK" 	# Standard of rest
+    RstFrq = 230500000000 	# Rest frequency (Hz)
+ IsA SpecFrame 	# Description of spectral coordinate system
+    DSBCen = 2.3058701734294006e+21 	# Central frequency (Hz topo)
+#   IF = 4000000000 	# Intermediate frequency (Hz)
+#   SideBn = "LSB" 	# Represents lower sideband
+#   AlSdBn = 0 	# Align sidebands?
+ End DSBSpecFrame
+"###,
+    },
+    Case {
+        name: "dsb_dump",
+        fitschan: false,
+        object: r###" Begin DSBSpecFrame 	# Dual sideband spectral axis
+#   Title = "Wavelength" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "DSBSPECTRUM" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Wavelength (LSB)" 	# Label for axis 1
+#   System = "WAVE" 	# Coordinate system type
+#   Uni1 = "Angstrom" 	# Units for axis 1
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+#   SoR = "Heliocentric" 	# Standard of rest
+ IsA SpecFrame 	# Description of spectral coordinate system
+#   DSBCen = 30000000000 	# Central frequency (Hz topo)
+#   IF = 4000000000 	# Intermediate frequency (Hz)
+#   SideBn = "LSB" 	# Represents lower sideband
+#   AlSdBn = 0 	# Align sidebands?
+ End DSBSpecFrame
+"###,
+        ops: &[
+            (Op::Set("DSBCentre=345,IF=-5,SideBand=USB,AlignSideBand=1,RestFreq=345.8,StdOfRest=LSRK,Title=dsb"), Out::Done),
+        ],
+        dump: r###" Begin DSBSpecFrame 	# Dual sideband spectral axis
+    Title = "dsb" 	# Title of coordinate system
+    Naxes = 1 	# Number of coordinate axes
+#   Domain = "DSBSPECTRUM" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Wavelength (USB)" 	# Label for axis 1
+#   System = "WAVE" 	# Coordinate system type
+#   Uni1 = "Angstrom" 	# Units for axis 1
+    Ax1 = 	# Axis number 1
+       Begin Axis 	# Coordinate axis
+       End Axis
+ IsA Frame 	# Coordinate system description
+    SoR = "LSRK" 	# Standard of rest
+    RstFrq = 345800000000 	# Rest frequency (Hz)
+ IsA SpecFrame 	# Description of spectral coordinate system
+    DSBCen = 8688786160748466 	# Central frequency (Hz topo)
+    IF = -5000000000 	# Intermediate frequency (Hz)
+    SideBn = "USB" 	# Represents upper sideband
+    AlSdBn = 1 	# Align sidebands?
+ End DSBSpecFrame
+"###,
+    },
 ];

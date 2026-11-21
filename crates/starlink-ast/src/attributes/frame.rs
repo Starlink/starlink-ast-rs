@@ -24,7 +24,7 @@ use super::mapping::{mapping_clear, mapping_get, mapping_set, mapping_test};
 use super::{
     axis_double_value, axis_int_value, axis_invalid, axis_name, axis_string_value, double_value,
     fmt_decimal_yr, fmt_double, fmt_int, int_value, is_read_only, keyword_value, read_only_clear,
-    read_only_set, scan_whole, sscanf, string_value,
+    read_only_set, scan_whole, string_value, word_value,
 };
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::date_time::read_date_time_checked;
@@ -190,7 +190,7 @@ fn frame_set_own<F: FrameClass + ?Sized>(frame: &mut F, setting: &str) -> Option
         frame.set_title(v)
     } else if let Some((axis, v)) = axis_string_value(setting, "unit") {
         validate_axis(frame, axis, "astSetUnit").and_then(|axis| frame.set_unit(axis, v))
-    } else if let Some(v) = geodetic_value(setting, "obslat") {
+    } else if let Some(v) = word_value(setting, "obslat", 7) {
         match read_geodetic(v, b'N', b'S') {
             Ok(Some(angle)) => frame.set_obs_lat(angle),
             Ok(None) => Err(AstError::new(
@@ -202,7 +202,7 @@ fn frame_set_own<F: FrameClass + ?Sized>(frame: &mut F, setting: &str) -> Option
             )),
             Err(e) => Err(e),
         }
-    } else if let Some(v) = geodetic_value(setting, "obslon") {
+    } else if let Some(v) = word_value(setting, "obslon", 7) {
         match read_geodetic(v, b'E', b'W') {
             Ok(Some(angle)) => frame.set_obs_lon(angle),
             Ok(None) => Err(AstError::new(
@@ -225,19 +225,6 @@ fn frame_set_own<F: FrameClass + ?Sized>(frame: &mut F, setting: &str) -> Option
     } else {
         return None;
     })
-}
-
-/// The value of an ObsLat or ObsLon setting: C's `"<name>=%n%*s %n"` with
-/// `nc >= 7`, which is any setting whose value starts with a word, from the
-/// character after the `=`.
-// C tests the count against 7, the length of "obslat=", not against the
-// length of the setting, so text after the first word is part of the value.
-fn geodetic_value<'a>(setting: &'a str, name: &str) -> Option<&'a str> {
-    if !setting.starts_with(name) {
-        return None;
-    }
-    let scan = sscanf(setting, &format!("{name}=%n%*s %n"));
-    (scan.ret == 0 && scan.count(1) >= 7).then(|| &setting[scan.count(0)..])
 }
 
 /// Frame's `SetAttrib`.

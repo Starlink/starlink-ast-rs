@@ -1826,6 +1826,14 @@ For a setting that is only the letter, `ObsLat=N`, the rest is empty, `astUnform
 Oracle-verified as far as it can be: the setting is accepted without an error.
 The port accepts it too and stores zero (`attributes::frame`), since there is no value to mirror.
 
+### `astSet( specframe, "Top=x" )` recurses until the stack overflows
+
+SpecFrame's and TimeFrame's `SetAttrib` take `Direction`, `Bottom`, `Top`, `Format`, `Label`, `Symbol` and `Unit` without an axis index: they add `(1)` after the name and call the Frame class's `SetAttrib` directly.
+Frame's `SetAttrib` has an arm for `top(%d)= %lg`, which does not match a value that is not a number, so the setting falls to its generic axis path: the Axis object rejects `top=x`, the primary Frame of the axis is the SpecFrame itself, and `astSetAttrib( pfrm, "top=x" )` hands the setting back to SpecFrame's `SetAttrib` without the index, which adds `(1)` again.
+Nothing ends the cycle, so `astSet( specframe, "Top=x" )`, `"Bottom=x"` or `"Direction=x"` on a SpecFrame, DSBSpecFrame or TimeFrame runs until the stack overflows.
+Oracle-verified: `tools/oracle_fixtures/attr_strings_probe.c` dies with a segmentation fault on `Top=high` for an `astSpecFrame`, so those settings are left out of its cases.
+The port stops at the second visit (`attributes::ShortcutGuard`) and reports the Axis object's error, `astSet: The attribute setting "top=high" is invalid for a Axis.`, as both libraries do for a plain Frame of one axis; `an_unreadable_axis_value_without_an_index_is_an_error` in `crates/starlink-ast/tests/test_attr_strings.rs` pins it.
+
 ## Addressed here, and not going upstream
 
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.

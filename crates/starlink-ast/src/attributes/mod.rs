@@ -44,6 +44,7 @@ pub(crate) mod object;
 #[cfg(feature = "attribute-strings")]
 mod public;
 pub(crate) mod skyframe;
+pub(crate) mod specframe;
 
 #[cfg(feature = "attribute-strings")]
 pub use public::Attributes;
@@ -181,7 +182,7 @@ pub(crate) fn split_setting_c(name: &str, value: &str) -> (Vec<String>, String) 
 
 /// The length of a string without its trailing white space.
 // C: memory.c astChrLen.
-fn chr_len(text: &str) -> usize {
+pub(crate) fn chr_len(text: &str) -> usize {
     let b = text.as_bytes();
     let mut len = b.len();
     while len > 0 && is_space(b[len - 1]) {
@@ -529,6 +530,60 @@ pub(crate) fn axis_name(attrib: &str, name: &str) -> Option<i32> {
 /// A quick test that `text` starts with `name` and then `(`.
 fn indexed(text: &str, name: &str) -> Option<()> {
     text.strip_prefix(name)?.starts_with('(').then_some(())
+}
+
+/// The value of `"<name>=%n%*s %n"` when the count is at least `min`: a
+/// setting whose value starts with a word, from the character after the
+/// `=`, so with any white space before the word and anything after it.
+// C tests such a count against the length of "<name>=", not against the
+// length of the setting, so text after the first word is part of the value.
+pub(crate) fn word_value<'a>(setting: &'a str, name: &str, min: usize) -> Option<&'a str> {
+    named(setting, name)?;
+    let scan = sscanf(setting, &format!("{name}=%n%*s %n"));
+    (scan.ret == 0 && scan.count(1) >= min).then(|| &setting[scan.count(0)..])
+}
+
+/// The value of `"<name>=%n%*s %n"` read to the end of the setting: one
+/// word, from the character after the `=`, so with any white space around
+/// it.
+pub(crate) fn word_value_whole<'a>(setting: &'a str, name: &str) -> Option<&'a str> {
+    named(setting, name)?;
+    let scan = scan_whole(setting, &format!("{name}=%n%*s %n"), 0)?;
+    setting.get(scan.count(0)..)
+}
+
+/// One value through a Mapping of one input and one output.
+// C: astTran1 with one point.
+pub(crate) fn tran1(
+    map: &dyn crate::mappings::Mapping,
+    value: f64,
+) -> crate::error::AstResult<f64> {
+    let points = crate::coords::PointSet::from_rows([[value]]);
+    Ok(map.transform(&points, true)?.point(0)[0])
+}
+
+thread_local! {
+    /// Whether a SpecFrame or TimeFrame is handing an axis attribute given
+    /// without an index to the Frame class.
+    static IN_SHORTCUT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Held while a class of one axis hands a setting such as `top=5` to the
+/// Frame class as `top(1)=5`; see `specframe::specframe_set`.
+pub(crate) struct ShortcutGuard;
+
+impl ShortcutGuard {
+    /// Enter the hand-over: `None` if one is already under way in this
+    /// thread, which means the Frame class has handed the setting back.
+    pub(crate) fn enter() -> Option<Self> {
+        (!IN_SHORTCUT.with(|flag| flag.replace(true))).then_some(ShortcutGuard)
+    }
+}
+
+impl Drop for ShortcutGuard {
+    fn drop(&mut self) {
+        IN_SHORTCUT.with(|flag| flag.set(false));
+    }
 }
 
 /// Whether the setting is of the read-only attribute `name`:

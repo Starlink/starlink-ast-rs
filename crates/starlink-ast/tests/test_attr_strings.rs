@@ -70,6 +70,7 @@ const NO_RUST_VALUE_EXCLUDED: &[(&str, Op, &str)] = &[
 const OBJECT_AND_MAPPING: &[&str] = &["frame2_", "frame1_object"];
 const FRAME: &[&str] = &["frame_"];
 const SKY: &[&str] = &["sky_"];
+const SPECTRAL: &[&str] = &["spec_", "dsb_"];
 
 /// What the Rust library did with an operation.
 #[derive(Debug, Clone, PartialEq)]
@@ -216,6 +217,36 @@ fn skyframe_names_match_the_c_library() {
 }
 
 #[test]
+fn spectral_names_match_the_c_library() {
+    replay(SPECTRAL);
+}
+
+/// C's attribute functions call each other without end for a Top, Bottom
+/// or Direction given without an index and with a value that is not a
+/// number, on a Frame class of one axis that takes those names without an
+/// index (`c-library-quirks.md`), so there is no C outcome to compare with.
+/// The port reports the Axis object's error, as it does for a plain Frame.
+#[test]
+fn an_unreadable_axis_value_without_an_index_is_an_error() {
+    use starlink_ast::frames::{SpecFrame, SpecSystem};
+    let mut spec = SpecFrame::new(SpecSystem::Freq);
+    for setting in ["Top=high", "Bottom=low", "Direction=x"] {
+        let err = spec.set_attributes(setting).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Badat, "{setting}");
+        assert_eq!(
+            err.message(),
+            format!(
+                "astSet: The attribute setting \"{}\" is invalid for a Axis.",
+                setting.to_lowercase()
+            )
+        );
+    }
+    // A value that can be read still goes through.
+    spec.set_attributes("Top=5").unwrap();
+    assert_eq!(spec.get_attribute("Top").unwrap(), "5");
+}
+
+#[test]
 fn cases_with_no_rust_value_still_differ() {
     for &(name, op, reason) in NO_RUST_VALUE_EXCLUDED {
         let case = CASES
@@ -237,7 +268,7 @@ fn cases_with_no_rust_value_still_differ() {
 
 #[test]
 fn every_case_is_replayed() {
-    let replayed = [OBJECT_AND_MAPPING, FRAME, SKY];
+    let replayed = [OBJECT_AND_MAPPING, FRAME, SKY, SPECTRAL];
     for case in CASES {
         assert!(
             replayed

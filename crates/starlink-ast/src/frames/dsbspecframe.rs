@@ -952,6 +952,26 @@ impl DSBSpecFrame {
 // ---------------------------------------------------------------------------
 
 impl Frame for DSBSpecFrame {
+    // The attribute strings of C's DSBSpecFrame class.
+    fn attr_set(&mut self, setting: &str) -> AstResult<()> {
+        crate::attributes::specframe::dsbspecframe_set(self, setting)
+    }
+    fn attr_get(&self, name: &str) -> AstResult<String> {
+        crate::attributes::specframe::dsbspecframe_get(self, name)
+    }
+    fn attr_test(&self, name: &str) -> AstResult<bool> {
+        crate::attributes::specframe::dsbspecframe_test(self, name)
+    }
+    fn attr_clear(&mut self, name: &str) -> AstResult<()> {
+        crate::attributes::specframe::dsbspecframe_clear(self, name)
+    }
+    fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
+        Frame::attr_axis(&self.spec, axis)
+    }
+    fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
+        Frame::attr_axis_mut(&mut self.spec, axis)
+    }
+
     // A DSBSpecFrame is a SpecFrame in C, so its Frame-class attributes,
     // and its Object-class Ident, are the SpecFrame's; only the Domain
     // default is its own (dsbspecframe.c `GetDomain`).

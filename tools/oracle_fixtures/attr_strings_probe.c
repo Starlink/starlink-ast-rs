@@ -430,6 +430,125 @@ static const struct acase cases[] = {
            "Label(1)=LON,Digits(2)=9,Ident(2)=lat axis,CentreZero(1)=1,"
            "Title=sky,AlignSystem=ICRS,Format(1)=hms.2" ),
    } },
+
+/* SpecFrame's own attributes. */
+   { "spec_system", "spec", {
+      SEE( "System" ), SET( "System=wave" ), SEE( "System" ), GET( "Unit" ),
+      GET( "Label" ), SET( "System=FREQ" ), GET( "System" ),
+      SET( "System=vrad" ), GET( "System" ), GET( "Unit" ),
+      SET( "System=nonsense" ), SET( "System=ENER" ), GET( "System" ),
+      SET( "System=VOPT" ), GET( "System" ), SET( "System=zopt" ),
+      GET( "System" ), SET( "System=beta" ), GET( "System" ),
+      SET( "System=VELO" ), GET( "System" ), SET( "System=awav" ),
+      GET( "System" ), SET( "System=wavn" ), GET( "System" ),
+      SET( "System=VRADIO" ), GET( "System" ), SET( "System=redshift" ),
+      GET( "System" ), SET( "System=Cartesian" ), CLEAR( "System" ),
+      SEE( "System" ), SEE( "AlignSystem" ),
+      CYCLE( "AlignSystem", "AlignSystem=freq" ), SET( "AlignSystem=bad" ),
+      SEE( "StdOfRest" ), SET( "StdOfRest=LSRK" ), SEE( "StdOfRest" ),
+      SET( "StdOfRest=topo" ), GET( "StdOfRest" ), SET( "StdOfRest=nonsense" ),
+      SET( "StdOfRest= LSRD" ), GET( "StdOfRest" ), SET( "StdOfRest=LSRD " ),
+      GET( "StdOfRest" ), SET( "StdOfRest=geo" ), GET( "StdOfRest" ),
+      SET( "StdOfRest=BARY" ), GET( "StdOfRest" ), SET( "StdOfRest=helio" ),
+      GET( "StdOfRest" ), SET( "StdOfRest=galactic" ), GET( "StdOfRest" ),
+      SET( "StdOfRest=Local_group" ), GET( "StdOfRest" ),
+      SET( "StdOfRest=source" ), GET( "StdOfRest" ), SET( "StdOfRest=LSR" ),
+      GET( "StdOfRest" ), CLEAR( "StdOfRest" ), SEE( "StdOfRest" ),
+      SEE( "AlignStdOfRest" ), CYCLE( "AlignStdOfRest", "AlignStdOfRest=bary" ),
+      SET( "AlignStdOfRest=bad" ), SET( "AlignStdOfRest= bary" ),
+      SEE( "AlignSpecOffset" ), CYCLE( "AlignSpecOffset", "AlignSpecOffset=1" ),
+   } },
+   { "spec_values", "spec", {
+      SEE( "RestFreq" ), SET( "RestFreq=230.5" ), SEE( "RestFreq" ),
+      SET( "RestFreq=1.3 mm" ), GET( "RestFreq" ), SET( "RestFreq=345 GHz" ),
+      GET( "RestFreq" ), SET( "RestFreq=1e-3 eV" ), GET( "RestFreq" ),
+      SET( "RestFreq=1 kg" ), SET( "RestFreq=0 m" ), SET( "RestFreq=x" ),
+      SET( "RestFreq=5 nonsense" ), SET( "RestFreq= 115.27 " ),
+      GET( "RestFreq" ), CLEAR( "RestFreq" ), SEE( "RestFreq" ),
+      SEE( "SourceVel" ), SEE( "SourceSys" ), SET( "SourceVel=20" ),
+      SEE( "SourceVel" ), SET( "SourceSys=VRAD" ), SEE( "SourceSys" ),
+      GET( "SourceVel" ), SET( "SourceVel=30" ), GET( "SourceVel" ),
+      SET( "SourceSys=ZOPT" ), GET( "SourceVel" ), SET( "SourceSys=bad" ),
+      GET( "SourceSys" ), SET( "SourceSys=FREQ" ), GET( "SourceSys" ),
+      CLEAR( "SourceSys" ), SEE( "SourceSys" ), CLEAR( "SourceVel" ),
+      SEE( "SourceVel" ),
+      SEE( "SourceVRF" ), CYCLE( "SourceVRF", "SourceVRF=LSRK" ),
+      SET( "SourceVRF=bad" ),
+      SEE( "SpecOrigin" ), SET( "SpecOrigin=230 GHz" ), SEE( "SpecOrigin" ),
+      SET( "SpecOrigin=100" ), GET( "SpecOrigin" ), SET( "Unit=MHz" ),
+      GET( "SpecOrigin" ), SET( "SpecOrigin=5 km/s" ), SET( "SpecOrigin=x" ),
+      GET( "SpecOrigin" ), CLEAR( "SpecOrigin" ), SEE( "SpecOrigin" ),
+      SEE( "RefRA" ), SEE( "RefDec" ), SET( "RefRA=10:00:00" ), SEE( "RefRA" ),
+      SET( "RefDec=-20:30:00" ), SEE( "RefDec" ), SET( "RefRA=bad" ),
+      SET( "RefDec=bad" ), SET( "RefRA=10:00:00 x" ), SET( "RefRA= 1:00" ),
+      GET( "RefRA" ), SET( "RefDec=45" ), GET( "RefDec" ), CLEAR( "RefRA" ),
+      CLEAR( "RefDec" ), SEE( "RefRA" ), SEE( "RefDec" ),
+      SEE( "GeoLat" ), SET( "GeoLat=N19:49:31" ), SEE( "GeoLat" ),
+      GET( "ObsLat" ), SEE( "GeoLon" ), SET( "GeoLon=W155:28:22" ),
+      SEE( "GeoLon" ), GET( "ObsLon" ), SET( "GeoLat=bad" ),
+      CLEAR( "GeoLat" ), SEE( "GeoLat" ), CLEAR( "GeoLon" ), SEE( "ObsLon" ),
+   } },
+
+/* The axis attributes of a SpecFrame without an index, and what it
+   inherits. A Top, Bottom or Direction without an index and with a value
+   that is not a number is left out: C's SetAttrib functions call each other
+   without end for it (c-library-quirks.md) and the probe would crash. */
+   { "spec_axis", "spec", {
+      SET( "Unit=GHz" ), SEE( "Unit" ), GET( "Unit(1)" ), SET( "Label=Freq" ),
+      SEE( "Label" ), SET( "Symbol=f" ), SEE( "Symbol" ),
+      SET( "Format=%.3f" ), SEE( "Format" ), SET( "Direction=0" ),
+      SEE( "Direction" ), SET( "Top=500" ), SEE( "Top" ), SET( "Bottom=1" ),
+      SEE( "Bottom" ), CLEAR( "Unit" ), SEE( "Unit" ), CLEAR( "Label" ),
+      SEE( "Label" ), CLEAR( "Symbol" ), SEE( "Symbol" ), CLEAR( "Format" ),
+      SEE( "Format" ), CLEAR( "Direction" ), CLEAR( "Top" ), CLEAR( "Bottom" ),
+      SEE( "Top" ), SET( "Unit(1)=MHz" ), GET( "Unit" ),
+      SET( "Unit=furlongs" ), GET( "Unit" ), SET( "Unit(2)=x" ),
+      SET( "Label(1)=L1" ),
+      GET( "Label(1)" ), SEE( "Digits" ), SET( "Digits=5" ),
+      GET( "Digits(1)" ), GET( "Class" ), GET( "Class(1)" ),
+      SET( "Ident(1)=ax" ), GET( "Ident(1)" ), GET( "Naxes" ), GET( "Title" ),
+      GET( "Domain" ), SET( "Epoch=2001" ), GET( "Epoch" ), SET( "Fred=1" ),
+      GET( "Fred" ), TEST( "Fred" ), CLEAR( "Fred" ), GET( "NormUnit" ),
+      GET( "InternalUnit" ), SET( "System(1)=wave" ), GET( "System" ),
+      GET( "Nin" ), GET( "MaxAxes" ), SET( "Unit=" ), GET( "Unit" ),
+   } },
+   { "spec_dump", "spec", {
+      SET( "System=VRAD,StdOfRest=LSRK,RestFreq=230.538,SourceVel=10,"
+           "SourceVRF=BARY,SourceSys=VRAD,RefRA=10:00:00,RefDec=20:00:00,"
+           "SpecOrigin=5,AlignSpecOffset=1,AlignStdOfRest=Topo,"
+           "AlignSystem=FREQ,Unit=km/s,Label=Vel,Epoch=2005,ObsLat=N20,"
+           "GeoLon=W155,Ident=sp,Title=A spectrum" ),
+   } },
+
+/* DSBSpecFrame's own attributes, and SpecFrame's through it. */
+   { "dsb_own", "dsb", {
+      SEE( "DSBCentre" ), SET( "DSBCentre=230" ), SEE( "DSBCentre" ),
+      SEE( "IF" ), SET( "IF=4" ), SEE( "IF" ), SEE( "ImagFreq" ),
+      SET( "IF=4 GHz" ), GET( "IF" ), SET( "IF=4000 MHz" ), GET( "IF" ),
+      SET( "IF=-4" ), GET( "IF" ), GET( "ImagFreq" ), SET( "IF=3 m" ),
+      SET( "IF=x" ), SEE( "SideBand" ), SET( "SideBand=lsb" ),
+      SEE( "SideBand" ), GET( "ImagFreq" ), SET( "SideBand=USB" ),
+      GET( "SideBand" ), SET( "SideBand=lo" ), GET( "SideBand" ),
+      SET( "SideBand=observed" ), GET( "SideBand" ), SET( "SideBand=image" ),
+      GET( "SideBand" ), SET( "SideBand=bad" ), SET( "SideBand= usb " ),
+      GET( "SideBand" ), CLEAR( "SideBand" ), SEE( "SideBand" ),
+      SEE( "AlignSideBand" ), CYCLE( "AlignSideBand", "AlignSideBand=1" ),
+      SET( "DSBCentre=230 GHz" ), GET( "DSBCentre" ),
+      SET( "DSBCentre=1.3 mm" ), SET( "DSBCentre=x" ),
+      SET( "DSBCentre=230000 MHz" ), GET( "DSBCentre" ),
+      SET( "ImagFreq=1" ), CLEAR( "ImagFreq" ), TEST( "ImagFreq" ),
+      CLEAR( "DSBCentre" ), SEE( "DSBCentre" ), CLEAR( "IF" ), SEE( "IF" ),
+      SET( "RestFreq=230.5" ), GET( "RestFreq" ), SET( "DSBCentre=231" ),
+      SET( "System=wave" ), GET( "DSBCentre" ), SET( "DSBCentre=0.0013" ),
+      GET( "DSBCentre" ), GET( "Class" ), SET( "Fred=1" ), GET( "Fred" ),
+      SET( "Label=LSB freq" ), GET( "Label" ), SET( "StdOfRest=LSRK" ),
+      GET( "StdOfRest" ), SET( "GeoLat=N19" ), GET( "ObsLat" ),
+      GET( "Unit" ), GET( "Title" ),
+   } },
+   { "dsb_dump", "dsb", {
+      SET( "DSBCentre=345,IF=-5,SideBand=USB,AlignSideBand=1,RestFreq=345.8,"
+           "StdOfRest=LSRK,Title=dsb" ),
+   } },
 };
 
 /* The object a case starts from. */
@@ -443,6 +562,8 @@ static AstObject *make( const char *id ) {
       astPermAxes( sky, perm );
       return (AstObject *) sky;
    }
+   if( !strcmp( id, "spec" ) ) return (AstObject *) astSpecFrame( " " );
+   if( !strcmp( id, "dsb" ) ) return (AstObject *) astDSBSpecFrame( " " );
    if( !strcmp( id, "skyaxis1" ) ) {
       int axes[ 1 ] = { 1 };
       AstSkyFrame *sky = astSkyFrame( " " );
@@ -463,6 +584,22 @@ static const char *code_name( int status ) {
       case AST__AXIIN: return "Axiin";
       case AST__OPT: return "Opt";
       case AST__BADOC: return "Badoc";
+      case AST__BADUN: return "Badun";
+      case AST__INTER: return "Inter";
+      case AST__SCSIN: return "Scsin";
+      case AST__DTERR: return "Dterr";
+      case AST__ILOST: return "Ilost";
+      case AST__PLFMT: return "Plfmt";
+      case AST__GRFER: return "Grfer";
+      case AST__ATGER: return "Atger";
+      case AST__ATSER: return "Atser";
+      case AST__BDFTS: return "Bdfts";
+      case AST__UNFER: return "Unfer";
+      case AST__BADIN: return "Badin";
+      case AST__OBJIN: return "Objin";
+      case AST__FRMIN: return "Frmin";
+      case AST__INNCO: return "Innco";
+      case AST__NOFTS: return "Nofts";
       default:
          fprintf( stderr, "status %d has no name in code_name\n", status );
          exit( 1 );
@@ -589,6 +726,7 @@ int main( void ) {
          const char *value;
          int flag;
          printf( "            (" );
+         fflush( stdout );
          switch( op->kind ) {
             case OP_SET:
                printf( "Op::Set(" ); rs( op->a ); printf( "), " );
