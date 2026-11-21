@@ -642,7 +642,7 @@ impl Region for Circle {
         if frm.naxes() != 2 {
             return Ok(None);
         }
-        super::traced_positions(self, dist, || {
+        super::traced_positions(&self.data.frameset, dist, || {
             let centre = &self.data.points[0];
             let radius = self.radius()?;
             let mut x = Vec::with_capacity(dist.len());

@@ -11,13 +11,14 @@
 
 // Generated; formatted by its generator rather than rustfmt.
 #[rustfmt::skip]
-#[allow(dead_code)] // The CmpRegion cases are tested with CmpRegion tracing.
 #[path = "region_trace_oracle/cases.rs"]
 mod cases;
 
-use crate::common::c_value_eq;
+use crate::common::{assert_c_text, c_value_eq, native_dump};
+use starlink_ast::AnyObject;
 use starlink_ast::constants::BAD_VALUE;
 use starlink_ast::frames::{BasicFrame, BasicFrameBuilder, Frame, SkyFrame, SkySystem};
+use starlink_ast::mappings::Mapping;
 use starlink_ast::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, DynRegion, EllipseBuilder,
     IntervalBuilder, Moc, PointListBuilder, PolygonBuilder, Region,
@@ -243,4 +244,43 @@ fn an_empty_dist_only_answers_support() {
     let reg = make_region("circle2d");
     let traced = reg.reg_trace(&[]).unwrap().expect("a 2-D Circle traces");
     assert_eq!(traced.npoint(), 0);
+}
+
+#[test]
+fn cmpregion_reg_trace_matches_the_c_library() {
+    check_trace_cases(cases::CMP_TRACE_CASES);
+}
+
+/// C checks its first component twice where it means both, so a CmpRegion
+/// whose second component cannot be traced claims to be traceable and then
+/// reads positions from arrays nothing filled. The port keeps the claim and
+/// gives bad positions.
+#[test]
+fn an_untraceable_second_component_gives_bad_positions() {
+    for &(id, supported) in cases::CMP_UNDEFINED_CASES {
+        let reg = make_region(id);
+        assert_eq!(reg.reg_trace(&[]).unwrap().is_some(), supported, "{id}");
+        let got = reg.reg_trace(cases::DIST_UP).unwrap().unwrap();
+        assert_eq!(got.npoint(), cases::DIST_UP.len(), "{id}");
+        for j in 0..got.ncoord() {
+            assert!(
+                got.axis(j).iter().all(|&v| v == BAD_VALUE),
+                "{id}: axis {j}"
+            );
+        }
+    }
+}
+
+#[test]
+fn reg_split_matches_the_c_library() {
+    for &(id, want) in cases::SPLIT_CASES {
+        let parts = make_region(id).reg_split().unwrap();
+        assert_eq!(parts.len(), want.len(), "{id}: parts");
+        for (i, (part, want)) in parts.iter().zip(want).enumerate() {
+            let dump =
+                native_dump(&AnyObject::from_mapping(part.as_ref() as &dyn Mapping).unwrap())
+                    .unwrap();
+            assert_c_text(&dump, want, &format!("{id}: part {i}"));
+        }
+    }
 }
