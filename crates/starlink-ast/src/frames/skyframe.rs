@@ -1792,6 +1792,27 @@ impl SkyFrame {
 }
 
 impl Frame for SkyFrame {
+    // The attribute strings of C's SkyFrame class.
+    fn attr_set(&mut self, setting: &str) -> AstResult<()> {
+        crate::attributes::skyframe::skyframe_set(self, setting)
+    }
+    fn attr_get(&self, name: &str) -> AstResult<String> {
+        crate::attributes::skyframe::skyframe_get(self, name)
+    }
+    fn attr_test(&self, name: &str) -> AstResult<bool> {
+        crate::attributes::skyframe::skyframe_test(self, name)
+    }
+    fn attr_clear(&mut self, name: &str) -> AstResult<()> {
+        crate::attributes::skyframe::skyframe_clear(self, name)
+    }
+    fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
+        Ok(self.axes[self.physical_axis(axis)?].attr_ref())
+    }
+    fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
+        let phys = self.physical_axis(axis)?;
+        Ok(self.axes[phys].attr_mut())
+    }
+
     fn axis_perm(&self) -> Vec<usize> {
         self.perm.to_vec()
     }

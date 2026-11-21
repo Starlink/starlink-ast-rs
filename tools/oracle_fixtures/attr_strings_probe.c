@@ -314,12 +314,135 @@ static const struct acase cases[] = {
       SET( "Label=" ), GET( "Label" ), SET( "Top=high" ), SET( "Label" ),
       GET( "Title" ), SET( "Title=one" ), GET( "Title" ),
    } },
+
+/* SkyFrame's own attributes. */
+   { "sky_own", "sky", {
+      SEE( "AsTime(1)" ), SEE( "AsTime(2)" ), CYCLE( "AsTime(2)", "AsTime(2)=1" ),
+      SET( "AsTime(1)=0" ), SEE( "AsTime(1)" ), GET( "Format(1)" ),
+      GET( "Unit(1)" ), CLEAR( "AsTime(1)" ), SET( "AsTime(3)=1" ),
+      GET( "AsTime(3)" ), TEST( "AsTime(0)" ), CLEAR( "AsTime(3)" ),
+      GET( "AsTime" ), SET( "AsTime=1" ), SET( "AsTime(1)=x" ),
+      SEE( "Equinox" ), SET( "Equinox=B1950" ), SEE( "Equinox" ),
+      SET( "Equinox=J2010.5" ), GET( "Equinox" ), SET( "Equinox=1975" ),
+      GET( "Equinox" ), SET( "Equinox=2001-01-01" ), GET( "Equinox" ),
+      SET( "Equinox=nonsense" ), SET( "Equinox=2001-01-01 25:00" ),
+      CLEAR( "Equinox" ), SEE( "Equinox" ),
+      SEE( "NegLon" ), CYCLE( "NegLon", "NegLon=1" ), SET( "NegLon=-3" ),
+      GET( "NegLon" ), CLEAR( "NegLon" ),
+      SEE( "SkyTol" ), CYCLE( "SkyTol", "SkyTol=0.01" ), SET( "SkyTol=x" ),
+      SEE( "Projection" ), CYCLE( "Projection", "Projection=gnomonic tan" ),
+      SEE( "AlignOffset" ), CYCLE( "AlignOffset", "AlignOffset=1" ),
+      SET( "AlignOffset=9" ), GET( "AlignOffset" ),
+      SEE( "LatAxis" ), SEE( "LonAxis" ), SEE( "IsLatAxis(1)" ),
+      SEE( "IsLatAxis(2)" ), SEE( "IsLonAxis(1)" ), GET( "IsLatAxis(3)" ),
+      GET( "IsLonAxis(0)" ), SET( "LatAxis=1" ), SET( "LonAxis=2" ),
+      SET( "IsLatAxis(1)=1" ), SET( "islonaxisfoo" ), CLEAR( "LatAxis" ),
+      CLEAR( "LonAxis" ), CLEAR( "IsLatAxis(1)" ), CLEAR( "islonaxis" ),
+      TEST( "islataxisxyz" ), GET( "IsLatAxis" ), GET( "islonaxis" ),
+   } },
+   { "sky_system", "sky", {
+      SEE( "System" ), SET( "System=Galactic" ), SEE( "System" ),
+      GET( "Label(1)" ), GET( "Title" ), SET( "System=FK4" ), GET( "System" ),
+      GET( "Equinox" ), GET( "Epoch" ), GET( "Title" ),
+      SET( "System=nonsense" ), SET( "System=fk5 " ), GET( "System" ),
+      SET( "System=ICRS" ), GET( "System" ), SET( "System=ecliptic" ),
+      GET( "System" ), SET( "System=AzEl" ), GET( "System" ),
+      SET( "System=unknown" ), GET( "System" ), SET( "System=Cartesian" ),
+      SET( "System=SUPERGALACTIC" ), GET( "System" ),
+      SET( "System=HELIOECLIPTIC" ), GET( "System" ), SET( "System=GAPPT" ),
+      GET( "System" ), SET( "System=APPARENT" ), GET( "System" ),
+      SET( "System=J2000" ), GET( "System" ), SET( "System=FK4-NO-E" ),
+      GET( "System" ), SET( "System=FK4_NO_E" ), GET( "System" ),
+      SET( "System=EQUATORIAL" ), GET( "System" ), SET( "System=GEOCENTRIC" ),
+      GET( "System" ), SET( "System=FK5" ), CLEAR( "System" ), SEE( "System" ),
+      SEE( "AlignSystem" ), CYCLE( "AlignSystem", "AlignSystem=FK5" ),
+      SET( "AlignSystem=bad" ), SET( "AlignSystem=galactic" ),
+      GET( "AlignSystem" ),
+   } },
+   { "sky_ref", "sky", {
+      SEE( "SkyRef" ), SEE( "SkyRef(1)" ), SEE( "SkyRefIs" ), SEE( "SkyRefP" ),
+      SEE( "SkyRefP(2)" ),
+      SET( "SkyRef=12:30:00,-30:00:00" ), SEE( "SkyRef" ), GET( "SkyRef(1)" ),
+      GET( "SkyRef(2)" ), TEST( "SkyRef(1)" ), SET( "SkyRef(2)=0.5" ),
+      GET( "SkyRef" ), GET( "SkyRef(2)" ),
+      SET( "SkyRef= 1:00:00 , 10:00:00 " ), GET( "SkyRef" ),
+      SET( "SkyRef=12:30:00" ), SET( "SkyRef=12:30:00;10:00" ),
+      SET( "SkyRef=bad,bad" ), SET( "SkyRef=1:00:00,10:00:00 x" ),
+      GET( "SkyRef" ), SET( "SkyRef(3)=0.1" ), GET( "SkyRef(3)" ),
+      TEST( "SkyRef(0)" ), CLEAR( "SkyRef(3)" ), SET( "SkyRef(1)=x" ),
+      SET( "SkyRefIs=Origin" ), SEE( "SkyRefIs" ), SET( "SkyRefIs=pole" ),
+      GET( "SkyRefIs" ), SET( "SkyRefIs=ignored " ), GET( "SkyRefIs" ),
+      SET( "SkyRefIs=bad" ), SET( "SkyRefIs= Pole" ), GET( "SkyRefIs" ),
+      CLEAR( "SkyRefIs" ), SEE( "SkyRefIs" ),
+      SET( "SkyRefP=0:00:00,80:00:00" ), SEE( "SkyRefP" ), GET( "SkyRefP(1)" ),
+      GET( "SkyRefP(2)" ), SET( "SkyRefP(1)=0.25" ), GET( "SkyRefP" ),
+      SET( "SkyRefP=junk" ), SET( "SkyRefP(4)=1" ), GET( "SkyRefP(4)" ),
+      TEST( "SkyRefP(4)" ), CLEAR( "SkyRefP(4)" ), CLEAR( "SkyRefP(1)" ),
+      SEE( "SkyRefP(1)" ), SEE( "SkyRefP" ), CLEAR( "SkyRefP" ),
+      SEE( "SkyRefP" ),
+      CLEAR( "SkyRef(1)" ), SEE( "SkyRef" ), SEE( "SkyRef(1)" ),
+      SEE( "SkyRef(2)" ), CLEAR( "SkyRef" ), SEE( "SkyRef" ),
+      SET( "Digits=10" ), SET( "SkyRef=1:02:03.456,7:08:09.12" ),
+      GET( "SkyRef" ), SET( "Format(1)=dms.1" ), GET( "SkyRef" ),
+   } },
+
+/* Names with an axis index on a SkyFrame, and the Frame names it inherits. */
+   { "sky_axis_path", "sky", {
+      SET( "Equinox(1)=J2010" ), GET( "Equinox" ), GET( "Equinox(2)" ),
+      TEST( "Equinox(1)" ), CLEAR( "Equinox(2)" ), SEE( "Equinox" ),
+      SEE( "IsLatitude(1)" ), SEE( "IsLatitude(2)" ), SET( "IsLatitude(2)=0" ),
+      SEE( "IsLatitude(2)" ), CLEAR( "IsLatitude(2)" ), SEE( "CentreZero(1)" ),
+      SEE( "CentreZero(2)" ), SET( "CentreZero(1)=1" ), SEE( "CentreZero(1)" ),
+      GET( "Class(1)" ), GET( "Class(2)" ), SET( "Ident(1)=lon" ),
+      GET( "Ident(1)" ), SET( "Fred(1)=1" ), GET( "Fred(2)" ),
+      SET( "NegLon(1)=1" ), GET( "NegLon" ), GET( "System(1)" ),
+      SET( "System(2)=Galactic" ), GET( "System" ), CLEAR( "System(1)" ),
+      SEE( "Label(1)" ), CYCLE( "Label(2)", "Label(2)=Dec label" ),
+      GET( "Symbol(1)" ), GET( "Symbol(2)" ), GET( "Unit(2)" ),
+      GET( "Format(1)" ), SET( "Format(1)=dms.3" ), GET( "Format(1)" ),
+      GET( "Unit(1)" ), TEST( "Format(1)" ), CLEAR( "Format(1)" ),
+      GET( "Direction(1)" ), GET( "Direction(2)" ), GET( "Top(2)" ),
+      GET( "Bottom(2)" ), GET( "Top(1)" ), SEE( "Title" ), SEE( "Domain" ),
+      SEE( "Epoch" ), GET( "Digits" ), GET( "Digits(1)" ),
+      GET( "NormUnit(1)" ), GET( "InternalUnit(1)" ), GET( "InternalUnit(2)" ),
+      GET( "Naxes" ), GET( "Nin" ), GET( "Class" ), GET( "MaxAxes" ),
+      GET( "MinAxes" ), GET( "ObsLat" ), SET( "Label(3)=x" ),
+      SET( "Epoch=1990.5" ), GET( "Epoch" ), GET( "Title" ),
+      SET( "Fred=1" ), GET( "Fred" ), TEST( "Fred" ), CLEAR( "Fred" ),
+   } },
+   { "sky_perm", "sky_perm", {
+      GET( "LatAxis" ), GET( "LonAxis" ), GET( "IsLatAxis(1)" ),
+      GET( "IsLonAxis(1)" ), SET( "AsTime(1)=1" ), GET( "AsTime(1)" ),
+      GET( "AsTime(2)" ), SET( "SkyRef=-30:00:00,12:30:00" ), GET( "SkyRef" ),
+      GET( "SkyRef(1)" ), GET( "SkyRef(2)" ), SET( "SkyRef(1)=0.1" ),
+      GET( "SkyRef" ), GET( "Label(1)" ), GET( "Label(2)" ),
+      SET( "IsLatitude(1)=1" ), GET( "IsLatitude(1)" ), GET( "IsLatitude(2)" ),
+      SET( "Ident(1)=first" ), GET( "Ident(1)" ), GET( "Ident(2)" ),
+      GET( "Class(1)" ), GET( "Format(1)" ), GET( "Format(2)" ),
+      SET( "SkyRefP=80:00:00,0:00:00" ), GET( "SkyRefP" ),
+      GET( "SkyRefP(1)" ), SET( "Digits(1)=9" ), GET( "Digits(1)" ),
+      GET( "Digits(2)" ), GET( "Format(1)" ),
+   } },
+   { "sky_dump", "sky", {
+      SET( "System=FK4,Equinox=B1975,Epoch=1980,NegLon=1,SkyTol=0.002,"
+           "Projection=tan,SkyRef=\"1:00:00,10:00:00\",SkyRefIs=Origin,"
+           "SkyRefP=\"2:00:00,80:00:00\",AlignOffset=1,AsTime(2)=1,"
+           "Label(1)=LON,Digits(2)=9,Ident(2)=lat axis,CentreZero(1)=1,"
+           "Title=sky,AlignSystem=ICRS,Format(1)=hms.2" ),
+   } },
 };
 
 /* The object a case starts from. */
 static AstObject *make( const char *id ) {
    if( !strcmp( id, "frame2" ) ) return (AstObject *) astFrame( 2, " " );
    if( !strcmp( id, "frame1" ) ) return (AstObject *) astFrame( 1, " " );
+   if( !strcmp( id, "sky" ) ) return (AstObject *) astSkyFrame( " " );
+   if( !strcmp( id, "sky_perm" ) ) {
+      int perm[ 2 ] = { 2, 1 };
+      AstSkyFrame *sky = astSkyFrame( " " );
+      astPermAxes( sky, perm );
+      return (AstObject *) sky;
+   }
    if( !strcmp( id, "skyaxis1" ) ) {
       int axes[ 1 ] = { 1 };
       AstSkyFrame *sky = astSkyFrame( " " );
@@ -339,6 +462,7 @@ static const char *code_name( int status ) {
       case AST__ATTIN: return "Attin";
       case AST__AXIIN: return "Axiin";
       case AST__OPT: return "Opt";
+      case AST__BADOC: return "Badoc";
       default:
          fprintf( stderr, "status %d has no name in code_name\n", status );
          exit( 1 );

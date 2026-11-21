@@ -69,6 +69,7 @@ const NO_RUST_VALUE_EXCLUDED: &[(&str, Op, &str)] = &[
 /// checks that together they cover every case.
 const OBJECT_AND_MAPPING: &[&str] = &["frame2_", "frame1_object"];
 const FRAME: &[&str] = &["frame_"];
+const SKY: &[&str] = &["sky_"];
 
 /// What the Rust library did with an operation.
 #[derive(Debug, Clone, PartialEq)]
@@ -210,6 +211,11 @@ fn frame_names_match_the_c_library() {
 }
 
 #[test]
+fn skyframe_names_match_the_c_library() {
+    replay(SKY);
+}
+
+#[test]
 fn cases_with_no_rust_value_still_differ() {
     for &(name, op, reason) in NO_RUST_VALUE_EXCLUDED {
         let case = CASES
@@ -231,7 +237,7 @@ fn cases_with_no_rust_value_still_differ() {
 
 #[test]
 fn every_case_is_replayed() {
-    let replayed = [OBJECT_AND_MAPPING, FRAME];
+    let replayed = [OBJECT_AND_MAPPING, FRAME, SKY];
     for case in CASES {
         assert!(
             replayed

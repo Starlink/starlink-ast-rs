@@ -43,6 +43,7 @@ pub(crate) mod mapping;
 pub(crate) mod object;
 #[cfg(feature = "attribute-strings")]
 mod public;
+pub(crate) mod skyframe;
 
 #[cfg(feature = "attribute-strings")]
 pub use public::Attributes;

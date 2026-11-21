@@ -1361,4 +1361,714 @@ pub const CASES: &[Case] = &[
  End Frame
 "###,
     },
+    Case {
+        name: "sky_own",
+        fitschan: false,
+        object: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+ End SkyFrame
+"###,
+        ops: &[
+            (Op::Get("AsTime(1)"), Out::Value("1")),
+            (Op::Test("AsTime(1)"), Out::Flag(false)),
+            (Op::Get("AsTime(2)"), Out::Value("0")),
+            (Op::Test("AsTime(2)"), Out::Flag(false)),
+            (Op::Set("AsTime(2)=1"), Out::Done),
+            (Op::Get("AsTime(2)"), Out::Value("1")),
+            (Op::Test("AsTime(2)"), Out::Flag(true)),
+            (Op::Clear("AsTime(2)"), Out::Done),
+            (Op::Get("AsTime(2)"), Out::Value("0")),
+            (Op::Test("AsTime(2)"), Out::Flag(false)),
+            (Op::Set("AsTime(1)=0"), Out::Done),
+            (Op::Get("AsTime(1)"), Out::Value("0")),
+            (Op::Test("AsTime(1)"), Out::Flag(true)),
+            (Op::Get("Format(1)"), Out::Value("dms")),
+            (Op::Get("Unit(1)"), Out::Value("ddd:mm:ss")),
+            (Op::Clear("AsTime(1)"), Out::Done),
+            (Op::Set("AsTime(3)=1"), Out::Err(E::Axiin, &["astSetAsTime(SkyFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("AsTime(3)"), Out::Err(E::Axiin, &["astGetAsTime(SkyFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("AsTime(0)"), Out::Err(E::Axiin, &["astTestAsTime(SkyFrame): Axis index (0) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("AsTime(3)"), Out::Err(E::Axiin, &["astClearAsTime(SkyFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("AsTime"), Out::Err(E::Badat, &["astGet: The SkyFrame given does not have an attribute called \"astime\"."])),
+            (Op::Set("AsTime=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"astime=1\" is invalid for a SkyFrame."])),
+            (Op::Set("AsTime(1)=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"astime=x\" is invalid for a SkyAxis."])),
+            (Op::Get("Equinox"), Out::Value("2000.0")),
+            (Op::Test("Equinox"), Out::Flag(false)),
+            (Op::Set("Equinox=B1950"), Out::Done),
+            (Op::Get("Equinox"), Out::Value("1950.0")),
+            (Op::Test("Equinox"), Out::Flag(true)),
+            (Op::Set("Equinox=J2010.5"), Out::Done),
+            (Op::Get("Equinox"), Out::Value("2010.5")),
+            (Op::Set("Equinox=1975"), Out::Done),
+            (Op::Get("Equinox"), Out::Value("1975.0")),
+            (Op::Set("Equinox=2001-01-01"), Out::Done),
+            (Op::Get("Equinox"), Out::Value("2001.0006844626969")),
+            (Op::Set("Equinox=nonsense"), Out::Err(E::Attin, &["Date/time does not have the correct form.", "astSetAttrib(SkyFrame): Invalid equinox value \"nonsense\" given for sky coordinate system."])),
+            (Op::Set("Equinox=2001-01-01 25:00"), Out::Err(E::Attin, &["Hour value (25) is invalid.", "astSetAttrib(SkyFrame): Invalid equinox value \"2001-01-01 25:00\" given for sky coordinate system."])),
+            (Op::Clear("Equinox"), Out::Done),
+            (Op::Get("Equinox"), Out::Value("2000.0")),
+            (Op::Test("Equinox"), Out::Flag(false)),
+            (Op::Get("NegLon"), Out::Value("0")),
+            (Op::Test("NegLon"), Out::Flag(false)),
+            (Op::Set("NegLon=1"), Out::Done),
+            (Op::Get("NegLon"), Out::Value("1")),
+            (Op::Test("NegLon"), Out::Flag(true)),
+            (Op::Clear("NegLon"), Out::Done),
+            (Op::Get("NegLon"), Out::Value("0")),
+            (Op::Test("NegLon"), Out::Flag(false)),
+            (Op::Set("NegLon=-3"), Out::Done),
+            (Op::Get("NegLon"), Out::Value("1")),
+            (Op::Clear("NegLon"), Out::Done),
+            (Op::Get("SkyTol"), Out::Value("0.001")),
+            (Op::Test("SkyTol"), Out::Flag(false)),
+            (Op::Set("SkyTol=0.01"), Out::Done),
+            (Op::Get("SkyTol"), Out::Value("0.01")),
+            (Op::Test("SkyTol"), Out::Flag(true)),
+            (Op::Clear("SkyTol"), Out::Done),
+            (Op::Get("SkyTol"), Out::Value("0.001")),
+            (Op::Test("SkyTol"), Out::Flag(false)),
+            (Op::Set("SkyTol=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"skytol=x\" is invalid for a SkyFrame."])),
+            (Op::Get("Projection"), Out::Value("")),
+            (Op::Test("Projection"), Out::Flag(false)),
+            (Op::Set("Projection=gnomonic tan"), Out::Done),
+            (Op::Get("Projection"), Out::Value("gnomonic tan")),
+            (Op::Test("Projection"), Out::Flag(true)),
+            (Op::Clear("Projection"), Out::Done),
+            (Op::Get("Projection"), Out::Value("")),
+            (Op::Test("Projection"), Out::Flag(false)),
+            (Op::Get("AlignOffset"), Out::Value("0")),
+            (Op::Test("AlignOffset"), Out::Flag(false)),
+            (Op::Set("AlignOffset=1"), Out::Done),
+            (Op::Get("AlignOffset"), Out::Value("1")),
+            (Op::Test("AlignOffset"), Out::Flag(true)),
+            (Op::Clear("AlignOffset"), Out::Done),
+            (Op::Get("AlignOffset"), Out::Value("0")),
+            (Op::Test("AlignOffset"), Out::Flag(false)),
+            (Op::Set("AlignOffset=9"), Out::Done),
+            (Op::Get("AlignOffset"), Out::Value("1")),
+            (Op::Get("LatAxis"), Out::Value("2")),
+            (Op::Test("LatAxis"), Out::Flag(false)),
+            (Op::Get("LonAxis"), Out::Value("1")),
+            (Op::Test("LonAxis"), Out::Flag(false)),
+            (Op::Get("IsLatAxis(1)"), Out::Value("0")),
+            (Op::Test("IsLatAxis(1)"), Out::Flag(false)),
+            (Op::Get("IsLatAxis(2)"), Out::Value("1")),
+            (Op::Test("IsLatAxis(2)"), Out::Flag(false)),
+            (Op::Get("IsLonAxis(1)"), Out::Value("1")),
+            (Op::Test("IsLonAxis(1)"), Out::Flag(false)),
+            (Op::Get("IsLatAxis(3)"), Out::Value("0")),
+            (Op::Get("IsLonAxis(0)"), Out::Value("0")),
+            (Op::Set("LatAxis=1"), Out::Err(E::Nowrt, &["astSet: The setting \"lataxis=1\" is invalid for a SkyFrame.", "This is a read-only attribute."])),
+            (Op::Set("LonAxis=2"), Out::Err(E::Nowrt, &["astSet: The setting \"lonaxis=2\" is invalid for a SkyFrame.", "This is a read-only attribute."])),
+            (Op::Set("IsLatAxis(1)=1"), Out::Err(E::Nowrt, &["astSet: The setting \"islataxis(1)=1\" is invalid for a SkyFrame.", "This is a read-only attribute."])),
+            (Op::Set("islonaxisfoo"), Out::Err(E::Nowrt, &["astSet: The setting \"islonaxisfoo\" is invalid for a SkyFrame.", "This is a read-only attribute."])),
+            (Op::Clear("LatAxis"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"lataxis\" value for a SkyFrame.", "This is a read-only attribute."])),
+            (Op::Clear("LonAxis"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"lonaxis\" value for a SkyFrame.", "This is a read-only attribute."])),
+            (Op::Clear("IsLatAxis(1)"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"islataxis(1)\" value for a SkyFrame.", "This is a read-only attribute."])),
+            (Op::Clear("islonaxis"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"islonaxis\" value for a SkyFrame.", "This is a read-only attribute."])),
+            (Op::Test("islataxisxyz"), Out::Flag(false)),
+            (Op::Get("IsLatAxis"), Out::Err(E::Badat, &["astGet: The SkyFrame given does not have an attribute called \"islataxis\"."])),
+            (Op::Get("islonaxis"), Out::Err(E::Badat, &["astGet: The SkyFrame given does not have an attribute called \"islonaxis\"."])),
+        ],
+        dump: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+    AlOff = 1 	# Align in offset coords
+ End SkyFrame
+"###,
+    },
+    Case {
+        name: "sky_system",
+        fitschan: false,
+        object: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+ End SkyFrame
+"###,
+        ops: &[
+            (Op::Get("System"), Out::Value("ICRS")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Set("System=Galactic"), Out::Done),
+            (Op::Get("System"), Out::Value("GALACTIC")),
+            (Op::Test("System"), Out::Flag(true)),
+            (Op::Get("Label(1)"), Out::Value("Galactic longitude")),
+            (Op::Get("Title"), Out::Value("IAU (1958) galactic coordinates")),
+            (Op::Set("System=FK4"), Out::Done),
+            (Op::Get("System"), Out::Value("FK4")),
+            (Op::Get("Equinox"), Out::Value("1950.0")),
+            (Op::Get("Epoch"), Out::Value("1950.0")),
+            (Op::Get("Title"), Out::Value("FK4 equatorial coordinates; mean equinox B1950.0; epoch B1950.0")),
+            (Op::Set("System=nonsense"), Out::Err(E::Attin, &["astSetAttrib(SkyFrame): Invalid System description \"nonsense\"."])),
+            (Op::Set("System=fk5 "), Out::Done),
+            (Op::Get("System"), Out::Value("FK5")),
+            (Op::Set("System=ICRS"), Out::Done),
+            (Op::Get("System"), Out::Value("ICRS")),
+            (Op::Set("System=ecliptic"), Out::Done),
+            (Op::Get("System"), Out::Value("ECLIPTIC")),
+            (Op::Set("System=AzEl"), Out::Done),
+            (Op::Get("System"), Out::Value("AZEL")),
+            (Op::Set("System=unknown"), Out::Done),
+            (Op::Get("System"), Out::Value("Unknown")),
+            (Op::Set("System=Cartesian"), Out::Err(E::Attin, &["astSetAttrib(SkyFrame): Invalid System description \"Cartesian\"."])),
+            (Op::Set("System=SUPERGALACTIC"), Out::Done),
+            (Op::Get("System"), Out::Value("SUPERGALACTIC")),
+            (Op::Set("System=HELIOECLIPTIC"), Out::Done),
+            (Op::Get("System"), Out::Value("HELIOECLIPTIC")),
+            (Op::Set("System=GAPPT"), Out::Done),
+            (Op::Get("System"), Out::Value("GAPPT")),
+            (Op::Set("System=APPARENT"), Out::Done),
+            (Op::Get("System"), Out::Value("GAPPT")),
+            (Op::Set("System=J2000"), Out::Done),
+            (Op::Get("System"), Out::Value("J2000")),
+            (Op::Set("System=FK4-NO-E"), Out::Done),
+            (Op::Get("System"), Out::Value("FK4-NO-E")),
+            (Op::Set("System=FK4_NO_E"), Out::Done),
+            (Op::Get("System"), Out::Value("FK4-NO-E")),
+            (Op::Set("System=EQUATORIAL"), Out::Done),
+            (Op::Get("System"), Out::Value("FK5")),
+            (Op::Set("System=GEOCENTRIC"), Out::Done),
+            (Op::Get("System"), Out::Value("GAPPT")),
+            (Op::Set("System=FK5"), Out::Done),
+            (Op::Clear("System"), Out::Done),
+            (Op::Get("System"), Out::Value("ICRS")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Get("AlignSystem"), Out::Value("ICRS")),
+            (Op::Test("AlignSystem"), Out::Flag(false)),
+            (Op::Set("AlignSystem=FK5"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("FK5")),
+            (Op::Test("AlignSystem"), Out::Flag(true)),
+            (Op::Clear("AlignSystem"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("ICRS")),
+            (Op::Test("AlignSystem"), Out::Flag(false)),
+            (Op::Set("AlignSystem=bad"), Out::Err(E::Attin, &["astSetAttrib(SkyFrame): Invalid AlignSystem description \"bad\"."])),
+            (Op::Set("AlignSystem=galactic"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("GALACTIC")),
+        ],
+        dump: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+    AlSys = "GALACTIC" 	# Alignment coordinate system
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+ End SkyFrame
+"###,
+    },
+    Case {
+        name: "sky_ref",
+        fitschan: false,
+        object: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+ End SkyFrame
+"###,
+        ops: &[
+            (Op::Get("SkyRef"), Out::Value("0:00:00.0, 0:00:00")),
+            (Op::Test("SkyRef"), Out::Flag(false)),
+            (Op::Get("SkyRef(1)"), Out::Value("0")),
+            (Op::Test("SkyRef(1)"), Out::Flag(false)),
+            (Op::Get("SkyRefIs"), Out::Value("Ignored")),
+            (Op::Test("SkyRefIs"), Out::Flag(false)),
+            (Op::Get("SkyRefP"), Out::Value("0:00:00.0, 90:00:00")),
+            (Op::Test("SkyRefP"), Out::Flag(false)),
+            (Op::Get("SkyRefP(2)"), Out::Value("1.5707963267948966")),
+            (Op::Test("SkyRefP(2)"), Out::Flag(false)),
+            (Op::Set("SkyRef=12:30:00,-30:00:00"), Out::Done),
+            (Op::Get("SkyRef"), Out::Value("12:30:00.0, -30:00:00")),
+            (Op::Test("SkyRef"), Out::Flag(true)),
+            (Op::Get("SkyRef(1)"), Out::Value("3.2724923474893677")),
+            (Op::Get("SkyRef(2)"), Out::Value("-0.52359877559829882")),
+            (Op::Test("SkyRef(1)"), Out::Flag(true)),
+            (Op::Set("SkyRef(2)=0.5"), Out::Done),
+            (Op::Get("SkyRef"), Out::Value("12:30:00.0, 28:38:52")),
+            (Op::Get("SkyRef(2)"), Out::Value("0.5")),
+            (Op::Set("SkyRef= 1:00:00 , 10:00:00 "), Out::Done),
+            (Op::Get("SkyRef"), Out::Value("1:00:00.0, 10:00:00")),
+            (Op::Set("SkyRef=12:30:00"), Out::Err(E::Badoc, &["astSetAttrib(SkyFrame): Invalid axis values string \"12:30:00\" given for SkyRef attribute."])),
+            (Op::Set("SkyRef=12:30:00;10:00"), Out::Err(E::Badoc, &["astSetAttrib(SkyFrame): Invalid axis values string \"12:30:00;10:00\" given for SkyRef attribute."])),
+            (Op::Set("SkyRef=bad,bad"), Out::Err(E::Badoc, &["astSetAttrib(SkyFrame): Invalid axis values string \"bad,bad\" given for SkyRef attribute."])),
+            (Op::Set("SkyRef=1:00:00,10:00:00 x"), Out::Err(E::Badoc, &["astSetAttrib(SkyFrame): Invalid axis values string \"1:00:00,10:00:00 x\" given for SkyRef attribute."])),
+            (Op::Get("SkyRef"), Out::Value("1:00:00.0, 10:00:00")),
+            (Op::Set("SkyRef(3)=0.1"), Out::Err(E::Axiin, &["astSetSkyRef(SkyFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("SkyRef(3)"), Out::Err(E::Axiin, &["astGetSkyRef(SkyFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("SkyRef(0)"), Out::Err(E::Axiin, &["astTestSkyRef(SkyFrame): Axis index (0) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("SkyRef(3)"), Out::Err(E::Axiin, &["astClearSkyRef(SkyFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Set("SkyRef(1)=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"skyref=x\" is invalid for a SkyAxis."])),
+            (Op::Set("SkyRefIs=Origin"), Out::Done),
+            (Op::Get("SkyRefIs"), Out::Value("Origin")),
+            (Op::Test("SkyRefIs"), Out::Flag(true)),
+            (Op::Set("SkyRefIs=pole"), Out::Done),
+            (Op::Get("SkyRefIs"), Out::Value("Pole")),
+            (Op::Set("SkyRefIs=ignored "), Out::Done),
+            (Op::Get("SkyRefIs"), Out::Value("Ignored")),
+            (Op::Set("SkyRefIs=bad"), Out::Err(E::Opt, &["astSet(SkyFrame): option 'bad' is unknown in 'skyrefis=bad'."])),
+            (Op::Set("SkyRefIs= Pole"), Out::Err(E::Opt, &["astSet(SkyFrame): option ' Pole' is unknown in 'skyrefis= Pole'."])),
+            (Op::Get("SkyRefIs"), Out::Value("Ignored")),
+            (Op::Clear("SkyRefIs"), Out::Done),
+            (Op::Get("SkyRefIs"), Out::Value("Ignored")),
+            (Op::Test("SkyRefIs"), Out::Flag(false)),
+            (Op::Set("SkyRefP=0:00:00,80:00:00"), Out::Done),
+            (Op::Get("SkyRefP"), Out::Value("0:00:00.0, 80:00:00")),
+            (Op::Test("SkyRefP"), Out::Flag(true)),
+            (Op::Get("SkyRefP(1)"), Out::Value("0")),
+            (Op::Get("SkyRefP(2)"), Out::Value("1.3962634015954636")),
+            (Op::Set("SkyRefP(1)=0.25"), Out::Done),
+            (Op::Get("SkyRefP"), Out::Value("0:57:17.7, 80:00:00")),
+            (Op::Set("SkyRefP=junk"), Out::Err(E::Badoc, &["astSetAttrib(SkyFrame): Invalid axis values string \"junk\" given for SkyRefP attribute."])),
+            (Op::Set("SkyRefP(4)=1"), Out::Err(E::Axiin, &["astSetSkyRefP(SkyFrame): Axis index (4) invalid - it should be in the range 1 to 2."])),
+            (Op::Get("SkyRefP(4)"), Out::Err(E::Axiin, &["astGetSkyRefP(SkyFrame): Axis index (4) invalid - it should be in the range 1 to 2."])),
+            (Op::Test("SkyRefP(4)"), Out::Err(E::Axiin, &["astTestSkyRefP(SkyFrame): Axis index (4) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("SkyRefP(4)"), Out::Err(E::Axiin, &["astClearSkyRefP(SkyFrame): Axis index (4) invalid - it should be in the range 1 to 2."])),
+            (Op::Clear("SkyRefP(1)"), Out::Done),
+            (Op::Get("SkyRefP(1)"), Out::Value("0")),
+            (Op::Test("SkyRefP(1)"), Out::Flag(false)),
+            (Op::Get("SkyRefP"), Out::Value("0:00:00.0, 80:00:00")),
+            (Op::Test("SkyRefP"), Out::Flag(true)),
+            (Op::Clear("SkyRefP"), Out::Done),
+            (Op::Get("SkyRefP"), Out::Value("0:00:00.0, 90:00:00")),
+            (Op::Test("SkyRefP"), Out::Flag(false)),
+            (Op::Clear("SkyRef(1)"), Out::Done),
+            (Op::Get("SkyRef"), Out::Value("0:00:00.0, 10:00:00")),
+            (Op::Test("SkyRef"), Out::Flag(true)),
+            (Op::Get("SkyRef(1)"), Out::Value("0")),
+            (Op::Test("SkyRef(1)"), Out::Flag(false)),
+            (Op::Get("SkyRef(2)"), Out::Value("0.17453292519943295")),
+            (Op::Test("SkyRef(2)"), Out::Flag(true)),
+            (Op::Clear("SkyRef"), Out::Done),
+            (Op::Get("SkyRef"), Out::Value("0:00:00.0, 0:00:00")),
+            (Op::Test("SkyRef"), Out::Flag(false)),
+            (Op::Set("Digits=10"), Out::Done),
+            (Op::Set("SkyRef=1:02:03.456,7:08:09.12"), Out::Done),
+            (Op::Get("SkyRef"), Out::Value("1:02:03.4560, 7:08:09.120")),
+            (Op::Set("Format(1)=dms.1"), Out::Done),
+            (Op::Get("SkyRef"), Out::Value("15:30:51.8, 7:08:09.120")),
+        ],
+        dump: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "ddd:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss.sss" 	# Units for axis 2
+    Digits = 10 	# Default formatting precision
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+          Format = "dms.1" 	# Format specifier
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+    SRef1 = 0.27077736147140824 	# Ref. pos. RA 15:30:51.8
+    SRef2 = 0.12454436831664603 	# Ref. pos. Dec 7:08:09.120
+ End SkyFrame
+"###,
+    },
+    Case {
+        name: "sky_axis_path",
+        fitschan: false,
+        object: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+ End SkyFrame
+"###,
+        ops: &[
+            (Op::Set("Equinox(1)=J2010"), Out::Done),
+            (Op::Get("Equinox"), Out::Value("2010.0")),
+            (Op::Get("Equinox(2)"), Out::Value("2010.0")),
+            (Op::Test("Equinox(1)"), Out::Flag(true)),
+            (Op::Clear("Equinox(2)"), Out::Done),
+            (Op::Get("Equinox"), Out::Value("2000.0")),
+            (Op::Test("Equinox"), Out::Flag(false)),
+            (Op::Get("IsLatitude(1)"), Out::Value("0")),
+            (Op::Test("IsLatitude(1)"), Out::Flag(false)),
+            (Op::Get("IsLatitude(2)"), Out::Value("0")),
+            (Op::Test("IsLatitude(2)"), Out::Flag(false)),
+            (Op::Set("IsLatitude(2)=0"), Out::Done),
+            (Op::Get("IsLatitude(2)"), Out::Value("0")),
+            (Op::Test("IsLatitude(2)"), Out::Flag(true)),
+            (Op::Clear("IsLatitude(2)"), Out::Done),
+            (Op::Get("CentreZero(1)"), Out::Value("0")),
+            (Op::Test("CentreZero(1)"), Out::Flag(false)),
+            (Op::Get("CentreZero(2)"), Out::Value("0")),
+            (Op::Test("CentreZero(2)"), Out::Flag(false)),
+            (Op::Set("CentreZero(1)=1"), Out::Done),
+            (Op::Get("CentreZero(1)"), Out::Value("1")),
+            (Op::Test("CentreZero(1)"), Out::Flag(true)),
+            (Op::Get("Class(1)"), Out::Value("SkyAxis")),
+            (Op::Get("Class(2)"), Out::Value("SkyAxis")),
+            (Op::Set("Ident(1)=lon"), Out::Done),
+            (Op::Get("Ident(1)"), Out::Value("lon")),
+            (Op::Set("Fred(1)=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a SkyAxis."])),
+            (Op::Get("Fred(2)"), Out::Err(E::Badat, &["astGet: The SkyAxis given does not have an attribute called \"fred\"."])),
+            (Op::Set("NegLon(1)=1"), Out::Done),
+            (Op::Get("NegLon"), Out::Value("1")),
+            (Op::Get("System(1)"), Out::Value("ICRS")),
+            (Op::Set("System(2)=Galactic"), Out::Done),
+            (Op::Get("System"), Out::Value("GALACTIC")),
+            (Op::Clear("System(1)"), Out::Done),
+            (Op::Get("Label(1)"), Out::Value("Right ascension")),
+            (Op::Test("Label(1)"), Out::Flag(false)),
+            (Op::Set("Label(2)=Dec label"), Out::Done),
+            (Op::Get("Label(2)"), Out::Value("Dec label")),
+            (Op::Test("Label(2)"), Out::Flag(true)),
+            (Op::Clear("Label(2)"), Out::Done),
+            (Op::Get("Label(2)"), Out::Value("Declination")),
+            (Op::Test("Label(2)"), Out::Flag(false)),
+            (Op::Get("Symbol(1)"), Out::Value("RA")),
+            (Op::Get("Symbol(2)"), Out::Value("Dec")),
+            (Op::Get("Unit(2)"), Out::Value("ddd:mm:ss")),
+            (Op::Get("Format(1)"), Out::Value("hms.1")),
+            (Op::Set("Format(1)=dms.3"), Out::Done),
+            (Op::Get("Format(1)"), Out::Value("dms.3")),
+            (Op::Get("Unit(1)"), Out::Value("ddd:mm:ss.sss")),
+            (Op::Test("Format(1)"), Out::Flag(true)),
+            (Op::Clear("Format(1)"), Out::Done),
+            (Op::Get("Direction(1)"), Out::Value("0")),
+            (Op::Get("Direction(2)"), Out::Value("1")),
+            (Op::Get("Top(2)"), Out::Value("1.5707963267948966")),
+            (Op::Get("Bottom(2)"), Out::Value("-1.5707963267948966")),
+            (Op::Get("Top(1)"), Out::Value("1.7976931348623157e+308")),
+            (Op::Get("Title"), Out::Value("ICRS coordinates")),
+            (Op::Test("Title"), Out::Flag(false)),
+            (Op::Get("Domain"), Out::Value("SKY")),
+            (Op::Test("Domain"), Out::Flag(false)),
+            (Op::Get("Epoch"), Out::Value("2000.0")),
+            (Op::Test("Epoch"), Out::Flag(false)),
+            (Op::Get("Digits"), Out::Value("7")),
+            (Op::Get("Digits(1)"), Out::Value("7")),
+            (Op::Get("NormUnit(1)"), Out::Value("hh:mm:ss.s")),
+            (Op::Get("InternalUnit(1)"), Out::Value("rad")),
+            (Op::Get("InternalUnit(2)"), Out::Value("rad")),
+            (Op::Get("Naxes"), Out::Value("2")),
+            (Op::Get("Nin"), Out::Value("2")),
+            (Op::Get("Class"), Out::Value("SkyFrame")),
+            (Op::Get("MaxAxes"), Out::Value("2")),
+            (Op::Get("MinAxes"), Out::Value("2")),
+            (Op::Get("ObsLat"), Out::Value("N0:00:00.00")),
+            (Op::Set("Label(3)=x"), Out::Err(E::Axiin, &["astSetLabel(SkyFrame): Axis index (3) invalid - it should be in the range 1 to 2."])),
+            (Op::Set("Epoch=1990.5"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("1990.5")),
+            (Op::Get("Title"), Out::Value("ICRS coordinates")),
+            (Op::Set("Fred=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a SkyFrame."])),
+            (Op::Get("Fred"), Out::Err(E::Badat, &["astGet: The SkyFrame given does not have an attribute called \"fred\"."])),
+            (Op::Test("Fred"), Out::Err(E::Badat, &["astTest: The attribute name \"fred\" is invalid for a SkyFrame."])),
+            (Op::Clear("Fred"), Out::Err(E::Badat, &["astClear: The attribute name \"fred\" is invalid for a SkyFrame."])),
+        ],
+        dump: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+    Epoch = 1990.5 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+          Ident = "lon" 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          CnZer = 1 	# Display axis values in range -PI -> +PI
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+    NegLon = 1 	# Display negative longitude values
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+ End SkyFrame
+"###,
+    },
+    Case {
+        name: "sky_perm",
+        fitschan: false,
+        object: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Prm1 = 2 	# Axis 1 permuted to use internal axis 2
+    Prm2 = 1 	# Axis 2 permuted to use internal axis 1
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+ End SkyFrame
+"###,
+        ops: &[
+            (Op::Get("LatAxis"), Out::Value("1")),
+            (Op::Get("LonAxis"), Out::Value("2")),
+            (Op::Get("IsLatAxis(1)"), Out::Value("1")),
+            (Op::Get("IsLonAxis(1)"), Out::Value("0")),
+            (Op::Set("AsTime(1)=1"), Out::Done),
+            (Op::Get("AsTime(1)"), Out::Value("1")),
+            (Op::Get("AsTime(2)"), Out::Value("1")),
+            (Op::Set("SkyRef=-30:00:00,12:30:00"), Out::Done),
+            (Op::Get("SkyRef"), Out::Value("-30:00:00.0, 12:30:00.0")),
+            (Op::Get("SkyRef(1)"), Out::Value("-7.8539816339744819")),
+            (Op::Get("SkyRef(2)"), Out::Value("3.2724923474893677")),
+            (Op::Set("SkyRef(1)=0.1"), Out::Done),
+            (Op::Get("SkyRef"), Out::Value("0:22:55.1, 12:30:00.0")),
+            (Op::Get("Label(1)"), Out::Value("Declination")),
+            (Op::Get("Label(2)"), Out::Value("Right ascension")),
+            (Op::Set("IsLatitude(1)=1"), Out::Done),
+            (Op::Get("IsLatitude(1)"), Out::Value("1")),
+            (Op::Get("IsLatitude(2)"), Out::Value("0")),
+            (Op::Set("Ident(1)=first"), Out::Done),
+            (Op::Get("Ident(1)"), Out::Value("first")),
+            (Op::Get("Ident(2)"), Out::Value("")),
+            (Op::Get("Class(1)"), Out::Value("SkyAxis")),
+            (Op::Get("Format(1)"), Out::Value("hms.1")),
+            (Op::Get("Format(2)"), Out::Value("hms.1")),
+            (Op::Set("SkyRefP=80:00:00,0:00:00"), Out::Done),
+            (Op::Get("SkyRefP"), Out::Value("80:00:00.0, 0:00:00.0")),
+            (Op::Get("SkyRefP(1)"), Out::Value("20.943951023931952")),
+            (Op::Set("Digits(1)=9"), Out::Done),
+            (Op::Get("Digits(1)"), Out::Value("9")),
+            (Op::Get("Digits(2)"), Out::Value("7")),
+            (Op::Get("Format(1)"), Out::Value("hms.3")),
+        ],
+        dump: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "hh:mm:ss.sss" 	# Units for axis 2
+#   Dig2 = 9 	# Individual precision for axis 2
+#   Digits = 7 	# Default formatting precision
+#   Fmt2 = "hms.3" 	# Format specifier for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Prm1 = 2 	# Axis 1 permuted to use internal axis 2
+    Prm2 = 1 	# Axis 2 permuted to use internal axis 1
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+          Ident = "first" 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Digits = 9 	# Default formatting precision
+       IsA Axis 	# Coordinate axis
+          IsLat = 1 	# Latitude axis (not longitude)
+          AsTime = 1 	# Display values as times (not angles)
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+    SRef1 = 3.2724923474893677 	# Ref. pos. RA 12:30:00.0
+    SRef2 = 0.10000000000000001 	# Ref. pos. Dec 0:22:55.099
+    SRefP1 = 0 	# Ref. north RA 0:00:00.0
+    SRefP2 = 20.943951023931952 	# Ref. north Dec 80:00:00.000
+ End SkyFrame
+"###,
+    },
+    Case {
+        name: "sky_dump",
+        fitschan: false,
+        object: r###" Begin SkyFrame 	# Description of celestial coordinate system
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+ End SkyFrame
+"###,
+        ops: &[
+            (Op::Set("System=FK4,Equinox=B1975,Epoch=1980,NegLon=1,SkyTol=0.002,Projection=tan,SkyRef=\"1:00:00,10:00:00\",SkyRefIs=Origin,SkyRefP=\"2:00:00,80:00:00\",AlignOffset=1,AsTime(2)=1,Label(1)=LON,Digits(2)=9,Ident(2)=lat axis,CentreZero(1)=1,Title=sky,AlignSystem=ICRS,Format(1)=hms.2"), Out::Done),
+        ],
+        dump: r###" Begin SkyFrame 	# Description of celestial coordinate system
+    Title = "sky" 	# Title of coordinate system
+    Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+    Epoch = 1980 	# Besselian epoch of observation
+#   Lbl1 = "LON" 	# Label for axis 1
+#   Lbl2 = "Declination offset" 	# Label for axis 2
+    System = "FK4" 	# Coordinate system type
+    AlSys = "ICRS" 	# Alignment coordinate system
+#   Uni1 = "hh:mm:ss.ss" 	# Units for axis 1
+#   Uni2 = "hh:mm:ss.sss" 	# Units for axis 2
+#   Dig2 = 9 	# Individual precision for axis 2
+#   Digits = 7 	# Default formatting precision
+#   Fmt2 = "hms.3" 	# Format specifier for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+    Ax1 = 	# Axis number 1
+       Begin SkyAxis 	# Celestial coordinate axis
+          Label = "LON" 	# Axis Label
+       IsA Axis 	# Coordinate axis
+          Format = "hms.2" 	# Format specifier
+          CnZer = 1 	# Display axis values in range -PI -> +PI
+       End SkyAxis
+    Ax2 = 	# Axis number 2
+       Begin SkyAxis 	# Celestial coordinate axis
+          Ident = "lat axis" 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Digits = 9 	# Default formatting precision
+       IsA Axis 	# Coordinate axis
+          AsTime = 1 	# Display values as times (not angles)
+       End SkyAxis
+ IsA Frame 	# Coordinate system description
+    Proj = "tan" 	# Description of sky projection
+    NegLon = 1 	# Display negative longitude values
+    SkyTol = 0.002 	# Smallest significant separation [arc-sec]
+    Eqnox = 1975 	# Besselian epoch of mean equinox
+    SRefIs = "Origin" 	# Rotated to put origin at ref. pos.
+    SRef1 = 0.26179938779914941 	# Ref. pos. DRA 1:00:00.00
+    SRef2 = 0.17453292519943295 	# Ref. pos. DDec 0:40:00.000
+    SRefP1 = 0.52359877559829882 	# Ref. north DRA 2:00:00.00
+    SRefP2 = 1.3962634015954636 	# Ref. north DDec 5:20:00.000
+    AlOff = 1 	# Align in offset coords
+ End SkyFrame
+"###,
+    },
 ];
