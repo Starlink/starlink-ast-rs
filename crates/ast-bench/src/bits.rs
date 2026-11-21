@@ -18,7 +18,7 @@ use crate::oracle::Section;
 /// Points per case: every oracle row, repeated to more than one 8192-point
 /// series batch and ending part-way through the second.
 pub const BITS_N: usize = 10_000;
-const _: () = assert!(BITS_N > 8192 && BITS_N % 8192 != 0);
+const _: () = assert!(BITS_N > 8192 && !BITS_N.is_multiple_of(8192));
 
 /// FNV-1a over the bits of every output value, point by point.
 fn hash(out: &PointSet) -> String {
