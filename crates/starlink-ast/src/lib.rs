@@ -39,6 +39,10 @@
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
 
+#[cfg(feature = "attribute-strings")]
+pub mod attributes;
+#[cfg(not(feature = "attribute-strings"))]
+pub(crate) mod attributes;
 pub mod channel;
 pub mod constants;
 pub mod coords;

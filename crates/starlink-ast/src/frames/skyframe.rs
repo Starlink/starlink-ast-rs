@@ -3295,19 +3295,9 @@ impl Frame for SkyFrame {
 ///
 /// Mirrors `skyframe.c::CalcLAST`: builds a TDB-MJD TimeFrame and a
 /// LAST-MJD TimeFrame, applies the observer parameters to both,
-/// Format an epoch expressed in decimal years, mirroring C's
-/// `astFmtDecimalYr(year, 9)` (frame.c:4189): `sprintf("%#.9g")` followed by
-/// trailing-zero removal, but keeping one zero after the decimal point so the
-/// result always reads like a year (e.g. "2000.0", "1999.80005"). The `#`
-/// flag forces a decimal point; `format_double_g` already strips trailing
-/// zeros and the point, so we re-append ".0" when no point remains.
+/// A year as C's `astFmtDecimalYr( year, 9 )` writes it, for a Title.
 fn fmt_decimal_yr(year: f64) -> String {
-    let s = crate::serial::native_write::format_double_g(year, 9);
-    if s.contains('.') || s.contains('e') {
-        s
-    } else {
-        format!("{s}.0")
-    }
+    crate::attributes::fmt_decimal_yr(year, 9)
 }
 
 /// Determine whether a great-circle segment includes a point known to lie on

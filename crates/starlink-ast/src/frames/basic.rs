@@ -766,6 +766,21 @@ pub(crate) fn axis_unformat(text: &str) -> (f64, usize) {
 }
 
 impl Frame for BasicFrame {
+    // A plain Frame's attribute strings: C's Frame class, whose parent is
+    // Mapping.
+    fn attr_set(&mut self, setting: &str) -> AstResult<()> {
+        crate::attributes::mapping::mapping_set(self, setting)
+    }
+    fn attr_get(&self, name: &str) -> AstResult<String> {
+        crate::attributes::mapping::mapping_get(self, name)
+    }
+    fn attr_test(&self, name: &str) -> AstResult<bool> {
+        crate::attributes::mapping::mapping_test(self, name)
+    }
+    fn attr_clear(&mut self, name: &str) -> AstResult<()> {
+        crate::attributes::mapping::mapping_clear(self, name)
+    }
+
     fn axis_perm(&self) -> Vec<usize> {
         self.perm.clone()
     }

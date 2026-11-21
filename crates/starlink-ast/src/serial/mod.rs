@@ -665,6 +665,48 @@ impl FrameToNode for dyn Frame {
     }
 }
 
+/// The C class name of a Frame, as the `Begin` line of its dump gives it,
+/// from the Frame as [`AsAny`](crate::mappings::AsAny) gives it.
+/// A class the serialiser does not know is a plain "Frame".
+pub(crate) fn frame_class_name(frame: &dyn std::any::Any) -> &'static str {
+    macro_rules! name_of {
+        ($($class:ty),* $(,)?) => {
+            $(
+                if let Some(f) = frame.downcast_ref::<$class>() {
+                    return Serializable::class_name(f);
+                }
+            )*
+        };
+    }
+    name_of!(
+        BasicFrame,
+        CmpFrame,
+        SkyFrame,
+        DSBSpecFrame,
+        SpecFrame,
+        TimeFrame,
+        FluxFrame,
+        SpecFluxFrame,
+        FrameSet,
+        Plot,
+        Circle,
+        BoxRegion,
+        Ellipse,
+        Polygon,
+        Interval,
+        NullRegion,
+        CmpRegion,
+        PointList,
+        Prism,
+        Moc,
+        StcResourceProfile,
+        StcSearchLocation,
+        StcCatalogEntryLocation,
+        StcObsDataLocation,
+    );
+    "Frame"
+}
+
 /// Reconstruct a concrete Frame from a Node tree, dispatching by class name.
 pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
     match node.class.as_str() {

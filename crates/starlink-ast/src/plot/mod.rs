@@ -44,7 +44,7 @@ mod grid;
 mod labels;
 mod sample;
 mod serial;
-mod text;
+pub(crate) mod text;
 mod ticks;
 
 pub use attrs::{Edge, Labelling, TextGapType};

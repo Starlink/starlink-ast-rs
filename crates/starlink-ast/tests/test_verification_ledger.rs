@@ -209,6 +209,17 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          8 ULP of the current time and the division count exactly",
     ),
     (
+        "test_attr_strings.rs",
+        "NO_RUST_VALUE_EXCLUDED",
+        7,
+        "attribute strings whose C outcome the port cannot give: gets of \
+         Nobject, ObjSize and RefCount, which count the C library's handles \
+         and allocations, and sets and clears of Invert and Report on a Frame \
+         that is not a FrameSet, which stores no Mapping flags; each fails \
+         with an error instead, and cases_with_no_rust_value_still_differ \
+         fails when one starts to match C",
+    ),
+    (
         "test_plot.rs",
         "UNINITIALISED_SET_STATE_EXCLUDED",
         1,

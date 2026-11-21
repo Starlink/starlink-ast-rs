@@ -16,6 +16,9 @@ mod common;
 
 #[path = "../test_active_unit.rs"]
 mod test_active_unit;
+#[cfg(feature = "attribute-strings")]
+#[path = "../test_attr_strings.rs"]
+mod test_attr_strings;
 #[path = "../test_attr_test_clear_oracle.rs"]
 mod test_attr_test_clear_oracle;
 #[path = "../test_axis_format.rs"]

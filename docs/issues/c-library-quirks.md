@@ -1797,6 +1797,21 @@ Consequence: documentation only; a reader who runs the examples gets output that
 The port's guide (`crates/starlink-ast/src/guide/`) uses the current output, the 1-based permutation, the FITS-WCS first step and the SipOK behavior.
 A C fix: regenerate the output blocks from the current library and correct the items above in `sun_master.tex`.
 
+### `astGetC` cuts a value that has escape sequences to 50 characters
+
+`astGetC` (`object.c` `Get`) passes every value through `astStripEscapes` (`plot.c`) unless escapes are turned on with `astEscapes`.
+`astStripEscapes` returns the text itself when it holds no graphical escape sequence, and otherwise copies it, without them, into a per-thread buffer of `AST__PLOT_STRIPESCAPES_BUFF_LEN` (50) characters, stopping when the buffer is full.
+So a string attribute with an escape sequence anywhere in it reads back cut to its first 50 characters, while one of the same length without an escape sequence reads back whole.
+Oracle-verified: an Ident of thirty `a`, `%+` and thirty `b` reads back as thirty `a` and twenty `b`.
+The port mirrors it in `attributes::strip_escapes`, pinned by the `frame2_object` case of `crates/starlink-ast/tests/test_attr_strings.rs`.
+
+### `astFmtDecimalYr` removes the zeros of an exponent
+
+`astFmtDecimalYr` (`frame.c`) prints a year with `%#.*g`, removes every trailing `0` and puts one back if the text then ends with the decimal point.
+A year too large to print without an exponent ends with the exponent's own digits, so `1e20` printed as `1.0000000000000000e+20` loses the `0` of `+20`.
+No epoch or equinox in use reaches this; it is read from the source, not probed.
+The port's `attributes::fmt_decimal_yr` does the same.
+
 ## Addressed here, and not going upstream
 
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.

@@ -9,6 +9,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Added
 
+- `starlink-ast`: the `attribute-strings` feature, off by default, with the `attributes::Attributes` trait: `set_attributes`, `set_attribute`, `get_attribute`, `test_attribute` and `clear_attributes` set, read, test and clear attributes by name from strings in the C library's syntax (`"Ident=detector, UseDefs=0"`), with the C library's values and error messages. So far it reaches the attributes every object has (`ID`, `Ident`, `UseDefs`, `Class`) and the Mapping attributes, on a plain Frame; other classes fail with an error saying they are not yet supported.
 - `starlink-ast`: `Plot::draw_region_outline`, which draws the outline of a Region in a Plot's current Frame, as the C library's `astRegionOutline` does, call for call.
 - `starlink-ast`: `Draw::set_clip_region` and `Draw::clear_clip_region`, which clip what a Plot draws to a box in any of its Frames, as the C library's `astClip` does.
 - `starlink-ast`: `Draw::draw_gen_curve`, which draws the curve a Mapping from distance to position describes, and `Draw::draw_mark`, which draws markers, as the C library's `astGenCurve` and `astMark` do, call for call.

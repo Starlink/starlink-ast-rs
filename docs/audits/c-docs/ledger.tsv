@@ -308,18 +308,18 @@ class	NullRegion	nullregion.c	NullRegion		yes
 function	astNullRegion	nullregion.c	NullRegionBuilder::new		yes
 class	Object	object.c	AnyObject		yes	No common base trait: AnyObject holds any object and documents what all share
 function	astAnnul	object.c		c-api-only	yes	Handle management; an owned value is dropped
-function	astClear	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed clear_ method
+function	astClear	object.c	Attributes::clear_attributes		yes	With the attribute-strings feature; each attribute also has a typed clear_ method
 function	astClone	object.c		c-api-only	yes	Handle management; no shared objects or reference counts in starlink-ast
 function	astCopy	object.c	AnyObject		yes	Clone on every class is the deep copy; alias on AnyObject, as an impl Clone cannot carry one
 function	astDelete	object.c		c-api-only	yes	Handle management; an owned value is dropped
-function	astGet<X>	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed getter
+function	astGet<X>	object.c	Attributes::get_attribute		yes	With the attribute-strings feature, the value as text (astGetC); each attribute also has a typed getter
 function	astHasAttribute	object.c		c-api-only	yes	String-dispatch attribute access; Rust attributes are methods, checked at compile time
 function	astToString	object.c	AnyObject::to_native_string; $ty::to_native_string		yes	$ty is every class the object_text! macro gives the method
-function	astSet	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed setter
+function	astSet	object.c	Attributes::set_attributes		yes	With the attribute-strings feature; the string is text, not a printf format; each attribute also has a typed setter
 function	astSame	object.c		c-api-only	yes	Pointer identity; std::ptr::eq in Rust
-function	astSet<X>	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed setter
+function	astSet<X>	object.c	Attributes::set_attribute		yes	With the attribute-strings feature, the value as text (astSetC); each attribute also has a typed setter
 function	astShow	object.c	AnyObject::show; $ty::show		yes	$ty is every class the object_text! macro gives the method
-function	astTest	object.c		c-api-only	yes	String-dispatch attribute access; each attribute has a typed test_ method
+function	astTest	object.c	Attributes::test_attribute		yes	With the attribute-strings feature; each attribute also has a typed test_ method
 function	astTune	object.c		c-api-only	yes	Global tuning: ObjectCaching and MemoryCaching control C memory caching, which Rust allocation does not have
 function	astTuneC	object.c		c-api-only	yes	Global tuning of the Plot escape strings for sky formatting; graphical escapes are not ported
 function	astFromString	object.c	from_native_string; from_native_string_with		yes

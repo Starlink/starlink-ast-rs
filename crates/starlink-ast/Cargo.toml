@@ -69,6 +69,10 @@ tracing-subscriber = { workspace = true }
 # Derives the enclosing item of an audit-checklist citation; used by
 # `test_audit_citations.rs`.
 audit-tools = { path = "../audit-tools" }
+# Turns `attribute-strings` on for this crate's own tests. `cargo package`
+# drops a dependency on the package itself, so tests run from the published
+# archive need `--features attribute-strings`.
+starlink-ast = { path = ".", features = ["attribute-strings"] }
 
 [features]
 # Opt-in prototypes used for measurement (cross-lane SIMD eval, etc.). Off by
@@ -86,6 +90,11 @@ tracing = ["dep:tracing"]
 # checking that the port makes the same calls as C (`starlink_ast::call_counts`).
 # Never enable in a timed build.
 call-counts = []
+
+# Set, get, test and clear attributes by name from strings in the C library's
+# syntax (`starlink_ast::attributes::Attributes`). Off by default: the typed
+# accessors are the everyday API.
+attribute-strings = []
 
 [[example]]
 name = "count_one"
