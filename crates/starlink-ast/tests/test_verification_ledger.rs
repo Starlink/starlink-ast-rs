@@ -209,6 +209,15 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          8 ULP of the current time and the division count exactly",
     ),
     (
+        "test_grf.rs",
+        "TEXT_WIDTH_EXCLUDED",
+        2,
+        "the extents of \"°\" and \"-30°\": C's grf_log, written before Unicode, \
+         measures text by bytes and counts the degree sign as two characters; the port \
+         measures by characters, so accented labels are as wide as any other. \
+         text_width_exclusions_still_differ fails when one matches C again",
+    ),
+    (
         "test_attr_strings.rs",
         "DUMP_EXCLUDED",
         1,

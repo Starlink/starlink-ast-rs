@@ -53,9 +53,51 @@ fn bits(v: &[f32]) -> Vec<u32> {
     v.iter().map(|x| x.to_bits()).collect()
 }
 
+/// Calls whose result differs from C's by design, each with its reason:
+/// text that is not ASCII, which C, written before Unicode, measures by
+/// bytes and the port by characters. They are left out of the comparison,
+/// with the log lines they write, and `text_width_exclusions_still_differ`
+/// fails when one matches C again.
+const TEXT_WIDTH_EXCLUDED: &[(usize, &str)] = &[
+    (
+        26,
+        "the extent of \"°\": C counts its two UTF-8 bytes as two characters",
+    ),
+    (
+        28,
+        "the extent of \"-30°\": C counts the degree sign's two bytes as two characters",
+    ),
+];
+
+/// The text of an excluded call.
+fn excluded_text(i: usize) -> &'static str {
+    match cases::CALLS[i].0 {
+        Call::TxExt(t, ..) => t,
+        ref other => panic!("call {i} is not a text extent: {other:?}"),
+    }
+}
+
+/// A log or SVG with the lines of the excluded calls removed.
+fn without_excluded(text: &str) -> String {
+    text.lines()
+        .filter(|l| {
+            !TEXT_WIDTH_EXCLUDED
+                .iter()
+                .any(|&(i, _)| l.starts_with(&format!("GTxExt \"{}\"", excluded_text(i))))
+        })
+        .map(|l| format!("{l}\n"))
+        .collect()
+}
+
 /// Replay the probe's calls through `grf`, checking each return.
 fn replay(grf: &mut dyn Grf) {
     for (i, (call, want)) in cases::CALLS.iter().enumerate() {
+        if TEXT_WIDTH_EXCLUDED.iter().any(|&(x, _)| x == i) {
+            if let Call::TxExt(t, x, y, j, up) = call {
+                let _ = grf.text_extent(t, *x, *y, Justification::from_code(j).unwrap(), *up);
+            }
+            continue;
+        }
         let what = format!("call {i}: {call:?}");
         match (call, want) {
             (Call::Scales, Expected::Pair(p)) => {
@@ -119,7 +161,11 @@ fn log_grf_matches_the_c_library() {
     let mut grf = LogGrf::new(Vec::new());
     replay(&mut grf);
     let log = String::from_utf8(grf.finish().unwrap()).unwrap();
-    assert_lines_eq(&log, cases::LOG, "log");
+    assert_lines_eq(
+        &without_excluded(&log),
+        &without_excluded(cases::LOG),
+        "log",
+    );
 }
 
 #[test]
@@ -127,7 +173,25 @@ fn svg_grf_matches_the_c_library() {
     let mut grf = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
     replay(&mut grf);
     let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
-    assert_lines_eq(&svg, cases::SVG, "svg");
+    assert_lines_eq(
+        &without_excluded(&svg),
+        &without_excluded(cases::SVG),
+        "svg",
+    );
+}
+
+#[test]
+fn text_width_exclusions_still_differ() {
+    for &(i, reason) in TEXT_WIDTH_EXCLUDED {
+        let (Call::TxExt(t, x, y, j, up), Expected::Box(bx, _)) = &cases::CALLS[i] else {
+            panic!("call {i} is not a text extent with a box");
+        };
+        let mut grf = LogGrf::new(Vec::new());
+        let got = grf
+            .text_extent(t, *x, *y, Justification::from_code(j).unwrap(), *up)
+            .unwrap();
+        assert_ne!(bits(&got.x), bits(bx), "call {i} now matches C ({reason})");
+    }
 }
 
 /// The page size can be set field by field, which is how options added
