@@ -510,6 +510,7 @@ impl Frame for CmpFrame {
     }
 
     cmp_frame_axis_attrs!();
+    cmp_frame_plot_methods!();
 
     fn system_string(&self) -> AstResult<Option<&str>> {
         Ok(Some("Compound"))

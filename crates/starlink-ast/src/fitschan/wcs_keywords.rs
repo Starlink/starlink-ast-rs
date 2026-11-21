@@ -176,6 +176,7 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> As
 
         // CD / PC / PV: per-version, no primary fallback (mirrors C
         // GetItem semantics — see lookup_with_fallback's doc).
+        #[allow(clippy::needless_range_loop)]
         for j in 0..naxis {
             store.pc[i][j] = cards.get_float_marked(&key_for_2("PC", axis_num, j + 1, s));
         }

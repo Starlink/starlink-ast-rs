@@ -260,6 +260,7 @@ impl Frame for SpecFluxFrame {
     cmp_frame_shared_attr!(concrete spec_frame, flux_frame; dtai, dtai, set_dtai, test_dtai, clear_dtai);
     cmp_frame_shared_attr!(concrete spec_frame, flux_frame; dut1, dut1, set_dut1, test_dut1, clear_dut1);
     cmp_frame_axis_attrs!();
+    cmp_frame_plot_methods!();
 
     /// The Domain, set or else the components' joined with a hyphen, or "CMP"
     /// when both are blank.

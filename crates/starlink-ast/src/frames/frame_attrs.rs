@@ -1094,6 +1094,7 @@ macro_rules! region_frame_attrs {
     (@common) => {
         forward_frame_attrs!(region data.frameset);
         forward_axis_attrs!(region data.frameset);
+        forward_plot_methods!(region);
         // The Frame methods region.c overrides to act on the current Frame
         // of the Region's FrameSet (region.c:4700-4830).
         fn offset2(&self, point1: &[f64], angle: f64, offset: f64)
@@ -1705,6 +1706,179 @@ pub(crate) fn with_lent_digits<R>(
     let mut lent = f.snapshot();
     lent.set_digits(digits)?;
     get(lent.as_ref())
+}
+
+/// The Frame methods a Plot uses to choose ticks and split labels, for a
+/// CmpFrame and a SpecFluxFrame, as cmpframe.c does them: each is routed to
+/// the component that holds the axis. `gap` and `abbrev` lend the
+/// CmpFrame's Digits to a component that has none, and `centre` its Digits
+/// and the axis's Format; `fields` lends nothing. The Axis-layer methods go
+/// to the component's own Axis object, as C's `astGetAxis` does.
+///
+/// Used inside `impl Frame for X`, where `X` has an inherent
+/// `axis_component(axis)`.
+macro_rules! cmp_frame_plot_methods {
+    () => {
+        fn gap(&self, axis: usize, gap: f64) -> $crate::error::AstResult<(f64, Option<i32>)> {
+            let (f, a) = self.axis_component(axis)?;
+            $crate::frames::frame_attrs::with_lent_digits(
+                $crate::frames::Frame::digits(self),
+                f,
+                |f| f.gap(a, gap),
+            )
+        }
+        fn centre(&self, axis: usize, value: f64, gap: f64) -> $crate::error::AstResult<f64> {
+            let (f, a) = self.axis_component(axis)?;
+            let digits = $crate::frames::Frame::digits(self);
+            if f.test_digits() && f.test_format_str(a)? {
+                return f.centre(a, value, gap);
+            }
+            let mut lent = f.snapshot();
+            if !f.test_digits() {
+                lent.set_digits(digits)?;
+            }
+            if !f.test_format_str(a)? {
+                lent.set_format_str(a, &$crate::frames::Frame::format_str(self, axis)?)?;
+            }
+            lent.centre(a, value, gap)
+        }
+        fn abbrev(
+            &self,
+            axis: usize,
+            fmt: &str,
+            str1: Option<&str>,
+            str2: &str,
+        ) -> $crate::error::AstResult<usize> {
+            let (f, a) = self.axis_component(axis)?;
+            $crate::frames::frame_attrs::with_lent_digits(
+                $crate::frames::Frame::digits(self),
+                f,
+                |f| f.abbrev(a, fmt, str1, str2),
+            )
+        }
+        fn fields(
+            &self,
+            axis: usize,
+            fmt: &str,
+            text: &str,
+            maxfld: usize,
+        ) -> $crate::error::AstResult<$crate::frames::FieldSplit> {
+            let (f, a) = self.axis_component(axis)?;
+            f.fields(a, fmt, text, maxfld)
+        }
+        fn axis_gap(&self, axis: usize, gap: f64) -> $crate::error::AstResult<(f64, Option<i32>)> {
+            let (f, a) = self.axis_component(axis)?;
+            f.axis_gap(a, gap)
+        }
+        fn axis_centre(&self, axis: usize, value: f64, gap: f64) -> $crate::error::AstResult<f64> {
+            let (f, a) = self.axis_component(axis)?;
+            f.axis_centre(a, value, gap)
+        }
+        fn axis_abbrev(
+            &self,
+            axis: usize,
+            fmt: &str,
+            str1: Option<&str>,
+            str2: &str,
+        ) -> $crate::error::AstResult<usize> {
+            let (f, a) = self.axis_component(axis)?;
+            f.axis_abbrev(a, fmt, str1, str2)
+        }
+        fn axis_fields(
+            &self,
+            axis: usize,
+            fmt: &str,
+            text: &str,
+            maxfld: usize,
+        ) -> $crate::error::AstResult<$crate::frames::FieldSplit> {
+            let (f, a) = self.axis_component(axis)?;
+            f.axis_fields(a, fmt, text, maxfld)
+        }
+    };
+}
+
+/// The same methods for a FrameSet or Region, where `$cur` names the Frame
+/// they act on. A FrameSet forwards all four (frameset.c). A Region
+/// forwards `gap`, `centre` and `abbrev` (region.c) but not `fields`, which
+/// it inherits from the base Frame, so it reaches the Axis object of its
+/// Frame rather than that Frame's `fields`; this matters for a TimeFrame
+/// with a date Format.
+macro_rules! forward_plot_methods {
+    (@axis $kind:ident) => {
+        fn gap(&self, axis: usize, gap: f64) -> $crate::error::AstResult<(f64, Option<i32>)> {
+            $crate::frames::frame_attrs::validate_axis(axis, self.naxes())?;
+            forward_plot_methods!(@cur $kind self).gap(axis, gap)
+        }
+        fn centre(&self, axis: usize, value: f64, gap: f64) -> $crate::error::AstResult<f64> {
+            $crate::frames::frame_attrs::validate_axis(axis, self.naxes())?;
+            forward_plot_methods!(@cur $kind self).centre(axis, value, gap)
+        }
+        fn abbrev(
+            &self,
+            axis: usize,
+            fmt: &str,
+            str1: Option<&str>,
+            str2: &str,
+        ) -> $crate::error::AstResult<usize> {
+            $crate::frames::frame_attrs::validate_axis(axis, self.naxes())?;
+            forward_plot_methods!(@cur $kind self).abbrev(axis, fmt, str1, str2)
+        }
+        fn axis_gap(
+            &self,
+            axis: usize,
+            gap: f64,
+        ) -> $crate::error::AstResult<(f64, Option<i32>)> {
+            forward_plot_methods!(@cur $kind self).axis_gap(axis, gap)
+        }
+        fn axis_centre(
+            &self,
+            axis: usize,
+            value: f64,
+            gap: f64,
+        ) -> $crate::error::AstResult<f64> {
+            forward_plot_methods!(@cur $kind self).axis_centre(axis, value, gap)
+        }
+        fn axis_abbrev(
+            &self,
+            axis: usize,
+            fmt: &str,
+            str1: Option<&str>,
+            str2: &str,
+        ) -> $crate::error::AstResult<usize> {
+            forward_plot_methods!(@cur $kind self).axis_abbrev(axis, fmt, str1, str2)
+        }
+        fn axis_fields(
+            &self,
+            axis: usize,
+            fmt: &str,
+            text: &str,
+            maxfld: usize,
+        ) -> $crate::error::AstResult<$crate::frames::FieldSplit> {
+            forward_plot_methods!(@cur $kind self).axis_fields(axis, fmt, text, maxfld)
+        }
+    };
+    (@cur region $s:tt) => {
+        $s.data.frameset.current()
+    };
+    (@cur frameset $s:tt) => {
+        $s.current()
+    };
+    (frameset) => {
+        forward_plot_methods!(@axis frameset);
+        fn fields(
+            &self,
+            axis: usize,
+            fmt: &str,
+            text: &str,
+            maxfld: usize,
+        ) -> $crate::error::AstResult<$crate::frames::FieldSplit> {
+            $crate::frames::frame_attrs::validate_axis(axis, self.naxes())?;
+            forward_plot_methods!(@cur frameset self).fields(axis, fmt, text, maxfld)
+        }
+    };
+    (region) => {
+        forward_plot_methods!(@axis region);
+    };
 }
 
 /// The per-axis attributes of a CmpFrame, and of a SpecFluxFrame, which is

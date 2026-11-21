@@ -2158,6 +2158,47 @@ impl Frame for SkyFrame {
         }
     }
 
+    /// The gap suits the SkyFrame's Format for the axis, set or default,
+    /// rather than the Axis object's own default.
+    // C: skyframe.c `Gap` (skyframe.c:2314) lends the SkyFrame's Format to
+    // the axis for the duration of the parent `Gap`; the SkyAxis then reads
+    // its own Digits.
+    fn gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
+        let phys = self.physical_axis(axis)?;
+        match &self.axes[phys] {
+            FrameAxis::Plain(_) => super::axis::plain_axis_gap(gap),
+            FrameAxis::Sky(s) => super::skyaxis::sky_axis_gap(
+                &self.phys_format(phys),
+                s.digits_value(super::axis::AXIS_DIGITS),
+                gap,
+            ),
+        }
+    }
+
+    fn axis_gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
+        self.axes[self.physical_axis(axis)?].axis_gap(gap)
+    }
+
+    fn axis_abbrev(
+        &self,
+        axis: usize,
+        fmt: &str,
+        str1: Option<&str>,
+        str2: &str,
+    ) -> AstResult<usize> {
+        Ok(self.axes[self.physical_axis(axis)?].axis_abbrev(fmt, str1, str2))
+    }
+
+    fn axis_fields(
+        &self,
+        axis: usize,
+        fmt: &str,
+        text: &str,
+        maxfld: usize,
+    ) -> AstResult<super::FieldSplit> {
+        Ok(self.axes[self.physical_axis(axis)?].axis_fields(fmt, text, maxfld))
+    }
+
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
         if !(1..=2).contains(&axis) {
             return Err(AstError::new_tracked(
@@ -2911,18 +2952,11 @@ impl Frame for SkyFrame {
     }
 
     fn line_crossing(&self, l1: &LineDef, l2: &LineDef) -> AstResult<(bool, [f64; 2], f64)> {
-        let sl1 = l1.sky.as_ref().ok_or_else(|| {
-            AstError::new(
-                ErrorCode::Inter,
-                "line_crossing: line 1 is not a SkyFrame line",
-            )
-        })?;
-        let sl2 = l2.sky.as_ref().ok_or_else(|| {
-            AstError::new(
-                ErrorCode::Inter,
-                "line_crossing: line 2 is not a SkyFrame line",
-            )
-        })?;
+        super::line_owned_by(self, l1, "astLineCrossing", "First supplied line", true)?;
+        super::line_owned_by(self, l2, "astLineCrossing", "Second supplied line", true)?;
+        let (Some(sl1), Some(sl2)) = (l1.sky.as_ref(), l2.sky.as_ref()) else {
+            unreachable!("line_owned_by checked both lines");
+        };
 
         // The two great circles intersect along the direction perpendicular to
         // both poles.
@@ -2953,19 +2987,21 @@ impl Frame for SkyFrame {
             }
         }
 
-        let (lon, lat) = pal::dcc2s(&b);
+        // `palDcc2s` is plain `eraC2s`. `pal::dcc2s` also turns a -0 into +0
+        // to suit the rotation pipeline's summation order, which would flip
+        // the longitude of a negated crossing vector with a genuine -0 y
+        // component from -pi to +pi.
+        let (lon, lat) = crate::erfa::c2s(b);
         let p = [lon, lat];
         let perm = self.perm;
         Ok((result, [p[perm[0]], p[perm[1]]], dist))
     }
 
     fn line_contains(&self, l: &LineDef, point: &[f64]) -> AstResult<bool> {
-        let sl = l.sky.as_ref().ok_or_else(|| {
-            AstError::new(
-                ErrorCode::Inter,
-                "line_contains: line is not a SkyFrame line",
-            )
-        })?;
+        super::line_owned_by(self, l, "astLineContains", "The supplied line", true)?;
+        let Some(sl) = l.sky.as_ref() else {
+            unreachable!("line_owned_by checked the line");
+        };
         if is_bad(point[0]) || is_bad(point[1]) {
             return Ok(false);
         }
@@ -3336,6 +3372,7 @@ fn skyframe_overlay(
             if is_equatorial(new_system) != is_equatorial(old_system) || skyref_changed {
                 // C clears AsTime, Direction, Format, Label, Symbol and
                 // Unit, and keeps Digits.
+                #[allow(clippy::needless_range_loop)]
                 for axis in 0..2 {
                     let ax = &mut result_sky.axes[axis];
                     let attrs = ax.axis_mut();
@@ -3940,6 +3977,7 @@ impl Serializable for SkyFrame {
 
         // Read SkyAxis children. Axes are stored in internal (physical)
         // order (0 = lon, 1 = lat).
+        #[allow(clippy::needless_range_loop)]
         for i in 0..2 {
             let key = format!("Ax{}", i + 1);
             // An Axis object of either class; with none, astLoadFrame

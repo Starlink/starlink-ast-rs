@@ -917,6 +917,33 @@ impl Frame for BasicFrame {
             .unwrap_or(AxisKind::Plain)
     }
 
+    /// A SkyAxis chooses gaps, abbreviations and fields as a sky axis does.
+    // C: frame.c `Gap` and its siblings reach the Axis object, which may be
+    // a SkyAxis picked out of a SkyFrame.
+    fn axis_gap(&self, axis: usize, gap: f64) -> AstResult<(f64, Option<i32>)> {
+        self.axis_object(axis)?.axis_gap(gap)
+    }
+
+    fn axis_abbrev(
+        &self,
+        axis: usize,
+        fmt: &str,
+        str1: Option<&str>,
+        str2: &str,
+    ) -> AstResult<usize> {
+        Ok(self.axis_object(axis)?.axis_abbrev(fmt, str1, str2))
+    }
+
+    fn axis_fields(
+        &self,
+        axis: usize,
+        fmt: &str,
+        text: &str,
+        maxfld: usize,
+    ) -> AstResult<super::FieldSplit> {
+        Ok(self.axis_object(axis)?.axis_fields(fmt, text, maxfld))
+    }
+
     fn set_active_unit(&mut self, value: bool) {
         self.attrs.active_unit = Some(value);
     }
@@ -1223,6 +1250,7 @@ impl Serializable for BasicFrame {
 
         // The permutation, `Prm{n}` being the 1-based internal axis of
         // external axis n.
+        #[allow(clippy::needless_range_loop)]
         for ext in 0..naxes {
             let p = node.get_int(&format!("Prm{}", ext + 1), ext as i64 + 1);
             if p >= 1 && (p as usize) <= naxes {

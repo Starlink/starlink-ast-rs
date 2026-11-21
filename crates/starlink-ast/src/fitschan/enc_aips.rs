@@ -265,6 +265,7 @@ pub(crate) fn write_to_cards(
     let naxis = store.naxis;
 
     // CRPIXi
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
             let key = key_for("CRPIX", Some(i + 1), s);
@@ -282,6 +283,7 @@ pub(crate) fn write_to_cards(
         .and_then(aips_spectral_unit);
 
     // CRVALi
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(mut val) = store.crval[i] {
             if let (Some(ax), Some((_, factor))) = (axspec, spec_remap)
@@ -351,6 +353,7 @@ pub(crate) fn write_to_cards(
     }
 
     // CUNITi
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = key_for("CUNIT", Some(i + 1), s);
@@ -593,6 +596,7 @@ pub(crate) fn write_to_cards_pp(
     let naxis = store.naxis;
 
     // CRPIXi.
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
             let key = key_for("CRPIX", Some(i + 1), s);
@@ -607,6 +611,7 @@ pub(crate) fn write_to_cards_pp(
         .and_then(aips_spectral_unit);
 
     // CRVALi.
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(mut val) = store.crval[i] {
             if let (Some(ax), Some((_, factor))) = (axspec, spec_remap)
@@ -650,6 +655,7 @@ pub(crate) fn write_to_cards_pp(
     }
 
     // CUNITi.
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = key_for("CUNIT", Some(i + 1), s);

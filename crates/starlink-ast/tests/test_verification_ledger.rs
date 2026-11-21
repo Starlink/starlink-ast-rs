@@ -191,6 +191,24 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          it closes",
     ),
     (
+        "test_plot_frame_methods.rs",
+        "FIELDS_EXCLUDED",
+        2,
+        "astFields on \"  -7 \" with maxfld 20 and 1: C's AxisFields reads past \
+         the end of a value with leading spaces (c-library-quirks.md); the port \
+         returns the value's own span. fields_excluded_cases_still_differ_from_c \
+         fails when C agrees",
+    ),
+    (
+        "test_plot_frame_methods.rs",
+        "CLOCK_GAP_LICENSED",
+        9,
+        "the date axes of six TimeFrames and of a CmpFrame, a permuted CmpFrame \
+         and a Box holding one: their gap is measured from the current time, which \
+         C and the port read at different moments, so values are compared within \
+         8 ULP of the current time and the division count exactly",
+    ),
+    (
         "test_fitschan_errors.rs",
         "FITSCHAN_ERRORS_EXCLUDED",
         3,
