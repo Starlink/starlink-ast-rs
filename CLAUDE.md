@@ -410,9 +410,11 @@ The C ABI is **frozen**. Existing applications must keep linking.
 - `astBegin` / `astEnd` / `astExempt` / `astSetPutErr` / `astStatus`
   semantics are part of the C contract; their handle-stack and
   thread-local-status implementations are tested by tier-3.
-- Variadic `astSet` / constructors parse the printf-style format
-  inside the shim and dispatch to typed Rust setters. Don't expose
-  format-string parsing on the Rust public API.
+- Variadic `astSet` / constructors expand the printf-style format
+  inside the shim and pass the text to `starlink-ast`'s attribute-string
+  layer (`starlink_ast::attributes`, the `attribute-strings` feature),
+  which is built on the typed setters. Don't expose printf-style format
+  parsing on the Rust public API.
 - Any `extern "C" fn` body must be wrapped in `catch_unwind` so a
   Rust panic translates to `AST__INTER` rather than crossing FFI.
 
@@ -425,7 +427,7 @@ The C ABI is **frozen**. Existing applications must keep linking.
 | Using `Mutex` / `RwLock` inside `SkyFrame` (or any Frame attribute setter) | Regresses the SCUBA-2 hot path |
 | Using `f64::NAN` as the canonical bad-value sentinel in outputs | `BAD_VALUE` (= `-f64::MAX`) is the contract; `NaN` is accepted on input only |
 | 0-based axis arguments | All axis indices are 1-based throughout the public API |
-| String-typed `get_attr(name)` / `set_fmt(spec)` in `starlink-ast` | These exist only in `starlink-ast-capi` for the C-ABI dispatch path |
+| String-typed attribute access in `starlink-ast` outside the `attribute-strings` feature | The typed accessors are the everyday API; `attributes::Attributes` (C's attribute names and syntax, for the C-ABI shim and programs that take settings as text) is opt-in and built on them |
 | `Mul` / `BitOr` operator overloading for mapping composition | Use `then` / `alongside` verbs only — readability |
 | Reaching into `reference/starlink-ast/` from `starlink-ast`'s `build.rs` | The everyday build must not depend on the submodule |
 | Symlinking test fixtures from `reference/starlink-ast/ast_tester/` | Fixtures must be committed into `crates/starlink-ast/tests/fixtures/` so tier-1 works without the submodule |

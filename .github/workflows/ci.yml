@@ -80,7 +80,7 @@ jobs:
       # denies the group, so this needs no RUSTDOCFLAGS; the step exists so
       # rustdoc actually runs somewhere.
       - name: Docs
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --workspace --no-deps --features starlink-ast/attribute-strings
 
   # The archive `cargo publish` would upload, tested on its own: unpacked
   # outside the workspace so that nothing left behind in the repository can be
@@ -111,4 +111,6 @@ jobs:
           mkdir "$RUNNER_TEMP/archive"
           tar -xzf target/package/starlink-ast-*.crate -C "$RUNNER_TEMP/archive"
           cd "$RUNNER_TEMP"/archive/starlink-ast-*
-          cargo test --locked --no-fail-fast
+          # The repository's tests reach attribute strings through a
+          # dev-dependency of the crate on itself, which the archive drops.
+          cargo test --locked --no-fail-fast --features attribute-strings

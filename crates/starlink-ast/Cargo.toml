@@ -51,6 +51,10 @@ include = [
     "/tests/fixtures/wcsconv/cases.txt",
 ]
 
+[package.metadata.docs.rs]
+# The optional public API is documented with the rest.
+features = ["attribute-strings"]
+
 [lints]
 workspace = true
 
