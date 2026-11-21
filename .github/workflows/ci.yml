@@ -64,6 +64,11 @@ jobs:
         # Rust engine only: needs neither the submodule nor a C build.
         run: cargo test -p ast-bench
 
+      - name: Demo tests
+        # The egui demo needs no system packages to build: on Linux, winit
+        # and glutin load X11 or Wayland and OpenGL when the window opens.
+        run: cargo test -p ast-plot-demo
+
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
 
