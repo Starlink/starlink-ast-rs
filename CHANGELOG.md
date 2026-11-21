@@ -55,6 +55,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a Unit of a SpecFrame, DSBSpecFrame or TimeFrame, or a unit given with a value, that holds text which is not ASCII (`"é"`) no longer panics in the units parser, which compared parts of it by byte position.
 - `starlink-ast`: `SpecFrame::set_unit` and `DSBSpecFrame`'s store the Unit without trailing white space, as the C library does; it was kept as given.
 - `starlink-ast`: a TimeFrame's `centre` with a date Format, across a month or year end, gives a date (the start of the month or year) where it reported `Inter`; a gap across a day boundary now centres on the first of the month, not the last day of the month before. This follows the C library's fix on the reference branch `u/timj/timeframe-centre-date`.
 - `starlink-ast`: a date read from text with a year of two digits or fewer is in the C library's century, 2000 to 2049 for 0 to 49 and 1950 to 1999 for 50 to 99, as the C library's `astReadDateTime` reads it.

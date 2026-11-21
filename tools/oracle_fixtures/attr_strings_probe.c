@@ -721,6 +721,11 @@ static const struct acase cases[] = {
    { "fs_failed", "fs_grid_sky", {
       SET( "System=FK4,Fred=1,Grid=1" ), SEE( "System" ),
    } },
+/* A string stops at the setting that fails: the first is applied, the
+   third, which would succeed, is not, and the Mappings are untouched. */
+   { "fs_failed_stops", "fs_grid_sky", {
+      SET( "System=FK4,Fred=1,Title=never" ), SEE( "System" ), SEE( "Title" ),
+   } },
    { "fs_failed_clear", "fs_grid_sky", {
       SET( "System=Galactic" ), CLEAR( "System,Fred,Epoch" ), SEE( "System" ),
    } },

@@ -315,11 +315,14 @@ pub(crate) fn split_unit(
     }
     let lm = ls - lu;
 
-    let tail = &str_in[lm..];
+    // C compares bytes. Compared as bytes, a match starts where `u`'s first
+    // byte does, which is the start of a character, so the slices below
+    // fall on character boundaries.
+    let tail = &str_in.as_bytes()[lm..];
     let tail_match = if cs {
-        tail == u
+        tail == u.as_bytes()
     } else {
-        tail.eq_ignore_ascii_case(u)
+        tail.eq_ignore_ascii_case(u.as_bytes())
     };
     if !tail_match {
         return None;
@@ -363,7 +366,15 @@ fn ends_with_func_call(slice: &str, func: &str) -> bool {
         return false;
     }
     let start = slice.len() - func.len();
-    slice[start..].eq_ignore_ascii_case(func)
+    slice.as_bytes()[start..].eq_ignore_ascii_case(func.as_bytes())
+}
+
+/// Whether `head` starts with the function call `func`, such as `"sqrt("`,
+/// in any case. C compares bytes, so a head that starts with text that is
+/// not ASCII simply does not match.
+fn starts_with_func(head: &str, func: &str) -> bool {
+    let (h, f) = (head.as_bytes(), func.as_bytes());
+    h.len() >= f.len() && h[..f.len()].eq_ignore_ascii_case(f)
 }
 
 /// Build a `UnitNode` tree from a (cleaned) unit expression. `nc` is
@@ -524,20 +535,13 @@ fn make_tree_n(exp: &[u8], nc: usize) -> Option<Box<UnitNode>> {
 
     // -------- Branch C: function call at start ---------
     let head = std::str::from_utf8(&exp[..nc]).ok()?;
-    let (func_op, func_oplen) = if head.len() >= 5
-        && (head[..5].eq_ignore_ascii_case("sqrt(") || head.starts_with("SQRT("))
-    {
+    let (func_op, func_oplen) = if starts_with_func(head, "sqrt(") {
         (Some(Oper::Sqrt), 4usize)
-    } else if head.len() >= 4
-        && (head[..4].eq_ignore_ascii_case("exp(") || head.starts_with("EXP("))
-    {
+    } else if starts_with_func(head, "exp(") {
         (Some(Oper::Exp), 3)
-    } else if head.len() >= 3 && (head[..3].eq_ignore_ascii_case("ln(") || head.starts_with("LN("))
-    {
+    } else if starts_with_func(head, "ln(") {
         (Some(Oper::Ln), 2)
-    } else if head.len() >= 4
-        && (head[..4].eq_ignore_ascii_case("log(") || head.starts_with("LOG("))
-    {
+    } else if starts_with_func(head, "log(") {
         (Some(Oper::Log), 3)
     } else {
         (None, 0)

@@ -72,6 +72,13 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
 
+      # starlink-ast as crates.io users build it: ast-plot-demo turns the
+      # attribute-strings feature on, and the workspace build above unifies
+      # it into every build of the crate, so only a build of the library on
+      # its own lints the default configuration.
+      - name: Clippy, starlink-ast with default features
+        run: cargo clippy -p starlink-ast --lib -- -D warnings
+
       - name: Format check
         run: cargo fmt --all -- --check
 

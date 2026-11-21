@@ -356,6 +356,45 @@ fn used_values_can_be_got_through_a_given_backend() {
     );
 }
 
+/// Text that is not ASCII, where a unit is read, gives an error or a value
+/// rather than a panic. The C library reads such text byte by byte.
+#[test]
+fn units_that_are_not_ascii_do_not_panic() {
+    use starlink_ast::frames::{DSBSpecFrame, SpecFrame, SpecSystem, TimeFrame};
+    let mut spec = SpecFrame::new(SpecSystem::Freq);
+    for setting in ["RestFreq=1 é", "SpecOrigin=1 é", "RestFreq=1 mé"] {
+        assert!(spec.set_attributes(setting).is_err(), "{setting}");
+    }
+    let mut dsb = DSBSpecFrame::new(SpecSystem::Freq);
+    assert!(dsb.set_attributes("IF=1 é").is_err());
+    let mut time = TimeFrame::new(starlink_ast::frames::TimeSystem::Mjd);
+    assert!(time.set_attributes("TimeOrigin=1 é").is_err());
+    for frame in [
+        &mut spec as &mut dyn Frame,
+        &mut dsb as &mut dyn Frame,
+        &mut time as &mut dyn Frame,
+    ] {
+        frame.set_attributes("Label(1)=é").unwrap();
+        frame.set_attributes("Unit(1)=é").unwrap();
+        assert_eq!(frame.get_attribute("Unit(1)").unwrap(), "é");
+        frame.clear_attributes("Unit(1)").unwrap();
+        for unit in [
+            "éHz", "kmé/s", "é**2", "log(é)", "μm", "Å", "°", "é é", "(é)", "é^é", "sqrt(é)",
+            "exp(é", "1éHz", "é*m", "m/é", "ÅÅ", "10**é",
+        ] {
+            let _ = frame.set_attributes(&format!("Unit(1)={unit}"));
+            let _ = frame.get_attribute("Unit(1)");
+            let _ = frame.get_attribute("NormUnit(1)");
+            let _ = frame.get_attribute("Label(1)");
+        }
+    }
+    let mut spec = SpecFrame::new(SpecSystem::Freq);
+    for unit in ["μm", "Å", "kHé", "é**2", "log(é)", "é/é"] {
+        let _ = spec.set_attributes(&format!("RestFreq=1 {unit}"));
+        let _ = spec.set_attributes(&format!("SpecOrigin=1 {unit}"));
+    }
+}
+
 #[test]
 fn excluded_dumps_still_differ() {
     for &(name, reason) in DUMP_EXCLUDED {
