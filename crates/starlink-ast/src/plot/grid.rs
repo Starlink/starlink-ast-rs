@@ -421,7 +421,7 @@ impl Plot {
                 let mut phys = PointSet::zeros(n, 2);
                 phys.axis_mut(axis).copy_from_slice(&grid[axis].ticks);
                 phys.axis_mut(1 - axis).fill(value);
-                let graph = self.trans_with(None, &phys, false, false)?;
+                let graph = self.trans_with(None, None, &phys, false, false)?;
                 let mut nin = 0;
                 for i in 0..n {
                     let (x, y) = (graph.axis(0)[i], graph.axis(1)[i]);
