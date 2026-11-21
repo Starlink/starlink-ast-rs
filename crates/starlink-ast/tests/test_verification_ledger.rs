@@ -210,6 +210,14 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "test_grf.rs",
+        "XML_ESCAPE_EXCLUDED",
+        1,
+        "the SVG <text> line of a<b & \"c\": C's grf_log.c writes text unescaped, so \
+         its SVG is invalid; the port escapes it (c-library-quirks.md). \
+         xml_escape_exclusions_still_differ fails when it matches C again",
+    ),
+    (
+        "test_grf.rs",
         "TEXT_WIDTH_EXCLUDED",
         2,
         "the extents of \"°\" and \"-30°\": C's grf_log, written before Unicode, \

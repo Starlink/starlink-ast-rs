@@ -115,7 +115,9 @@ The work is plain Rust, testable natively; a thin `wasm-bindgen` wrapper exposes
 **Two opt-in `SvgGrf` settings,** each off by default so that `SvgGrf` still reproduces `grf_log.c`:
 
 - erase under text: fill each text's box with the background before drawing it, as the C library's PGPLOT and PLplot backends do (`grf_pgplot.c`'s `astGText`, `grf_plplot.c`), so grid lines stop short of labels;
-- equal aspect: map graphics coordinates 0 to 1 onto the largest centred square of the image, as `fplottest.f`'s `PGWNAD(0,1,0,1)` does, so a non-square image does not stretch the drawing; text, and markers, are then drawn at the size the Plot laid them out for (characters 0.02 of the square's side at size 1, from the backends' 4 mm on a 200 mm page), rather than `grf_log.c`'s fixed 14 pixels, so labels fit their boxes at any image size.
+- equal aspect: map graphics coordinates 0 to 1 onto the square `fplottest.f`'s `PGWNAD(0,1,0,1)` makes of PGPLOT's default viewport, so a non-square image does not stretch the drawing and the labels outside the graphics box stay on the image.
+  `PGOPEN` sets the character height to 1, 1/40 of the view surface's shorter side (`pgsch.f`), and calls `PGVSTD`, whose viewport is the view surface less 4 character heights all round; `PGWNAD` shrinks it to the largest centred square.
+  Text, and markers, are then drawn at PGPLOT's character height, and the Plot lays them out at that height, 1/32 of the square at size 1, rather than `grf_log.c`'s fixed 14 pixels on a page with characters 0.02 high, so labels fit their boxes at any image size.
 
 The page turns both on.
 

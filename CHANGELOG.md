@@ -9,6 +9,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Added
 
+- `starlink-ast`: `SvgOptions::erase_under_text`, which fills each text's box with the background before drawing it, as the C library's PGPLOT and PLplot backends do, and `SvgOptions::equal_aspect`, which draws as PGPLOT does after `PGWNAD(0, 1, 0, 1)`: on the largest square centred inside a margin of four character heights, with characters 1/40 of the image's shorter side, turned the way their up vector points, in Helvetica and measured with its widths. Both are off by default, so `SvgGrf` still draws as the C library's logging backend does.
 - `starlink-ast`: units written with the micro sign or Greek mu (`µm`, `μJy`) and with the Ångström sign or A with ring above (`Å`), as scientific plots write them, convert as `um`, `uJy` and `Angstrom` do. The C library, written before Unicode, knows only the ASCII spellings.
 - `starlink-ast`: `Plot::grf`, with `set_grf`, `test_grf` and `clear_grf`: the C library's Grf attribute, which the Rust library keeps but does not read, since a backend is passed to each drawing method.
 - `starlink-ast`: `Plot::get_attribute_with_grf`, with the `attribute-strings` feature: a get whose grid-dependent values are worked out through a given graphics backend.
@@ -56,6 +57,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: `SvgGrf` escapes `&`, `<`, `>` and `"` in text, so a label such as `Flux < 1` no longer makes the SVG invalid.
 - `starlink-ast`: `LogGrf` and `SvgGrf` measure text by characters rather than bytes, so an accented label or title is as wide as an unaccented one; ASCII text measures as before, and as the C library measures it.
 - `starlink-ast`: a Unit of a SpecFrame, DSBSpecFrame or TimeFrame, or a unit given with a value, that holds text which is not ASCII (`"é"`) no longer panics in the units parser, which compared parts of it by byte position.
 - `starlink-ast`: `SpecFrame::set_unit` and `DSBSpecFrame`'s store the Unit without trailing white space, as the C library does; it was kept as given.
