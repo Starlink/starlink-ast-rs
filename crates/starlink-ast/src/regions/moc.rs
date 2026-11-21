@@ -1800,17 +1800,27 @@ impl Moc {
     /// [0, 2PI[. An empty Moc, or one of the whole sky, has no boundary and
     /// gives one bad point. MeshSize is not used.
     fn base_mesh_rows(&self) -> AstResult<Vec<Vec<f64>>> {
-        Ok(self.base_mesh_and_dist()?.0)
+        self.with_base_mesh(|mesh, _| mesh.to_vec())
     }
 
-    /// [`base_mesh_rows`](Self::base_mesh_rows) with moc.c's `meshdist`:
-    /// the mesh indices in order round each perimeter, a negative one
-    /// starting another perimeter, each perimeter closed by repeating its
-    /// first index. A Moc with no boundary has the one index 0.
-    fn base_mesh_and_dist(&self) -> AstResult<(Vec<Vec<f64>>, Vec<i32>)> {
-        if let Some(mesh) = &self.cache.borrow().basemesh {
-            return Ok(mesh.clone());
+    /// Call `f` with the cached [`base_mesh_rows`](Self::base_mesh_rows)
+    /// and moc.c's `meshdist`: the mesh indices in order round each
+    /// perimeter, a negative one starting another perimeter, each perimeter
+    /// closed by repeating its first index. A Moc with no boundary has the
+    /// one index 0. The cache is borrowed while `f` runs.
+    fn with_base_mesh<R>(&self, f: impl FnOnce(&[Vec<f64>], &[i32]) -> R) -> AstResult<R> {
+        if self.cache.borrow().basemesh.is_none() {
+            let mesh = self.make_base_mesh()?;
+            self.cache.borrow_mut().basemesh = Some(mesh);
         }
+        let cache = self.cache.borrow();
+        let (mesh, meshdist) = cache.basemesh.as_ref().expect("the mesh was cached above");
+        Ok(f(mesh, meshdist))
+    }
+
+    /// The mesh and `meshdist` [`with_base_mesh`](Self::with_base_mesh)
+    /// caches.
+    fn make_base_mesh(&self) -> AstResult<(Vec<Vec<f64>>, Vec<i32>)> {
         let maxorder_attr = self.max_order();
         let full_sky = self.nrange() == 1
             && self.range[0] == 0
@@ -1820,7 +1830,6 @@ impl Moc {
         } else {
             self.trace_mesh()?
         };
-        self.cache.borrow_mut().basemesh = Some(mesh.clone());
         Ok(mesh)
     }
 
@@ -3628,44 +3637,47 @@ impl Region for Moc {
     /// positions breaks there.
     fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
         super::traced_positions(&self.data.frameset, dist, || {
-            let (mesh, meshdist) = self.base_mesh_and_dist()?;
-            let len = meshdist.len();
-            // C indexes the mesh with `meshdist[0]` for a distance below 0,
-            // reading before the start of the mesh when that is negative;
-            // that position is bad here.
-            let at = |imesh: i32| -> [f64; 2] {
-                match usize::try_from(imesh) {
-                    Ok(i) => [mesh[i][0], mesh[i][1]],
-                    Err(_) => [BAD_VALUE, BAD_VALUE],
-                }
-            };
-            let mut x = Vec::with_capacity(dist.len());
-            let mut y = Vec::with_capacity(dist.len());
-            for &di in dist {
-                let xd = di * (len as f64 - 1.0);
-                // C's (int) cast, which truncates.
-                let jlo = xd as i32;
-                let jhi = jlo + 1;
-                let whi = xd - f64::from(jlo);
-                let wlo = 1.0 - whi;
-                let p = if jlo < 0 {
-                    at(meshdist[0])
-                } else if jhi as usize >= len {
-                    at(meshdist[len - 1])
-                } else {
-                    let imesh_hi = meshdist[jhi as usize];
-                    if imesh_hi < 0 {
-                        [BAD_VALUE, BAD_VALUE]
-                    } else {
-                        let lo = &mesh[meshdist[jlo as usize].unsigned_abs() as usize];
-                        let hi = &mesh[imesh_hi as usize];
-                        [wlo * lo[0] + whi * hi[0], wlo * lo[1] + whi * hi[1]]
+            self.with_base_mesh(|mesh, meshdist| {
+                let len = meshdist.len();
+                // C indexes the mesh with `meshdist[0]` for a distance below 0,
+                // reading before the start of the mesh when that is negative;
+                // that position is bad here.
+                let at = |imesh: i32| -> [f64; 2] {
+                    match usize::try_from(imesh) {
+                        Ok(i) => [mesh[i][0], mesh[i][1]],
+                        Err(_) => [BAD_VALUE, BAD_VALUE],
                     }
                 };
-                x.push(p[0]);
-                y.push(p[1]);
-            }
-            Ok([x, y])
+                let mut x = Vec::with_capacity(dist.len());
+                let mut y = Vec::with_capacity(dist.len());
+                for &di in dist {
+                    let xd = di * (len as f64 - 1.0);
+                    // C's (int) cast, which truncates. A distance far outside 0
+                    // to 1, which the cast cannot hold, is undefined in C; here
+                    // the index saturates and takes an end of the trace.
+                    let jlo = xd as i32;
+                    let jhi = jlo.saturating_add(1);
+                    let whi = xd - f64::from(jlo);
+                    let wlo = 1.0 - whi;
+                    let p = if jlo < 0 {
+                        at(meshdist[0])
+                    } else if jhi as usize >= len {
+                        at(meshdist[len - 1])
+                    } else {
+                        let imesh_hi = meshdist[jhi as usize];
+                        if imesh_hi < 0 {
+                            [BAD_VALUE, BAD_VALUE]
+                        } else {
+                            let lo = &mesh[meshdist[jlo as usize].unsigned_abs() as usize];
+                            let hi = &mesh[imesh_hi as usize];
+                            [wlo * lo[0] + whi * hi[0], wlo * lo[1] + whi * hi[1]]
+                        }
+                    };
+                    x.push(p[0]);
+                    y.push(p[1]);
+                }
+                [x, y]
+            })
         })
     }
 

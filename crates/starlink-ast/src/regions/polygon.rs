@@ -1823,8 +1823,9 @@ impl Region for Polygon {
             }
 
             // With enough distances and vertices, a non-decreasing list of
-            // distances lets each search start at the previous edge.
-            let monotonic = dist.len() > 5 && nv > 5 && dist.windows(2).all(|w| w[1] >= w[0]);
+            // distances lets each search start at the previous edge. As in
+            // C, the test looks for a decrease, which a NaN never is.
+            let monotonic = dist.len() > 5 && nv > 5 && !dist.windows(2).any(|w| w[1] < w[0]);
 
             let mut x = Vec::with_capacity(dist.len());
             let mut y = Vec::with_capacity(dist.len());

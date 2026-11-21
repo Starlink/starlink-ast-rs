@@ -2309,8 +2309,10 @@ impl Clone for Box<dyn Region> {
 /// axis, and they are returned in the current Frame, through the
 /// base->current Mapping unless that is a UnitMap. With no distances, only
 /// the support is reported, as in C, where the positions are not computed.
+/// A NaN position, as a NaN distance gives, is returned bad.
 // C: the shared tail of each class's `RegTrace`, whose Mapping comes from
-// `astGetMapping`, which does not simplify.
+// `astGetMapping`, which does not simplify. C returns a NaN position as NaN
+// when the Mapping is a UnitMap.
 pub(crate) fn traced_positions(
     frameset: &FrameSet,
     dist: &[f64],
@@ -2320,7 +2322,12 @@ pub(crate) fn traced_positions(
         return Ok(Some(PointSet::zeros(0, frameset.current().naxes())));
     }
     let map = frameset.mapping(FrameRef::Base, FrameRef::Current)?;
-    let [x, y] = positions()?;
+    let [mut x, mut y] = positions()?;
+    for v in x.iter_mut().chain(y.iter_mut()) {
+        if v.is_nan() {
+            *v = crate::constants::BAD_VALUE;
+        }
+    }
     let base = PointSet::from_columns(&[&x, &y])?;
     if map.as_any().is::<UnitMap>() {
         Ok(Some(base))

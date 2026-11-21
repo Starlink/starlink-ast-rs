@@ -157,6 +157,13 @@ fn make_region(id: &str) -> DynRegion {
         "moc_diag" => moc(Some("4/0 4/3")),
         "moc_empty" => moc(None),
         "moc_gal" => gal!("moc_block", Moc),
+        // A hole, a hole touching the outside at a corner, blocks touching
+        // at a corner, and a larger shape, which take the perimeter walk's
+        // backtracking and shared corners.
+        "moc_hole" => moc(Some("3/0-2,4-5,7-8,10-11,13-15")),
+        "moc_hole_corner" => moc(Some("3/1-2,4-15")),
+        "moc_touch" => moc(Some("3/0-3,12-15")),
+        "moc_big" => moc(Some("4/0-2,4-15,17,19-63")),
         "pointlist" => Box::new(
             PointListBuilder::new(frame(2), vec![vec![0.0, 0.0], vec![1.0, 1.0]])
                 .unwrap()
@@ -181,6 +188,7 @@ fn make_region(id: &str) -> DynRegion {
         "or_disjoint" => cmp("cA", "cB", CmpOperator::Or),
         "and_negbox" => cmp("cA", "neg_bA", CmpOperator::And),
         "or_negbox" => cmp("cA", "neg_bA", CmpOperator::Or),
+        "or_disjoint_neg" => negated("or_disjoint"),
         "nested" => cmp("or_cb", "cC", CmpOperator::And),
         "or_three" => cmp("or_disjoint", "cC", CmpOperator::Or),
         "or_sky" => cmp("sky_c1", "sky_b1", CmpOperator::Or),
@@ -239,6 +247,31 @@ fn reg_trace_matches_the_c_library() {
     check_trace_cases(cases::TRACE_CASES);
 }
 
+/// No comparison finds a NaN distance out of order, so a list that is
+/// non-decreasing but for a NaN still lets a Polygon start each search at
+/// the edge the last one reached: the NaN reaches the last edge, and every
+/// later distance is measured along it. The position at the NaN is bad
+/// where C leaves it NaN.
+#[test]
+fn a_nan_distance_leaves_the_list_in_order() {
+    for &(id, want) in cases::NAN_CASES {
+        assert!(
+            want[0].iter().any(|w| w.is_nan()),
+            "{id}: C gives a NaN position"
+        );
+        let want: Vec<Vec<f64>> = want
+            .iter()
+            .map(|axis| {
+                axis.iter()
+                    .map(|&w| if w.is_nan() { BAD_VALUE } else { w })
+                    .collect()
+            })
+            .collect();
+        let want: Vec<&[f64]> = want.iter().map(Vec::as_slice).collect();
+        check_positions(id, make_region(id).as_ref(), cases::DIST_NAN, &want);
+    }
+}
+
 #[test]
 fn an_empty_dist_only_answers_support() {
     let reg = make_region("circle2d");
@@ -283,4 +316,13 @@ fn reg_split_matches_the_c_library() {
             assert_c_text(&dump, want, &format!("{id}: part {i}"));
         }
     }
+}
+
+/// A distance far outside 0 to 1, which C's integer cast cannot hold, gives
+/// a position rather than overflowing.
+#[test]
+fn a_huge_distance_on_a_moc_does_not_overflow() {
+    let reg = make_region("moc_block");
+    let got = reg.reg_trace(&[1.0e12, -1.0e12]).unwrap().unwrap();
+    assert_eq!(got.npoint(), 2);
 }

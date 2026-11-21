@@ -32,6 +32,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A Moc's `RegTrace` reads before its mesh for a distance below zero](#a-mocs-regtrace-reads-before-its-mesh-for-a-distance-below-zero)
 - [CmpRegion `RegTrace` tests its first component twice](#cmpregion-regtrace-tests-its-first-component-twice)
 - [CmpRegion `RegSplit` maps an unsplit CmpRegion into its own Frame again](#cmpregion-regsplit-maps-an-unsplit-cmpregion-into-its-own-frame-again)
+- [CmpRegion `RegSplit` ignores the CmpRegion's own Negated](#cmpregion-regsplit-ignores-the-cmpregions-own-negated)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -303,7 +304,8 @@ The fix is to test the counts before indexing.
 ### A Moc's `RegTrace` reads before its mesh for a distance below zero
 
 `moc.c` `RegTrace` (moc.c:8778) takes the position for a distance below zero from the mesh point `meshdist[ 0 ]` names, without the sign test it makes elsewhere.
-`RegBaseMesh` makes `meshdist[ 0 ]` negative when the Moc's first perimeter is an isolated cell (one touching the rest of the Moc at most at a corner, such as a Moc of one cell), so C then reads before the start of the mesh.
+`RegBaseMesh` lists the perimeters it walks first, then appends each isolated cell (one touching the rest of the Moc at most at a corner), marking the start of each with a negated mesh index.
+So `meshdist[ 0 ]` is negative only when every part of the Moc is an isolated cell, as in a Moc of one cell, and the first cell's top-left corner is not mesh point zero, whose index negates to zero; C then reads before the start of the mesh.
 The same layout gives such a Moc a break at the start of its trace: `RegBaseMesh` closes each perimeter by inserting a copy of its first index before the negative index that starts the next, and does so before the first perimeter too, so distances from 0 to the first mesh step are bad.
 The break is harmless, since the end of the trace closes the cell, and the port keeps it.
 Distances below zero are outside what `RegTrace` accepts, and a Plot never passes one; the port returns a bad position there (`Moc::reg_trace` in `crates/starlink-ast/src/regions/moc.rs`).
@@ -325,6 +327,14 @@ While the base->current Mapping is a UnitMap this changes nothing; once a Frame 
 A Plot draws the outline of the Region `RegSplit` returns, so it would draw such a CmpRegion's border in the wrong place.
 The port mirrors this (`CmpRegion::reg_split`, pinned by the `and_sky_gal` case of `reg_split_matches_the_c_library` in `test_region_trace.rs`).
 The fix is to map only the parts, or to map the clone through the base Frame.
+
+### CmpRegion `RegSplit` ignores the CmpRegion's own Negated
+
+`cmpregion.c` `RegSplit` (cmpregion.c:2562) says it splits only CmpRegions that are not negated, but it tests the Negated attribute of the two components and not that of the CmpRegion itself.
+A negated OR of two disjoint Circles, the area outside both, comes back as the two Circles, which cover the area inside them.
+The one caller outside the class is the Plot's drawing of a Region's border, which traces only the boundaries of the parts, and a Region and its negation share their boundary, so the border is drawn correctly; the split itself never reaches a negated CmpRegion through its own recursion, since a negated component stops the split.
+The port mirrors this (`CmpRegion::reg_split`, pinned by the `or_disjoint_neg` case of `reg_split_matches_the_c_library` in `test_region_trace.rs`).
+The fix is to test the CmpRegion's Negated too, or to negate each part.
 
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 

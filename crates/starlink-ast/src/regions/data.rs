@@ -184,6 +184,12 @@ pub(crate) enum ClassCache {
         inside: [f64; 2],
         acw: bool,
     },
+    /// cmpregion.c `SetBreakInfo`: for each component, where its boundary is
+    /// part of the CmpRegion's, once found; a component that cannot be
+    /// traced is looked at again each time, as in C.
+    CmpRegion {
+        breaks: [Option<super::cmpregion::BreakInfo>; 2],
+    },
 }
 
 impl Clone for RegionData {

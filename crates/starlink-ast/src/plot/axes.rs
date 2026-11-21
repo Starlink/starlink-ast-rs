@@ -109,7 +109,7 @@ impl Plot {
             g1.axis_mut(1 - edgeax)[i] = value;
             value += dd;
         }
-        let p2 = self.trans_with(Some(frame), &g1, true, false)?;
+        let p2 = self.trans_with(None, Some(frame), &g1, true, false)?;
         let mut limit = f64::MAX;
         let mut nsum = 0;
         for _ in 0..3 {
@@ -158,7 +158,7 @@ impl Plot {
             };
             p3.axis_mut(axis)[i] = a;
         }
-        let p4 = self.trans_with(None, &p3, false, false)?;
+        let p4 = self.trans_with(None, None, &p3, false, false)?;
         let mut v = [p4.axis(0).to_vec(), p4.axis(1).to_vec()];
         for i in 0..EDGETICKS_DIM {
             let (x, y) = (g1.axis(0)[i], g1.axis(1)[i]);
@@ -564,7 +564,7 @@ impl Plot {
                 pset1.axis_mut(axis).copy_from_slice(&a);
                 pset1.axis_mut(1 - axis).copy_from_slice(&b);
                 let pset2 = map.transform(&pset1, false)?;
-                let pset3 = self.trans_with(None, &pset1, false, false)?;
+                let pset3 = self.trans_with(None, None, &pset1, false, false)?;
                 let (x, y) = (pset2.axis(0), pset2.axis(1));
                 let (xc, yc) = (pset3.axis(0), pset3.axis(1));
                 let mut ux = BAD_VALUE;

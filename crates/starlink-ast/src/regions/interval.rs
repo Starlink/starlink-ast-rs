@@ -1053,9 +1053,15 @@ impl Region for Interval {
     /// represents the same area in the same Frame, and `None` for an
     /// Interval that is not equivalent to a Box.
     fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
-        match self.cache()?.2 {
-            Some(bbox) => bbox.reg_trace(dist),
-            None => Ok(None),
+        if self.data.class_cache.borrow().is_none() {
+            self.cache()?;
+        }
+        match &*self.data.class_cache.borrow() {
+            Some(super::data::ClassCache::Interval {
+                equivalent: Some(bbox),
+                ..
+            }) => bbox.reg_trace(dist),
+            _ => Ok(None),
         }
     }
 

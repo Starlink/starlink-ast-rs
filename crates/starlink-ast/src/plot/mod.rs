@@ -421,22 +421,27 @@ impl Plot {
     /// outside the clipping region bad.
     // C: Trans (plot.c:28181), with `norm` set, as Transform calls it.
     fn trans(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
-        self.trans_with(None, pts, forward, true)
+        self.trans_with(None, None, pts, forward, true)
     }
 
-    /// Transform points through the Plot's FrameSet, normalising forward
-    /// results in `frm` (the current Frame if `None`) when `norm` is set,
-    /// then setting points outside the clipping region bad.
-    // C: Trans (plot.c:28181). C's `mapping` argument is always the Plot's
-    // base to current Mapping where the port calls it.
+    /// Transform points through `mapping`, the Plot's base to current
+    /// Mapping or one standing for it (the Plot's FrameSet if `None`),
+    /// normalising forward results in `frm` (the current Frame if `None`)
+    /// when `norm` is set, then setting points outside the clipping region
+    /// bad.
+    // C: Trans (plot.c:28181).
     pub(crate) fn trans_with(
         &self,
+        mapping: Option<&dyn Mapping>,
         frm: Option<&dyn Frame>,
         pts: &PointSet,
         forward: bool,
         norm: bool,
     ) -> AstResult<PointSet> {
-        let mut result = Mapping::transform(&self.frameset, pts, forward)?;
+        let mut result = match mapping {
+            Some(map) => map.transform(pts, forward)?,
+            None => Mapping::transform(&self.frameset, pts, forward)?,
+        };
         let npoint = result.npoint();
         if forward && norm {
             let cfr = frm.unwrap_or_else(|| self.frameset.current());
