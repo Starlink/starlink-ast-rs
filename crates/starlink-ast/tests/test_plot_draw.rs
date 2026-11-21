@@ -41,7 +41,7 @@ use starlink_ast::coords::PointSet;
 use starlink_ast::error::{AstResult, ErrorCode};
 use starlink_ast::frames::{BasicFrameBuilder, CmpFrame, FrameRef, SkyFrame, SkySystem};
 use starlink_ast::grf::{Grf, Justification, LogGrf, SvgGrf, SvgOptions};
-use starlink_ast::mappings::PermMap;
+use starlink_ast::mappings::{PermMap, PolyMap, PolyTerm, UnitMap};
 use starlink_ast::plot::{Draw, Plot};
 use starlink_ast::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, DynRegion, EllipseBuilder,
@@ -535,6 +535,26 @@ fn a_copied_plot_starts_with_no_pushed_text_attributes() {
     assert!(!pop(&mut copy).contains("GAttr COLOUR=3.0000"));
 }
 
+/// The Mapping from distance to position that `plot_methods_probe.c`
+/// builds for `id`.
+fn method_map(id: &str) -> PolyMap {
+    // Each term is a coefficient, its 1-based output and the power of t.
+    let terms: &[(f64, usize, usize)] = match id {
+        "parabola" => &[(1.0, 1, 0), (8.0, 1, 1), (2.0, 2, 0), (6.0, 2, 2)],
+        "sky_arc" => &[(0.5, 1, 0), (1.0, 1, 1), (0.2, 2, 0), (0.4, 2, 1)],
+        other => panic!("no Mapping {other}"),
+    };
+    let forward: Vec<PolyTerm> = terms
+        .iter()
+        .map(|&(coeff, out_axis, power)| PolyTerm {
+            coeff,
+            powers: vec![power],
+            out_axis,
+        })
+        .collect();
+    PolyMap::new(1, 2, &forward, None).unwrap()
+}
+
 /// Draw the operations of a `plot_methods_probe.c` case on `plot`.
 fn run_ops(plot: &mut Plot, grf: &mut dyn Grf, ops: &[methods::Op]) -> AstResult<()> {
     for op in ops {
@@ -542,6 +562,10 @@ fn run_ops(plot: &mut Plot, grf: &mut dyn Grf, ops: &[methods::Op]) -> AstResult
             methods::Op::Curve(start, finish) => plot.draw_curve(grf, start, finish)?,
             methods::Op::PolyCurve(axes) => {
                 plot.draw_poly_curve(grf, &PointSet::from_columns(axes)?)?
+            }
+            methods::Op::GenCurve(id) => plot.draw_gen_curve(grf, &method_map(id))?,
+            methods::Op::Mark(axes, marker) => {
+                plot.draw_mark(grf, &PointSet::from_columns(axes)?, *marker)?
             }
             other => unimplemented!("{:?}", std::mem::discriminant(other)),
         }
@@ -600,4 +624,13 @@ fn draw_poly_curve_rejects_the_wrong_axis_count() {
         "astPolyCurve(Plot): Number of axes (2) in the current Frame of the supplied Plot is \
          invalid - this number should be 3 (possible programming error)."
     );
+}
+
+#[test]
+fn draw_gen_curve_rejects_a_two_input_mapping() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let err = plot
+        .draw_gen_curve(&mut LogGrf::new(Vec::new()), &UnitMap::new(2))
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Ncpin);
 }

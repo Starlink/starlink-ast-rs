@@ -53,6 +53,7 @@ struct method_case {
 #define AITOFF_BOX { 0.1f, 0.1f, 0.9f, 0.9f }, { 10.0, -10.0, 300.0, 280.0 }
 
 #define CURVE( x0, y0, x1, y1 ) { OP_CURVE, 2, { x0, y0 }, { x1, y1 }, 0, 0, NULL }
+#define GEN( id ) { OP_GEN, 0, { 0 }, { 0 }, 0, 0, id }
 
 static const struct method_case cases[] = {
    { "frame_curve", NULL, FRAME_BOX, "", 0, 3,
@@ -82,6 +83,23 @@ static const struct method_case cases[] = {
    { "aitoff_poly", "aitoff.head", AITOFF_BOX, "", 0, 1,
      { { OP_POLY, 4, { 0.5, 1.5, 2.8, -2.8 }, { 0.2, 0.6, 0.1, -0.2 },
          0, 0, NULL } } },
+   { "frame_gen_curve", NULL, FRAME_BOX, "", 0, 1, { GEN( "parabola" ) } },
+   { "frame_gen_curve_styles", NULL, FRAME_BOX,
+     "Colour(curves)=2,Width(curves)=3,Style(curves)=2", 0, 1, { GEN( "parabola" ) } },
+   { "aitoff_gen_curve", "aitoff.head", AITOFF_BOX, "", 0, 1, { GEN( "sky_arc" ) } },
+   { "frame_mark", NULL, FRAME_BOX, "", 0, 2,
+     { { OP_MARK, 5, { 1.0, 5.0, BAD, 12.0, 8.0 }, { 1.0, 5.0, 3.0, 5.0, 9.0 },
+         1, 0, NULL },
+       { OP_MARK, 3, { 2.0, 4.0, 6.0 }, { 7.0, 7.5, 8.0 }, 3, 0, NULL } } },
+   { "frame_mark_clip", NULL, FRAME_BOX, "Clip=2", 0, 1,
+     { { OP_MARK, 5, { 1.0, 5.0, BAD, 12.0, 8.0 }, { 1.0, 5.0, 3.0, 5.0, 9.0 },
+         1, 0, NULL } } },
+   { "frame_mark_styles", NULL, FRAME_BOX, "Colour(markers)=4,Size(markers)=2", 0, 1,
+     { { OP_MARK, 3, { 2.0, 4.0, 6.0 }, { 7.0, 7.5, 8.0 }, 3, 0, NULL } } },
+   { "frame_mark_invisible", NULL, FRAME_BOX, "Invisible=1", 0, 1,
+     { { OP_MARK, 3, { 2.0, 4.0, 6.0 }, { 7.0, 7.5, 8.0 }, 3, 0, NULL } } },
+   { "aitoff_mark", "aitoff.head", AITOFF_BOX, "", 0, 1,
+     { { OP_MARK, 4, { 0.5, 1.5, -2.0, 3.5 }, { 0.2, 0.6, -0.4, 0.0 }, 2, 0, NULL } } },
 };
 
 /* The ClipFrame a frame index is written as. */
@@ -131,6 +149,15 @@ static void print_op( const struct op *op ) {
 
 /* The Mapping astGenCurve draws for an id. */
 static AstMapping *make_map( const char *id ) {
+   /* Each term is a coefficient, its 1-based output and the power of t. */
+   if( !strcmp( id, "parabola" ) ) {
+      double c[] = { 1.0, 1, 0,  8.0, 1, 1,  2.0, 2, 0,  6.0, 2, 2 };
+      return (AstMapping *) astPolyMap( 1, 2, 4, c, 0, NULL, "" );
+   }
+   if( !strcmp( id, "sky_arc" ) ) {
+      double c[] = { 0.5, 1, 0,  1.0, 1, 1,  0.2, 2, 0,  0.4, 2, 1 };
+      return (AstMapping *) astPolyMap( 1, 2, 4, c, 0, NULL, "" );
+   }
    fprintf( stderr, "unknown Mapping %s\n", id );
    exit( 1 );
 }
