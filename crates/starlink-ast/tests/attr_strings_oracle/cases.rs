@@ -3490,4 +3490,1344 @@ pub const CASES: &[Case] = &[
  End CmpFrame
 "###,
     },
+    Case {
+        name: "fs_own",
+        fitschan: false,
+        object: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "ICRS coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+#         System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+        ops: &[
+            (Op::Get("Class"), Out::Value("FrameSet")),
+            (Op::Get("Nframe"), Out::Value("2")),
+            (Op::Test("Nframe"), Out::Flag(false)),
+            (Op::Get("Base"), Out::Value("1")),
+            (Op::Test("Base"), Out::Flag(false)),
+            (Op::Get("Current"), Out::Value("2")),
+            (Op::Test("Current"), Out::Flag(true)),
+            (Op::Get("Nin"), Out::Value("2")),
+            (Op::Test("Nin"), Out::Flag(false)),
+            (Op::Get("Nout"), Out::Value("2")),
+            (Op::Test("Nout"), Out::Flag(false)),
+            (Op::Get("Invert"), Out::Value("0")),
+            (Op::Test("Invert"), Out::Flag(false)),
+            (Op::Get("Report"), Out::Value("0")),
+            (Op::Test("Report"), Out::Flag(false)),
+            (Op::Get("TranForward"), Out::Value("1")),
+            (Op::Test("TranForward"), Out::Flag(false)),
+            (Op::Get("TranInverse"), Out::Value("1")),
+            (Op::Test("TranInverse"), Out::Flag(false)),
+            (Op::Get("AllVariants"), Out::Value("SKY")),
+            (Op::Test("AllVariants"), Out::Flag(false)),
+            (Op::Get("Variant"), Out::Value("SKY")),
+            (Op::Test("Variant"), Out::Flag(false)),
+            (Op::Set("Base=2"), Out::Done),
+            (Op::Get("Base"), Out::Value("2")),
+            (Op::Test("Base"), Out::Flag(true)),
+            (Op::Set("Current=Base"), Out::Done),
+            (Op::Get("Current"), Out::Value("2")),
+            (Op::Test("Current"), Out::Flag(true)),
+            (Op::Set("Current=SKY"), Out::Done),
+            (Op::Get("Current"), Out::Value("2")),
+            (Op::Test("Current"), Out::Flag(true)),
+            (Op::Set("Current=1"), Out::Done),
+            (Op::Get("Current"), Out::Value("1")),
+            (Op::Set("Current=sky "), Out::Done),
+            (Op::Get("Current"), Out::Value("2")),
+            (Op::Set("Current=9"), Out::Err(E::Frmin, &["astSetCurrent(FrameSet): Invalid Frame index (9) given.", "This value should be in the range 1 to 2 (or AST__CURRENT or AST__BASE)."])),
+            (Op::Set("Current=0"), Out::Done),
+            (Op::Set("Current=nonsense"), Out::Err(E::Attin, &["astSetAttrib(FrameSet): Invalid index value for Current Frame \"nonsense\"."])),
+            (Op::Set("Base=nonsense"), Out::Err(E::Attin, &["astSetAttrib(FrameSet): Invalid index value for Base Frame \"nonsense\"."])),
+            (Op::Set("Base=grid"), Out::Done),
+            (Op::Get("Base"), Out::Value("1")),
+            (Op::Set("Base=Current"), Out::Done),
+            (Op::Get("Base"), Out::Value("2")),
+            (Op::Set("Base=AST__BASE"), Out::Done),
+            (Op::Set("Current=AST__CURRENT"), Out::Done),
+            (Op::Get("Current"), Out::Value("2")),
+            (Op::Clear("Base"), Out::Done),
+            (Op::Get("Base"), Out::Value("1")),
+            (Op::Test("Base"), Out::Flag(false)),
+            (Op::Clear("Current"), Out::Done),
+            (Op::Get("Current"), Out::Value("2")),
+            (Op::Test("Current"), Out::Flag(false)),
+            (Op::Set("Nframe=3"), Out::Err(E::Nowrt, &["astSet: The setting \"nframe=3\" is invalid for a FrameSet.", "This is a read-only attribute."])),
+            (Op::Clear("Nframe"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"nframe\" value for a FrameSet.", "This is a read-only attribute."])),
+            (Op::Set("AllVariants=x"), Out::Err(E::Nowrt, &["astSet: The setting \"allvariants=x\" is invalid for a FrameSet.", "This is a read-only attribute."])),
+            (Op::Clear("Class"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"class\" value for a FrameSet.", "This is a read-only attribute."])),
+            (Op::Set("Nin=1"), Out::Err(E::Nowrt, &["astSet: The setting \"nin=1\" is invalid for a FrameSet.", "This is a read-only attribute."])),
+            (Op::Clear("TranForward"), Out::Err(E::Nowrt, &["astClear: Invalid attempt to clear the \"tranforward\" value for a FrameSet.", "This is a read-only attribute."])),
+            (Op::Set("Report=1"), Out::Done),
+            (Op::Get("Report"), Out::Value("1")),
+            (Op::Test("Report"), Out::Flag(true)),
+            (Op::Clear("Report"), Out::Done),
+            (Op::Get("Report"), Out::Value("0")),
+            (Op::Test("Report"), Out::Flag(false)),
+            (Op::Set("ID=fs id"), Out::Done),
+            (Op::Get("ID"), Out::Value("fs id")),
+            (Op::Test("ID"), Out::Flag(true)),
+            (Op::Clear("ID"), Out::Done),
+            (Op::Get("ID"), Out::Value("")),
+            (Op::Test("ID"), Out::Flag(false)),
+            (Op::Set("Ident=fs"), Out::Done),
+            (Op::Get("Ident"), Out::Value("fs")),
+            (Op::Test("Ident"), Out::Flag(true)),
+            (Op::Clear("Ident"), Out::Done),
+            (Op::Get("Ident"), Out::Value("")),
+            (Op::Test("Ident"), Out::Flag(false)),
+            (Op::Get("UseDefs"), Out::Value("1")),
+            (Op::Test("UseDefs"), Out::Flag(false)),
+            (Op::Set("UseDefs=0"), Out::Done),
+            (Op::Get("UseDefs"), Out::Value("0")),
+            (Op::Test("UseDefs"), Out::Flag(true)),
+            (Op::Clear("UseDefs"), Out::Done),
+            (Op::Get("UseDefs"), Out::Value("1")),
+            (Op::Test("UseDefs"), Out::Flag(false)),
+            (Op::Get("IsLinear"), Out::Value("1")),
+            (Op::Get("IsSimple"), Out::Value("0")),
+            (Op::Test("IsLinear"), Out::Flag(false)),
+            (Op::Set("Fred=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a SkyFrame."])),
+            (Op::Get("Fred"), Out::Err(E::Badat, &["astGet: The SkyFrame given does not have an attribute called \"fred\"."])),
+            (Op::Test("Fred"), Out::Err(E::Badat, &["astTest: The attribute name \"fred\" is invalid for a SkyFrame."])),
+            (Op::Clear("Fred"), Out::Err(E::Badat, &["astClear: The attribute name \"fred\" is invalid for a SkyFrame."])),
+            (Op::Get("Title"), Out::Value("ICRS coordinates")),
+            (Op::Get("Domain"), Out::Value("SKY")),
+            (Op::Get("Naxes"), Out::Value("2")),
+            (Op::Get("Label(1)"), Out::Value("Right ascension")),
+            (Op::Set("Label(1)=lon"), Out::Done),
+            (Op::Get("Label(1)"), Out::Value("lon")),
+            (Op::Test("Label(1)"), Out::Flag(true)),
+            (Op::Get(" "), Out::Err(E::Badat, &["astGet(FrameSet): A blank attribute name was given."])),
+        ],
+        dump: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "lon" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+#   Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "ICRS coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "lon" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+#         System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+                Label = "lon" 	# Axis Label
+             IsA Axis 	# Coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+    },
+    Case {
+        name: "fs_integrity",
+        fitschan: false,
+        object: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "ICRS coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+#         System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+        ops: &[
+            (Op::Set("System=FK4"), Out::Done),
+            (Op::Get("System"), Out::Value("FK4")),
+            (Op::Test("System"), Out::Flag(true)),
+            (Op::Get("Equinox"), Out::Value("1950.0")),
+            (Op::Set("Epoch=1950"), Out::Done),
+            (Op::Get("Epoch"), Out::Value("1950.0")),
+            (Op::Test("Epoch"), Out::Flag(true)),
+            (Op::Set("Equinox=J2000,System=FK5"), Out::Done),
+            (Op::Get("System"), Out::Value("FK5")),
+            (Op::Clear("System,Epoch"), Out::Done),
+            (Op::Get("System"), Out::Value("ICRS")),
+            (Op::Test("System"), Out::Flag(false)),
+            (Op::Get("Epoch"), Out::Value("2000.0")),
+            (Op::Test("Epoch"), Out::Flag(false)),
+            (Op::Set("SkyRef=1:00:00,10:00:00,SkyRefIs=Origin"), Out::Err(E::Badoc, &["astSetAttrib(SkyFrame): Invalid axis values string \"1:00:00\" given for SkyRef attribute."])),
+            (Op::Get("SkyRef"), Out::Value("0:00:00.0, 0:00:00")),
+            (Op::Get("SkyRefIs"), Out::Value("Ignored")),
+        ],
+        dump: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "ICRS coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+#         System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          Eqnox = 2000 	# Julian epoch of mean equinox
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+    },
+    Case {
+        name: "fs_failed",
+        fitschan: false,
+        object: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "ICRS coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+#         System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+        ops: &[
+            (Op::Set("System=FK4,Fred=1,Grid=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a SkyFrame."])),
+            (Op::Get("System"), Out::Value("FK4")),
+            (Op::Test("System"), Out::Flag(true)),
+        ],
+        dump: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "FK4 equatorial coordinates; mean equinox B1950.0; epoch B1950.0" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 1950 	# Besselian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "FK4" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "FK4 equatorial coordinates; mean equinox B1950.0; epoch B1950.0" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 1950 	# Besselian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+          System = "FK4" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+#         Eqnox = 1950 	# Besselian epoch of mean equinox
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+    },
+    Case {
+        name: "fs_failed_clear",
+        fitschan: false,
+        object: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "ICRS coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+#         System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+        ops: &[
+            (Op::Set("System=Galactic"), Out::Done),
+            (Op::Clear("System,Fred,Epoch"), Out::Err(E::Badat, &["astClear: The attribute name \"fred\" is invalid for a SkyFrame."])),
+            (Op::Get("System"), Out::Value("ICRS")),
+            (Op::Test("System"), Out::Flag(false)),
+        ],
+        dump: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "ICRS coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+#         System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin SlaMap 	# Conversion between sky coordinate systems
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          Nsla = 2 	# Number of conversion steps
+          Sla1 = "HFK5Z" 	# ICRS to J2000.0 FK5 (no PM or parallax)
+          Sla1a = 2000 	# Julian epoch of FK5 coordinates
+          Sla2 = "EQGAL" 	# J2000.0 equatorial (FK5) to galactic (IAU 1958)
+       End SlaMap
+ End FrameSet
+"###,
+    },
+    Case {
+        name: "fs_invert",
+        fitschan: false,
+        object: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "ICRS coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+#         System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+        ops: &[
+            (Op::Set("Invert=1"), Out::Done),
+            (Op::Get("Invert"), Out::Value("1")),
+            (Op::Test("Invert"), Out::Flag(true)),
+            (Op::Get("Current"), Out::Value("1")),
+            (Op::Get("Base"), Out::Value("2")),
+            (Op::Get("Nin"), Out::Value("2")),
+            (Op::Get("Nout"), Out::Value("2")),
+            (Op::Get("System"), Out::Value("Cartesian")),
+            (Op::Get("Domain"), Out::Value("GRID")),
+            (Op::Set("Current=1"), Out::Done),
+            (Op::Get("System"), Out::Value("Cartesian")),
+            (Op::Get("Base"), Out::Value("2")),
+            (Op::Set("Invert=0"), Out::Done),
+            (Op::Get("Current"), Out::Value("2")),
+            (Op::Clear("Invert"), Out::Done),
+            (Op::Get("Invert"), Out::Value("0")),
+            (Op::Test("Invert"), Out::Flag(false)),
+            (Op::Set("Invert=1,System=Cartesian,Invert=0"), Out::Done),
+            (Op::Get("System"), Out::Value("ICRS")),
+        ],
+        dump: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+    Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          System = "Cartesian" 	# Coordinate system type
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "ICRS coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+#         System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+    },
+    Case {
+        name: "fs_lost",
+        fitschan: false,
+        object: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "ICRS coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "ICRS coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+#         System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+        ops: &[
+            (Op::Set("System=Unknown"), Out::Err(E::Ilost, &["astSet(FrameSet): Cannot maintain FrameSet integrity.", "Unable to accommodate the attribute setting \"System=Unknown\"."])),
+            (Op::Get("System"), Out::Value("Unknown")),
+            (Op::Set("Domain=OTHER"), Out::Done),
+            (Op::Get("Domain"), Out::Value("OTHER")),
+            (Op::Set("AlignSystem=Galactic"), Out::Done),
+            (Op::Get("AlignSystem"), Out::Value("GALACTIC")),
+        ],
+        dump: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "Spherical coordinates" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "OTHER" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Longitude" 	# Label for axis 1
+#   Lbl2 = "Latitude" 	# Label for axis 2
+#   System = "Unknown" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+#         Title = "Spherical coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "OTHER" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Longitude" 	# Label for axis 1
+#         Lbl2 = "Latitude" 	# Label for axis 2
+          System = "Unknown" 	# Coordinate system type
+          AlSys = "GALACTIC" 	# Alignment coordinate system
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin UnitMap 	# Unit (null) Mapping
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+       End UnitMap
+ End FrameSet
+"###,
+    },
+    Case {
+        name: "fs_aitoff",
+        fitschan: false,
+        object: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "IAU (1958) galactic coordinates; Hammer-Aitoff projection" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+    Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+#         Title = "IAU (1958) galactic coordinates; Hammer-Aitoff projection" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ End FrameSet
+"###,
+        ops: &[
+            (Op::Get("Class"), Out::Value("FrameSet")),
+            (Op::Get("Nframe"), Out::Value("2")),
+            (Op::Get("Current"), Out::Value("2")),
+            (Op::Get("Base"), Out::Value("1")),
+            (Op::Get("Domain"), Out::Value("SKY")),
+            (Op::Get("System"), Out::Value("GALACTIC")),
+            (Op::Set("System=ICRS"), Out::Done),
+            (Op::Get("System"), Out::Value("ICRS")),
+            (Op::Set("Current=GRID"), Out::Done),
+            (Op::Get("Current"), Out::Value("1")),
+            (Op::Get("Domain"), Out::Value("GRID")),
+            (Op::Set("Label(1)=X"), Out::Done),
+            (Op::Get("Label(1)"), Out::Value("X")),
+            (Op::Set("Current=SKY"), Out::Done),
+            (Op::Get("Label(1)"), Out::Value("Right ascension")),
+            (Op::Set("Grid=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"grid=1\" is invalid for a SkyFrame."])),
+            (Op::Set("System=Galactic"), Out::Done),
+        ],
+        dump: r###" Begin FrameSet 	# Set of inter-related coordinate systems
+#   Title = "IAU (1958) galactic coordinates; Hammer-Aitoff projection" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+    Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "X" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "X" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+#         Title = "IAU (1958) galactic coordinates; Hammer-Aitoff projection" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = 3.6727197323699241 	# Ref. pos. l 210.4313
+          SRef2 = -0.34484566173616271 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ End FrameSet
+"###,
+    },
+    Case {
+        name: "fs_timeplot",
+        fitschan: false,
+        object: r###" Begin CmpFrame 	# Compound coordinate system description
+#   Title = "2-d compound coordinate system" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+    Domain = "DATAPLOT" 	# Coordinate system domain
+#   Lbl1 = "Date/Time" 	# Label for axis 1
+#   Lbl2 = "Data up-loaded" 	# Label for axis 2
+#   Uni1 = "d" 	# Units for axis 1 (day)
+#   Uni2 = "GB" 	# Units for axis 2
+    ActUnt = 1 	# Unit strings affects alignment
+ IsA Frame 	# Coordinate system description
+    FrameA = 	# First component Frame
+       Begin TimeFrame 	# Description of time coordinate system
+          Title = "KAPPA - Trandat" 	# Title of coordinate system
+          Naxes = 1 	# Number of coordinate axes
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Format = "iso.0" 	# Format specifier
+             End Axis
+       IsA Frame 	# Coordinate system description
+          TmOrg = 57128.585855999998 	# Time offset
+       End TimeFrame
+    FrameB = 	# Second component Frame
+       Begin Frame 	# Coordinate system description
+          Naxes = 1 	# Number of coordinate axes
+          ActUnt = 1 	# Unit strings affects alignment
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Data up-loaded" 	# Axis Label
+                Symbol = "Data" 	# Axis symbol
+                Unit = "GB" 	# Axis units
+             End Axis
+       End Frame
+ End CmpFrame
+"###,
+        ops: &[
+            (Op::Get("Nframe"), Out::Err(E::Badat, &["astGet: The CmpFrame given does not have an attribute called \"nframe\"."])),
+            (Op::Get("Current"), Out::Err(E::Badat, &["astGet: The CmpFrame given does not have an attribute called \"current\"."])),
+            (Op::Get("Class"), Out::Value("CmpFrame")),
+            (Op::Get("Naxes"), Out::Value("2")),
+            (Op::Get("Domain"), Out::Value("DATAPLOT")),
+            (Op::Get("Title"), Out::Value("2-d compound coordinate system")),
+            (Op::Get("System(1)"), Out::Value("MJD")),
+            (Op::Get("System(2)"), Out::Value("Cartesian")),
+            (Op::Set("Title=a time plot"), Out::Done),
+            (Op::Get("Title"), Out::Value("a time plot")),
+        ],
+        dump: r###" Begin CmpFrame 	# Compound coordinate system description
+    Title = "a time plot" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+    Domain = "DATAPLOT" 	# Coordinate system domain
+#   Lbl1 = "Date/Time" 	# Label for axis 1
+#   Lbl2 = "Data up-loaded" 	# Label for axis 2
+#   Uni1 = "d" 	# Units for axis 1 (day)
+#   Uni2 = "GB" 	# Units for axis 2
+    ActUnt = 1 	# Unit strings affects alignment
+ IsA Frame 	# Coordinate system description
+    FrameA = 	# First component Frame
+       Begin TimeFrame 	# Description of time coordinate system
+          Title = "KAPPA - Trandat" 	# Title of coordinate system
+          Naxes = 1 	# Number of coordinate axes
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Format = "iso.0" 	# Format specifier
+             End Axis
+       IsA Frame 	# Coordinate system description
+          TmOrg = 57128.585855999998 	# Time offset
+       End TimeFrame
+    FrameB = 	# Second component Frame
+       Begin Frame 	# Coordinate system description
+          Naxes = 1 	# Number of coordinate axes
+          ActUnt = 1 	# Unit strings affects alignment
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Data up-loaded" 	# Axis Label
+                Symbol = "Data" 	# Axis symbol
+                Unit = "GB" 	# Axis units
+             End Axis
+       End Frame
+ End CmpFrame
+"###,
+    },
 ];

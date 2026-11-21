@@ -40,6 +40,7 @@
 pub(crate) mod axis;
 pub(crate) mod cmpframe;
 pub(crate) mod frame;
+pub(crate) mod frameset;
 pub(crate) mod mapping;
 pub(crate) mod object;
 #[cfg(feature = "attribute-strings")]

@@ -686,6 +686,67 @@ static const struct acase cases[] = {
            "RestFreq=115.27,StdOfRest=LSRK,Equinox=J2010,Title=cube,"
            "Domain=CUBE,Digits=6,Digits(3)=9,Ident=cmp,Unit(1)=GHz" ),
    } },
+
+/* FrameSet's own attributes, and the names it hands to its current Frame,
+   on a FrameSet of a plain Frame (Domain GRID) and a SkyFrame. */
+   { "fs_own", "fs_grid_sky", {
+      GET( "Class" ), SEE( "Nframe" ), SEE( "Base" ), SEE( "Current" ),
+      SEE( "Nin" ), SEE( "Nout" ), SEE( "Invert" ), SEE( "Report" ),
+      SEE( "TranForward" ), SEE( "TranInverse" ), SEE( "AllVariants" ),
+      SEE( "Variant" ), SET( "Base=2" ), SEE( "Base" ), SET( "Current=Base" ),
+      SEE( "Current" ), SET( "Current=SKY" ), SEE( "Current" ),
+      SET( "Current=1" ), GET( "Current" ), SET( "Current=sky " ),
+      GET( "Current" ), SET( "Current=9" ), SET( "Current=0" ),
+      SET( "Current=nonsense" ), SET( "Base=nonsense" ), SET( "Base=grid" ),
+      GET( "Base" ), SET( "Base=Current" ), GET( "Base" ),
+      SET( "Base=AST__BASE" ), SET( "Current=AST__CURRENT" ), GET( "Current" ),
+      CLEAR( "Base" ), SEE( "Base" ), CLEAR( "Current" ), SEE( "Current" ),
+      SET( "Nframe=3" ), CLEAR( "Nframe" ), SET( "AllVariants=x" ),
+      CLEAR( "Class" ), SET( "Nin=1" ), CLEAR( "TranForward" ),
+      CYCLE( "Report", "Report=1" ), CYCLE( "ID", "ID=fs id" ),
+      CYCLE( "Ident", "Ident=fs" ), SEE( "UseDefs" ), SET( "UseDefs=0" ),
+      SEE( "UseDefs" ), CLEAR( "UseDefs" ), SEE( "UseDefs" ),
+      GET( "IsLinear" ), GET( "IsSimple" ), TEST( "IsLinear" ),
+      SET( "Fred=1" ), GET( "Fred" ), TEST( "Fred" ), CLEAR( "Fred" ),
+      GET( "Title" ), GET( "Domain" ), GET( "Naxes" ), GET( "Label(1)" ),
+      SET( "Label(1)=lon" ), SEE( "Label(1)" ), GET( " " ),
+   } },
+   { "fs_integrity", "fs_grid_sky", {
+      SET( "System=FK4" ), SEE( "System" ), GET( "Equinox" ),
+      SET( "Epoch=1950" ), SEE( "Epoch" ), SET( "Equinox=J2000,System=FK5" ),
+      GET( "System" ), CLEAR( "System,Epoch" ), SEE( "System" ),
+      SEE( "Epoch" ), SET( "SkyRef=1:00:00,10:00:00,SkyRefIs=Origin" ),
+      GET( "SkyRef" ), GET( "SkyRefIs" ),
+   } },
+   { "fs_failed", "fs_grid_sky", {
+      SET( "System=FK4,Fred=1,Grid=1" ), SEE( "System" ),
+   } },
+   { "fs_failed_clear", "fs_grid_sky", {
+      SET( "System=Galactic" ), CLEAR( "System,Fred,Epoch" ), SEE( "System" ),
+   } },
+   { "fs_invert", "fs_grid_sky", {
+      SET( "Invert=1" ), SEE( "Invert" ), GET( "Current" ), GET( "Base" ),
+      GET( "Nin" ), GET( "Nout" ), GET( "System" ), GET( "Domain" ),
+      SET( "Current=1" ), GET( "System" ), GET( "Base" ),
+      SET( "Invert=0" ), GET( "Current" ), CLEAR( "Invert" ), SEE( "Invert" ),
+      SET( "Invert=1,System=Cartesian,Invert=0" ), GET( "System" ),
+   } },
+   { "fs_lost", "fs_grid_sky", {
+      SET( "System=Unknown" ), GET( "System" ), SET( "Domain=OTHER" ),
+      GET( "Domain" ), SET( "AlignSystem=Galactic" ), GET( "AlignSystem" ),
+   } },
+   { "fs_aitoff", "fs_aitoff", {
+      GET( "Class" ), GET( "Nframe" ), GET( "Current" ), GET( "Base" ),
+      GET( "Domain" ), GET( "System" ), SET( "System=ICRS" ), GET( "System" ),
+      SET( "Current=GRID" ), GET( "Current" ), GET( "Domain" ),
+      SET( "Label(1)=X" ), GET( "Label(1)" ), SET( "Current=SKY" ),
+      GET( "Label(1)" ), SET( "Grid=1" ), SET( "System=Galactic" ),
+   } },
+   { "fs_timeplot", "fs_timeplot", {
+      GET( "Nframe" ), GET( "Current" ), GET( "Class" ), GET( "Naxes" ),
+      GET( "Domain" ), GET( "Title" ), GET( "System(1)" ), GET( "System(2)" ),
+      SET( "Title=a time plot" ), GET( "Title" ),
+   } },
 };
 
 /* The object a case starts from. */
@@ -708,6 +769,13 @@ static AstObject *make( const char *id ) {
    if( !strcmp( id, "cmp_1_1" ) ) {
       return (AstObject *) astCmpFrame( astFrame( 1, " " ), astFrame( 1, " " ), " " );
    }
+   if( !strcmp( id, "fs_grid_sky" ) ) {
+      AstFrameSet *fs = astFrameSet( astFrame( 2, "Domain=GRID" ), " " );
+      astAddFrame( fs, 1, astUnitMap( 2, " " ), astSkyFrame( " " ) );
+      return (AstObject *) fs;
+   }
+   if( !strcmp( id, "fs_aitoff" ) ) return (AstObject *) read_head( HEADS "aitoff.head", "" );
+   if( !strcmp( id, "fs_timeplot" ) ) return (AstObject *) read_head( HEADS "timeplot.head", "" );
    if( !strcmp( id, "skyaxis1" ) ) {
       int axes[ 1 ] = { 1 };
       AstSkyFrame *sky = astSkyFrame( " " );

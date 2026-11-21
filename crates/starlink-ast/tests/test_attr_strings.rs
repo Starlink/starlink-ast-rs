@@ -72,6 +72,7 @@ const FRAME: &[&str] = &["frame_"];
 const SKY: &[&str] = &["sky_"];
 const SPECTRAL: &[&str] = &["spec_", "dsb_"];
 const TIME_AND_COMPOUND: &[&str] = &["time_", "cmp_"];
+const FRAMESET: &[&str] = &["fs_"];
 
 /// What the Rust library did with an operation.
 #[derive(Debug, Clone, PartialEq)]
@@ -227,6 +228,11 @@ fn time_and_compound_names_match_the_c_library() {
     replay(TIME_AND_COMPOUND);
 }
 
+#[test]
+fn frameset_names_match_the_c_library() {
+    replay(FRAMESET);
+}
+
 /// C's attribute functions call each other without end for a Top, Bottom
 /// or Direction given without an index and with a value that is not a
 /// number, on a Frame class of one axis that takes those names without an
@@ -287,7 +293,14 @@ fn cases_with_no_rust_value_still_differ() {
 
 #[test]
 fn every_case_is_replayed() {
-    let replayed = [OBJECT_AND_MAPPING, FRAME, SKY, SPECTRAL, TIME_AND_COMPOUND];
+    let replayed = [
+        OBJECT_AND_MAPPING,
+        FRAME,
+        SKY,
+        SPECTRAL,
+        TIME_AND_COMPOUND,
+        FRAMESET,
+    ];
     for case in CASES {
         assert!(
             replayed

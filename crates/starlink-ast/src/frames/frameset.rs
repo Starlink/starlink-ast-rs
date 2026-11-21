@@ -1872,6 +1872,36 @@ macro_rules! frameset_attr {
 }
 
 impl Frame for FrameSet {
+    // The attribute strings of C's FrameSet class, with its integrity
+    // bracket around a whole setting string or clear list.
+    fn attr_vset(&mut self, assignments: &[String], text: &str) -> AstResult<()> {
+        crate::attributes::frameset::frameset_vset(self, assignments, text)
+    }
+    fn attr_clear_list(&mut self, names: &str) -> AstResult<()> {
+        crate::attributes::frameset::frameset_clear_list(self, names)
+    }
+    fn attr_set(&mut self, setting: &str) -> AstResult<()> {
+        crate::attributes::frameset::frameset_set(self, setting)
+    }
+    fn attr_get(&self, name: &str) -> AstResult<String> {
+        crate::attributes::frameset::frameset_get(self, name)
+    }
+    fn attr_test(&self, name: &str) -> AstResult<bool> {
+        crate::attributes::frameset::frameset_test(self, name)
+    }
+    fn attr_clear(&mut self, name: &str) -> AstResult<()> {
+        crate::attributes::frameset::frameset_clear(self, name)
+    }
+    fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
+        self.current().attr_axis(axis)
+    }
+    fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
+        self.frames[self.current_idx].attr_axis_mut(axis)
+    }
+    fn primary_frame_mut(&mut self, axis: usize) -> (&mut dyn Frame, usize) {
+        self.frames[self.current_idx].primary_frame_mut(axis)
+    }
+
     fn axis_perm(&self) -> Vec<usize> {
         self.current().axis_perm()
     }
