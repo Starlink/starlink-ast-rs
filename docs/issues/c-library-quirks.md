@@ -30,6 +30,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`astFindEscape` takes any character after the digits as the closing `+`](#astfindescape-takes-any-character-after-the-digits-as-the-closing-)
 - [Plot reads past its tick arrays for an axis with one major tick](#plot-reads-past-its-tick-arrays-for-an-axis-with-one-major-tick)
 - [A Moc's `RegTrace` reads before its mesh for a distance below zero](#a-mocs-regtrace-reads-before-its-mesh-for-a-distance-below-zero)
+- [CmpRegion `RegTrace` tests its first component twice](#cmpregion-regtrace-tests-its-first-component-twice)
+- [CmpRegion `RegSplit` maps an unsplit CmpRegion into its own Frame again](#cmpregion-regsplit-maps-an-unsplit-cmpregion-into-its-own-frame-again)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -306,6 +308,23 @@ The same layout gives such a Moc a break at the start of its trace: `RegBaseMesh
 The break is harmless, since the end of the trace closes the cell, and the port keeps it.
 Distances below zero are outside what `RegTrace` accepts, and a Plot never passes one; the port returns a bad position there (`Moc::reg_trace` in `crates/starlink-ast/src/regions/moc.rs`).
 The fix is to take the absolute value, as the interpolating branch does.
+
+### CmpRegion `RegTrace` tests its first component twice
+
+`cmpregion.c` `RegTrace` (cmpregion.c:2806) decides whether the CmpRegion can be traced with `!astRegTrace( this->region1, 0, NULL, NULL ) || !astRegTrace( this->region1, 0, NULL, NULL )`, testing the first component twice where it means both.
+A CmpRegion whose second component cannot be traced (a PointList, a Prism, an Stc) therefore claims it can; `SetBreakInfo` leaves that component's length at `AST__BAD`, so every distance falls on the second component, and the positions are read from arrays its `RegTrace` never fills.
+A Plot whose current Frame is such a CmpRegion then draws its border from undefined values instead of taking the generic path for a Region it cannot trace.
+The port keeps the claim, so a Plot takes the same path, and gives bad positions where C reads the unfilled arrays (`CmpRegion::reg_trace` in `crates/starlink-ast/src/regions/cmpregion.rs`, pinned by `an_untraceable_second_component_gives_bad_positions` in `test_region_trace.rs`).
+The fix is to test `this->region2` in the second call.
+
+### CmpRegion `RegSplit` maps an unsplit CmpRegion into its own Frame again
+
+`cmpregion.c` `RegSplit` (cmpregion.c:2674) maps every Region it returns through the CmpRegion's base->current Mapping into its current Frame.
+That is right for the parts it splits off, which are the components, defined in the base Frame, but a CmpRegion it cannot split (an AND, an OR with a negated or unbounded component) is returned as a clone of itself, already in the current Frame, and is mapped again.
+While the base->current Mapping is a UnitMap this changes nothing; once a Frame attribute has been changed through the CmpRegion, such as its System, the returned Region covers a different area: an ICRS CmpRegion whose System is set to Galactic comes back with the ICRS-to-Galactic conversion applied twice.
+A Plot draws the outline of the Region `RegSplit` returns, so it would draw such a CmpRegion's border in the wrong place.
+The port mirrors this (`CmpRegion::reg_split`, pinned by the `and_sky_gal` case of `reg_split_matches_the_c_library` in `test_region_trace.rs`).
+The fix is to map only the parts, or to map the clone through the base Frame.
 
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 

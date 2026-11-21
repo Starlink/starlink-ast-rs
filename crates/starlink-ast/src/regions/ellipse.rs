@@ -830,7 +830,7 @@ impl Region for Ellipse {
     /// C, it does not check that the base Frame is 2-D, which an Ellipse's
     /// always is.
     fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
-        super::traced_positions(self, dist, || {
+        super::traced_positions(&self.data.frameset, dist, || {
             let (a, b, angle) = self.cache()?;
             let frm = self.data.frameset.base();
             let centre = &self.data.points[0];

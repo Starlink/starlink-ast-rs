@@ -1166,7 +1166,7 @@ impl Region for BoxRegion {
         if self.data.frameset.base().naxes() != 2 {
             return Ok(None);
         }
-        super::traced_positions(self, dist, || {
+        super::traced_positions(&self.data.frameset, dist, || {
             let (lbnd, ubnd) = self.reg_base_box()?;
             let mut x = Vec::with_capacity(dist.len());
             let mut y = Vec::with_capacity(dist.len());

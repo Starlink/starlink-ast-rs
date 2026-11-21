@@ -904,6 +904,18 @@ pub trait Region: Frame + Mapping + AsDynRegion {
         Ok(None)
     }
 
+    /// This Region as a list of Regions that do not overlap each other and
+    /// together cover the same area, each in the Frame this Region
+    /// represents, so that a Plot can trace the outline of each in turn.
+    ///
+    /// A Region that cannot be split is returned whole, as the one entry.
+    // C: the per-class `astRegSplit`; region.c `RegSplit` is this default,
+    // which returns a clone of the Region.
+    #[doc(hidden)]
+    fn reg_split(&self) -> AstResult<Vec<DynRegion>> {
+        Ok(vec![self.copy_region()])
+    }
+
     /// The base-Frame grid transformed into the current Frame by the
     /// simplified base->current Mapping (region.c `RegGrid`).
     #[doc(hidden)]
@@ -2292,22 +2304,29 @@ impl Clone for Box<dyn Region> {
 }
 
 /// What a class that traces its boundary returns from
-/// [`reg_trace`](Region::reg_trace): `positions` gives the base-Frame
-/// positions at `dist` as one array per axis, and they are returned in the
-/// current Frame, unchanged when the base->current Mapping is a UnitMap.
-/// With no distances, only the support is reported, as in C, where the
-/// positions are not computed.
+/// [`reg_trace`](Region::reg_trace), given the Region's FrameSet:
+/// `positions` gives the base-Frame positions at `dist` as one array per
+/// axis, and they are returned in the current Frame, through the
+/// base->current Mapping unless that is a UnitMap. With no distances, only
+/// the support is reported, as in C, where the positions are not computed.
+// C: the shared tail of each class's `RegTrace`, whose Mapping comes from
+// `astGetMapping`, which does not simplify.
 pub(crate) fn traced_positions(
-    reg: &dyn Region,
+    frameset: &FrameSet,
     dist: &[f64],
     positions: impl FnOnce() -> AstResult<[Vec<f64>; 2]>,
 ) -> AstResult<Option<PointSet>> {
     if dist.is_empty() {
-        return Ok(Some(PointSet::zeros(0, reg.naxes())));
+        return Ok(Some(PointSet::zeros(0, frameset.current().naxes())));
     }
+    let map = frameset.mapping(FrameRef::Base, FrameRef::Current)?;
     let [x, y] = positions()?;
-    reg.to_current_frame(PointSet::from_columns(&[&x, &y])?)
-        .map(Some)
+    let base = PointSet::from_columns(&[&x, &y])?;
+    if map.as_any().is::<UnitMap>() {
+        Ok(Some(base))
+    } else {
+        map.transform(&base, true).map(Some)
+    }
 }
 
 /// Borrow a `dyn Mapping` as a `dyn Region` if it is a concrete Region

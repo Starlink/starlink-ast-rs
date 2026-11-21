@@ -1810,7 +1810,7 @@ impl Region for Polygon {
     /// last vertex to the first. Like C, it does not check that the base
     /// Frame is 2-D, which a Polygon's always is.
     fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
-        super::traced_positions(self, dist, || {
+        super::traced_positions(&self.data.frameset, dist, || {
             let (edges, _, _) = self.cache()?;
             let frm = self.data.frameset.base();
             let nv = self.data.points.len();

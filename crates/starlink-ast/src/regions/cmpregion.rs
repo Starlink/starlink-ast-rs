@@ -790,9 +790,332 @@ impl RegionGeometry for CmpRegion {
 // Region trait
 // ============================================================================
 
+/// Where the boundary of one component of a CmpRegion is part of the
+/// CmpRegion's boundary (cmpregion.c `SetBreakInfo`, which keeps these on
+/// the object until it changes; here they are found when needed).
+struct BreakInfo {
+    /// The distance round the used parts of the boundary at each break.
+    rvals: Vec<f64>,
+    /// The distance round the whole boundary skipped at each break.
+    offs: Vec<f64>,
+    /// The length of the used parts of the boundary.
+    d0: f64,
+    /// The length of the whole boundary.
+    dtot: f64,
+}
+
+/// The number of points along a component's boundary that
+/// [`CmpRegion::break_info`] tests.
+const BREAK_NP: usize = 101;
+
+/// The positions on `reg`'s boundary at `dist`, from the Region's negation
+/// if it is unbounded, in the hope that that is bounded; bad positions if it
+/// cannot be traced, where C leaves its arrays unfilled.
+fn trace_component(reg: &dyn Region, dist: &[f64]) -> AstResult<PointSet> {
+    let traced = if reg.is_bounded()? {
+        reg.reg_trace(dist)?
+    } else {
+        reg.negated_copy().reg_trace(dist)?
+    };
+    Ok(traced.unwrap_or_else(|| {
+        let mut bad = PointSet::zeros(dist.len(), 2);
+        bad.axis_mut(0).fill(BAD_VALUE);
+        bad.axis_mut(1).fill(BAD_VALUE);
+        bad
+    }))
+}
+
+impl CmpRegion {
+    /// The component the CmpRegion's boundary uses parts of: the Region
+    /// itself for an AND, which keeps what is inside the other component,
+    /// and its negation for an OR, which keeps what is outside.
+    fn boundary_mask(&self, reg: &DynRegion) -> DynRegion {
+        if self.operator == Oper::Or {
+            reg.negated_copy()
+        } else {
+            reg.copy_region()
+        }
+    }
+
+    /// cmpregion.c `SetBreakInfo` for component `comp` (0 or 1): which parts
+    /// of the component's boundary, sampled at [`BREAK_NP`] points, are on the
+    /// CmpRegion's boundary, as distances in the component's current Frame.
+    /// `None` if the component cannot be traced.
+    fn break_info(&self, comp: usize) -> AstResult<Option<BreakInfo>> {
+        let (reg, other) = if comp == 0 {
+            (&self.region1, &self.region2)
+        } else {
+            (&self.region2, &self.region1)
+        };
+        if reg.reg_trace(&[])?.is_none() {
+            return Ok(None);
+        }
+
+        // Evenly spaced positions round the whole boundary, the distances to
+        // those not on the CmpRegion's boundary made bad.
+        let mut delta = 1.0 / (BREAK_NP - 1) as f64;
+        let mut d: Vec<f64> = (0..BREAK_NP).map(|i| i as f64 * delta).collect();
+        let ptr1 = trace_component(reg.as_ref(), &d)?;
+        let ptr2 = self.boundary_mask(other).transform(&ptr1, true)?;
+        for (i, di) in d.iter_mut().enumerate() {
+            if ptr2.axis(0)[i] == BAD_VALUE || ptr2.axis(1)[i] == BAD_VALUE {
+                *di = BAD_VALUE;
+            }
+        }
+
+        // Extend each used section by one point at each end, so that the
+        // sections of the two components meet.
+        let mut prevgood = d[0] != BAD_VALUE;
+        for i in 1..BREAK_NP {
+            if d[i] == BAD_VALUE {
+                if prevgood {
+                    d[i] = i as f64 * delta;
+                }
+                prevgood = false;
+            } else {
+                if !prevgood {
+                    d[i - 1] = (i - 1) as f64 * delta;
+                }
+                prevgood = true;
+            }
+        }
+
+        // The approximate length of the whole boundary, which weights the
+        // component within the CmpRegion.
+        let frm = reg.get_region_frame();
+        let mut totdist = 0.0;
+        let mut pnt1 = [ptr1.axis(0)[0], ptr1.axis(1)[0]];
+        for i in 1..BREAK_NP {
+            let pnt2 = [ptr1.axis(0)[i], ptr1.axis(1)[i]];
+            let dist = frm.distance(&pnt1, &pnt2)?;
+            if dist != BAD_VALUE {
+                totdist += dist;
+            }
+            pnt1 = pnt2;
+        }
+        delta *= totdist;
+
+        // The distance round the used parts at which each break comes, and
+        // the distance round the whole boundary each skips.
+        let mut rvals = Vec::new();
+        let mut offs = Vec::new();
+        let mut j = 0;
+        let (mut prevgood, mut rbad, mut rval);
+        if d[0] == BAD_VALUE {
+            rvals.push(-0.5 * delta);
+            offs.push(0.0);
+            rbad = 0.5;
+            prevgood = false;
+            rval = -0.5 * delta;
+        } else {
+            prevgood = true;
+            rbad = 0.0;
+            rval = 0.0;
+        }
+        for &di in &d[1..] {
+            if di == BAD_VALUE {
+                if prevgood {
+                    j = rvals.len();
+                    rvals.push(rval + 0.5 * delta);
+                    offs.push(0.0);
+                    rbad = 0.0;
+                    prevgood = false;
+                }
+                rbad += 1.0;
+            } else {
+                if !prevgood {
+                    offs[j] = rbad * delta;
+                    prevgood = true;
+                }
+                rval += delta;
+            }
+        }
+        if !prevgood {
+            rval += 0.5 * delta;
+            offs[j] = rbad * delta;
+        }
+        Ok(Some(BreakInfo {
+            rvals,
+            offs,
+            d0: rval,
+            dtot: totdist,
+        }))
+    }
+}
+
 impl Region for CmpRegion {
     fn def_unc_cache(&self) -> Option<&std::cell::RefCell<Option<DynRegion>>> {
         Some(&self.data.def_unc)
+    }
+
+    /// cmpregion.c `RegTrace`: the parts of each component's boundary that
+    /// are on the CmpRegion's, the first component's first, each weighted
+    /// by its length, so that a distance falls on one component and is
+    /// traced there.
+    ///
+    /// C tests whether the first component can be traced twice, where it
+    /// means both, so a CmpRegion whose second component cannot be traced
+    /// claims it can be. Its positions on that component, which C reads
+    /// from arrays nothing filled, are bad.
+    fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
+        let mut result = self.data.frameset.base().naxes() == 2;
+        if self.region1.reg_trace(&[])?.is_none() || self.region1.reg_trace(&[])?.is_none() {
+            result = false;
+        }
+        if !result {
+            return Ok(None);
+        }
+        super::traced_positions(&self.data.frameset, dist, || {
+            let info = [self.break_info(0)?, self.break_info(1)?];
+            // A component that cannot be traced keeps C's initial values.
+            let d0 = info
+                .each_ref()
+                .map(|i| i.as_ref().map_or(BAD_VALUE, |i| i.d0));
+            let comp_dtot = info
+                .each_ref()
+                .map(|i| i.as_ref().map_or(BAD_VALUE, |i| i.dtot));
+            let dtot = d0[0] + d0[1];
+            let dbreak = d0[0] / dtot;
+
+            // The distance round the whole boundary of each component.
+            let along = |comp: usize, x0: f64| {
+                let mut x = x0;
+                if let Some(info) = &info[comp] {
+                    for (&rval, &off) in info.rvals.iter().zip(&info.offs) {
+                        if rval >= x0 {
+                            break;
+                        }
+                        x += off;
+                    }
+                }
+                x / comp_dtot[comp]
+            };
+            let mut r1d = Vec::new();
+            let mut r2d = Vec::new();
+            for &di in dist {
+                if di > dbreak {
+                    r2d.push(along(1, (di - dbreak) * dtot));
+                } else {
+                    r1d.push(along(0, di * dtot));
+                }
+            }
+
+            // The positions, those not on the CmpRegion's boundary made bad.
+            let r1 = trace_component(self.region1.as_ref(), &r1d)?;
+            let r2 = trace_component(self.region2.as_ref(), &r2d)?;
+            let r1b = if r1d.is_empty() {
+                r1
+            } else {
+                self.boundary_mask(&self.region2).transform(&r1, true)?
+            };
+            let r2b = if r2d.is_empty() {
+                r2
+            } else {
+                self.boundary_mask(&self.region1).transform(&r2, true)?
+            };
+
+            let mut x = Vec::with_capacity(dist.len());
+            let mut y = Vec::with_capacity(dist.len());
+            let (mut i1, mut i2) = (0, 0);
+            for &di in dist {
+                if di > dbreak {
+                    x.push(r2b.axis(0)[i2]);
+                    y.push(r2b.axis(1)[i2]);
+                    i2 += 1;
+                } else {
+                    x.push(r1b.axis(0)[i1]);
+                    y.push(r1b.axis(1)[i1]);
+                    i1 += 1;
+                }
+            }
+            Ok([x, y])
+        })
+    }
+
+    /// cmpregion.c `RegSplit`: an OR of components that are not negated
+    /// splits into the parts of each component, those that overlap joined
+    /// by OR, unless a part is unbounded; any other CmpRegion is returned
+    /// whole. Each is then mapped through the base->current Mapping into
+    /// the Frame the CmpRegion represents.
+    ///
+    /// The whole CmpRegion, already in that Frame, is mapped too, which
+    /// changes nothing while that Mapping is a UnitMap.
+    fn reg_split(&self) -> AstResult<Vec<DynRegion>> {
+        let mut list: Vec<Option<DynRegion>> = Vec::new();
+        let mut unbounded = false;
+        if self.operator == Oper::Or && !self.region1.is_negated() && !self.region2.is_negated() {
+            for cmpreg in [&self.region1, &self.region2] {
+                if unbounded {
+                    break;
+                }
+                for part in cmpreg.reg_split()? {
+                    if !unbounded {
+                        unbounded = !part.is_bounded()?;
+                    }
+                    if unbounded {
+                        continue;
+                    }
+                    // Join the part to every entry it overlaps, all into the
+                    // first of them.
+                    let mut ifirst: Option<usize> = None;
+                    for ilist in 0..list.len() {
+                        let Some(entry) = &list[ilist] else {
+                            continue;
+                        };
+                        if matches!(
+                            part.overlap(entry.as_ref())?,
+                            Overlap::Incomparable | Overlap::None
+                        ) {
+                            continue;
+                        }
+                        match ifirst {
+                            None => {
+                                let joined = CmpRegionBuilder::from_dyn(
+                                    part.copy_region(),
+                                    entry.copy_region(),
+                                    CmpOperator::Or,
+                                )?
+                                .build()?;
+                                list[ilist] = Some(Box::new(joined));
+                                ifirst = Some(ilist);
+                            }
+                            Some(first) => {
+                                let (Some(entry), Some(into)) =
+                                    (list[ilist].take(), list[first].take())
+                                else {
+                                    unreachable!("both entries are present");
+                                };
+                                let joined =
+                                    CmpRegionBuilder::from_dyn(entry, into, CmpOperator::Or)?
+                                        .build()?;
+                                list[first] = Some(Box::new(joined));
+                            }
+                        }
+                    }
+                    if ifirst.is_none() {
+                        list.push(Some(part));
+                    }
+                }
+            }
+        }
+
+        let mut parts: Vec<DynRegion> = if unbounded {
+            Vec::new()
+        } else {
+            list.into_iter().flatten().collect()
+        };
+        if parts.is_empty() {
+            parts.push(self.copy_region());
+        }
+        let map = self
+            .data
+            .frameset
+            .mapping(FrameRef::Base, FrameRef::Current)?;
+        let frm = self.data.frameset.current();
+        parts
+            .iter()
+            .map(|part| part.reg_map_region(map.as_ref(), frm))
+            .collect()
     }
 
     fn explicit_unc(&self) -> Option<&DynRegion> {

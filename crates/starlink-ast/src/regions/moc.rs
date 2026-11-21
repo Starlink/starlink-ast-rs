@@ -3627,7 +3627,7 @@ impl Region for Moc {
     /// and the start of the next is bad, so that a curve drawn through the
     /// positions breaks there.
     fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
-        super::traced_positions(self, dist, || {
+        super::traced_positions(&self.data.frameset, dist, || {
             let (mesh, meshdist) = self.base_mesh_and_dist()?;
             let len = meshdist.len();
             // C indexes the mesh with `meshdist[0]` for a distance below 0,
