@@ -91,7 +91,15 @@ pub struct DemoApp {
 
 impl Default for DemoApp {
     fn default() -> Self {
-        let cases = cases();
+        Self::with_case(None)
+    }
+}
+
+impl DemoApp {
+    /// The demo with the built-in cases, after `first` if it is given, and
+    /// the first case selected.
+    pub fn with_case(first: Option<DemoCase>) -> Self {
+        let cases: Vec<DemoCase> = first.into_iter().chain(cases()).collect();
         let attr = cases[0].attr.to_owned();
         Self {
             cases,
@@ -101,9 +109,7 @@ impl Default for DemoApp {
             drawing: None,
         }
     }
-}
 
-impl DemoApp {
     fn reset_attributes(&mut self) {
         self.edit = self.cases[self.selected].attr.to_owned();
         self.applied = self.edit.clone();
@@ -220,6 +226,21 @@ mod tests {
         let key = |ppp| DrawingKey::new(0, "", rect, ppp, Color32::WHITE, Color32::BLACK);
         assert_eq!(key(1.0), key(1.0));
         assert_ne!(key(1.0), key(2.0));
+    }
+
+    #[test]
+    fn a_command_line_case_comes_first_and_is_selected() {
+        let mut mine = cases()[3];
+        mine.name = "mine";
+        mine.attr = "Grid=1";
+        let app = DemoApp::with_case(Some(mine));
+        assert_eq!(app.cases.len(), 21);
+        assert_eq!(app.cases[0].name, "mine");
+        assert_eq!(app.selected, 0);
+        assert_eq!(
+            (app.edit.as_str(), app.applied.as_str()),
+            ("Grid=1", "Grid=1")
+        );
     }
 
     #[test]

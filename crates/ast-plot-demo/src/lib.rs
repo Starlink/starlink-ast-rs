@@ -7,9 +7,11 @@
 //! The user picks one of the grid test cases, each a FITS header with a
 //! plot box and some Plot attributes, edits the attributes, and sees the
 //! grid drawn with egui's painter and measured with egui's fonts.
-//! Run it with `cargo run -p ast-plot-demo --release`.
+//! Run it with `cargo run -p ast-plot-demo --release`; a FITS header named
+//! on the command line is drawn too, as [`cli::USAGE`] describes.
 
 pub mod app;
 pub mod cases;
+pub mod cli;
 pub mod grf;
 pub mod settings;
