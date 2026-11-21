@@ -175,6 +175,38 @@ fn grid_log(name: &str, extra: &str) -> String {
     String::from_utf8(grf.finish().unwrap()).unwrap()
 }
 
+#[test]
+fn a_zero_or_tiny_gap_gives_the_c_library_errors() {
+    // What the C library's testgrid reports for each case and setting. Its
+    // tick search divides by the gap, and the integer arithmetic on the
+    // result overflows, wrapping as C does in practice.
+    let format = |axis| {
+        format!(
+            "astGrid(Plot): No suitable format can be found to produce numerical labels for \
+             axis {axis} of a SkyFrame."
+        )
+    };
+    let no_curves = "astGrid(Plot): No grid curves can be drawn for axis 1.".to_owned();
+    for (name, extra, code, message) in [
+        ("car3", "gap=0", ErrorCode::Plfmt, format(1)),
+        ("car3", "gap(1)=0", ErrorCode::Plfmt, format(1)),
+        ("car3", "gap=1e-300", ErrorCode::Inter, no_curves.clone()),
+        ("aitoff", "gap=0", ErrorCode::Plfmt, format(1)),
+        ("aitoff", "gap(2)=0", ErrorCode::Plfmt, format(2)),
+        ("aitoff", "gap=1e-300", ErrorCode::Inter, no_curves.clone()),
+    ] {
+        let case = grid_cases().into_iter().find(|c| c.name == name).unwrap();
+        let mut plot = testgrid_plot(&case);
+        apply_settings(&mut plot, extra).unwrap();
+        let err = plot.draw_grid(&mut LogGrf::new(Vec::new())).unwrap_err();
+        assert_eq!(
+            (err.code(), err.message()),
+            (code, message.as_str()),
+            "{name} {extra}"
+        );
+    }
+}
+
 /// The first line at which two logs differ.
 fn first_difference(got: &str, want: &str) -> String {
     for (i, (g, w)) in got.lines().zip(want.lines()).enumerate() {
