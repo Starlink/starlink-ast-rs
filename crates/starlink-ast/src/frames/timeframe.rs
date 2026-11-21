@@ -1936,7 +1936,8 @@ impl Frame for TimeFrame {
 
     /// With a date Format, the value formatted a gap either side is
     /// compared field by field, and the first field that differs, and every
-    /// field after it, is set to zero.
+    /// field after it, is set to its lowest value: zero, or one for the
+    /// month and day.
     // C: timeframe.c `Centre` (timeframe.c:603). When the two formatted
     // values are identical, or one runs out of numeric fields first (a bad
     // value formats as "<bad>"), C reads past the end of the strings; the
@@ -1961,6 +1962,8 @@ impl Frame for TimeFrame {
         let (mut f1, mut f2): (Option<usize>, Option<usize>) = (None, None);
         let (mut nc1, mut nc2) = (0, 0);
         let mut first_differing = None;
+        // The number of leading fields that are the same.
+        let mut nfld = 0;
         loop {
             for (b, p, f, nc) in [
                 (b1, &mut p1, &mut f1, &mut nc1),
@@ -1982,6 +1985,7 @@ impl Frame for TimeFrame {
                     first_differing = Some(s1);
                     break;
                 }
+                nfld += 1;
                 (nc1, nc2) = (0, 0);
                 (f1, f2) = (None, None);
                 if p1 >= b1.len() || p2 >= b2.len() {
@@ -1997,16 +2001,25 @@ impl Frame for TimeFrame {
         let Some(start) = first_differing else {
             return Ok(value);
         };
-        let fres: String = date1
-            .char_indices()
-            .map(|(i, c)| {
-                if i >= start && c.is_ascii_digit() {
-                    '0'
-                } else {
-                    c
+        // C (from 20-NOV-2026) ends a zeroed month or day, the second and
+        // third fields, with a 1, so that the date is a valid one.
+        let mut fres = b1.to_vec();
+        let mut ifld = nfld;
+        let mut infld = false;
+        #[allow(clippy::needless_range_loop)]
+        for i in start..fres.len() {
+            if fres[i].is_ascii_digit() {
+                fres[i] = b'0';
+                infld = true;
+                if (ifld == 1 || ifld == 2) && !at(b1, i + 1).is_ascii_digit() {
+                    fres[i] = b'1';
                 }
-            })
-            .collect();
+            } else if infld {
+                infld = false;
+                ifld += 1;
+            }
+        }
+        let fres = String::from_utf8(fres).expect("an ASCII date");
         let (result, nread) = self.unformat(1, &fres)?;
         if nread != fres.len() {
             return Err(AstError::new(

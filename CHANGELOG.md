@@ -9,6 +9,8 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Added
 
+- `starlink-ast`: `Plot::used_values`, the values a grid uses for the attributes whose defaults depend on what it draws (`Gap`, `Centre`, `Edge`, `Labelling` and the rest), each the attribute's own value if set, else the grid's choice, as the C library's string getter reports them; the grid's tick spacing and choice of exterior or interior labelling follow the C library's.
+- `starlink-ast`: the `plot::Draw` trait, through which a Plot draws on a `Grf` backend, with `draw_grid`, which draws an annotated coordinate grid as the C library's `astGrid` does, call for call, `draw_grid_line`, which draws a curve along one axis of the current Frame as the C library's `astGridLine` does, call for call, `draw_border`, which draws the border of the regions of valid coordinates as `astBorder` does, and `draw_text`, which draws justified, rotated text with the C library's escape sequences (`%^50+` and the rest) as `astText` does. The drawing methods carry a `draw_` prefix where the plain name is an attribute's (`border` and `grid` are the `Border` and `Grid` attributes).
 - `starlink-ast`: a Plot is saved and restored in the Native form as the C library writes and reads it, through any Channel and as `AnyObject::Plot`, with its attributes, clipping region and graphics box.
 - `starlink-ast`: Plot's per-element style attributes `Style`, `Font`, `Colour`, `Width` and `Size`, which take a `PlotElement`; setting, testing or reading a group such as `PlotElement::Axes` acts on each of its members, as the C library's `Colour(Axes)` does.
 - `starlink-ast`: Plot's own attributes, from `Tol` to `LogPlot`, with the C library's defaults; setting `LogPlot` maps an axis of the plotting area logarithmically, as in C. `Gap`, `Centre` and `Abbrev` are `tick_gap`, `tick_centre` and `abbreviate`, since `Frame` already has `gap`, `centre` and `abbrev`. Until grids are drawn, an unset attribute reads as its fixed default, not as the value a grid would use.
@@ -44,6 +46,8 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a TimeFrame's `centre` with a date Format, across a month or year end, gives a date (the start of the month or year) where it reported `Inter`; a gap across a day boundary now centres on the first of the month, not the last day of the month before. This follows the C library's fix on the reference branch `u/timj/timeframe-centre-date`.
+- `starlink-ast`: a date read from text with a year of two digits or fewer is in the C library's century, 2000 to 2049 for 0 to 49 and 1950 to 1999 for 50 to 99, as the C library's `astReadDateTime` reads it.
 - `starlink-ast`: simplifying a WinMap next to a parallel CmpMap keeps each simplified half in the orientation the simplifier returned it, as the C library does, so a Native dump of the result records `Invert` and `IsSimp` on that half as C's does; transforms are unchanged.
 - `starlink-ast`: simplifying a Mapping that holds an inverted WinMap forms the inverse shift as the C library does, as the shift times minus the reciprocal scale, so the simplified WinMap can differ from earlier releases, and now agrees with C, in the last bit of a shift.
 - `starlink-ast`: a SkyFrame's `line_crossing` gives the crossing's longitude as the C library does when the crossing lies opposite its first estimate on the -x meridian, -pi where it gave +pi.

@@ -181,9 +181,9 @@ static const double time_gaps[] = {
 struct time_centre_case { const char *id; double value; double gap; };
 /* A date Format makes C format the value a gap either side; a bad value, or
    a gap too small to change the formatted text, sends timeframe.c Centre
-   past the end of its strings, and a gap that changes the month makes it
-   read a date with month zero, for which astReadDateTime returns an
-   uninitialized value. None of these appears here. */
+   past the end of its strings, so neither appears here. A gap that changes
+   the day, month or year needs timeframe.c from 20-NOV-2026, which ends a
+   zeroed month or day in 1 (branch u/timj/timeframe-centre-date). */
 static const struct time_centre_case time_centres[] = {
    { "time", 56000.37, 0.1 }, { "time", 56000.37, 0.0 },
    { "time_iso", 56000.37, 0.001 }, { "time_iso", 56000.37, 0.1 },
@@ -192,6 +192,8 @@ static const struct time_centre_case time_centres[] = {
    { "time_jd_iso", 2456000.87, 1.0 }, { "time_origin_iso", 0.37, 1.0 },
    { "time_unit_h_iso", 1344008.88, 2.0 },
    { "box_time_iso", 56000.37, 1.0 }, { "cmp_perm", 56000.37, 1.0 },
+   { "time_iso", 56000.37, 30.0 }, { "time_iso", 56017.98, 0.1 },
+   { "time_iso", 56292.5, 2.0 }, { "time_isodate", 56017.98, 0.5 },
 };
 
 /* TimeFrames inside compound Frames, as (frame id, axis): their gap is

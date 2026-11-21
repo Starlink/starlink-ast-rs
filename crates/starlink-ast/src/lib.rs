@@ -44,6 +44,7 @@ pub mod constants;
 pub mod coords;
 pub(crate) mod erfa;
 pub mod error;
+pub(crate) mod escapes;
 pub mod fitschan;
 pub mod fitstable;
 pub mod pixel;

@@ -184,11 +184,14 @@ Each stage is one PR on a branch stacked on the previous one.
    Clipped Plots and Plots with tick values are checked by reading C's dumps, since `clip` comes with stage 6 and tick values with `Plot3D`.*
 4. **`grid`.**
    Gates 1 and 2.
+   `grid_line`, `border` and `text` land here too: `grid` calls `border`, and `grid_line` and `text` are the thinnest public entries into the curve tracer and the text layer that `grid` shares, so each is compared with C through its own probe before `grid` depends on it (`docs/superpowers/plans/2026-11-20-plot-stage4-grid.md`).
+   *Done 2026-11-20. The drawing methods are named `draw_grid`, `draw_grid_line`, `draw_border` and `draw_text`, since `border` and `grid` are attribute getters; `Plot::used_values` reports what a grid chose for the attributes left unset. C's `qsort`, whose order of equal values the polyline joiner and label sort depend on, is replaced by a stable sort, under which every case still matches.*
 5. **`RegTrace` and `RegSplit`.**
    The base method and its six class overrides, and CmpRegion's `RegSplit` (`docs/audits/region-class-coverage-audit.md`, RT-TRACE and RS-SPLIT).
    Before stage 6, because `region_outline` calls both.
    Gate 6.
 6. **The other drawing methods.**
+   `curve`, `gen_curve`, `poly_curve`, `mark`, `bounding_box`, `clip` and `region_outline`.
    Gate 5.
 7. **egui demo.**
    A window that lets the user pick one of the `cases.txt` headers and its attributes, and draws the grid through a `Grf` written against egui's painter, using egui's real font metrics for `GTxExt`.

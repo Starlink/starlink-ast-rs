@@ -821,6 +821,28 @@ pub(crate) fn cldj(
     Ok((djm, warning))
 }
 
+/// Gregorian calendar date to Modified Julian Date, with years 0 to 49
+/// taken as 2000 to 2049 and 50 to 99 as 1950 to 1999.
+///
+/// Returns as [`cldj`] does.
+// C: palCaldj (pal/palCaldj.c).
+pub(crate) fn caldj(
+    iy: i32,
+    im: i32,
+    id: i32,
+) -> Result<(f64, Option<crate::erfa::Cal2jdWarning>), crate::erfa::Cal2jdError> {
+    crate::call_counts::hit("astPalCaldj");
+    let adj = if (0..=49).contains(&iy) {
+        2000
+    } else if (50..=99).contains(&iy) {
+        1900
+    } else {
+        0
+    };
+    let ((_, djm), warning) = crate::erfa::cal2jd(iy + adj, im, id)?;
+    Ok((djm, warning))
+}
+
 /// Day fraction to hours, minutes, seconds.
 ///
 /// `ndp` is the number of decimal places of seconds. Returns

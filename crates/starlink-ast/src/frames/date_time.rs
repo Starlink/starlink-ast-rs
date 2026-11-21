@@ -207,14 +207,15 @@ fn read_gregorian(value: &str) -> Option<f64> {
         month = 1 + (idx / 4) as i32;
     }
 
-    // Convert years, months and integral days to an MJD. A day outside the
+    // Convert years, months and integral days to an MJD, a year of two
+    // digits or fewer in the century palCaldj gives it. A day outside the
     // month is counted on from the month's start: C tests `palCaldj`'s
     // status against SLALIB's positive codes, but ERFA's are negative, so
     // its bad-day status (-3, with the MJD computed) never stops the read.
     // A bad year or month (-1, -2) leaves C's MJD unset; the port does not
     // read the value.
     let iday = day as i32;
-    let (mut mjd, _bad_day) = pal::cldj(year, month, iday).ok()?;
+    let (mut mjd, _bad_day) = pal::caldj(year, month, iday).ok()?;
 
     // Add any fractional part of the day.
     mjd += day - iday as f64;
