@@ -9,6 +9,7 @@
 //! grid drawn with egui's painter and measured with egui's fonts.
 //! Run it with `cargo run -p ast-plot-demo --release`.
 
+pub mod app;
 pub mod cases;
 pub mod grf;
 pub mod settings;
