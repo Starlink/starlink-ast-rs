@@ -1,0 +1,162 @@
+# The eight examples of the AST FITS plotter CGI page
+# (https://starlink.eao.hawaii.edu/cgi-bin/ast/fits-plotter, loadExample),
+# copied verbatim on 2026-11-21. Read by tools/oracle_fixtures/fits_plotter_probe.c,
+# the ast-plotter-wasm tests and tools/build_plotter.sh.
+# A block is "== NAME", "-- settings: <Plot settings>", "-- version: <character>",
+# then the header lines, up to the next "== " line.
+== AITOFF
+-- settings: System=ICRS, Grid=1, Tickall=0, Border=1
+-- version:
+NAXIS1  =                  300
+NAXIS2  =                  300
+CTYPE1  = 'GLON-AIT'
+CTYPE2  = 'GLAT-AIT'
+CRVAL1  =           -149.56866
+CRVAL2  =           -19.758201
+CRPIX1  =              150.500
+CRPIX2  =              150.500
+CDELT1  =             -1.20000
+CDELT2  =              1.20000
+== COBE
+-- settings: Format(1)=gd, Format(2)=gd, Grid=1, Tickall=0, Width(axes)=3, Colour(axes)=2
+-- version:
+NAXIS1  =                  300
+NAXIS2  =                  300
+CTYPE1  = 'GLON-ZEA'
+CTYPE2  = 'GLAT-ZEA'
+CRVAL1  =           -149.56866
+CRVAL2  =           -19.758201
+CRPIX1  =              150.500
+CRPIX2  =              150.500
+CDELT1  =             -0.80000
+CDELT2  =              0.80000
+== HPX
+-- settings: Format(1)=gd, Format(2)=gd, Grid=1, Tickall=0, Width(axes)=3, Colour(axes)=2
+-- version:
+NAXIS1  =                  300
+NAXIS2  =                  200
+CTYPE1  = 'GLON-HPX'
+CTYPE2  = 'GLAT-HPX'
+CRVAL1  =           -149.56866
+CRVAL2  =           -19.758201
+CRPIX1  =              150.500
+CRPIX2  =              100.500
+CDELT1  =             -1.20000
+CDELT2  =              1.20000
+== ORIGIN
+-- settings: Format(1)=ghms, Format(2)=gdm, Edge(2)=r, Tickall=0
+-- version:
+NAXIS1  =                  500
+NAXIS2  =                  500
+EPOCH   =         1.977780E+03
+RADESYS = 'ICRS    '
+CRVAL1  =                  0.0
+CRPIX1  =                  250
+CTYPE1  = 'RA---ARC'
+CRVAL2  =                  0.0
+CRPIX2  =                  250
+CTYPE2  = 'DEC--ARC'
+CDELT1  = 0.001
+CDELT2  = 0.001
+== SCP
+-- settings: Grid=1, Labelling=int
+-- version:
+NAXIS1  =                  900
+NAXIS2  =                  850
+MJD-OBS =   4.342657300880E+04
+RADESYS = 'FK5     '
+CRVAL1  =   0.000000000000E+00
+CRPIX1  =   5.936318379289E+02
+CTYPE1  = 'RA---TAN'
+CRVAL2  =  -9.000000018364E+01
+CRPIX2  =   3.238380193875E+02
+CTYPE2  = 'DEC--TAN'
+CD1_1   =  -1.864642639667E-04
+CD1_2   =  -9.188369023766E-07
+CD2_1   =  -1.038232462415E-06
+CD2_2   =   1.866269837741E-04
+EQUINOX =         2.000000E+03
+== SPEC2D
+-- settings: System(1)=wave, LogTicks(1)=1, LabelUnits=1, MinTickLen=0.02, MajTickLen=0.05, NumLabGap=0.1, Title=Logarithmic axis example
+-- version:
+NAXIS1  = 1000
+NAXIS2  = 200
+CRPIX1  =                500.0
+CRVAL1  =           10000000.0
+CDELT1  =             138000.0
+CTYPE1  = 'FREQ-LOG'
+CUNIT1  = 'MHz      '
+CTYPE2  = 'SLIT'
+CNAME2  = 'Distance along slit'
+CUNIT2  = 'mm'
+CRPIX2  = 1.0
+CRVAL2  = 0.0
+CDELT2  = 0.1
+== SOLAR
+-- settings:
+-- version:
+SIMPLE  =  T         /Simple FITS file
+BITPIX  =  -32       /Real*4 (Floating point)
+NAXIS   =  2         /Two-dimensional image
+NAXIS1  =  1024      /Number of pixels per column
+NAXIS2  =  1024      /Number of pixels per row
+
+COMMENT Heliocentric-Cartesian coordinates
+
+CTYPE1  = 'SOLX    ' /Coordinate axis labels
+CTYPE2  = 'SOLY    ' /
+CRPIX1  = 512.5      /Reference pixel is center of CCD
+CRPIX2  =  512.5     /
+CUNIT1  = 'solRad  ' /Coordinates are in solar radii
+CUNIT2  = 'solRad  ' /
+CD1_1   = 0.00375    /Plate scale in solar radii per pixel
+CD2_2   = 0.00375    /
+CRVAL1  = 0.0        /Reference pixel is Sun center
+CRVAL2  = 0.0        /
+
+COMMENT Helioprojective-Cartesian coordinates
+
+CTYPE1A = 'HPLN-TAN' /Coordinate axis labels (Theta-X)
+CTYPE2A = 'HPLT-TAN' /  (Theta-Y)
+CRPIX1A =  512.5     /Reference pixel is center of CCD
+CRPIX2A =  512.5     /
+CUNIT1A = 'deg     ' /Angles are in degrees
+CUNIT2A = 'deg     ' /
+CD1_1A  =  0.001     /Plate scale in degrees per pixel
+CD2_2A  =  0.001     /
+CRVAL1A =    0.0     /Reference pixel is Sun center
+CRVAL2A =    0.0     /
+
+COMMENT Heliographic coordinates
+CTYPE1B = 'HGLN-AZP' /Heliographic longitude
+CTYPE2B = 'HGLT-AZP' /  latitude
+CRPIX1B =    512.5   /Reference pixel is center of CCD
+CRPIX2B =    512.5   /
+CUNIT1B = 'deg     ' /Angles are in degrees
+CUNIT2B = 'deg     ' /
+CD1_1B  =  0.2139    /Plate scale proportional to (Dsun/Rsun - 1)
+CD2_2B  =  0.2139    /
+CRVAL1B =      0.0   /Reference pixel is central meridian
+CRVAL2B =      6.5   /Latitude of sub-earth point (BO)
+PV2_1B  =  -214.9    /Negative ratio of Dsun/Rsun
+
+END
+== NCP
+-- settings:
+-- version:
+SIMPLE  =                    T
+BITPIX  =                  -32
+NAXIS   =                    2
+NAXIS1  =                  256
+NAXIS2  =                  256
+DATE-OBS= '1995-08-03                  '
+EQUINOX =        2000.0
+CTYPE1  = 'RA---NCP                    '
+CRVAL1  =        .32577585E+03
+CRPIX1  =        .12900000E+03
+CDELT1  =       -.55555496E-02
+CTYPE2  = 'DEC--NCP                    '
+CRVAL2  =        .66115555E+02
+CRPIX2  =        .12900000E+03
+CDELT2  =        .55555496E-02
+CROTA2  =        30.000000E+00
