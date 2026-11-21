@@ -4830,4 +4830,5572 @@ pub const CASES: &[Case] = &[
  End CmpFrame
 "###,
     },
+    Case {
+        name: "plot_own",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Get("Class"), Out::Value("Plot")),
+            (Op::Get("Tol"), Out::Value("0.01")),
+            (Op::Test("Tol"), Out::Flag(false)),
+            (Op::Set("Tol=0.05"), Out::Done),
+            (Op::Get("Tol"), Out::Value("0.050000000000000003")),
+            (Op::Test("Tol"), Out::Flag(true)),
+            (Op::Clear("Tol"), Out::Done),
+            (Op::Get("Tol"), Out::Value("0.01")),
+            (Op::Test("Tol"), Out::Flag(false)),
+            (Op::Set("Tol=2"), Out::Done),
+            (Op::Get("Tol"), Out::Value("1")),
+            (Op::Set("Tol=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"tol=x\" is invalid for a SkyFrame."])),
+            (Op::Get("Grid"), Out::Value("1")),
+            (Op::Test("Grid"), Out::Flag(false)),
+            (Op::Set("Grid=1"), Out::Done),
+            (Op::Get("Grid"), Out::Value("1")),
+            (Op::Test("Grid"), Out::Flag(true)),
+            (Op::Clear("Grid"), Out::Done),
+            (Op::Get("Grid"), Out::Value("1")),
+            (Op::Test("Grid"), Out::Flag(false)),
+            (Op::Set("Grid=7"), Out::Done),
+            (Op::Get("Grid"), Out::Value("1")),
+            (Op::Clear("Grid"), Out::Done),
+            (Op::Get("TickAll"), Out::Value("1")),
+            (Op::Test("TickAll"), Out::Flag(false)),
+            (Op::Set("TickAll=0"), Out::Done),
+            (Op::Get("TickAll"), Out::Value("0")),
+            (Op::Test("TickAll"), Out::Flag(true)),
+            (Op::Clear("TickAll"), Out::Done),
+            (Op::Get("TickAll"), Out::Value("1")),
+            (Op::Test("TickAll"), Out::Flag(false)),
+            (Op::Get("ForceExterior"), Out::Value("0")),
+            (Op::Test("ForceExterior"), Out::Flag(true)),
+            (Op::Set("ForceExterior=1"), Out::Done),
+            (Op::Get("ForceExterior"), Out::Value("1")),
+            (Op::Test("ForceExterior"), Out::Flag(true)),
+            (Op::Clear("ForceExterior"), Out::Done),
+            (Op::Get("ForceExterior"), Out::Value("0")),
+            (Op::Test("ForceExterior"), Out::Flag(false)),
+            (Op::Get("Invisible"), Out::Value("0")),
+            (Op::Test("Invisible"), Out::Flag(false)),
+            (Op::Set("Invisible=1"), Out::Done),
+            (Op::Get("Invisible"), Out::Value("1")),
+            (Op::Test("Invisible"), Out::Flag(true)),
+            (Op::Clear("Invisible"), Out::Done),
+            (Op::Get("Invisible"), Out::Value("0")),
+            (Op::Test("Invisible"), Out::Flag(false)),
+            (Op::Get("Border"), Out::Value("0")),
+            (Op::Test("Border"), Out::Flag(false)),
+            (Op::Set("Border=1"), Out::Done),
+            (Op::Get("Border"), Out::Value("1")),
+            (Op::Test("Border"), Out::Flag(true)),
+            (Op::Clear("Border"), Out::Done),
+            (Op::Get("Border"), Out::Value("0")),
+            (Op::Test("Border"), Out::Flag(false)),
+            (Op::Get("ClipOp"), Out::Value("0")),
+            (Op::Test("ClipOp"), Out::Flag(false)),
+            (Op::Set("ClipOp=1"), Out::Done),
+            (Op::Get("ClipOp"), Out::Value("1")),
+            (Op::Test("ClipOp"), Out::Flag(true)),
+            (Op::Clear("ClipOp"), Out::Done),
+            (Op::Get("ClipOp"), Out::Value("0")),
+            (Op::Test("ClipOp"), Out::Flag(false)),
+            (Op::Get("Clip"), Out::Value("1")),
+            (Op::Test("Clip"), Out::Flag(false)),
+            (Op::Set("Clip=1"), Out::Done),
+            (Op::Get("Clip"), Out::Value("1")),
+            (Op::Test("Clip"), Out::Flag(true)),
+            (Op::Clear("Clip"), Out::Done),
+            (Op::Get("Clip"), Out::Value("1")),
+            (Op::Test("Clip"), Out::Flag(false)),
+            (Op::Set("Clip=5"), Out::Err(E::Attin, &["astSetClip(Plot): Invalid value 5 supplied for Clip attribute"])),
+            (Op::Get("Clip"), Out::Value("1")),
+            (Op::Clear("Clip"), Out::Done),
+            (Op::Get("Grf"), Out::Value("0")),
+            (Op::Test("Grf"), Out::Flag(false)),
+            (Op::Set("Grf=1"), Out::Done),
+            (Op::Get("Grf"), Out::Value("1")),
+            (Op::Test("Grf"), Out::Flag(true)),
+            (Op::Clear("Grf"), Out::Done),
+            (Op::Get("Grf"), Out::Value("0")),
+            (Op::Test("Grf"), Out::Flag(false)),
+            (Op::Set("Grf=3"), Out::Done),
+            (Op::Get("Grf"), Out::Value("1")),
+            (Op::Clear("Grf"), Out::Done),
+            (Op::Get("DrawTitle"), Out::Value("1")),
+            (Op::Test("DrawTitle"), Out::Flag(false)),
+            (Op::Set("DrawTitle=0"), Out::Done),
+            (Op::Get("DrawTitle"), Out::Value("0")),
+            (Op::Test("DrawTitle"), Out::Flag(true)),
+            (Op::Clear("DrawTitle"), Out::Done),
+            (Op::Get("DrawTitle"), Out::Value("1")),
+            (Op::Test("DrawTitle"), Out::Flag(false)),
+            (Op::Get("Escape"), Out::Value("1")),
+            (Op::Test("Escape"), Out::Flag(false)),
+            (Op::Set("Escape=0"), Out::Done),
+            (Op::Get("Escape"), Out::Value("0")),
+            (Op::Test("Escape"), Out::Flag(true)),
+            (Op::Clear("Escape"), Out::Done),
+            (Op::Get("Escape"), Out::Value("1")),
+            (Op::Test("Escape"), Out::Flag(false)),
+            (Op::Get("TitleGap"), Out::Value("0.050000000000000003")),
+            (Op::Test("TitleGap"), Out::Flag(false)),
+            (Op::Set("TitleGap=0.1"), Out::Done),
+            (Op::Get("TitleGap"), Out::Value("0.10000000000000001")),
+            (Op::Test("TitleGap"), Out::Flag(true)),
+            (Op::Clear("TitleGap"), Out::Done),
+            (Op::Get("TitleGap"), Out::Value("0.050000000000000003")),
+            (Op::Test("TitleGap"), Out::Flag(false)),
+            (Op::Get("TextGapType"), Out::Value("box")),
+            (Op::Test("TextGapType"), Out::Flag(false)),
+            (Op::Set("TextGapType=plot"), Out::Done),
+            (Op::Get("TextGapType"), Out::Value("plot")),
+            (Op::Test("TextGapType"), Out::Flag(true)),
+            (Op::Set("TextGapType=b"), Out::Done),
+            (Op::Get("TextGapType"), Out::Value("box")),
+            (Op::Set("TextGapType=bad"), Out::Err(E::Opt, &["astSet(Plot): Option 'bad' is unknown in 'textgaptype=bad'."])),
+            (Op::Set("TextGapType= Plot "), Out::Done),
+            (Op::Get("TextGapType"), Out::Value("plot")),
+            (Op::Clear("TextGapType"), Out::Done),
+            (Op::Get("TextGapType"), Out::Value("box")),
+            (Op::Test("TextGapType"), Out::Flag(false)),
+            (Op::Set("Labelling=int"), Out::Done),
+            (Op::Get("Labelling"), Out::Value("interior")),
+            (Op::Test("Labelling"), Out::Flag(true)),
+            (Op::Set("Labelling=e"), Out::Done),
+            (Op::Get("Labelling"), Out::Value("exterior")),
+            (Op::Set("Labelling=sideways"), Out::Err(E::Opt, &["astSet(Plot): Option 'sideways' is unknown in 'labelling=sideways'."])),
+            (Op::Set("Labelling=exteriors"), Out::Err(E::Opt, &["astSet(Plot): Option 'exteriors' is unknown in 'labelling=exteriors'."])),
+            (Op::Clear("Labelling"), Out::Done),
+            (Op::Test("Labelling"), Out::Flag(false)),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+    Tol = 1 	# Plotting tolerance
+#   TckAll = 1 	# Put ticks on all edges?
+#   FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_axis",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Get("DrawAxes"), Out::Value("1")),
+            (Op::Test("DrawAxes"), Out::Flag(false)),
+            (Op::Get("DrawAxes(1)"), Out::Value("1")),
+            (Op::Test("DrawAxes(1)"), Out::Flag(false)),
+            (Op::Set("DrawAxes=0"), Out::Done),
+            (Op::Get("DrawAxes(2)"), Out::Value("0")),
+            (Op::Test("DrawAxes(2)"), Out::Flag(true)),
+            (Op::Set("DrawAxes(2)=1"), Out::Done),
+            (Op::Get("DrawAxes(2)"), Out::Value("1")),
+            (Op::Set("DrawAxes(3)=1"), Out::Err(E::Axiin, &["astSetDrawAxes(Plot): Index (3) is invalid for attribute DrawAxes - it should be in the range 1 to 2."])),
+            (Op::Get("DrawAxes(3)"), Out::Err(E::Axiin, &["astGetDrawAxes(Plot): Index (3) is invalid for attribute DrawAxes - it should be in the range 1 to 2."])),
+            (Op::Test("DrawAxes(0)"), Out::Err(E::Axiin, &["astTestDrawAxes(Plot): Index (0) is invalid for attribute DrawAxes - it should be in the range 1 to 2."])),
+            (Op::Clear("DrawAxes(3)"), Out::Err(E::Axiin, &["astClearDrawAxes(Plot): Index (3) is invalid for attribute DrawAxes - it should be in the range 1 to 2."])),
+            (Op::Clear("DrawAxes"), Out::Done),
+            (Op::Get("DrawAxes(1)"), Out::Value("1")),
+            (Op::Test("DrawAxes(1)"), Out::Flag(false)),
+            (Op::Get("DrawAxes(2)"), Out::Value("1")),
+            (Op::Test("DrawAxes(2)"), Out::Flag(false)),
+            (Op::Test("DrawAxes"), Out::Flag(false)),
+            (Op::Get("Abbrev(1)"), Out::Value("1")),
+            (Op::Test("Abbrev(1)"), Out::Flag(false)),
+            (Op::Set("Abbrev(2)=0"), Out::Done),
+            (Op::Get("Abbrev(2)"), Out::Value("0")),
+            (Op::Test("Abbrev(2)"), Out::Flag(true)),
+            (Op::Clear("Abbrev(2)"), Out::Done),
+            (Op::Get("Abbrev(2)"), Out::Value("1")),
+            (Op::Test("Abbrev(2)"), Out::Flag(false)),
+            (Op::Set("Abbrev=0"), Out::Done),
+            (Op::Get("Abbrev"), Out::Value("0")),
+            (Op::Test("Abbrev"), Out::Flag(true)),
+            (Op::Set("Gap=10"), Out::Done),
+            (Op::Get("Gap"), Out::Value("10")),
+            (Op::Test("Gap"), Out::Flag(true)),
+            (Op::Get("Gap(1)"), Out::Value("10")),
+            (Op::Test("Gap(1)"), Out::Flag(true)),
+            (Op::Get("Gap(2)"), Out::Value("10")),
+            (Op::Test("Gap(2)"), Out::Flag(true)),
+            (Op::Set("Gap(2)=5"), Out::Done),
+            (Op::Get("Gap"), Out::Value("10")),
+            (Op::Get("Gap(2)"), Out::Value("5")),
+            (Op::Clear("Gap"), Out::Done),
+            (Op::Test("Gap(1)"), Out::Flag(false)),
+            (Op::Test("Gap(2)"), Out::Flag(false)),
+            (Op::Set("Gap(4)=1"), Out::Err(E::Axiin, &["astSetGap(Plot): Index (4) is invalid for attribute Gap - it should be in the range 1 to 2."])),
+            (Op::Get("Gap(4)"), Out::Err(E::Axiin, &["astGetUsedGap(Plot): Index (4) is invalid for attribute Gap - it should be in the range 1 to 2."])),
+            (Op::Set("LogGap=100"), Out::Done),
+            (Op::Get("LogGap(2)"), Out::Value("100")),
+            (Op::Test("LogGap(2)"), Out::Flag(true)),
+            (Op::Clear("LogGap(2)"), Out::Done),
+            (Op::Get("LogGap(2)"), Out::Value("-1.7976931348623157e+308")),
+            (Op::Test("LogGap(2)"), Out::Flag(false)),
+            (Op::Get("NumLabGap"), Out::Value("0.01")),
+            (Op::Test("NumLabGap"), Out::Flag(false)),
+            (Op::Set("NumLabGap(1)=0.1"), Out::Done),
+            (Op::Get("NumLabGap(1)"), Out::Value("0.10000000000000001")),
+            (Op::Test("NumLabGap(1)"), Out::Flag(true)),
+            (Op::Get("TextLabGap(2)"), Out::Value("0.01")),
+            (Op::Test("TextLabGap(2)"), Out::Flag(false)),
+            (Op::Set("TextLabGap=0.03"), Out::Done),
+            (Op::Get("TextLabGap(2)"), Out::Value("0.029999999999999999")),
+            (Op::Test("TextLabGap(2)"), Out::Flag(true)),
+            (Op::Get("LabelUp"), Out::Value("0")),
+            (Op::Test("LabelUp"), Out::Flag(false)),
+            (Op::Set("LabelUp(2)=1"), Out::Done),
+            (Op::Get("LabelUp(2)"), Out::Value("1")),
+            (Op::Test("LabelUp(2)"), Out::Flag(true)),
+            (Op::Get("NumLab(1)"), Out::Value("1")),
+            (Op::Test("NumLab(1)"), Out::Flag(false)),
+            (Op::Set("NumLab(1)=0"), Out::Done),
+            (Op::Get("NumLab(1)"), Out::Value("0")),
+            (Op::Test("NumLab(1)"), Out::Flag(true)),
+            (Op::Clear("NumLab(1)"), Out::Done),
+            (Op::Get("NumLab(1)"), Out::Value("1")),
+            (Op::Test("NumLab(1)"), Out::Flag(false)),
+            (Op::Set("MinTick=0"), Out::Done),
+            (Op::Get("MinTick(1)"), Out::Value("1")),
+            (Op::Test("MinTick(1)"), Out::Flag(true)),
+            (Op::Set("MinTick(2)=4"), Out::Done),
+            (Op::Get("MinTick(2)"), Out::Value("4")),
+            (Op::Test("MinTick(2)"), Out::Flag(true)),
+            (Op::Set("TextLab(1)=0"), Out::Done),
+            (Op::Get("TextLab(1)"), Out::Value("0")),
+            (Op::Test("TextLab(1)"), Out::Flag(true)),
+            (Op::Set("LabelUnits=1"), Out::Done),
+            (Op::Get("LabelUnits(2)"), Out::Value("1")),
+            (Op::Test("LabelUnits(2)"), Out::Flag(true)),
+            (Op::Set("LogTicks(1)=1"), Out::Done),
+            (Op::Get("LogTicks(1)"), Out::Value("1")),
+            (Op::Test("LogTicks(1)"), Out::Flag(true)),
+            (Op::Set("LogLabel=1"), Out::Done),
+            (Op::Get("LogLabel(2)"), Out::Value("1")),
+            (Op::Test("LogLabel(2)"), Out::Flag(true)),
+            (Op::Set("MajTickLen=0.02"), Out::Done),
+            (Op::Get("MajTickLen(1)"), Out::Value("0.02")),
+            (Op::Test("MajTickLen(1)"), Out::Flag(true)),
+            (Op::Set("MinTickLen(2)=0.01"), Out::Done),
+            (Op::Get("MinTickLen(2)"), Out::Value("0.01")),
+            (Op::Test("MinTickLen(2)"), Out::Flag(true)),
+            (Op::Get("MinTickLen"), Out::Value("0.0070000000000000001")),
+            (Op::Test("MinTickLen"), Out::Flag(false)),
+            (Op::Set("Edge(1)=t"), Out::Done),
+            (Op::Get("Edge(1)"), Out::Value("top")),
+            (Op::Test("Edge(1)"), Out::Flag(true)),
+            (Op::Set("Edge(2)=bottom"), Out::Done),
+            (Op::Get("Edge(2)"), Out::Value("bottom")),
+            (Op::Set("Edge(1)=x"), Out::Err(E::Opt, &["astSet(Plot): Option 'x' is unknown in 'edge(1)=x'."])),
+            (Op::Set("Edge(1)="), Out::Err(E::Badat, &["astSet: The attribute setting \"edge= \" is invalid for a SkyAxis."])),
+            (Op::Set("Edge=left"), Out::Err(E::Badat, &["astSet: The attribute setting \"edge=left\" is invalid for a SkyFrame."])),
+            (Op::Set("Edge(3)=left"), Out::Err(E::Axiin, &["astSetEdge(Plot): Index (3) is invalid for attribute Edge - it should be in the range 1 to 2."])),
+            (Op::Clear("Edge(1)"), Out::Done),
+            (Op::Test("Edge(1)"), Out::Flag(false)),
+            (Op::Set("LabelAt(1)=0.5"), Out::Done),
+            (Op::Get("LabelAt(1)"), Out::Value("0.5")),
+            (Op::Test("LabelAt(1)"), Out::Flag(true)),
+            (Op::Set("LabelAt=0.5"), Out::Err(E::Badat, &["astSet: The attribute setting \"labelat=0.5\" is invalid for a SkyFrame."])),
+            (Op::Set("Centre(2)=0.1"), Out::Done),
+            (Op::Get("Centre(2)"), Out::Value("0.10000000000000001")),
+            (Op::Test("Centre(2)"), Out::Err(E::Badat, &["astTest: The attribute name \"centre\" is invalid for a SkyAxis."])),
+            (Op::Clear("Centre(2)"), Out::Done),
+            (Op::Test("Centre(2)"), Out::Err(E::Badat, &["astTest: The attribute name \"centre\" is invalid for a SkyAxis."])),
+            (Op::Set("Gap(1)=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"gap=x\" is invalid for a SkyAxis."])),
+            (Op::Set("Gap=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"gap=x\" is invalid for a SkyFrame."])),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+    Abbrv1 = 0 	# Abbreviate numerical axis labels?
+    Abbrv2 = 0 	# Abbreviate numerical axis labels?
+#   Escape = 1 	# Interpret escape sequences?
+    LblAt1 = 0.5 	# Put numerical labels at
+    NmGap1 = 0.10000000000000001 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+    TxGap1 = 0.029999999999999999 	# Spacing of descriptive labels
+    TxGap2 = 0.029999999999999999 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+    LblUp2 = 1 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+    LgTck1 = 1 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+    LgLbl1 = 1 	# Scientific notation for labels?
+    LgLbl2 = 1 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+    MnTks1 = 1 	# No. of sub-divisions between major tick marks
+    MnTks2 = 4 	# No. of sub-divisions between major tick marks
+    TxLbl1 = 0 	# Draw textual label?
+    LbUnt1 = 1 	# Add units to axis label?
+    LbUnt2 = 1 	# Add units to axis label?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+    MjTkLn1 = 0.02 	# Major tick length
+    MjTkLn2 = 0.02 	# Major tick length
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+    MnTkLn2 = 0.01 	# Minor tick length
+    Edge2 = "bottom" 	# Edge used to label an axis
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_logplot",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "DATA" 	# Coordinate system domain
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "DATA" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -0.12500005238689638 	# Shift for axis 1
+          Scl1 = 11.250000356230895 	# Scale factor for axis 1
+          Sft2 = -0.12500005238689638 	# Shift for axis 2
+          Scl2 = 11.250000356230895 	# Scale factor for axis 2
+       End WinMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 1 	# Lower X bound of supplied base Frame
+    Yb1 = 1 	# Lower Y bound of supplied base Frame
+    Xb2 = 10 	# Upper X bound of supplied base Frame
+    Yb2 = 10 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Get("LogPlot"), Out::Value("0")),
+            (Op::Test("LogPlot"), Out::Flag(false)),
+            (Op::Set("LogPlot(1)=1"), Out::Done),
+            (Op::Get("LogPlot(1)"), Out::Value("1")),
+            (Op::Test("LogPlot(1)"), Out::Flag(true)),
+            (Op::Set("LogPlot=1"), Out::Done),
+            (Op::Get("LogPlot(2)"), Out::Value("1")),
+            (Op::Test("LogPlot(2)"), Out::Flag(true)),
+            (Op::Clear("LogPlot"), Out::Done),
+            (Op::Get("LogPlot(1)"), Out::Value("0")),
+            (Op::Test("LogPlot(1)"), Out::Flag(false)),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "DATA" 	# Coordinate system domain
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Nod1 = 2 	# Frame 1 is associated with node 2
+    Nod2 = 1 	# Frame 2 is associated with node 1
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "DATA" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = 0.011111115415891003 	# Shift for axis 1
+          Scl1 = 0.088888886074225112 	# Scale factor for axis 1
+          Sft2 = 0.011111115415891003 	# Shift for axis 2
+          Scl2 = 0.088888886074225112 	# Scale factor for axis 2
+       End WinMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 1 	# Lower X bound of supplied base Frame
+    Yb1 = 1 	# Lower Y bound of supplied base Frame
+    Xb2 = 10 	# Upper X bound of supplied base Frame
+    Yb2 = 10 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_style",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Get("Colour(axes)"), Out::Value("1")),
+            (Op::Test("Colour(axes)"), Out::Flag(false)),
+            (Op::Set("Colour(axes)=2"), Out::Done),
+            (Op::Get("Colour(axes)"), Out::Value("2")),
+            (Op::Test("Colour(axes)"), Out::Flag(true)),
+            (Op::Get("Colour(axis1)"), Out::Value("2")),
+            (Op::Test("Colour(axis1)"), Out::Flag(true)),
+            (Op::Get("Colour(axis2)"), Out::Value("2")),
+            (Op::Test("Colour(axis2)"), Out::Flag(true)),
+            (Op::Get("Colour(axis3)"), Out::Value("1")),
+            (Op::Test("Colour(axis3)"), Out::Flag(false)),
+            (Op::Set("Colour=3"), Out::Done),
+            (Op::Get("Colour(border)"), Out::Value("3")),
+            (Op::Test("Colour(border)"), Out::Flag(true)),
+            (Op::Get("Colour"), Out::Value("3")),
+            (Op::Test("Colour"), Out::Flag(true)),
+            (Op::Set("Color(Grid1)=4"), Out::Done),
+            (Op::Get("Color(Grid1)"), Out::Value("4")),
+            (Op::Test("Color(Grid1)"), Out::Flag(true)),
+            (Op::Get("Colour(grid)"), Out::Value("4")),
+            (Op::Test("Colour(grid)"), Out::Flag(true)),
+            (Op::Get("Color"), Out::Value("3")),
+            (Op::Test("Color"), Out::Flag(true)),
+            (Op::Set("Style(nosuch)=1"), Out::Err(E::Opt, &["astSet(Plot): Option 'nosuch' is unknown in 'Style'."])),
+            (Op::Get("Style(nosuch)"), Out::Err(E::Opt, &["astGet(Plot): Option 'nosuch' is unknown in 'style(nosuch)'."])),
+            (Op::Test("Style(nosuch)"), Out::Err(E::Opt, &["astTest(Plot): Option 'nosuch' is unknown in 'style(nosuch)'."])),
+            (Op::Clear("Style(nosuch)"), Out::Err(E::Opt, &["astClear(Plot): Option 'nosuch' is unknown in 'style(nosuch)'."])),
+            (Op::Set("Style(abcdefghijklmnopqrstu)=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"style(abcdefghijklmnopqrstu)=1\" is invalid for a SkyFrame."])),
+            (Op::Get("Style(abcdefghijklmnopqrstu)"), Out::Err(E::Badat, &["astGet: The SkyFrame given does not have an attribute called \"style(abcdefghijklmnopqrstu)\"."])),
+            (Op::Set("Style(ax)=2"), Out::Err(E::Opt, &["astSet(Plot): Option 'ax' is ambiguous in 'Style'."])),
+            (Op::Set("Style(t)=2"), Out::Err(E::Opt, &["astSet(Plot): Option 't' is ambiguous in 'Style'."])),
+            (Op::Set("Style(ti)=2"), Out::Err(E::Opt, &["astSet(Plot): Option 'ti' is ambiguous in 'Style'."])),
+            (Op::Get("Style(title)"), Out::Value("1")),
+            (Op::Test("Style(title)"), Out::Flag(false)),
+            (Op::Set("Style(grid)=3"), Out::Done),
+            (Op::Get("Style(grid2)"), Out::Value("3")),
+            (Op::Test("Style(grid2)"), Out::Flag(true)),
+            (Op::Get("Style"), Out::Value("1")),
+            (Op::Test("Style"), Out::Flag(false)),
+            (Op::Set("Width(border)=2.5"), Out::Done),
+            (Op::Get("Width(border)"), Out::Value("2.5")),
+            (Op::Test("Width(border)"), Out::Flag(true)),
+            (Op::Get("Width"), Out::Value("2.5")),
+            (Op::Test("Width"), Out::Flag(true)),
+            (Op::Set("Width(curves)=0"), Out::Err(E::Attin, &["astSetWidth(Plot):Invalid zero value supplied for Width(Curve) attribute"])),
+            (Op::Set("Width=0"), Out::Err(E::Attin, &["astSetWidth(Plot):Invalid zero value supplied for Width(Border) attribute"])),
+            (Op::Set("Width(axes)=3"), Out::Done),
+            (Op::Get("Width(axis2)"), Out::Value("3")),
+            (Op::Set("Size=1.5"), Out::Done),
+            (Op::Get("Size(title)"), Out::Value("1.5")),
+            (Op::Test("Size(title)"), Out::Flag(true)),
+            (Op::Get("Size"), Out::Value("1.5")),
+            (Op::Test("Size"), Out::Flag(true)),
+            (Op::Set("Size(strings)=0"), Out::Err(E::Attin, &["astSetSize(Plot): Invalid zero value supplied for Size(Text string) attribute"])),
+            (Op::Set("Font(title)=3"), Out::Done),
+            (Op::Get("Font(title)"), Out::Value("3")),
+            (Op::Test("Font(title)"), Out::Flag(true)),
+            (Op::Get("Font"), Out::Value("1")),
+            (Op::Test("Font"), Out::Flag(false)),
+            (Op::Set("Font(textlab)=2"), Out::Done),
+            (Op::Get("Font"), Out::Value("2")),
+            (Op::Test("Font"), Out::Flag(true)),
+            (Op::Get("Font(textlab)"), Out::Value("2")),
+            (Op::Test("Font(textlab)"), Out::Flag(true)),
+            (Op::Clear("Colour(axes)"), Out::Done),
+            (Op::Get("Colour(axes)"), Out::Value("1")),
+            (Op::Test("Colour(axes)"), Out::Flag(false)),
+            (Op::Get("Colour(axis1)"), Out::Value("1")),
+            (Op::Test("Colour(axis1)"), Out::Flag(false)),
+            (Op::Test("Colour(numlab)"), Out::Flag(true)),
+            (Op::Clear("Style"), Out::Done),
+            (Op::Get("Style(grid1)"), Out::Value("1")),
+            (Op::Test("Style(grid1)"), Out::Flag(false)),
+            (Op::Clear("Color(Grid)"), Out::Done),
+            (Op::Set("Style( Axes )=2"), Out::Done),
+            (Op::Set("Colour(axes)=x"), Out::Err(E::Badat, &["astSet: The attribute setting \"colour(axes)=x\" is invalid for a SkyFrame."])),
+            (Op::Set("Colour()=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"colour()=1\" is invalid for a SkyFrame."])),
+            (Op::Get("Colour()"), Out::Err(E::Badat, &["astGet: The SkyFrame given does not have an attribute called \"colour()\"."])),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+    Style6 = 2 	# Axis 1 line style
+    Style7 = 2 	# Axis 2 line style
+    Font3 = 3 	# Title character font
+    Font12 = 2 	# Axis 1 textual label character font
+    Font13 = 2 	# Axis 2 textual label character font
+    Col1 = 3 	# Border colour index
+    Col2 = 3 	# Curve colour index
+    Col3 = 3 	# Title colour index
+    Col4 = 3 	# Markers colour index
+    Col5 = 3 	# Text string colour index
+    Col9 = 3 	# Axis 1 numerical labels colour index
+    Col10 = 3 	# Axis 2 numerical labels colour index
+    Col12 = 3 	# Axis 1 textual label colour index
+    Col13 = 3 	# Axis 2 textual label colour index
+    Col15 = 3 	# Axis 1 tick marks colour index
+    Col16 = 3 	# Axis 2 tick marks colour index
+    Width1 = 2.5 	# Border line width
+    Width6 = 3 	# Axis 1 line width
+    Width7 = 3 	# Axis 2 line width
+    Size1 = 1.5 	# Border character size
+    Size2 = 1.5 	# Curve character size
+    Size3 = 1.5 	# Title character size
+    Size4 = 1.5 	# Markers character size
+    Size5 = 1.5 	# Text string character size
+    Size6 = 1.5 	# Axis 1 character size
+    Size7 = 1.5 	# Axis 2 character size
+    Size9 = 1.5 	# Axis 1 numerical labels character size
+    Size10 = 1.5 	# Axis 2 numerical labels character size
+    Size12 = 1.5 	# Axis 1 textual label character size
+    Size13 = 1.5 	# Axis 2 textual label character size
+    Size15 = 1.5 	# Axis 1 tick marks character size
+    Size16 = 1.5 	# Axis 2 tick marks character size
+    Size18 = 1.5 	# Axis 1 gridline character size
+    Size19 = 1.5 	# Axis 2 gridline character size
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_frameset",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Set("Title=Logarithmic axis example"), Out::Done),
+            (Op::Get("Title"), Out::Value("Logarithmic axis example")),
+            (Op::Test("Title"), Out::Flag(true)),
+            (Op::Set("Label(1)=First axis"), Out::Done),
+            (Op::Get("Label(1)"), Out::Value("First axis")),
+            (Op::Test("Label(1)"), Out::Flag(true)),
+            (Op::Set("System=ICRS"), Out::Done),
+            (Op::Get("System"), Out::Value("ICRS")),
+            (Op::Get("Nframe"), Out::Value("3")),
+            (Op::Get("Current"), Out::Value("3")),
+            (Op::Get("Base"), Out::Value("1")),
+            (Op::Get("Domain"), Out::Value("SKY")),
+            (Op::Set("Current=1"), Out::Done),
+            (Op::Get("Domain"), Out::Value("GRAPHICS")),
+            (Op::Set("Fred=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a Frame."])),
+            (Op::Get("Fred"), Out::Err(E::Badat, &["astGet: The Frame given does not have an attribute called \"fred\"."])),
+            (Op::Test("Fred"), Out::Err(E::Badat, &["astTest: The attribute name \"fred\" is invalid for a Frame."])),
+            (Op::Clear("Fred"), Out::Err(E::Badat, &["astClear: The attribute name \"fred\" is invalid for a Frame."])),
+            (Op::Set("Current=SKY"), Out::Done),
+            (Op::Set("Fred=1"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=1\" is invalid for a SkyFrame."])),
+            (Op::Set("Grid=1,Fred=2"), Out::Err(E::Badat, &["astSet: The attribute setting \"fred=2\" is invalid for a SkyFrame."])),
+            (Op::Get("Grid"), Out::Value("1")),
+            (Op::Set("Ident=plot"), Out::Done),
+            (Op::Get("Ident"), Out::Value("plot")),
+            (Op::Get("Invert"), Out::Value("0")),
+            (Op::Test("Invert"), Out::Flag(false)),
+            (Op::Get("Nin"), Out::Value("2")),
+            (Op::Get("Naxes"), Out::Value("2")),
+            (Op::Get("Epoch"), Out::Value("2000.0")),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+    Ident = "plot" 	# Permanent Object identification string
+ IsA Object 	# AST Object
+#   Title = "Logarithmic axis example" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "First axis" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "Logarithmic axis example" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "First axis" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+          System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+                Label = "First axis" 	# Axis Label
+             IsA Axis 	# Coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = 1.4675874807483646 	# Ref. pos. RA 5:36:20.8
+          SRef2 = -0.11787495255139613 	# Ref. pos. Dec -6:45:13
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+                IsSimp = 1 	# Mapping has been simplified
+             IsA Mapping 	# Mapping between coordinate systems
+                MapA = 	# First component Mapping
+                   Begin WinMap 	# Map one window on to another
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Sft1 = 3.1520646291017589 	# Shift for axis 1
+                      Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                      Sft2 = -3.1520646291017589 	# Shift for axis 2
+                      Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+                   End WinMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin WcsMap 	# FITS-WCS sky projection
+                            Nin = 2 	# Number of input coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            Type = "AIT" 	# Hammer-Aitoff projection
+                         End WcsMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 2 	# Number of input coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            InvA = 1 	# First Mapping used in inverse direction
+                            MapA = 	# First component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                                  Invert = 1 	# Mapping inverted
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = 0 	# Polar longitude (rad.s)
+                               End SphMap
+                            MapB = 	# Second component Mapping
+                               Begin CmpMap 	# Compound Mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  MapA = 	# First component Mapping
+                                     Begin MatrixMap 	# Matrix transformation
+                                        Nin = 3 	# Number of input coordinates
+                                     IsA Mapping 	# Mapping between coordinate systems
+                                        M0 = -0.8114748329086714 	# Forward matrix value
+                                        M1 = 0.50650547146018587 	# Forward matrix value
+                                        M2 = -0.29148036458179932 	# Forward matrix value
+                                        M3 = -0.47668629803556373 	# Forward matrix value
+                                        M4 = -0.8622367467122326 	# Forward matrix value
+                                        M5 = -0.17122489855232773 	# Forward matrix value
+                                        M6 = -0.3380514292544754 	# Forward matrix value
+                                        M7 = 0 	# Forward matrix value
+                                        M8 = 0.94112763809113931 	# Forward matrix value
+                                        IM0 = -0.8114748329086714 	# Inverse matrix value
+                                        IM1 = -0.47668629803556373 	# Inverse matrix value
+                                        IM2 = -0.3380514292544754 	# Inverse matrix value
+                                        IM3 = 0.50650547146018587 	# Inverse matrix value
+                                        IM4 = -0.8622367467122326 	# Inverse matrix value
+                                        IM5 = 0 	# Inverse matrix value
+                                        IM6 = -0.29148036458179932 	# Inverse matrix value
+                                        IM7 = -0.17122489855232773 	# Inverse matrix value
+                                        IM8 = 0.94112763809113931 	# Inverse matrix value
+                                        Form = "Full" 	# Matrix storage form
+                                     End MatrixMap
+                                  MapB = 	# Second component Mapping
+                                     Begin SphMap 	# Cartesian to Spherical mapping
+                                        Nin = 3 	# Number of input coordinates
+                                        Nout = 2 	# Number of output coordinates
+                                     IsA Mapping 	# Mapping between coordinate systems
+                                        UntRd = 1 	# All input vectors have unit length
+                                        PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                                     End SphMap
+                               End CmpMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+          MapB = 	# Second component Mapping
+             Begin SlaMap 	# Conversion between sky coordinate systems
+                Nin = 2 	# Number of input coordinates
+                IsSimp = 1 	# Mapping has been simplified
+             IsA Mapping 	# Mapping between coordinate systems
+                Nsla = 2 	# Number of conversion steps
+                Sla1 = "GALEQ" 	# Galactic (IAU 1958) to J2000.0 equatorial (FK5)
+                Sla2 = "FK5HZ" 	# J2000.0 FK5 to ICRS (no PM or parallax)
+                Sla2a = 2000 	# Julian epoch of FK5 coordinates
+             End SlaMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+    Grid = 1 	# Is a grid required?
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_used",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Get("Grid"), Out::Value("1")),
+            (Op::Get("Border"), Out::Value("0")),
+            (Op::Get("Labelling"), Out::Value("interior")),
+            (Op::Get("Edge(1)"), Out::Value("left")),
+            (Op::Get("Edge(2)"), Out::Value("bottom")),
+            (Op::Get("LabelAt(1)"), Out::Value("0")),
+            (Op::Get("LabelAt(2)"), Out::Value("0")),
+            (Op::Get("Centre(1)"), Out::Value("-3.1415926535897931")),
+            (Op::Get("Centre(2)"), Out::Value("-1.5707963267948966")),
+            (Op::Get("Gap"), Out::Value("1.0471975511965976")),
+            (Op::Get("Gap(1)"), Out::Value("1.0471975511965976")),
+            (Op::Get("Gap(2)"), Out::Value("0.52359877559829882")),
+            (Op::Get("LogGap(1)"), Out::Value("-1.7976931348623157e+308")),
+            (Op::Get("LogGap"), Out::Value("-1.7976931348623157e+308")),
+            (Op::Get("MinTick(1)"), Out::Value("6")),
+            (Op::Get("MinTick"), Out::Value("6")),
+            (Op::Get("TextLab(1)"), Out::Value("0")),
+            (Op::Get("TextLab"), Out::Value("0")),
+            (Op::Get("LabelUnits(1)"), Out::Value("0")),
+            (Op::Get("LabelUnits"), Out::Value("0")),
+            (Op::Get("LogTicks(2)"), Out::Value("0")),
+            (Op::Get("LogLabel(1)"), Out::Value("0")),
+            (Op::Get("MajTickLen(1)"), Out::Value("0")),
+            (Op::Get("MajTickLen"), Out::Value("0")),
+            (Op::Set("Edge(2)=right"), Out::Done),
+            (Op::Get("Edge(2)"), Out::Value("right")),
+            (Op::Get("Edge(1)"), Out::Value("bottom")),
+            (Op::Get("LabelAt(3)"), Out::Err(E::Axiin, &["astGetUsedLabelAt(Plot): Index (3) is invalid for attribute LabelAt - it should be in the range 1 to 2."])),
+            (Op::Get("Centre(0)"), Out::Err(E::Axiin, &["astGetUsedCentre(Plot): Index (0) is invalid for attribute Centre - it should be in the range 1 to 2."])),
+            (Op::Get("Edge(3)"), Out::Err(E::Axiin, &["astGetUsedEdge(Plot): Index (3) is invalid for attribute Edge - it should be in the range 1 to 2."])),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Edge2 = "right" 	# Edge used to label an axis
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_used_frame",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "DATA" 	# Coordinate system domain
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "DATA" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -0.12500005238689638 	# Shift for axis 1
+          Scl1 = 11.250000356230895 	# Scale factor for axis 1
+          Sft2 = -0.12500005238689638 	# Shift for axis 2
+          Scl2 = 11.250000356230895 	# Scale factor for axis 2
+       End WinMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 1 	# Lower X bound of supplied base Frame
+    Yb1 = 1 	# Lower Y bound of supplied base Frame
+    Xb2 = 10 	# Upper X bound of supplied base Frame
+    Yb2 = 10 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Get("Grid"), Out::Value("0")),
+            (Op::Get("Labelling"), Out::Value("exterior")),
+            (Op::Get("Edge(1)"), Out::Value("bottom")),
+            (Op::Get("Edge(2)"), Out::Value("left")),
+            (Op::Get("Gap(1)"), Out::Value("1")),
+            (Op::Get("Gap(2)"), Out::Value("1")),
+            (Op::Get("Centre(1)"), Out::Value("1")),
+            (Op::Get("MinTick(2)"), Out::Value("5")),
+            (Op::Set("Gap(1)=2.5"), Out::Done),
+            (Op::Get("Gap(1)"), Out::Value("2.5")),
+            (Op::Get("Centre(1)"), Out::Value("2")),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "DATA" 	# Coordinate system domain
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "DATA" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -0.12500005238689638 	# Shift for axis 1
+          Scl1 = 11.250000356230895 	# Scale factor for axis 1
+          Sft2 = -0.12500005238689638 	# Shift for axis 2
+          Scl2 = 11.250000356230895 	# Scale factor for axis 2
+       End WinMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 1 	# Lower X bound of supplied base Frame
+    Yb1 = 1 	# Lower Y bound of supplied base Frame
+    Xb2 = 10 	# Upper X bound of supplied base Frame
+    Yb2 = 10 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_gap0",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "DATA" 	# Coordinate system domain
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "DATA" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -0.12500005238689638 	# Shift for axis 1
+          Scl1 = 11.250000356230895 	# Scale factor for axis 1
+          Sft2 = -0.12500005238689638 	# Shift for axis 2
+          Scl2 = 11.250000356230895 	# Scale factor for axis 2
+       End WinMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 1 	# Lower X bound of supplied base Frame
+    Yb1 = 1 	# Lower Y bound of supplied base Frame
+    Xb2 = 10 	# Upper X bound of supplied base Frame
+    Yb2 = 10 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Set("Gap=0"), Out::Done),
+            (Op::Get("Gap(1)"), Out::Value("0")),
+            (Op::Get("Grid"), Out::Err(E::Plfmt, &["astGrid(Plot): No suitable format can be found to produce numerical labels for axis 1 of a Frame."])),
+            (Op::Get("Edge(1)"), Out::Err(E::Plfmt, &["astGrid(Plot): No suitable format can be found to produce numerical labels for axis 1 of a Frame."])),
+            (Op::Get("Labelling"), Out::Err(E::Plfmt, &["astGrid(Plot): No suitable format can be found to produce numerical labels for axis 1 of a Frame."])),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "DATA" 	# Coordinate system domain
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "DATA" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -0.12500005238689638 	# Shift for axis 1
+          Scl1 = 11.250000356230895 	# Scale factor for axis 1
+          Sft2 = -0.12500005238689638 	# Shift for axis 2
+          Scl2 = 11.250000356230895 	# Scale factor for axis 2
+       End WinMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+    LgTck1 = 0 	# Space ticks logarithmically?
+    LgTck2 = 0 	# Space ticks logarithmically?
+    LgLbl1 = 0 	# Scientific notation for labels?
+    LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 1 	# Lower X bound of supplied base Frame
+    Yb1 = 1 	# Lower Y bound of supplied base Frame
+    Xb2 = 10 	# Upper X bound of supplied base Frame
+    Yb2 = 10 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_cgi_aitoff",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Set("System=ICRS, Grid=1, Tickall=0, Border=1"), Out::Done),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Right ascension" 	# Label for axis 1
+#   Lbl2 = "Declination" 	# Label for axis 2
+#   System = "ICRS" 	# Coordinate system type
+#   Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#   Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Right ascension" 	# Label for axis 1
+#         Lbl2 = "Declination" 	# Label for axis 2
+          System = "ICRS" 	# Coordinate system type
+#         Uni1 = "hh:mm:ss.s" 	# Units for axis 1
+#         Uni2 = "ddd:mm:ss" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = 1.4675874807483646 	# Ref. pos. RA 5:36:20.8
+          SRef2 = -0.11787495255139613 	# Ref. pos. Dec -6:45:13
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+                IsSimp = 1 	# Mapping has been simplified
+             IsA Mapping 	# Mapping between coordinate systems
+                MapA = 	# First component Mapping
+                   Begin WinMap 	# Map one window on to another
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Sft1 = 3.1520646291017589 	# Shift for axis 1
+                      Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                      Sft2 = -3.1520646291017589 	# Shift for axis 2
+                      Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+                   End WinMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin WcsMap 	# FITS-WCS sky projection
+                            Nin = 2 	# Number of input coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            Type = "AIT" 	# Hammer-Aitoff projection
+                         End WcsMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 2 	# Number of input coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            InvA = 1 	# First Mapping used in inverse direction
+                            MapA = 	# First component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                                  Invert = 1 	# Mapping inverted
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = 0 	# Polar longitude (rad.s)
+                               End SphMap
+                            MapB = 	# Second component Mapping
+                               Begin CmpMap 	# Compound Mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  MapA = 	# First component Mapping
+                                     Begin MatrixMap 	# Matrix transformation
+                                        Nin = 3 	# Number of input coordinates
+                                     IsA Mapping 	# Mapping between coordinate systems
+                                        M0 = -0.8114748329086714 	# Forward matrix value
+                                        M1 = 0.50650547146018587 	# Forward matrix value
+                                        M2 = -0.29148036458179932 	# Forward matrix value
+                                        M3 = -0.47668629803556373 	# Forward matrix value
+                                        M4 = -0.8622367467122326 	# Forward matrix value
+                                        M5 = -0.17122489855232773 	# Forward matrix value
+                                        M6 = -0.3380514292544754 	# Forward matrix value
+                                        M7 = 0 	# Forward matrix value
+                                        M8 = 0.94112763809113931 	# Forward matrix value
+                                        IM0 = -0.8114748329086714 	# Inverse matrix value
+                                        IM1 = -0.47668629803556373 	# Inverse matrix value
+                                        IM2 = -0.3380514292544754 	# Inverse matrix value
+                                        IM3 = 0.50650547146018587 	# Inverse matrix value
+                                        IM4 = -0.8622367467122326 	# Inverse matrix value
+                                        IM5 = 0 	# Inverse matrix value
+                                        IM6 = -0.29148036458179932 	# Inverse matrix value
+                                        IM7 = -0.17122489855232773 	# Inverse matrix value
+                                        IM8 = 0.94112763809113931 	# Inverse matrix value
+                                        Form = "Full" 	# Matrix storage form
+                                     End MatrixMap
+                                  MapB = 	# Second component Mapping
+                                     Begin SphMap 	# Cartesian to Spherical mapping
+                                        Nin = 3 	# Number of input coordinates
+                                        Nout = 2 	# Number of output coordinates
+                                     IsA Mapping 	# Mapping between coordinate systems
+                                        UntRd = 1 	# All input vectors have unit length
+                                        PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                                     End SphMap
+                               End CmpMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+          MapB = 	# Second component Mapping
+             Begin SlaMap 	# Conversion between sky coordinate systems
+                Nin = 2 	# Number of input coordinates
+                IsSimp = 1 	# Mapping has been simplified
+             IsA Mapping 	# Mapping between coordinate systems
+                Nsla = 2 	# Number of conversion steps
+                Sla1 = "GALEQ" 	# Galactic (IAU 1958) to J2000.0 equatorial (FK5)
+                Sla2 = "FK5HZ" 	# J2000.0 FK5 to ICRS (no PM or parallax)
+                Sla2a = 2000 	# Julian epoch of FK5 coordinates
+             End SlaMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+    Grid = 1 	# Is a grid required?
+    TckAll = 0 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+    Border = 1 	# Draw a border round the grid?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_cgi_cobe",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Set("Format(1)=gd, Format(2)=gd, Grid=1, Tickall=0, Width(axes)=3, Colour(axes)=2"), Out::Done),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+                Format = "gd" 	# Format specifier
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+                Format = "gd" 	# Format specifier
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -150d
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -20d
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+    Grid = 1 	# Is a grid required?
+    TckAll = 0 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+    Col6 = 2 	# Axis 1 colour index
+    Col7 = 2 	# Axis 2 colour index
+    Width6 = 3 	# Axis 1 line width
+    Width7 = 3 	# Axis 2 line width
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_cgi_origin",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Set("Format(1)=ghms, Format(2)=gdm, Edge(2)=r, Tickall=0"), Out::Done),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+                Format = "ghms" 	# Format specifier
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+                Format = "gdm" 	# Format specifier
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -9h58m16s
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19d45m
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+    TckAll = 0 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Edge2 = "right" 	# Edge used to label an axis
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_cgi_scp",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Set("Grid=1, Labelling=int"), Out::Done),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+    Grid = 1 	# Is a grid required?
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Lbling = "interior" 	# Labelling scheme
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_cgi_spec2d",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Set("System(1)=wave, LogTicks(1)=1, LabelUnits=1, MinTickLen=0.02, MajTickLen=0.05, NumLabGap=0.1, Title=Logarithmic axis example"), Out::Err(E::Badat, &["astSet: The attribute setting \"system=wave\" is invalid for a SkyAxis."])),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
+    Case {
+        name: "plot_cgi_spec2d_rest",
+        fitschan: false,
+        object: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "A FITS test" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "A FITS test" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+        ops: &[
+            (Op::Set("LogTicks(1)=1, LabelUnits=1, MinTickLen=0.02, MajTickLen=0.05, NumLabGap=0.1, Title=Logarithmic axis example"), Out::Done),
+        ],
+        dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "Logarithmic axis example" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+          Title = "Logarithmic axis example" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -37.000001746229884 	# Shift for axis 1
+          Scl1 = 375.00001187436322 	# Scale factor for axis 1
+          Sft2 = -37.000001746229884 	# Shift for axis 2
+          Scl2 = 375.00001187436322 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+    NmGap1 = 0.10000000000000001 	# Spacing of numerical labels
+    NmGap2 = 0.10000000000000001 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+    LgTck1 = 1 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 1 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+    LbUnt1 = 1 	# Add units to axis label?
+    LbUnt2 = 1 	# Add units to axis label?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+    MjTkLn1 = 0.050000000000000003 	# Major tick length
+    MjTkLn2 = 0.050000000000000003 	# Major tick length
+    MnTkLn1 = 0.02 	# Minor tick length
+    MnTkLn2 = 0.02 	# Minor tick length
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0.5 	# Lower X bound of supplied base Frame
+    Yb1 = 0.5 	# Lower Y bound of supplied base Frame
+    Xb2 = 300.5 	# Upper X bound of supplied base Frame
+    Yb2 = 300.5 	# Upper Y bound of supplied base Frame
+ End Plot
+"###,
+    },
 ];

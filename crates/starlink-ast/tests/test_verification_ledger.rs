@@ -210,6 +210,15 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "test_attr_strings.rs",
+        "DUMP_EXCLUDED",
+        1,
+        "plot_gap0: the dump after a get of a used value whose grid fails; C's grid returns \
+         before clearing the LogTicks and LogLabel it set, the port's puts them back \
+         (c-library-quirks.md); the case's operations are still compared, and \
+         excluded_dumps_still_differ fails when the dumps match",
+    ),
+    (
+        "test_attr_strings.rs",
         "NO_RUST_VALUE_EXCLUDED",
         7,
         "attribute strings whose C outcome the port cannot give: gets of \

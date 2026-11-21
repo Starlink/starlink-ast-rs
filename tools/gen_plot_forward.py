@@ -37,6 +37,12 @@ OWN_FRAME = {
     "as_frameset": "Some(&self.frameset)",
     "as_frameset_mut": "Some(&mut self.frameset)",
     "attr_class": '"Plot"',
+    "attr_vset": "crate::attributes::frameset::frameset_vset(self, assignments, text)",
+    "attr_clear_list": "crate::attributes::frameset::frameset_clear_list(self, names)",
+    "attr_set": "crate::attributes::plot::plot_set(self, setting)",
+    "attr_get": "crate::attributes::plot::plot_get(self, name)",
+    "attr_test": "crate::attributes::plot::plot_test(self, name)",
+    "attr_clear": "crate::attributes::plot::plot_clear(self, name)",
 }
 OWN_MAPPING = {
     "transform": "self.plot_transform(pts, forward)",

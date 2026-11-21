@@ -1834,6 +1834,19 @@ Nothing ends the cycle, so `astSet( specframe, "Top=x" )`, `"Bottom=x"` or `"Dir
 Oracle-verified: `tools/oracle_fixtures/attr_strings_probe.c` dies with a segmentation fault on `Top=high` for an `astSpecFrame`, and on `Top(1)=high` for a CmpFrame whose first axis is a SpecFrame's, so those settings are left out of its cases.
 The port stops at the second visit (`attributes::ShortcutGuard`) and reports the Axis object's error, `astSet: The attribute setting "top=high" is invalid for a Axis.`, as both libraries do for a plain Frame of one axis; `an_unreadable_axis_value_without_an_index_is_an_error` in `crates/starlink-ast/tests/test_attr_strings.rs` pins it.
 
+### `astTest( plot, "Centre(1)" )` is answered by the current Frame
+
+Plot's `TestAttrib` (`plot.c`) has arms for every per-axis attribute that its `SetAttrib`, `GetAttrib` and `ClearAttrib` handle except `Centre`, so a test of `Centre(1)` falls through to the FrameSet and the current Frame, which does not know the name: on a sky Plot it reports `astTest: The attribute name "centre" is invalid for a SkyAxis.`, though `astSet( plot, "Centre(1)=0.5" )` sets the Plot's Centre.
+Oracle-verified, by the `plot_axis` case of `tools/oracle_fixtures/attr_strings_probe.c`.
+The port's attribute-string layer leaves `Centre` out of Plot's test arms to match (`attributes/plot.rs`); `Plot::test_tick_centre` tests the Plot's value.
+
+### A grid that fails leaves LogTicks and LogLabel set on the Plot
+
+`astGrid` (`plot.c`) sets LogTicks and LogLabel on the Plot for each axis that has none set, so that the functions it calls read its choice, and clears them at its end; an error returns before the clearing, so the Plot keeps them, set to the grid's choice.
+A get of a used value runs such a grid, so after `astSet( plot, "Gap=0" )` a get of `Grid` fails with `AST__PLFMT` and the Plot's dump then shows `LgTck1`, `LgTck2`, `LgLbl1` and `LgLbl2` as set.
+Oracle-verified, by the `plot_gap0` case of `tools/oracle_fixtures/attr_strings_probe.c`.
+The port's grid puts the Plot's attributes back after an error (`Plot::grid_impl`), and a get works the grid out on a copy, so the dump is unchanged; the case's dump is in `DUMP_EXCLUDED` in `crates/starlink-ast/tests/test_attr_strings.rs`.
+
 ## Addressed here, and not going upstream
 
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.

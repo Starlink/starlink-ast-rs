@@ -65,6 +65,15 @@ const NO_RUST_VALUE_EXCLUDED: &[(&str, Op, &str)] = &[
     ),
 ];
 
+/// Cases whose dump at the end the Rust library does not reproduce, each
+/// with its reason; their operations are still compared.
+/// `excluded_dumps_still_differ` fails when one starts to match.
+const DUMP_EXCLUDED: &[(&str, &str)] = &[(
+    "plot_gap0",
+    "a get of a used value whose grid fails: C's grid returns before clearing the LogTicks and \
+     LogLabel it set while it worked, so C's Plot keeps them; the port's grid puts them back",
+)];
+
 /// The case-name prefixes each test replays; `every_case_is_replayed`
 /// checks that together they cover every case.
 const OBJECT_AND_MAPPING: &[&str] = &["frame2_", "frame1_object"];
@@ -73,6 +82,7 @@ const SKY: &[&str] = &["sky_"];
 const SPECTRAL: &[&str] = &["spec_", "dsb_"];
 const TIME_AND_COMPOUND: &[&str] = &["time_", "cmp_"];
 const FRAMESET: &[&str] = &["fs_"];
+const PLOT: &[&str] = &["plot_"];
 
 /// What the Rust library did with an operation.
 #[derive(Debug, Clone, PartialEq)]
@@ -187,7 +197,7 @@ fn replay(prefixes: &[&str]) {
                 ));
             }
         }
-        if dump != case.dump {
+        if dump != case.dump && !DUMP_EXCLUDED.iter().any(|(n, _)| *n == case.name) {
             failures.push(format!(
                 "{}: dump differs\n--- C\n{}--- Rust\n{dump}",
                 case.name, case.dump
@@ -231,6 +241,11 @@ fn time_and_compound_names_match_the_c_library() {
 #[test]
 fn frameset_names_match_the_c_library() {
     replay(FRAMESET);
+}
+
+#[test]
+fn plot_names_match_the_c_library() {
+    replay(PLOT);
 }
 
 /// C's attribute functions call each other without end for a Top, Bottom
@@ -291,6 +306,45 @@ fn cases_with_no_rust_value_still_differ() {
     }
 }
 
+/// A used value got through a caller's backend is the one the default
+/// backend gives, for a backend with the same page.
+#[test]
+fn used_values_can_be_got_through_a_given_backend() {
+    let case = CASES.iter().find(|c| c.name == "plot_used").unwrap();
+    let AnyObject::Plot(mut plot) = from_native_string(case.object).unwrap() else {
+        panic!("plot_used is not a Plot");
+    };
+    for name in ["Gap(1)", " edge ( 2 ) ", "Labelling", "Title"] {
+        let mut grf = starlink_ast::grf::LogGrf::new(std::io::sink());
+        assert_eq!(
+            plot.get_attribute_with_grf(name, &mut grf).unwrap(),
+            plot.get_attribute(name).unwrap(),
+            "{name}"
+        );
+    }
+    let mut grf = starlink_ast::grf::LogGrf::new(std::io::sink());
+    let err = plot.get_attribute_with_grf(" ", &mut grf).unwrap_err();
+    assert_eq!(
+        err.message(),
+        "astGet(Plot): A blank attribute name was given."
+    );
+}
+
+#[test]
+fn excluded_dumps_still_differ() {
+    for &(name, reason) in DUMP_EXCLUDED {
+        let case = CASES
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("no case {name}"));
+        let (_, dump) = run(case);
+        assert_ne!(
+            dump, case.dump,
+            "{name}'s dump now matches C; remove it from DUMP_EXCLUDED ({reason})"
+        );
+    }
+}
+
 #[test]
 fn every_case_is_replayed() {
     let replayed = [
@@ -300,6 +354,7 @@ fn every_case_is_replayed() {
         SPECTRAL,
         TIME_AND_COMPOUND,
         FRAMESET,
+        PLOT,
     ];
     for case in CASES {
         assert!(

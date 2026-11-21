@@ -43,6 +43,7 @@ pub(crate) mod frame;
 pub(crate) mod frameset;
 pub(crate) mod mapping;
 pub(crate) mod object;
+pub(crate) mod plot;
 #[cfg(feature = "attribute-strings")]
 mod public;
 pub(crate) mod skyframe;

@@ -312,7 +312,7 @@ function	astClear	object.c	Attributes::clear_attributes		yes	With the attribute-
 function	astClone	object.c		c-api-only	yes	Handle management; no shared objects or reference counts in starlink-ast
 function	astCopy	object.c	AnyObject		yes	Clone on every class is the deep copy; alias on AnyObject, as an impl Clone cannot carry one
 function	astDelete	object.c		c-api-only	yes	Handle management; an owned value is dropped
-function	astGet<X>	object.c	Attributes::get_attribute		yes	With the attribute-strings feature, the value as text (astGetC); each attribute also has a typed getter
+function	astGet<X>	object.c	Attributes::get_attribute;Plot::get_attribute_with_grf		yes	With the attribute-strings feature, the value as text (astGetC); each attribute also has a typed getter
 function	astHasAttribute	object.c		c-api-only	yes	String-dispatch attribute access; Rust attributes are methods, checked at compile time
 function	astToString	object.c	AnyObject::to_native_string; $ty::to_native_string		yes	$ty is every class the object_text! macro gives the method
 function	astSet	object.c	Attributes::set_attributes		yes	With the attribute-strings feature; the string is text, not a printf format; each attribute also has a typed setter
@@ -357,7 +357,7 @@ attribute	TickAll	plot.c	Plot::tick_all		yes
 attribute	Border	plot.c	Plot::border		yes
 attribute	Clip	plot.c	Plot::clip		yes
 attribute	ClipOp	plot.c	Plot::clip_op		yes
-attribute	Grf	plot.c		not-ported	yes	C-ABI graphics registration (a C adapter, not starlink-ast)
+attribute	Grf	plot.c	Plot::grf		yes	Kept as in C, and not saved in a dump, but read nowhere: a Plot draws through the backend passed to each drawing method
 attribute	DrawTitle	plot.c	Plot::draw_title		yes
 attribute	LabelUp	plot.c	Plot::label_up		yes
 attribute	DrawAxes	plot.c	Plot::draw_axes		yes

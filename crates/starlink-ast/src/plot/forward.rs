@@ -389,23 +389,23 @@ impl Frame for Plot {
     fn attr_class(&self) -> &'static str {
         "Plot"
     }
-    fn attr_vset(&mut self, assignments: &[String], _text: &str) -> AstResult<()> {
-        Frame::attr_vset(&mut self.frameset, assignments, _text)
+    fn attr_vset(&mut self, assignments: &[String], text: &str) -> AstResult<()> {
+        crate::attributes::frameset::frameset_vset(self, assignments, text)
     }
-    fn attr_set(&mut self, _setting: &str) -> AstResult<()> {
-        Frame::attr_set(&mut self.frameset, _setting)
+    fn attr_set(&mut self, setting: &str) -> AstResult<()> {
+        crate::attributes::plot::plot_set(self, setting)
     }
-    fn attr_get(&self, _name: &str) -> AstResult<String> {
-        Frame::attr_get(&self.frameset, _name)
+    fn attr_get(&self, name: &str) -> AstResult<String> {
+        crate::attributes::plot::plot_get(self, name)
     }
-    fn attr_test(&self, _name: &str) -> AstResult<bool> {
-        Frame::attr_test(&self.frameset, _name)
+    fn attr_test(&self, name: &str) -> AstResult<bool> {
+        crate::attributes::plot::plot_test(self, name)
     }
     fn attr_clear_list(&mut self, names: &str) -> AstResult<()> {
-        Frame::attr_clear_list(&mut self.frameset, names)
+        crate::attributes::frameset::frameset_clear_list(self, names)
     }
-    fn attr_clear(&mut self, _name: &str) -> AstResult<()> {
-        Frame::attr_clear(&mut self.frameset, _name)
+    fn attr_clear(&mut self, name: &str) -> AstResult<()> {
+        crate::attributes::plot::plot_clear(self, name)
     }
     fn internal_unit(&self, axis: usize) -> AstResult<String> {
         Frame::internal_unit(&self.frameset, axis)

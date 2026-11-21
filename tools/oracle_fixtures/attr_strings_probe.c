@@ -747,6 +747,138 @@ static const struct acase cases[] = {
       GET( "Domain" ), GET( "Title" ), GET( "System(1)" ), GET( "System(2)" ),
       SET( "Title=a time plot" ), GET( "Title" ),
    } },
+
+/* Plot's own attributes, on a Plot of aitoff.head as testgrid.c makes
+   one. */
+   { "plot_own", "plot_aitoff", {
+      GET( "Class" ), SEE( "Tol" ), CYCLE( "Tol", "Tol=0.05" ), SET( "Tol=2" ),
+      GET( "Tol" ), SET( "Tol=x" ), SEE( "Grid" ), CYCLE( "Grid", "Grid=1" ),
+      SET( "Grid=7" ), GET( "Grid" ), CLEAR( "Grid" ),
+      SEE( "TickAll" ), CYCLE( "TickAll", "TickAll=0" ),
+      SEE( "ForceExterior" ), CYCLE( "ForceExterior", "ForceExterior=1" ),
+      SEE( "Invisible" ), CYCLE( "Invisible", "Invisible=1" ),
+      SEE( "Border" ), CYCLE( "Border", "Border=1" ),
+      SEE( "ClipOp" ), CYCLE( "ClipOp", "ClipOp=1" ),
+      SEE( "Clip" ), CYCLE( "Clip", "Clip=1" ), SET( "Clip=5" ), GET( "Clip" ),
+      CLEAR( "Clip" ), SEE( "Grf" ), CYCLE( "Grf", "Grf=1" ), SET( "Grf=3" ),
+      GET( "Grf" ), CLEAR( "Grf" ),
+      SEE( "DrawTitle" ), CYCLE( "DrawTitle", "DrawTitle=0" ),
+      SEE( "Escape" ), CYCLE( "Escape", "Escape=0" ),
+      SEE( "TitleGap" ), CYCLE( "TitleGap", "TitleGap=0.1" ),
+      SEE( "TextGapType" ), SET( "TextGapType=plot" ), SEE( "TextGapType" ),
+      SET( "TextGapType=b" ), GET( "TextGapType" ), SET( "TextGapType=bad" ),
+      SET( "TextGapType= Plot " ), GET( "TextGapType" ), CLEAR( "TextGapType" ),
+      SEE( "TextGapType" ), SET( "Labelling=int" ), SEE( "Labelling" ),
+      SET( "Labelling=e" ), GET( "Labelling" ), SET( "Labelling=sideways" ),
+      SET( "Labelling=exteriors" ), CLEAR( "Labelling" ), TEST( "Labelling" ),
+   } },
+   { "plot_axis", "plot_aitoff", {
+      SEE( "DrawAxes" ), SEE( "DrawAxes(1)" ), SET( "DrawAxes=0" ),
+      SEE( "DrawAxes(2)" ), SET( "DrawAxes(2)=1" ), GET( "DrawAxes(2)" ),
+      SET( "DrawAxes(3)=1" ), GET( "DrawAxes(3)" ), TEST( "DrawAxes(0)" ),
+      CLEAR( "DrawAxes(3)" ), CLEAR( "DrawAxes" ), SEE( "DrawAxes(1)" ),
+      SEE( "DrawAxes(2)" ), TEST( "DrawAxes" ),
+      SEE( "Abbrev(1)" ), CYCLE( "Abbrev(2)", "Abbrev(2)=0" ), SET( "Abbrev=0" ),
+      SEE( "Abbrev" ),
+      SET( "Gap=10" ), SEE( "Gap" ), SEE( "Gap(1)" ), SEE( "Gap(2)" ),
+      SET( "Gap(2)=5" ), GET( "Gap" ), GET( "Gap(2)" ), CLEAR( "Gap" ),
+      TEST( "Gap(1)" ), TEST( "Gap(2)" ), SET( "Gap(4)=1" ), GET( "Gap(4)" ),
+      SET( "LogGap=100" ), SEE( "LogGap(2)" ), CLEAR( "LogGap(2)" ),
+      SEE( "LogGap(2)" ), SEE( "NumLabGap" ), SET( "NumLabGap(1)=0.1" ),
+      SEE( "NumLabGap(1)" ), SEE( "TextLabGap(2)" ),
+      SET( "TextLabGap=0.03" ), SEE( "TextLabGap(2)" ), SEE( "LabelUp" ),
+      SET( "LabelUp(2)=1" ), SEE( "LabelUp(2)" ), SEE( "NumLab(1)" ),
+      CYCLE( "NumLab(1)", "NumLab(1)=0" ), SET( "MinTick=0" ),
+      SEE( "MinTick(1)" ), SET( "MinTick(2)=4" ), SEE( "MinTick(2)" ),
+      SET( "TextLab(1)=0" ), SEE( "TextLab(1)" ), SET( "LabelUnits=1" ),
+      SEE( "LabelUnits(2)" ), SET( "LogTicks(1)=1" ), SEE( "LogTicks(1)" ),
+      SET( "LogLabel=1" ), SEE( "LogLabel(2)" ), SET( "MajTickLen=0.02" ),
+      SEE( "MajTickLen(1)" ), SET( "MinTickLen(2)=0.01" ),
+      SEE( "MinTickLen(2)" ), SEE( "MinTickLen" ),
+      SET( "Edge(1)=t" ), SEE( "Edge(1)" ), SET( "Edge(2)=bottom" ),
+      GET( "Edge(2)" ), SET( "Edge(1)=x" ), SET( "Edge(1)=" ),
+      SET( "Edge=left" ), SET( "Edge(3)=left" ), CLEAR( "Edge(1)" ),
+      TEST( "Edge(1)" ), SET( "LabelAt(1)=0.5" ), SEE( "LabelAt(1)" ),
+      SET( "LabelAt=0.5" ), SET( "Centre(2)=0.1" ), SEE( "Centre(2)" ),
+      CLEAR( "Centre(2)" ), TEST( "Centre(2)" ), SET( "Gap(1)=x" ),
+      SET( "Gap=x" ),
+   } },
+   { "plot_logplot", "plot_frame", {
+      SEE( "LogPlot" ), SET( "LogPlot(1)=1" ), SEE( "LogPlot(1)" ),
+      SET( "LogPlot=1" ), SEE( "LogPlot(2)" ), CLEAR( "LogPlot" ),
+      SEE( "LogPlot(1)" ),
+   } },
+   { "plot_style", "plot_aitoff", {
+      SEE( "Colour(axes)" ), SET( "Colour(axes)=2" ), SEE( "Colour(axes)" ),
+      SEE( "Colour(axis1)" ), SEE( "Colour(axis2)" ), SEE( "Colour(axis3)" ),
+      SET( "Colour=3" ), SEE( "Colour(border)" ), SEE( "Colour" ),
+      SET( "Color(Grid1)=4" ), SEE( "Color(Grid1)" ), SEE( "Colour(grid)" ),
+      SEE( "Color" ), SET( "Style(nosuch)=1" ), GET( "Style(nosuch)" ),
+      TEST( "Style(nosuch)" ), CLEAR( "Style(nosuch)" ),
+      SET( "Style(abcdefghijklmnopqrstu)=1" ), GET( "Style(abcdefghijklmnopqrstu)" ),
+      SET( "Style(ax)=2" ), SET( "Style(t)=2" ), SET( "Style(ti)=2" ),
+      SEE( "Style(title)" ), SET( "Style(grid)=3" ), SEE( "Style(grid2)" ),
+      SEE( "Style" ), SET( "Width(border)=2.5" ), SEE( "Width(border)" ),
+      SEE( "Width" ), SET( "Width(curves)=0" ), SET( "Width=0" ),
+      SET( "Width(axes)=3" ), GET( "Width(axis2)" ), SET( "Size=1.5" ),
+      SEE( "Size(title)" ), SEE( "Size" ), SET( "Size(strings)=0" ),
+      SET( "Font(title)=3" ), SEE( "Font(title)" ), SEE( "Font" ),
+      SET( "Font(textlab)=2" ), SEE( "Font" ), SEE( "Font(textlab)" ),
+      CLEAR( "Colour(axes)" ), SEE( "Colour(axes)" ), SEE( "Colour(axis1)" ),
+      TEST( "Colour(numlab)" ), CLEAR( "Style" ), SEE( "Style(grid1)" ),
+      CLEAR( "Color(Grid)" ), SET( "Style( Axes )=2" ), SET( "Colour(axes)=x" ),
+      SET( "Colour()=1" ), GET( "Colour()" ),
+   } },
+   { "plot_frameset", "plot_aitoff", {
+      SET( "Title=Logarithmic axis example" ), SEE( "Title" ),
+      SET( "Label(1)=First axis" ), SEE( "Label(1)" ), SET( "System=ICRS" ),
+      GET( "System" ), GET( "Nframe" ), GET( "Current" ), GET( "Base" ),
+      GET( "Domain" ), SET( "Current=1" ), GET( "Domain" ), SET( "Fred=1" ),
+      GET( "Fred" ), TEST( "Fred" ), CLEAR( "Fred" ), SET( "Current=SKY" ),
+      SET( "Fred=1" ), SET( "Grid=1,Fred=2" ), GET( "Grid" ),
+      SET( "Ident=plot" ), GET( "Ident" ), SEE( "Invert" ),
+      GET( "Nin" ), GET( "Naxes" ), GET( "Epoch" ),
+   } },
+   { "plot_used", "plot_aitoff", {
+      GET( "Grid" ), GET( "Border" ), GET( "Labelling" ), GET( "Edge(1)" ),
+      GET( "Edge(2)" ), GET( "LabelAt(1)" ), GET( "LabelAt(2)" ),
+      GET( "Centre(1)" ), GET( "Centre(2)" ), GET( "Gap" ), GET( "Gap(1)" ),
+      GET( "Gap(2)" ), GET( "LogGap(1)" ), GET( "LogGap" ), GET( "MinTick(1)" ),
+      GET( "MinTick" ), GET( "TextLab(1)" ), GET( "TextLab" ),
+      GET( "LabelUnits(1)" ), GET( "LabelUnits" ), GET( "LogTicks(2)" ),
+      GET( "LogLabel(1)" ), GET( "MajTickLen(1)" ), GET( "MajTickLen" ),
+      SET( "Edge(2)=right" ), GET( "Edge(2)" ), GET( "Edge(1)" ),
+      GET( "LabelAt(3)" ), GET( "Centre(0)" ), GET( "Edge(3)" ),
+   } },
+   { "plot_used_frame", "plot_frame", {
+      GET( "Grid" ), GET( "Labelling" ), GET( "Edge(1)" ), GET( "Edge(2)" ),
+      GET( "Gap(1)" ), GET( "Gap(2)" ), GET( "Centre(1)" ), GET( "MinTick(2)" ),
+      SET( "Gap(1)=2.5" ), GET( "Gap(1)" ), GET( "Centre(1)" ),
+   } },
+   { "plot_gap0", "plot_frame", {
+      SET( "Gap=0" ), GET( "Gap(1)" ), GET( "Grid" ), GET( "Edge(1)" ),
+      GET( "Labelling" ),
+   } },
+   { "plot_cgi_aitoff", "plot_aitoff", {
+      SET( "System=ICRS, Grid=1, Tickall=0, Border=1" ),
+   } },
+   { "plot_cgi_cobe", "plot_aitoff", {
+      SET( "Format(1)=gd, Format(2)=gd, Grid=1, Tickall=0, Width(axes)=3, Colour(axes)=2" ),
+   } },
+   { "plot_cgi_origin", "plot_aitoff", {
+      SET( "Format(1)=ghms, Format(2)=gdm, Edge(2)=r, Tickall=0" ),
+   } },
+   { "plot_cgi_scp", "plot_aitoff", {
+      SET( "Grid=1, Labelling=int" ),
+   } },
+   { "plot_cgi_spec2d", "plot_aitoff", {
+      SET( "System(1)=wave, LogTicks(1)=1, LabelUnits=1, MinTickLen=0.02, "
+           "MajTickLen=0.05, NumLabGap=0.1, Title=Logarithmic axis example" ),
+   } },
+   { "plot_cgi_spec2d_rest", "plot_aitoff", {
+      SET( "LogTicks(1)=1, LabelUnits=1, MinTickLen=0.02, "
+           "MajTickLen=0.05, NumLabGap=0.1, Title=Logarithmic axis example" ),
+   } },
 };
 
 /* The object a case starts from. */
@@ -776,6 +908,17 @@ static AstObject *make( const char *id ) {
    }
    if( !strcmp( id, "fs_aitoff" ) ) return (AstObject *) read_head( HEADS "aitoff.head", "" );
    if( !strcmp( id, "fs_timeplot" ) ) return (AstObject *) read_head( HEADS "timeplot.head", "" );
+   if( !strcmp( id, "plot_aitoff" ) ) {
+      return (AstObject *) testgrid_plot( "aitoff.head", "", NULL, "" );
+   }
+   if( !strcmp( id, "plot_frame" ) ) {
+      float gbox[ 4 ] = { 0.1f, 0.1f, 0.9f, 0.9f };
+      double pbox[ 4 ] = { 1.0, 1.0, 10.0, 10.0 };
+      AstFrame *f = astFrame( 2, "Domain=DATA" );
+      AstPlot *pl = astPlot( f, gbox, pbox, " " );
+      f = astAnnul( f );
+      return (AstObject *) pl;
+   }
    if( !strcmp( id, "skyaxis1" ) ) {
       int axes[ 1 ] = { 1 };
       AstSkyFrame *sky = astSkyFrame( " " );
@@ -882,6 +1025,7 @@ int main( void ) {
    int status = 0;
    size_t c;
    astWatch( &status );
+   astGrfLogInit( NULL );
 
    printf( "// Generated by tools/oracle_fixtures/attr_strings_probe.c against\n"
            "// the C library at the submodule pin. Do not edit.\n\n"
