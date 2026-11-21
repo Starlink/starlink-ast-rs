@@ -8,7 +8,8 @@
 //! distances on both axes are equal on the screen and
 //! [`scales`](Grf::scales) is `[1, 1]`.
 //! Text is laid out with egui's own fonts, so the boxes the Plot asks for
-//! are the boxes egui draws the text in.
+//! are the boxes egui draws the text in, and anything already drawn inside
+//! a text's box is painted over with the background first.
 
 use std::sync::Arc;
 
@@ -279,6 +280,15 @@ impl Grf for EguiGrf {
         up: [f32; 2],
     ) -> AstResult<()> {
         if let Some((galley, tb, d)) = self.layout(text, x, y, just, up)? {
+            // Erase what is under the text's box first, as the C library's
+            // PGPLOT and PLplot backends do, so that grid lines stop short
+            // of the labels drawn across them.
+            let corners = (0..4).map(|i| self.to_screen(tb.x[i], tb.y[i])).collect();
+            self.shapes.push(Shape::convex_polygon(
+                corners,
+                self.background,
+                Stroke::NONE,
+            ));
             let pos = self.to_screen(tb.x[3], tb.y[3]);
             // egui turns text clockwise on a screen whose y runs down.
             let angle = (-d.y).atan2(d.x);
@@ -484,13 +494,32 @@ mod tests {
             g.text("Label", 100.0, 200.0, j, up).unwrap();
             (b, g.into_shapes())
         });
-        let [Shape::Text(t)] = shapes.as_slice() else {
-            panic!("expected one text, got {shapes:?}");
+        let [_, Shape::Text(t)] = shapes.as_slice() else {
+            panic!("expected an erased box then text, got {shapes:?}");
         };
         // Graphics y runs up from the bottom of the screen.
         let corner = Pos2::new(b.x[3], SCREEN.bottom() - b.y[3]);
         assert!((t.pos - corner).length() < 1e-3, "{:?} {corner:?}", t.pos);
         assert!((t.angle + std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn text_erases_what_is_under_its_box() {
+        let (b, shapes) = with_grf(1.0, |mut g| {
+            let (j, up) = (just(VJust::Centre, HJust::Centre), [1.0, 1.0]);
+            let b = g.text_extent("Label", 100.0, 200.0, j, up).unwrap();
+            g.text("Label", 100.0, 200.0, j, up).unwrap();
+            (b, g.into_shapes())
+        });
+        let [Shape::Path(erase), Shape::Text(_)] = shapes.as_slice() else {
+            panic!("expected an erased box then text, got {shapes:?}");
+        };
+        assert!(erase.closed);
+        assert_eq!(erase.fill, Color32::BLACK);
+        let corners: Vec<Pos2> = (0..4)
+            .map(|i| Pos2::new(b.x[i], SCREEN.bottom() - b.y[i]))
+            .collect();
+        assert_eq!(erase.points, corners);
     }
 
     #[test]
