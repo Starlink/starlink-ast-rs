@@ -35,6 +35,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [CmpRegion `RegSplit` ignores the CmpRegion's own Negated](#cmpregion-regsplit-ignores-the-cmpregions-own-negated)
 - [A curve clipped into arcs shorter than Crv's sample spacing is not drawn](#a-curve-clipped-into-arcs-shorter-than-crvs-sample-spacing-is-not-drawn)
 - [`astRegionOutline` leaves the Plot's Base set](#astregionoutline-leaves-the-plots-base-set)
+- [Plot's major tick search overflows `int` for a zero or tiny Gap](#plots-major-tick-search-overflows-int-for-a-zero-or-tiny-gap)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -352,6 +353,15 @@ The fix is to subdivide a segment with one good end even when no segment has two
 A Plot whose Base was a default before an outline has it set afterwards, so `astTestBase` is true and its Native dump writes `Base` as an active line.
 The port mirrors this (`Plot::draw_region_outline` in `crates/starlink-ast/src/plot/border.rs`), and `draw_region_outline_leaves_the_plot_as_it_was` in `tests/test_plot_draw.rs` allows for that one line.
 The fix is to save and restore Base's set state as well as its value, or to clear Base when it was not set.
+
+### Plot's major tick search overflows `int` for a zero or tiny Gap
+
+`plot.c` `FindMajTicks2` (plot.c:12617) turns each axis value into a tick index with `(int) floor( ( value - centre )/gap )` and then adds and subtracts those indices.
+A Gap of zero, or one so small beside the axis values that the quotient passes `INT_MAX`, makes the quotient infinite or huge; the cast is undefined there and saturates on arm64 (on x86-64 it gives `INT_MIN`), and the index arithmetic then overflows `int`, which is undefined too but wraps as compiled.
+The ticks that come out are nonsense, and `astGrid` goes on to fail: `testgrid` on `car3` and `aitoff` with `gap=0` reports "No suitable format can be found to produce numerical labels for axis 1 of a SkyFrame" (axis 2 for `gap(2)=0`), and with `gap=1e-300` "No grid curves can be drawn for axis 1".
+The port mirrors this (`find_maj_ticks2` in `crates/starlink-ast/src/plot/ticks.rs` saturates the cast, as Rust's `as` does, and wraps the index arithmetic), so it reports the same errors, where unchecked arithmetic panicked in a debug build; `a_zero_or_tiny_gap_gives_the_c_library_errors` in `tests/test_grid.rs` is the gate.
+Which error appears on x86-64, where the cast differs, has not been checked.
+The fix is to reject a Gap that is zero or too small for the axis values with an error of its own before the search.
 
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 

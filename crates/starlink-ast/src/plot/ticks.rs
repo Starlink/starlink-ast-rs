@@ -199,29 +199,35 @@ fn typical(value: &[f64], lolim: f64, hilim: f64, width: Option<&mut f64>) -> f6
 /// Tick values at multiples of `gap` from `centre` that cover the sorted
 /// axis values `data`, with `nfill` extra ticks either side of each gap in
 /// their coverage.
-// C: FindMajTicks2 (plot.c:12617).
+// C: FindMajTicks2 (plot.c:12617). A gap of zero, or one tiny beside the
+// data, makes the tick indices infinite or huge; the cast saturates, as
+// clang's does on arm64, and C's int arithmetic on the results overflows,
+// which is undefined but wraps as compiled, so the arithmetic here wraps
+// too. The ticks are then nonsense, and the grid reports the error C does.
 fn find_maj_ticks2(nfill: i32, gap: f64, centre: f64, data: &[f64]) -> Vec<f64> {
+    let tick = |k: i32| gap * f64::from(k) + centre;
     let mut ticks = Vec::new();
     let k = ((data[0] - centre) / gap).floor() as i32;
     for i in 0..nfill {
-        ticks.push(gap * f64::from(k - nfill + i) + centre);
+        ticks.push(tick(k.wrapping_sub(nfill).wrapping_add(i)));
     }
-    ticks.push(gap * f64::from(k) + centre);
+    ticks.push(tick(k));
     let mut klast = k;
     for &d in &data[1..] {
         let k = ((d - centre) / gap).floor() as i32;
+        let step = k.wrapping_sub(klast);
         for j in 0..nfill + 1 {
-            if k - klast > nfill + 2 - j {
-                ticks.push(gap * f64::from(klast + nfill + 1 - j) + centre);
+            if step > nfill + 2 - j {
+                ticks.push(tick(klast.wrapping_add(nfill + 1 - j)));
             }
-            if k - klast > nfill - j {
-                ticks.push(gap * f64::from(k - nfill + j) + centre);
+            if step > nfill - j {
+                ticks.push(tick(k.wrapping_sub(nfill).wrapping_add(j)));
             }
         }
         klast = k;
     }
     for i in 0..nfill {
-        ticks.push(gap * f64::from(klast + i + 1) + centre);
+        ticks.push(tick(klast.wrapping_add(i + 1)));
     }
     ticks
 }

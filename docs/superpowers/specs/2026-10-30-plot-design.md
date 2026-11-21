@@ -205,6 +205,9 @@ Each stage is one PR on a branch stacked on the previous one.
    It redraws on resize.
    It runs natively on macOS, Linux and Windows; a browser build via WebAssembly is welcome but not required.
    It is a visual example with no automated drawing check; CI only builds it and runs its unit tests, if any.
+   *Done 2026-11-21 (`docs/superpowers/plans/2026-11-21-plot-stage7-egui-demo.md`), as `crates/ast-plot-demo`, beside `ast-plugins`, which stays for backends other programs link against.
+   Graphics coordinates are egui points, so `scales` is `[1, 1]`, and a resize builds a new Plot for the new graphics box; the drawing is kept until the case, the attributes, the window or the theme changes.
+   Its unit tests check the text boxes against what egui draws and that every case draws, headless; the window itself is checked by eye.*
 
 ## Calls made by Claude, not yet reviewed by the user
 

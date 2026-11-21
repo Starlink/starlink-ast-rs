@@ -26,6 +26,7 @@ starlink-ast-rs/
 │   │                          #   the crate compiles no C: PAL, ERFA and wcslib are Rust
 │   ├── starlink-ast-capi/     # cdylib; re-exports ast.h symbols
 │   ├── ast-plugins/           # Grf / Grf3d backends (PLplot, SVG, logging)
+│   ├── ast-plot-demo/         # egui window drawing Plot grids (not a default member)
 │   ├── ast-ffi-tests/         # builds starlink-ast-capi, runs C ast_tester programs
 │   ├── ast-oracle-tests/      # links starlink-ast + reference libast.a
 │   └── ast-bench/             # transform benchmarks: Rust, optionally vs C
@@ -190,7 +191,7 @@ on those grounds; do not re-prototype it without new motivation.
 
 ## Code style
 
-- Rust 2024 edition. MSRV pinned in `rust-toolchain.toml`.
+- Rust 2024 edition. The MSRV is the workspace `rust-version` in `Cargo.toml`; `rust-toolchain.toml` selects stable.
 - Lints: `#![warn(missing_docs)]` on all public items in `starlink-ast`.
   CI enables `RUSTFLAGS="-D warnings"`.
 - Every source file we own (`.rs`, `.c`, `.h`, `.py`, `.sh`) opens with
