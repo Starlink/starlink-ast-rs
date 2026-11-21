@@ -381,6 +381,24 @@ Two rules came out of it and hold for the next pin move:
   corpus and must be run alongside `check_corpus_fresh.sh` after any pin move;
   before it existed, two stale references were read as port defects.
 
+### Pending: Moc, XphMap and SkyFrame fixes from Starlink/ast PR 107
+
+[Starlink/ast PR 107](https://github.com/Starlink/ast/pull/107) ("Validate MOC handling against CDS reference library", branch `u/timj/moc-cds-validation`) fixes C defects the port still mirrors.
+It merges after PR 104; port each fix in the range that moves the pin past it, since until then the port matches the pinned C.
+
+| C fix | Port code that mirrors the old C | What exposes it |
+|---|---|---|
+| moc.c `Transform`: a position on the edge of the sky (a pole, a meridian between polar facets) uses the cell on the sky side of the edge, not the off-sky cell with the nearest centre (new `PosToNested`) | `Moc` `transform` rounds and calls `xy_to_nested` (`crates/starlink-ast/src/regions/moc.rs`) | A Moc containing a pole or a cell beside a polar meridian, tested at that position |
+| moc.c `XyToNested`: a negative cell index is off the grid, not rounded into the first facet | `xy_to_nested`, whose `wrapping_sub` and truncating division keep C's rounding | A position just below or left of the HPX12 grid |
+| moc.c `AddRegion` and `AddPixelMask<X>`: a MaxOrder of zero starts at order zero instead of raising `AST__INVAR` | `Moc::add_region` and `Moc::add_pixel_mask`, the `minorder < 0` errors | `add_region` with MaxOrder 0 |
+| moc.c `AddRegion`: a Region that extends beyond the box bounding its boundary (about half the sky or more) uses the whole grid (new `RegionBeyondBox`) | `Moc::add_region`'s grid box | A Circle of radius above about 90 degrees added to a Moc |
+| moc.c `astGetMocText`: the cells of a string MOC are separated by spaces, as the MOC recommendation requires, not commas | `Moc::get_moc_text_for`'s `",{npix}"` token in the string branch | Every string MOC with two separate cells of one order; regenerate the MocChan and Moc text corpora with the fix |
+| skyframe.c `LineIncludes`: a point at the end of a line is outside it however its distance is rounded, and the cosine is clamped, so a point at a Polygon vertex is in exactly one edge | `sky_line_includes` (`crates/starlink-ast/src/frames/skyframe.rs`) | A sky Polygon tested along a line through one of its vertices |
+| xphmap.c: the XPHN/XPHS forward transformation rejects positions beyond the grid; a position on the boundary of a used cell (within `AST__HPXTOL`) uses that cell; the inverse accepts the unused copy of a cell in the HPX12 corner facets; a position less than one facet below or left of an HPX grid is bad | `crates/starlink-ast/src/mappings/xphmap.rs` | The new `testxphmap.c` and `testmoc.c` checks |
+
+The PR also adds `ast_tester/testmoccds.c`, which checks Moc against the CDS HEALPix library, and new checks in `testmoc.c`, `testmocchan.c`, `testregions.c` and `testxphmap.c`.
+Port those with the fixes, and check `docs/issues/c-library-quirks.md` for entries the fixes retire.
+
 ### Pin move to the reorganised fixture tree — done
 
 Planned in
