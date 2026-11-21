@@ -405,3 +405,34 @@ fn used_min_tick_is_at_least_one() {
         assert_eq!(used.min_tick[0], 1);
     }
 }
+
+/// Text that is not ASCII, such as accented labels and titles, is drawn as
+/// given by a backend that can draw it. The C library predates Unicode;
+/// the port does not.
+#[test]
+fn accented_labels_and_titles_are_drawn() {
+    let case = grid_cases()
+        .into_iter()
+        .find(|c| c.name == "aitoff")
+        .unwrap();
+    let mut plot = testgrid_plot(&case);
+    apply_settings(
+        &mut plot,
+        "Title=Déclinaison du ciel (°),Label(1)=Ångström \u{3b1},Label(2)=Ω-axe,DrawTitle=1,\
+         TextLab=1",
+    )
+    .unwrap();
+    let mut svg = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
+    plot.draw_grid(&mut svg).unwrap();
+    let text = String::from_utf8(svg.finish().unwrap()).unwrap();
+    for drawn in ["Déclinaison du ciel (°)", "Ångström", "Ω-axe"] {
+        assert!(text.contains(drawn), "{drawn} is not in the SVG");
+    }
+    let mut log = LogGrf::new(Vec::new());
+    plot.draw_grid(&mut log).unwrap();
+    let log = String::from_utf8(log.finish().unwrap()).unwrap();
+    assert!(
+        log.contains("Déclinaison du ciel"),
+        "the call log lacks the title"
+    );
+}

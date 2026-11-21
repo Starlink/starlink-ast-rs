@@ -1803,7 +1803,7 @@ A C fix: regenerate the output blocks from the current library and correct the i
 `astStripEscapes` returns the text itself when it holds no graphical escape sequence, and otherwise copies it, without them, into a per-thread buffer of `AST__PLOT_STRIPESCAPES_BUFF_LEN` (50) characters, stopping when the buffer is full.
 So a string attribute with an escape sequence anywhere in it reads back cut to its first 50 characters, while one of the same length without an escape sequence reads back whole.
 Oracle-verified: an Ident of thirty `a`, `%+` and thirty `b` reads back as thirty `a` and twenty `b`.
-The port mirrors it in `attributes::strip_escapes`, pinned by the `frame2_object` case of `crates/starlink-ast/tests/test_attr_strings.rs`.
+The port mirrors it in `attributes::strip_escapes`, pinned by the `frame2_object` case of `crates/starlink-ast/tests/test_attr_strings.rs`; for text that is not ASCII, which C predates, it cuts before a character that would not fit whole rather than through it (`the_cut_does_not_split_a_character`).
 
 ### `astFmtDecimalYr` removes the zeros of an exponent
 

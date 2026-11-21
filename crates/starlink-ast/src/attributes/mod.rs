@@ -645,8 +645,9 @@ pub(crate) fn fmt_decimal_yr(year: f64, digits: usize) -> String {
 
 /// The text of a value without its graphical escape sequences, which is
 /// what a get returns unless escapes are turned on.
-// C: plot.c astStripEscapes_. Its buffer holds 50 characters, so a value
-// that has escape sequences is also cut to that length (c-library-quirks.md).
+// C: plot.c astStripEscapes_. Its buffer holds 50 bytes, so a value that
+// has escape sequences is also cut to that length (c-library-quirks.md); the
+// port cuts text that is not ASCII at a character boundary within them.
 #[cfg_attr(not(feature = "attribute-strings"), allow(dead_code))]
 pub(crate) fn strip_escapes(text: &str) -> String {
     const BUFF_LEN: usize = 50;
@@ -665,8 +666,17 @@ pub(crate) fn strip_escapes(text: &str) -> String {
         }
         let (found, _, _, nc) = crate::plot::text::find_escape(rest);
         if !found {
-            let n = nc.min(BUFF_LEN - out.len());
+            // C's buffer holds 50 bytes; text that is not ASCII is cut
+            // before a character that would not fit whole, rather than
+            // through it.
+            let mut n = nc.min(BUFF_LEN - out.len());
+            while !rest.is_char_boundary(n) {
+                n -= 1;
+            }
             out.extend_from_slice(&t[a..a + n]);
+            if n < nc {
+                break;
+            }
         }
         a += nc.max(1);
     }
@@ -844,6 +854,15 @@ mod tests {
         );
         let s = sscanf("style(axis1)= 2", "style(%20[^()])= %d %n");
         assert_eq!((s.ret, s.text(0), s.int(1)), (2, "axis1", 2));
+    }
+
+    // C cuts at 50 bytes; the port cuts at the last whole character within
+    // them, so an accent is never split.
+    #[test]
+    fn the_cut_does_not_split_a_character() {
+        let text = format!("{}é%+tail", "a".repeat(49));
+        assert_eq!(strip_escapes(&text), "a".repeat(49));
+        assert_eq!(strip_escapes("Déclinaison%+ (°)"), "Déclinaison (°)");
     }
 
     #[test]
