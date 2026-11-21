@@ -133,19 +133,29 @@ fn bracket<F: FrameSetClass + ?Sized>(
     context: impl FnOnce() -> String,
     work: impl FnOnce(&mut F) -> AstResult<()>,
 ) -> AstResult<()> {
-    let saved = swap_state(Integrity {
+    let _saved = SavedState(Some(swap_state(Integrity {
         frame: None,
         lost: false,
         method,
-    });
+    })));
     record_integrity(obj);
-    let result = match work(obj) {
+    match work(obj) {
         // After a failure C restores nothing.
         Err(e) => Err(e),
         Ok(()) => restore_integrity(obj).map_err(|e| e.with_context(context())),
-    };
-    swap_state(saved);
-    result
+    }
+}
+
+/// The integrity state from before a bracket, put back when the bracket
+/// ends, however it ends.
+struct SavedState(Option<Integrity>);
+
+impl Drop for SavedState {
+    fn drop(&mut self) {
+        if let Some(state) = self.0.take() {
+            swap_state(state);
+        }
+    }
 }
 
 /// FrameSet's `VSet`: the assignments of one setting string, as one change
@@ -390,4 +400,41 @@ pub(crate) fn frameset_clear<F: FrameSetClass + ?Sized>(obj: &mut F, name: &str)
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frames::{BasicFrameBuilder, SkyFrame, SkySystem};
+    use crate::mappings::UnitMap;
+
+    /// The integrity state of the thread: the method and whether a Frame
+    /// is recorded.
+    fn state() -> (&'static str, bool) {
+        INTEGRITY.with(|s| {
+            let s = s.borrow();
+            (s.method, s.frame.is_some())
+        })
+    }
+
+    // A setting that panics inside a string must not leave the string's
+    // integrity state behind for the thread's later work.
+    #[test]
+    fn a_panic_inside_a_string_restores_the_state_before_it() {
+        let mut fs = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build().unwrap()));
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::new(2)),
+            Box::new(SkyFrame::new(SkySystem::Icrs)),
+        )
+        .unwrap();
+        assert_eq!(state(), ("", false));
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            bracket(&mut fs, "astSet", String::new, |_| {
+                panic!("a setting panics")
+            })
+        }));
+        assert!(caught.is_err());
+        assert_eq!(state(), ("", false));
+    }
 }
