@@ -188,11 +188,15 @@ impl WinMap {
 }
 
 impl WinMap {
-    /// The shifts and scales this WinMap applies, as C's `astWinTerms`
-    /// returns them: for an inverted WinMap the scale is `1/b` and the shift
-    /// `a * -(1/b)`, bad where `a` is bad or `b` is zero or bad.
-    fn applied_terms(&self) -> (Vec<f64>, Vec<f64>) {
-        if !self.inverted {
+    /// The shifts and scales this WinMap applies when its Invert flag is
+    /// `inverted`, as C's `astWinTerms` returns them: inverted, the scale is
+    /// `1/b` and the shift `a * -(1/b)`, bad where `a` is bad or `b` is zero
+    /// or bad.
+    // astWinTerms forms the inverse shift as the shift times minus the
+    // reciprocal scale, not as -shift/scale; the two differ in the last bit
+    // for some values.
+    pub(crate) fn terms(&self, inverted: bool) -> (Vec<f64>, Vec<f64>) {
+        if !inverted {
             return (self.shifts.clone(), self.scales.clone());
         }
         self.shifts
@@ -343,8 +347,8 @@ impl Mapping for WinMap {
         if same(&self.shifts, &self.scales, &other.shifts, &other.scales) {
             self.inverted == other.inverted
         } else if self.inverted != other.inverted {
-            let (s1, c1) = winmap_effective_params(&self.shifts, &self.scales, self.inverted);
-            let (s2, c2) = winmap_effective_params(&other.shifts, &other.scales, other.inverted);
+            let (s1, c1) = self.terms(self.inverted);
+            let (s2, c2) = other.terms(other.inverted);
             same(&s1, &c1, &s2, &c2)
         } else {
             false
@@ -367,7 +371,7 @@ impl Mapping for WinMap {
         if in_axes.iter().any(|&ix| ix >= self.nin()) {
             return Ok(None);
         }
-        let (shifts, scales) = self.applied_terms();
+        let (shifts, scales) = self.terms(self.inverted);
         let shifts: Vec<f64> = in_axes.iter().map(|&ix| shifts[ix]).collect();
         let scales: Vec<f64> = in_axes.iter().map(|&ix| scales[ix]).collect();
         let sub = WinMap::new(&shifts, &scales)?;
@@ -383,7 +387,7 @@ impl Mapping for WinMap {
     ) -> Option<DynMapping> {
         if !series {
             // Parallel: concatenate axis terms from both mappings.
-            let (s1, c1) = winmap_effective_params(&self.shifts, &self.scales, self_inv);
+            let (s1, c1) = self.terms(self_inv);
             let (s2, c2) = extract_linear_params(other, other_inv)?;
             let mut new_shifts = s1;
             new_shifts.extend(s2);
@@ -428,7 +432,7 @@ impl Mapping for WinMap {
         }
 
         // Extract effective parameters for self (applied first).
-        let (s1, c1) = winmap_effective_params(&self.shifts, &self.scales, self_inv);
+        let (s1, c1) = self.terms(self_inv);
         // Extract effective parameters for other (applied second).
         // Accepts WinMap, ZoomMap, or ShiftMap.
         let (s2, c2) = extract_linear_params(other, other_inv)?;
@@ -515,30 +519,6 @@ impl Mapping for WinMap {
     }
 }
 
-/// Compute effective (shifts, scales) for a WinMap, accounting for inversion.
-///
-/// Forward: `output = shift + scale * input`.
-/// Inverse: `output = (input - shift) / scale = -shift/scale + (1/scale) * input`.
-fn winmap_effective_params(shifts: &[f64], scales: &[f64], inv: bool) -> (Vec<f64>, Vec<f64>) {
-    if !inv {
-        (shifts.to_vec(), scales.to_vec())
-    } else {
-        let n = shifts.len();
-        let mut inv_shifts = Vec::with_capacity(n);
-        let mut inv_scales = Vec::with_capacity(n);
-        for i in 0..n {
-            if is_bad(scales[i]) || is_bad(shifts[i]) || scales[i] == 0.0 {
-                inv_shifts.push(BAD_VALUE);
-                inv_scales.push(BAD_VALUE);
-            } else {
-                inv_scales.push(1.0 / scales[i]);
-                inv_shifts.push(-shifts[i] / scales[i]);
-            }
-        }
-        (inv_shifts, inv_scales)
-    }
-}
-
 /// Extract effective `(shifts, scales)` from a linear mapping,
 /// accounting for inversion.
 ///
@@ -549,7 +529,7 @@ pub(crate) fn extract_linear_params(
     inv: bool,
 ) -> Option<(Vec<f64>, Vec<f64>)> {
     if let Some(wm) = mapping.as_any().downcast_ref::<WinMap>() {
-        return Some(winmap_effective_params(&wm.shifts, &wm.scales, inv));
+        return Some(wm.terms(inv));
     }
     if let Some(zm) = mapping.as_any().downcast_ref::<ZoomMap>() {
         let n = zm.nin();

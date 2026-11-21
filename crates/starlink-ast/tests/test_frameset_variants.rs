@@ -17,7 +17,7 @@ use crate::common::native_dump;
 use starlink_ast::coords::PointSet;
 use starlink_ast::error::ErrorCode;
 use starlink_ast::frames::{BasicFrameBuilder, FrameRef, FrameSet};
-use starlink_ast::mappings::{CmpMap, Composition, DynMapping, Mapping, WinMap};
+use starlink_ast::mappings::{CmpMap, Composition, DynMapping, Mapping, ShiftMap, WinMap};
 
 fn frm(domain: &str) -> starlink_ast::frames::BasicFrame {
     BasicFrameBuilder::new(2).domain(domain).build().unwrap()
@@ -172,7 +172,6 @@ fn selecting_the_only_variant_of_a_frame_without_variants() {
 /// variant, so the Frames derived from the root do not move.
 #[test]
 fn selecting_a_variant_of_a_frame_on_the_root_node() {
-    use starlink_ast::mappings::ShiftMap;
     let mut fs = base_fs();
     fs.set_current(FrameRef::Index(1)).unwrap();
     let shift = ShiftMap::new(vec![10.0, 20.0]);
@@ -181,7 +180,12 @@ fn selecting_a_variant_of_a_frame_on_the_root_node() {
     assert_eq!(fs.nframe(), 2);
 
     // PIXEL is now the root shifted by (10, 20); FPLANE still derives from
-    // the root, so PIXEL (60.5, 120.5) is root (50.5, 100.5).
+    // the root, so the Mapping from PIXEL to FPLANE is the inverse shift
+    // followed by the original Mapping, and PIXEL (60.5, 120.5) lands where
+    // root (50.5, 100.5) does, to rounding: the shift folds into the
+    // WinMap's, so the two are computed differently. C reads outside its
+    // arrays here, so the exact check compares the port with its own
+    // simplification of that chain, not with C.
     let pix_to_fp = |fs: &FrameSet| {
         let map = fs.mapping(FrameRef::Index(1), FrameRef::Index(2)).unwrap();
         let out = map
@@ -189,9 +193,20 @@ fn selecting_a_variant_of_a_frame_on_the_root_node() {
             .unwrap();
         (out.point(0)[0], out.point(0)[1])
     };
+    let mut unshift = ShiftMap::new(vec![10.0, 20.0]);
+    unshift.invert();
+    let p2fmap =
+        WinMap::from_corners(&[1.0, 1.0], &[100.0, 200.0], &[-2.5, -1.0], &[2.5, 1.0]).unwrap();
+    let chain = CmpMap::new(Box::new(unshift), Box::new(p2fmap), Composition::Series).unwrap();
+    let expected = <dyn Mapping>::simplify(&chain).unwrap();
+    let out = expected
+        .transform(&PointSet::from_rows([[60.5, 120.5]]), true)
+        .unwrap();
+    assert_eq!(pix_to_fp(&fs), (out.point(0)[0], out.point(0)[1]));
     let mut unshifted = base_fs();
     unshifted.set_current(FrameRef::Index(2)).unwrap();
-    assert_eq!(pix_to_fp(&fs), tran(&unshifted, 50.5, 100.5));
+    let (x, y) = tran(&unshifted, 50.5, 100.5);
+    assert!((pix_to_fp(&fs).0 - x).abs() < 1e-12 && (pix_to_fp(&fs).1 - y).abs() < 1e-12);
 
     let text = native_dump(&starlink_ast::AnyObject::FrameSet(fs.clone())).unwrap();
     let starlink_ast::AnyObject::FrameSet(back) = starlink_ast::from_native_string(&text).unwrap()

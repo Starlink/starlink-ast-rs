@@ -152,7 +152,7 @@ pub(crate) fn convert_route(
 ) -> AstResult<Option<ConvertRoute>> {
     let region_frame = crate::regions::any_as_region(from.as_any()).map(|r| r.get_region_frame());
     let from = region_frame.as_deref().unwrap_or(from);
-    if from.as_any().is::<FrameSet>() || to.as_any().is::<FrameSet>() {
+    if from.as_frameset().is_some() || to.as_frameset().is_some() {
         return super::frameset::frameset_convert_x(to, from, domainlist);
     }
     // The Frame itself, not a copy, takes part, as in C: a SkyFrame keeps
@@ -185,7 +185,7 @@ pub(crate) fn find_frame_route(
     template: &dyn Frame,
     domainlist: &str,
 ) -> AstResult<Option<(FindFrameResult, usize)>> {
-    if let Some(fs) = target.as_any().downcast_ref::<FrameSet>() {
+    if let Some(fs) = target.as_frameset() {
         return super::frameset::frameset_find_frame(fs, template, domainlist);
     }
     // region.c's `FindFrame` searches the current Frame of the Region's
@@ -822,6 +822,8 @@ pub(crate) fn frame_class_name(frame: &dyn Frame) -> &'static str {
         "CmpFrame"
     } else if any.is::<FrameSet>() {
         "FrameSet"
+    } else if any.is::<crate::plot::Plot>() {
+        "Plot"
     } else {
         "Frame"
     }

@@ -46,15 +46,11 @@ const PROBE_STAMP_LICENSED: &[(&str, usize, &str)] = &[(
 /// Cases one line of whose transcript differs from C's in a number by at
 /// most the given number of ULP, the line, and why. Every other line is
 /// compared byte for byte.
-const ULP_LICENSED: &[(&str, usize, u64, &str)] = &[(
-    "celestial_iwc",
-    128,
-    1,
-    "the shift of the WinMap the IWC Mapping simplifies to, folded from an \
-     inverted WinMap, a WinMap and two unit MatrixMaps in a different order; \
-     `fitschan_tab_celestial_iwc` in the simplify corpus is the same Mapping, \
-     compared there within its 4 ULP bound",
-)];
+///
+/// Empty: `celestial_iwc`, its one entry, matches C since the simplifier
+/// forms an inverted WinMap's shift as C's `astWinTerms` does; kept so a
+/// newly diagnosed rounding difference has a home.
+const ULP_LICENSED: &[(&str, usize, u64, &str)] = &[];
 
 /// Whether the port's transcript `out` matches C's `want` for case `name`.
 fn matches(name: &str, out: &str, want: &str) -> bool {
