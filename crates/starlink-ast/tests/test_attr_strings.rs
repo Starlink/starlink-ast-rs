@@ -395,6 +395,35 @@ fn units_that_are_not_ascii_do_not_panic() {
     }
 }
 
+/// A spectral axis in micrometres or Ångströms written as scientific plots
+/// write them, with the micro sign or Greek mu and the Ångström sign,
+/// converts as one in "um" or "Angstrom" does.
+#[test]
+fn unicode_units_convert() {
+    use starlink_ast::coords::PointSet;
+    use starlink_ast::frames::{FrameRef, FrameSearch, SpecFrame, SpecSystem};
+    let mut micro = SpecFrame::new(SpecSystem::Wavelen);
+    micro
+        .set_attributes("Unit=\u{3bc}m,Label=\u{3bb} (\u{3bc}m)")
+        .unwrap();
+    assert_eq!(micro.get_attribute("Unit").unwrap(), "\u{3bc}m");
+    for angstrom in ["\u{c5}", "\u{212b}"] {
+        let mut ang = SpecFrame::new(SpecSystem::Wavelen);
+        ang.set_attribute("Unit", angstrom).unwrap();
+        let fs = micro
+            .convert_to(&mut ang, &[])
+            .unwrap()
+            .expect("a conversion");
+        let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
+        let out = map.transform(&PointSet::from_rows([[1.5]]), true).unwrap();
+        assert!(
+            (out.point(0)[0] - 15000.0).abs() < 1e-8,
+            "{angstrom}: {:?}",
+            out.point(0)
+        );
+    }
+}
+
 #[test]
 fn excluded_dumps_still_differ() {
     for &(name, reason) in DUMP_EXCLUDED {

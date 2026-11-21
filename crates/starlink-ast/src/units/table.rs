@@ -393,6 +393,21 @@ fn known_units_table() -> &'static [KnownUnit] {
                 definition: None,
                 alias_of: Some("Angstrom"),
             },
+            // The Angstrom sign and A with ring above, as scientific plots
+            // write the unit. The C library, written before Unicode, has
+            // neither.
+            KnownUnit {
+                sym: "\u{c5}",
+                label: "Angstrom",
+                definition: None,
+                alias_of: Some("Angstrom"),
+            },
+            KnownUnit {
+                sym: "\u{212b}",
+                label: "Angstrom",
+                definition: None,
+                alias_of: Some("Angstrom"),
+            },
             KnownUnit {
                 sym: "ct",
                 label: "count",
@@ -600,6 +615,18 @@ pub(crate) fn iter_multipliers() -> impl Iterator<Item = &'static Multiplier> {
     multipliers_table().iter()
 }
 
+/// The multipliers as a unit string may spell them: each multiplier's own
+/// symbol, in C-traversal order, then the micro sign and Greek mu as other
+/// spellings of micro, "u", as scientific plots write it. The C library,
+/// written before Unicode, knows only "u"; a unit is still written with "u".
+pub(crate) fn iter_multiplier_spellings()
+-> impl Iterator<Item = (&'static str, &'static Multiplier)> {
+    let micro = find_multiplier("u").expect("the micro multiplier");
+    iter_multipliers()
+        .map(|m| (m.sym, m))
+        .chain([("\u{b5}", micro), ("\u{3bc}", micro)])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -663,13 +690,15 @@ mod tests {
         // 8 basic + 16 SI-derived + 4 angular + 5 time + 5 energy/mass +
         // 7 astrophysical + 3 dimensionless + 2 flux + 1 magnetic +
         // 1 pixel + 2 misc + 7 aliases = 61 entries.
-        // (Matches the C MakeKnownUnit + MakeUnitAlias count.)
+        // (Matches the C MakeKnownUnit + MakeUnitAlias count), and the two
+        // Unicode spellings of Angstrom, which C does not have.
         let n = iter_known_units().count();
-        assert_eq!(n, 61, "expected 61 known units (got {n}); table drift?");
+        assert_eq!(n, 63, "expected 63 known units (got {n}); table drift?");
     }
 
     #[test]
     fn multipliers_table_has_20_entries() {
         assert_eq!(iter_multipliers().count(), 20);
+        assert_eq!(iter_multiplier_spellings().count(), 22);
     }
 }

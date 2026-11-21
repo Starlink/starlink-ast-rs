@@ -13,7 +13,7 @@
 use super::simplify::{fix_constants, invert_constants, remake_tree};
 use super::table::{
     KnownUnit, Multiplier, find_known_unit, find_known_unit_by_label, iter_known_units,
-    iter_multipliers,
+    iter_multiplier_spellings, iter_multipliers,
 };
 use super::tree::{Oper, UnitNode};
 
@@ -335,14 +335,14 @@ pub(crate) fn split_unit(
     let prefix = &str_in[..lm];
 
     // Try case-sensitive match against multiplier symbols first.
-    for m in iter_multipliers() {
-        if m.sym.len() == lm && prefix == m.sym {
+    for (sym, m) in iter_multiplier_spellings() {
+        if sym.len() == lm && prefix == sym {
             return Some((Some(m), lu));
         }
     }
     // Case-insensitive against multiplier symbols.
-    for m in iter_multipliers() {
-        if m.sym.len() == lm && prefix.eq_ignore_ascii_case(m.sym) {
+    for (sym, m) in iter_multiplier_spellings() {
+        if sym.len() == lm && prefix.eq_ignore_ascii_case(sym) {
             return Some((Some(m), lu));
         }
     }
@@ -671,10 +671,10 @@ fn make_tree_n(exp: &[u8], nc: usize) -> Option<Box<UnitNode>> {
     let head_str = std::str::from_utf8(&exp[..nc]).ok()?;
     let mut effective_start = 0usize;
     let mut user_mult: Option<&'static Multiplier> = None;
-    for m in iter_multipliers() {
-        let n_remaining = nc as i32 - m.sym.len() as i32;
-        if n_remaining > 0 && head_str.starts_with(m.sym) {
-            effective_start = m.sym.len();
+    for (sym, m) in iter_multiplier_spellings() {
+        let n_remaining = nc as i32 - sym.len() as i32;
+        if n_remaining > 0 && head_str.starts_with(sym) {
+            effective_start = sym.len();
             user_mult = Some(m);
             break;
         }

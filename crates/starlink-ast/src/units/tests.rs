@@ -166,6 +166,27 @@ fn ang_alias_to_metre() {
     assert_zoom_factor(&*map, 1.0e-10);
 }
 
+// The micro sign and Greek mu, and the Angstrom sign and A with ring above,
+// as scientific plots write them. The C library, written before Unicode,
+// knows only "u" and "Angstrom".
+#[test]
+fn unicode_micro_and_angstrom() {
+    for micro in ["\u{b5}m", "\u{3bc}m"] {
+        let map = unit_mapper(micro, "m").unwrap_or_else(|| panic!("{micro} → m"));
+        assert_zoom_factor(&*map, 1.0e-6);
+        let map = unit_mapper(micro, "um").unwrap_or_else(|| panic!("{micro} → um"));
+        assert!(map.as_any().is::<UnitMap>(), "{micro} → um");
+    }
+    for angstrom in ["\u{c5}", "\u{212b}"] {
+        let map = unit_mapper(angstrom, "m").unwrap_or_else(|| panic!("{angstrom} → m"));
+        assert_zoom_factor(&*map, 1.0e-10);
+        let map = unit_mapper(&format!("n{angstrom}"), "m").expect("a prefixed Angstrom");
+        assert_zoom_factor(&*map, 1.0e-19);
+    }
+    let map = unit_mapper("\u{3bc}Jy/beam", "Jy/beam").expect("μJy/beam");
+    assert_zoom_factor(&*map, 1.0e-6);
+}
+
 #[test]
 fn ghz_to_hz() {
     let map = unit_mapper("GHz", "Hz").expect("GHz → Hz");
