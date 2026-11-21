@@ -465,8 +465,524 @@ GAttr COLOUR=1.0000 prim=MARK
 "##),
         bbox: [0.12175719439983368, 0.51610451936721802, 0.7580762505531311, 0.60216110944747925],
     },
+    Case {
+        name: "frame_clip_base",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "",
+        ops: &[
+            Op::Clip(ClipFrame::Base, &[0.29999999999999999, 0.29999999999999999], &[0.69999999999999996, 0.69999999999999996]),
+            Op::Curve(&[1.0, 1.0], &[9.0, 9.0]),
+            Op::PolyCurve(&[&[1.0, 5.0, 9.0], &[9.0, 1.0, 9.0]]),
+            Op::Mark(&[&[2.0, 5.0, 8.0, 5.0, 2.0], &[2.0, 5.0, 8.0, 2.0, 8.0]], 1),
+        ],
+        log: r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.300,0.300) to=(0.700,0.700)
+GScales alpha=200.000 beta=200.000
+GLine from=(0.300,0.580) to=(0.440,0.300)
+GMark type=1 at=(0.500,0.500)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="216,378 216,378 216,378 217,378 219,376 221,374 224,372 226,371 228,369 261,344 294,319 327,295 360,270 393,245 426,221 459,196 492,171 494,169 496,168 499,166 501,164 503,162 504,162 504,162 504,162 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="216,227 216,227 216,227 216,227 216,227 217,228 217,228 218,229 219,231 220,233 221,235 222,236 224,238 225,240 226,242 227,244 228,245 245,270 261,295 278,319 294,344 311,369 312,371 313,372 314,374 315,376 317,378 317,378 317,378 317,378 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="403,378 403,378 403,378 403,378 405,376 406,374 407,372 408,371 409,369 426,344 442,319 459,295 475,270 492,245 493,244 494,242 495,240 496,238 498,236 499,235 500,233 501,231 502,229 503,228 503,228 504,227 504,227 504,227 504,227 504,227 504,227 504,227 504,227 504,227 504,227 504,227 503,228 503,228 502,229 501,231 500,233 499,235 498,236 496,238 495,240 494,242 493,244 492,245 475,270 459,295 442,319 426,344 409,369 408,371 407,372 406,374 405,376 403,378 403,378 403,378 403,378 "/>
+<circle cx="360" cy="270" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.5, 0.5, 0.5, 0.5],
+    },
+    Case {
+        name: "frame_clip_current",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "",
+        ops: &[
+            Op::Clip(ClipFrame::Current, &[3.0, -1.7976931348623157e+308], &[7.0, 6.0]),
+            Op::Curve(&[1.0, 1.0], &[9.0, 9.0]),
+            Op::PolyCurve(&[&[1.0, 5.0, 9.0], &[9.0, 1.0, 9.0]]),
+            Op::Mark(&[&[2.0, 5.0, 8.0, 5.0, 2.0], &[2.0, 5.0, 8.0, 2.0, 8.0]], 1),
+        ],
+        log: r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.340,0.340) to=(0.580,0.580)
+GScales alpha=200.000 beta=200.000
+GLine from=(0.340,0.500) to=(0.660,0.500)
+GMark type=1 at=(0.500,0.500)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="245,356 247,355 250,353 252,351 254,349 257,348 259,346 261,344 294,319 327,295 360,270 393,245 395,244 398,242 400,240 402,238 405,236 407,235 409,233 412,231 414,229 416,228 417,228 417,227 417,227 417,227 417,227 417,227 418,227 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="245,270 261,295 278,319 294,344 311,369 327,393 344,418 360,443 376,418 393,393 409,369 426,344 442,319 459,295 475,270 "/>
+<circle cx="360" cy="270" r="2" fill="#ff0000"/>
+<circle cx="360" cy="400" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.5, 0.25999999046325684, 0.5, 0.5],
+    },
+    Case {
+        name: "frame_clip_op",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "ClipOp=1",
+        ops: &[
+            Op::Clip(ClipFrame::Current, &[3.0, 3.0], &[7.0, 7.0]),
+            Op::Curve(&[1.0, 1.0], &[9.0, 9.0]),
+            Op::PolyCurve(&[&[1.0, 5.0, 9.0], &[9.0, 1.0, 9.0]]),
+            Op::Mark(&[&[2.0, 5.0, 8.0, 5.0, 2.0], &[2.0, 5.0, 8.0, 2.0, 8.0]], 1),
+        ],
+        log: r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.340,0.340) to=(0.660,0.660)
+GScales alpha=200.000 beta=200.000
+GLine from=(0.260,0.660) to=(0.740,0.660)
+GMark type=1 at=(0.500,0.500)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="245,356 247,355 250,353 252,351 254,349 257,348 259,346 261,344 294,319 327,295 360,270 393,245 426,221 459,196 461,194 463,192 466,191 468,189 470,187 473,185 475,184 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="187,184 188,185 190,187 191,189 192,191 193,192 194,194 195,196 212,221 228,245 245,270 261,295 278,319 294,344 311,369 327,393 344,418 360,443 376,418 393,393 409,369 426,344 442,319 459,295 475,270 492,245 508,221 525,196 526,194 527,192 528,191 529,189 530,187 532,185 533,184 "/>
+<circle cx="360" cy="270" r="2" fill="#ff0000"/>
+<circle cx="360" cy="400" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.5, 0.25999999046325684, 0.5, 0.5],
+    },
+    Case {
+        name: "frame_clip_curves",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "Clip=1",
+        ops: &[
+            Op::Clip(ClipFrame::Current, &[-1.0, -1.0], &[11.0, 11.0]),
+            Op::Curve(&[-3.0, -3.0], &[13.0, 13.0]),
+            Op::Mark(&[&[-2.0, -0.5, 5.0, 10.5, 12.0], &[5.0, 5.0, 5.0, 5.0, 5.0]], 1),
+        ],
+        log: r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.100,0.100) to=(0.900,0.900)
+GMark type=1 at=(0.060,0.500)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="72,486 97,467 163,418 228,369 294,319 360,270 426,221 492,171 557,122 623,73 648,54 "/>
+<circle cx="43" cy="270" r="2" fill="#ff0000"/>
+<circle cx="360" cy="270" r="2" fill="#ff0000"/>
+<circle cx="677" cy="270" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.060000002384185791, 0.5, 0.93999999761581421, 0.5],
+    },
+    Case {
+        name: "frame_clip_marks",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "Clip=2",
+        ops: &[
+            Op::Clip(ClipFrame::Current, &[-1.0, -1.0], &[11.0, 11.0]),
+            Op::Curve(&[-3.0, -3.0], &[13.0, 13.0]),
+            Op::Mark(&[&[-2.0, -0.5, 5.0, 10.5, 12.0], &[5.0, 5.0, 5.0, 5.0, 5.0]], 1),
+        ],
+        log: r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.020,0.020) to=(0.980,0.980)
+GMark type=1 at=(0.500,0.500)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="14,529 15,529 15,529 15,528 16,528 16,528 16,528 17,527 21,524 26,520 31,517 97,467 163,418 228,369 294,319 360,270 426,221 492,171 557,122 623,73 689,23 694,20 699,16 703,13 704,12 704,12 704,12 705,12 705,11 705,11 706,11 "/>
+<circle cx="360" cy="270" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.5, 0.5, 0.5, 0.5],
+    },
+    Case {
+        name: "frame_clip_none",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "Clip=0",
+        ops: &[
+            Op::Clip(ClipFrame::Current, &[-1.0, -1.0], &[11.0, 11.0]),
+            Op::Curve(&[-3.0, -3.0], &[13.0, 13.0]),
+            Op::Mark(&[&[-2.0, -0.5, 5.0, 10.5, 12.0], &[5.0, 5.0, 5.0, 5.0, 5.0]], 1),
+        ],
+        log: r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.020,0.020) to=(0.980,0.980)
+GMark type=1 at=(0.060,0.500)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="14,529 15,529 15,529 15,528 16,528 16,528 16,528 17,527 21,524 26,520 31,517 97,467 163,418 228,369 294,319 360,270 426,221 492,171 557,122 623,73 689,23 694,20 699,16 703,13 704,12 704,12 704,12 705,12 705,11 705,11 706,11 "/>
+<circle cx="43" cy="270" r="2" fill="#ff0000"/>
+<circle cx="360" cy="270" r="2" fill="#ff0000"/>
+<circle cx="677" cy="270" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.060000002384185791, 0.5, 0.93999999761581421, 0.5],
+    },
+    Case {
+        name: "frame_clip_cleared",
+        head: None,
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [0.0, 0.0, 10.0, 10.0],
+        attr: "",
+        ops: &[
+            Op::Clip(ClipFrame::Current, &[3.0, 3.0], &[7.0, 7.0]),
+            Op::Clip(ClipFrame::None, &[0.0, 0.0], &[0.0, 0.0]),
+            Op::Curve(&[1.0, 1.0], &[9.0, 9.0]),
+            Op::PolyCurve(&[&[1.0, 5.0, 9.0], &[9.0, 1.0, 9.0]]),
+            Op::Mark(&[&[2.0, 5.0, 8.0, 5.0, 2.0], &[2.0, 5.0, 8.0, 2.0, 8.0]], 1),
+        ],
+        log: r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.180,0.180) to=(0.820,0.820)
+GScales alpha=200.000 beta=200.000
+GLine from=(0.180,0.820) to=(0.820,0.820)
+GMark type=1 at=(0.260,0.260)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="130,443 163,418 195,393 228,369 261,344 294,319 327,295 360,270 393,245 426,221 459,196 492,171 525,147 557,122 590,97 "/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="130,97 146,122 163,147 179,171 195,196 212,221 228,245 245,270 261,295 278,319 294,344 311,369 327,393 344,418 360,443 376,418 393,393 409,369 426,344 442,319 459,295 475,270 492,245 508,221 525,196 541,171 557,147 574,122 590,97 "/>
+<circle cx="187" cy="400" r="2" fill="#ff0000"/>
+<circle cx="360" cy="270" r="2" fill="#ff0000"/>
+<circle cx="533" cy="140" r="2" fill="#ff0000"/>
+<circle cx="360" cy="400" r="2" fill="#ff0000"/>
+<circle cx="187" cy="140" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.25999999046325684, 0.25999999046325684, 0.74000000953674316, 0.74000000953674316],
+    },
+    Case {
+        name: "aitoff_clip",
+        head: Some("aitoff.head"),
+        gbox: [0.10000000149011612, 0.10000000149011612, 0.89999997615814209, 0.89999997615814209],
+        pbox: [10.0, -10.0, 300.0, 280.0],
+        attr: "",
+        ops: &[
+            Op::Clip(ClipFrame::Index(3), &[2.0, -0.20000000000000001], &[2.7999999999999998, 0.40000000000000002]),
+            Op::Curve(&[1.8, 0.0], &[3.0, 0.29999999999999999]),
+            Op::Mark(&[&[1.8999999999999999, 2.2000000000000002, 2.6000000000000001, 2.8999999999999999], &[0.0, 0.10000000000000001, 0.20000000000000001, 0.29999999999999999]], 1),
+        ],
+        log: r##"GScales alpha=200.000 beta=200.000
+GLine from=(0.703,0.547) to=(0.605,0.607)
+GMark type=1 at=(0.681,0.561)
+"##,
+        svg: Svg::Text(r##"<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540" viewBox="0 0 720 540">
+<rect width="100%" height="100%" fill="black"/>
+<polyline fill="none" stroke="#ff0000" stroke-width="1" points="506,245 506,244 506,244 505,244 505,244 504,243 504,243 503,243 503,242 496,238 489,234 482,231 475,227 467,223 459,220 450,217 442,214 441,214 441,214 440,214 439,213 439,213 438,213 437,213 437,213 436,212 436,212 "/>
+<circle cx="490" cy="237" r="2" fill="#ff0000"/>
+<circle cx="454" cy="221" r="2" fill="#ff0000"/>
+</svg>
+"##),
+        bbox: [0.63118129968643188, 0.56077301502227783, 0.68082892894744873, 0.59089916944503784],
+    },
 ];
 
 /// `(case name, Native dump of the Plot after its operations)`.
 pub const CLIP_DUMPS: &[(&str, &str)] = &[
+    ("frame_clip_current", r##" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "2-d coordinate system" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Lbl1 = "Axis 1" 	# Label for axis 1
+#   Lbl2 = "Axis 2" 	# Label for axis 2
+ IsA Frame 	# Coordinate system description
+    Nframe = 2 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 2 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+#         Title = "2-d coordinate system" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -1.2500000582076627 	# Shift for axis 1
+          Scl1 = 12.500000395812107 	# Scale factor for axis 1
+          Sft2 = -1.2500000582076627 	# Shift for axis 2
+          Scl2 = 12.500000395812107 	# Scale factor for axis 2
+       End WinMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    ClpLb1 = 3 	# Lower bound of clipping region
+    ClpUb1 = 7 	# Upper bound of clipping region
+    ClpUb2 = 6 	# Upper bound of clipping region
+    ClpAxs = 2 	# No. of bounds for clipping region
+    ClpFrm = 2 	# Index of clipping Frame
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 0 	# Lower X bound of supplied base Frame
+    Yb1 = 0 	# Lower Y bound of supplied base Frame
+    Xb2 = 10 	# Upper X bound of supplied base Frame
+    Yb2 = 10 	# Upper Y bound of supplied base Frame
+ End Plot
+"##),
+    ("aitoff_clip", r##" Begin Plot 	# Provide facilities for 2D graphical output
+#   Title = "IAU (1958) galactic coordinates; Hammer-Aitoff projection" 	# Title of coordinate system
+#   Naxes = 2 	# Number of coordinate axes
+#   Domain = "SKY" 	# Coordinate system domain
+#   Epoch = 2000 	# Julian epoch of observation
+#   Lbl1 = "Galactic longitude" 	# Label for axis 1
+#   Lbl2 = "Galactic latitude" 	# Label for axis 2
+#   System = "GALACTIC" 	# Coordinate system type
+#   Uni1 = "degrees" 	# Units for axis 1
+#   Uni2 = "degrees" 	# Units for axis 2
+#   Dir1 = 0 	# Plot axis 1 in reverse direction
+#   Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#   Top2 = 1.5707963267948966 	# Highest legal axis value
+ IsA Frame 	# Coordinate system description
+    Nframe = 3 	# Number of Frames in FrameSet
+#   Base = 1 	# Index of base Frame
+    Currnt = 3 	# Index of current Frame
+    Lnk2 = 1 	# Node 2 is derived from node 1
+    Lnk3 = 2 	# Node 3 is derived from node 2
+    Frm1 = 	# Frame number 1
+       Begin Frame 	# Coordinate system description
+          Title = "Graphical Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRAPHICS" 	# Coordinate system domain
+#         Lbl1 = "Axis 1" 	# Label for axis 1
+#         Lbl2 = "Axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+             End Axis
+       End Frame
+    Frm2 = 	# Frame number 2
+       Begin Frame 	# Coordinate system description
+          Title = "Pixel Coordinates" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+          Domain = "GRID" 	# Coordinate system domain
+#         Lbl1 = "Pixel axis 1" 	# Label for axis 1
+#         Lbl2 = "Pixel axis 2" 	# Label for axis 2
+          Ax1 = 	# Axis number 1
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 1" 	# Axis Label
+             End Axis
+          Ax2 = 	# Axis number 2
+             Begin Axis 	# Coordinate axis
+                Label = "Pixel axis 2" 	# Axis Label
+             End Axis
+       End Frame
+    Frm3 = 	# Frame number 3
+       Begin SkyFrame 	# Description of celestial coordinate system
+          Ident = " " 	# Permanent Object identification string
+       IsA Object 	# AST Object
+#         Title = "IAU (1958) galactic coordinates; Hammer-Aitoff projection" 	# Title of coordinate system
+          Naxes = 2 	# Number of coordinate axes
+#         Domain = "SKY" 	# Coordinate system domain
+#         Epoch = 2000 	# Julian epoch of observation
+#         Lbl1 = "Galactic longitude" 	# Label for axis 1
+#         Lbl2 = "Galactic latitude" 	# Label for axis 2
+          System = "GALACTIC" 	# Coordinate system type
+#         Uni1 = "degrees" 	# Units for axis 1
+#         Uni2 = "degrees" 	# Units for axis 2
+#         Dir1 = 0 	# Plot axis 1 in reverse direction
+#         Bot2 = -1.5707963267948966 	# Lowest legal axis value
+#         Top2 = 1.5707963267948966 	# Highest legal axis value
+          Ax1 = 	# Axis number 1
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+          Ax2 = 	# Axis number 2
+             Begin SkyAxis 	# Celestial coordinate axis
+             End SkyAxis
+       IsA Frame 	# Coordinate system description
+          Proj = "Hammer-Aitoff" 	# Description of sky projection
+#         SkyTol = 0.001 	# Smallest significant separation [arc-sec]
+          SRefIs = "Ignored" 	# Not rotated (ref. pos. is ignored)
+          SRef1 = -2.610465574795942 	# Ref. pos. l -149.5687
+          SRef2 = -0.34484566172083614 	# Ref. pos. b -19.7582
+       End SkyFrame
+    Map2 = 	# Mapping between nodes 1 and 2
+       Begin WinMap 	# Map one window on to another
+          Nin = 2 	# Number of input coordinates
+       IsA Mapping 	# Mapping between coordinate systems
+          Sft1 = -26.250001688022216 	# Shift for axis 1
+          Scl1 = 362.50001147855107 	# Scale factor for axis 1
+          Sft2 = -46.250001688022216 	# Shift for axis 2
+          Scl2 = 362.50001147855107 	# Scale factor for axis 2
+       End WinMap
+    Map3 = 	# Mapping between nodes 2 and 3
+       Begin CmpMap 	# Compound Mapping
+          Nin = 2 	# Number of input coordinates
+          IsSimp = 1 	# Mapping has been simplified
+       IsA Mapping 	# Mapping between coordinate systems
+          MapA = 	# First component Mapping
+             Begin WinMap 	# Map one window on to another
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                Sft1 = 3.1520646291017589 	# Shift for axis 1
+                Scl1 = -0.020943951023931952 	# Scale factor for axis 1
+                Sft2 = -3.1520646291017589 	# Shift for axis 2
+                Scl2 = 0.020943951023931952 	# Scale factor for axis 2
+             End WinMap
+          MapB = 	# Second component Mapping
+             Begin CmpMap 	# Compound Mapping
+                Nin = 2 	# Number of input coordinates
+             IsA Mapping 	# Mapping between coordinate systems
+                InvA = 1 	# First Mapping used in inverse direction
+                MapA = 	# First component Mapping
+                   Begin WcsMap 	# FITS-WCS sky projection
+                      Nin = 2 	# Number of input coordinates
+                      Invert = 1 	# Mapping inverted
+                   IsA Mapping 	# Mapping between coordinate systems
+                      Type = "AIT" 	# Hammer-Aitoff projection
+                   End WcsMap
+                MapB = 	# Second component Mapping
+                   Begin CmpMap 	# Compound Mapping
+                      Nin = 2 	# Number of input coordinates
+                   IsA Mapping 	# Mapping between coordinate systems
+                      InvA = 1 	# First Mapping used in inverse direction
+                      MapA = 	# First component Mapping
+                         Begin SphMap 	# Cartesian to Spherical mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                            Invert = 1 	# Mapping inverted
+                         IsA Mapping 	# Mapping between coordinate systems
+                            UntRd = 1 	# All input vectors have unit length
+                            PlrLg = 0 	# Polar longitude (rad.s)
+                         End SphMap
+                      MapB = 	# Second component Mapping
+                         Begin CmpMap 	# Compound Mapping
+                            Nin = 3 	# Number of input coordinates
+                            Nout = 2 	# Number of output coordinates
+                         IsA Mapping 	# Mapping between coordinate systems
+                            MapA = 	# First component Mapping
+                               Begin MatrixMap 	# Matrix transformation
+                                  Nin = 3 	# Number of input coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  M0 = -0.8114748329086714 	# Forward matrix value
+                                  M1 = 0.50650547146018587 	# Forward matrix value
+                                  M2 = -0.29148036458179932 	# Forward matrix value
+                                  M3 = -0.47668629803556373 	# Forward matrix value
+                                  M4 = -0.8622367467122326 	# Forward matrix value
+                                  M5 = -0.17122489855232773 	# Forward matrix value
+                                  M6 = -0.3380514292544754 	# Forward matrix value
+                                  M7 = 0 	# Forward matrix value
+                                  M8 = 0.94112763809113931 	# Forward matrix value
+                                  IM0 = -0.8114748329086714 	# Inverse matrix value
+                                  IM1 = -0.47668629803556373 	# Inverse matrix value
+                                  IM2 = -0.3380514292544754 	# Inverse matrix value
+                                  IM3 = 0.50650547146018587 	# Inverse matrix value
+                                  IM4 = -0.8622367467122326 	# Inverse matrix value
+                                  IM5 = 0 	# Inverse matrix value
+                                  IM6 = -0.29148036458179932 	# Inverse matrix value
+                                  IM7 = -0.17122489855232773 	# Inverse matrix value
+                                  IM8 = 0.94112763809113931 	# Inverse matrix value
+                                  Form = "Full" 	# Matrix storage form
+                               End MatrixMap
+                            MapB = 	# Second component Mapping
+                               Begin SphMap 	# Cartesian to Spherical mapping
+                                  Nin = 3 	# Number of input coordinates
+                                  Nout = 2 	# Number of output coordinates
+                               IsA Mapping 	# Mapping between coordinate systems
+                                  UntRd = 1 	# All input vectors have unit length
+                                  PlrLg = -2.610465574795942 	# Polar longitude (rad.s)
+                               End SphMap
+                         End CmpMap
+                   End CmpMap
+             End CmpMap
+       End CmpMap
+ IsA FrameSet 	# Set of inter-related coordinate systems
+#   TckAll = 1 	# Put ticks on all edges?
+    FrcExt = 0 	# Force exterior labelling?
+#   Invsbl = 0 	# Use invisible ink?
+#   DrwTtl = 1 	# Add a title to the grid?
+#   Escape = 1 	# Interpret escape sequences?
+#   NmGap1 = 0.01 	# Spacing of numerical labels
+#   NmGap2 = 0.01 	# Spacing of numerical labels
+#   TxGap1 = 0.01 	# Spacing of descriptive labels
+#   TxGap2 = 0.01 	# Spacing of descriptive labels
+#   LblUp1 = 0 	# Draw numerical labels upright?
+#   LblUp2 = 0 	# Draw numerical labels upright?
+#   LgPlt1 = 0 	# Map plot axis logarithmically?
+#   LgPlt2 = 0 	# Map plot axis logarithmically?
+#   LgTck1 = 0 	# Space ticks logarithmically?
+#   LgTck2 = 0 	# Space ticks logarithmically?
+#   LgLbl1 = 0 	# Scientific notation for labels?
+#   LgLbl2 = 0 	# Scientific notation for labels?
+#   NmLbl1 = 1 	# Draw numerical labels?
+#   NmLbl2 = 1 	# Draw numerical labels?
+#   TtlGap = 0.050000000000000003 	# Gap between title and edge
+#   MnTkLn1 = 0.0070000000000000001 	# Minor tick length
+#   MnTkLn2 = 0.0070000000000000001 	# Minor tick length
+    ClpLb1 = 2 	# Lower bound of clipping region
+    ClpLb2 = -0.20000000000000001 	# Lower bound of clipping region
+    ClpUb1 = 2.7999999999999998 	# Upper bound of clipping region
+    ClpUb2 = 0.40000000000000002 	# Upper bound of clipping region
+    ClpAxs = 2 	# No. of bounds for clipping region
+    ClpFrm = 3 	# Index of clipping Frame
+    Xlo = 0.10000000149011612 	# Lower X bound of plotting area
+    Ylo = 0.10000000149011612 	# Lower Y bound of plotting area
+    Xhi = 0.89999997615814209 	# Upper X bound of plotting area
+    Yhi = 0.89999997615814209 	# Upper Y bound of plotting area
+    Xrev = 0 	# X axis reversed?
+    Yrev = 0 	# Y axis reversed?
+    Xb1 = 10 	# Lower X bound of supplied base Frame
+    Yb1 = -10 	# Lower Y bound of supplied base Frame
+    Xb2 = 300 	# Upper X bound of supplied base Frame
+    Yb2 = 280 	# Upper Y bound of supplied base Frame
+ End Plot
+"##),
 ];

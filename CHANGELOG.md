@@ -9,6 +9,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Added
 
+- `starlink-ast`: `Draw::set_clip_region` and `Draw::clear_clip_region`, which clip what a Plot draws to a box in any of its Frames, as the C library's `astClip` does.
 - `starlink-ast`: `Draw::draw_gen_curve`, which draws the curve a Mapping from distance to position describes, and `Draw::draw_mark`, which draws markers, as the C library's `astGenCurve` and `astMark` do, call for call.
 - `starlink-ast`: `Draw::draw_curve`, which draws the geodesic between two positions in the current Frame, `Draw::draw_poly_curve`, which draws the geodesics joining a list of positions as one line, and `Draw::bounding_box`, the box enclosing what a Plot last drew, each as the C library's `astCurve`, `astPolyCurve` and `astBoundingBox` do, call for call.
 - `starlink-ast`: `Plot::used_values`, the values a grid uses for the attributes whose defaults depend on what it draws (`Gap`, `Centre`, `Edge`, `Labelling` and the rest), each the attribute's own value if set, else the grid's choice, as the C library's string getter reports them; the grid's tick spacing and choice of exterior or interior labelling follow the C library's.

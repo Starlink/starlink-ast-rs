@@ -37,6 +37,7 @@ mod text;
 #[path = "plot_methods_oracle/cases.rs"]
 mod methods;
 
+use starlink_ast::AnyObject;
 use starlink_ast::coords::PointSet;
 use starlink_ast::error::{AstResult, ErrorCode};
 use starlink_ast::frames::{BasicFrameBuilder, CmpFrame, FrameRef, SkyFrame, SkySystem};
@@ -51,6 +52,7 @@ use starlink_ast::regions::{
 use crate::common::plot::{
     FailingGrf, apply_settings, fnv1a, grid_cases, read_head, testgrid_plot,
 };
+use crate::common::{assert_c_text, native_dump};
 
 /// A Plot of a header under `fixtures/wcsconv/inputs`, or of a 2-D Frame.
 fn plot_of(head: Option<&str>, gbox: [f32; 4], pbox: [f64; 4]) -> Plot {
@@ -567,6 +569,18 @@ fn run_ops(plot: &mut Plot, grf: &mut dyn Grf, ops: &[methods::Op]) -> AstResult
             methods::Op::Mark(axes, marker) => {
                 plot.draw_mark(grf, &PointSet::from_columns(axes)?, *marker)?
             }
+            methods::Op::Clip(frame, lbnd, ubnd) => {
+                let frame = match frame {
+                    methods::ClipFrame::None => {
+                        plot.clear_clip_region()?;
+                        continue;
+                    }
+                    methods::ClipFrame::Base => FrameRef::Base,
+                    methods::ClipFrame::Current => FrameRef::Current,
+                    methods::ClipFrame::Index(i) => FrameRef::Index(*i),
+                };
+                plot.set_clip_region(frame, lbnd, ubnd)?
+            }
             other => unimplemented!("{:?}", std::mem::discriminant(other)),
         }
     }
@@ -633,4 +647,49 @@ fn draw_gen_curve_rejects_a_two_input_mapping() {
         .draw_gen_curve(&mut LogGrf::new(Vec::new()), &UnitMap::new(2))
         .unwrap_err();
     assert_eq!(err.code(), ErrorCode::Ncpin);
+}
+
+/// C's `FrcExt` line for a Plot that never set ForceExterior, and the line
+/// the port writes. The same licence as `UNINITIALISED_FORCE_EXTERIOR_LICENSED`
+/// in `test_plot.rs`: C's `astInitPlot` never initialises it, so C dumps it
+/// as set to whatever the allocator left (c-library-quirks.md).
+const FORCE_EXTERIOR_LICENSED: (&str, &str) = (
+    "    FrcExt = 0 \t# Force exterior labelling?\n",
+    "#   FrcExt = 0 \t# Force exterior labelling?\n",
+);
+
+#[test]
+fn clip_dumps_match_the_c_library() {
+    for &(name, want) in methods::CLIP_DUMPS {
+        let case = methods::CASES.iter().find(|c| c.name == name).unwrap();
+        let mut plot = plot_of(case.head, case.gbox, case.pbox);
+        apply_settings(&mut plot, case.attr).unwrap();
+        run_ops(&mut plot, &mut LogGrf::new(Vec::new()), case.ops).unwrap();
+        let got = native_dump(&AnyObject::Plot(Box::new(plot))).unwrap();
+        let (c_line, line) = FORCE_EXTERIOR_LICENSED;
+        assert_eq!(
+            want.matches(c_line).count(),
+            1,
+            "{name}: C now dumps ForceExterior as unset; remove the licence"
+        );
+        assert_c_text(&got, &want.replace(c_line, line), name);
+    }
+}
+
+#[test]
+fn set_clip_region_rejects_bounds_of_the_wrong_length() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let err = plot
+        .set_clip_region(FrameRef::Current, &[1.0], &[2.0, 3.0])
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Clpax);
+}
+
+#[test]
+fn set_clip_region_rejects_an_invalid_frame() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let err = plot
+        .set_clip_region(FrameRef::Index(9), &[1.0, 1.0], &[2.0, 2.0])
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Frmin);
 }

@@ -54,6 +54,15 @@ struct method_case {
 
 #define CURVE( x0, y0, x1, y1 ) { OP_CURVE, 2, { x0, y0 }, { x1, y1 }, 0, 0, NULL }
 #define GEN( id ) { OP_GEN, 0, { 0 }, { 0 }, 0, 0, id }
+#define CLIP( f, l0, l1, u0, u1 ) { OP_CLIP, 0, { l0, l1 }, { u0, u1 }, 0, f, NULL }
+/* A curve, a polycurve and markers that cross the clip boxes below. */
+#define FRAME_DRAWING CURVE( 1.0, 1.0, 9.0, 9.0 ), \
+   { OP_POLY, 3, { 1.0, 5.0, 9.0 }, { 9.0, 1.0, 9.0 }, 0, 0, NULL }, \
+   { OP_MARK, 5, { 2.0, 5.0, 8.0, 5.0, 2.0 }, { 2.0, 5.0, 8.0, 2.0, 8.0 }, 1, 0, NULL }
+/* A curve and markers that run past the plotting area but stay partly
+   inside a clip box from -1 to 11. */
+#define WIDE_DRAWING CURVE( -3.0, -3.0, 13.0, 13.0 ), \
+   { OP_MARK, 5, { -2.0, -0.5, 5.0, 10.5, 12.0 }, { 5.0, 5.0, 5.0, 5.0, 5.0 }, 1, 0, NULL }
 
 static const struct method_case cases[] = {
    { "frame_curve", NULL, FRAME_BOX, "", 0, 3,
@@ -100,6 +109,24 @@ static const struct method_case cases[] = {
      { { OP_MARK, 3, { 2.0, 4.0, 6.0 }, { 7.0, 7.5, 8.0 }, 3, 0, NULL } } },
    { "aitoff_mark", "aitoff.head", AITOFF_BOX, "", 0, 1,
      { { OP_MARK, 4, { 0.5, 1.5, -2.0, 3.5 }, { 0.2, 0.6, -0.4, 0.0 }, 2, 0, NULL } } },
+   { "frame_clip_base", NULL, FRAME_BOX, "", 0, 4,
+     { CLIP( AST__BASE, 0.3, 0.3, 0.7, 0.7 ), FRAME_DRAWING } },
+   { "frame_clip_current", NULL, FRAME_BOX, "", 1, 4,
+     { CLIP( AST__CURRENT, 3.0, BAD, 7.0, 6.0 ), FRAME_DRAWING } },
+   { "frame_clip_op", NULL, FRAME_BOX, "ClipOp=1", 0, 4,
+     { CLIP( AST__CURRENT, 3.0, 3.0, 7.0, 7.0 ), FRAME_DRAWING } },
+   { "frame_clip_curves", NULL, FRAME_BOX, "Clip=1", 0, 3,
+     { CLIP( AST__CURRENT, -1.0, -1.0, 11.0, 11.0 ), WIDE_DRAWING } },
+   { "frame_clip_marks", NULL, FRAME_BOX, "Clip=2", 0, 3,
+     { CLIP( AST__CURRENT, -1.0, -1.0, 11.0, 11.0 ), WIDE_DRAWING } },
+   { "frame_clip_none", NULL, FRAME_BOX, "Clip=0", 0, 3,
+     { CLIP( AST__CURRENT, -1.0, -1.0, 11.0, 11.0 ), WIDE_DRAWING } },
+   { "frame_clip_cleared", NULL, FRAME_BOX, "", 0, 5,
+     { CLIP( AST__CURRENT, 3.0, 3.0, 7.0, 7.0 ), CLIP( NOFRAME, 0.0, 0.0, 0.0, 0.0 ),
+       FRAME_DRAWING } },
+   { "aitoff_clip", "aitoff.head", AITOFF_BOX, "", 1, 3,
+     { CLIP( 3, 2.0, -0.2, 2.8, 0.4 ), CURVE( 1.8, 0.0, 3.0, 0.3 ),
+       { OP_MARK, 4, { 1.9, 2.2, 2.6, 2.9 }, { 0.0, 0.1, 0.2, 0.3 }, 1, 0, NULL } } },
 };
 
 /* The ClipFrame a frame index is written as. */

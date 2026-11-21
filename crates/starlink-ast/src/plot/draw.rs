@@ -39,6 +39,7 @@ use super::curve::CurveData;
 use super::elements::PlotElement;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::frames::FrameRef;
 use crate::grf::{Grf, GrfAttr, GrfCap, GrfPrimitive, Justification};
 use crate::mappings::Mapping;
 use crate::serial::native_write::format_double_g;
@@ -238,6 +239,39 @@ pub trait Draw {
     #[doc(alias = "astMark")]
     fn draw_mark(&mut self, grf: &mut dyn Grf, positions: &PointSet, marker: i32) -> AstResult<()>;
 
+    /// Clip what the Plot draws to a box in one of its Frames: positions
+    /// whose coordinates in Frame `frame` fall outside `lbnd` to `ubnd` (one
+    /// value per axis of that Frame) are not drawn.
+    ///
+    /// A bad bound leaves that side of the box open. Whether a position is
+    /// clipped when it is outside the bounds on any axis, or only when it is
+    /// outside them on every axis, is set by the Plot's
+    /// [`clip_op`](Plot::clip_op) attribute. The box replaces any set
+    /// before; it is kept with the Plot when it is saved, and it applies to
+    /// lines, markers and text alike, whatever the Plot's
+    /// [`clip`](Plot::clip) attribute, which controls clipping at the edges
+    /// of the plotting area.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    /// - `ErrorCode::Frmin` when `frame` is not a Frame of the Plot.
+    /// - `ErrorCode::Clpax` when `lbnd` or `ubnd` does not have one value
+    ///   per axis of the Frame.
+    ///
+    /// The Plot is left unchanged if there is an error.
+    #[doc(alias = "astClip")]
+    fn set_clip_region(&mut self, frame: FrameRef, lbnd: &[f64], ubnd: &[f64]) -> AstResult<()>;
+
+    /// Remove the clip region [`set_clip_region`](Draw::set_clip_region)
+    /// set, if any.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Naxin` when the Plot's base Frame is not 2-D.
+    #[doc(alias = "astClip")]
+    fn clear_clip_region(&mut self) -> AstResult<()>;
+
     /// The bounds of a box in graphics coordinates that encloses what the
     /// last drawing method called on this Plot drew, as `(lbnd, ubnd)`.
     ///
@@ -304,6 +338,50 @@ impl Draw for Plot {
     fn draw_mark(&mut self, grf: &mut dyn Grf, positions: &PointSet, marker: i32) -> AstResult<()> {
         self.begin_drawing();
         self.mark_impl(grf, positions, marker)
+    }
+
+    // C: Clip (plot.c:7030), with a Frame.
+    fn set_clip_region(&mut self, frame: FrameRef, lbnd: &[f64], ubnd: &[f64]) -> AstResult<()> {
+        self.check_base_2d("astClip")?;
+        let naxes = self.frameset.frame(frame)?.naxes();
+        let index = match frame {
+            FrameRef::Base => self.frameset.base_index(),
+            FrameRef::Current => self.frameset.current_index(),
+            FrameRef::Index(i) => i,
+            FrameRef::AllFrames => unreachable!("FrameSet::frame rejects AllFrames"),
+        };
+        for (name, bnd) in [("lower", lbnd), ("upper", ubnd)] {
+            if bnd.len() != naxes {
+                return Err(AstError::new(
+                    ErrorCode::Clpax,
+                    format!(
+                        "astClip(Plot): {} values were supplied for the {name} bounds of the \
+                         clipping volume, but the clipping Frame has {naxes} axes.",
+                        bnd.len()
+                    ),
+                ));
+            }
+        }
+        let open = |v: f64, open: f64| {
+            if v == crate::constants::BAD_VALUE {
+                open
+            } else {
+                v
+            }
+        };
+        self.clip = Some(super::ClipRegion {
+            frame: index as i32,
+            lbnd: lbnd.iter().map(|&v| open(v, -f64::MAX)).collect(),
+            ubnd: ubnd.iter().map(|&v| open(v, f64::MAX)).collect(),
+        });
+        Ok(())
+    }
+
+    // C: Clip (plot.c:7030), with AST__NOFRAME.
+    fn clear_clip_region(&mut self) -> AstResult<()> {
+        self.check_base_2d("astClip")?;
+        self.clip = None;
+        Ok(())
     }
 
     // C: BoundingBox (plot.c:5228).
