@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "ast.h"
 
 /* Protected entry points, called with real object pointers. */
@@ -34,6 +35,9 @@ static const double dist_up[] = { 0.0, 0.125, 0.25, 0.5, 0.5, 0.75, 0.9999, 1.0 
 static const double dist_mixed[] = { 0.9, 0.1, 0.6, 0.3, 1.0, 0.0, 0.45 };
 #define NUP ( (int)( sizeof( dist_up ) / sizeof( dist_up[ 0 ] ) ) )
 #define NMIXED ( (int)( sizeof( dist_mixed ) / sizeof( dist_mixed[ 0 ] ) ) )
+/* Non-decreasing but for a NaN, which no comparison finds out of order. */
+static const double dist_nan[] = { 0.0, 0.1, 0.3, NAN, 0.5, 0.7, 0.9 };
+#define NNAN ( (int)( sizeof( dist_nan ) / sizeof( dist_nan[ 0 ] ) ) )
 
 static char dump[ 200000 ];
 static int status = 0;
@@ -59,6 +63,7 @@ static void str( const char *s ) {
 static void flit( double value ) {
    char buf[ 40 ];
    if( value == AST__BAD ) { fputs( "BAD", stdout ); return; }
+   if( isnan( value ) ) { fputs( "f64::NAN", stdout ); return; }
    snprintf( buf, sizeof( buf ), "%.17g", value );
    fputs( buf, stdout );
    if( !strpbrk( buf, ".en" ) ) fputs( ".0", stdout );
@@ -184,6 +189,10 @@ static AstRegion *make_region( const char *id ) {
    if( !strcmp( id, "moc_mixed" ) ) return moc( "2/6 3/28-29" );
    if( !strcmp( id, "moc_diag" ) ) return moc( "4/0 4/3" );
    if( !strcmp( id, "moc_empty" ) ) return moc( NULL );
+   if( !strcmp( id, "moc_hole" ) ) return moc( "3/0-2,4-5,7-8,10-11,13-15" );
+   if( !strcmp( id, "moc_hole_corner" ) ) return moc( "3/1-2,4-15" );
+   if( !strcmp( id, "moc_touch" ) ) return moc( "3/0-3,12-15" );
+   if( !strcmp( id, "moc_big" ) ) return moc( "4/0-2,4-15,17,19-63" );
    if( !strcmp( id, "moc_gal" ) ) return galactic( "moc_block" );
    if( !strcmp( id, "pointlist" ) ) {
       double p[] = { 0.0, 1.0,  0.0, 1.0 };
@@ -228,6 +237,7 @@ static AstRegion *make_region( const char *id ) {
    if( !strcmp( id, "or_disjoint" ) ) return cmp( "cA", "cB", AST__OR );
    if( !strcmp( id, "and_negbox" ) ) return cmp( "cA", "neg_bA", AST__AND );
    if( !strcmp( id, "or_negbox" ) ) return cmp( "cA", "neg_bA", AST__OR );
+   if( !strcmp( id, "or_disjoint_neg" ) ) return negated( "or_disjoint" );
    if( !strcmp( id, "nested" ) ) return cmp( "or_cb", "cC", AST__AND );
    if( !strcmp( id, "or_three" ) ) return cmp( "or_disjoint", "cC", AST__OR );
    if( !strcmp( id, "or_sky" ) ) return cmp( "sky_c1", "sky_b1", AST__OR );
@@ -254,6 +264,7 @@ static const char *trace_ids[] = {
    "interval2d", "interval_open", "interval_excl", "interval1d", "interval_sky_gal",
    "polygon_quad", "polygon_hept", "polygon_sky", "polygon_sky_gal", "polygon_neg",
    "moc_cell", "moc_block", "moc_two", "moc_mixed", "moc_diag", "moc_empty", "moc_gal",
+   "moc_hole", "moc_hole_corner", "moc_touch", "moc_big",
    "pointlist",
 };
 
@@ -266,8 +277,12 @@ static const char *cmp_trace_ids[] = {
    second component never fills; only the support flag is defined. */
 static const char *cmp_undefined_ids[] = { "or_pointlist2" };
 
+/* Regions traced at dist_nan: a Polygon with enough vertices to test
+   whether the distances are in order. */
+static const char *nan_ids[] = { "polygon_hept" };
+
 static const char *split_ids[] = {
-   "circle2d", "or_cb", "or_disjoint", "or_three", "and_cb", "or_negbox",
+   "circle2d", "or_cb", "or_disjoint", "or_disjoint_neg", "or_three", "and_cb", "or_negbox",
    "or_unbounded", "or_sky_disjoint", "or_sky_disjoint_gal", "and_sky_gal",
 };
 
@@ -337,6 +352,8 @@ int main( void ) {
    for( i = 0; i < NMIXED; i++ ) {
       flit( dist_mixed[ i ] ); printf( i < NMIXED - 1 ? ", " : "" );
    }
+   printf( "];\n\n/// Non-decreasing distances but for a NaN.\npub const DIST_NAN: &[f64] = &[" );
+   for( i = 0; i < NNAN; i++ ) { flit( dist_nan[ i ] ); printf( i < NNAN - 1 ? ", " : "" ); }
    printf( "];\n\n" );
 
    printf( "/// Regions of the classes with their own tracing, and some without.\n" );
@@ -351,6 +368,17 @@ int main( void ) {
       AstRegion *reg = make_region( cmp_undefined_ids[ k ] );
       int ok = astRegTrace_( astMakePointer( reg ), 0, NULL, NULL, &status );
       printf( "    (\"%s\", %s),\n", cmp_undefined_ids[ k ], ok ? "true" : "false" );
+      reg = astAnnul( reg );
+   }
+   printf( "];\n\n" );
+
+   printf( "/// `(region id, positions at DIST_NAN)`.\n"
+           "pub const NAN_CASES: &[(&str, &[&[f64]])] = &[\n" );
+   for( k = 0; k < COUNT( nan_ids ); k++ ) {
+      AstRegion *reg = make_region( nan_ids[ k ] );
+      printf( "    (\"%s\", ", nan_ids[ k ] );
+      positions( reg, NNAN, dist_nan );
+      printf( "),\n" );
       reg = astAnnul( reg );
    }
    printf( "];\n\n" );

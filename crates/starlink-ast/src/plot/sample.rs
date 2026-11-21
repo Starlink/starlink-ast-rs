@@ -61,7 +61,7 @@ impl Plot {
         norm: bool,
     ) -> AstResult<(PointSet, PointSet)> {
         let graph = graph_grid(dim, disk, xlo, xhi, ylo, yhi);
-        let phys = self.trans_with(frm, &graph, true, norm)?;
+        let phys = self.trans_with(None, frm, &graph, true, norm)?;
         Ok((graph, phys))
     }
 }

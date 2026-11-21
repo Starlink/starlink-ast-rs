@@ -21,7 +21,7 @@ use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, FrameSet, simplify_fram
 use crate::mappings::helpers::{is_bad, point_has_bad};
 use crate::mappings::{DynMapping, Mapping, ViaSimplify};
 
-use super::data::{RegionData, RegionGeometry};
+use super::data::{ClassCache, RegionData, RegionGeometry};
 use super::{CmpOperator, DynRegion, NullRegion, NullRegionBuilder, Overlap, Region};
 
 /// A combination of two Regions within a single Frame.
@@ -791,9 +791,10 @@ impl RegionGeometry for CmpRegion {
 // ============================================================================
 
 /// Where the boundary of one component of a CmpRegion is part of the
-/// CmpRegion's boundary (cmpregion.c `SetBreakInfo`, which keeps these on
-/// the object until it changes; here they are found when needed).
-struct BreakInfo {
+/// CmpRegion's boundary (cmpregion.c `SetBreakInfo`), kept in the Region's
+/// class cache until the Region changes.
+#[derive(Debug, Clone)]
+pub(crate) struct BreakInfo {
     /// The distance round the used parts of the boundary at each break.
     rvals: Vec<f64>,
     /// The distance round the whole boundary skipped at each break.
@@ -835,6 +836,29 @@ impl CmpRegion {
         } else {
             reg.copy_region()
         }
+    }
+
+    /// [`break_info`](Self::break_info), from the class cache if it has
+    /// been found before.
+    fn cached_break_info(&self, comp: usize) -> AstResult<Option<BreakInfo>> {
+        if let Some(ClassCache::CmpRegion { breaks }) = &*self.data.class_cache.borrow()
+            && let Some(info) = &breaks[comp]
+        {
+            return Ok(Some(info.clone()));
+        }
+        let info = self.break_info(comp)?;
+        if info.is_some() {
+            let mut cache = self.data.class_cache.borrow_mut();
+            if !matches!(*cache, Some(ClassCache::CmpRegion { .. })) {
+                *cache = Some(ClassCache::CmpRegion {
+                    breaks: [None, None],
+                });
+            }
+            if let Some(ClassCache::CmpRegion { breaks }) = &mut *cache {
+                breaks[comp] = info.clone();
+            }
+        }
+        Ok(info)
     }
 
     /// cmpregion.c `SetBreakInfo` for component `comp` (0 or 1): which parts
@@ -966,7 +990,7 @@ impl Region for CmpRegion {
             return Ok(None);
         }
         super::traced_positions(&self.data.frameset, dist, || {
-            let info = [self.break_info(0)?, self.break_info(1)?];
+            let info = [self.cached_break_info(0)?, self.cached_break_info(1)?];
             // A component that cannot be traced keeps C's initial values.
             let d0 = info
                 .each_ref()
@@ -1039,7 +1063,10 @@ impl Region for CmpRegion {
     /// the Frame the CmpRegion represents.
     ///
     /// The whole CmpRegion, already in that Frame, is mapped too, which
-    /// changes nothing while that Mapping is a UnitMap.
+    /// changes nothing while that Mapping is a UnitMap. As in C, the
+    /// CmpRegion's own Negated is not looked at, so a negated OR splits into
+    /// the parts of the area it excludes; they have the same boundary, which
+    /// is all a Plot draws from them.
     fn reg_split(&self) -> AstResult<Vec<DynRegion>> {
         let mut list: Vec<Option<DynRegion>> = Vec::new();
         let mut unbounded = false;

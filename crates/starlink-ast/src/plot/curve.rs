@@ -16,11 +16,13 @@ use super::elements::PlotElement;
 use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::frames::FrameRef;
 use crate::frames::{AxisKind, Frame};
 use crate::grf::{Grf, GrfPrimitive};
-use crate::mappings::Mapping;
 use crate::mappings::helpers::ast_equals;
+use crate::mappings::{DynMapping, Mapping};
 use crate::math::{log10, powf, sqrt};
+use crate::regions::{DynRegion, any_as_region, remove_regions};
 
 /// The number of segments the tracer divides a curve into at each level.
 // C: CRV_NSEG.
@@ -110,6 +112,11 @@ pub(crate) enum CurveMap {
     /// 0 to `(x0 + dx, y0 + dy)` at 1, bad where the physical position is.
     // C: Map2, with Map2_x0, Map2_y0, Map2_deltax and Map2_deltay.
     Line { x0: f64, y0: f64, dx: f64, dy: f64 },
+    /// The boundary of a Region in the current Frame, as the Region traces
+    /// it, mapped into graphics coordinates by `map`, the Plot's base to
+    /// current Mapping with any Regions in it removed.
+    // C: Map5, with Map5_region and Map5_map.
+    Region { region: DynRegion, map: DynMapping },
 }
 
 /// The state the tracer keeps while drawing one curve.
@@ -496,7 +503,7 @@ impl Plot {
                     y[i] = y0 + deltay * di;
                 }
                 let graph = PointSet::from_columns(&[x, y])?;
-                let phys = self.trans_with(None, &graph, true, false)?;
+                let phys = self.trans_with(None, None, &graph, true, false)?;
                 for j in 0..phys.ncoord() {
                     for (i, &p) in phys.axis(j).iter().enumerate() {
                         if p == BAD_VALUE {
@@ -505,6 +512,21 @@ impl Plot {
                         }
                     }
                 }
+                Ok(())
+            }
+            // C: Map5 (plot.c:22536). A part of a split Region that cannot
+            // be traced, which C reads from an array nothing filled, is bad.
+            CurveMap::Region { region, map } => {
+                let phys = region.reg_trace(d)?.unwrap_or_else(|| {
+                    let mut bad = PointSet::zeros(d.len(), region.naxes());
+                    for j in 0..bad.ncoord() {
+                        bad.axis_mut(j).fill(BAD_VALUE);
+                    }
+                    bad
+                });
+                let graph = self.trans_with(Some(map.as_ref()), None, &phys, false, true)?;
+                x.copy_from_slice(graph.axis(0));
+                y.copy_from_slice(graph.axis(1));
                 Ok(())
             }
         }
@@ -876,12 +898,11 @@ impl Plot {
         self.grf_attrs(grf, gridid, false, GrfPrimitive::Line)?;
         Ok(cdata)
     }
-    /// Trace a curve with the tracer state `crv`, from distance 0 to 1,
-    /// returning where it breaks.
-    // C: the part AxPlot (plot.c:4575), LinePlot (:21288) and DrawRegion
-    // (:9583) share: Crv over CRV_NPNT points, Opoly, the final break and
-    // PurgeCdata.
-    pub(crate) fn trace(&mut self, map: &CurveMap, crv: &mut Crv) -> AstResult<CurveData> {
+    /// Trace a curve with the tracer state `crv` from distance 0 to 1, and
+    /// end the polyline.
+    // C: Crv over CRV_NPNT points and Opoly, which DrawRegion (plot.c:9583)
+    // does for each part of a Region without the rest of `trace`.
+    fn trace_curve(&mut self, map: &CurveMap, crv: &mut Crv) -> AstResult<()> {
         let d: Vec<f64> = (0..CRV_NPNT).map(|i| i as f64 / CRV_NSEG as f64).collect();
         let mut x = vec![0.0; CRV_NPNT];
         let mut y = vec![0.0; CRV_NPNT];
@@ -892,6 +913,53 @@ impl Plot {
         };
         self.crv(map, crv, &mut shared, &d, &x, &y, false, None)?;
         self.opoly();
+        Ok(())
+    }
+
+    /// Trace the outline of the current Frame if it is a Region whose class
+    /// can trace its boundary, each part of it that does not overlap the
+    /// others in turn, returning whether it was traced.
+    // C: DrawRegion (plot.c:9583). One tracer state serves every part, as
+    // C sets the Crv globals once before its loop.
+    pub(crate) fn draw_region(
+        &mut self,
+        grf: &mut dyn Grf,
+        method: &'static str,
+    ) -> AstResult<bool> {
+        let Some(region) = any_as_region(self.frameset.current().as_any()) else {
+            return Ok(false);
+        };
+        if region.reg_trace(&[])?.is_none() {
+            return Ok(false);
+        }
+        let region = region.copy_region();
+        let map = remove_regions(
+            self.frameset
+                .mapping(FrameRef::Base, FrameRef::Current)?
+                .as_ref(),
+        );
+        // A tenth of the usual tolerance, since a Region's edges, a
+        // Polygon's especially, can be crinkly.
+        let tol = 0.1 * self.tol() * dmax(self.xhi - self.xlo, self.yhi - self.ylo);
+        self.g_scales(grf)?;
+        let mut crv = Crv::new(self, tol, 2.0 * tol, true, method)?;
+        for part in region.reg_split()? {
+            let curve = CurveMap::Region {
+                region: part,
+                map: map.clone(),
+            };
+            self.trace_curve(&curve, &mut crv)?;
+        }
+        Ok(true)
+    }
+
+    /// Trace a curve with the tracer state `crv`, from distance 0 to 1,
+    /// returning where it breaks.
+    // C: the part AxPlot (plot.c:4575), LinePlot (:21288) and DrawRegion
+    // (:9583) share: Crv over CRV_NPNT points, Opoly, the final break and
+    // PurgeCdata.
+    pub(crate) fn trace(&mut self, map: &CurveMap, crv: &mut Crv) -> AstResult<CurveData> {
+        self.trace_curve(map, crv)?;
         if crv.out {
             crv.nbrk = 0;
             crv.len = 0.0;

@@ -3,19 +3,18 @@
 
 //! The border round the regions of valid coordinates.
 // C: plot.c Border (:5062), Boundary (:4870) and TraceBorder (:27696).
-// DrawRegion (:9583), which traces the edge of a current Frame that is a
-// Region with the Region's RegTrace and RegSplit, is not ported: those
-// methods come with stage 5 of 2026-10-30-plot-design.md, and until then
-// the border of a Plot whose current Frame is a Region is an error.
+// A current Frame that is a Region is traced by DrawRegion (:9583), in
+// curve.rs, where its class can trace its boundary.
 
 use super::Plot;
 use super::elements::PlotElement;
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::frames::FrameRef;
 use crate::grf::{Grf, GrfPrimitive};
 use crate::mappings::Mapping;
-use crate::math::powf;
-use crate::regions::any_as_region;
+use crate::math::{powf, sqrt};
+use crate::regions::{any_as_region, remove_regions};
 
 impl Plot {
     // C: Border (plot.c:5062).
@@ -62,7 +61,7 @@ impl Plot {
         self.line_plot(grf, xhi, ylo, xhi, yhi, true, "astBorder")?;
         self.line_plot(grf, xhi, yhi, xlo, yhi, true, "astBorder")?;
         self.line_plot(grf, xlo, yhi, xlo, ylo, true, "astBorder")?;
-        let inval = self.boundary()?;
+        let inval = self.boundary(grf)?;
         self.fpoly(grf)?;
         self.grf_attrs(grf, PlotElement::Border, false, GrfPrimitive::Line)?;
         Ok(inval)
@@ -73,13 +72,9 @@ impl Plot {
     /// found.
     // C: Boundary (plot.c:4870). C disables astRate while tracing, for
     // speed; the port's Mappings have no such switch.
-    fn boundary(&mut self) -> AstResult<bool> {
-        if any_as_region(self.frameset.current().as_any()).is_some() {
-            return Err(AstError::new(
-                ErrorCode::Inter,
-                "astBorder(Plot): The border of a Plot whose current Frame is a Region cannot \
-                 be drawn yet.",
-            ));
+    fn boundary(&mut self, grf: &mut dyn Grf) -> AstResult<bool> {
+        if self.draw_region(grf, "astBorder")? {
+            return Ok(false);
         }
         let mut tol = 0.25 * self.tol();
         // C: `(int) 4*pow( tol, power ) + 10`, which casts only the 4.
@@ -89,9 +84,32 @@ impl Plot {
         let dx = (self.xhi - self.xlo).abs();
         let dy = (self.xhi - self.xlo).abs();
         tol *= if dx > dy { dx } else { dy };
+
+        // For a Region, a grid as fine over the graphics bounds of the
+        // Region as the usual grid is over the plotting area.
+        let (lbnd, ubnd) = if let Some(region) = any_as_region(self.frameset.current().as_any()) {
+            let mut map = self.frameset.mapping(FrameRef::Base, FrameRef::Current)?;
+            map.invert();
+            let rmap = remove_regions(map.as_ref());
+            let breg = region.reg_map_region(rmap.as_ref(), self.frameset.base())?;
+            let (lbnd, ubnd) = breg.get_region_bounds()?;
+            let rat = ((ubnd[0] - lbnd[0]) * (ubnd[1] - lbnd[1]))
+                / ((self.xhi - self.xlo) * (self.yhi - self.ylo));
+            dim = ((sqrt(rat) * f64::from(dim)) as i32).clamp(3, 2000);
+            ([lbnd[0], lbnd[1]], [ubnd[0], ubnd[1]])
+        } else {
+            ([self.xlo, self.ylo], [self.xhi, self.yhi])
+        };
         let mut edges = [false; 4];
-        let (xlo, xhi, ylo, yhi) = (self.xlo, self.xhi, self.ylo, self.yhi);
-        self.trace_border(xlo, xhi, ylo, yhi, dim as usize, tol, &mut edges)
+        self.trace_border(
+            lbnd[0],
+            ubnd[0],
+            lbnd[1],
+            ubnd[1],
+            dim as usize,
+            tol,
+            &mut edges,
+        )
     }
 
     /// Draw the boundary between valid and invalid physical coordinates in

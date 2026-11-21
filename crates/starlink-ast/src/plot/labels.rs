@@ -619,7 +619,7 @@ impl Plot {
             p1.axis_mut(axis)[0] = phy[axis] - delta;
             p1.axis_mut(axis)[2] = phy[axis] + delta;
         }
-        let p2 = self.trans_with(None, &p1, false, false)?;
+        let p2 = self.trans_with(None, None, &p1, false, false)?;
         let (x, y) = (p2.axis(0), p2.axis(1));
         *g = (x[1], y[1]);
         let (gx, gy) = *g;

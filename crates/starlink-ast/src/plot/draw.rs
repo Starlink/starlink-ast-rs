@@ -59,8 +59,6 @@ pub trait Draw {
     /// - `ErrorCode::Vsmal`, `ErrorCode::Zerax`, `ErrorCode::Attin` or
     ///   `ErrorCode::Plfmt` when no usable ticks or labels can be found for
     ///   an axis.
-    /// - `ErrorCode::Inter` when the current Frame is a Region, whose
-    ///   border cannot be drawn yet.
     /// - Any error the backend reports.
     #[doc(alias = "astGrid")]
     fn draw_grid(&mut self, grf: &mut dyn Grf) -> AstResult<()>;
@@ -103,6 +101,17 @@ pub trait Draw {
     /// [`tol`](Plot::tol). Returns whether any invalid coordinates were
     /// found.
     ///
+    /// When the current Frame is a Region, the boundary inside the
+    /// plotting area is the edge of the Region. A Region that can trace its
+    /// own boundary is drawn along it, part by part where it splits into
+    /// parts that do not overlap, and the result is then false. Those that
+    /// cannot are a PointList, a NullRegion, a Prism, the STC Regions, an
+    /// Interval with an open or excluded limit, a Region defined in a Frame
+    /// that is not 2-D, and a CmpRegion whose first component cannot. A
+    /// CmpRegion whose second component cannot trace its boundary draws no
+    /// border along that component, as the C library's tracing of it is
+    /// undefined.
+    ///
     /// A current Frame of more than two axes is drawn through its first
     /// two.
     ///
@@ -110,8 +119,6 @@ pub trait Draw {
     ///
     /// - `ErrorCode::Naxin` when the base Frame, or the current Frame, has
     ///   fewer or more than two axes.
-    /// - `ErrorCode::Inter` when the current Frame is a Region, whose
-    ///   border cannot be drawn yet.
     /// - `ErrorCode::Cvbrk` when an edge has more than 1000 breaks.
     /// - Any error the backend reports.
     #[doc(alias = "astBorder")]
