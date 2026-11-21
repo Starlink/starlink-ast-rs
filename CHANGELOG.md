@@ -27,6 +27,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Changed
 
+- `starlink-ast`: the minimum supported Rust version is now 1.87, which `nalgebra` 0.34 requires; the 1.85 declared before was not enough to build `starlink-ast` with it.
 - `starlink-ast`: `AnyObject` is `#[non_exhaustive]`, so the classes still to be added to it will not each be a breaking change; a `match` on it needs a wildcard arm.
 - `starlink-ast`: building no longer needs a C compiler: PAL and ERFA are now Rust, bit for bit the results of the C they replace.
 - `starlink-ast`: WcsMap projections give upstream wcslib 8.10's results where the wcslib code AST carries had differed: QSC within 0.008 degrees of face 4's centre, HPX with H and K other than 4 and 3, at the poles, on facet edges and at native longitude +180, ZPN with a degree-2 polynomial on the far side (now bad), PCO near the equator, COP at the poles, and MER near the pole.

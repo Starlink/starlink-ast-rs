@@ -176,7 +176,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
             for (i, p) in parts.iter().enumerate() {
                 cards.push_str(p);
                 if i + 1 < parts.len() {
-                    while cards.len() % 80 != 0 {
+                    while !cards.len().is_multiple_of(80) {
                         cards.push(' ');
                     }
                 }

@@ -191,7 +191,7 @@ on those grounds; do not re-prototype it without new motivation.
 
 ## Code style
 
-- Rust 2024 edition. MSRV pinned in `rust-toolchain.toml`.
+- Rust 2024 edition. The MSRV is the workspace `rust-version` in `Cargo.toml`; `rust-toolchain.toml` selects stable.
 - Lints: `#![warn(missing_docs)]` on all public items in `starlink-ast`.
   CI enables `RUSTFLAGS="-D warnings"`.
 - Every source file we own (`.rs`, `.c`, `.h`, `.py`, `.sh`) opens with
