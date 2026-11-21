@@ -9,17 +9,15 @@
 //! keeps the value for every later one in that thread (it is held in the
 //! thread's FitsChan class table), then applies it with `astSet` before the
 //! constructor's own options.
-//! Only the settings of a FitsChan's attributes are recognized; the
-//! splitting of the string and the matching of each setting are those of
+//! The settings are applied as an attribute string is, through
 //! `crate::attributes`.
 
 use std::cell::OnceCell;
 
-use super::{AltAxes, Encoding, FitsChan};
-use crate::attributes::{
-    abbreviates, double_value, int_value, read_only_set, split_settings, string_value, unknown_set,
-};
-use crate::error::{AstError, AstResult, ErrorCode};
+use super::FitsChan;
+use crate::attributes::channel::fitschan_set;
+use crate::attributes::split_settings;
+use crate::error::AstResult;
 
 thread_local! {
     /// The value of `FITSCHAN_OPTIONS` when this thread made its first
@@ -51,166 +49,16 @@ pub(super) fn env_options() -> Option<String> {
 /// written, without that expansion.
 pub(super) fn apply(fc: &mut FitsChan, settings: &str) -> AstResult<()> {
     for assignment in split_settings(settings) {
-        set_attrib(fc, &assignment)?;
+        fitschan_set(fc, &assignment)?;
     }
     Ok(())
-}
-
-/// The FitsChan, Channel and Object `SetAttrib` methods in turn: apply one
-/// `name=value` setting, the name in lower case.
-fn set_attrib(fc: &mut FitsChan, setting: &str) -> AstResult<()> {
-    let is = |name: &str| string_value(setting, name).is_some();
-    // FitsChan.
-    if let Some(v) = int_value(setting, "card") {
-        fc.set_card(i64::from(v))
-    } else if let Some(v) = string_value(setting, "encoding") {
-        // C tries the names in this order, each with `-` and with `_`.
-        const NAMES: [(&str, Encoding); 8] = [
-            ("NATIVE", Encoding::Native),
-            ("FITS-PC", Encoding::FitsPc),
-            ("FITS-WCS", Encoding::FitsWcs),
-            ("FITS-IRAF", Encoding::FitsIraf),
-            ("FITS-AIPS", Encoding::FitsAips),
-            ("FITS-AIPS++", Encoding::FitsAipsPP),
-            ("FITS-CLASS", Encoding::FitsClass),
-            ("DSS", Encoding::Dss),
-        ];
-        let enc = NAMES.iter().find_map(|&(name, enc)| {
-            (abbreviates(v, name) || abbreviates(v, &name.replace('-', "_"))).then_some(enc)
-        });
-        match enc {
-            Some(enc) => {
-                fc.set_encoding(enc);
-                Ok(())
-            }
-            None => Err(AstError::new(
-                ErrorCode::Badat,
-                format!(
-                    "astSet(FitsChan): Unknown encoding system '{v}' requested for a FitsChan."
-                ),
-            )),
-        }
-    } else if let Some(v) = string_value(setting, "altaxes") {
-        let alt = [AltAxes::None, AltAxes::Ident, AltAxes::All]
-            .into_iter()
-            .find(|a| abbreviates(v, a.name()));
-        match alt {
-            Some(a) => {
-                fc.set_alt_axes(a);
-                Ok(())
-            }
-            None => Err(AstError::new(
-                ErrorCode::Badat,
-                format!("astSet(FitsChan): Illegal value '{v}' supplied for attribute AltAxes."),
-            )),
-        }
-    } else if let Some(v) = int_value(setting, "fitsdigits") {
-        fc.set_fits_digits(v);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "fitsrounding") {
-        fc.set_fits_rounding(v);
-        Ok(())
-    } else if let Some(v) = string_value(setting, "fitsaxisorder") {
-        fc.set_fits_axis_order(v);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "cdmatrix") {
-        fc.set_cd_matrix(v != 0);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "defb1950") {
-        fc.set_def_b1950(v != 0);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "tabok") {
-        fc.set_tab_ok(v);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "forcetab") {
-        fc.set_force_tab(v);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "ignorebadalt") {
-        fc.set_ignore_bad_alt(v != 0);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "carlin") {
-        fc.set_car_lin(v != 0);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "sipreplace") {
-        fc.set_sip_replace(v != 0);
-        Ok(())
-    } else if let Some(v) = double_value(setting, "fitstol") {
-        fc.set_fits_tol(v);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "polytan") {
-        fc.set_poly_tan(v);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "sipok") {
-        fc.set_sip_ok(v != 0);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "iwc") {
-        fc.set_iwc(v != 0);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "clean") {
-        fc.set_clean(v != 0);
-        Ok(())
-    } else if let Some(v) = string_value(setting, "warnings") {
-        fc.set_warning_conditions(v)
-    } else if [
-        "ncard",
-        "cardtype",
-        "cardcomm",
-        "cardname",
-        "nkey",
-        "allwarnings",
-    ]
-    .into_iter()
-    .any(is)
-    {
-        Err(read_only_set(setting, "FitsChan"))
-    // Channel.
-    } else if let Some(v) = int_value(setting, "comment") {
-        fc.config.set_comment(v != 0);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "full") {
-        fc.config.set_full(v);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "indent") {
-        fc.config.set_indent(v);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "reportlevel") {
-        fc.config.set_report_level(v);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "skip") {
-        fc.config.set_skip(v != 0);
-        Ok(())
-    } else if let Some(v) = string_value(setting, "sinkfile") {
-        fc.set_sink_file(v);
-        Ok(())
-    } else if let Some(v) = string_value(setting, "sourcefile") {
-        fc.set_source_file(v)
-    } else if let Some(v) = int_value(setting, "strict") {
-        fc.config.set_strict(v != 0);
-        Ok(())
-    // Object.
-    } else if let Some(v) = string_value(setting, "id") {
-        fc.set_id(v);
-        Ok(())
-    } else if let Some(v) = string_value(setting, "ident") {
-        fc.set_ident(v);
-        Ok(())
-    } else if let Some(v) = int_value(setting, "usedefs") {
-        // Nothing a FitsChan does reads UseDefs, but its dump holds it.
-        fc.use_defs = Some(v != 0);
-        Ok(())
-    } else if ["class", "nobject", "objsize", "refcount"]
-        .into_iter()
-        .any(is)
-    {
-        Err(read_only_set(setting, "FitsChan"))
-    } else {
-        Err(unknown_set(setting, "FitsChan"))
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorCode;
+    use crate::fitschan::Encoding;
 
     /// A FitsChan with `settings` applied, or the error.
     fn with(settings: &str) -> AstResult<FitsChan> {

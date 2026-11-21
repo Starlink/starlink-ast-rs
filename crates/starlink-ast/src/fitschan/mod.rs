@@ -1993,6 +1993,17 @@ impl FitsChan {
         self.encoding = None;
     }
 
+    /// The UseDefs attribute when it is set. Nothing a FitsChan does reads
+    /// it, but its dump holds it.
+    pub(crate) fn stored_use_defs(&self) -> Option<bool> {
+        self.use_defs
+    }
+
+    /// Set or clear the UseDefs attribute.
+    pub(crate) fn store_use_defs(&mut self, value: Option<bool>) {
+        self.use_defs = value;
+    }
+
     /// Whether [Encoding](Self::encoding) has been set.
     pub fn test_encoding(&self) -> bool {
         self.encoding.is_some()

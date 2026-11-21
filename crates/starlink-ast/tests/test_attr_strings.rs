@@ -22,7 +22,7 @@ use cases::{CASES, Case, Op, Out};
 use starlink_ast::attributes::Attributes;
 use starlink_ast::error::{AstResult, ErrorCode};
 use starlink_ast::frames::Frame;
-use starlink_ast::{AnyObject, from_native_string};
+use starlink_ast::{AnyObject, FitsChan, from_native_string};
 
 /// Operations whose C outcome the Rust library cannot give, by case and
 /// operation, each with its reason.
@@ -83,6 +83,7 @@ const SPECTRAL: &[&str] = &["spec_", "dsb_"];
 const TIME_AND_COMPOUND: &[&str] = &["time_", "cmp_"];
 const FRAMESET: &[&str] = &["fs_"];
 const PLOT: &[&str] = &["plot_"];
+const FITSCHAN: &[&str] = &["fc_"];
 
 /// What the Rust library did with an operation.
 #[derive(Debug, Clone, PartialEq)]
@@ -149,13 +150,33 @@ fn apply(target: &mut dyn Frame, op: Op) -> Got {
     }
 }
 
+/// Run a FitsChan case: the FitsChan holds the header's cards, at the
+/// first; a FitsChan has no dump to compare.
+fn run_fitschan(case: &Case) -> (Vec<Got>, String) {
+    let mut fc = FitsChan::new().unwrap();
+    for card in case.object.lines() {
+        fc.put_fits(card, false).unwrap();
+    }
+    fc.clear_card().unwrap();
+    let got = case
+        .ops
+        .iter()
+        .map(|(op, _)| match *op {
+            Op::Set(settings) => Got::of(fc.set_attributes(settings), |()| Got::Done),
+            Op::SetC(name, value) => Got::of(fc.set_attribute(name, value), |()| Got::Done),
+            Op::Get(name) => Got::of(fc.get_attribute(name), Got::Value),
+            Op::Test(name) => Got::of(fc.test_attribute(name), Got::Flag),
+            Op::Clear(names) => Got::of(fc.clear_attributes(names), |()| Got::Done),
+        })
+        .collect();
+    (got, String::new())
+}
+
 /// Run a case: what each operation gave, and the object's dump afterwards.
 fn run(case: &Case) -> (Vec<Got>, String) {
-    assert!(
-        !case.fitschan,
-        "{}: FitsChan cases are not replayed yet",
-        case.name
-    );
+    if case.fitschan {
+        return run_fitschan(case);
+    }
     let mut obj = from_native_string(case.object)
         .unwrap_or_else(|e| panic!("{}: cannot read the object: {e}", case.name));
     assert_eq!(
@@ -246,6 +267,11 @@ fn frameset_names_match_the_c_library() {
 #[test]
 fn plot_names_match_the_c_library() {
     replay(PLOT);
+}
+
+#[test]
+fn fitschan_names_match_the_c_library() {
+    replay(FITSCHAN);
 }
 
 /// C's attribute functions call each other without end for a Top, Bottom
@@ -355,6 +381,7 @@ fn every_case_is_replayed() {
         TIME_AND_COMPOUND,
         FRAMESET,
         PLOT,
+        FITSCHAN,
     ];
     for case in CASES {
         assert!(

@@ -60,7 +60,7 @@ struct op { int kind; const char *a; const char *b; };
 /* Set an attribute, look at it, clear it and look again. */
 #define CYCLE( n, setting ) SET( setting ), SEE( n ), CLEAR( n ), SEE( n )
 
-#define MAXOP 200
+#define MAXOP 400
 struct acase {
    const char *name;
    const char *object;
@@ -879,10 +879,126 @@ static const struct acase cases[] = {
       SET( "LogTicks(1)=1, LabelUnits=1, MinTickLen=0.02, "
            "MajTickLen=0.05, NumLabGap=0.1, Title=Logarithmic axis example" ),
    } },
+
+/* A FitsChan holding a header's cards, positioned at the first: FitsChan's
+   and Channel's attributes. */
+   { "fc_aitoff", "fc_aitoff", {
+      GET( "Class" ), SEE( "Encoding" ), SET( "Encoding=FITS-WCS" ),
+      SEE( "Encoding" ), SET( "Encoding=fits_iraf" ), GET( "Encoding" ),
+      SET( "Encoding=native" ), GET( "Encoding" ), SET( "Encoding=bad" ),
+      SET( "Encoding=FITS-AIPS++" ), GET( "Encoding" ), SET( "Encoding=dss" ),
+      GET( "Encoding" ), SET( "Encoding=FITS-CLASS" ), GET( "Encoding" ),
+      SET( "Encoding=FITS-PC" ), GET( "Encoding" ), SET( "Encoding=FITS-AIPS" ),
+      GET( "Encoding" ), CLEAR( "Encoding" ), SEE( "Encoding" ),
+      SEE( "Card" ), SET( "Card=3" ), SEE( "Card" ), SEE( "CardName" ),
+      SEE( "CardType" ), SEE( "CardComm" ), SEE( "NCard" ), SEE( "NKey" ),
+      SET( "Card=100" ), GET( "Card" ), GET( "CardName" ), GET( "CardType" ),
+      GET( "CardComm" ), CLEAR( "Card" ), SEE( "Card" ), GET( "CardName" ),
+      SEE( "AllWarnings" ), SEE( "Warnings" ), SET( "Warnings=Tnx Zpx" ),
+      SEE( "Warnings" ), SET( "Warnings=nonsense" ), CLEAR( "Warnings" ),
+      SEE( "Warnings" ), SEE( "AltAxes" ), SET( "AltAxes=bad" ),
+      SET( "AltAxes=ident" ), SEE( "AltAxes" ), SET( "AltAxes=n" ),
+      GET( "AltAxes" ), CLEAR( "AltAxes" ), SEE( "AltAxes" ),
+      CLEAR( "NCard" ), CLEAR( "AllWarnings" ), CLEAR( "CardName" ),
+      CLEAR( "CardType" ), CLEAR( "CardComm" ), CLEAR( "NKey" ),
+      SET( "NCard=3" ), SET( "CardName=x" ), SET( "AllWarnings=x" ),
+      SEE( "CarLin" ), CYCLE( "CarLin", "CarLin=1" ),
+      SEE( "FitsDigits" ), CYCLE( "FitsDigits", "FitsDigits=8" ),
+      SET( "FitsDigits=-4" ), GET( "FitsDigits" ),
+      SEE( "FitsRounding" ), CYCLE( "FitsRounding", "FitsRounding=5" ),
+      SEE( "CDMatrix" ), CYCLE( "CDMatrix", "CDMatrix=1" ),
+      SEE( "DefB1950" ), CYCLE( "DefB1950", "DefB1950=0" ),
+      SEE( "TabOK" ), CYCLE( "TabOK", "TabOK=2" ),
+      SEE( "ForceTab" ), CYCLE( "ForceTab", "ForceTab=1" ),
+      SEE( "IgnoreBadAlt" ), CYCLE( "IgnoreBadAlt", "IgnoreBadAlt=1" ),
+      SEE( "SipReplace" ), CYCLE( "SipReplace", "SipReplace=0" ),
+      SEE( "FitsTol" ), CYCLE( "FitsTol", "FitsTol=0.5" ),
+      SEE( "PolyTan" ), CYCLE( "PolyTan", "PolyTan=1" ),
+      SEE( "SipOK" ), CYCLE( "SipOK", "SipOK=0" ),
+      SEE( "Iwc" ), CYCLE( "Iwc", "Iwc=1" ),
+      SEE( "Clean" ), CYCLE( "Clean", "Clean=1" ),
+      SEE( "FitsAxisOrder" ), CYCLE( "FitsAxisOrder", "FitsAxisOrder=<copy>" ),
+      SEE( "Comment" ), CYCLE( "Comment", "Comment=0" ),
+      SEE( "Full" ), CYCLE( "Full", "Full=1" ), SEE( "Indent" ),
+      CYCLE( "Indent", "Indent=2" ), SEE( "ReportLevel" ),
+      CYCLE( "ReportLevel", "ReportLevel=2" ), SEE( "Skip" ),
+      CYCLE( "Skip", "Skip=1" ), SEE( "Strict" ), CYCLE( "Strict", "Strict=1" ),
+      SEE( "SinkFile" ), SEE( "SourceFile" ),
+      CYCLE( "ID", "ID=fc" ), CYCLE( "Ident", "Ident=fits" ),
+      CYCLE( "UseDefs", "UseDefs=0" ), SEE( "Class" ), SET( "Class=x" ),
+      SET( "Fred=1" ), GET( "Fred" ), TEST( "Fred" ), CLEAR( "Fred" ),
+      GET( " " ), SET( "CarLin=1 x" ), SET( "Encoding=FITS-WCS,FitsDigits=8" ),
+      GET( "Encoding" ), GET( "FitsDigits" ),
+   } },
+   { "fc_solar", "fc_solar", {
+      SEE( "NCard" ), SEE( "NKey" ), GET( "Encoding" ), GET( "Card" ),
+      SET( "Card=6" ), GET( "CardName" ), GET( "CardType" ), GET( "CardComm" ),
+      SET( "Card=7" ), GET( "CardName" ), GET( "CardType" ), GET( "CardComm" ),
+      SET( "Card=8" ), GET( "CardName" ), GET( "CardType" ), GET( "CardComm" ),
+      SET( "Card=14" ), GET( "CardName" ), GET( "CardComm" ),
+   } },
 };
+
+/* The header of the CGI page's SOLAR example. */
+static const char *solar_head =
+"SIMPLE  =  T         /Simple FITS file\n"
+"BITPIX  =  -32       /Real*4 (Floating point)\n"
+"NAXIS   =  2         /Two-dimensional image\n"
+"NAXIS1  =  1024      /Number of pixels per column\n"
+"NAXIS2  =  1024      /Number of pixels per row\n"
+"\n"
+"COMMENT Heliocentric-Cartesian coordinates\n"
+"\n"
+"CTYPE1  = 'SOLX    ' /Coordinate axis labels\n"
+"CTYPE2  = 'SOLY    ' /\n"
+"CRPIX1  = 512.5      /Reference pixel is center of CCD\n"
+"CRPIX2  =  512.5     /\n"
+"CUNIT1  = 'solRad  ' /Coordinates are in solar radii\n"
+"CUNIT2  = 'solRad  ' /\n"
+"CD1_1   = 0.00375    /Plate scale in solar radii per pixel\n"
+"CD2_2   = 0.00375    /\n"
+"CRVAL1  = 0.0        /Reference pixel is Sun center\n"
+"CRVAL2  = 0.0        /\n"
+"END";
+
+/* The header text a FitsChan case starts from, held whole. */
+static char headbuf[ 65536 ];
+
+/* The text of a header for a FitsChan case. */
+static const char *head_text( const char *id ) {
+   FILE *fp;
+   size_t n;
+   if( !strcmp( id, "fc_solar" ) ) return solar_head;
+   fp = fopen( HEADS "aitoff.head", "r" );
+   if( !fp ) { fprintf( stderr, "cannot open aitoff.head\n" ); exit( 1 ); }
+   n = fread( headbuf, 1, sizeof( headbuf ) - 1, fp );
+   fclose( fp );
+   while( n > 0 && headbuf[ n - 1 ] == '\n' ) n--;
+   headbuf[ n ] = '\0';
+   return headbuf;
+}
+
+/* A FitsChan holding the lines of a header text, at its first card. */
+static AstFitsChan *make_fitschan( const char *text ) {
+   char line[ 256 ];
+   const char *p = text;
+   AstFitsChan *fc = astFitsChan( NULL, NULL, " " );
+   while( *p ) {
+      size_t n = strcspn( p, "\n" );
+      if( n >= sizeof( line ) ) n = sizeof( line ) - 1;
+      memcpy( line, p, n );
+      line[ n ] = '\0';
+      astPutFits( fc, line, 0 );
+      p += n;
+      if( *p == '\n' ) p++;
+   }
+   astClear( fc, "Card" );
+   return fc;
+}
 
 /* The object a case starts from. */
 static AstObject *make( const char *id ) {
+   if( !strncmp( id, "fc_", 3 ) ) return (AstObject *) make_fitschan( head_text( id ) );
    if( !strcmp( id, "frame2" ) ) return (AstObject *) astFrame( 2, " " );
    if( !strcmp( id, "frame1" ) ) return (AstObject *) astFrame( 1, " " );
    if( !strcmp( id, "sky" ) ) return (AstObject *) astSkyFrame( " " );
@@ -1073,10 +1189,15 @@ int main( void ) {
          fprintf( stderr, "case %s: cannot make the object\n", ac->name );
          return 1;
       }
+      int fitschan = !strncmp( ac->object, "fc_", 3 );
       printf( "    Case {\n        name: " );
       rs( ac->name );
-      printf( ",\n        fitschan: false,\n        object: " );
-      dump( obj );
+      printf( ",\n        fitschan: %s,\n        object: ", fitschan ? "true" : "false" );
+      if( fitschan ) {
+         printf( "r###\"%s\"###", head_text( ac->object ) );
+      } else {
+         dump( obj );
+      }
       printf( ",\n        ops: &[\n" );
       for( op = ac->ops; op->kind != OP_END; op++ ) {
          const char *value;
@@ -1116,7 +1237,11 @@ int main( void ) {
          printf( "),\n" );
       }
       printf( "        ],\n        dump: " );
-      dump( obj );
+      if( fitschan ) {
+         printf( "\"\"" );
+      } else {
+         dump( obj );
+      }
       printf( ",\n    },\n" );
       obj = astAnnul( obj );
    }

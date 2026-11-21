@@ -38,6 +38,7 @@
 // the `AstError`'s message and the others are its context, in order.
 
 pub(crate) mod axis;
+pub(crate) mod channel;
 pub(crate) mod cmpframe;
 pub(crate) mod frame;
 pub(crate) mod frameset;

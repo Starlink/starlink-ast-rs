@@ -3,8 +3,12 @@
 
 //! The public face of attribute strings.
 
-use super::{blank_get, normalise_name, split_setting_c, split_settings, strip_escapes};
+use super::channel::{fitschan_clear, fitschan_get, fitschan_set, fitschan_test};
+use super::{
+    blank_get, normalise_name, split_names, split_setting_c, split_settings, strip_escapes,
+};
 use crate::error::AstResult;
+use crate::fitschan::FitsChan;
 use crate::frames::Frame;
 
 /// Set, get, test and clear an object's attributes by name, from strings.
@@ -129,5 +133,36 @@ impl<T: Frame + ?Sized> Attributes for T {
 
     fn clear_attributes(&mut self, names: &str) -> AstResult<()> {
         self.attr_clear_list(names)
+    }
+}
+
+impl Attributes for FitsChan {
+    fn set_attributes(&mut self, settings: &str) -> AstResult<()> {
+        split_settings(settings)
+            .iter()
+            .try_for_each(|a| fitschan_set(self, a))
+    }
+
+    fn set_attribute(&mut self, name: &str, value: &str) -> AstResult<()> {
+        let (assignments, _) = split_setting_c(name, value);
+        assignments.iter().try_for_each(|a| fitschan_set(self, a))
+    }
+
+    fn get_attribute(&mut self, name: &str) -> AstResult<String> {
+        let name = normalise_name(name);
+        if name.is_empty() {
+            return Err(blank_get("FitsChan"));
+        }
+        Ok(strip_escapes(&fitschan_get(self, &name)?))
+    }
+
+    fn test_attribute(&self, name: &str) -> AstResult<bool> {
+        fitschan_test(self, &normalise_name(name))
+    }
+
+    fn clear_attributes(&mut self, names: &str) -> AstResult<()> {
+        split_names(names)
+            .iter()
+            .try_for_each(|n| fitschan_clear(self, n))
     }
 }
