@@ -117,6 +117,17 @@ pub(crate) enum CurveMap {
     /// current Mapping with any Regions in it removed.
     // C: Map5, with Map5_region and Map5_map.
     Region { region: DynRegion, map: DynMapping },
+    /// The geodesic in the current Frame from `origin` at distance 0 to
+    /// `end` at 1, `scale` being the distance between them, mapped into
+    /// graphics coordinates by `map`, the Plot's base to current Mapping.
+    // C: Map3, with Map3_origin, Map3_end, Map3_scale and Map3_map; Map3's
+    // Frame is the Plot's current Frame, read from the Plot here.
+    Geodesic {
+        origin: Vec<f64>,
+        end: Vec<f64>,
+        scale: f64,
+        map: DynMapping,
+    },
 }
 
 /// The state the tracer keeps while drawing one curve.
@@ -199,6 +210,15 @@ impl Crv {
             nent: 0,
             method,
         })
+    }
+
+    /// Get ready to trace another segment of the same polyline.
+    // C: what PolyCurve resets before each segment; Crv_nbrk and Crv_len
+    // restart in CrvLine once a segment is drawn, since Crv_out is set.
+    pub(crate) fn start_segment(&mut self) {
+        self.ux0 = BAD_VALUE;
+        self.out = true;
+        self.brk = CurveData::default();
     }
 }
 
@@ -524,6 +544,24 @@ impl Plot {
                     }
                     bad
                 });
+                let graph = self.trans_with(Some(map.as_ref()), None, &phys, false, true)?;
+                x.copy_from_slice(graph.axis(0));
+                y.copy_from_slice(graph.axis(1));
+                Ok(())
+            }
+            // C: Map3 (plot.c:22177).
+            CurveMap::Geodesic {
+                origin,
+                end,
+                scale,
+                map,
+            } => {
+                let frame = self.frameset.current();
+                let mut phys = PointSet::zeros(d.len(), origin.len());
+                for (i, &di) in d.iter().enumerate() {
+                    let pos = frame.offset(origin, end, scale * di)?;
+                    phys.set_point(i, &pos);
+                }
                 let graph = self.trans_with(Some(map.as_ref()), None, &phys, false, true)?;
                 x.copy_from_slice(graph.axis(0));
                 y.copy_from_slice(graph.axis(1));
@@ -903,6 +941,16 @@ impl Plot {
     // C: Crv over CRV_NPNT points and Opoly, which DrawRegion (plot.c:9583)
     // does for each part of a Region without the rest of `trace`.
     fn trace_curve(&mut self, map: &CurveMap, crv: &mut Crv) -> AstResult<()> {
+        self.crv_pass(map, crv)?;
+        self.opoly();
+        Ok(())
+    }
+
+    /// Trace a curve with the tracer state `crv` from distance 0 to 1,
+    /// adding to the polyline being built.
+    // C: the map over CRV_NPNT evenly spaced distances and Crv, which
+    // PolyCurve (plot.c:23988) makes for each segment of one polyline.
+    fn crv_pass(&mut self, map: &CurveMap, crv: &mut Crv) -> AstResult<()> {
         let d: Vec<f64> = (0..CRV_NPNT).map(|i| i as f64 / CRV_NSEG as f64).collect();
         let mut x = vec![0.0; CRV_NPNT];
         let mut y = vec![0.0; CRV_NPNT];
@@ -911,9 +959,7 @@ impl Plot {
             limit2: 0.0,
             all_bad: false,
         };
-        self.crv(map, crv, &mut shared, &d, &x, &y, false, None)?;
-        self.opoly();
-        Ok(())
+        self.crv(map, crv, &mut shared, &d, &x, &y, false, None)
     }
 
     /// Trace the outline of the current Frame if it is a Region whose class
@@ -960,6 +1006,14 @@ impl Plot {
     // PurgeCdata.
     pub(crate) fn trace(&mut self, map: &CurveMap, crv: &mut Crv) -> AstResult<CurveData> {
         self.trace_curve(map, crv)?;
+        self.end_curve(crv)
+    }
+
+    /// Finish the description of a traced curve: no breaks if none of it
+    /// was drawn, else a last break where it ended.
+    // C: the tail AxPlot, LinePlot, CurvePlot, GenCurve and PolyCurve share
+    // after Crv, and PurgeCdata.
+    fn end_curve(&mut self, crv: &mut Crv) -> AstResult<CurveData> {
         if crv.out {
             crv.nbrk = 0;
             crv.len = 0.0;
@@ -1061,5 +1115,142 @@ impl Plot {
         self.reset_grf();
         self.draw.curve_data = self.ax_plot(grf, axis - 1, start, length, true, "astGridLine")?;
         self.fpoly(grf)
+    }
+
+    /// The tolerance and tracer state for a curve drawn by `Curve`,
+    /// `GenCurve` or `PolyCurve`.
+    fn curve_crv(&mut self, ink: bool, method: &'static str) -> AstResult<Crv> {
+        let tol = self.tol() * dmax(self.xhi - self.xlo, self.yhi - self.ylo);
+        Crv::new(self, tol, tol, ink, method)
+    }
+
+    /// Fail unless the base Frame is 2-D.
+    pub(crate) fn check_base_2d(&self, method: &str) -> AstResult<()> {
+        let naxes = Mapping::nin(self);
+        if naxes != 2 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "{method}(Plot): Number of axes ({naxes}) in the base Frame of the \
+                     supplied Plot is invalid - this number should be 2."
+                ),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Trace, and draw if `ink`, the geodesic from `start` to `finish` in
+    /// the current Frame, returning where it breaks. Nothing is done if
+    /// either position has a bad value.
+    // C: CurvePlot (plot.c:8782).
+    fn curve_plot(
+        &mut self,
+        grf: &mut dyn Grf,
+        start: &[f64],
+        finish: &[f64],
+        ink: bool,
+        method: &'static str,
+    ) -> AstResult<Option<CurveData>> {
+        let naxes = Mapping::nout(self);
+        if start[..naxes]
+            .iter()
+            .chain(&finish[..naxes])
+            .any(|&v| v == BAD_VALUE)
+        {
+            return Ok(None);
+        }
+        self.grf_attrs(grf, PlotElement::Curves, true, GrfPrimitive::Line)?;
+        self.g_scales(grf)?;
+        let map = CurveMap::Geodesic {
+            origin: start[..naxes].to_vec(),
+            end: finish[..naxes].to_vec(),
+            scale: self
+                .frameset
+                .current()
+                .distance(&start[..naxes], &finish[..naxes])?,
+            map: self.frameset.mapping(FrameRef::Base, FrameRef::Current)?,
+        };
+        let mut crv = self.curve_crv(ink, method)?;
+        let cdata = self.trace(&map, &mut crv)?;
+        self.grf_attrs(grf, PlotElement::Curves, false, GrfPrimitive::Line)?;
+        Ok(Some(cdata))
+    }
+
+    // C: Curve (plot.c:8647).
+    pub(crate) fn curve_impl(
+        &mut self,
+        grf: &mut dyn Grf,
+        start: &[f64],
+        finish: &[f64],
+    ) -> AstResult<()> {
+        const METHOD: &str = "astCurve";
+        self.check_base_2d(METHOD)?;
+        self.reset_boxp();
+        self.reset_grf();
+        let nout = Mapping::nout(self);
+        for (name, pos) in [("start", start), ("finish", finish)] {
+            if pos.len() < nout {
+                return Err(AstError::new(
+                    ErrorCode::Ncpin,
+                    format!(
+                        "{METHOD}(Plot): {} values given for the {name} of the curve, but \
+                         the current Frame has {nout} axes.",
+                        pos.len()
+                    ),
+                ));
+            }
+        }
+        if let Some(cdata) = self.curve_plot(grf, start, finish, true, METHOD)? {
+            self.draw.curve_data = cdata;
+        }
+        self.fpoly(grf)
+    }
+
+    // C: PolyCurve (plot.c:23988).
+    pub(crate) fn poly_curve_impl(
+        &mut self,
+        grf: &mut dyn Grf,
+        positions: &PointSet,
+    ) -> AstResult<()> {
+        const METHOD: &str = "astPolyCurve";
+        self.check_base_2d(METHOD)?;
+        self.reset_boxp();
+        let naxes = Mapping::nout(self);
+        let ncoord = positions.ncoord();
+        if naxes != ncoord {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "{METHOD}(Plot): Number of axes ({naxes}) in the current Frame of the \
+                     supplied Plot is invalid - this number should be {ncoord} (possible \
+                     programming error)."
+                ),
+            ));
+        }
+        self.reset_grf();
+        let map = self.frameset.mapping(FrameRef::Base, FrameRef::Current)?;
+        self.g_scales(grf)?;
+        let mut crv = self.curve_crv(true, METHOD)?;
+        self.grf_attrs(grf, PlotElement::Curves, true, GrfPrimitive::Line)?;
+        for i in 1..positions.npoint() {
+            let start = positions.point(i - 1);
+            let finish = positions.point(i);
+            if start.iter().chain(finish.iter()).any(|&v| v == BAD_VALUE) {
+                continue;
+            }
+            let scale = self.frameset.current().distance(&start, &finish)?;
+            let segment = CurveMap::Geodesic {
+                origin: start.to_vec(),
+                end: finish.to_vec(),
+                scale,
+                map: map.clone(),
+            };
+            crv.start_segment();
+            self.crv_pass(&segment, &mut crv)?;
+            self.draw.curve_data = self.end_curve(&mut crv)?;
+        }
+        self.opoly();
+        self.fpoly(grf)?;
+        self.grf_attrs(grf, PlotElement::Curves, false, GrfPrimitive::Line)
     }
 }

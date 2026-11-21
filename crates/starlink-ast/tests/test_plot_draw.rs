@@ -10,7 +10,10 @@
 //! `plot_border_probe.c`, which draws the borders of the grid test Plots of
 //! `fixtures/plot/cases.txt`, built as C's `testgrid.c` builds them, and
 //! `plot_text_oracle/cases.rs` by `plot_text_probe.c`, which draws text with
-//! each justification, rotated, and with each escape sequence. The port draws the same Plots through
+//! each justification, rotated, and with each escape sequence, and
+//! `plot_methods_oracle/cases.rs` by `plot_methods_probe.c`, which draws
+//! curves, polycurves, curves given by a Mapping, markers and Region
+//! outlines, with and without a clip region. The port draws the same Plots through
 //! [`LogGrf`](starlink_ast::grf::LogGrf) and
 //! [`SvgGrf`](starlink_ast::grf::SvgGrf), and both outputs must be identical.
 
@@ -29,6 +32,12 @@ mod border;
 #[path = "plot_text_oracle/cases.rs"]
 mod text;
 
+#[rustfmt::skip]
+#[allow(dead_code)]
+#[path = "plot_methods_oracle/cases.rs"]
+mod methods;
+
+use starlink_ast::coords::PointSet;
 use starlink_ast::error::{AstResult, ErrorCode};
 use starlink_ast::frames::{BasicFrameBuilder, CmpFrame, FrameRef, SkyFrame, SkySystem};
 use starlink_ast::grf::{Grf, Justification, LogGrf, SvgGrf, SvgOptions};
@@ -102,6 +111,15 @@ impl From<&text::Svg> for WantSvg {
         match svg {
             text::Svg::Text(t) => WantSvg::Text(t),
             text::Svg::Fnv1a(h) => WantSvg::Hash(*h),
+        }
+    }
+}
+
+impl From<&methods::Svg> for WantSvg {
+    fn from(svg: &methods::Svg) -> Self {
+        match svg {
+            methods::Svg::Text(t) => WantSvg::Text(t),
+            methods::Svg::Fnv1a(h) => WantSvg::Hash(*h),
         }
     }
 }
@@ -515,4 +533,71 @@ fn a_copied_plot_starts_with_no_pushed_text_attributes() {
     let mut copy = plot.clone();
     assert!(pop(&mut plot).contains("GAttr COLOUR=3.0000"));
     assert!(!pop(&mut copy).contains("GAttr COLOUR=3.0000"));
+}
+
+/// Draw the operations of a `plot_methods_probe.c` case on `plot`.
+fn run_ops(plot: &mut Plot, grf: &mut dyn Grf, ops: &[methods::Op]) -> AstResult<()> {
+    for op in ops {
+        match op {
+            methods::Op::Curve(start, finish) => plot.draw_curve(grf, start, finish)?,
+            methods::Op::PolyCurve(axes) => {
+                plot.draw_poly_curve(grf, &PointSet::from_columns(axes)?)?
+            }
+            other => unimplemented!("{:?}", std::mem::discriminant(other)),
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn methods_match_the_c_library() {
+    let mut failures = Vec::new();
+    for case in methods::CASES {
+        let mut plot = plot_of(case.head, case.gbox, case.pbox);
+        apply_settings(&mut plot, case.attr).unwrap();
+        let (log, svg) = log_and_svg(&plot, |plot, grf| run_ops(plot, grf, case.ops));
+        compare(
+            case.name,
+            &log,
+            &svg,
+            case.log,
+            (&case.svg).into(),
+            &mut failures,
+        );
+        let mut drawn = plot.clone();
+        run_ops(&mut drawn, &mut LogGrf::new(Vec::new()), case.ops).unwrap();
+        let (lbnd, ubnd) = drawn.bounding_box().unwrap();
+        let got = [lbnd[0], lbnd[1], ubnd[0], ubnd[1]];
+        if got.map(f32::to_bits) != case.bbox.map(f32::to_bits) {
+            failures.push(format!(
+                "{}: bounding box {got:?}, C gives {:?}",
+                case.name, case.bbox
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn draw_curve_rejects_a_short_start() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let err = plot
+        .draw_curve(&mut LogGrf::new(Vec::new()), &[1.0], &[2.0, 3.0])
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Ncpin);
+}
+
+#[test]
+fn draw_poly_curve_rejects_the_wrong_axis_count() {
+    let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
+    let positions = PointSet::from_columns(&[&[1.0, 2.0], &[1.0, 2.0], &[1.0, 2.0]]).unwrap();
+    let err = plot
+        .draw_poly_curve(&mut LogGrf::new(Vec::new()), &positions)
+        .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Naxin);
+    assert_eq!(
+        err.message(),
+        "astPolyCurve(Plot): Number of axes (2) in the current Frame of the supplied Plot is \
+         invalid - this number should be 3 (possible programming error)."
+    );
 }
