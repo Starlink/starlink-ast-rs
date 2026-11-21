@@ -10,4 +10,5 @@
 //! Run it with `cargo run -p ast-plot-demo --release`.
 
 pub mod cases;
+pub mod grf;
 pub mod settings;

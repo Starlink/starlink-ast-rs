@@ -9,6 +9,7 @@ description = "A window that draws Starlink AST Plot grids through egui"
 
 [dependencies]
 starlink-ast = { path = "../starlink-ast" }
+eframe = "0.32"
 
 [lints]
 workspace = true
