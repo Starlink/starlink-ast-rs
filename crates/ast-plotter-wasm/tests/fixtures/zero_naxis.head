@@ -1,0 +1,10 @@
+NAXIS1  =                    0
+NAXIS2  =                    0
+CTYPE1  = 'GLON-AIT'
+CTYPE2  = 'GLAT-AIT'
+CRVAL1  =           -149.56866
+CRVAL2  =           -19.758201
+CRPIX1  =              150.500
+CRPIX2  =              150.500
+CDELT1  =             -1.20000
+CDELT2  =              1.20000

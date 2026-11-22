@@ -20,6 +20,7 @@ exclude: |
   (?x)^(
     crates/starlink-ast/vendor/.*|
     crates/starlink-ast/tests/fixtures/.*|
+    crates/ast-plotter-wasm/tests/fixtures/.*|
     reference/.*
   )$
 

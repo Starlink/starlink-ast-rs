@@ -62,8 +62,8 @@ fn request(
         header: header.to_string(),
         plot_settings: plot_settings.to_string(),
         fitschan_settings: fitschan_settings.to_string(),
-        width: 600,
-        height: 600,
+        width: 600.0,
+        height: 600.0,
         version,
         page_look: false,
     }
@@ -103,6 +103,22 @@ fn cases() -> Vec<(String, PlotRequest)> {
     cases.push((
         "no_wcs".into(),
         request("SIMPLE  =                    T\n", "", "", ' '),
+    ));
+    // Headers the probe makes: AITOFF with no pixels, and a ZoomMap in the
+    // Native encoding.
+    let made = |case: &str| {
+        let path = root().join(format!(
+            "crates/ast-plotter-wasm/tests/fixtures/{case}.head"
+        ));
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    };
+    cases.push((
+        "zero_naxis".into(),
+        request(&made("zero_naxis"), &example("AITOFF").settings, "", ' '),
+    ));
+    cases.push((
+        "native_zoommap".into(),
+        request(&made("native_zoommap"), "", "", ' '),
     ));
     cases
 }
@@ -161,7 +177,7 @@ fn show(r: &Result<String, String>) -> String {
 #[test]
 fn outputs_match_the_c_library() {
     let cases = cases();
-    assert_eq!(cases.len(), 14);
+    assert_eq!(cases.len(), 16);
     let failures: Vec<String> = cases
         .iter()
         .flat_map(|(name, request)| {
@@ -213,19 +229,42 @@ fn markup_in_a_title_is_escaped() {
 fn absurd_sizes_are_errors() {
     let e = example("AITOFF");
     let good = plot(&request(&e.header, &e.settings, "", ' '));
-    for (width, height) in [(0, 600), (600, 15), (4097, 600), (16, 4096)] {
+    let range = "must be a whole number of pixels from 16 to 4096";
+    let cases = [
+        (0.0, 600.0, format!("The image width {range}, not 0.")),
+        (-5.0, 600.0, format!("The image width {range}, not -5.")),
+        (600.5, 600.0, format!("The image width {range}, not 600.5.")),
+        (4097.0, 600.0, format!("The image width {range}, not 4097.")),
+        (
+            1e12,
+            600.0,
+            format!("The image width {range}, not 1000000000000."),
+        ),
+        (
+            f64::NAN,
+            600.0,
+            format!("The image width is not a number; it {range}."),
+        ),
+        (600.0, 15.0, format!("The image height {range}, not 15.")),
+        (
+            0.0,
+            -1.0,
+            format!("The image width {range}, not 0.\nThe image height {range}, not -1."),
+        ),
+    ];
+    for (width, height, message) in cases {
         let mut r = request(&e.header, &e.settings, "", ' ');
         r.width = width;
         r.height = height;
         let result = plot(&r);
-        if width == 16 {
-            assert!(result.svg.is_ok(), "16 by 4096 is allowed");
-        } else {
-            assert!(result.svg.is_err(), "{width} by {height}");
-        }
+        assert_eq!(result.svg, Err(message), "{width} by {height}");
         assert_eq!(result.fits, good.fits);
         assert_eq!(result.ast, good.ast);
     }
+    let mut r = request(&e.header, &e.settings, "", ' ');
+    r.width = 16.0;
+    r.height = 4096.0;
+    assert!(plot(&r).svg.is_ok(), "16 by 4096 is allowed");
 }
 
 #[test]

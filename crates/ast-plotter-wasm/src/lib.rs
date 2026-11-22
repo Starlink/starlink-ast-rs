@@ -37,10 +37,11 @@ pub struct PlotRequest {
     pub plot_settings: String,
     /// FitsChan attribute settings, used when reading the header.
     pub fitschan_settings: String,
-    /// The image width in pixels, from 16 to 4096.
-    pub width: u32,
-    /// The image height in pixels, from 16 to 4096.
-    pub height: u32,
+    /// The image width in pixels: a whole number from 16 to 4096, or the
+    /// grid is an error naming the value given.
+    pub width: f64,
+    /// The image height in pixels, as for the width.
+    pub height: f64,
     /// The version character of the axes to plot: `' '` for the primary
     /// axes, `'$'` for pixel coordinates, or the letter of alternate axes.
     pub version: char,
@@ -194,7 +195,10 @@ fn graphics_box(pbox: [f64; 4]) -> [f32; 4] {
     g[1] += 0.05 * range;
     g[3] -= 0.05 * range;
     let mut asp = ((pbox[3] - pbox[1]) as f32 / (pbox[2] - pbox[0]) as f32).abs();
-    if !(0.2..=5.0).contains(&asp) {
+    // Written as the Fortran tests it, so that a NaN ratio (a plot box with
+    // no area) stays NaN and the Plot reports the box.
+    #[allow(clippy::manual_range_contains)]
+    if asp < 0.2 || asp > 5.0 {
         asp = 1.0;
     }
     if asp > 1.0 {
@@ -209,18 +213,34 @@ fn graphics_box(pbox: [f64; 4]) -> [f32; 4] {
     g
 }
 
+/// An image side in pixels, or the message saying why `value` is not one.
+fn pixels(name: &str, value: f64) -> Result<u32, String> {
+    let range = format!("must be a whole number of pixels from {MIN_SIZE} to {MAX_SIZE}");
+    if value.is_nan() {
+        return Err(format!("The image {name} is not a number; it {range}."));
+    }
+    if value.fract() != 0.0 || value < f64::from(MIN_SIZE) || value > f64::from(MAX_SIZE) {
+        return Err(format!("The image {name} {range}, not {value}."));
+    }
+    // A whole number from 16 to 4096, so the conversion is exact.
+    Ok(value as u32)
+}
+
 /// The annotated grid as SVG.
 fn svg_text(request: &PlotRequest, frame: &dyn Frame, pbox: [f64; 4]) -> Result<String, String> {
-    let sizes = MIN_SIZE..=MAX_SIZE;
-    if !sizes.contains(&request.width) || !sizes.contains(&request.height) {
-        return Err(format!(
-            "The image size {} by {} pixels is outside {MIN_SIZE} to {MAX_SIZE} pixels.",
-            request.width, request.height
-        ));
-    }
+    let (width, height) = match (
+        pixels("width", request.width),
+        pixels("height", request.height),
+    ) {
+        (Ok(w), Ok(h)) => (w, h),
+        (w, h) => {
+            let errors: Vec<String> = [w.err(), h.err()].into_iter().flatten().collect();
+            return Err(errors.join("\n"));
+        }
+    };
     let mut options = SvgOptions::default();
-    options.width = request.width;
-    options.height = request.height;
+    options.width = width;
+    options.height = height;
     options.erase_under_text = request.page_look;
     options.equal_aspect = request.page_look;
     let run = || -> Result<Vec<u8>, AstError> {
@@ -249,9 +269,14 @@ pub fn plot(request: &PlotRequest) -> PlotResult {
     let fits = fits_text(&mut fc, &object);
     let ast = ast_text(&object);
     let svg = select_version(&mut object, request.version).and_then(|()| {
-        let frame = object
-            .as_frame()
-            .ok_or_else(|| "The object read from the header is not a Frame.".to_string())?;
+        // The message C's Plot constructor gives for an object that is not
+        // a Frame, as its pointer check (astMAKE_CHECK) words it.
+        let frame = object.as_frame().ok_or_else(|| {
+            format!(
+                "Pointer to Frame required, but pointer to {} given.",
+                object.class_name()
+            )
+        })?;
         svg_text(request, frame, pbox)
     });
     PlotResult { svg, fits, ast }

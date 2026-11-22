@@ -117,12 +117,11 @@
     );
   }
 
-  // A whole number of pixels for the plotter, which reports one outside 16
-  // to 4096; anything that is not a number is passed as 0.
+  // The size as typed, for the plotter to check: a blank field or text that
+  // is not a number is NaN.
   function pixels(id) {
-    const n = Number($(id).value);
-    if (!Number.isFinite(n) || n < 0) return 0;
-    return Math.min(Math.trunc(n), 0xffffffff);
+    const text = $(id).value.trim();
+    return text === '' ? NaN : Number(text);
   }
 
   async function redraw() {

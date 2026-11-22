@@ -27,5 +27,5 @@ The page is one file holding the HTML, the CSS, the JavaScript, the examples and
 
 ## How it is checked
 
-`crates/ast-plotter-wasm`'s tests compare its three outputs with the C library's, byte for byte, for the eight examples and six other cases, except seven outputs that show port defects, named in `PLOTTER_EXCLUDED` with their reasons; the page draws with two `SvgGrf` settings the comparison leaves off (text drawn over a cleared box, and an equal-aspect square with text sized to it).
+`crates/ast-plotter-wasm`'s tests compare its three outputs with the C library's, byte for byte, for the eight examples and eight other cases, except seven outputs that show port defects, named in `PLOTTER_EXCLUDED` with their reasons; the page draws with two `SvgGrf` settings the comparison leaves off (text drawn over a cleared box, and an equal-aspect square with text sized to it).
 The page itself is checked by eye.

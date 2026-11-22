@@ -13,7 +13,9 @@
  * messages the C library reported, one per line, or fplottest's own message
  * when it prints one in place of the output; the outputs are produced
  * in fplottest's order (FITS, AST, grid), each independently, as the page
- * shows them.
+ * shows them. A case whose header the probe makes rather than takes from
+ * the examples also gets <dir>/<case>.head, its header, for the tests to
+ * read.
  *
  * fplottest.f: https://starlink.eao.hawaii.edu/cgi-bin/ast/file?file=fplottest.f
  * (fetched 2026-11-22). Its PGPLOT window is PGWNAD( 0.0, 1.0, 0.0, 1.0 ),
@@ -120,6 +122,34 @@ static void derive( const char *from, const char *name, const char *settings,
    }
    fprintf( stderr, "no example %s\n", from );
    exit( 1 );
+}
+
+/* Replace the header line of keyword "key" with "line". */
+static void set_card( struct pcase *c, const char *key, const char *line ) {
+   char out[ sizeof( c->header ) ] = "";
+   const char *p = c->header;
+   while( *p ) {
+      size_t n = strcspn( p, "\n" );
+      size_t klen = strlen( key );
+      if( n >= klen && !strncmp( p, key, klen ) && ( p[ klen ] == ' ' || p[ klen ] == '=' ) ) {
+         strcat( out, line );
+      } else {
+         strncat( out, p, n );
+      }
+      strcat( out, "\n" );
+      p += n;
+      if( *p == '\n' ) p++;
+   }
+   strcpy( c->header, out );
+}
+
+static FILE *open_out( const char *dir, const char *name, const char *ext );
+
+/* Write a case's header to <dir>/<case>.head. */
+static void write_head( const char *dir, const struct pcase *c ) {
+   FILE *fp = open_out( dir, c->name, "head" );
+   fputs( c->header, fp );
+   fclose( fp );
 }
 
 static FILE *open_out( const char *dir, const char *name, const char *ext ) {
@@ -323,6 +353,37 @@ int main( int argc, char **argv ) {
       snprintf( c->name, sizeof( c->name ), "no_wcs" );
       snprintf( c->header, sizeof( c->header ), "SIMPLE  =                    T\n" );
       c->version = ' ';
+   }
+
+   /* Cases whose header is made here, each written to <dir>/<case>.head,
+      which the Rust tests read as the case's header. AITOFF with no pixels:
+      the plot box has no area, so its aspect ratio is NaN. */
+   derive( "aitoff", "zero_naxis", NULL, NULL, ' ' );
+   set_card( &cases[ ncase - 1 ], "NAXIS1", "NAXIS1  =                    0" );
+   set_card( &cases[ ncase - 1 ], "NAXIS2", "NAXIS2  =                    0" );
+   write_head( argv[ 2 ], &cases[ ncase - 1 ] );
+
+   /* A header holding a ZoomMap in the Native encoding: what is read is a
+      Mapping, not a coordinate system. */
+   {
+      struct pcase *c = &cases[ ncase++ ];
+      AstFitsChan *fc;
+      AstZoomMap *zm;
+      char card[ 81 ];
+      memset( c, 0, sizeof( *c ) );
+      snprintf( c->name, sizeof( c->name ), "native_zoommap" );
+      c->version = ' ';
+      astBegin;
+      zm = astZoomMap( 2, 3.0, " " );
+      fc = astFitsChan( NULL, NULL, "Encoding=NATIVE" );
+      astWrite( fc, zm );
+      astClear( fc, "Card" );
+      while( astFindFits( fc, "%f", card, 1 ) ) {
+         strcat( c->header, card );
+         strcat( c->header, "\n" );
+      }
+      astEnd;
+      write_head( argv[ 2 ], c );
    }
 
    for( i = 0; i < ncase; i++ ) run( &cases[ i ], argv[ 2 ] );

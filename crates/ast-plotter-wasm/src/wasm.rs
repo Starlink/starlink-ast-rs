@@ -50,6 +50,9 @@ impl PlotOutput {
 
 /// Reads a FITS header and makes the plotter's three outputs.
 ///
+/// `width` and `height` are numbers as JavaScript has them: one that is not
+/// a whole number of pixels from 16 to 4096, NaN included, makes the grid an
+/// error naming it.
 /// `version` is the version character of the axes to plot, its first
 /// character used: empty or a space for the primary axes, `$` for pixel
 /// coordinates, or the letter of alternate axes. `page_look` draws on the
@@ -60,8 +63,8 @@ pub fn plot(
     header: String,
     plot_settings: String,
     fitschan_settings: String,
-    width: u32,
-    height: u32,
+    width: f64,
+    height: f64,
     version: String,
     page_look: bool,
 ) -> PlotOutput {
