@@ -44,6 +44,7 @@ pub mod attributes;
 #[cfg(not(feature = "attribute-strings"))]
 pub(crate) mod attributes;
 pub mod channel;
+pub(crate) mod clock;
 pub mod constants;
 pub mod coords;
 pub(crate) mod erfa;
