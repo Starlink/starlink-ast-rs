@@ -756,20 +756,12 @@ impl TimeFrame {
     ///
     /// - `ErrorCode::Incts` when UTC cannot be converted to the
     ///   TimeFrame's TimeScale.
-    /// - `ErrorCode::Notsp` on a platform with no system clock to read,
-    ///   such as WebAssembly in the browser.
     /// - Passes on the error of [`Frame::unit`].
     #[doc(alias = "astCurrentTime")]
     // C: timeframe.c `CurrentTime`, which reads `time()`.
     pub fn current_time(&self) -> AstResult<f64> {
         // C takes `difftime( time( NULL ), 0 )`, whole seconds since 1970.
-        let Some(since) = crate::clock::since_unix_epoch() else {
-            return Err(AstError::new(
-                ErrorCode::Notsp,
-                "astCurrentTime(TimeFrame): this platform has no system clock to read.",
-            ));
-        };
-        self.time_at_unix_seconds(since.as_secs() as f64)
+        self.time_at_unix_seconds(crate::clock::since_unix_epoch().as_secs() as f64)
     }
 
     /// The value on this TimeFrame's axis of `systime` UTC seconds since

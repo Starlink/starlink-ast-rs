@@ -272,19 +272,8 @@ impl MathMapRng {
 }
 
 /// Compute a default seed value (unpredictable).
-///
-/// Where there is no system clock (WebAssembly in the browser) the seed
-/// comes from a count of the seeds made, so it differs between MathMaps but
-/// repeats from run to run.
 fn default_seed() -> i32 {
-    let t = match crate::clock::since_unix_epoch() {
-        Some(d) => d.as_nanos(),
-        None => {
-            static SEEDS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-            let n = SEEDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            u128::from(n.wrapping_mul(0x9E37_79B9))
-        }
-    };
+    let t = crate::clock::since_unix_epoch().as_nanos();
     // Mix bits to get something reasonable
     ((t ^ (t >> 32)) & 0x7FFF_FFFF) as i32
 }

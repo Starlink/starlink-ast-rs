@@ -3030,6 +3030,7 @@ name = "starlink-ast"
 version = "0.1.0"
 dependencies = [
  "audit-tools",
+ "js-sys",
  "levenberg-marquardt",
  "nalgebra",
  "ndarray",

@@ -57,7 +57,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
-- `starlink-ast`: compiled for WebAssembly in the browser (`wasm32-unknown-unknown`), which has no system clock, a MathMap no longer stops the program when it is made, and `TimeFrame::current_time`, which a date axis's tick spacing reads, returns an error rather than stopping it.
+- `starlink-ast`: compiled for WebAssembly in the browser (`wasm32-unknown-unknown`), where the standard library cannot read the clock, the crate reads the browser's clock through `js-sys`, a dependency on that target only, so making a MathMap and reading `TimeFrame::current_time`, which a date axis's tick spacing does, no longer stop the program.
 - `starlink-ast`: `SvgGrf` escapes `&`, `<`, `>` and `"` in text, so a label such as `Flux < 1` no longer makes the SVG invalid.
 - `starlink-ast`: `LogGrf` and `SvgGrf` measure text by characters rather than bytes, so an accented label or title is as wide as an unaccented one; ASCII text measures as before, and as the C library measures it.
 - `starlink-ast`: a Unit of a SpecFrame, DSBSpecFrame or TimeFrame, or a unit given with a value, that holds text which is not ASCII (`"é"`) no longer panics in the units parser, which compared parts of it by byte position.
