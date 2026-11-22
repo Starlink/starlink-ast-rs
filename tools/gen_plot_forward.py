@@ -36,6 +36,13 @@ OWN_FRAME = {
     "simplify_frame": "self.plot_simplify_frame()",
     "as_frameset": "Some(&self.frameset)",
     "as_frameset_mut": "Some(&mut self.frameset)",
+    "attr_class": '"Plot"',
+    "attr_vset": "crate::attributes::frameset::frameset_vset(self, assignments, text)",
+    "attr_clear_list": "crate::attributes::frameset::frameset_clear_list(self, names)",
+    "attr_set": "crate::attributes::plot::plot_set(self, setting)",
+    "attr_get": "crate::attributes::plot::plot_get(self, name)",
+    "attr_test": "crate::attributes::plot::plot_test(self, name)",
+    "attr_clear": "crate::attributes::plot::plot_clear(self, name)",
 }
 OWN_MAPPING = {
     "transform": "self.plot_transform(pts, forward)",
@@ -45,6 +52,21 @@ OWN_MAPPING = {
     "simplified": "self.plot_simplified(gate)",
     "mapping_without_regions": "self.plot_mapping_without_regions()",
     "as_frameset": "Some(&self.frameset)",
+}
+
+# The hidden Frame methods of the attribute-string layer, which exist only
+# with the attribute-strings feature.
+FEATURE_GATED = {
+    "attr_class",
+    "attr_vset",
+    "attr_set",
+    "attr_get",
+    "attr_test",
+    "attr_clear_list",
+    "attr_clear",
+    "attr_axis",
+    "attr_axis_mut",
+    "primary_frame_mut",
 }
 
 # Methods a Plot inherits from the Mapping class rather than from FrameSet,
@@ -168,7 +190,8 @@ def forward(trait, name, generics, params, ret, where, body=None):
         sig += f" {ret}"
     if where:
         sig += f" {where}"
-    return f"    {sig} {{\n        {call}\n    }}\n"
+    gate = '    #[cfg(feature = "attribute-strings")]\n' if name in FEATURE_GATED else ""
+    return f"{gate}    {sig} {{\n        {call}\n    }}\n"
 
 
 def generate():

@@ -94,6 +94,8 @@ pub(crate) struct PlotAttrs {
     pub(crate) clip_op: Option<bool>,
     pub(crate) draw_title: Option<bool>,
     pub(crate) escape: Option<bool>,
+    /// Grf; not part of a dump, as in C.
+    pub(crate) grf: Option<bool>,
     pub(crate) title_gap: Option<f64>,
     pub(crate) text_gap_type: Option<TextGapType>,
     pub(crate) labelling: Option<Labelling>,
@@ -324,6 +326,20 @@ impl Plot {
         self.attrs.escape.unwrap_or(true)
     }
     flag_attr_rest!(escape, set_escape, test_escape, clear_escape, escape);
+
+    /// Whether the Plot draws through the graphics functions registered
+    /// with the C library's `astGrfSet` rather than those it was linked
+    /// with. The Rust library takes the graphics backend as an argument to
+    /// each drawing method, so it reads this attribute nowhere; it is kept
+    /// so that attribute strings and C programs see it as the C library
+    /// has it. It is not saved in a dump.
+    ///
+    /// The default is `false`.
+    #[doc(alias = "Grf")]
+    pub fn grf(&self) -> bool {
+        self.attrs.grf.unwrap_or(false)
+    }
+    flag_attr_rest!(grf, set_grf, test_grf, clear_grf, grf);
 
     /// Which graphics are clipped at the edges of the plotting area, as the
     /// sum of 1 for curves and 2 for markers.

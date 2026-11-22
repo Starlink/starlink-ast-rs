@@ -1792,6 +1792,33 @@ impl SkyFrame {
 }
 
 impl Frame for SkyFrame {
+    // The attribute strings of C's SkyFrame class.
+    #[cfg(feature = "attribute-strings")]
+    fn attr_set(&mut self, setting: &str) -> AstResult<()> {
+        crate::attributes::skyframe::skyframe_set(self, setting)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_get(&self, name: &str) -> AstResult<String> {
+        crate::attributes::skyframe::skyframe_get(self, name)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_test(&self, name: &str) -> AstResult<bool> {
+        crate::attributes::skyframe::skyframe_test(self, name)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_clear(&mut self, name: &str) -> AstResult<()> {
+        crate::attributes::skyframe::skyframe_clear(self, name)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_axis(&self, axis: usize) -> AstResult<super::axis::AxisHandle<'_>> {
+        Ok(self.axes[self.physical_axis(axis)?].attr_ref())
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_axis_mut(&mut self, axis: usize) -> AstResult<super::axis::AxisHandleMut<'_>> {
+        let phys = self.physical_axis(axis)?;
+        Ok(self.axes[phys].attr_mut())
+    }
+
     fn axis_perm(&self) -> Vec<usize> {
         self.perm.to_vec()
     }
@@ -1902,6 +1929,12 @@ impl Frame for SkyFrame {
         // the returned axis is the underlying physical axis
         // (0 = lon, 1 = lat).
         (self, self.axis_permutation()[axis])
+    }
+
+    #[cfg(feature = "attribute-strings")]
+    fn primary_frame_mut(&mut self, axis: usize) -> (&mut dyn Frame, usize) {
+        let internal = self.axis_permutation()[axis];
+        (self, internal)
     }
 
     /// Display an axis in the conventional direction? See
@@ -3295,19 +3328,9 @@ impl Frame for SkyFrame {
 ///
 /// Mirrors `skyframe.c::CalcLAST`: builds a TDB-MJD TimeFrame and a
 /// LAST-MJD TimeFrame, applies the observer parameters to both,
-/// Format an epoch expressed in decimal years, mirroring C's
-/// `astFmtDecimalYr(year, 9)` (frame.c:4189): `sprintf("%#.9g")` followed by
-/// trailing-zero removal, but keeping one zero after the decimal point so the
-/// result always reads like a year (e.g. "2000.0", "1999.80005"). The `#`
-/// flag forces a decimal point; `format_double_g` already strips trailing
-/// zeros and the point, so we re-append ".0" when no point remains.
+/// A year as C's `astFmtDecimalYr( year, 9 )` writes it, for a Title.
 fn fmt_decimal_yr(year: f64) -> String {
-    let s = crate::serial::native_write::format_double_g(year, 9);
-    if s.contains('.') || s.contains('e') {
-        s
-    } else {
-        format!("{s}.0")
-    }
+    crate::attributes::fmt_decimal_yr(year, 9)
 }
 
 /// Determine whether a great-circle segment includes a point known to lie on

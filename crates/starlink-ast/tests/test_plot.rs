@@ -42,9 +42,7 @@ use starlink_ast::frames::{
 use starlink_ast::mappings::{Mapping, UnitMap, ZoomMap};
 use starlink_ast::plot::{Plot, PlotElement};
 
-use crate::common::plot::{
-    apply_settings, read_head, set_attr, set_style_attr, split_name, split_style,
-};
+use crate::common::plot::{apply_settings, read_head, split_name, split_style};
 
 /// The Frame a construction case id names, built as the probe builds it.
 fn frame(id: &str) -> Box<dyn Frame> {
@@ -455,7 +453,7 @@ fn plot_attributes_match_the_c_library() {
         let mut plot = attrs_plot(sc.id);
         let mut result = Ok(());
         for setting in sc.set.split(',').filter(|s| !s.is_empty()) {
-            result = result.and_then(|_| set_attr(&mut plot, setting));
+            result = result.and_then(|_| apply_settings(&mut plot, setting));
         }
         for name in sc.clear.split(',').filter(|s| !s.is_empty()) {
             result = result.and_then(|_| clear_attr(&mut plot, name));
@@ -547,7 +545,7 @@ fn plot_styles_match_the_c_library() {
         let mut plot = attrs_plot("basic2");
         let mut result = Ok(());
         for setting in sc.set.split(',').filter(|s| !s.is_empty()) {
-            result = result.and_then(|_| set_style_attr(&mut plot, setting));
+            result = result.and_then(|_| apply_settings(&mut plot, setting));
         }
         if result.is_ok() {
             for name in sc.clear.split(',').filter(|s| !s.is_empty()) {

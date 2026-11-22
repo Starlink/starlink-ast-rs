@@ -39,6 +39,97 @@ pub(crate) struct Axis {
     pub direction: Option<bool>,
     pub top: Option<f64>,
     pub bottom: Option<f64>,
+    /// The Ident attribute of the Axis object itself, when set. An Axis is
+    /// an Object in C, with an ID, an Ident and a UseDefs of its own, which
+    /// an attribute string reaches as `Ident(2)`.
+    pub ident: Option<String>,
+    /// The ID attribute of the Axis object.
+    pub id: crate::object_id::ObjectId,
+    /// The UseDefs attribute of the Axis object, when set.
+    pub use_defs: Option<bool>,
+}
+
+#[cfg(feature = "attribute-strings")]
+/// The Axis object of one axis of a Frame, for reading.
+// C: the AstAxis pointer astGetAxis returns, of class Axis or SkyAxis.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum AxisRef<'a> {
+    /// A plain Axis.
+    Plain(&'a Axis),
+    /// A SkyAxis.
+    Sky(&'a super::skyaxis::SkyAxis),
+}
+
+#[cfg(feature = "attribute-strings")]
+impl AxisRef<'_> {
+    /// The Axis-class part of the object.
+    pub(crate) fn axis(&self) -> &Axis {
+        match self {
+            AxisRef::Plain(a) => a,
+            AxisRef::Sky(s) => &s.axis,
+        }
+    }
+}
+
+#[cfg(feature = "attribute-strings")]
+/// The Axis object of one axis of a Frame, for changing.
+#[derive(Debug)]
+pub(crate) enum AxisMut<'a> {
+    /// A plain Axis.
+    Plain(&'a mut Axis),
+    /// A SkyAxis.
+    Sky(&'a mut super::skyaxis::SkyAxis),
+}
+
+#[cfg(feature = "attribute-strings")]
+impl AxisMut<'_> {
+    /// The Axis-class part of the object.
+    pub(crate) fn axis_mut(&mut self) -> &mut Axis {
+        match self {
+            AxisMut::Plain(a) => a,
+            AxisMut::Sky(s) => &mut s.axis,
+        }
+    }
+
+    /// The object for reading.
+    pub(crate) fn as_ref(&self) -> AxisRef<'_> {
+        match self {
+            AxisMut::Plain(a) => AxisRef::Plain(a),
+            AxisMut::Sky(s) => AxisRef::Sky(s),
+        }
+    }
+}
+
+#[cfg(feature = "attribute-strings")]
+/// An [`AxisRef`] as the hidden `Frame::attr_axis` returns it: the trait is
+/// public, so its methods cannot name a type private to the crate.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub struct AxisHandle<'a>(pub(crate) AxisRef<'a>);
+
+#[cfg(feature = "attribute-strings")]
+/// An [`AxisMut`] as the hidden `Frame::attr_axis_mut` returns it.
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct AxisHandleMut<'a>(pub(crate) AxisMut<'a>);
+
+#[cfg(feature = "attribute-strings")]
+impl FrameAxis {
+    /// This axis as the Axis object an attribute string reaches.
+    pub(crate) fn attr_ref(&self) -> AxisHandle<'_> {
+        AxisHandle(match self {
+            FrameAxis::Plain(a) => AxisRef::Plain(a),
+            FrameAxis::Sky(s) => AxisRef::Sky(s),
+        })
+    }
+
+    /// This axis as the Axis object an attribute string changes.
+    pub(crate) fn attr_mut(&mut self) -> AxisHandleMut<'_> {
+        AxisHandleMut(match self {
+            FrameAxis::Plain(a) => AxisMut::Plain(a),
+            FrameAxis::Sky(s) => AxisMut::Sky(s),
+        })
+    }
 }
 
 impl Axis {
@@ -51,9 +142,9 @@ impl Axis {
     pub(crate) fn write_parts(&self, node: &mut Node, values: &AxisValues) {
         crate::frames::frame_attrs::write_object_part(
             node,
-            &crate::object_id::ObjectId::default(),
-            None,
-            None,
+            &self.id,
+            self.ident.as_deref(),
+            self.use_defs,
             true,
         );
         node.write_string(
@@ -146,7 +237,13 @@ impl Axis {
     pub(crate) fn read(whole: &Node) -> Self {
         // The Axis class's part of the description (astReadClassData).
         let node = &whole.section("Axis");
+        let object = whole.section("Object");
         Axis {
+            ident: object.get_string_if_set("Ident"),
+            id: crate::object_id::ObjectId::from_object_part(&object),
+            use_defs: object
+                .get("UseDfs")
+                .map(|_| object.get_int("UseDfs", 1) != 0),
             label: node.get_string_if_set("Label"),
             symbol: node.get_string_if_set("Symbol"),
             unit: node.get_string_if_set("Unit"),

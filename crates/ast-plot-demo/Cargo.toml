@@ -9,7 +9,7 @@ publish = false
 description = "A window that draws Starlink AST Plot grids through egui"
 
 [dependencies]
-starlink-ast = { path = "../starlink-ast" }
+starlink-ast = { path = "../starlink-ast", features = ["attribute-strings"] }
 eframe = "0.32"
 
 [lints]

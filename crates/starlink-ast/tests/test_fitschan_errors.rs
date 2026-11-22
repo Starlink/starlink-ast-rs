@@ -21,6 +21,7 @@
 #[path = "fitschanerrors_oracle/cases.rs"]
 mod cases;
 
+use starlink_ast::attributes::Attributes;
 use starlink_ast::channel::Channel;
 use starlink_ast::error::ErrorCode;
 use starlink_ast::fitschan::{Encoding, FitsChan};
@@ -37,27 +38,6 @@ pub(crate) struct BadHeaderTest {
     write_enc: Option<&'static str>,
 }
 
-/// Cases whose check is C's string attribute interface itself, with the
-/// reason each has no counterpart here. Each must still be a row of C's
-/// table (`excluded_cases_are_in_the_c_table`).
-const FITSCHAN_ERRORS_EXCLUDED: &[(&str, &str)] = &[
-    (
-        "error-bad-encoding",
-        "AST__BADAT from parsing \"Encoding=BADENC\"; Encoding is an enum here, \
-         so an unknown name cannot be set",
-    ),
-    (
-        "error-bad-altaxes",
-        "AST__BADAT from parsing \"AltAxes=BADVAL\"; AltAxes is an enum here, \
-         so an unknown name cannot be set",
-    ),
-    (
-        "error-set-readonly",
-        "AST__NOWRT from \"Ncard=5\"; Ncard has no setter here, so the \
-         read-only attribute cannot be set",
-    ),
-];
-
 /// Cases the port does not yet match, each with the gap it exposes. Each is
 /// checked to still differ from C (`port_gap_cases_still_differ`), so the
 /// list shrinks when the gap closes.
@@ -69,12 +49,9 @@ const FITSCHAN_ERRORS_GAP_EXCLUDED: &[(&str, &str)] = &[(
      up and takes the first, so it reads FK5 (PLAN.md section 5)",
 )];
 
-/// Set the attributes a case names, as C's `astSet` would.
+/// Set the attributes a case names, as C's `astSet` does.
 fn set_attrs(fc: &mut FitsChan, attrs: &str) -> starlink_ast::error::AstResult<()> {
-    match attrs.split_once('=') {
-        Some(("SourceFile", file)) => fc.set_source_file(file),
-        _ => panic!("no Rust counterpart for the attribute setting {attrs:?}"),
-    }
+    fc.set_attributes(attrs)
 }
 
 /// C's `test_bad_header`; returns a description of the first mismatch.
@@ -161,7 +138,6 @@ fn check_case(t: &BadHeaderTest) -> Result<(), String> {
 fn bad_headers_match_the_c_library() {
     let failures: Vec<String> = cases::CASES
         .iter()
-        .filter(|t| !FITSCHAN_ERRORS_EXCLUDED.iter().any(|(n, _)| *n == t.name))
         .filter(|t| {
             !FITSCHAN_ERRORS_GAP_EXCLUDED
                 .iter()
@@ -170,16 +146,6 @@ fn bad_headers_match_the_c_library() {
         .filter_map(|t| check_case(t).err().map(|e| format!("{}: {e}", t.name)))
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
-}
-
-#[test]
-fn excluded_cases_are_in_the_c_table() {
-    for (name, reason) in FITSCHAN_ERRORS_EXCLUDED {
-        assert!(
-            cases::CASES.iter().any(|t| t.name == *name),
-            "{name} is excluded ({reason}) but is not a row of C's table"
-        );
-    }
 }
 
 #[test]

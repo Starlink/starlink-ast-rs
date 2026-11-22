@@ -25,12 +25,13 @@ const DEFAULT_CHR_HT: f64 = 4.0;
 
 /// The width of `text` on the page, in mm, for characters `chr_ht` mm high.
 ///
-/// Each byte of the text counts as one character 0.6 times the height wide,
-/// so a non-ASCII character counts once per byte of its UTF-8 encoding.
-// C: grf_log.c:231, `strlen( text ) * chr_ht * 0.6`. Kept as one function so
-// that real font metrics can replace it.
+/// Each character of the text is 0.6 times the height wide, an accented
+/// one as wide as any other.
+// C: grf_log.c:231, `strlen( text ) * chr_ht * 0.6`, which counts bytes, the
+// same for ASCII text; C predates Unicode, so the port counts characters.
+// Kept as one function so that real font metrics can replace it.
 pub(crate) fn text_width_mm(text: &str, chr_ht: f64) -> f32 {
-    (text.len() as f64 * chr_ht * 0.6) as f32
+    (text.chars().count() as f64 * chr_ht * 0.6) as f32
 }
 
 /// The modelled page and the style attributes set on it.
@@ -221,5 +222,20 @@ impl VirtualPage {
                 yc - vdy + udy,
             ],
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A character that is not ASCII is as wide as one that is.
+    #[test]
+    fn text_width_counts_characters_not_bytes() {
+        assert_eq!(text_width_mm("é", 4.0), text_width_mm("e", 4.0));
+        assert_eq!(
+            text_width_mm("Ångström", 4.0),
+            text_width_mm("Angstrom", 4.0)
+        );
     }
 }

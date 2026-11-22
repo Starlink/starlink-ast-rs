@@ -194,7 +194,17 @@ fn scan_rendered_docs() -> Scan {
     let target = manifest.join("../../target/c-docs-gate");
     let started = std::time::SystemTime::now();
     let status = std::process::Command::new(env!("CARGO"))
-        .args(["doc", "-q", "-p", "starlink-ast", "--no-deps"])
+        // With the features that add public items, so that their pages are
+        // scanned too.
+        .args([
+            "doc",
+            "-q",
+            "-p",
+            "starlink-ast",
+            "--no-deps",
+            "--features",
+            "attribute-strings",
+        ])
         .env("CARGO_TARGET_DIR", &target)
         .current_dir(&manifest)
         .status()

@@ -45,7 +45,7 @@ pub(crate) fn make_label_tree(lab: &str) -> Option<Box<UnitNode>> {
                 }
             }
             c if depth == 0 && !c.is_ascii_whitespace() => {
-                if exp[i..].starts_with("**") {
+                if bytes[i..].starts_with(b"**") {
                     split = Some((i, 2));
                     break;
                 } else if c == b'^' {

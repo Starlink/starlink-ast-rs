@@ -44,13 +44,54 @@ mod grid;
 mod labels;
 mod sample;
 mod serial;
-mod text;
+pub(crate) mod text;
 mod ticks;
 
 pub use attrs::{Edge, Labelling, TextGapType};
 pub use draw::Draw;
 pub use elements::PlotElement;
 pub use grid::UsedValues;
+
+#[cfg(feature = "attribute-strings")]
+impl Plot {
+    /// [`get_attribute`](crate::attributes::Attributes::get_attribute), with
+    /// the attributes whose defaults depend on what a grid draws (Grid,
+    /// Labelling, Edge, Gap and the rest) worked out through `grf` rather
+    /// than through a logging backend with no output.
+    ///
+    /// The grid is worked out on a copy of the Plot without drawing:
+    /// `grf` is asked only for its capabilities, scales and text sizes,
+    /// which the values depend on.
+    ///
+    /// # Errors
+    ///
+    /// As [`get_attribute`](crate::attributes::Attributes::get_attribute),
+    /// and any error the grid gives, such as `ErrorCode::Plfmt` when no
+    /// labels can be formatted for an axis.
+    #[doc(alias = "astGet")]
+    pub fn get_attribute_with_grf(
+        &self,
+        name: &str,
+        grf: &mut dyn crate::grf::Grf,
+    ) -> AstResult<String> {
+        let name = crate::attributes::normalise_name(name);
+        if name.is_empty() {
+            return Err(crate::attributes::blank_get("Plot"));
+        }
+        let value = crate::attributes::plot::plot_get_with(self, &name, grf)?;
+        Ok(crate::attributes::strip_escapes(&value))
+    }
+}
+
+#[cfg(feature = "attribute-strings")]
+impl crate::attributes::frameset::FrameSetClass for Plot {
+    fn fs(&self) -> &FrameSet {
+        &self.frameset
+    }
+    fn fs_mut(&mut self) -> &mut FrameSet {
+        &mut self.frameset
+    }
+}
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{PointSet, Points, PointsMut};

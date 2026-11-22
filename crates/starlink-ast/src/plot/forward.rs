@@ -377,6 +377,46 @@ impl Frame for Plot {
     fn axis_object_bottom(&self, axis: usize) -> AstResult<f64> {
         Frame::axis_object_bottom(&self.frameset, axis)
     }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_axis(&self, _axis: usize) -> AstResult<axis::AxisHandle<'_>> {
+        Frame::attr_axis(&self.frameset, _axis)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_axis_mut(&mut self, _axis: usize) -> AstResult<axis::AxisHandleMut<'_>> {
+        Frame::attr_axis_mut(&mut self.frameset, _axis)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn primary_frame_mut(&mut self, axis: usize) -> (&mut dyn Frame, usize) {
+        Frame::primary_frame_mut(&mut self.frameset, axis)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_class(&self) -> &'static str {
+        "Plot"
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_vset(&mut self, assignments: &[String], text: &str) -> AstResult<()> {
+        crate::attributes::frameset::frameset_vset(self, assignments, text)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_set(&mut self, setting: &str) -> AstResult<()> {
+        crate::attributes::plot::plot_set(self, setting)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_get(&self, name: &str) -> AstResult<String> {
+        crate::attributes::plot::plot_get(self, name)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_test(&self, name: &str) -> AstResult<bool> {
+        crate::attributes::plot::plot_test(self, name)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_clear_list(&mut self, names: &str) -> AstResult<()> {
+        crate::attributes::frameset::frameset_clear_list(self, names)
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn attr_clear(&mut self, name: &str) -> AstResult<()> {
+        crate::attributes::plot::plot_clear(self, name)
+    }
     fn internal_unit(&self, axis: usize) -> AstResult<String> {
         Frame::internal_unit(&self.frameset, axis)
     }

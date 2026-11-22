@@ -209,6 +209,35 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          8 ULP of the current time and the division count exactly",
     ),
     (
+        "test_grf.rs",
+        "TEXT_WIDTH_EXCLUDED",
+        2,
+        "the extents of \"°\" and \"-30°\": C's grf_log, written before Unicode, \
+         measures text by bytes and counts the degree sign as two characters; the port \
+         measures by characters, so accented labels are as wide as any other. \
+         text_width_exclusions_still_differ fails when one matches C again",
+    ),
+    (
+        "test_attr_strings.rs",
+        "DUMP_EXCLUDED",
+        1,
+        "plot_gap0: the dump after a get of a used value whose grid fails; C's grid returns \
+         before clearing the LogTicks and LogLabel it set, the port's puts them back \
+         (c-library-quirks.md); the case's operations are still compared, and \
+         excluded_dumps_still_differ fails when the dumps match",
+    ),
+    (
+        "test_attr_strings.rs",
+        "NO_RUST_VALUE_EXCLUDED",
+        7,
+        "attribute strings whose C outcome the port cannot give: gets of \
+         Nobject, ObjSize and RefCount, which count the C library's handles \
+         and allocations, and sets and clears of Invert and Report on a Frame \
+         that is not a FrameSet, which stores no Mapping flags; each fails \
+         with an error instead, and cases_with_no_rust_value_still_differ \
+         fails when one starts to match C",
+    ),
+    (
         "test_plot.rs",
         "UNINITIALISED_SET_STATE_EXCLUDED",
         1,
@@ -235,14 +264,6 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          astInitPlot never initialises ForceExterior (c-library-quirks.md); \
          dumps_after_drawing_match_the_c_library fails when C stops writing the \
          line as set",
-    ),
-    (
-        "test_fitschan_errors.rs",
-        "FITSCHAN_ERRORS_EXCLUDED",
-        3,
-        "testfitschanerrors.c cases whose check is C's string attribute \
-         interface: an unknown Encoding or AltAxes name, and setting the \
-         read-only Ncard; typed accessors cannot express them",
     ),
     (
         "test_fitschan_errors.rs",

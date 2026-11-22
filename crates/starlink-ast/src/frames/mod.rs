@@ -387,10 +387,17 @@ pub(crate) const INTFLAG: u32 = 1;
 pub trait AsDynFrame {
     /// `self` as `&dyn Frame`.
     fn as_dyn_frame(&self) -> &dyn Frame;
+    /// `self` as `&mut dyn Frame`.
+    #[cfg(feature = "attribute-strings")]
+    fn as_dyn_frame_mut(&mut self) -> &mut dyn Frame;
 }
 
 impl<T: Frame> AsDynFrame for T {
     fn as_dyn_frame(&self) -> &dyn Frame {
+        self
+    }
+    #[cfg(feature = "attribute-strings")]
+    fn as_dyn_frame_mut(&mut self) -> &mut dyn Frame {
         self
     }
 }
@@ -1539,6 +1546,129 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     #[doc(hidden)]
     fn axis_object_bottom(&self, axis: usize) -> AstResult<f64> {
         self.bottom(axis)
+    }
+
+    /// The Axis object of a 1-based axis, for the attributes an attribute
+    /// string hands to it, such as `Ident(2)`.
+    /// A class that keeps no Axis objects has no such attributes.
+    // C: astGetAxis.
+    #[doc(hidden)]
+    #[cfg(feature = "attribute-strings")]
+    fn attr_axis(&self, _axis: usize) -> AstResult<axis::AxisHandle<'_>> {
+        Err(crate::attributes::not_supported(
+            "astGet",
+            self.attr_class(),
+        ))
+    }
+
+    /// [`attr_axis`](Self::attr_axis), for changing the Axis object.
+    #[doc(hidden)]
+    #[cfg(feature = "attribute-strings")]
+    fn attr_axis_mut(&mut self, _axis: usize) -> AstResult<axis::AxisHandleMut<'_>> {
+        Err(crate::attributes::not_supported(
+            "astSet",
+            self.attr_class(),
+        ))
+    }
+
+    /// [`primary_frame`](Self::primary_frame), for changing the primary
+    /// Frame: the Frame an axis (0-based) belongs to, and its axis there.
+    /// A Frame that is not made of others is its own primary Frame.
+    // C: astPrimaryFrame.
+    #[doc(hidden)]
+    #[cfg(feature = "attribute-strings")]
+    fn primary_frame_mut(&mut self, axis: usize) -> (&mut dyn Frame, usize) {
+        (self.as_dyn_frame_mut(), axis)
+    }
+
+    /// The C name of this Frame's class, which is its Class attribute and
+    /// the name the attribute functions' errors give.
+    // C: astGetClass.
+    #[doc(hidden)]
+    #[cfg(feature = "attribute-strings")]
+    fn attr_class(&self) -> &'static str {
+        crate::serial::frame_class_name(self.as_any())
+    }
+
+    /// Apply the assignments of one settings string in turn, stopping at
+    /// the first that fails. Each is a `name=value` as
+    /// `attributes::split_settings` gives it, and `text` is the string they
+    /// came from, for an error that quotes all of it.
+    /// A FrameSet overrides this to restore its integrity once the whole
+    /// string has been applied.
+    // C: object.c VSet, after its splitting.
+    #[doc(hidden)]
+    #[cfg(feature = "attribute-strings")]
+    fn attr_vset(&mut self, assignments: &[String], _text: &str) -> AstResult<()> {
+        for assignment in assignments {
+            self.attr_set(assignment)?;
+        }
+        Ok(())
+    }
+
+    /// Apply one `name=value` setting, the name in lower case and without
+    /// white space: this class's part of the attribute-string chain, which
+    /// handles the names the class owns and passes the rest to its parent
+    /// class's function in `crate::attributes`.
+    /// A class that does not override the four methods below has no
+    /// attribute strings yet.
+    // C: astSetAttrib.
+    #[doc(hidden)]
+    #[cfg(feature = "attribute-strings")]
+    fn attr_set(&mut self, _setting: &str) -> AstResult<()> {
+        Err(crate::attributes::not_supported(
+            "astSet",
+            self.attr_class(),
+        ))
+    }
+
+    /// The value of the attribute `name`, in lower case and without white
+    /// space, as text; see [`attr_set`](Self::attr_set).
+    // C: astGetAttrib.
+    #[doc(hidden)]
+    #[cfg(feature = "attribute-strings")]
+    fn attr_get(&self, _name: &str) -> AstResult<String> {
+        Err(crate::attributes::not_supported(
+            "astGet",
+            self.attr_class(),
+        ))
+    }
+
+    /// Whether the attribute `name` is set; see
+    /// [`attr_set`](Self::attr_set).
+    // C: astTestAttrib.
+    #[doc(hidden)]
+    #[cfg(feature = "attribute-strings")]
+    fn attr_test(&self, _name: &str) -> AstResult<bool> {
+        Err(crate::attributes::not_supported(
+            "astTest",
+            self.attr_class(),
+        ))
+    }
+
+    /// Clear each attribute of a comma-separated list of names, stopping at
+    /// the first that fails.
+    /// A FrameSet overrides this to restore its integrity once the whole
+    /// list has been cleared.
+    // C: object.c Clear.
+    #[doc(hidden)]
+    #[cfg(feature = "attribute-strings")]
+    fn attr_clear_list(&mut self, names: &str) -> AstResult<()> {
+        for name in crate::attributes::split_names(names) {
+            self.attr_clear(&name)?;
+        }
+        Ok(())
+    }
+
+    /// Clear the attribute `name`; see [`attr_set`](Self::attr_set).
+    // C: astClearAttrib.
+    #[doc(hidden)]
+    #[cfg(feature = "attribute-strings")]
+    fn attr_clear(&mut self, _name: &str) -> AstResult<()> {
+        Err(crate::attributes::not_supported(
+            "astClear",
+            self.attr_class(),
+        ))
     }
 
     /// The physical units of unformatted values on an axis: the read-only

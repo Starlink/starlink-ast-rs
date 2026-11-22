@@ -1797,6 +1797,56 @@ Consequence: documentation only; a reader who runs the examples gets output that
 The port's guide (`crates/starlink-ast/src/guide/`) uses the current output, the 1-based permutation, the FITS-WCS first step and the SipOK behavior.
 A C fix: regenerate the output blocks from the current library and correct the items above in `sun_master.tex`.
 
+### `astGetC` cuts a value that has escape sequences to 50 characters
+
+`astGetC` (`object.c` `Get`) passes every value through `astStripEscapes` (`plot.c`) unless escapes are turned on with `astEscapes`.
+`astStripEscapes` returns the text itself when it holds no graphical escape sequence, and otherwise copies it, without them, into a per-thread buffer of `AST__PLOT_STRIPESCAPES_BUFF_LEN` (50) characters, stopping when the buffer is full.
+So a string attribute with an escape sequence anywhere in it reads back cut to its first 50 characters, while one of the same length without an escape sequence reads back whole.
+Oracle-verified: an Ident of thirty `a`, `%+` and thirty `b` reads back as thirty `a` and twenty `b`.
+The port mirrors it in `attributes::strip_escapes`, pinned by the `frame2_object` case of `crates/starlink-ast/tests/test_attr_strings.rs`; for text that is not ASCII, which C predates, it cuts before a character that would not fit whole rather than through it (`the_cut_does_not_split_a_character`).
+
+### `astFmtDecimalYr` removes the zeros of an exponent
+
+`astFmtDecimalYr` (`frame.c`) prints a year with `%#.*g`, removes every trailing `0` and puts one back if the text then ends with the decimal point.
+A year too large to print without an exponent ends with the exponent's own digits, so `1e20` printed as `1.0000000000000000e+20` loses the `0` of `+20`.
+No epoch or equinox in use reaches this.
+Oracle-verified: after `astSet( frame, "Epoch=1e20" )`, `astGetC( frame, "Epoch" )` is `1.0000000000000000e+2`.
+The port's `attributes::fmt_decimal_yr` does the same, pinned by the `frame_title` case of `crates/starlink-ast/tests/test_attr_strings.rs`.
+
+### `astClearUnit` reports a bad axis index as `astSetUnit`
+
+Frame's `ClearUnit` (`frame.c`) validates its axis with the method name `"astSetUnit"`, so `astClear( frame, "Unit(3)" )` on a Frame of two axes reports `astSetUnit(Frame): Axis index (3) invalid - it should be in the range 1 to 2.`, where every other clear names its own function (`astClearLabel`, `astClearSymbol`).
+Oracle-verified.
+The port's attribute-string layer gives the same text (`attributes::frame`), pinned by the `frame_axis_attrs` case of `crates/starlink-ast/tests/test_attr_strings.rs`.
+
+### `ObsLat=N` stores a value that was never assigned
+
+Frame's `SetAttrib` (`frame.c`) reads an `ObsLat` or `ObsLon` setting by stepping over an optional `N`, `S`, `E` or `W` and passing the rest to `astUnformat`, and accepts the value when the number of characters `astUnformat` read equals the length of that rest.
+For a setting that is only the letter, `ObsLat=N`, the rest is empty, `astUnformat` reads nothing and returns zero characters, the lengths agree, and `astSetObsLat` is called with a local `double` that nothing assigned.
+Oracle-verified as far as it can be: the setting is accepted without an error.
+The port accepts it too and stores zero (`attributes::frame`), since there is no value to mirror.
+
+### `astSet( specframe, "Top=x" )` recurses until the stack overflows
+
+SpecFrame's and TimeFrame's `SetAttrib` take `Direction`, `Bottom`, `Top`, `Format`, `Label`, `Symbol` and `Unit` without an axis index: they add `(1)` after the name and call the Frame class's `SetAttrib` directly.
+Frame's `SetAttrib` has an arm for `top(%d)= %lg`, which does not match a value that is not a number, so the setting falls to its generic axis path: the Axis object rejects `top=x`, the primary Frame of the axis is the SpecFrame itself, and `astSetAttrib( pfrm, "top=x" )` hands the setting back to SpecFrame's `SetAttrib` without the index, which adds `(1)` again.
+Nothing ends the cycle, so `astSet( specframe, "Top=x" )`, `"Bottom=x"` or `"Direction=x"` on a SpecFrame, DSBSpecFrame or TimeFrame runs until the stack overflows.
+Oracle-verified: `tools/oracle_fixtures/attr_strings_probe.c` dies with a segmentation fault on `Top=high` for an `astSpecFrame`, and on `Top(1)=high` for a CmpFrame whose first axis is a SpecFrame's, so those settings are left out of its cases.
+The port stops at the second visit (`attributes::ShortcutGuard`) and reports the Axis object's error, `astSet: The attribute setting "top=high" is invalid for a Axis.`, as both libraries do for a plain Frame of one axis; `an_unreadable_axis_value_without_an_index_is_an_error` in `crates/starlink-ast/tests/test_attr_strings.rs` pins it.
+
+### `astTest( plot, "Centre(1)" )` is answered by the current Frame
+
+Plot's `TestAttrib` (`plot.c`) has arms for every per-axis attribute that its `SetAttrib`, `GetAttrib` and `ClearAttrib` handle except `Centre`, so a test of `Centre(1)` falls through to the FrameSet and the current Frame, which does not know the name: on a sky Plot it reports `astTest: The attribute name "centre" is invalid for a SkyAxis.`, though `astSet( plot, "Centre(1)=0.5" )` sets the Plot's Centre.
+Oracle-verified, by the `plot_axis` case of `tools/oracle_fixtures/attr_strings_probe.c`.
+The port's attribute-string layer leaves `Centre` out of Plot's test arms to match (`attributes/plot.rs`); `Plot::test_tick_centre` tests the Plot's value.
+
+### A grid that fails leaves LogTicks and LogLabel set on the Plot
+
+`astGrid` (`plot.c`) sets LogTicks and LogLabel on the Plot for each axis that has none set, so that the functions it calls read its choice, and clears them at its end; an error returns before the clearing, so the Plot keeps them, set to the grid's choice.
+A get of a used value runs such a grid, so after `astSet( plot, "Gap=0" )` a get of `Grid` fails with `AST__PLFMT` and the Plot's dump then shows `LgTck1`, `LgTck2`, `LgLbl1` and `LgLbl2` as set.
+Oracle-verified, by the `plot_gap0` case of `tools/oracle_fixtures/attr_strings_probe.c`.
+The port's grid puts the Plot's attributes back after an error (`Plot::grid_impl`), and a get works the grid out on a copy, so the dump is unchanged; the case's dump is in `DUMP_EXCLUDED` in `crates/starlink-ast/tests/test_attr_strings.rs`.
+
 ## Addressed here, and not going upstream
 
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.
