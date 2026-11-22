@@ -4,32 +4,34 @@
 // Smoke test of the FITS plotter's WebAssembly build, run by
 // tools/build_plotter.sh --smoke.
 //
-//   node tools/plotter_smoke.mjs <glue dir> <examples.json>
+//   node tools/plotter_smoke.mjs <glue.js> <module.wasm> <examples.json> \
+//        <worker.js> <date header>
 //
-// <glue dir> holds a `wasm-bindgen --target nodejs` build of ast-plotter-wasm
-// made with its smoke-test feature; <examples.json> is the examples array the
-// build script writes from web/plotter/examples.txt. Every example must draw
-// its grid as the page draws it, and after a panic traps the instance a fresh
-// instance must draw again, which is how the page recovers.
+// <glue.js> and <module.wasm> are a `wasm-bindgen --target no-modules`
+// build of ast-plotter-wasm made with its smoke-test feature, the glue the
+// page inlines; <examples.json> is the examples array the build script
+// writes; <worker.js> is the page's drawing Worker, run here with a stand-in
+// for the Worker's scope; <date header> is a header with a date axis, whose
+// tick spacing reads the clock.
+//
+// Every example, and the date axis, must draw as the page draws them, and
+// after a panic traps an instance a new one must draw again, made as the
+// page makes it: the glue evaluated afresh on the module already compiled.
 
-import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
 
-const require = createRequire(import.meta.url);
-const [glueDir, examplesPath] = process.argv.slice(2);
-if (!glueDir || !examplesPath) {
-  console.error('usage: node plotter_smoke.mjs <glue dir> <examples.json>');
+const [gluePath, wasmPath, examplesPath, workerPath, datePath] = process.argv.slice(2);
+if (!datePath) {
+  console.error(
+    'usage: node plotter_smoke.mjs <glue.js> <module.wasm> <examples.json> <worker.js> <date header>',
+  );
   process.exit(2);
 }
-const gluePath = require.resolve(path.resolve(glueDir, 'ast_plotter.js'));
 
-// A fresh instance: the nodejs glue instantiates the module when it is
-// loaded, so dropping it from the cache and loading it again gives a new one.
-function instance() {
-  delete require.cache[gluePath];
-  return require(gluePath);
-}
+// As index.html defines it: the glue, evaluated afresh at each call.
+const makeWasmBindgen = new Function(`${readFileSync(gluePath, 'utf8')}\nreturn wasm_bindgen;`);
+const plotterWorker = new Function(`${readFileSync(workerPath, 'utf8')}\nreturn plotterWorker;`)();
+const module = await WebAssembly.compile(readFileSync(wasmPath));
 
 let failures = 0;
 function fail(message) {
@@ -37,47 +39,62 @@ function fail(message) {
   failures += 1;
 }
 
-function draw(plotter, example) {
-  const out = plotter.plot(
-    example.header, example.settings, '', 600, 600, example.version, true);
-  try {
-    return { svg: out.svg(), error: out.svg_error() };
-  } finally {
-    out.free();
+// worker.js in a stand-in for a Worker's scope, sent the compiled module
+// as the page sends it.
+function startWorker() {
+  const pending = new Map();
+  let nextId = 0;
+  const scope = {
+    onmessage: null,
+    postMessage(reply) {
+      pending.get(reply.id)(reply);
+      pending.delete(reply.id);
+    },
+  };
+  plotterWorker(scope, makeWasmBindgen);
+  scope.onmessage({ data: { module } });
+  return (args) =>
+    new Promise((resolve) => {
+      const id = ++nextId;
+      pending.set(id, resolve);
+      scope.onmessage({ data: { id, args } });
+    });
+}
+
+async function check(draw, name, header, settings, version) {
+  const reply = await draw([header, settings, '', 600, 600, version, true]);
+  if (reply.internal !== undefined) {
+    fail(`${name}: internal error ${reply.internal}`);
+  } else if (reply.svgError !== undefined) {
+    fail(`${name}: ${reply.svgError}`);
+  } else if (!reply.svg.startsWith('<?xml') || !reply.svg.trimEnd().endsWith('</svg>')) {
+    fail(`${name}: not an SVG document`);
+  } else {
+    console.log(`ok ${name} (${reply.svg.length} bytes of SVG)`);
+    return reply.svg;
   }
+  return '';
 }
 
 const examples = JSON.parse(readFileSync(examplesPath, 'utf8'));
 if (examples.length !== 8) fail(`expected 8 examples, found ${examples.length}`);
 
-let plotter = instance();
+const draw = startWorker();
 for (const example of examples) {
-  const { svg, error } = draw(plotter, example);
-  if (error !== undefined) {
-    fail(`${example.name}: ${error}`);
-  } else if (!svg.startsWith('<?xml') || !svg.trimEnd().endsWith('</svg>')) {
-    fail(`${example.name}: not an SVG document`);
-  } else {
-    console.log(`ok ${example.name} (${svg.length} bytes of SVG)`);
-  }
+  await check(draw, example.name, example.header, example.settings, example.version);
 }
+const dateSvg = await check(draw, 'date axis', readFileSync(datePath, 'utf8'), '', ' ');
+if (dateSvg && !/>\d{4}-\d\d-\d\d</.test(dateSvg)) fail('date axis: no date label');
 
-let trapped = false;
+const trapped = makeWasmBindgen();
+await trapped({ module_or_path: module });
 try {
-  plotter.__trap_for_test();
+  trapped.__trap_for_test();
+  fail('__trap_for_test did not trap');
 } catch (e) {
-  trapped = e instanceof WebAssembly.RuntimeError;
-  if (!trapped) fail(`__trap_for_test threw ${e}, not a WebAssembly trap`);
+  if (!(e instanceof WebAssembly.RuntimeError)) fail(`__trap_for_test threw ${e}, not a trap`);
 }
-if (!trapped) fail('__trap_for_test did not trap');
-
-plotter = instance();
-const { error } = draw(plotter, examples[0]);
-if (error !== undefined) {
-  fail(`a fresh instance after the trap: ${error}`);
-} else {
-  console.log('ok a fresh instance draws after a trap');
-}
+await check(startWorker(), 'a new instance after a trap', examples[0].header, examples[0].settings, ' ');
 
 if (failures > 0) {
   console.error(`${failures} failure(s)`);

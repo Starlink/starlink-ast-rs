@@ -6,7 +6,8 @@ The work is `crates/ast-plotter-wasm`, which follows `fplottest.f`, the Fortran 
 ## Building
 
 ```shell
-tools/build_plotter.sh --smoke   # every example drawn in Node, and recovery from a trap
+tools/build_plotter.sh --smoke   # every example and a date axis drawn in Node through the page's
+                                 # worker code, and a new instance after a trap
 tools/build_plotter.sh           # writes target/plotter/fits-plotter.html
 ```
 
@@ -19,8 +20,9 @@ The page is one file holding the HTML, the CSS, the JavaScript, the examples and
 
 - `index.html`: the page, with markers the build replaces with the other files.
 - `plotter.css`: its look, in light and dark mode.
+- `worker.js`: the drawing Worker's code, which the smoke test also runs.
 - `plotter.js`: filling the inputs from an example, redrawing 400 ms after the last edit, and showing each output or the error that replaced it.
-  It draws in a Worker, so the page stays responsive: an edit stops a draw still running, and a draw that takes longer than 20 s is stopped and reported (a very small `Tol` or a very large `MinTick` can make a grid take minutes, in the C library too).
+  It draws in a Worker (`worker.js`), so the page stays responsive: an edit stops a draw still running, and a draw that takes longer than 20 s is stopped and reported (a very small `Tol` or a very large `MinTick` can make a grid take minutes, in the C library too).
 - `examples.txt`: the eight examples of the CGI page, read by the build, by `crates/ast-plotter-wasm`'s tests and by `tools/oracle_fixtures/fits_plotter_probe.c`, which runs `fplottest.f`'s steps on the C library to make those tests' fixtures.
 
 ## How it is checked

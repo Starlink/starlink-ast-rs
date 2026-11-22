@@ -89,9 +89,11 @@ with open(sys.argv[2], "w", encoding="utf-8") as f:
 EOF
 
 if [ "$smoke" = 1 ]; then
-  rm -rf "$out/node"
-  wasm-bindgen --target nodejs --no-typescript --out-dir "$out/node" "$wasm"
-  node tools/plotter_smoke.mjs "$out/node" "$out/examples.json"
+  rm -rf "$out/smoke"
+  wasm-bindgen --target no-modules --no-typescript --out-dir "$out/smoke" "$wasm"
+  node tools/plotter_smoke.mjs "$out/smoke/ast_plotter.js" "$out/smoke/ast_plotter_bg.wasm" \
+    "$out/examples.json" web/plotter/worker.js \
+    crates/starlink-ast/tests/fixtures/wcsconv/inputs/timeplot.head
   exit 0
 fi
 
@@ -99,8 +101,8 @@ rm -rf "$out/glue"
 wasm-bindgen --target no-modules --no-typescript --out-dir "$out/glue" "$wasm"
 
 # The page with each marker replaced by its file. Text that would close the
-# script element it sits in is refused rather than escaped, since only the
-# JSON can be escaped without changing what it means.
+# script or style element it sits in is refused rather than escaped, since
+# only the JSON can be escaped without changing what it means.
 python3 - "$out" <<'EOF'
 import base64
 import json
@@ -111,20 +113,25 @@ out = pathlib.Path(sys.argv[1])
 web = pathlib.Path("web/plotter")
 
 
-def script_safe(name, text):
-    if "</script" in text.lower():
-        sys.exit(f"build_plotter: {name} contains </script")
+def safe(name, text, element):
+    if f"</{element}" in text.lower():
+        sys.exit(f"build_plotter: {name} contains </{element}")
     return text
+
+
+def script_safe(name, text):
+    return safe(name, text, "script")
 
 
 examples = json.loads((out / "examples.json").read_text(encoding="utf-8"))
 parts = {
-    "/*@PLOTTER_CSS@*/": (web / "plotter.css").read_text(encoding="utf-8"),
+    "/*@PLOTTER_CSS@*/": safe("plotter.css", (web / "plotter.css").read_text(encoding="utf-8"), "style"),
     "/*@GLUE@*/": script_safe(
         "the wasm-bindgen glue", (out / "glue/ast_plotter.js").read_text(encoding="utf-8")
     ),
     "/*@EXAMPLES@*/": json.dumps(examples, ensure_ascii=False).replace("</", "<\\/"),
     "/*@WASM@*/": base64.b64encode((out / "glue/ast_plotter_bg.wasm").read_bytes()).decode(),
+    "/*@WORKER_JS@*/": script_safe("worker.js", (web / "worker.js").read_text(encoding="utf-8")),
     "/*@PLOTTER_JS@*/": script_safe("plotter.js", (web / "plotter.js").read_text(encoding="utf-8")),
 }
 page = (web / "index.html").read_text(encoding="utf-8")

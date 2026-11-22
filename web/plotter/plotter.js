@@ -3,8 +3,8 @@
 
 // The page's behaviour: fill the inputs from an example, redraw shortly
 // after the last edit, and show each output or the error that replaced it.
-// makeWasmBindgen, PLOTTER_EXAMPLES and PLOTTER_WASM are defined by the
-// script the build puts before this one.
+// makeWasmBindgen, plotterWorker (worker.js), PLOTTER_EXAMPLES and
+// PLOTTER_WASM are defined by the scripts the build puts before this one.
 //
 // Drawing runs in a Worker, so the page stays responsive: some settings
 // (a very small Tol, a very large MinTick) make a grid take minutes, in the
@@ -35,46 +35,11 @@
     return bytes;
   }
 
-  // What the Worker runs, after the wasm-bindgen glue: the first message
-  // carries the compiled module to instantiate, each later one a request.
-  // A panic in the library traps the instance, which is then unusable, so
-  // the page stops a Worker that reports an internal error.
-  function workerMain() {
-    let ready = null;
-    self.onmessage = async (event) => {
-      const message = event.data;
-      if (message.module !== undefined) {
-        const wb = makeWasmBindgen();
-        ready = wb({ module_or_path: message.module }).then(() => wb);
-        return;
-      }
-      let reply;
-      try {
-        const plotter = await ready;
-        const out = plotter.plot(...message.args);
-        try {
-          reply = {
-            id: message.id,
-            svg: out.svg(),
-            svgError: out.svg_error(),
-            fits: out.fits(),
-            fitsError: out.fits_error(),
-            ast: out.ast(),
-            astError: out.ast_error(),
-          };
-        } finally {
-          out.free();
-        }
-      } catch (e) {
-        reply = { id: message.id, internal: String(e) };
-      }
-      self.postMessage(reply);
-    };
-  }
-
   function startWorker(module) {
     if (workerUrl === null) {
-      const source = `${makeWasmBindgen.toString()}\n(${workerMain.toString()})();\n`;
+      const source =
+        `${makeWasmBindgen.toString()}\n${plotterWorker.toString()}\n` +
+        'plotterWorker(self, makeWasmBindgen);\n';
       workerUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
     }
     const w = new Worker(workerUrl);
