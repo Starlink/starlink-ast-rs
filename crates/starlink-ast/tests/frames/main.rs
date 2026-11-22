@@ -70,6 +70,8 @@ mod test_frameset_repair;
 mod test_frameset_variants;
 #[path = "../test_ident.rs"]
 mod test_ident;
+#[path = "../test_line_geometry.rs"]
+mod test_line_geometry;
 #[path = "../test_match_axes.rs"]
 mod test_match_axes;
 #[path = "../test_min_max_axes.rs"]
@@ -82,6 +84,8 @@ mod test_norm_points;
 mod test_overlay;
 #[path = "../test_picked_skyaxis.rs"]
 mod test_picked_skyaxis;
+#[path = "../test_plot_frame_methods.rs"]
+mod test_plot_frame_methods;
 #[path = "../test_system_change.rs"]
 mod test_system_change;
 #[path = "../test_unit_mapper.rs"]

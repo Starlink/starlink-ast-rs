@@ -808,6 +808,7 @@ impl Serializable for DssMap {
             Some("Y Pixel size (microns)".to_string()),
         );
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..6 {
             let name = format!("PPO{}", i + 1);
             node.push_double(
@@ -817,6 +818,7 @@ impl Serializable for DssMap {
             );
         }
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..19 {
             let name = format!("AMDX{}", i + 1);
             node.push_double(
@@ -826,6 +828,7 @@ impl Serializable for DssMap {
             );
         }
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..19 {
             let name = format!("AMDY{}", i + 1);
             node.push_double(

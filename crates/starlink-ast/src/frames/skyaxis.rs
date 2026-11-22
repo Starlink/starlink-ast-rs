@@ -805,6 +805,305 @@ const SEP_LIST: &[u8] = b" :hHdDmM'sS\"";
 const ANGLE_OR_TIME_LIST: [u8; 12] = [0, 0, 2, 2, 1, 1, 0, 0, 1, 0, 0, 1];
 const FIELD_ID_LIST: [usize; 12] = [0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3];
 
+/// A "nice" gap size close to `gap` for a sky axis whose Format is `fmt`
+/// and Digits `digits`, and the number of minor divisions within it.
+/// A `%`-style Format chooses as a plain axis does.
+// C: skyaxis.c `AxisGap` (skyaxis.c:890). C also calls `DHmsGap` once
+// before testing for a `%` Format and discards the result; that call has no
+// visible effect, because the plain `AxisGap` then sets the division count
+// whenever `DHmsGap` would have.
+pub(crate) fn sky_axis_gap(fmt: &str, digits: i32, gap: f64) -> AstResult<(f64, Option<i32>)> {
+    if fmt.starts_with('%') {
+        super::axis::plain_axis_gap(gap)
+    } else {
+        Ok(dhms_gap(fmt, digits, gap))
+    }
+}
+
+/// Port of `DHmsGap` (skyaxis.c:1977): a gap that is a round number of the
+/// most significant field it would change when formatted with `fmt`.
+fn dhms_gap(fmt: &str, digs: i32, gap: f64) -> (f64, Option<i32>) {
+    const DEC_TABLE: [f64; 6] = [1.0, 2.0, 5.0, 5.0, 10.0, -1.0];
+    const DEC_NTICKS: [i32; 5] = [5, 4, 5, 5, 5];
+    const DEG_TABLE: [f64; 11] = [
+        1.0, 2.0, 5.0, 10.0, 30.0, 45.0, 60.0, 90.0, 180.0, 360.0, -1.0,
+    ];
+    const DEG_NTICKS: [i32; 10] = [4, 4, 5, 5, 6, 3, 6, 3, 3, 4];
+    const HR_TABLE: [f64; 7] = [1.0, 2.0, 3.0, 6.0, 12.0, 24.0, -1.0];
+    const HR_NTICKS: [i32; 6] = [4, 4, 6, 6, 4, 4];
+    const MINSEC_TABLE: [f64; 7] = [1.0, 2.0, 5.0, 10.0, 30.0, 60.0, -1.0];
+    const MINSEC_NTICKS: [i32; 6] = [4, 4, 5, 5, 6, 4];
+
+    if gap == 0.0 {
+        return (0.0, None);
+    }
+    let f = parse_dhms_format(fmt, digs);
+    let unit = if f.as_time { HR2RAD } else { DEG2RAD };
+    let field_value = [unit, unit / 60.0, unit / 3600.0];
+    let positive = gap >= 0.0;
+    let mut gap = if positive { gap } else { -gap };
+    let mut ntick = None;
+    // Two passes: a decimal gap chosen on the first may round the gap down
+    // far enough that a field-specific gap suits it better.
+    for _ in 0..2 {
+        let (field, decimal) = if gap > field_value[0] {
+            if f.dh {
+                (
+                    1,
+                    gap > field_value[0] * if f.as_time { 24.0 } else { 360.0 },
+                )
+            } else if f.min {
+                (2, true)
+            } else {
+                (3, true)
+            }
+        } else if gap > field_value[1] {
+            if f.min {
+                (2, false)
+            } else if f.sec {
+                (3, true)
+            } else {
+                (1, true)
+            }
+        } else if gap > field_value[2] {
+            if f.sec {
+                (3, false)
+            } else if f.min {
+                (2, true)
+            } else {
+                (1, true)
+            }
+        } else if f.sec {
+            (3, true)
+        } else if f.min {
+            (2, true)
+        } else {
+            (1, true)
+        };
+        let fv = field_value[field - 1];
+        if decimal {
+            let scale = crate::math::powf(10.0, crate::math::log10(gap / fv).floor());
+            let mut i = 0;
+            while DEC_TABLE[i + 1] > 0.0 {
+                // Compare against the table value as it reads back from its
+                // "%g" form, which is what a formatted gap shows.
+                let text = super::axis_format::sprintf_double(
+                    "%g",
+                    scale * 0.5 * (DEC_TABLE[i] + DEC_TABLE[i + 1]),
+                );
+                let scaled_table_value =
+                    super::axis_format::c_strtod(text.as_bytes()).map_or(0.0, |(v, _)| v);
+                if gap < fv * scaled_table_value {
+                    break;
+                }
+                i += 1;
+            }
+            gap = scale * fv * DEC_TABLE[i];
+            ntick = Some(DEC_NTICKS[i]);
+        } else {
+            let (table, nticks): (&[f64], &[i32]) = if field == 1 {
+                if f.as_time {
+                    (&HR_TABLE, &HR_NTICKS)
+                } else {
+                    (&DEG_TABLE, &DEG_NTICKS)
+                }
+            } else {
+                (&MINSEC_TABLE, &MINSEC_NTICKS)
+            };
+            let mut i = 0;
+            while table[i + 1] > 0.0 {
+                if gap < fv * 0.5 * (table[i] + table[i + 1]) {
+                    break;
+                }
+                i += 1;
+            }
+            gap = fv * table[i];
+            ntick = Some(nticks[i]);
+        }
+    }
+    (if positive { gap } else { -gap }, ntick)
+}
+
+/// What C's `sscanf( text, "%lg", ... )` returns.
+enum Scan {
+    /// A value was read.
+    Value(f64),
+    /// The text does not start with a number.
+    NoMatch,
+    /// The text is empty or white space: `sscanf` returns `EOF`, which C
+    /// treats as success while leaving the value unchanged.
+    Eof,
+}
+
+fn scan_lg(s: &[u8]) -> Scan {
+    let ws = s.iter().take_while(|&&b| c_isspace(b)).count();
+    if ws == s.len() {
+        return Scan::Eof;
+    }
+    match super::axis_format::c_strtod(&s[ws..]) {
+        Some((v, _)) => Scan::Value(v),
+        None => Scan::NoMatch,
+    }
+}
+
+/// C's `astChrLen`: the length of `s` without trailing white space.
+fn chr_len(s: &[u8]) -> usize {
+    s.iter().rposition(|&b| !c_isspace(b)).map_or(0, |i| i + 1)
+}
+
+/// Split a value formatted with `fmt` on a sky axis whose Digits is
+/// `digits` into its degrees or hours, minutes and seconds fields.
+/// A `%`-style Format splits as a plain axis does.
+///
+/// Every field the Format names is returned whenever `maxfld` is not zero,
+/// even if there are more of them than `maxfld`, as C writes them all.
+// C: skyaxis.c `AxisFields` (skyaxis.c:479). Where C's behavior is
+// undefined the port fails to find any field: a separator the Format names
+// that is missing from the text (C dereferences a null pointer), and a
+// value that is empty or white space before any field has been read (C
+// uses an uninitialized value). Where C's `sscanf` meets the end of the
+// text in a later field it keeps the previous field's value, which the port
+// mirrors, so "12:" read with "dm" is 12 degrees and 12 minutes.
+pub(crate) fn sky_axis_fields(
+    fmt: &str,
+    digits: i32,
+    text: &str,
+    maxfld: usize,
+) -> super::FieldSplit {
+    use crate::constants::BAD_VALUE;
+    if fmt.starts_with('%') {
+        return super::axis::plain_axis_fields(fmt, text, maxfld);
+    }
+    let failed = super::FieldSplit {
+        fields: Vec::new(),
+        value: BAD_VALUE,
+    };
+    let f = parse_dhms_format(fmt, digits);
+    if maxfld == 0 {
+        return failed;
+    }
+    let s = text.as_bytes();
+    let start = s.iter().take_while(|&&b| b == b' ').count();
+    let mut p = start;
+    let mut sign = 1.0;
+    match s.get(p) {
+        Some(b'-') => {
+            sign = -1.0;
+            p += 1;
+        }
+        Some(b'+') => p += 1,
+        _ => {}
+    }
+    let letters = f.sep == DHmsSep::Letters;
+    let sep_term = match f.sep {
+        DHmsSep::Char(c) => c.to_string(),
+        DHmsSep::Letters => String::new(),
+    };
+    // The span of a field starting at `fstart`: up to `term` when there is
+    // one, which `p` then skips, else to the last non-blank character.
+    let span = |fstart: usize, term: Option<&str>, p: &mut usize| -> Option<usize> {
+        match term {
+            Some(t) => {
+                let i = find(&s[*p..], t.as_bytes())?;
+                *p += i + t.len();
+                Some(*p - t.len() - fstart)
+            }
+            None => {
+                let nc = chr_len(&s[fstart..]);
+                *p = fstart + nc;
+                Some(nc)
+            }
+        }
+    };
+    let mut fields = Vec::new();
+    let mut value = 0.0;
+    let mut dval: Option<f64> = None;
+    if f.dh {
+        let term = if letters {
+            Some(if f.as_time { "h" } else { "d" })
+        } else if f.min || f.sec {
+            Some(sep_term.as_str())
+        } else {
+            None
+        };
+        // The first field starts at its sign.
+        let Some(nc) = span(start, term, &mut p) else {
+            return failed;
+        };
+        match scan_lg(&s[start..]) {
+            Scan::Value(v) => {
+                value = v.abs();
+                dval = Some(v);
+            }
+            Scan::NoMatch | Scan::Eof => return failed,
+        }
+        fields.push(start..start + nc);
+    }
+    for (present, letter, sep_ends, divisor) in
+        [(f.min, "m", f.sec, 60.0), (f.sec, "s", false, 3600.0)]
+    {
+        if !present {
+            continue;
+        }
+        let fstart = p;
+        let term = if letters {
+            Some(letter)
+        } else if sep_ends {
+            Some(sep_term.as_str())
+        } else {
+            None
+        };
+        let Some(nc) = span(fstart, term, &mut p) else {
+            return failed;
+        };
+        match scan_lg(&s[fstart..]) {
+            Scan::Value(v) => dval = Some(v),
+            Scan::Eof if dval.is_some() => {}
+            Scan::NoMatch | Scan::Eof => return failed,
+        }
+        value += dval.unwrap_or_default() / divisor;
+        fields.push(fstart..fstart + nc);
+    }
+    if chr_len(&s[p..]) > 0 {
+        return failed;
+    }
+    super::FieldSplit {
+        fields,
+        value: sign * value * if f.as_time { HR2RAD } else { DEG2RAD },
+    }
+}
+
+/// The byte offset of the first occurrence of `needle` in `hay`.
+fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    hay.windows(needle.len()).position(|w| w == needle)
+}
+
+/// The byte offset into `str2` of the first of its fields that differs
+/// from the matching field of `str1`, both values formatted with `fmt` on a
+/// sky axis whose Digits is `digits`; the length of `str2` when every field
+/// matches. With no `str1`, the offset of the last field of `str2`.
+// C: skyaxis.c `AxisAbbrev` (skyaxis.c:307), which splits each string into
+// at most three fields with `AxisFields`. With no `str1` and no field in
+// `str2`, C indexes before the start of its field array; the port gives 0.
+pub(crate) fn sky_axis_abbrev(fmt: &str, digits: i32, str1: Option<&str>, str2: &str) -> usize {
+    let f2 = sky_axis_fields(fmt, digits, str2, 3).fields;
+    let Some(str1) = str1 else {
+        return f2.last().map_or(0, |r| r.start);
+    };
+    let f1 = sky_axis_fields(fmt, digits, str1, 3).fields;
+    let mut result = 0;
+    for (i, (a, b)) in f1.iter().zip(&f2).enumerate() {
+        if a.len() != b.len() || str1.as_bytes()[a.clone()] != str2.as_bytes()[b.clone()] {
+            break;
+        }
+        result = f2.get(i + 1).map_or(str2.len(), |r| r.start);
+    }
+    result
+}
+
 /// C's `isspace` in the "C" locale.
 fn c_isspace(b: u8) -> bool {
     matches!(b, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')

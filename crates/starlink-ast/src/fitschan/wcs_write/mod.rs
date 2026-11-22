@@ -400,6 +400,7 @@ fn write_store_to_cards(
 
     // CRPIXi{S}. Every axis must have one; C abandons the version
     // otherwise (fitschan.c:37470-37481).
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         let Some(val) = store.crpix[i] else {
             return Ok(false);
@@ -411,6 +412,7 @@ fn write_store_to_cards(
 
     // CRVALi{S}. Likewise required on every axis
     // (fitschan.c:37483-37495).
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         let Some(val) = store.crval[i] else {
             return Ok(false);
@@ -457,6 +459,7 @@ fn write_store_to_cards(
     }
 
     // CUNITi{S}
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = fmt_axis_key("CUNIT", i + 1, s);
@@ -467,6 +470,7 @@ fn write_store_to_cards(
 
     // AXREFi{S}: the reference position of a `-TAB` axis whose look-up
     // has no inverse, an AST extension (fitschan.c `WcsFromStore`).
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(val) = store.axref[i] {
             let key = fmt_axis_key("AXREF", i + 1, s);
@@ -485,6 +489,7 @@ fn write_store_to_cards(
             "Is SkyRef used as pole or origin?",
         );
     }
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(v) = store.skyref[i] {
             let key = fmt_axis_key("SREF", i + 1, s);
@@ -492,6 +497,7 @@ fn write_store_to_cards(
             cards.set_float(&key, v, &comment);
         }
     }
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(v) = store.skyrefp[i] {
             let key = fmt_axis_key("SREFP", i + 1, s);
@@ -777,6 +783,7 @@ fn write_sip_block(order: Option<usize>, coeffs: &[Vec<f64>], prefix: &str, card
 /// description is not written, if an axis has no CDELT value.
 fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList, s: char) -> bool {
     let naxis = store.naxis;
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         let Some(val) = store.cdelt[i] else {
             return false;
@@ -784,7 +791,9 @@ fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList, s: char) -> bool {
         let key = fmt_axis_key("CDELT", i + 1, s);
         cards.set_float(&key, val, &format!("Pixel size on axis {}", i + 1));
     }
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
+        #[allow(clippy::needless_range_loop)]
         for j in 0..naxis {
             let Some(val) = store.pc[i][j] else {
                 continue;

@@ -18,7 +18,7 @@ use crate::error::{AstError, AstResult, ErrorCode};
 /// The text `AxisFormat` writes between "10" and the exponent of a log
 /// Format when graphical escapes are not retained, which is the default
 /// (axis.c:157, object.c:418). Escapes are a Plot feature, not yet ported.
-const LOG_TXT: &str = "10^";
+pub(crate) const LOG_TXT: &str = "10^";
 
 /// The escape sequence `AxisFormat` appends to a log Format, which resets
 /// the graphical attributes (axis.c:794).

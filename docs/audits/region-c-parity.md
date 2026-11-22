@@ -603,6 +603,7 @@ Fewer than 3 vertices is rejected in Rust; C has no such check.
 
 **PG-5 LOW (perf) — `cache()` is recomputed on every `base_inside`/`bounded_impl` call** (polygon.rs:447, 606).
 That is O(nv²) line intersections per transform or `is_bounded` call; C caches it (`stale`).
+A second saving sits beside it for a sky Polygon: SkyFrame `LineCrossing` always computes the Cartesian vector of the crossing, and `LineContains` with `def = 1` can reuse it rather than recompute it from the axis values (skyframe.c:5423). C never passes `def = 1`, and the port does not carry the vector (SK-18 in `frame-family-c-parity.md`); measure the edge loops (`polygon.c:4152`, `:6407`) with `ast-bench` before adding either.
 
 **PG-6 LOW — `is_bounded_inner` swallows geometry errors as `true`** (polygon.rs:779).
 

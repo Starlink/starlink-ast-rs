@@ -7,6 +7,10 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ## [Unreleased]
 
+### Added
+
+- `starlink-ast`: `Frame::gap`, `centre`, `abbrev` and `fields`, which choose tick spacing and split and abbreviate formatted axis values for plot annotation, as the C library's do, with `FieldSplit` to hold the fields of a value.
+
 ### Changed
 
 - `starlink-ast`: building no longer needs a C compiler: PAL and ERFA are now Rust, bit for bit the results of the C they replace.
@@ -32,6 +36,9 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a SkyFrame's `line_crossing` gives the crossing's longitude as the C library does when the crossing lies opposite its first estimate on the -x meridian, -pi where it gave +pi.
+- `starlink-ast`: the line methods `line_contains` and `line_crossing` report `ErrorCode::Inter`, as the C library does, when given a line that a different kind of Frame made: a great-circle line made by a SkyFrame given to a plain Frame, or the reverse.
+- `starlink-ast`: a date whose day is outside its month, such as `2012-03-00` or `2012-02-30`, reads as the C library reads it, counting on from the start of the month, where it was not read at all.
 - `starlink-ast`: the guide's Cargo chapter gives the crates.io dependency, `starlink-ast = "0.1"`, rather than saying the crate is unpublished and must come from its repository.
 - `starlink-ast`: SlaMap's conversions between equatorial and horizon coordinates (`E2H` and `H2E`) take the sine and cosine of each angle with the platform's combined function, as the C library built with clang or GCC does; an unoptimized build on macOS had differed from an optimized one, and from the C library, in the last bit of some azimuths and elevations.
 

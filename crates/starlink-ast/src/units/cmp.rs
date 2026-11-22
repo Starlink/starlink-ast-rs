@@ -66,6 +66,7 @@ pub(crate) fn cmp_tree(tree1: &UnitNode, tree2: &UnitNode, exact: bool) -> i32 {
     // For OP_MULT with `exact=false`, retry with swapped arguments.
     if result != 0 && op == Oper::Mult && !exact {
         let mut swapped: i32 = 0;
+        #[allow(clippy::needless_range_loop)]
         for i in 0..tree1.arg.len() {
             let other = if i == 0 { 1 } else { 0 };
             swapped = cmp_tree(&tree1.arg[i], &tree2.arg[other], false);

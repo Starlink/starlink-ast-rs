@@ -2069,6 +2069,8 @@ impl Frame for FrameSet {
         self.current().get_axis(axis)
     }
 
+    forward_plot_methods!(frameset);
+
     fn norm_box(
         &self,
         lbnd: &mut [f64],

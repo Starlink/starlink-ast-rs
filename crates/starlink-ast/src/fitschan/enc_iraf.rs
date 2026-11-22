@@ -87,6 +87,7 @@ pub(crate) fn read_from_cards(cards: &CardList) -> AstResult<FitsStore> {
         store.cunit[i] = cards.get_string(&key);
 
         // CD matrix: try standard `CDi_j` format first, then 3-digit `CD00i00j`
+        #[allow(clippy::needless_range_loop)]
         for j in 0..naxis {
             let col_num = j + 1;
             let key_std = format!("CD{axis_num}_{col_num}");
@@ -215,6 +216,7 @@ pub(crate) fn write_to_cards(
     let naxis = store.naxis;
 
     // CRPIXi
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(val) = store.crpix[i] {
             let key = key_for("CRPIX", Some(i + 1), s);
@@ -223,6 +225,7 @@ pub(crate) fn write_to_cards(
     }
 
     // CRVALi
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(val) = store.crval[i] {
             let key = key_for("CRVAL", Some(i + 1), s);
@@ -250,6 +253,7 @@ pub(crate) fn write_to_cards(
     write_iraf_cd_matrix(store, cards, s);
 
     // CUNITi (mirror C IRAFFromStore: CUNIT is emitted after the CD matrix)
+    #[allow(clippy::needless_range_loop)]
     for i in 0..naxis {
         if let Some(ref val) = store.cunit[i] {
             let key = key_for("CUNIT", Some(i + 1), s);

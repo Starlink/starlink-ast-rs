@@ -382,6 +382,7 @@ impl Mapping for SelectorMap {
         // standard AST trick for region membership in a Mapping context.
         let mut working = pts.clone();
 
+        #[allow(clippy::needless_range_loop)]
         for ireg in 0..self.regions.len() {
             let reg = &self.regions[ireg];
             let mut neg_reg = reg.negated_copy();
