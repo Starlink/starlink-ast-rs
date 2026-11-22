@@ -3686,6 +3686,13 @@ impl FitsChan {
                 Ok(1)
             }
             _ => {
+                // Only a FrameSet (a Plot is one in C) is written in a
+                // foreign encoding; any other object writes nothing and the
+                // write returns 0 without an error. Mirrors C `Write`: "Only
+                // proceed if the supplied object is a FrameSet".
+                if !matches!(obj, AnyObject::FrameSet(_) | AnyObject::Plot(_)) {
+                    return Ok(0);
+                }
                 // For all FITS-WCS encodings, preserve the relative position
                 // of any WCS card that already exists in the input header by
                 // letting the encoder overwrite it in place. Every other card

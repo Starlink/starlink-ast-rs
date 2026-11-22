@@ -19,7 +19,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::Frame;
-use crate::grf::{Grf, GrfPrimitive};
+use crate::grf::{Grf, GrfCap, GrfPrimitive};
 use crate::math::sqrt;
 
 /// The boxes of the labels drawn so far, against which a new label is
@@ -41,12 +41,35 @@ struct Label {
     saved_prio: i32,
     /// The byte offset in `text` of its abbreviated form.
     atext: usize,
+    /// The byte offsets in `text` of its minus signs, when they are to be
+    /// drawn as U+2212; empty otherwise.
+    minus: Vec<usize>,
 }
 
 impl Label {
     fn atext(&self) -> &str {
         &self.text[self.atext..]
     }
+}
+
+/// `drawn`, made from `text[from..]` by inserting text without a `-` and
+/// removing spaces, with each `-` that is one of the minus signs `minus` in
+/// `text` drawn as U+2212. The `-` characters keep their order through
+/// that, so the n-th in `drawn` is the n-th in `text[from..]`.
+fn with_minus_signs(text: &str, from: usize, minus: &[usize], drawn: String) -> String {
+    if minus.is_empty() {
+        return drawn;
+    }
+    let mut is_sign = text[from..]
+        .match_indices('-')
+        .map(|(i, _)| minus.contains(&(from + i)));
+    drawn
+        .chars()
+        .map(|c| match c {
+            '-' if is_sign.next() == Some(true) => '\u{2212}',
+            c => c,
+        })
+        .collect()
 }
 
 /// Whether the point `(x, y)` is inside the convex polygon of the `n`
@@ -143,6 +166,13 @@ fn is_space(c: u8) -> bool {
 }
 
 impl Plot {
+    /// `label` from byte `from` as it is to be drawn: split as
+    /// [`split_value`](Self::split_value) splits it, with its minus signs.
+    fn drawn_label(&self, label: &Label, from: usize, axis: usize, split: &mut bool) -> String {
+        let drawn = self.split_value(&label.text[from..], axis, split);
+        with_minus_signs(&label.text, from, &label.minus, drawn)
+    }
+
     /// A label as it is to be drawn: split into two lines about its middle
     /// space when it is long, or when an earlier label was split, unless it
     /// holds escape sequences or they are not interpreted.
@@ -341,8 +371,15 @@ impl Plot {
                 priority: 0,
                 saved_prio: 0,
                 atext: 0,
+                minus: Vec::new(),
             })
             .collect();
+        if self.g_cap(grf, GrfCap::Unicode, 0) {
+            let frame = self.frameset.current();
+            for l in &mut list {
+                l.minus = frame.minus_signs(axis + 1, fmt, &l.text)?;
+            }
+        }
         // C sorts the labels with qsort, whose order of labels at the same
         // index depends on the platform; the port sorts stably.
         list.sort_by(|a, b| {
@@ -399,7 +436,7 @@ impl Plot {
                 } || !found;
                 if better && !root_found {
                     let ok = axis == 0 || {
-                        let text = self.split_value(&list[i].text, axis, &mut split);
+                        let text = self.drawn_label(&list[i], 0, axis, &mut split);
                         let l = &list[i];
                         let (x, y, just, ux, uy) =
                             (l.x as f32, l.y as f32, l.just, l.upx as f32, l.upy as f32);
@@ -504,7 +541,7 @@ impl Plot {
             let mut nleft = 1;
             let l = &list[root];
             let (t, x, y, just, ux, uy) = (
-                self.split_value(l.atext(), axis, &mut split),
+                self.drawn_label(l, l.atext, axis, &mut split),
                 l.x as f32,
                 l.y as f32,
                 l.just,
@@ -520,7 +557,7 @@ impl Plot {
                     if l.priority >= 0 {
                         if l.atext() != latext {
                             let (t, x, y, just, ux, uy) = (
-                                self.split_value(l.atext(), axis, &mut split),
+                                self.drawn_label(l, l.atext, axis, &mut split),
                                 l.x as f32,
                                 l.y as f32,
                                 l.just,
@@ -582,7 +619,7 @@ impl Plot {
             }
             let l = &list[i];
             let (t, x, y, just, ux, uy) = (
-                self.split_value(l.atext(), axis, &mut split),
+                self.drawn_label(l, l.atext, axis, &mut split),
                 l.x as f32,
                 l.y as f32,
                 l.just,
@@ -590,7 +627,7 @@ impl Plot {
                 l.upy as f32,
             );
             if !self.overlap(grf, esc, &t, x, y, just, ux, uy, boxes)? {
-                let t = self.split_value(list[i].atext(), axis, &mut split);
+                let t = self.drawn_label(&list[i], list[i].atext, axis, &mut split);
                 self.render_text_opt(grf, true, esc, &t, x, y, just, ux, uy)?;
             }
         }

@@ -1847,6 +1847,29 @@ A get of a used value runs such a grid, so after `astSet( plot, "Gap=0" )` a get
 Oracle-verified, by the `plot_gap0` case of `tools/oracle_fixtures/attr_strings_probe.c`.
 The port's grid puts the Plot's attributes back after an error (`Plot::grid_impl`), and a get works the grid out on a copy, so the dump is unchanged; the case's dump is in `DUMP_EXCLUDED` in `crates/starlink-ast/tests/test_attr_strings.rs`.
 
+### `grf_log.c` writes text into its SVG unescaped
+
+`astGText` in `grf_log.c` writes the text it is given between `<text>` and `</text>` as it is, so a label or title holding `<`, `&` or `>` (`Title=Flux < 1`, `Label(1)=Q & U`) makes the SVG it writes invalid XML, which a browser refuses to show.
+Oracle-verified: `tools/oracle_fixtures/grf_log_probe.c` draws `a<b & "c"` and C's SVG holds it raw.
+The port's `SvgGrf` escapes `&`, `<`, `>` and `"`; the one oracle line that differs is `XML_ESCAPE_EXCLUDED` in `crates/starlink-ast/tests/test_grf.rs`.
+Control characters are written raw too, and XML allows none but tab, newline and carriage return, even as a character reference, so `Title=x` followed by U+0001 also makes the SVG invalid (read from source); the port draws each such character, and U+FFFE and U+FFFF, as U+FFFD (`characters_xml_forbids_are_replaced` in `test_grf.rs`).
+
+### `grf_log.c` turns SVG text the wrong way
+
+`astGText` in `grf_log.c` writes `rotate(angle)` with `angle = -atan2( upx, upy )`, the up vector's turn from upright measured anticlockwise with y upwards, as graphics coordinates have it.
+SVG's y runs downwards and its `rotate` turns clockwise on the screen, so every label turns the opposite way to its up vector: a label meant to read upwards along a vertical axis reads downwards, and one tilted 65 degrees one way is drawn tilted 65 degrees the other.
+The angle is also stepped to 5 degrees and worked out in graphics coordinates, not pixels, so on an image that is not square a label leans by a different angle from the curve it labels.
+Oracle-verified: `crates/ast-plotter-wasm/tests/fixtures/aitoff.svg`, written by `tools/oracle_fixtures/fits_plotter_probe.c`, draws the right ascension labels 3 and 6, whose text boxes lean about 65 degrees clockwise, with `rotate(-65,…)`.
+The logging backend's SVG is a record of the calls rather than a drawing, so the port's default `SvgGrf` mirrors it byte for byte; with `SvgOptions::equal_aspect`, which draws on a square as PGPLOT does, the port turns text the way its up vector points, at its exact angle (`equal_aspect_turns_text_the_way_its_up_vector_points` in `crates/starlink-ast/tests/test_grf.rs`).
+
+### A shortened declination label drops its sign
+
+A Plot shortens each tick label by leaving out the leading fields it shares with the label before it (`AxisAbbrev`, `skyaxis.c:307`), and a SkyAxis keeps the sign in its first field.
+So in a declination run `-0°10'`, `-0°05'`, `0°00'`, the middle label is drawn `05'`, the same as the `05'` that stands for `+0°05'` above `0°00'`; only the `-0°10'` before it says which side of zero it is.
+A label of `-1°05'` after `-1°10'` loses its sign the same way, but there the `-1°` is still in view on its neighbour; at `-0°` the shared field is the only sign the label has.
+Oracle-verified: `crates/ast-plotter-wasm/tests/fixtures/origin.svg`, written by `tools/oracle_fixtures/fits_plotter_probe.c` for the page's ORIGIN example, holds `-0`, `°`, `10`, `'`, then `05`, `'`, then `0`, `°`, `00`, `'`.
+The port mirrors it; keeping the sign when the shared field starts with one would be an upstream change to `AxisAbbrev`.
+
 ## Addressed here, and not going upstream
 
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.

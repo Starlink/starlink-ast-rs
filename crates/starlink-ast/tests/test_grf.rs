@@ -69,6 +69,43 @@ const TEXT_WIDTH_EXCLUDED: &[(usize, &str)] = &[
     ),
 ];
 
+/// Calls whose SVG differs from C's by design: text holding characters XML
+/// gives a meaning, which C's `grf_log.c` writes as given, making its SVG
+/// invalid, and the port escapes. Their `<text>` lines are left out of the
+/// SVG comparison, and `xml_escape_exclusions_still_differ` fails when one
+/// matches C again.
+const XML_ESCAPE_EXCLUDED: &[(usize, &str)] = &[(
+    84,
+    "the text a<b & \"c\", which C writes into its SVG unescaped",
+)];
+
+/// The text drawn by an excluded `Text` call.
+fn escaped_call_text(i: usize) -> &'static str {
+    match cases::CALLS[i].0 {
+        Call::Text(t, ..) => t,
+        ref other => panic!("call {i} is not a text: {other:?}"),
+    }
+}
+
+/// An SVG with the `<text>` lines of the XML-escape exclusions removed, as
+/// C writes them and as the port does.
+fn without_escaped(svg: &str) -> String {
+    svg.lines()
+        .filter(|l| {
+            !XML_ESCAPE_EXCLUDED.iter().any(|&(i, _)| {
+                let t = escaped_call_text(i);
+                let escaped = t
+                    .replace('&', "&amp;")
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;")
+                    .replace('"', "&quot;");
+                l.ends_with(&format!(">{t}</text>")) || l.ends_with(&format!(">{escaped}</text>"))
+            })
+        })
+        .map(|l| format!("{l}\n"))
+        .collect()
+}
+
 /// The text of an excluded call.
 fn excluded_text(i: usize) -> &'static str {
     match cases::CALLS[i].0 {
@@ -174,10 +211,27 @@ fn svg_grf_matches_the_c_library() {
     replay(&mut grf);
     let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
     assert_lines_eq(
-        &without_excluded(&svg),
-        &without_excluded(cases::SVG),
+        &without_escaped(&without_excluded(&svg)),
+        &without_escaped(&without_excluded(cases::SVG)),
         "svg",
     );
+}
+
+#[test]
+fn xml_escape_exclusions_still_differ() {
+    for &(i, reason) in XML_ESCAPE_EXCLUDED {
+        let (Call::Text(t, x, y, j, up), _) = &cases::CALLS[i] else {
+            panic!("call {i} is not a text");
+        };
+        let mut grf = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
+        grf.text(t, *x, *y, Justification::from_code(j).unwrap(), *up)
+            .unwrap();
+        let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
+        assert!(
+            !svg.contains(&format!(">{t}</text>")),
+            "call {i} now writes the text as C does ({reason})"
+        );
+    }
 }
 
 #[test]
@@ -324,4 +378,194 @@ fn buffering_and_flushing_default_to_nothing() {
     grf.begin_buffer().unwrap();
     grf.end_buffer().unwrap();
     grf.flush().unwrap();
+}
+
+/// Text goes into the SVG escaped, so markup characters in a label keep the
+/// SVG well formed.
+#[test]
+fn text_is_escaped_for_xml() {
+    let mut grf = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
+    let cc = Justification::from_code("CC").unwrap();
+    grf.text("a<b & \"c\" > d", 0.5, 0.5, cc, [0.0, 1.0])
+        .unwrap();
+    let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
+    assert!(
+        svg.contains(">a&lt;b &amp; &quot;c&quot; &gt; d</text>"),
+        "{svg}"
+    );
+}
+
+/// Characters XML does not allow in a document (the C0 controls but tab,
+/// newline and carriage return, and U+FFFE and U+FFFF), which a label could
+/// hold, are drawn as U+FFFD, so the SVG stays well formed.
+#[test]
+fn characters_xml_forbids_are_replaced() {
+    let mut grf = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
+    let cc = Justification::from_code("CC").unwrap();
+    grf.text("a\u{1}b\u{0}c\td\u{FFFF}e", 0.5, 0.5, cc, [0.0, 1.0])
+        .unwrap();
+    let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
+    assert!(
+        svg.contains(">a\u{FFFD}b\u{FFFD}c\td\u{FFFD}e</text>"),
+        "{svg}"
+    );
+}
+
+/// With erase_under_text, each text's box is filled with the background
+/// before the text is drawn.
+#[test]
+fn erase_under_text_fills_the_text_box() {
+    let mut options = SvgOptions::default();
+    options.erase_under_text = true;
+    let mut grf = SvgGrf::new(Vec::new(), options).unwrap();
+    let bl = Justification::from_code("BL").unwrap();
+    let tbox = grf
+        .text_extent("Label", 0.25, 0.75, bl, [0.0, 1.0])
+        .unwrap();
+    grf.text("Label", 0.25, 0.75, bl, [0.0, 1.0]).unwrap();
+    let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
+    let px = |x: f32| f64::from(x * 720.0f32).round() as i32;
+    let py = |y: f32| f64::from(540.0f32 - y * 540.0f32).round() as i32;
+    let points: String = (0..4)
+        .map(|i| format!("{},{} ", px(tbox.x[i]), py(tbox.y[i])))
+        .collect();
+    let polygon = format!("<polygon fill=\"black\" points=\"{points}\"/>\n<text");
+    assert!(svg.contains(&polygon), "{polygon}\n{svg}");
+    // Without the setting there is none.
+    let mut grf = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
+    grf.text("Label", 0.25, 0.75, bl, [0.0, 1.0]).unwrap();
+    let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
+    assert!(!svg.contains("<polygon"), "{svg}");
+}
+
+/// With equal_aspect, graphics coordinates 0 to 1 span the square PGPLOT's
+/// `PGWNAD(0, 1, 0, 1)` makes of its default viewport: inside a margin of
+/// four character heights, 60 pixels when the shorter side is 600, with
+/// characters 600 / 40 = 15 pixels high at text size 1.
+#[test]
+fn equal_aspect_draws_on_the_centred_square() {
+    let mut options = SvgOptions::default();
+    options.width = 800;
+    options.height = 600;
+    options.equal_aspect = true;
+    let mut grf = SvgGrf::new(Vec::new(), options).unwrap();
+    grf.line(&[0.0, 1.0], &[0.0, 1.0]).unwrap();
+    let cc = Justification::from_code("CC").unwrap();
+    grf.text("x", 0.5, 0.5, cc, [0.0, 1.0]).unwrap();
+    let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
+    assert!(svg.contains("points=\"160,540 640,60 \""), "{svg}");
+    assert!(svg.contains("<text x=\"400\" y=\"300\""), "{svg}");
+    assert!(svg.contains("font-size=\"15\""), "{svg}");
+}
+
+/// With equal_aspect text turns the way its up vector points, at the exact
+/// angle, so it sits in the box its extent gives: an up vector pointing left
+/// reads upwards, a quarter turn anticlockwise on the screen. Without it the
+/// SVG turns text the other way, by C's 5-degree steps, as C's logging
+/// backend writes it.
+#[test]
+fn equal_aspect_turns_text_the_way_its_up_vector_points() {
+    let draw = |equal_aspect: bool, up: [f32; 2]| {
+        let mut options = SvgOptions::default();
+        options.width = 600;
+        options.height = 600;
+        options.equal_aspect = equal_aspect;
+        let mut grf = SvgGrf::new(Vec::new(), options).unwrap();
+        let cc = Justification::from_code("CC").unwrap();
+        grf.text("x", 0.5, 0.5, cc, up).unwrap();
+        String::from_utf8(grf.finish().unwrap()).unwrap()
+    };
+    let left = [-1.0, 0.0];
+    let svg = draw(true, left);
+    assert!(svg.contains("transform=\"rotate(-90,300,300)\""), "{svg}");
+    let svg = draw(false, left);
+    assert!(svg.contains("transform=\"rotate(90,300,300)\""), "{svg}");
+    // 32 degrees anticlockwise: C's SVG steps it to 30, the other way.
+    let (s, c) = 32f32.to_radians().sin_cos();
+    let svg = draw(true, [-s, c]);
+    assert!(svg.contains("transform=\"rotate(-32,300,300)\""), "{svg}");
+    let svg = draw(false, [-s, c]);
+    assert!(svg.contains("transform=\"rotate(30,300,300)\""), "{svg}");
+}
+
+/// With equal_aspect text is measured with Helvetica's widths, as wide as the
+/// browser draws it in Helvetica, Arial or Liberation Sans, which share them,
+/// and the SVG asks for those fonts; without it every character is 0.6 of the
+/// height wide, as C's logging backend has it.
+#[test]
+fn equal_aspect_measures_text_with_helvetica_widths() {
+    let width = |equal_aspect: bool, text: &str| {
+        let mut options = SvgOptions::default();
+        options.width = 600;
+        options.height = 600;
+        options.equal_aspect = equal_aspect;
+        let mut grf = SvgGrf::new(Vec::new(), options).unwrap();
+        let bl = Justification::from_code("BL").unwrap();
+        let tbox = grf.text_extent(text, 0.0, 0.0, bl, [0.0, 1.0]).unwrap();
+        tbox.x[1] - tbox.x[0]
+    };
+    // Characters 1/32 of the square high; the box is padded by 0.2 of that.
+    let h = 1.0 / 32.0;
+    let close = |a: f32, b: f32| (a - b).abs() < 1e-6;
+    // A hyphen 0.333 of the height, a digit 0.556, a minus sign 0.584.
+    assert!(
+        close(width(true, "-0"), (0.333 + 0.556 + 0.2) * h),
+        "{}",
+        width(true, "-0")
+    );
+    assert!(close(width(true, "\u{2212}0"), (0.584 + 0.556 + 0.2) * h));
+    assert!(close(width(true, "Wi"), (0.944 + 0.222 + 0.2) * h));
+    assert!(close(width(false, "-0"), (1.2 + 0.2) * 0.02));
+    let svg = |equal_aspect: bool| {
+        let mut options = SvgOptions::default();
+        options.equal_aspect = equal_aspect;
+        let mut grf = SvgGrf::new(Vec::new(), options).unwrap();
+        let bl = Justification::from_code("BL").unwrap();
+        grf.text("x", 0.5, 0.5, bl, [0.0, 1.0]).unwrap();
+        String::from_utf8(grf.finish().unwrap()).unwrap()
+    };
+    assert!(
+        svg(true).contains("font-family=\"Helvetica, Arial, 'Liberation Sans', sans-serif\""),
+        "{}",
+        svg(true)
+    );
+    assert!(svg(false).contains("font-family=\"sans-serif\""));
+}
+
+/// With equal_aspect a Plot lays text out at the height it is drawn: PGPLOT's
+/// square is 0.8 of the image's shorter side and a character 1/40 of it, so
+/// a character is 1/32 of the square at any image size.
+#[test]
+fn equal_aspect_reports_the_character_height_it_draws() {
+    for (width, height) in [(600, 600), (800, 600), (300, 900)] {
+        let mut options = SvgOptions::default();
+        options.width = width;
+        options.height = height;
+        options.equal_aspect = true;
+        let mut grf = SvgGrf::new(Vec::new(), options).unwrap();
+        assert_eq!(grf.char_height().unwrap(), [0.03125, 0.03125]);
+    }
+    let mut grf = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
+    assert_eq!(grf.char_height().unwrap(), [0.02, 0.02]);
+}
+
+/// SvgGrf tells a Plot it draws Unicode only when its options say so, so
+/// that by default a Plot hands it the ASCII text C's logging backend
+/// writes; the PGPLOT layout of equal_aspect does not change that.
+#[test]
+fn svg_grf_draws_unicode_when_asked() {
+    let cap = |equal_aspect: bool, unicode: bool| {
+        let mut options = SvgOptions::default();
+        options.equal_aspect = equal_aspect;
+        options.unicode = unicode;
+        SvgGrf::new(Vec::new(), options)
+            .unwrap()
+            .cap(GrfCap::Unicode, 0)
+    };
+    assert!(!cap(false, false));
+    assert!(!cap(true, false));
+    assert!(cap(false, true));
+    assert!(cap(true, true));
+    let mut log = LogGrf::new(Vec::new());
+    assert!(!log.cap(GrfCap::Unicode, 0));
 }

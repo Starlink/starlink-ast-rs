@@ -1,0 +1,12 @@
+                                                                                
+COMMENT AST ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ AST
+COMMENT AST             Beginning of AST data for ZoomMap object             AST
+COMMENT AST ................................................................ AST
+BEGAST_A= 'ZoomMap '           / Zoom about the origin                          
+NIN_A   =                    2 / Number of input coordinates                    
+ISA_A   = 'Mapping '           / Mapping between coordinate systems             
+ZOOM_A  =                  3.0 / Zoom factor                                    
+ENDAST_A= 'ZoomMap '           / End of object definition                       
+COMMENT AST ................................................................ AST
+COMMENT AST                End of AST data for ZoomMap object                AST
+COMMENT AST ---------------------------------------------------------------- AST

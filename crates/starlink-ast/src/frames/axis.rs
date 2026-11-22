@@ -452,6 +452,17 @@ impl FrameAxis {
         }
     }
 
+    /// The minus signs in `text`, a value this Axis object formatted with
+    /// `fmt`; see [`Frame::minus_signs`](super::Frame::minus_signs).
+    pub(crate) fn axis_minus_signs(&self, fmt: &str, text: &str) -> Vec<usize> {
+        match self {
+            FrameAxis::Plain(_) => super::axis_format::plain_minus_signs(fmt, text),
+            FrameAxis::Sky(s) => {
+                super::skyaxis::sky_minus_signs(fmt, s.digits_value(AXIS_DIGITS), text)
+            }
+        }
+    }
+
     /// `astAxisFields` on this Axis object.
     pub(crate) fn axis_fields(&self, fmt: &str, text: &str, maxfld: usize) -> super::FieldSplit {
         match self {

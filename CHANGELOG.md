@@ -9,6 +9,8 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Added
 
+- `starlink-ast`: `GrfCap::Unicode`, which a backend that draws any Unicode character reports, and `Frame::minus_signs`, which finds the minus signs in a formatted axis value, leaving out the hyphens of a date, an escape sequence or the Format's own text. A Plot drawing through such a backend draws the minus sign of a negative numerical label as U+2212, as long as a digit, rather than a hyphen; `SvgGrf` reports the capability when `SvgOptions::unicode` is set, which it is not by default, so a Plot still draws to it as to the C library's logging backend.
+- `starlink-ast`: `SvgOptions::erase_under_text`, which fills each text's box with the background before drawing it, as the C library's PGPLOT and PLplot backends do, and `SvgOptions::equal_aspect`, which draws as PGPLOT does after `PGWNAD(0, 1, 0, 1)`: on the largest square centred inside a margin of four character heights, with characters 1/40 of the image's shorter side, turned the way their up vector points, in Helvetica and measured with its widths. Both are off by default, so `SvgGrf` still draws as the C library's logging backend does.
 - `starlink-ast`: units written with the micro sign or Greek mu (`µm`, `μJy`) and with the Ångström sign or A with ring above (`Å`), as scientific plots write them, convert as `um`, `uJy` and `Angstrom` do. The C library, written before Unicode, knows only the ASCII spellings.
 - `starlink-ast`: `Plot::grf`, with `set_grf`, `test_grf` and `clear_grf`: the C library's Grf attribute, which the Rust library keeps but does not read, since a backend is passed to each drawing method.
 - `starlink-ast`: `Plot::get_attribute_with_grf`, with the `attribute-strings` feature: a get whose grid-dependent values are worked out through a given graphics backend.
@@ -56,6 +58,10 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: compiled for WebAssembly in the browser (`wasm32-unknown-unknown`), where the standard library cannot read the clock, the crate reads the browser's clock through `js-sys`, a dependency on that target only, so making a MathMap and reading `TimeFrame::current_time`, which a date axis's tick spacing does, no longer stop the program.
+- `starlink-ast`: writing an object that is not a FrameSet to a FitsChan in an encoding other than NATIVE writes nothing and returns 0, as the C library's `astWrite` does, rather than failing.
+- `starlink-ast`: `SvgGrf` draws a control character other than tab, newline and carriage return, which XML does not allow, as U+FFFD, so such a label no longer makes the SVG invalid.
+- `starlink-ast`: `SvgGrf` escapes `&`, `<`, `>` and `"` in text, so a label such as `Flux < 1` no longer makes the SVG invalid.
 - `starlink-ast`: `LogGrf` and `SvgGrf` measure text by characters rather than bytes, so an accented label or title is as wide as an unaccented one; ASCII text measures as before, and as the C library measures it.
 - `starlink-ast`: a Unit of a SpecFrame, DSBSpecFrame or TimeFrame, or a unit given with a value, that holds text which is not ASCII (`"é"`) no longer panics in the units parser, which compared parts of it by byte position.
 - `starlink-ast`: `SpecFrame::set_unit` and `DSBSpecFrame`'s store the Unit without trailing white space, as the C library does; it was kept as given.

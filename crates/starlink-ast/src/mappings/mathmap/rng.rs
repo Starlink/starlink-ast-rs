@@ -273,11 +273,7 @@ impl MathMapRng {
 
 /// Compute a default seed value (unpredictable).
 fn default_seed() -> i32 {
-    use std::time::SystemTime;
-    let t = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
+    let t = crate::clock::since_unix_epoch().as_nanos();
     // Mix bits to get something reasonable
     ((t ^ (t >> 32)) & 0x7FFF_FFFF) as i32
 }

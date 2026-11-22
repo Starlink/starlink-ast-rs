@@ -1,6 +1,6 @@
 # Browser FITS plotter and attribute strings design
 
-Status: draft for review, 2026-11-21.
+Status: implemented, 2026-11-22: stage 1 on `u/timj/wasm-plotter-1-attrs`, stage 2 on `u/timj/wasm-plotter-2-page`; serving or hosting the page and issue #12's JavaScript API are left.
 Branches: one per stage, the first `u/timj/wasm-plotter-1-attrs`, stacked on `u/timj/plot-7-egui`.
 Related: [Starlink/starlink-ast-rs#12](https://github.com/Starlink/starlink-ast-rs/issues/12) (a JavaScript API for the WebAssembly build); the Plot design, [`2026-10-30-plot-design.md`](2026-10-30-plot-design.md).
 
@@ -66,13 +66,18 @@ They differ from the repository's grid cases of the same names, so the page carr
 The Fortran program behind the CGI page, available from the page's "source code" link:
 
 1. Creates a FitsChan with the FitsChan settings as its options string, and puts the header's cards into it.
-2. Finds `NAXIS1` and `NAXIS2` (100 each if absent) and makes the plot box `0.5, 0.5, NAXIS1+0.5, NAXIS2+0.5`.
-3. Reads the FrameSet; reports an error if none is read.
-4. For the normalised headers: clears the FitsChan, sets `Encoding=FITS-WCS`, writes the FrameSet, and lists the cards.
+2. Finds `NAXIS1` and `NAXIS2` (100 each if absent), reading the value from column 11 of the card as a list-directed integer, and makes the plot box `0.5, 0.5, NAXIS1+0.5, NAXIS2+0.5`.
+3. Rewinds the FitsChan and reads the FrameSet; if none is read, every output is `!!! No object read from file!!!`.
+4. For the normalised headers: rewinds the FitsChan (`AST_CLEAR( FC, 'CARD' )`), sets `Encoding=FITS-WCS`, writes the FrameSet, rewinds again, and lists every card.
+   The FitsChan is rewound, not emptied, so the list is the new FITS-WCS cards written at the start of the cards the read left behind (`NAXIS1`, `SIMPLE` and the like).
+   A write that returns 0 gives `Failed to create new FITS headers`.
 5. For the FrameSet text: writes the FrameSet to a plain Channel.
-6. Applies the version character: `$` makes the base Frame current; a letter makes current the Frame whose `Ident` is that letter, or reports that there is none.
-7. For the grid: a PGPLOT window with equal aspect (`PGWNAD(0,1,0,1)`), its world box less 5% on each side, shrunk on one axis to keep the plot box's aspect ratio; `AST_PLOT( FS, GBOX, PBOX, SETTING )`, then `AST_GRID`.
+6. Applies the version character: `$` makes the base Frame current; another non-blank character makes current the first of Frames 1 to `Nframe` whose `Ident` is that character, or reports `The supplied FITS headers do not define a coordinate system with the requested version character 'X'.` in place of the grid.
+7. For the grid: a PGPLOT window with equal aspect (`PGWNAD(0,1,0,1)`), whose world box is 0 to 1 on each axis, less 5% on each side, giving `0.05, 0.05, 0.95, 0.95`.
+   Then, all in single precision, `ASP = ABS( (PBOX(4)-PBOX(2)) / (PBOX(3)-PBOX(1)) )`, reset to 1 if below 0.2 or above 5; if `ASP > 1`, `DELTA = (ASP-1)*(GBOX(3)-GBOX(1))/(2*ASP)` is taken off each side in X, else `DELTA = (1-ASP)*(GBOX(4)-GBOX(2))/2` off each side in Y.
+   Then `AST_PLOT( FS, GBOX, PBOX, SETTING )` and `AST_GRID`.
 
+An AST error in one output is reported in place of that output, with the messages C reported; the other outputs are still produced.
 The page follows these steps; the C probe (below) follows them too, with `grf_log`'s SVG in place of PGPLOT.
 
 ### What exists in the Rust port
@@ -115,7 +120,9 @@ The work is plain Rust, testable natively; a thin `wasm-bindgen` wrapper exposes
 **Two opt-in `SvgGrf` settings,** each off by default so that `SvgGrf` still reproduces `grf_log.c`:
 
 - erase under text: fill each text's box with the background before drawing it, as the C library's PGPLOT and PLplot backends do (`grf_pgplot.c`'s `astGText`, `grf_plplot.c`), so grid lines stop short of labels;
-- equal aspect: map graphics coordinates 0 to 1 onto the largest centred square of the image, as `fplottest.f`'s `PGWNAD(0,1,0,1)` does, so a non-square image does not stretch the drawing; text, and markers, are then drawn at the size the Plot laid them out for (characters 0.02 of the square's side at size 1, from the backends' 4 mm on a 200 mm page), rather than `grf_log.c`'s fixed 14 pixels, so labels fit their boxes at any image size.
+- equal aspect: map graphics coordinates 0 to 1 onto the square `fplottest.f`'s `PGWNAD(0,1,0,1)` makes of PGPLOT's default viewport, so a non-square image does not stretch the drawing and the labels outside the graphics box stay on the image.
+  `PGOPEN` sets the character height to 1, 1/40 of the view surface's shorter side (`pgsch.f`), and calls `PGVSTD`, whose viewport is the view surface less 4 character heights all round; `PGWNAD` shrinks it to the largest centred square.
+  Text, and markers, are then drawn at PGPLOT's character height, and the Plot lays them out at that height, 1/32 of the square at size 1, rather than `grf_log.c`'s fixed 14 pixels on a page with characters 0.02 high, so labels fit their boxes at any image size.
 
 The page turns both on.
 

@@ -258,6 +258,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ast-plotter-wasm"
+version = "0.1.0"
+dependencies = [
+ "starlink-ast",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "ast-plugins"
 version = "0.1.0"
 
@@ -3022,6 +3030,7 @@ name = "starlink-ast"
 version = "0.1.0"
 dependencies = [
  "audit-tools",
+ "js-sys",
  "levenberg-marquardt",
  "nalgebra",
  "ndarray",

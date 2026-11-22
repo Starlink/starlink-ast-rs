@@ -1,0 +1,111 @@
+/* Copyright 2026 Association of Universities for Research in Astronomy (AURA) */
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
+
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #1d1d1b;
+  --muted: #5f5f5a;
+  --border: #d6d6d0;
+  --accent: #2f5d8a;
+  --error-bg: #fdeeee;
+  --error-text: #8a1c1c;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615;
+    --surface: #1f1f1d;
+    --text: #e8e8e3;
+    --muted: #a3a39c;
+    --border: #3a3a36;
+    --accent: #8db4dd;
+    --error-bg: #3a1d1d;
+    --error-text: #f3b4b4;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.masthead { padding: 16px 20px 4px; }
+.masthead h1 { margin: 0 0 4px; font-size: 1.35rem; }
+.masthead p { margin: 0; color: var(--muted); max-width: 70rem; }
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(0, 1.4fr);
+  gap: 16px;
+  padding: 16px 20px 24px;
+}
+
+.inputs { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.grid-panel { grid-column: 2; grid-row: 1; }
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field > span { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.row { display: flex; gap: 12px; flex-wrap: wrap; }
+.row .field { flex: 1 1 5rem; }
+
+textarea, input, select {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  width: 100%;
+}
+textarea { font-family: var(--mono); font-size: 13px; resize: vertical; }
+textarea:focus, input:focus, select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.status { margin: 0; min-height: 1.4em; font-size: 0.85rem; color: var(--muted); }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px 12px;
+  min-width: 0;
+}
+.panel h2 { margin: 0 0 8px; font-size: 0.95rem; }
+
+.output.text {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.35;
+  white-space: pre;
+  overflow: auto;
+  max-height: 36rem;
+}
+
+.output.grid { display: flex; justify-content: center; }
+.output.grid img { display: block; max-width: 100%; height: auto; }
+
+.output.error {
+  white-space: pre-wrap;
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 13px;
+  width: 100%;
+}
+
+@media (max-width: 800px) {
+  .layout { grid-template-columns: 1fr; padding: 12px 16px 20px; }
+  .grid-panel { grid-column: auto; grid-row: auto; }
+}

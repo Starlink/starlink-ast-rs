@@ -10,6 +10,8 @@
 //! Text is laid out with egui's own fonts, so the boxes the Plot asks for
 //! are the boxes egui draws the text in, and anything already drawn inside
 //! a text's box is painted over with the background first.
+//! The backend reports that it draws Unicode, so a Plot draws the minus
+//! sign of a negative label as U+2212, which egui's default fonts hold.
 
 use std::sync::Arc;
 
@@ -336,7 +338,8 @@ impl Grf for EguiGrf {
     }
 
     fn cap(&mut self, cap: GrfCap, _value: i32) -> bool {
-        cap == GrfCap::Scales
+        // egui lays out and draws any Unicode text with its own fonts.
+        matches!(cap, GrfCap::Scales | GrfCap::Unicode)
     }
 }
 
@@ -384,6 +387,23 @@ mod tests {
 
     fn side(b: &starlink_ast::grf::TextBox, i: usize, j: usize) -> f32 {
         (b.x[j] - b.x[i]).hypot(b.y[j] - b.y[i])
+    }
+
+    /// The backend tells a Plot it draws Unicode, and egui's default fonts
+    /// hold the characters a Plot's labels use beyond ASCII: the minus sign
+    /// it draws for a negative label, and the micro sign, Ångström and
+    /// degree sign of units and titles.
+    #[test]
+    fn draws_unicode_with_the_glyphs_labels_use() {
+        with_grf(1.0, |mut g| {
+            assert!(g.cap(GrfCap::Unicode, 0));
+            let font = g.font();
+            for c in ["\u{2212}", "µ", "Å", "°"] {
+                assert!(g.ctx.fonts(|f| f.has_glyphs(&font, c)), "no glyph for {c}");
+            }
+            // A character the default fonts lack, so the check can fail.
+            assert!(!g.ctx.fonts(|f| f.has_glyphs(&font, "漢")));
+        });
     }
 
     #[test]

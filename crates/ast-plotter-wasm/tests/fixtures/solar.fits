@@ -1,0 +1,55 @@
+SIMPLE  =                    T / Simple FITS file                               
+BITPIX  =                  -32 / Real*4 (Floating point)                        
+NAXIS   =                    2 / Two-dimensional image                          
+NAXIS1  =                 1024 / Number of pixels per column                    
+ASTWARN = '        '                                                            
+ASTWARN = 'This FITS header contains references to an unknown spherical '       
+ASTWARN = 'co-ordinate system specified in the values HPLN-TAN and '            
+ASTWARN = 'HPLT-TAN. It may not be possible to convert to other '               
+ASTWARN = 'standard co-ordinate systems.'                                       
+ASTWARN = '        '                                                            
+ASTWARN = '        '                                                            
+ASTWARN = 'This FITS header contains references to an unknown spherical '       
+ASTWARN = 'co-ordinate system specified in the values HGLN-AZP and '            
+ASTWARN = 'HGLT-AZP. It may not be possible to convert to other '               
+ASTWARN = 'standard co-ordinate systems.'                                       
+ASTWARN = '        '                                                            
+NAXIS2  =                 1024 / Number of pixels per row                       
+                                                                                
+COMMENT Heliocentric-Cartesian coordinates                                      
+                                                                                
+CTYPE1  = 'SOLX    '           / Coordinate axis labels                         
+CTYPE2  = 'SOLY    '           / Type of co-ordinate on axis 2                  
+CRPIX1  =                512.5 / Reference pixel is center of CCD               
+CRPIX2  =                512.5 / Reference pixel on axis 2                      
+CUNIT1  = 'solRad  '           / Coordinates are in solar radii                 
+CUNIT2  = 'solRad  '           / Units for axis 2                               
+CRVAL1  =                  0.0 / Reference pixel is Sun center                  
+CRVAL2  =                  0.0 / Value at ref. pixel on axis 2                  
+                                                                                
+COMMENT Helioprojective-Cartesian coordinates                                   
+                                                                                
+CTYPE1A = 'HPLN-TAN'           / Coordinate axis labels (Theta-X)               
+CTYPE2A = 'HPLT-TAN'           / (Theta-Y)                                      
+CRPIX1A =                512.5 / Reference pixel is center of CCD               
+CRPIX2A =                512.5 / Reference pixel on axis 2                      
+CRVAL1A =                  0.0 / Reference pixel is Sun center                  
+CRVAL2A =                  0.0 / Value at ref. pixel on axis 2                  
+                                                                                
+COMMENT Heliographic coordinates                                                
+CTYPE1B = 'HGLN-AZP'           / Heliographic longitude                         
+CTYPE2B = 'HGLT-AZP'           / latitude                                       
+CRPIX1B =                512.5 / Reference pixel is center of CCD               
+CRPIX2B =                512.5 / Reference pixel on axis 2                      
+CRVAL1B =                  0.0 / Reference pixel is central meridian            
+CRVAL2B =                  6.5 / Latitude of sub-earth point (BO)               
+PV2_1B  =               -214.9 / Negative ratio of Dsun/Rsun                    
+WCSNAME = 'SOLX-SOLY'          / Reference name for the coord. frame            
+CDELT1  =              0.00375 / Pixel size on axis 1                           
+CDELT2  =              0.00375 / Pixel size on axis 2                           
+CDELT1A =                0.001 / Pixel size on axis 1                           
+CDELT2A =                0.001 / Pixel size on axis 2                           
+CDELT1B =               0.2139 / Pixel size on axis 1                           
+CDELT2B =               0.2139 / Pixel size on axis 2                           
+                                                                                
+END                                                                             

@@ -1,0 +1,15 @@
+NAXIS1  =                 1000                                                  
+NAXIS2  =                  200                                                  
+CRPIX1  =                500.0 / Reference pixel on axis 1                      
+CRVAL1  =           10000000.0 / Value at ref. pixel on axis 1                  
+CDELT1  =             138000.0 / Pixel size on axis 1                           
+CTYPE1  = 'FREQ-LOG'           / Type of co-ordinate on axis 1                  
+CUNIT1  = 'MHz     '           / Units for axis 1                               
+CTYPE2  = 'SLIT    '           / Distance along slit                            
+CUNIT2  = 'mm      '           / Units for axis 2                               
+CRPIX2  =                  1.0 / Reference pixel on axis 2                      
+CRVAL2  =                  0.0 / Value at ref. pixel on axis 2                  
+CDELT2  =                  0.1 / Pixel size on axis 2                           
+WCSAXES =                    2 / Number of WCS axes                             
+SPECSYS = 'HELIOCEN'           / Standard of rest for spectral axis             
+VELOSYS =   29336.889452278185 / [m/s] Topo. apparent velocity of rest frame    

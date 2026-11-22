@@ -89,6 +89,32 @@ jobs:
       - name: Docs
         run: cargo doc --workspace --no-deps --features starlink-ast/attribute-strings
 
+  # The browser FITS plotter's binding, built for WebAssembly as
+  # tools/build_plotter.sh builds it, and its tests, which compare its
+  # outputs with the C library's, run natively. The page is checked by eye.
+  plotter-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2.9.1
+
+      - name: Build for wasm32
+        run: cargo build -p ast-plotter-wasm --target wasm32-unknown-unknown --release
+
+      # --no-deps: the workspace Clippy step lints starlink-ast; this one
+      # reaches the code compiled only for wasm32.
+      - name: Clippy for wasm32
+        run: cargo clippy -p ast-plotter-wasm --no-deps --target wasm32-unknown-unknown --features smoke-test -- -D warnings
+
+      - name: Test
+        run: cargo test -p ast-plotter-wasm
+
   # The archive `cargo publish` would upload, tested on its own: unpacked
   # outside the workspace so that nothing left behind in the repository can be
   # reached, and run with its own Cargo.lock. tests/fixtures/ ships the subset

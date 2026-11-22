@@ -968,10 +968,24 @@ trait T {
         // A component must match whole: `list.rs` is not a suffix of
         // `pointlist.rs`.
         assert_eq!(resolve_source(root, "no_such_file.rs"), Resolution::Missing);
-        // Eighteen files are named `mod.rs`, and one leading component is
+        // Many files are named `mod.rs`: the bare stem names every one of
+        // them, counted here from the tree, and one leading component is
         // enough for each of them however deep it sits.
+        let mut mods = 0;
+        let mut stack = vec![root.join("crates/starlink-ast/src")];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("source dir readable") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.file_name().is_some_and(|n| n == "mod.rs") {
+                    mods += 1;
+                }
+            }
+        }
+        assert!(mods >= 2, "the check needs two mod.rs files, found {mods}");
         match resolve_source(root, "mod.rs") {
-            Resolution::Ambiguous(paths) => assert_eq!(paths.len(), 18, "{paths:?}"),
+            Resolution::Ambiguous(paths) => assert_eq!(paths.len(), mods, "{paths:?}"),
             other => panic!("expected Ambiguous, got {other:?}"),
         }
         match resolve_source(root, "mathmap/mod.rs") {

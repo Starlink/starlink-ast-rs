@@ -761,10 +761,7 @@ impl TimeFrame {
     // C: timeframe.c `CurrentTime`, which reads `time()`.
     pub fn current_time(&self) -> AstResult<f64> {
         // C takes `difftime( time( NULL ), 0 )`, whole seconds since 1970.
-        let systime = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0.0, |d| d.as_secs() as f64);
-        self.time_at_unix_seconds(systime)
+        self.time_at_unix_seconds(crate::clock::since_unix_epoch().as_secs() as f64)
     }
 
     /// The value on this TimeFrame's axis of `systime` UTC seconds since
@@ -2063,6 +2060,16 @@ impl Frame for TimeFrame {
             ));
         }
         Ok(result)
+    }
+
+    /// With a date Format, every `-` is a separator between the fields of
+    /// the date, not a minus sign.
+    fn minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        if date_format(fmt).0 {
+            return Ok(Vec::new());
+        }
+        self.axis_minus_signs(axis, fmt, text)
     }
 
     /// With a date Format, `str2` is abbreviated by skipping the leading

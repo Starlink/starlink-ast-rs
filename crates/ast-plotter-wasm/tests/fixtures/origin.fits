@@ -1,0 +1,14 @@
+NAXIS1  =                  500                                                  
+NAXIS2  =                  500                                                  
+RADESYS = 'ICRS    '           / Reference frame for RA/DEC values              
+CRVAL1  =                  0.0 / Value at ref. pixel on axis 1                  
+CRPIX1  =                250.0 / Reference pixel on axis 1                      
+CTYPE1  = 'RA---ARC'           / Type of co-ordinate on axis 1                  
+CRVAL2  =                  0.0 / Value at ref. pixel on axis 2                  
+CRPIX2  =                250.0 / Reference pixel on axis 2                      
+CTYPE2  = 'DEC--ARC'           / Type of co-ordinate on axis 2                  
+CDELT1  =                0.001 / Pixel size on axis 1                           
+CDELT2  =                0.001 / Pixel size on axis 2                           
+WCSAXES =                    2 / Number of WCS axes                             
+MJD-OBS =   43428.644442333491 / Modified Julian Date of observation            
+DATE-OBS= '12/10/77'           / Date of observation                            

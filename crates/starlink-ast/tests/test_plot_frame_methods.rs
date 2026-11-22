@@ -336,3 +336,54 @@ fn gap_that_cannot_be_made_nice_is_an_error() {
         ErrorCode::Bdpar
     );
 }
+
+/// The offsets of the `-` characters in `text`.
+fn hyphens(text: &str) -> Vec<usize> {
+    text.match_indices('-').map(|(i, _)| i).collect()
+}
+
+/// A plain axis's minus signs are those its conversion writes, the value's
+/// and its exponent's, and not a hyphen in the Format's own text.
+#[test]
+fn minus_signs_of_a_plain_axis_are_its_conversions() {
+    let mut f = BasicFrameBuilder::new(2).build().unwrap();
+    let fmt = f.format_str(1).unwrap();
+    let text = f.format(1, -1.5e-15).unwrap();
+    assert_eq!(hyphens(&text).len(), 2, "{text}");
+    assert_eq!(f.minus_signs(1, &fmt, &text).unwrap(), hyphens(&text));
+    f.set_format_str(1, "x-%g-y").unwrap();
+    let text = f.format(1, -2.0).unwrap();
+    assert_eq!(text, "x--2-y");
+    assert_eq!(f.minus_signs(1, "x-%g-y", &text).unwrap(), vec![2]);
+    let text = f.format(1, 2.0).unwrap();
+    assert!(f.minus_signs(1, "x-%g-y", &text).unwrap().is_empty());
+}
+
+/// A sky axis writes its sign first, and nowhere else.
+#[test]
+fn minus_signs_of_a_sky_axis_are_its_leading_sign() {
+    let f = frame("sky");
+    let fmt = f.format_str(2).unwrap();
+    let text = f.format(2, -0.001).unwrap();
+    assert!(text.starts_with('-'), "{text}");
+    assert_eq!(f.minus_signs(2, &fmt, &text).unwrap(), vec![0]);
+    let text = f.format(2, 0.001).unwrap();
+    assert!(f.minus_signs(2, &fmt, &text).unwrap().is_empty());
+}
+
+/// The hyphens of a date are not minus signs, through a TimeFrame and
+/// through a CmpFrame holding one.
+#[test]
+fn minus_signs_of_a_date_are_none() {
+    let f = time_frame("time_iso");
+    let fmt = f.format_str(1).unwrap();
+    let text = f.format(1, 60000.0).unwrap();
+    assert!(text.contains('-'), "{text}");
+    assert!(f.minus_signs(1, &fmt, &text).unwrap().is_empty());
+    let c = frame("cmp_sky_time");
+    let n = c.naxes();
+    let fmt = c.format_str(n).unwrap();
+    let text = c.format(n, 60000.0).unwrap();
+    assert!(text.contains('-'), "{text}");
+    assert!(c.minus_signs(n, &fmt, &text).unwrap().is_empty());
+}
