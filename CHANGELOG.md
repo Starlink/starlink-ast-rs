@@ -9,12 +9,18 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Added
 
+- `starlink-ast`: a Plot is saved and restored in the Native form as the C library writes and reads it, through any Channel and as `AnyObject::Plot`, with its attributes, clipping region and graphics box.
+- `starlink-ast`: Plot's per-element style attributes `Style`, `Font`, `Colour`, `Width` and `Size`, which take a `PlotElement`; setting, testing or reading a group such as `PlotElement::Axes` acts on each of its members, as the C library's `Colour(Axes)` does.
+- `starlink-ast`: Plot's own attributes, from `Tol` to `LogPlot`, with the C library's defaults; setting `LogPlot` maps an axis of the plotting area logarithmically, as in C. `Gap`, `Centre` and `Abbrev` are `tick_gap`, `tick_centre` and `abbreviate`, since `Frame` already has `gap`, `centre` and `abbrev`. Until grids are drawn, an unset attribute reads as its fixed default, not as the value a grid would use.
+- `starlink-ast`: `Plot`, a FrameSet whose base Frame is a graphics coordinate system, built from a Frame, FrameSet, Region or Plot as the C library's `astPlot` builds it; it transforms and is searched as a FrameSet. Frames are added, removed and selected through the Plot itself. Drawing is not yet available.
+- `starlink-ast`: `Frame::as_frameset` and `Mapping::as_frameset`, which give the FrameSet a Frame or Mapping is, so that code treating FrameSets specially treats a Plot as the FrameSet it holds.
 - `starlink-ast`: the `grf` module: the `Grf` trait, through which a Plot will draw, and `LogGrf`, a backend that logs each drawing call as the C library's logging graphics module does.
 - `starlink-ast`: `SvgGrf`, a `Grf` backend that draws to SVG as the C library's logging graphics module does, with `SvgOptions` for the image size.
 - `starlink-ast`: `Frame::gap`, `centre`, `abbrev` and `fields`, which choose tick spacing and split and abbreviate formatted axis values for plot annotation, as the C library's do, with `FieldSplit` to hold the fields of a value.
 
 ### Changed
 
+- `starlink-ast`: `AnyObject` is `#[non_exhaustive]`, so the classes still to be added to it will not each be a breaking change; a `match` on it needs a wildcard arm.
 - `starlink-ast`: building no longer needs a C compiler: PAL and ERFA are now Rust, bit for bit the results of the C they replace.
 - `starlink-ast`: WcsMap projections give upstream wcslib 8.10's results where the wcslib code AST carries had differed: QSC within 0.008 degrees of face 4's centre, HPX with H and K other than 4 and 3, at the poles, on facet edges and at native longitude +180, ZPN with a degree-2 polynomial on the far side (now bad), PCO near the equator, COP at the poles, and MER near the pole.
 - `starlink-ast`: a WcsMap reverse projection that lands a native longitude or latitude just past a limit, by up to wcslib's tolerance for the projection (1e-13 to 1e-11 degrees), returns the limit rather than bad, as wcslib does.
@@ -38,6 +44,8 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: simplifying a WinMap next to a parallel CmpMap keeps each simplified half in the orientation the simplifier returned it, as the C library does, so a Native dump of the result records `Invert` and `IsSimp` on that half as C's does; transforms are unchanged.
+- `starlink-ast`: simplifying a Mapping that holds an inverted WinMap forms the inverse shift as the C library does, as the shift times minus the reciprocal scale, so the simplified WinMap can differ from earlier releases, and now agrees with C, in the last bit of a shift.
 - `starlink-ast`: a SkyFrame's `line_crossing` gives the crossing's longitude as the C library does when the crossing lies opposite its first estimate on the -x meridian, -pi where it gave +pi.
 - `starlink-ast`: the line methods `line_contains` and `line_crossing` report `ErrorCode::Inter`, as the C library does, when given a line that a different kind of Frame made: a great-circle line made by a SkyFrame given to a plain Frame, or the reverse.
 - `starlink-ast`: a date whose day is outside its month, such as `2012-03-00` or `2012-02-30`, reads as the C library reads it, counting on from the start of the month, where it was not read at all.

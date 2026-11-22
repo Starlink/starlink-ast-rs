@@ -57,6 +57,7 @@ pub mod mappings;
 pub(crate) mod math;
 pub(crate) mod object_id;
 pub(crate) mod pal;
+pub mod plot;
 pub mod prelude;
 pub mod regions;
 pub(crate) mod serial;

@@ -410,31 +410,6 @@ impl DssMap {
 
         Ok(())
     }
-
-    /// Helper: get the effective WinMap shift and scale terms (accounting for
-    /// its effective inversion state).
-    fn get_winmap_terms(wm: &WinMap, win_inv: bool) -> Option<(Vec<f64>, Vec<f64>)> {
-        let shifts = wm.shifts();
-        let scales = wm.scales();
-        if shifts.len() != 2 || scales.len() != 2 {
-            return None;
-        }
-        if win_inv {
-            // Inverted WinMap: output = (input - shift) / scale
-            // So effective: shift' = -shift/scale, scale' = 1/scale
-            let s0 = scales[0];
-            let s1 = scales[1];
-            if s0 == 0.0 || s1 == 0.0 {
-                return None;
-            }
-            Some((
-                vec![-shifts[0] / s0, -shifts[1] / s1],
-                vec![1.0 / s0, 1.0 / s1],
-            ))
-        } else {
-            Some((shifts.to_vec(), scales.to_vec()))
-        }
-    }
 }
 
 impl Mapping for DssMap {
@@ -622,8 +597,7 @@ impl Mapping for DssMap {
         if let Some(wm) = other.as_any().downcast_ref::<WinMap>() {
             // Determine whether the WinMap precedes or follows the DssMap
             // based on the inversion states.
-            let terms = Self::get_winmap_terms(wm, other_inv)?;
-            let (a, b) = (terms.0, terms.1);
+            let (a, b) = wm.terms(other_inv);
 
             // Check scale terms are usable
             if is_bad(a[0])

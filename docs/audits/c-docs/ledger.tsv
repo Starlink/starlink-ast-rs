@@ -161,7 +161,7 @@ function	astGetFrame	frameset.c	FrameSet::frame;FrameSet::frame_mut		yes	frame g
 function	astGetMapping	frameset.c	FrameSet::mapping		yes
 function	astMirrorVariants	frameset.c	FrameSet::mirror_variants		yes	C's AST__NOFRAME is giving the current Frame
 function	astRemapFrame	frameset.c	FrameSet::remap_frame		yes
-function	astRemoveFrame	frameset.c	FrameSet::remove_frame		yes
+function	astRemoveFrame	frameset.c	FrameSet::remove_frame;Plot::remove_frame		yes
 attribute	AllVariants	frameset.c	FrameSet::all_variants		yes
 attribute	Base	frameset.c	FrameSet::set_base;FrameSet::base_index;FrameSet::set_base_by_domain		yes	base gives the Frame; setting by Domain name is set_base_by_domain
 attribute	Current	frameset.c	FrameSet::set_current;FrameSet::current_index;FrameSet::set_current_by_domain		yes	current gives the Frame; setting by Domain name is set_current_by_domain
@@ -349,43 +349,43 @@ attribute	PcdCen	pcdmap.c	PcdMap::pcdcen		yes	The getter returns both axes; C's 
 function	astPcdMap	pcdmap.c	PcdMap::new		yes	The options string is replaced by the typed setters
 class	PermMap	permmap.c	PermMap		yes
 function	astPermMap	permmap.c	PermMap::new;PermMap::with_null_perms		yes
-class	Plot	plot.c		not-ported	yes
-attribute	Tol	plot.c		not-ported	yes
-attribute	Grid	plot.c		not-ported	yes
-attribute	Invisible	plot.c		not-ported	yes
-attribute	TickAll	plot.c		not-ported	yes
-attribute	Border	plot.c		not-ported	yes
-attribute	Clip	plot.c		not-ported	yes
-attribute	ClipOp	plot.c		not-ported	yes
-attribute	Grf	plot.c		not-ported	yes
-attribute	DrawTitle	plot.c		not-ported	yes
-attribute	LabelUp	plot.c		not-ported	yes
-attribute	DrawAxes	plot.c		not-ported	yes
-attribute	Abbrev	plot.c		not-ported	yes
-attribute	Escape	plot.c		not-ported	yes
-attribute	LabelAt	plot.c		not-ported	yes
-attribute	Gap	plot.c		not-ported	yes
-attribute	LogGap	plot.c		not-ported	yes
-attribute	LogPlot	plot.c		not-ported	yes
-attribute	LogTicks	plot.c		not-ported	yes
-attribute	LogLabel	plot.c		not-ported	yes
-attribute	MajTickLen	plot.c		not-ported	yes
-attribute	TitleGap	plot.c		not-ported	yes
-attribute	MinTickLen	plot.c		not-ported	yes
-attribute	TextGapType	plot.c		not-ported	yes
-attribute	Labelling	plot.c		not-ported	yes
-attribute	Edge	plot.c		not-ported	yes
-attribute	NumLab	plot.c		not-ported	yes
-attribute	NumLabGap	plot.c		not-ported	yes
-attribute	MinTick	plot.c		not-ported	yes
-attribute	TextLab	plot.c		not-ported	yes
-attribute	TextLabGap	plot.c		not-ported	yes
-attribute	LabelUnits	plot.c		not-ported	yes
-attribute	Style	plot.c		not-ported	yes
-attribute	Font	plot.c		not-ported	yes
-attribute	Colour	plot.c		not-ported	yes
-attribute	Width	plot.c		not-ported	yes
-attribute	Size	plot.c		not-ported	yes
+class	Plot	plot.c	Plot		yes	Drawing methods arrive in later stages (2026-10-30-plot-design.md)
+attribute	Tol	plot.c	Plot::tol		yes
+attribute	Grid	plot.c	Plot::grid		yes	Until grids are drawn, unset values read as the fixed default rather than the value a grid would use
+attribute	Invisible	plot.c	Plot::invisible		yes
+attribute	TickAll	plot.c	Plot::tick_all		yes
+attribute	Border	plot.c	Plot::border		yes
+attribute	Clip	plot.c	Plot::clip		yes
+attribute	ClipOp	plot.c	Plot::clip_op		yes
+attribute	Grf	plot.c		not-ported	yes	C-ABI graphics registration (a C adapter, not starlink-ast)
+attribute	DrawTitle	plot.c	Plot::draw_title		yes
+attribute	LabelUp	plot.c	Plot::label_up		yes
+attribute	DrawAxes	plot.c	Plot::draw_axes		yes
+attribute	Abbrev	plot.c	Plot::abbreviate		yes	Named abbreviate, as Frame::abbrev is the abbreviation method
+attribute	Escape	plot.c	Plot::escape		yes
+attribute	LabelAt	plot.c	Plot::label_at		yes
+attribute	Gap	plot.c	Plot::tick_gap		yes	Named tick_gap, as Frame::gap is the nice-gap method
+attribute	LogGap	plot.c	Plot::log_gap		yes
+attribute	LogPlot	plot.c	Plot::log_plot		yes
+attribute	LogTicks	plot.c	Plot::log_ticks		yes
+attribute	LogLabel	plot.c	Plot::log_label		yes
+attribute	MajTickLen	plot.c	Plot::maj_tick_len		yes
+attribute	TitleGap	plot.c	Plot::title_gap		yes
+attribute	MinTickLen	plot.c	Plot::min_tick_len		yes
+attribute	TextGapType	plot.c	Plot::text_gap_type		yes
+attribute	Labelling	plot.c	Plot::labelling		yes
+attribute	Edge	plot.c	Plot::edge		yes
+attribute	NumLab	plot.c	Plot::num_lab		yes
+attribute	NumLabGap	plot.c	Plot::num_lab_gap		yes
+attribute	MinTick	plot.c	Plot::min_tick		yes
+attribute	TextLab	plot.c	Plot::text_lab		yes
+attribute	TextLabGap	plot.c	Plot::text_lab_gap		yes
+attribute	LabelUnits	plot.c	Plot::label_units		yes
+attribute	Style	plot.c	Plot::style		yes	Per element: takes a PlotElement, groups resolved as C's string interface resolves them
+attribute	Font	plot.c	Plot::font		yes	Per element: takes a PlotElement, groups resolved as C's string interface resolves them
+attribute	Colour	plot.c	Plot::colour		yes	Per element: takes a PlotElement, groups resolved as C's string interface resolves them
+attribute	Width	plot.c	Plot::width		yes	Per element: takes a PlotElement, groups resolved as C's string interface resolves them
+attribute	Size	plot.c	Plot::size		yes	Per element: takes a PlotElement, groups resolved as C's string interface resolves them
 function	astBBuf	plot.c		not-ported	yes
 function	astBorder	plot.c		not-ported	yes
 function	astBoundingBox	plot.c		not-ported	yes
@@ -404,7 +404,7 @@ function	astPolyCurve	plot.c		not-ported	yes
 function	astRegionOutline	plot.c		not-ported	yes
 function	astStripEscapes	plot.c		not-ported	yes
 function	astText	plot.c		not-ported	yes
-function	astPlot	plot.c		not-ported	yes
+function	astPlot	plot.c	Plot::new		yes	A NULL Frame is Plot::default_frame
 class	Plot3D	plot3d.c		not-ported	yes
 attribute	RootCorner	plot3d.c		not-ported	yes
 attribute	Norm	plot3d.c		not-ported	yes

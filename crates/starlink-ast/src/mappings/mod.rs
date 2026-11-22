@@ -619,6 +619,13 @@ pub trait Mapping: AsAny + AsDynMapping + Send + fmt::Debug {
     /// factor 2 inverted equals ZoomMap with factor 0.5 non-inverted).
     fn equal(&self, other: &dyn Mapping) -> bool;
 
+    /// This Mapping as the FrameSet it is, if it is one: a FrameSet, or a
+    /// class built on a FrameSet, such as a Plot.
+    // C: astIsAFrameSet.
+    fn as_frameset(&self) -> Option<&crate::frames::FrameSet> {
+        None
+    }
+
     /// Decompose this mapping into a list of component mappings for the given
     /// composition direction, mirroring an overriding C `astMapList`.
     ///

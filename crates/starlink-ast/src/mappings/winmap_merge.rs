@@ -508,7 +508,6 @@ fn try_distribute_into_parallel(
     win_inv: bool,
 ) -> AstResult<Option<usize>> {
     use super::cmpmap::{CmpMap, Composition};
-    use super::simplify::reconstruct;
 
     let n = ctx.len();
 
@@ -648,7 +647,12 @@ fn try_distribute_into_parallel(
     // (winmap.c:1386). Its recombination into series form happens when that
     // CmpMap is next nominated, through CmpMap's own merge, so the order of
     // later merges, and which Mappings an oscillation freezes, follow C's.
-    let new_par = reconstruct(branches, false)?;
+    // The halves go in as astSimplify returned them: a half that is a lone
+    // component stored inverted stays stored inverted, with its IsSimp tag,
+    // and the CmpMap records that orientation in InvA/InvB.
+    let mut halves = branches.into_iter().map(|(m, _, _)| m);
+    let (simp1, simp2) = (halves.next().unwrap(), halves.next().unwrap());
+    let new_par: DynMapping = Box::new(CmpMap::new(simp1, simp2, Composition::Parallel)?);
     ctx.replace_range_with(i1, i2, new_par);
     Ok(Some(i1))
 }
