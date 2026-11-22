@@ -1862,6 +1862,14 @@ The angle is also stepped to 5 degrees and worked out in graphics coordinates, n
 Oracle-verified: `crates/ast-plotter-wasm/tests/fixtures/aitoff.svg`, written by `tools/oracle_fixtures/fits_plotter_probe.c`, draws the right ascension labels 3 and 6, whose text boxes lean about 65 degrees clockwise, with `rotate(-65,…)`.
 The logging backend's SVG is a record of the calls rather than a drawing, so the port's default `SvgGrf` mirrors it byte for byte; with `SvgOptions::equal_aspect`, which draws on a square as PGPLOT does, the port turns text the way its up vector points, at its exact angle (`equal_aspect_turns_text_the_way_its_up_vector_points` in `crates/starlink-ast/tests/test_grf.rs`).
 
+### A shortened declination label drops its sign
+
+A Plot shortens each tick label by leaving out the leading fields it shares with the label before it (`AxisAbbrev`, `skyaxis.c:307`), and a SkyAxis keeps the sign in its first field.
+So in a declination run `-0°10'`, `-0°05'`, `0°00'`, the middle label is drawn `05'`, the same as the `05'` that stands for `+0°05'` above `0°00'`; only the `-0°10'` before it says which side of zero it is.
+A label of `-1°05'` after `-1°10'` loses its sign the same way, but there the `-1°` is still in view on its neighbour; at `-0°` the shared field is the only sign the label has.
+Oracle-verified: `crates/ast-plotter-wasm/tests/fixtures/origin.svg`, written by `tools/oracle_fixtures/fits_plotter_probe.c` for the page's ORIGIN example, holds `-0`, `°`, `10`, `'`, then `05`, `'`, then `0`, `°`, `00`, `'`.
+The port mirrors it; keeping the sign when the shared field starts with one would be an upstream change to `AxisAbbrev`.
+
 ## Addressed here, and not going upstream
 
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.
