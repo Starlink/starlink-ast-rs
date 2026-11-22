@@ -1,6 +1,6 @@
 # Browser FITS plotter and attribute strings design
 
-Status: draft for review, 2026-11-21.
+Status: implemented, 2026-11-22: stage 1 on `u/timj/wasm-plotter-1-attrs`, stage 2 on `u/timj/wasm-plotter-2-page`; serving or hosting the page and issue #12's JavaScript API are left.
 Branches: one per stage, the first `u/timj/wasm-plotter-1-attrs`, stacked on `u/timj/plot-7-egui`.
 Related: [Starlink/starlink-ast-rs#12](https://github.com/Starlink/starlink-ast-rs/issues/12) (a JavaScript API for the WebAssembly build); the Plot design, [`2026-10-30-plot-design.md`](2026-10-30-plot-design.md).
 
