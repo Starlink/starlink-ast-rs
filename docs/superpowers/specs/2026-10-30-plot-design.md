@@ -190,6 +190,9 @@ Each stage is one PR on a branch stacked on the previous one.
    The base method and its six class overrides, and CmpRegion's `RegSplit` (`docs/audits/region-class-coverage-audit.md`, RT-TRACE and RS-SPLIT).
    Before stage 6, because `region_outline` calls both.
    Gate 6.
+   *Done 2026-11-20 (`docs/superpowers/plans/2026-11-20-plot-stage5-regtrace.md`), as the hidden `Region` methods `reg_trace` and `reg_split`.
+   Moc also overrides `RegTrace`, so there are seven class overrides, not six; its trace needed the perimeter walk in Moc's `RegBaseMesh`.
+   With them, a Plot whose current Frame is a Region draws its border and grid as C does (`DrawRegion`, `Map5` and `Boundary`'s Region branch).*
 6. **The other drawing methods.**
    `curve`, `gen_curve`, `poly_curve`, `mark`, `bounding_box`, `clip` and `region_outline`.
    Gate 5.

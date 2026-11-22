@@ -30,10 +30,14 @@ mod border;
 mod text;
 
 use starlink_ast::error::{AstResult, ErrorCode};
-use starlink_ast::frames::{BasicFrameBuilder, CmpFrame, FrameRef};
+use starlink_ast::frames::{BasicFrameBuilder, CmpFrame, FrameRef, SkyFrame, SkySystem};
 use starlink_ast::grf::{Grf, Justification, LogGrf, SvgGrf, SvgOptions};
 use starlink_ast::mappings::PermMap;
 use starlink_ast::plot::{Draw, Plot};
+use starlink_ast::regions::{
+    BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, DynRegion, EllipseBuilder,
+    IntervalBuilder, Moc, PolygonBuilder, PrismBuilder,
+};
 
 use crate::common::plot::{
     FailingGrf, apply_settings, fnv1a, grid_cases, read_head, testgrid_plot,
@@ -193,8 +197,120 @@ fn border_plot(name: &str) -> Plot {
             plot
         }
         "car3_3d" => car3_3d(),
+        _ if name.starts_with("region_") => region_plot(name),
         _ => testgrid_plot(grid_cases().iter().find(|c| c.name == name).unwrap()),
     }
+}
+
+/// A Plot whose current Frame is a Region, as the border probe builds it:
+/// of a 2-D Frame with a plot box of 0 to 10 on each axis, unless the Region
+/// is on the sky.
+fn region_plot(name: &str) -> Plot {
+    let gbox = [0.1, 0.1, 0.9, 0.9];
+    let mut pbox = [0.0, 0.0, 10.0, 10.0];
+    let f2 = || BasicFrameBuilder::new(2).build().unwrap();
+    let circle = |f, c: [f64; 2], r| -> DynRegion {
+        Box::new(
+            CircleBuilder::new(f, c.to_vec())
+                .unwrap()
+                .radius(r)
+                .build()
+                .unwrap(),
+        )
+    };
+    let region: DynRegion = match name {
+        "region_circle" => circle(f2(), [5.0, 5.0], 3.0),
+        "region_sky_circle" => {
+            pbox = [0.9, 0.4, 1.1, 0.6];
+            Box::new(
+                CircleBuilder::new(SkyFrame::new(SkySystem::Icrs), vec![1.0, 0.5])
+                    .unwrap()
+                    .radius(0.05)
+                    .build()
+                    .unwrap(),
+            )
+        }
+        "region_box" => Box::new(
+            BoxRegionBuilder::from_bounds(f2(), &[2.0, 3.0], &[7.0, 6.0])
+                .unwrap()
+                .build()
+                .unwrap(),
+        ),
+        "region_or_disjoint" => Box::new(
+            CmpRegionBuilder::from_dyn(
+                circle(f2(), [3.0, 3.0], 1.5),
+                circle(f2(), [7.0, 7.0], 1.5),
+                CmpOperator::Or,
+            )
+            .unwrap()
+            .build()
+            .unwrap(),
+        ),
+        "region_neg_circle" => {
+            let mut reg = circle(f2(), [5.0, 5.0], 3.0);
+            reg.negate();
+            reg
+        }
+        "region_prism" => {
+            let f1 = || BasicFrameBuilder::new(1).build().unwrap();
+            let interval = |lo: f64, hi: f64| {
+                IntervalBuilder::new(f1(), vec![lo], vec![hi])
+                    .unwrap()
+                    .build()
+                    .unwrap()
+            };
+            Box::new(
+                PrismBuilder::new(interval(2.0, 8.0), interval(3.0, 7.0))
+                    .unwrap()
+                    .build()
+                    .unwrap(),
+            )
+        }
+        "region_ellipse" => Box::new(
+            EllipseBuilder::new(f2(), vec![5.0, 5.0], [3.0, 1.5], 0.5)
+                .unwrap()
+                .build()
+                .unwrap(),
+        ),
+        "region_polygon" => {
+            let xs = [2.0, 5.0, 8.0, 9.5, 8.0, 5.0, 2.6];
+            let ys = [2.0, 0.5, 2.0, 5.0, 8.0, 7.4, 5.0];
+            let vertices = xs.iter().zip(&ys).map(|(&x, &y)| vec![x, y]).collect();
+            Box::new(
+                PolygonBuilder::new(f2(), vertices)
+                    .unwrap()
+                    .build()
+                    .unwrap(),
+            )
+        }
+        "region_moc" => {
+            pbox = [0.3, -0.05, 1.27, 0.8];
+            let mut moc = Moc::new();
+            moc.add_moc_string(CmpOperator::Or, false, -1, "3/0-2,4-5,7-8,10-11,13-15")
+                .unwrap();
+            Box::new(moc)
+        }
+        "region_gal_circle" => {
+            pbox = [2.78, -0.42, 2.94, -0.27];
+            let mut circle = CircleBuilder::new(SkyFrame::new(SkySystem::Icrs), vec![1.0, 0.5])
+                .unwrap()
+                .radius(0.05)
+                .build()
+                .unwrap();
+            circle
+                .with_integrity(|f| {
+                    f.as_any_mut()
+                        .downcast_mut::<SkyFrame>()
+                        .expect("a sky Circle's Frame is a SkyFrame")
+                        .set_system(SkySystem::Galactic);
+                    Ok(())
+                })
+                .unwrap();
+            Box::new(circle)
+        }
+        other => panic!("no region Plot {other}"),
+    };
+    Plot::new(region.as_ref(), gbox, pbox).unwrap()
 }
 
 /// The car3 grid test Plot with a 3-D current Frame added: a CmpFrame of
@@ -277,6 +393,18 @@ fn borders_match_the_c_library() {
             (&case.svg).into(),
             &mut failures,
         );
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// The grid of a Plot whose current Frame is a Region, whose border C
+/// traces with the Region's own boundary tracing where the class has it.
+#[test]
+fn region_grids_match_the_c_library() {
+    let mut failures = Vec::new();
+    for (name, want_log, want_svg) in border::REGION_GRIDS {
+        let (log, svg) = log_and_svg(&region_plot(name), |plot, grf| plot.draw_grid(grf));
+        compare(name, &log, &svg, want_log, want_svg.into(), &mut failures);
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

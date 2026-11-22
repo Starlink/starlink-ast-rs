@@ -111,6 +111,9 @@ semi-infinite overlap before deciding this needs the bespoke override.
 no serialization or transform impact today. Large (6 class-specific ports plus
 trait plumbing).
 
+**Done 2026-11-20** (Plot stage 5, `docs/superpowers/plans/2026-11-20-plot-stage5-regtrace.md`): `Region::reg_trace`, with the overrides above and a seventh, Moc's (`moc.c:8651`), which needed the perimeter walk in Moc's `RegBaseMesh`.
+Pinned against C by `reg_trace_matches_the_c_library` and `cmpregion_reg_trace_matches_the_c_library` in `test_region_trace.rs`, and by the `region_*` cases of `borders_match_the_c_library` and `region_grids_match_the_c_library` in `test_plot_draw.rs`.
+
 ### RS-SPLIT — CmpRegion `RegSplit` unported *(reported)*
 
 - **Rust**: absent — no `reg_split`. The trivial base clone-self behavior is
@@ -120,6 +123,8 @@ trait plumbing).
 
 Callers are `plot.c:9700` and internally `cmpregion.c:2561`. Same
 "blocks plotting later" status as RT-TRACE.
+
+**Done 2026-11-20** (Plot stage 5): `Region::reg_split`, pinned against C's dumps of each part by `reg_split_matches_the_c_library` in `test_region_trace.rs`.
 
 ### ACC-PARS — class geometry accessors unexposed *(reported)*
 

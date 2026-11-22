@@ -849,7 +849,7 @@ impl Plot {
         }
         self.grf_attrs(grf, PlotElement::Strings, true, GrfPrimitive::Text)?;
         let phys = PointSet::from_rows([&pos[..ncoord]]);
-        let graph = self.trans_with(None, &phys, false, false)?;
+        let graph = self.trans_with(None, None, &phys, false, false)?;
         let (gx, gy) = (graph.axis(0)[0], graph.axis(1)[0]);
         let ltext = &text[..chr_len(text)];
         if gx != BAD_VALUE && gy != BAD_VALUE {

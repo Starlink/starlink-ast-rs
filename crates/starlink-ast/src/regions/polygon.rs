@@ -1805,6 +1805,52 @@ impl Region for Polygon {
         Some(&self.data.def_unc)
     }
 
+    /// polygon.c `RegTrace`. Distance is in proportion to the length of the
+    /// edges, measured in the base Frame, starting along edge 0, from the
+    /// last vertex to the first. Like C, it does not check that the base
+    /// Frame is 2-D, which a Polygon's always is.
+    fn reg_trace(&self, dist: &[f64]) -> AstResult<Option<PointSet>> {
+        super::traced_positions(&self.data.frameset, dist, || {
+            let (edges, _, _) = self.cache()?;
+            let frm = self.data.frameset.base();
+            let nv = self.data.points.len();
+            // C's `startsat` and `totlen`, which its Cache keeps.
+            let mut startsat = Vec::with_capacity(nv);
+            let mut totlen = 0.0;
+            for edge in &edges {
+                startsat.push(totlen);
+                totlen += edge.length;
+            }
+
+            // With enough distances and vertices, a non-decreasing list of
+            // distances lets each search start at the previous edge. As in
+            // C, the test looks for a decrease, which a NaN never is.
+            let monotonic = dist.len() > 5 && nv > 5 && !dist.windows(2).any(|w| w[1] < w[0]);
+
+            let mut x = Vec::with_capacity(dist.len());
+            let mut y = Vec::with_capacity(dist.len());
+            let mut j0 = 1;
+            for &di in dist {
+                let mut d = di * totlen;
+                let mut j = j0;
+                while j < nv {
+                    if startsat[j] > d {
+                        break;
+                    }
+                    j += 1;
+                }
+                if monotonic {
+                    j0 = j;
+                }
+                d -= startsat[j - 1];
+                let p = frm.line_offset(&edges[j - 1], d, 0.0)?;
+                x.push(p[0]);
+                y.push(p[1]);
+            }
+            Ok([x, y])
+        })
+    }
+
     fn explicit_unc(&self) -> Option<&DynRegion> {
         self.data.uncertainty.as_ref()
     }
