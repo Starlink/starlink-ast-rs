@@ -170,8 +170,12 @@ Each stage is one PR on a branch stacked on the previous one.
    Sources: `docs/issues/frame-mapping-c-port-gaps.md` (the "Plot-support methods" entry and the SkyAxis and TimeFrame remainders) and `docs/audits/frame-family-c-parity.md` (SK-18).
    Gate 6.
    This stage is a hard prerequisite, since `grid` places labels with `Gap`, `Fields` and `Abbrev`.
+   *Done 2026-11-19 (`docs/superpowers/plans/2026-11-19-plot-stage1-frame-methods.md`).*
 2. **`Grf`, `LogGrf`, `SvgGrf`.**
    Gate 3.
+   *Done 2026-11-19 (`docs/superpowers/plans/2026-11-19-plot-stage2-grf.md`), as `starlink_ast::grf`.
+   The trait's shape, reviewed with that plan: `attr` takes `Option<f64>`, `None` querying where C passes `AST__BAD`; justification is a pair of enums, `VJust` (C's `M`, `B`, `C`, `T`) and `HJust`, with `Justification::code` giving C's two characters; up-vectors are `[f32; 2]` and text boxes a `TextBox` of four corners; every method takes `&mut self`.
+   The backends are generic over `std::io::Write` and end with `finish`, which for `SvgGrf` writes the closing tag; `SvgOptions` is `#[non_exhaustive]` with public `width` and `height`.*
 3. **Plot as an object.**
    Construction from a FrameSet with a graphics box and a plot box, every attribute, Native save and load.
    Gate 4.
