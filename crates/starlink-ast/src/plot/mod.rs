@@ -34,12 +34,23 @@
 //   Get/Set/Test/ClearAttrib dispatch, which become typed accessors.
 
 mod attrs;
+mod axes;
+mod border;
+mod curve;
+mod draw;
 mod elements;
 mod forward;
+mod grid;
+mod labels;
+mod sample;
 mod serial;
+mod text;
+mod ticks;
 
 pub use attrs::{Edge, Labelling, TextGapType};
+pub use draw::Draw;
 pub use elements::PlotElement;
+pub use grid::UsedValues;
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{PointSet, Points, PointsMut};
@@ -102,6 +113,10 @@ pub struct Plot {
     tick_values: [TickValues; 3],
     /// Plot's own attributes.
     pub(crate) attrs: attrs::PlotAttrs,
+    /// What C keeps in globals while drawing.
+    pub(crate) draw: draw::DrawState,
+    /// The values the last grid used for attributes left unset.
+    pub(crate) used: grid::UsedState,
 }
 
 /// Tick values given for one axis of a Plot.
@@ -111,23 +126,32 @@ pub(crate) struct TickValues {
     pub(crate) minor: Vec<f64>,
 }
 
-/// The FrameSet `fs` with a 2-D base Frame: unchanged if its base Frame is
-/// 2-D or smaller, else with a new base Frame of the first two axes of the
-/// old one, joined to it by a PermMap that gives the other axes the value 0.
-// C: Fset2D (plot.c:13798), for the base Frame.
-fn fset_2d(mut fs: FrameSet) -> AstResult<FrameSet> {
-    let nax = fs.base().naxes();
+/// The FrameSet `fs` with a 2-D base Frame (or current Frame, if not
+/// `base`): unchanged if that Frame is 2-D or smaller, else with a new
+/// Frame of its first two axes, joined to it by a PermMap that gives the
+/// other axes the value 0, as the new base (or current) Frame.
+// C: Fset2D (plot.c:13798).
+fn fset_2d(mut fs: FrameSet, base: bool) -> AstResult<FrameSet> {
+    let which = if base {
+        FrameRef::Base
+    } else {
+        FrameRef::Current
+    };
+    let frm = fs.frame(which)?;
+    let nax = frm.naxes();
     if nax <= 2 {
         return Ok(fs);
     }
-    let (newfrm, _) = pick_axes(fs.base(), &[1, 2])?;
+    let (newfrm, _) = pick_axes(frm, &[1, 2])?;
     let mut inperm = vec![1_i64, 2];
     inperm.extend(std::iter::repeat_n(-1, nax - 2));
     let map = PermMap::new(&inperm, &[1, 2], &[0.0])?;
     let ic = fs.current_index();
-    fs.add_frame(FrameRef::Base, Box::new(map), newfrm)?;
-    fs.set_base(FrameRef::Current)?;
-    fs.set_current(FrameRef::Index(ic))?;
+    fs.add_frame(which, Box::new(map), newfrm)?;
+    if base {
+        fs.set_base(FrameRef::Current)?;
+        fs.set_current(FrameRef::Index(ic))?;
+    }
     Ok(fs)
 }
 
@@ -181,9 +205,15 @@ impl Plot {
             }
             (fs, "base Frame of the supplied Plot")
         } else if let Some(fs) = frame.as_frameset() {
-            (fset_2d(fs.clone())?, "base Frame of the supplied FrameSet")
+            (
+                fset_2d(fs.clone(), true)?,
+                "base Frame of the supplied FrameSet",
+            )
         } else {
-            (fset_2d(FrameSet::new(frame.snapshot()))?, "supplied Frame")
+            (
+                fset_2d(FrameSet::new(frame.snapshot()), true)?,
+                "supplied Frame",
+            )
         };
         Self::from_frameset(fset, mess, graphbox, basebox)
     }
@@ -276,6 +306,8 @@ impl Plot {
             bbox: basebox,
             clip: None,
             tick_values: Default::default(),
+            draw: Default::default(),
+            used: Default::default(),
             attrs: attrs::PlotAttrs::default(),
         })
     }
@@ -389,10 +421,25 @@ impl Plot {
     /// outside the clipping region bad.
     // C: Trans (plot.c:28181), with `norm` set, as Transform calls it.
     fn trans(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
+        self.trans_with(None, pts, forward, true)
+    }
+
+    /// Transform points through the Plot's FrameSet, normalising forward
+    /// results in `frm` (the current Frame if `None`) when `norm` is set,
+    /// then setting points outside the clipping region bad.
+    // C: Trans (plot.c:28181). C's `mapping` argument is always the Plot's
+    // base to current Mapping where the port calls it.
+    pub(crate) fn trans_with(
+        &self,
+        frm: Option<&dyn Frame>,
+        pts: &PointSet,
+        forward: bool,
+        norm: bool,
+    ) -> AstResult<PointSet> {
         let mut result = Mapping::transform(&self.frameset, pts, forward)?;
         let npoint = result.npoint();
-        if forward {
-            let cfr = self.frameset.current();
+        if forward && norm {
+            let cfr = frm.unwrap_or_else(|| self.frameset.current());
             for i in 0..npoint {
                 let mut work = result.point(i).to_vec();
                 cfr.norm(&mut work)?;
@@ -456,7 +503,9 @@ impl Plot {
             }
         } else if clip_frame == current {
             if forward {
-                clip_norm = false;
+                if norm {
+                    clip_norm = false;
+                }
                 result.clone()
             } else {
                 pts.clone()

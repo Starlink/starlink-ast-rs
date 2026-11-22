@@ -24,6 +24,11 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Plot `Dump` writes Gap and LogGap with the set flag left by the Centre loop](#plot-dump-writes-gap-and-loggap-with-the-set-flag-left-by-the-centre-loop)
 - [A Plot built from a Plot never checks its last Frame's Domain](#a-plot-built-from-a-plot-never-checks-its-last-frames-domain)
 - [Plot `Trans` normalises the caller's input and clips only some output axes](#plot-trans-normalises-the-callers-input-and-clips-only-some-output-axes)
+- [Plot `Fpoly` marks polyline 0 drawn instead of the one it starts from](#plot-fpoly-marks-polyline-0-drawn-instead-of-the-one-it-starts-from)
+- [Plot's bounding boxes start their upper bounds at `FLT_MIN`](#plots-bounding-boxes-start-their-upper-bounds-at-flt_min)
+- [Plot `Boundary` sizes its tracing tolerance from the x extent twice](#plot-boundary-sizes-its-tracing-tolerance-from-the-x-extent-twice)
+- [`astFindEscape` takes any character after the digits as the closing `+`](#astfindescape-takes-any-character-after-the-digits-as-the-closing-)
+- [Plot reads past its tick arrays for an axis with one major tick](#plot-reads-past-its-tick-arrays-for-an-axis-with-one-major-tick)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
@@ -249,13 +254,60 @@ Going backward with the base Frame as the clipping Frame, C clones the result in
 When a point is clipped, C sets the first `naxes` output coordinates bad, `naxes` being the number of axes of the clipping Frame, not of the output: a clipping Frame with fewer axes than the current Frame leaves the remaining output coordinates of a clipped point good, and one with more writes past the output arrays.
 The port sets the first `min(naxes, nout)` coordinates bad, which is C's result wherever C's is defined (`Plot::trans`).
 
+### Plot `Fpoly` marks polyline 0 drawn instead of the one it starts from
+
+`plot.c` `Fpoly` (plot.c:13273) draws the polylines a drawing method has buffered, joining those whose ends meet.
+Each joined line starts from the first polyline not yet drawn, and C then sets `drawn[ 0 ]` where it means `drawn[ ipoly ]`.
+A joined line starting from any polyline but the first is therefore still undrawn when the search for a polyline ending where the line has reached runs, and that search finds the starting polyline itself, so it is appended to itself reversed: the curve is drawn out and back over the same points.
+The search also takes the first of several equal x coordinates in the order `qsort` leaves them, which is not stable, so where several polylines start or end at the same x the result depends on the platform's `qsort`.
+The port mirrors the first (`Plot::fpoly` in `crates/starlink-ast/src/plot/curve.rs` marks polyline 0) and sorts stably for the second; with either order, every grid test case and drawing probe gives the call log C gives on macOS, so the order has not been seen to matter.
+`plot_curve_probe.c`'s `aitoff`, `polco` and `hpx` cases draw doubled-back curves, which `grid_lines_match_the_c_library` pins.
+The fix is `drawn[ ipoly ] = 1`; a stable order would need a tie-break, such as the polyline index, in `Fpoly_scmp` and `Fpoly_ecmp`.
+
+### Plot's bounding boxes start their upper bounds at `FLT_MIN`
+
+`plot.c` starts the upper bounds of `Box_ubnd` and `Boxp_ubnd`, the bounding boxes of what a grid and a drawing method draw, at `FLT_MIN` (plot.c:1923, :1929, and where `Grid`, `GridLine` and the other drawing methods reset them), which is the smallest positive float, not the most negative.
+A drawing entirely at negative graphics coordinates therefore has an upper bound of `FLT_MIN` rather than its true maximum.
+The port mirrors this (`DrawState` in `crates/starlink-ast/src/plot/draw.rs`); the fix is `-FLT_MAX`.
+
+### Plot `Boundary` sizes its tracing tolerance from the x extent twice
+
+`plot.c` `Boundary` (plot.c:4870) turns the border's tracing tolerance into graphics units with the larger of the plotting area's width and height, but computes both as `fabs( this->xhi - this->xlo )`, so the height is never used.
+A plotting area taller than it is wide is traced more coarsely than its height calls for.
+The port mirrors this (`Plot::boundary` in `crates/starlink-ast/src/plot/border.rs`), since it decides where the border's line segments fall; `plot_border_probe.c`'s `car4` and `car5` cases, taller than wide, pin it.
+The fix is `dy = fabs( this->yhi - this->ylo )`.
+
+### `astFindEscape` takes any character after the digits as the closing `+`
+
+`plot.c` `astFindEscape` (plot.c:12086) reads the number of an escape sequence such as `%s70+` with `astSscanf( a, "%d%n+", value, &nd )` and accepts it whenever the `%d` converts, since `sscanf` counts conversions and the literal `+` after `%n` is never checked.
+It then skips `nd + 1` characters, so the character after the digits is consumed whatever it is: `%s70x trick` sets the size to 70% and draws " trick".
+Where the digits end the string, the count runs one past its terminating null, and `DrawText` reads beyond the string.
+The port mirrors the first (`find_escape` in `crates/starlink-ast/src/plot/text.rs`, pinned by `plot_text_probe.c`'s `escapes` case) and stops at the end of the string for the second.
+The fix is to require the `+`, for instance by reading `%d%n` and testing the character at `nd`.
+
+### Plot reads past its tick arrays for an axis with one major tick
+
+Three places in `plot.c` index tick arrays without checking their length:
+
+- `Labelat` (plot.c:20613) takes the zero tolerance from the first two ticks of the other axis, `value[ 1 ] - value[ 0 ]`, whether or not there is a second.
+- `Labels` (plot.c:20871) works out from the middle tick in two passes; with one major tick the second pass starts at index -1 and reads `value[ -1 ]` and `labels[ -1 ]`.
+- `DrawTicks` (plot.c:10148), drawing interior ticks from explicit tick values (which only a 3-D Plot sets), loops to `<= nmajor` and `<= nminor`, one past each list, and uses whatever `logticks` an earlier axis left.
+
+An axis with a single major tick arises with a very small plotting area or explicit ticks; none of the grid test cases has one.
+The port stops at the ends of the arrays: `Labelat` takes the tolerance to be zero, `Labels` ends at the first pass, and `DrawTicks` draws the ticks the lists hold (`crates/starlink-ast/src/plot/grid.rs`, `labels.rs`, `axes.rs`); it keeps C's leftover `logticks`.
+The fix is to test the counts before indexing.
+
 ### `astReadDateTime` tests ERFA's status against SLALIB's codes
 
 `frame.c` `astReadDateTime` (frame.c:9282) converts the calendar date with `palCaldj` and reports an invalid year, month or day for a status of 1, 2 or 3, SLALIB's codes.
 `palCaldj` now returns `eraCal2jd`'s codes, -1, -2 and -3, so none of those errors is ever reported.
 For a bad day (-3) ERFA still computes the MJD, counting on from the month's start, so `2012-03-00` reads as 29 February and `2012-02-30` as 1 March.
-For a bad year or month (-1, -2) ERFA returns before setting the MJD, and the uninitialized value is returned as the result: TimeFrame `Centre` on a date axis zeroes every field from the first that differs between the value a gap below and a gap above, so whenever those two fall in different months or years, at any gap size, it reads a date with month zero, giving values like `3.4e301` (`plot_frame_methods_probe.c`). A Plot of a date axis that spans a month boundary meets this.
-The port reads a bad day as C does (`date_time.rs`, `unformat_counts_days_outside_the_month_from_its_start` in `test_timeframe.rs`) and does not read a bad year or month, so TimeFrame `centre` there reports the `AST__INTER` error C's own check after the read is written to give (`time_centre_across_a_month_reports_an_error` in `test_plot_frame_methods.rs`).
+For a bad year or month (-1, -2) ERFA returns before setting the MJD, and the uninitialized value is returned as the result.
+TimeFrame `Centre` on a date axis zeroes every field from the first that differs between the value a gap below and a gap above, so whenever those two fell in different months or years it read a date with month zero, giving values like `3.4e301`; a Plot of a date axis spanning a month boundary met this.
+`Centre` is fixed on the submodule branch `u/timj/timeframe-centre-date` (timeframe.c History, 20-NOV-2026): a zeroed month or day now ends in 1, so the date it reads is valid, and a gap that changes the day now centres on the first of the month rather than the last day of the one before.
+The port follows the fixed C (`TimeFrame::centre`, pinned by `plot_frame_methods_probe.c`'s month, year and day cases, generated from that branch, and `plot_grid_values_probe.c`'s `timeplot_month_end`); until the pin moves to include it, those cases need the branch to regenerate.
+A zeroed year reads as 2000, through `palCaldj`'s rule that years 0 to 49 are 2000 to 2049, which `astReadDateTime` uses and the port now does too (`pal::caldj`).
+The port reads a bad day as C does (`date_time.rs`, `unformat_counts_days_outside_the_month_from_its_start` in `test_timeframe.rs`) and does not read a bad year or month.
 The fix is to switch on -1, -2 and -3; whether a bad day should then be an error is a question for upstream, since rejecting it would change what `Centre` gives for every date gap that changes the day.
 
 ### TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply

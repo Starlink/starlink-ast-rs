@@ -504,7 +504,7 @@ pub(crate) fn plain_axis_abbrev(str1: Option<&str>, str2: &str) -> usize {
 /// exponent, except that zero, never written as a power, is one.
 // C: axis.c `AxisFields` (axis.c:414). Only the `log` flag of the parsed
 // Format is used, so the Digits handed to `ParseAxisFormat` do not matter.
-// The log delimiter is the one used without graphical escapes.
+// The log delimiter depends on whether escape sequences are on.
 pub(crate) fn plain_axis_fields(fmt: &str, text: &str, maxfld: usize) -> super::FieldSplit {
     use crate::constants::BAD_VALUE;
     let mut out = super::FieldSplit {
@@ -523,7 +523,11 @@ pub(crate) fn plain_axis_fields(fmt: &str, text: &str, maxfld: usize) -> super::
         if neg || s.get(p) == Some(&b'+') {
             p += 1;
         }
-        let del = super::axis_format::LOG_TXT.as_bytes();
+        let del = if crate::escapes::escapes() {
+            crate::escapes::EXDEL.as_bytes()
+        } else {
+            super::axis_format::LOG_TXT.as_bytes()
+        };
         if s[p..].starts_with(del) {
             // C counts two characters past the sign, the "10", whatever the
             // delimiter's length.

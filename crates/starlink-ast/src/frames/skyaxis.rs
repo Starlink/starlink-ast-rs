@@ -252,9 +252,37 @@ const DHMSFORMAT_BUFF_LEN: usize = 70;
 pub(crate) enum DHmsSep {
     /// A character between the fields: `':'` (`i`) or `' '` (`b`).
     Char(char),
-    /// Letters after each field, as in `12h34m56s` (`l`, and `g`; see
-    /// [`parse_dhms_format`]).
+    /// Letters after each field, as in `12h34m56s` (`l`, and `g` when
+    /// escape sequences are off).
     Letters,
+    /// Letters raised and shrunk by escape sequences (`g` when escape
+    /// sequences are on; see [`crate::escapes`]).
+    Graphical,
+}
+
+impl DHmsSep {
+    /// Whether the fields end in letters, plain or graphical.
+    fn letters(self) -> bool {
+        matches!(self, DHmsSep::Letters | DHmsSep::Graphical)
+    }
+
+    /// The text ending a field: `letter` (one of "h", "m", "s" for a time,
+    /// "d", "m", "s" for an angle), or its graphical delimiter.
+    fn term(self, letter: char, as_time: bool) -> String {
+        use crate::escapes::{AMDEL, ASDEL, DGDEL, HRDEL, MNDEL, SCDEL};
+        match self {
+            DHmsSep::Graphical => match (letter, as_time) {
+                ('h', _) => HRDEL,
+                ('d', _) => DGDEL,
+                ('m', true) => MNDEL,
+                ('m', false) => AMDEL,
+                ('s', true) => SCDEL,
+                (_, _) => ASDEL,
+            }
+            .to_string(),
+            _ => letter.to_string(),
+        }
+    }
 }
 
 /// A SkyAxis Format string, parsed. Mirrors the outputs of C
@@ -281,9 +309,8 @@ pub(crate) struct DHmsFields {
 /// Parse a SkyAxis Format string, with `digs` the axis Digits value used by
 /// a `.*` precision. Mirrors C `ParseDHmsFormat` (skyaxis.c:3536).
 ///
-/// C turns the `g` separator (graphical escape sequences) into `l` unless
-/// `astEscapes` is on. The port has no escape sequences, which is C's
-/// default, so `g` is always `l` here.
+/// The `g` separator (graphical escape sequences) is `l` unless escape
+/// sequences are on ([`crate::escapes`]), as in C.
 pub(crate) fn parse_dhms_format(fmt: &str, digs: i32) -> DHmsFields {
     let mut as_time: Option<bool> = None;
     let mut f = DHmsFields {
@@ -304,7 +331,14 @@ pub(crate) fn parse_dhms_format(fmt: &str, digs: i32) -> DHmsFields {
             b'Z' | b'z' => f.lead_zero = true,
             b'I' | b'i' => f.sep = DHmsSep::Char(':'),
             b'B' | b'b' => f.sep = DHmsSep::Char(' '),
-            b'L' | b'l' | b'G' | b'g' => f.sep = DHmsSep::Letters,
+            b'L' | b'l' => f.sep = DHmsSep::Letters,
+            b'G' | b'g' => {
+                f.sep = if crate::escapes::escapes() {
+                    DHmsSep::Graphical
+                } else {
+                    DHmsSep::Letters
+                }
+            }
             b'T' | b't' => {
                 if as_time.is_none() {
                     as_time = Some(true);
@@ -411,7 +445,7 @@ pub(crate) fn dhms_unit(fmt: &str, digs: i32) -> (String, bool) {
 
     let f = parse_dhms_format(fmt, digs);
     match f.sep {
-        DHmsSep::Letters => return (String::new(), false),
+        DHmsSep::Letters | DHmsSep::Graphical => return (String::new(), false),
         DHmsSep::Char(_) if f.dh && !f.min && !f.sec => {
             let u = if f.as_time { "hours" } else { "degrees" };
             return (u.to_string(), false);
@@ -573,7 +607,7 @@ pub(crate) fn dhms_format(fmt: &str, digs: i32, value: f64) -> String {
         positive = true;
     }
 
-    let letters = f.sep == DHmsSep::Letters;
+    let letters = f.sep.letters();
     let mut out = String::new();
     if !positive {
         out.push('-');
@@ -588,7 +622,7 @@ pub(crate) fn dhms_format(fmt: &str, digs: i32, value: f64) -> String {
         };
         out.push_str(&format!("{idh:0width$.0}"));
         if (f.min || f.sec) && letters {
-            out.push(if f.as_time { 'h' } else { 'd' });
+            out.push_str(&f.sep.term(if f.as_time { 'h' } else { 'd' }, f.as_time));
         }
     }
     if f.min {
@@ -600,7 +634,7 @@ pub(crate) fn dhms_format(fmt: &str, digs: i32, value: f64) -> String {
         let width = if f.dh || f.lead_zero { 2 } else { 1 };
         out.push_str(&format!("{imin:0width$.0}"));
         if f.sec && letters {
-            out.push('m');
+            out.push_str(&f.sep.term('m', f.as_time));
         }
     }
     if f.sec {
@@ -617,7 +651,7 @@ pub(crate) fn dhms_format(fmt: &str, digs: i32, value: f64) -> String {
         out.push_str(&format!("{ifract:0ndp$.0}"));
     }
     if letters {
-        out.push(if f.sec {
+        let last = if f.sec {
             's'
         } else if f.min {
             'm'
@@ -625,7 +659,8 @@ pub(crate) fn dhms_format(fmt: &str, digs: i32, value: f64) -> String {
             'h'
         } else {
             'd'
-        });
+        };
+        out.push_str(&f.sep.term(last, f.as_time));
     }
     out
 }
@@ -994,10 +1029,10 @@ pub(crate) fn sky_axis_fields(
         Some(b'+') => p += 1,
         _ => {}
     }
-    let letters = f.sep == DHmsSep::Letters;
+    let letters = f.sep.letters();
     let sep_term = match f.sep {
         DHmsSep::Char(c) => c.to_string(),
-        DHmsSep::Letters => String::new(),
+        DHmsSep::Letters | DHmsSep::Graphical => String::new(),
     };
     // The span of a field starting at `fstart`: up to `term` when there is
     // one, which `p` then skips, else to the last non-blank character.
@@ -1019,8 +1054,9 @@ pub(crate) fn sky_axis_fields(
     let mut value = 0.0;
     let mut dval: Option<f64> = None;
     if f.dh {
+        let first = f.sep.term(if f.as_time { 'h' } else { 'd' }, f.as_time);
         let term = if letters {
-            Some(if f.as_time { "h" } else { "d" })
+            Some(first.as_str())
         } else if f.min || f.sec {
             Some(sep_term.as_str())
         } else {
@@ -1040,14 +1076,15 @@ pub(crate) fn sky_axis_fields(
         fields.push(start..start + nc);
     }
     for (present, letter, sep_ends, divisor) in
-        [(f.min, "m", f.sec, 60.0), (f.sec, "s", false, 3600.0)]
+        [(f.min, 'm', f.sec, 60.0), (f.sec, 's', false, 3600.0)]
     {
         if !present {
             continue;
         }
         let fstart = p;
+        let letter_term = f.sep.term(letter, f.as_time);
         let term = if letters {
-            Some(letter)
+            Some(letter_term.as_str())
         } else if sep_ends {
             Some(sep_term.as_str())
         } else {
