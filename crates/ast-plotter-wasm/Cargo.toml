@@ -9,9 +9,16 @@ description = "The AST FITS plotter page's work in Rust: a FITS header in, a gri
 
 [lib]
 name = "ast_plotter"
+# cdylib for the browser, rlib for the native tests.
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 starlink-ast = { path = "../starlink-ast", features = ["attribute-strings"] }
+
+# Pinned exactly: the wasm-bindgen-cli that post-processes the module must be
+# the same version (tools/build_plotter.sh checks it).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.130"
 
 [features]
 # Adds a function that panics, for the page's smoke test of trap recovery.

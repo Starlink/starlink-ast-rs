@@ -262,6 +262,7 @@ name = "ast-plotter-wasm"
 version = "0.1.0"
 dependencies = [
  "starlink-ast",
+ "wasm-bindgen",
 ]
 
 [[package]]

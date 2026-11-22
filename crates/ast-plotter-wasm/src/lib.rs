@@ -11,6 +11,8 @@
 //! library, and the crate's tests compare the two.
 
 mod examples;
+#[cfg(target_arch = "wasm32")]
+mod wasm;
 
 pub use examples::{Example, parse_examples};
 
