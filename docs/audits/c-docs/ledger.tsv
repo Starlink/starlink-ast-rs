@@ -388,20 +388,20 @@ attribute	Width	plot.c	Plot::width		yes	Per element: takes a PlotElement, groups
 attribute	Size	plot.c	Plot::size		yes	Per element: takes a PlotElement, groups resolved as C's string interface resolves them
 function	astBBuf	plot.c		not-ported	yes
 function	astBorder	plot.c	Draw::draw_border		yes
-function	astBoundingBox	plot.c		not-ported	yes
-function	astClip	plot.c		not-ported	yes
-function	astCurve	plot.c		not-ported	yes
+function	astBoundingBox	plot.c	Draw::bounding_box		yes
+function	astClip	plot.c	Draw::set_clip_region;Draw::clear_clip_region		yes	clear_clip_region is astClip with AST__NOFRAME
+function	astCurve	plot.c	Draw::draw_curve		yes
 function	astEBuf	plot.c		not-ported	yes
 function	astGetGrfContext	plot.c		not-ported	yes
-function	astGenCurve	plot.c		not-ported	yes
+function	astGenCurve	plot.c	Draw::draw_gen_curve		yes
 function	astGrfPop	plot.c		not-ported	yes
 function	astGrfPush	plot.c		not-ported	yes
 function	astGrfSet	plot.c		not-ported	yes
 function	astGrid	plot.c	Draw::draw_grid		yes
 function	astGridLine	plot.c	Draw::draw_grid_line		yes
-function	astMark	plot.c		not-ported	yes
-function	astPolyCurve	plot.c		not-ported	yes
-function	astRegionOutline	plot.c		not-ported	yes
+function	astMark	plot.c	Draw::draw_mark		yes
+function	astPolyCurve	plot.c	Draw::draw_poly_curve		yes
+function	astRegionOutline	plot.c	Plot::draw_region_outline		yes
 function	astStripEscapes	plot.c		not-ported	yes
 function	astText	plot.c	Draw::draw_text		yes
 function	astPlot	plot.c	Plot::new		yes	A NULL Frame is Plot::default_frame
