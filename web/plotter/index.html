@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<!-- Copyright 2026 Association of Universities for Research in Astronomy (AURA) -->
+<!-- SPDX-License-Identifier: LGPL-3.0-or-later -->
+<!--
+  The page of the browser FITS plotter. tools/build_plotter.sh replaces each
+  /*@...@*/ marker with its file to make target/plotter/fits-plotter.html.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AST FITS Plotter</title>
+<style>
+/*@PLOTTER_CSS@*/
+</style>
+</head>
+<body>
+<header class="masthead">
+  <h1>AST FITS plotter</h1>
+  <p>Paste a FITS header to see its coordinate grid, the header rewritten as FITS-WCS, and the FrameSet the AST library reads from it.
+  Everything runs in this page, in the Rust port of AST compiled to WebAssembly; nothing is sent anywhere.</p>
+</header>
+<main class="layout">
+  <section class="inputs" aria-label="Inputs">
+    <label class="field">
+      <span>Example</span>
+      <select id="example"></select>
+    </label>
+    <label class="field grow">
+      <span>FITS header</span>
+      <textarea id="header" spellcheck="false" autocomplete="off" rows="18"></textarea>
+    </label>
+    <label class="field">
+      <span>Plot settings</span>
+      <textarea id="plot-settings" spellcheck="false" autocomplete="off" rows="3"></textarea>
+    </label>
+    <label class="field">
+      <span>FitsChan settings</span>
+      <input id="fitschan-settings" spellcheck="false" autocomplete="off">
+    </label>
+    <div class="row">
+      <label class="field">
+        <span>Width</span>
+        <input id="width" type="number" min="16" max="4096" step="1" value="600">
+      </label>
+      <label class="field">
+        <span>Height</span>
+        <input id="height" type="number" min="16" max="4096" step="1" value="600">
+      </label>
+      <label class="field">
+        <span>Version</span>
+        <input id="version" maxlength="1" size="2" spellcheck="false" autocomplete="off"
+               title="Blank for the primary axes, $ for pixel coordinates, or the letter of alternate axes">
+      </label>
+    </div>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+  </section>
+  <section class="panel grid-panel" aria-label="Grid">
+    <h2>Grid</h2>
+    <div id="grid" class="output grid"></div>
+  </section>
+  <section class="panel" aria-label="FITS-WCS header">
+    <h2>FITS-WCS header</h2>
+    <pre id="fits" class="output text"></pre>
+  </section>
+  <section class="panel" aria-label="FrameSet">
+    <h2>FrameSet (AST Native)</h2>
+    <pre id="ast" class="output text"></pre>
+  </section>
+</main>
+<script>
+// The wasm-bindgen glue, evaluated afresh for each instance of the module.
+function makeWasmBindgen() {
+/*@GLUE@*/
+return wasm_bindgen;
+}
+const PLOTTER_EXAMPLES = /*@EXAMPLES@*/;
+const PLOTTER_WASM = "/*@WASM@*/";
+</script>
+<script>
+/*@PLOTTER_JS@*/
+</script>
+</body>
+</html>
