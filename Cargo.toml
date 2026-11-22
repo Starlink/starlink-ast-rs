@@ -5,11 +5,13 @@ default-members = [
     "crates/starlink-ast-capi",
     "crates/ast-plugins",
 ]
-resolver = "2"
+# Version 3 is version 2 choosing dependency versions that support each
+# package's rust-version, so the lock file cannot quietly outgrow it.
+resolver = "3"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.87"
 license = "LGPL-3.0-or-later"
 repository = "https://github.com/Starlink/starlink-ast-rs"
 
