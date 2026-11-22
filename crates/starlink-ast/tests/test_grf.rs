@@ -395,6 +395,22 @@ fn text_is_escaped_for_xml() {
     );
 }
 
+/// Characters XML does not allow in a document (the C0 controls but tab,
+/// newline and carriage return, and U+FFFE and U+FFFF), which a label could
+/// hold, are drawn as U+FFFD, so the SVG stays well formed.
+#[test]
+fn characters_xml_forbids_are_replaced() {
+    let mut grf = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
+    let cc = Justification::from_code("CC").unwrap();
+    grf.text("a\u{1}b\u{0}c\td\u{FFFF}e", 0.5, 0.5, cc, [0.0, 1.0])
+        .unwrap();
+    let svg = String::from_utf8(grf.finish().unwrap()).unwrap();
+    assert!(
+        svg.contains(">a\u{FFFD}b\u{FFFD}c\td\u{FFFD}e</text>"),
+        "{svg}"
+    );
+}
+
 /// With erase_under_text, each text's box is filled with the background
 /// before the text is drawn.
 #[test]

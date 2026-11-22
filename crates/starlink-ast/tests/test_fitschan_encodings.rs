@@ -464,3 +464,30 @@ fn grism_builds_grism_mapping() {
         );
     }
 }
+
+/// In every encoding but NATIVE only a FrameSet can be written: any other
+/// object writes nothing and the write returns 0, without an error, as C's
+/// `astWrite` does. The header is left as it was.
+#[test]
+fn a_foreign_encoding_writes_nothing_for_an_object_that_is_not_a_frameset() {
+    let zoom = AnyObject::ZoomMap(starlink_ast::mappings::ZoomMap::new(2, 3.0).unwrap());
+    for encoding in [
+        Encoding::FitsWcs,
+        Encoding::FitsPc,
+        Encoding::FitsIraf,
+        Encoding::FitsAips,
+        Encoding::FitsAipsPP,
+        Encoding::FitsClass,
+        Encoding::Dss,
+    ] {
+        let mut fc = FitsChan::from_header("NAXIS1  =                  300\n").unwrap();
+        fc.set_encoding(encoding);
+        assert_eq!(fc.write(&zoom).unwrap(), 0, "{encoding:?}");
+        fc.clear_card().unwrap();
+        assert_eq!(
+            fc.find_fits("%f", true).unwrap().unwrap().trim_end(),
+            "NAXIS1  =                  300"
+        );
+        assert_eq!(fc.find_fits("%f", true).unwrap(), None, "{encoding:?}");
+    }
+}

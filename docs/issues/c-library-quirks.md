@@ -1852,6 +1852,7 @@ The port's grid puts the Plot's attributes back after an error (`Plot::grid_impl
 `astGText` in `grf_log.c` writes the text it is given between `<text>` and `</text>` as it is, so a label or title holding `<`, `&` or `>` (`Title=Flux < 1`, `Label(1)=Q & U`) makes the SVG it writes invalid XML, which a browser refuses to show.
 Oracle-verified: `tools/oracle_fixtures/grf_log_probe.c` draws `a<b & "c"` and C's SVG holds it raw.
 The port's `SvgGrf` escapes `&`, `<`, `>` and `"`; the one oracle line that differs is `XML_ESCAPE_EXCLUDED` in `crates/starlink-ast/tests/test_grf.rs`.
+Control characters are written raw too, and XML allows none but tab, newline and carriage return, even as a character reference, so `Title=x` followed by U+0001 also makes the SVG invalid (read from source); the port draws each such character, and U+FFFE and U+FFFF, as U+FFFD (`characters_xml_forbids_are_replaced` in `test_grf.rs`).
 
 ### `grf_log.c` turns SVG text the wrong way
 

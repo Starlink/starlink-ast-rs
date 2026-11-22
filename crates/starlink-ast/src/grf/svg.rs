@@ -433,6 +433,9 @@ fn xml_escape(text: &str) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
+            // Characters an XML document cannot hold, even as a reference.
+            '\t' | '\n' | '\r' => out.push(c),
+            c if c < ' ' || c == '\u{FFFE}' || c == '\u{FFFF}' => out.push('\u{FFFD}'),
             c => out.push(c),
         }
     }
