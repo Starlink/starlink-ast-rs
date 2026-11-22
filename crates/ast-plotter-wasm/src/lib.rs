@@ -46,8 +46,8 @@ pub struct PlotRequest {
     /// axes, `'$'` for pixel coordinates, or the letter of alternate axes.
     pub version: char,
     /// Draw as the page shows the grid: as PGPLOT lays it out, on a centred
-    /// square with a margin for the labels and text sized to it, and labels
-    /// drawn over a cleared box. Off, the SVG
+    /// square with a margin for the labels and text sized to it, labels
+    /// drawn over a cleared box, and minus signs drawn as U+2212. Off, the SVG
     /// is the C library's logging backend's, byte for byte.
     pub page_look: bool,
 }
@@ -243,6 +243,7 @@ fn svg_text(request: &PlotRequest, frame: &dyn Frame, pbox: [f64; 4]) -> Result<
     options.height = height;
     options.erase_under_text = request.page_look;
     options.equal_aspect = request.page_look;
+    options.unicode = request.page_look;
     let run = || -> Result<Vec<u8>, AstError> {
         let mut grf = SvgGrf::new(Vec::new(), options)?;
         let mut plot = Plot::new(frame, graphics_box(pbox), pbox)?;

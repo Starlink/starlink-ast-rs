@@ -511,6 +511,12 @@ impl Frame for Plot {
     fn abbrev(&self, axis: usize, fmt: &str, str1: Option<&str>, str2: &str) -> AstResult<usize> {
         Frame::abbrev(&self.frameset, axis, fmt, str1, str2)
     }
+    fn minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
+        Frame::minus_signs(&self.frameset, axis, fmt, text)
+    }
+    fn axis_minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
+        Frame::axis_minus_signs(&self.frameset, axis, fmt, text)
+    }
     fn fields(&self, axis: usize, fmt: &str, text: &str, maxfld: usize) -> AstResult<FieldSplit> {
         Frame::fields(&self.frameset, axis, fmt, text, maxfld)
     }

@@ -795,6 +795,20 @@ pub(crate) fn sky_format(fmt: &str, digits: i32, value: f64) -> AstResult<String
     }
 }
 
+/// The minus signs in `text`, a value formatted by [`sky_format`]: the
+/// sign `DHmsFormat` writes first, and no other `-`, such as those of the
+/// escape sequences between graphical fields; a `%`-style Format's are the
+/// Axis class's.
+pub(crate) fn sky_minus_signs(fmt: &str, digits: i32, text: &str) -> Vec<usize> {
+    if fmt.starts_with('%') {
+        crate::frames::axis_format::plain_minus_signs(&format!("%1.{digits}G"), text)
+    } else if text.starts_with('-') {
+        vec![0]
+    } else {
+        Vec::new()
+    }
+}
+
 /// Normalize a right-ascension (or any 2π-cyclic angle) into `[0, 2π)`.
 ///
 /// Mirrors `eraAnp` (SOFA "Angle, Normalize, Positive"): the canonical

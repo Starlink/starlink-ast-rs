@@ -65,6 +65,11 @@ pub struct SvgOptions {
     /// lays out side by side sit as close as their letters. The default is `false`, as the C library's logging
     /// backend draws.
     pub equal_aspect: bool,
+    /// Tell a Plot that this backend draws any Unicode character, through
+    /// [`GrfCap::Unicode`], so that it draws the minus sign of a negative
+    /// label as U+2212. The default is `false`, so a Plot hands the backend
+    /// the ASCII text the C library's logging backend writes.
+    pub unicode: bool,
 }
 
 impl Default for SvgOptions {
@@ -74,6 +79,7 @@ impl Default for SvgOptions {
             height: 540,
             erase_under_text: false,
             equal_aspect: false,
+            unicode: false,
         }
     }
 }
@@ -120,6 +126,7 @@ pub struct SvgGrf<W: Write> {
     height: i32,
     page: VirtualPage,
     erase_under_text: bool,
+    unicode: bool,
     /// Where graphics coordinates are drawn, with `equal_aspect`.
     square: Option<Square>,
 }
@@ -201,6 +208,7 @@ impl<W: Write> SvgGrf<W> {
             height,
             page,
             erase_under_text: options.erase_under_text,
+            unicode: options.unicode,
             square,
         })
     }
@@ -414,7 +422,7 @@ impl<W: Write> Grf for SvgGrf<W> {
     }
 
     fn cap(&mut self, cap: GrfCap, _value: i32) -> bool {
-        cap == GrfCap::Scales
+        cap == GrfCap::Scales || (cap == GrfCap::Unicode && self.unicode)
     }
 
     fn flush(&mut self) -> AstResult<()> {

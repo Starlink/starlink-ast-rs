@@ -56,8 +56,8 @@ impl PlotOutput {
 /// `version` is the version character of the axes to plot, its first
 /// character used: empty or a space for the primary axes, `$` for pixel
 /// coordinates, or the letter of alternate axes. `page_look` draws on the
-/// centred square PGPLOT would draw on, with text sized to it, as the page
-/// shows it.
+/// centred square PGPLOT would draw on, with text sized to it and minus
+/// signs drawn as U+2212, as the page shows it.
 #[wasm_bindgen]
 pub fn plot(
     header: String,

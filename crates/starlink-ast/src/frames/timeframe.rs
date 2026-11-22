@@ -2062,6 +2062,16 @@ impl Frame for TimeFrame {
         Ok(result)
     }
 
+    /// With a date Format, every `-` is a separator between the fields of
+    /// the date, not a minus sign.
+    fn minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
+        super::frame_attrs::validate_axis(axis, 1)?;
+        if date_format(fmt).0 {
+            return Ok(Vec::new());
+        }
+        self.axis_minus_signs(axis, fmt, text)
+    }
+
     /// With a date Format, `str2` is abbreviated by skipping the leading
     /// numeric fields it shares with `str1`, or with no `str1` to its last
     /// numeric field.

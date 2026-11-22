@@ -70,7 +70,7 @@ pub enum GrfPrimitive {
 /// More capabilities may be added, so a backend answers `false` for any it
 /// does not know.
 // C: GRF__ESC, GRF__MJUST, GRF__SCALES; C added the last two after the
-// first.
+// first. `Unicode` is the port's; C's backends draw bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum GrfCap {
@@ -82,6 +82,11 @@ pub enum GrfCap {
     MJust,
     /// The backend answers [`Grf::scales`].
     Scales,
+    /// The backend draws any Unicode character in text, and measures it
+    /// as drawn. A Plot then draws the minus sign of a negative numerical
+    /// label as U+2212 MINUS SIGN, as long as a digit, rather than the
+    /// hyphen the label is formatted with.
+    Unicode,
 }
 
 /// Vertical justification of text: which part of the text lies at the

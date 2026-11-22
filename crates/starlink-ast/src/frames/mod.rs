@@ -2313,6 +2313,36 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         self.axis_abbrev(axis, fmt, str1, str2)
     }
 
+    /// Find the minus signs in a formatted axis value.
+    ///
+    /// `text` is a value on the 1-based `axis` formatted with `fmt`, as
+    /// [`format`](Frame::format) gives it. Returns the byte offset of each
+    /// `-` in `text` that is a minus sign, in order, leaving out a hyphen
+    /// that the format writes for another reason, such as between the
+    /// fields of a date, inside an escape sequence, or as text of its own.
+    /// A Plot drawing through a backend that draws Unicode shows each as
+    /// U+2212 MINUS SIGN.
+    ///
+    /// # Errors
+    ///
+    /// - `ErrorCode::Axiin` when `axis` is not between 1 and
+    ///   [`naxes`](Frame::naxes).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use starlink_ast::frames::{BasicFrameBuilder, Frame};
+    ///
+    /// let frame = BasicFrameBuilder::new(1).build().unwrap();
+    /// assert_eq!(frame.minus_signs(1, "%g", "-1e-05").unwrap(), vec![0, 3]);
+    /// assert_eq!(frame.minus_signs(1, "x-%g", "x-2").unwrap(), Vec::<usize>::new());
+    /// ```
+    // The port's: C's backends draw bytes, so its Plot draws the hyphen.
+    fn minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
+        frame_attrs::validate_axis(axis, self.naxes())?;
+        self.axis_minus_signs(axis, fmt, text)
+    }
+
     /// Split a formatted axis value into its fields.
     ///
     /// `text` is a value on the 1-based `axis` formatted with `fmt`.
@@ -2375,6 +2405,12 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         str2: &str,
     ) -> AstResult<usize> {
         Ok(axis::plain_axis_abbrev(str1, str2))
+    }
+
+    /// [`minus_signs`](Frame::minus_signs) as the Axis object attached to
+    /// `axis` finds them; see [`axis_gap`](Frame::axis_gap).
+    fn axis_minus_signs(&self, _axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
+        Ok(axis_format::plain_minus_signs(fmt, text))
     }
 
     /// [`fields`](Frame::fields) as the Axis object attached to `axis`

@@ -1756,6 +1756,24 @@ macro_rules! cmp_frame_plot_methods {
                 |f| f.abbrev(a, fmt, str1, str2),
             )
         }
+        fn minus_signs(
+            &self,
+            axis: usize,
+            fmt: &str,
+            text: &str,
+        ) -> $crate::error::AstResult<Vec<usize>> {
+            let (f, a) = self.axis_component(axis)?;
+            f.minus_signs(a, fmt, text)
+        }
+        fn axis_minus_signs(
+            &self,
+            axis: usize,
+            fmt: &str,
+            text: &str,
+        ) -> $crate::error::AstResult<Vec<usize>> {
+            let (f, a) = self.axis_component(axis)?;
+            f.axis_minus_signs(a, fmt, text)
+        }
         fn fields(
             &self,
             axis: usize,
@@ -1822,6 +1840,23 @@ macro_rules! forward_plot_methods {
         ) -> $crate::error::AstResult<usize> {
             $crate::frames::frame_attrs::validate_axis(axis, self.naxes())?;
             forward_plot_methods!(@cur $kind self).abbrev(axis, fmt, str1, str2)
+        }
+        fn minus_signs(
+            &self,
+            axis: usize,
+            fmt: &str,
+            text: &str,
+        ) -> $crate::error::AstResult<Vec<usize>> {
+            $crate::frames::frame_attrs::validate_axis(axis, self.naxes())?;
+            forward_plot_methods!(@cur $kind self).minus_signs(axis, fmt, text)
+        }
+        fn axis_minus_signs(
+            &self,
+            axis: usize,
+            fmt: &str,
+            text: &str,
+        ) -> $crate::error::AstResult<Vec<usize>> {
+            forward_plot_methods!(@cur $kind self).axis_minus_signs(axis, fmt, text)
         }
         fn axis_gap(
             &self,

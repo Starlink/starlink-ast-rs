@@ -548,3 +548,24 @@ fn equal_aspect_reports_the_character_height_it_draws() {
     let mut grf = SvgGrf::new(Vec::new(), SvgOptions::default()).unwrap();
     assert_eq!(grf.char_height().unwrap(), [0.02, 0.02]);
 }
+
+/// SvgGrf tells a Plot it draws Unicode only when its options say so, so
+/// that by default a Plot hands it the ASCII text C's logging backend
+/// writes; the PGPLOT layout of equal_aspect does not change that.
+#[test]
+fn svg_grf_draws_unicode_when_asked() {
+    let cap = |equal_aspect: bool, unicode: bool| {
+        let mut options = SvgOptions::default();
+        options.equal_aspect = equal_aspect;
+        options.unicode = unicode;
+        SvgGrf::new(Vec::new(), options)
+            .unwrap()
+            .cap(GrfCap::Unicode, 0)
+    };
+    assert!(!cap(false, false));
+    assert!(!cap(true, false));
+    assert!(cap(false, true));
+    assert!(cap(true, true));
+    let mut log = LogGrf::new(Vec::new());
+    assert!(!log.cap(GrfCap::Unicode, 0));
+}

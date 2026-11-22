@@ -1000,6 +1000,10 @@ impl Frame for BasicFrame {
         Ok(self.axis_object(axis)?.axis_abbrev(fmt, str1, str2))
     }
 
+    fn axis_minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
+        Ok(self.axis_object(axis)?.axis_minus_signs(fmt, text))
+    }
+
     fn axis_fields(
         &self,
         axis: usize,

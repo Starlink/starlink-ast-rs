@@ -2222,6 +2222,10 @@ impl Frame for SkyFrame {
         Ok(self.axes[self.physical_axis(axis)?].axis_abbrev(fmt, str1, str2))
     }
 
+    fn axis_minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
+        Ok(self.axes[self.physical_axis(axis)?].axis_minus_signs(fmt, text))
+    }
+
     fn axis_fields(
         &self,
         axis: usize,

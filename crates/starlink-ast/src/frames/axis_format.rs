@@ -240,7 +240,17 @@ pub(crate) fn sprintf_double(fmt: &str, value: f64) -> String {
 /// C's `sprintf( buf, fmt, arg )` for a format with at most one
 /// conversion. The error is a short reason; the caller reports it.
 fn sprintf(fmt: &[u8], arg: Arg) -> Result<Vec<u8>, String> {
+    sprintf_marked(fmt, arg).map(|(out, _)| out)
+}
+
+/// The byte range of the output a conversion wrote, and its character.
+type Conversion = (std::ops::Range<usize>, u8);
+
+/// [`sprintf`], with the [`Conversion`] in its output, or `None` for a
+/// format with no conversion.
+fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>), String> {
     let mut out = Vec::new();
+    let mut conversion = None;
     let mut used = false;
     let mut i = 0;
     while i < fmt.len() {
@@ -307,6 +317,7 @@ fn sprintf(fmt: &[u8], arg: Arg) -> Result<Vec<u8>, String> {
             return Err("a second conversion has no argument".into());
         }
         used = true;
+        let start = out.len();
 
         match (conv, arg) {
             (b'd' | b'i' | b'u' | b'o' | b'x' | b'X', Arg::Int(v)) if !long => {
@@ -335,8 +346,58 @@ fn sprintf(fmt: &[u8], arg: Arg) -> Result<Vec<u8>, String> {
                 ));
             }
         }
+        conversion = Some((start..out.len(), conv));
     }
-    Ok(out)
+    Ok((out, conversion))
+}
+
+/// The byte offsets of the minus signs in `text`, a value formatted with the
+/// plain axis Format `fmt`: each `-` its conversion writes, which is the
+/// value's sign or its exponent's, and in log form the `-` before "10".
+/// A `-` in the Format's own text, or in the escape sequences of log form,
+/// is not one.
+pub(crate) fn plain_minus_signs(fmt: &str, text: &str) -> Vec<usize> {
+    // Digits fills only a `.*` precision, which writes no text of its own.
+    let p = parse_axis_format(fmt, 0);
+    // The Format's own text either side of its conversion is the same for
+    // any value, so formatting zero finds it.
+    let arg = if p.integ {
+        Arg::Int(0)
+    } else {
+        Arg::Double(0.0)
+    };
+    let Ok((zero, Some((span, conv)))) = sprintf_marked(&p.fmt, arg) else {
+        return Vec::new();
+    };
+    // %c writes a byte of the value, not a number.
+    if conv == b'c' {
+        return Vec::new();
+    }
+    let (before, after) = (&zero[..span.start], &zero[span.end..]);
+    let mut signs = Vec::new();
+    let b = text.as_bytes();
+    // Log form: an optional sign, "10" and its delimiter, the conversion of
+    // the exponent, and the escape that resets the attributes.
+    let mut body = 0..b.len();
+    if p.log && text.ends_with(LOG_END) {
+        let lead = usize::from(matches!(b.first(), Some(b'-' | b'+' | b' ')));
+        for delim in [crate::escapes::EXDEL, LOG_TXT] {
+            if text[lead..].starts_with(delim) {
+                if b[0] == b'-' {
+                    signs.push(0);
+                }
+                body = lead + delim.len()..b.len() - LOG_END.len();
+                break;
+            }
+        }
+    }
+    let t = &b[body.clone()];
+    if !t.starts_with(before) || !t.ends_with(after) || t.len() < before.len() + after.len() {
+        return signs;
+    }
+    let conv = body.start + before.len()..body.end - after.len();
+    signs.extend(conv.clone().filter(|&i| b[i] == b'-'));
+    signs
 }
 
 /// Pad `prefix` (sign and radix prefix) and `body` (digits) to the field
@@ -698,6 +759,26 @@ fn round_to_f64(mant: u64, sticky: bool, exp2: i64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // In log form the signs are the value's, before "10", and the
+    // exponent's, and not the `-` of the escape sequence after "10".
+    #[test]
+    fn minus_signs_of_log_form() {
+        for escapes in [false, true] {
+            let _guard = crate::escapes::set_escapes(escapes);
+            let text = fmt("%&g", 7, -1.0e-5);
+            let delim = if escapes {
+                crate::escapes::EXDEL
+            } else {
+                LOG_TXT
+            };
+            assert!(text.starts_with(&format!("-{delim}")), "{text}");
+            let exponent = 1 + delim.len() + text[1 + delim.len()..].find('-').unwrap();
+            assert_eq!(plain_minus_signs("%&g", &text), vec![0, exponent], "{text}");
+            let text = fmt("%&g", 7, 1.0e5);
+            assert!(plain_minus_signs("%&g", &text).is_empty(), "{text}");
+        }
+    }
 
     fn fmt(f: &str, digits: i32, v: f64) -> String {
         format_value(f, digits, v).unwrap()

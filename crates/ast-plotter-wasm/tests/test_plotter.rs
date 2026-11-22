@@ -277,3 +277,27 @@ fn the_examples_file_has_the_eight_examples() {
         ]
     );
 }
+
+/// Drawn as the page draws it, a negative label's minus sign is U+2212, as
+/// long as a digit, and the hyphens of the title are left alone; drawn as
+/// C's logging backend draws it, the sign is an ASCII hyphen, as in C's own
+/// SVG.
+#[test]
+fn the_page_draws_minus_signs_as_minus_signs() {
+    let e = example("ORIGIN");
+    let mut req = request(&e.header, &e.settings, "", e.version);
+    req.page_look = true;
+    let svg = plot(&req).svg.unwrap();
+    assert!(svg.contains(">\u{2212}0</text>"), "{svg}");
+    assert!(!svg.contains(">-0</text>"), "{svg}");
+    let e = example("AITOFF");
+    let mut req = request(&e.header, &e.settings, "", e.version);
+    req.page_look = true;
+    let svg = plot(&req).svg.unwrap();
+    assert!(svg.contains(">\u{2212}30</text>"), "{svg}");
+    assert!(svg.contains("Hammer-Aitoff"), "{svg}");
+    req.page_look = false;
+    let svg = plot(&req).svg.unwrap();
+    assert!(svg.contains(">-30</text>"), "{svg}");
+    assert!(!svg.contains('\u{2212}'), "{svg}");
+}
