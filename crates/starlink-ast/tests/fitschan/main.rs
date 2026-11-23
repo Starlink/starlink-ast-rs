@@ -40,6 +40,9 @@ mod test_fitschan_cursor_oracle;
 mod test_fitschan_encodings;
 #[path = "../test_fitschan_encodings_oracle.rs"]
 mod test_fitschan_encodings_oracle;
+#[cfg(feature = "attribute-strings")]
+#[path = "../test_fitswrite.rs"]
+mod test_fitswrite;
 // Its cases set attributes as C does, by string.
 #[cfg(feature = "attribute-strings")]
 #[path = "../test_fitschan_errors.rs"]
