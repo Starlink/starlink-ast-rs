@@ -219,6 +219,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream b9cf680b): MatrixMap and WinMap merges give Mappings that are not equivalent, or fail](#resolved-upstream-b9cf680b-matrixmap-and-winmap-merges-give-mappings-that-are-not-equivalent-or-fail)
 - [RESOLVED (upstream f8c7723e): CmpMap swaps a PermMap of constants with parallel Mappings](#resolved-upstream-f8c7723e-cmpmap-swaps-a-permmap-of-constants-with-parallel-mappings)
 - [RESOLVED (upstream f0230815): WcsMaps cancel when an axis holds different numbers of projection parameters](#resolved-upstream-f0230815-wcsmaps-cancel-when-an-axis-holds-different-numbers-of-projection-parameters)
+- [RESOLVED (upstream e7cb7d95): PermMap's PermSplit split accepts an input fed by no output](#resolved-upstream-e7cb7d95-permmaps-permsplit-split-accepts-an-input-fed-by-no-output)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -5477,3 +5478,12 @@ Upstream compares the two counts.
 **Rust behavior:** `WcsMap::try_merge` in `crates/starlink-ast/src/mappings/wcsmap.rs` compared the values over the longer list, padding with bad values, which is what C's `Equal` does but not its `CanMerge`; it now also requires equal counts (`param_counts_equal`).
 A Native dump records only the parameters that are set, so after a round trip the count is that of the set parameters, in C and in the port alike; `wcsmaps_with_different_parameter_counts_do_not_merge` in `tests/test_wcsmap.rs` pins both.
 The other half of the commit, the direction `WcsPerm` gives the PermMap it returns unchanged, the port already had.
+
+### RESOLVED (upstream e7cb7d95): PermMap's PermSplit split accepts an input fed by no output
+
+`PERMVAL` stood in for an absent permutation array with `i < max ? i : -1`, and -1 names the first constant, so a PermMap created without one of its arrays gave the first constant where it should give a bad value.
+With PermSplit set, `MapSplit` returned the `inperm` value of each selected input, rejecting only a constant, so an input fed by a bad value or by an output the PermMap does not have was split off as if fed by that output.
+Upstream gives `max`, a bad value, for an absent coordinate, and rejects any value that is not an output.
+
+**Rust behavior:** the port already expanded an absent array to bad values (`null_perm` in `crates/starlink-ast/src/mappings/perm.rs`), so its transformations, merges and the `testmapmerge.c` PermMap cases matched the fixed C.
+`map_split_zero_based`'s PermSplit branch mirrored the split, and now rejects a value that is not an output (`perm_split_refuses_an_input_with_no_output` in `tests/test_permmap.rs`).

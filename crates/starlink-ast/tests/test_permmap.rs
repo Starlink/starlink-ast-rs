@@ -503,3 +503,17 @@ fn null_permutation_constructor_checks_array_lengths() {
     let e = PermMap::with_null_perms(2, None, 2, Some(&[1, 2, 3]), &[]).unwrap_err();
     assert_eq!(e.code(), ErrorCode::Badno);
 }
+
+/// With PermSplit set, an input fed by a bad value, or by an output the
+/// PermMap does not have, cannot be split off, as in the C library.
+#[test]
+fn perm_split_refuses_an_input_with_no_output() {
+    for inperm in [[1, 0], [1, 5]] {
+        let mut pm = PermMap::new(&inperm, &[1, 2], &[]).unwrap();
+        pm.set_perm_split(true);
+        assert!(pm.map_split(&[2]).unwrap().is_none(), "inperm {inperm:?}");
+        // The input fed by an output it has still splits.
+        let (outs, _) = pm.map_split(&[1]).unwrap().expect("input 1 splits");
+        assert_eq!(outs, [1], "inperm {inperm:?}");
+    }
+}

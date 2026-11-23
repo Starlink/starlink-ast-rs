@@ -468,8 +468,8 @@ impl PermMap {
 /// Materialize C's "null permutation" for a perm array of length `len`
 /// whose values index a coordinate space of size `max` (1-based, 0 = bad).
 ///
-/// Mirrors C `permmap.c::PERMVAL` (155): a NULL permutation array supplies
-/// `PERMVAL(NULL, i, max) = (i < max ? i : -1)` — the coordinate with the
+/// Mirrors C `permmap.c::PERMVAL`: a NULL permutation array supplies
+/// `PERMVAL(NULL, i, max) = (i < max ? i : max)` — the coordinate with the
 /// same index where it exists, and "bad" otherwise. In the Rust public
 /// encoding this is `i+1` for `i < max`, and `0` (bad) for the surplus
 /// entries. For a square PermMap (`len == max`) this is just the identity.
@@ -763,21 +763,25 @@ impl Mapping for PermMap {
         // transform is consulted. The returned Mapping is a UnitMap with one
         // output per selected input, and the returned output indices are the
         // `inperm` values of the selected inputs. The split fails if a
-        // selected input is fed by a constant (negative entry) or if two
-        // selected inputs are fed by the same output.
+        // selected input is fed by a constant or a bad value rather than an
+        // output, or if two selected inputs are fed by the same output.
         if self.perm_split() {
             // C `PERMVAL(inp, iin, npout)` reduced to a zero-based output
-            // index (mirroring the macro at permmap.c:146). When the parent's
+            // index (mirroring the macro in permmap.c). When the parent's
             // inverse array is the NULL identity (`in_is_copy`), C uses
-            // `iin < npout ? iin : -1`; otherwise it reads the stored value
-            // verbatim. The Rust inperm is 1-based (positive) / 0 (bad) /
-            // negative (constant), so translate to C's 0-based encoding where
-            // a "bad" entry is a non-negative index >= npout.
+            // `iin < npout ? iin : npout`, a bad value; otherwise it reads the
+            // stored value verbatim. The Rust inperm is 1-based (positive) /
+            // 0 (bad) / negative (constant), so translate to C's 0-based
+            // encoding, where a bad entry is a non-negative index >= npout.
             let in_is_copy = self.in_is_copy;
             let mut result: Vec<i64> = Vec::with_capacity(in_axes.len());
             for &iin in in_axes {
                 let permval: i64 = if in_is_copy {
-                    if iin < npout { iin as i64 } else { -1 }
+                    if iin < npout {
+                        iin as i64
+                    } else {
+                        npout as i64
+                    }
                 } else {
                     let p = inp[iin];
                     if p > 0 {
@@ -793,8 +797,9 @@ impl Mapping for PermMap {
                     }
                 };
 
-                // C: a constant-fed input cannot be split (permmap.c:1643).
-                if permval < 0 {
+                // C: an input fed by a constant or a bad value, rather than
+                // an output, cannot be split (permmap.c MapSplit).
+                if permval < 0 || permval >= npout as i64 {
                     return Ok(None);
                 }
                 // C: fail if this output already feeds an earlier picked input
