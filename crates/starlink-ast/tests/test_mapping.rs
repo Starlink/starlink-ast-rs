@@ -642,8 +642,8 @@ fn shifting_winmap() -> starlink_ast::mappings::WinMap {
 }
 
 /// Swapping a WinMap past a singular MatrixMap needs the inverse the matrix
-/// lacks, so the simplification ends there and returns the Mapping
-/// unsimplified, as C does.
+/// lacks, so the swap is not made and the Mapping is left as it is, as C
+/// does.
 /// The expected dump is what the C library writes
 /// (`simplify_trnnd_oracle/singular_matrix_swap.ast`).
 #[test]
@@ -660,12 +660,12 @@ fn a_swap_past_a_singular_matrix_leaves_the_mapping_unsimplified() {
     );
 }
 
-/// The same failed swap after a merge that succeeded: the whole
-/// simplification is abandoned, so the merged ZoomMap is not kept.
+/// The same swap that cannot be made, after a merge that can: the ZoomMap
+/// merges into the MatrixMap and the WinMap is left beside it.
 /// The expected dump is what the C library writes
 /// (`simplify_trnnd_oracle/singular_matrix_swap_after_zoom.ast`).
 #[test]
-fn a_failed_swap_abandons_the_merges_before_it() {
+fn a_swap_that_cannot_be_made_keeps_the_merges_before_it() {
     let inner = CmpMap::new(
         Box::new(singular_matrix()),
         Box::new(shifting_winmap()),
@@ -685,14 +685,30 @@ fn a_failed_swap_abandons_the_merges_before_it() {
 }
 
 /// A swap that needs the product with an inverted singular MatrixMap, which
-/// has no forward transformation, fails the simplification with the error
-/// the product raises, as in C, where only an undefined transformation is
-/// cleared.
+/// has no forward transformation, is not made, so the pair is left as it
+/// is, as C leaves it.
 #[test]
-fn a_swap_past_an_inverted_singular_matrix_is_an_error() {
-    let map = series_failing_with_mtrml();
-    let err = <dyn Mapping>::simplify(&map).unwrap_err();
-    assert_eq!(err.code(), starlink_ast::error::ErrorCode::Mtrml);
+fn a_swap_past_an_inverted_singular_matrix_is_not_made() {
+    let mut inverted = singular_matrix();
+    inverted.invert();
+    let map = CmpMap::new(
+        Box::new(shifting_winmap()),
+        Box::new(inverted),
+        Composition::Series,
+    )
+    .unwrap();
+    let simp = <dyn Mapping>::simplify(&map).unwrap();
+    let cmp = simp.as_any().downcast_ref::<CmpMap>().expect("a CmpMap");
+    let (parts, kind) = cmp.decompose();
+    assert_eq!(kind, Composition::Series);
+    assert!(parts.map1.as_any().is::<starlink_ast::mappings::WinMap>() && !parts.invert1);
+    assert!(
+        parts
+            .map2
+            .as_any()
+            .is::<starlink_ast::mappings::MatrixMap>()
+            && parts.invert2
+    );
 }
 
 /// A PermMap feeding constants to both celestial axes of a WcsMap.
@@ -728,17 +744,11 @@ fn a_wcsmap_swap_that_cannot_transform_its_constants_is_an_error() {
     assert!(<dyn Mapping>::simplify(&tan).is_ok());
 }
 
-/// A WinMap followed by an inverted singular MatrixMap, whose swap raises an
-/// error that is not an undefined transformation.
-fn series_failing_with_mtrml() -> CmpMap {
-    let mut inverted = singular_matrix();
-    inverted.invert();
-    CmpMap::new(
-        Box::new(shifting_winmap()),
-        Box::new(inverted),
-        Composition::Series,
-    )
-    .unwrap()
+/// A Mapping whose simplification raises an error that is not an undefined
+/// transformation: a conic projection that cannot transform the constants a
+/// PermMap gives it.
+fn series_failing_with_wcspa() -> CmpMap {
+    constants_into_wcsmap(starlink_ast::mappings::WcsProjection::Coe)
 }
 
 /// The error a component's own simplification raises is passed up from the
@@ -747,36 +757,34 @@ fn series_failing_with_mtrml() -> CmpMap {
 #[test]
 fn an_error_simplifying_a_component_is_passed_up() {
     let map = CmpMap::new(
-        Box::new(series_failing_with_mtrml()),
+        Box::new(series_failing_with_wcspa()),
         Box::new(UnitMap::new(1)),
         Composition::Parallel,
     )
     .unwrap();
     let err = <dyn Mapping>::simplify(&map).unwrap_err();
-    assert_eq!(err.code(), starlink_ast::error::ErrorCode::Mtrml);
+    assert_eq!(err.code(), starlink_ast::error::ErrorCode::Wcspa);
 }
 
 /// Two parallel CmpMaps in series are merged pair by pair, each pair
 /// simplified in series; an error that raises is passed up, as in C.
 #[test]
 fn an_error_simplifying_a_merged_pair_is_passed_up() {
-    use starlink_ast::mappings::MathMap;
-    let mut inverted = singular_matrix();
-    inverted.invert();
+    use starlink_ast::mappings::{MathMap, PermMap, WcsMap, WcsProjection};
     let math = MathMap::new(1, 1, &["y=x*x"], &["x=sqrt(y)"]).unwrap();
     let p1 = CmpMap::new(
-        Box::new(shifting_winmap()),
+        Box::new(PermMap::new(&[0, 0], &[-1, -2], &[0.1, 0.2]).unwrap()),
         Box::new(math),
         Composition::Parallel,
     )
     .unwrap();
     let p2 = CmpMap::new(
-        Box::new(inverted),
+        Box::new(WcsMap::new(2, WcsProjection::Coe, 1, 2).unwrap()),
         Box::new(ZoomMap::new(1, 3.0).unwrap()),
         Composition::Parallel,
     )
     .unwrap();
     let map = CmpMap::new(Box::new(p1), Box::new(p2), Composition::Series).unwrap();
     let err = <dyn Mapping>::simplify(&map).unwrap_err();
-    assert_eq!(err.code(), starlink_ast::error::ErrorCode::Mtrml);
+    assert_eq!(err.code(), starlink_ast::error::ErrorCode::Wcspa);
 }

@@ -558,3 +558,27 @@ fn winmap_merge_with_a_bad_term_is_undefined() {
         .unwrap();
     assert_eq!(out.point(0)[0], BAD_VALUE);
 }
+
+/// An inverted WinMap whose scale is so small (1e-320) that its inverse
+/// scale overflows, before a ZoomMap, simplifies without error. The C library
+/// at the pinned commit gives a ShiftMap with a NaN shift, whose inverse is
+/// bad where the original's is not; the port's result has the same forward
+/// and inverse transformations as C's.
+#[test]
+fn winmap_with_a_subnormal_scale_beside_a_zoommap_simplifies() {
+    use starlink_ast::mappings::{CmpMap, Composition, ZoomMap};
+    let mut w = WinMap::from_corners(&[0.0], &[1.0], &[0.0], &[1e-320]).unwrap();
+    w.invert();
+    let map = CmpMap::new(
+        Box::new(w),
+        Box::new(ZoomMap::new(1, 3.0).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
+    let simp = <dyn Mapping>::simplify(&map).unwrap();
+    let pts = PointSet::from_columns(&[&[0.5, 2.0]]).unwrap();
+    for forward in [true, false] {
+        let out = simp.transform(&pts, forward).unwrap();
+        assert_eq!(out.axis(0), [BAD_VALUE, BAD_VALUE], "forward {forward}");
+    }
+}

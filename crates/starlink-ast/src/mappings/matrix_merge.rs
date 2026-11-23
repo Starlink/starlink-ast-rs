@@ -32,7 +32,7 @@ use crate::mappings::helpers::{ast_equal, is_bad};
 
 use super::matrix::{MatrixMap, is_diagonal};
 use super::perm::PermMap;
-use super::simplify::{MergeCtx, default_map_merge};
+use super::simplify::MergeCtx;
 use super::unit::UnitMap;
 use super::winmap::{WinMap, extract_linear_params};
 use super::zoom::ZoomMap;
@@ -61,8 +61,8 @@ pub(crate) fn matrix_map_merge(
 
     // ---- Step 1: replace-with-simpler (no reference to neighbors).
     let replacement = replace_with_simpler(mm, eff_inv, nin, nout);
-    if let Some(new) = ctx.settle(replacement) {
-        ctx.set_pair_single(where_, (new, false, false));
+    if let Some((new, inv)) = ctx.settle(replacement) {
+        ctx.set_pair_single(where_, (new, inv, false));
         return Some(where_);
     }
     if ctx.failed() {
@@ -70,17 +70,18 @@ pub(crate) fn matrix_map_merge(
     }
 
     // The neighbor-merge and swap steps only apply in series (C wraps the
-    // whole block in `if( series )`). In parallel, C's MatrixMap MapMerge does
-    // nothing beyond Part A. We still fall through to `default_map_merge`,
-    // which is a no-op for a MatrixMap with no mergeable right neighbor and
-    // preserves the parallel behavior the rest of the engine relies on.
+    // whole block in `if( series )`), so in parallel nothing more is merged.
     if !series {
-        return default_map_merge(ctx, where_, series);
+        return None;
     }
 
-    // ---- Step 2 (series): direct merge with a mergeable neighbor.
-    if let Some(result) = try_direct_merge(mm, ctx, where_) {
-        return Some(result);
+    // ---- Step 2 (series): direct merge with a mergeable neighbor. A merge
+    // C attempts but whose result it cannot use leaves the list alone and
+    // goes no further (matrixmap.c MapMerge, `if( nclass )`).
+    match try_direct_merge(mm, ctx, where_, nin, nout) {
+        DirectMerge::Merged(result) => return Some(result),
+        DirectMerge::Refused => return None,
+        DirectMerge::NoCandidate => {}
     }
     if ctx.failed() {
         return None;
@@ -95,29 +96,10 @@ pub(crate) fn matrix_map_merge(
         return None;
     }
 
-    // C's merge only ever considers a neighbor of a class it names:
-    // MatrixMap, ZoomMap, UnitMap, an invertable PermMap, or — when this
-    // MatrixMap is diagonal — a WinMap (matrixmap.c:1622-1660). Anything else
-    // takes the `else` branch at matrixmap.c:1709, which keeps the MatrixMap
-    // and its invert flag untouched and merges nothing.
-    //
-    // That is load-bearing rather than an optimization. A `ShiftMap` neighbor
-    // is not on the list: C waits for the ShiftMap's own merge to turn it into
-    // a WinMap first. Folding the pair here instead composes through the
-    // MatrixMap's *effective* direction and materializes the inverse into the
-    // stored values, so the Mapping serializes with the inverse matrix stored
-    // forward where C stores the matrix and records `InvB` on the parent.
-    //
-    // The fallback stays for a neighbor C would accept, covering the swap
-    // cases not yet ported.
-    let mm_diagonal = matrix_is_diagonal(mm, eff_inv);
-    let mergeable = |idx: usize| is_mergeable(ctx.entry(idx).0.as_ref(), mm_diagonal);
-    let has_mergeable_neighbour =
-        (where_ > 0 && mergeable(where_ - 1)) || (where_ + 1 < ctx.len() && mergeable(where_ + 1));
-    if !has_mergeable_neighbour {
-        return None;
-    }
-    default_map_merge(ctx, where_, series)
+    // C merges nothing more: a neighbor it can merge with was handled in
+    // step 2, and one it cannot is left for that neighbor's own merge (a
+    // ShiftMap, for instance, becomes a WinMap first).
+    None
 }
 
 /// Effective forward matrix of a MatrixMap entry, honoring the applied
@@ -131,54 +113,74 @@ fn eff_matrix(mm: &MatrixMap, inv: bool) -> Option<Array2<f64>> {
     }
 }
 
-/// Classes a MatrixMap can merge with *directly* (C matrixmap.c:1936-1975):
-/// another MatrixMap, a ZoomMap, an invertible PermMap, a UnitMap, or — when
-/// the MatrixMap is diagonal — a WinMap. `mm_diagonal` is whether the
-/// nominated MatrixMap's effective forward matrix is diagonal.
-fn is_mergeable(m: &dyn Mapping, mm_diagonal: bool) -> bool {
-    if m.as_any().is::<MatrixMap>() || m.as_any().is::<ZoomMap>() || m.as_any().is::<UnitMap>() {
-        return true;
-    }
-    if let Some(pm) = m.as_any().downcast_ref::<PermMap>() {
-        return perm_ok(pm);
-    }
-    if m.as_any().is::<WinMap>() {
-        return mm_diagonal;
-    }
-    false
+/// What step 2 of a MatrixMap's merge did.
+enum DirectMerge {
+    /// The pair starting at this index was replaced by the merged Mapping.
+    Merged(usize),
+    /// A neighbor was chosen but the merged Mapping could not be used, so
+    /// nothing changed and the merge goes no further.
+    Refused,
+    /// No neighbor qualified; the merge goes on to consider a swap.
+    NoCandidate,
 }
 
-/// Whether the MatrixMap's effective forward matrix (honoring `inv`) is
-/// diagonal.
-fn matrix_is_diagonal(mm: &MatrixMap, inv: bool) -> bool {
-    match eff_matrix(mm, inv) {
-        Some(m) => is_diagonal(&m),
-        None => false,
-    }
-}
-
-/// Step 2: try a direct merge of the nominated MatrixMap with whichever
-/// neighbor is mergeable. C prefers the lower neighbor (class1) then the
-/// upper (class2). Returns the modified index on success.
-fn try_direct_merge(mm: &MatrixMap, ctx: &mut MergeCtx, where_: usize) -> Option<usize> {
+/// Step 2: try a direct merge of the nominated MatrixMap with a neighbor,
+/// choosing it as C's MapMerge does: a MatrixMap, ZoomMap, PermMap or UnitMap,
+/// the lower neighbor first; a PermMap only if `perm_ok`; then, if neither
+/// side is one of those and the MatrixMap is square and stored diagonal, a
+/// WinMap, the lower first. Every merger but the UnitMap one needs the
+/// matrix the MatrixMap applies to be usable, and the neighbor's too when it
+/// is a MatrixMap. `nin` and `nout` are those of the MatrixMap as used.
+fn try_direct_merge(
+    mm: &MatrixMap,
+    ctx: &mut MergeCtx,
+    where_: usize,
+    nin: usize,
+    nout: usize,
+) -> DirectMerge {
     let n = ctx.len();
     let eff_inv = ctx.entry(where_).1;
-    let mm_diagonal = matrix_is_diagonal(mm, eff_inv);
 
-    // C first checks the merge classes (MatrixMap/ZoomMap/PermMap/UnitMap) on
-    // either side, preferring the lower neighbor; only if neither side is one
-    // of those and the MatrixMap is diagonal does it consider a WinMap.
-    let mergeable = |idx: usize| -> bool { is_mergeable(ctx.entry(idx).0.as_ref(), mm_diagonal) };
-    let lower_ok = where_ > 0 && mergeable(where_ - 1);
-    let upper_ok = where_ + 1 < n && mergeable(where_ + 1);
-
-    let (i1, i2) = if lower_ok {
-        (where_ - 1, where_)
-    } else if upper_ok {
-        (where_, where_ + 1)
-    } else {
-        return None;
+    let merge_class = |idx: usize| {
+        let m = ctx.entry(idx).0.as_any();
+        m.is::<MatrixMap>() || m.is::<ZoomMap>() || m.is::<PermMap>() || m.is::<UnitMap>()
     };
+    let mut chosen = if where_ > 0 && merge_class(where_ - 1) {
+        Some(where_ - 1)
+    } else if where_ + 1 < n && merge_class(where_ + 1) {
+        Some(where_ + 1)
+    } else {
+        None
+    };
+    if let Some(k) = chosen
+        && let Some(pm) = ctx.entry(k).0.as_any().downcast_ref::<PermMap>()
+        && !perm_ok(pm)
+    {
+        chosen = None;
+    }
+    let is_win = |idx: usize| ctx.entry(idx).0.as_any().is::<WinMap>();
+    if chosen.is_none() && mm.is_diagonal_form() && nin == nout {
+        if where_ > 0 && is_win(where_ - 1) {
+            chosen = Some(where_ - 1);
+        } else if where_ + 1 < n && is_win(where_ + 1) {
+            chosen = Some(where_ + 1);
+        }
+    }
+    if let Some(k) = chosen
+        && !ctx.entry(k).0.as_any().is::<UnitMap>()
+    {
+        if !mm.mtr_usable(eff_inv) {
+            chosen = None;
+        } else if let Some(other) = ctx.entry(k).0.as_any().downcast_ref::<MatrixMap>()
+            && !other.mtr_usable(ctx.entry(k).1)
+        {
+            chosen = None;
+        }
+    }
+    let Some(k) = chosen else {
+        return DirectMerge::NoCandidate;
+    };
+    let (i1, i2) = if k < where_ { (k, where_) } else { (where_, k) };
 
     // `mm_first` is true when the nominated MatrixMap is the left operand
     // (i1 == where_): the matrix is applied first.
@@ -193,15 +195,17 @@ fn try_direct_merge(mm: &MatrixMap, ctx: &mut MergeCtx, where_: usize) -> Option
     let neighbour = if mm_first { i2 } else { i1 };
     if ctx.entry(neighbour).0.as_any().is::<UnitMap>() {
         ctx.remove_at(neighbour);
-        return Some(i1);
+        return DirectMerge::Merged(i1);
     }
 
     let (m1, inv1, _) = ctx.entry(i1);
     let (m2, inv2, _) = ctx.entry(i2);
     let merged = merge_matrix_pair(m1.as_ref(), *inv1, m2.as_ref(), *inv2, mm_first);
-    let merged = ctx.settle(merged)?;
+    let Some(merged) = ctx.settle(merged) else {
+        return DirectMerge::Refused;
+    };
     ctx.replace_pair_with(i1, merged, false);
-    Some(i1)
+    DirectMerge::Merged(i1)
 }
 
 /// Merge an adjacent (map1, map2) pair, one of which is the nominated
@@ -243,7 +247,10 @@ fn merge_matrix_pair(
         if second.nin() != first.nout() {
             return Ok(None);
         }
-        let product = first.mtr_mult(&second)?;
+        // MatMat uses the product only if it is usable (Multiply, strict).
+        let Some(product) = first.mtr_product(&second)? else {
+            return Ok(None);
+        };
         return mat_or_unit(product.forward_matrix().clone()).map(Some);
     }
 
@@ -267,7 +274,10 @@ fn merge_matrix_pair(
             return Ok(None);
         }
         let zmm = MatrixMap::diagonal(nrow, nrow, &vec![zfac; nrow])?;
-        let product = applied.mtr_mult(&zmm)?;
+        // MatZoom uses the product only if it is usable (Multiply, strict).
+        let Some(product) = applied.mtr_product(&zmm)? else {
+            return Ok(None);
+        };
         return mat_or_unit(product.forward_matrix().clone()).map(Some);
     }
 
@@ -395,6 +405,13 @@ fn mat_perm(
         }
         super::matrix::mtr_product(&m, &p)
     };
+    // MatPerm uses the product only if both matrices and the product are
+    // usable (Multiply, strict); the gate in step 2 has checked the
+    // MatrixMap's own.
+    let usable = |a: &Array2<f64>| a.iter().all(|&v| v.is_finite() && !is_bad(v));
+    if !usable(&p) || !usable(&product) {
+        return Ok(None);
+    }
     mat_or_unit(product).map(Some)
 }
 
@@ -473,10 +490,10 @@ fn can_swap(map1: &dyn Mapping, inv1: bool, map2: &dyn Mapping, inv2: bool) -> (
     // row/col for constants fed to the matrix.
     if let Some(pm) = nomat.as_any().downcast_ref::<PermMap>() {
         let nax = if mat_inv { mm.nin() } else { mm.nout() };
-        // MatrixMap must be square and invertible (or UNIT).
+        // The MatrixMap must be square, and both its matrix and its inverse
+        // are used to swap the Mappings, so neither may lack a value.
         let square = mm.nin() == mm.nout();
-        let invertible = mm.is_unit_form() || mm.inverse_matrix().is_some();
-        if !square || !invertible {
+        if !square || !mm.mtr_usable(false) || !mm.mtr_usable(true) {
             return (false, false);
         }
         // Effective 0-based perm arrays (constants stay negative refs).
@@ -1006,7 +1023,7 @@ fn replace_with_simpler(
     eff_inv: bool,
     nin: usize,
     nout: usize,
-) -> AstResult<Option<DynMapping>> {
+) -> AstResult<Option<(DynMapping, bool)>> {
     // The effective forward matrix (honoring the applied direction) and the
     // stored forward matrix. C reads `mm->f_matrix` for the structural tests
     // (uniformity / off-diagonal-zero) and picks the zoom factor from
@@ -1015,12 +1032,16 @@ fn replace_with_simpler(
 
     // Square UNIT matrix → UnitMap.
     if mm.is_unit_form() && nin == nout {
-        return Ok(Some(Box::new(UnitMap::new(nin))));
+        return Ok(Some((Box::new(UnitMap::new(nin)), false)));
     }
 
     // Square DIAGONAL matrix with equal diagonal terms → ZoomMap (unless the
     // diagonal is all zero / BAD).
-    if mm.is_diagonal_form() && nin == nout && fwd[[0, 0]] != crate::constants::BAD_VALUE {
+    if mm.is_diagonal_form()
+        && nin == nout
+        && mm.inverse_matrix().is_some()
+        && fwd[[0, 0]] != crate::constants::BAD_VALUE
+    {
         // Uniformity is tested on the stored forward diagonal (C loops
         // `mm->f_matrix`).
         let n = fwd.nrows();
@@ -1034,16 +1055,17 @@ fn replace_with_simpler(
             } else {
                 fwd[[0, 0]]
             };
-            if factor != 0.0 {
-                return Ok(Some(Box::new(ZoomMap::new(nin, factor)?)));
+            if factor != 0.0 && factor != crate::constants::BAD_VALUE {
+                return Ok(Some((Box::new(ZoomMap::new(nin, factor)?), false)));
             }
         }
     }
 
     // FULL square matrix whose off-diagonal terms are all *exactly* zero →
     // DIAGONAL MatrixMap built from the forward diagonal. C uses an exact
-    // `!= 0.0` test (not `astEQUAL`) and constructs the new MatrixMap from
-    // `mm->f_matrix` with Invert=0 (matrixmap.c:1896-1918).
+    // `!= 0.0` test (not `astEQUAL`) and builds the new MatrixMap from
+    // `mm->f_matrix`, so it is equivalent to the old one used the same way,
+    // and needs a diagonal element with a value (matrixmap.c MapMerge).
     if mm.is_full_form() && nin == nout {
         let n = fwd.nrows();
         let mut off_diag_zero = true;
@@ -1055,9 +1077,9 @@ fn replace_with_simpler(
                 }
             }
         }
-        if off_diag_zero {
-            let diag: Vec<f64> = (0..n).map(|i| fwd[[i, i]]).collect();
-            return Ok(Some(Box::new(MatrixMap::diagonal(n, n, &diag)?)));
+        let diag: Vec<f64> = (0..n).map(|i| fwd[[i, i]]).collect();
+        if off_diag_zero && diag.iter().any(|&v| v != crate::constants::BAD_VALUE) {
+            return Ok(Some((Box::new(MatrixMap::diagonal(n, n, &diag)?), eff_inv)));
         }
     }
 

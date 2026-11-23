@@ -29,6 +29,7 @@
 //! swap helpers and the orchestration that the global helpers only
 //! approximated.
 
+use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::mappings::helpers::ast_equal;
 
@@ -54,23 +55,19 @@ fn is_mergeable(m: &dyn Mapping, inv: bool) -> bool {
         return true;
     }
     if let Some(mm) = m.as_any().downcast_ref::<MatrixMap>() {
-        return matrix_is_diagonal(mm, inv);
+        return is_square_diagonal(mm, inv);
     }
     false
 }
 
-/// Whether a MatrixMap's effective forward matrix (honoring `inv`) is
-/// diagonal. Mirrors `astIsDiagonal` applied to the supplied direction.
-fn matrix_is_diagonal(mm: &MatrixMap, inv: bool) -> bool {
-    let mat = if inv {
-        match mm.inverse_matrix() {
-            Some(m) => m,
-            None => return false,
-        }
-    } else {
-        mm.forward_matrix()
-    };
-    is_diagonal(mat)
+/// C's `IsSquareDiagonal` (winmap.c): the MatrixMap's matrix is unit or
+/// diagonal (`astIsDiagonal`, which compresses a full matrix first), it has
+/// as many inputs as outputs, and the matrix it applies with Invert set to
+/// `inv` has a value for every axis.
+fn is_square_diagonal(mm: &MatrixMap, inv: bool) -> bool {
+    (mm.is_unit_form() || mm.is_diagonal_form() || is_diagonal(mm.forward_matrix()))
+        && mm.nin() == mm.nout()
+        && mm.mtr_usable(inv)
 }
 
 /// Classes the WinMap can *swap* past while seeking a merge target:
@@ -210,9 +207,14 @@ pub(crate) fn win_mat(
     let mat_inv = mat_entry.1;
 
     // Effective WinMap terms (shift a, scale b) for its applied direction.
+    // Every term needs a value for the swap to be made.
     let Some((a, b)) = extract_linear_params(win.0.as_ref(), win.1) else {
         return Ok(None);
     };
+    let usable = |v: f64| v.is_finite() && v != BAD_VALUE;
+    if !a.iter().chain(&b).all(|&v| usable(v)) {
+        return Ok(None);
+    }
     let nin = a.len();
 
     // Diagonal MatrixMap m1 holding the WinMap scale factors, as C makes it
@@ -229,19 +231,46 @@ pub(crate) fn win_mat(
     // Shift terms as a single point (one row of `nin` coordinates).
     let pset1 = PointSet::from_rows([a.as_slice()]);
 
-    let (m2_map, pset2): (MatrixMap, PointSet) = if iwm == 0 {
-        // WinMap first, then MatrixMap. m2 = mm × m1 (mtr_mult returns a×self).
-        let m2 = m1_map.mtr_mult(&mm_map)?;
-        // Transform shift point forward through the supplied matrix.
-        let p2 = mm_map.transform(&pset1, true)?;
-        (m2, p2)
+    // C's WinMat and MatWin: the product is used only if it is usable
+    // (astMtrProduct), and the swap is declined, leaving the Mappings alone,
+    // if it is not or a new shift has no value.
+    let swapped: Option<(MatrixMap, PointSet)> = if iwm == 0 {
+        // WinMap first, then MatrixMap. A MatrixMap with fewer outputs than
+        // inputs discards its later inputs, and its inverse gives zero for
+        // them, to which the inverse of the WinMap is then applied. After the
+        // swap they stay zero, so the inverse is unchanged only if the
+        // WinMap's inverse gives zero for zero on each discarded axis: a zero
+        // shift and a non-zero scale.
+        let discards = mm_map.nin() > mm_map.nout() && mm_map.has_inverse();
+        let keeps_zero = (mm_map.nout()..nin).all(|i| a[i] == 0.0 && b[i] != 0.0);
+        if discards && !keeps_zero {
+            None
+        } else {
+            // m2 = mm × m1 (mtr_product returns a×self).
+            match m1_map.mtr_product(&mm_map)? {
+                // Transform the shift point forward through the supplied matrix.
+                Some(m2) => Some((m2, mm_map.transform(&pset1, true)?)),
+                None => None,
+            }
+        }
     } else {
-        // MatrixMap first, then WinMap. m2 = m1 × mm.
-        let m2 = mm_map.mtr_mult(&m1_map)?;
-        // Transform shift point through the *inverse* of the returned matrix.
-        let p2 = m2.transform(&pset1, false)?;
-        (m2, p2)
+        // MatrixMap first, then WinMap. m2 = m1 × mm. The shift point goes
+        // through the inverse of the returned matrix, which must be square
+        // and have one.
+        match mm_map.mtr_product(&m1_map)? {
+            Some(m2) if m2.nin() == m2.nout() && m2.has_inverse() => {
+                let p2 = m2.transform(&pset1, false)?;
+                Some((m2, p2))
+            }
+            _ => None,
+        }
     };
+    let Some((m2_map, pset2)) = swapped else {
+        return Ok(None);
+    };
+    if !pset2.point(0).iter().all(|&v| usable(v)) {
+        return Ok(None);
+    }
 
     // Returned WinMap: unit scales, shifts from pset2.
     let nout = pset2.ncoord();
@@ -393,8 +422,11 @@ pub(crate) fn win_map_merge(
     // C uses the *raw* stored shift terms (newwm->a) for the zero test, then
     // builds a diagonal MatrixMap from the effective scale terms.
     let (eff_shifts, eff_scales) = extract_linear_params(ctx.entry(where_).0.as_ref(), win_inv)?;
-    let all_shifts_zero = win.shifts().iter().all(|&a| ast_equal(a, 0.0));
-    if all_shifts_zero {
+    // A MatrixMap cannot be made from scale terms that are all undefined, so
+    // the WinMap is then left as it is (winmap.c MapMerge).
+    let diag = win.shifts().iter().all(|&a| ast_equal(a, 0.0))
+        && eff_scales.iter().any(|&b| b.is_finite() && b != BAD_VALUE);
+    if diag {
         let mm = ctx.settle(MatrixMap::diagonal(nin, nin, &eff_scales).map(Some))?;
         ctx.set_pair_single(where_, (Box::new(mm), false, false));
         return Some(where_);

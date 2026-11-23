@@ -363,6 +363,58 @@ impl MatrixMap {
         matches!(self.form, MatrixForm::Full)
     }
 
+    /// Whether the matrix this MatrixMap applies when used with Invert set
+    /// to `invert` is defined and every element of it has a value.
+    ///
+    /// A unit matrix always does; the inverse of a singular matrix is not
+    /// defined. Mirrors C's protected `astMtrUsable` (`FwdUsable`), which reads
+    /// the stored forward or inverse matrix by `invert`, not by the Invert
+    /// flag.
+    pub(crate) fn mtr_usable(&self, invert: bool) -> bool {
+        if self.is_unit_form() {
+            return true;
+        }
+        let (matrix, form) = if invert {
+            match self.inverse.as_ref() {
+                Some(m) => (m, self.inv_form),
+                None => return false,
+            }
+        } else {
+            (&self.matrix, self.form)
+        };
+        let usable = |v: f64| v.is_finite() && !is_bad(v);
+        match form {
+            MatrixForm::Diagonal => {
+                (0..matrix.nrows().min(matrix.ncols())).all(|i| usable(matrix[[i, i]]))
+            }
+            _ => matrix.iter().all(|&v| usable(v)),
+        }
+    }
+
+    /// The product [`mtr_mult`](MatrixMap::mtr_mult) gives, or `None` if
+    /// either matrix, in the direction its MatrixMap is used, is undefined
+    /// or has an element with no value, or the product has one.
+    ///
+    /// Mirrors C's protected `astMtrProduct` (`Multiply` with `strict` set),
+    /// which a merge uses so that a product it cannot use leaves the
+    /// Mappings unmerged rather than reporting an error.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::Mtrml`] when both matrices are usable but their shapes
+    /// do not fit, which C reports whether or not `strict` is set.
+    pub(crate) fn mtr_product(&self, a: &MatrixMap) -> AstResult<Option<MatrixMap>> {
+        if !(self.mtr_usable(self.inverted) && a.mtr_usable(a.inverted)) {
+            return Ok(None);
+        }
+        let product = self.mtr_mult(a)?;
+        Ok(product
+            .matrix
+            .iter()
+            .all(|&v| v.is_finite() && !is_bad(v))
+            .then_some(product))
+    }
+
     /// Multiply this MatrixMap by another, returning the product `a × self`
     /// (i.e. `self` applied first, then `a`).
     ///
@@ -1824,5 +1876,19 @@ mod tests {
     fn gauss_jordan_singular() {
         let m = array![[1.0_f64, 2.0], [2.0, 4.0]];
         assert!(gauss_jordan_inverse(&m).is_err());
+    }
+
+    /// As C's strict `Multiply`: an unusable matrix or product gives no
+    /// product, but matrices whose shapes do not fit are still an error.
+    #[test]
+    fn mtr_product_reports_a_shape_mismatch() {
+        let two_by_three = MatrixMap::new(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]).unwrap();
+        let square = MatrixMap::new(array![[1.0, 2.0], [3.0, 4.0]]).unwrap();
+        let err = square.mtr_product(&two_by_three).unwrap_err();
+        assert_eq!(err.code(), crate::error::ErrorCode::Mtrml);
+        let mut singular = MatrixMap::new(array![[1.0, 1.0], [1.0, 1.0]]).unwrap();
+        singular.invert();
+        assert!(singular.mtr_product(&square).unwrap().is_none());
+        assert!(square.mtr_product(&square).unwrap().is_some());
     }
 }

@@ -128,6 +128,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`GetCDMatrix` puts back the card current before the source was read](#getcdmatrix-puts-back-the-card-current-before-the-source-was-read)
 - [`WriteData` never refuses a SinkFile that is the SourceFile in use](#writedata-never-refuses-a-sinkfile-that-is-the-sourcefile-in-use)
 - [`CnvType` leaves a partly read number in the caller's buffer when it fails](#cnvtype-leaves-a-partly-read-number-in-the-callers-buffer-when-it-fails)
+- [Simplifying an inverted WinMap with a subnormal scale gives a ShiftMap of NaN](#simplifying-an-inverted-winmap-with-a-subnormal-scale-gives-a-shiftmap-of-nan)
 - [SUN/211 shows examples and output that the current library does not produce](#sun211-shows-examples-and-output-that-the-current-library-does-not-produce)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
@@ -215,6 +216,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream fd90f3b1): SplineMap evaluates the spline outside its basic interval and misses its upper limit](#resolved-upstream-fd90f3b1-splinemap-evaluates-the-spline-outside-its-basic-interval-and-misses-its-upper-limit)
 - [RESOLVED (upstream 2d9d4449): astEQUAL never finds an infinite or NaN value equal to itself](#resolved-upstream-2d9d4449-astequal-never-finds-an-infinite-or-nan-value-equal-to-itself)
 - [RESOLVED (upstream 7de5007a): astRate loops for ever at a position near zero](#resolved-upstream-7de5007a-astrate-loops-for-ever-at-a-position-near-zero)
+- [RESOLVED (upstream b9cf680b): MatrixMap and WinMap merges give Mappings that are not equivalent, or fail](#resolved-upstream-b9cf680b-matrixmap-and-winmap-merges-give-mappings-that-are-not-equivalent-or-fail)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -1779,6 +1781,22 @@ WCSLIB 8 (astropy 8.0.1) goes further and rejects any string CRVAL1, even `'12.5
 
 The port follows the prologue, not the code: `card_value::cnv_type` parses the whole string or nothing, so the caller's default stands (`crval_string_counts_only_when_wholly_numeric` in `src/fitschan/spec_trans.rs`).
 A C fix: read into a local and copy it to `buff` only when the whole string was consumed.
+
+### Simplifying an inverted WinMap with a subnormal scale gives a ShiftMap of NaN
+
+C location: `winmap.c` `MapMerge` and the merge of the WinMap with a following ZoomMap.
+
+An inverted WinMap whose scale is 1e-320 has an inverse scale too large to represent.
+Followed by a ZoomMap of factor 3 and simplified, the C library at `fe26cc9b` gives a ShiftMap whose shift is NaN.
+The original's inverse transforms 0.5 to 1.665e-321; the ShiftMap's gives NaN, which `AST_REPLACE_NAN` makes bad, so the simplified Mapping is not equivalent.
+
+Consequence: `astSimplify` changes the inverse transformation of such a Mapping.
+
+The cause is `WinTerms` on the inverted WinMap, which gives a scale of 1/1e-320, infinity, and a shift of -0 times infinity, NaN, its guard testing only for `AST__BAD`.
+`WinZoom` keeps both, and the closing step of WinMap's `MapMerge` then finds the infinite scale equal to 1.0 by `astEQUAL`, whose tolerance an infinite operand makes infinite, and makes a ShiftMap of the NaN shift.
+
+The port deliberately diverges: `compose_linear_terms` in `crates/starlink-ast/src/mappings/winmap.rs` treats any term that is not finite as bad, so the merged WinMap holds bad terms and is never taken for a unit-scale WinMap.
+Its result has the same forward and inverse transformations as C's (both bad) but stays a WinMap, and the same holds for any WinMap merge that meets a term overflowed to infinity; `winmap_with_a_subnormal_scale_beside_a_zoommap_simplifies` in `tests/test_winmap.rs`.
 
 ### SUN/211 shows examples and output that the current library does not produce
 
@@ -5421,3 +5439,17 @@ Upstream starts at the smallest normal number when the fraction is smaller.
 
 **Rust behavior:** `numeric_rate` in `crates/starlink-ast/src/mappings/rate.rs` mirrored the loop and hung; it now floors the first step as upstream does (`rate_near_zero_terminates` in `tests/test_numeric_rate.rs`).
 The floor also replaces a subnormal first step, for a position between about 1e-308 and 1e-301, so rates there can change slightly.
+
+### RESOLVED (upstream b9cf680b): MatrixMap and WinMap merges give Mappings that are not equivalent, or fail
+
+Several steps of MatrixMap's and WinMap's `MapMerge` gave a Mapping that was not equivalent, or raised an error that ended the whole simplification:
+a full MatrixMap that is really diagonal was replaced by a diagonal one used forward whatever the direction of the original;
+a merger or swap with an inverted singular MatrixMap, or one with no value for an axis, raised the error of `astMtrMult` or `astMatrixMap`;
+a WinMap moved past a MatrixMap that discards an axis the WinMap shifts lost that shift from the inverse;
+and a WinMap whose scale terms all lacked a value was turned into a MatrixMap of bad values.
+Upstream merges only when the matrices involved and their product are usable (`astMtrUsable`, `astMtrProduct`), keeps the replacement's direction, lets `MatWin` and `WinMat` refuse a swap, and leaves such a WinMap alone.
+
+**Rust behavior:** `matrix_merge.rs` and `winmap_merge.rs` mirrored all of it; `crates/starlink-ast/tests/test_mapmerge.rs` (the `test_matrixmap` and `test_winmap` cases of `testmapmerge.c`) failed seven cases.
+They now follow the fixed C, with `MatrixMap::mtr_usable` and `MatrixMap::mtr_product` for C's two new protected functions.
+`test_mapping.rs` had pinned C's former errors for a swap past a singular matrix; it now pins C's new results, regenerated from the C library at `fe26cc9b`.
+Where the old C unit and non-square diagonal MatrixMaps were merged with a WinMap as if square, the port already matched the fixed C.

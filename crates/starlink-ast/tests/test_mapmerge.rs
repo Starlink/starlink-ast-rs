@@ -608,6 +608,25 @@ const CASES: &[(&str, Case)] = &[
         "a MathMap that copies its input and one that gives a constant",
         || check_equal(mathmap("y=x", "x=y"), mathmap("y=<pi>", "x=y"), false),
     ),
+    // Not in the C test: a MatrixMap in parallel, which C's MapMerge leaves
+    // alone. Shapes from the C library at the pinned commit.
+    (
+        "inverted diagonal MatrixMap with a zero, beside a WinMap",
+        || {
+            let map = parallel(inverted(diagonal(2, 2, &[2.0, 0.0])), win2());
+            check(map, "CmpMap parallel(MatrixMap^-1,WinMap)", None, None).map(drop)
+        },
+    ),
+    (
+        "inverted diagonal MatrixMap with a zero, beside a MatrixMap",
+        || {
+            let map = parallel(
+                inverted(diagonal(2, 2, &[2.0, 0.0])),
+                diagonal(2, 2, &[2.0, 0.0]),
+            );
+            check(map, "CmpMap parallel(MatrixMap^-1,MatrixMap)", None, None).map(drop)
+        },
+    ),
     (
         "SwitchMap, then the inverse of a different SwitchMap",
         || {
@@ -653,34 +672,6 @@ const MAPMERGE_GAP_EXCLUDED: &[(&str, &str)] = &[
         "PermMap whose inverse copies a constant output, then two MathMaps in parallel",
         "the PermMap swap with parallel Mappings that upstream f8c7723e refuses: the port copies an output index into the new inperm",
     ),
-    (
-        "inverted full MatrixMap that is diagonal",
-        "MatrixMap and WinMap merges that upstream b9cf680b limits to equivalent, usable results: the port stores the diagonal replacement uninverted",
-    ),
-    (
-        "inverted singular MatrixMap, then a MatrixMap",
-        "MatrixMap and WinMap merges that upstream b9cf680b limits to equivalent, usable results: the port multiplies a matrix with no forward transformation",
-    ),
-    (
-        "ShiftMap, then an inverted singular MatrixMap",
-        "MatrixMap and WinMap merges that upstream b9cf680b limits to equivalent, usable results: the port multiplies a matrix with no forward transformation",
-    ),
-    (
-        "inverted MatrixMap of zeros, then a MatrixMap",
-        "MatrixMap and WinMap merges that upstream b9cf680b limits to equivalent, usable results: the port merges where C keeps the CmpMap",
-    ),
-    (
-        "inverted MatrixMap of zeros, then a ShiftMap",
-        "MatrixMap and WinMap merges that upstream b9cf680b limits to equivalent, usable results: the port's WinMap has no usable scales",
-    ),
-    (
-        "ShiftMap, a MatrixMap that discards an axis, and a ShiftMap",
-        "MatrixMap and WinMap merges that upstream b9cf680b limits to equivalent, usable results: the port moves a WinMap past a MatrixMap that discards its axis",
-    ),
-    (
-        "inverted WinMap with a scale of zero",
-        "MatrixMap and WinMap merges that upstream b9cf680b limits to equivalent, usable results: the port builds a matrix with no usable element",
-    ),
 ];
 
 fn excluded(name: &str) -> bool {
@@ -699,14 +690,20 @@ fn simplifying_does_not_change_a_mapping() {
 
 #[test]
 fn excluded_cases_still_differ() {
-    for (name, reason) in MAPMERGE_GAP_EXCLUDED {
-        let (_, case) = CASES
-            .iter()
-            .find(|(n, _)| n == name)
-            .unwrap_or_else(|| panic!("{name} is excluded but is not a case"));
-        assert!(
-            case().is_err(),
-            "{name} now matches C; remove it from MAPMERGE_GAP_EXCLUDED. Reason on record: {reason}"
-        );
-    }
+    let now_match: Vec<String> = MAPMERGE_GAP_EXCLUDED
+        .iter()
+        .filter(|(name, _)| {
+            let (_, case) = CASES
+                .iter()
+                .find(|(n, _)| n == name)
+                .unwrap_or_else(|| panic!("{name} is excluded but is not a case"));
+            case().is_ok()
+        })
+        .map(|(name, reason)| format!("{name} (reason on record: {reason})"))
+        .collect();
+    assert!(
+        now_match.is_empty(),
+        "these now match C; remove them from MAPMERGE_GAP_EXCLUDED:\n{}",
+        now_match.join("\n")
+    );
 }
