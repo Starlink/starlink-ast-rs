@@ -50,6 +50,8 @@ mod test_guide;
 mod test_mapmerge_audit;
 #[path = "../test_nan_protocol.rs"]
 mod test_nan_protocol;
+#[path = "../test_probes_table.rs"]
+mod test_probes_table;
 #[path = "../test_simplify_regression.rs"]
 mod test_simplify_regression;
 #[path = "../test_source_headers.rs"]

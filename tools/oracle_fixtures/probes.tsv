@@ -1,0 +1,160 @@
+# Copyright 2026 Association of Universities for Research in Astronomy (AURA)
+# SPDX-License-Identifier: LGPL-3.0-or-later
+#
+# The C probes that generate crates/starlink-ast/tests/*_oracle/cases.rs, read by
+# check_probes_fresh.sh. Columns, tab-separated:
+#
+#   probe    the probe's name, tools/oracle_fixtures/<probe>.c
+#   build    make: the Makefile; fast, plain, grflog, grflog-ownerr: the recipes in
+#            check_probes_fresh.sh, each the compiler line the probe's header documents
+#   run_dir  tools: tools/oracle_fixtures; build: the reference library's build directory;
+#            fixtures: crates/starlink-ast/tests/fixtures
+#   env      VAR=value set for the run, or -
+#   stdin    fixtures-list: the sorted list of .map, .simp, .ast and .native fixtures; or -
+#   output   the generated file, relative to the repository root
+#   known    why the committed file is known to differ from what the probe prints, or -;
+#            the probe then reports KNOWN, and fails once it matches again, so that the
+#            entry is removed by the change that regenerates or fixes the file
+#
+# crates/starlink-ast/tests/grid_oracle/cases.rs is not here: capture_grid_logs.sh writes it.
+allow_simplify_probe	make	tools	-	-	crates/starlink-ast/tests/allow_simplify_oracle/cases.rs	-
+attr_strings_probe	grflog-ownerr	build	-	-	crates/starlink-ast/tests/attr_strings_oracle/cases.rs	fe26cc9b sync stage 4: a Plot grid error changes code
+attr_test_clear_probe	make	tools	-	-	crates/starlink-ast/tests/attr_test_clear_oracle/cases.rs	-
+axis_format_probe	make	tools	-	-	crates/starlink-ast/tests/axis_format_oracle/cases.rs	-
+axis_unformat_probe	make	tools	-	-	crates/starlink-ast/tests/axis_unformat_oracle/cases.rs	-
+box_axin_probe	make	tools	-	-	crates/starlink-ast/tests/box_axin_oracle/cases.rs	-
+channel_dump_probe	make	tools	-	-	crates/starlink-ast/tests/channel_dump_oracle/cases.rs	-
+channel_read_probe	make	tools	-	-	crates/starlink-ast/tests/channel_read_oracle/cases.rs	-
+class_attrs_probe	make	tools	-	-	crates/starlink-ast/tests/class_attrs_oracle/cases.rs	-
+cmp_match_end_probe	make	tools	-	-	crates/starlink-ast/tests/cmp_match_end_oracle/cases.rs	comments respelled in American English after capture
+convert_frameset_probe	make	tools	-	-	crates/starlink-ast/tests/convert_frameset_oracle/cases.rs	-
+dsb_topo_probe	make	tools	-	-	crates/starlink-ast/tests/dsb_topo_oracle/cases.rs	-
+dss_merge_probe	make	tools	-	-	crates/starlink-ast/tests/dss_merge_oracle/cases.rs	-
+equal_probe	make	tools	-	-	crates/starlink-ast/tests/equal_oracle/cases.rs	-
+escapes_probe	fast	tools	-	-	crates/starlink-ast/tests/escapes_oracle/cases.rs	-
+fitschan_alt_epoch_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_alt_epoch_oracle/cases.rs	-
+fitschan_alt_naxes_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_alt_naxes_oracle/cases.rs	-
+fitschan_axis_count_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_axis_count_oracle/cases.rs	-
+fitschan_coupled_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_coupled_oracle/cases.rs	-
+fitschan_cursor_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_cursor_oracle/cases.rs	-
+fitschan_encodings_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_encodings_oracle/cases.rs	fe26cc9b sync stage 2: FitsChan writes keep more cards
+fitschan_labels_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_labels_oracle/cases.rs	-
+fitschan_linear_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_linear_oracle/cases.rs	-
+fitschan_read_chain_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_read_chain_oracle/cases.rs	-
+fitschan_sipok_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_sipok_oracle/cases.rs	-
+fitschan_spec_unit_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_spec_unit_oracle/cases.rs	-
+fitschan_splitmap_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_splitmap_oracle/cases.rs	-
+fitschan_tab_read_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_tab_read_oracle/cases.rs	-
+fitschan_tab_write_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_tab_write_oracle/cases.rs	-
+fitschan_tables_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_tables_oracle/cases.rs	-
+fitschanerrors_table	plain	build	-	-	crates/starlink-ast/tests/fitschanerrors_oracle/cases.rs	-
+fitstable_probe	make	tools	-	-	crates/starlink-ast/tests/fitstable_oracle/cases.rs	-
+fixture_full_dump_probe	make	fixtures	-	fixtures-list	crates/starlink-ast/tests/fixture_full_dump_oracle/cases.rs	fixtures added since capture are missing
+fixture_read_warnings_probe	make	fixtures	-	fixtures-list	crates/starlink-ast/tests/fixture_read_warnings_oracle/cases.rs	-
+flux_badun_probe	make	tools	-	-	crates/starlink-ast/tests/flux_badun_oracle/cases.rs	-
+flux_unit_system_probe	make	tools	-	-	crates/starlink-ast/tests/flux_unit_system_oracle/cases.rs	-
+frame_api_probe	make	tools	-	-	crates/starlink-ast/tests/frame_api_oracle/cases.rs	prints the current time
+frame_attrs_probe	make	tools	-	-	crates/starlink-ast/tests/frame_oracle/cases.rs	-
+frame_axis_attrs_probe	make	tools	-	-	crates/starlink-ast/tests/frame_axis_oracle/cases.rs	-
+frame_class_attrs_probe	make	tools	-	-	crates/starlink-ast/tests/frame_class_oracle/cases.rs	-
+frame_load_probe	make	tools	-	-	crates/starlink-ast/tests/frame_load_oracle/cases.rs	fe26cc9b sync stage 5: a SkyFrame dump without axis descriptions gets SkyAxes
+frameset_current_probe	make	tools	-	-	crates/starlink-ast/tests/frameset_current_oracle/cases.rs	-
+frameset_variant_link_probe	fast	tools	-	-	crates/starlink-ast/tests/frameset_variant_link_oracle/cases.rs	-
+frameset_variants_probe	make	tools	-	-	crates/starlink-ast/tests/frameset_variants_oracle/cases.rs	-
+grf_log_probe	grflog	tools	-	-	crates/starlink-ast/tests/grf_log_oracle/cases.rs	-
+ident_probe	make	tools	-	-	crates/starlink-ast/tests/ident_oracle/cases.rs	-
+integrity_probe	make	tools	-	-	crates/starlink-ast/tests/integrity_oracle/cases.rs	-
+intramap_probe	make	tools	-	-	crates/starlink-ast/tests/intramap_oracle/cases.rs	-
+line_geometry_probe	plain	tools	-	-	crates/starlink-ast/tests/line_geometry_oracle/cases.rs	-
+lsst_probe	make	tools	-	-	crates/starlink-ast/tests/lsst_oracle/cases.rs	-
+lutmap_forward_probe	make	tools	-	-	crates/starlink-ast/tests/lutmap_forward_oracle/cases.rs	-
+lutmap_inverse_probe	make	tools	-	-	crates/starlink-ast/tests/lutmap_inverse_oracle/cases.rs	-
+map_split_probe	make	tools	-	-	crates/starlink-ast/tests/map_split_oracle/cases.rs	-
+mapping_bad_probe	make	tools	-	-	crates/starlink-ast/tests/mapping_bad_oracle/cases.rs	-
+mapping_load_probe	make	tools	-	-	crates/starlink-ast/tests/mapping_load_oracle/cases.rs	-
+match_axes_probe	make	tools	-	-	crates/starlink-ast/tests/match_axes_oracle/cases.rs	-
+min_max_axes_probe	make	tools	-	-	crates/starlink-ast/tests/min_max_axes_oracle/cases.rs	-
+mocchan_probe	make	tools	-	-	crates/starlink-ast/tests/mocchan_oracle/cases.rs	-
+new_unit_probe	make	tools	-	-	crates/starlink-ast/tests/new_unit_oracle/cases.rs	-
+norm_points_probe	make	tools	-	-	crates/starlink-ast/tests/norm_points_oracle/cases.rs	-
+object_id_probe	make	tools	-	-	crates/starlink-ast/tests/object_id_oracle/cases.rs	-
+overlay_probe	make	tools	-	-	crates/starlink-ast/tests/overlay_oracle/cases.rs	-
+picked_skyaxis_probe	make	tools	-	-	crates/starlink-ast/tests/picked_skyaxis_oracle/cases.rs	-
+plot_attrs_probe	fast	build	-	-	crates/starlink-ast/tests/plot_attrs_oracle/cases.rs	-
+plot_border_probe	grflog	build	-	-	crates/starlink-ast/tests/plot_border_oracle/cases.rs	-
+plot_construct_probe	fast	build	-	-	crates/starlink-ast/tests/plot_construct_oracle/cases.rs	-
+plot_curve_probe	grflog	build	-	-	crates/starlink-ast/tests/plot_curve_oracle/cases.rs	-
+plot_frame_methods_probe	plain	tools	-	-	crates/starlink-ast/tests/plot_frame_methods_oracle/cases.rs	prints the current time
+plot_grid_values_probe	grflog	build	-	-	crates/starlink-ast/tests/plot_grid_values_oracle/cases.rs	-
+plot_methods_probe	grflog	build	-	-	crates/starlink-ast/tests/plot_methods_oracle/cases.rs	-
+plot_native_probe	grflog	build	-	-	crates/starlink-ast/tests/plot_native_oracle/cases.rs	-
+plot_text_probe	grflog	build	-	-	crates/starlink-ast/tests/plot_text_oracle/cases.rs	-
+poly_bad_probe	make	tools	-	-	crates/starlink-ast/tests/poly_bad_oracle/cases.rs	-
+poly_iter_inverse_probe	make	tools	-	-	crates/starlink-ast/tests/poly_iter_inverse_oracle/cases.rs	-inf written as BAD_VALUE after capture
+rate_probe	make	tools	-	-	crates/starlink-ast/tests/rate_oracle/cases.rs	-
+rebin_probe	make	tools	AST_REPLACE_NAN=1	-	crates/starlink-ast/tests/rebin_oracle/cases.rs	-
+rebinseq_probe	make	tools	AST_REPLACE_NAN=1	-	crates/starlink-ast/tests/rebinseq_oracle/cases.rs	-
+region_attr_test_probe	make	tools	-	-	crates/starlink-ast/tests/region_attr_test_oracle/cases.rs	-
+region_attrib_probe	make	tools	-	-	crates/starlink-ast/tests/region_attrib_oracle/cases.rs	-
+region_bounded_probe	make	tools	-	-	crates/starlink-ast/tests/region_bounded_oracle/cases.rs	-
+region_box_probe	make	tools	-	-	crates/starlink-ast/tests/region_box_oracle/cases.rs	-
+region_cmplist_probe	make	tools	-	-	crates/starlink-ast/tests/region_cmplist_oracle/cases.rs	-
+region_cmpregion_probe	make	tools	-	-	crates/starlink-ast/tests/region_cmpregion_oracle/cases.rs	-
+region_compound_attr_probe	make	tools	-	-	crates/starlink-ast/tests/region_compound_attr_oracle/cases.rs	-
+region_convex_probe	make	tools	-	-	crates/starlink-ast/tests/region_convex_oracle/cases.rs	-
+region_disc_probe	make	tools	-	-	crates/starlink-ast/tests/region_disc_oracle/cases.rs	-
+region_ellipse_probe	make	tools	-	-	crates/starlink-ast/tests/region_ellipse_oracle/cases.rs	-
+region_ellipsepars_probe	make	tools	-	-	crates/starlink-ast/tests/region_ellipsepars_oracle/cases.rs	-
+region_equal_probe	make	tools	-	-	crates/starlink-ast/tests/region_equal_oracle/cases.rs	-
+region_errors_probe	make	tools	-	-	crates/starlink-ast/tests/region_errors_oracle/cases.rs	comments respelled in American English after capture
+region_frame_probe	make	tools	-	-	crates/starlink-ast/tests/region_frame_oracle/cases.rs	comments respelled in American English after capture
+region_grid_probe	make	tools	-	-	crates/starlink-ast/tests/region_grid_oracle/cases.rs	-
+region_interval_probe	make	tools	-	-	crates/starlink-ast/tests/region_interval_oracle/cases.rs	-
+region_interval_remap_probe	make	tools	-	-	crates/starlink-ast/tests/region_interval_remap_oracle/cases.rs	-
+region_mapregion_probe	make	tools	-	-	crates/starlink-ast/tests/region_mapregion_oracle/cases.rs	-
+region_mask_probe	make	tools	-	-	crates/starlink-ast/tests/region_mask_oracle/cases.rs	-
+region_moc_add_probe	make	tools	-	-	crates/starlink-ast/tests/region_moc_add_oracle/cases.rs	-
+region_moc_probe	make	tools	-	-	crates/starlink-ast/tests/region_moc_oracle/cases.rs	-
+region_moc_text_probe	make	tools	-	-	crates/starlink-ast/tests/region_moc_text_oracle/cases.rs	-
+region_nulltran_probe	make	tools	-	-	crates/starlink-ast/tests/region_nulltran_oracle/cases.rs	-
+region_object_probe	make	tools	-	-	crates/starlink-ast/tests/region_object_oracle/cases.rs	-
+region_outline_probe	make	tools	-	-	crates/starlink-ast/tests/region_outline_oracle/cases.rs	-
+region_overlap_probe	make	tools	-	-	crates/starlink-ast/tests/region_overlap_oracle/cases.rs	-
+region_polygon_probe	make	tools	-	-	crates/starlink-ast/tests/region_polygon_oracle/cases.rs	-
+region_showmesh_probe	make	tools	-	-	crates/starlink-ast/tests/region_showmesh_oracle/cases.rs	-
+region_stc_probe	make	tools	-	-	crates/starlink-ast/tests/region_stc_oracle/cases.rs	comments respelled in American English after capture
+region_trace_probe	plain	tools	-	-	crates/starlink-ast/tests/region_trace_oracle/cases.rs	-
+remove_regions_probe	make	tools	-	-	crates/starlink-ast/tests/remove_regions_oracle/cases.rs	-
+report_probe	make	tools	-	-	crates/starlink-ast/tests/report_oracle/cases.rs	-
+resample_probe	make	tools	AST_REPLACE_NAN=1	-	crates/starlink-ast/tests/resample_oracle/cases.rs	-
+section_load_probe	make	tools	-	-	crates/starlink-ast/tests/section_load_oracle/cases.rs	-
+show_tostring_probe	fast	tools	-	-	crates/starlink-ast/tests/show_tostring_oracle/cases.rs	-
+sky_convert_probe	make	tools	-	-	crates/starlink-ast/tests/sky_convert_oracle/cases.rs	-
+sky_geometry_probe	make	tools	-	-	crates/starlink-ast/tests/sky_geometry_oracle/cases.rs	-
+sky_interleave_probe	make	tools	-	-	crates/starlink-ast/tests/sky_interleave_oracle/cases.rs	-
+sky_last_probe	make	tools	-	-	crates/starlink-ast/tests/sky_last_oracle/cases.rs	-
+sky_norm_probe	make	tools	-	-	crates/starlink-ast/tests/sky_norm_oracle/cases.rs	-
+sky_plain_axis_probe	make	tools	-	-	crates/starlink-ast/tests/sky_plain_axis_oracle/cases.rs	fe26cc9b sync stage 5: a SkyFrame dump without axis descriptions gets SkyAxes
+sky_pole_probe	make	tools	-	-	crates/starlink-ast/tests/sky_pole_oracle/cases.rs	-
+sky_use_defs_probe	make	tools	-	-	crates/starlink-ast/tests/sky_use_defs_oracle/cases.rs	-
+skyframe_attrs_probe	make	tools	-	-	crates/starlink-ast/tests/skyframe_attrs_oracle/cases.rs	-
+skyframe_format_probe	make	tools	-	-	crates/starlink-ast/tests/skyframe_oracle/cases.rs	-
+spec_convert_probe	make	tools	-	-	crates/starlink-ast/tests/spec_convert_oracle/cases.rs	-
+spec_origin_sor_probe	make	tools	-	-	crates/starlink-ast/tests/spec_origin_sor_oracle/cases.rs	-
+spec_use_defs_probe	make	tools	-	-	crates/starlink-ast/tests/spec_use_defs_oracle/cases.rs	-
+specflux_cmp_probe	make	tools	-	-	crates/starlink-ast/tests/specflux_cmp_oracle/cases.rs	-
+specflux_primary_probe	make	tools	-	-	crates/starlink-ast/tests/specflux_primary_oracle/cases.rs	-
+specmap_3d_probe	make	tools	-	-	crates/starlink-ast/tests/specmap_3d_oracle/cases.rs	-
+spline_inverse_probe	make	tools	-	-	crates/starlink-ast/tests/spline_inverse_oracle/cases.rs	-
+system_change_probe	make	tools	-	-	crates/starlink-ast/tests/system_change_oracle/cases.rs	-
+table_probe	make	tools	-	-	crates/starlink-ast/tests/table_oracle/cases.rs	-
+time_convert_probe	make	tools	-	-	crates/starlink-ast/tests/time_convert_oracle/cases.rs	-
+time_epoch_probe	make	tools	-	-	crates/starlink-ast/tests/time_epoch_oracle/cases.rs	-
+time_map_probe	make	tools	-	-	crates/starlink-ast/tests/time_map_oracle/cases.rs	-
+time_scale_set_probe	make	tools	-	-	crates/starlink-ast/tests/time_scale_set_oracle/cases.rs	-
+tran_definedness_probe	make	tools	-	-	crates/starlink-ast/tests/tran_definedness_oracle/cases.rs	-
+tran_grid_probe	make	tools	AST_REPLACE_NAN=1	-	crates/starlink-ast/tests/tran_grid_oracle/cases.rs	-
+unit_mapper_probe	make	tools	-	-	crates/starlink-ast/tests/unit_mapper_oracle/cases.rs	-
+use_defs_probe	make	tools	-	-	crates/starlink-ast/tests/use_defs_oracle/cases.rs	-
+wcsmap_pv_probe	make	tools	-	-	crates/starlink-ast/tests/wcsmap_pv_oracle/cases.rs	-
+xphmap_probe	make	tools	-	-	crates/starlink-ast/tests/xphmap_oracle/cases.rs	-

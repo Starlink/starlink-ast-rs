@@ -170,6 +170,40 @@ by a platform difference in the same file:
 Run this whenever the submodule pin moves. It belongs in the upstream-sync
 protocol in `CLAUDE.md`.
 
+## `check_probes_fresh.sh` — is each generated probe oracle still what C prints?
+
+About 140 `crates/starlink-ast/tests/*_oracle/cases.rs` files are printed by the probes here, each built and run as its header documents.
+`probes.tsv` lists them with how each is built (the Makefile, or one of the compiler lines in the script), where it runs and what it writes.
+
+```shell
+./tools/oracle_fixtures/check_probes_fresh.sh                       # compare every probe with its committed file
+./tools/oracle_fixtures/check_probes_fresh.sh <probe>...            # only those
+./tools/oracle_fixtures/check_probes_fresh.sh --capture <dir>       # write each probe's output to <dir>/<probe>
+./tools/oracle_fixtures/check_probes_fresh.sh --write <probe>...    # replace the committed files; run cargo fmt after
+```
+
+Each probe prints `SAME`, `DIFFERS <n> lines`, `KNOWN <reason>`, `FIXED` or `FAILED <why>`, and `DIFFERS`, `FIXED` and `FAILED` exit non-zero.
+A probe whose output matches only after `rustfmt` is `SAME`, since `cargo fmt` reformats the generated files it is not told to skip, and the `DIFFERS` count is against whichever of the two forms is nearer the committed file.
+A named probe that `probes.tsv` does not list is `FAILED`; `test_probes_table` keeps the table listing every generated file.
+The compiler lines load the error library whole, with `-force_load` on macOS and `--whole-archive` elsewhere; they have been run on macOS only.
+
+A committed file that is known to differ from its probe names the reason in the `known` column of `probes.tsv`, and the probe then reports `KNOWN`.
+Some were edited after capture (American spelling in comments, `-inf` written as `BAD_VALUE`), some probes print the time, a probe over the fixture tree misses fixtures added since its file was written, and some wait for the stage of a sync that ports the C behind them.
+A known probe that matches again reports `FIXED` and fails, so that the change which regenerates or fixes its file also removes the entry.
+
+To see what a pin move changed, capture at both pins and diff the directories; `AST_REFERENCE` points the script at a checkout of the old pin, built with cmake as for the reference library:
+
+```shell
+git -C reference/starlink-ast worktree add --detach <scratch>/ast-old <old pin>
+# build <scratch>/ast-old into its build/ directory as reference/starlink-ast is built
+AST_REFERENCE=<scratch>/ast-old ./tools/oracle_fixtures/check_probes_fresh.sh --capture <scratch>/old
+./tools/oracle_fixtures/check_probes_fresh.sh --capture <scratch>/new
+diff -r <scratch>/old <scratch>/new
+```
+
+Run it after every move of the `reference/starlink-ast` pin, alongside `check_corpus_fresh.sh` and `check_simplify_fresh.sh`.
+A probe the pin changes is regenerated, whole, by the change that ports the C behind it.
+
 ## `recapture_wcslib_golden.sh` — are the wcslib golden values still what C computes?
 
 `crates/starlink-ast/tests/wcslib_golden/projections.tsv` holds the results of the reference library's wcslib projections, which `src/wcslib/golden_tests.rs` compares the native projections against bit for bit.
