@@ -45,6 +45,10 @@ const DEFAULT_INV_TOL: f64 = 1.0e-6;
 /// No extrapolation is performed: input positions outside the area covered by
 /// the knots cannot be transformed (but see
 /// [`out_unit`](SplineMap::out_unit)).
+/// On each axis, a spline of order K with N coefficients covers the range
+/// from knot K to knot N+1 (counting from one).
+/// This is the full range of the knots if the first K knots are coincident
+/// and the last K knots are coincident, as is usual.
 ///
 /// An iterative method is used to evaluate the inverse transformation from
 /// the forward transformation (see [`inv_tol`](SplineMap::inv_tol) and
@@ -640,6 +644,8 @@ impl SplineMap {
 
     /// [`Self::dbvalu`] for order `K`. C's work array holds the coefficients,
     /// then `dp`, then `dm`, `K` values each; here they are three arrays.
+    // C's range tests are negated so that a NaN fails them.
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
     fn dbvalu_k<const K: usize>(
         t: &[f64],
         a: &[f64],
@@ -660,11 +666,13 @@ impl SplineMap {
             return 0.0;
         }
 
-        if x < t[K - 1] {
+        // Written so that a NaN fails it too (splinemap.c `Dbvalu`).
+        if !(x >= t[K - 1]) {
             return BAD_VALUE;
         }
 
-        // Find i such that t[i] <= x < t[i+1]
+        // Find i in [K-1, n-1] such that t[i] <= x < t[i+1], or
+        // t[i] < t[i+1] = t[n] for x on the upper limit.
         let mut inbv_local = inbv;
         let (mut i, mflag) = Self::dintrv(t, n + 1, x, &mut inbv_local);
 
@@ -672,15 +680,17 @@ impl SplineMap {
             if x > t[i] {
                 return BAD_VALUE;
             }
-            // Handle upper boundary
-            while i != K - 1 {
+            // Step back to the last knot interval of non-zero width; there
+            // is no left limit if the first interval has zero width too.
+            loop {
+                if i == K - 1 {
+                    return BAD_VALUE;
+                }
                 i -= 1;
                 if x != t[i] {
                     break;
                 }
             }
-            // Note: Original C code comments out this check to allow upper edge.
-            // if i == k - 1 { return BAD_VALUE; }
         }
 
         // The coefficients and knots the rest reads: a[i+1-K..=i] and
@@ -732,6 +742,8 @@ impl SplineMap {
     /// - `bcoef`: coefficient array (nx * ny)
     ///
     /// Returns the spline value or `def` if out of range.
+    // C's range tests are negated so that a NaN fails them.
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
     fn db2val(&self, def: f64, xval: f64, yval: f64, idx: usize, idy: usize, bcoef: &[f64]) -> f64 {
         let tx = &self.tx;
         let ty = &self.ty;
@@ -740,34 +752,38 @@ impl SplineMap {
         let kx = self.kx;
         let ky = self.ky;
 
-        // Check bounds
-        if xval < tx[0] || xval > tx[nx + kx - 1] || yval < ty[0] || yval > ty[ny + ky - 1] {
+        // The spline is defined only within the basic interval of each
+        // knot sequence, knot k-1 to knot n, which is the full extent of
+        // the knots only when the first k and last k are coincident. The
+        // test is written so that a NaN fails it too (splinemap.c `Db2val`).
+        if !(xval >= tx[kx - 1] && xval <= tx[nx] && yval >= ty[ky - 1] && yval <= ty[ny]) {
             return def;
         }
 
-        // Find y interval
+        // Find lefty such that ty[lefty] <= yval < ty[lefty+1], searching
+        // only the knots up to the end of the basic interval, so that a
+        // position on its upper limit is flagged whatever the multiplicity
+        // of the final knots.
         let mut iloy: usize = 0;
-        let (lefty, mflag) = Self::dintrv(ty, ny + ky, yval, &mut iloy);
+        let (mut lefty, mflag) = Self::dintrv(ty, ny + 1, yval, &mut iloy);
 
-        // Handle upper Y boundary (DSB modification)
-        let lefty = if mflag != 0 {
+        // On the upper limit, step back to the last knot interval of
+        // non-zero width, as Dbvalu does, so that the value is the limit
+        // from below; none if the first interval has zero width too.
+        if mflag != 0 {
             if yval > ty[lefty] {
                 return BAD_VALUE;
             }
-            let mut lefty = lefty;
-            while lefty != ky - 1 {
+            loop {
+                if lefty == ky - 1 {
+                    return BAD_VALUE;
+                }
                 lefty -= 1;
                 if yval != ty[lefty] {
                     break;
                 }
             }
-            if lefty == ky - 1 {
-                return BAD_VALUE;
-            }
-            lefty
-        } else {
-            lefty
-        };
+        }
 
         // Evaluate the ky 1-D B-splines in x for each relevant row, giving
         // the coefficients of a 1-D B-spline in y.
@@ -777,6 +793,10 @@ impl SplineMap {
             kcol += 1;
             let coef_offset = nx * kcol as usize;
             *c = Self::dbvalu(tx, &bcoef[coef_offset..], nx, kx, idx, xval, 0);
+            // No value if no knot interval in x has a non-zero width.
+            if *c == BAD_VALUE {
+                return BAD_VALUE;
+            }
         }
 
         // Now evaluate the resulting 1-D B-spline in y.
@@ -1415,6 +1435,36 @@ impl Serializable for SplineMap {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A NaN reaches the evaluators from the iterative inverse, whose
+    /// Jacobian is taken at each guess unchecked; it must be outside the
+    /// spline and give a bad value, where it used to select columns of
+    /// coefficients before the first.
+    #[test]
+    fn nan_is_outside_the_spline_in_the_evaluators() {
+        let c: Vec<f64> = (1..=6).map(f64::from).collect();
+        let map = SplineMap::from_scipy(
+            2,
+            2,
+            2,
+            3,
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![0.0, 1.0, 2.0, 3.0, 4.0],
+            &c,
+            &c,
+        )
+        .unwrap();
+        for (x, y) in [(f64::NAN, 2.0), (0.5, f64::NAN)] {
+            for (idx, idy) in [(0, 0), (1, 0), (0, 1)] {
+                assert_eq!(map.db2val(BAD_VALUE, x, y, idx, idy, &map.cu), BAD_VALUE);
+            }
+        }
+        let t = [0.0, 0.0, 1.0, 1.0];
+        assert_eq!(
+            SplineMap::dbvalu(&t, &[1.0, 2.0], 2, 2, 0, f64::NAN, 0),
+            BAD_VALUE
+        );
+    }
 
     /// A derivative of the spline's order or higher is zero, not bad
     /// (splinemap.c `Dbvalu`): an order-1 spline is constant on each piece.

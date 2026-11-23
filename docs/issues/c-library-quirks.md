@@ -212,6 +212,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream f444583f): `astLoadKeyMap` applies `MpLck` before loading any entry, so a locked non-empty KeyMap can never be reloaded](#resolved-upstream-f444583f-astloadkeymap-applies-mplck-before-loading-any-entry-so-a-locked-non-empty-keymap-can-never-be-reloaded)
 - [RESOLVED (upstream b7135abc): `DumpEntry` reads an `Entry1X` as an `Entry0X` for a zero-length vector, writing pointer bytes as the value](#resolved-upstream-b7135abc-dumpentry-reads-an-entry1x-as-an-entry0x-for-a-zero-length-vector-writing-pointer-bytes-as-the-value)
 - [RESOLVED (upstream 367a6a6b): `astMapGetElem<X>` reports success on an undefined entry, unlike `astMapGet0<X>` and `astMapGet1<X>`](#resolved-upstream-367a6a6b-astmapgetelemx-reports-success-on-an-undefined-entry-unlike-astmapget0x-and-astmapget1x)
+- [RESOLVED (upstream fd90f3b1): SplineMap evaluates the spline outside its basic interval and misses its upper limit](#resolved-upstream-fd90f3b1-splinemap-evaluates-the-spline-outside-its-basic-interval-and-misses-its-upper-limit)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -529,7 +530,7 @@ A C speed-up: the same split, with the bisection results for a block held in a s
 
 ### SplineMap's `Dbvalu` loops to the spline order at run time
 
-C location: `splinemap.c` `Dbvalu` (from line 478), called `ky + 1` times per output value by `Db2val`, so ten times per point for a bicubic spline's forward transform.
+C location: `splinemap.c` `Dbvalu` (from line 645), called `ky + 1` times per output value by `Db2val`, so ten times per point for a bicubic spline's forward transform.
 
 Every loop in `Dbvalu` runs to the order `k`, a run-time argument, and the coefficients, `dp` and `dm` share one work array indexed by sums of `k` and the loop counters.
 The compiler cannot unroll or keep the values in registers, though `k` is at most `MAX_K` (6) and is almost always 4.
@@ -5385,3 +5386,15 @@ outside.
 `crates/starlink-ast/tests/test_pointlist.rs` pins all three.
 
 Fixed upstream in `dc424b56`.
+
+### RESOLVED (upstream fd90f3b1): SplineMap evaluates the spline outside its basic interval and misses its upper limit
+
+`Db2val` tested a position against the full extent of the knots, from the first to the last, though the B-spline is defined only on the basic interval, from knot k to knot n+1 (counting from one).
+The two are the same only when the first k and the last k knots are coincident.
+With open knots along Y, a position outside the basic interval selected columns of coefficients that do not exist, and with open knots along X it gave a value where there is none.
+The comparisons were also written so that a NaN passed them.
+On the upper limit of the basic interval both `Db2val` and `Dbvalu` stepped back to the last knot interval of non-zero width with a loop that stopped one interval early, so a spline with a single interval along an axis gave a bad value on its upper edge.
+Upstream (`0b427150`, `9a598e55`, `fd90f3b1`) tests the basic interval in a form a NaN fails, searches only the knots up to its end, and steps back as CMLIB's `dbvalu` does.
+
+**Rust behavior:** `db2val` and `dbvalu_k` in `crates/starlink-ast/src/mappings/splinemap.rs` mirrored all of it, and for open knots along Y indexed past the coefficients and panicked.
+They now follow the fixed C; `crates/starlink-ast/tests/test_splinemapedge.rs` ports `testsplinemapedge.c` and adds the open-knot positions with C's values.

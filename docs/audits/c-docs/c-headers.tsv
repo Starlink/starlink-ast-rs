@@ -497,7 +497,7 @@ class	SphMap	SphMap	sphmap.c	b61d786458d31f99
 attribute	UnitRadius	UnitRadius	sphmap.c	8d56d4ca5ef46180
 attribute	PolarLong	PolarLong	sphmap.c	e2424554b0710275
 function	astSphMap	astSphMap	sphmap.c	c224e71c4fd3eb59
-class	SplineMap	SplineMap	splinemap.c	bc81efed040b2943
+class	SplineMap	SplineMap	splinemap.c	477175c48ade52e2
 function	astSplineCoeffs	astSplineCoeffs	splinemap.c	65035ab9a1014335
 function	astSplineKnots	astSplineKnots	splinemap.c	000e06170c5dfd3d
 attribute	InvNiter	InvNiter	splinemap.c	bd9d0cbb5df0fc10

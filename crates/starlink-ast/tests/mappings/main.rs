@@ -114,6 +114,8 @@ mod test_sphmap;
 mod test_splinemap;
 #[path = "../test_splinemap_c_api.rs"]
 mod test_splinemap_c_api;
+#[path = "../test_splinemapedge.rs"]
+mod test_splinemapedge;
 #[path = "../test_switchmap.rs"]
 mod test_switchmap;
 #[path = "../test_time_map_oracle.rs"]
