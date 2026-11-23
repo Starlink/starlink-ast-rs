@@ -1105,3 +1105,51 @@ fn a_grism_order_out_of_range_is_refused() {
     }
     assert!(read("-1").unwrap().is_some());
 }
+
+/// A card's comment loses its leading blanks, as the C library's cards do:
+/// one given to `set_fits_s`, and the one written for an offset sky axis
+/// with an empty Symbol.
+#[test]
+fn a_comment_loses_its_leading_blanks() {
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_fits_s("A", "x", "   leading blanks", false).unwrap();
+    fc.clear_card().unwrap();
+    assert_eq!(
+        fc.find_fits("A", false).unwrap().unwrap().trim_end(),
+        "A       = 'x       '           / leading blanks"
+    );
+
+    use starlink_ast::attributes::Attributes;
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_encoding(Encoding::FitsWcs);
+    for c in [
+        "NAXIS   = 2",
+        "NAXIS1  = 100",
+        "NAXIS2  = 200",
+        "CRPIX1  = 50",
+        "CRPIX2  = 100",
+        "CRVAL1  = 10",
+        "CRVAL2  = 20",
+        "CTYPE1  = 'RA---TAN'",
+        "CTYPE2  = 'DEC--TAN'",
+        "CDELT1  = -0.001",
+        "CDELT2  = 0.001",
+    ] {
+        fc.put_fits(c, false).unwrap();
+    }
+    fc.clear_card().unwrap();
+    let Some(AnyObject::FrameSet(mut fs)) = fc.read().unwrap() else {
+        panic!("no FrameSet")
+    };
+    fs.set_attribute("SkyRef", "0:40:00, 20:00:00").unwrap();
+    fs.set_attribute("SkyRefIs", "Origin").unwrap();
+    fs.set_attribute("Symbol(1)", "").unwrap();
+    let mut out = FitsChan::new().unwrap();
+    out.set_encoding(Encoding::FitsWcs);
+    out.write(&AnyObject::FrameSet(fs)).unwrap();
+    out.clear_card().unwrap();
+    assert_eq!(
+        out.find_fits("CTYPE1", false).unwrap().unwrap().trim_end(),
+        "CTYPE1  = 'OFLN-TAN'           / offset from 0:40:00.0, 20:00:00"
+    );
+}

@@ -60,6 +60,14 @@ pub(crate) enum NewScope {
     Version,
 }
 
+/// A value card's comment as C's `NewCard` stores it: without its leading
+/// and trailing blanks, and none if nothing is left.
+fn card_comment(comment: &str) -> Option<String> {
+    let blank = |c: char| c.is_ascii() && crate::frames::axis_format::is_c_space(c as u8);
+    let comment = comment.trim_matches(blank);
+    (!comment.is_empty()).then(|| comment.to_string())
+}
+
 impl CardList {
     /// Create an empty card list.
     pub fn new() -> Self {
@@ -986,11 +994,7 @@ impl CardList {
         let card = FitsCard {
             keyword: keyword.to_uppercase(),
             value: FitsValue::Int(value),
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
+            comment: card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
         };
         self.put_or_append(card);
@@ -1002,11 +1006,7 @@ impl CardList {
         let card = FitsCard {
             keyword: keyword.to_uppercase(),
             value: FitsValue::Float(value),
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
+            comment: card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
         };
         self.put_or_append(card);
@@ -1018,11 +1018,7 @@ impl CardList {
         let card = FitsCard {
             keyword: keyword.to_uppercase(),
             value: FitsValue::String(value.to_string()),
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
+            comment: card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
         };
         self.put_or_append(card);
