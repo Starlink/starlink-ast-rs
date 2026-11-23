@@ -23,7 +23,7 @@ use super::trig::{D2R, Libm, R2D, Trig, atan2d_covers, sincosd_covers, sincosd_n
 // COP: conic perspective
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astCOPset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOPset; reference/starlink-ast at fe26cc9b.
 pub(super) fn cop_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = prm.p[1];
@@ -52,7 +52,7 @@ pub(super) fn cop_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCOPfwd; reference/starlink-ast at 3d3f255f,
+// reference/starlink-ast/wcslib/proj.c, astCOPfwd; reference/starlink-ast at fe26cc9b,
 // with the exact values at the poles, which the C comments as upstream 4.22.
 // C returns at `s == 0` before it computes anything else, and computes the
 // cone's radius only away from the poles; here both statuses are selects,
@@ -136,7 +136,7 @@ pub(super) fn cop_fwd_r_w0_near_zero(prm: &PrjPrm, st: f64, s: f64) -> bool {
     !clear_of_zero
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCOPrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOPrev; reference/starlink-ast at fe26cc9b.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
 #[allow(clippy::needless_late_init)]
@@ -165,7 +165,7 @@ pub(super) fn cop_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // COE: conic equal area
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astCOEset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOEset; reference/starlink-ast at fe26cc9b.
 pub(super) fn coe_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = prm.p[1];
@@ -196,7 +196,7 @@ pub(super) fn coe_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCOEfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOEfwd; reference/starlink-ast at fe26cc9b.
 // The radius away from the south pole is computed at the pole too when
 // `T::BRANCH_FREE` is set, so that the body has no branch on the point.
 #[inline(always)]
@@ -252,7 +252,7 @@ pub(super) fn coe_fwd_radicand_near_zero(prm: &PrjPrm, sthe: f64) -> bool {
     !clear_of_zero
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCOErev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOErev; reference/starlink-ast at fe26cc9b.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
 #[allow(clippy::needless_late_init)]
@@ -300,7 +300,7 @@ pub(super) fn coe_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // COD: conic equidistant
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astCODset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCODset; reference/starlink-ast at fe26cc9b.
 pub(super) fn cod_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = prm.p[1];
@@ -326,7 +326,7 @@ pub(super) fn cod_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCODfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCODfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn cod_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let a = prm.w[0] * phi;
@@ -346,7 +346,7 @@ pub(super) fn cod_fwd_needs_special<T: Trig>(prm: &PrjPrm, phi: f64, _theta: f64
     !sincosd_covers(prm.w[0] * phi)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCODrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCODrev; reference/starlink-ast at fe26cc9b.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
 #[allow(clippy::needless_late_init)]
@@ -375,7 +375,7 @@ pub(super) fn cod_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // COO: conic orthomorphic
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astCOOset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOOset; reference/starlink-ast at fe26cc9b.
 pub(super) fn coo_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = prm.p[1];
@@ -413,7 +413,7 @@ pub(super) fn coo_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCOOfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOOfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn coo_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     coo_fwd_rest::<T>(prm, theta, coo_fwd_front::<T>(prm, phi, theta))
@@ -478,7 +478,7 @@ pub(super) fn coo_fwd_needs_special<T: Trig>(prm: &PrjPrm, phi: f64, _theta: f64
     !sincosd_covers(prm.w[0] * phi)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCOOrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCOOrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn coo_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     coo_rev_rest::<T>(prm, coo_rev_front::<T>(prm, x, y))

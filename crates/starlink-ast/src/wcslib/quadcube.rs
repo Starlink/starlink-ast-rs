@@ -25,7 +25,7 @@
 // is fused.
 
 // Lineage: every function below is ported from `reference/starlink-ast/wcslib/proj.c`
-// (`reference/starlink-ast` at 3d3f255f); the `flag > 0` tests of the C
+// (`reference/starlink-ast` at fe26cc9b); the `flag > 0` tests of the C
 // bodies are applied unconditionally.
 
 use super::math;
@@ -140,7 +140,7 @@ macro_rules! rev_face {
 // TSC: tangential spherical cube
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astTSCset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astTSCset; reference/starlink-ast at fe26cc9b.
 pub(super) fn tsc_set(prm: &mut PrjPrm) -> Status {
     quadcube_set(prm);
     Status::Ok
@@ -149,7 +149,7 @@ pub(super) fn tsc_set(prm: &mut PrjPrm) -> Status {
 // astTSCfwd: a coordinate may exceed 1 by this much for rounding.
 const TSC_FWD_TOL: f64 = 1.0e-12;
 
-// reference/starlink-ast/wcslib/proj.c, astTSCfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astTSCfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn tsc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     tsc_fwd_rest(prm, tsc_fwd_front::<T>(prm, phi, theta))
@@ -279,7 +279,7 @@ pub(super) fn cube_face_near_tie(l: f64, m: f64, n: f64) -> bool {
     near
 }
 
-// reference/starlink-ast/wcslib/proj.c, astTSCrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astTSCrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn tsc_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let mut xf = x * prm.w[1];
@@ -332,7 +332,7 @@ pub(super) fn tsc_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // CSC: COBE quadrilateralized spherical cube
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astCSCset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCSCset; reference/starlink-ast at fe26cc9b.
 pub(super) fn csc_set(prm: &mut PrjPrm) -> Status {
     quadcube_set(prm);
     Status::Ok
@@ -364,7 +364,7 @@ const CSC_C11: f32 = float_of(0.15384112876);
 const CSC_C20: f32 = float_of(-0.178251207466);
 const CSC_C02: f32 = float_of(0.106959469314);
 
-// reference/starlink-ast/wcslib/proj.c, astCSCfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCSCfwd; reference/starlink-ast at fe26cc9b.
 // The C works in `float` throughout; see the module documentation.
 #[inline(always)]
 pub(super) fn csc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
@@ -617,7 +617,7 @@ fn csc_series(u: f32, v: f32) -> f32 {
     z0 + v * (z1 + v * (z2 + v * (z3 + v * (z4 + v * (z5 + v * z6)))))
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCSCrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCSCrev; reference/starlink-ast at fe26cc9b.
 // The C works in `float` throughout; see the module documentation.
 #[inline(always)]
 pub(super) fn csc_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
@@ -684,7 +684,7 @@ pub(super) fn csc_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // QSC: quadrilateralized spherical cube
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astQSCset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astQSCset; reference/starlink-ast at fe26cc9b.
 pub(super) fn qsc_set(prm: &mut PrjPrm) -> Status {
     quadcube_set(prm);
     Status::Ok
@@ -696,7 +696,7 @@ const QSC_FWD_TOL: f64 = 1.0e-12;
 // angle formula" in the C.
 const QSC_SMALL_ANGLE: f64 = 1.0e-8;
 
-// reference/starlink-ast/wcslib/proj.c, astQSCfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astQSCfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn qsc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     if theta.abs() == 90.0 {
@@ -825,7 +825,7 @@ pub(super) fn qsc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
 // astQSCrev: `rho` may fall below -1 by this much for rounding.
 const QSC_REV_TOL: f64 = 1.0e-12;
 
-// reference/starlink-ast/wcslib/proj.c, astQSCrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astQSCrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn qsc_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let mut xf = x * prm.w[1];

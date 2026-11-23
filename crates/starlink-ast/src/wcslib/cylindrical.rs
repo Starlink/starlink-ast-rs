@@ -24,7 +24,7 @@ use super::zenithal::c_copysign;
 // CYP: cylindrical perspective
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astCYPset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCYPset; reference/starlink-ast at fe26cc9b.
 pub(super) fn cyp_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -64,7 +64,7 @@ pub(super) fn cyp_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCYPfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCYPfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn cyp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let s = prm.p[1] + T::cosd(theta);
@@ -113,7 +113,7 @@ pub(super) fn cyp_fwd_s_near_zero(prm: &PrjPrm, cthe: f64) -> bool {
     !clear_of_zero
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCYPrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCYPrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn cyp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // The tolerance on |a| = 1, `tol` in C.
@@ -143,7 +143,7 @@ pub(super) fn cyp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // CEA: cylindrical equal area
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astCEAset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCEAset; reference/starlink-ast at fe26cc9b.
 pub(super) fn cea_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -170,7 +170,7 @@ pub(super) fn cea_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCEAfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCEAfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn cea_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let x = prm.w[0] * phi;
@@ -179,7 +179,7 @@ pub(super) fn cea_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCEArev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCEArev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn cea_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // The tolerance on |s| = 1, `tol` in C.
@@ -203,7 +203,7 @@ pub(super) fn cea_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // CAR: Cartesian
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astCARset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCARset; reference/starlink-ast at fe26cc9b.
 pub(super) fn car_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -220,7 +220,7 @@ pub(super) fn car_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCARfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCARfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn car_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let x = prm.w[0] * phi;
@@ -229,7 +229,7 @@ pub(super) fn car_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astCARrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astCARrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn car_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let phi = prm.w[1] * x;
@@ -242,7 +242,7 @@ pub(super) fn car_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // MER: Mercator
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astMERset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMERset; reference/starlink-ast at fe26cc9b.
 pub(super) fn mer_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -259,7 +259,7 @@ pub(super) fn mer_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astMERfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMERfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn mer_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     if theta <= -90.0 || theta >= 90.0 {
@@ -272,7 +272,7 @@ pub(super) fn mer_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astMERrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMERrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn mer_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let phi = x * prm.w[1];

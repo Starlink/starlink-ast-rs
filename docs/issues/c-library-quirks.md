@@ -75,7 +75,6 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`RegBaseGrid` fails when no grid point lies in the Region](#regbasegrid-fails-when-no-grid-point-lies-in-the-region)
 - [`WcsOthers` misses a repeated CTYPE comment when the celestial axes come first](#wcsothers-misses-a-repeated-ctype-comment-when-the-celestial-axes-come-first)
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
-- [A WcsMap reports unusable parameters only on its first transformation](#a-wcsmap-reports-unusable-parameters-only-on-its-first-transformation)
 - [`IsZenithal` tests the wrong SZP parameter](#iszenithal-tests-the-wrong-szp-parameter)
 - [The `SombCos` resampling kernel is half `Somb` everywhere except at zero offset](#the-sombcos-resampling-kernel-is-half-somb-everywhere-except-at-zero-offset)
 - [Block averaging with variances lets one pixel's bad variance decide for others](#block-averaging-with-variances-lets-one-pixels-bad-variance-decide-for-others)
@@ -144,6 +143,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream a87d1700): A WcsMap reports unusable parameters only on its first transformation](#resolved-upstream-a87d1700-a-wcsmap-reports-unusable-parameters-only-on-its-first-transformation)
 - [RESOLVED (upstream 45ae1bd8): SpecTrans replaces a zero CDELT with 1.0 whatever CRVAL is](#resolved-upstream-45ae1bd8-spectrans-replaces-a-zero-cdelt-with-10-whatever-crval-is)
 - [RESOLVED (upstream cba0743a): DssMap's inverse gives a far-side sky position a pixel position](#resolved-upstream-cba0743a-dssmaps-inverse-gives-a-far-side-sky-position-a-pixel-position)
 - [RESOLVED (upstream f6c0d187): `astRead` crashes on a non-spectral `-LOG` axis with a zero CRVAL](#resolved-upstream-f6c0d187-astread-crashes-on-a-non-spectral--log-axis-with-a-zero-crval)
@@ -1119,23 +1119,6 @@ The same holds for a SkyFrame inside a FrameSet: the FrameSet conversion passes 
 `tests/test_sky_last.rs`, from `tools/oracle_fixtures/sky_last_probe.c`, replays a sequence of conversions that exercise both caches and matches C bit for bit.
 
 Question for upstream: is the history dependence intended, and would an exact calculation (or a cache keyed on the exact epoch only) be acceptable?
-
-### A WcsMap reports unusable parameters only on its first transformation
-
-**Status:** Confirmed against the C source and the built oracle (2026-10-07).
-
-`InitPrjPrm` (wcsmap.c) leaves wcslib's `flag` clear, so the first projection call runs the projection's set-up routine, and `Map` turns its failure (status 1) into `AST__WCSPA`.
-The set-up routines record themselves in `flag` before validating the parameters: `azpset` sets `prj->flag` and then returns 1 when `mu` is -1 (`crates/starlink-ast/vendor/wcslib/proj.c`).
-The next call therefore skips the set-up and projects with the unusable parameters, and wcslib reports a point it cannot project (status 2), which `Map` makes bad.
-An AZP WcsMap with `PV2_1 = -1` therefore raises `AST__WCSPA` on a first forward transformation and gives bad values on an inverse one after it.
-The inverse path calls the projection first, to find the longitude range (`LongRange`), so an inverse transformation of a fresh WcsMap fails the set-up silently there: it raises nothing and gives bad values, and a forward transformation after it projects with the partly set-up parameters, giving `(-0, 0)` for the input `(0.1, 0.2)`.
-
-The port does not mirror this.
-Its projection (`wcslib::prj::Prj`) runs the set-up once, when the WcsMap's parameters are set, keeps the set-up's status, and returns it from every projection call, so every transformation that has a good point reports `AST__WCSPA`, whatever the order of the transformations; a transformation whose points are all bad reports nothing and gives bad values, as in C.
-It never projects with partly set-up parameters.
-A first forward transformation agrees with C, which `unusable_projection_parameters_are_errors` in `crates/starlink-ast/tests/test_wcsmap.rs` covers; `unusable_parameters_are_an_error_on_every_transform` in the same file covers the later transformations and an inverse one first, where the port and C differ.
-
-Question for upstream: should the set-up routines leave `flag` clear when they fail, so that every transformation reports the parameters rather than projecting with them?
 
 ### `IsZenithal` tests the wrong SZP parameter
 
@@ -2341,6 +2324,23 @@ So the port gives a NaN input the result C gives `AST__BAD`.
 
 Each entry names the commit that fixed it.
 Where the port mirrored the defect, the entry also records the inversion, because a mirror of a fixed bug is a bug.
+
+### RESOLVED (upstream a87d1700): A WcsMap reports unusable parameters only on its first transformation
+
+`InitPrjPrm` (wcsmap.c) leaves wcslib's `flag` clear, so the first projection call runs the projection's set-up routine, and `Map` turns its failure (status 1) into `AST__WCSPA`.
+The set-up routines recorded themselves in `flag` before validating the parameters: `azpset` sets `prj->flag` and then returns 1 when `mu` is -1 (`wcslib/proj.c`).
+The next call therefore skips the set-up and projects with the unusable parameters, and wcslib reports a point it cannot project (status 2), which `Map` makes bad.
+An AZP WcsMap with `PV2_1 = -1` therefore raises `AST__WCSPA` on a first forward transformation and gives bad values on an inverse one after it.
+The inverse path calls the projection first, to find the longitude range (`LongRange`), so an inverse transformation of a fresh WcsMap fails the set-up silently there: it raises nothing and gives bad values, and a forward transformation after it projects with the partly set-up parameters, giving `(-0, 0)` for the input `(0.1, 0.2)`.
+
+The port never mirrored this.
+Its projection (`wcslib::prj::Prj`) runs the set-up once, when the WcsMap's parameters are set, keeps the set-up's status, and returns it from every projection call, so every transformation that has a good point reports `AST__WCSPA`, whatever the order of the transformations; a transformation whose points are all bad reports nothing and gives bad values, as in C.
+It never projects with partly set-up parameters.
+A first forward transformation agrees with C, which `unusable_projection_parameters_are_errors` in `crates/starlink-ast/tests/test_wcsmap.rs` covers; `unusable_parameters_are_an_error_on_every_transform` in the same file covers the later transformations and an inverse one first, where the port and C differed.
+
+Upstream now records the set-up in `flag` only after the parameters pass, in all ten routines (AZP, SZP, ZPN, AIR, CYP, CEA, COP, COE, COD, COO), so every transformation reports `AST__WCSPA`; a probe of the fixed library confirms it for each sequence `unusable_parameters_are_an_error_on_every_transform` covers.
+`LongRange` changed with it: it compares the two positions of its cyclic test only if both project, and does not project the second if the first fails.
+`WcsMap::long_range` had compared them whatever their status, and now follows C; `long_range_is_not_cyclic_when_projection_fails` covers it.
 
 ### RESOLVED (upstream 45ae1bd8): SpecTrans replaces a zero CDELT with 1.0 whatever CRVAL is
 

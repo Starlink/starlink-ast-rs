@@ -862,9 +862,7 @@ fn unusable_projection_parameters_are_errors() {
     }
 
     // The first forward transformation of these WcsMaps reports the unusable
-    // parameters, in C as here. C reports nothing on later transformations,
-    // where the port still does
-    // (`unusable_parameters_are_an_error_on_every_transform`).
+    // parameters, as later ones do (`unusable_parameters_are_an_error_on_every_transform`).
     let azp = wcs(WcsProjection::Azp, &[(1, -1.0)]);
     assert_eq!(
         azp.transform(&pts, true).unwrap_err().code(),
@@ -1140,9 +1138,10 @@ fn unusable_parameters_are_an_error_only_for_good_points() {
 }
 
 /// Unusable projection parameters are reported by every transformation, not
-/// only the first; see `docs/issues/c-library-quirks.md`, "A WcsMap reports
-/// unusable parameters only on its first transformation", for C's behavior,
-/// which the port does not mirror.
+/// only the first, whatever the order of forward and inverse ones.
+// C reported them only on the first until upstream a87d1700; a probe of the
+// fixed library gives AST__WCSPA for every transformation of each sequence
+// below (docs/issues/c-library-quirks.md, "RESOLVED (upstream a87d1700)").
 #[test]
 fn unusable_parameters_are_an_error_on_every_transform() {
     let pts = PointSet::from_rows([[0.1, 0.2]]);

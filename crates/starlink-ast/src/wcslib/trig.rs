@@ -64,7 +64,7 @@ fn quadrant(floored: f64) -> i32 {
 impl Trig for Libm {
     const BRANCH_FREE: bool = false;
 
-    // reference/starlink-ast/wcslib/wcstrig.c, astSind; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astSind; reference/starlink-ast at fe26cc9b.
     #[inline(always)]
     fn sind(angle: f64) -> f64 {
         if angle % 90.0 == 0.0 {
@@ -79,7 +79,7 @@ impl Trig for Libm {
         math::sin(angle * D2R)
     }
 
-    // reference/starlink-ast/wcslib/wcstrig.c, astCosd; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astCosd; reference/starlink-ast at fe26cc9b.
     #[inline(always)]
     fn cosd(angle: f64) -> f64 {
         if angle % 90.0 == 0.0 {
@@ -94,7 +94,7 @@ impl Trig for Libm {
         math::cos(angle * D2R)
     }
 
-    // reference/starlink-ast/wcslib/wcstrig.c, astTand; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astTand; reference/starlink-ast at fe26cc9b.
     #[inline(always)]
     fn tand(angle: f64) -> f64 {
         let resid = angle % 360.0;
@@ -108,7 +108,7 @@ impl Trig for Libm {
         math::tan(angle * D2R)
     }
 
-    // reference/starlink-ast/wcslib/wcstrig.c, astASind; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astASind; reference/starlink-ast at fe26cc9b.
     #[inline(always)]
     fn asind(v: f64) -> f64 {
         if v <= -1.0 {
@@ -123,7 +123,7 @@ impl Trig for Libm {
         math::asin(v) * R2D
     }
 
-    // reference/starlink-ast/wcslib/wcstrig.c, astACosd; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astACosd; reference/starlink-ast at fe26cc9b.
     #[inline(always)]
     fn acosd(v: f64) -> f64 {
         if v >= 1.0 {
@@ -138,7 +138,7 @@ impl Trig for Libm {
         math::acos(v) * R2D
     }
 
-    // reference/starlink-ast/wcslib/wcstrig.c, astATand; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astATand; reference/starlink-ast at fe26cc9b.
     #[inline(always)]
     fn atand(v: f64) -> f64 {
         if v == -1.0 {
@@ -151,7 +151,7 @@ impl Trig for Libm {
         math::atan(v) * R2D
     }
 
-    // reference/starlink-ast/wcslib/wcstrig.c, astATan2d; reference/starlink-ast at 3d3f255f.
+    // reference/starlink-ast/wcslib/wcstrig.c, astATan2d; reference/starlink-ast at fe26cc9b.
     #[inline(always)]
     fn atan2d(y: f64, x: f64) -> f64 {
         if y == 0.0 {

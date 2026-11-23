@@ -31,7 +31,7 @@ use std::f64::consts::{PI, SQRT_2};
 // SFL: Sanson-Flamsteed
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astSFLset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSFLset; reference/starlink-ast at fe26cc9b.
 pub(super) fn sfl_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -48,7 +48,7 @@ pub(super) fn sfl_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astSFLfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSFLfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn sfl_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let x = prm.w[0] * phi * T::cosd(theta);
@@ -57,7 +57,7 @@ pub(super) fn sfl_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astSFLrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSFLrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn sfl_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let w = math::cos(y / prm.r0);
@@ -76,7 +76,7 @@ pub(super) fn sfl_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // PAR: parabolic
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astPARset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astPARset; reference/starlink-ast at fe26cc9b.
 pub(super) fn par_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -97,7 +97,7 @@ pub(super) fn par_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astPARfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astPARfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn par_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let s = T::sind(theta / 3.0);
@@ -107,7 +107,7 @@ pub(super) fn par_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astPARrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astPARrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn par_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let s = y * prm.w[3];
@@ -136,7 +136,7 @@ pub(super) fn par_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // MOL: Mollweide
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astMOLset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMOLset; reference/starlink-ast at fe26cc9b.
 // C's `SQRT2` literal rounds to `SQRT_2`.
 pub(super) fn mol_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
@@ -155,7 +155,7 @@ pub(super) fn mol_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astMOLfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMOLfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn mol_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     // The tolerance on the residual of the iteration, `tol` in C.
@@ -202,7 +202,7 @@ pub(super) fn mol_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astMOLrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astMOLrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn mol_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // The tolerance on the squared radius and on |z| = 1, `tol` in C.
@@ -252,7 +252,7 @@ pub(super) fn mol_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // AIT: Hammer-Aitoff
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astAITset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAITset; reference/starlink-ast at fe26cc9b.
 pub(super) fn ait_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -269,7 +269,7 @@ pub(super) fn ait_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astAITfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAITfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn ait_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let cthe = T::cosd(theta);
@@ -317,7 +317,7 @@ pub(super) fn ait_fwd_divisor_near_zero(cthe: f64, chalf: f64) -> bool {
     !clear_of_zero
 }
 
-// reference/starlink-ast/wcslib/proj.c, astAITrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAITrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn ait_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // The tolerance on u = 1/2 and on |s| = 1, `tol` in C.

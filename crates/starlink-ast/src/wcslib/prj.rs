@@ -21,10 +21,10 @@
 //! it, so the error surfaces at the first point that reaches the projection
 //! as it does in C.
 //!
-//! wcslib's set-up functions write `flag` before they can fail, so after a
-//! failed set-up C runs the projection bodies on half-initialized constants
-//! at the second and later calls.
-//! The native [`Prj`] keeps returning the set-up status instead.
+//! wcslib's set-up functions record themselves in `flag` only once the
+//! parameters have passed, so a failed set-up runs again, and fails again,
+//! at every call; [`Prj`] returns the kept status at every call to the same
+//! effect.
 //!
 //! The function pointers, the projection `code` and `flag` of C's struct are
 //! not stored: the projection is the [`WcsProjection`] and the dispatch is a
@@ -1563,7 +1563,7 @@ fn run_setup(proj: WcsProjection, prm: &mut PrjPrm) -> Status {
 
 /// Fill the parameter arrays from the supplied parameters, giving each
 /// parameter that was not supplied its projection's default or zero.
-// `InitPrjPrm` in `reference/starlink-ast` at 3d3f255f (`src/wcsmap.c`).
+// `InitPrjPrm` in `reference/starlink-ast` at fe26cc9b (`src/wcsmap.c`).
 fn init_params(proj: WcsProjection, prm: &mut PrjPrm, params: &[Vec<Option<f64>>], tpn_tan: bool) {
     // Make the set-up compute its constants afresh.
     prm.r0 = 0.0;

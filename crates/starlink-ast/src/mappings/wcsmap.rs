@@ -728,11 +728,19 @@ impl WcsMap {
         }
 
         // See if the projection is cyclic: transform sky positions
-        // [90,bb] and [450,bb] into Cartesian and compare them.
-        crate::call_counts::hit_n("wcs_fwd", 2);
-        let (_s0, x0, y0) = self.prj.fwd_raw(90.0, bb);
-        let (_s1, x1, y1) = self.prj.fwd_raw(450.0, bb);
-        let cyclic = (x0 - x1).abs() < 1.0e-10 && (y0 - y1).abs() < 1.0e-10;
+        // [90,bb] and [450,bb] into Cartesian and compare them. The
+        // projection is not cyclic if either cannot be transformed, and the
+        // second is not tried if the first fails (wcsmap.c:2808-2815).
+        crate::call_counts::hit("wcs_fwd");
+        let (s0, x0, y0) = self.prj.fwd_raw(90.0, bb);
+        let mut cyclic = false;
+        if s0 == Status::Ok {
+            crate::call_counts::hit("wcs_fwd");
+            let (s1, x1, y1) = self.prj.fwd_raw(450.0, bb);
+            if s1 == Status::Ok {
+                cyclic = (x0 - x1).abs() < 1.0e-10 && (y0 - y1).abs() < 1.0e-10;
+            }
+        }
 
         (cyclic, high, low)
     }
@@ -1688,6 +1696,35 @@ mod tests {
             map.set_pv(2, m, v).unwrap();
         }
         map
+    }
+
+    #[test]
+    fn long_range_is_not_cyclic_when_projection_fails() {
+        // AZP with mu = -1 has unusable parameters, so neither test position
+        // of the cyclic check projects, and only the first is tried.
+        let map = wcsmap(WcsProjection::Azp, &[0.0, -1.0]);
+        #[cfg(feature = "call-counts")]
+        crate::call_counts::reset();
+        assert!(!map.long_range().0);
+        #[cfg(feature = "call-counts")]
+        assert_eq!(
+            crate::call_counts::snapshot().get("wcs_fwd").copied(),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn long_range_of_usable_azp_is_cyclic() {
+        // The same projection with usable parameters projects both test
+        // positions, and a zenithal projection repeats every 360 degrees.
+        assert!(wcsmap(WcsProjection::Azp, &[0.0, 0.0]).long_range().0);
+    }
+
+    #[test]
+    fn long_range_of_car_is_not_cyclic() {
+        // CAR projects both test positions, but its x grows with longitude,
+        // so the two differ.
+        assert!(!wcsmap(WcsProjection::Car, &[]).long_range().0);
     }
 
     /// Projected (x, y), in the WcsMap's input units, of native longitudes

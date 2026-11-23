@@ -339,7 +339,7 @@ impl Terms {
     }
 }
 
-// reference/starlink-ast/wcslib/tpn.c, astTPNset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/tpn.c, astTPNset; reference/starlink-ast at fe26cc9b.
 // The branches keep the shape of the C.
 #[allow(clippy::if_same_then_else)]
 pub(super) fn tpn_set(prm: &mut PrjPrm) -> Status {
@@ -379,7 +379,7 @@ pub(super) fn tpn_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/tpn.c, astTPNfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/tpn.c, astTPNfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn tpn_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let (status, xi, eta) = tpn_fwd_front::<T>(prm, phi, theta);
@@ -678,7 +678,7 @@ pub(super) fn tpn_fwd_solve(prm: &PrjPrm, xi: f64, eta: f64, max_iterations: usi
     }
 }
 
-// reference/starlink-ast/wcslib/tpn.c, astTPNrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/tpn.c, astTPNrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn tpn_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let xi;
