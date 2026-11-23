@@ -210,7 +210,7 @@ pub(crate) fn make_int_world(
     for i in 0..nout {
         pperm[wperm[i]] = i;
         let (pfrm, paxis) = fr.primary_frame(i);
-        if pfrm.as_any().is::<SkyFrame>() {
+        if super::celestial_axes::is_a_sky_frame(pfrm) {
             skycol[wperm[i]] = paxis + 1;
             lin[i] = false;
             // First sky axis seen → skycol0 / skydiag0.

@@ -571,3 +571,104 @@ fn two_spectral_axes_are_written_by_no_fits_encoding() {
         assert!(list_cards(&mut fc).is_empty(), "{encoding} left cards");
     }
 }
+
+/// Not in the C test: a FITS description treats a SkyFrame as celestial only
+/// when its Domain is SKY. Beside a celestial SkyFrame, a second SkyFrame with
+/// Domain POLANAL is written as two ordinary axes, while a second celestial
+/// one leaves nothing written (values from the C library at the pinned
+/// commit).
+#[test]
+fn a_skyframe_outside_the_sky_domain_is_an_ordinary_axis() {
+    let sky = tan_frameset();
+    for (domain, expect) in [("SKY", 0), ("POLANAL", 1)] {
+        let mut second = SkyFrame::new(SkySystem::Icrs);
+        second.set_attribute("Domain", domain).unwrap();
+        let fs = two_frame(
+            frame(4, "Domain=GRID"),
+            parallel(fmap(&sky), Box::new(UnitMap::new(2))),
+            Box::new(CmpFrame::new(current(&sky), Box::new(second))),
+        );
+        for encoding in ["FITS-WCS", "FITS-PC"] {
+            let mut fc = fitschan(&format!("Encoding={encoding}"), &[]);
+            check_write(&mut fc, fs.clone(), expect)
+                .unwrap_or_else(|e| panic!("{domain} {encoding}: {e}"));
+            if expect == 1 {
+                check_card(&mut fc, "CTYPE3", true, Some("'RA      '")).unwrap();
+                check_card(&mut fc, "CTYPE4", true, Some("'Dec     '")).unwrap();
+                check_card(&mut fc, "CRVAL3", true, Some("  57.295779513082323")).unwrap();
+            }
+        }
+    }
+}
+
+/// Not in the C test: a degenerate axis of a SkyFrame outside the SKY Domain
+/// keeps the unit scale of an ordinary axis, not the scale of its partner
+/// axis (values from the C library at the pinned commit).
+#[test]
+fn a_degenerate_axis_outside_the_sky_domain_has_a_unit_scale() {
+    let sky = tan_frameset();
+    let mut second = SkyFrame::new(SkySystem::Icrs);
+    second.set_attribute("Domain", "POLANAL").unwrap();
+    let fs = two_frame(
+        frame(3, "Domain=GRID"),
+        parallel(
+            fmap(&sky),
+            series(
+                Box::new(ZoomMap::new(1, 0.01).unwrap()),
+                Box::new(PermMap::new(&[1], &[1, -1], &[0.5]).unwrap()),
+            ),
+        ),
+        Box::new(CmpFrame::new(current(&sky), Box::new(second))),
+    );
+    for encoding in ["FITS-WCS", "FITS-PC"] {
+        let mut fc = fitschan(&format!("Encoding={encoding}"), &[]);
+        check_write(&mut fc, fs.clone(), 1).unwrap_or_else(|e| panic!("{encoding}: {e}"));
+        check_card(&mut fc, "CDELT3", true, Some(" 0.57295779513082312")).unwrap();
+        check_card(&mut fc, "CDELT4", true, Some("                 1.0 ")).unwrap();
+        check_card(&mut fc, "CRVAL4", true, Some("  28.647889756541161")).unwrap();
+    }
+}
+
+/// Not in the C test: FITS-CLASS describes a cube only when its SkyFrame is
+/// in the SKY Domain; with the same SkyFrame in the POLANAL Domain C writes
+/// nothing (values from the C library at the pinned commit).
+#[test]
+fn class_needs_a_skyframe_in_the_sky_domain() {
+    let fs = read_cards(&[
+        "NAXIS   = 3",
+        "NAXIS1  = 10",
+        "NAXIS2  = 1",
+        "NAXIS3  = 1",
+        "CTYPE1  = 'FREQ'",
+        "CTYPE2  = 'RA---SIN'",
+        "CTYPE3  = 'DEC--SIN'",
+        "CRPIX1  = 1",
+        "CRPIX2  = 5",
+        "CRPIX3  = 5",
+        "CRVAL1  = 1.0E11",
+        "CRVAL2  = 10",
+        "CRVAL3  = 20",
+        "CDELT1  = 1.0E6",
+        "CDELT2  = -0.1",
+        "CDELT3  = 0.1",
+        "SPECSYS = 'LSRK'",
+        "RESTFREQ= 1.0E11",
+    ]);
+    let naxes = ["NAXIS1  = 10", "NAXIS2  = 1", "NAXIS3  = 1"];
+
+    let mut fc = fitschan("Encoding=FITS-CLASS", &naxes);
+    check_write(&mut fc, fs.clone(), 1).unwrap();
+
+    let cur = current(&fs);
+    let cmp = cur.as_any().downcast_ref::<CmpFrame>().unwrap();
+    let mut sky = cmp.frame2().snapshot();
+    sky.set_domain("POLANAL").unwrap();
+    let polanal = two_frame(
+        base(&fs),
+        fmap(&fs),
+        Box::new(CmpFrame::new(cmp.frame1().snapshot(), sky)),
+    );
+    let mut fc = fitschan("Encoding=FITS-CLASS", &naxes);
+    check_write(&mut fc, polanal, 0).unwrap();
+    assert_eq!(list_cards(&mut fc).len(), 3);
+}

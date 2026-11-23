@@ -479,11 +479,7 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
                 return Ok(None);
             }
             spec_axis = Some(iax);
-        } else if pframe
-            .as_any()
-            .downcast_ref::<crate::frames::SkyFrame>()
-            .is_some()
-        {
+        } else if celestial_axes::is_a_sky_frame(pframe) {
             let this = std::ptr::from_ref(pframe).cast::<()>();
             if sky_frame.is_some_and(|first| first != this) {
                 return Ok(None);
@@ -789,6 +785,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
             }
         }
         if matched_sky.is_none()
+            && celestial_axes::is_a_sky_frame(pframe)
             && let Some(sky) = pframe.as_any().downcast_ref::<SkyFrame>()
         {
             matched_sky = Some(sky.clone());

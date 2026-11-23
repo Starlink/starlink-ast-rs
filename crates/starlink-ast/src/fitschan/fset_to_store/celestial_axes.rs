@@ -55,7 +55,7 @@ use super::world_axes::world_axes;
 /// and preserved by `TidyOffsets`), so it deliberately fails this test
 /// and falls through to `OtherAxes`, which emits the linear OFLN / OFLT
 /// axis description.
-fn is_a_sky_frame(frame: &dyn Frame) -> bool {
+pub(super) fn is_a_sky_frame(frame: &dyn Frame) -> bool {
     frame.as_any().is::<SkyFrame>() && frame.domain() == "SKY"
 }
 
