@@ -863,3 +863,35 @@ fn fitschan_options_applies_to_every_new_fitschan() {
         }
     }
 }
+
+/// A value is written within its card whatever FitsDigits asks for: no
+/// more digits are used than the field holds. The cards are those of the
+/// C library at the pinned commit, which are the same for every value
+/// tried.
+#[test]
+fn fits_digits_of_any_size_writes_the_card() {
+    for digits in [1000, -100000, -1000, 15, -15, 73, -73, i32::MIN, i32::MAX] {
+        let mut fc = FitsChan::new().unwrap();
+        fc.set_fits_digits(digits);
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            fc.set_fits_f("A", 1e300, "", false).unwrap();
+            fc.set_fits_f("B", 0.1, "", false).unwrap();
+            fc.set_fits_cf("C", (-5.1e-4, 1e300), "", false).unwrap();
+        }));
+        assert!(caught.is_ok(), "FitsDigits {digits} panicked");
+        fc.clear_card().unwrap();
+        let mut cards = Vec::new();
+        while let Some(c) = fc.find_fits("%f", true).unwrap() {
+            cards.push(c.trim_end().to_string());
+        }
+        assert_eq!(
+            cards,
+            [
+                "A       =             1.0E+300",
+                "B       =                  0.1",
+                "C       =              -5.1E-4            1.0E+300",
+            ],
+            "FitsDigits {digits}"
+        );
+    }
+}

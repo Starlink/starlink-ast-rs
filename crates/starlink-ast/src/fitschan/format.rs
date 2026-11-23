@@ -48,7 +48,9 @@ pub(crate) fn encode_float_in(
     maxwidth: usize,
     fitsrnd: usize,
 ) -> Option<String> {
-    let mut ldigits = digits.abs();
+    // A value with more digits than the field holds cannot be written
+    // whatever it is, so no more are asked for (fitschan.c EncodeFloat).
+    let mut ldigits = digits.unsigned_abs().min(maxwidth as u32) as i32;
     let mut buf: Vec<u8>;
     loop {
         let (conv, prec) = if value > -0.001 && value < -0.0001 {
