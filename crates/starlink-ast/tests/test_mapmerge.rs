@@ -651,28 +651,7 @@ const DIAG2: [f64; 2] = [2.0, 3.0];
 /// Cases the port does not yet match, each with the gap it exposes. Each is
 /// checked to still differ (`excluded_cases_still_differ`), so the list
 /// shrinks as the gaps close.
-const MAPMERGE_GAP_EXCLUDED: &[(&str, &str)] = &[
-    (
-        "constant PermMap, then a WcsMap and ZoomMap in parallel",
-        "the PermMap swap with parallel Mappings that upstream f8c7723e refuses: the port merges to one PermMap",
-    ),
-    (
-        "constant PermMap with bad inputs, then a WcsMap and ZoomMap in parallel",
-        "the PermMap swap with parallel Mappings that upstream f8c7723e refuses: the port merges to one PermMap",
-    ),
-    (
-        "constant PermMap, then a ZoomMap and WcsMap in parallel",
-        "the PermMap swap with parallel Mappings that upstream f8c7723e refuses: the port's inverse loses coordinate 2",
-    ),
-    (
-        "constant PermMap, then two WcsMaps in parallel",
-        "the PermMap swap with parallel Mappings that upstream f8c7723e refuses: the port merges to one PermMap",
-    ),
-    (
-        "PermMap whose inverse copies a constant output, then two MathMaps in parallel",
-        "the PermMap swap with parallel Mappings that upstream f8c7723e refuses: the port copies an output index into the new inperm",
-    ),
-];
+const MAPMERGE_GAP_EXCLUDED: &[(&str, &str)] = &[];
 
 fn excluded(name: &str) -> bool {
     MAPMERGE_GAP_EXCLUDED.iter().any(|(n, _)| *n == name)

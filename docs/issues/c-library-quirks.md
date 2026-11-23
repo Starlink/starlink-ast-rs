@@ -217,6 +217,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 2d9d4449): astEQUAL never finds an infinite or NaN value equal to itself](#resolved-upstream-2d9d4449-astequal-never-finds-an-infinite-or-nan-value-equal-to-itself)
 - [RESOLVED (upstream 7de5007a): astRate loops for ever at a position near zero](#resolved-upstream-7de5007a-astrate-loops-for-ever-at-a-position-near-zero)
 - [RESOLVED (upstream b9cf680b): MatrixMap and WinMap merges give Mappings that are not equivalent, or fail](#resolved-upstream-b9cf680b-matrixmap-and-winmap-merges-give-mappings-that-are-not-equivalent-or-fail)
+- [RESOLVED (upstream f8c7723e): CmpMap swaps a PermMap of constants with parallel Mappings](#resolved-upstream-f8c7723e-cmpmap-swaps-a-permmap-of-constants-with-parallel-mappings)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -5453,3 +5454,14 @@ Upstream merges only when the matrices involved and their product are usable (`a
 They now follow the fixed C, with `MatrixMap::mtr_usable` and `MatrixMap::mtr_product` for C's two new protected functions.
 `test_mapping.rs` had pinned C's former errors for a swap past a singular matrix; it now pins C's new results, regenerated from the C library at `fe26cc9b`.
 Where the old C unit and non-square diagonal MatrixMaps were merged with a WinMap as if square, the port already matched the fixed C.
+
+### RESOLVED (upstream f8c7723e): CmpMap swaps a PermMap of constants with parallel Mappings
+
+CmpMap's `MapMerge` swaps a PermMap with a following parallel CmpMap when the PermMap feeds each component from a contiguous block of inputs, or gives it constants.
+It allowed the swap when every PermMap output was constant, which replaced both components though the code that builds the result replaces at most one, and it allowed a constant block whose inputs the PermMap's inverse copies from an output.
+The first gave a new PermMap whose inverse transformation was wrong; the second was reported as an internal programming error.
+Upstream refuses both swaps.
+
+**Rust behavior:** `swap_permmap_parallel_at` in `crates/starlink-ast/src/mappings/simplify.rs` mirrored the test: it merged every-constant cases to one PermMap where C now keeps the CmpMap, lost an inverse coordinate for one, and copied an output index into the new PermMap for the other.
+It now refuses both as upstream does; five `test_permmap_parallel` cases of `testmapmerge.c` in `tests/test_mapmerge.rs`.
+The port already used the components' directions under an inverted CmpMap and checked the PermMap's shape before reading its arrays, the other two parts of the commit.

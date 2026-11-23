@@ -463,16 +463,17 @@ fn perm_map_equality_compares_referenced_constant_values() {
 
 /// C's `astSimplify` clears an AST__TRNND or AST__NODEF raised while reducing
 /// a Mapping and returns the Mapping unsimplified.
-/// A PermMap whose outputs are both constants, followed by a parallel CmpMap,
-/// is swapped with it by transforming the constants through the CmpMap's
-/// components, and the first component here has no forward transformation.
+/// A PermMap whose first output is a constant and whose second copies its
+/// first input, followed by a parallel CmpMap, is swapped with it by
+/// transforming the constant through the CmpMap's first component, which
+/// here has no forward transformation.
 /// The expected dump is what the C library writes for the same Mappings: the
 /// outer CmpMap carries no `IsSimp`, while the parallel CmpMap, simplified
 /// before the merge failed, does.
 #[test]
 fn simplify_clears_an_undefined_transformation_error() {
     use starlink_ast::mappings::{MathMap, PermMap};
-    let pm = PermMap::new(&[1, 2], &[-1, -2], &[3.0, 4.0]).unwrap();
+    let pm = PermMap::new(&[2, 0], &[-1, 1], &[3.0]).unwrap();
     let mm = MathMap::new(1, 1, &["y"], &["x=y"]).unwrap();
     assert!(!mm.has_forward());
     let par = CmpMap::new(
@@ -493,12 +494,11 @@ fn simplify_clears_an_undefined_transformation_error() {
           Nin = 2 	# Number of input coordinates
        IsA Mapping 	# Mapping between coordinate systems
           Out1 = -1 	# Output coordinate 1 = constant no. 1
-          Out2 = -2 	# Output coordinate 2 = constant no. 2
-          In1 = 1 	# Input coordinate 1 = output coordinate 1
-          In2 = 2 	# Input coordinate 2 = output coordinate 2
-          Nconst = 2 	# Number of constants
+          Out2 = 1 	# Output coordinate 2 = input coordinate 1
+          In1 = 2 	# Input coordinate 1 = output coordinate 2
+          In2 = 0 	# Input coordinate 2 is \"bad\"
+          Nconst = 1 	# Number of constants
           Con1 = 3 	# Constant number 1
-          Con2 = 4 	# Constant number 2
        End PermMap
     MapB = 	# Second component Mapping
        Begin CmpMap 	# Compound Mapping
@@ -526,11 +526,12 @@ fn simplify_clears_an_undefined_transformation_error() {
     assert_eq!(got, want);
 }
 
-/// The PermMap with two constant outputs followed by a parallel CmpMap whose
-/// first component lacks a forward transformation, which fails to simplify.
+/// The PermMap with a constant first output followed by a parallel CmpMap
+/// whose first component lacks a forward transformation, which fails to
+/// simplify.
 fn failing_series() -> CmpMap {
     use starlink_ast::mappings::{MathMap, PermMap};
-    let pm = PermMap::new(&[1, 2], &[-1, -2], &[3.0, 4.0]).unwrap();
+    let pm = PermMap::new(&[2, 0], &[-1, 1], &[3.0]).unwrap();
     let mm = MathMap::new(1, 1, &["y"], &["x=y"]).unwrap();
     let par = CmpMap::new(
         Box::new(mm),
@@ -573,7 +574,7 @@ fn a_component_whose_simplification_fails_is_not_recorded_as_simplified() {
 #[test]
 fn a_failing_pair_does_not_stop_the_merge() {
     use starlink_ast::mappings::{MathMap, PermMap};
-    let pm = PermMap::new(&[1, 2], &[-1, -2], &[3.0, 4.0]).unwrap();
+    let pm = PermMap::new(&[2, 0], &[-1, 1], &[3.0]).unwrap();
     let mm = MathMap::new(1, 1, &["y"], &["x=y"]).unwrap();
     let p1 = CmpMap::new(
         Box::new(pm),
@@ -608,7 +609,7 @@ fn a_failing_pair_does_not_stop_the_merge() {
 #[test]
 fn records_from_a_changed_component_survive_a_later_failure() {
     use starlink_ast::mappings::{MathMap, PermMap};
-    let pm = PermMap::new(&[1, 2], &[-1, -2], &[3.0, 4.0]).unwrap();
+    let pm = PermMap::new(&[2, 0], &[-1, 1], &[3.0]).unwrap();
     let mm = MathMap::new(1, 1, &["y"], &["x=y"]).unwrap();
     let a = CmpMap::new(
         Box::new(mm),

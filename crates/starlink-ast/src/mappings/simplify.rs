@@ -2681,11 +2681,17 @@ fn swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) 
         false
     };
 
+    // An input linked to a PermMap output. If a block of outputs is
+    // constant, the inputs that would otherwise feed it are unused by the
+    // forward transformation, and the inverse must give each a constant or a
+    // bad value rather than copy it from an output (cmpmap.c MapMerge).
+    let linked = |p: i64| p >= 1 && p as usize <= npout;
+
     // Check first block (outputs 0..nin_a).
     for idx in 0..nin_a {
         let j = npin - nin_a + idx;
         if aconstants {
-            if eff_outperm[idx] >= 0 {
+            if eff_outperm[idx] >= 0 || linked(eff_inperm[j]) {
                 return Ok(false);
             }
         } else if eff_outperm[idx] != (j as i64 + 1) || eff_inperm[j] != (idx as i64 + 1) {
@@ -2697,12 +2703,18 @@ fn swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) 
     for idx in 0..nin_b {
         let j = npout - nin_b + idx;
         if bconstants {
-            if eff_outperm[j] >= 0 {
+            if eff_outperm[j] >= 0 || linked(eff_inperm[idx]) {
                 return Ok(false);
             }
         } else if eff_inperm[idx] != (j as i64 + 1) || eff_outperm[j] != (idx as i64 + 1) {
             return Ok(false);
         }
+    }
+
+    // With every output constant, both components would be replaced, which
+    // the swap below does not provide for.
+    if aconstants && bconstants {
+        return Ok(false);
     }
 
     // The PermMap has block-swap structure. Build the swapped mappings.
