@@ -1017,3 +1017,91 @@ fn wcsaxes_out_of_range_is_refused_as_c_refuses_it() {
         assert_eq!(got, want, "WCSAXES {value}");
     }
 }
+
+/// A floating-point value that the integer type asked for cannot hold is
+/// not converted, with the C library's error, rather than saturating.
+#[test]
+fn a_float_an_integer_cannot_hold_is_not_converted() {
+    use starlink_ast::error::ErrorCode;
+    let fc_with = |value: &str| {
+        let mut fc = FitsChan::new().unwrap();
+        fc.put_fits(&format!("NAXIS1  = {value}"), false).unwrap();
+        fc
+    };
+    let refused = |method: &str, what: &str| {
+        format!(
+            "{method}(FitsChan): Cannot convert FITS keyword 'NAXIS1' to {what}.\n\
+             {method}(FitsChan): Cannot get value for FITS keyword 'NAXIS1'."
+        )
+    };
+    for value in ["-1.0E300", "2147483648.0", "-2147483649.0"] {
+        let err = fc_with(value).get_fits_i(Some("NAXIS1")).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Ftcnv, "I {value}");
+        assert_eq!(
+            err.message(),
+            refused("astGetFitsI", "integer"),
+            "I {value}"
+        );
+    }
+    assert_eq!(
+        fc_with("2147483647.0").get_fits_i(Some("NAXIS1")).unwrap(),
+        Some(i32::MAX)
+    );
+    assert_eq!(
+        fc_with("-2147483648.0").get_fits_i(Some("NAXIS1")).unwrap(),
+        Some(i32::MIN)
+    );
+    for value in ["9.3E18", "-9.3E18"] {
+        let err = fc_with(value).get_fits_k(Some("NAXIS1")).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Ftcnv, "K {value}");
+        assert_eq!(
+            err.message(),
+            refused("astGetFitsK", "64 bit integer"),
+            "K {value}"
+        );
+    }
+    assert_eq!(
+        fc_with("9.2E18").get_fits_k(Some("NAXIS1")).unwrap(),
+        Some(9_200_000_000_000_000_000)
+    );
+    let err = fc_with("3.0E9").get_fits_ci(Some("NAXIS1")).unwrap_err();
+    assert_eq!(err.message(), refused("astGetFitsCI", "complex integer"));
+}
+
+/// A grism diffraction order an `int` cannot hold is refused when the
+/// header is read, with the C library's error.
+#[test]
+fn a_grism_order_out_of_range_is_refused() {
+    use starlink_ast::error::ErrorCode;
+    let read = |order: &str| {
+        let mut fc = FitsChan::new().unwrap();
+        fc.set_encoding(Encoding::FitsWcs);
+        for c in [
+            "NAXIS   = 1",
+            "CTYPE1  = 'WAVE-GRI'",
+            "CRPIX1  = 1",
+            "CRVAL1  = 5.0E-7",
+            "CDELT1  = 1.0E-10",
+            "CUNIT1  = 'm'",
+            "PV1_0   = 1.0E6",
+            &format!("PV1_1   = {order}"),
+        ] {
+            fc.put_fits(c, false).unwrap();
+        }
+        fc.clear_card().unwrap();
+        fc.read()
+    };
+    for (order, shown) in [("1.0E10", "1e+10"), ("-2147483647", "-2.14748e+09")] {
+        let err = read(order).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Bdfts, "{order}");
+        assert_eq!(
+            err.message(),
+            format!(
+                "astRead(FitsChan): The FITS keyword PV1_1  has an invalid value ({shown}) for the \
+                 diffraction order of a grism."
+            ),
+            "{order}"
+        );
+    }
+    assert!(read("-1").unwrap().is_some());
+}

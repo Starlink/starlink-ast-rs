@@ -206,7 +206,7 @@ fn build_spectral_axis(
         warnings.append(warns);
         map
     } else if algcode == "-GRI" || algcode == "-GRA" {
-        grism_spec_wcs(&algcode, store, axis, &frame)?
+        grism_spec_wcs(&algcode, store, s, axis, &frame)?
     } else {
         None
     };
@@ -381,6 +381,7 @@ fn nonlin_spec_wcs(
 fn grism_spec_wcs(
     algcode: &str,
     store: &FitsStore,
+    s: char,
     axis: usize,
     specfrm: &SpecFrame,
 ) -> AstResult<Option<DynMapping>> {
@@ -426,7 +427,23 @@ fn grism_spec_wcs(
     // Round to nearest, not toward zero: a grism interference order is
     // commonly negative, and `(v + 0.5) as i32` turns -1 into 0
     // (fitschan.c:14422, fixed upstream at 1199880a).
-    let m_order = pv(1).map(|v| v.round() as i32).unwrap_or(0);
+    // An order an `int` cannot hold is refused (fitschan.c, the GrismMap
+    // set-up in SpecTrans's caller), by a test a NaN fails too.
+    let m_order = match pv(1) {
+        Some(v) if v.is_nan() || v.abs() >= f64::from(i32::MAX) => {
+            return Err(AstError::new(
+                ErrorCode::Bdfts,
+                format!(
+                    "astRead(FitsChan): The FITS keyword PV{}_1{s} has an invalid value ({}) for \
+                     the diffraction order of a grism.",
+                    axis + 1,
+                    crate::frames::axis_format::sprintf_double("%g", v)
+                ),
+            ));
+        }
+        Some(v) => v.round() as i32,
+        None => 0,
+    };
     let alpha = pv(2).map(|v| v * DD2R).unwrap_or(0.0);
     let nr = pv(3).unwrap_or(1.0);
     let nrp = pv(4).unwrap_or(0.0);

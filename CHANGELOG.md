@@ -64,6 +64,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: `FitsChan::get_fits_i`, `get_fits_k` and `get_fits_ci` refuse a floating-point value the integer type cannot hold with `ErrorCode::Ftcnv`, as the C library now does, where they returned the nearest value the type holds; a grism diffraction order an `i32` cannot hold is refused when a header is read; and a conversion error's message is the C library's, without the error code's description in front.
 - `starlink-ast`: a `FitsChan` read refuses a WCSAXES that is not from 1 to 999 with `ErrorCode::Bdfts` and the C library's message, and one above 99, which FITS keywords cannot index, with C's internal error; a huge value made the read run for ever.
 - `starlink-ast`: finding the numbers of inputs and outputs of a nested `CmpMap` takes a time proportional to its size; it was exponential in the depth of nesting, so reading a FITS header with a few tens of WCS axes did not finish.
 - `starlink-ast`: a `FitsChan` writes DATE-OBS as the C library does, from the same calendar conversion, and none for an MJD-OBS that is not finite or has no calendar date. It wrote one for an MJD of 1e10, and differed from C for years before 1900 and the last instant of a day.

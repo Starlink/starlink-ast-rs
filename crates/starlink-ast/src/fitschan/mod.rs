@@ -1377,7 +1377,10 @@ impl FitsChan {
         let context = |e: AstError, lname: &Option<String>| match lname {
             Some(n) if !n.is_empty() => AstError::new(
                 e.code(),
-                format!("{e}\n{method}(FitsChan): Cannot get value for FITS keyword '{n}'."),
+                format!(
+                    "{}\n{method}(FitsChan): Cannot get value for FITS keyword '{n}'.",
+                    e.message()
+                ),
             ),
             _ => e,
         };

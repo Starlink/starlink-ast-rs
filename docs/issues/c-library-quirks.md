@@ -223,6 +223,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream e7cb7d95): PermMap's PermSplit split accepts an input fed by no output](#resolved-upstream-e7cb7d95-permmaps-permsplit-split-accepts-an-input-fed-by-no-output)
 - [RESOLVED (upstream 4175c735): A failed FitsChan write loses the cards it replaced](#resolved-upstream-4175c735-a-failed-fitschan-write-loses-the-cards-it-replaced)
 - [RESOLVED (upstream bd9ffbfc): DATE-OBS is written for an MJD with no calendar date](#resolved-upstream-bd9ffbfc-date-obs-is-written-for-an-mjd-with-no-calendar-date)
+- [RESOLVED (upstream cfdbbe8d): A FITS value an integer cannot hold is converted to one](#resolved-upstream-cfdbbe8d-a-fits-value-an-integer-cannot-hold-is-converted-to-one)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -5517,3 +5518,13 @@ Upstream writes none for either.
 
 **Rust behavior:** the port had its own calendar arithmetic (the Meeus algorithm) in place of `palDjcl` and `palDjcal`, so it wrote a DATE-OBS for those MJDs (`'27380803-10-02T09:59:08.694'` for 1e10), and differed from C for dates it can format: a year before 1900 or with a negative sign (MJD 0 is `'17/11/-42'` in C, `'17/11/42'` in the port), and the last instant of a day (`'1999-01-01T24:00:00.000'` in C, `'1999-01-02T00:00:00.000'`).
 `mjd_to_date_obs` in `crates/starlink-ast/src/fitschan/wcs_write/mod.rs` now ports `MjdToDateObs` on the native `palDjcl` and `palDd2tf`; `date_obs_is_written_as_the_c_library_writes_it` in `tests/test_fitschan.rs` pins sixteen MJDs to C's cards.
+
+### RESOLVED (upstream cfdbbe8d): A FITS value an integer cannot hold is converted to one
+
+`CnvType` converted a floating-point card value to `int` or `int64_t` with a cast, which is undefined for a value the type cannot hold, and the grism set-up cast the diffraction order (`PV<i>_1`) the same way.
+Upstream refuses a value outside the type's range (`AST__FTCNV` from `astGetFitsI`, `astGetFitsK` and `astGetFitsCI`, with `-9.2E18` to `9.2E18` for the 64-bit type) and a grism order whose magnitude is not below `INT_MAX` (`AST__BDFTS`).
+
+**Rust behavior:** `from_float` in `crates/starlink-ast/src/fitschan/card_value.rs` saturated, so `astGetFitsI` of -1e300 gave `i32::MIN`, and the grism order saturated likewise.
+Both now refuse as upstream does, with C's messages (`a_float_an_integer_cannot_hold_is_not_converted` and `a_grism_order_out_of_range_is_refused` in `tests/test_fitschan.rs`).
+The conversion error also no longer carries the error code's description in front of C's first message.
+The commit's LutMap half matches already (Rust's saturating cast puts an index beyond the table, as upstream's clamp does); its WcsMap loader half is for the hostile-input stage.
