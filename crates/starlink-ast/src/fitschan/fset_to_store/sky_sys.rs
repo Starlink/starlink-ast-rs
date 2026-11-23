@@ -312,11 +312,10 @@ pub(crate) fn sky_sys(
     if !defdate && s == ' ' {
         if let Some(e) = ep {
             store.mjdobs = Some(e);
-            // Human-readable DATE-OBS — C derives this from the same
-            // MJD value at write time (fitschan.c:3667-3681). The
-            // cutoff at MJD 51179 (1999-01-01) is encoded in
-            // mjd_to_date_str.
-            store.dateobs = Some(crate::fitschan::wcs_write::mjd_to_date_str(e));
+            // C derives DATE-OBS from the same MJD at write time, and
+            // writes none for a date with no calendar equivalent
+            // (fitschan.c MjdToDateObs).
+            store.dateobs = crate::fitschan::wcs_write::mjd_to_date_obs(e);
         }
     }
 

@@ -812,86 +812,53 @@ fn write_pc_cdelt(store: &FitsStore, cards: &mut CardList, s: char) -> bool {
 // Calendar helpers
 // ---------------------------------------------------------------------------
 
-/// Decompose an MJD (UTC, Modified Julian Date) into a Gregorian
-/// calendar date + time tuple `(year, month, day, hour, min, sec_frac)`.
-///
-/// Uses the standard Meeus algorithm (Astronomical Algorithms, §7).
-/// MJD's day boundary is at midnight (JD's day boundary is at noon, so
-/// the algorithm shifts by 0.5).
-#[allow(dead_code)] // wired into the writer's DATE-OBS path in Group 6
-pub(crate) fn mjd_to_gregorian(mjd: f64) -> (i32, u32, u32, u32, u32, f64) {
-    let jd = mjd + 2_400_000.5_f64;
-    let z = (jd + 0.5).floor() as i64;
-    let frac = jd + 0.5 - z as f64; // 0.0 = midnight
-
-    // Gregorian calendar conversion (Meeus §7).
-    let a = if z < 2_299_161 {
-        z
+/// C's `%N.Nd`: at least `digits` digits, after a minus sign if negative.
+fn c_int(n: i32, digits: usize) -> String {
+    if n < 0 {
+        format!("-{:0digits$}", n.unsigned_abs())
     } else {
-        let alpha = ((z as f64 - 1_867_216.25) / 36_524.25).floor() as i64;
-        z + 1 + alpha - alpha / 4
-    };
-    let b = a + 1524;
-    let c = ((b as f64 - 122.1) / 365.25).floor() as i64;
-    let d = (365.25 * c as f64).floor() as i64;
-    let e = ((b - d) as f64 / 30.6001).floor() as i64;
-
-    let day = (b - d - (30.6001 * e as f64).floor() as i64) as u32;
-    let month = if e < 14 {
-        (e - 1) as u32
-    } else {
-        (e - 13) as u32
-    };
-    let year = if month > 2 {
-        (c - 4716) as i32
-    } else {
-        (c - 4715) as i32
-    };
-
-    // Time of day from fractional day.
-    let total_secs = frac * 86400.0;
-    let hour = (total_secs / 3600.0).floor() as u32;
-    let rem = total_secs - hour as f64 * 3600.0;
-    let min = (rem / 60.0).floor() as u32;
-    let sec_frac = rem - min as f64 * 60.0;
-
-    (year, month, day, hour, min, sec_frac)
+        format!("{n:0digits$}")
+    }
 }
 
-/// Format an MJD (UTC) as a FITS DATE-OBS string.
-///
-/// Mirrors fitschan.c:3667-3681. Cutoff is MJD 51179 (1999-01-01);
-/// modern dates use ISO-8601 `YYYY-MM-DDTHH:MM:SS.SSS`, legacy dates
-/// use `DD/MM/YY`.
-#[allow(dead_code)] // wired into the writer's DATE-OBS path in Group 6
-pub(crate) fn mjd_to_date_str(mjd: f64) -> String {
-    const CUTOFF_MJD: f64 = 51179.0; // palCaldj(99, 1, 1)
-    let (year, month, day, hour, min, sec_frac) = mjd_to_gregorian(mjd);
-    if mjd >= CUTOFF_MJD {
-        // Modern ISO-8601, 3-decimal-place seconds.
-        let int_sec = sec_frac.floor() as u32;
-        let ms = ((sec_frac - int_sec as f64) * 1000.0).round() as u32;
-        // Handle rounding overflow (e.g. 59.9996 → ms=1000). Roll up.
-        let (int_sec, ms, min, hour, day, month, year) = if ms == 1000 {
-            // Defer: simplest is to add 1 second and re-format.
-            let mjd_bumped = mjd + 1.0 / 86400.0;
-            let (y2, mo2, d2, h2, mn2, sf2) = mjd_to_gregorian(mjd_bumped);
-            let s2 = sf2.floor() as u32;
-            (s2, 0, mn2, h2, d2, mo2, y2)
-        } else {
-            (int_sec, ms, min, hour, day, month, year)
-        };
-        format!("{year:04}-{month:02}-{day:02}T{hour:02}:{min:02}:{int_sec:02}.{ms:03}")
+/// The DATE-OBS value for an MJD, as C's `MjdToDateObs` gives it: `DD/MM/YY`
+/// before 1999, the year less 1900 or 2000, and `YYYY-MM-DDThh:mm:ss.sss`
+/// from 1999 on, or `None` for a value that is not a finite number or a date
+/// the calendar conversion does not support.
+pub(crate) fn mjd_to_date_obs(mjd: f64) -> Option<String> {
+    if !mjd.is_finite() || mjd == crate::constants::BAD_VALUE {
+        return None;
+    }
+    // C ignores the status of this conversion, which cannot fail.
+    let mjd99 = crate::pal::caldj(99, 1, 1).map_or(51179.0, |(djm, _)| djm);
+    let (year, month, day, fd) = crate::pal::djcl(mjd).ok()?;
+    if mjd < mjd99 {
+        // palDjcal(0, ...): the same calendar date as palDjcl.
+        let yy = year - if year > 1999 { 2000 } else { 1900 };
+        Some(format!(
+            "{}/{}/{}",
+            c_int(day, 2),
+            c_int(month, 2),
+            c_int(yy, 2)
+        ))
     } else {
-        // Legacy DD/MM/YY: two-digit year (year % 100 with century strip).
-        let yy = year.unsigned_abs() % 100;
-        format!("{day:02}/{month:02}/{yy:02}")
+        let (_, ihmsf) = crate::pal::dd2tf(3, fd);
+        Some(format!(
+            "{}-{}-{}T{}:{}:{}.{}",
+            c_int(year, 4),
+            c_int(month, 2),
+            c_int(day, 2),
+            c_int(ihmsf[0], 2),
+            c_int(ihmsf[1], 2),
+            c_int(ihmsf[2], 2),
+            c_int(ihmsf[3], 3)
+        ))
     }
 }
 
 /// Parse a FITS DATE-OBS string back to UTC MJD.
 ///
-/// Inverse of [`mjd_to_date_str`]. Accepts:
+/// Inverse of [`mjd_to_date_obs`]. Accepts:
 /// - ISO-8601 `YYYY-MM-DDTHH:MM:SS[.SSS]` (modern format)
 /// - ISO-8601 `YYYY-MM-DD` (date-only; assumes 00:00:00)
 /// - Legacy `DD/MM/YY` (assumes 00:00:00; 2-digit year mapped to
@@ -1097,66 +1064,6 @@ mod tests {
         assert!(cards.find("OBSGEO-Z").is_none());
         assert!(cards.find("IMAGFREQ").is_none());
     }
-    #[test]
-    fn mjd_to_gregorian_y2k() {
-        // 2000-01-01 00:00:00 UTC = MJD 51544.0
-        let (y, mo, d, h, mn, s) = mjd_to_gregorian(51544.0);
-        assert_eq!(y, 2000);
-        assert_eq!(mo, 1);
-        assert_eq!(d, 1);
-        assert_eq!(h, 0);
-        assert_eq!(mn, 0);
-        assert!(s.abs() < 1e-6);
-    }
-
-    #[test]
-    fn mjd_to_gregorian_j2000_noon() {
-        // 2000-01-01 12:00:00 UTC = MJD 51544.5
-        let (y, mo, d, h, mn, s) = mjd_to_gregorian(51544.5);
-        assert_eq!((y, mo, d, h, mn), (2000, 1, 1, 12, 0));
-        assert!(s.abs() < 1e-6);
-    }
-
-    #[test]
-    fn mjd_to_gregorian_pre_1900() {
-        // 1858-11-17 00:00:00 UTC = MJD 0
-        let (y, mo, d, _, _, _) = mjd_to_gregorian(0.0);
-        assert_eq!((y, mo, d), (1858, 11, 17));
-    }
-
-    #[test]
-    fn mjd_to_date_str_modern_iso() {
-        // MJD ≥ 51179 (1999-01-01) → ISO-8601 with millisecond precision.
-        let s = mjd_to_date_str(51544.5);
-        assert_eq!(s, "2000-01-01T12:00:00.000");
-    }
-
-    #[test]
-    fn mjd_to_date_str_modern_with_ms_precision() {
-        let s = mjd_to_date_str(52414.59);
-        assert_eq!(&s[0..10], "2002-05-20");
-        assert!(s.starts_with("2002-05-20T"));
-        assert_eq!(&s[11..16], "14:09");
-    }
-
-    #[test]
-    fn mjd_to_date_str_legacy_format() {
-        // MJD < 51179 (1999-01-01) → DD/MM/YY.
-        // MJD 40000 = 1968-05-24
-        let s = mjd_to_date_str(40000.0);
-        assert_eq!(s, "24/05/68");
-    }
-
-    #[test]
-    fn mjd_to_date_str_cutoff_boundary() {
-        // MJD 51179 = 1999-01-01 → modern format.
-        let s = mjd_to_date_str(51179.0);
-        assert!(s.starts_with("1999-01-01T"));
-
-        // MJD 51178 = 1998-12-31 → legacy format.
-        let s = mjd_to_date_str(51178.0);
-        assert_eq!(s, "31/12/98");
-    }
 
     #[test]
     fn date_str_to_mjd_iso_modern() {
@@ -1220,7 +1127,7 @@ mod tests {
     #[test]
     fn date_str_to_mjd_roundtrip_modern() {
         let original = 52414.59f64;
-        let s = mjd_to_date_str(original);
+        let s = mjd_to_date_obs(original).unwrap();
         let parsed = date_str_to_mjd(&s).unwrap();
         assert!((parsed - original).abs() < 1e-3);
     }
@@ -1228,7 +1135,7 @@ mod tests {
     #[test]
     fn date_str_to_mjd_roundtrip_legacy() {
         let original = 40000.0f64;
-        let s = mjd_to_date_str(original);
+        let s = mjd_to_date_obs(original).unwrap();
         let parsed = date_str_to_mjd(&s).unwrap();
         assert!((parsed - original).abs() < 1e-6);
     }

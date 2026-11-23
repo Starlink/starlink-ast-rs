@@ -64,6 +64,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a `FitsChan` writes DATE-OBS as the C library does, from the same calendar conversion, and none for an MJD-OBS that is not finite or has no calendar date. It wrote one for an MJD of 1e10, and differed from C for years before 1900 and the last instant of a day.
 - `starlink-ast`: a `FitsChan` with a `FitsDigits` larger than a card can hold writes floating-point values as the C library now does, using no more digits than fit; a very large one, such as -100000, panicked, and others failed with `ErrorCode::Bdfts`.
 - `starlink-ast`: a `FitsChan` writes the description of absolute coordinates for an offset sky system under a version letter no other description has, as the C library now does; it could reuse the letter a Frame's `Ident` had claimed, mixing the two descriptions. FITS-PC also refuses a secondary description with projection parameters the primary one lacks, or a different number of axes, as C does.
 - `starlink-ast`: a `FitsChan` write no longer panics on a FrameSet with two world axes that depend on one pixel axis, and writes nothing, as the C library does, for a FrameSet whose Mapping holds a CmpMap with `Ident` set, one whose distorted celestial axes share pixel axes with others, one with two spectral axes or two different sky coordinate systems, and one whose celestial reference point cannot be found. It wrote a description of some of them that the C library does not, and failed on another with `ErrorCode::Innco`.

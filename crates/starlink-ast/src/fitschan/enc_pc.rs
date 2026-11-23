@@ -339,11 +339,9 @@ pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut Card
                 primdt = val;
                 if val != BAD_VALUE {
                     cards.set_float("MJD-OBS", val, "Modified Julian Date of observation");
-                    cards.set_string(
-                        "DATE-OBS",
-                        &super::wcs_write::mjd_to_date_str(val),
-                        "Date of observation",
-                    );
+                    if let Some(date) = super::wcs_write::mjd_to_date_obs(val) {
+                        cards.set_string("DATE-OBS", &date, "Date of observation");
+                    }
                 }
             } else if val != BAD_VALUE && !ast_equal(val, primdt) {
                 return false;

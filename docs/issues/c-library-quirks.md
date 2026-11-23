@@ -222,6 +222,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream f0230815): WcsMaps cancel when an axis holds different numbers of projection parameters](#resolved-upstream-f0230815-wcsmaps-cancel-when-an-axis-holds-different-numbers-of-projection-parameters)
 - [RESOLVED (upstream e7cb7d95): PermMap's PermSplit split accepts an input fed by no output](#resolved-upstream-e7cb7d95-permmaps-permsplit-split-accepts-an-input-fed-by-no-output)
 - [RESOLVED (upstream 4175c735): A failed FitsChan write loses the cards it replaced](#resolved-upstream-4175c735-a-failed-fitschan-write-loses-the-cards-it-replaced)
+- [RESOLVED (upstream bd9ffbfc): DATE-OBS is written for an MJD with no calendar date](#resolved-upstream-bd9ffbfc-date-obs-is-written-for-an-mjd-with-no-calendar-date)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -5508,3 +5509,11 @@ Upstream keeps a copy of each card it overwrites (`SaveReplaced`) and puts it ba
 **Rust behavior:** `CardList::put_or_append` in `crates/starlink-ast/src/fitschan/card_list.rs` mirrored the loss.
 It now keeps a replaced-card stack that `fix_new` and `fix_replaced` treat as C does; the two `test_failed_write` cases of `testfitswrite.c` in `tests/test_fitswrite.rs`, and `a_failed_write_puts_back_replaced_cards` in `card_list.rs`.
 The three FITS-PC writes of `fitschan_encodings_probe` that fail now leave the reference cards they replaced, so that oracle was regenerated.
+
+### RESOLVED (upstream bd9ffbfc): DATE-OBS is written for an MJD with no calendar date
+
+`MjdToDateObs` formatted DATE-OBS without checking that the MJD was a finite number, or that `palDjcl` and `palDjcal` had found a calendar date for it, so an MJD-OBS of 1e10 or NaN wrote a DATE-OBS from undefined values.
+Upstream writes none for either.
+
+**Rust behavior:** the port had its own calendar arithmetic (the Meeus algorithm) in place of `palDjcl` and `palDjcal`, so it wrote a DATE-OBS for those MJDs (`'27380803-10-02T09:59:08.694'` for 1e10), and differed from C for dates it can format: a year before 1900 or with a negative sign (MJD 0 is `'17/11/-42'` in C, `'17/11/42'` in the port), and the last instant of a day (`'1999-01-01T24:00:00.000'` in C, `'1999-01-02T00:00:00.000'`).
+`mjd_to_date_obs` in `crates/starlink-ast/src/fitschan/wcs_write/mod.rs` now ports `MjdToDateObs` on the native `palDjcl` and `palDd2tf`; `date_obs_is_written_as_the_c_library_writes_it` in `tests/test_fitschan.rs` pins sixteen MJDs to C's cards.

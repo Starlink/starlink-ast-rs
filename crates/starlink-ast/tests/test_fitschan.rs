@@ -895,3 +895,58 @@ fn fits_digits_of_any_size_writes_the_card() {
         );
     }
 }
+
+/// DATE-OBS as the C library writes it from MJD-OBS at the pinned commit:
+/// `DD/MM/YY` before 1999, with the year less 1900 or 2000 whatever its
+/// sign, ISO 8601 from then on, and no card for a date with no calendar
+/// equivalent.
+#[test]
+fn date_obs_is_written_as_the_c_library_writes_it() {
+    let cases: [(&str, Option<&str>); 16] = [
+        ("55000.5", Some("'2009-06-18T12:00:00.000'")),
+        ("1.0E10", None),
+        ("1.0E300", None),
+        ("-2468570", Some("'01/03/-6800'")),
+        ("-50000.6", Some("'24/12/-179'")),
+        ("51179.9999999999", Some("'1999-01-01T24:00:00.000'")),
+        ("51178.5", Some("'31/12/98'")),
+        ("40000.0", Some("'24/05/68'")),
+        ("51179.0", Some("'1999-01-01T00:00:00.000'")),
+        ("-5.0", Some("'12/11/-42'")),
+        ("0.0", Some("'17/11/-42'")),
+        ("59999.123456789", Some("'2023-02-24T02:57:46.667'")),
+        ("-678941.0", Some("'01/01/-1900'")),
+        ("-2400000.5", Some("'24/11/-6613'")),
+        ("-2399963.5", Some("'31/12/-6613'")),
+        ("2973483.0", Some("'9999-12-31T00:00:00.000'")),
+    ];
+    for (mjd, want) in cases {
+        let mut fc = FitsChan::new().unwrap();
+        fc.set_encoding(Encoding::FitsWcs);
+        for card in [
+            "NAXIS   = 2",
+            "CTYPE1  = 'RA---TAN'",
+            "CTYPE2  = 'DEC--TAN'",
+            "CRPIX1  = 1",
+            "CRPIX2  = 1",
+            "CRVAL1  = 10",
+            "CRVAL2  = 20",
+            "CDELT1  = -0.001",
+            "CDELT2  = 0.001",
+            &format!("MJD-OBS = {mjd}"),
+        ] {
+            fc.put_fits(card, false).unwrap();
+        }
+        fc.clear_card().unwrap();
+        let obj = fc.read().unwrap().expect("a FrameSet");
+        let mut out = FitsChan::new().unwrap();
+        out.set_encoding(Encoding::FitsWcs);
+        assert_eq!(out.write(&obj).unwrap(), 1, "MJD-OBS {mjd}");
+        out.clear_card().unwrap();
+        let got = out
+            .find_fits("DATE-OBS", false)
+            .unwrap()
+            .map(|c| c[10..].split(" /").next().unwrap().trim().to_string());
+        assert_eq!(got.as_deref(), want, "MJD-OBS {mjd}");
+    }
+}
