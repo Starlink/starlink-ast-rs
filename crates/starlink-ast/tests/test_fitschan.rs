@@ -1330,3 +1330,54 @@ fn write_fits_stops_at_a_card_it_cannot_format() {
     assert_eq!(*lines.lock().unwrap(), ["B       =                  1.0"]);
     assert_eq!(fc.ncard().unwrap(), 0);
 }
+
+/// A grism whose equation has no solution at the reference wavelength, or
+/// whose order is zero, cannot be read, with the C library's two messages;
+/// orders that work at the reference wavelength read (values from the C
+/// library at the pinned commit).
+#[test]
+fn a_grism_unusable_at_the_reference_point_is_refused() {
+    let read = |order: &str, crval: &str| {
+        let mut fc = FitsChan::new().unwrap();
+        fc.set_encoding(Encoding::FitsWcs);
+        for c in [
+            "NAXIS   = 1",
+            "CTYPE1  = 'WAVE-GRI'",
+            "CRPIX1  = 1",
+            &format!("CRVAL1  = {crval}"),
+            "CDELT1  = 1.0E-10",
+            "CUNIT1  = 'm'",
+            "PV1_0   = 1.0E6",
+            &format!("PV1_1   = {order}"),
+        ] {
+            fc.put_fits(c, false).unwrap();
+        }
+        fc.clear_card().unwrap();
+        fc.read().map(|o| o.is_some())
+    };
+    for (order, crval) in [
+        ("1", "5.0E-7"),
+        ("2", "5.0E-7"),
+        ("-2", "5.0E-7"),
+        ("1000", "1.0E-10"),
+    ] {
+        assert!(read(order, crval).unwrap(), "order {order} at {crval}");
+    }
+    for (order, crval) in [
+        ("3", "5.0E-7"),
+        ("-3", "5.0E-7"),
+        ("1000", "5.0E-7"),
+        ("2", "9.99E-7"),
+        ("0", "5.0E-7"),
+    ] {
+        let e = read(order, crval).unwrap_err();
+        assert_eq!(e.code(), starlink_ast::error::ErrorCode::Bdfts);
+        assert_eq!(
+            e.message(),
+            "astRead(FitsChan): Cannot implement spectral algorithm code '-GRI' specified in \
+             FITS keyword 'CTYPE1'.\nastRead(FitsChan): Unknown algorithm code or unusable \
+             parameter values.",
+            "order {order} at {crval}"
+        );
+    }
+}

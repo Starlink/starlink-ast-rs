@@ -216,7 +216,8 @@ fn build_spectral_axis(
             ErrorCode::Bdfts,
             format!(
                 "astRead(FitsChan): Cannot implement spectral algorithm code '{algcode}' \
-                 specified in FITS keyword '{key}'."
+                 specified in FITS keyword '{key}'.\nastRead(FitsChan): Unknown algorithm \
+                 code or unusable parameter values."
             ),
         ));
     };
@@ -470,7 +471,7 @@ fn grism_spec_wcs(
 
     // Rate of change dg/dS at the reference point. Mirrors C:14349-14350.
     let dg = match map1.rate(&[crv], 1, 1) {
-        Ok(r) if r != 0.0 && r.is_finite() => r,
+        Ok(r) if r != crate::constants::BAD_VALUE && r != 0.0 => r,
         _ => return Ok(None),
     };
 
