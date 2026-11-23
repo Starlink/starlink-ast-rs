@@ -64,6 +64,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a `FitsChan` write that fails, or abandons a secondary axis description, puts back the cards it had overwritten, as the C library now does; it lost them, and the values they held.
 - `starlink-ast`: `simplify` no longer merges a `MatrixMap` with the Mappings beside it in parallel, which the C library never does; a diagonal MatrixMap with a zero on its diagonal, used inverted beside a WinMap, became a WinMap whose inverse gave bad values where the original gave zero.
 - `starlink-ast`: a `CmpMap` with `Ident` set is not split by `map_split`, as in the C library, which does not decompose a Mapping that may not be simplified; other CmpMaps are split component by component, each falling back to a search of its own inverse, as in C.
 - `starlink-ast`: a `PermMap` with `perm_split` set gives no split from `map_split` for an input fed by a bad value or by an output it does not have, as in the C library; it split such an input off as if fed by that output.

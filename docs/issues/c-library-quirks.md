@@ -221,6 +221,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream f8c7723e): CmpMap swaps a PermMap of constants with parallel Mappings](#resolved-upstream-f8c7723e-cmpmap-swaps-a-permmap-of-constants-with-parallel-mappings)
 - [RESOLVED (upstream f0230815): WcsMaps cancel when an axis holds different numbers of projection parameters](#resolved-upstream-f0230815-wcsmaps-cancel-when-an-axis-holds-different-numbers-of-projection-parameters)
 - [RESOLVED (upstream e7cb7d95): PermMap's PermSplit split accepts an input fed by no output](#resolved-upstream-e7cb7d95-permmaps-permsplit-split-accepts-an-input-fed-by-no-output)
+- [RESOLVED (upstream 4175c735): A failed FitsChan write loses the cards it replaced](#resolved-upstream-4175c735-a-failed-fitschan-write-loses-the-cards-it-replaced)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -5497,3 +5498,13 @@ Upstream gives `max`, a bad value, for an absent coordinate, and rejects any val
 
 **Rust behavior:** the port already expanded an absent array to bad values (`null_perm` in `crates/starlink-ast/src/mappings/perm.rs`), so its transformations, merges and the `testmapmerge.c` PermMap cases matched the fixed C.
 `map_split_zero_based`'s PermSplit branch mirrored the split, and now rejects a value that is not an output (`perm_split_refuses_an_input_with_no_output` in `tests/test_permmap.rs`).
+
+### RESOLVED (upstream 4175c735): A failed FitsChan write loses the cards it replaced
+
+`SetValue` overwrites a card that holds the keyword it writes, and a write that fails removes every card it marked new.
+A card the write had overwritten was therefore lost, along with the value it held before the write, when the write, or one of its secondary axis descriptions, was abandoned.
+Upstream keeps a copy of each card it overwrites (`SaveReplaced`) and puts it back when the cards that replaced it are removed (`FixReplaced`), appending it at the end if its keyword has gone.
+
+**Rust behavior:** `CardList::put_or_append` in `crates/starlink-ast/src/fitschan/card_list.rs` mirrored the loss.
+It now keeps a replaced-card stack that `fix_new` and `fix_replaced` treat as C does; the two `test_failed_write` cases of `testfitswrite.c` in `tests/test_fitswrite.rs`, and `a_failed_write_puts_back_replaced_cards` in `card_list.rs`.
+The three FITS-PC writes of `fitschan_encodings_probe` that fail now leave the reference cards they replaced, so that oracle was regenerated.

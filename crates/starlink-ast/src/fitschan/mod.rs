@@ -3650,6 +3650,9 @@ impl Channel for FitsChan {
         self.cards.fix_new(card_list::NewScope::Write, !wrote);
         self.cards.fix_new(card_list::NewScope::Version, !wrote);
         self.cards.end_marking_new();
+        // Every card a new card replaced has been dealt with; none is left
+        // for a later write to put back.
+        self.cards.fix_replaced(true, true, false);
         if !wrote {
             self.cards.set_position(card0);
         }

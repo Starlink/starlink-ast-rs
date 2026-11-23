@@ -550,14 +550,6 @@ const FITSWRITE_GAP_EXCLUDED: &[(&str, &str)] = &[
         "secondary projection parameters with no primary ones",
         "upstream 4e42485f: FITS-PC compares secondary projection parameters up to the larger index; the port compares the primary's only (Task 4)",
     ),
-    (
-        "a projection that FITS-PC cannot describe",
-        "upstream 4175c735: a failed write puts back the cards it replaced; the port loses them (Task 2)",
-    ),
-    (
-        "a secondary description that FITS-PC cannot describe",
-        "upstream 4175c735: as above, for an abandoned secondary description (Task 2)",
-    ),
 ];
 
 fn excluded(name: &str) -> bool {

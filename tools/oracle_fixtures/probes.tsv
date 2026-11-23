@@ -37,7 +37,7 @@ fitschan_alt_naxes_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_alt_n
 fitschan_axis_count_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_axis_count_oracle/cases.rs	-
 fitschan_coupled_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_coupled_oracle/cases.rs	-
 fitschan_cursor_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_cursor_oracle/cases.rs	-
-fitschan_encodings_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_encodings_oracle/cases.rs	fe26cc9b sync stage 2: FitsChan writes keep more cards
+fitschan_encodings_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_encodings_oracle/cases.rs	-
 fitschan_labels_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_labels_oracle/cases.rs	-
 fitschan_linear_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_linear_oracle/cases.rs	-
 fitschan_read_chain_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_read_chain_oracle/cases.rs	-

@@ -35,6 +35,19 @@ pub struct CardList {
     /// [`fix_new`](CardList::fix_new) can strip them again. Mirrors C's
     /// `mark_new` thread-global (fitschan.c:40758).
     mark_new: bool,
+    /// Copies of the cards a write replaced while marking cards new, most
+    /// recent last, so that abandoning the axis descriptions being written
+    /// can put them back. C's `replaced_cards` list (`SaveReplaced`).
+    replaced: Vec<ReplacedCard>,
+}
+
+/// A card a write replaced, and which of the new-card flags its
+/// replacement still carries (C's `ReplacedCard`).
+#[derive(Debug, Clone)]
+struct ReplacedCard {
+    card: FitsCard,
+    pending_write: bool,
+    pending_version: bool,
 }
 
 /// Which of C's two "new card" flags a [`fix_new`](CardList::fix_new) call
@@ -56,6 +69,7 @@ impl CardList {
             consumed_names: RefCell::new(Vec::new()),
             written_names: RefCell::new(None),
             mark_new: false,
+            replaced: Vec::new(),
         }
     }
 
@@ -635,6 +649,9 @@ impl CardList {
     /// As in C, when any card is removed the position is left at
     /// end-of-file; when none is, the original position is retained.
     pub(crate) fn fix_new(&mut self, scope: NewScope, remove: bool) {
+        // Each flagged card that replaced an earlier one is changed back
+        // into it first when the flagged cards are to go, so it is kept.
+        self.fix_replaced(scope == NewScope::Write, scope == NewScope::Version, remove);
         let get = |f: &crate::fitschan::card::CardFlags| match scope {
             NewScope::Write => f.new_write,
             NewScope::Version => f.new_version,
@@ -655,6 +672,64 @@ impl CardList {
             }
         }
         self.position = self.position.min(self.cards.len());
+    }
+
+    /// C's `FixReplaced`: deal with the cards replaced by cards that carry
+    /// the `write` (NEW1) or `version` (NEW2) flag, most recent first. With
+    /// `restore` the replacement, the first card for the keyword that carries
+    /// the flag, is changed back into the card it replaced; if no card holds
+    /// the keyword any more, the card is appended at the end. Without it the
+    /// replacement is only noted as no longer carrying the flag. A copy whose
+    /// replacement carries neither flag is forgotten. The current card is
+    /// left as it was.
+    pub(crate) fn fix_replaced(&mut self, write: bool, version: bool, restore: bool) {
+        let at_end = self.position >= self.cards.len();
+        let mut i = self.replaced.len();
+        while i > 0 {
+            i -= 1;
+            let rep = &mut self.replaced[i];
+            let hit = (write && rep.pending_write) || (version && rep.pending_version);
+            if !hit {
+                continue;
+            }
+            if !restore {
+                if write {
+                    rep.pending_write = false;
+                }
+                if version {
+                    rep.pending_version = false;
+                }
+            } else {
+                let keyword = rep.card.keyword.clone();
+                let flagged =
+                    |c: &FitsCard| (write && c.flags.new_write) || (version && c.flags.new_version);
+                let mut nkey = 0;
+                let mut newcard = None;
+                for (k, c) in self.cards.iter().enumerate() {
+                    if c.keyword == keyword {
+                        nkey += 1;
+                        if flagged(c) {
+                            newcard = Some(k);
+                            break;
+                        }
+                    }
+                }
+                let rep = &mut self.replaced[i];
+                if newcard.is_none() && nkey == 0 {
+                    self.cards.push(rep.card.clone());
+                } else if let Some(k) = newcard {
+                    self.cards[k] = rep.card.clone();
+                }
+                rep.pending_write = false;
+                rep.pending_version = false;
+            }
+            if !self.replaced[i].pending_write && !self.replaced[i].pending_version {
+                self.replaced.remove(i);
+            }
+        }
+        if at_end {
+            self.position = self.cards.len();
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -998,6 +1073,16 @@ impl CardList {
             _ => self.cards.iter().position(matches),
         };
         if let Some(idx) = found {
+            // C's `SaveReplaced`: keep a copy of a card that was in the
+            // FitsChan before the axis descriptions now being written, so
+            // that it can be put back if they are abandoned.
+            if self.mark_new && !self.cards[idx].flags.new_version {
+                self.replaced.push(ReplacedCard {
+                    card: self.cards[idx].clone(),
+                    pending_write: true,
+                    pending_version: true,
+                });
+            }
             if self.cards[idx].comment.is_some()
                 && values_similar(&self.cards[idx].value, &card.value)
             {
@@ -1286,6 +1371,59 @@ fn floats_similar(a: f64, b: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A failed write puts back each card it replaced, in its place, and a
+    /// replaced card whose keyword the write then removed comes back at the
+    /// end, as C's `FixReplaced` appends it. The current card is kept.
+    #[test]
+    fn a_failed_write_puts_back_replaced_cards() {
+        let mut cards = CardList::from_header(
+            "NAXIS1  =                  100\nCRVAL1  =                    5 / mine\n\
+             CRPIX2  =                  7.5 / also mine\nNAXIS2  =                  200",
+        )
+        .unwrap();
+        cards.set_position(3);
+        cards.begin_marking_new();
+        cards.set_float("CRVAL1", 10.0, "new");
+        cards.set_float("CRPIX2", 100.0, "new");
+        cards.set_float("CDELT1", -0.001, "new");
+        assert!(cards.delete("CRPIX2"));
+        cards.fix_new(NewScope::Write, true);
+        cards.end_marking_new();
+        let got: Vec<(String, Option<f64>)> = cards
+            .iter()
+            .map(|c| (c.keyword.clone(), cards_float(c)))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("NAXIS1".to_string(), Some(100.0)),
+                ("CRVAL1".to_string(), Some(5.0)),
+                ("NAXIS2".to_string(), Some(200.0)),
+                ("CRPIX2".to_string(), Some(7.5)),
+            ]
+        );
+    }
+
+    /// A write that succeeds keeps its replacements and forgets the copies.
+    #[test]
+    fn a_successful_write_keeps_its_replacements() {
+        let mut cards = CardList::from_header("CRVAL1  =                    5 / mine").unwrap();
+        cards.begin_marking_new();
+        cards.set_float("CRVAL1", 10.0, "new");
+        cards.fix_new(NewScope::Write, false);
+        cards.fix_new(NewScope::Version, false);
+        cards.end_marking_new();
+        cards.fix_replaced(true, true, false);
+        assert!(cards.replaced.is_empty());
+        assert_eq!(cards.get_float("CRVAL1"), Some(10.0));
+    }
+
+    fn cards_float(c: &FitsCard) -> Option<f64> {
+        let mut l = CardList::new();
+        l.cards.push(c.clone());
+        l.get_float(&c.keyword)
+    }
 
     fn sample_header() -> &'static str {
         "SIMPLE  =                    T / Fits standard\n\
