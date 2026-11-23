@@ -3640,8 +3640,8 @@ C's buggy round-trip output `08:38:39.870`.
 ### RESOLVED (upstream 232643bc): `SIPIntWorld` reads `nout` from `astGetNin` (typo bug)
 
 **Status:** Fixed upstream at commit 232643bc (`astGetNin` → `astGetNout`).
-The Rust port already read `map.nout()` correctly, so no code change was
-needed. The historical discussion below is retained for context.
+The port mirrored the bug in `sip_int_world` (`let nout = nin;`) until stage 2 of the `fe26cc9b` sync, which reads `map.nout()` as C now does.
+The historical discussion below is retained for context.
 
 
 **C location:** `fitschan.c:28784-28785` — inside `SIPIntWorld`,

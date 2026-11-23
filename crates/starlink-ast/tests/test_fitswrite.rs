@@ -531,18 +531,6 @@ const CASES: &[(&str, Case)] = &[
 /// shrinks as the gaps close.
 const FITSWRITE_GAP_EXCLUDED: &[(&str, &str)] = &[
     (
-        "a CmpMap with an Ident",
-        "upstream 6a00ff8f: C does not search a CmpMap that may not be simplified for a WcsMap, so it writes nothing; the port writes a TAN header (Task 3 of the stage 2 plan)",
-    ),
-    (
-        "two axes that depend on one pixel axis",
-        "upstream 68708cb5: the port's FITS axis permutation indexes past its array and panics where C writes nothing (Task 3)",
-    ),
-    (
-        "distorted sky axes and two axes that share a pixel axis",
-        "upstream 68708cb5: C's SIP writer requires the other axes to use exactly the remaining pixel axes; the port fails with AST__INNCO (Task 3)",
-    ),
-    (
         "an offset sky system and an Ident",
         "upstream 01fc69d6: the absolute description takes a free version letter; the port reuses the letter an Ident claimed (Task 4)",
     ),
@@ -584,4 +572,41 @@ fn excluded_cases_still_differ() {
         "these now match C; remove them from FITSWRITE_GAP_EXCLUDED:\n{}",
         now_match.join("\n")
     );
+}
+
+/// Not in the C test: `testcorruptinput.c`'s `spec2` header, a cube with two
+/// spectral axes. C's MakeFitsFrameSet gives no FrameSet for it, so no FITS
+/// encoding writes anything (values from the C library at the pinned commit).
+#[test]
+fn two_spectral_axes_are_written_by_no_fits_encoding() {
+    let fs = read_cards(&[
+        "CTYPE1  = 'FREQ'",
+        "CTYPE2  = 'PIXEL'",
+        "CTYPE3  = 'FREQ-F2W'",
+        "CRVAL1  =             1.4204E9",
+        "CRVAL2  =                  0.0",
+        "CRVAL3  =                  0.0",
+        "CRPIX1  =                513.0",
+        "CRPIX2  =                 50.0",
+        "CRPIX3  =                 50.0",
+        "CDELT1  =           2147483648",
+        "CDELT2  =                  1.0",
+        "CDELT3  =                  1.0",
+        "CUNIT1  = 'Hz'",
+        "SPECSYS = 'BARYCENT'",
+        "RESTFRQ =             1.4204E9",
+    ]);
+    for encoding in [
+        "FITS-WCS",
+        "FITS-PC",
+        "FITS-IRAF",
+        "FITS-AIPS",
+        "FITS-AIPS++",
+        "FITS-CLASS",
+        "DSS",
+    ] {
+        let mut fc = fitschan(&format!("Encoding={encoding}"), &[]);
+        check_write(&mut fc, fs.clone(), 0).unwrap_or_else(|e| panic!("{encoding}: {e}"));
+        assert!(list_cards(&mut fc).is_empty(), "{encoding} left cards");
+    }
 }

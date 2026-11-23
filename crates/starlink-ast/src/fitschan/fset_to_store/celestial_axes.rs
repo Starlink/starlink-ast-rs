@@ -626,6 +626,12 @@ pub(crate) fn split_map(
 /// count via the inserts handled inside `lift_wcsmap_to_full_axes`.
 pub(crate) fn split_map2(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping, DynMapping)> {
     if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        // A CmpMap that may not be simplified (one with an Ident, say) is
+        // one Mapping to C's astMapList, which then leaves it whole, so it
+        // is taken to contain no usable WcsMap (fitschan.c SplitMap2).
+        if cmp.do_not_simplify() {
+            return None;
+        }
         if cmp.composition() == Composition::Series {
             return split_map2_series(cmp);
         }
@@ -769,8 +775,11 @@ fn extract_child_effective(cmp: &CmpMap, first: bool) -> DynMapping {
 }
 
 fn push_or_recurse(m: DynMapping, kind: Composition, out: &mut Vec<DynMapping>) {
+    // As C's astMapList, which leaves whole a CmpMap that may not be
+    // simplified.
     if let Some(cmp) = m.as_any().downcast_ref::<CmpMap>()
         && cmp.composition() == kind
+        && !cmp.do_not_simplify()
     {
         if kind == Composition::Series {
             flatten_series(cmp, out);

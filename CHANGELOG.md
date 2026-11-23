@@ -64,6 +64,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a `FitsChan` write no longer panics on a FrameSet with two world axes that depend on one pixel axis, and writes nothing, as the C library does, for a FrameSet whose Mapping holds a CmpMap with `Ident` set, one whose distorted celestial axes share pixel axes with others, one with two spectral axes or two different sky coordinate systems, and one whose celestial reference point cannot be found. It wrote a description of some of them that the C library does not, and failed on another with `ErrorCode::Innco`.
 - `starlink-ast`: a `FitsChan` write that fails, or abandons a secondary axis description, puts back the cards it had overwritten, as the C library now does; it lost them, and the values they held.
 - `starlink-ast`: `simplify` no longer merges a `MatrixMap` with the Mappings beside it in parallel, which the C library never does; a diagonal MatrixMap with a zero on its diagonal, used inverted beside a WinMap, became a WinMap whose inverse gave bad values where the original gave zero.
 - `starlink-ast`: a `CmpMap` with `Ident` set is not split by `map_split`, as in the C library, which does not decompose a Mapping that may not be simplified; other CmpMaps are split component by component, each falling back to a search of its own inverse, as in C.

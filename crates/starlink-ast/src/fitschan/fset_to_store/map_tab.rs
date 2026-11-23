@@ -459,11 +459,20 @@ pub(crate) fn store_tab_axis(
 
 /// The PermMap from WCS axis order to FITS axis order `wperm`.
 pub(crate) fn fits_order_perm(wperm: &[usize]) -> AstResult<PermMap> {
+    // `wperm` can name an axis past the last when two world axes depend on
+    // one pixel axis. C then stores past its array, and the PermMap takes
+    // the index as a bad value, so the write fails later; here such an index
+    // is a bad value, and an output no axis feeds is bad too.
     let n = wperm.len();
     let mut outperm = vec![0i64; n];
-    let inperm: Vec<i64> = wperm.iter().map(|&w| w as i64 + 1).collect();
+    let inperm: Vec<i64> = wperm
+        .iter()
+        .map(|&w| if w < n { w as i64 + 1 } else { 0 })
+        .collect();
     for (i, &w) in wperm.iter().enumerate() {
-        outperm[w] = i as i64 + 1;
+        if w < n {
+            outperm[w] = i as i64 + 1;
+        }
     }
     PermMap::new(&inperm, &outperm, &[])
 }

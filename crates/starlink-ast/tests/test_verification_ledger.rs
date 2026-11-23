@@ -287,7 +287,7 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_fitswrite.rs",
         "FITSWRITE_GAP_EXCLUDED",
-        5,
+        2,
         "testfitswrite.c cases the port does not yet match, each naming the \
          upstream fix that closes it; excluded_cases_still_differ fails when \
          one closes",
