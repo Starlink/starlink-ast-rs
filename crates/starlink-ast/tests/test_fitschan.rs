@@ -1018,6 +1018,114 @@ fn wcsaxes_out_of_range_is_refused_as_c_refuses_it() {
     }
 }
 
+/// An axis keyword whose index the C library's store has no room for (an
+/// intermediate axis past 99 or below 1, a pixel axis or parameter past 100
+/// or below its first) is refused as the C library refuses it, at the first
+/// such card, even when it names no axis the header describes. Values from
+/// the C library at the pinned commit.
+#[test]
+fn an_axis_keyword_past_the_stores_limits_is_refused_as_c_refuses_it() {
+    use starlink_ast::error::ErrorCode;
+    let item = |which: &str, what: &str, n: i32| {
+        Some(format!(
+            "{which}(fitschan): AST internal error; {what} index {n} is invalid."
+        ))
+    };
+    let int = |n| item("SetItem", "intermediate axis", n);
+    let pix = |n| item("SetItem", "pixel axis or parameter", n);
+    let int_c = |n| item("SetItemC", "intermediate axis", n);
+    let pix_c = |n| item("SetItemC", "pixel axis or parameter", n);
+    let cases: Vec<(&str, Option<String>)> = vec![
+        ("CDELT100= 1", int(99)),
+        ("CRPIX100= 1", item("GetItemC", "intermediate axis", 99)),
+        ("CRPIX101= 1", pix(100)),
+        ("CRVAL100= 1", int(99)),
+        ("CTYPE100= 'X'", int_c(99)),
+        ("PC1_100 = 1", None),
+        ("PC1_101 = 1", pix(100)),
+        ("PC100_1 = 1", int(99)),
+        ("PV1_99  = 1", None),
+        ("PV1_100 = 1", pix(100)),
+        ("PV100_1 = 1", int(99)),
+        ("CD1_101 = 1", pix(100)),
+        ("CDELT99 = 1", None),
+        ("CROTA100= 1", None),
+        ("CUNIT100= 'm'", int_c(99)),
+        ("PS1_100 = 'x'", pix_c(100)),
+        ("CRVAL0  = 1", int(-1)),
+        ("CRPIX0  = 1", pix(-1)),
+        ("PC0_1   = 1", int(-1)),
+        ("PC1_0   = 1", pix(-1)),
+        ("PV1_0   = 1", None),
+        ("PV0_1   = 1", int(-1)),
+        ("CRVAL01 = 1", None),
+        ("CRVAL100= 'abc'", None),
+        ("A_0_0   = 1", None),
+        ("A_99_0  = 1", int(99)),
+        ("A_98_0  = 1", None),
+        ("A_0_99  = 1", None),
+        ("A_0_100 = 1", pix(100)),
+        ("SREF100 = 1", int(99)),
+        ("AXREF100= 1", int(99)),
+        ("SREFP100= 1", int(99)),
+        ("CNAME100= 'x'", int_c(99)),
+        ("CRVAL1Z = 1", None),
+        ("CDELT999= 1", int(998)),
+        ("PC1_1000= 1", pix(999)),
+        ("CTYPE0  = 'x'", int_c(-1)),
+    ];
+    let read = |encoding: Encoding, extra: &str| {
+        let mut fc = FitsChan::new().unwrap();
+        fc.set_encoding(encoding);
+        for c in [
+            "NAXIS   = 2",
+            "NAXIS1  = 100",
+            "NAXIS2  = 200",
+            "CRPIX1  = 50",
+            "CRPIX2  = 100",
+            "CRVAL1  = 10",
+            "CRVAL2  = 20",
+            "CTYPE1  = 'RA---TAN'",
+            "CTYPE2  = 'DEC--TAN'",
+            "CDELT1  = -0.001",
+            "CDELT2  = 0.001",
+            extra,
+        ] {
+            fc.put_fits(c, false).unwrap();
+        }
+        fc.clear_card().unwrap();
+        match fc.read() {
+            Ok(Some(_)) => None,
+            Ok(None) => Some("no object read".to_string()),
+            Err(e) => {
+                assert_eq!(e.code(), ErrorCode::Inter, "{encoding:?} {extra}");
+                Some(e.message().to_string())
+            }
+        }
+    };
+    let mut wrong = Vec::new();
+    for (card, want) in &cases {
+        let got = read(Encoding::FitsWcs, card);
+        if &got != want {
+            wrong.push(format!("{card}: got {got:?}, want {want:?}"));
+        }
+    }
+    for encoding in [
+        Encoding::FitsPc,
+        Encoding::FitsIraf,
+        Encoding::FitsAips,
+        Encoding::FitsAipsPP,
+    ] {
+        for (card, want) in &cases[..3] {
+            let got = read(encoding, card);
+            if &got != want {
+                wrong.push(format!("{encoding:?} {card}: got {got:?}, want {want:?}"));
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
 /// A floating-point value that the integer type asked for cannot hold is
 /// not converted, with the C library's error, rather than saturating.
 #[test]

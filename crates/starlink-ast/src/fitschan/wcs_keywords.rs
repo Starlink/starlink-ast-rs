@@ -315,6 +315,7 @@ pub(crate) struct WcsStores {
 
 /// Extract every axis description of a FITS-WCS header.
 pub(crate) fn extract_wcs_keywords_with_alts(cards: &CardList) -> AstResult<WcsStores> {
+    super::wcs_mark::check_store_indices(cards)?;
     let versions = super::wcs_mark::wcs_versions(cards);
     let npix = versions.npix;
     let primary = if versions.primary {

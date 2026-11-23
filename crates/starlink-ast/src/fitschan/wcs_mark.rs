@@ -189,6 +189,84 @@ fn convert(value: &FitsValue, want: Want, undef: bool) -> Convert {
 
 /// The axis descriptions a FITS-WCS read builds Frames for, and its number
 /// of pixel axes.
+/// The intermediate axis index `i` and the pixel axis or parameter index
+/// `jm`, both zero-based, at which C's `WcsFcRead` stores a card matching
+/// `pattern` whose integer fields are `fields`.
+fn store_indices(pattern: &str, fields: &[i32]) -> (i64, i64) {
+    let f = |k: usize| i64::from(fields.get(k).copied().unwrap_or(0));
+    if pattern.starts_with("CRPIX") {
+        (0, f(0) - 1)
+    } else if pattern.starts_with("PC") {
+        (f(0) - 1, f(1) - 1)
+    } else if pattern.starts_with("PV") || pattern.starts_with("PS") {
+        (f(0) - 1, f(1))
+    } else if ["A_", "B_", "AP_", "BP_"]
+        .iter()
+        .any(|p| pattern.starts_with(p))
+    {
+        (f(0), f(1))
+    } else if pattern.contains("%d") {
+        (f(0) - 1, 0)
+    } else {
+        (0, 0)
+    }
+}
+
+/// C's `SetItem` and `SetItemC` range checks: a FitsStore holds intermediate
+/// axes 0 to 98 and pixel axes or parameters 0 to 99.
+fn check_item(function: &str, i: i64, jm: i64) -> AstResult<()> {
+    let message = if !(0..=98).contains(&i) {
+        format!("intermediate axis index {i} is invalid.")
+    } else if !(0..=99).contains(&jm) {
+        format!("pixel axis or parameter index {jm} is invalid.")
+    } else {
+        return Ok(());
+    };
+    Err(AstError::new(
+        ErrorCode::Inter,
+        format!("{function}(fitschan): AST internal error; {message}"),
+    ))
+}
+
+/// Refuse a header with an axis keyword the C library's FitsStore has no
+/// room for, as C's `WcsFcRead` does when it stores each card in turn.
+///
+/// The sweep is in card order, so the first such card gives the error, even
+/// when it names an axis no description uses. A card whose value does not
+/// convert is not stored, except that a CTYPE card's comment is stored at
+/// its axis first. The sweep ends at a card that must carry a value and has
+/// none, where C reports that instead.
+pub(crate) fn check_store_indices(cards: &CardList) -> AstResult<()> {
+    for card in cards.iter() {
+        if card.flags.consumption == Consumption::Used {
+            continue;
+        }
+        let Some((tmpl, fields)) = TEMPLATES
+            .iter()
+            .find_map(|t| match_keyword(&card.keyword, t.pattern, 2).map(|f| (t, f)))
+        else {
+            continue;
+        };
+        let (i, jm) = store_indices(tmpl.pattern, &fields);
+        if tmpl.pattern.starts_with("CTYPE") {
+            check_item("SetItemC", i, 0)?;
+        }
+        match convert(&card.value, tmpl.want, tmpl.undef) {
+            Convert::Ok => check_item(
+                match tmpl.want {
+                    Want::Float => "SetItem",
+                    Want::String => "SetItemC",
+                },
+                i,
+                jm,
+            )?,
+            Convert::No => {}
+            Convert::Undefined => return Ok(()),
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct WcsVersions {
     /// The number of pixel axes: one more than the highest CRPIX index of

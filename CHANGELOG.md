@@ -64,6 +64,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a `FitsChan` read of a FITS-WCS, FITS-PC, FITS-IRAF, FITS-AIPS or FITS-AIPS++ header refuses an axis keyword whose axis or parameter number the C library cannot store (`CDELT100`, `PC1_101`, `CRVAL0` and the like), with the C library's internal error, at the first such card. It ignored the card, and read the header.
 - `starlink-ast`: a `FitsChan` write treats a SkyFrame as celestial only when its Domain is SKY, as the C library does, so a SkyFrame in another Domain (POLANAL, say) beside a celestial one is written as two ordinary axes. It wrote nothing for such a FrameSet, and gave a degenerate axis of such a SkyFrame the scale of its partner axis.
 - `starlink-ast`: a card a `FitsChan` writes has its comment without leading or trailing white space, as in the C library, Unicode white space included; the comment of an offset sky axis with an empty Symbol began with a blank.
 - `starlink-ast`: `FitsChan::get_fits_i`, `get_fits_k` and `get_fits_ci` refuse a floating-point value the integer type cannot hold with `ErrorCode::Ftcnv`, as the C library now does, where they returned the nearest value the type holds; a grism diffraction order an `i32` cannot hold is refused when a header is read; and a conversion error's message is the C library's, without the error code's description in front.
