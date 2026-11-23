@@ -130,6 +130,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`CnvType` leaves a partly read number in the caller's buffer when it fails](#cnvtype-leaves-a-partly-read-number-in-the-callers-buffer-when-it-fails)
 - [Simplifying an inverted WinMap with a subnormal scale gives a ShiftMap of NaN](#simplifying-an-inverted-winmap-with-a-subnormal-scale-gives-a-shiftmap-of-nan)
 - [SUN/211 shows examples and output that the current library does not produce](#sun211-shows-examples-and-output-that-the-current-library-does-not-produce)
+- [A write keeps one list of replaced cards for every FitsChan in its thread](#a-write-keeps-one-list-of-replaced-cards-for-every-fitschan-in-its-thread)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1902,6 +1903,16 @@ So in a declination run `-0°10'`, `-0°05'`, `0°00'`, the middle label is draw
 A label of `-1°05'` after `-1°10'` loses its sign the same way, but there the `-1°` is still in view on its neighbour; at `-0°` the shared field is the only sign the label has.
 Oracle-verified: `crates/ast-plotter-wasm/tests/fixtures/origin.svg`, written by `tools/oracle_fixtures/fits_plotter_probe.c` for the page's ORIGIN example, holds `-0`, `°`, `10`, `'`, then `05`, `'`, then `0`, `°`, `00`, `'`.
 The port mirrors it; keeping the sign when the shared field starts with one would be an upstream change to `AxisAbbrev`.
+
+### A write keeps one list of replaced cards for every FitsChan in its thread
+
+`fitschan.c` keeps the copies `SaveReplaced` makes of the cards a write overwrites in `replaced_cards`, and decides whether to make one by `mark_new`; both are per-thread globals, not members of a FitsChan.
+`astWrite` sets `mark_new` for the whole write, so a `SetValue` that overwrites a card in any FitsChan during the write adds a copy to the same list, and `FixReplaced` later puts each copy back into the FitsChan being written, appending a card for a keyword that FitsChan does not hold.
+A write reads headers of its own: `ReadCrval` reads a copy of the FitsChan being written, and `MakeFitsFrameSet` reads a header it builds for a SpecFrame's reference position.
+Each read goes through `SpecTrans`, whose translations write into a scratch FitsChan with `SetValue`, 19 times for CTYPE alone; a translation that overwrote a card an earlier one wrote would put a card of the scratch FitsChan on the list.
+No header has been found that does this, so the effect is unproven.
+The port keeps the list in each `CardList` (`crates/starlink-ast/src/fitschan/card_list.rs`), so a write puts back only its own cards.
+The fix is to keep the list, and the flag, in the FitsChan.
 
 ## Addressed here, and not going upstream
 
