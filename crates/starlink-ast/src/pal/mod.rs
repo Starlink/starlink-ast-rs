@@ -517,6 +517,8 @@ fn fk54z_slice_body<const FMA: bool>(
 }
 
 /// FK5 J2000 to ICRS (Hipparcos frame), assuming zero proper motion.
+// Called only by tests (SlaMap's transform works out the epoch's part once per step).
+#[allow(dead_code)]
 pub(crate) fn fk5hz(r5: f64, d5: f64, epoch: f64) -> (f64, f64) {
     crate::call_counts::hit("astPalFk5hz");
     // palFk5hz converts the epoch to a Julian date, then calls eraFk5hz.
@@ -555,6 +557,8 @@ pub(crate) fn hfk5z_with(
 /// ICRS (Hipparcos frame) to FK5 J2000, assuming zero proper motion.
 ///
 /// Returns `(r5, d5, dr5, dd5)`.
+// Called only by tests (SlaMap's transform works out the epoch's part once per step).
+#[allow(dead_code)]
 pub(crate) fn hfk5z(rh: f64, dh: f64, epoch: f64) -> (f64, f64, f64, f64) {
     crate::call_counts::hit("astPalHfk5z");
     // palHfk5z converts the epoch to a Julian date, then calls eraHfk5z.

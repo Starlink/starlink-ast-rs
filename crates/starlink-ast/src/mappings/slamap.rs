@@ -1243,11 +1243,8 @@ fn apply_step_forward(
         }
         SlaCvtType::Fk45z => unreachable!("FK45Z runs on slices"),
         SlaCvtType::Fk54z => unreachable!("FK54Z runs on slices"),
-        SlaCvtType::Fk5hz => pal::fk5hz(alpha, delta, args[0]),
-        SlaCvtType::Hfk5z => {
-            let (r5, d5, _, _) = pal::hfk5z(alpha, delta, args[0]);
-            (r5, d5)
-        }
+        SlaCvtType::Fk5hz => unreachable!("FK5HZ runs per step"),
+        SlaCvtType::Hfk5z => unreachable!("HFK5Z runs per step"),
         // Ecliptic (of date) to equatorial J2000.0.  C builds the combined
         // matrix precessing J2000 equatorial to the date then rotating to
         // ecliptic (slamap.c:3888); ECLEQ applies its inverse (palDimxv).
@@ -1493,10 +1490,11 @@ impl Mapping for SlaMap {
                 continue;
             }
 
-            // FK5HZ and HFK5Z work out three rotation matrices from the epoch
-            // alone, so the step works them out once, and each point then
-            // gets the same arithmetic as in `pal::fk5hz` and `pal::hfk5z`.
-            // The inverse of each is the other's forward conversion.
+            // FK5HZ and HFK5Z work out their rotation matrices and spin from
+            // the epoch alone, so the step works them out once, and each
+            // point then gets the same arithmetic as in `pal::fk5hz` and
+            // `pal::hfk5z`. The inverse of each is the other's forward
+            // conversion.
             let hipparcos = match (cvt.cvt_type, fwd) {
                 (SlaCvtType::Fk5hz, true) | (SlaCvtType::Hfk5z, false) => {
                     Some(Hipparcos::FromFk5(pal::fk5hz_consts(cvt.args[0])))
