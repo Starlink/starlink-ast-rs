@@ -1020,6 +1020,16 @@ impl WcsMap {
         self.latax
     }
 
+    /// Whether each axis holds as many projection parameters as `other`'s:
+    /// C's `np`, which setting a parameter grows and clearing one leaves.
+    /// Two WcsMaps merge only if it does (wcsmap.c CanMerge), though their
+    /// equality pads the shorter list with bad values.
+    fn param_counts_equal(&self, other: &WcsMap) -> bool {
+        (0..2).all(|axis| {
+            self.params.get(axis).map_or(0, Vec::len) == other.params.get(axis).map_or(0, Vec::len)
+        })
+    }
+
     /// Whether each projection parameter is unset in both WcsMaps or set in
     /// both to equal values: an unset parameter differs from one set to
     /// zero.
@@ -1280,6 +1290,7 @@ impl Mapping for WcsMap {
             && self.lonax == other_wcs.lonax
             && self.latax == other_wcs.latax
             && self.ncoord == other_wcs.ncoord
+            && self.param_counts_equal(other_wcs)
             && self.params_equal(other_wcs)
         {
             // WcsMap always has nin == nout == ncoord.

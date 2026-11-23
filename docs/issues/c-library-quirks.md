@@ -218,6 +218,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 7de5007a): astRate loops for ever at a position near zero](#resolved-upstream-7de5007a-astrate-loops-for-ever-at-a-position-near-zero)
 - [RESOLVED (upstream b9cf680b): MatrixMap and WinMap merges give Mappings that are not equivalent, or fail](#resolved-upstream-b9cf680b-matrixmap-and-winmap-merges-give-mappings-that-are-not-equivalent-or-fail)
 - [RESOLVED (upstream f8c7723e): CmpMap swaps a PermMap of constants with parallel Mappings](#resolved-upstream-f8c7723e-cmpmap-swaps-a-permmap-of-constants-with-parallel-mappings)
+- [RESOLVED (upstream f0230815): WcsMaps cancel when an axis holds different numbers of projection parameters](#resolved-upstream-f0230815-wcsmaps-cancel-when-an-axis-holds-different-numbers-of-projection-parameters)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -5465,3 +5466,14 @@ Upstream refuses both swaps.
 **Rust behavior:** `swap_permmap_parallel_at` in `crates/starlink-ast/src/mappings/simplify.rs` mirrored the test: it merged every-constant cases to one PermMap where C now keeps the CmpMap, lost an inverse coordinate for one, and copied an output index into the new PermMap for the other.
 It now refuses both as upstream does; five `test_permmap_parallel` cases of `testmapmerge.c` in `tests/test_mapmerge.rs`.
 The port already used the components' directions under an inverted CmpMap and checked the PermMap's shape before reading its arrays, the other two parts of the commit.
+
+### RESOLVED (upstream f0230815): WcsMaps cancel when an axis holds different numbers of projection parameters
+
+`CanMerge` decides whether two WcsMaps cancel, and meant to refuse when an axis holds a different number of projection parameters in each.
+It compared `GetNP( wcs1, i )` with itself, so the counts never differed, and it went on to compare only the first WcsMap's count of values.
+An AZP WcsMap whose `PV2_1` was set and then cleared still counts one parameter, so it cancelled the inverse of a plain AZP.
+Upstream compares the two counts.
+
+**Rust behavior:** `WcsMap::try_merge` in `crates/starlink-ast/src/mappings/wcsmap.rs` compared the values over the longer list, padding with bad values, which is what C's `Equal` does but not its `CanMerge`; it now also requires equal counts (`param_counts_equal`).
+A Native dump records only the parameters that are set, so after a round trip the count is that of the set parameters, in C and in the port alike; `wcsmaps_with_different_parameter_counts_do_not_merge` in `tests/test_wcsmap.rs` pins both.
+The other half of the commit, the direction `WcsPerm` gives the PermMap it returns unchanged, the port already had.

@@ -1163,3 +1163,41 @@ fn unusable_parameters_are_an_error_on_every_transform() {
         assert_eq!(err.code(), ErrorCode::Wcspa, "AZP forward={forward}");
     }
 }
+
+/// WcsMaps merge only if they hold the same number of projection parameters
+/// for each axis. A parameter that was set and then cleared still counts, as
+/// in C, where the count grows when a parameter is set and does not shrink
+/// when it is cleared; a Native dump does not record it, so after a round
+/// trip the two merge. The classes are the C library's.
+#[test]
+fn wcsmaps_with_different_parameter_counts_do_not_merge() {
+    use starlink_ast::mappings::{CmpMap, Composition, UnitMap};
+    let mut cleared = WcsMap::new(2, WcsProjection::Azp, 1, 2).unwrap();
+    cleared.set_pv(2, 1, 0.5).unwrap();
+    cleared.clear_pv(2, 1).unwrap();
+    let plain = WcsMap::new(2, WcsProjection::Azp, 1, 2).unwrap();
+    let inverted = |m: &WcsMap| {
+        let mut m = m.clone();
+        m.invert();
+        m
+    };
+    let simplified_class_is_unit = |a: WcsMap, b: WcsMap| {
+        let map = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
+        <dyn Mapping>::simplify(&map)
+            .unwrap()
+            .as_any()
+            .is::<UnitMap>()
+    };
+    assert!(!simplified_class_is_unit(cleared.clone(), inverted(&plain)));
+    assert!(!simplified_class_is_unit(plain.clone(), inverted(&cleared)));
+
+    let dump =
+        crate::common::native_dump(&starlink_ast::AnyObject::from_mapping(&cleared).unwrap())
+            .unwrap();
+    let loaded = starlink_ast::from_native_string(&dump)
+        .unwrap()
+        .into_mapping()
+        .unwrap();
+    let loaded = loaded.as_any().downcast_ref::<WcsMap>().unwrap().clone();
+    assert!(simplified_class_is_unit(loaded, inverted(&plain)));
+}
