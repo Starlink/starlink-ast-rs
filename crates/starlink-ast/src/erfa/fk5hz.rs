@@ -61,19 +61,22 @@
 //
 // Ported from ERFA eraFk5hz (erfa/fk5hz.c), ERFA 2.0.1 as vendored at reference/starlink-ast 3d3f255f.
 
-use super::{ERFA_DJ00, ERFA_DJY, V3, anp, c2s, fk5hip, rv2m, rxp, s2c, sxp, trxp};
+use super::{ERFA_DJ00, ERFA_DJY, M3, V3, anp, c2s, fk5hip, rv2m, rxp, s2c, sxp, trxp};
 
-/// Transforms an FK5 (J2000.0) star position into the frame of the
-/// Hipparcos catalogue, assuming zero Hipparcos proper motion, returning
-/// (R.A., Dec) in radians.
-///
-/// The date is the two-part Julian Date of the FK5 position.
-pub(crate) fn fk5hz(r5: f64, d5: f64, date1: f64, date2: f64) -> (f64, f64) {
+/// What [`fk5hz`] derives from the date alone, so that many positions at
+/// one date can share it ([`fk5hz_with`]).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Fk5hzConsts {
+    /// The accumulated spin back to the date.
+    rst: M3,
+    /// FK5 to Hipparcos.
+    r5h: M3,
+}
+
+/// The part of [`fk5hz`] that depends only on the date.
+pub(crate) fn fk5hz_consts(date1: f64, date2: f64) -> Fk5hzConsts {
     // Interval from given date to fundamental epoch J2000.0 (JY).
     let t = -((date1 - ERFA_DJ00) + date2) / ERFA_DJY;
-
-    // FK5 barycentric position vector.
-    let p5e: V3 = s2c(r5, d5);
 
     // FK5 to Hipparcos orientation matrix and spin vector.
     let (r5h, s5h) = fk5hip();
@@ -83,12 +86,31 @@ pub(crate) fn fk5hz(r5: f64, d5: f64, date1: f64, date2: f64) -> (f64, f64) {
 
     // Express the accumulated spin as a rotation matrix.
     let rst = rv2m(&vst);
+    Fk5hzConsts { rst, r5h }
+}
+
+/// Transforms an FK5 (J2000.0) star position into the frame of the
+/// Hipparcos catalogue, assuming zero Hipparcos proper motion, returning
+/// (R.A., Dec) in radians.
+///
+/// The date is the two-part Julian Date of the FK5 position.
+pub(crate) fn fk5hz(r5: f64, d5: f64, date1: f64, date2: f64) -> (f64, f64) {
+    fk5hz_with(&fk5hz_consts(date1, date2), r5, d5)
+}
+
+/// [`fk5hz`] at the date `consts` were made for, with the same arithmetic
+/// for each position.
+pub(crate) fn fk5hz_with(consts: &Fk5hzConsts, r5: f64, d5: f64) -> (f64, f64) {
+    let Fk5hzConsts { rst, r5h } = consts;
+
+    // FK5 barycentric position vector.
+    let p5e: V3 = s2c(r5, d5);
 
     // Derotate the vector's FK5 axes back to date.
-    let p5 = trxp(&rst, &p5e);
+    let p5 = trxp(rst, &p5e);
 
     // Rotate the vector into the Hipparcos system.
-    let ph = rxp(&r5h, &p5);
+    let ph = rxp(r5h, &p5);
 
     // Hipparcos vector to spherical.
     let (w, dh) = c2s(ph);

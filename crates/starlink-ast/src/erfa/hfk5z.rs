@@ -61,19 +61,24 @@
 //
 // Ported from ERFA eraHfk5z (erfa/hfk5z.c), ERFA 2.0.1 as vendored at reference/starlink-ast 3d3f255f.
 
-use super::{ERFA_DJ00, ERFA_DJY, PV, anp, fk5hip, pv2s, pxp, rv2m, rxp, rxr, s2c, sxp, trxp};
+use super::{
+    ERFA_DJ00, ERFA_DJY, M3, PV, V3, anp, fk5hip, pv2s, pxp, rv2m, rxp, rxr, s2c, sxp, trxp,
+};
 
-/// Transforms a Hipparcos star position into FK5 J2000.0, assuming zero
-/// Hipparcos proper motion, returning (R.A., Dec) at the given date and the
-/// FK5 proper motions (radians per year).
-///
-/// The date is the two-part Julian Date of the Hipparcos position.
-pub(crate) fn hfk5z(rh: f64, dh: f64, date1: f64, date2: f64) -> (f64, f64, f64, f64) {
+/// What [`hfk5z`] derives from the date alone, so that many positions at
+/// one date can share it ([`hfk5z_with`]).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Hfk5zConsts {
+    /// The accumulated spin, then FK5 to Hipparcos.
+    r5ht: M3,
+    /// The spin in the Hipparcos system.
+    sh: V3,
+}
+
+/// The part of [`hfk5z`] that depends only on the date.
+pub(crate) fn hfk5z_consts(date1: f64, date2: f64) -> Hfk5zConsts {
     // Time interval from fundamental epoch J2000.0 to given date (JY).
     let t = ((date1 - ERFA_DJ00) + date2) / ERFA_DJY;
-
-    // Hipparcos barycentric position vector (normalized).
-    let ph = s2c(rh, dh);
 
     // FK5 to Hipparcos orientation matrix and spin vector.
     let (r5h, s5h) = fk5hip();
@@ -89,16 +94,35 @@ pub(crate) fn hfk5z(rh: f64, dh: f64, date1: f64, date2: f64) -> (f64, f64, f64,
 
     // Rotation matrix: accumulated spin, then FK5 to Hipparcos.
     let r5ht = rxr(&r5h, &rst);
+    Hfk5zConsts { r5ht, sh }
+}
+
+/// Transforms a Hipparcos star position into FK5 J2000.0, assuming zero
+/// Hipparcos proper motion, returning (R.A., Dec) at the given date and the
+/// FK5 proper motions (radians per year).
+///
+/// The date is the two-part Julian Date of the Hipparcos position.
+pub(crate) fn hfk5z(rh: f64, dh: f64, date1: f64, date2: f64) -> (f64, f64, f64, f64) {
+    hfk5z_with(&hfk5z_consts(date1, date2), rh, dh)
+}
+
+/// [`hfk5z`] at the date `consts` were made for, with the same arithmetic
+/// for each position.
+pub(crate) fn hfk5z_with(consts: &Hfk5zConsts, rh: f64, dh: f64) -> (f64, f64, f64, f64) {
+    let Hfk5zConsts { r5ht, sh } = consts;
+
+    // Hipparcos barycentric position vector (normalized).
+    let ph = s2c(rh, dh);
 
     // De-orient and de-spin the Hipparcos position into FK5 J2000.0.
     let mut pv5e: PV = [[0.0; 3]; 2];
-    pv5e[0] = trxp(&r5ht, &ph);
+    pv5e[0] = trxp(r5ht, &ph);
 
     // Apply spin to the position giving a space motion.
-    let vv = pxp(&sh, &ph);
+    let vv = pxp(sh, &ph);
 
     // De-orient and de-spin the Hipparcos space motion into FK5 J2000.0.
-    pv5e[1] = trxp(&r5ht, &vv);
+    pv5e[1] = trxp(r5ht, &vv);
 
     // FK5 position/velocity pv-vector to spherical.
     let (w, d5, _r, dr5, dd5, _v) = pv2s(&pv5e);
