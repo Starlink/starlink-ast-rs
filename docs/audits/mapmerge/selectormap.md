@@ -18,7 +18,7 @@ only then looks at the neighbor.
 
 `SelectorMap::map_merge` (`selectormap.rs:427-437 (fn map_merge)`) computes the
 self-simplification itself, in `SelectorMap::reduced_children`
-(`selectormap.rs:186-234 (fn reduced_children)`), and `self_reduce_map_merge` falls through to
+(`selectormap.rs:189-238 (fn reduced_children)`), and `self_reduce_map_merge` falls through to
 `default_map_merge` only when that made no change, so the two are in C's order.
 
 | # | C step | C site | Rust site | extension point | verdict |
