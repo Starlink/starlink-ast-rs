@@ -1514,9 +1514,98 @@ pub(crate) fn dispatch_map_merge(
     if nominee.do_not_simplify() {
         return None;
     }
+    // A class merges a series list on the assumption that each Mapping feeds
+    // the next, so a list that does not is refused before any class sees it,
+    // and a list a merger returns must have the shape of the one it was
+    // given (mapping.c astMapMerge_).
+    let (fits, nin_old, nout_old) = list_axes(&ctx.list, series);
+    if !fits {
+        ctx.fail(AstError::new(
+            ErrorCode::Innco,
+            format!(
+                "astMapMerge({}): The Mappings to be merged in series do not fit together; the \
+                 number of inputs of one is not the number of outputs of the one before it.",
+                mapping_class(nominee)
+            ),
+        ));
+        return None;
+    }
     let result = merge_propagating_allow_simplify(nominee, ctx, where_, series);
+    if result.is_some()
+        && !ctx.failed()
+        && let Some(e) = merger_axes_error(nominee, series, nin_old, nout_old, &ctx.list)
+    {
+        ctx.fail(e);
+    }
     trace::map_merge_result(nominee, result, ctx.len());
     result
+}
+
+/// C's `ListAxes`: whether the Mappings of a list fit together, and its
+/// numbers of inputs and outputs. In series each Mapping must have as many
+/// inputs as the one before it has outputs, and the list's inputs are the
+/// first's and its outputs the last's; in parallel both are totals. A
+/// Mapping whose own Invert differs from its entry's is used the other way
+/// round.
+pub(crate) fn list_axes(list: &[(DynMapping, bool, bool)], series: bool) -> (bool, usize, usize) {
+    let mut fits = true;
+    let (mut nin, mut nout) = (0, 0);
+    for (i, (m, inv, _)) in list.iter().enumerate() {
+        let (ni, no) = if m.is_inverted() != *inv {
+            (m.nout(), m.nin())
+        } else {
+            (m.nin(), m.nout())
+        };
+        if series {
+            if i == 0 {
+                nin = ni;
+            } else if ni != nout {
+                fits = false;
+            }
+            nout = no;
+        } else {
+            nin += ni;
+            nout += no;
+        }
+    }
+    (fits, nin, nout)
+}
+
+/// The error C's `astMapMerge` reports when the list a merger returns does
+/// not have the shape of the list it was given, or `None` if it does.
+fn merger_axes_error(
+    nominee: &dyn Mapping,
+    series: bool,
+    nin_old: usize,
+    nout_old: usize,
+    list: &[(DynMapping, bool, bool)],
+) -> Option<AstError> {
+    let (fits, nin_new, nout_new) = list_axes(list, series);
+    if fits && nin_new == nin_old && nout_new == nout_old {
+        return None;
+    }
+    let class = mapping_class(nominee);
+    Some(AstError::new(
+        ErrorCode::Inter,
+        format!(
+            "astMapMerge({class}): The Mappings returned by the {} merger of a {class} have {nin_new} \
+             inputs and {nout_new} outputs{}, but those supplied have {nin_old} inputs and \
+             {nout_old} outputs (internal AST programming error).",
+            if series { "series" } else { "parallel" },
+            if fits {
+                ""
+            } else {
+                " and do not feed one another"
+            },
+        ),
+    ))
+}
+
+/// The AST class name of a Mapping, for an error message.
+fn mapping_class(m: &dyn Mapping) -> String {
+    crate::AnyObject::from_mapping(m)
+        .map(|o| o.class_name().to_string())
+        .unwrap_or_else(|| "Mapping".to_string())
 }
 
 /// The body of `astMapMerge_` after its entry guard: the nominee's own
@@ -5705,6 +5794,54 @@ mod tests {
     /// (`mapping.c:16871-16883`). A unit-factor ZoomMap is a UnitMap and
     /// `zoom_map_merge` says so, so the driver must reach that with no
     /// per-class `simplified()` in the way.
+    /// A series list whose Mappings do not feed one another is refused
+    /// before any class merges it, with C's error.
+    #[test]
+    fn a_series_list_that_does_not_fit_is_refused() {
+        let zoom = ZoomMap::new(1, 2.0).unwrap();
+        let mut ctx = MergeCtx::new(vec![
+            (Box::new(zoom.clone()) as DynMapping, false, false),
+            (Box::new(ZoomMap::new(2, 3.0).unwrap()), false, false),
+        ]);
+        assert_eq!(dispatch_map_merge(&zoom, &mut ctx, 0, true), None);
+        let err = ctx.error.expect("the merge fails");
+        assert_eq!(err.code(), ErrorCode::Innco);
+        assert_eq!(
+            err.message(),
+            "astMapMerge(ZoomMap): The Mappings to be merged in series do not fit together; the \
+             number of inputs of one is not the number of outputs of the one before it."
+        );
+    }
+
+    /// A list returned with another shape than the one supplied is C's
+    /// internal programming error, which names both shapes.
+    #[test]
+    fn a_merger_that_changes_the_shape_is_an_internal_error() {
+        let zoom = ZoomMap::new(2, 2.0).unwrap();
+        let one: Vec<(DynMapping, bool, bool)> =
+            vec![(Box::new(ZoomMap::new(1, 2.0).unwrap()), false, false)];
+        let err = merger_axes_error(&zoom, true, 2, 2, &one).expect("an error");
+        assert_eq!(err.code(), ErrorCode::Inter);
+        assert_eq!(
+            err.message(),
+            "astMapMerge(ZoomMap): The Mappings returned by the series merger of a ZoomMap have 1 \
+             inputs and 1 outputs, but those supplied have 2 inputs and 2 outputs (internal AST \
+             programming error)."
+        );
+        let misfit: Vec<(DynMapping, bool, bool)> = vec![
+            (Box::new(ZoomMap::new(2, 2.0).unwrap()), false, false),
+            (Box::new(ZoomMap::new(1, 2.0).unwrap()), false, false),
+        ];
+        let err = merger_axes_error(&zoom, true, 2, 2, &misfit).expect("an error");
+        assert!(
+            err.message()
+                .contains("have 2 inputs and 1 outputs and do not feed one another")
+        );
+        let same: Vec<(DynMapping, bool, bool)> = vec![(Box::new(UnitMap::new(2)), false, false)];
+        assert!(merger_axes_error(&zoom, true, 2, 2, &same).is_none());
+        assert!(merger_axes_error(&zoom, false, 2, 2, &same).is_none());
+    }
+
     #[test]
     fn base_simplify_reaches_a_classes_own_map_merge() {
         let zoom = ZoomMap::new(2, 1.0).expect("unit-factor ZoomMap constructs");

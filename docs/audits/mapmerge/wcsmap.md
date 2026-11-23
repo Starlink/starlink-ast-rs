@@ -21,10 +21,10 @@ rows 37 to 58, and it admits only a PermMap.
 `simplify::wcs_map_merge` (`mappings/simplify.rs:1207-1377 (fn wcs_map_merge)`), so Rust
 sites below are in `mappings/simplify.rs` unless stated. The driver calls three
 helpers, one per C function it needs: `can_swap_wcsmap_past_permmap`
-(`mappings/simplify.rs:2105-2174 (fn can_swap_wcsmap_past_permmap)`) is `CanSwap`,
-`can_merge_wcsmaps` (`mappings/simplify.rs:2065-2080 (fn can_merge_wcsmaps)`) is
+(`mappings/simplify.rs:2193-2262 (fn can_swap_wcsmap_past_permmap)`) is `CanSwap`,
+`can_merge_wcsmaps` (`mappings/simplify.rs:2153-2168 (fn can_merge_wcsmaps)`) is
 `CanMerge` (`wcsmap.c:875-983 (fn CanMerge)`) applied to a list entry, and
-`wcs_perm_at` (`mappings/simplify.rs:2181-2232 (fn wcs_perm_at)`) is `WcsPerm`
+`wcs_perm_at` (`mappings/simplify.rs:2269-2320 (fn wcs_perm_at)`) is `WcsPerm`
 (`wcsmap.c:4641-4881 (fn WcsPerm)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
@@ -67,26 +67,26 @@ helpers, one per C function it needs: `can_swap_wcsmap_past_permmap`
 | 36 | Return the result | wcsmap.c:3511-3512 (fn MapMerge) | mappings/simplify.rs:1376 (fn wcs_map_merge) | ceremony | ported |
 | 37 | `CanSwap` initializes the returned flag, the simpler flag and the swapped WcsMap | wcsmap.c:1063-1067 (fn CanSwap) | -- | ceremony | n/a: the helper returns `Option<(bool, Option<WcsMap>)>`, so "cannot swap" is `None` rather than a cleared flag |
 | 38 | Check the global error status and bail out | wcsmap.c:1068-1070 (fn CanSwap) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 39 | Temporarily set both Mappings' Invert attributes to the supplied values | wcsmap.c:1071-1078 (fn CanSwap) | mappings/simplify.rs:2121 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 40 | Get the classes of the two Mappings | wcsmap.c:1079-1083 (fn CanSwap) | mappings/simplify.rs:2109-2110 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 41 | Get a pointer to the non-WcsMap Mapping, noting which of the pair the WcsMap is | wcsmap.c:1084-1096 (fn CanSwap) | mappings/simplify.rs:2114-2119 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 42 | The Mappings can be swapped only if the other one is a PermMap, and then only on two conditions | wcsmap.c:1097-1104 (fn CanSwap) | mappings/simplify.rs:2109-2113 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 43 | Get the PermMap's input and output coordinate counts | wcsmap.c:1105-1108 (fn CanSwap) | mappings/simplify.rs:2122-2123 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 44 | Get the PermMap's axis permutation arrays and constants array | wcsmap.c:1109-1113 (fn CanSwap) | mappings/simplify.rs:2086-2092 (fn effective_perms), via mappings/simplify.rs:2121 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 39 | Temporarily set both Mappings' Invert attributes to the supplied values | wcsmap.c:1071-1078 (fn CanSwap) | mappings/simplify.rs:2209 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 40 | Get the classes of the two Mappings | wcsmap.c:1079-1083 (fn CanSwap) | mappings/simplify.rs:2197-2198 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 41 | Get a pointer to the non-WcsMap Mapping, noting which of the pair the WcsMap is | wcsmap.c:1084-1096 (fn CanSwap) | mappings/simplify.rs:2202-2207 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 42 | The Mappings can be swapped only if the other one is a PermMap, and then only on two conditions | wcsmap.c:1097-1104 (fn CanSwap) | mappings/simplify.rs:2197-2201 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 43 | Get the PermMap's input and output coordinate counts | wcsmap.c:1105-1108 (fn CanSwap) | mappings/simplify.rs:2210-2211 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 44 | Get the PermMap's axis permutation arrays and constants array | wcsmap.c:1109-1113 (fn CanSwap) | mappings/simplify.rs:2174-2180 (fn effective_perms), via mappings/simplify.rs:2209 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
 | 45 | Indicate we can swap with the PermMap | wcsmap.c:1114-1116 (fn CanSwap) | -- | ceremony | n/a: the helper returns `Some` only where C's flag would still be set, so there is no optimistic flag to clear on the way out |
-| 46 | Check each output axis, rejecting the swap if a link between axes is not bi-directional | wcsmap.c:1117-1127 (fn CanSwap) | mappings/simplify.rs:2128-2132 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 47 | Check each input axis the same way | wcsmap.c:1128-1138 (fn CanSwap) | mappings/simplify.rs:2133-2137 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 48 | Check that the longitude and latitude axes both have bi-directional links, or are both unassigned | wcsmap.c:1139-1142 (fn CanSwap) | mappings/simplify.rs:2139-2164 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 49 | Get the indices of the longitude and latitude axes in the WcsMap | wcsmap.c:1143-1146 (fn CanSwap) | mappings/simplify.rs:2142-2143 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 50 | With the WcsMap applied first, read the two links through the PermMap's `inperm` | wcsmap.c:1147-1155 (fn CanSwap) | mappings/simplify.rs:2144-2148 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 51 | With the WcsMap applied second, read them through `outperm` against the input count instead | wcsmap.c:1156-1166 (fn CanSwap) | mappings/simplify.rs:2144-2157 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 52 | Where the swap is allowed, report whether the swapped Mappings are intrinsically simpler, which is when the PermMap loses axes in the direction it is applied | wcsmap.c:1167-1176 (fn CanSwap) | mappings/simplify.rs:2166-2172 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 46 | Check each output axis, rejecting the swap if a link between axes is not bi-directional | wcsmap.c:1117-1127 (fn CanSwap) | mappings/simplify.rs:2216-2220 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 47 | Check each input axis the same way | wcsmap.c:1128-1138 (fn CanSwap) | mappings/simplify.rs:2221-2225 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 48 | Check that the longitude and latitude axes both have bi-directional links, or are both unassigned | wcsmap.c:1139-1142 (fn CanSwap) | mappings/simplify.rs:2227-2252 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 49 | Get the indices of the longitude and latitude axes in the WcsMap | wcsmap.c:1143-1146 (fn CanSwap) | mappings/simplify.rs:2230-2231 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 50 | With the WcsMap applied first, read the two links through the PermMap's `inperm` | wcsmap.c:1147-1155 (fn CanSwap) | mappings/simplify.rs:2232-2236 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 51 | With the WcsMap applied second, read them through `outperm` against the input count instead | wcsmap.c:1156-1166 (fn CanSwap) | mappings/simplify.rs:2232-2245 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 52 | Where the swap is allowed, report whether the swapped Mappings are intrinsically simpler, which is when the PermMap loses axes in the direction it is applied | wcsmap.c:1167-1176 (fn CanSwap) | mappings/simplify.rs:2254-2260 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
 | 53 | Free the axis permutation and constants arrays | wcsmap.c:1177-1184 (fn CanSwap) | -- | ceremony | n/a: the arrays are borrowed from the PermMap rather than copied out of it |
 | 54 | Re-instate the original settings of the Invert attributes | wcsmap.c:1185-1189 (fn CanSwap) | -- | ceremony | n/a: the list entries are read, never mutated, so there is nothing to put back |
-| 55 | Where the Mappings can swap, get the equivalent swapped Mappings | wcsmap.c:1190-1197 (fn CanSwap) | wcsmap.rs:985-1012 (fn with_permuted_axes), via mappings/simplify.rs:2163 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
-| 56 | Return a pointer to the swapped WcsMap | wcsmap.c:1198-1200 (fn CanSwap) | mappings/simplify.rs:2154-2164 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 55 | Where the Mappings can swap, get the equivalent swapped Mappings | wcsmap.c:1190-1197 (fn CanSwap) | wcsmap.rs:985-1012 (fn with_permuted_axes), via mappings/simplify.rs:2251 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 56 | Return a pointer to the swapped WcsMap | wcsmap.c:1198-1200 (fn CanSwap) | mappings/simplify.rs:2242-2252 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
 | 57 | Free the swapped copies | wcsmap.c:1201-1205 (fn CanSwap) | -- | ceremony | n/a: owned values are dropped |
-| 58 | Return the answer | wcsmap.c:1206-1207 (fn CanSwap) | mappings/simplify.rs:2173 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
+| 58 | Return the answer | wcsmap.c:1206-1207 (fn CanSwap) | mappings/simplify.rs:2261 (fn can_swap_wcsmap_past_permmap) | architecture | ported |
 
 ## Rows 42 and 55 — one predicate, one swap, both C's
 

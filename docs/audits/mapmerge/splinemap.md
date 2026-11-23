@@ -14,7 +14,7 @@ against an adjacent SplineMap used in the opposite direction, replacing both wit
 UnitMaps.
 
 `SplineMap::map_merge` (`splinemap.rs:1087-1099 (fn map_merge)`) calls `default_map_merge`
-(`mappings/simplify.rs:1573-1666 (fn default_map_merge)`), whose neighbor attempt reaches
+(`mappings/simplify.rs:1661-1754 (fn default_map_merge)`), whose neighbor attempt reaches
 `SplineMap::try_merge` (`splinemap.rs:1159-1207 (fn try_merge)`).
 
 | # | C step | C site | Rust site | extension point | verdict |
@@ -25,8 +25,8 @@ UnitMaps.
 | 4 | The only merge available is with its own inverse, in series | splinemap.c:1939-1944 (fn MapMerge) | splinemap.rs:1166-1168 (fn try_merge) | architecture | ported |
 | 5 | Temporarily set the nominated SplineMap's Invert flag to the required value, saving the original | splinemap.c:1945-1950 (fn MapMerge) | -- | ceremony | n/a: the requested orientation is a separate value in `MergeCtx`, so the object is never mutated to carry it |
 | 6 | Read its input and output counts at that orientation, to size the replacement | splinemap.c:1951-1955 (fn MapMerge) | splinemap.rs:1203 (fn try_merge) | architecture | ported |
-| 7 | Take each neighbor in turn | splinemap.c:1956-1958 (fn MapMerge) | mappings/simplify.rs:1584-1606 (fn default_map_merge) | architecture | ported |
-| 8 | Skip a neighbor that does not exist | splinemap.c:1959-1961 (fn MapMerge) | mappings/simplify.rs:1576-1578 (fn default_map_merge) | architecture | ported |
+| 7 | Take each neighbor in turn | splinemap.c:1956-1958 (fn MapMerge) | mappings/simplify.rs:1672-1694 (fn default_map_merge) | architecture | ported |
+| 8 | Skip a neighbor that does not exist | splinemap.c:1959-1961 (fn MapMerge) | mappings/simplify.rs:1664-1666 (fn default_map_merge) | architecture | ported |
 | 9 | Skip a neighbor that is not a SplineMap | splinemap.c:1962-1964 (fn MapMerge) | splinemap.rs:1171 (fn try_merge) | architecture | ported |
 | 10 | Get a typed pointer to it | splinemap.c:1965-1967 (fn MapMerge) | splinemap.rs:1171 (fn try_merge) | ceremony | ported |
 | 11 | Require the two to be used in opposite directions | splinemap.c:1968-1971 (fn MapMerge) | splinemap.rs:1173-1175 (fn try_merge) | architecture | ported |
@@ -35,7 +35,7 @@ UnitMaps.
 | 14 | Re-instate the neighbor's original Invert flag | splinemap.c:1986-1988 (fn MapMerge) | -- | ceremony | n/a: the neighbor entry is read without being mutated |
 | 15 | Move on if the neighbor differs from the nominated SplineMap | splinemap.c:1989-1992 (fn MapMerge) | splinemap.rs:1182-1201 (fn try_merge) | architecture | ported |
 | 16 | Otherwise replace each of the two with a UnitMap | splinemap.c:1993-2010 (fn MapMerge) | splinemap.rs:1203 (fn try_merge) | architecture | ported |
-| 17 | Leave the neighbor loop | splinemap.c:2011-2014 (fn MapMerge) | mappings/simplify.rs:1630 (fn default_map_merge) | architecture | ported |
+| 17 | Leave the neighbor loop | splinemap.c:2011-2014 (fn MapMerge) | mappings/simplify.rs:1718 (fn default_map_merge) | architecture | ported |
 | 18 | Re-instate the nominated SplineMap's Invert flag if it was not replaced | splinemap.c:2015-2019 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
 | 19 | Return the result | splinemap.c:2020-2021 (fn MapMerge) | splinemap.rs:1098 (fn map_merge) | ceremony | ported |
 | 20 | Setting or clearing InvNiter, InvTol or OutUnit clears the simplified record | splinemap.c:2726-2728 (fn astMAKE_CLEAR1), splinemap.c:2767-2769 (fn astMAKE_CLEAR1), splinemap.c:2813-2815 (fn astMAKE_CLEAR1) | splinemap.rs:399-412 (fn set_inv_niter), splinemap.rs:436-444 (fn set_inv_tol), splinemap.rs:470-522 (fn set_out_unit) | ceremony | ported |

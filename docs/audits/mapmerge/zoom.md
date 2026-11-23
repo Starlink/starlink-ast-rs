@@ -50,8 +50,8 @@ must discard the simplified record.
 | 23 | Absorb into a following MatrixMap by scaling its elements | zoommap.c:1076-1089 (fn MapMerge) | matrix.rs:1017-1034 (fn try_merge) | architecture | ported |
 | 24 | Absorb into a following WinMap by scaling its coefficients | zoommap.c:1090-1105 (fn MapMerge) | zoom.rs:347-361 (fn try_merge) | architecture | ported |
 | 25 | Absorb into a following ShiftMap, producing a WinMap | zoommap.c:1106-1132 (fn MapMerge) | zoom.rs:347-361 (fn try_merge) | architecture | ported |
-| 26 | If anything absorbed, annul the neighbor and the ZoomMap, and store the new Mapping over the neighbor with its Invert flag | zoommap.c:1134-1147 (fn MapMerge) | mappings/simplify.rs:1658-1663 (fn default_map_merge) | architecture | ported |
-| 27 | Shuffle the later Mappings down, clear the vacated element, decrement the count and return the lower of the two indices | zoommap.c:1149-1163 (fn MapMerge) | mappings/simplify.rs:1663-1664 (fn default_map_merge) | architecture | ported |
+| 26 | If anything absorbed, annul the neighbor and the ZoomMap, and store the new Mapping over the neighbor with its Invert flag | zoommap.c:1134-1147 (fn MapMerge) | mappings/simplify.rs:1746-1751 (fn default_map_merge) | architecture | ported |
+| 27 | Shuffle the later Mappings down, clear the vacated element, decrement the count and return the lower of the two indices | zoommap.c:1149-1163 (fn MapMerge) | mappings/simplify.rs:1751-1752 (fn default_map_merge) | architecture | ported |
 | 28 | Clear the returned result if an error occurred | zoommap.c:1167-1168 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 29 | Return the result | zoommap.c:1170-1171 (fn MapMerge) | mappings/simplify.rs:1072-1076 (fn zoom_map_merge) | architecture | ported |
 | 30 | Setting or clearing Zoom clears the simplified record, both orientations | zoommap.c:1702 (fn astMAKE_CLEAR1),1708 (fn astMAKE_SET1) | zoom.rs:106-145 (fn set_zoom) | ceremony | ported |
