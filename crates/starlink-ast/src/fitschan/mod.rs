@@ -1656,11 +1656,10 @@ impl FitsChan {
     /// the new one is blank. Leading and trailing spaces are removed from
     /// the comment, as C's `NewCard` does for a card with a value.
     fn store_card(&mut self, keyword: String, value: FitsValue, comment: &str, overwrite: bool) {
-        let com = comment.trim().to_string();
         let card = FitsCard {
             keyword: keyword.to_uppercase(),
             value,
-            comment: (!com.is_empty()).then_some(com),
+            comment: card_list::card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
         };
         self.cards.put(card, overwrite);

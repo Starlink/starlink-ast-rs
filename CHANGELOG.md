@@ -65,7 +65,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 ### Fixed
 
 - `starlink-ast`: a `FitsChan` write treats a SkyFrame as celestial only when its Domain is SKY, as the C library does, so a SkyFrame in another Domain (POLANAL, say) beside a celestial one is written as two ordinary axes. It wrote nothing for such a FrameSet, and gave a degenerate axis of such a SkyFrame the scale of its partner axis.
-- `starlink-ast`: a card a `FitsChan` writes has its comment without leading or trailing blanks, as in the C library; the comment of an offset sky axis with an empty Symbol began with a blank.
+- `starlink-ast`: a card a `FitsChan` writes has its comment without leading or trailing white space, as in the C library, Unicode white space included; the comment of an offset sky axis with an empty Symbol began with a blank.
 - `starlink-ast`: `FitsChan::get_fits_i`, `get_fits_k` and `get_fits_ci` refuse a floating-point value the integer type cannot hold with `ErrorCode::Ftcnv`, as the C library now does, where they returned the nearest value the type holds; a grism diffraction order an `i32` cannot hold is refused when a header is read; and a conversion error's message is the C library's, without the error code's description in front.
 - `starlink-ast`: a `FitsChan` read refuses a WCSAXES that is not from 1 to 999 with `ErrorCode::Bdfts` and the C library's message, and one above 99, which FITS keywords cannot index, with C's internal error; a huge value made the read run for ever.
 - `starlink-ast`: finding the numbers of inputs and outputs of a nested `CmpMap` takes a time proportional to its size; it was exponential in the depth of nesting, so reading a FITS header with a few tens of WCS axes did not finish.

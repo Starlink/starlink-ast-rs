@@ -61,10 +61,10 @@ pub(crate) enum NewScope {
 }
 
 /// A value card's comment as C's `NewCard` stores it: without its leading
-/// and trailing blanks, and none if nothing is left.
-fn card_comment(comment: &str) -> Option<String> {
-    let blank = |c: char| c.is_ascii() && crate::frames::axis_format::is_c_space(c as u8);
-    let comment = comment.trim_matches(blank);
+/// and trailing white space, and none if nothing is left. White space is
+/// Unicode's, which includes every character C's `isspace` accepts.
+pub(crate) fn card_comment(comment: &str) -> Option<String> {
+    let comment = comment.trim();
     (!comment.is_empty()).then(|| comment.to_string())
 }
 

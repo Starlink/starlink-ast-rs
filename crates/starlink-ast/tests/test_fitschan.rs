@@ -1143,6 +1143,7 @@ fn a_comment_loses_its_leading_blanks() {
     };
     fs.set_attribute("SkyRef", "0:40:00, 20:00:00").unwrap();
     fs.set_attribute("SkyRefIs", "Origin").unwrap();
+    let written_offset_sky = fs.clone();
     fs.set_attribute("Symbol(1)", "").unwrap();
     let mut out = FitsChan::new().unwrap();
     out.set_encoding(Encoding::FitsWcs);
@@ -1151,5 +1152,26 @@ fn a_comment_loses_its_leading_blanks() {
     assert_eq!(
         out.find_fits("CTYPE1", false).unwrap().unwrap().trim_end(),
         "CTYPE1  = 'OFLN-TAN'           / offset from 0:40:00.0, 20:00:00"
+    );
+
+    // A comment also loses leading Unicode white space, wherever it comes
+    // from: here an offset axis whose Symbol, after the character the
+    // comment leaves out, starts with an em space.
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_fits_s("A", "x", "\u{2003}em space", false).unwrap();
+    fc.clear_card().unwrap();
+    assert_eq!(
+        fc.find_fits("A", false).unwrap().unwrap().trim_end(),
+        "A       = 'x       '           / em space"
+    );
+    let mut fs = written_offset_sky.clone();
+    fs.set_attribute("Symbol(1)", "D\u{2003}a").unwrap();
+    let mut out = FitsChan::new().unwrap();
+    out.set_encoding(Encoding::FitsWcs);
+    out.write(&AnyObject::FrameSet(fs)).unwrap();
+    out.clear_card().unwrap();
+    assert_eq!(
+        out.find_fits("CTYPE1", false).unwrap().unwrap().trim_end(),
+        "CTYPE1  = 'OFLN-TAN'           / a offset from 0:40:00.0, 20:00:00"
     );
 }
