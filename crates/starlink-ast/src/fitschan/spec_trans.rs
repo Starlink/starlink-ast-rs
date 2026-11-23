@@ -23,6 +23,7 @@ use super::Encoding;
 use super::card_list::CardList;
 use super::fits_match::match_keyword;
 use super::warning::{Warning, Warnings};
+use crate::constants::BAD_VALUE;
 use crate::error::AstResult;
 
 /// The FitsChan attributes the translations depend on.
@@ -132,7 +133,7 @@ pub(crate) fn spec_trans_inplace(
         rename_keyword(cards, "LONGPOLE", "LONPOLE");
     }
 
-    // Zero CDELT (fitschan.c:31287-31322): replace any zero CDELT with a
+    // Zero CDELT (fitschan.c:32363-32405): replace any zero CDELT with a
     // non-zero value so the pixel→IWC matrix stays invertible (a zero on the
     // diagonal makes the Mapping non-simplifiable and unusable by a Plot).
     // Zero CDELTs typically mark "redundant" degenerate axes (e.g. a single
@@ -263,18 +264,18 @@ pub(crate) fn spec_trans_inplace(
     translate_iraf_mini_wcs_strip(cards);
 }
 
-/// Zero-CDELT helper: replace any zero `CDELT{i}{S}` with a non-zero value.
-/// Mirrors fitschan.c:31287-31322, run once per coordinate version.
+/// Zero-CDELT helper: replace any zero `CDELT{i}{S}` with a millionth of the
+/// `CRVAL{i}{S}` of the same axis and version, or 1.0 if that is zero.
+/// A CRVAL that is absent or not a finite number counts as zero.
+/// A CDELT that is absent or not a number is left alone, since it then has
+/// its default value of 1.0.
 ///
 /// A zero on the CDELT diagonal would make the pixel→IWC matrix singular, so
 /// the resulting Mapping could not be simplified or used by a Plot. Zero
 /// CDELTs conventionally mark "redundant" degenerate axes (a single-pixel
 /// plane), so the exact replacement value does not matter.
-///
-/// The C source re-reads the (zero) CDELT into `dval` when computing
-/// `1.0E-6*dval` — the prologue comment says "1.0E-6 of CRVAL" but the code
-/// uses CDELT, so the product is always zero and the `1.0` fallback always
-/// wins. This faithfully reproduces that quirk rather than the comment.
+// C: SpecTrans, "Zero CDELT values" (fitschan.c:32363-32405), run once per
+// coordinate version.
 fn translate_zero_cdelt(cards: &mut CardList) {
     // Primary (' ') plus alternate versions 'A'..='Z' (C: s = 'A'-1 .. 'Z',
     // with 'A'-1 mapped to ' ').
@@ -301,9 +302,15 @@ fn translate_zero_cdelt(cards: &mut CardList) {
                 continue;
             };
             if cdeltj == 0.0 {
-                // C: cdeltj = 1.0E-6*dval (dval = the zero CDELT) → 0.0;
-                // then `if( cdeltj == 0.0 ) cdeltj = 1.0`.
-                cards.set_float(&key, 1.0, "");
+                let crval = cards
+                    .get_float(&format!("CRVAL{j}{suffix}"))
+                    .filter(|v| v.is_finite() && *v != BAD_VALUE)
+                    .unwrap_or(0.0);
+                let mut cdelt = 1.0e-6 * crval;
+                if cdelt == 0.0 {
+                    cdelt = 1.0;
+                }
+                cards.set_float(&key, cdelt, "");
             }
         }
     }
@@ -2217,7 +2224,7 @@ mod tests {
     }
 
     #[test]
-    fn zero_cdelt_is_replaced_with_one() {
+    fn zero_cdelt_uses_a_millionth_of_crval() {
         let mut cards = CardList::from_header(
             "CTYPE1  = 'WAVE    '\n\
              CTYPE2  = 'RA---TAN'\n\
@@ -2225,6 +2232,13 @@ mod tests {
              CDELT1  =            1.000E-10\n\
              CDELT2  =                  0.0\n\
              CDELT3  =                  0.0\n\
+             CDELT4  =                  0.0\n\
+             CDELT5  =                  0.0\n\
+             CDELT6  =                  0.0\n\
+             CRVAL2  =                180.0\n\
+             CRVAL3  =                -45.0\n\
+             CRVAL5  = 'abc     '\n\
+             CRVAL6  =             1.0E-320\n\
              END",
         )
         .unwrap();
@@ -2234,11 +2248,58 @@ mod tests {
             TransAttrs::default(),
             &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
-        // Non-zero CDELT untouched; zero CDELTs become 1.0 (the C fallback,
-        // since 1.0E-6 * the zero CDELT is still zero).
+        // A non-zero CDELT is untouched. A zero one becomes a millionth of
+        // the CRVAL of its axis, keeping its sign, or 1.0 when that is zero:
+        // CRVAL absent (4), not a number (5), or so small that a millionth
+        // of it underflows (6).
         assert_eq!(cards.get_float("CDELT1"), Some(1.0e-10));
+        assert_eq!(cards.get_float("CDELT2"), Some(1.0e-6 * 180.0));
+        assert_eq!(cards.get_float("CDELT3"), Some(1.0e-6 * -45.0));
+        assert_eq!(cards.get_float("CDELT4"), Some(1.0));
+        assert_eq!(cards.get_float("CDELT5"), Some(1.0));
+        assert_eq!(cards.get_float("CDELT6"), Some(1.0));
+    }
+
+    #[test]
+    fn crval_string_counts_only_when_wholly_numeric() {
+        let mut cards = CardList::from_header(
+            "CDELT1  =                  0.0\n\
+             CDELT2  =                  0.0\n\
+             CRVAL1  = '12.5    '\n\
+             CRVAL2  = '12.5abc '\n\
+             END",
+        )
+        .unwrap();
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsWcs,
+            TransAttrs::default(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
+        );
+        // A string that is a number converts; one with trailing text is not
+        // a number, so CRVAL2 counts as zero, as it does in the projection.
+        assert_eq!(cards.get_float("CDELT1"), Some(1.0e-6 * 12.5));
         assert_eq!(cards.get_float("CDELT2"), Some(1.0));
-        assert_eq!(cards.get_float("CDELT3"), Some(1.0));
+    }
+
+    #[test]
+    fn missing_or_non_numeric_cdelt_is_not_replaced() {
+        let mut cards = CardList::from_header(
+            "CDELT2  =                  0.0\n\
+             CDELT3  = 'x       '\n\
+             CRVAL2  =                 10.0\n\
+             END",
+        )
+        .unwrap();
+        spec_trans_inplace(
+            &mut cards,
+            Encoding::FitsWcs,
+            TransAttrs::default(),
+            &mut crate::fitschan::spec_trans::TransWarnings::default(),
+        );
+        assert!(cards.find("CDELT1").is_none());
+        assert_eq!(cards.get_float("CDELT2"), Some(1.0e-6 * 10.0));
+        assert_eq!(cards.get_string("CDELT3"), Some("x       ".to_string()));
     }
 
     #[test]
@@ -2246,6 +2307,8 @@ mod tests {
         let mut cards = CardList::from_header(
             "CDELT1A =                  0.0\n\
              CDELT2A =                  2.5\n\
+             CRVAL1  =                  7.0\n\
+             CRVAL1A =                2.0E6\n\
              END",
         )
         .unwrap();
@@ -2255,7 +2318,8 @@ mod tests {
             TransAttrs::default(),
             &mut crate::fitschan::spec_trans::TransWarnings::default(),
         );
-        assert_eq!(cards.get_float("CDELT1A"), Some(1.0));
+        // The replacement comes from the CRVAL of the same version.
+        assert_eq!(cards.get_float("CDELT1A"), Some(1.0e-6 * 2.0e6));
         assert_eq!(cards.get_float("CDELT2A"), Some(2.5));
     }
 

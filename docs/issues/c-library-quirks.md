@@ -128,6 +128,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A FitsChan write gives `FsetToStore` its method and class names in the wrong order](#a-fitschan-write-gives-fsettostore-its-method-and-class-names-in-the-wrong-order)
 - [`GetCDMatrix` puts back the card current before the source was read](#getcdmatrix-puts-back-the-card-current-before-the-source-was-read)
 - [`WriteData` never refuses a SinkFile that is the SourceFile in use](#writedata-never-refuses-a-sinkfile-that-is-the-sourcefile-in-use)
+- [`CnvType` leaves a partly read number in the caller's buffer when it fails](#cnvtype-leaves-a-partly-read-number-in-the-callers-buffer-when-it-fails)
 - [SUN/211 shows examples and output that the current library does not produce](#sun211-shows-examples-and-output-that-the-current-library-does-not-produce)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
@@ -143,6 +144,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream 45ae1bd8): SpecTrans replaces a zero CDELT with 1.0 whatever CRVAL is](#resolved-upstream-45ae1bd8-spectrans-replaces-a-zero-cdelt-with-10-whatever-crval-is)
+- [RESOLVED (upstream cba0743a): DssMap's inverse gives a far-side sky position a pixel position](#resolved-upstream-cba0743a-dssmaps-inverse-gives-a-far-side-sky-position-a-pixel-position)
 - [RESOLVED (upstream f6c0d187): `astRead` crashes on a non-spectral `-LOG` axis with a zero CRVAL](#resolved-upstream-f6c0d187-astread-crashes-on-a-non-spectral--log-axis-with-a-zero-crval)
 - [RESOLVED (upstream 9efa99f3): `OtherAxes` keeps the axis value as CRVAL for a `-TAB` axis](#resolved-upstream-9efa99f3-otheraxes-keeps-the-axis-value-as-crval-for-a--tab-axis)
 - [RESOLVED (upstream 9e6e4415): `IsMapTab2D` fails with AST__MPIND when only one celestial axis is tabular](#resolved-upstream-9e6e4415-ismaptab2d-fails-with-ast__mpind-when-only-one-celestial-axis-is-tabular)
@@ -1774,6 +1777,22 @@ Consequence: a Channel that reads and writes the same file truncates it when it 
 The port mirrors it: `ChannelBase::write_line` makes no check, and `ChannelBase::read_line` refuses a SourceFile the SinkFile has open.
 A C fix: test `this->fd_in` in `WriteData` and compare the names there.
 
+### `CnvType` leaves a partly read number in the caller's buffer when it fails
+
+C location: `fitschan.c` `CnvType`, the string to `AST__FLOAT`, `AST__INT` and `AST__KINT` branches, which read with `astSscanf( ostring, "%lf %n", (double *) buff, &nc )` and its integer forms.
+
+The prologue says that when the value cannot be converted "the contents of the output buffer are left unchanged".
+But `sscanf` stores the number it reads straight into `buff` before `nc < len` rejects the trailing text, so a string such as `'12.5abc'` fails the conversion and still leaves 12.5 in `buff`.
+`GetValue` and `GetValue2` pass the caller's own variable as `buff`, so a caller that sets a default, reads with `report` zero, and ignores the return value gets the partly read number instead of its default.
+
+Consequence: one header can be read two ways.
+With `CRVAL1 = '12.5abc'` and `CDELT1 = 0.0`, SpecTrans replaces the zero CDELT1 with 1.25e-5 (a millionth of 12.5), while the projection takes CRVAL1 as absent and puts pixel 1 at 0.
+A probe against the reference library at `fe26cc9b` gives a step of 1.2499999999999999e-05 from 0; the port replaces CDELT1 with 1.0, as C does for `'abc'`.
+WCSLIB 8 (astropy 8.0.1) goes further and rejects any string CRVAL1, even `'12.5'`, with the warning "a floating-point value was expected", treating it as absent.
+
+The port follows the prologue, not the code: `card_value::cnv_type` parses the whole string or nothing, so the caller's default stands (`crval_string_counts_only_when_wholly_numeric` in `src/fitschan/spec_trans.rs`).
+A C fix: read into a local and copy it to `buff` only when the whole string was consumed.
+
 ### SUN/211 shows examples and output that the current library does not produce
 
 C location: `sun_master.tex` (SUN/211 211.34), at the lines given below; found while porting it into `starlink_ast::guide`.
@@ -2322,6 +2341,26 @@ So the port gives a NaN input the result C gives `AST__BAD`.
 
 Each entry names the commit that fixed it.
 Where the port mirrored the defect, the entry also records the inversion, because a mirror of a fixed bug is a bug.
+
+### RESOLVED (upstream 45ae1bd8): SpecTrans replaces a zero CDELT with 1.0 whatever CRVAL is
+
+`SpecTrans` replaces a CDELT of zero so that a degenerate axis can be inverted, and its comment says the replacement is a millionth of the axis's CRVAL, or 1.0 if CRVAL is zero.
+The code fetched CDELT again in place of CRVAL, so the product was always zero and the replacement always 1.0.
+Upstream now fetches CRVAL, taking an absent or non-finite one as zero; `41e2f2c3`, in the same range, also stops it testing a CDELT that was never read.
+
+**Rust behavior:** `translate_zero_cdelt` in `crates/starlink-ast/src/fitschan/spec_trans.rs` had mirrored the 1.0, and now uses CRVAL as upstream does.
+It already skipped an absent or non-numeric CDELT, which is what `41e2f2c3` makes C do.
+The degenerate axes of `wcsconv/inputs/zero-cdelt.head` now have pixel sizes of 180e-6 and 45e-6 degrees, and its references were regenerated upstream.
+
+### RESOLVED (upstream cba0743a): DssMap's inverse gives a far-side sky position a pixel position
+
+`platepix` was documented as failing for a position too far from the plate centre but never did, so a sky position 90 degrees or more from the centre got the pixel position of the point on the opposite side of the sky.
+A plate solution that could not be evaluated (an enormous pixel position, a zero pixel size) gave values that were not finite numbers.
+Upstream gives both bad values; the same commit also hardens the DssMap loader and `MapMerge`.
+
+**Rust behavior:** `DssMap::platepix` and `transform_into` had mirrored both, and now give bad values as upstream does.
+The rows of the `simplify/dssmap_inv_winmap_absorb` oracle sections that upstream changed to bad are what exposed it.
+The loader and `MapMerge` halves of the commit are ported with the rest of the loader hardening.
 
 The four entries immediately below were found while porting `NormUnit` and were fixed on upstream branch `u/timj/norm-unit`, merged to C master on 2026-10-22 as PR #95, which the submodule pin includes.
 The three `unit.c` ones were found by reading `NormUnit(1)` from a one-axis C Frame across a table of Unit strings, now `C_ORACLE` in `crates/starlink-ast/tests/test_frame.rs`; the SkyAxis one by reading it through each class that can hold a SkyFrame axis.

@@ -292,6 +292,15 @@ impl DssMap {
         let sxdiff = crate::math::sin(xr - self.plate_ra);
         let cxdiff = crate::math::cos(xr - self.plate_ra);
         let div = (sypos * syplate) + (cypos * cyplate * cxdiff);
+
+        // `div` is the cosine of the angle between the position and the plate
+        // centre. A tangent-plane projection shows only positions less than 90
+        // degrees from its centre; the formulae below would give any other
+        // the pixel position of the point on the opposite side of the sky.
+        if div <= 0.0 {
+            return Err(());
+        }
+
         let xi = cypos * sxdiff * CONS2R / div;
         let eta = ((sypos * cyplate) - (cypos * syplate * cxdiff)) * CONS2R / div;
 
@@ -480,7 +489,13 @@ impl Mapping for DssMap {
                 } else {
                     let mut xpos = 0.0;
                     let mut ypos = 0.0;
-                    if self.platepos(in0[i], in1[i], &mut xpos, &mut ypos).is_ok() {
+                    // A plate solution that cannot be evaluated (an enormous
+                    // pixel position, a zero pixel size) gives values that are
+                    // not finite, which are a failure too.
+                    if self.platepos(in0[i], in1[i], &mut xpos, &mut ypos).is_ok()
+                        && xpos.is_finite()
+                        && ypos.is_finite()
+                    {
                         // platepos returns degrees; convert to radians
                         out0[i] = xpos * DD2R;
                         out1[i] = ypos * DD2R;
@@ -510,7 +525,10 @@ impl Mapping for DssMap {
                     let dec_deg = in1[i] * DR2D;
                     let mut xpix = 0.0;
                     let mut ypix = 0.0;
-                    if self.platepix(ra_deg, dec_deg, &mut xpix, &mut ypix).is_ok() {
+                    if self.platepix(ra_deg, dec_deg, &mut xpix, &mut ypix).is_ok()
+                        && xpix.is_finite()
+                        && ypix.is_finite()
+                    {
                         out0[i] = xpix;
                         out1[i] = ypix;
                     } else {
@@ -1051,6 +1069,32 @@ mod tests {
             assert_eq!(out.axis(0)[i], BAD_VALUE);
             assert_eq!(out.axis(1)[i], BAD_VALUE);
         }
+    }
+
+    #[test]
+    fn dssmap_inverse_of_far_side_position_is_bad() {
+        // A plate is a tangent-plane projection, so a sky position 90
+        // degrees or more from the plate centre has no pixel position.
+        let dm = make_test_dssmap();
+        let ra = dm.plate_ra;
+        let dec = dm.plate_dec;
+        let pts = PointSet::from_rows([[ra + std::f64::consts::PI, -dec], [ra, -dec]]);
+        let out = dm.transform(&pts, false).unwrap();
+        for i in 0..2 {
+            assert_eq!(out.axis(0)[i], BAD_VALUE, "point {i}");
+            assert_eq!(out.axis(1)[i], BAD_VALUE, "point {i}");
+        }
+    }
+
+    #[test]
+    fn dssmap_forward_of_unevaluable_pixel_is_bad() {
+        // A pixel position so large that the plate solution overflows has
+        // no sky position.
+        let dm = make_test_dssmap();
+        let pts = PointSet::from_rows([[1.0e300, 1.0e300]]);
+        let out = dm.transform(&pts, true).unwrap();
+        assert_eq!(out.axis(0)[0], BAD_VALUE);
+        assert_eq!(out.axis(1)[0], BAD_VALUE);
     }
 
     // ------------------------------------------------------------------ //
