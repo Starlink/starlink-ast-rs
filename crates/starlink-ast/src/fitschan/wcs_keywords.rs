@@ -93,6 +93,9 @@ pub(crate) fn read_epoch_into_store(cards: &CardList, store: &mut FitsStore) {
         });
 }
 
+/// The largest WCSAXES value FITS allows (C's `MXWCSAXES`).
+const MXWCSAXES: usize = 999;
+
 /// Extract FITS-WCS keywords from a [`CardList`] into a [`FitsStore`].
 ///
 /// The returned store contains all WCS keyword values found in the header.
@@ -110,12 +113,33 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> As
     // C reads WCSAXES as a double and rounds (fitschan.c:37176, fixed
     // upstream at e447556a): a value stored as a FITS float marginally below
     // an integer must not truncate to the integer below.
-    let wcsaxes = cards
-        .get_float(&key_for("WCSAXES", None, s))
-        .map(|v| v.round() as usize);
+    // C's GetWcsAxes: a WCSAXES must be from 1 to 999, a test written so
+    // that a NaN fails it too.
+    let wcsaxes = match cards.get_float(&key_for("WCSAXES", None, s)) {
+        Some(v) if !(v >= 1.0 && v <= MXWCSAXES as f64) => {
+            return Err(AstError::new(
+                ErrorCode::Bdfts,
+                format!(
+                    "astRead(FitsChan): The FITS keyword WCSAXES{s} has an invalid value ({}) - it \
+                     should be an integer between 1 and {MXWCSAXES}.",
+                    crate::frames::axis_format::sprintf_double("%g", v)
+                ),
+            ));
+        }
+        Some(v) => Some(v.round() as usize),
+        None => None,
+    };
     let naxis = wcsaxes.unwrap_or(npix);
     if naxis == 0 {
         return Err(AstError::new(ErrorCode::Bdfts, "WCSAXES is zero"));
+    }
+    // FITS keywords name at most 99 intermediate axes; C's FitsStore
+    // reports the first axis past them as an internal error.
+    if naxis > 99 {
+        return Err(AstError::new(
+            ErrorCode::Inter,
+            "GetItemC(fitschan): AST internal error; intermediate axis index 99 is invalid.",
+        ));
     }
 
     let mut store = FitsStore::new(naxis);

@@ -64,6 +64,8 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a `FitsChan` read refuses a WCSAXES that is not from 1 to 999 with `ErrorCode::Bdfts` and the C library's message, and one above 99, which FITS keywords cannot index, with C's internal error; a huge value made the read run for ever.
+- `starlink-ast`: finding the numbers of inputs and outputs of a nested `CmpMap` takes a time proportional to its size; it was exponential in the depth of nesting, so reading a FITS header with a few tens of WCS axes did not finish.
 - `starlink-ast`: a `FitsChan` writes DATE-OBS as the C library does, from the same calendar conversion, and none for an MJD-OBS that is not finite or has no calendar date. It wrote one for an MJD of 1e10, and differed from C for years before 1900 and the last instant of a day.
 - `starlink-ast`: a `FitsChan` with a `FitsDigits` larger than a card can hold writes floating-point values as the C library now does, using no more digits than fit; a very large one, such as -100000, panicked, and others failed with `ErrorCode::Bdfts`.
 - `starlink-ast`: a `FitsChan` writes the description of absolute coordinates for an offset sky system under a version letter no other description has, as the C library now does; it could reuse the letter a Frame's `Ident` had claimed, mixing the two descriptions. FITS-PC also refuses a secondary description with projection parameters the primary one lacks, or a different number of axes, as C does.

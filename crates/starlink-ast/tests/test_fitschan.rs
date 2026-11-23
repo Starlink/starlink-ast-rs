@@ -950,3 +950,70 @@ fn date_obs_is_written_as_the_c_library_writes_it() {
         assert_eq!(got.as_deref(), want, "MJD-OBS {mjd}");
     }
 }
+
+/// WCSAXES must be a number of axes from 1 to 999, and FITS keywords index
+/// at most 99 intermediate axes; anything else is refused with the C
+/// library's error. Each read runs on another thread, so a hang fails the
+/// test rather than stalling it.
+#[test]
+fn wcsaxes_out_of_range_is_refused_as_c_refuses_it() {
+    use starlink_ast::error::ErrorCode;
+    let bad = |v: &str| {
+        format!(
+            "astRead(FitsChan): The FITS keyword WCSAXES  has an invalid value ({v}) - it should be \
+             an integer between 1 and 999."
+        )
+    };
+    let cases: Vec<(&str, Option<(ErrorCode, String)>)> = vec![
+        ("2147483647", Some((ErrorCode::Bdfts, bad("2.14748e+09")))),
+        ("1000", Some((ErrorCode::Bdfts, bad("1000")))),
+        ("1.0E300", Some((ErrorCode::Bdfts, bad("1e+300")))),
+        ("0", Some((ErrorCode::Bdfts, bad("0")))),
+        ("-3", Some((ErrorCode::Bdfts, bad("-3")))),
+        ("999.6", Some((ErrorCode::Bdfts, bad("999.6")))),
+        ("0.4", Some((ErrorCode::Bdfts, bad("0.4")))),
+        (
+            "100",
+            Some((
+                ErrorCode::Inter,
+                "GetItemC(fitschan): AST internal error; intermediate axis index 99 is invalid."
+                    .to_string(),
+            )),
+        ),
+        ("2", None),
+        ("1.6", None),
+        ("99", None),
+    ];
+    for (value, want) in cases {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let card = format!("WCSAXES = {value}");
+        std::thread::spawn(move || {
+            let mut fc = FitsChan::new().unwrap();
+            fc.set_encoding(Encoding::FitsWcs);
+            for c in [
+                "CTYPE1  = 'RA---TAN'",
+                "CTYPE2  = 'DEC--TAN'",
+                "CRVAL1  =                180.0",
+                "CRVAL2  =                 45.0",
+                "CRPIX1  =                256.5",
+                "CRPIX2  =                256.5",
+                "CDELT1  =              -0.0003",
+                "CDELT2  =               0.0003",
+                &card,
+            ] {
+                fc.put_fits(c, false).unwrap();
+            }
+            fc.clear_card().unwrap();
+            let got = match fc.read() {
+                Ok(Some(_)) => None,
+                Ok(None) => Some((ErrorCode::Inter, "no object read".to_string())),
+                Err(e) => Some((e.code(), e.message().to_string())),
+            };
+            tx.send(got).unwrap();
+        });
+        let got = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("WCSAXES {value}: the read did not finish in 10 seconds"));
+        assert_eq!(got, want, "WCSAXES {value}");
+    }
+}

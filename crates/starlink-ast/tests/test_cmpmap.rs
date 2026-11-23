@@ -357,3 +357,25 @@ fn decompose_gives_components_and_invert_values_like_c() {
     assert!(is_zoom(d.map1) && is_shift(d.map2));
     assert_eq!((d.invert1, d.invert2), (true, false));
 }
+
+/// The numbers of inputs and outputs of a deeply nested CmpMap are found in
+/// time proportional to its size: each level asks its components only for
+/// the count it needs.
+#[test]
+fn nested_cmpmap_counts_axes_quickly() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut map: Box<dyn Mapping> = Box::new(UnitMap::new(2));
+        for _ in 0..60 {
+            let mut inverted =
+                CmpMap::new(map, Box::new(UnitMap::new(1)), Composition::Parallel).unwrap();
+            inverted.invert();
+            map = Box::new(inverted);
+        }
+        tx.send((map.nin(), map.nout())).unwrap();
+    });
+    let counts = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("counting the axes of 60 nested CmpMaps did not finish in 10 seconds");
+    assert_eq!(counts, (62, 62));
+}

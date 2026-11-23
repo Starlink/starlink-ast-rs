@@ -736,6 +736,28 @@ impl CmpMap {
         }
     }
 
+    /// The number of inputs of the CmpMap in its forward direction, before
+    /// its own Invert flag is considered.
+    fn forward_nin(&self) -> usize {
+        match self.kind {
+            Composition::Series => self.effective_first_nin(true),
+            Composition::Parallel => {
+                self.effective_first_nin(true) + self.effective_second_nin(true)
+            }
+        }
+    }
+
+    /// The number of outputs of the CmpMap in its forward direction, before
+    /// its own Invert flag is considered.
+    fn forward_nout(&self) -> usize {
+        match self.kind {
+            Composition::Series => self.effective_second_nout(true),
+            Composition::Parallel => {
+                self.effective_first_nout(true) + self.effective_second_nout(true)
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ //
     // Series helpers                                                       //
     // ------------------------------------------------------------------ //
@@ -951,21 +973,13 @@ impl Mapping for CmpMap {
     /// in the orientation the CmpMap applies it in.
     /// See [`Mapping::nin`].
     fn nin(&self) -> usize {
-        // The "forward nin" of the CmpMap (before considering self.inverted)
-        // is determined by the children in the CmpMap's nominal forward direction.
-        let fwd_nin = match self.kind {
-            Composition::Series => self.effective_first_nin(true),
-            Composition::Parallel => {
-                self.effective_first_nin(true) + self.effective_second_nin(true)
-            }
-        };
-        let fwd_nout = match self.kind {
-            Composition::Series => self.effective_second_nout(true),
-            Composition::Parallel => {
-                self.effective_first_nout(true) + self.effective_second_nout(true)
-            }
-        };
-        if self.inverted { fwd_nout } else { fwd_nin }
+        // Only the count needed is asked of the components: asking for both
+        // at every level takes a time exponential in the depth of nesting.
+        if self.inverted {
+            self.forward_nout()
+        } else {
+            self.forward_nin()
+        }
     }
 
     /// The number of output coordinates.
@@ -975,19 +989,11 @@ impl Mapping for CmpMap {
     /// taken in the orientation the CmpMap applies it in.
     /// See [`Mapping::nout`].
     fn nout(&self) -> usize {
-        let fwd_nin = match self.kind {
-            Composition::Series => self.effective_first_nin(true),
-            Composition::Parallel => {
-                self.effective_first_nin(true) + self.effective_second_nin(true)
-            }
-        };
-        let fwd_nout = match self.kind {
-            Composition::Series => self.effective_second_nout(true),
-            Composition::Parallel => {
-                self.effective_first_nout(true) + self.effective_second_nout(true)
-            }
-        };
-        if self.inverted { fwd_nin } else { fwd_nout }
+        if self.inverted {
+            self.forward_nin()
+        } else {
+            self.forward_nout()
+        }
     }
 
     fn is_inverted(&self) -> bool {
