@@ -9,7 +9,7 @@ Extension points: classified
 Uncited C steps:
 - dssmap.c:996 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
-At the `fe26cc9b` pin C rewrote the code some rows here cite (`cfdbbe8d`: the CNPIX test now also requires both values to be small enough to convert to an integer); those rows are re-anchored to the new code but describe the port of the old behavior until stage 1 of `docs/superpowers/specs/2026-11-22-upstream-sync-fe26cc9b-design.md` ports it.
+At the `fe26cc9b` pin C rewrote the code some rows here cite (`cfdbbe8d`: the CNPIX test now also requires both values to be small enough to convert to an integer); those rows are re-anchored to the new code but describe the port of the old behavior until stage 2 of `docs/superpowers/specs/2026-11-22-upstream-sync-fe26cc9b-design.md` ports it.
 
 C's body runs `dssmap.c:1015-1165 (fn MapMerge)` and does exactly one thing: absorb a WinMap
 that maps pixel coordinates immediately before an un-inverted DssMap, by folding

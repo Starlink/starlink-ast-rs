@@ -9,7 +9,6 @@ Extension points: classified
 Uncited C steps:
 - polymap.c:3609 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
-At the `fe26cc9b` pin C rewrote the code some rows here cite (`857f4a99`: the IterInverse setter also refuses a PolyMap with no forward transformation); those rows are re-anchored to the new code but describe the port of the old behavior until stage 1 of `docs/superpowers/specs/2026-11-22-upstream-sync-fe26cc9b-design.md` ports it.
 
 C's body runs `polymap.c:3650-4040 (fn MapMerge)` in two halves: consolidate the
 coefficients and, if the result is linear, replace the PolyMap with a ShiftMap and

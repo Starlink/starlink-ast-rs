@@ -216,7 +216,6 @@ list as empty, so a ledger row for one would have passed at any size.
 | Plot Native dumps (`test_plot.rs`) | — | 1 | `UNINITIALISED_FORCE_EXTERIOR_LICENSED` — the `FrcExt` line of C's dump of each Plot that did not set ForceExterior, which C dumps as set because `astInitPlot` never initialises it (`c-library-quirks.md`); compared as the commented line C writes for an unset value. `uninitialised_force_exterior_still_dumps_as_set_in_c` fails when C agrees. |
 | Plot dumps after drawing (`test_plot_draw.rs`) | — | 1 | `FORCE_EXTERIOR_LICENSED` — the same `FrcExt` line in C's dump of a Plot after `plot_methods_probe.c` drew on it, for the same reason; `dumps_after_drawing_match_the_c_library` fails when C stops writing the line as set |
 | testfitschanerrors.c bad headers (`test_fitschan_errors.rs`) | 34 | 1 | `FITSCHAN_ERRORS_GAP_EXCLUDED` (1) — `error-bad-radesys`, the duplicate-keyword gap in the FitsChan row of §5; `port_gap_cases_still_differ` fails when it closes |
-| testmapmerge.c (`test_mapmerge.rs`) | 44 | 0 | `MAPMERGE_GAP_EXCLUDED` — cases whose simplified Mapping is not equivalent to the original, or not the shape C gives, until stage 1 of the `fe26cc9b` sync ports the MatrixMap/WinMap merge (`b9cf680b`), PermMap swap (`f8c7723e`) and MathMap equality (`f584a552`) fixes; `excluded_cases_still_differ` fails when one closes |
 | `-TAB` read (`test_fitschan_tab_read_oracle.rs`) | 26 | 1 | `PROBE_STAMP_LICENSED` — `mixed`, one `IsSimp = 1` card C writes on the celestial rotation's CmpMap during a merge probe it discards, the same Mapping as the simplify corpus's `fitschan_tab_spectral` (`ABANDONED_PROBE_STAMP_LICENSED`). Removed from C's transcript at its line, which must hold that card, and the raw transcripts must still differ |
 | C-oracle tests off macOS (26 files: `crates/starlink-ast/tests/common/mod.rs`, `c_value_eq`, `c_text_eq`) | 26 files | 0 on macOS | The C values in these tests were captured on macOS, where the port matches them bit for bit, and they stay exact there. On any other platform libm rounds some last bits differently, so values compare within `LIBM_RTOL` = 1e-13 relative plus `LIBM_ATOL` = 1e-14 (the Linux CI run of 2026-10-15 needed at most 3.6e-14 and 3.8e-15), text dumps token by token the same way, and the four tests that hash every output value (`tran_grid`, `resample`, `rebin`, `rebinseq`) compare their recorded samples only, as a hash cannot be compared within a tolerance. `AST_ORACLE_TOLERANT=1` runs the off-macOS comparisons on macOS |
 | STC dumps off macOS (`test_region_stc_oracle.rs`) | 3 | 3 | `ERROR_ELLIPSE_LICENSED` — `sky`, `catalog_entry` and `sky_coord` hold the sky AstroCoords Error Region, a 1e-4 rad Galactic Circle the Stc re-expresses in ICRS as the Ellipse best fitting its mesh. The shape is all but circular, so the fitted axis direction is ill-conditioned and last-bit libm differences move the defining points by about 1e-5 relative (Linux CI, 2026-10-15); C would move them as much. Off macOS only, those PointSet values are left out and the rest of each dump is compared; on macOS everything is compared exactly. `error_ellipse_licence_is_still_needed` fails off macOS if the points come to match |
@@ -386,9 +385,15 @@ The design is [`docs/superpowers/specs/2026-11-22-upstream-sync-fe26cc9b-design.
 
 Stage 0 (pin move) is done on `u/timj/sync-c`: the pin and `DIST_MANIFEST`, the MapMerge checklists re-anchored, the zero-CDELT fix (`45ae1bd8`) with the fixtures upstream regenerated for it, the Transform half of the DssMap fix (`cba0743a`) that a copied oracle needed, WcsMap's cyclic test (`a87d1700`) with the wcslib golden recaptured, and `tools/oracle_fixtures/check_probes_fresh.sh`.
 
+Stage 1 (Mappings and the simplifier) is done on `u/timj/sync-c-mappings`, by [`docs/superpowers/plans/2026-11-23-upstream-sync-fe26cc9b-stage1.md`](docs/superpowers/plans/2026-11-23-upstream-sync-fe26cc9b-stage1.md), which opens with the triage of each commit.
+It ports `testmapmerge.c`, `testpolymapinv.c` and `testsplinemapedge.c`, and the fixes behind them: SplineMap evaluation (`0b427150`, `9a598e55`, `fd90f3b1`), PolyMap's iterative inverse (`857f4a99`), `astEQUAL` of infinity and NaN (`2d9d4449`), `astRate` near zero (`7de5007a`), MathMap equality (`f584a552`), the MatrixMap and WinMap merges (`b9cf680b`), the PermMap swap with parallel Mappings (`f8c7723e`), WcsMap parameter counts (`f0230815`), PermSplit (`e7cb7d95`), the merger axis checks (`e6141f23`) and the MapSplit search with C's per-component split (`3438acbc`).
+The port already behaved as the fixed C for `78c0f559` (a CmpMap here owns its components, so simplifying cannot change the caller's PolyMap), `8cad1a4f`, `2a84cade` and `0f11fe09` (whose error message is stage 5's), and `1df4a93a` and `73d3cc88` fix C memory faults with no effect here.
+`2d9d4449` also moved the error C gives for a Plot with a zero Gap, the drift stage 0 found in `attr_strings_oracle`, which stage 1 regenerated.
+Entries of the Java port's `~/work/astjava/docs/rust-c-differences.md` that these commits resolve or change, for that port to follow: the TimeMap TDB/TCB cancel, cancelling a PolyMap with its inverse, the PermMap null permutations, comparing two MathMaps, the MatrixMap and WinMap merges, WcsMap parameter counts, the PermMap and parallel CmpMap swap, the SplineMap coverage entries, PolyMap with all-zero coefficients, and CmpMap `MapSplit`.
+
 | Stage | Area | Suggested branch | Status |
 |---|---|---|---|
-| 1 | Mappings and the simplifier | `u/timj/sync-c-mappings` | pending |
+| 1 | Mappings and the simplifier | `u/timj/sync-c-mappings` | done |
 | 2 | FitsChan | `u/timj/sync-c-fitschan` | pending |
 | 3 | Regions | `u/timj/sync-c-regions` | pending |
 | 4 | Frames, Axis, formatting, time, units, casting, Plot | `u/timj/sync-c-frames` | pending |
@@ -398,17 +403,15 @@ What the pin move left stale, each regenerated or re-reviewed by the stage that 
 
 | Corpus | Case | What changed | Stage |
 |---|---|---|---|
-| probe oracle | `attr_strings_oracle` | Getting a Plot's `Grid`, `Edge(1)` or `Labelling` for one case now fails with `AST__INTER` "No grid curves can be drawn" in place of `AST__PLFMT` | 4 |
 | probe oracle | `fitschan_encodings_oracle` | Three writes now leave `CRPIX`, `CRVAL` and `CDELT` cards they used to remove | 2 |
 | probe oracle | `frame_load_oracle`, `sky_plain_axis_oracle` | A SkyFrame read from a dump that does not describe its axes now has SkyAxes (`2572667b`) | 5 |
-| C doc ledger | `IterInverse` (`polymap.c`) | Says an iterative inverse needs a forward polynomial (`857f4a99`) | 1 |
-| C doc ledger | `SplineMap` class (`splinemap.c`) | Says which knots a spline of order K covers | 1 |
-| MapMerge checklists | `cmpmap.md`, `dssmap.md`, `matrix.md`, `winmap.md`, `polymap.md` | Rows re-anchored onto C rewritten by `f8c7723e`, `cfdbbe8d`, `b9cf680b` and `857f4a99`, each checklist noting it | 1 |
+| MapMerge checklist | `dssmap.md` | Rows re-anchored onto C rewritten by `cfdbbe8d`, the checklist noting it | 2 |
+| C limit | FrameSet `AllVariants` | C reports an error when the joined Domains pass its 200-character buffer, which `73d3cc88` exposed; the port has no such limit (quirks entry) | 4 |
 
 The native corpus (`check_corpus_fresh.sh`) and the simplify corpus (`check_simplify_fresh.sh`: 512 fresh, 5 numeric) have no stale card; their numeric drift is the usual platform drift.
 None of the stage 1 merge fixes changes a simplify fixture, which is why `testmapmerge.c` matters to stage 1.
 
-The four probe oracles above, and eight that differ from their probes at both pins and so not because of this sync, are listed as known drift in `tools/oracle_fixtures/probes.tsv`, which makes the check pass until each is regenerated. The eight: `cmp_match_end`, `region_errors`, `region_frame` and `region_stc` (comments respelled in American English after capture), `frame_api` and `plot_frame_methods` (they print the current time), `poly_iter_inverse` (`-inf` written as `BAD_VALUE` after capture), and `fixture_full_dump` (39 fixtures added since it was captured).
+The three probe oracles above, and eight that differ from their probes at both pins and so not because of this sync, are listed as known drift in `tools/oracle_fixtures/probes.tsv`, which makes the check pass until each is regenerated. The eight: `cmp_match_end`, `region_errors`, `region_frame` and `region_stc` (comments respelled in American English after capture), `frame_api` and `plot_frame_methods` (they print the current time), `poly_iter_inverse` (`-inf` written as `BAD_VALUE` after capture), and `fixture_full_dump` (39 fixtures added since it was captured).
 
 Landed in `2efde3a`, `e0cb246`, `e029927` and `3a0a9d9`: nineteen upstream defect
 fixes reconciled against `docs/issues/c-library-quirks.md`, five mirrored bugs
@@ -582,7 +585,7 @@ pin.
 | testplot3d.c / testplotter.c | — | deferred: Plot3D and PLplot are not ported |
 | test_bbox_values.c | — | deferred: it draws through PLplot, which is not ported, and checks only the text box `astGTxExt` gives, not `astBoundingBox` |
 | testthreads.c | — | not applicable: tests C's thread-local handle and status machinery |
-| testmapmerge.c | `test_mapmerge.rs` | ported; cases the port does not yet match are in `MAPMERGE_GAP_EXCLUDED` until stage 1 of the `fe26cc9b` sync (§8) closes them |
+| testmapmerge.c | `test_mapmerge.rs` | ported 2026-11-23; each case also checks the shape of the simplified Mapping against the C library. It exposed the merge faults upstream fixed in `b9cf680b`, `f8c7723e` and `f584a552` |
 | testpolymapinv.c | `test_polymapinv.rs` | ported 2026-11-23; the options-string case calls `set_iter_inverse`, and the messages are checked against a C probe. It exposed the default and setter upstream fixed in `857f4a99` |
 | testsplinemapedge.c | `test_splinemapedge.rs` | ported 2026-11-23 (`c_*`), with open-knot and NaN cases from a C probe; it exposed the evaluator faults upstream fixed in `0b427150`, `9a598e55` and `fd90f3b1` |
 | testfitswrite.c | — | not ported — stage 2 of the `fe26cc9b` sync (§8) |

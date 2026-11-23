@@ -648,41 +648,11 @@ const GENERAL: [f64; 4] = [1.0, 2.0, 3.0, 4.0];
 const SINGULAR: [f64; 4] = [1.0, 2.0, 2.0, 4.0];
 const DIAG2: [f64; 2] = [2.0, 3.0];
 
-/// Cases the port does not yet match, each with the gap it exposes. Each is
-/// checked to still differ (`excluded_cases_still_differ`), so the list
-/// shrinks as the gaps close.
-const MAPMERGE_GAP_EXCLUDED: &[(&str, &str)] = &[];
-
-fn excluded(name: &str) -> bool {
-    MAPMERGE_GAP_EXCLUDED.iter().any(|(n, _)| *n == name)
-}
-
 #[test]
 fn simplifying_does_not_change_a_mapping() {
     let failures: Vec<String> = CASES
         .iter()
-        .filter(|(name, _)| !excluded(name))
         .filter_map(|(name, case)| case().err().map(|e| format!("{name}: {e}")))
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
-}
-
-#[test]
-fn excluded_cases_still_differ() {
-    let now_match: Vec<String> = MAPMERGE_GAP_EXCLUDED
-        .iter()
-        .filter(|(name, _)| {
-            let (_, case) = CASES
-                .iter()
-                .find(|(n, _)| n == name)
-                .unwrap_or_else(|| panic!("{name} is excluded but is not a case"));
-            case().is_ok()
-        })
-        .map(|(name, reason)| format!("{name} (reason on record: {reason})"))
-        .collect();
-    assert!(
-        now_match.is_empty(),
-        "these now match C; remove them from MAPMERGE_GAP_EXCLUDED:\n{}",
-        now_match.join("\n")
-    );
 }

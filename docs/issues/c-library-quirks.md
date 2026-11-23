@@ -141,6 +141,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`CheckCircle`'s `AST__KYCIR` guard has no Rust counterpart](#checkcircles-ast__kycir-guard-has-no-rust-counterpart)
 - [An `IsSimp` card can record a merge probe C threw away, because the probe shares its sub-Mappings with the live tree](#an-issimp-card-can-record-a-merge-probe-c-threw-away-because-the-probe-shares-its-sub-mappings-with-the-live-tree)
 - [C treats a NaN input as a number, not as a bad value](#c-treats-a-nan-input-as-a-number-not-as-a-bad-value)
+- [`astGetAllVariants` fails when the joined Domains pass 200 characters](#astgetallvariants-fails-when-the-joined-domains-pass-200-characters)
 
 ### [Resolved upstream](#resolved-upstream)
 
@@ -1902,6 +1903,15 @@ The port mirrors it; keeping the sign when the shared field starts with one woul
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.
 The port's answer — mirror, or documented divergence — is recorded in the entry along with the test that holds it there.
 They are kept so the same question is not investigated a third time from scratch.
+
+### `astGetAllVariants` fails when the joined Domains pass 200 characters
+
+C location: `frameset.c` `GetAllVariants`, the `GETALLVARIANTS_BUFF_LEN` (200) test.
+
+C joins the Domains of the Frames in a FrameSet's variant Mappings into a static buffer of 200 characters, and reports `AST__INTER` "Buffer overflow - too many variants" when the next Domain would not fit.
+Upstream `73d3cc88` stopped it writing before the buffer's start when the first Domain did not fit, which leaves the error in place.
+
+The port does not mirror the limit, which exists only to protect the buffer: `FrameSet::all_variants` in `crates/starlink-ast/src/frames/frameset.rs` returns a `String` of every Domain, however long.
 
 ### `CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping
 
