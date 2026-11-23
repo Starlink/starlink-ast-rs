@@ -42,6 +42,8 @@ mod test_lutmap_inverse;
 mod test_map_split;
 #[path = "../test_map_split_oracle.rs"]
 mod test_map_split_oracle;
+#[path = "../test_mapmerge.rs"]
+mod test_mapmerge;
 #[path = "../test_mapping.rs"]
 mod test_mapping;
 #[path = "../test_mapping_bad.rs"]

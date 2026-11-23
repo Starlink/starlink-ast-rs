@@ -285,6 +285,14 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          line as set",
     ),
     (
+        "test_mapmerge.rs",
+        "MAPMERGE_GAP_EXCLUDED",
+        13,
+        "testmapmerge.c cases the port does not yet match, each naming the \
+         upstream fix that closes it; excluded_cases_still_differ fails when \
+         one closes",
+    ),
+    (
         "test_fitschan_errors.rs",
         "FITSCHAN_ERRORS_GAP_EXCLUDED",
         1,
