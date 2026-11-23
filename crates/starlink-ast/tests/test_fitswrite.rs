@@ -529,16 +529,7 @@ const CASES: &[(&str, Case)] = &[
 /// Cases the port does not yet match, each with the gap it exposes. Each is
 /// checked to still differ (`excluded_cases_still_differ`), so the list
 /// shrinks as the gaps close.
-const FITSWRITE_GAP_EXCLUDED: &[(&str, &str)] = &[
-    (
-        "an offset sky system and an Ident",
-        "upstream 01fc69d6: the absolute description takes a free version letter; the port reuses the letter an Ident claimed (Task 4)",
-    ),
-    (
-        "secondary projection parameters with no primary ones",
-        "upstream 4e42485f: FITS-PC compares secondary projection parameters up to the larger index; the port compares the primary's only (Task 4)",
-    ),
-];
+const FITSWRITE_GAP_EXCLUDED: &[(&str, &str)] = &[];
 
 fn excluded(name: &str) -> bool {
     FITSWRITE_GAP_EXCLUDED.iter().any(|(n, _)| *n == name)

@@ -1250,10 +1250,10 @@ mod tests {
         };
         use super::plane_stores::version_letters;
         use crate::fitschan::AltAxes;
-        let (sid, s) = version_letters(&fs, AltAxes::All);
+        let (sid, s, _) = version_letters(&fs, AltAxes::All);
         assert_eq!(sid, vec![None, None, Some('A'), Some('B'), None]);
         assert_eq!(s, b'B');
-        let (sid, s) = version_letters(&fs, AltAxes::Ident);
+        let (sid, s, _) = version_letters(&fs, AltAxes::Ident);
         assert_eq!(sid, vec![None; 5]);
         assert_eq!(s, b'A' - 1);
     }

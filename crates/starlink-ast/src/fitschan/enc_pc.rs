@@ -159,8 +159,11 @@ pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut Card
     let (mut primeq, mut primlt, mut primln, mut primdt) =
         (BAD_VALUE, BAD_VALUE, BAD_VALUE, BAD_VALUE);
     let mut primpv = [BAD_VALUE; 10];
-    // C bounds every description's search for projection parameters by
-    // the primary description's highest parameter index.
+    let mut primnaxis = 0;
+    // C bounds each description's search for projection parameters by the
+    // highest parameter index of the primary description or, for a
+    // secondary one, of either (fitschan.c PCFromStore), so a secondary
+    // description may have a value for which the primary has none.
     let primmaxm = planes.first().and_then(|p| p.max_pv_m());
 
     for (&store, &s) in planes.iter().zip(letters) {
@@ -212,8 +215,9 @@ pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut Card
                     }
                 }
                 primpc = matrix;
-            } else if !primpc.is_empty()
-                && !matrix.iter().zip(&primpc).all(|(a, b)| ast_equal(*a, *b))
+                primnaxis = naxis;
+            } else if naxis != primnaxis
+                || !matrix.iter().zip(&primpc).all(|(a, b)| ast_equal(*a, *b))
             {
                 return false;
             }
@@ -348,7 +352,12 @@ pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut Card
             // Projection parameters, only on the latitude axis, only the
             // first 10, and none for TAN.
             let (axlon, axlat, _) = store.lon_lat_spec_axes();
-            if let (Some(axlon), Some(axlat), Some(maxm)) = (axlon, axlat, primmaxm) {
+            let maxm = if primary {
+                primmaxm
+            } else {
+                primmaxm.max(store.max_pv_m())
+            };
+            if let (Some(axlon), Some(axlat), Some(maxm)) = (axlon, axlat, maxm) {
                 let prj = store.ctype[axlat]
                     .as_deref()
                     .and_then(|c| c.get(4..))
