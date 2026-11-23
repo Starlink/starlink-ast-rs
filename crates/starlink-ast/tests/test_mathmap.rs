@@ -540,3 +540,21 @@ fn variable_names_are_validated() {
     assert_eq!(transform_1d(&map, 0.0, true), 1.0);
     assert_eq!(transform_1d(&map, 3.0, false), 3.0);
 }
+
+/// MathMaps are equal when their functions compile to the same operations
+/// and constants in the directions they are used, whatever the names of
+/// their variables; the values are those of the C library.
+#[test]
+fn equality_compares_compiled_operations() {
+    let mm = |f: &str, i: &str| MathMap::new(1, 1, &[f], &[i]).unwrap();
+    let eq = |a: &MathMap, b: &MathMap| a.equal(b) && b.equal(a);
+    assert!(eq(&mm("b=a+1", "a=b-1"), &mm("y=x+1", "x=y-1")));
+    assert!(eq(
+        &mm("y=x+1", "x=y-1"),
+        &mm("y=x+1.0000000000001", "x=y-1")
+    ));
+    assert!(!eq(&mm("y=x+1", "x=y-1"), &mm("y=x+1.000001", "x=y-1")));
+    let mut inverted = mm("y=x+1", "x=y-1");
+    inverted.invert();
+    assert!(!eq(&mm("y=x+1", "x=y-1"), &inverted));
+}

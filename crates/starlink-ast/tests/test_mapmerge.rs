@@ -681,10 +681,6 @@ const MAPMERGE_GAP_EXCLUDED: &[(&str, &str)] = &[
         "inverted WinMap with a scale of zero",
         "MatrixMap and WinMap merges that upstream b9cf680b limits to equivalent, usable results: the port builds a matrix with no usable element",
     ),
-    (
-        "a MathMap and the inverse of its opposite",
-        "MathMap equality, which upstream f584a552 makes compare compiled operations in the directions used; the port compares the expression text",
-    ),
 ];
 
 fn excluded(name: &str) -> bool {

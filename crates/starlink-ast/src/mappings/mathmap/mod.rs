@@ -18,12 +18,13 @@ use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
+use super::helpers::ast_equal;
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
 use crate::mappings::SimplifiedRecord;
-use opcode::CompiledExpr;
+use opcode::{CompiledExpr, Opcode};
 use rng::MathMapRng;
 
 /// Transform coordinates using mathematical expressions.
@@ -813,10 +814,21 @@ impl Mapping for MathMap {
         if self.nin != other.nin || self.nout != other.nout {
             return false;
         }
-        if self.inverted != other.inverted {
-            return false;
+        // C's Equal (mathmap.c:1594): the functions each MathMap uses in each
+        // direction, taking Invert into account, must compile to the same
+        // opcodes, and the constants that LdCon, LdVar, Max and Min consume
+        // must be equal by astEQUAL.
+        fn used(m: &MathMap, forward: bool) -> &[CompiledExpr] {
+            if forward != m.inverted {
+                &m.fwd_compiled
+            } else {
+                &m.inv_compiled
+            }
         }
-        self.fwd_exprs == other.fwd_exprs && self.inv_exprs == other.inv_exprs
+        [true, false].into_iter().all(|forward| {
+            let (these, those) = (used(self, forward), used(other, forward));
+            these.len() == those.len() && these.iter().zip(those).all(|(a, b)| compiled_equal(a, b))
+        })
     }
 
     fn try_merge(
@@ -1324,4 +1336,28 @@ fn compile_mapping(
         fwd: fwd.unwrap_or_default(),
         inv: inv.unwrap_or_default(),
     })
+}
+
+/// Whether two compiled functions have the same opcodes and constants, as
+/// C's `Equal` compares them.
+fn compiled_equal(a: &CompiledExpr, b: &CompiledExpr) -> bool {
+    if a.opcodes.len() != b.opcodes.len() {
+        return false;
+    }
+    let mut icon = 0;
+    for (&code, &that) in a.opcodes.iter().zip(&b.opcodes) {
+        if code != that {
+            return false;
+        }
+        if matches!(
+            code,
+            Opcode::LdCon | Opcode::LdVar | Opcode::Max | Opcode::Min
+        ) {
+            if !ast_equal(a.constants[icon], b.constants[icon]) {
+                return false;
+            }
+            icon += 1;
+        }
+    }
+    true
 }
