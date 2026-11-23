@@ -3,37 +3,37 @@
 C source: reference/starlink-ast/src/unitmap.c
 Rust: crates/starlink-ast/src/mappings/unit.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 3d3f255f
+Citations: verified against pin fe26cc9b
 Extension points: classified
 
 Uncited C steps:
-- unitmap.c:490 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
+- unitmap.c:494 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
-C's body runs `unitmap.c:500-626 (fn MapMerge)` in three parts: a lone UnitMap has its Invert
+C's body runs `unitmap.c:504-630 (fn MapMerge)` in three parts: a lone UnitMap has its Invert
 flag cleared; a UnitMap in series with anything is eliminated; a UnitMap in
 parallel is coalesced with adjacent UnitMaps.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialize the returned result to -1 | unitmap.c:500-501 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
-| 2 | Check the global error status and bail out | unitmap.c:503-504 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | If the sequence is a single UnitMap, clear its Invert flag if set | unitmap.c:506-511 (fn MapMerge) | unit.rs:153-164 (fn map_merge) | architecture | ported |
-| 4 | Note whether the sequence was modified | unitmap.c:512-515 (fn MapMerge) | unit.rs:161-163 (fn map_merge) | architecture | ported |
-| 5 | In series, a UnitMap next to anything else is eliminated, so annul its pointer | unitmap.c:516-523 (fn MapMerge) | unit.rs:172-175 (fn map_merge) | architecture | ported |
-| 6 | Shuffle the following pointers and Invert flags down to fill the gap, clearing the vacated slot | unitmap.c:524-533 (fn MapMerge) | unit.rs:173 (fn map_merge) | architecture | ported |
-| 7 | Decrement the Mapping count and return the index of the first modified element | unitmap.c:534-538 (fn MapMerge) | unit.rs:173-174 (fn map_merge) | architecture | ported |
-| 8 | In parallel, a UnitMap can be merged with UnitMaps on either side | unitmap.c:539-544 (fn MapMerge) | unit.rs:177-180 (fn map_merge) | architecture | ported |
-| 9 | Initialize indices for the adjacent UnitMaps and the coordinate count of the replacement | unitmap.c:545-549 (fn MapMerge) | unit.rs:181-182 (fn map_merge) | architecture | ported |
-| 10 | Inspect earlier Mappings, stopping at the first that is not a UnitMap | unitmap.c:550-556 (fn MapMerge) | unit.rs:183 (fn map_merge) | architecture | ported |
-| 11 | Extend the run's start index and accumulate its coordinate count | unitmap.c:557-562 (fn MapMerge) | unit.rs:184-185 (fn map_merge) | architecture | ported |
-| 12 | Repeat for later Mappings in the sequence | unitmap.c:563-571 (fn MapMerge) | unit.rs:187-190 (fn map_merge) | architecture | ported |
-| 13 | Compute the net reduction and check whether it is zero, meaning no adjacent UnitMaps | unitmap.c:572-578 (fn MapMerge) | unit.rs:192 (fn map_merge) | architecture | ported |
-| 14 | With no adjacent UnitMaps, clear the nominated UnitMap's Invert flag if set | unitmap.c:579-587 (fn MapMerge) | unit.rs:193-204 (fn map_merge) | architecture | ported |
-| 15 | If UnitMaps can be merged, create the replacement UnitMap | unitmap.c:588-592 (fn MapMerge) | unit.rs:208 (fn map_merge) | architecture | ported |
-| 16 | Annul the pointers to all the UnitMaps being replaced | unitmap.c:593-597 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 17 | Insert the new pointer and its Invert flag, close the gap, and clear the vacated slots | unitmap.c:598-614 (fn MapMerge) | unit.rs:208 (fn map_merge) | architecture | ported |
-| 18 | Decrement the Mapping count and return the index of the first modified element | unitmap.c:615-624 (fn MapMerge) | unit.rs:209 (fn map_merge) | architecture | ported |
-| 19 | Return the result | unitmap.c:625-626 (fn MapMerge) | unit.rs:209 (fn map_merge) | ceremony | ported |
+| 1 | Initialize the returned result to -1 | unitmap.c:504-505 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 2 | Check the global error status and bail out | unitmap.c:507-508 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 3 | If the sequence is a single UnitMap, clear its Invert flag if set | unitmap.c:510-515 (fn MapMerge) | unit.rs:153-164 (fn map_merge) | architecture | ported |
+| 4 | Note whether the sequence was modified | unitmap.c:516-519 (fn MapMerge) | unit.rs:161-163 (fn map_merge) | architecture | ported |
+| 5 | In series, a UnitMap next to anything else is eliminated, so annul its pointer | unitmap.c:520-527 (fn MapMerge) | unit.rs:172-175 (fn map_merge) | architecture | ported |
+| 6 | Shuffle the following pointers and Invert flags down to fill the gap, clearing the vacated slot | unitmap.c:528-537 (fn MapMerge) | unit.rs:173 (fn map_merge) | architecture | ported |
+| 7 | Decrement the Mapping count and return the index of the first modified element | unitmap.c:538-542 (fn MapMerge) | unit.rs:173-174 (fn map_merge) | architecture | ported |
+| 8 | In parallel, a UnitMap can be merged with UnitMaps on either side | unitmap.c:543-548 (fn MapMerge) | unit.rs:177-180 (fn map_merge) | architecture | ported |
+| 9 | Initialize indices for the adjacent UnitMaps and the coordinate count of the replacement | unitmap.c:549-553 (fn MapMerge) | unit.rs:181-182 (fn map_merge) | architecture | ported |
+| 10 | Inspect earlier Mappings, stopping at the first that is not a UnitMap | unitmap.c:554-560 (fn MapMerge) | unit.rs:183 (fn map_merge) | architecture | ported |
+| 11 | Extend the run's start index and accumulate its coordinate count | unitmap.c:561-566 (fn MapMerge) | unit.rs:184-185 (fn map_merge) | architecture | ported |
+| 12 | Repeat for later Mappings in the sequence | unitmap.c:567-575 (fn MapMerge) | unit.rs:187-190 (fn map_merge) | architecture | ported |
+| 13 | Compute the net reduction and check whether it is zero, meaning no adjacent UnitMaps | unitmap.c:576-582 (fn MapMerge) | unit.rs:192 (fn map_merge) | architecture | ported |
+| 14 | With no adjacent UnitMaps, clear the nominated UnitMap's Invert flag if set | unitmap.c:583-591 (fn MapMerge) | unit.rs:193-204 (fn map_merge) | architecture | ported |
+| 15 | If UnitMaps can be merged, create the replacement UnitMap | unitmap.c:592-596 (fn MapMerge) | unit.rs:208 (fn map_merge) | architecture | ported |
+| 16 | Annul the pointers to all the UnitMaps being replaced | unitmap.c:597-601 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
+| 17 | Insert the new pointer and its Invert flag, close the gap, and clear the vacated slots | unitmap.c:602-618 (fn MapMerge) | unit.rs:208 (fn map_merge) | architecture | ported |
+| 18 | Decrement the Mapping count and return the index of the first modified element | unitmap.c:619-628 (fn MapMerge) | unit.rs:209 (fn map_merge) | architecture | ported |
+| 19 | Return the result | unitmap.c:629-630 (fn MapMerge) | unit.rs:209 (fn map_merge) | ceremony | ported |
 
 ## Rows 5 to 7 — removing in the loop, not after it
 

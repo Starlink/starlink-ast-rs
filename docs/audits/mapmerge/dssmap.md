@@ -3,13 +3,15 @@
 C source: reference/starlink-ast/src/dssmap.c
 Rust: crates/starlink-ast/src/mappings/dssmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 3d3f255f
+Citations: verified against pin fe26cc9b
 Extension points: classified
 
 Uncited C steps:
-- dssmap.c:978 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
+- dssmap.c:996 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
-C's body runs `dssmap.c:997-1145 (fn MapMerge)` and does exactly one thing: absorb a WinMap
+At the `fe26cc9b` pin C rewrote the code some rows here cite (`cfdbbe8d`: the CNPIX test now also requires both values to be small enough to convert to an integer); those rows are re-anchored to the new code but describe the port of the old behavior until stage 1 of `docs/superpowers/specs/2026-11-22-upstream-sync-fe26cc9b-design.md` ports it.
+
+C's body runs `dssmap.c:1015-1165 (fn MapMerge)` and does exactly one thing: absorb a WinMap
 that maps pixel coordinates immediately before an un-inverted DssMap, by folding
 the WinMap's scale and shift into the DssMap's pixel origin and pixel size, and
 rebuilding the DssMap from the amended FITS cards.
@@ -20,30 +22,30 @@ rebuilding the DssMap from the amended FITS cards.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialize the returned result to -1 | dssmap.c:997-998 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
-| 2 | Check the global error status and bail out | dssmap.c:1000-1001 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | The only simplification available: a WinMap adjacent to a DssMap, in series | dssmap.c:1003-1017 (fn MapMerge) | dssmap.rs:583-597 (fn try_merge) | architecture | ported |
-| 4 | Temporarily set the WinMap's Invert attribute to the supplied value | dssmap.c:1018-1022 (fn MapMerge) | dssmap.rs:625 (fn try_merge) | ceremony | ported |
-| 5 | Take a copy of the WinMap's scale and shift terms | dssmap.c:1023-1025 (fn MapMerge) | winmap.rs:198-214 (fn terms) | architecture | ported |
-| 6 | Check the scale and shift terms are usable | dssmap.c:1026-1030 (fn MapMerge) | dssmap.rs:603-611 (fn try_merge) | architecture | ported |
-| 7 | Read the keywords defining the DssMap's pixel origin and scales | dssmap.c:1031-1040 (fn MapMerge) | dssmap.rs:613-616 (fn try_merge) | architecture | ported |
-| 8 | Compute new values that account for the WinMap | dssmap.c:1041-1054 (fn MapMerge) | dssmap.rs:620-632 (fn try_merge) | architecture | ported |
-| 9 | CNPIX1 and CNPIX2 are integer keywords, so accept only values integral to one hundredth of a pixel | dssmap.c:1055-1060 (fn MapMerge) | dssmap.rs:635-639 (fn try_merge) | architecture | ported |
-| 10 | Take a copy of the FitsChan holding the DssMap's defining cards | dssmap.c:1061-1066 (fn MapMerge) | -- | ceremony | n/a: the port stores the plate parameters as fields, so it amends those directly instead of round-tripping a FitsChan; the round trip's one numeric effect, the plate center passing through its sexagesimal cards, is reproduced by `plate_centre_through_fits` (`tests/test_dss_merge_oracle.rs`) |
-| 11 | Update each changed keyword in that copy | dssmap.c:1067-1097 (fn MapMerge) | dssmap.rs:643-649 (fn try_merge) | architecture | ported |
-| 12 | If every keyword updated, build the new DssMap from the amended cards | dssmap.c:1098-1102 (fn MapMerge) | dssmap.rs:643-651 (fn try_merge) | architecture | ported |
-| 13 | Replace the DssMap in the list with the new one, leaving the invert flag alone | dssmap.c:1103-1107 (fn MapMerge) | mappings/simplify.rs:1658-1663 (fn default_map_merge) | architecture | ported |
-| 14 | Annul the WinMap and shuffle the remaining Mappings down, clearing the vacated slot | dssmap.c:1108-1119 (fn MapMerge) | mappings/simplify.rs:1663 (fn default_map_merge) | architecture | ported |
-| 15 | Decrement the Mapping count and return the index of the first modified element | dssmap.c:1120-1126 (fn MapMerge) | mappings/simplify.rs:1664-1665 (fn default_map_merge) | architecture | ported |
-| 16 | Annul the amended FitsChan | dssmap.c:1127-1131 (fn MapMerge) | -- | ceremony | n/a: no FitsChan is created |
-| 17 | Free the scale and shift arrays | dssmap.c:1132-1135 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 18 | Re-instate the WinMap's original Invert attribute | dssmap.c:1136-1143 (fn MapMerge) | -- | ceremony | n/a: the WinMap entry is read without being mutated |
-| 19 | Return the result | dssmap.c:1144-1145 (fn MapMerge) | dssmap.rs:537 (fn map_merge) | ceremony | ported |
+| 1 | Initialize the returned result to -1 | dssmap.c:1015-1016 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 2 | Check the global error status and bail out | dssmap.c:1018-1019 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 3 | The only simplification available: a WinMap adjacent to a DssMap, in series | dssmap.c:1021-1035 (fn MapMerge) | dssmap.rs:583-597 (fn try_merge) | architecture | ported |
+| 4 | Temporarily set the WinMap's Invert attribute to the supplied value | dssmap.c:1036-1040 (fn MapMerge) | dssmap.rs:625 (fn try_merge) | ceremony | ported |
+| 5 | Take a copy of the WinMap's scale and shift terms | dssmap.c:1041-1043 (fn MapMerge) | winmap.rs:198-214 (fn terms) | architecture | ported |
+| 6 | Check the scale and shift terms are usable | dssmap.c:1044-1048 (fn MapMerge) | dssmap.rs:603-611 (fn try_merge) | architecture | ported |
+| 7 | Read the keywords defining the DssMap's pixel origin and scales | dssmap.c:1049-1058 (fn MapMerge) | dssmap.rs:613-616 (fn try_merge) | architecture | ported |
+| 8 | Compute new values that account for the WinMap | dssmap.c:1059-1072 (fn MapMerge) | dssmap.rs:620-632 (fn try_merge) | architecture | ported |
+| 9 | CNPIX1 and CNPIX2 are integer keywords, so accept only values integral to one hundredth of a pixel | dssmap.c:1073-1080 (fn MapMerge) | dssmap.rs:635-639 (fn try_merge) | architecture | ported |
+| 10 | Take a copy of the FitsChan holding the DssMap's defining cards | dssmap.c:1081-1086 (fn MapMerge) | -- | ceremony | n/a: the port stores the plate parameters as fields, so it amends those directly instead of round-tripping a FitsChan; the round trip's one numeric effect, the plate center passing through its sexagesimal cards, is reproduced by `plate_centre_through_fits` (`tests/test_dss_merge_oracle.rs`) |
+| 11 | Update each changed keyword in that copy | dssmap.c:1087-1117 (fn MapMerge) | dssmap.rs:643-649 (fn try_merge) | architecture | ported |
+| 12 | If every keyword updated, build the new DssMap from the amended cards | dssmap.c:1118-1122 (fn MapMerge) | dssmap.rs:643-651 (fn try_merge) | architecture | ported |
+| 13 | Replace the DssMap in the list with the new one, leaving the invert flag alone | dssmap.c:1123-1127 (fn MapMerge) | mappings/simplify.rs:1658-1663 (fn default_map_merge) | architecture | ported |
+| 14 | Annul the WinMap and shuffle the remaining Mappings down, clearing the vacated slot | dssmap.c:1128-1139 (fn MapMerge) | mappings/simplify.rs:1663 (fn default_map_merge) | architecture | ported |
+| 15 | Decrement the Mapping count and return the index of the first modified element | dssmap.c:1140-1146 (fn MapMerge) | mappings/simplify.rs:1664-1665 (fn default_map_merge) | architecture | ported |
+| 16 | Annul the amended FitsChan | dssmap.c:1147-1151 (fn MapMerge) | -- | ceremony | n/a: no FitsChan is created |
+| 17 | Free the scale and shift arrays | dssmap.c:1152-1155 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
+| 18 | Re-instate the WinMap's original Invert attribute | dssmap.c:1156-1163 (fn MapMerge) | -- | ceremony | n/a: the WinMap entry is read without being mutated |
+| 19 | Return the result | dssmap.c:1164-1165 (fn MapMerge) | dssmap.rs:537 (fn map_merge) | ceremony | ported |
 
 ## Row 9 — the tolerance is C's
 
 One hundredth of a pixel is C's own figure, stated in the comment at
-`dssmap.c:1055-1057 (fn MapMerge)` and applied at `dssmap.c:1058-1059 (fn MapMerge)`.
+`dssmap.c:1073-1076 (fn MapMerge)` and applied at `dssmap.c:1077-1079 (fn MapMerge)`.
 `dssmap.rs:635-639 (fn try_merge)` uses the same 0.01, so this is not a port heuristic.
 
 ## Rows 3 and 8 — which side the WinMap is on

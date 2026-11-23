@@ -41,6 +41,7 @@ include = [
     # DIST_MANIFEST, entry for entry.
     "/tests/fixtures/DIST_MANIFEST",
     "/tests/fixtures/programs/**",
+    "/tests/fixtures/serialisation/c_dssmap.ast",
     "/tests/fixtures/plot/cases.txt",
     "/tests/fixtures/plot/expected/*.svg",
     "/tests/fixtures/wcsconv/inputs/**",

@@ -3,18 +3,18 @@
 C source: reference/starlink-ast/src/cmpregion.c
 Rust: crates/starlink-ast/src/regions/cmpregion.rs
 Audited: 2026-09-03 against pin 3e60abaa
-Citations: verified against pin 3d3f255f
+Citations: verified against pin fe26cc9b
 Extension points: classified
 
 Uncited C steps:
-- cmpregion.c:3574 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
-- cmpregion.c:1138 (fn GetDefUnc) — `Local Variables:` is the local-variable declaration block, not a step
+- cmpregion.c:3583 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
+- cmpregion.c:1147 (fn GetDefUnc) — `Local Variables:` is the local-variable declaration block, not a step
 
-Two C bodies. `Simplify` (`cmpregion.c:3594-3799 (fn Simplify)`) calls the parent,
+Two C bodies. `Simplify` (`cmpregion.c:3603-3808 (fn Simplify)`) calls the parent,
 simplifies the two component Regions, and then works through the ways a boolean
 combination of two Regions collapses: a null or infinite component, no overlap
 under AND, a negation pair under OR, identical components, and one component
-contained in the other. `GetDefUnc` (`cmpregion.c:1142-1173 (fn GetDefUnc)`) takes the
+contained in the other. `GetDefUnc` (`cmpregion.c:1151-1182 (fn GetDefUnc)`) takes the
 default uncertainty from whichever component carries an explicit one.
 
 The Rust counterparts are `simplified` (`cmpregion.rs:1803-1971 (fn simplified)`) and
@@ -24,48 +24,48 @@ CmpRegion has no `MapMerge` of its own; it takes the Region base implementation.
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialize the returned pointer | cmpregion.c:3594-3596 (fn Simplify) | -- | ceremony | n/a: the Rust signature returns `AstResult<(DynMapping, bool)>`, so there is no pointer to pre-set |
-| 2 | Check the global error status and bail out | cmpregion.c:3597-3599 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | Invoke the parent Region simplify, which simplifies the encapsulated FrameSet and uncertainty, giving a Region in the current Frame | cmpregion.c:3600-3606 (fn Simplify) | cmpregion.rs:1808-1810 (fn simplified) | architecture | ported |
-| 4 | Note whether that simplified, by comparing the returned pointer with the supplied one | cmpregion.c:3607-3611 (fn Simplify) | cmpregion.rs:1811 (fn simplified) | architecture | ported |
-| 5 | Initialize the base-Frame candidate to "not produced" | cmpregion.c:3612-3619 (fn Simplify) | cmpregion.rs:1848 (fn simplified) | architecture | ported |
-| 6 | Get the component Regions, how they should be combined, and the Negated values they should be used with, all in the base Frame | cmpregion.c:3620-3626 (fn Simplify) | cmpregion.rs:1822 (fn simplified) | architecture | ported |
-| 7 | Where the first component does not carry its required `Negated` value, use its negation instead | cmpregion.c:3627-3635 (fn Simplify) | cmpregion.rs:1826-1828 (fn simplified) | architecture | ported |
-| 8 | The same for the second component | cmpregion.c:3636-3644 (fn Simplify) | cmpregion.rs:1829-1831 (fn simplified) | architecture | ported |
-| 9 | Simplify each of the two components | cmpregion.c:3645-3648 (fn Simplify) | cmpregion.rs:1834-1837 (fn simplified) | architecture | ported |
-| 10 | Note whether either component simplified, keeping any earlier flag | cmpregion.c:3649-3651 (fn Simplify) | cmpregion.rs:1842-1844 (fn simplified) | architecture | ported |
-| 11 | A null or infinite component can be excluded from the result | cmpregion.c:3652-3655 (fn Simplify) | cmpregion.rs:1852-1854 (fn simplified) | architecture | ported |
-| 12 | Separate the null component from the other one, which stays valid when both are null | cmpregion.c:3656-3665 (fn Simplify) | cmpregion.rs:1857-1861 (fn simplified) | architecture | ported |
-| 13 | An un-negated null component: under AND the result is null in the other Region's Frame, under OR it is the other Region | cmpregion.c:3666-3681 (fn Simplify) | cmpregion.rs:1863-1874 (fn simplified) | architecture | ported |
-| 14 | A negated (infinite) component: under AND the result is the other Region, under OR it is infinite | cmpregion.c:3682-3698 (fn Simplify) | cmpregion.rs:1875-1887 (fn simplified) | architecture | ported |
-| 15 | Flag that simplification took place | cmpregion.c:3699-3701 (fn Simplify) | cmpregion.rs:1888 (fn simplified) | architecture | ported |
-| 16 | With neither component null or infinite, take the overlap between them as the grounds for removing one or both | cmpregion.c:3702-3707 (fn Simplify) | cmpregion.rs:1892-1893 (fn simplified) | architecture | ported |
-| 17 | No overlap, or exact negation, combined with AND: the result is null | cmpregion.c:3708-3714 (fn Simplify) | cmpregion.rs:1897-1900 (fn simplified) | architecture | ported |
-| 18 | One component the negation of the other, combined with OR: the result is infinite, written as a negated null Region | cmpregion.c:3715-3722 (fn Simplify) | cmpregion.rs:1904-1907 (fn simplified) | architecture | ported |
-| 19 | The two components are identical | cmpregion.c:3723-3726 (fn Simplify) | cmpregion.rs:1910 (fn simplified) | architecture | ported |
-| 20 | Under AND or OR, identical components collapse to either one | cmpregion.c:3727-3737 (fn Simplify) | cmpregion.rs:1911-1912 (fn simplified) | architecture | ported |
-| 21 | The first component lies inside the second: AND keeps the first, OR keeps the second | cmpregion.c:3738-3744 (fn Simplify) | cmpregion.rs:1916-1923 (fn simplified) | architecture | ported |
-| 22 | The second lies inside the first: AND keeps the second, OR keeps the first | cmpregion.c:3745-3751 (fn Simplify) | cmpregion.rs:1926-1933 (fn simplified) | architecture | ported |
-| 23 | Otherwise build a new CmpRegion from the simplified components, but only where something simplified; leaving the base-Frame candidate unset makes the parent-simplified copy the answer | cmpregion.c:3752-3764 (fn Simplify) | cmpregion.rs:1936-1946 (fn simplified) | architecture | ported |
-| 24 | Something simplified: use the base-Frame candidate if there is one, mapping it into the current Frame with the parent FrameSet's base-to-current Mapping, otherwise use the parent-simplified copy | cmpregion.c:3765-3781 (fn Simplify) | cmpregion.rs:1953-1964 (fn simplified) | architecture | ported |
-| 25 | Nothing simplified: return a clone of the supplied Region | cmpregion.c:3782-3786 (fn Simplify) | cmpregion.rs:1953-1955 (fn simplified) | architecture | ported |
-| 26 | Free the component and parent-simplified pointers | cmpregion.c:3787-3793 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 27 | Annul the result if an error occurred | cmpregion.c:3794-3796 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
-| 28 | Return the result | cmpregion.c:3797-3799 (fn Simplify) | cmpregion.rs:1966 (fn simplified) | ceremony | ported |
-| 29 | Initialize the returned pointer | cmpregion.c:1142-1144 (fn GetDefUnc) | -- | ceremony | n/a: the Rust signature returns `AstResult<DynRegion>`, so there is no pointer to pre-set |
-| 30 | Check the global error status and bail out | cmpregion.c:1145-1147 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 31 | Get a pointer to the CmpRegion structure | cmpregion.c:1148-1150 (fn GetDefUnc) | -- | ceremony | n/a: `&self` is already the CmpRegion |
-| 32 | Where the first component has a non-default uncertainty, take it as the CmpRegion's default; an uncertainty's current Frame is the CmpRegion's base Frame | cmpregion.c:1151-1157 (fn GetDefUnc) | cmpregion.rs:1548-1549 (fn get_def_unc) | architecture | ported |
-| 33 | Otherwise, where the second component has a non-default uncertainty, take that | cmpregion.c:1158-1162 (fn GetDefUnc) | cmpregion.rs:1550-1551 (fn get_def_unc) | architecture | ported |
-| 34 | Otherwise defer to the parent method | cmpregion.c:1163-1167 (fn GetDefUnc) | cmpregion.rs:1552-1553 (fn get_def_unc) | architecture | ported |
-| 35 | Return NULL if an error occurred | cmpregion.c:1168-1170 (fn GetDefUnc) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
-| 36 | Return the required pointer | cmpregion.c:1171-1173 (fn GetDefUnc) | -- | ceremony | n/a: the chosen branch is the tail expression of the `if`/`else if`/`else`, so there is no separate return |
+| 1 | Initialize the returned pointer | cmpregion.c:3603-3605 (fn Simplify) | -- | ceremony | n/a: the Rust signature returns `AstResult<(DynMapping, bool)>`, so there is no pointer to pre-set |
+| 2 | Check the global error status and bail out | cmpregion.c:3606-3608 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 3 | Invoke the parent Region simplify, which simplifies the encapsulated FrameSet and uncertainty, giving a Region in the current Frame | cmpregion.c:3609-3615 (fn Simplify) | cmpregion.rs:1808-1810 (fn simplified) | architecture | ported |
+| 4 | Note whether that simplified, by comparing the returned pointer with the supplied one | cmpregion.c:3616-3620 (fn Simplify) | cmpregion.rs:1811 (fn simplified) | architecture | ported |
+| 5 | Initialize the base-Frame candidate to "not produced" | cmpregion.c:3621-3628 (fn Simplify) | cmpregion.rs:1848 (fn simplified) | architecture | ported |
+| 6 | Get the component Regions, how they should be combined, and the Negated values they should be used with, all in the base Frame | cmpregion.c:3629-3635 (fn Simplify) | cmpregion.rs:1822 (fn simplified) | architecture | ported |
+| 7 | Where the first component does not carry its required `Negated` value, use its negation instead | cmpregion.c:3636-3644 (fn Simplify) | cmpregion.rs:1826-1828 (fn simplified) | architecture | ported |
+| 8 | The same for the second component | cmpregion.c:3645-3653 (fn Simplify) | cmpregion.rs:1829-1831 (fn simplified) | architecture | ported |
+| 9 | Simplify each of the two components | cmpregion.c:3654-3657 (fn Simplify) | cmpregion.rs:1834-1837 (fn simplified) | architecture | ported |
+| 10 | Note whether either component simplified, keeping any earlier flag | cmpregion.c:3658-3660 (fn Simplify) | cmpregion.rs:1842-1844 (fn simplified) | architecture | ported |
+| 11 | A null or infinite component can be excluded from the result | cmpregion.c:3661-3664 (fn Simplify) | cmpregion.rs:1852-1854 (fn simplified) | architecture | ported |
+| 12 | Separate the null component from the other one, which stays valid when both are null | cmpregion.c:3665-3674 (fn Simplify) | cmpregion.rs:1857-1861 (fn simplified) | architecture | ported |
+| 13 | An un-negated null component: under AND the result is null in the other Region's Frame, under OR it is the other Region | cmpregion.c:3675-3690 (fn Simplify) | cmpregion.rs:1863-1874 (fn simplified) | architecture | ported |
+| 14 | A negated (infinite) component: under AND the result is the other Region, under OR it is infinite | cmpregion.c:3691-3707 (fn Simplify) | cmpregion.rs:1875-1887 (fn simplified) | architecture | ported |
+| 15 | Flag that simplification took place | cmpregion.c:3708-3710 (fn Simplify) | cmpregion.rs:1888 (fn simplified) | architecture | ported |
+| 16 | With neither component null or infinite, take the overlap between them as the grounds for removing one or both | cmpregion.c:3711-3716 (fn Simplify) | cmpregion.rs:1892-1893 (fn simplified) | architecture | ported |
+| 17 | No overlap, or exact negation, combined with AND: the result is null | cmpregion.c:3717-3723 (fn Simplify) | cmpregion.rs:1897-1900 (fn simplified) | architecture | ported |
+| 18 | One component the negation of the other, combined with OR: the result is infinite, written as a negated null Region | cmpregion.c:3724-3731 (fn Simplify) | cmpregion.rs:1904-1907 (fn simplified) | architecture | ported |
+| 19 | The two components are identical | cmpregion.c:3732-3735 (fn Simplify) | cmpregion.rs:1910 (fn simplified) | architecture | ported |
+| 20 | Under AND or OR, identical components collapse to either one | cmpregion.c:3736-3746 (fn Simplify) | cmpregion.rs:1911-1912 (fn simplified) | architecture | ported |
+| 21 | The first component lies inside the second: AND keeps the first, OR keeps the second | cmpregion.c:3747-3753 (fn Simplify) | cmpregion.rs:1916-1923 (fn simplified) | architecture | ported |
+| 22 | The second lies inside the first: AND keeps the second, OR keeps the first | cmpregion.c:3754-3760 (fn Simplify) | cmpregion.rs:1926-1933 (fn simplified) | architecture | ported |
+| 23 | Otherwise build a new CmpRegion from the simplified components, but only where something simplified; leaving the base-Frame candidate unset makes the parent-simplified copy the answer | cmpregion.c:3761-3773 (fn Simplify) | cmpregion.rs:1936-1946 (fn simplified) | architecture | ported |
+| 24 | Something simplified: use the base-Frame candidate if there is one, mapping it into the current Frame with the parent FrameSet's base-to-current Mapping, otherwise use the parent-simplified copy | cmpregion.c:3774-3790 (fn Simplify) | cmpregion.rs:1953-1964 (fn simplified) | architecture | ported |
+| 25 | Nothing simplified: return a clone of the supplied Region | cmpregion.c:3791-3795 (fn Simplify) | cmpregion.rs:1953-1955 (fn simplified) | architecture | ported |
+| 26 | Free the component and parent-simplified pointers | cmpregion.c:3796-3802 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
+| 27 | Annul the result if an error occurred | cmpregion.c:3803-3805 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
+| 28 | Return the result | cmpregion.c:3806-3808 (fn Simplify) | cmpregion.rs:1966 (fn simplified) | ceremony | ported |
+| 29 | Initialize the returned pointer | cmpregion.c:1151-1153 (fn GetDefUnc) | -- | ceremony | n/a: the Rust signature returns `AstResult<DynRegion>`, so there is no pointer to pre-set |
+| 30 | Check the global error status and bail out | cmpregion.c:1154-1156 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 31 | Get a pointer to the CmpRegion structure | cmpregion.c:1157-1159 (fn GetDefUnc) | -- | ceremony | n/a: `&self` is already the CmpRegion |
+| 32 | Where the first component has a non-default uncertainty, take it as the CmpRegion's default; an uncertainty's current Frame is the CmpRegion's base Frame | cmpregion.c:1160-1166 (fn GetDefUnc) | cmpregion.rs:1548-1549 (fn get_def_unc) | architecture | ported |
+| 33 | Otherwise, where the second component has a non-default uncertainty, take that | cmpregion.c:1167-1171 (fn GetDefUnc) | cmpregion.rs:1550-1551 (fn get_def_unc) | architecture | ported |
+| 34 | Otherwise defer to the parent method | cmpregion.c:1172-1176 (fn GetDefUnc) | cmpregion.rs:1552-1553 (fn get_def_unc) | architecture | ported |
+| 35 | Return NULL if an error occurred | cmpregion.c:1177-1179 (fn GetDefUnc) | -- | ceremony | n/a: an error is a `Result::Err`, and owned values are dropped |
+| 36 | Return the required pointer | cmpregion.c:1180-1182 (fn GetDefUnc) | -- | ceremony | n/a: the chosen branch is the tail expression of the `if`/`else if`/`else`, so there is no separate return |
 
 ## Rows 4 and 10 — the flag is set by comparing values, not pointers
 
 C decides both times by pointer identity: `newc != this_mapping` at
-`cmpregion.c:3610 (fn Simplify)` and `sreg1 != reg1 || sreg2 != reg2` at
-`cmpregion.c:3650 (fn Simplify)`, each true whenever `astSimplify` returned a new
+`cmpregion.c:3619 (fn Simplify)` and `sreg1 != reg1 || sreg2 != reg2` at
+`cmpregion.c:3659 (fn Simplify)`, each true whenever `astSimplify` returned a new
 object rather than a clone. Owned values have no such identity, so the port
 compares structurally (`cmpregion.rs:1811 (fn simplified)` and
 `cmpregion.rs:1842-1844 (fn simplified)`). That is the stricter test: a
@@ -85,7 +85,7 @@ defined in the wrong Frame for whichever branch produced it.
 
 ## Rows 6 to 8 — the required Negated value is not the stored one
 
-`GetRegions` (`cmpregion.c:991 (fn GetRegions)`) returns the Negated value each
+`GetRegions` (`cmpregion.c:1000 (fn GetRegions)`) returns the Negated value each
 component *should* be used with, which need not be the value the component
 stores: a negated CmpRegion is rewritten by De Morgan, swapping AND for OR and
 toggling both component flags. C substitutes the negation of the component where
@@ -96,14 +96,14 @@ about the wrong region.
 C reads the components from `newc`, the parent-simplified copy, rather than from
 the supplied Region; the port reads them from `self`
 (`cmpregion.rs:1822 (fn simplified)`). The two agree because the parent
-`Simplify` (`region.c:11069 (fn Simplify)`) rewrites only the encapsulated FrameSet and
+`Simplify` (`region.c:11276 (fn Simplify)`) rewrites only the encapsulated FrameSet and
 the uncertainty, and `newc` holds deep copies of the components either way.
 
 ## Rows 13, 14 and 20 — C's unknown-operator error has nowhere to arise
 
 Each of these three branches ends in an `else` that raises `AST__INTER` for an
-operator that is neither AND nor OR (`cmpregion.c:3675 (fn Simplify)`,
-`cmpregion.c:3691 (fn Simplify)`, `cmpregion.c:3731 (fn Simplify)`), because C stores the
+operator that is neither AND nor OR (`cmpregion.c:3684 (fn Simplify)`,
+`cmpregion.c:3700 (fn Simplify)`, `cmpregion.c:3740 (fn Simplify)`), because C stores the
 operator as an `int`. The port's `CmpOperator` has exactly the two variants, so
 the `match` arms are exhaustive and there is no third case to report. Nothing is
 dropped: the error was C's guard against a value the Rust type cannot hold.
@@ -119,9 +119,9 @@ the negation code alongside the no-overlap one
 
 ## Row 24 — the mapped result is returned as it stands
 
-`astMapRegion` (`region.c:5399 (fn MapRegion)`) re-expresses the base-Frame candidate
+`astMapRegion` (`region.c:5495 (fn MapRegion)`) re-expresses the base-Frame candidate
 in the current Frame by adding the Mapping and Frame to a copy of its FrameSet.
-C returns that copy directly (`cmpregion.c:3774 (fn Simplify)`) without simplifying it
+C returns that copy directly (`cmpregion.c:3783 (fn Simplify)`) without simplifying it
 again, and the port matches (`cmpregion.rs:1958 (fn simplified)`). This is the point
 where a second `astSimplify` would be easy to add and wrong: the components were
 already simplified at row 9, the base-to-current Mapping was already simplified

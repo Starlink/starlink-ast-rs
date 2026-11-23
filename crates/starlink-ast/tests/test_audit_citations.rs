@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 /// The pin is part of the marker on purpose: moving the submodule invalidates
 /// every line number in every repaired checklist, so the pin has to be
 /// re-stated deliberately, in the same change that re-anchors the citations.
-const REPAIRED: &str = "Citations: verified against pin 3d3f255f";
+const REPAIRED: &str = "Citations: verified against pin fe26cc9b";
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -405,6 +405,31 @@ fn every_c_step_in_a_cited_body_is_covered_by_a_row() {
 /// condition: a checklist added later fails here until its citations are
 /// anchored to the current pin and its rows classified, which is the point at
 /// which its claims become checkable.
+/// The pin the marker states is the one the repository records for the
+/// submodule, so a pin move that re-anchors the citations also re-states it.
+/// The gitlink is read from the index, which needs no submodule checkout.
+#[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "needs the source repository")]
+fn repaired_marker_states_the_recorded_pin() {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root())
+        .args(["ls-files", "--stage", "reference/starlink-ast"])
+        .output()
+        .expect("git runs");
+    let line = String::from_utf8(out.stdout).expect("git prints UTF-8");
+    let recorded = line
+        .split_whitespace()
+        .nth(1)
+        .expect("the index records the reference/starlink-ast gitlink");
+    let stated = REPAIRED.rsplit(' ').next().unwrap();
+    assert!(
+        recorded.starts_with(stated),
+        "the checklists say their citations were verified against {stated}, but the \
+         submodule is pinned at {recorded}; re-anchor the citations and re-state the pin"
+    );
+}
+
 #[test]
 fn every_checklist_declares_both_markers() {
     let mut missing = Vec::new();

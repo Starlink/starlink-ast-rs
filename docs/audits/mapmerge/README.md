@@ -42,7 +42,7 @@ a claim pass.
 | `extension point` | `architecture` or `ceremony` — see below |
 | `verdict` | exactly one of the forms below |
 
-A citation may name the item it lands in, as `sphmap.c:743-747 (fn MapMerge)`.
+A citation may name the item it lands in, as `sphmap.c:747-751 (fn MapMerge)`.
 The name is what makes a stale line number detectable, and
 `crates/audit-tools` derives it for both the tool that writes the citations and
 the test that checks them.
@@ -141,7 +141,7 @@ optional heading in the header block:
 
 ```
 Uncited C steps:
-- polygon.c:5335 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
+- polygon.c:5387 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
 ```
 
 A step that is a step belongs in a row, with its own verdict, even when the
@@ -160,11 +160,11 @@ cannot arrive without one.
   `simplified` — plus `mod`, which carries the generic `Region::Simplify` driver.
 - Every module under `crates/starlink-ast/src/frames/` that overrides `simplified`.
   A Frame class may also implement `Mapping`; `FrameSet` does, and C gives it a
-  `Simplify` body of its own (`frameset.c:10134`).
+  `Simplify` body of its own (`frameset.c:10187`).
 
 `simplified` is in that list because C's per-class `Simplify` vtab slot is an
 extension point on the same footing as `MapMerge`: `astSimplify_`
-(`mapping.c:24772`) is its only caller, and a class that overrides it owns a
+(`mapping.c:25121`) is its only caller, and a class that overrides it owns a
 whole simplification algorithm. Such a body belongs in this audit whichever
 directory the class lives in.
 
@@ -183,10 +183,10 @@ verdict is outside the set, and so does a C seam nothing covers.
 ## Which seam a reduction belongs in
 
 C has one public entry, `astSimplify`, and one private dispatch behind it — the
-`Simplify` vtab slot, whose only caller is `mapping.c:24772`. Eleven classes
+`Simplify` vtab slot, whose only caller is `mapping.c:25121`. Eleven classes
 override that slot. For every other class **all** reduction lives in `MapMerge`,
 and the base `Simplify` reaches it by nominating the Mapping in a list of one
-(`mapping.c:16871-16883`).
+(`mapping.c:16997-17009`).
 
 So a row whose Rust site is a `simplified()` body, in a class whose C counterpart
 does not override the slot, is not `ported`: it is in a seam C does not have.

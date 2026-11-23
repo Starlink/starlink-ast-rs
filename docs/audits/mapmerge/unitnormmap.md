@@ -3,14 +3,14 @@
 C source: reference/starlink-ast/src/unitnormmap.c
 Rust: crates/starlink-ast/src/mappings/unitnormmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 3d3f255f
+Citations: verified against pin fe26cc9b
 Extension points: classified
 
 Uncited C steps:
-- unitnormmap.c:350 (fn MakeMergedMap) — the function prologue, not a step; its leading blank field keeps it out of the tool's prologue test
+- unitnormmap.c:358 (fn MakeMergedMap) — the function prologue, not a step; its leading blank field keeps it out of the tool's prologue test
 
-C's body runs `unitnormmap.c:846-909 (fn MapMerge)`. It walks the pairs from `where - 1` to the
-end of the list, asking `MakeMergedMap` (`unitnormmap.c:349-531 (fn MakeMergedMap)`) about each, and
+C's body runs `unitnormmap.c:854-917 (fn MapMerge)`. It walks the pairs from `where - 1` to the
+end of the list, asking `MakeMergedMap` (`unitnormmap.c:357-539 (fn MakeMergedMap)`) about each, and
 splices in the first result. Both are audited here.
 
 `UnitNormMap::map_merge` (`unitnormmap.rs:558-590 (fn map_merge)`) walks the same pairs and calls
@@ -22,26 +22,26 @@ which member of the pair is the UnitNormMap. The splice itself is
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialize the returned result to -1 | unitnormmap.c:846-848 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
-| 2 | Check the global error status and bail out | unitnormmap.c:849-851 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | In series, walk the pairs from `where - 1` to the end of the list | unitnormmap.c:854-860 (fn MapMerge) | unitnormmap.rs:578-580 (fn map_merge) | architecture | ported |
-| 4 | Set both members of each pair to the Invert values the list requests, then restore them | unitnormmap.c:861-867 (fn MapMerge) | unitnormmap.rs:581-583 (fn map_merge) | architecture | ported |
-| 5 | Ask `MakeMergedMap` about the pair, stop at the first it accepts, and report no change when none does | unitnormmap.c:868-878 (fn MapMerge) | unitnormmap.rs:583-589 (fn map_merge) | architecture | ported |
-| 6 | Replace the first of the pair with the merged Mapping and update its invert flag | unitnormmap.c:880-885 (fn MapMerge) | unitnormmap.rs:584 (fn map_merge), mappings/simplify.rs:677-681 (fn replace_pair_with) | architecture | ported |
-| 7 | Annul the second of the pair, shuffle the rest down and clear the vacated element | unitnormmap.c:886-897 (fn MapMerge) | unitnormmap.rs:584 (fn map_merge), mappings/simplify.rs:681 (fn replace_pair_with) | architecture | ported |
-| 8 | Decrement the Mapping count and return the index of the first modified element | unitnormmap.c:898-900 (fn MapMerge) | unitnormmap.rs:585 (fn map_merge) | architecture | ported |
-| 9 | In parallel, a UnitNormMap combines with nothing | unitnormmap.c:904-906 (fn MapMerge) | unitnormmap.rs:566-568 (fn map_merge) | architecture | ported |
-| 10 | Return the result | unitnormmap.c:908-909 (fn MapMerge) | unitnormmap.rs:585 (fn map_merge),589 (fn map_merge) | ceremony | ported |
-| 11 | `MakeMergedMap`: check the global error status and bail out | unitnormmap.c:401-403 (fn MakeMergedMap) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 12 | Initialize the returned Mapping to NULL | unitnormmap.c:404-406 (fn MakeMergedMap) | -- | ceremony | n/a: the Rust helper returns `Option<DynMapping>`, so "no merge" is `None` |
-| 13 | Classify both Mappings as UnitNormMap, ShiftMap, WinMap or other, and decline unless both are classified and at least one is a UnitNormMap | unitnormmap.c:407-418 (fn MakeMergedMap) | unitnormmap.rs:655-665 (fn make_merged_map) | architecture | ported |
-| 14 | ShiftMap followed by a forward UnitNormMap gives a forward UnitNormMap | unitnormmap.c:419-435 (fn MakeMergedMap) | unitnormmap.rs:697-715 (fn try_merge_into_unitnormmap) | architecture | ported |
-| 15 | A unit-scale WinMap followed by a forward UnitNormMap likewise, declining when the scales are not unity | unitnormmap.c:436-456 (fn MakeMergedMap) | unitnormmap.rs:717-743 (fn try_merge_into_unitnormmap) | architecture | ported |
-| 16 | An inverted UnitNormMap followed by a ShiftMap gives an inverted UnitNormMap | unitnormmap.c:457-473 (fn MakeMergedMap) | unitnormmap.rs:488-512 (fn try_merge) | architecture | ported |
-| 17 | An inverted UnitNormMap followed by a WinMap likewise, declining on non-unit scales | unitnormmap.c:474-494 (fn MakeMergedMap) | unitnormmap.rs:515-546 (fn try_merge) | architecture | ported |
-| 18 | Two UnitNormMaps merge only in opposite directions; compare their centers | unitnormmap.c:495-509 (fn MakeMergedMap) | unitnormmap.rs:440-454 (fn try_merge) | architecture | ported |
-| 19 | With identical centers they cancel to a UnitMap | unitnormmap.c:510-514 (fn MakeMergedMap) | unitnormmap.rs:456-465 (fn try_merge) | architecture | ported |
-| 20 | Otherwise a forward then an inverted UnitNormMap gives a ShiftMap | unitnormmap.c:515-531 (fn MakeMergedMap) | unitnormmap.rs:464-476 (fn try_merge) | architecture | ported |
+| 1 | Initialize the returned result to -1 | unitnormmap.c:854-856 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 2 | Check the global error status and bail out | unitnormmap.c:857-859 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 3 | In series, walk the pairs from `where - 1` to the end of the list | unitnormmap.c:862-868 (fn MapMerge) | unitnormmap.rs:578-580 (fn map_merge) | architecture | ported |
+| 4 | Set both members of each pair to the Invert values the list requests, then restore them | unitnormmap.c:869-875 (fn MapMerge) | unitnormmap.rs:581-583 (fn map_merge) | architecture | ported |
+| 5 | Ask `MakeMergedMap` about the pair, stop at the first it accepts, and report no change when none does | unitnormmap.c:876-886 (fn MapMerge) | unitnormmap.rs:583-589 (fn map_merge) | architecture | ported |
+| 6 | Replace the first of the pair with the merged Mapping and update its invert flag | unitnormmap.c:888-893 (fn MapMerge) | unitnormmap.rs:584 (fn map_merge), mappings/simplify.rs:677-681 (fn replace_pair_with) | architecture | ported |
+| 7 | Annul the second of the pair, shuffle the rest down and clear the vacated element | unitnormmap.c:894-905 (fn MapMerge) | unitnormmap.rs:584 (fn map_merge), mappings/simplify.rs:681 (fn replace_pair_with) | architecture | ported |
+| 8 | Decrement the Mapping count and return the index of the first modified element | unitnormmap.c:906-908 (fn MapMerge) | unitnormmap.rs:585 (fn map_merge) | architecture | ported |
+| 9 | In parallel, a UnitNormMap combines with nothing | unitnormmap.c:912-914 (fn MapMerge) | unitnormmap.rs:566-568 (fn map_merge) | architecture | ported |
+| 10 | Return the result | unitnormmap.c:916-917 (fn MapMerge) | unitnormmap.rs:585 (fn map_merge),589 (fn map_merge) | ceremony | ported |
+| 11 | `MakeMergedMap`: check the global error status and bail out | unitnormmap.c:409-411 (fn MakeMergedMap) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 12 | Initialize the returned Mapping to NULL | unitnormmap.c:412-414 (fn MakeMergedMap) | -- | ceremony | n/a: the Rust helper returns `Option<DynMapping>`, so "no merge" is `None` |
+| 13 | Classify both Mappings as UnitNormMap, ShiftMap, WinMap or other, and decline unless both are classified and at least one is a UnitNormMap | unitnormmap.c:415-426 (fn MakeMergedMap) | unitnormmap.rs:655-665 (fn make_merged_map) | architecture | ported |
+| 14 | ShiftMap followed by a forward UnitNormMap gives a forward UnitNormMap | unitnormmap.c:427-443 (fn MakeMergedMap) | unitnormmap.rs:697-715 (fn try_merge_into_unitnormmap) | architecture | ported |
+| 15 | A unit-scale WinMap followed by a forward UnitNormMap likewise, declining when the scales are not unity | unitnormmap.c:444-464 (fn MakeMergedMap) | unitnormmap.rs:717-743 (fn try_merge_into_unitnormmap) | architecture | ported |
+| 16 | An inverted UnitNormMap followed by a ShiftMap gives an inverted UnitNormMap | unitnormmap.c:465-481 (fn MakeMergedMap) | unitnormmap.rs:488-512 (fn try_merge) | architecture | ported |
+| 17 | An inverted UnitNormMap followed by a WinMap likewise, declining on non-unit scales | unitnormmap.c:482-502 (fn MakeMergedMap) | unitnormmap.rs:515-546 (fn try_merge) | architecture | ported |
+| 18 | Two UnitNormMaps merge only in opposite directions; compare their centers | unitnormmap.c:503-517 (fn MakeMergedMap) | unitnormmap.rs:440-454 (fn try_merge) | architecture | ported |
+| 19 | With identical centers they cancel to a UnitMap | unitnormmap.c:518-522 (fn MakeMergedMap) | unitnormmap.rs:456-465 (fn try_merge) | architecture | ported |
+| 20 | Otherwise a forward then an inverted UnitNormMap gives a ShiftMap | unitnormmap.c:523-539 (fn MakeMergedMap) | unitnormmap.rs:464-476 (fn try_merge) | architecture | ported |
 
 ## Row 3 — the scan reaches past the nominee
 
@@ -98,7 +98,7 @@ Every rule above needs a neighbor: an adjacent ShiftMap or unit-scale WinMap to
 absorb, or an opposite-direction UnitNormMap to cancel against.
 `unitnormmap.c` has no `Simplify` vtab slot, so a UnitNormMap on its own is
 returned unchanged, and the base `Simplify` reaches this `MapMerge` by nominating
-it in a list of one (`mapping.c:16871-16883 (fn Simplify)`). The port matches that by
+it in a list of one (`mapping.c:16997-17009 (fn Simplify)`). The port matches that by
 implementing `map_merge` and leaving `Mapping::simplified` at its default, so a
 lone UnitNormMap can never be stamped as simplified in isolation.
 
@@ -111,7 +111,7 @@ absorptions would be missed entirely if this class relied on the generic path.
 
 ## A note C leaves in place
 
-`unitnormmap.c:385 (fn MakeMergedMap)` records that C's own ShiftMap-plus-UnitNormMap branch never
+`unitnormmap.c:393 (fn MakeMergedMap)` records that C's own ShiftMap-plus-UnitNormMap branch never
 runs, because a ShiftMap has become a WinMap by the time this is reached — see
 row 3 of `shift.md`. The branch is kept in C and ported here for the same reason:
 it is the documented rule even where the path is unreachable.

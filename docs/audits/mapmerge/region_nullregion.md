@@ -3,19 +3,19 @@
 C source: reference/starlink-ast/src/nullregion.c
 Rust: crates/starlink-ast/src/regions/nullregion.rs
 Audited: 2026-09-02 against pin 3e60abaa
-Citations: verified against pin 3d3f255f
+Citations: verified against pin fe26cc9b
 Extension points: classified
 
 Uncited C steps:
-- nullregion.c:480 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
-- nullregion.c:1367 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
-- nullregion.c:216 (fn GetDefUnc) — `Local Variables:` is the local-variable declaration block, not a step
+- nullregion.c:486 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
+- nullregion.c:1374 (fn Simplify) — `Local Variables:` is the local-variable declaration block, not a step
+- nullregion.c:222 (fn GetDefUnc) — `Local Variables:` is the local-variable declaration block, not a step
 
-Three short C bodies. `MapMerge` (`nullregion.c:488-578 (fn MapMerge)`) is the Region
+Three short C bodies. `MapMerge` (`nullregion.c:494-584 (fn MapMerge)`) is the Region
 shape: self-simplify first, and only failing that merge with a neighbor, in
-parallel only. `Simplify` (`nullregion.c:1374-1417 (fn Simplify)`) calls the parent and,
+parallel only. `Simplify` (`nullregion.c:1381-1424 (fn Simplify)`) calls the parent and,
 when the base-to-current Mapping is not a UnitMap, rebuilds the NullRegion on the
-current Frame. `GetDefUnc` (`nullregion.c:224-244 (fn GetDefUnc)`) is a zero-radius Circle
+current Frame. `GetDefUnc` (`nullregion.c:230-250 (fn GetDefUnc)`) is a zero-radius Circle
 at the origin.
 
 `NullRegion::map_merge` (`nullregion.rs:857-860 (fn map_merge)`) delegates to
@@ -25,40 +25,40 @@ Region shares; `NullRegion::simplified` (`nullregion.rs:751-820 (fn simplified)`
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | `MapMerge`: initialize the result and the merged-pair index | nullregion.c:488-491 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
-| 2 | Check the global error status and bail out | nullregion.c:492-494 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | Get a pointer to the NullRegion | nullregion.c:495-497 (fn MapMerge) | -- | ceremony | n/a: the Rust function already has `this: &dyn Region` |
-| 4 | Banner: first see whether the NullRegion reduces on its own, without reference to its neighbors | nullregion.c:498-501 (fn MapMerge) | -- | ceremony | n/a: a section banner, not a step |
-| 5 | Simplify the NullRegion, assuming a changed pointer means something happened | nullregion.c:502-506 (fn MapMerge) | mappings/simplify.rs:1707-1708 (fn region_map_merge) | architecture | ported |
-| 6 | Annul the NullRegion pointer in the list, replace it with the new Region, and mark it forward | nullregion.c:507-513 (fn MapMerge) | mappings/simplify.rs:1709 (fn region_map_merge) | architecture | ported |
-| 7 | Return the index of the first modified element | nullregion.c:514-516 (fn MapMerge) | mappings/simplify.rs:1710 (fn region_map_merge) | architecture | ported |
-| 8 | Failing that, merge with the Regions on either side — which is possible in parallel only | nullregion.c:517-521 (fn MapMerge) | mappings/simplify.rs:1720 (fn region_map_merge) | architecture | ported |
-| 9 | Annul the unwanted simplified pointer | nullregion.c:522-523 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 10 | Attempt to merge the NullRegion with its lower neighbor, if that neighbor is a Region | nullregion.c:524-533 (fn MapMerge) | mappings/simplify.rs:1723-1737 (fn region_map_merge) | architecture | ported |
-| 11 | Failing that, attempt the upper neighbor the same way | nullregion.c:534-544 (fn MapMerge) | mappings/simplify.rs:1741-1756 (fn region_map_merge) | architecture | ported |
-| 12 | Act only if one of the two produced a merged Region | nullregion.c:545-547 (fn MapMerge) | mappings/simplify.rs:1731 (fn region_map_merge),1737 (fn region_map_merge) | architecture | ported |
-| 13 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | nullregion.c:548-553 (fn MapMerge) | mappings/simplify.rs:681 (fn replace_pair_with) | architecture | ported |
-| 14 | Annul the second and shuffle the rest of the list down to fill the gap | nullregion.c:554-561 (fn MapMerge) | mappings/simplify.rs:681 (fn replace_pair_with) | architecture | ported |
-| 15 | Clear the vacated element at the end | nullregion.c:562-565 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so the removed entry leaves no slot to blank |
-| 16 | Decrement the Mapping count and return the index of the first modified element | nullregion.c:566-571 (fn MapMerge) | mappings/simplify.rs:1733 (fn region_map_merge),1739 (fn region_map_merge) | architecture | ported |
-| 17 | In series, annul the simplified pointer and do nothing | nullregion.c:572-575 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and the series case falls through to `None` |
-| 18 | Return the result | nullregion.c:576-578 (fn MapMerge) | mappings/simplify.rs:1759 (fn region_map_merge) | architecture | ported |
-| 19 | `Simplify`: initialize the returned pointer | nullregion.c:1374-1376 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialize |
-| 20 | Check the global error status and bail out | nullregion.c:1377-1379 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 21 | Get a pointer to the supplied Region structure | nullregion.c:1380-1382 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
-| 22 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | nullregion.c:1383-1386 (fn Simplify) | nullregion.rs:751-764 (fn simplified) | architecture | ported |
-| 23 | If the base-to-current Mapping is a UnitMap, no further simplification is possible, so clone the parent's result | nullregion.c:1387-1392 (fn Simplify) | nullregion.rs:768-775 (fn simplified) | architecture | ported |
-| 24 | Otherwise take the other branch | nullregion.c:1393-1394 (fn Simplify) | nullregion.rs:776 (fn simplified) | architecture | ported |
-| 25 | Create a NullRegion from the current Frame, carrying the parent's uncertainty | nullregion.c:1395-1398 (fn Simplify) | nullregion.rs:779-801 (fn simplified) | architecture | ported |
-| 26 | Free the Frame | nullregion.c:1399-1402 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 27 | Annul the Mapping and the parent's Region | nullregion.c:1403-1405 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
-| 28 | If anything simplified, overlay the supplied Region's attributes onto the result | nullregion.c:1406-1411 (fn Simplify) | nullregion.rs:813-815 (fn simplified) | architecture | ported |
-| 29 | Annul the returned pointer if an error occurred | nullregion.c:1412-1414 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
-| 30 | Return the result | nullregion.c:1415-1417 (fn Simplify) | nullregion.rs:816 (fn simplified),789 (fn simplified) | architecture | ported |
-| 31 | `GetDefUnc`: initialize | nullregion.c:224-226 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no sentinel to initialize |
-| 32 | Check the inherited status | nullregion.c:227-229 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 33 | Create a Circle centered on the base Frame origin with zero radius | nullregion.c:230-241 (fn GetDefUnc) | nullregion.rs:400-405 (fn get_def_unc) | architecture | ported |
-| 34 | Return the default uncertainty Region | nullregion.c:242-244 (fn GetDefUnc) | nullregion.rs:405 (fn get_def_unc) | architecture | ported |
+| 1 | `MapMerge`: initialize the result and the merged-pair index | nullregion.c:494-497 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 2 | Check the global error status and bail out | nullregion.c:498-500 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 3 | Get a pointer to the NullRegion | nullregion.c:501-503 (fn MapMerge) | -- | ceremony | n/a: the Rust function already has `this: &dyn Region` |
+| 4 | Banner: first see whether the NullRegion reduces on its own, without reference to its neighbors | nullregion.c:504-507 (fn MapMerge) | -- | ceremony | n/a: a section banner, not a step |
+| 5 | Simplify the NullRegion, assuming a changed pointer means something happened | nullregion.c:508-512 (fn MapMerge) | mappings/simplify.rs:1707-1708 (fn region_map_merge) | architecture | ported |
+| 6 | Annul the NullRegion pointer in the list, replace it with the new Region, and mark it forward | nullregion.c:513-519 (fn MapMerge) | mappings/simplify.rs:1709 (fn region_map_merge) | architecture | ported |
+| 7 | Return the index of the first modified element | nullregion.c:520-522 (fn MapMerge) | mappings/simplify.rs:1710 (fn region_map_merge) | architecture | ported |
+| 8 | Failing that, merge with the Regions on either side — which is possible in parallel only | nullregion.c:523-527 (fn MapMerge) | mappings/simplify.rs:1720 (fn region_map_merge) | architecture | ported |
+| 9 | Annul the unwanted simplified pointer | nullregion.c:528-529 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
+| 10 | Attempt to merge the NullRegion with its lower neighbor, if that neighbor is a Region | nullregion.c:530-539 (fn MapMerge) | mappings/simplify.rs:1723-1737 (fn region_map_merge) | architecture | ported |
+| 11 | Failing that, attempt the upper neighbor the same way | nullregion.c:540-550 (fn MapMerge) | mappings/simplify.rs:1741-1756 (fn region_map_merge) | architecture | ported |
+| 12 | Act only if one of the two produced a merged Region | nullregion.c:551-553 (fn MapMerge) | mappings/simplify.rs:1731 (fn region_map_merge),1737 (fn region_map_merge) | architecture | ported |
+| 13 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | nullregion.c:554-559 (fn MapMerge) | mappings/simplify.rs:681 (fn replace_pair_with) | architecture | ported |
+| 14 | Annul the second and shuffle the rest of the list down to fill the gap | nullregion.c:560-567 (fn MapMerge) | mappings/simplify.rs:681 (fn replace_pair_with) | architecture | ported |
+| 15 | Clear the vacated element at the end | nullregion.c:568-571 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so the removed entry leaves no slot to blank |
+| 16 | Decrement the Mapping count and return the index of the first modified element | nullregion.c:572-577 (fn MapMerge) | mappings/simplify.rs:1733 (fn region_map_merge),1739 (fn region_map_merge) | architecture | ported |
+| 17 | In series, annul the simplified pointer and do nothing | nullregion.c:578-581 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and the series case falls through to `None` |
+| 18 | Return the result | nullregion.c:582-584 (fn MapMerge) | mappings/simplify.rs:1759 (fn region_map_merge) | architecture | ported |
+| 19 | `Simplify`: initialize the returned pointer | nullregion.c:1381-1383 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialize |
+| 20 | Check the global error status and bail out | nullregion.c:1384-1386 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 21 | Get a pointer to the supplied Region structure | nullregion.c:1387-1389 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
+| 22 | Invoke the parent Region Simplify, which simplifies the encapsulated FrameSet and the uncertainty | nullregion.c:1390-1393 (fn Simplify) | nullregion.rs:751-764 (fn simplified) | architecture | ported |
+| 23 | If the base-to-current Mapping is a UnitMap, no further simplification is possible, so clone the parent's result | nullregion.c:1394-1399 (fn Simplify) | nullregion.rs:768-775 (fn simplified) | architecture | ported |
+| 24 | Otherwise take the other branch | nullregion.c:1400-1401 (fn Simplify) | nullregion.rs:776 (fn simplified) | architecture | ported |
+| 25 | Create a NullRegion from the current Frame, carrying the parent's uncertainty | nullregion.c:1402-1405 (fn Simplify) | nullregion.rs:779-801 (fn simplified) | architecture | ported |
+| 26 | Free the Frame | nullregion.c:1406-1409 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
+| 27 | Annul the Mapping and the parent's Region | nullregion.c:1410-1412 (fn Simplify) | -- | ceremony | n/a: owned values are dropped |
+| 28 | If anything simplified, overlay the supplied Region's attributes onto the result | nullregion.c:1413-1418 (fn Simplify) | nullregion.rs:813-815 (fn simplified) | architecture | ported |
+| 29 | Annul the returned pointer if an error occurred | nullregion.c:1419-1421 (fn Simplify) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
+| 30 | Return the result | nullregion.c:1422-1424 (fn Simplify) | nullregion.rs:816 (fn simplified),789 (fn simplified) | architecture | ported |
+| 31 | `GetDefUnc`: initialize | nullregion.c:230-232 (fn GetDefUnc) | -- | ceremony | n/a: the Rust returns `AstResult<DynRegion>`, so there is no sentinel to initialize |
+| 32 | Check the inherited status | nullregion.c:233-235 (fn GetDefUnc) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 33 | Create a Circle centered on the base Frame origin with zero radius | nullregion.c:236-247 (fn GetDefUnc) | nullregion.rs:400-405 (fn get_def_unc) | architecture | ported |
+| 34 | Return the default uncertainty Region | nullregion.c:248-250 (fn GetDefUnc) | nullregion.rs:405 (fn get_def_unc) | architecture | ported |
 
 ## Row 33 — a Circle, not the bounding box
 
@@ -80,7 +80,7 @@ values over the top, which is what C's `astRegOverlay` does.
 ## Rows 23, 24 and 28 — what counts as a simplification
 
 C has no `simpler` flag: it compares `result != this_mapping`
-(`nullregion.c:1410 (fn Simplify)`), which is true whenever the non-UnitMap branch built a
+(`nullregion.c:1417 (fn Simplify)`), which is true whenever the non-UnitMap branch built a
 fresh NullRegion, and true through the UnitMap branch only when the parent
 returned something other than the supplied pointer — `astClone( new )` is that
 pointer exactly when the parent simplified nothing. `nullregion.rs:813 (fn simplified)`
