@@ -672,3 +672,53 @@ fn class_needs_a_skyframe_in_the_sky_domain() {
     check_write(&mut fc, polanal, 0).unwrap();
     assert_eq!(list_cards(&mut fc).len(), 3);
 }
+
+/// Not in the C test: a failed write leaves a FitsChan with the cards and
+/// the current card it had, when the write replaced cards on both sides of
+/// the current card (values from the C library at the pinned commit).
+#[test]
+fn a_failed_write_keeps_the_current_card_and_replaced_cards() {
+    let tpn = read_cards(&[
+        "NAXIS   = 2",
+        "NAXIS1  = 100",
+        "NAXIS2  = 200",
+        "CRPIX1  = 50",
+        "CRPIX2  = 100",
+        "CRVAL1  = 10",
+        "CRVAL2  = 20",
+        "CTYPE1  = 'RA---TPN'",
+        "CTYPE2  = 'DEC--TPN'",
+        "CDELT1  = -0.001",
+        "CDELT2  = 0.001",
+        "PV1_1   = 1.0",
+        "PV2_1   = 1.0",
+    ]);
+    let mut fc = fitschan(
+        "Encoding=FITS-PC",
+        &[
+            "NAXIS1  = 100",
+            "CRVAL1  = 5 / mine",
+            "NAXIS2  = 200",
+            "CRPIX2  = 7.5 / also mine",
+            "CDELT1  = 3 / x",
+            "FOO     = 1",
+        ],
+    );
+    fc.set_card(3).unwrap();
+    check_write(&mut fc, tpn, 0).unwrap();
+    assert_eq!(fc.card().unwrap(), 3);
+    assert_eq!(
+        list_cards(&mut fc)
+            .iter()
+            .map(|c| c.trim_end())
+            .collect::<Vec<_>>(),
+        [
+            "NAXIS1  =                  100",
+            "CRVAL1  =                    5 / mine",
+            "NAXIS2  =                  200",
+            "CRPIX2  =                  7.5 / also mine",
+            "CDELT1  =                    3 / x",
+            "FOO     =                    1",
+        ]
+    );
+}

@@ -9,7 +9,7 @@
 use crate::common::native_dump;
 use starlink_ast::constants::BAD_VALUE;
 use starlink_ast::coords::PointSet;
-use starlink_ast::mappings::{CmpMap, Composition, Mapping, ShiftMap, UnitMap, ZoomMap};
+use starlink_ast::mappings::{CmpMap, Composition, Mapping, PermMap, ShiftMap, UnitMap, ZoomMap};
 
 // ------------------------------------------------------------------ //
 // Series composition                                                   //
@@ -365,10 +365,17 @@ fn decompose_gives_components_and_invert_values_like_c() {
 fn nested_cmpmap_counts_axes_quickly() {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let mut map: Box<dyn Mapping> = Box::new(UnitMap::new(2));
+        // Each level adds one input and two outputs, then swaps them by
+        // inverting, so a count that confused inputs with outputs is caught.
+        let mut map: Box<dyn Mapping> =
+            Box::new(PermMap::new(&[1, 2], &[1, 2, -1], &[0.0]).unwrap());
         for _ in 0..60 {
-            let mut inverted =
-                CmpMap::new(map, Box::new(UnitMap::new(1)), Composition::Parallel).unwrap();
+            let mut inverted = CmpMap::new(
+                map,
+                Box::new(PermMap::new(&[1], &[1, -1], &[0.0]).unwrap()),
+                Composition::Parallel,
+            )
+            .unwrap();
             inverted.invert();
             map = Box::new(inverted);
         }
@@ -377,5 +384,5 @@ fn nested_cmpmap_counts_axes_quickly() {
     let counts = rx
         .recv_timeout(std::time::Duration::from_secs(10))
         .expect("counting the axes of 60 nested CmpMaps did not finish in 10 seconds");
-    assert_eq!(counts, (62, 62));
+    assert_eq!(counts, (92, 93));
 }
