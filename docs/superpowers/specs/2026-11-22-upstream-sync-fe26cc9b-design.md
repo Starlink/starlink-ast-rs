@@ -34,7 +34,7 @@ C has no bound on the nesting depth of a dump, and the port has failure modes C'
 
 1. Every behavioral fix in the range is either ported, or recorded as not applicable with the reason (C memory safety only; pure buffer truncation per the decision above).
 2. Every C quirk the port mirrors and upstream fixed is inverted, and its `c-library-quirks.md` entry is marked `RESOLVED (upstream <hash>)`.
-3. Each of the 16 new C test programs, and the new checks in `testcmpframe.c`, `testmoc.c` and `testxphmap.c`, has a Rust counterpart or a `PLAN.md` row naming what blocks it.
+3. Each of the 15 new C test programs (and `compare_dumps_selftest.c`), and the new checks in `testcmpframe.c`, `testmoc.c` and `testxphmap.c`, has a Rust counterpart or a `PLAN.md` row naming what blocks it.
 4. Error-code and message parity for every case of `testcorruptinput.c`, `testloaderhardening.c`, `testframeperm.c`, `testframesetload.c` and `testregionhardening.c`.
 5. A Rust fuzzing harness over the readers, with every input it has found to crash, hang or over-allocate committed as a regression case that tier 1 replays.
 6. Each stage leaves `cargo test -p starlink-ast`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check`, the docs gates and `tools/fixtures/check_mirror.sh` green.
