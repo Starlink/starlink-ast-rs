@@ -62,6 +62,8 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: `Mapping::rate` at a position so close to zero that the first step it tries underflows (below about 1e-301) returns the rate; it looped for ever.
+- `starlink-ast`: two Mappings holding the same infinite or NaN value, such as a ShiftMap with an infinite shift and a copy of it, are equal, as in the C library; the comparison found such a value unequal to itself.
 - `starlink-ast`: a `SplineMap` gives a bad value outside the area its spline covers, which is less than the full range of the knots when the first or last knots along an axis are not coincident, and for a NaN input; it panicked for some such positions and gave a value for others. On the upper limit of that area it gives the spline's value, where it gave a bad value for a spline with one knot interval along an axis.
 - `starlink-ast`: compiled for WebAssembly in the browser (`wasm32-unknown-unknown`), where the standard library cannot read the clock, the crate reads the browser's clock through `js-sys`, a dependency on that target only, so making a MathMap and reading `TimeFrame::current_time`, which a date axis's tick spacing does, no longer stop the program.
 - `starlink-ast`: writing an object that is not a FrameSet to a FitsChan in an encoding other than NATIVE writes nothing and returns 0, as the C library's `astWrite` does, rather than failing.

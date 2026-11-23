@@ -213,6 +213,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream b7135abc): `DumpEntry` reads an `Entry1X` as an `Entry0X` for a zero-length vector, writing pointer bytes as the value](#resolved-upstream-b7135abc-dumpentry-reads-an-entry1x-as-an-entry0x-for-a-zero-length-vector-writing-pointer-bytes-as-the-value)
 - [RESOLVED (upstream 367a6a6b): `astMapGetElem<X>` reports success on an undefined entry, unlike `astMapGet0<X>` and `astMapGet1<X>`](#resolved-upstream-367a6a6b-astmapgetelemx-reports-success-on-an-undefined-entry-unlike-astmapget0x-and-astmapget1x)
 - [RESOLVED (upstream fd90f3b1): SplineMap evaluates the spline outside its basic interval and misses its upper limit](#resolved-upstream-fd90f3b1-splinemap-evaluates-the-spline-outside-its-basic-interval-and-misses-its-upper-limit)
+- [RESOLVED (upstream 2d9d4449): astEQUAL never finds an infinite or NaN value equal to itself](#resolved-upstream-2d9d4449-astequal-never-finds-an-infinite-or-nan-value-equal-to-itself)
+- [RESOLVED (upstream 7de5007a): astRate loops for ever at a position near zero](#resolved-upstream-7de5007a-astrate-loops-for-ever-at-a-position-near-zero)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -362,7 +364,8 @@ The fix is to save and restore Base's set state as well as its value, or to clea
 
 `plot.c` `FindMajTicks2` (plot.c:12617) turns each axis value into a tick index with `(int) floor( ( value - centre )/gap )` and then adds and subtracts those indices.
 A Gap of zero, or one so small beside the axis values that the quotient passes `INT_MAX`, makes the quotient infinite or huge; the cast is undefined there and saturates on arm64 (on x86-64 it gives `INT_MIN`), and the index arithmetic then overflows `int`, which is undefined too but wraps as compiled.
-The ticks that come out are nonsense, and `astGrid` goes on to fail: `testgrid` on `car3` and `aitoff` with `gap=0` reports "No suitable format can be found to produce numerical labels for axis 1 of a SkyFrame" (axis 2 for `gap(2)=0`), and with `gap=1e-300` "No grid curves can be drawn for axis 1".
+The ticks that come out are nonsense, and `astGrid` goes on to fail: `testgrid` on `car3` and `aitoff`, with `gap=0`, `gap(1)=0`, `gap(2)=0` or `gap=1e-300`, reports "No grid curves can be drawn for axis 1".
+Before upstream `2d9d4449` made `astEQUAL` find an infinite value equal to itself, a zero Gap reported "No suitable format can be found to produce numerical labels" for the axis instead.
 The port mirrors this (`find_maj_ticks2` in `crates/starlink-ast/src/plot/ticks.rs` saturates the cast, as Rust's `as` does, and wraps the index arithmetic), so it reports the same errors, where unchecked arithmetic panicked in a debug build; `a_zero_or_tiny_gap_gives_the_c_library_errors` in `tests/test_grid.rs` is the gate.
 Which error appears on x86-64, where the cast differs, has not been checked.
 The fix is to reject a Gap that is zero or too small for the axis values with an error of its own before the search.
@@ -5398,3 +5401,23 @@ Upstream (`0b427150`, `9a598e55`, `fd90f3b1`) tests the basic interval in a form
 
 **Rust behavior:** `db2val` and `dbvalu_k` in `crates/starlink-ast/src/mappings/splinemap.rs` mirrored all of it, and for open knots along Y indexed past the coefficients and panicked.
 They now follow the fixed C; `crates/starlink-ast/tests/test_splinemapedge.rs` ports `testsplinemapedge.c` and adds the open-knot positions with C's values.
+
+### RESOLVED (upstream 2d9d4449): astEQUAL never finds an infinite or NaN value equal to itself
+
+`astEQUALS` compared two values by their difference against a tolerance scaled by their size.
+The difference of two equal infinities, or of two NaNs, is a NaN, so the test never found such a value equal to anything, itself included.
+A step repeated until its result stopped changing never stopped once it had one; upstream found the simplifier looping for ever on a WinMap whose scale was 1e-320.
+Upstream now tests first for identical values, or two NaNs, which are equal.
+
+**Rust behavior:** `ast_equals` in `crates/starlink-ast/src/mappings/helpers/mod.rs` mirrored the macro, so a ShiftMap with an infinite shift was not equal to a copy of itself.
+It now tests as upstream does (`ast_equals_identical_or_both_nan`, and `shiftmap_with_an_infinite_shift_equals_itself` in `tests/test_equal.rs`).
+The upstream reproducer, a FITS header with a CDELT of 1e-320, did not hang the port, which reaches the comparison by another path.
+
+### RESOLVED (upstream 7de5007a): astRate loops for ever at a position near zero
+
+`Rate` starts its search for a working interval at a small fraction of the position, and multiplies it by ten until the gradient can be found.
+For a position below about 1e-301 the fraction underflows to zero, and ten times zero is zero, so the loop never ended.
+Upstream starts at the smallest normal number when the fraction is smaller.
+
+**Rust behavior:** `numeric_rate` in `crates/starlink-ast/src/mappings/rate.rs` mirrored the loop and hung; it now floors the first step as upstream does (`rate_near_zero_terminates` in `tests/test_numeric_rate.rs`).
+The floor also replaces a subnormal first step, for a position between about 1e-308 and 1e-301, so rates there can change slightly.

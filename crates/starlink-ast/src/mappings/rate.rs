@@ -61,6 +61,13 @@ pub fn numeric_rate(mapping: &dyn Mapping, at: &[f64], ax1: usize, ax2: usize) -
         f64::EPSILON * 1e9
     };
 
+    // For a very small x0 the fraction is too small to represent and is
+    // zero, which the loop below would multiply by ten for ever; start at
+    // the smallest normal number instead (mapping.c Rate).
+    if h0 < f64::MIN_POSITIVE {
+        h0 = f64::MIN_POSITIVE;
+    }
+
     // Find an initial working interval by increasing h0 until FindGradient
     // succeeds (or we reach an absurdly large interval).
     let mut mean0 = BAD_VALUE;

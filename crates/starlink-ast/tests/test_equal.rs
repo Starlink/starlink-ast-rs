@@ -944,3 +944,17 @@ fn matrixmap_equal_cross_inversion() {
     let mm_fwd = MatrixMap::new(m).unwrap();
     assert!(!mm_fwd.equal(&mm_inv));
 }
+
+/// Two Mappings holding the same infinite value are equal, as in C, where
+/// `astEQUAL` finds identical values equal whatever their size.
+#[test]
+fn shiftmap_with_an_infinite_shift_equals_itself() {
+    let a = ShiftMap::new(vec![f64::INFINITY]);
+    assert!(a.equal(&a.clone()));
+}
+
+#[test]
+fn winmap_with_an_infinite_scale_equals_itself() {
+    let a = WinMap::from_corners(&[0.0], &[1.0], &[0.0], &[f64::INFINITY]).unwrap();
+    assert!(a.equal(&a.clone()));
+}
