@@ -391,6 +391,55 @@ impl MatrixMap {
         }
     }
 
+    /// The inputs on which the given outputs depend, in ascending order, if
+    /// [`map_split`](Mapping::map_split) can split off exactly those outputs:
+    /// each output depends on at least one input, and no other output
+    /// depends on any of those inputs. `None` otherwise, or if an output index
+    /// is out of range or repeated, or the matrix applied in the current
+    /// direction is undefined. A zero or bad element is no dependence.
+    ///
+    /// Mirrors C's protected `astMtrSplitInputs`, which lets a CmpMap's
+    /// split find the one subset of outputs a MatrixMap can give for a set of
+    /// inputs without searching every subset.
+    pub(crate) fn mtr_split_inputs(&self, outputs: &[usize]) -> Option<Vec<usize>> {
+        let matrix = if self.inverted {
+            self.inverse.as_ref()?
+        } else {
+            &self.matrix
+        };
+        let (nrow, ncol) = matrix.dim();
+        if outputs.is_empty() {
+            return None;
+        }
+        let mut wanted = vec![false; nrow];
+        for &o in outputs {
+            if o >= nrow || wanted[o] {
+                return None;
+            }
+            wanted[o] = true;
+        }
+        let depends = |v: f64| v != 0.0 && !is_bad(v);
+        let mut used = vec![false; ncol];
+        for irow in (0..nrow).filter(|&r| wanted[r]) {
+            let mut any = false;
+            for icol in 0..ncol {
+                if depends(matrix[[irow, icol]]) {
+                    used[icol] = true;
+                    any = true;
+                }
+            }
+            if !any {
+                return None;
+            }
+        }
+        for irow in (0..nrow).filter(|&r| !wanted[r]) {
+            if (0..ncol).any(|icol| used[icol] && depends(matrix[[irow, icol]])) {
+                return None;
+            }
+        }
+        Some((0..ncol).filter(|&c| used[c]).collect())
+    }
+
     /// The product [`mtr_mult`](MatrixMap::mtr_mult) gives, or `None` if
     /// either matrix, in the direction its MatrixMap is used, is undefined
     /// or has an element with no value, or the product has one.
@@ -1890,5 +1939,46 @@ mod tests {
         singular.invert();
         assert!(singular.mtr_product(&square).unwrap().is_none());
         assert!(square.mtr_product(&square).unwrap().is_some());
+    }
+}
+
+#[cfg(test)]
+mod split_inputs_tests {
+    use super::*;
+    use ndarray::array;
+
+    #[test]
+    fn mtr_split_inputs_finds_the_inputs_of_a_separable_block() {
+        let m = MatrixMap::new(array![[1.0, 2.0, 0.0], [3.0, 4.0, 0.0], [0.0, 0.0, 5.0]]).unwrap();
+        assert_eq!(m.mtr_split_inputs(&[2]), Some(vec![2]));
+        assert_eq!(m.mtr_split_inputs(&[1, 0]), Some(vec![0, 1]));
+        // Output 0 shares input 1 with output 1, which is not asked for.
+        assert_eq!(m.mtr_split_inputs(&[0]), None);
+        assert_eq!(m.mtr_split_inputs(&[0, 0]), None);
+        assert_eq!(m.mtr_split_inputs(&[3]), None);
+        assert_eq!(m.mtr_split_inputs(&[]), None);
+    }
+
+    #[test]
+    fn mtr_split_inputs_uses_the_matrix_of_the_current_direction() {
+        // The forward matrix couples output 1 to input 0; its inverse does
+        // not couple output 0 to input 1.
+        let mut m = MatrixMap::new(array![[1.0, 0.0], [1.0, 1.0]]).unwrap();
+        assert_eq!(m.mtr_split_inputs(&[0]), None);
+        m.invert();
+        assert_eq!(m.mtr_split_inputs(&[1]), None);
+        assert_eq!(m.mtr_split_inputs(&[0, 1]), Some(vec![0, 1]));
+        let mut singular = MatrixMap::new(array![[1.0, 1.0], [1.0, 1.0]]).unwrap();
+        singular.invert();
+        assert_eq!(singular.mtr_split_inputs(&[0, 1]), None);
+    }
+
+    #[test]
+    fn mtr_split_inputs_treats_a_bad_element_as_no_dependence() {
+        let m = MatrixMap::new(array![[1.0, BAD_VALUE], [0.0, 2.0]]).unwrap();
+        assert_eq!(m.mtr_split_inputs(&[0]), Some(vec![0]));
+        // An output whose only element is bad depends on nothing.
+        let m = MatrixMap::new(array![[BAD_VALUE, 0.0], [0.0, 2.0]]).unwrap();
+        assert_eq!(m.mtr_split_inputs(&[0]), None);
     }
 }

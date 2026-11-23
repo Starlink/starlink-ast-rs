@@ -1288,3 +1288,19 @@ fn testcmpmap_split_of_splittest1() {
     assert_eq!(y2[1], y[1], "Error 12");
     assert_eq!(y2[2], y[3], "Error 13");
 }
+
+/// A CmpMap whose Ident is set may not be decomposed, so it cannot be split,
+/// as in the C library; without Ident it can.
+#[test]
+fn cmpmap_with_ident_is_not_split() {
+    use starlink_ast::mappings::{CmpMap, Composition};
+    let mut map = CmpMap::new(
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        Box::new(ZoomMap::new(1, 3.0).unwrap()),
+        Composition::Parallel,
+    )
+    .unwrap();
+    assert!(map.map_split(&[2]).unwrap().is_some());
+    map.set_ident("keep");
+    assert!(map.map_split(&[2]).unwrap().is_none());
+}
