@@ -378,6 +378,37 @@ active work.
 
 ## 8. Upstream syncs — done
 
+### In progress: sync to `fe26cc9b`
+
+The pin moved from `3d3f255f` to `fe26cc9b` (Starlink/ast PRs #103 and #104: Frame permutation validation and the loader hardening sweep, 168 commits).
+The design is [`docs/superpowers/specs/2026-11-22-upstream-sync-fe26cc9b-design.md`](docs/superpowers/specs/2026-11-22-upstream-sync-fe26cc9b-design.md); it assigns each upstream commit to one of the stages below.
+
+Stage 0 (pin move) is done on `u/timj/sync-c`: the pin and `DIST_MANIFEST`, the MapMerge checklists re-anchored, the zero-CDELT fix (`45ae1bd8`) with the fixtures upstream regenerated for it, the Transform half of the DssMap fix (`cba0743a`) that a copied oracle needed, WcsMap's cyclic test (`a87d1700`) with the wcslib golden recaptured, and `tools/oracle_fixtures/check_probes_fresh.sh`.
+
+| Stage | Area | Suggested branch | Status |
+|---|---|---|---|
+| 1 | Mappings and the simplifier | `u/timj/sync-c-mappings` | pending |
+| 2 | FitsChan | `u/timj/sync-c-fitschan` | pending |
+| 3 | Regions | `u/timj/sync-c-regions` | pending |
+| 4 | Frames, Axis, formatting, time, units, casting, Plot | `u/timj/sync-c-frames` | pending |
+| 5 | Hostile input: loader checks, error parity, port-only limits, fuzzing | `u/timj/sync-c-hardening` | pending |
+
+What the pin move left stale, each regenerated or re-reviewed by the stage that ports the C behind it:
+
+| Corpus | Case | What changed | Stage |
+|---|---|---|---|
+| probe oracle | `attr_strings_oracle` | Getting a Plot's `Grid`, `Edge(1)` or `Labelling` for one case now fails with `AST__INTER` "No grid curves can be drawn" in place of `AST__PLFMT` | 4 |
+| probe oracle | `fitschan_encodings_oracle` | Three writes now leave `CRPIX`, `CRVAL` and `CDELT` cards they used to remove | 2 |
+| probe oracle | `frame_load_oracle`, `sky_plain_axis_oracle` | A SkyFrame read from a dump that does not describe its axes now has SkyAxes (`2572667b`) | 5 |
+| C doc ledger | `IterInverse` (`polymap.c`) | Says an iterative inverse needs a forward polynomial (`857f4a99`) | 1 |
+| C doc ledger | `SplineMap` class (`splinemap.c`) | Says which knots a spline of order K covers | 1 |
+| MapMerge checklists | `cmpmap.md`, `dssmap.md`, `matrix.md`, `winmap.md`, `polymap.md` | Rows re-anchored onto C rewritten by `f8c7723e`, `cfdbbe8d`, `b9cf680b` and `857f4a99`, each checklist noting it | 1 |
+
+The native corpus (`check_corpus_fresh.sh`) and the simplify corpus (`check_simplify_fresh.sh`: 512 fresh, 5 numeric) have no stale card; their numeric drift is the usual platform drift.
+None of the stage 1 merge fixes changes a simplify fixture, which is why `testmapmerge.c` matters to stage 1.
+
+The four probe oracles above, and eight that differ from their probes at both pins and so not because of this sync, are listed as known drift in `tools/oracle_fixtures/probes.tsv`, which makes the check pass until each is regenerated. The eight: `cmp_match_end`, `region_errors`, `region_frame` and `region_stc` (comments respelled in American English after capture), `frame_api` and `plot_frame_methods` (they print the current time), `poly_iter_inverse` (`-inf` written as `BAD_VALUE` after capture), and `fixture_full_dump` (39 fixtures added since it was captured).
+
 Landed in `2efde3a`, `e0cb246`, `e029927` and `3a0a9d9`: nineteen upstream defect
 fixes reconciled against `docs/issues/c-library-quirks.md`, five mirrored bugs
 removed, 97 fixtures copied across byte-identical, and one divergence recorded
@@ -494,7 +525,7 @@ pin.
 | testframe.c | crates/starlink-ast/tests/test_frame.rs | ported 2026-09-30, the SkyFrame `Format` / `Unit` block included; the `astAxAngle` block is in `test_frame_geometry.rs`. `testframe.c`'s newer picked-axis block is not ported: it needs the picked-SkyAxis row in §2. The file also pins 46 Unit / NormUnit pairs captured from the C library; the three `unit.c` defects they exposed are fixed upstream on `u/timj/norm-unit` (`965b7587`, `25bd4924`, `8c734154`) and in the port, and are under "Resolved upstream" in `docs/issues/c-library-quirks.md`. `test_convert.rs` gained the matching `testconvert.c` Errors 52-53 |
 | check_transform_oracle | crates/starlink-ast/tests/test_transform_oracle.rs | ported 2026-08-05 (submodule `3a3c3e51`); consumes `tests/fixtures/oracle/*.oracle`; all 2261 sections gated by three asserting tests (`head_`, `slamap_`, `simplify_sections_match_oracle`), with `every_oracle_section_is_gated` proving the partition covers the corpus; `transform_oracle_report` remains `#[ignore]` as the investigative view; `gen_transform_oracle` intentionally not ported |
 | testsplinemap_c.c | crates/starlink-ast/tests/test_splinemap_c_api.rs | ported 2026-10-07, against the mirrored `2dspline_c.dat`; needed `SplineMap::from_scipy` and `SplineMap::coeffs` (audit SN-2). `testsplinemap.f`, the Fortran API in CMLIB order with `2dspline.dat`, is not ported |
-| testcmpframe.c | crates/starlink-ast/tests/test_cmpframe.rs | ported 2026-04-27 |
+| testcmpframe.c | crates/starlink-ast/tests/test_cmpframe.rs | ported 2026-04-27; the checks added at `fe26cc9b` are not ported (stage 4 of that sync, §8) |
 | testflux.c | crates/starlink-ast/tests/test_flux.rs | ported 2026-09-30, including the `SFCBRW` read-back check added upstream on `u/timj/norm-unit` (`b4457da9`); porting it needed the FluxFrame default SpecVal (`DfSpc`) and the full FluxFrame Overlay |
 | testframeset.c | crates/starlink-ast/tests/test_frameset.rs | ported 2026-05-01 |
 | testskyframe.c | crates/starlink-ast/tests/test_skyframe.rs | ported 2026-05-02 |
@@ -512,14 +543,14 @@ pin.
 | roundtrip.c | crates/starlink-ast/tests/test_serialisation.rs | ported 2026-09-04 as three sweeps covering the same file set upstream's `roundtrip_*` ctests glob: `simplify/*.{map,simp}`, `serialisation/*.ast`, `programs/**/*.ast` and `wcsconv/framesets/*.ast`. `wcsconv/` itself is excluded on both sides: its references are FITS-encoded, so reading one back needs a FitsChan and the encoding it was written with, which the wcsconv harness already does |
 | testissimp.c | crates/starlink-ast/tests/test_clear_on_set.rs | ported 2026-09-04. Upstream built `testissimp.c` to cover the clear-on-set rule across all ten affected classes rather than the four the fixture corpus happens to reach; the Rust file already had a case per setter, and `load_preserves_the_record_for_every_clear_on_set_class` is the read-back half. Upstream needs `astCLASS` for `PermMap`'s `PermSplit` and `WcsMap`'s `FITSProj` / `LonCheck`, which are absent from those classes' `SetAttrib`; the port exposes all three as typed setters, so no equivalent is needed |
 | compare_dumps.c | (not ported) | the comparator upstream's fixture-driven ctests use: token-wise with a 4-ULP budget and an `--astequal` mode. `tests/common/mod.rs` is the Rust equivalent and predates it (`native_strings_equivalent`, `native_strings_astequal`, `ast_equal_close`); the two were reconciled during the sync, which is where C's missing `1e-12` absolute floor and the port's invented `astEQUAL` tolerance were both found |
-| testxphmap.c | crates/starlink-ast/tests/test_xphmap.rs | ported 2026-10-07 with XphMap: loading each projection type, the round trip, the HPX12 inverse and the refused Type; plus C's forward and inverse transformations of every type, bit for bit, from `tools/oracle_fixtures/xphmap_probe.c`. The C test's leak check has no counterpart, since nothing leaks the projection name in Rust |
+| testxphmap.c | crates/starlink-ast/tests/test_xphmap.rs | ported 2026-10-07 with XphMap: loading each projection type, the round trip, the HPX12 inverse and the refused Type; plus C's forward and inverse transformations of every type, bit for bit, from `tools/oracle_fixtures/xphmap_probe.c`. The C test's leak check has no counterpart, since nothing leaks the projection name in Rust. The checks added at `fe26cc9b` are not ported (stage 5 of that sync, §8); those of Starlink/ast PR #107 wait for it |
 | testtrangrid.c | crates/starlink-ast/tests/test_trangrid.rs | ported 2026-10-09 with `Mapping::tran_grid`; the FITS-WCS header gains an `NAXIS` card (see the §5 FITS-AIPS reader row). `test_tran_grid_oracle.rs` compares the grids bit for bit with `tools/oracle_fixtures/tran_grid_probe.c` |
 | testrebin.c | crates/starlink-ast/tests/test_rebin.rs | ported 2026-10-10 with `mappings::rebin`: tests 1-9 for the `D`, `F` and `I` types and C's six spreading schemes. `test_rebin_oracle.rs` compares 135 cases over every pixel type and scheme, and 10 error results, with `tools/oracle_fixtures/rebin_probe.c` |
 | testrebinseq.c | crates/starlink-ast/tests/test_rebinseq.rs | ported 2026-10-10 with `mappings::rebin_seq`: tests 1-12 for C's nine cases (1-3 dimensions with Gauss, nearest and linear spreading); the noise comes from a seeded `MathMap` `Gauss`, as in C, and matches C bit for bit. `test_rebinseq_oracle.rs` compares 90 call sequences over every pixel type and flag, and 12 error results, with `tools/oracle_fixtures/rebinseq_probe.c` |
 | testhuge.c | crates/starlink-ast/tests/test_huge.rs | ported 2026-10-10, `#[ignore]`d as C's runs only under `TEST_HUGE=1`; run with `cargo test --release -p starlink-ast --test regions test_huge:: -- --ignored`. Passes in about 6 minutes with a 38 GB peak memory footprint. It first ran out of memory (killed at 81 GB) because nested series CmpMaps held a full copy of the points per level, which cmpmap.c avoids by transforming 8192 points at a time; the port now does the same, and `test_transform_memory.rs` holds the bound |
 | testresample.c | crates/starlink-ast/tests/test_resample.rs, test_tran_grid_oracle.rs (Test 10) | ported 2026-10-10: tests 1-9 in `test_resample.rs`; test 10, `astQuadApprox`, is the `poly` case of `QUADS`. `test_resample_oracle.rs` compares 370 cases over every pixel type and interpolation scheme, flux conservation included, and 15 error statuses with `tools/oracle_fixtures/resample_probe.c` |
 | testmocchan.c | crates/starlink-ast/tests/test_mocchan.rs | ported 2026-10-09 with `MocChan`, including `checkZeroLineLen` and `checkDumpFormat` added upstream at `7ef81c01`, `checkLoadNegativeLineLen` at `228a0310`, and the reversed MocEnc names with `checkLoadMasterDump` and its two `programs/testmocchan` fixtures at `f5fdca61`. `test_mocchan_oracle.rs` compares writes, reads and attributes with `tools/oracle_fixtures/mocchan_probe.c`, and `test_channel_dump_oracle.rs` Channel and MocChan dumps with `tools/oracle_fixtures/channel_dump_probe.c` |
-| testmoc.c | crates/starlink-ast/tests/test_moc.rs | ported 2026-10-09, with the ten `check*` functions added upstream on `u/timj/norm-unit`. Its pixel mask needed FrameSet `MapSplit` (frameset.c), ported with it. `checkPinsMask` uses the port's public `Region::reg_pins_mask` for C's protected `astRegPins` |
+| testmoc.c | crates/starlink-ast/tests/test_moc.rs | ported 2026-10-09, with the ten `check*` functions added upstream on `u/timj/norm-unit`. Its pixel mask needed FrameSet `MapSplit` (frameset.c), ported with it. `checkPinsMask` uses the port's public `Region::reg_pins_mask` for C's protected `astRegPins`. The checks added at `fe26cc9b` are not ported (stage 5 of that sync, §8); those of Starlink/ast PR #107 wait for it |
 | testobjectkeymap.c | (deferred) | tests the Object-associated retained KeyMap (`object.c:1736`, `:2480`), `astGetObjSize` and `astSame`; those calls (`astMapPut0I`, `astMapGet0I`, `astMapSize`) are only reachable through the protected `astGetKeyMap`/`astHasKeyMap` machinery, an explicit spec Non-goal of the owned-value port |
 | testaxis.c | crates/starlink-ast/tests/test_frame.rs | ported (`unit_is_simplified`, through a one-axis Frame) |
 | testslamap.c | crates/starlink-ast/tests/test_slamap.rs | ported; the FK45Z and FK54Z cases added upstream at `38e0bfcf` are `fk4_fk5_match_erfa` (2026-10-28) |
@@ -550,6 +581,22 @@ pin.
 | testplot3d.c / testplotter.c | — | deferred: Plot3D and PLplot are not ported |
 | test_bbox_values.c | — | deferred: it draws through PLplot, which is not ported, and checks only the text box `astGTxExt` gives, not `astBoundingBox` |
 | testthreads.c | — | not applicable: tests C's thread-local handle and status machinery |
+| testmapmerge.c | — | not ported — stage 1 of the `fe26cc9b` sync (§8) |
+| testpolymapinv.c | — | not ported — stage 1 of the `fe26cc9b` sync (§8) |
+| testsplinemapedge.c | — | not ported — stage 1 of the `fe26cc9b` sync (§8) |
+| testfitswrite.c | — | not ported — stage 2 of the `fe26cc9b` sync (§8) |
+| testregionhardening.c | — | not ported — stage 3 of the `fe26cc9b` sync (§8) |
+| testregionlogic.c | — | not ported — stage 3 of the `fe26cc9b` sync (§8) |
+| testfields.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
+| testcast.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
+| testplotcopy.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
+| testplotclip.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
+| testcorruptinput.c | — | not ported — stage 5 of the `fe26cc9b` sync (§8) |
+| testloaderhardening.c | — | not ported — stage 5 of the `fe26cc9b` sync (§8) |
+| testframeperm.c | — | not ported — stage 5 of the `fe26cc9b` sync (§8) |
+| testframesetload.c | — | not ported — stage 5 of the `fe26cc9b` sync (§8) |
+| testdssmap.c | — | not ported — stage 5 of the `fe26cc9b` sync (§8) |
+| compare_dumps_selftest.c | (not ported) | the self-test of `compare_dumps.c`, which is not ported either |
 
 ## 9. Findings from the fixture regeneration
 
