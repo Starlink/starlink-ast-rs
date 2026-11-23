@@ -526,43 +526,13 @@ const CASES: &[(&str, Case)] = &[
     ),
 ];
 
-/// Cases the port does not yet match, each with the gap it exposes. Each is
-/// checked to still differ (`excluded_cases_still_differ`), so the list
-/// shrinks as the gaps close.
-const FITSWRITE_GAP_EXCLUDED: &[(&str, &str)] = &[];
-
-fn excluded(name: &str) -> bool {
-    FITSWRITE_GAP_EXCLUDED.iter().any(|(n, _)| *n == name)
-}
-
 #[test]
 fn fitschan_writes_match_the_c_library() {
     let failures: Vec<String> = CASES
         .iter()
-        .filter(|(name, _)| !excluded(name))
         .filter_map(|(name, case)| case().err().map(|e| format!("{name}: {e}")))
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
-}
-
-#[test]
-fn excluded_cases_still_differ() {
-    let now_match: Vec<String> = FITSWRITE_GAP_EXCLUDED
-        .iter()
-        .filter(|(name, _)| {
-            let (_, case) = CASES
-                .iter()
-                .find(|(n, _)| n == name)
-                .unwrap_or_else(|| panic!("{name} is excluded but is not a case"));
-            case().is_ok()
-        })
-        .map(|(name, reason)| format!("{name} (reason on record: {reason})"))
-        .collect();
-    assert!(
-        now_match.is_empty(),
-        "these now match C; remove them from FITSWRITE_GAP_EXCLUDED:\n{}",
-        now_match.join("\n")
-    );
 }
 
 /// Not in the C test: `testcorruptinput.c`'s `spec2` header, a cube with two

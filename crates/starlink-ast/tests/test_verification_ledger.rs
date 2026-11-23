@@ -285,14 +285,6 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          line as set",
     ),
     (
-        "test_fitswrite.rs",
-        "FITSWRITE_GAP_EXCLUDED",
-        0,
-        "testfitswrite.c cases the port does not yet match, each naming the \
-         upstream fix that closes it; excluded_cases_still_differ fails when \
-         one closes",
-    ),
-    (
         "test_fitschan_errors.rs",
         "FITSCHAN_ERRORS_GAP_EXCLUDED",
         1,
