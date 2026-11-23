@@ -1283,3 +1283,50 @@ fn a_comment_loses_its_leading_blanks() {
         "CTYPE1  = 'OFLN-TAN'           / a offset from 0:40:00.0, 20:00:00"
     );
 }
+
+/// A card `find_fits` cannot format is reported as the C library's
+/// `astFindFits` reports it, naming the method (values from the C library at
+/// the pinned commit).
+#[test]
+fn a_card_find_fits_cannot_format_names_the_method() {
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_fits_cf("A", (-1.0 / 3.0, 2.0 / 3.0), "", false)
+        .unwrap();
+    fc.set_fits_digits(1000);
+    fc.clear_card().unwrap();
+    let e = fc.find_fits("A", false).unwrap_err();
+    assert_eq!(e.code(), starlink_ast::error::ErrorCode::Bdfts);
+    assert_eq!(
+        e.message(),
+        "astFindFits(FitsChan): Cannot encode imaginary part of a complex floating point \
+         value [-0.333333,0.666667] into a FITS header card for keyword 'A'."
+    );
+}
+
+/// `write_fits` writes the cards before one it cannot format, then reports
+/// that card as the C library's `astWriteFits` does, and the FitsChan is
+/// left empty (values from the C library at the pinned commit).
+#[test]
+fn write_fits_stops_at_a_card_it_cannot_format() {
+    struct Lines(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+    impl starlink_ast::channel::Sink for Lines {
+        fn write_line(&mut self, line: &str) {
+            self.0.lock().unwrap().push(line.trim_end().to_string());
+        }
+    }
+    let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_sink(Box::new(Lines(lines.clone())));
+    fc.set_fits_f("B", 1.0, "", false).unwrap();
+    fc.set_fits_cf("A", (-1.0 / 3.0, 2.0 / 3.0), "", false)
+        .unwrap();
+    fc.set_fits_digits(1000);
+    let e = fc.write_fits().unwrap_err();
+    assert_eq!(
+        e.message(),
+        "astFindFits(FitsChan): Cannot encode imaginary part of a complex floating point \
+         value [-0.333333,0.666667] into a FITS header card for keyword 'A'."
+    );
+    assert_eq!(*lines.lock().unwrap(), ["B       =                  1.0"]);
+    assert_eq!(fc.ncard().unwrap(), 0);
+}

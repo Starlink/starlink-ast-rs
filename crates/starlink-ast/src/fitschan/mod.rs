@@ -1050,6 +1050,14 @@ impl FitsChan {
         Ok(())
     }
 
+    /// C's `FormatCard` as `astFindFits` calls it, with FitsDigits and
+    /// FitsRounding: a card that cannot be formatted is an error naming
+    /// `astFindFits`.
+    pub(crate) fn find_fits_text(&self, card: &FitsCard) -> AstResult<String> {
+        card.format_with_digits_and_rounding(self.fits_digits, self.fits_rounding() as usize)
+            .map_err(|e| AstError::new(e.code(), format!("astFindFits(FitsChan): {}", e.message())))
+    }
+
     /// Search forward from the current card for one whose keyword matches
     /// the template `name`, and return the card's text.
     ///
@@ -1121,11 +1129,7 @@ impl FitsChan {
         if !found {
             return Ok(None);
         }
-        let text = self
-            .cards
-            .current()
-            .expect("a card was found")
-            .format_with_digits_and_rounding(self.fits_digits, self.fits_rounding() as usize)?;
+        let text = self.find_fits_text(self.cards.current().expect("a card was found"))?;
         if inc {
             self.cards.move_card(1);
         }
