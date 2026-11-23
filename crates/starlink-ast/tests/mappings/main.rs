@@ -72,6 +72,8 @@ mod test_poly_iter_inverse_oracle;
 mod test_polymap;
 #[path = "../test_polymap_simd.rs"]
 mod test_polymap_simd;
+#[path = "../test_polymapinv.rs"]
+mod test_polymapinv;
 #[path = "../test_polytran.rs"]
 mod test_polytran;
 #[path = "../test_rate.rs"]

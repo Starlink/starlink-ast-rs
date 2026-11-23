@@ -33,6 +33,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Changed
 
+- `starlink-ast`: a `PolyMap` created without forward coefficients has no iterative inverse: `iter_inverse` defaults to false for it, so one with no coefficients at all has no inverse transformation, and `set_iter_inverse(true)`, or a Native dump with `IterInv = 1`, fails with `ErrorCode::Attin`. Its error messages are now the C library's.
 - `starlink-ast`: a FITS header with a CDELT of zero now gives that axis a pixel size of a millionth of its CRVAL, or 1.0 if CRVAL is zero or absent, as the C library now does; it was 1.0 whatever CRVAL was.
 - `starlink-ast`: a DssMap gives bad values for a sky position 90 degrees or more from its plate centre, and for a position its plate solution cannot evaluate, as the C library now does; the first had been given the pixel position of the point on the opposite side of the sky.
 - `starlink-ast`: the minimum supported Rust version is now 1.87, which `nalgebra` 0.34 requires; the 1.85 declared before was not enough to build `starlink-ast` with it.

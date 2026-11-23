@@ -421,7 +421,7 @@ function	astPolygon	astPolygon	polygon.c	21dbbdb79206475c
 class	PolyMap	PolyMap	polymap.c	a7dbeabe6ac92baf
 function	astPolyCoeffs	astPolyCoeffs	polymap.c	8bad35a29b14b7b1
 function	astPolyTran	astPolyTran	polymap.c	35a36017cd3eeb35
-attribute	IterInverse	IterInverse	polymap.c	32ff7b52b6d21069
+attribute	IterInverse	IterInverse	polymap.c	31d2dd9dbe0cde40
 attribute	NiterInverse	NiterInverse	polymap.c	66de6777ad49d181
 attribute	TolInverse	TolInverse	polymap.c	f9f848550827ff55
 function	astPolyMap	astPolyMap	polymap.c	470d52d08054ff95

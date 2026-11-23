@@ -583,7 +583,7 @@ pin.
 | test_bbox_values.c | — | deferred: it draws through PLplot, which is not ported, and checks only the text box `astGTxExt` gives, not `astBoundingBox` |
 | testthreads.c | — | not applicable: tests C's thread-local handle and status machinery |
 | testmapmerge.c | `test_mapmerge.rs` | ported; cases the port does not yet match are in `MAPMERGE_GAP_EXCLUDED` until stage 1 of the `fe26cc9b` sync (§8) closes them |
-| testpolymapinv.c | — | not ported — stage 1 of the `fe26cc9b` sync (§8) |
+| testpolymapinv.c | `test_polymapinv.rs` | ported 2026-11-23; the options-string case calls `set_iter_inverse`, and the messages are checked against a C probe. It exposed the default and setter upstream fixed in `857f4a99` |
 | testsplinemapedge.c | `test_splinemapedge.rs` | ported 2026-11-23 (`c_*`), with open-knot and NaN cases from a C probe; it exposed the evaluator faults upstream fixed in `0b427150`, `9a598e55` and `fd90f3b1` |
 | testfitswrite.c | — | not ported — stage 2 of the `fe26cc9b` sync (§8) |
 | testregionhardening.c | — | not ported — stage 3 of the `fe26cc9b` sync (§8) |
