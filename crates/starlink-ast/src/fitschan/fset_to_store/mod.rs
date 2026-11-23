@@ -1116,7 +1116,7 @@ fn class_adjust_spatial_crval(
 
     let lonval_rad = xout[lon_world_idx];
     let latval_rad = xout[lat_world_idx];
-    if !lonval_rad.is_finite() || !latval_rad.is_finite() {
+    if lonval_rad == crate::constants::BAD_VALUE || latval_rad == crate::constants::BAD_VALUE {
         return Ok(());
     }
     const D2R: f64 = std::f64::consts::PI / 180.0;
@@ -1210,8 +1210,9 @@ fn fits_axis_order(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::BAD_VALUE;
     use crate::frames::{BasicFrameBuilder, FrameSet};
-    use crate::mappings::{ShiftMap, UnitMap};
+    use crate::mappings::{PermMap, ShiftMap, UnitMap};
 
     /// Smoke test: a 2-axis BasicFrame → BasicFrame chain with no
     /// celestial / spectral axes, using a per-axis ShiftMap. Expect
@@ -1289,5 +1290,36 @@ mod tests {
         // dim=100 ⇒ g0 = floor(0.5*(1+100)) = 50.
         assert!((crpix0 - 50.0).abs() < 1e-6, "CRPIX1 = {crpix0}");
         assert!((crpix1 - 50.0).abs() < 1e-6, "CRPIX2 = {crpix1}");
+    }
+
+    /// A spatial pixel that has no sky position leaves the reference
+    /// point of a FITS-CLASS store alone, as C's test for bad values does.
+    #[test]
+    fn class_spatial_crval_ignores_a_bad_sky_position() {
+        let pixel = BasicFrameBuilder::new(3).build().unwrap();
+        let world = BasicFrameBuilder::new(3).build().unwrap();
+        let mut fs = FrameSet::new(Box::new(pixel));
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(PermMap::new(&[1, 2, 3], &[1, -1, -1], &[BAD_VALUE]).unwrap()),
+            Box::new(world),
+        )
+        .unwrap();
+
+        let mut store = FitsStore::new(3);
+        store.ctype[0] = Some("FREQ".to_string());
+        store.ctype[1] = Some("RA---SIN".to_string());
+        store.ctype[2] = Some("DEC--SIN".to_string());
+        store.crval[1] = Some(10.0);
+        store.crval[2] = Some(20.0);
+        store.crpix[1] = Some(1000.0);
+        store.crpix[2] = Some(1000.0);
+        let dim = vec![Some(10.0), Some(1.0), Some(1.0)];
+
+        class_adjust_spatial_crval(&fs, &mut store, &dim, &[0, 1, 2]).unwrap();
+        assert_eq!(store.crval[1], Some(10.0));
+        assert_eq!(store.crval[2], Some(20.0));
+        assert_eq!(store.crpix[1], Some(1000.0));
+        assert_eq!(store.crpix[2], Some(1000.0));
     }
 }
