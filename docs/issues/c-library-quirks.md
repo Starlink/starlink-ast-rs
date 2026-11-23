@@ -142,6 +142,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [An `IsSimp` card can record a merge probe C threw away, because the probe shares its sub-Mappings with the live tree](#an-issimp-card-can-record-a-merge-probe-c-threw-away-because-the-probe-shares-its-sub-mappings-with-the-live-tree)
 - [C treats a NaN input as a number, not as a bad value](#c-treats-a-nan-input-as-a-number-not-as-a-bad-value)
 - [`astGetAllVariants` fails when the joined Domains pass 200 characters](#astgetallvariants-fails-when-the-joined-domains-pass-200-characters)
+- [The comment for an offset sky axis is cut to 79 characters](#the-comment-for-an-offset-sky-axis-is-cut-to-79-characters)
+- [FitsChan cuts long strings to the buffers it copies them into](#fitschan-cuts-long-strings-to-the-buffers-it-copies-them-into)
 
 ### [Resolved upstream](#resolved-upstream)
 
@@ -1915,6 +1917,24 @@ C joins the Domains of the Frames in a FrameSet's variant Mappings into a static
 Upstream `73d3cc88` stopped it writing before the buffer's start when the first Domain did not fit, which leaves the error in place.
 
 The port does not mirror the limit, which exists only to protect the buffer: `FrameSet::all_variants` in `crates/starlink-ast/src/frames/frameset.rs` returns a `String` of every Domain, however long.
+
+### The comment for an offset sky axis is cut to 79 characters
+
+C location: `fitschan.c` `SkySys`, the comment `"<symbol> offset from <position>"` for the CTYPE of an offset sky axis.
+
+Upstream `e809b988` writes the comment with `snprintf` into a buffer of 80 characters, so a long Symbol cuts it at 79; before that a Symbol of 80 characters or more overran the buffer.
+The cut exists only to protect the buffer, and the card layer shortens any comment to fit its card in any case.
+
+The port does not mirror the cut: `crates/starlink-ast/src/fitschan/fset_to_store/sky_sys.rs` builds the comment as a `String` and the card layer fits it to the card.
+
+### FitsChan cuts long strings to the buffers it copies them into
+
+C location: `fitschan.c` and `fitstable.c`, the `snprintf` calls upstream `ef779057` put where strings were copied into fixed buffers.
+
+The strings are the TIMESYS value, keyword name and CTYPE values in warnings; the CTYPE values of spectral, `-TAB` and celestial axes copied so the projection code can be changed when a header is read or written; an axis Symbol used as a CTYPE value; a CTYPE or WCSNAME value used as a Label or Title; and a TPN CTYPE over 80 characters.
+Before the change a string set with `astSetFitsS`, or a Frame Symbol, Domain or Unit, longer than its buffer overran it; now it is cut short.
+
+The port does not mirror the cuts, which exist only to protect the buffers: it copies each string whole into a `String`.
 
 ### `CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping
 
