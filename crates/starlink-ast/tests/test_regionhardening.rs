@@ -279,6 +279,17 @@ fn masks() {
     );
     assert_eq!(d, [0; 6]);
 
+    // A 64-bit integer array is masked by C's astMaskL.
+    let mut d = [0i64; 6];
+    expect_err(
+        mask(&two_points(), None, true, &[1], &[6], &mut d, 1),
+        ErrorCode::Ngdin,
+        &[
+            "astMaskL(PointList): Bad number of input grid dimensions (1).",
+            "The PointList given requires 2 coordinate values to specify an input position.",
+        ],
+    );
+
     // A pixel on the edge of a closed Region is in neither the Region nor
     // its negation.
     let below = IntervalBuilder::new(plain(1), vec![BAD_VALUE], vec![7.0])

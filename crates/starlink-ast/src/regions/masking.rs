@@ -29,10 +29,10 @@ pub enum MaskData<'a> {
     D(&'a mut [f64], f64),
     /// `float` (`astMaskF`).
     F(&'a mut [f32], f32),
-    /// `INT_BIG` (`astMaskK`).
-    K(&'a mut [i64], i64),
-    /// `UINT_BIG` (`astMaskUK`).
-    UK(&'a mut [u64], u64),
+    /// `long int`, 64 bits wide where C's `long` is (`astMaskL`).
+    L(&'a mut [i64], i64),
+    /// `unsigned long int`, 64 bits wide where C's `long` is (`astMaskUL`).
+    UL(&'a mut [u64], u64),
     /// `int` (`astMaskI`).
     I(&'a mut [i32], i32),
     /// `unsigned int` (`astMaskUI`).
@@ -53,8 +53,8 @@ impl MaskData<'_> {
         match self {
             MaskData::D(..) => "D",
             MaskData::F(..) => "F",
-            MaskData::K(..) => "K",
-            MaskData::UK(..) => "UK",
+            MaskData::L(..) => "L",
+            MaskData::UL(..) => "UL",
             MaskData::I(..) => "I",
             MaskData::UI(..) => "UI",
             MaskData::S(..) => "S",
@@ -80,8 +80,8 @@ macro_rules! dispatch {
         match $md {
             MaskData::D(d, v) => $f($($arg,)* d, v),
             MaskData::F(d, v) => $f($($arg,)* d, v),
-            MaskData::K(d, v) => $f($($arg,)* d, v),
-            MaskData::UK(d, v) => $f($($arg,)* d, v),
+            MaskData::L(d, v) => $f($($arg,)* d, v),
+            MaskData::UL(d, v) => $f($($arg,)* d, v),
             MaskData::I(d, v) => $f($($arg,)* d, v),
             MaskData::UI(d, v) => $f($($arg,)* d, v),
             MaskData::S(d, v) => $f($($arg,)* d, v),
@@ -111,7 +111,7 @@ macro_rules! mask_value {
 }
 
 mask_value!(
-    f64 => D, f32 => F, i64 => K, u64 => UK, i32 => I,
+    f64 => D, f32 => F, i64 => L, u64 => UL, i32 => I,
     u32 => UI, i16 => S, u16 => US, i8 => B, u8 => UB,
 );
 
