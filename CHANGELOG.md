@@ -65,6 +65,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a Frame may have no axes, as in the C library, so a conversion that shares out a Frame's axes between the components of a nested CmpFrame, and can give one of them none, finds no conversion, or the one the C library finds, rather than failing with `ErrorCode::Naxin`. `BasicFrameBuilder::build` no longer refuses zero axes.
 - `starlink-ast`: two SpecFluxFrames whose SpecFrames do not convert, because their Domains differ for example, do not convert either, as in the C library; a conversion was found.
 - `starlink-ast`: `Frame::cast` gives what the C library's `astCast` gives: a copy of a Frame or Region into its own class, of a SpecFluxFrame into a CmpFrame, of a Plot into a FrameSet, and of a Region or FrameSet's current Frame into a class that is neither a Region nor a FrameSet. It gave nothing in each of these cases. A CmpFrame is not cast into a SpecFluxFrame, as in the C library now.
 - `starlink-ast`: an `IntraMap` whose transformation fails reports the C library's message, `astTransform(IntraMap): Error signalled by "<name>" transformation function.`, after the transformation's own message if it gave one; the two were joined on one line, with a trailing colon when the transformation gave none.

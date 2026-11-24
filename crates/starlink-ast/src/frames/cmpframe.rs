@@ -1403,7 +1403,7 @@ impl Serializable for CmpFrame {
 
 /// Generate the next axis selection in lexicographic order.
 ///
-/// Mirrors C `GenAxisSelection` (cmpframe.c:204). On entry, `axes`
+/// Mirrors C `GenAxisSelection` (cmpframe.c:3464). On entry, `axes`
 /// holds `nselect` distinct zero-based axis indices in
 /// strictly-increasing order; on exit the indices are advanced to the
 /// lexicographically-next selection of the same size from `0..naxes`.
@@ -1415,10 +1415,8 @@ impl Serializable for CmpFrame {
 /// `false` once every selection has been emitted (in which case the
 /// array contents are exhausted and must not be used).
 pub(crate) fn gen_axis_selection(naxes: usize, nselect: usize, axes: &mut [i32]) -> bool {
-    // C returns 0 when `nselect == 0` regardless of the loop body —
-    // its final check is `nselect > 0 && axes[nselect-1] < naxes`. We
-    // short-circuit here both for clarity and to avoid an out-of-range
-    // read of `axes[nselect+1]` in the empty case.
+    // There is only one way to select no axes, so there is no further
+    // selection, and no element to update.
     if nselect == 0 {
         return false;
     }

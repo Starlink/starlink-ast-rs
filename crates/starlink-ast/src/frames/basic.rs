@@ -136,14 +136,9 @@ impl BasicFrameBuilder {
     /// axes.
     ///
     /// `naxes` is the number of dimensions of the coordinate space the
-    /// Frame describes.
+    /// Frame describes, which may be zero.
     /// The builder's methods set attributes of the new Frame, and
     /// [`build`](BasicFrameBuilder::build) creates it.
-    ///
-    /// # Errors
-    ///
-    /// This function does not fail; [`build`](BasicFrameBuilder::build)
-    /// raises `ErrorCode::Naxin` when `naxes` is zero.
     ///
     /// # Examples
     ///
@@ -157,7 +152,7 @@ impl BasicFrameBuilder {
     ///     .build()
     ///     .unwrap();
     /// assert_eq!(frame.label(1).unwrap(), "Energy");
-    /// assert!(BasicFrameBuilder::new(0).build().is_err());
+    /// assert_eq!(BasicFrameBuilder::new(0).build().unwrap().naxes(), 0);
     /// ```
     #[doc(alias = "astFrame")]
     pub fn new(naxes: usize) -> Self {
@@ -241,14 +236,10 @@ impl BasicFrameBuilder {
 
     /// Build the [`BasicFrame`].
     ///
-    /// Returns an error if `naxes` is zero.
+    /// A Frame may have no axes, as one picked from another with none
+    /// selected has.
+    // C: frame.c `astInitFrame` refuses only a negative number of axes.
     pub fn build(self) -> AstResult<BasicFrame> {
-        if self.naxes == 0 {
-            return Err(AstError::new_tracked(
-                ErrorCode::Naxin,
-                "number of axes must be at least 1",
-            ));
-        }
         Ok(BasicFrame {
             naxes: self.naxes,
             attrs: self.attrs,

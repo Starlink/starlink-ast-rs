@@ -392,3 +392,40 @@ fn norm_points_on_a_permuted_cmpframe_holding_a_swapped_skyframe() {
         );
     }
 }
+
+/// A conversion shares out the axes of a Frame between the two components
+/// of a CmpFrame in every possible way, which can give a component that is
+/// itself a CmpFrame no axes at all. A 1-D Frame has no conversion to or
+/// from three axes, and one whose Domain is that of the first converts to
+/// it alone. From testcmpframe.c `check_match_no_axes`, with the second
+/// case from a probe of the C library.
+#[test]
+fn match_with_a_selection_of_no_axes() {
+    use starlink_ast::frames::{BasicFrame, BasicFrameBuilder, CmpFrame, Frame, FrameSearch};
+    use starlink_ast::mappings::Mapping;
+    let frame = |domain: &str| -> BasicFrame {
+        let mut f = BasicFrameBuilder::new(1).build().unwrap();
+        if !domain.is_empty() {
+            Frame::set_domain(&mut f, domain).unwrap();
+        }
+        f
+    };
+    let nested = || {
+        CmpFrame::new(
+            Box::new(CmpFrame::new(Box::new(frame("A")), Box::new(frame("B")))),
+            Box::new(frame("C")),
+        )
+    };
+    let mut one = frame("");
+    assert!(one.convert_to(&mut nested(), &[]).unwrap().is_none());
+    assert!(nested().convert_to(&mut one, &[]).unwrap().is_none());
+
+    let mut one_a = frame("A");
+    let fs = one_a
+        .convert_to(&mut nested(), &[])
+        .unwrap()
+        .expect("a conversion");
+    let ps = starlink_ast::coords::PointSet::from_rows([[5.0].as_slice()]);
+    let out = fs.transform(&ps, true).unwrap();
+    assert_eq!(out.point(0).to_vec(), [5.0, BAD_VALUE, BAD_VALUE]);
+}
