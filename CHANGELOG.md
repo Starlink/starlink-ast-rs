@@ -64,6 +64,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: the grid of points inside a Region (`Region::region_grid`, and a Frame's grid) limits its points as the C library does. An axis of no width gets two ticks and no longer counts toward the spacing of the others; a grid of more points than the C library can hold, in a Frame or a CmpFrame, is refused with `ErrorCode::Attin`; a sky box of no width uses a bounded number of parallels and, like a very narrow one, reports that it has no points. Such a Box panicked, or took tens of seconds.
 - `starlink-ast`: a `FitsChan` refuses to read a grism axis whose equation has no solution at the reference wavelength, or whose order is zero, as the C library does, and reports a spectral algorithm it cannot implement with both of the C library's messages. It read such a header.
 - `starlink-ast`: a card that `FitsChan::find_fits`, `write_fits` or `show_fits` cannot format is reported with the C library's `astFindFits(FitsChan): ` prefix, and `write_fits` and `show_fits` write the cards before it, as the C library does. They wrote none.
 - `starlink-ast`: a `FitsChan` read of a FITS-WCS, FITS-PC, FITS-IRAF, FITS-AIPS or FITS-AIPS++ header refuses an axis keyword whose axis or parameter number the C library cannot store (`CDELT100`, `PC1_101`, `CRVAL0` and the like), with the C library's internal error, at the first such card. It ignored the card, and read the header.

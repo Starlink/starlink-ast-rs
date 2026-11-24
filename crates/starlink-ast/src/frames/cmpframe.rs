@@ -920,6 +920,9 @@ impl Frame for CmpFrame {
         let size2 = (size as f64 / size1 as f64).round() as i32;
         let ps1 = self.frame1.frame_grid(size1, &lbnd1, &ubnd1)?;
         let ps2 = self.frame2.frame_grid(size2, &lbnd2, &ubnd2)?;
+        if ps1.npoint() as f64 * ps2.npoint() as f64 > i32::MAX as f64 {
+            return Err(super::too_many_grid_points(self, size));
+        }
         let mut rows = Vec::with_capacity(ps1.npoint() * ps2.npoint());
         for ip1 in 0..ps1.npoint() {
             for ip2 in 0..ps2.npoint() {

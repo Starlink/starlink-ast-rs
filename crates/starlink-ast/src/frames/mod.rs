@@ -3316,20 +3316,30 @@ pub(crate) fn frame_grid_default(
 ) -> AstResult<PointSet> {
     use crate::constants::BAD_VALUE;
     let naxes = frame.naxes();
-    let mut nsame = vec![1i32; naxes];
-    let mut gmean = vec![0.0f64; naxes];
+    let mut nsame = vec![0i32; naxes];
+    let mut gmean = vec![1.0f64; naxes];
     let mut bad = false;
+    // An axis of zero length is left out of the count and the product of
+    // the lengths, since it would make the product zero whatever the
+    // lengths of the other axes.
     for iax in 0..naxes {
         if ubnd[iax] == BAD_VALUE && lbnd[iax] == BAD_VALUE {
             bad = true;
             break;
         }
-        gmean[iax] = ubnd[iax] - lbnd[iax];
+        let width = ubnd[iax] - lbnd[iax];
+        if width != 0.0 {
+            nsame[iax] = 1;
+            gmean[iax] = width;
+        }
         let unit = frame.unit(iax + 1)?;
         for jax in 0..naxes {
             if jax != iax && unit == frame.unit(jax + 1)? {
-                nsame[iax] += 1;
-                gmean[iax] *= ubnd[jax] - lbnd[jax];
+                let width = ubnd[jax] - lbnd[jax];
+                if width != 0.0 {
+                    nsame[iax] += 1;
+                    gmean[iax] *= width;
+                }
             }
         }
     }
@@ -3351,12 +3361,36 @@ pub(crate) fn frame_grid_default(
     // truncating.
     let ntick0 = (crate::math::powf(size as f64, 1.0 / naxes as f64) as i32).max(2);
     for iax in 0..naxes {
-        gmean[iax] = crate::math::powf(gmean[iax].abs(), 1.0 / nsame[iax] as f64);
+        if nsame[iax] > 0 {
+            gmean[iax] = crate::math::powf(gmean[iax].abs(), 1.0 / nsame[iax] as f64);
+        }
     }
+    // The number of ticks on each axis is found as a floating point value,
+    // so that one too large for an int, or not a number, can be recognized.
+    // An axis of zero length gets the minimum of two ticks, as does one for
+    // which the number is not a number.
     let ntick: Vec<i32> = (0..naxes)
-        .map(|iax| ((ntick0 as f64 * (ubnd[iax] - lbnd[iax]) / gmean[iax]) as i32).max(2))
+        .map(|iax| {
+            let width = ubnd[iax] - lbnd[iax];
+            let dtick = if width != 0.0 {
+                ntick0 as f64 * width / gmean[iax]
+            } else {
+                0.0
+            };
+            if dtick.is_nan() || dtick < 2.0 {
+                2
+            } else if dtick < i32::MAX as f64 {
+                dtick as i32
+            } else {
+                i32::MAX
+            }
+        })
         .collect();
-    let np: i32 = ntick.iter().product();
+    let dnp: f64 = ntick.iter().map(|&n| n as f64).product();
+    if dnp > i32::MAX as f64 {
+        return Err(too_many_grid_points(frame, size));
+    }
+    let np = dnp as i32;
     let step: Vec<f64> = (0..naxes)
         .map(|iax| (ubnd[iax] - lbnd[iax]) / (ntick[iax] - 1) as f64)
         .collect();
@@ -3376,6 +3410,19 @@ pub(crate) fn frame_grid_default(
         }
     }
     Ok(out)
+}
+
+/// The error a Frame's grid gives when it would need more points than a
+/// PointSet can hold, which C limits to an `int`.
+pub(crate) fn too_many_grid_points(frame: &dyn Frame, size: i32) -> AstError {
+    AstError::new(
+        ErrorCode::Attin,
+        format!(
+            "astFrameGrid({}): The supplied bounds and grid size ({size}) need a grid of more \
+             points than can be created.",
+            class_name(frame)
+        ),
+    )
 }
 
 /// The AST class name of a Frame or Region, as C's `astGetClass` gives it.

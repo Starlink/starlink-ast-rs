@@ -25,6 +25,34 @@ use starlink_ast::regions::{
     IntervalBuilder, NullRegionBuilder, PointListBuilder, PrismBuilder, Region, mask,
 };
 
+/// Check that `result` is an error with `code` whose messages, one per
+/// line, are `messages`.
+pub(crate) fn expect_err<T: std::fmt::Debug>(
+    result: AstResult<T>,
+    code: ErrorCode,
+    messages: &[&str],
+) {
+    let err = result.expect_err("an error was expected");
+    assert_eq!(err.code(), code, "error code of {err}");
+    let got: Vec<&str> = err.message().split('\n').collect();
+    assert_eq!(got, messages, "messages of {err}");
+}
+
+/// Run `f` on its own thread and return its result, failing if it panics or
+/// takes more than 10 seconds, so that a case that used to hang fails rather
+/// than stopping the test program.
+pub(crate) fn within_10s<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+        Ok(v) => v,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => panic!("took more than 10 s"),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => panic!("panicked"),
+    }
+}
+
 fn plain(naxes: usize) -> BasicFrame {
     BasicFrameBuilder::new(naxes).build().unwrap()
 }
@@ -68,6 +96,54 @@ fn check_grid_inside(grid: &starlink_ast::coords::PointSet, npoint: usize, p1: &
 
 #[test]
 fn grids() {
+    // A Box with no width on its last axis gets two ticks on that axis.
+    let (a, b) = ([0.0, 0.0], [1.0, 0.0]);
+    let grid = within_10s(move || box_grid(plain(2), &a, &b)).unwrap();
+    check_grid_inside(&grid, 10, &a, &b);
+    let (a, b) = ([0.0, 0.0, 0.0], [1.0, 1.0, 0.0]);
+    let grid = within_10s(move || box_grid(plain(3), &a, &b)).unwrap();
+    check_grid_inside(&grid, 18, &a, &b);
+
+    // A Box so much longer than it is wide that it would need more points
+    // than a PointSet can hold.
+    expect_err(
+        within_10s(|| box_grid(plain(2), &[0.0, 0.0], &[1.0e12, 1.0e-12])),
+        ErrorCode::Attin,
+        &[
+            "astFrameGrid(Frame): The supplied bounds and grid size (30) need a grid of \
+           more points than can be created.",
+        ],
+    );
+
+    // Likewise for a CmpFrame whose two components' grids can each be held
+    // but not their product.
+    expect_err(
+        within_10s(|| {
+            let cmp = CmpFrame::new(Box::new(plain(2)), Box::new(plain(2)));
+            box_grid(cmp, &[0.0; 4], &[1.0e5, 1.0e-5, 1.0e5, 1.0e-5])
+        }),
+        ErrorCode::Attin,
+        &[
+            "astFrameGrid(CmpFrame): The supplied bounds and grid size (30) need a grid of \
+           more points than can be created.",
+        ],
+    );
+
+    // A sky Box with no width is treated as a very narrow one is: no
+    // parallel gets a sample.
+    for width in [1.0e-7, 0.0] {
+        expect_err(
+            within_10s(move || {
+                box_grid(SkyFrame::unset_system(), &[0.5, -0.1], &[0.5 + width, 0.1])
+            }),
+            ErrorCode::Nptin,
+            &[
+                "astSetNpoint(PointSet): Number of points (0) is not valid.",
+                "Should be in the range 1 to 60.",
+            ],
+        );
+    }
+
     // A Box with no width on its last axis, in a Frame whose axes have
     // different Units.
     let mut frame = plain(2);

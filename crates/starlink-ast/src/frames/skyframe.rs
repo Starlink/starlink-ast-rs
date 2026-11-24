@@ -2600,8 +2600,21 @@ impl Frame for SkyFrame {
         let dlon = hilon - lolon;
         let box_area = (dlon * (crate::math::sin(hilat) - crate::math::sin(lolat))).abs();
         let mut lat_size = crate::math::sqrt(box_area / size as f64);
-        // C's `(int)( 0.5 + ... )`.
-        let npar = ((0.5 + (hilat - lolat) / lat_size) as i32).max(2);
+        // The samples are shared between the parallels in proportion to the
+        // cosines of their latitudes, whose mean is at least half the largest,
+        // so no parallel gets a sample when there are more than twice as many
+        // parallels as samples; no more than that are used. The number is not
+        // a number for a box with no height and unlimited for one with no
+        // area.
+        let dpar = 0.5 + (hilat - lolat) / lat_size;
+        let maxpar = (2.0 * size as f64 + 2.0).min(i32::MAX as f64);
+        let npar = if dpar.is_nan() || dpar < 2.0 {
+            2
+        } else if dpar < maxpar {
+            dpar as i32
+        } else {
+            maxpar as i32
+        };
         lat_size = (hilat - lolat) / npar as f64;
         let mut totlen = 0.0;
         let mut lat = lolat + 0.5 * lat_size;
@@ -2610,18 +2623,30 @@ impl Frame for SkyFrame {
             lat += lat_size;
         }
         let lon_size = totlen / size as f64;
-        let ipmax = 2 * size;
+        let ipmax = if size <= i32::MAX / 2 {
+            2 * size
+        } else {
+            i32::MAX
+        };
         let mut points: Vec<[f64; 2]> = Vec::new();
         let mut ip = 0i32;
         lat = lolat + 0.5 * lat_size;
         for _ in 0..npar {
             let cl = crate::math::cos(lat);
             let mut inclon = if cl != 0.0 { lon_size / cl } else { 0.0 };
-            let mut nmer = (dlon / inclon) as i32;
-            if ip + nmer >= ipmax {
-                nmer = ipmax - ip;
+            // A parallel with no length, at a pole or in a box with no width,
+            // has no increment and gets no samples.
+            let dmer = if inclon != 0.0 { dlon / inclon } else { 0.0 };
+            let nmer = if dmer.is_nan() || dmer < 1.0 {
+                0
+            } else if dmer < (ipmax - ip) as f64 {
+                dmer as i32
+            } else {
+                ipmax - ip
+            };
+            if nmer > 0 {
+                inclon = dlon / nmer as f64;
             }
-            inclon = dlon / nmer as f64;
             let mut lon = lolon + 0.5 * inclon;
             for _ in 0..nmer {
                 let mut p = [0.0; 2];
@@ -2632,6 +2657,17 @@ impl Frame for SkyFrame {
                 ip += 1;
             }
             lat += lat_size;
+        }
+        // C truncates its PointSet of `ipmax` points to those used, which
+        // fails when there are none.
+        if points.is_empty() {
+            return Err(AstError::new(
+                ErrorCode::Nptin,
+                format!(
+                    "astSetNpoint(PointSet): Number of points (0) is not valid.\n\
+                     Should be in the range 1 to {ipmax}."
+                ),
+            ));
         }
         Ok(crate::coords::PointSet::from_rows(points))
     }
