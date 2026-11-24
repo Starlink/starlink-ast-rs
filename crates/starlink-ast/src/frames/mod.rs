@@ -1803,13 +1803,20 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         Ok(None)
     }
 
-    /// Cast `self` down into the class of `other`, returning a copy of
-    /// `self`'s ancestral component that matches `other`'s class, or `None`
-    /// if `self` is not a subclass of `other`'s class.
-    /// Used by the `match_sub` retry so a specialized template can probe a
-    /// plainer target.
-    /// The default is not castable.
-    // C: object.c / cmpframe.c:1245; astCast.
+    /// A copy of `self` in the class of `other`, or `None` if `self` is not
+    /// an instance of that class.
+    ///
+    /// A Frame is an instance of its own class and of each class its own is
+    /// derived from: a SkyFrame is a plain Frame too, a DSBSpecFrame a
+    /// SpecFrame, a SpecFluxFrame a CmpFrame, and a Plot a FrameSet.
+    /// A CmpFrame is cast into another class through a plain Frame with its
+    /// axes and attributes, and a Region or FrameSet, cast into a class that
+    /// is not a Region or FrameSet, casts its current Frame.
+    /// A conversion uses this to try a template again in the class of the
+    /// target.
+    /// The default casts into no class.
+    // C: astCast, object.c `Cast` and its cmpframe.c, frameset.c and
+    // region.c overrides.
     fn cast(&self, _other: &dyn Frame) -> AstResult<Option<DynFrame>> {
         Ok(None)
     }

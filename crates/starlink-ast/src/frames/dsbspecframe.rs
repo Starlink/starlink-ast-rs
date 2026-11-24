@@ -1110,9 +1110,12 @@ impl Frame for DSBSpecFrame {
     // (same MinAxes / MaxAxes / Permute defaults).
     // -----------------------------------------------------------------
 
+    // object.c `Cast`: a copy into its own class, and into the classes it is
+    // derived from, SpecFrame and a plain Frame, a copy of the part it is.
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // DSBSpecFrame -> SpecFrame (truncate to the parent), or
-        // -> BasicFrame (plain Frame).
+        if other.as_any().is::<DSBSpecFrame>() {
+            return Ok(Some(self.snapshot()));
+        }
         if other
             .as_any()
             .downcast_ref::<crate::frames::SpecFrame>()

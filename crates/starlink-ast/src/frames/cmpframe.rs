@@ -1176,16 +1176,15 @@ impl Frame for CmpFrame {
         super::find_frame::frames_equal(self, other)
     }
 
+    // cmpframe.c `Cast`: into a class derived from CmpFrame only if this is
+    // one of that class, so a CmpFrame is copied into a CmpFrame and not
+    // cast into a SpecFluxFrame, whose components it need not have.
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // If `other` is a CmpFrame, a same-class copy is appropriate
-        // (the direct Match path normally handles this; provide the
-        // copy for completeness).
-        if other
-            .as_any()
-            .downcast_ref::<crate::frames::CmpFrame>()
-            .is_some()
-        {
+        if other.as_any().is::<crate::frames::CmpFrame>() {
             return Ok(Some(self.snapshot()));
+        }
+        if other.as_any().is::<crate::frames::SpecFluxFrame>() {
+            return Ok(None);
         }
         // Otherwise build a plain BasicFrame with the same axes +
         // overlaid attributes, then cast THAT to `other`'s class

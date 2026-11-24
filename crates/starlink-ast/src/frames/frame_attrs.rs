@@ -1182,6 +1182,18 @@ macro_rules! region_frame_attrs {
         fn validate_frame_axis(&self, axis: usize, method: &str) -> $crate::error::AstResult<()> {
             self.data.frameset.current().validate_frame_axis(axis, method)
         }
+        // region.c `Cast`: into a Region class only if this Region is of
+        // that class (each Region class here is a leaf of the hierarchy, so
+        // only its own), and into any other class by casting the current
+        // Frame.
+        fn cast(&self, other: &dyn $crate::frames::Frame)
+        -> $crate::error::AstResult<Option<$crate::frames::DynFrame>> {
+            if $crate::regions::any_as_region(other.as_any()).is_some() {
+                return Ok((other.as_any().type_id() == ::std::any::TypeId::of::<Self>())
+                    .then(|| $crate::frames::Frame::snapshot(self)));
+            }
+            self.data.frameset.current().cast(other)
+        }
         // region.c `IsUnitFrame`: a Region is never equivalent to a UnitMap.
         fn is_unit_frame(&self) -> bool {
             false

@@ -19,7 +19,8 @@ use starlink_ast::frames::{
 };
 use starlink_ast::plot::Plot;
 use starlink_ast::regions::{
-    BoxRegionBuilder, Circle, CircleBuilder, StcObsDataLocationBuilder, StcSearchLocationBuilder,
+    BoxRegionBuilder, Circle, CircleBuilder, StcObsDataLocation, StcObsDataLocationBuilder,
+    StcSearchLocationBuilder,
 };
 
 pub(crate) fn frame(naxes: usize, domain: &str) -> BasicFrame {
@@ -174,6 +175,28 @@ fn casts() {
         &SkyFrame::unset_system(),
     );
 
-    // It can be cast into the classes its own is derived from.
+    // It can be cast into its own class and into the classes that its own
+    // is derived from. A Region or FrameSet is cast into a class of Frame
+    // that is not a Region or FrameSet by casting its current Frame.
+    let sky_circle = unit_circle(SkyFrame::unset_system());
+    check_cast::<StcObsDataLocation>(
+        "an StcObsDataLocation into its own class",
+        &obsdata,
+        &obsdata.clone(),
+    );
+    check_cast::<Circle>("a Circle into its own class", &circle, &sky_circle);
+    check_cast::<CmpFrame>(
+        "a SpecFluxFrame into a CmpFrame",
+        &spec_flux(""),
+        &cmp_abc(),
+    );
+    check_cast::<FrameSet>("a Plot into a FrameSet", &plot, &fset);
+    check_cast::<BasicFrame>("a Circle into a Frame", &circle, &frame_a);
+    check_cast::<SkyFrame>(
+        "a sky Circle into a SkyFrame",
+        &sky_circle,
+        &SkyFrame::unset_system(),
+    );
     check_cast::<BasicFrame>("a CmpFrame into a Frame", &cmp_abc(), &frame_a);
+    check_cast::<BasicFrame>("a FrameSet into a Frame", &fset, &frame_a);
 }

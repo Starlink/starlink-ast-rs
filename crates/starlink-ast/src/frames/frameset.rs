@@ -1872,6 +1872,17 @@ macro_rules! frameset_attr {
 }
 
 impl Frame for FrameSet {
+    // frameset.c `Cast`: into a FrameSet class only if this is one of that
+    // class (so not into a Plot), and into any other class by casting the
+    // current Frame.
+    fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        if other.as_frameset().is_some() {
+            let is_plot = other.as_any().is::<crate::plot::Plot>();
+            return Ok((!is_plot).then(|| self.snapshot()));
+        }
+        self.current().cast(other)
+    }
+
     // The attribute strings of C's FrameSet class, with its integrity
     // bracket around a whole setting string or clear list.
     #[cfg(feature = "attribute-strings")]

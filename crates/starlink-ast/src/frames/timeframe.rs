@@ -2366,10 +2366,12 @@ impl Frame for TimeFrame {
         Ok(())
     }
 
+    // object.c `Cast`: a copy into its own class, and into the class it is
+    // derived from, a plain Frame, a copy of the Frame it is.
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // A specialized leaf frame can only be cast down to a plain
-        // Frame (BasicFrame). Same-class is handled by the direct Match
-        // (no cast needed), so only the BasicFrame target matters here.
+        if other.as_any().is::<TimeFrame>() {
+            return Ok(Some(self.snapshot()));
+        }
         if other
             .as_any()
             .downcast_ref::<crate::frames::BasicFrame>()

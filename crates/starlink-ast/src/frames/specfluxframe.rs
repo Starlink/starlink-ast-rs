@@ -227,6 +227,20 @@ impl SpecFluxFrame {
 // ---------------------------------------------------------------------------
 
 impl Frame for SpecFluxFrame {
+    // cmpframe.c `Cast`, which SpecFluxFrame inherits: into a class derived
+    // from CmpFrame only if this is one of that class, so into a
+    // SpecFluxFrame or a CmpFrame, and into any other class through a basic
+    // Frame with this Frame's axes and attributes.
+    fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        if other.as_any().is::<SpecFluxFrame>() {
+            return Ok(Some(self.snapshot()));
+        }
+        if other.as_any().is::<super::CmpFrame>() {
+            return Ok(Some(Box::new(self.as_cmp_frame())));
+        }
+        super::reduce_to_basic_frame(self)?.cast(other)
+    }
+
     fn axis_perm(&self) -> Vec<usize> {
         if self.swap { vec![1, 0] } else { vec![0, 1] }
     }

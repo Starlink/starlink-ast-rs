@@ -439,8 +439,17 @@ impl Frame for Plot {
     ) -> AstResult<Option<find_frame::MatchResult>> {
         Frame::match_template(&self.frameset, target, match_sub)
     }
-    fn cast(&self, _other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        Frame::cast(&self.frameset, _other)
+    // frameset.c `Cast`, which Plot inherits: a Plot is a Plot and a
+    // FrameSet, so it is copied into either, and cast into any other class
+    // by casting its current Frame.
+    fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        if other.as_any().is::<super::Plot>() {
+            return Ok(Some(Box::new(self.clone())));
+        }
+        if other.as_frameset().is_some() {
+            return Ok(Some(Box::new(self.frameset.clone())));
+        }
+        Frame::cast(&self.frameset, other)
     }
     fn sub_frame(
         &self,
