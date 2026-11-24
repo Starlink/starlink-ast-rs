@@ -14,9 +14,11 @@
 //!   and is registered by giving the IntraMap the object, not by name.
 //! - The border and grid are drawn into a `LogGrf`; nothing reaches it, as
 //!   in the C, where no graphics are drawn.
+//! - The messages are compared too, with those of a probe of the pinned C
+//!   library, and a failure that reports a message of its own is added.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use starlink_ast::constants::BAD_VALUE;
 use starlink_ast::coords::{Points, PointsMut};
@@ -26,10 +28,11 @@ use starlink_ast::grf::LogGrf;
 use starlink_ast::mappings::{IntraFlags, IntraMap, IntraTransform, Mapping, UnitMap};
 use starlink_ast::plot::{Draw, Plot};
 
-/// Copies its inputs to its outputs, or fails while `fail` is set, as C's
-/// function does by setting the status AST__ITFER.
+/// Copies its inputs to its outputs, or fails while `fail` is set: with no
+/// message of its own (1), as C's function does by setting the status
+/// AST__ITFER, or with one (2), as a function that reports one does.
 pub(crate) struct CopyOrFail {
-    pub(crate) fail: AtomicBool,
+    pub(crate) fail: AtomicU8,
 }
 
 impl IntraTransform for CopyOrFail {
@@ -61,8 +64,10 @@ impl IntraTransform for CopyOrFail {
         _forward: bool,
         out: &mut PointsMut<'_>,
     ) -> AstResult<()> {
-        if self.fail.load(Ordering::SeqCst) {
-            return Err(AstError::new(ErrorCode::Itfer, ""));
+        match self.fail.load(Ordering::SeqCst) {
+            0 => {}
+            1 => return Err(AstError::new(ErrorCode::Itfer, "")),
+            _ => return Err(AstError::new(ErrorCode::Itfer, "my own message")),
         }
         for j in 0..input.ncoord() {
             for (o, i) in out.axis_mut(j).iter_mut().zip(input.axis(j)) {
@@ -107,25 +112,50 @@ fn check_clipping(when: &str, plot: &Plot) {
     );
 }
 
+/// The message C reports for the failure, after any of the function's
+/// own.
+const SIGNALLED: &str =
+    "astTransform(IntraMap): Error signalled by \"CopyOrFail\" transformation function.";
+
+/// Check that `result` is the failure of the transformation, with C's
+/// messages `messages`.
+fn check_failed<T>(what: &str, result: AstResult<T>, messages: &[&str]) {
+    let Err(err) = result else {
+        panic!("{what} did not fail");
+    };
+    assert_eq!(err.code(), ErrorCode::Itfer, "{what}");
+    let got: Vec<&str> = err
+        .message()
+        .split('\n')
+        .chain(err.context().iter().map(String::as_str))
+        .collect();
+    assert_eq!(got, messages, "{what}");
+}
+
 #[test]
 fn clipping_survives_an_error() {
     let transform = Arc::new(CopyOrFail {
-        fail: AtomicBool::new(false),
+        fail: AtomicU8::new(0),
     });
     let mut plot = clipped_plot(transform.clone());
     check_clipping("before the error", &plot);
 
     // While the transformation fails, each operation that clips reports it.
-    transform.fail.store(true, Ordering::SeqCst);
-    let err = plot.tran2(&[0.5], &[0.5], true).unwrap_err();
-    assert_eq!(err.code(), ErrorCode::Itfer, "tran2");
+    transform.fail.store(1, Ordering::SeqCst);
+    check_failed("tran2", plot.tran2(&[0.5], &[0.5], true), &[SIGNALLED]);
     let mut grf = LogGrf::new(Vec::new());
-    let err = plot.draw_border(&mut grf).unwrap_err();
-    assert_eq!(err.code(), ErrorCode::Itfer, "border");
+    check_failed("border", plot.draw_border(&mut grf), &[SIGNALLED]);
     let mut grf = LogGrf::new(Vec::new());
-    let err = plot.draw_grid(&mut grf).unwrap_err();
-    assert_eq!(err.code(), ErrorCode::Itfer, "grid");
-    transform.fail.store(false, Ordering::SeqCst);
+    check_failed("grid", plot.draw_grid(&mut grf), &[SIGNALLED]);
+
+    // A message the function reports comes first, as in C.
+    transform.fail.store(2, Ordering::SeqCst);
+    check_failed(
+        "tran2 with a message",
+        plot.tran2(&[0.5], &[0.5], true),
+        &["my own message", SIGNALLED],
+    );
+    transform.fail.store(0, Ordering::SeqCst);
 
     // The Plot is unharmed.
     check_clipping("after the error", &plot);
