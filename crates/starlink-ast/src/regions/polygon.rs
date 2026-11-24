@@ -1556,11 +1556,20 @@ impl Polygon {
 
         let mut edges: Vec<LineDef> = Vec::with_capacity(nv);
         let mut start = [ptr[nv - 1][0], ptr[nv - 1][1]];
-        for vertex in ptr.iter() {
+        // An edge that ends at an undefined position has no description,
+        // and the values cannot be found; the cache is left unset.
+        for (i, vertex) in ptr.iter().enumerate() {
             let end = [vertex[0], vertex[1]];
-            let edge = bfrm
-                .line_def(&start, &end)?
-                .ok_or_else(|| AstError::new(ErrorCode::Inter, "cache: bad polygon edge"))?;
+            let edge = bfrm.line_def(&start, &end)?.ok_or_else(|| {
+                AstError::new(
+                    ErrorCode::Badin,
+                    format!(
+                        "astPolygon(Polygon): Vertex number {} or its neighbour has an \
+                         undefined axis value.",
+                        i + 1
+                    ),
+                )
+            })?;
             edges.push(edge);
             start = end;
         }
@@ -2478,5 +2487,36 @@ impl Mapping for Polygon {
 
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frames::BasicFrameBuilder;
+
+    /// An edge that ends at an undefined vertex has no description; a
+    /// Polygon read from a dump can have one, as the loader does not check.
+    /// Each use reports it, as the cache is not kept.
+    #[test]
+    fn an_undefined_vertex_is_reported_on_use() {
+        let mut polygon = PolygonBuilder::new(
+            BasicFrameBuilder::new(2).build().unwrap(),
+            vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0]],
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        polygon.data.points[1][0] = BAD_VALUE;
+        polygon.data.invalidate_cache();
+        for _ in 0..2 {
+            let err = polygon.tran2(&[0.2], &[0.2], true).unwrap_err();
+            assert_eq!(err.code(), ErrorCode::Badin);
+            assert_eq!(
+                err.message(),
+                "astPolygon(Polygon): Vertex number 2 or its neighbour has an undefined axis \
+                 value."
+            );
+        }
     }
 }

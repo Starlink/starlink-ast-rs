@@ -64,6 +64,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a `Polygon` with an undefined vertex, as one read from a dump can have, reports the C library's `ErrorCode::Badin` naming the vertex when it is used; it reported an internal error.
 - `starlink-ast`: a `Polygon` whose vertices all coincide, or are so far apart that their distances overflow, is made and used as in the C library; the first reported an internal error and the second hung. A Polygon with a bad or NaN vertex is refused when it is made, with the C library's `ErrorCode::Badin`; it reported an internal error when used. `Frame::line_def` gives no line only for a `BAD_VALUE` coordinate, as the C library's does; it also gave none for a NaN or infinite one.
 - `starlink-ast`: an `Ellipse` moved to the centre it already has, as when it is the uncertainty of a Region with the same centre, is left as it is, as in the C library now; it failed with `ErrorCode::Badin`, "The supplied points do not determine an ellipse".
 - `starlink-ast`: a `CmpRegion` that ANDs two unbounded Regions is not bounded, as in the C library now; one that ANDed two nested unbounded Regions was reported bounded. A `Prism` overlapping a negated Region uses the axes picked from it un-negated, as the C library now does, so the negation is allowed for once; the overlap of a Prism with the negation of a Box holding it, or with its own negation, was wrong. The messages for a `CmpRegion` or `Prism` with no mesh spell "because".
