@@ -148,6 +148,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The comment for an offset sky axis is cut to 79 characters](#the-comment-for-an-offset-sky-axis-is-cut-to-79-characters)
 - [FitsChan cuts long strings to the buffers it copies them into](#fitschan-cuts-long-strings-to-the-buffers-it-copies-them-into)
 - [Frame classes cut long default Labels, Symbols, Domains and Titles to their buffers](#frame-classes-cut-long-default-labels-symbols-domains-and-titles-to-their-buffers)
+- [A `%c` Format writes a byte of the value, which outside ASCII is not text](#a-c-format-writes-a-byte-of-the-value-which-outside-ascii-is-not-text)
 
 ### [Resolved upstream](#resolved-upstream)
 
@@ -2017,6 +2018,16 @@ A default Label or Symbol of a SpecFrame, TimeFrame or FluxFrame, a SpecFluxFram
 Before the change a default built from a long Unit, Domain or component Label overran the buffer; now it is cut short.
 
 The port does not mirror the cuts, which exist only to protect the buffers: it builds each default whole (235, 246 and 243 characters in the triage's cases). `testcorruptinput.c`'s checks of these lengths (`2bd4ab23`) are buffer cases for stage 5.
+
+### A `%c` Format writes a byte of the value, which outside ASCII is not text
+
+C location: `axis.c` `AxisFormat`.
+
+`AxisFormat` converts the value to `int` for an integer conversion and passes it to `sprintf`, so a Format of `%c` writes the byte `(unsigned char) value`.
+A value of 128 to 255 gives a byte that is not ASCII, and is not UTF-8 on its own; a value of zero ends the C string there.
+
+The port holds a formatted value as a Rust string, which cannot hold such a byte, so it writes the character of that code in ISO 8859-1 (233 is `é`), padded to the Format's width as the one byte would be (`formats` in `tests/test_fields.rs`).
+A zero ends the text, as in C.
 
 ### `CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping
 

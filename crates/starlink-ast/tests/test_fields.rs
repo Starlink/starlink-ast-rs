@@ -270,6 +270,20 @@ fn formats() {
         assert_eq!(frame.format(1, 65.25).unwrap(), want, "{fmt}");
     }
 
+    // `%c` writes the byte of the value, which outside ASCII is the
+    // character of that code in ISO 8859-1, padded as one character.
+    for (fmt, value, want) in [
+        ("%c", 65.0, "A"),
+        ("%c", 233.0, "\u{e9}"),
+        ("%3c", 233.0, "  \u{e9}"),
+        ("%-3c|", 255.0, "\u{ff}  |"),
+        ("x%c", 0.0, "x"),
+    ] {
+        let mut frame = BasicFrameBuilder::new(1).build().unwrap();
+        frame.set_format_str(1, fmt).unwrap();
+        assert_eq!(frame.format(1, value).unwrap(), want, "{fmt} {value}");
+    }
+
     // A result longer than C's buffer.
     let mut frame = BasicFrameBuilder::new(1).build().unwrap();
     frame.set_format_str(1, "%200f").unwrap();

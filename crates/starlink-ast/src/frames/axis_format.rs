@@ -230,7 +230,8 @@ pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<Stri
     } else {
         Arg::Double(x)
     };
-    buf.extend(sprintf(&p.fmt, arg).map_err(|e| {
+    let prefix = buf.len();
+    let (text, conversion) = sprintf_marked(&p.fmt, arg).map_err(|e| {
         AstError::new(
             ErrorCode::Fmter,
             format!(
@@ -239,7 +240,8 @@ pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<Stri
                 String::from_utf8_lossy(&p.fmt)
             ),
         )
-    })?);
+    })?;
+    buf.extend(text);
     if log {
         buf.extend_from_slice(LOG_END.as_bytes());
     }
@@ -261,12 +263,22 @@ pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<Stri
     if let Some(nul) = buf.iter().position(|&b| b == 0) {
         buf.truncate(nul);
     }
-    String::from_utf8(buf).map_err(|_| {
-        AstError::new(
-            ErrorCode::Fmter,
-            format!("astAxisFormat(Axis): formatting {value} with \"{fmt}\" gave a non-ASCII byte"),
-        )
-    })
+    // `%c` writes one byte of the value, padded with spaces, which outside
+    // ASCII is held as the character of that code in ISO 8859-1; the rest
+    // is the Format's own text, which is UTF-8.
+    let byte = match conversion {
+        Some((span, b'c')) => {
+            (prefix + span.start..(prefix + span.end).min(buf.len())).find(|&i| buf[i] >= 0x80)
+        }
+        _ => None,
+    };
+    let Some(at) = byte else {
+        return Ok(String::from_utf8_lossy(&buf).into_owned());
+    };
+    let mut out = String::from_utf8_lossy(&buf[..at]).into_owned();
+    out.push(char::from(buf[at]));
+    out.push_str(&String::from_utf8_lossy(&buf[at + 1..]));
+    Ok(out)
 }
 
 /// The one argument `AxisFormat` passes to `sprintf`.
