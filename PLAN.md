@@ -596,8 +596,8 @@ pin.
 | testpolymapinv.c | `test_polymapinv.rs` | ported 2026-11-23; the options-string case calls `set_iter_inverse`, and the messages are checked against a C probe. It exposed the default and setter upstream fixed in `857f4a99` |
 | testsplinemapedge.c | `test_splinemapedge.rs` | ported 2026-11-23 (`c_*`), with open-knot and NaN cases from a C probe; it exposed the evaluator faults upstream fixed in `0b427150`, `9a598e55` and `fd90f3b1` |
 | testfitswrite.c | `test_fitswrite.rs` | ported 2026-11-23, each case pinned to the C library's return |
-| testregionhardening.c | — | not ported — stage 3 of the `fe26cc9b` sync (§8) |
-| testregionlogic.c | — | not ported — stage 3 of the `fe26cc9b` sync (§8) |
+| testregionhardening.c | `test_regionhardening.rs` | partly ported (stage 3 of the `fe26cc9b` sync in progress, §8) |
+| testregionlogic.c | `test_regionlogic.rs` | partly ported (stage 3 of the `fe26cc9b` sync in progress, §8) |
 | testfields.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
 | testcast.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
 | testplotcopy.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
