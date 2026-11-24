@@ -130,6 +130,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Simplifying an inverted WinMap with a subnormal scale gives a ShiftMap of NaN](#simplifying-an-inverted-winmap-with-a-subnormal-scale-gives-a-shiftmap-of-nan)
 - [SUN/211 shows examples and output that the current library does not produce](#sun211-shows-examples-and-output-that-the-current-library-does-not-produce)
 - [A write keeps one list of replaced cards for every FitsChan in its thread](#a-write-keeps-one-list-of-replaced-cards-for-every-fitschan-in-its-thread)
+- [A Polygon with vertices near 1e308 contains positions outside it](#a-polygon-with-vertices-near-1e308-contains-positions-outside-it)
+- [A Polygon with a vertex at infinity leaves out positions inside it](#a-polygon-with-a-vertex-at-infinity-leaves-out-positions-inside-it)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -1898,6 +1900,34 @@ Each read goes through `SpecTrans`, whose translations write into a scratch Fits
 No header has been found that does this, so the effect is unproven.
 The port keeps the list in each `CardList` (`crates/starlink-ast/src/fitschan/card_list.rs`), so a write puts back only its own cards.
 The fix is to keep the list, and the flag, in the FitsChan.
+
+
+### A Polygon with vertices near 1e308 contains positions outside it
+
+C location: `polygon.c` `Cache` and `Polywidth`, and frame.c `LineDef`.
+
+A C-oracle probe makes the Polygon (0, 0), (1e308, 0), (0, 1e308) and transforms (1, 2), (50, 50), (0, 0), (-1, -1) and (0.1, 0.1): it keeps all five, though (-1, -1) is outside the triangle.
+The length of the long edge overflows to infinity, so `Polywidth` starts at the mid point of an edge of infinite length and the position `Cache` keeps as inside is NaN.
+`LineDef` tests only for `AST__BAD`, so the line from that position to a test point is made, crosses no edge, and every position is taken to be inside.
+
+Consequence: such a Polygon contains every position.
+
+The port mirrors it: `line_def` tests for `BAD_VALUE` alone, and `polygons` in `tests/test_regionhardening.rs` pins the probe's result.
+A C fix would find the length of an edge without overflow (`hypot`), or refuse a Polygon whose edges have no finite length.
+
+### A Polygon with a vertex at infinity leaves out positions inside it
+
+C location: `polygon.c` `Cache` and `Polywidth`, and the frame.c axis distance and offset functions.
+
+A C-oracle probe makes the Polygon (0, 0), (inf, 0), (0, 1): it is bounded with bounds (0, 0) to (inf, 1), and it keeps (0, 0), a vertex, but makes (0.1, 0.1) bad, though that is inside the triangle.
+The edges to the infinite vertex have infinite length and a direction of NaN, so the position `Cache` finds as inside, and the crossings of the line from it, depend on arithmetic with infinities.
+
+Consequence: positions inside such a Polygon are taken to be outside it.
+
+The port differs: its Frame geometry takes an infinite value to be bad, and it keeps (0.1, 0.1).
+`infinite_vertex` in `REGION_HARDENING_EXCLUDED` (`tests/test_regionhardening.rs`) records C's answer and fails if the port starts to give it.
+Whether to follow C here is open (PLAN.md §2): the port's answer is the geometrically right one, but it comes from treating infinity as bad, which elsewhere differs from C.
+Question for upstream: should a Polygon refuse a vertex that is not finite, as it refuses one that is `AST__BAD`?
 
 ## Addressed here, and not going upstream
 

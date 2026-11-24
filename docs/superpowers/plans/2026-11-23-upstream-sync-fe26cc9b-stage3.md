@@ -45,6 +45,7 @@ The C tests both pass at the pin.
 | `3046b37e` | already (indexing), mirror (same centre) | Ellipse `RegCentre` leaves the points alone when the centre does not move | `regions/ellipse.rs:1160` | 6 |
 | `fbac9f50`, `3e7c4051` | already | Ellipse and Circle caches after an error; no best Ellipse without a point away from the centre | `ellipse.rs:72`, `:602`; `circle.rs:383` | 1 |
 | `832be0e3` | missing | Polygon `Cache` starts the inside point at the first vertex | `regions/polygon.rs:1548` | 7 |
+| `aa29054e` | missing (Cache error), stage 5 (loader) | `Cache` reports AST__BADIN for an edge with no description and keeps no cache; `astLoadPolygon` refuses an undefined vertex (AST__LDERR) | `regions/polygon.rs` `compute_cache`; `from_node` | final review |
 | `ec7d8586` | mirror (hang) | `Polywidth` caps its start length at `DBL_MAX` and ends at zero length | `regions/polygon.rs:49-58` | 7 |
 | `f19880b3` | already | Box `Simplify` with no Polygon | `regions/box_region.rs:514` | — |
 | `b222d947` | already | moved Interval, Circle and Prism caches | `interval.rs:1542`, `circle.rs:985`, `prism.rs:974` | 1 |

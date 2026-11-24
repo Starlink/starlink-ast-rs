@@ -567,7 +567,10 @@ fn polygons() {
         )
     );
 
-    // Vertices so far apart that ten times half an edge is not finite.
+    // Vertices so far apart that ten times half an edge is not finite. C
+    // keeps every position, (-1, -1) outside the triangle too, as the
+    // length of the long edge overflows (quirk "A Polygon with vertices
+    // near 1e308 contains positions outside it").
     let got =
         within_10s(|| polygon_case(vec![vec![0.0, 0.0], vec![1.0e308, 0.0], vec![0.0, 1.0e308]]));
     assert_eq!(
@@ -617,8 +620,9 @@ const REGION_HARDENING_EXCLUDED: &[(&str, &str)] = &[
         "the Frame geometry the Polygon uses (axis distances and offsets, and \
      whether a line holds a point) takes an infinite value to be bad, where C \
      tests for AST__BAD alone, so the edges to the infinite vertex have no \
-     length and the position (0.1, 0.1) is taken to be inside; C has it \
-     outside",
+     length and the position (0.1, 0.1) is taken to be inside, as it is; C has \
+     it outside (quirk \"A Polygon with a vertex at infinity leaves out \
+     positions inside it\"), and whether to follow C is open",
     ),
 ];
 
