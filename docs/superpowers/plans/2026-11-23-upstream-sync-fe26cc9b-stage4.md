@@ -30,7 +30,7 @@ From each commit's diff, the Rust site, C probes and scratch ports of the C test
 | commit | verdict | what changes | Rust site | task |
 |---|---|---|---|---|
 | `b6d4e160` | partly already, rest missing | a Format (and the format given to `astFields`) may have at most one conversion from `eEfFgGaAdiuoxXc`, `l` allowed before a float code, digit widths and precisions only; else AST__FMTER; an over-long result is two messages | `frames/axis_format.rs:53`, `:138`; `axis.rs:616` `plain_axis_fields` | 2 |
-| `50b6e3af` | n/a, buffer (user decision, see Task 3) | DHms text over 70 characters is `<bad>` | `skyaxis.rs:513` `dhms_format` | 3 |
+| `50b6e3af` | mirror (user decision 2026-11-23: past 70 characters the digits are noise) | DHms text over 70 characters is `<bad>` | `skyaxis.rs:513` `dhms_format` | 3 |
 | `56fdcbdd` | mirror | iso.n capped at 9 places; a time with no calendar date is `<bad>`, in a value and in the TimeOrigin of the default Label and Title | `timeframe.rs:1673` `date_format`, `:2205`, `:1138` | 4 |
 | `86601275` | behavior already, message missing | `astReadDateTime` reports `Month value (13) is invalid.` / `Year value (-4800) is invalid.` | `date_time.rs:229` | 4 |
 | `b009d17c` | deliberate divergence (user decision 2026-11-23): keep the port's day and month (set to 1), take C's fallback for the year | `Centre` stops comparing at the end of either date; an unreadable zeroed date falls back to the parent `Centre`; a day of 0 stays 0 | `timeframe.rs:1974` | 5 |
@@ -86,12 +86,15 @@ Found in triage, not from a commit:
 - [ ] **Step 2:** Port axis.c `ParseAxisFormat`'s check and call it from `fields` as C does; format `%a`/`%A` (C99 hex float) and accept the `'` flag (C locale: no grouping); split the overflow error into C's two messages.
 - [ ] **Step 3:** Run; CHANGELOG "Fixed"; commit ("Check a Format as the C library does").
 
-### Task 3: A huge sky value (`50b6e3af`)
+### Task 3: A huge sky value (`50b6e3af`, followed by decision)
 
-**Files:** `frames/skyaxis.rs`, quirks, `test_fields.rs`.
+The user's decision (2026-11-23): follow C. A sky value can be at most about 330 characters (a 309-digit integer part); the digits are noise above about 1e16 degrees, and C's 70-character cut-off is near 1e59, so `<bad>` loses nothing.
 
-- [ ] **Step 1:** Per the user's decision (handoff question 1). If not mirrored: a test that ±1e300 with Format `dms.3` gives the full text, and a quirks entry "SkyAxis formats a value of more than 70 characters as `<bad>`" (buffer, not mirrored; `3e0868e9`'s testcorruptinput case named for stage 5). If mirrored: a test that ±1e300, and 1e60 with `dms.3` and `lhms.2`, give `<bad>`, and the port does it in `dhms_format` where the text passes 70 characters.
-- [ ] **Step 2:** Commit ("Record how the C library formats a huge sky value" or "Format a huge sky value as `<bad>`, as the C library does").
+**Files:** `frames/skyaxis.rs:513` `dhms_format`, `test_fields.rs`, quirks, CHANGELOG.
+
+- [ ] **Step 1: Test:** ±1e300 with every sky Format, 1e60 with `dms.3` and `lhms.2`, and 1e59 with `dms.3` give `<bad>`; a value just below C's cut-off keeps its digits (probe the boundary). Expected: FAIL.
+- [ ] **Step 2:** In `dhms_format`, give `<bad>` where skyaxis.c `DHmsFormat`'s text would pass its 70 characters, computing the length as C writes it.
+- [ ] **Step 3:** Quirk "SkyAxis gives `<bad>` for a value of more than 70 characters, a limit set by its buffer rather than by the precision" (the port mirrors it; proposed C change: give `<bad>` once the smallest field the Format asks for is finer than the value's resolution, about 1e12 to 1e16 degrees). CHANGELOG "Changed". Commit ("Format a huge sky value as `<bad>`, as the C library does").
 
 ### Task 4: Dates (`56fdcbdd`, `86601275`)
 
@@ -158,7 +161,7 @@ The user's decision (2026-11-23): keep the port's approach for a day or month th
 
 **Files:** `frames/mod.rs` (`AxisKind::distance`/`offset`/`norm`, `offset2`, `intersect`, `line_contains`, `ax_angle`, `resolve`, `resolve_points`, `cartesian_*`), `skyframe.rs`, `cmpframe.rs`, `specfluxframe.rs`, the 1-D `angle`s of `specframe.rs`, `fluxframe.rs`, `timeframe.rs`, `test_regionhardening.rs`, `PLAN.md`, quirks.
 
-- [ ] **Step 1:** Per the user's decision (handoff question 2). If followed: tests that distance((0,0),(inf,0)) = inf, `ax_angle` = π/2, `intersect` = (0.5,0) on a plain Frame and C's values on a SkyFrame and CmpFrame (triage4b probes); the `infinite_vertex` exclusion leaves and `polygons` asserts C's `00100`, bounds (0,0)–(inf,1), `Same`. Expected: FAIL.
+- [ ] **Step 1:** The user's decision (2026-11-23): follow C. Tests that distance((0,0),(inf,0)) = inf, `ax_angle` = π/2, `intersect` = (0.5,0) on a plain Frame and C's values on a SkyFrame and CmpFrame (triage4b probes); the `infinite_vertex` exclusion leaves and `polygons` asserts C's `00100`, bounds (0,0)–(inf,1), `Same`. Expected: FAIL.
 - [ ] **Step 2:** Each listed site tests `BAD_VALUE` alone, as its C function does; geometry results that C gives as NaN stay NaN (they are not transform outputs). `val_ok` stays.
 - [ ] **Step 3:** Run the crate and `ast-bench bits --base main`; ledger and PLAN §6 counts; the §2 row closed; quirk "A Polygon with a vertex at infinity…" says the port mirrors it.
 - [ ] **Step 4:** Trace AZEL→ICRS at Epoch MJD 1e11 with the simplify trace (CLAUDE.md "Debugging the simplifier"): C simplifies to a UnitMap. Port the cause if it is in this stage's code; otherwise a PLAN row naming it. Commit per change.
