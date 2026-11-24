@@ -70,6 +70,19 @@ pub(crate) fn cmp_abc() -> CmpFrame {
 
 #[test]
 fn conversions() {
+    // Two SpecFluxFrames whose SpecFrames have different Domains.
+    let (sff1, sff2) = (spec_flux("FOO"), spec_flux(""));
+    check_no_conversion(
+        "between SpecFluxFrames with different Domains",
+        &sff1,
+        &sff2,
+    );
+    check_no_conversion(
+        "between SpecFluxFrames with different Domains, reversed",
+        &sff2,
+        &sff1,
+    );
+
     // A CmpFrame that holds a Region, and one that holds a Frame with
     // another Domain in its place.
     let cmp1 = CmpFrame::new(

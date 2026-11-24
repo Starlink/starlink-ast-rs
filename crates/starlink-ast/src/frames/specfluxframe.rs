@@ -665,7 +665,8 @@ fn make_map2(sff: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
 /// The third Mapping of MakeSFMapping (specfluxframe.c::MakeMap3, 631): a
 /// 3-in/3-out parallel CmpMap. The first two axes are a `TranMap` between
 /// standardized `(v1,x1)` and `(v2,x2)` (the flux scaling); the third axis is
-/// the unmodified `x1 -> x2` spectral mapping.
+/// the conversion between the supplied SpecFrames, or `None` if they have
+/// none.
 fn make_map3(target: &SpecFluxFrame, result: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
     // Standardized SpecFrames for the flux-scaling TranMap.
     let sf1 = target.std_spec_frame()?;
@@ -674,8 +675,13 @@ fn make_map3(target: &SpecFluxFrame, result: &SpecFluxFrame) -> AstResult<Option
     let imap = make_map_i(&sf1, &sf2)?;
     let mapa = TranMap::new(fmap, imap)?;
 
-    // Third axis: the unmodified supplied x1 -> x2 spectral mapping.
-    let mapb = target.spec_frame.make_spec_mapping(&result.spec_frame)?;
+    // Third axis: the conversion from the supplied SpecFrame of the target
+    // to that of the result, which `astConvert` finds, so that a difference
+    // in Domain, say, gives none.
+    let Some(fs) = super::find_frame::convert(&target.spec_frame, &result.spec_frame, &[])? else {
+        return Ok(None);
+    };
+    let mapb = fs.mapping(super::FrameRef::Base, super::FrameRef::Current)?;
 
     let ret = CmpMap::new(Box::new(mapa), mapb, Composition::Parallel)?;
     Ok(Some(Box::new(ret)))

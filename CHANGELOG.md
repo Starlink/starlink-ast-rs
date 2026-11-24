@@ -65,6 +65,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: two SpecFluxFrames whose SpecFrames do not convert, because their Domains differ for example, do not convert either, as in the C library; a conversion was found.
 - `starlink-ast`: `Frame::cast` gives what the C library's `astCast` gives: a copy of a Frame or Region into its own class, of a SpecFluxFrame into a CmpFrame, of a Plot into a FrameSet, and of a Region or FrameSet's current Frame into a class that is neither a Region nor a FrameSet. It gave nothing in each of these cases. A CmpFrame is not cast into a SpecFluxFrame, as in the C library now.
 - `starlink-ast`: an `IntraMap` whose transformation fails reports the C library's message, `astTransform(IntraMap): Error signalled by "<name>" transformation function.`, after the transformation's own message if it gave one; the two were joined on one line, with a trailing colon when the transformation gave none.
 - `starlink-ast`: a blank sky axis value split into fields is one field of zero, as in the C library now; it gave no fields and a bad value.
