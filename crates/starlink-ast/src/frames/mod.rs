@@ -2302,6 +2302,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// - `ErrorCode::Axiin` when `axis` is not between 1 and
     ///   [`naxes`](Frame::naxes).
+    /// - `ErrorCode::Fmter` when a sky axis is given a `%` Format that
+    ///   cannot be used for an axis value, as for [`fields`](Frame::fields).
     ///
     /// # Examples
     ///
@@ -2362,6 +2364,9 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// - `ErrorCode::Axiin` when `axis` is not between 1 and
     ///   [`naxes`](Frame::naxes).
+    /// - `ErrorCode::Fmter` when `fmt` is a `%` Format that cannot be used
+    ///   for an axis value: one with more than one conversion, or one that
+    ///   is not for a floating point or integer value.
     ///
     /// # Examples
     ///
@@ -2427,7 +2432,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         text: &str,
         maxfld: usize,
     ) -> AstResult<FieldSplit> {
-        Ok(axis::plain_axis_fields(fmt, text, maxfld))
+        axis::plain_axis_fields(fmt, text, maxfld)
     }
 
     /// Normalize a collection of points.

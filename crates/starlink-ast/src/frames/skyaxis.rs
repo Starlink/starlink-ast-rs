@@ -1018,7 +1018,7 @@ pub(crate) fn sky_axis_fields(
     digits: i32,
     text: &str,
     maxfld: usize,
-) -> super::FieldSplit {
+) -> crate::error::AstResult<super::FieldSplit> {
     use crate::constants::BAD_VALUE;
     if fmt.starts_with('%') {
         return super::axis::plain_axis_fields(fmt, text, maxfld);
@@ -1029,7 +1029,7 @@ pub(crate) fn sky_axis_fields(
     };
     let f = parse_dhms_format(fmt, digits);
     if maxfld == 0 {
-        return failed;
+        return Ok(failed);
     }
     let s = text.as_bytes();
     let start = s.iter().take_while(|&&b| b == b' ').count();
@@ -1078,14 +1078,14 @@ pub(crate) fn sky_axis_fields(
         };
         // The first field starts at its sign.
         let Some(nc) = span(start, term, &mut p) else {
-            return failed;
+            return Ok(failed);
         };
         match scan_lg(&s[start..]) {
             Scan::Value(v) => {
                 value = v.abs();
                 dval = Some(v);
             }
-            Scan::NoMatch | Scan::Eof => return failed,
+            Scan::NoMatch | Scan::Eof => return Ok(failed),
         }
         fields.push(start..start + nc);
     }
@@ -1105,23 +1105,23 @@ pub(crate) fn sky_axis_fields(
             None
         };
         let Some(nc) = span(fstart, term, &mut p) else {
-            return failed;
+            return Ok(failed);
         };
         match scan_lg(&s[fstart..]) {
             Scan::Value(v) => dval = Some(v),
             Scan::Eof if dval.is_some() => {}
-            Scan::NoMatch | Scan::Eof => return failed,
+            Scan::NoMatch | Scan::Eof => return Ok(failed),
         }
         value += dval.unwrap_or_default() / divisor;
         fields.push(fstart..fstart + nc);
     }
     if chr_len(&s[p..]) > 0 {
-        return failed;
+        return Ok(failed);
     }
-    super::FieldSplit {
+    Ok(super::FieldSplit {
         fields,
         value: sign * value * if f.as_time { HR2RAD } else { DEG2RAD },
-    }
+    })
 }
 
 /// The byte offset of the first occurrence of `needle` in `hay`.
@@ -1139,12 +1139,17 @@ fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
 // C: skyaxis.c `AxisAbbrev` (skyaxis.c:307), which splits each string into
 // at most three fields with `AxisFields`. With no `str1` and no field in
 // `str2`, C indexes before the start of its field array; the port gives 0.
-pub(crate) fn sky_axis_abbrev(fmt: &str, digits: i32, str1: Option<&str>, str2: &str) -> usize {
-    let f2 = sky_axis_fields(fmt, digits, str2, 3).fields;
+pub(crate) fn sky_axis_abbrev(
+    fmt: &str,
+    digits: i32,
+    str1: Option<&str>,
+    str2: &str,
+) -> crate::error::AstResult<usize> {
+    let f2 = sky_axis_fields(fmt, digits, str2, 3)?.fields;
     let Some(str1) = str1 else {
-        return f2.last().map_or(0, |r| r.start);
+        return Ok(f2.last().map_or(0, |r| r.start));
     };
-    let f1 = sky_axis_fields(fmt, digits, str1, 3).fields;
+    let f1 = sky_axis_fields(fmt, digits, str1, 3)?.fields;
     let mut result = 0;
     for (i, (a, b)) in f1.iter().zip(&f2).enumerate() {
         if a.len() != b.len() || str1.as_bytes()[a.clone()] != str2.as_bytes()[b.clone()] {
@@ -1152,7 +1157,7 @@ pub(crate) fn sky_axis_abbrev(fmt: &str, digits: i32, str1: Option<&str>, str2: 
         }
         result = f2.get(i + 1).map_or(str2.len(), |r| r.start);
     }
-    result
+    Ok(result)
 }
 
 /// C's `isspace` in the "C" locale.

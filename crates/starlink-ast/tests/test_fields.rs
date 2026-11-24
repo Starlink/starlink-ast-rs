@@ -21,7 +21,6 @@ use starlink_ast::frames::{BasicFrameBuilder, Frame, SkyFrame, TimeFrame, TimeSy
 
 /// Check that `result` is an error with `code` whose messages, one per
 /// line, are `messages`, with no context that C would not report.
-#[allow(dead_code)]
 pub(crate) fn expect_err<T>(result: AstResult<T>, code: ErrorCode, messages: &[&str]) {
     let Err(err) = result else {
         panic!("an error was expected");
@@ -133,4 +132,69 @@ fn centre() {
     // A gap too small to change the formatted date: the value itself.
     assert_eq!(frame.centre(1, 56000.37, 1.0e-9).unwrap(), 56000.37);
     assert_eq!(frame.centre(1, BAD_VALUE, 1.0).unwrap(), BAD_VALUE);
+}
+
+/// The message C gives for a Format it cannot use for an axis value.
+fn unusable(fmt: &str) -> String {
+    format!(
+        "astFormat: The Format string \"{fmt}\" cannot be used to format an axis value. It \
+         should have no more than one conversion specification, for a floating point or \
+         integer value."
+    )
+}
+
+/// A Format is given to `sprintf` with the axis value as its only
+/// argument, so one that asks for anything else is refused, and so is the
+/// same format given to `fields`.
+#[test]
+fn formats() {
+    for fmt in [
+        "%s", "%n", "%d%d", "%ld", "%hd", "%*d", "%", "abc%", "%Lf", "%p", "%10s",
+    ] {
+        let mut frame = BasicFrameBuilder::new(1).build().unwrap();
+        frame.set_format_str(1, fmt).unwrap();
+        expect_err(frame.format(1, 65.25), ErrorCode::Fmter, &[&unusable(fmt)]);
+    }
+    let frame = BasicFrameBuilder::new(1).build().unwrap();
+    expect_err(
+        frame.fields(1, "%s", "65.25", 3),
+        ErrorCode::Fmter,
+        &[&unusable("%s")],
+    );
+    // A sky axis splits a `%` value as a plain axis does when abbreviating.
+    expect_err(
+        SkyFrame::unset_system().abbrev(1, "%s", Some("1"), "2"),
+        ErrorCode::Fmter,
+        &[&unusable("%s")],
+    );
+
+    // The C library formats these; the "'" flag groups no digits in the C
+    // locale.
+    for (fmt, want) in [
+        ("%a", "0x1.05p+6"),
+        ("%A", "0X1.05P+6"),
+        ("%'d", "65"),
+        ("%'.3f", "65.250"),
+        ("%.1a", "0x1.0p+6"),
+        ("%20a", "           0x1.05p+6"),
+        ("%+a", "+0x1.05p+6"),
+        ("%la", "0x1.05p+6"),
+    ] {
+        let mut frame = BasicFrameBuilder::new(1).build().unwrap();
+        frame.set_format_str(1, fmt).unwrap();
+        assert_eq!(frame.format(1, 65.25).unwrap(), want, "{fmt}");
+    }
+
+    // A result longer than C's buffer.
+    let mut frame = BasicFrameBuilder::new(1).build().unwrap();
+    frame.set_format_str(1, "%200f").unwrap();
+    expect_err(
+        frame.format(1, 65.25),
+        ErrorCode::Fmter,
+        &[
+            "astAxisFormat(Axis): Internal buffer overflow while formatting a coordinate \
+             value of 65.25 - result exceeds 127 characters.",
+            "The format string was \"%200f\".",
+        ],
+    );
 }

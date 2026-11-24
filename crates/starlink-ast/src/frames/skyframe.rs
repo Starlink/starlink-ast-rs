@@ -2219,7 +2219,7 @@ impl Frame for SkyFrame {
         str1: Option<&str>,
         str2: &str,
     ) -> AstResult<usize> {
-        Ok(self.axes[self.physical_axis(axis)?].axis_abbrev(fmt, str1, str2))
+        self.axes[self.physical_axis(axis)?].axis_abbrev(fmt, str1, str2)
     }
 
     fn axis_minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
@@ -2233,7 +2233,7 @@ impl Frame for SkyFrame {
         text: &str,
         maxfld: usize,
     ) -> AstResult<super::FieldSplit> {
-        Ok(self.axes[self.physical_axis(axis)?].axis_fields(fmt, text, maxfld))
+        self.axes[self.physical_axis(axis)?].axis_fields(fmt, text, maxfld)
     }
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {

@@ -39,6 +39,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Centre` zeroes a calendar field that has no zero](#timeframe-centre-zeroes-a-calendar-field-that-has-no-zero)
+- [A `%a` Format gives different text on different platforms](#a-a-format-gives-different-text-on-different-platforms)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
 - [`AxisFields` reads past the end of a value with leading spaces](#axisfields-reads-past-the-end-of-a-value-with-leading-spaces)
 - [SkyAxis `AxisFields` dereferences a null pointer when a separator is missing](#skyaxis-axisfields-dereferences-a-null-pointer-when-a-separator-is-missing)
@@ -445,6 +446,19 @@ This port does not mirror it, by decision (2026-11-23): a day or a month that di
 The port's values are in the table, and differ from C's for the gaps of a day and of a month; `test_fields.rs` pins them, and the CENTRE rows of `plot_frame_methods_oracle` that differ are named in an exclusion list.
 The port first followed a C branch, `u/timj/timeframe-centre-date`, that ended a zeroed day or month with a 1; upstream took `b009d17c` instead.
 Proposed C change: when the first differing field is the day or the month, set it to 1 rather than 0 (and the later fields to 0); when it is the year, use the Frame `Centre`; and drop `testfields.c`'s within-a-gap check for the month case, or replace it with the start-of-year value.
+
+### A `%a` Format gives different text on different platforms
+
+C location: `axis.c` `AxisFormat`, which hands the Format to the C library's `sprintf`; `ValidAxisFormat` (upstream `b6d4e160`) accepts `%a` and `%A`.
+
+C11 (7.21.6.1) requires a nonzero leading digit for a normalized value and leaves it unspecified otherwise, and requires the value to be correctly rounded to a given precision in the current rounding mode, which by default rounds a tie to even.
+The macOS C library writes a leading 1 for every non-zero value, normalizing subnormal values (`0x1p-1074`), keeps a carry from rounding in the leading digit (`%.0a` of 0.1 is `0x2p-4`), and rounds a tie down (`%.0a` of 1.5 is `0x1p+0`), which C11 does not allow.
+The GNU C library writes subnormal values with a leading 0 and rounds a tie to even, so the same Format gives different text on Linux.
+
+Consequence: an axis labelled with a `%a` Format is labelled differently on the two platforms, and on macOS a value at a tie is rounded the wrong way.
+
+The port follows C11, and the macOS library where C11 leaves a choice: a tie goes to even, and a subnormal value is normalized (`frames::axis_format::format_hex`; `hexadecimal_matches_c11_and_the_macos_c_library` holds 224 cases from the macOS library, four of them ties that the port rounds to even).
+A C fix would format `%a` itself rather than through `sprintf`, or document the Format as platform-dependent.
 
 ### SkyAxis `AxisFields` dereferences a null pointer when a separator is missing
 

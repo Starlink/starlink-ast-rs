@@ -997,7 +997,7 @@ impl Frame for BasicFrame {
         str1: Option<&str>,
         str2: &str,
     ) -> AstResult<usize> {
-        Ok(self.axis_object(axis)?.axis_abbrev(fmt, str1, str2))
+        self.axis_object(axis)?.axis_abbrev(fmt, str1, str2)
     }
 
     fn axis_minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
@@ -1011,7 +1011,7 @@ impl Frame for BasicFrame {
         text: &str,
         maxfld: usize,
     ) -> AstResult<super::FieldSplit> {
-        Ok(self.axis_object(axis)?.axis_fields(fmt, text, maxfld))
+        self.axis_object(axis)?.axis_fields(fmt, text, maxfld)
     }
 
     fn set_active_unit(&mut self, value: bool) {
