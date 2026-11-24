@@ -662,6 +662,12 @@ pub(crate) fn dhms_format(fmt: &str, digs: i32, value: f64) -> String {
         };
         out.push_str(&f.sep.term(last, f.as_time));
     }
+    // C's text must fit its buffer, or the value is given as bad. By then
+    // the value is so large (about 1e57 degrees) that its digits carry no
+    // meaning.
+    if out.len() > DHMSFORMAT_BUFF_LEN {
+        return "<bad>".to_string();
+    }
     out
 }
 

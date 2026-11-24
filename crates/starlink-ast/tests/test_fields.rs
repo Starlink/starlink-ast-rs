@@ -198,3 +198,39 @@ fn formats() {
         ],
     );
 }
+
+/// A sky value whose text would pass the 70 characters of C's buffer is
+/// `<bad>`; by then even the degrees are digits of no meaning. The values
+/// are the C library's.
+#[test]
+fn huge_sky_values() {
+    let cases = [
+        ("d", 1.0e300, "<bad>"),
+        ("d", -1.0e300, "<bad>"),
+        ("dms.3", 1.0e59, "<bad>"),
+        ("dms.3", -1.0e58, "<bad>"),
+        (
+            "dms.3",
+            1.0e58,
+            "572957795130823145056046885095140918830124262074803426426880:00:00.001",
+        ),
+        ("lhms.2", 1.0e60, "<bad>"),
+        (
+            "lhms.2",
+            -1.0e58,
+            "-38197186342054881912256091972331846639271185633743938256896h00m00.01s",
+        ),
+        (
+            "hms",
+            1.0e60,
+            "3819718634205487990518902410457576390105654109539140271865856:00:01",
+        ),
+        ("dm", 1.0e300, "<bad>"),
+        ("+d.5", 1.0, "+57.29578"),
+    ];
+    for (fmt, value, want) in cases {
+        let mut sky = SkyFrame::unset_system();
+        sky.set_format_str(1, fmt).unwrap();
+        assert_eq!(sky.format(1, value).unwrap(), want, "{fmt} {value:e}");
+    }
+}

@@ -40,6 +40,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Centre` zeroes a calendar field that has no zero](#timeframe-centre-zeroes-a-calendar-field-that-has-no-zero)
 - [A `%a` Format gives different text on different platforms](#a-a-format-gives-different-text-on-different-platforms)
+- [SkyAxis gives `<bad>` for a value whose text passes 70 characters](#skyaxis-gives-bad-for-a-value-whose-text-passes-70-characters)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
 - [`AxisFields` reads past the end of a value with leading spaces](#axisfields-reads-past-the-end-of-a-value-with-leading-spaces)
 - [SkyAxis `AxisFields` dereferences a null pointer when a separator is missing](#skyaxis-axisfields-dereferences-a-null-pointer-when-a-separator-is-missing)
@@ -459,6 +460,20 @@ Consequence: an axis labelled with a `%a` Format is labelled differently on the 
 
 The port follows C11, and the macOS library where C11 leaves a choice: a tie goes to even, and a subnormal value is normalized (`frames::axis_format::format_hex`; `hexadecimal_matches_c11_and_the_macos_c_library` holds 224 cases from the macOS library, four of them ties that the port rounds to even).
 A C fix would format `%a` itself rather than through `sprintf`, or document the Format as platform-dependent.
+
+### SkyAxis gives `<bad>` for a value whose text passes 70 characters
+
+C location: `skyaxis.c` `DHmsFormat` and `AddText` (upstream `50b6e3af`), with its buffer of `AST__SKYAXIS_DHMSFORMAT_BUFF_LEN` (70) characters.
+
+`DHmsFormat` writes the degrees or hours of a value with `%.0f`, so a huge value has as many digits as its integer part: a value can reach about 330 characters, a 309-digit integer and its fields.
+Since `50b6e3af` a value whose text would pass the buffer is formatted as `<bad>`: with Format `dms.3`, 1e58 radians is written in 70 characters and 1e59 is `<bad>`; with `hms`, which has fewer characters, 1e60 is still written.
+The limit is set by the buffer, not by what the value can show.
+A double has about 16 significant digits, so the seconds of a `dms` value mean nothing above about 2.5e12 degrees and even the degrees nothing above about 1e16; everything printed past that is the binary value's exact decimal expansion (`dms.3` of 1e17 radians is `5729577951308231680:00:00.001`).
+
+Consequence: values far beyond any meaningful angle are written as long strings of meaningless digits, up to the cut-off, which depends on the Format.
+
+The port mirrors it, by decision (2026-11-23): `dhms_format` gives `<bad>` when its text passes 70 characters (`huge_sky_values` in `tests/test_fields.rs`).
+Proposed C change: give `<bad>` once the smallest field the Format asks for is finer than the value's resolution, so that the cut-off follows the precision rather than the buffer.
 
 ### SkyAxis `AxisFields` dereferences a null pointer when a separator is missing
 
