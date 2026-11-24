@@ -33,7 +33,7 @@ From each commit's diff, the Rust site, C probes and scratch ports of the C test
 | `50b6e3af` | n/a, buffer (user decision, see Task 3) | DHms text over 70 characters is `<bad>` | `skyaxis.rs:513` `dhms_format` | 3 |
 | `56fdcbdd` | mirror | iso.n capped at 9 places; a time with no calendar date is `<bad>`, in a value and in the TimeOrigin of the default Label and Title | `timeframe.rs:1673` `date_format`, `:2205`, `:1138` | 4 |
 | `86601275` | behavior already, message missing | `astReadDateTime` reports `Month value (13) is invalid.` / `Year value (-4800) is invalid.` | `date_time.rs:229` | 4 |
-| `b009d17c` | mirror (the port follows the unmerged C branch `u/timj/timeframe-centre-date`, port commit `1dbd342e`) | `Centre` stops comparing at the end of either date; an unreadable zeroed date falls back to the parent `Centre`; a day of 0 stays 0 | `timeframe.rs:1974` | 5 |
+| `b009d17c` | deliberate divergence (user decision 2026-11-23): keep the port's day and month (set to 1), take C's fallback for the year | `Centre` stops comparing at the end of either date; an unreadable zeroed date falls back to the parent `Centre`; a day of 0 stays 0 | `timeframe.rs:1974` | 5 |
 | `3a32fec8` | already | value with leading spaces | `axis.rs:616` | 1 (`FIELDS_EXCLUDED` leaves) |
 | `f3e0de73` | already | `astAxisAbbrev` with no fields | `skyaxis.rs:1142` | 1 |
 | `49e2c58c` | already, except a blank value | a blank sky value is one field at its start, value 0 | `skyaxis.rs:1083-1087` | 6 |
@@ -62,7 +62,7 @@ Found in triage, not from a commit:
 
 1. A Format a caller sets (or passes to `fields`) that C refuses is refused with C's FMTER text, and one C accepts (`%a`, `%A`, `%'d`) is accepted and formats as C's. Pinned in Task 2.
 2. A TimeFrame value, Label or Title that has no calendar date gives `<bad>`, never a made-up date, at any iso.n. Pinned in Task 4.
-3. `Centre` of a calendar-date axis gives C's value at every gap, including gaps of a day, a month and a year. Pinned in Task 5.
+3. `Centre` of a calendar-date axis gives the start of the day, month or (by C's fallback) a value within a gap for a year, at every gap, and never a date far from the value. Pinned in Task 5.
 4. `Frame::cast` gives the class C gives, or `None` where C refuses, for every class pair of testcast. Pinned in Task 8.
 5. A conversion that needs a selection of no axes gives no conversion and no error, both ways. Pinned in Task 10.
 
@@ -101,13 +101,16 @@ Found in triage, not from a commit:
 - [ ] **Step 2:** Port timeframe.c `Format`'s cap and its `<bad>` for a date ERFA cannot give (no `unwrap_or(0)` on `djcl`), the TimeOrigin text in `GetLabel`/`GetTitle`, and `astReadDateTime`'s year and month messages.
 - [ ] **Step 3:** Run; quirk "`astReadDateTime` tests ERFA's status…" rewritten or RESOLVED; CHANGELOG "Fixed"; commit ("Format and read dates as the C library does").
 
-### Task 5: TimeFrame `Centre` (`b009d17c`)
+### Task 5: TimeFrame `Centre` (`b009d17c`, a deliberate divergence)
 
-**Files:** `frames/timeframe.rs:1974`, `test_fields.rs`, `test_plot_frame_methods.rs:291`, `tests/plot_frame_methods_oracle/cases.rs` (regenerated), quirks, CHANGELOG.
+The user's decision (2026-11-23): keep the port's approach for a day or month that differs (set it to 1, the start of the coarser unit), and for a year that differs fall back to the Frame `Centre`, as C does since `b009d17c`. The analysis, the values and the proposed C change are the quirk "TimeFrame `Centre` zeroes a calendar field that has no zero", committed with this plan.
 
-- [ ] **Step 1: Tests:** `centre(56000.37, 1)` = 55986, gap 30 → 56010, gap 400 → 56000; flip `test_plot_frame_methods.rs:291` from 55927. Expected: FAIL.
-- [ ] **Step 2:** Replace the port's `Centre` with timeframe.c `Centre` at the pin, removing what came from the unmerged branch; regenerate `plot_frame_methods_oracle` with `check_probes_fresh.sh --write plot_frame_methods_oracle` (12 CENTRE rows change; `time_unit_h_iso` stays a known drift).
-- [ ] **Step 3:** Run; the second paragraph of quirk "TimeFrame `Fields` never counts…" to RESOLVED (upstream b009d17c); CHANGELOG "Fixed"; commit ("Centre a calendar date axis as the C library does").
+**Files:** `frames/timeframe.rs:1974`, `test_fields.rs`, `test_plot_frame_methods.rs` (CENTRE comparison and `:291`), `tests/plot_frame_methods_oracle/cases.rs` (regenerated), `test_verification_ledger.rs`, `PLAN.md` §6, CHANGELOG.
+
+- [ ] **Step 1: Tests:** in `test_fields.rs`, `centre(56000.37, gap)` gives 56000 at 0.01, 55987 at 1, 55927 at 30, 56000 at 400, the value at 1e-9 and BAD for BAD, with a header note that `testfields.c` expects 55986 at 1 and a value within a gap at 30, and why the port differs. Expected: FAIL at 400 (51544).
+- [ ] **Step 2:** In `centre`, when the first differing field is the year (the first numeric field), or the text with the zeroed fields is not read in full, return `self.axis_centre(axis, value, gap)` (C's parent `Centre`) instead of the year-0 date or the INTER error; keep the day and month set to 1. Comment the divergence, naming the quirk.
+- [ ] **Step 3:** Regenerate `plot_frame_methods_oracle` (`check_probes_fresh.sh --write plot_frame_methods_oracle`, then `cargo fmt`). The CENTRE rows where C's `b009d17c` and the port differ go in a named list `CENTRE_DIVERGES` in `test_plot_frame_methods.rs`, each with the port's value and the reason "the port starts a differing day or month at 1 (quirk)", and the comparison asserts the port's value for those; ledger and PLAN §6 rows. `time_unit_h_iso` stays a known probe drift.
+- [ ] **Step 4:** Run; quirk "TimeFrame `Fields` never counts…" loses its Centre paragraph (moved into the new entry); CHANGELOG "Fixed" (a year-scale gap no longer gives a date two thousand years away). Commit ("Centre a calendar date axis on the start of a day or month, and fall back as C does for a year").
 
 ### Task 6: A blank sky value (`49e2c58c`)
 

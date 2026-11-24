@@ -38,6 +38,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Plot's major tick search overflows `int` for a zero or tiny Gap](#plots-major-tick-search-overflows-int-for-a-zero-or-tiny-gap)
 - [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
+- [TimeFrame `Centre` zeroes a calendar field that has no zero](#timeframe-centre-zeroes-a-calendar-field-that-has-no-zero)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
 - [`AxisFields` reads past the end of a value with leading spaces](#axisfields-reads-past-the-end-of-a-value-with-leading-spaces)
 - [SkyAxis `AxisFields` dereferences a null pointer when a separator is missing](#skyaxis-axisfields-dereferences-a-null-pointer-when-a-separator-is-missing)
@@ -411,6 +412,39 @@ Plot uses the count when it looks for the decimal point in a label and when it s
 The port mirrors the count, since Plot's output depends on it: `TimeFrame::fields` returns no fields and the value.
 Separately, `Centre` (timeframe.c:603) walks both formatted dates past their terminating nulls: when they are identical, which happens when the gap is too small to change the text, it reads one character past the end of each; when one has no further numeric field, as a bad value formatted as `<bad>` has none, that pointer keeps advancing past its null while the other waits.
 The port stops at the end of either string and returns the value unchanged.
+
+### TimeFrame `Centre` zeroes a calendar field that has no zero
+
+C location: `timeframe.c` `Centre`, at `fe26cc9b` (as changed by `b009d17c`).
+
+`Centre` is documented to return "an axis value which produces a nice formatted value suitable for a major tick mark on a plot axis, close to the supplied axis value".
+For a date Format it formats the dates one gap below and one gap above the value, finds the first numeric field in which they differ, sets that field and every later one to zero, and reads the text back.
+For the fields that start at zero (hours, minutes, seconds) that rounds down to the start of the next coarser unit, a clean boundary, which is plainly the intent.
+For a day or a month it does not, as they start at 1, and for a year there is no coarser unit at all.
+
+For the value MJD 56000.37 (2012-03-14 08:52:48):
+
+| gap | first field that differs | the intent: start of the coarser unit | C at `fe26cc9b` | this port |
+|---|---|---|---|---|
+| 0.01 day | hour | 2012-03-14 00:00, MJD 56000 | 56000 | 56000 |
+| 1 day | day | 2012-03-01, MJD 55987 | 55986 (2012-02-29) | 55987 |
+| 30 days | month | 2012-01-01, MJD 55927 | 56010 (2012-03-24) | 55927 |
+| 400 days | year | none | 56000 | 56000 |
+
+- **A day of zero** is read as the day before the first of the month (`testfields.c` relies on it), so C gives the last day of the previous month, 2012-02-29: a date chosen by accident, not a nice one.
+- **A month of zero** is not a date, so the text is not read in full; since `b009d17c` C then uses the Frame `Centre`, which rounds the value to a multiple of the gap and gives 2012-03-24, close to the value but not a calendar boundary.
+- **A year of zero** is not a year near the value. C falls back to the Frame `Centre` as for a month; before `b009d17c` it returned a value that had not been set. Read as a two-digit year, "0000" is 2000, twelve years from the value, which is what an earlier version of this port gave (51544).
+
+Plot uses the centre only as a phase: `FindMajTicks2` puts the ticks at `centre + k*gap`, so how far the centre is from the value does not matter, and at a gap of a day 55986, 55987 and 56000 give the same ticks, all at midnight.
+At a gap of 30 or 400 days no centre puts every tick on the start of a month or a year, since those have no fixed length; the choice decides which tick, if any, falls on a round date.
+`testfields.c` checks that the result at a gap of 30 or 400 days is within a gap of the value, a property of C's fallback rather than of `Centre`'s purpose.
+
+Consequence: a calendar-date axis with a gap of a day has its reference tick on the last day of the previous month, and one with a gap of about a month has none on a round date.
+
+This port does not mirror it, by decision (2026-11-23): a day or a month that differs is set to 1, the start of the coarser unit, and a year that differs, which has no coarser unit, falls back to the Frame `Centre` as C does.
+The port's values are in the table, and differ from C's for the gaps of a day and of a month; `test_fields.rs` pins them, and the CENTRE rows of `plot_frame_methods_oracle` that differ are named in an exclusion list.
+The port first followed a C branch, `u/timj/timeframe-centre-date`, that ended a zeroed day or month with a 1; upstream took `b009d17c` instead.
+Proposed C change: when the first differing field is the day or the month, set it to 1 rather than 0 (and the later fields to 0); when it is the year, use the Frame `Centre`; and drop `testfields.c`'s within-a-gap check for the month case, or replace it with the start-of-year value.
 
 ### SkyAxis `AxisFields` dereferences a null pointer when a separator is missing
 
