@@ -404,11 +404,17 @@ The port already behaved as the fixed C for `cbd04fa7`, `31541c4a`, `afc179b0`, 
 The WcsMap-loader half of `cfdbbe8d` belongs to stage 5.
 Entries of the Java port's `~/work/astjava/docs/rust-c-differences.md` that these commits resolve, for that port to follow: a failed write loses a card it replaced, two SkyFrames or two SpecFrames in `MakeFitsFrameSet`, more than 99 WCS axes, the dimensions of degenerate axes in `MakeInvertable`, and the CDELT values of a failed `MakeIntWorld`.
 
+Stage 3 (Regions) is done on `u/timj/sync-c-regions`, by [`docs/superpowers/plans/2026-11-23-upstream-sync-fe26cc9b-stage3.md`](docs/superpowers/plans/2026-11-23-upstream-sync-fe26cc9b-stage3.md), which opens with the triage of each commit.
+It ports `testregionhardening.c` and `testregionlogic.c`, and the fixes behind them: the points of a Frame grid (`3bf19b0e`), masking with an unbounded Region (`64c4401a`, and C's messages for `8b86f10a`'s case), the Frame `OverlapX` bounds its box in (`3b775b35`), `BndBaseMesh` for a Region with no mesh (`93432265`, a stack overflow), Intervals that are each other's negation on one axis (`bc374b82`), a Prism overlapping a negated Region (`cd1ca2b7`), the Bounded of an AND of unbounded Regions (`3cce24ce`, which resolves a quirk the port mirrored), "because" (`ad2b515b`), an Ellipse moved to its own centre (`3046b37e`), a Polygon of coincident or distant vertices (`832be0e3`, `ec7d8586`, a hang), and a NullRegion's bounds (`9b5a63a6`).
+The port already behaved as the fixed C for `07517ca8`, `59aaa1be`, `fbac9f50`, `3e7c4051`, `f19880b3`, `b222d947` and `b73010f9`, and for the typed-setter half of `ba6a0a62` and `27beb5a0`; `1df4a93a` fixes C memory handling the port does not have.
+Left open, each with a row: Region classes in the attribute-strings layer (§1, pending work), Frame geometry that takes an infinite value to be bad (§2, stage 4), and the Prism mesh limit and a grid's second NPTIN message (§1, stage 5).
+Entries of the Java port's `~/work/astjava/docs/rust-c-differences.md` that these commits resolve or change, for that port to follow: `astFrameGrid` counts beyond the range of `int`, `astNormBox` on a CmpFrame whose axes are permuted, a value holding `%` set on an Adaptive Region, picking axes and releasing the split Mapping twice in `MapRegion`, widening the box around a Region with no boundary mesh in `OverlapX`, a grid box beyond the `int` range in `Mask<X>`, a PointList's `RegPins`, `RegBaseBox` and overlap with a Box, the bounds of a NullRegion with more base than current Frame axes, moving an Interval, an Ellipse or a Prism, the overlap of two Intervals with an axis each other's negation, an Ellipse whose points do not determine an ellipse, the best fitting Ellipse through a mesh with no point away from its centre, a Polygon whose edges have no length, the line across an edge that never reaches its length (`Polywidth`), a CmpRegion that ANDs two unbounded Regions, the overlap of a Prism and a negated Region, the boundary mesh of a Prism, and meshing a Region with no mesh inside a box (`BndBaseMesh`).
+
 | Stage | Area | Suggested branch | Status |
 |---|---|---|---|
 | 1 | Mappings and the simplifier | `u/timj/sync-c-mappings` | done |
 | 2 | FitsChan | `u/timj/sync-c-fitschan` | done |
-| 3 | Regions | `u/timj/sync-c-regions` | pending |
+| 3 | Regions | `u/timj/sync-c-regions` | done |
 | 4 | Frames, Axis, formatting, time, units, casting, Plot | `u/timj/sync-c-frames` | pending |
 | 5 | Hostile input: loader checks, error parity, port-only limits, fuzzing | `u/timj/sync-c-hardening` | pending |
 
@@ -601,8 +607,8 @@ pin.
 | testpolymapinv.c | `test_polymapinv.rs` | ported 2026-11-23; the options-string case calls `set_iter_inverse`, and the messages are checked against a C probe. It exposed the default and setter upstream fixed in `857f4a99` |
 | testsplinemapedge.c | `test_splinemapedge.rs` | ported 2026-11-23 (`c_*`), with open-knot and NaN cases from a C probe; it exposed the evaluator faults upstream fixed in `0b427150`, `9a598e55` and `fd90f3b1` |
 | testfitswrite.c | `test_fitswrite.rs` | ported 2026-11-23, each case pinned to the C library's return |
-| testregionhardening.c | `test_regionhardening.rs` | partly ported (stage 3 of the `fe26cc9b` sync in progress, §8) |
-| testregionlogic.c | `test_regionlogic.rs` | partly ported (stage 3 of the `fe26cc9b` sync in progress, §8) |
+| testregionhardening.c | `test_regionhardening.rs` | ported 2026-11-23, each case pinned to the C library's value or error, two in `REGION_HARDENING_EXCLUDED` (§6): the attributes set as strings, and the values of a Polygon with a vertex at infinity |
+| testregionlogic.c | `test_regionlogic.rs` | ported 2026-11-23 |
 | testfields.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
 | testcast.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
 | testplotcopy.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
