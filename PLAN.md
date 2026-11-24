@@ -610,10 +610,10 @@ pin.
 | testfitswrite.c | `test_fitswrite.rs` | ported 2026-11-23, each case pinned to the C library's return |
 | testregionhardening.c | `test_regionhardening.rs` | ported 2026-11-23, each case pinned to the C library's value or error, two in `REGION_HARDENING_EXCLUDED` (§6): the attributes set as strings, and the values of a Polygon with a vertex at infinity |
 | testregionlogic.c | `test_regionlogic.rs` | ported 2026-11-23 |
-| testfields.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
-| testcast.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
-| testplotcopy.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
-| testplotclip.c | — | not ported — stage 4 of the `fe26cc9b` sync (§8) |
+| testfields.c | `test_fields.rs` | partly ported (stage 4 of the `fe26cc9b` sync in progress, §8) |
+| testcast.c | `test_cast.rs` | partly ported (stage 4 of the `fe26cc9b` sync in progress, §8); the Plot3D cases are left out, as Plot3D is not ported |
+| testplotcopy.c | — | not portable to the Rust API: it checks the graphics context (`astGetGrfContext`) and Plot3D, neither of which the Rust API has; port it with the C API |
+| testplotclip.c | `test_plotclip.rs` | partly ported (stage 4 of the `fe26cc9b` sync in progress, §8): codes compared, messages to follow |
 | testcorruptinput.c | — | not ported — stage 5 of the `fe26cc9b` sync (§8) |
 | testloaderhardening.c | — | not ported — stage 5 of the `fe26cc9b` sync (§8) |
 | testframeperm.c | — | not ported — stage 5 of the `fe26cc9b` sync (§8) |

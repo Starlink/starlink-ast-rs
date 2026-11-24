@@ -27,6 +27,8 @@ mod test_axis_format;
 mod test_axis_unformat;
 #[path = "../test_basicframe.rs"]
 mod test_basicframe;
+#[path = "../test_cast.rs"]
+mod test_cast;
 #[path = "../test_class_attrs.rs"]
 mod test_class_attrs;
 #[path = "../test_clear_on_set.rs"]
@@ -41,6 +43,8 @@ mod test_convert;
 mod test_convert_frameset_oracle;
 #[path = "../test_equal_oracle.rs"]
 mod test_equal_oracle;
+#[path = "../test_fields.rs"]
+mod test_fields;
 #[path = "../test_find_frame.rs"]
 mod test_find_frame;
 #[path = "../test_frame.rs"]
@@ -97,6 +101,8 @@ mod test_plot;
 mod test_plot_draw;
 #[path = "../test_plot_frame_methods.rs"]
 mod test_plot_frame_methods;
+#[path = "../test_plotclip.rs"]
+mod test_plotclip;
 #[path = "../test_system_change.rs"]
 mod test_system_change;
 #[path = "../test_unit_mapper.rs"]
