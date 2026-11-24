@@ -496,16 +496,12 @@ impl CmpRegion {
 
         let result = match oper {
             Oper::And => {
-                if reg1b || reg2b {
-                    true
-                } else {
-                    // Neither component is bounded: the AND is unbounded when
-                    // they have partial, no, or exactly-negating overlap.
-                    !matches!(
-                        reg1.overlap(reg2.as_ref())?,
-                        Overlap::None | Overlap::Partial | Overlap::Negation
-                    )
-                }
+                // With neither component bounded the AND is taken to be
+                // unbounded. It is when one is inside the other, being the
+                // inner one; when they overlap in part, or not at all, it may
+                // be bounded or empty, but neither component has a mesh from
+                // which to make one for it.
+                reg1b || reg2b
             }
             Oper::Or => reg1b && reg2b,
         };
@@ -724,7 +720,7 @@ impl RegionGeometry for CmpRegion {
                 return Err(AstError::new(
                     ErrorCode::Inter,
                     "astRegBaseMesh(CmpRegion): No mesh can be produced for the CmpRegion \
-                 bacause neither of its component Regions has a mesh (internal AST \
+                 because neither of its component Regions has a mesh (internal AST \
                  programming error).",
                 ));
             }
@@ -732,7 +728,7 @@ impl RegionGeometry for CmpRegion {
                 return Err(AstError::new(
                     ErrorCode::Inter,
                     "astRegBaseMesh(CmpRegion): No mesh can be produced for the CmpRegion \
-                 bacause one its component Regions has no mesh and the union of the \
+                 because one its component Regions has no mesh and the union of the \
                  Regions is required (internal AST programming error).",
                 ));
             }
@@ -2001,5 +1997,35 @@ impl From<Oper> for CmpOperator {
             Oper::And => CmpOperator::And,
             Oper::Or => CmpOperator::Or,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Neither component of an AND of two half-planes has a mesh.
+    #[test]
+    fn a_cmpregion_without_a_mesh_says_why() {
+        let half_plane = |x: f64| {
+            crate::regions::IntervalBuilder::new(
+                crate::frames::BasicFrameBuilder::new(2).build().unwrap(),
+                vec![x, crate::constants::BAD_VALUE],
+                vec![crate::constants::BAD_VALUE; 2],
+            )
+            .unwrap()
+            .build()
+            .unwrap()
+        };
+        let and = CmpRegionBuilder::new(half_plane(0.0), half_plane(1.0), CmpOperator::And)
+            .unwrap()
+            .build()
+            .unwrap();
+        let err = and.reg_base_mesh().unwrap_err();
+        assert_eq!(
+            err.message(),
+            "astRegBaseMesh(CmpRegion): No mesh can be produced for the CmpRegion because \
+             neither of its component Regions has a mesh (internal AST programming error)."
+        );
     }
 }

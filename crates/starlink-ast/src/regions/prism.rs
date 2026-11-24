@@ -292,6 +292,20 @@ impl Prism {
                     && let super::PickedAxes::Region(that_base) =
                         super::pick_axes_region(that, &outax)?
                 {
+                    // The Regions picked from that carry its Negated attribute,
+                    // but the overlap is found below as if neither Prism were
+                    // negated and then allowed for negation, so they are used
+                    // un-negated.
+                    let mut that_ext = that_ext;
+                    let mut that_base = that_base;
+                    if that.is_negated() {
+                        for r in [&mut that_ext, &mut that_base] {
+                            if r.is_negated() {
+                                r.negate();
+                            }
+                        }
+                    }
+
                     // Map the two Regions picked from that into the Frames of
                     // this Prism's components, and compare each pair.
                     let mut emap = emap;
@@ -402,7 +416,7 @@ impl RegionGeometry for Prism {
             if !has_mesh(&self.region1)? || !has_mesh(&self.region2)? {
                 return Err(AstError::new(
                     ErrorCode::Inter,
-                    "astRegBaseMesh(Prism): No mesh can be produced for the Prism bacause \
+                    "astRegBaseMesh(Prism): No mesh can be produced for the Prism because \
                  one of its component Regions is unbounded.",
                 ));
             }
@@ -1492,5 +1506,41 @@ impl Mapping for Prism {
             ((self.region1.as_ref() as &dyn Mapping).clone_box(), false),
             ((self.region2.as_ref() as &dyn Mapping).clone_box(), false),
         ])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A Prism with a component unbounded on one side has no mesh.
+    #[test]
+    fn a_prism_without_a_mesh_says_why() {
+        let half_line = crate::regions::IntervalBuilder::new(
+            crate::frames::BasicFrameBuilder::new(1).build().unwrap(),
+            vec![0.0],
+            vec![crate::constants::BAD_VALUE],
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let unit_box = crate::regions::BoxRegionBuilder::from_bounds(
+            crate::frames::BasicFrameBuilder::new(2).build().unwrap(),
+            &[0.0, 0.0],
+            &[1.0, 1.0],
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let prism = PrismBuilder::new(half_line, unit_box)
+            .unwrap()
+            .build()
+            .unwrap();
+        let err = prism.reg_base_mesh().unwrap_err();
+        assert_eq!(
+            err.message(),
+            "astRegBaseMesh(Prism): No mesh can be produced for the Prism because one of its \
+             component Regions is unbounded."
+        );
     }
 }

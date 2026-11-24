@@ -96,7 +96,6 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astMask<X>` documentation counts pixels set to a "badval" it does not take](#the-astmaskx-documentation-counts-pixels-set-to-a-badval-it-does-not-take)
 - [The `astInterval` documentation says at least one axis limit must be supplied](#the-astinterval-documentation-says-at-least-one-axis-limit-must-be-supplied)
 - [The `astDownsize` documentation does not say which Frame `maxerr` is measured in](#the-astdownsize-documentation-does-not-say-which-frame-maxerr-is-measured-in)
-- [A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded](#a-cmpregion-that-ands-two-nested-unbounded-regions-reports-itself-as-bounded)
 - [The `MinOrder` documentation gives a default of MaxOrder minus 4](#the-minorder-documentation-gives-a-default-of-maxorder-minus-4)
 - [The C edition of the `astAddMocData` and `astAddMocString` documentation describes `negate` the wrong way round](#the-c-edition-of-the-astaddmocdata-and-astaddmocstring-documentation-describes-negate-the-wrong-way-round)
 - [The `astAddMocString` documentation says cells above `maxorder` are ignored](#the-astaddmocstring-documentation-says-cells-above-maxorder-are-ignored)
@@ -227,6 +226,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream 4175c735): A failed FitsChan write loses the cards it replaced](#resolved-upstream-4175c735-a-failed-fitschan-write-loses-the-cards-it-replaced)
 - [RESOLVED (upstream bd9ffbfc): DATE-OBS is written for an MJD with no calendar date](#resolved-upstream-bd9ffbfc-date-obs-is-written-for-an-mjd-with-no-calendar-date)
 - [RESOLVED (upstream cfdbbe8d): A FITS value an integer cannot hold is converted to one](#resolved-upstream-cfdbbe8d-a-fits-value-an-integer-cannot-hold-is-converted-to-one)
+- [RESOLVED (upstream 3cce24ce): A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded](#resolved-upstream-3cce24ce-a-cmpregion-that-ands-two-nested-unbounded-regions-reports-itself-as-bounded)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -1384,21 +1384,6 @@ Consequence: documentation only.
 
 `Polygon::downsize` says the distance is measured in the Frame the Polygon was defined in.
 A C fix: say "within the Frame in which the Polygon was originally defined".
-
-### A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded
-
-C location: `cmpregion.c` `GetBounded`, the AND branch (line 817).
-
-When neither component of an AND is bounded, `GetBounded` calls the AND unbounded only if `astOverlap` gives 1 (no overlap), 4 (partial overlap) or 6 (negation), and bounded otherwise.
-When one component lies inside the other (2 or 3), the AND is the inner component, which is unbounded.
-A C-oracle probe ANDs two Intervals, x > 0 and x > 1: both are unbounded, `astOverlap` gives 3, and the CmpRegion reports `Bounded` as 1 while containing the point (1e30, 1e30).
-The same happens for two identical unbounded Regions (5).
-Conversely, when the two do not overlap (1), the AND is empty, yet it is reported as unbounded, while an empty Region such as a NullRegion is bounded.
-
-Consequence: the Bounded attribute of such CmpRegions is wrong.
-
-The port mirrors the test (`CmpRegion::get_bounded`); `and_of_nested_unbounded_regions_reports_bounded_as_c_does` in `tests/test_cmpregion.rs` pins it.
-Question for upstream: should overlap results 2, 3 and 5 make the AND unbounded, and 1 make it bounded?
 
 ### The `MinOrder` documentation gives a default of MaxOrder minus 4
 
@@ -5559,3 +5544,14 @@ Upstream refuses a value outside the type's range (`AST__FTCNV` from `astGetFits
 Both now refuse as upstream does, with C's messages (`a_float_an_integer_cannot_hold_is_not_converted` and `a_grism_order_out_of_range_is_refused` in `tests/test_fitschan.rs`).
 The conversion error also no longer carries the error code's description in front of C's first message.
 The commit's LutMap half matches already (Rust's saturating cast puts an index beyond the table, as upstream's clamp does); its WcsMap loader half is for the hostile-input stage.
+
+### RESOLVED (upstream 3cce24ce): A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded
+
+C location: `cmpregion.c` `GetBounded`, the AND branch.
+
+When neither component of an AND was bounded, `GetBounded` called the AND unbounded only if `astOverlap` gave 1 (no overlap), 4 (partial overlap) or 6 (negation), and bounded otherwise.
+When one component lies inside the other (2 or 3), the AND is the inner component, which is unbounded.
+A C-oracle probe ANDed two Intervals, x > 0 and x > 1: both are unbounded, `astOverlap` gives 3, and the CmpRegion reported `Bounded` as 1 while containing the point (1e30, 1e30).
+
+The port mirrored the test in `CmpRegion::get_bounded`.
+Upstream now calls the AND of two unbounded components unbounded whatever their overlap, since neither has a boundary mesh from which to make one for it, and the port follows: `and_of_nested_unbounded_regions_is_unbounded` in `tests/test_cmpregion.rs` and `cmpregions` in `tests/test_regionlogic.rs` cover it.
