@@ -125,6 +125,9 @@ impl PermMap {
         // from a C native dump, which may legitimately carry such entries
         // (e.g. a negative entry with no Nconst), round-trip and transform as
         // C does.
+        // C stores an array of no elements as no array at all (`astStore`
+        // of zero bytes gives NULL), so it is the null permutation, which a
+        // dump writes as `OutCpy = 1` or `InCpy = 1`.
         Ok(Self {
             outperm: outperm.to_vec(),
             inperm: inperm.to_vec(),
@@ -134,8 +137,8 @@ impl PermMap {
             ident: None,
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
-            out_is_copy: false,
-            in_is_copy: false,
+            out_is_copy: outperm.is_empty(),
+            in_is_copy: inperm.is_empty(),
             perm_split: None,
         })
     }
@@ -206,8 +209,8 @@ impl PermMap {
         let in_vec = inperm.map_or_else(|| null_perm(nin, nout), <[i64]>::to_vec);
         let out_vec = outperm.map_or_else(|| null_perm(nout, nin), <[i64]>::to_vec);
         let mut map = Self::new(&in_vec, &out_vec, constants)?;
-        map.in_is_copy = inperm.is_none();
-        map.out_is_copy = outperm.is_none();
+        map.in_is_copy |= inperm.is_none();
+        map.out_is_copy |= outperm.is_none();
         Ok(map)
     }
 
@@ -528,6 +531,14 @@ fn add_constant(constants: &mut Vec<f64>, val: f64) -> usize {
     constants.len() - 1
 }
 
+/// The constant a negative permutation entry `p` names, or `None` when
+/// there is no such constant, which is a bad value as in the C library.
+fn named_constant(constants: &[f64], p: i64) -> Option<f64> {
+    usize::try_from(-(p + 1))
+        .ok()
+        .and_then(|i| constants.get(i).copied())
+}
+
 /// Compose two permutation arrays in series (first then second).
 ///
 /// For each element `p2` in `second_perm`:
@@ -554,10 +565,14 @@ fn compose_perms(
             // BAD
             result_perm.push(0);
         } else if p2 < 0 {
-            // Constant from second
-            let val = second_constants[(-p2 - 1) as usize];
-            let idx = add_constant(&mut result_constants, val);
-            result_perm.push(-((idx + 1) as i64));
+            // Constant from second, or bad if there is no such constant.
+            match named_constant(second_constants, p2) {
+                Some(val) => {
+                    let idx = add_constant(&mut result_constants, val);
+                    result_perm.push(-((idx + 1) as i64));
+                }
+                None => result_perm.push(0),
+            }
         } else {
             // p2 > 0: look up in first_perm
             let first_idx = (p2 - 1) as usize;
@@ -570,10 +585,15 @@ fn compose_perms(
                     // BAD propagates
                     result_perm.push(0);
                 } else if p1 < 0 {
-                    // Constant from first
-                    let val = first_constants[(-p1 - 1) as usize];
-                    let idx = add_constant(&mut result_constants, val);
-                    result_perm.push(-((idx + 1) as i64));
+                    // Constant from first, or bad if there is no such
+                    // constant.
+                    match named_constant(first_constants, p1) {
+                        Some(val) => {
+                            let idx = add_constant(&mut result_constants, val);
+                            result_perm.push(-((idx + 1) as i64));
+                        }
+                        None => result_perm.push(0),
+                    }
                 } else {
                     // Pass through input coordinate
                     result_perm.push(p1);
@@ -940,8 +960,7 @@ impl Mapping for PermMap {
             for &p in self_outperm {
                 if p > 0 {
                     new_outperm.push(p);
-                } else if p < 0 {
-                    let val = self.constants[(-p - 1) as usize];
+                } else if let Some(val) = named_constant(&self.constants, p) {
                     let idx = add_constant(&mut merged_constants, val);
                     new_outperm.push(-((idx + 1) as i64));
                 } else {
@@ -951,8 +970,7 @@ impl Mapping for PermMap {
             for &p in other_outperm {
                 if p > 0 {
                     new_outperm.push(p + n1_in as i64); // offset by first's input count
-                } else if p < 0 {
-                    let val = other_perm.constants[(-p - 1) as usize];
+                } else if let Some(val) = named_constant(&other_perm.constants, p) {
                     let idx = add_constant(&mut merged_constants, val);
                     new_outperm.push(-((idx + 1) as i64));
                 } else {
@@ -965,8 +983,7 @@ impl Mapping for PermMap {
             for &p in self_inperm {
                 if p > 0 {
                     new_inperm.push(p);
-                } else if p < 0 {
-                    let val = self.constants[(-p - 1) as usize];
+                } else if let Some(val) = named_constant(&self.constants, p) {
                     let idx = add_constant(&mut merged_constants, val);
                     new_inperm.push(-((idx + 1) as i64));
                 } else {
@@ -976,8 +993,7 @@ impl Mapping for PermMap {
             for &p in other_inperm {
                 if p > 0 {
                     new_inperm.push(p + n1_out as i64); // offset by first's output count
-                } else if p < 0 {
-                    let val = other_perm.constants[(-p - 1) as usize];
+                } else if let Some(val) = named_constant(&other_perm.constants, p) {
                     let idx = add_constant(&mut merged_constants, val);
                     new_inperm.push(-((idx + 1) as i64));
                 } else {
@@ -1128,7 +1144,10 @@ impl Mapping for PermMap {
                     }
                 } else if p < 0 {
                     let cidx = (-p - 1) as usize;
-                    let old_val = new_constants[cidx];
+                    // No such constant is a bad value, which stays bad.
+                    let Some(old_val) = named_constant(&new_constants, p) else {
+                        continue;
+                    };
                     if super::helpers::is_bad(old_val) {
                         continue;
                     }

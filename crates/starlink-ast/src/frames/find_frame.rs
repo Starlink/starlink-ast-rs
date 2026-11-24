@@ -678,15 +678,16 @@ pub(crate) fn default_sub_frame(
     //   inperm[target_axis] = result_axis (1-based) or 0 if no result
     //   axis is associated with this target axis.
     //
-    // Mirrors frame.c:10987-11015 with the only difference being the
-    // 1-based / 0-as-BAD encoding of our PermMap (vs the C 0-based /
-    // -1-as-unassociated encoding).
-    let mut outperm = vec![0i64; result_naxes];
-    let mut inperm = vec![0i64; target_naxes];
+    // Mirrors frame.c:10987-11015. The PermMap numbers its axes from 1
+    // where C numbers them from 0, but an axis with no partner is -1 in
+    // both, a constant the PermMap does not have and so a bad value, which
+    // a dump writes as C's does.
+    let mut outperm = vec![-1i64; result_naxes];
+    let mut inperm = vec![-1i64; target_naxes];
     let mut unit = target_naxes == result_naxes;
     for (result_axis, &t) in target_axes.iter().enumerate() {
         if t < 0 || (t as usize) >= target_naxes {
-            outperm[result_axis] = 0;
+            outperm[result_axis] = -1;
             unit = false;
         } else {
             outperm[result_axis] = (t as i64) + 1;
