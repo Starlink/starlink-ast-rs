@@ -41,8 +41,6 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A `%a` Format gives different text on different platforms](#a-a-format-gives-different-text-on-different-platforms)
 - [SkyAxis gives `<bad>` for a value whose text passes 70 characters](#skyaxis-gives-bad-for-a-value-whose-text-passes-70-characters)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
-- [`AxisFields` reads past the end of a value with leading spaces](#axisfields-reads-past-the-end-of-a-value-with-leading-spaces)
-- [SkyAxis `AxisFields` dereferences a null pointer when a separator is missing](#skyaxis-axisfields-dereferences-a-null-pointer-when-a-separator-is-missing)
 - [A PointList's `Transform` moves its shared uncertainty Region twice per list point](#a-pointlists-transform-moves-its-shared-uncertainty-region-twice-per-list-point)
 - [SelectorMap's `Transform` negates and re-closes each selector Region in place](#selectormaps-transform-negates-and-re-closes-each-selector-region-in-place)
 - [`CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column](#compressmatrix-recomputes-sqrt-dbl_epsilon--for-every-row-and-column)
@@ -232,6 +230,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream cfdbbe8d): A FITS value an integer cannot hold is converted to one](#resolved-upstream-cfdbbe8d-a-fits-value-an-integer-cannot-hold-is-converted-to-one)
 - [RESOLVED (upstream 3cce24ce): A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded](#resolved-upstream-3cce24ce-a-cmpregion-that-ands-two-nested-unbounded-regions-reports-itself-as-bounded)
 - [RESOLVED (upstream 86601275): `astReadDateTime` tests ERFA's status against SLALIB's codes](#resolved-upstream-86601275-astreaddatetime-tests-erfas-status-against-slalibs-codes)
+- [RESOLVED (upstream 49e2c58c): SkyAxis `AxisFields` dereferences a null pointer when a separator is missing](#resolved-upstream-49e2c58c-skyaxis-axisfields-dereferences-a-null-pointer-when-a-separator-is-missing)
+- [RESOLVED (upstream 3a32fec8): `AxisFields` reads past the end of a value with leading spaces](#resolved-upstream-3a32fec8-axisfields-reads-past-the-end-of-a-value-with-leading-spaces)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -468,28 +468,6 @@ Consequence: values far beyond any meaningful angle are written as long strings 
 
 The port mirrors it, by decision (2026-11-23): `dhms_format` gives `<bad>` when its text passes 70 characters (`huge_sky_values` in `tests/test_fields.rs`).
 Proposed C change: give `<bad>` once the smallest field the Format asks for is finer than the value's resolution, so that the cut-off follows the precision rather than the buffer.
-
-### SkyAxis `AxisFields` dereferences a null pointer when a separator is missing
-
-`skyaxis.c` `AxisFields` (skyaxis.c:479) finds the end of each terminated field with `t = strstr( p, term )`, sets `ok = 0` when `t` is null, and then still computes `p = t + strlen( term )` and later calls `astChrLen( p )`.
-A value lacking a separator its Format names, such as `"12:34"` split with `hms`, therefore reads through an invalid pointer; on macOS arm64 the process crashes.
-Plot splits labels it formatted itself with the same Format, so its own calls do not meet this, but `astAbbrev` and `astFields` take any string.
-Two smaller defects sit beside it: with a `+` sign and a single unterminated field (Format `d` or `h`), `p` is advanced one byte past the field, past the terminating null when there is no trailing space; and when the text is blank before any field is read, `sscanf` returns `EOF`, which the code takes as success with `dval` uninitialized.
-The port returns no fields for a missing separator or blank text, and ends a `+`-signed field at its last non-blank character, which is what C gives whenever its read stays inside the string (`skyaxis::sky_axis_fields`); the first is pinned by `sky_fields_without_a_named_separator_find_none` in `crates/starlink-ast/tests/test_plot_frame_methods.rs`; the probe avoids them.
-Where `EOF` arrives in a later field `dval` holds the previous field's value, which is defined, and the port mirrors it: `"12:"` split with `dm` is 12 degrees 12 minutes.
-`AxisAbbrev` (skyaxis.c:307) has a related defect: with a null `str1` it returns `fld2[ nf2 - 1 ]`, the start of the last field of `str2`, and when `str2` has no fields that reads `fld2[ -1 ]`, an uninitialized slot before the array, and returns it as a pointer into `str2` (observed: an offset of 1786110374 for `"a:b:c"` with `hms`).
-Plot passes a null `str1` to find the last field of a label (plot.c:23849), so a label that does not parse with the axis Format reaches it.
-The port returns 0, the start of `str2` (`skyaxis::sky_axis_abbrev`).
-
-### `AxisFields` reads past the end of a value with leading spaces
-
-`axis.c` `AxisFields` (axis.c:414, the decimal branch) skips the leading spaces of the formatted value, then finds the end of the field with `p += len`, where `len` is the length of the whole string.
-Starting from the first non-blank character, that lands past the terminating null by the number of leading spaces, and the trailing-space loop then reads the bytes beyond the string.
-The field length returned is the length of the whole string, plus or minus whatever spaces follow it in memory, rather than the length of the value.
-Observed through `astFields` on a plain Frame with `"  -7 "`: C returns one field of 5 characters starting at offset 2 (`tools/oracle_fixtures/plot_frame_methods_probe.c`).
-A value only has leading spaces when its Format pads it (`%10.3f`, say); Plot passes such a label's fields to its abbreviation and log-label logic.
-The fix is `p = str + len` before the trailing-space loop.
-The port does not mirror the read: `axis::plain_axis_fields` returns the field from the first to the last non-blank character, and `FIELDS_EXCLUDED` in `crates/starlink-ast/tests/test_plot_frame_methods.rs` names the C cases it differs on.
 
 ### A PointList's `Transform` moves its shared uncertainty Region twice per list point
 
@@ -5652,3 +5630,30 @@ Upstream now reports `Year value (N) is invalid.` and `Month value (N) is invali
 A day that is not valid for its month is still accepted, deliberately, and counted on from the start of the month (`2012-03-00` is 29 February), which TimeFrame `Centre` relies on (see "TimeFrame `Centre` zeroes a calendar field that has no zero").
 
 The port never read a bad year or month, but reported it as "Date/time does not have the correct form."; it now gives C's messages (`dates` in `tests/test_fields.rs`), and reads a bad day as C does (`unformat_counts_days_outside_the_month_from_its_start` in `test_timeframe.rs`).
+
+### RESOLVED (upstream 49e2c58c): SkyAxis `AxisFields` dereferences a null pointer when a separator is missing
+
+`skyaxis.c` `AxisFields` (skyaxis.c:479) finds the end of each terminated field with `t = strstr( p, term )`, sets `ok = 0` when `t` is null, and then still computes `p = t + strlen( term )` and later calls `astChrLen( p )`.
+A value lacking a separator its Format names, such as `"12:34"` split with `hms`, therefore reads through an invalid pointer; on macOS arm64 the process crashes.
+Plot splits labels it formatted itself with the same Format, so its own calls do not meet this, but `astAbbrev` and `astFields` take any string.
+Two smaller defects sit beside it: with a `+` sign and a single unterminated field (Format `d` or `h`), `p` is advanced one byte past the field, past the terminating null when there is no trailing space; and when the text is blank before any field is read, `sscanf` returns `EOF`, which the code takes as success with `dval` uninitialized.
+The port returns no fields for a missing separator or blank text, and ends a `+`-signed field at its last non-blank character, which is what C gives whenever its read stays inside the string (`skyaxis::sky_axis_fields`); the first is pinned by `sky_fields_without_a_named_separator_find_none` in `crates/starlink-ast/tests/test_plot_frame_methods.rs`; the probe avoids them.
+Where `EOF` arrives in a later field `dval` holds the previous field's value, which is defined, and the port mirrors it: `"12:"` split with `dm` is 12 degrees 12 minutes.
+`AxisAbbrev` (skyaxis.c:307) has a related defect: with a null `str1` it returns `fld2[ nf2 - 1 ]`, the start of the last field of `str2`, and when `str2` has no fields that reads `fld2[ -1 ]`, an uninitialized slot before the array, and returns it as a pointer into `str2` (observed: an offset of 1786110374 for `"a:b:c"` with `hms`).
+Plot passes a null `str1` to find the last field of a label (plot.c:23849), so a label that does not parse with the axis Format reaches it.
+The port returns 0, the start of `str2` (`skyaxis::sky_axis_abbrev`).
+
+Upstream `49e2c58c` leaves the pointer where it is when a separator is not found, finds the end of a one-field value from its start (so a `+` sign is allowed for), and starts the value at zero, so a blank value is one field of zero; `f3e0de73` makes `AxisAbbrev` return 0, the start of `str2`, when it has no fields.
+The port already returned no fields for a missing separator, ended a `+`-signed field as C now does, and returned 0 from `AxisAbbrev`; it now reads a blank value as one field of zero, as C does (`sky` in `tests/test_fields.rs`).
+
+### RESOLVED (upstream 3a32fec8): `AxisFields` reads past the end of a value with leading spaces
+
+`axis.c` `AxisFields` (axis.c:414, the decimal branch) skips the leading spaces of the formatted value, then finds the end of the field with `p += len`, where `len` is the length of the whole string.
+Starting from the first non-blank character, that lands past the terminating null by the number of leading spaces, and the trailing-space loop then reads the bytes beyond the string.
+The field length returned is the length of the whole string, plus or minus whatever spaces follow it in memory, rather than the length of the value.
+Observed through `astFields` on a plain Frame with `"  -7 "`: C returns one field of 5 characters starting at offset 2 (`tools/oracle_fixtures/plot_frame_methods_probe.c`).
+A value only has leading spaces when its Format pads it (`%10.3f`, say); Plot passes such a label's fields to its abbreviation and log-label logic.
+The fix is `p = str + len` before the trailing-space loop.
+The port does not mirror the read: `axis::plain_axis_fields` returns the field from the first to the last non-blank character, and `FIELDS_EXCLUDED` in `crates/starlink-ast/tests/test_plot_frame_methods.rs` names the C cases it differs on.
+
+Upstream `3a32fec8` finds the end of the field from its start, giving one field of 2 characters at offset 2, which the port always gave; `FIELDS_EXCLUDED` in `test_plot_frame_methods.rs` is empty since the probe was regenerated at the pin.

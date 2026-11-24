@@ -89,6 +89,10 @@ fn sky() {
     check_fields(&sky, "d", "-12.5", 1, 0, 5, -12.5 * deg);
     check_fields(&sky, "d", "12.5 ", 1, 0, 4, 12.5 * deg);
     check_fields(&sky, "h", "+3", 1, 0, 2, 45.0 * deg);
+
+    // No number can be read from a blank value, which is a field of zero.
+    check_fields(&sky, "d", "", 1, 0, 0, 0.0);
+    check_fields(&sky, "d", "   ", 1, 3, 0, 0.0);
 }
 
 /// A value on a simple axis is one field, without the spaces round it.

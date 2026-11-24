@@ -1012,13 +1012,11 @@ fn chr_len(s: &[u8]) -> usize {
 ///
 /// Every field the Format names is returned whenever `maxfld` is not zero,
 /// even if there are more of them than `maxfld`, as C writes them all.
-// C: skyaxis.c `AxisFields` (skyaxis.c:479). Where C's behavior is
-// undefined the port fails to find any field: a separator the Format names
-// that is missing from the text (C dereferences a null pointer), and a
-// value that is empty or white space before any field has been read (C
-// uses an uninitialized value). Where C's `sscanf` meets the end of the
-// text in a later field it keeps the previous field's value, which the port
-// mirrors, so "12:" read with "dm" is 12 degrees and 12 minutes.
+// C: skyaxis.c `AxisFields`. With a value
+// missing a separator the Format names, the text does not match and no
+// field is found. A blank field leaves the value read from it unchanged,
+// so a blank value is one field of zero, and "12:" read with "dm" is 12
+// degrees and 12 minutes.
 pub(crate) fn sky_axis_fields(
     fmt: &str,
     digits: i32,
@@ -1072,7 +1070,9 @@ pub(crate) fn sky_axis_fields(
     };
     let mut fields = Vec::new();
     let mut value = 0.0;
-    let mut dval: Option<f64> = None;
+    // A blank field leaves the value read from it unchanged, so it starts
+    // at zero, as C's does since upstream 49e2c58c.
+    let mut dval = 0.0;
     if f.dh {
         let first = f.sep.term(if f.as_time { 'h' } else { 'd' }, f.as_time);
         let term = if letters {
@@ -1087,12 +1087,11 @@ pub(crate) fn sky_axis_fields(
             return Ok(failed);
         };
         match scan_lg(&s[start..]) {
-            Scan::Value(v) => {
-                value = v.abs();
-                dval = Some(v);
-            }
-            Scan::NoMatch | Scan::Eof => return Ok(failed),
+            Scan::Value(v) => dval = v,
+            Scan::Eof => {}
+            Scan::NoMatch => return Ok(failed),
         }
+        value = dval.abs();
         fields.push(start..start + nc);
     }
     for (present, letter, sep_ends, divisor) in
@@ -1114,11 +1113,11 @@ pub(crate) fn sky_axis_fields(
             return Ok(failed);
         };
         match scan_lg(&s[fstart..]) {
-            Scan::Value(v) => dval = Some(v),
-            Scan::Eof if dval.is_some() => {}
-            Scan::NoMatch | Scan::Eof => return Ok(failed),
+            Scan::Value(v) => dval = v,
+            Scan::Eof => {}
+            Scan::NoMatch => return Ok(failed),
         }
-        value += dval.unwrap_or_default() / divisor;
+        value += dval / divisor;
         fields.push(fstart..fstart + nc);
     }
     if chr_len(&s[p..]) > 0 {
