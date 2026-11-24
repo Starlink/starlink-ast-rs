@@ -240,6 +240,77 @@ fn interval(naxes: usize, lo: &[f64], hi: &[f64]) -> impl Region {
 
 #[test]
 fn overlaps() {
+    // A Region with one base Frame axis and two current Frame axes and no
+    // boundary mesh: a half-line mapped into two dimensions by a MathMap,
+    // so that it is not simplified. A position is inside it if the inverse
+    // puts it in the half-line, whatever its second coordinate.
+    let half_line = || {
+        let iv = interval(1, &[0.0], &[BAD_VALUE]);
+        let map = MathMap::new(1, 2, &["a = x", "b = 0*x"], &["x = a"]).unwrap();
+        iv.map_region(&map, &plain(2)).unwrap()
+    };
+    let in_box = || {
+        BoxRegionBuilder::from_bounds(plain(2), &[1.0, -1.0], &[2.0, 1.0])
+            .unwrap()
+            .build()
+            .unwrap()
+    };
+    let got = within_10s(move || overlap_code(half_line().as_ref(), &in_box()));
+    assert_eq!(got, 3, "a half-line mapped into two dimensions and a Box");
+    let got = within_10s(move || overlap_code(&in_box(), half_line().as_ref()));
+    assert_eq!(got, 2, "a Box and a half-line mapped into two dimensions");
+
+    // Two 2-D Intervals, one the negation of the other on axis 1: each is
+    // the other's negation when axis 2 has no limit, and they do not overlap
+    // when it has one.
+    let got = within_10s(|| {
+        overlap_code(
+            &interval(2, &[2.0, BAD_VALUE], &[1.0, BAD_VALUE]),
+            &interval(2, &[1.0, BAD_VALUE], &[2.0, BAD_VALUE]),
+        )
+    });
+    assert_eq!(got, 6, "no limit on axis 2");
+    let got = within_10s(|| {
+        overlap_code(
+            &interval(2, &[2.0, 1.0], &[1.0, 0.0]),
+            &interval(2, &[1.0, 0.0], &[2.0, 1.0]),
+        )
+    });
+    assert_eq!(got, 1, "the same range on axis 2");
+
+    // A Prism has no boundary mesh if one of its components has no limit on
+    // one side, and the part of its boundary within a box cannot then be
+    // found. It used to ask for the same mesh again, without end.
+    let no_mesh_prism = || {
+        let unit_box = BoxRegionBuilder::from_bounds(plain(2), &[0.0, 0.0], &[1.0, 1.0])
+            .unwrap()
+            .build()
+            .unwrap();
+        PrismBuilder::new(interval(1, &[0.0], &[BAD_VALUE]), unit_box)
+            .unwrap()
+            .build()
+            .unwrap()
+    };
+    let ball = || {
+        CircleBuilder::new(plain(3), vec![0.5, 0.5, 0.5])
+            .unwrap()
+            .radius(0.3)
+            .build()
+            .unwrap()
+    };
+    let message = "astOverlap(Prism): The current implementation of astOverlap cannot \
+                   determine the overlap between the supplied Regions (a Prism and a Circle).";
+    expect_err(
+        within_10s(move || ball().overlap(&no_mesh_prism())),
+        ErrorCode::Inter,
+        &[message],
+    );
+    expect_err(
+        within_10s(move || no_mesh_prism().overlap(&ball())),
+        ErrorCode::Inter,
+        &[message],
+    );
+
     // A PointList and a Box that contains it.
     assert_eq!(overlap_code(&two_points(), &box_0_5()), 2);
 

@@ -141,12 +141,6 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
     let mut reg2_is_that = true;
     let mut first = true;
 
-    // Bounds of the transformed reg2 mesh, in reg1's base Frame. Filled in the
-    // loop; needed for the unbounded-reg1 fallback in the FALSE branch.
-    let nc0 = this.get_region_frameset().base().naxes().max(that.naxes());
-    let mut lbnd = vec![f64::MAX; nc0];
-    let mut ubnd = vec![-f64::MAX; nc0];
-
     // The transformed reg2 mesh (reg1 base Frame), reg2 mesh (reg2 current
     // Frame), and the reg2_current -> reg1_base Mapping, resolved when the
     // L1 loop breaks on a usable mesh.
@@ -157,9 +151,14 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
     let neither = || {
         AstError::new(
             ErrorCode::Inter,
-            "astOverlap(Region): Neither of the two supplied Regions has a finite boundary. \
-             The current implementation of astOverlap cannot determine the overlap \
-             between two Regions unless at least one of them has a finite boundary.",
+            format!(
+                "astOverlap(Region): Neither of the two supplied Regions (classes {} and {}) \
+                 has a finite boundary.\n\
+                 The current implementation of astOverlap cannot determine the overlap \
+                 between two Regions unless at least one of them has a finite boundary.",
+                super::class_name(this.as_any()),
+                super::class_name(that.as_any())
+            ),
         )
     };
     let (ps1, reg2_mesh, map, map_reg1) = loop {
@@ -187,26 +186,9 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
         // Transform the mesh into reg1's base Frame (region.c:7132).
         let transformed = m.transform(&cur_mesh, true)?;
 
-        // Check for good points and find the bounds (region.c:7136-7154).
-        let nc = transformed.ncoord();
-        let np = transformed.npoint();
-        let mut good = false;
-        for i in 0..nc {
-            lbnd[i] = f64::MAX;
-            ubnd[i] = -f64::MAX;
-            for j in 0..np {
-                let v = transformed.point(j)[i];
-                if !is_bad(v) {
-                    good = true;
-                    if v > ubnd[i] {
-                        ubnd[i] = v;
-                    }
-                    if v < lbnd[i] {
-                        lbnd[i] = v;
-                    }
-                }
-            }
-        }
+        // Check for good points (region.c:7258-7272).
+        let good =
+            (0..transformed.ncoord()).any(|i| !transformed.axis(i).iter().all(|&v| is_bad(v)));
 
         // A mesh with no good points is discarded: swap and retry on the
         // first attempt, and on the second there is no mesh at all
@@ -318,16 +300,33 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
             // which means no mesh; an unbounded reg1 then gives the part of
             // its boundary inside a box twice the size of reg2's bounding box,
             // again with errors suppressed (region.c:7319-7350).
+            // The box is needed in reg1's current Frame, so its bounds are
+            // those of reg2's mesh transformed into that Frame
+            // (region.c:7498-7518).
             let ps3 = match reg1.base_mesh() {
                 Ok(mesh) => mesh,
                 Err(_) => {
-                    let lb2: Vec<f64> = lbnd[..nc].iter().map(|v| v * 2.0).collect();
-                    let ub2: Vec<f64> = ubnd[..nc].iter().map(|v| v * 2.0).collect();
-                    reg1.bnd_base_mesh(&lb2, &ub2).map_err(|_| {
+                    let ps6 = cmap.transform(&reg2_mesh, true)?;
+                    let (lbnd, ubnd): (Vec<f64>, Vec<f64>) = (0..ps6.ncoord())
+                        .map(|i| {
+                            let (lo, hi) = ps6
+                                .axis(i)
+                                .iter()
+                                .filter(|&&v| !is_bad(v))
+                                .fold((f64::MAX, -f64::MAX), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+                            (lo * 2.0, hi * 2.0)
+                        })
+                        .unzip();
+                    reg1.bnd_base_mesh(&lbnd, &ubnd).map_err(|_| {
                         AstError::new(
                             ErrorCode::Inter,
-                            "astOverlap: The current implementation of astOverlap cannot \
-                             determine the overlap between the supplied Regions.",
+                            format!(
+                                "astOverlap({this_class}): The current implementation of \
+                                 astOverlap cannot determine the overlap between the supplied \
+                                 Regions (a {this_class} and a {}).",
+                                super::class_name(that.as_any()),
+                                this_class = super::class_name(this.as_any()),
+                            ),
                         )
                     })?
                 }
@@ -394,6 +393,22 @@ pub(crate) fn region_bnd_base_mesh(
 ) -> AstResult<PointSet> {
     use super::box_region::BoxRegion;
     use super::{CmpOperator, CmpRegionBuilder};
+
+    // The mesh is taken from the intersection of the Region and the box,
+    // which needs the Region to have a boundary mesh of its own: it has one
+    // if either the Region or its negation is bounded. Without one, the
+    // intersection would ask for this same mesh again, without end.
+    if !reg.is_bounded()? && !reg.negated_copy().is_bounded()? {
+        let class = super::class_name(reg.as_any());
+        return Err(AstError::new(
+            ErrorCode::Inter,
+            format!(
+                "astBndBaseMesh({class}): The part of the boundary of the {class} that is \
+                 within a box cannot be found, since neither the {class} nor its negation is \
+                 bounded."
+            ),
+        ));
+    }
 
     // A Box describing the required box in reg's current Frame.
     let boxreg = BoxRegion::from_bounds_frame(reg.get_region_frame(), lbnd, ubnd)?;

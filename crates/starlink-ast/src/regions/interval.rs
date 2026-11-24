@@ -394,6 +394,7 @@ impl Interval {
         ];
 
         let mut result = 0i32;
+        let mut prevnolim = true;
         for ic in 0..nc {
             // Joint uncertainty width on this axis (interval.c:1954-1960).
             let err_this = ubndu_this[ic] - lbndu_this[ic];
@@ -512,12 +513,30 @@ impl Interval {
                 4
             };
 
-            // Combine with the axes already seen (interval.c:2099-2110).
+            // Neither Interval puts any limit on this axis.
+            let nolim = inc_this
+                && inc_that
+                && lb_this == -f64::MAX
+                && ub_this == f64::MAX
+                && lb_that == -f64::MAX
+                && ub_that == f64::MAX;
+
+            // Combine with the axes already seen. The table has no entry for
+            // an axis on which one Interval is the negation of the other: the
+            // two are each other's negation only if no other axis has a
+            // limit, and otherwise have no positions in common.
             result = if ic == 0 {
                 ov
+            } else if result == 6 {
+                if nolim { 6 } else { 1 }
+            } else if ov == 6 {
+                if prevnolim { 6 } else { 1 }
             } else {
                 NEW_RESULT[(result - 1) as usize][(ov - 1) as usize]
             };
+            if !nolim {
+                prevnolim = false;
+            }
             if result == 1 {
                 break;
             }
