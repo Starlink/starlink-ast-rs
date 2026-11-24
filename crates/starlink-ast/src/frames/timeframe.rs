@@ -1973,101 +1973,80 @@ impl Frame for TimeFrame {
         Ok((xin.point(1)[0] - xin.point(0)[0], ntick))
     }
 
-    /// With a date Format, the value formatted a gap either side is
-    /// compared field by field, and the first field that differs, and every
-    /// field after it, is set to its lowest value: zero, or one for the
-    /// month and day.
-    // C: timeframe.c `Centre` (timeframe.c:603). When the two formatted
-    // values are identical, or one runs out of numeric fields first (a bad
-    // value formats as "<bad>"), C reads past the end of the strings; the
-    // port stops at the end and returns the value unchanged.
+    /// With a date Format, the value is formatted a gap either side, and
+    /// the two dates are compared field by field.
+    /// When the first field that differs is the day or a time field, the
+    /// result is the start of the coarser unit, taken from the earlier
+    /// date, so that ticks a whole number of units apart fall on round
+    /// values: midnight, or the first of the month.
+    /// When it is the month or the year, whose lengths vary so that no gap
+    /// divides them, the result is the start of that unit in the later
+    /// date, the calendar boundary inside the window.
+    // C: timeframe.c `Centre` (timeframe.c:625). The port differs from C
+    // here, by decision: C sets the first differing field and every later
+    // one to zero in the earlier date, so a day or month of zero is the
+    // last day of the previous month or no date at all, and a year of
+    // zero is no date (quirk "TimeFrame `Centre` zeroes a calendar field
+    // that has no zero"). Fields are compared as C compares them, as runs
+    // of digits read as integers.
     fn centre(&self, axis: usize, value: f64, gap: f64) -> AstResult<f64> {
         super::frame_attrs::validate_axis(axis, 1)?;
         if !date_format(&self.format_str(1)?).0 {
             return self.axis_centre(axis, value, gap);
         }
-        let date1 = self.format(1, value - gap)?;
-        let date2 = self.format(1, value + gap)?;
-        let (b1, b2) = (date1.as_bytes(), date2.as_bytes());
-        let at = |b: &[u8], i: usize| b.get(i).copied().unwrap_or(0);
-        // C's `atoi` on a run of digits.
-        let atoi = |b: &[u8], i: usize| {
-            b[i..]
-                .iter()
-                .take_while(|c| c.is_ascii_digit())
-                .fold(0_i64, |v, c| v * 10 + i64::from(c - b'0'))
-        };
-        let (mut p1, mut p2) = (0, 0);
-        let (mut f1, mut f2): (Option<usize>, Option<usize>) = (None, None);
-        let (mut nc1, mut nc2) = (0, 0);
-        let mut first_differing = None;
-        // The number of leading fields that are the same.
-        let mut nfld = 0;
-        loop {
-            for (b, p, f, nc) in [
-                (b1, &mut p1, &mut f1, &mut nc1),
-                (b2, &mut p2, &mut f2, &mut nc2),
-            ] {
-                if *nc == 0 {
-                    let c = at(b, *p);
-                    match *f {
-                        None if c.is_ascii_digit() => *f = Some(*p),
-                        Some(start) if !c.is_ascii_digit() => *nc = *p - start,
-                        _ => {}
+        let early = self.format(1, value - gap.abs())?;
+        let late = self.format(1, value + gap.abs())?;
+        let runs = |s: &str| -> Vec<(usize, usize)> {
+            let b = s.as_bytes();
+            let mut out = Vec::new();
+            let mut i = 0;
+            while i < b.len() {
+                if b[i].is_ascii_digit() {
+                    let start = i;
+                    while i < b.len() && b[i].is_ascii_digit() {
+                        i += 1;
                     }
-                    *p += 1;
+                    out.push((start, i));
+                } else {
+                    i += 1;
                 }
             }
-            if nc1 > 0 && nc2 > 0 {
-                let (s1, s2) = (f1.unwrap_or_default(), f2.unwrap_or_default());
-                if atoi(b1, s1) != atoi(b2, s2) {
-                    first_differing = Some(s1);
-                    break;
-                }
-                nfld += 1;
-                (nc1, nc2) = (0, 0);
-                (f1, f2) = (None, None);
-                if p1 >= b1.len() || p2 >= b2.len() {
-                    break;
-                }
-            }
-            // C runs on past the end of a string that has no further
-            // numeric field; the port stops.
-            if (nc1 == 0 && p1 > b1.len()) || (nc2 == 0 && p2 > b2.len()) {
-                break;
-            }
-        }
-        let Some(start) = first_differing else {
+            out
+        };
+        // The integer a run of digits gives, compared without its leading
+        // zeros so that no run is too long to read.
+        let int = |s: &str, (start, end): (usize, usize)| {
+            s[start..end].trim_start_matches('0').to_owned()
+        };
+        let (runs1, runs2) = (runs(&early), runs(&late));
+        let Some(first) = runs1
+            .iter()
+            .zip(&runs2)
+            .position(|(&r1, &r2)| int(&early, r1) != int(&late, r2))
+        else {
             return Ok(value);
         };
-        // C (from 20-NOV-2026) ends a zeroed month or day, the second and
-        // third fields, with a 1, so that the date is a valid one.
-        let mut fres = b1.to_vec();
-        let mut ifld = nfld;
-        let mut infld = false;
-        #[allow(clippy::needless_range_loop)]
-        for i in start..fres.len() {
-            if fres[i].is_ascii_digit() {
-                fres[i] = b'0';
-                infld = true;
-                if (ifld == 1 || ifld == 2) && !at(b1, i + 1).is_ascii_digit() {
-                    fres[i] = b'1';
-                }
-            } else if infld {
-                infld = false;
-                ifld += 1;
+        // The year and month are the first two fields. Each field from
+        // `from` on is set to its lowest value; the month and day, the
+        // second and third fields, start at 1.
+        let (base, base_runs, from) = if first >= 2 {
+            (&early, &runs1, first)
+        } else {
+            (&late, &runs2, first + 1)
+        };
+        let mut fres = base.clone().into_bytes();
+        for (ifld, &(start, end)) in base_runs.iter().enumerate().skip(from) {
+            fres[start..end].fill(b'0');
+            if ifld == 1 || ifld == 2 {
+                fres[end - 1] = b'1';
             }
         }
-        let fres = String::from_utf8(fres).expect("an ASCII date");
+        let fres = String::from_utf8(fres).expect("digits replaced by digits");
+        // Text that cannot be read in full is no date; C then uses the Frame
+        // centre.
         let (result, nread) = self.unformat(1, &fres)?;
         if nread != fres.len() {
-            return Err(AstError::new(
-                ErrorCode::Inter,
-                format!(
-                    "astCentre(TimeFrame): Error unformatting the central time axis value \
-                     '{fres}' (internal AST programming error)."
-                ),
-            ));
+            return self.axis_centre(axis, value, gap);
         }
         Ok(result)
     }

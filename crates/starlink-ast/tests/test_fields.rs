@@ -173,11 +173,42 @@ fn date_formats() {
     assert_eq!(Frame::title(&frame).unwrap(), want);
 }
 
-/// A central value for the tick marks of a date axis.
+/// A central value for the tick marks of a date axis, from the dates a gap
+/// either side of the value and the first field in which they differ.
+/// When that is the day or a time field, the centre is the start of the
+/// coarser unit, so that ticks a whole number of hours apart fall on round
+/// hours of the day: midnight, or the first of the month.
+/// When it is the month or the year, whose lengths vary so that no gap
+/// divides them, the centre is the start of that unit inside the window.
+///
+/// The port differs from `testfields.c` here, by decision. C sets the
+/// first differing field to zero, so a gap of a day gives the day before
+/// the first of the month (55986), and a month or year of zero, which is
+/// no date, falls back to rounding the value to a multiple of the gap
+/// (56010 at a gap of 30 days, which `testfields.c` checks only to be
+/// within a gap): see the quirk "TimeFrame `Centre` zeroes a calendar
+/// field that has no zero".
 #[test]
 fn centre() {
     let frame = iso_frame();
+    // 2012-03-14 08:52:48. The hours differ: midnight, as in C.
     assert_eq!(frame.centre(1, 56000.37, 0.01).unwrap(), 56000.0);
+    assert_eq!(frame.centre(1, 56000.37, 0.25).unwrap(), 56000.0);
+    // The day differs: the first of the month.
+    assert_eq!(frame.centre(1, 56000.37, 1.0).unwrap(), 55987.0);
+    assert_eq!(frame.centre(1, 56000.37, -1.0).unwrap(), 55987.0);
+    // The month differs: the start of April, inside the window.
+    assert_eq!(frame.centre(1, 56000.37, 30.0).unwrap(), 56018.0);
+    // The year differs: the start of 2013, inside the window.
+    assert_eq!(frame.centre(1, 56000.37, 400.0).unwrap(), 56293.0);
+
+    // A window that crosses the end of March starts April, a gap or less
+    // from the value.
+    for gap in [0.1, 1.0, 7.0] {
+        assert_eq!(frame.centre(1, 56017.98, gap).unwrap(), 56018.0, "{gap}");
+    }
+    // 2012-11-14, a month either side: the start of December.
+    assert_eq!(frame.centre(1, 56245.37, 30.0).unwrap(), 56262.0);
 
     // A gap too small to change the formatted date: the value itself.
     assert_eq!(frame.centre(1, 56000.37, 1.0e-9).unwrap(), 56000.37);

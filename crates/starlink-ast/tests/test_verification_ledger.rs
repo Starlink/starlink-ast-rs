@@ -203,12 +203,23 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "test_plot_frame_methods.rs",
+        "CENTRE_EXCLUDED",
+        9,
+        "TimeFrame centre with a date Format at a gap that changes the day, \
+         month or year: the port starts a day at 1 and takes the start of a \
+         month or year inside the window, where C zeroes the field, a \
+         divergence by decision (c-library-quirks.md, TimeFrame Centre); each \
+         entry gives its reason and asserts the port's value and that C's \
+         differs, and centre_excluded_cases_are_in_the_corpus fails for one \
+         that has gone",
+    ),
+    (
+        "test_plot_frame_methods.rs",
         "FIELDS_EXCLUDED",
-        2,
-        "astFields on \"  -7 \" with maxfld 20 and 1: C's AxisFields reads past \
-         the end of a value with leading spaces (c-library-quirks.md); the port \
-         returns the value's own span. fields_excluded_cases_still_differ_from_c \
-         fails when C agrees",
+        0,
+        "empty: astFields on \"  -7 \", its two entries, matches C since upstream \
+         3a32fec8 stopped AxisFields reading past a value with leading spaces; kept so \
+         a newly diagnosed fields difference has a home",
     ),
     (
         "test_plot_frame_methods.rs",
