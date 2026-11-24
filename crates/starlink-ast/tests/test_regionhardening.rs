@@ -161,6 +161,79 @@ fn grids() {
     assert_eq!(grid.npoint(), 28);
 }
 
+/// The values the attribute cases give a Title: a "%", a comma and an equals
+/// sign, quotes, and white space at each end.
+const TITLES: [&str; 6] = [
+    "50%s done, 100%n to do",
+    "Flux, units=Jy",
+    "Sky, Domain=NEW",
+    "\"\"quoted\"\"",
+    "\"open, a=b",
+    "  padded  ",
+];
+
+/// A Box in a Frame whose Domain is OLD, with Adaptive set as given.
+fn old_box(adaptive: bool) -> starlink_ast::regions::BoxRegion {
+    let frame = BasicFrameBuilder::new(2).domain("OLD").build().unwrap();
+    let mut bx = BoxRegionBuilder::from_bounds(frame, &[0.0, 0.0], &[1.0, 1.0])
+        .unwrap()
+        .build()
+        .unwrap();
+    bx.set_adaptive(adaptive);
+    bx
+}
+
+/// A Region passes a Frame attribute it is given on to its FrameSet, and
+/// must store the value a Frame stores and change nothing else. The C test
+/// sets them as attribute strings, which `REGION_HARDENING_EXCLUDED` holds;
+/// here they are set through the typed setters.
+#[test]
+fn attributes() {
+    for title in TITLES {
+        let mut frame = BasicFrameBuilder::new(2).domain("OLD").build().unwrap();
+        Frame::set_title(&mut frame, title).unwrap();
+        let wanted = Frame::title(&frame).unwrap();
+        for adaptive in [false, true] {
+            let mut bx = old_box(adaptive);
+            bx.set_title(title).unwrap();
+            assert_eq!(bx.title().unwrap(), wanted, "Adaptive={adaptive}");
+            assert_eq!(bx.domain(), "OLD", "Adaptive={adaptive}, Title {title}");
+        }
+    }
+
+    // A Format is the value most likely to hold a "%".
+    for adaptive in [false, true] {
+        let mut bx = old_box(adaptive);
+        bx.set_format_str(1, "%10.3f").unwrap();
+        assert_eq!(bx.format_str(1).unwrap(), "%10.3f");
+    }
+}
+
+/// Whether the attribute cases, set and read as attribute strings as the C
+/// test sets them, give a Box the values they give a Frame.
+fn attribute_strings_match_c() -> bool {
+    use starlink_ast::attributes::Attributes;
+    for title in TITLES {
+        let mut frame = BasicFrameBuilder::new(2).domain("OLD").build().unwrap();
+        frame.set_attribute("Title", title).unwrap();
+        let wanted = frame.get_attribute("Title").unwrap();
+        for adaptive in [false, true] {
+            let mut bx = old_box(adaptive);
+            if bx.set_attribute("Title", title).is_err()
+                || bx.get_attribute("Title").ok() != Some(wanted.clone())
+                || bx.get_attribute("Domain").ok().as_deref() != Some("OLD")
+            {
+                return false;
+            }
+        }
+    }
+    [false, true].into_iter().all(|adaptive| {
+        let mut bx = old_box(adaptive);
+        bx.set_attributes("Format(1)=%10.3f").is_ok()
+            && bx.get_attribute("Format(1)").ok().as_deref() == Some("%10.3f")
+    })
+}
+
 /// Mask the pixels 1 to 10 with `region`, and return the number changed and
 /// which were changed.
 fn mask_ten(region: &dyn Region, inside: bool) -> (usize, String) {
@@ -533,18 +606,26 @@ fn infinite_vertex() -> Vec<Vec<f64>> {
 }
 
 /// Cases whose result is not yet the C library's, each with the reason.
-const REGION_HARDENING_EXCLUDED: &[(&str, &str)] = &[(
-    "infinite_vertex",
-    "the Frame geometry the Polygon uses (axis distances and offsets, and \
+const REGION_HARDENING_EXCLUDED: &[(&str, &str)] = &[
+    (
+        "attribute_strings",
+        "the attribute-strings layer has no Region classes, so a Box refuses a \
+         setting with AST__BADAT; the typed setters are tested in `attributes`",
+    ),
+    (
+        "infinite_vertex",
+        "the Frame geometry the Polygon uses (axis distances and offsets, and \
      whether a line holds a point) takes an infinite value to be bad, where C \
      tests for AST__BAD alone, so the edges to the infinite vertex have no \
      length and the position (0.1, 0.1) is taken to be inside; C has it \
      outside",
-)];
+    ),
+];
 
 /// Whether the excluded case `name` now gives the C library's result.
 fn excluded_case_matches_c(name: &str) -> bool {
     match name {
+        "attribute_strings" => attribute_strings_match_c(),
         "infinite_vertex" => {
             polygon_case(infinite_vertex())
                 == (

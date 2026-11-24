@@ -336,8 +336,9 @@ impl Region for NullRegion {
         // C overrides the base-class method rather than inheriting it
         // (nullregion.c:1203): a NullRegion has no boundary to transform into
         // the current Frame, so the same empty-extent bounds are returned
-        // whatever the base->current Mapping is.
-        let naxes = self.data.frameset.base().naxes();
+        // whatever the base->current Mapping is, one for each current Frame
+        // axis.
+        let naxes = self.data.frameset.current().naxes();
         Ok((vec![1.0; naxes], vec![-1.0; naxes]))
     }
 
@@ -865,5 +866,33 @@ impl Mapping for NullRegion {
 
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frames::{BasicFrameBuilder, FrameRef};
+    use crate::mappings::PermMap;
+
+    /// The bounds have one element for each current Frame axis, which a
+    /// NullRegion whose FrameSet maps two base axes to one current axis
+    /// needs.
+    #[test]
+    fn bounds_have_an_element_for_each_current_axis() {
+        let mut null = NullRegionBuilder::new(BasicFrameBuilder::new(2).build().unwrap())
+            .build()
+            .unwrap();
+        let map = PermMap::new(&[1, -1], &[1], &[0.0]).unwrap();
+        null.data
+            .frameset
+            .add_frame(
+                FrameRef::Base,
+                Box::new(map),
+                Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+            )
+            .unwrap();
+        let (lbnd, ubnd) = null.get_region_bounds().unwrap();
+        assert_eq!((lbnd, ubnd), (vec![1.0], vec![-1.0]));
     }
 }
