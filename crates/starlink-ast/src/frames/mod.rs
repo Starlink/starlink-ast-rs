@@ -2046,11 +2046,15 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
 
     /// Create a cached description of the line segment from `start` to `end`
     /// in this 2-D Frame.
-    /// Returns `None` (without error) if any supplied axis value is BAD.
+    /// Returns `None` (without error) if any supplied axis value is
+    /// [`BAD_VALUE`](crate::constants::BAD_VALUE); infinite and NaN values
+    /// are used as they are, so a line through them crosses nothing.
     /// SkyFrame overrides with great-circle geometry.
-    // C: `astLineDef` (frame.c:6716).
+    // C: `astLineDef` (frame.c:6716), which tests the values for AST__BAD
+    // only. A Polygon whose vertices are far apart computes a NaN position
+    // inside it, and C's membership test relies on the line from there.
     fn line_def(&self, start: &[f64], end: &[f64]) -> AstResult<Option<LineDef>> {
-        use crate::mappings::helpers::is_bad;
+        let is_bad = |v: f64| v == crate::constants::BAD_VALUE;
         if self.naxes() != 2 {
             return Err(AstError::new(
                 ErrorCode::Inter,

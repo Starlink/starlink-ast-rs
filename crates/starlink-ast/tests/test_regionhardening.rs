@@ -22,17 +22,16 @@ use starlink_ast::frames::{BasicFrame, BasicFrameBuilder, CmpFrame, Frame, SkyFr
 use starlink_ast::mappings::{Mapping, MathMap, PermMap};
 use starlink_ast::regions::{
     BoxRegionBuilder, CircleBuilder, CmpOperator, CmpRegionBuilder, EllipseBuilder,
-    IntervalBuilder, NullRegionBuilder, PointListBuilder, PrismBuilder, Region, mask,
+    IntervalBuilder, NullRegionBuilder, Overlap, PointListBuilder, PolygonBuilder, PrismBuilder,
+    Region, mask,
 };
 
 /// Check that `result` is an error with `code` whose messages, one per
 /// line, are `messages`.
-pub(crate) fn expect_err<T: std::fmt::Debug>(
-    result: AstResult<T>,
-    code: ErrorCode,
-    messages: &[&str],
-) {
-    let err = result.expect_err("an error was expected");
+pub(crate) fn expect_err<T>(result: AstResult<T>, code: ErrorCode, messages: &[&str]) {
+    let Err(err) = result else {
+        panic!("an error was expected");
+    };
     assert_eq!(err.code(), code, "error code of {err}");
     let got: Vec<&str> = err.message().split('\n').collect();
     assert_eq!(got, messages, "messages of {err}");
@@ -447,6 +446,127 @@ fn ellipses() {
     )
     .unwrap();
     circle.map_region(&map, &plain(2)).unwrap();
+}
+
+/// The positions each Polygon case transforms: a vertex of the first, a
+/// far position, a vertex of the other two, a position outside them and one
+/// inside the last two.
+const POLY_X: [f64; 5] = [1.0, 50.0, 0.0, -1.0, 0.1];
+const POLY_Y: [f64; 5] = [2.0, 50.0, 0.0, -1.0, 0.1];
+
+/// Make a Polygon from `vertices` and return whether it is bounded, its
+/// bounds, which of `POLY_X`, `POLY_Y` it keeps (each kept position is
+/// unchanged) and its overlap with itself.
+fn polygon_case(vertices: Vec<Vec<f64>>) -> (bool, (Vec<f64>, Vec<f64>), String, Overlap) {
+    let polygon = PolygonBuilder::new(plain(2), vertices)
+        .unwrap()
+        .build()
+        .unwrap();
+    let (xo, yo) = polygon.tran2(&POLY_X, &POLY_Y, true).unwrap();
+    let mut kept = String::new();
+    for i in 0..POLY_X.len() {
+        if xo[i] == BAD_VALUE && yo[i] == BAD_VALUE {
+            kept.push('0');
+        } else {
+            assert_eq!((xo[i], yo[i]), (POLY_X[i], POLY_Y[i]));
+            kept.push('1');
+        }
+    }
+    (
+        polygon.is_bounded().unwrap(),
+        polygon.get_region_bounds().unwrap(),
+        kept,
+        polygon.overlap(&polygon).unwrap(),
+    )
+}
+
+#[test]
+fn polygons() {
+    // Vertices that all coincide: the first vertex is the position inside.
+    let got = within_10s(|| polygon_case(vec![vec![1.0, 2.0]; 3]));
+    assert_eq!(
+        got,
+        (
+            true,
+            (vec![1.0, 2.0], vec![1.0, 2.0]),
+            "00000".to_string(),
+            Overlap::Same
+        )
+    );
+
+    // Vertices so far apart that ten times half an edge is not finite.
+    let got =
+        within_10s(|| polygon_case(vec![vec![0.0, 0.0], vec![1.0e308, 0.0], vec![0.0, 1.0e308]]));
+    assert_eq!(
+        got,
+        (
+            true,
+            (vec![0.0, 0.0], vec![1.0e308, 1.0e308]),
+            "11111".to_string(),
+            Overlap::Same
+        )
+    );
+
+    // A bad or NaN vertex is refused when the Polygon is made.
+    for bad in [BAD_VALUE, f64::NAN] {
+        expect_err(
+            PolygonBuilder::new(
+                plain(2),
+                vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![bad, 1.0]],
+            ),
+            ErrorCode::Badin,
+            &[
+                "astInitPolygon(Polygon): One or more bad axis values supplied for the vertex \
+               number 3.",
+            ],
+        );
+    }
+
+    // A vertex at infinity: making and using the Polygon only has to return.
+    // C's values are in `REGION_HARDENING_EXCLUDED`.
+    within_10s(|| polygon_case(infinite_vertex()));
+}
+
+/// The vertices of a Polygon with a vertex at infinity.
+fn infinite_vertex() -> Vec<Vec<f64>> {
+    vec![vec![0.0, 0.0], vec![f64::INFINITY, 0.0], vec![0.0, 1.0]]
+}
+
+/// Cases whose result is not yet the C library's, each with the reason.
+const REGION_HARDENING_EXCLUDED: &[(&str, &str)] = &[(
+    "infinite_vertex",
+    "the Frame geometry the Polygon uses (axis distances and offsets, and \
+     whether a line holds a point) takes an infinite value to be bad, where C \
+     tests for AST__BAD alone, so the edges to the infinite vertex have no \
+     length and the position (0.1, 0.1) is taken to be inside; C has it \
+     outside",
+)];
+
+/// Whether the excluded case `name` now gives the C library's result.
+fn excluded_case_matches_c(name: &str) -> bool {
+    match name {
+        "infinite_vertex" => {
+            polygon_case(infinite_vertex())
+                == (
+                    true,
+                    (vec![0.0, 0.0], vec![f64::INFINITY, 1.0]),
+                    "00100".to_string(),
+                    Overlap::Same,
+                )
+        }
+        _ => panic!("no case named {name}"),
+    }
+}
+
+/// An excluded case that starts matching C must leave the exclusion list.
+#[test]
+fn excluded_cases_still_differ() {
+    for (name, reason) in REGION_HARDENING_EXCLUDED {
+        assert!(
+            !excluded_case_matches_c(name),
+            "{name} now matches C; remove it from REGION_HARDENING_EXCLUDED ({reason})"
+        );
+    }
 }
 
 #[test]

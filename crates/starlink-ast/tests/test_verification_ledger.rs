@@ -191,6 +191,15 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          it closes",
     ),
     (
+        "test_regionhardening.rs",
+        "REGION_HARDENING_EXCLUDED",
+        1,
+        "infinite_vertex: a Polygon with a vertex at infinity returns, as the C test \
+         requires, but C's membership of (0.1, 0.1) needs Frame geometry that takes \
+         an infinite value to be a number, not bad (PLAN.md section 2); \
+         excluded_cases_still_differ fails when it matches",
+    ),
+    (
         "test_plot_frame_methods.rs",
         "FIELDS_EXCLUDED",
         2,
