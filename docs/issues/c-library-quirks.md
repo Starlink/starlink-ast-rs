@@ -36,7 +36,6 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A curve clipped into arcs shorter than Crv's sample spacing is not drawn](#a-curve-clipped-into-arcs-shorter-than-crvs-sample-spacing-is-not-drawn)
 - [`astRegionOutline` leaves the Plot's Base set](#astregionoutline-leaves-the-plots-base-set)
 - [Plot's major tick search overflows `int` for a zero or tiny Gap](#plots-major-tick-search-overflows-int-for-a-zero-or-tiny-gap)
-- [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Centre` zeroes a calendar field that has no zero](#timeframe-centre-zeroes-a-calendar-field-that-has-no-zero)
 - [A `%a` Format gives different text on different platforms](#a-a-format-gives-different-text-on-different-platforms)
@@ -232,6 +231,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream bd9ffbfc): DATE-OBS is written for an MJD with no calendar date](#resolved-upstream-bd9ffbfc-date-obs-is-written-for-an-mjd-with-no-calendar-date)
 - [RESOLVED (upstream cfdbbe8d): A FITS value an integer cannot hold is converted to one](#resolved-upstream-cfdbbe8d-a-fits-value-an-integer-cannot-hold-is-converted-to-one)
 - [RESOLVED (upstream 3cce24ce): A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded](#resolved-upstream-3cce24ce-a-cmpregion-that-ands-two-nested-unbounded-regions-reports-itself-as-bounded)
+- [RESOLVED (upstream 86601275): `astReadDateTime` tests ERFA's status against SLALIB's codes](#resolved-upstream-86601275-astreaddatetime-tests-erfas-status-against-slalibs-codes)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -386,19 +386,6 @@ Before upstream `2d9d4449` made `astEQUAL` find an infinite value equal to itsel
 The port mirrors this (`find_maj_ticks2` in `crates/starlink-ast/src/plot/ticks.rs` saturates the cast, as Rust's `as` does, and wraps the index arithmetic), so it reports the same errors, where unchecked arithmetic panicked in a debug build; `a_zero_or_tiny_gap_gives_the_c_library_errors` in `tests/test_grid.rs` is the gate.
 Which error appears on x86-64, where the cast differs, has not been checked.
 The fix is to reject a Gap that is zero or too small for the axis values with an error of its own before the search.
-
-### `astReadDateTime` tests ERFA's status against SLALIB's codes
-
-`frame.c` `astReadDateTime` (frame.c:9282) converts the calendar date with `palCaldj` and reports an invalid year, month or day for a status of 1, 2 or 3, SLALIB's codes.
-`palCaldj` now returns `eraCal2jd`'s codes, -1, -2 and -3, so none of those errors is ever reported.
-For a bad day (-3) ERFA still computes the MJD, counting on from the month's start, so `2012-03-00` reads as 29 February and `2012-02-30` as 1 March.
-For a bad year or month (-1, -2) ERFA returns before setting the MJD, and the uninitialized value is returned as the result.
-TimeFrame `Centre` on a date axis zeroes every field from the first that differs between the value a gap below and a gap above, so whenever those two fell in different months or years it read a date with month zero, giving values like `3.4e301`; a Plot of a date axis spanning a month boundary met this.
-`Centre` is fixed on the submodule branch `u/timj/timeframe-centre-date` (timeframe.c History, 20-NOV-2026): a zeroed month or day now ends in 1, so the date it reads is valid, and a gap that changes the day now centres on the first of the month rather than the last day of the one before.
-The port follows the fixed C (`TimeFrame::centre`, pinned by `plot_frame_methods_probe.c`'s month, year and day cases, generated from that branch, and `plot_grid_values_probe.c`'s `timeplot_month_end`); until the pin moves to include it, those cases need the branch to regenerate.
-A zeroed year reads as 2000, through `palCaldj`'s rule that years 0 to 49 are 2000 to 2049, which `astReadDateTime` uses and the port now does too (`pal::caldj`).
-The port reads a bad day as C does (`date_time.rs`, `unformat_counts_days_outside_the_month_from_its_start` in `test_timeframe.rs`) and does not read a bad year or month.
-The fix is to switch on -1, -2 and -3; whether a bad day should then be an error is a question for upstream, since rejecting it would change what `Centre` gives for every date gap that changes the day.
 
 ### TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply
 
@@ -5648,3 +5635,13 @@ A C-oracle probe ANDed two Intervals, x > 0 and x > 1: both are unbounded, `astO
 
 The port mirrored the test in `CmpRegion::get_bounded`.
 Upstream now calls the AND of two unbounded components unbounded whatever their overlap, since neither has a boundary mesh from which to make one for it, and the port follows: `and_of_nested_unbounded_regions_is_unbounded` in `tests/test_cmpregion.rs` and `cmpregions` in `tests/test_regionlogic.rs` cover it.
+
+### RESOLVED (upstream 86601275): `astReadDateTime` tests ERFA's status against SLALIB's codes
+
+C location: `frame.c` `astReadDateTime`.
+
+`astReadDateTime` converted the calendar date with `palCaldj` and reported an invalid year, month or day for a status of 1, 2 or 3, SLALIB's codes, but `palCaldj` returns `eraCal2jd`'s -1, -2 and -3, so none was reported: for a bad year or month ERFA returns before setting the MJD, and the value that had not been set was returned.
+Upstream now reports `Year value (N) is invalid.` and `Month value (N) is invalid.` for -1 and -2.
+A day that is not valid for its month is still accepted, deliberately, and counted on from the start of the month (`2012-03-00` is 29 February), which TimeFrame `Centre` relies on (see "TimeFrame `Centre` zeroes a calendar field that has no zero").
+
+The port never read a bad year or month, but reported it as "Date/time does not have the correct form."; it now gives C's messages (`dates` in `tests/test_fields.rs`), and reads a bad day as C does (`unformat_counts_days_outside_the_month_from_its_start` in `test_timeframe.rs`).

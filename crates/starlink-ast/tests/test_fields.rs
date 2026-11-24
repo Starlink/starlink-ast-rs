@@ -19,16 +19,21 @@ use starlink_ast::constants::BAD_VALUE;
 use starlink_ast::error::{AstResult, ErrorCode};
 use starlink_ast::frames::{BasicFrameBuilder, Frame, SkyFrame, TimeFrame, TimeSystem};
 
-/// Check that `result` is an error with `code` whose messages, one per
-/// line, are `messages`, with no context that C would not report.
+/// Check that `result` is an error with `code` whose messages are C's
+/// `messages`, in order: the lines of the message, then each line of
+/// context, which is where the port puts the messages C adds as an error
+/// passes up.
 pub(crate) fn expect_err<T>(result: AstResult<T>, code: ErrorCode, messages: &[&str]) {
     let Err(err) = result else {
         panic!("an error was expected");
     };
     assert_eq!(err.code(), code, "error code of {err}");
-    let got: Vec<&str> = err.message().split('\n').collect();
+    let got: Vec<&str> = err
+        .message()
+        .split('\n')
+        .chain(err.context().iter().map(String::as_str))
+        .collect();
     assert_eq!(got, messages, "messages of {err}");
-    assert!(err.context().is_empty(), "context C does not report: {err}");
 }
 
 /// Split `text` on axis 1 of `frame` with `fmt`, and check that there are
@@ -118,9 +123,54 @@ fn dates() {
         assert!(nc < 10, "{text} read to {nc}");
     }
 
-    // The same text is not accepted as an Epoch.
+    // The same text is not accepted as an Epoch, and the year or month
+    // that is not valid is named.
     let mut plain = BasicFrameBuilder::new(1).build().unwrap();
-    assert!(plain.set_attribute("Epoch", "2012-13-01").is_err());
+    expect_err(
+        plain.set_attribute("Epoch", "2012-13-01"),
+        ErrorCode::Attin,
+        &[
+            "Month value (13) is invalid.",
+            "astSetAttrib(Frame): Invalid epoch value \"2012-13-01\" given for coordinate system.",
+        ],
+    );
+    expect_err(
+        plain.set_attribute("Epoch", "-4800-01-01"),
+        ErrorCode::Attin,
+        &[
+            "Year value (-4800) is invalid.",
+            "astSetAttrib(Frame): Invalid epoch value \"-4800-01-01\" given for coordinate system.",
+        ],
+    );
+}
+
+/// A date that has no calendar value is `<bad>`, as a bad value is, and
+/// the seconds of a date have at most 9 decimal places.
+#[test]
+fn date_formats() {
+    let mut frame = TimeFrame::new(TimeSystem::Mjd);
+    for fmt in ["iso.9", "iso.10", "iso.12", "iso.80", "iso.200T"] {
+        frame.set_format_str(1, fmt).unwrap();
+        let sep = if fmt.ends_with('T') { 'T' } else { ' ' };
+        assert_eq!(
+            frame.format(1, 56000.12345).unwrap(),
+            format!("2012-03-14{sep}02:57:46.079999926"),
+            "{fmt}"
+        );
+    }
+    frame.set_format_str(1, "iso.2").unwrap();
+    for value in [1.0e30, 1.0e10, -1.0e10, -3.0e8] {
+        assert_eq!(frame.format(1, value).unwrap(), "<bad>", "{value:e}");
+    }
+    assert_eq!(frame.format(1, 3.0e8).unwrap(), "823230-12-24 00:00:00.00");
+
+    // A TimeOrigin with no date is shown as one in the default Label and
+    // Title.
+    let mut frame = TimeFrame::new(TimeSystem::Mjd);
+    frame.set_time_origin(1.0e30);
+    let want = "Modified Julian Date offset from <bad>";
+    assert_eq!(Frame::label(&frame, 1).unwrap(), want);
+    assert_eq!(Frame::title(&frame).unwrap(), want);
 }
 
 /// A central value for the tick marks of a date axis.

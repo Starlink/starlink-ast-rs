@@ -1134,8 +1134,15 @@ impl TimeFrame {
     /// formats with `ndp < 0`).
     fn format_iso0_zero(&self) -> AstResult<String> {
         let mjd = self.value_to_mjd(0.0)?;
-        // An unconvertible date leaves C's outputs as the zeros they start as.
-        let (iy, im, id, fd) = crate::pal::djcl(mjd).unwrap_or((0, 0, 0, 0.0));
+        // A time outside the calendar has no date, and is formatted as a bad
+        // value is.
+        let Some((iy, im, id, fd)) = mjd
+            .is_finite()
+            .then(|| crate::pal::djcl(mjd).ok())
+            .flatten()
+        else {
+            return Ok("<bad>".to_string());
+        };
         let (_sign, ihmsf) = crate::pal::dd2tf(0, fd);
         Ok(format!(
             "{iy:4}-{im:02}-{id:02} {:02}:{:02}:{:02}",
@@ -1681,6 +1688,9 @@ fn date_format(fmt: &str) -> (bool, i32, char) {
         let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
         if !digits.is_empty() {
             if let Ok(ndp) = digits.parse::<i32>() {
+                // The fraction of a second is an int in C, which limits the
+                // seconds to 9 decimal places.
+                let ndp = ndp.min(9);
                 let after = &rest[digits.len()..];
                 let sep = match after.chars().next() {
                     Some('T') | Some('t') => 'T',
@@ -2201,8 +2211,15 @@ impl Frame for TimeFrame {
             mjd = mjd.round();
         }
 
-        // An unconvertible date leaves C's outputs as the zeros they start as.
-        let (iy, im, id, fd) = crate::pal::djcl(mjd).unwrap_or((0, 0, 0, 0.0));
+        // A time outside the calendar has no date, and is formatted as a bad
+        // value is.
+        let Some((iy, im, id, fd)) = mjd
+            .is_finite()
+            .then(|| crate::pal::djcl(mjd).ok())
+            .flatten()
+        else {
+            return Ok("<bad>".to_string());
+        };
         // "%4d-%2.2d-%2.2d" — the year is space-padded to width 4.
         let mut out = format!("{iy:4}-{im:02}-{id:02}");
 
