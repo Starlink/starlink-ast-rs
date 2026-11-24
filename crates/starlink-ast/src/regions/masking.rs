@@ -47,6 +47,33 @@ pub enum MaskData<'a> {
     UB(&'a mut [u8], u8),
 }
 
+impl MaskData<'_> {
+    /// The letter C's `astMask<X>` names this element type with.
+    fn suffix(&self) -> &'static str {
+        match self {
+            MaskData::D(..) => "D",
+            MaskData::F(..) => "F",
+            MaskData::K(..) => "K",
+            MaskData::UK(..) => "UK",
+            MaskData::I(..) => "I",
+            MaskData::UI(..) => "UI",
+            MaskData::S(..) => "S",
+            MaskData::US(..) => "US",
+            MaskData::B(..) => "B",
+            MaskData::UB(..) => "UB",
+        }
+    }
+}
+
+/// The pixel bounds of a grid to mask, and the letter naming the element
+/// type in C's `astMask<X>`.
+#[derive(Clone, Copy)]
+struct Grid<'a> {
+    lbnd: &'a [i64],
+    ubnd: &'a [i64],
+    x: &'static str,
+}
+
 /// Applies `$f::<T>($data, $val, $($arg),*)` to whichever variant `$md` is.
 macro_rules! dispatch {
     ($md:expr, $f:ident, $($arg:expr),*) => {
@@ -189,18 +216,23 @@ fn grid_region(
     map: Option<&dyn Mapping>,
     lbnd: &[i64],
     ubnd: &[i64],
+    x: &str,
 ) -> AstResult<(DynRegion, usize)> {
     let ndim = lbnd.len();
     let nax = region.naxes();
+    let class = crate::regions::class_name(region.as_any());
+    let s = |n: usize| if n == 1 { "" } else { "s" };
     let used = match map {
         Some(map) => {
             if map.nin() != nax {
                 return Err(AstError::new(
                     ErrorCode::Ngdin,
                     format!(
-                        "astMask: Bad number of mapping inputs ({}). The Region given \
-                         requires {nax} coordinate values to specify a position.",
-                        map.nin()
+                        "astMask{x}({class}): Bad number of mapping inputs ({}).\n\
+                         The {class} given requires {nax} coordinate value{} to specify a \
+                         position.",
+                        map.nin(),
+                        s(nax)
                     ),
                 ));
             }
@@ -208,9 +240,11 @@ fn grid_region(
                 return Err(AstError::new(
                     ErrorCode::Ngdin,
                     format!(
-                        "astMask: Bad number of mapping outputs ({}). The pixel grid \
-                         requires {ndim} coordinate values to specify a position.",
-                        map.nout()
+                        "astMask{x}({class}): Bad number of mapping outputs ({}).\n\
+                         The pixel grid requires {ndim} coordinate value{} to specify a \
+                         position.",
+                        map.nout(),
+                        s(ndim)
                     ),
                 ));
             }
@@ -219,14 +253,16 @@ fn grid_region(
         }
         None => {
             if ndim != nax || ndim < 1 {
-                return Err(AstError::new(
-                    ErrorCode::Ngdin,
-                    format!(
-                        "astMask: Bad number of input grid dimensions ({ndim}). The \
-                         Region given requires {nax} coordinate values to specify an \
-                         input position."
-                    ),
-                ));
+                let mut message =
+                    format!("astMask{x}({class}): Bad number of input grid dimensions ({ndim}).");
+                if ndim != nax {
+                    message += &format!(
+                        "\nThe {class} given requires {nax} coordinate value{} to specify an \
+                         input position.",
+                        s(nax)
+                    );
+                }
+                return Err(AstError::new(ErrorCode::Ngdin, message));
             }
             region.clone_region()
         }
@@ -236,8 +272,8 @@ fn grid_region(
             return Err(AstError::new(
                 ErrorCode::Gbdin,
                 format!(
-                    "astMask: Lower bound of input grid ({}) exceeds corresponding upper \
-                     bound ({}). Error in input dimension {}.",
+                    "astMask{x}({class}): Lower bound of input grid ({}) exceeds corresponding \
+                     upper bound ({}).\nError in input dimension {}.",
                     lbnd[idim],
                     ubnd[idim],
                     idim + 1
@@ -262,7 +298,12 @@ pub(crate) fn region_mask(
     ubnd: &[i64],
     data: MaskData<'_>,
 ) -> AstResult<usize> {
-    dispatch!(data, region_mask_x, region, map, inside, lbnd, ubnd)
+    let grid = Grid {
+        lbnd,
+        ubnd,
+        x: data.suffix(),
+    };
+    dispatch!(data, region_mask_x, region, map, inside, grid)
 }
 
 /// region.c `Mask<X>` for one element type.
@@ -278,12 +319,12 @@ fn region_mask_x<T: PixelValue>(
     region: &dyn Region,
     map: Option<&dyn Mapping>,
     inside: bool,
-    lbnd: &[i64],
-    ubnd: &[i64],
+    grid: Grid<'_>,
     data: &mut [T],
     val: T,
 ) -> AstResult<usize> {
-    let (used, npix) = grid_region(region, map, lbnd, ubnd)?;
+    let Grid { lbnd, ubnd, x } = grid;
+    let (used, npix) = grid_region(region, map, lbnd, ubnd, x)?;
     check_len(data, npix)?;
     let ndim = lbnd.len();
 
@@ -295,8 +336,22 @@ fn region_mask_x<T: PixelValue>(
     let mut npixg: i64 = 1;
     for idim in 0..ndim {
         if !is_bad(lbndgd[idim]) && !is_bad(ubndgd[idim]) {
-            lbndg[idim] = lbnd[idim].max(lbndgd[idim].round() as i64 - 2);
-            ubndg[idim] = ubnd[idim].min(ubndgd[idim].round() as i64 + 2);
+            // The Region may have no limit on this axis, so each widened
+            // bound is compared with the grid as a float, and converted to
+            // an integer only when it falls inside the grid. A box that does
+            // not reach the grid leaves no pixels inside it.
+            let dlo = lbndgd[idim].round() - 2.0;
+            let dhi = ubndgd[idim].round() + 2.0;
+            if dlo > ubnd[idim] as f64 || dhi < lbnd[idim] as f64 {
+                npixg = -1;
+            } else {
+                if dlo > lbnd[idim] as f64 {
+                    lbndg[idim] = dlo as i64;
+                }
+                if dhi < ubnd[idim] as f64 {
+                    ubndg[idim] = dhi as i64;
+                }
+            }
         }
         if npixg >= 0 {
             npixg *= ubndg[idim] - lbndg[idim] + 1;
@@ -372,7 +427,12 @@ pub(crate) fn pointlist_mask(
     ubnd: &[i64],
     data: MaskData<'_>,
 ) -> AstResult<usize> {
-    dispatch!(data, pointlist_mask_x, region, map, inside, lbnd, ubnd)
+    let grid = Grid {
+        lbnd,
+        ubnd,
+        x: data.suffix(),
+    };
+    dispatch!(data, pointlist_mask_x, region, map, inside, grid)
 }
 
 /// pointlist.c `Mask<X>` for one element type.
@@ -380,12 +440,12 @@ fn pointlist_mask_x<T: Copy>(
     region: &dyn Region,
     map: Option<&dyn Mapping>,
     inside: bool,
-    lbnd: &[i64],
-    ubnd: &[i64],
+    grid: Grid<'_>,
     data: &mut [T],
     val: T,
 ) -> AstResult<usize> {
-    let (used, npix) = grid_region(region, map, lbnd, ubnd)?;
+    let Grid { lbnd, ubnd, x } = grid;
+    let (used, npix) = grid_region(region, map, lbnd, ubnd, x)?;
     check_len(data, npix)?;
     let ndim = lbnd.len();
     let points = used.to_current_frame(used.base_points()?)?;

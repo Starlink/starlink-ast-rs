@@ -176,6 +176,37 @@ fn mask_ten(region: &dyn Region, inside: bool) -> (usize, String) {
 
 #[test]
 fn masks() {
+    // The upper bound of a Region with no upper limit is too large for an
+    // integer pixel index, which must not make every pixel outside it.
+    let above = IntervalBuilder::new(plain(1), vec![3.0], vec![BAD_VALUE])
+        .unwrap()
+        .build()
+        .unwrap();
+    assert_eq!(
+        within_10s(move || mask_ten(&above, false)),
+        (2, "1100000000".to_string())
+    );
+    let above = IntervalBuilder::new(plain(1), vec![3.0], vec![BAD_VALUE])
+        .unwrap()
+        .build()
+        .unwrap();
+    assert_eq!(
+        within_10s(move || mask_ten(&above, true)),
+        (7, "0001111111".to_string())
+    );
+
+    // A PointList with the wrong number of grid dimensions.
+    let mut d = [0i32; 6];
+    expect_err(
+        mask(&two_points(), None, true, &[1], &[6], &mut d, 1),
+        ErrorCode::Ngdin,
+        &[
+            "astMaskI(PointList): Bad number of input grid dimensions (1).",
+            "The PointList given requires 2 coordinate values to specify an input position.",
+        ],
+    );
+    assert_eq!(d, [0; 6]);
+
     // A pixel on the edge of a closed Region is in neither the Region nor
     // its negation.
     let below = IntervalBuilder::new(plain(1), vec![BAD_VALUE], vec![7.0])

@@ -64,6 +64,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: `regions::mask` with a Region that has no upper or lower limit masks the pixels on the right side of it, as the C library does; it panicked in a debug build and treated every pixel as outside the Region in a release build. Its errors for a grid or Mapping of the wrong dimensions, or bounds in the wrong order, are now the C library's two messages, naming the element type and the Region's class.
 - `starlink-ast`: the grid of points inside a Region (`Region::region_grid`, and a Frame's grid) limits its points as the C library does. An axis of no width gets two ticks and no longer counts toward the spacing of the others; a grid of more points than the C library can hold, in a Frame or a CmpFrame, is refused with `ErrorCode::Attin`; a sky box of no width uses a bounded number of parallels and, like a very narrow one, reports that it has no points. Such a Box panicked, or took tens of seconds.
 - `starlink-ast`: a `FitsChan` refuses to read a grism axis whose equation has no solution at the reference wavelength, or whose order is zero, as the C library does, and reports a spectral algorithm it cannot implement with both of the C library's messages. It read such a header.
 - `starlink-ast`: a card that `FitsChan::find_fits`, `write_fits` or `show_fits` cannot format is reported with the C library's `astFindFits(FitsChan): ` prefix, and `write_fits` and `show_fits` write the cards before it, as the C library does. They wrote none.
