@@ -21,6 +21,20 @@ pub fn is_bad(v: f64) -> bool {
     (v == BAD_VALUE) | !v.is_finite()
 }
 
+/// Whether `v` is bad as the C library's Frame geometry tests it: equal to
+/// `BAD_VALUE`, and nothing else. An infinite value is a number, and so is
+/// a NaN that arithmetic on infinities gives, as in C.
+#[inline]
+pub(crate) fn is_c_bad(v: f64) -> bool {
+    v == BAD_VALUE
+}
+
+/// Whether any coordinate of `point` is bad by [`is_c_bad`].
+#[inline]
+pub(crate) fn point_has_c_bad(point: &[f64]) -> bool {
+    point.iter().any(|&v| is_c_bad(v))
+}
+
 #[inline]
 pub fn point_has_bad(point: &[f64]) -> bool {
     point.iter().any(|&v| is_bad(v))

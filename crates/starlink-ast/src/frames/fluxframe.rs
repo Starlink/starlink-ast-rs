@@ -7,6 +7,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame};
 use crate::mappings::helpers::is_bad;
+use crate::mappings::helpers::is_c_bad;
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable};
 
@@ -949,7 +950,7 @@ impl Frame for FluxFrame {
         let va = a[0];
         let vb = b[0];
         let vc = c[0];
-        if is_bad(va) || is_bad(vb) || is_bad(vc) {
+        if is_c_bad(va) || is_c_bad(vb) || is_c_bad(vc) {
             return Ok(BAD_VALUE);
         }
         let ab = va - vb;

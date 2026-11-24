@@ -65,6 +65,8 @@ mod test_frame_format;
 mod test_frame_geometry;
 #[path = "../test_frame_in_map_slot.rs"]
 mod test_frame_in_map_slot;
+#[path = "../test_frame_infinity.rs"]
+mod test_frame_infinity;
 #[path = "../test_frameset.rs"]
 mod test_frameset;
 #[path = "../test_frameset_current.rs"]

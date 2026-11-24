@@ -6,7 +6,7 @@
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, FluxFrame, Frame, SpecFrame};
-use crate::mappings::helpers::{is_bad, point_has_bad};
+use crate::mappings::helpers::{is_c_bad, point_has_c_bad};
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable};
 
@@ -357,7 +357,7 @@ impl Frame for SpecFluxFrame {
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         super::assert_points_len("distance", self.naxes(), &[a, b]);
-        if point_has_bad(a) || point_has_bad(b) {
+        if point_has_c_bad(a) || point_has_c_bad(b) {
             return Ok(BAD_VALUE);
         }
         // Euclidean distance in the 2-D compound space.
@@ -368,7 +368,7 @@ impl Frame for SpecFluxFrame {
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
         super::assert_points_len("angle", self.naxes(), &[a, b, c]);
-        if point_has_bad(a) || point_has_bad(b) || point_has_bad(c) {
+        if point_has_c_bad(a) || point_has_c_bad(b) || point_has_c_bad(c) {
             return Ok(BAD_VALUE);
         }
         let ba0 = a[0] - b[0];
@@ -392,7 +392,7 @@ impl Frame for SpecFluxFrame {
         // split between the two one-axis components in proportion to their
         // distances, so the path passes through the second point, and each
         // component applies the Frame-class offset to its share.
-        if point_has_bad(from) || point_has_bad(to) || is_bad(dist) {
+        if point_has_c_bad(from) || point_has_c_bad(to) || is_c_bad(dist) {
             return Ok(vec![BAD_VALUE; 2]);
         }
         let d1 = super::cartesian_distance(&from[..1], &to[..1]);
@@ -408,7 +408,7 @@ impl Frame for SpecFluxFrame {
         };
         let r1 = super::cartesian_offset(&from[..1], &to[..1], off1)[0];
         let r2 = super::cartesian_offset(&from[1..2], &to[1..2], off2)[0];
-        if is_bad(r1) || is_bad(r2) {
+        if is_c_bad(r1) || is_c_bad(r2) {
             return Ok(vec![BAD_VALUE; 2]);
         }
         Ok(vec![r1, r2])

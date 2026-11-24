@@ -1959,9 +1959,7 @@ The edges to the infinite vertex have infinite length and a direction of NaN, so
 
 Consequence: positions inside such a Polygon are taken to be outside it.
 
-The port differs: its Frame geometry takes an infinite value to be bad, and it keeps (0.1, 0.1).
-`infinite_vertex` in `REGION_HARDENING_EXCLUDED` (`tests/test_regionhardening.rs`) records C's answer and fails if the port starts to give it.
-Whether to follow C here is open (PLAN.md §2): the port's answer is the geometrically right one, but it comes from treating infinity as bad, which elsewhere differs from C.
+The port mirrors it, by decision (2026-11-23): its Frame geometry takes an infinite value to be a number, as C's does, which gives C's answer here (`polygons` in `tests/test_regionhardening.rs`); before, it took infinity to be bad and kept (0.1, 0.1), the right answer for the wrong reason.
 Question for upstream: should a Polygon refuse a vertex that is not finite, as it refuses one that is `AST__BAD`?
 
 ## Addressed here, and not going upstream

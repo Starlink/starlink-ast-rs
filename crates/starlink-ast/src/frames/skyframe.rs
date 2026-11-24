@@ -12,6 +12,7 @@ use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping};
 use crate::frames::skyaxis::{SkyAxis, default_dhms_format, dhms_unit, unformat_sky_axis};
 use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, LineDef, SkyLineDef};
 use crate::mappings::helpers::is_bad;
+use crate::mappings::helpers::is_c_bad;
 use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap};
 use crate::pal;
 use crate::serial::{Node, Serializable};
@@ -2255,7 +2256,7 @@ impl Frame for SkyFrame {
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         super::assert_points_len("distance", self.naxes(), &[a, b]);
-        if is_bad(a[0]) || is_bad(a[1]) || is_bad(b[0]) || is_bad(b[1]) {
+        if is_c_bad(a[0]) || is_c_bad(a[1]) || is_c_bad(b[0]) || is_c_bad(b[1]) {
             return Ok(BAD_VALUE);
         }
         let lp = self.lon_pos();
@@ -2281,7 +2282,7 @@ impl Frame for SkyFrame {
         let (mut d1, mut d2) = (BAD_VALUE, BAD_VALUE);
         if [point1, point2, point3]
             .iter()
-            .any(|p| is_bad(p[0]) || is_bad(p[1]))
+            .any(|p| is_c_bad(p[0]) || is_c_bad(p[1]))
         {
             return Ok((point4, d1, d2));
         }
@@ -2327,7 +2328,7 @@ impl Frame for SkyFrame {
         let mut cross = vec![BAD_VALUE, BAD_VALUE];
         if [a1, a2, b1, b2]
             .iter()
-            .any(|p| is_bad(p[0]) || is_bad(p[1]))
+            .any(|p| is_c_bad(p[0]) || is_c_bad(p[1]))
         {
             return Ok(cross);
         }
@@ -2402,7 +2403,7 @@ impl Frame for SkyFrame {
             for ip in 0..npoint {
                 let point = input.point(ip);
                 let (px, py) = (point[0], point[1]);
-                if is_bad(px) || is_bad(py) {
+                if is_c_bad(px) || is_c_bad(py) {
                     continue;
                 }
 
@@ -2435,7 +2436,11 @@ impl Frame for SkyFrame {
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
         super::assert_points_len("angle", self.naxes(), &[a, b, c]);
-        if a.iter().chain(b.iter()).chain(c.iter()).any(|&v| is_bad(v)) {
+        if a.iter()
+            .chain(b.iter())
+            .chain(c.iter())
+            .any(|&v| is_c_bad(v))
+        {
             return Ok(BAD_VALUE);
         }
         // The angle is undefined when either end point coincides with
@@ -2460,7 +2465,7 @@ impl Frame for SkyFrame {
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
         super::assert_points_len("offset", self.naxes(), &[from, to]);
-        if from.iter().chain(to.iter()).any(|&v| is_bad(v)) || is_bad(dist) {
+        if from.iter().chain(to.iter()).any(|&v| is_c_bad(v)) || is_c_bad(dist) {
             return Ok(vec![BAD_VALUE; 2]);
         }
 
@@ -2525,7 +2530,7 @@ impl Frame for SkyFrame {
         let bp = self.lat_pos();
         let mut lon = coords[lp];
         let mut lat = coords[bp];
-        if !is_bad(lon) && !is_bad(lat) {
+        if !is_c_bad(lon) && !is_c_bad(lat) {
             lon = pal::dranrm(lon);
             lat = pal::drange(lat);
             if lat > PI / 2.0 {
@@ -2535,9 +2540,9 @@ impl Frame for SkyFrame {
                 lon += if lon < PI { PI } else { -PI };
                 lat = -PI - lat;
             }
-        } else if !is_bad(lon) {
+        } else if !is_c_bad(lon) {
             lon = pal::dranrm(lon);
-        } else if !is_bad(lat) {
+        } else if !is_c_bad(lat) {
             lat = pal::drange(lat);
             if lat > PI / 2.0 {
                 lat = PI - lat;
@@ -2550,7 +2555,7 @@ impl Frame for SkyFrame {
         if (lon - 2.0 * PI).abs() <= 2.0 * PI * (f64::EPSILON * 2.0) {
             lon = 0.0;
         }
-        if !is_bad(lon) && self.neg_lon() {
+        if !is_c_bad(lon) && self.neg_lon() {
             lon = pal::drange(lon);
         }
         coords[lp] = lon;
@@ -2772,7 +2777,7 @@ impl Frame for SkyFrame {
         let perm = self.perm;
 
         // Bad inputs give all-BAD output and a BAD returned angle.
-        if is_bad(point1[0]) || is_bad(point1[1]) || is_bad(angle) || is_bad(offset) {
+        if is_c_bad(point1[0]) || is_c_bad(point1[1]) || is_c_bad(angle) || is_c_bad(offset) {
             return Ok((vec![BAD_VALUE, BAD_VALUE], BAD_VALUE));
         }
 
@@ -2879,7 +2884,7 @@ impl Frame for SkyFrame {
 
         // If the box includes the north pole...
         if north_in {
-            let t = if !is_bad(ub[1]) && !is_bad(lb[1]) {
+            let t = if !is_c_bad(ub[1]) && !is_c_bad(lb[1]) {
                 let t = pal::drange(ub[1]);
                 let t2 = pal::drange(lb[1]);
                 if t2 < t { t2 } else { t }
@@ -2894,7 +2899,7 @@ impl Frame for SkyFrame {
 
         // If the box includes the south pole...
         if south_in {
-            let t = if !is_bad(ub[1]) && !is_bad(lb[1]) {
+            let t = if !is_c_bad(ub[1]) && !is_c_bad(lb[1]) {
                 let t = pal::drange(ub[1]);
                 let t2 = pal::drange(lb[1]);
                 if t2 > t { t2 } else { t }
@@ -2924,7 +2929,7 @@ impl Frame for SkyFrame {
     // by `line_def`.
 
     fn line_def(&self, start: &[f64], end: &[f64]) -> AstResult<Option<LineDef>> {
-        if is_bad(start[0]) || is_bad(start[1]) || is_bad(end[0]) || is_bad(end[1]) {
+        if is_c_bad(start[0]) || is_c_bad(start[1]) || is_c_bad(end[0]) || is_c_bad(end[1]) {
             return Ok(None);
         }
 
@@ -3075,7 +3080,7 @@ impl Frame for SkyFrame {
         let Some(sl) = l.sky.as_ref() else {
             unreachable!("line_owned_by checked the line");
         };
-        if is_bad(point[0]) || is_bad(point[1]) {
+        if is_c_bad(point[0]) || is_c_bad(point[1]) {
             return Ok(false);
         }
 

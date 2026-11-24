@@ -88,8 +88,8 @@ impl AxisKind {
     // a sky axis.
     pub fn distance(&self, v1: f64, v2: f64) -> f64 {
         use crate::constants::BAD_VALUE;
-        use crate::mappings::helpers::is_bad;
-        if is_bad(v1) || is_bad(v2) {
+        use crate::mappings::helpers::is_c_bad;
+        if is_c_bad(v1) || is_c_bad(v2) {
             return BAD_VALUE;
         }
         match self {
@@ -106,8 +106,8 @@ impl AxisKind {
     // a sky axis.
     pub fn offset(&self, v1: f64, dist: f64) -> f64 {
         use crate::constants::BAD_VALUE;
-        use crate::mappings::helpers::is_bad;
-        if is_bad(v1) || is_bad(dist) {
+        use crate::mappings::helpers::is_c_bad;
+        if is_c_bad(v1) || is_c_bad(dist) {
             return BAD_VALUE;
         }
         let mut result = v1 + dist;
@@ -122,7 +122,7 @@ impl AxisKind {
     // sky axis.
     pub fn norm(&self, value: &mut f64) {
         if let Self::Sky { centre_zero, .. } = self {
-            if !crate::mappings::helpers::is_bad(*value) {
+            if !crate::mappings::helpers::is_c_bad(*value) {
                 *value = if *centre_zero {
                     crate::pal::drange(*value)
                 } else {
@@ -591,6 +591,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// through the two sky positions.
     ///
     /// The result is `BAD_VALUE` if any input coordinate is `BAD_VALUE`.
+    /// A NaN or infinite coordinate is a number here, as in the C library,
+    /// so the result can be NaN or infinite; NaN is not read as bad.
     ///
     /// # Panics
     ///
@@ -617,6 +619,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// The result is `BAD_VALUE` if any input coordinate is `BAD_VALUE`, or
     /// if `a` and `b`, or `b` and `c`, coincide.
+    /// A NaN or infinite coordinate is a number here, as in the C library,
+    /// so the result can be NaN or infinite; NaN is not read as bad.
     ///
     /// # Panics
     ///
@@ -1956,7 +1960,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     #[doc(alias = "astOffset2")]
     fn offset2(&self, point1: &[f64], angle: f64, offset: f64) -> AstResult<(Vec<f64>, f64)> {
         use crate::constants::BAD_VALUE;
-        use crate::mappings::helpers::is_bad;
+        use crate::mappings::helpers::is_c_bad;
         if self.naxes() != 2 {
             return Err(AstError::new(
                 ErrorCode::Naxin,
@@ -1964,7 +1968,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
             ));
         }
         assert_points_len("offset2", 2, &[point1]);
-        if is_bad(point1[0]) || is_bad(point1[1]) || is_bad(angle) || is_bad(offset) {
+        if is_c_bad(point1[0]) || is_c_bad(point1[1]) || is_c_bad(angle) || is_c_bad(offset) {
             return Ok((vec![BAD_VALUE, BAD_VALUE], BAD_VALUE));
         }
         let p2 = vec![
@@ -2011,7 +2015,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     #[doc(alias = "astIntersect")]
     fn intersect(&self, a1: &[f64], a2: &[f64], b1: &[f64], b2: &[f64]) -> AstResult<Vec<f64>> {
         use crate::constants::BAD_VALUE;
-        use crate::mappings::helpers::is_bad;
+        use crate::mappings::helpers::is_c_bad;
         if self.naxes() != 2 {
             return Err(AstError::new(
                 ErrorCode::Naxin,
@@ -2022,7 +2026,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         let mut cross = vec![BAD_VALUE, BAD_VALUE];
         if [a1[0], a1[1], a2[0], a2[1], b1[0], b1[1], b2[0], b2[1]]
             .iter()
-            .any(|&v| is_bad(v))
+            .any(|&v| is_c_bad(v))
         {
             return Ok(cross);
         }
@@ -2170,7 +2174,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// SkyFrame overrides with great-circle geometry.
     // C: `astLineContains` (frame.c:6466).
     fn line_contains(&self, l: &LineDef, point: &[f64]) -> AstResult<bool> {
-        use crate::mappings::helpers::is_bad;
+        use crate::mappings::helpers::is_c_bad;
         if self.naxes() != 2 {
             return Err(AstError::new(
                 ErrorCode::Inter,
@@ -2184,7 +2188,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
             "The supplied line",
             false,
         )?;
-        if is_bad(point[0]) || is_bad(point[1]) {
+        if is_c_bad(point[0]) || is_c_bad(point[1]) {
             return Ok(false);
         }
         let dx = point[0] - l.start[0];
@@ -2585,6 +2589,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// The result is `BAD_VALUE` if any input coordinate is `BAD_VALUE`, or
     /// if the angle is undefined.
+    /// A NaN or infinite coordinate is a number here, as in the C library,
+    /// so the result can be NaN or infinite; NaN is not read as bad.
     ///
     /// # Panics
     ///
@@ -2615,7 +2621,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         // C `astAxAngle` (frame.c:1324) offsets `a` slightly in the +axis
         // direction and calls `astAngle`.
         use crate::constants::BAD_VALUE;
-        use crate::mappings::helpers::is_bad;
+        use crate::mappings::helpers::is_c_bad;
         // frame.c:1442 validates the axis first.
         self.validate_frame_axis(axis, "astAxAngle")?;
         assert_points_len("ax_angle", self.naxes(), &[a, b]);
@@ -2623,7 +2629,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         let mut aa = vec![0.0; naxes];
         let mut mxab = 0.0;
         for i in 0..naxes {
-            if is_bad(a[i]) || is_bad(b[i]) {
+            if is_c_bad(a[i]) || is_c_bad(b[i]) {
                 return Ok(BAD_VALUE);
             }
             aa[i] = a[i];
@@ -2721,6 +2727,8 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// Every output is `BAD_VALUE` if any input coordinate is `BAD_VALUE`,
     /// or if the outputs are undefined, as for a basis vector of zero
     /// length.
+    /// A NaN or infinite coordinate is a number here, as in the C library,
+    /// so the result can be NaN or infinite; NaN is not read as bad.
     ///
     /// # Panics
     ///
@@ -2748,13 +2756,14 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         point3: &[f64],
     ) -> AstResult<(Vec<f64>, f64, f64)> {
         use crate::constants::BAD_VALUE;
-        use crate::mappings::helpers::is_bad;
+        use crate::mappings::helpers::is_c_bad;
         let naxes = self.naxes();
         assert_points_len("resolve", naxes, &[point1, point2, point3]);
         let mut point4 = vec![BAD_VALUE; naxes];
         let mut d1 = BAD_VALUE;
         let mut d2 = BAD_VALUE;
-        let ok = (0..naxes).all(|i| !(is_bad(point1[i]) || is_bad(point2[i]) || is_bad(point3[i])));
+        let ok = (0..naxes)
+            .all(|i| !(is_c_bad(point1[i]) || is_c_bad(point2[i]) || is_c_bad(point3[i])));
         if ok {
             let mut dp = 0.0;
             let mut bv = 0.0;
@@ -2800,7 +2809,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         input: &crate::coords::PointSet,
     ) -> AstResult<crate::coords::PointSet> {
         use crate::constants::BAD_VALUE;
-        use crate::mappings::helpers::is_bad;
+        use crate::mappings::helpers::is_c_bad;
         let nax = self.naxes();
         assert_points_len("resolve_points", nax, &[point1, point2]);
         let npoint = input.npoint();
@@ -2821,7 +2830,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
         let mut bv = 0.0;
         let mut ok = true;
         for i in 0..nax {
-            if is_bad(point1[i]) || is_bad(point2[i]) {
+            if is_c_bad(point1[i]) || is_c_bad(point2[i]) {
                 ok = false;
                 break;
             }
@@ -2836,7 +2845,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
                 let mut good = true;
                 for (i, &bi) in basisv.iter().enumerate() {
                     let d = row[i] - point1[i];
-                    if is_bad(d) {
+                    if is_c_bad(d) {
                         good = false;
                         break;
                     }
@@ -3617,11 +3626,11 @@ pub(crate) fn assert_points_len(method: &str, naxes: usize, points: &[&[f64]]) {
 /// square root of the summed squared displacements.
 pub(crate) fn cartesian_distance(a: &[f64], b: &[f64]) -> f64 {
     use crate::constants::BAD_VALUE;
-    use crate::mappings::helpers::is_bad;
+    use crate::mappings::helpers::is_c_bad;
 
     let mut dist = 0.0;
     for (&p1, &p2) in a.iter().zip(b) {
-        if is_bad(p1) || is_bad(p2) {
+        if is_c_bad(p1) || is_c_bad(p2) {
             return BAD_VALUE;
         }
         let delta = p1 - p2;
@@ -3636,10 +3645,10 @@ pub(crate) fn cartesian_distance(a: &[f64], b: &[f64]) -> f64 {
 /// zero. C applies no check to a bad `dist`; here it gives a bad point too.
 pub(crate) fn cartesian_offset(from: &[f64], to: &[f64], dist: f64) -> Vec<f64> {
     use crate::constants::BAD_VALUE;
-    use crate::mappings::helpers::is_bad;
+    use crate::mappings::helpers::is_c_bad;
 
     let total = cartesian_distance(from, to);
-    if is_bad(dist) || is_bad(total) || (total == 0.0 && dist != 0.0) {
+    if is_c_bad(dist) || is_c_bad(total) || (total == 0.0 && dist != 0.0) {
         return vec![BAD_VALUE; from.len()];
     }
     let fract = if total == 0.0 { 0.0 } else { dist / total };
@@ -3656,7 +3665,7 @@ pub(crate) fn cartesian_offset(from: &[f64], to: &[f64], dist: f64) -> Vec<f64> 
 /// otherwise the unsigned `acos` form.
 pub(crate) fn cartesian_angle(a: &[f64], b: &[f64], c: &[f64]) -> f64 {
     use crate::constants::BAD_VALUE;
-    use crate::mappings::helpers::is_bad;
+    use crate::mappings::helpers::is_c_bad;
 
     let naxes = b.len();
     let mut sla = 0.0;
@@ -3664,7 +3673,7 @@ pub(crate) fn cartesian_angle(a: &[f64], b: &[f64], c: &[f64]) -> f64 {
     let mut ab = vec![0.0; naxes];
     let mut cb = vec![0.0; naxes];
     for i in 0..naxes {
-        if is_bad(a[i]) || is_bad(b[i]) || is_bad(c[i]) {
+        if is_c_bad(a[i]) || is_c_bad(b[i]) || is_c_bad(c[i]) {
             return BAD_VALUE;
         }
         ab[i] = a[i] - b[i];

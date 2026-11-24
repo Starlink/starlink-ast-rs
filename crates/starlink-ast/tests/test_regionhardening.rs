@@ -610,9 +610,20 @@ fn polygons() {
         );
     }
 
-    // A vertex at infinity: making and using the Polygon only has to return.
-    // C's values are in `REGION_HARDENING_EXCLUDED`.
-    within_10s(|| polygon_case(infinite_vertex()));
+    // A vertex at infinity. The C library takes an infinite coordinate to
+    // be a number, and puts (0.1, 0.1) outside, though it is inside the
+    // triangle (quirk "A Polygon with a vertex at infinity leaves out
+    // positions inside it").
+    let got = within_10s(|| polygon_case(infinite_vertex()));
+    assert_eq!(
+        got,
+        (
+            true,
+            (vec![0.0, 0.0], vec![f64::INFINITY, 1.0]),
+            "00100".to_string(),
+            Overlap::Same
+        )
+    );
 }
 
 /// The vertices of a Polygon with a vertex at infinity.
@@ -621,36 +632,16 @@ fn infinite_vertex() -> Vec<Vec<f64>> {
 }
 
 /// Cases whose result is not yet the C library's, each with the reason.
-const REGION_HARDENING_EXCLUDED: &[(&str, &str)] = &[
-    (
-        "attribute_strings",
-        "the attribute-strings layer has no Region classes, so a Box refuses a \
+const REGION_HARDENING_EXCLUDED: &[(&str, &str)] = &[(
+    "attribute_strings",
+    "the attribute-strings layer has no Region classes, so a Box refuses a \
          setting with AST__BADAT; the typed setters are tested in `attributes`",
-    ),
-    (
-        "infinite_vertex",
-        "the Frame geometry the Polygon uses (axis distances and offsets, and \
-     whether a line holds a point) takes an infinite value to be bad, where C \
-     tests for AST__BAD alone, so the edges to the infinite vertex have no \
-     length and the position (0.1, 0.1) is taken to be inside, as it is; C has \
-     it outside (quirk \"A Polygon with a vertex at infinity leaves out \
-     positions inside it\"), and whether to follow C is open",
-    ),
-];
+)];
 
 /// Whether the excluded case `name` now gives the C library's result.
 fn excluded_case_matches_c(name: &str) -> bool {
     match name {
         "attribute_strings" => attribute_strings_match_c(),
-        "infinite_vertex" => {
-            polygon_case(infinite_vertex())
-                == (
-                    true,
-                    (vec![0.0, 0.0], vec![f64::INFINITY, 1.0]),
-                    "00100".to_string(),
-                    Overlap::Same,
-                )
-        }
         _ => panic!("no case named {name}"),
     }
 }

@@ -74,6 +74,6 @@ reduces, so C rebuilds rather than reaching row 6.
 Row 5 needs a Frame-level `astSimplify`, which C has because `Simplify` is a
 Mapping slot every Frame inherits (`mapping.c:16979 (fn Simplify)`) and `CmpFrame`
 (`cmpframe.c:9148 (fn Simplify)`), `FrameSet` and every Region override. `Frame::simplify_frame`
-(`frames/mod.rs:736 (fn simplify_frame)`) is the port of that slot, and `None` is what C signals by
+(`frames/mod.rs:740 (fn simplify_frame)`) is the port of that slot, and `None` is what C signals by
 handing back the pointer it was given, which is the `smap != map->frame` test at
 `normmap.c:631 (fn MapMerge)`.

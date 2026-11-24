@@ -193,12 +193,9 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_regionhardening.rs",
         "REGION_HARDENING_EXCLUDED",
-        2,
+        1,
         "attribute_strings: no Region class is in the attribute-strings layer yet \
          (PLAN.md section 1), so only the typed setters are tested; \
-         infinite_vertex: a Polygon with a vertex at infinity returns, as the C test \
-         requires, but C's membership of (0.1, 0.1) needs Frame geometry that takes \
-         an infinite value to be a number, not bad (PLAN.md section 2); \
          excluded_cases_still_differ fails when it matches",
     ),
     (

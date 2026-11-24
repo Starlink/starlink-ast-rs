@@ -7,7 +7,7 @@ use std::fmt;
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::helpers::{is_bad, point_has_bad};
+use crate::mappings::helpers::{is_c_bad, point_has_c_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap};
 use crate::serial::{FrameToNode, Node, Serializable, frame_from_node};
 
@@ -627,7 +627,7 @@ impl Frame for CmpFrame {
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         super::assert_points_len("distance", self.naxes(), &[a, b]);
-        if point_has_bad(a) || point_has_bad(b) {
+        if point_has_c_bad(a) || point_has_c_bad(b) {
             return Ok(BAD_VALUE);
         }
         // Project both points into the component frames through the
@@ -643,7 +643,7 @@ impl Frame for CmpFrame {
         }
         let d1 = self.frame1.distance(&p1[..n1], &p2[..n1])?;
         let d2 = self.frame2.distance(&p1[n1..], &p2[n1..])?;
-        if is_bad(d1) || is_bad(d2) {
+        if is_c_bad(d1) || is_c_bad(d2) {
             return Ok(BAD_VALUE);
         }
         Ok(crate::math::sqrt(d1 * d1 + d2 * d2))
@@ -651,7 +651,7 @@ impl Frame for CmpFrame {
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
         super::assert_points_len("angle", self.naxes(), &[a, b, c]);
-        if point_has_bad(a) || point_has_bad(b) || point_has_bad(c) {
+        if point_has_c_bad(a) || point_has_c_bad(b) || point_has_c_bad(c) {
             return Ok(BAD_VALUE);
         }
         // When every axis belongs to a plain Cartesian frame, use the
@@ -674,9 +674,9 @@ impl Frame for CmpFrame {
         let ang1 = self.frame1.angle(&pa[..n1], &pb[..n1], &pc[..n1])?;
         let ang2 = self.frame2.angle(&pa[n1..], &pb[n1..], &pc[n1..])?;
         // Defined only when exactly one component defines it.
-        if is_bad(ang1) {
+        if is_c_bad(ang1) {
             Ok(ang2)
-        } else if is_bad(ang2) {
+        } else if is_c_bad(ang2) {
             Ok(ang1)
         } else {
             Ok(BAD_VALUE)
@@ -700,9 +700,9 @@ impl Frame for CmpFrame {
         super::assert_points_len("resolve", self.naxes(), &[point1, point2, point3]);
         let naxes = self.naxes();
         let bad = (vec![BAD_VALUE; naxes], BAD_VALUE, BAD_VALUE);
-        if point_has_bad(&point1[..naxes])
-            || point_has_bad(&point2[..naxes])
-            || point_has_bad(&point3[..naxes])
+        if point_has_c_bad(&point1[..naxes])
+            || point_has_c_bad(&point2[..naxes])
+            || point_has_c_bad(&point3[..naxes])
         {
             return Ok(bad);
         }
@@ -716,16 +716,16 @@ impl Frame for CmpFrame {
         let (_, mut d1b, _) = self.frame2.resolve(&p1[n1..], &p2[n1..], &p3[n1..])?;
         let da = self.frame1.distance(&p1[..n1], &p2[..n1])?;
         let db = self.frame2.distance(&p1[n1..], &p2[n1..])?;
-        if is_bad(da) || is_bad(db) {
+        if is_c_bad(da) || is_c_bad(db) {
             return Ok(bad);
         }
-        if is_bad(d1a) && da == 0.0 {
+        if is_c_bad(d1a) && da == 0.0 {
             d1a = 0.0;
         }
-        if is_bad(d1b) && db == 0.0 {
+        if is_c_bad(d1b) && db == 0.0 {
             d1b = 0.0;
         }
-        if is_bad(d1a) || is_bad(d1b) {
+        if is_c_bad(d1a) || is_c_bad(d1b) {
             return Ok(bad);
         }
         let d = crate::math::sqrt(da * da + db * db);
@@ -762,7 +762,7 @@ impl Frame for CmpFrame {
         let p2 = self.to_internal(point2);
         let b1 = self.frame1.distance(&p1[..n1], &p2[..n1])?;
         let b2 = self.frame2.distance(&p1[n1..], &p2[n1..])?;
-        if is_bad(b1) || is_bad(b2) || (b1 == 0.0 && b2 == 0.0) {
+        if is_c_bad(b1) || is_c_bad(b2) || (b1 == 0.0 && b2 == 0.0) {
             return crate::coords::PointSet::from_columns(&[&d1v, &d2v]);
         }
         let b = crate::math::sqrt(b1 * b1 + b2 * b2);
@@ -787,13 +787,13 @@ impl Frame for CmpFrame {
         for ipoint in 0..npoint {
             let mut d1_1 = out1.point(ipoint)[0];
             let mut d1_2 = out2.point(ipoint)[0];
-            if is_bad(d1_1) && b1 == 0.0 {
+            if is_c_bad(d1_1) && b1 == 0.0 {
                 d1_1 = 0.0;
             }
-            if is_bad(d1_2) && b2 == 0.0 {
+            if is_c_bad(d1_2) && b2 == 0.0 {
                 d1_2 = 0.0;
             }
-            if !is_bad(d1_1) && !is_bad(d1_2) {
+            if !is_c_bad(d1_1) && !is_c_bad(d1_2) {
                 let d1 = (b1 * d1_1 + b2 * d1_2) / b;
                 let p4 = self.offset(point1, point2, d1)?;
                 d1v[ipoint] = d1;
@@ -806,7 +806,7 @@ impl Frame for CmpFrame {
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
         super::assert_points_len("offset", self.naxes(), &[from, to]);
         let n = self.naxes();
-        if point_has_bad(from) || point_has_bad(to) || is_bad(dist) {
+        if point_has_c_bad(from) || point_has_c_bad(to) || is_c_bad(dist) {
             return Ok(vec![BAD_VALUE; n]);
         }
         // Project into the components, split the offset between them
@@ -822,7 +822,7 @@ impl Frame for CmpFrame {
         }
         let d1 = self.frame1.distance(&p1[..n1], &p2[..n1])?;
         let d2 = self.frame2.distance(&p1[n1..], &p2[n1..])?;
-        if is_bad(d1) || is_bad(d2) {
+        if is_c_bad(d1) || is_c_bad(d2) {
             return Ok(vec![BAD_VALUE; n]);
         }
         let total = crate::math::sqrt(d1 * d1 + d2 * d2);
@@ -841,7 +841,7 @@ impl Frame for CmpFrame {
         let mut result = vec![0.0; n];
         for i in 0..n {
             result[i] = p3[self.perm[i]];
-            if is_bad(result[i]) {
+            if is_c_bad(result[i]) {
                 return Ok(vec![BAD_VALUE; n]);
             }
         }
