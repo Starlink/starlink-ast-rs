@@ -389,23 +389,34 @@ pub(crate) fn cylinder() -> impl Region {
 
 #[test]
 fn ellipses() {
-    // An Ellipse at the origin used as the uncertainty of a Box is moved to
-    // the centre of the Box and keeps its size.
-    let ellipse = EllipseBuilder::new(plain(2), vec![0.0, 0.0], [0.2, 0.1], 0.3)
-        .unwrap()
-        .build()
-        .unwrap();
-    let (elbnd, eubnd) = ellipse.get_region_bounds().unwrap();
-    let bx = BoxRegionBuilder::from_bounds(plain(2), &[0.0, 0.0], &[10.0, 10.0])
-        .unwrap()
-        .uncertainty(Box::new(ellipse))
-        .build()
-        .unwrap();
-    let unc = bx.get_unc(false).unwrap().expect("an uncertainty");
-    let (lbnd, ubnd) = unc.get_region_bounds().unwrap();
-    for i in 0..2 {
-        assert!((0.5 * (lbnd[i] + ubnd[i]) - 5.0).abs() <= 1.0e-6);
-        assert!(((ubnd[i] - lbnd[i]) - (eubnd[i] - elbnd[i])).abs() <= 1.0e-6);
+    // An Ellipse used as the uncertainty of a Box is moved to the centre of
+    // the Box and keeps its size, whether it starts at the origin or is
+    // already there.
+    for c in [0.0, 5.0] {
+        let ellipse = EllipseBuilder::new(plain(2), vec![c, c], [0.2, 0.1], 0.3)
+            .unwrap()
+            .build()
+            .unwrap();
+        let (elbnd, eubnd) = ellipse.get_region_bounds().unwrap();
+        let bx = BoxRegionBuilder::from_bounds(plain(2), &[0.0, 0.0], &[10.0, 10.0])
+            .unwrap()
+            .uncertainty(Box::new(ellipse))
+            .build()
+            .unwrap();
+        let unc = bx.get_unc(false).unwrap().expect("an uncertainty");
+        let (lbnd, ubnd) = unc
+            .get_region_bounds()
+            .unwrap_or_else(|e| panic!("centre {c}: {e}"));
+        for i in 0..2 {
+            assert!(
+                (0.5 * (lbnd[i] + ubnd[i]) - 5.0).abs() <= 1.0e-6,
+                "centre {c}"
+            );
+            assert!(
+                ((ubnd[i] - lbnd[i]) - (eubnd[i] - elbnd[i])).abs() <= 1.0e-6,
+                "centre {c}"
+            );
+        }
     }
 
     // Three points in a line do not define an ellipse, which is reported

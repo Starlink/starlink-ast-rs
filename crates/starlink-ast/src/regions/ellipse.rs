@@ -1153,16 +1153,19 @@ impl Region for Ellipse {
 
         // Find the direction and length of the offset between the old and new
         // center, then shift all three defining points by that same offset
-        // (ellipse.c:1352-1366).
+        // (ellipse.c `RegCentre`).
         let angle = bfrm.ax_angle(&old_centre, &bc, 2)?;
         let dist = bfrm.distance(&old_centre, &bc)?;
 
-        for ip in 0..self.data.points.len() {
-            let (shifted, _) = bfrm.offset2(&self.data.points[ip], angle, dist)?;
-            self.data.points[ip] = shifted;
+        // A new centre that is the old one gives the offset no direction,
+        // and leaves the points where they are.
+        if !is_bad(angle) && !is_bad(dist) && dist != 0.0 {
+            for ip in 0..self.data.points.len() {
+                let (shifted, _) = bfrm.offset2(&self.data.points[ip], angle, dist)?;
+                self.data.points[ip] = shifted;
+            }
+            self.data.invalidate_cache();
         }
-
-        self.data.invalidate_cache();
         Ok(())
     }
 
