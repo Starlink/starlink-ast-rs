@@ -36,11 +36,12 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A curve clipped into arcs shorter than Crv's sample spacing is not drawn](#a-curve-clipped-into-arcs-shorter-than-crvs-sample-spacing-is-not-drawn)
 - [`astRegionOutline` leaves the Plot's Base set](#astregionoutline-leaves-the-plots-base-set)
 - [Plot's major tick search overflows `int` for a zero or tiny Gap](#plots-major-tick-search-overflows-int-for-a-zero-or-tiny-gap)
+- [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
 - [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Centre` zeroes a calendar field that has no zero](#timeframe-centre-zeroes-a-calendar-field-that-has-no-zero)
 - [A `%a` Format gives different text on different platforms](#a-a-format-gives-different-text-on-different-platforms)
 - [SkyAxis gives `<bad>` for a value whose text passes 70 characters](#skyaxis-gives-bad-for-a-value-whose-text-passes-70-characters)
-- [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
+- [SkyAxis formats an infinite value as `inf:00:00.1`](#skyaxis-formats-an-infinite-value-as-inf00001)
 - [A PointList's `Transform` moves its shared uncertainty Region twice per list point](#a-pointlists-transform-moves-its-shared-uncertainty-region-twice-per-list-point)
 - [SelectorMap's `Transform` negates and re-closes each selector Region in place](#selectormaps-transform-negates-and-re-closes-each-selector-region-in-place)
 - [`CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column](#compressmatrix-recomputes-sqrt-dbl_epsilon--for-every-row-and-column)
@@ -146,6 +147,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`astGetAllVariants` fails when the joined Domains pass 200 characters](#astgetallvariants-fails-when-the-joined-domains-pass-200-characters)
 - [The comment for an offset sky axis is cut to 79 characters](#the-comment-for-an-offset-sky-axis-is-cut-to-79-characters)
 - [FitsChan cuts long strings to the buffers it copies them into](#fitschan-cuts-long-strings-to-the-buffers-it-copies-them-into)
+- [Frame classes cut long default Labels, Symbols, Domains and Titles to their buffers](#frame-classes-cut-long-default-labels-symbols-domains-and-titles-to-their-buffers)
 
 ### [Resolved upstream](#resolved-upstream)
 
@@ -468,6 +470,18 @@ Consequence: values far beyond any meaningful angle are written as long strings 
 
 The port mirrors it, by decision (2026-11-23): `dhms_format` gives `<bad>` when its text passes 70 characters (`huge_sky_values` in `tests/test_fields.rs`).
 Proposed C change: give `<bad>` once the smallest field the Format asks for is finer than the value's resolution, so that the cut-off follows the precision rather than the buffer.
+
+### SkyAxis formats an infinite value as `inf:00:00.1`
+
+C location: `skyaxis.c` `DHmsFormat`, and `axis.c` `AxisFormat`.
+
+`AxisFormat` tests a value only for `AST__BAD`, so it passes an infinite value or a NaN to `sprintf`, which writes `inf`, `INF`, `nan` or `NAN` as the Format's case asks.
+`DHmsFormat` splits the value into fields with `modf`, so an infinite value of a sky axis keeps `inf` as its first field, and a C-oracle probe in the stage 4 triage gave `inf:00:00.1`.
+
+Consequence: an infinite sky value is formatted as text that looks like an angle.
+
+The port formats an infinite or NaN value on any axis as `<bad>` (`axis_format::format_value` and `skyaxis::dhms_format` test with `is_bad`), not mirroring C; PLAN.md §2 has the row.
+Question for upstream: should a value that is not finite be formatted as `<bad>`?
 
 ### A PointList's `Transform` moves its shared uncertainty Region twice per list point
 
@@ -1994,6 +2008,15 @@ The strings are the TIMESYS value, keyword name and CTYPE values in warnings; th
 Before the change a string set with `astSetFitsS`, or a Frame Symbol, Domain or Unit, longer than its buffer overran it; now it is cut short.
 
 The port does not mirror the cuts, which exist only to protect the buffers: it copies each string whole into a `String`.
+
+### Frame classes cut long default Labels, Symbols, Domains and Titles to their buffers
+
+C location: `specframe.c`, `timeframe.c`, `fluxframe.c`, `dsbspecframe.c`, `specfluxframe.c`, `cmpframe.c` and `skyframe.c`, the `snprintf` calls upstream `865e65bd`, `bdb3fb86`, `591f3f2e` and `84b6b007` put where default attribute values are built in fixed buffers.
+
+A default Label or Symbol of a SpecFrame, TimeFrame or FluxFrame, a SpecFluxFrame or FluxFrame Title, and a SpecFrame's origin Label are cut to 200 characters; a DSBSpecFrame Label and a CmpFrame Domain to 100; the comment on a SkyFrame's reference position in a dump to 99.
+Before the change a default built from a long Unit, Domain or component Label overran the buffer; now it is cut short.
+
+The port does not mirror the cuts, which exist only to protect the buffers: it builds each default whole (235, 246 and 243 characters in the triage's cases). `testcorruptinput.c`'s checks of these lengths (`2bd4ab23`) are buffer cases for stage 5.
 
 ### `CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping
 
