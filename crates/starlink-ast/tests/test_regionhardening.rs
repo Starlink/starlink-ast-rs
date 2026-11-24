@@ -27,7 +27,7 @@ use starlink_ast::regions::{
 };
 
 /// Check that `result` is an error with `code` whose messages, one per
-/// line, are `messages`.
+/// line, are `messages`, with no context that C would not report.
 pub(crate) fn expect_err<T>(result: AstResult<T>, code: ErrorCode, messages: &[&str]) {
     let Err(err) = result else {
         panic!("an error was expected");
@@ -35,6 +35,7 @@ pub(crate) fn expect_err<T>(result: AstResult<T>, code: ErrorCode, messages: &[&
     assert_eq!(err.code(), code, "error code of {err}");
     let got: Vec<&str> = err.message().split('\n').collect();
     assert_eq!(got, messages, "messages of {err}");
+    assert!(err.context().is_empty(), "context C does not report: {err}");
 }
 
 /// Run `f` on its own thread and return its result, failing if it panics or
