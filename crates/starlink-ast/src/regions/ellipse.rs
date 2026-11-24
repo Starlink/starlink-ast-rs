@@ -1159,7 +1159,7 @@ impl Region for Ellipse {
 
         // A new centre that is the old one gives the offset no direction,
         // and leaves the points where they are.
-        if !is_bad(angle) && !is_bad(dist) && dist != 0.0 {
+        if angle != BAD_VALUE && dist != BAD_VALUE && dist != 0.0 {
             for ip in 0..self.data.points.len() {
                 let (shifted, _) = bfrm.offset2(&self.data.points[ip], angle, dist)?;
                 self.data.points[ip] = shifted;
@@ -1469,4 +1469,30 @@ fn check_naxes(frame: &dyn Frame) -> AstResult<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frames::BasicFrameBuilder;
+
+    /// C leaves the points alone only for a bad, or zero, offset: a move
+    /// whose length overflows, in a direction that does not, still moves
+    /// them.
+    #[test]
+    fn a_move_of_infinite_length_moves_the_points() {
+        let mut ellipse = EllipseBuilder::new(
+            BasicFrameBuilder::new(2).build().unwrap(),
+            vec![0.0, 0.0],
+            [1.0, 1.0],
+            0.0,
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        ellipse
+            .reg_centre_set(&[1.0e160, 0.0], FrameRef::Base)
+            .unwrap();
+        assert_ne!(ellipse.data.points[0], vec![0.0, 0.0]);
+    }
 }

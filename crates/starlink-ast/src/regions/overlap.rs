@@ -11,6 +11,7 @@
 //! they fall back on, the `NullRegion` `OverlapX` (nullregion.c), and the
 //! `GetSubMesh` helper (region.c).
 
+use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::FrameRef;
@@ -302,16 +303,7 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
                 Ok(mesh) => mesh,
                 Err(_) => {
                     let ps6 = cmap.transform(&reg2_mesh, true)?;
-                    let (lbnd, ubnd): (Vec<f64>, Vec<f64>) = (0..ps6.ncoord())
-                        .map(|i| {
-                            let (lo, hi) = ps6
-                                .axis(i)
-                                .iter()
-                                .filter(|&&v| !is_bad(v))
-                                .fold((f64::MAX, -f64::MAX), |(lo, hi), &v| (lo.min(v), hi.max(v)));
-                            (lo * 2.0, hi * 2.0)
-                        })
-                        .unzip();
+                    let (lbnd, ubnd) = doubled_bounds(&ps6);
                     reg1.bnd_base_mesh(&lbnd, &ubnd).map_err(|_| {
                         AstError::new(
                             ErrorCode::Inter,
@@ -376,6 +368,27 @@ fn overlap_x(that: &dyn Region, this: &dyn Region) -> AstResult<i32> {
     Ok(result)
 }
 
+/// The bounds of the points of `ps` on each axis, each doubled: the box
+/// `OverlapX` takes the part of an unbounded Region's boundary from. Only
+/// `BAD_VALUE` is left out, as in C, so an infinite value is a bound.
+fn doubled_bounds(ps: &PointSet) -> (Vec<f64>, Vec<f64>) {
+    (0..ps.ncoord())
+        .map(|i| {
+            // C's comparisons, which a NaN passes neither of.
+            let (mut lo, mut hi) = (f64::MAX, -f64::MAX);
+            for &v in ps.axis(i).iter().filter(|&&v| v != BAD_VALUE) {
+                if v > hi {
+                    hi = v;
+                }
+                if v < lo {
+                    lo = v;
+                }
+            }
+            (lo * 2.0, hi * 2.0)
+        })
+        .unzip()
+}
+
 /// The generic `BndBaseMesh` (region.c), the default of
 /// [`Region::bnd_base_mesh`]: the boundary mesh of the intersection of
 /// `reg` with the current-Frame box `[lbnd, ubnd]`, in `reg`'s base Frame,
@@ -435,5 +448,29 @@ fn get_sub_mesh(mask: &[bool], input: &PointSet) -> PointSet {
         PointSet::zeros(0, nc)
     } else {
         PointSet::from_rows(rows.iter().map(|r| r.as_slice()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// C leaves out only AST__BAD: an infinite value is a bound, and a NaN
+    /// passes neither of its comparisons.
+    #[test]
+    fn doubled_bounds_skip_only_bad_values() {
+        let ps = PointSet::from_rows(
+            [
+                [1.0, BAD_VALUE],
+                [f64::INFINITY, 2.0],
+                [-3.0, f64::NAN],
+                [BAD_VALUE, f64::NEG_INFINITY],
+            ]
+            .iter()
+            .map(|p| p.as_slice()),
+        );
+        let (lbnd, ubnd) = doubled_bounds(&ps);
+        assert_eq!(lbnd, [-6.0, f64::NEG_INFINITY]);
+        assert_eq!(ubnd, [f64::INFINITY, 4.0]);
     }
 }
