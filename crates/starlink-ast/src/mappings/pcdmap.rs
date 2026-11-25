@@ -604,6 +604,7 @@ impl Serializable for PcdMap {
         let whole = node;
         let node = &whole.section("PcdMap");
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, 2, 2)?;
         let disc = node.get_double("Disco", BAD_VALUE);
         let pcdcen0 = node.get_double("PcdCn0", BAD_VALUE);
         let pcdcen1 = node.get_double("PcdCn1", BAD_VALUE);

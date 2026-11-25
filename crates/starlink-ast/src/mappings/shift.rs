@@ -431,6 +431,7 @@ impl Serializable for ShiftMap {
         let whole = node;
         let node = &whole.section("ShiftMap");
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, base.nin, base.nin)?;
         let mut shifts = Vec::with_capacity(base.nin);
         for i in 0..base.nin {
             shifts.push(node.get_double(&format!("Sft{}", i + 1), 0.0));

@@ -402,11 +402,28 @@ impl Serializable for NormMap {
         let node = &whole.section("NormMap");
         let base = read_mapping_base(whole);
 
-        // Read the encapsulated Frame.
-        let frame_node = node
-            .get_object("Frame")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "NormMap: missing Frame"))?;
-        let frame = frame_from_node(frame_node)?;
+        // The encapsulated Frame, which must be there and be a Frame, with an
+        // axis for each input and output (normmap.c `astLoadNormMap`). An
+        // object of another class is read first, as C reads it.
+        let class = &whole.class;
+        let frame = match node.get_object("Frame") {
+            Some(n) if crate::serial::node_is_a(n, "Frame") => Some(frame_from_node(n)?),
+            Some(n) => {
+                crate::serial::any_object_from_node(n)?;
+                None
+            }
+            None => None,
+        };
+        let Some(frame) = frame else {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoad({class}): The Frame is missing from the {class} read, or is not a \
+                     Frame."
+                ),
+            ));
+        };
+        crate::serial::check_loaded_coords(class, &base, frame.naxes(), frame.naxes())?;
 
         let mut nm = Self {
             frame,

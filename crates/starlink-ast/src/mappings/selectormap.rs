@@ -550,25 +550,34 @@ impl crate::serial::Serializable for SelectorMap {
         let node = &whole.section("SelectorMap");
         let base = read_mapping_base(whole);
 
+        // The Regions, read in turn until the first that is missing, each
+        // of which must be a Region; there must be at least one, and the
+        // SelectorMap has an input for each of its axes and one output
+        // (selectormap.c `astLoadSelectorMap`).
+        let class = &whole.class;
         let mut regions: Vec<DynRegion> = Vec::new();
-        let mut i = 1;
-        loop {
-            let key = format!("Reg{}", i);
-            match node.get_object(&key) {
-                Some(reg_node) => {
-                    regions.push(region_from_node(reg_node)?);
-                }
-                None => break,
+        while let Some(reg_node) = node.get_object(&format!("Reg{}", regions.len() + 1)) {
+            if !crate::serial::node_is_a(reg_node, "Region") {
+                crate::serial::any_object_from_node(reg_node)?;
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoad({class}): Region number {} read for a {class} is a {}, which \
+                         is not a Region.",
+                        regions.len() + 1,
+                        reg_node.class
+                    ),
+                ));
             }
-            i += 1;
+            regions.push(region_from_node(reg_node)?);
         }
-
         if regions.is_empty() {
             return Err(AstError::new(
                 ErrorCode::Lderr,
-                "SelectorMap: no regions found in serialized data",
+                format!("astLoad({class}): No Regions were read for a {class}."),
             ));
         }
+        crate::serial::check_loaded_coords(class, &base, regions[0].nin(), 1)?;
 
         // All but the first Region may carry a dummy FrameSet (dumped
         // frame-less to save space); re-associate them with the first

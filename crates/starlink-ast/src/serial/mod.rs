@@ -337,6 +337,49 @@ pub(crate) fn read_mapping_base(whole: &Node) -> MappingBaseAttrs {
     }
 }
 
+/// C's `astCheckLoadedCoords` (mapping.c): the numbers of inputs and outputs
+/// `base` was read with, which describe the Mapping before any inversion,
+/// must be `nin` and `nout` for an object of class `name`.
+pub(crate) fn check_loaded_coords(
+    name: &str,
+    base: &MappingBaseAttrs,
+    nin: usize,
+    nout: usize,
+) -> AstResult<()> {
+    if base.nin == nin && base.nout == nout {
+        return Ok(());
+    }
+    Err(AstError::new(
+        ErrorCode::Lderr,
+        format!(
+            "astLoad({name}): Invalid numbers of inputs ({}) and outputs ({}) read for a \
+             {name} - there should be {nin} and {nout}.",
+            base.nin, base.nout
+        ),
+    ))
+}
+
+/// C's `astCheckLoadedMap` (mapping.c): the component Mapping an object of
+/// class `name` reads as item `item`, which must be there and be a Mapping.
+/// Gives it, with its numbers of inputs and outputs when used inverted if
+/// `invert`.
+pub(crate) fn check_loaded_map(
+    node: Option<&Node>,
+    invert: bool,
+    name: &str,
+    item: &str,
+) -> AstResult<(DynMapping, usize, usize)> {
+    let node =
+        check_loaded(node, "Mapping", true, name, item)?.expect("a needed component is there");
+    let map = mapping_from_node(node)?;
+    let (nin, nout) = if map.is_inverted() == invert {
+        (map.nin(), map.nout())
+    } else {
+        (map.nout(), map.nin())
+    };
+    Ok((map, nin, nout))
+}
+
 // ---------------------------------------------------------------------------
 // Mapping dispatch
 // ---------------------------------------------------------------------------
@@ -2673,6 +2716,12 @@ pub(crate) fn load_object<T>(node: &Node, load: impl FnOnce() -> AstResult<T>) -
     }
 }
 
+/// Whether `node` describes an object of class `class` or of a class
+/// derived from it.
+pub(crate) fn node_is_a(node: &Node, class: &str) -> bool {
+    native_stream::class_chain(&node.class).is_some_and(|chain| chain.contains(&class))
+}
+
 /// C's `astCheckLoaded` (object.c) for the component a loader reads as the
 /// value of item `item` of an object of class `name`: `node` must be an
 /// object of class `class` or a class derived from it, and must be there if
@@ -2695,8 +2744,7 @@ pub(crate) fn check_loaded<'a>(
         }
         return Ok(None);
     };
-    let is_a = native_stream::class_chain(&node.class).is_some_and(|chain| chain.contains(&class));
-    if is_a {
+    if node_is_a(node, class) {
         return Ok(Some(node));
     }
     // The port loads an Axis or a PointSet only as part of the object

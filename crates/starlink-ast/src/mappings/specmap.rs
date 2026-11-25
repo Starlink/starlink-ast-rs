@@ -1827,19 +1827,28 @@ impl Serializable for SpecMap {
         let whole = node;
         let node = &whole.section("SpecMap");
         let base = read_mapping_base(whole);
+        // One input and output, or three of each (specmap.c `astLoadSpecMap`).
+        let nin = if base.inverted { base.nout } else { base.nin };
+        let ncoord = if nin == 3 { 3 } else { 1 };
+        crate::serial::check_loaded_coords(&whole.class, &base, ncoord, ncoord)?;
 
-        let nspec = node.get_int("Nspec", 0) as usize;
+        // A negative count reads no conversions (specmap.c `astLoadSpecMap`).
+        let nspec = usize::try_from(node.get_int("Nspec", 0)).unwrap_or(0);
 
         let mut spec = SpecMap::with_nin(base.nin)?;
 
         for i in 0..nspec {
             let idx = i + 1;
-            let code_str = node.get_string(&format!("Spec{idx}"), "");
+            let Some(code_str) = node.get_string_if_set(&format!("Spec{idx}")) else {
+                return Err(crate::serial::node::read_error(
+                    "A spectral coordinate conversion type is missing from the input SpecMap \
+                     data.",
+                ));
+            };
             let cvt_type = SpecCvtType::from_code(&code_str).ok_or_else(|| {
-                AstError::new(
-                    ErrorCode::Spcin,
-                    format!("unknown SpecMap conversion type: '{code_str}'"),
-                )
+                crate::serial::node::read_error(&format!(
+                    "Invalid spectral conversion type \"{code_str}\" in SpecMap data."
+                ))
             })?;
 
             let szargs = cvt_type.szargs();

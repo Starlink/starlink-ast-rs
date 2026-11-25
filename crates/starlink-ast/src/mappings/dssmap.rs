@@ -839,6 +839,7 @@ impl Serializable for DssMap {
         let whole = node;
         let node = &whole.section("DssMap");
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, 2, 2)?;
 
         // dssmap.c Load: the plate parameters, PPO3, PPO6 and the first 13
         // plate solution coefficients on each axis are required, and a

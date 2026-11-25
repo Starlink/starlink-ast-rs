@@ -728,6 +728,7 @@ impl Serializable for WinMap {
         let whole = node;
         let node = &whole.section("WinMap");
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, base.nin, base.nin)?;
         let mut shifts = Vec::with_capacity(base.nin);
         let mut scales = Vec::with_capacity(base.nin);
         for i in 0..base.nin {

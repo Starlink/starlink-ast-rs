@@ -484,6 +484,7 @@ impl Serializable for XphMap {
         let whole = node;
         let node = &whole.section("XphMap");
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, 2, 2)?;
         let order = node.get_int("Order", 19);
         let name = node
             .get_string_if_set("Type")

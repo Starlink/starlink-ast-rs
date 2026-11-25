@@ -266,11 +266,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     ),
     (
         "testcorruptinput",
-        97,
-        Why::Differs("Task 6: Mapping loader messages (65df6bf8, 744ddab4)"),
-    ),
-    (
-        "testcorruptinput",
         100,
         Why::Differs("Task 7: PermMap constants (c6932471)"),
     ),
@@ -283,16 +278,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         "testcorruptinput",
         102,
         Why::Crashes("Task 7: PermMap constants (c6932471)"),
-    ),
-    (
-        "testcorruptinput",
-        103,
-        Why::Differs("Task 6: Mapping loader messages (65df6bf8, 744ddab4)"),
-    ),
-    (
-        "testcorruptinput",
-        104,
-        Why::Differs("Task 6: Mapping loader messages (65df6bf8, 744ddab4)"),
     ),
     (
         "testcorruptinput",
@@ -493,166 +478,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         "testloaderhardening",
         55,
         Why::Differs("Task 9: Moc ranges and MaxOrder (d3f5b711)"),
-    ),
-    (
-        "testloaderhardening",
-        59,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        61,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        63,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        65,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        67,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        69,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        71,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        73,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        75,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        77,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        79,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        81,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        83,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        85,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        87,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        88,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        89,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        91,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        93,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        94,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        95,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        96,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        98,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        100,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        101,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        102,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        103,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        105,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        106,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testloaderhardening",
-        108,
-        Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testdssmap",
-        4,
-        Why::Differs("Task 6: DssMap inputs and outputs (6d87f732)"),
-    ),
-    (
-        "testdssmap",
-        5,
-        Why::Differs("Task 6: DssMap inputs and outputs (6d87f732)"),
     ),
     (
         "testdssmap",

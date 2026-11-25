@@ -1577,28 +1577,24 @@ impl Serializable for TimeMap {
         let whole = node;
         let node = &whole.section("TimeMap");
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, 1, 1)?;
 
-        let ntime = node.get_int("Ntime", 0) as usize;
+        // A negative count reads no conversions (timemap.c `astLoadTimeMap`).
+        let ntime = usize::try_from(node.get_int("Ntime", 0)).unwrap_or(0);
 
         let mut tm = TimeMap::new();
 
         for i in 0..ntime {
             let idx = i + 1;
             let Some(code_str) = node.get_string_if_set(&format!("Time{idx}")) else {
-                return Err(AstError::new(
-                    ErrorCode::Badin,
-                    "astRead(Channel): A time coordinate conversion type is missing from \
-                     the input TimeMap data.",
+                return Err(crate::serial::node::read_error(
+                    "A time coordinate conversion type is missing from the input TimeMap data.",
                 ));
             };
             let cvt_type = TimeCvtType::from_code(&code_str).ok_or_else(|| {
-                AstError::new(
-                    ErrorCode::Badin,
-                    format!(
-                        "astRead(Channel): Invalid time conversion type \"{code_str}\" in \
-                         TimeMap data."
-                    ),
-                )
+                crate::serial::node::read_error(&format!(
+                    "Invalid time conversion type \"{code_str}\" in TimeMap data."
+                ))
             })?;
 
             // Every argument, derived ones included, as written and without

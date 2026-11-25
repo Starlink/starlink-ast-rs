@@ -40,9 +40,7 @@ use std::fmt;
 
 use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{
-    MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
-};
+use crate::serial::{MappingToNode, Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::matrix::MatrixMap;
 use super::unit::UnitMap;
@@ -1303,15 +1301,36 @@ impl Serializable for CmpMap {
         let inv_a = node.get_int("InvA", 0) != 0;
         let inv_b = node.get_int("InvB", 0) != 0;
 
-        let node_a = node
-            .get_object("MapA")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpMap: missing MapA"))?;
-        let node_b = node
-            .get_object("MapB")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpMap: missing MapB"))?;
-
-        let map_a = mapping_from_node(node_a)?;
-        let map_b = mapping_from_node(node_b)?;
+        // The components, checked as cmpmap.c `astLoadCmpMap` checks them,
+        // with the numbers of inputs and outputs each has as applied.
+        let class = &whole.class;
+        let (map_a, nin1, nout1) = crate::serial::check_loaded_map(
+            node.get_object("MapA"),
+            inv_a,
+            class,
+            "first component Mapping",
+        )?;
+        let (map_b, nin2, nout2) = crate::serial::check_loaded_map(
+            node.get_object("MapB"),
+            inv_b,
+            class,
+            "second component Mapping",
+        )?;
+        if is_series {
+            if nout1 != nin2 {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoad({class}): The number of outputs ({nout1}) of the first \
+                         component Mapping read for a {class} does not match the number of \
+                         inputs ({nin2}) of the second."
+                    ),
+                ));
+            }
+            crate::serial::check_loaded_coords(class, &base, nin1, nout2)?;
+        } else {
+            crate::serial::check_loaded_coords(class, &base, nin1 + nin2, nout1 + nout2)?;
+        }
 
         // Children keep their native Invert state as serialized.
         // inv_a/inv_b record the expected child state; the effective

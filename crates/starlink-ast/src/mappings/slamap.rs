@@ -1712,19 +1712,25 @@ impl Serializable for SlaMap {
         let whole = node;
         let node = &whole.section("SlaMap");
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, 2, 2)?;
 
-        let nsla = node.get_int("Nsla", 0) as usize;
+        // A negative count reads no conversions (slamap.c `astLoadSlaMap`).
+        let nsla = usize::try_from(node.get_int("Nsla", 0)).unwrap_or(0);
 
         let mut sla = SlaMap::new();
 
         for i in 0..nsla {
             let idx = i + 1;
-            let code_str = node.get_string(&format!("Sla{idx}"), "");
+            let Some(code_str) = node.get_string_if_set(&format!("Sla{idx}")) else {
+                return Err(crate::serial::node::read_error(
+                    "An SLALIB sky coordinate conversion type is missing from the input SlaMap \
+                     data.",
+                ));
+            };
             let cvt_type = SlaCvtType::from_code(&code_str).ok_or_else(|| {
-                AstError::new(
-                    ErrorCode::Slain,
-                    format!("unknown SlaMap conversion type: '{code_str}'"),
-                )
+                crate::serial::node::read_error(&format!(
+                    "Invalid SLALIB sky conversion type \"{code_str}\" in SlaMap data."
+                ))
             })?;
 
             let nargs = cvt_type.nargs();

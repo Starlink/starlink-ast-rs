@@ -1046,6 +1046,7 @@ impl Serializable for GrismMap {
         let node = &whole.section("GrismMap");
         use crate::serial::NodeValue;
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, 1, 1)?;
         let nr = node.get_double("GrmNR", 1.0);
         let nrp = node.get_double("GrmNRP", 0.0);
         let wave_r = node.get_double("GrmWR", 5000.0);

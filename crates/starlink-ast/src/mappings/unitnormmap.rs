@@ -777,12 +777,20 @@ impl Serializable for UnitNormMap {
         let node = &whole.section("UnitNormMap");
         let base = read_mapping_base(whole);
 
-        // The center length equals the number of spatial axes, which is
-        // always min(nin, nout) in the forward direction. The serialized
-        // Nin/Nout are always the forward (non-inverted) dimensions
-        // regardless of the Invert flag, so ncoord = base.nin (which is
-        // always the smaller of the two for a UnitNormMap).
+        // The length of the centre, the number of inputs in the forward
+        // direction, which the stored Nin is whatever the Invert flag
+        // (unitnormmap.c `astLoadUnitNormMap`).
         let ncoord = base.nin;
+        if ncoord == 0 {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadUnitNormMap({0}): The {0} read has 0 axes - it must have at least \
+                     one.",
+                    whole.class
+                ),
+            ));
+        }
 
         let mut centre = vec![0.0; ncoord];
         for (axis, c) in centre.iter_mut().enumerate() {
@@ -790,6 +798,7 @@ impl Serializable for UnitNormMap {
             *c = node.get_double(&key, 0.0);
         }
 
+        crate::serial::check_loaded_coords(&whole.class, &base, ncoord, ncoord + 1)?;
         let mut m = UnitNormMap::new(centre)?;
         if base.inverted {
             m.invert();

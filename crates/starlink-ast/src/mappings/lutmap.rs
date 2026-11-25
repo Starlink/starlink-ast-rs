@@ -966,6 +966,7 @@ impl Serializable for LutMap {
         let whole = node;
         let node = &whole.section("LutMap");
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, 1, 1)?;
         let nlut = node.get_int("Nlut", 0) as usize;
         let start = node.get_double("Start", 0.0);
         let inc = node.get_double("Incr", 1.0);

@@ -692,12 +692,16 @@ pub(crate) fn with_read_channel<T>(class: &str, f: impl FnOnce() -> T) -> T {
 /// is recorded already: as in C, where a failed read sets the status and
 /// later reads do nothing, the first error is the one reported.
 pub(crate) fn record_read_error(message: String) {
+    record_load_error(read_error(&message));
+}
+
+/// An AST__BADIN error from the Channel reading the current object, as C's
+/// `astRead<Type>` and loaders report one: `astRead(<Channel class>):
+/// <message>`.
+pub(crate) fn read_error(message: &str) -> AstError {
     let channel = LOAD.with(|l| l.borrow().channel.clone());
     let channel = channel.as_deref().unwrap_or("Channel");
-    record_load_error(AstError::new(
-        ErrorCode::Badin,
-        format!("astRead({channel}): {message}"),
-    ));
+    AstError::new(ErrorCode::Badin, format!("astRead({channel}): {message}"))
 }
 
 /// Record `error` as the error of the current load, unless one is recorded

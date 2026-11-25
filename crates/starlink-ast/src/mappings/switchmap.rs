@@ -941,7 +941,7 @@ impl crate::serial::Serializable for SwitchMap {
     }
 
     fn from_node(node: &crate::serial::Node) -> AstResult<Self> {
-        use crate::serial::{mapping_from_node, read_mapping_base};
+        use crate::serial::read_mapping_base;
 
         // Each class's items come from its own part of the description, as
         // C's loaders read them through astReadClassData (channel.c).
@@ -949,40 +949,82 @@ impl crate::serial::Serializable for SwitchMap {
         let node = &whole.section("SwitchMap");
         let base = read_mapping_base(whole);
 
-        let fsmap = node
-            .get_object("FSMap")
-            .map(mapping_from_node)
-            .transpose()?;
+        // The selector and route Mappings, checked as switchmap.c
+        // `astLoadSwitchMap` checks them: the routes, read in turn until the
+        // first that is missing, must all have the inputs and outputs of the
+        // first, which are the SwitchMap's; a forward selector takes those
+        // inputs to one output, an inverse selector one input to those
+        // outputs; and there must be at least one of each kind.
+        let class = &whole.class;
         let fsinv = node.get_int("FSInv", 0) != 0;
-
-        let ismap = node
-            .get_object("ISMap")
-            .map(mapping_from_node)
-            .transpose()?;
         let isinv = node.get_int("ISInv", 0) != 0;
+        let selector = |key: &str, inv: bool, item: &str| match node.get_object(key) {
+            Some(n) => crate::serial::check_loaded_map(Some(n), inv, class, item).map(Some),
+            None => Ok(None),
+        };
+        let fs = selector("FSMap", fsinv, "forward selector Mapping")?;
+        let is = selector("ISMap", isinv, "inverse selector Mapping")?;
 
         let mut route_maps: Vec<DynMapping> = Vec::new();
         let mut route_inv: Vec<bool> = Vec::new();
-        let mut i = 1;
-        loop {
-            let key = format!("RMap{}", i);
-            match node.get_object(&key) {
-                Some(rm_node) => {
-                    route_maps.push(mapping_from_node(rm_node)?);
-                    let inv_key = format!("RInv{}", i);
-                    route_inv.push(node.get_int(&inv_key, 0) != 0);
-                }
-                None => break,
+        let (mut nin, mut nout) = (0, 0);
+        while let Some(rm_node) = node.get_object(&format!("RMap{}", route_maps.len() + 1)) {
+            let i = route_maps.len() + 1;
+            let inv = node.get_int(&format!("RInv{i}"), 0) != 0;
+            let (map, cnin, cnout) =
+                crate::serial::check_loaded_map(Some(rm_node), inv, class, "route Mapping")?;
+            if i == 1 {
+                (nin, nout) = (cnin, cnout);
+            } else if (cnin, cnout) != (nin, nout) {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoad({class}): Route Mapping number {i} read for a {class} has \
+                         {cnin} input(s) and {cnout} output(s) but the first route Mapping has \
+                         {nin} and {nout}."
+                    ),
+                ));
             }
-            i += 1;
+            route_maps.push(map);
+            route_inv.push(inv);
         }
-
         if route_maps.is_empty() {
             return Err(AstError::new(
                 ErrorCode::Lderr,
-                "SwitchMap: no route Mappings found in serialized data",
+                format!("astLoad({class}): No route Mappings were read for a {class}."),
             ));
         }
+        if let Some((_, cnin, cnout)) = &fs
+            && (*cnin != nin || *cnout != 1)
+        {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoad({class}): The forward selector Mapping read for a {class} has \
+                     {cnin} input(s) and {cnout} output(s) but should have {nin} and 1."
+                ),
+            ));
+        }
+        if let Some((_, cnin, cnout)) = &is
+            && (*cnin != 1 || *cnout != nout)
+        {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoad({class}): The inverse selector Mapping read for a {class} has \
+                     {cnin} input(s) and {cnout} output(s) but should have 1 and {nout}."
+                ),
+            ));
+        }
+        if fs.is_none() && is.is_none() {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!("astLoad({class}): No selector Mappings were read for a {class}."),
+            ));
+        }
+        crate::serial::check_loaded_coords(class, &base, nin, nout)?;
+        let fsmap = fs.map(|(m, _, _)| m);
+        let ismap = is.map(|(m, _, _)| m);
 
         let mut sw = SwitchMap::from_parts(fsmap, ismap, route_maps, fsinv, isinv, route_inv)?;
         if base.inverted {

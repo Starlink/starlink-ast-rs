@@ -300,6 +300,7 @@ impl Serializable for UnitMap {
 
     fn from_node(node: &Node) -> AstResult<Self> {
         let base = read_mapping_base(node);
+        crate::serial::check_loaded_coords(&node.class, &base, base.nin, base.nin)?;
         Ok(UnitMap {
             ncoord: base.nin,
             inverted: base.inverted,

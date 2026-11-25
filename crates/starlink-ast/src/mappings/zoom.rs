@@ -433,6 +433,7 @@ impl Serializable for ZoomMap {
         let whole = node;
         let node = &whole.section("ZoomMap");
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, base.nin, base.nin)?;
         // C reads the raw value against the unset default of zero and then
         // re-applies it through `SetZoom` when `TestZoom` reports it set, i.e.
         // when it is non-zero (zoommap.c:2237-2238, zoommap.c:1712). The
