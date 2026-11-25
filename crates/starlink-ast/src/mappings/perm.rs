@@ -1553,9 +1553,50 @@ impl Serializable for PermMap {
             v
         };
 
+        // Every constant referred to must exist (permmap.c `astLoadPermMap`).
+        // A PermMap with no constants may refer to them, and uses bad for
+        // each. A dump names its constants `Con1` to `Con99999`, so one that
+        // claims more was not written by AST.
+        const MXLOADCON: i64 = 99999;
+        let class = &whole.class;
+        let nconst = node.get_int("Nconst", 0).max(0);
+        let neg = inperm
+            .iter()
+            .chain(&outperm)
+            .copied()
+            .min()
+            .unwrap_or(0)
+            .min(0);
+        if neg < -i64::from(i32::MAX) {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadPermMap({class}): The PermMap read has an invalid coordinate \
+                     permutation index ({neg})."
+                ),
+            ));
+        } else if nconst > MXLOADCON {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadPermMap({class}): The PermMap read has {nconst} constants, but a \
+                     dump cannot hold more than {MXLOADCON}."
+                ),
+            ));
+        } else if nconst > 0 && neg < -nconst {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadPermMap({class}): The PermMap read refers to constant number {}, \
+                     but the number of constants is {nconst}.",
+                    -neg
+                ),
+            ));
+        }
+
         // A constant that is absent, or written unset because it is bad,
         // reads as bad (permmap.c Load).
-        let nconst = node.get_int("Nconst", 0).max(0) as usize;
+        let nconst = nconst as usize;
         let mut constants = Vec::with_capacity(nconst);
         for i in 0..nconst {
             let key = format!("Con{}", i + 1);

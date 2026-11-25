@@ -1511,6 +1511,20 @@ impl Serializable for MatrixMap {
         }
 
         let form = node.get_string("Form", "Full");
+        // A dump names a full matrix's elements `M0` to `M9999998`, so one
+        // that claims more was not written by AST (matrixmap.c
+        // `astLoadMatrixMap`); nothing is read or sized for it.
+        const MXLOADEL: usize = 9_999_999;
+        if form != "Unit" && form != "Diagonal" && nin.saturating_mul(nout) > MXLOADEL {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadMatrixMap({}): The full matrix read has {nout} rows and {nin} \
+                     columns, but a dump cannot hold more than {MXLOADEL} elements.",
+                    whole.class
+                ),
+            ));
+        }
 
         // Read forward matrix based on storage form.
         let matrix = match form.as_str() {

@@ -1056,31 +1056,42 @@ impl Serializable for MathMap {
         let nin = base.nin;
         let nout = base.nout;
 
-        // Read Nfwd / Ninv with defaults
-        let nfwd = {
-            let v = node.get_int("Nfwd", 0);
-            if v > 0 { v as usize } else { nout }
-        };
-        let ninv = {
-            let v = node.get_int("Ninv", 0);
-            if v > 0 { v as usize } else { nin }
-        };
-
-        // Read forward expressions
-        let mut fwd_exprs = Vec::with_capacity(nfwd);
-        for i in 0..nfwd {
-            let key = format!("Fwd{}", i + 1);
-            let expr = node.get_string(&key, "");
-            fwd_exprs.push(expr.to_string());
+        // The numbers of functions, a forward one for each output and an
+        // inverse one for each input at least, each read in turn: a missing
+        // one is an error, so nothing is sized from a count before its
+        // functions are read (mathmap.c `astLoadMathMap`, `LoadFunctions`).
+        let class = &whole.class;
+        let nfwd = node.get_int("Nfwd", nout as i64);
+        let ninv = node.get_int("Ninv", nin as i64);
+        for (n, need, dir) in [(nfwd, nout, "forward"), (ninv, nin, "inverse")] {
+            if n < need as i64 {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoadMathMap({class}): Too few {dir} transformation functions ({n}) \
+                         read for a {class} - at least {need} are needed."
+                    ),
+                ));
+            }
         }
-
-        // Read inverse expressions
-        let mut inv_exprs = Vec::with_capacity(ninv);
-        for i in 0..ninv {
-            let key = format!("Inv{}", i + 1);
-            let expr = node.get_string(&key, "");
-            inv_exprs.push(expr.to_string());
-        }
+        let load_functions = |prefix: &str, dir: &str, n: i64| -> AstResult<Vec<String>> {
+            let mut functions = Vec::new();
+            for ifun in 1..=n {
+                let Some(fun) = node.get_string_if_set(&format!("{prefix}{ifun}")) else {
+                    return Err(AstError::new(
+                        ErrorCode::Lderr,
+                        format!(
+                            "astLoadMathMap({class}): The {dir} transformation function number \
+                             {ifun} of the {n} expected was not found."
+                        ),
+                    ));
+                };
+                functions.push(fun);
+            }
+            Ok(functions)
+        };
+        let fwd_exprs = load_functions("Fwd", "forward", nfwd)?;
+        let inv_exprs = load_functions("Inv", "inverse", ninv)?;
 
         // Compile both directions (cross-referencing variable names)
         let compiled = compile_mapping(&fwd_exprs, &inv_exprs, nin, nout)?;

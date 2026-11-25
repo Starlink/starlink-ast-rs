@@ -266,41 +266,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     ),
     (
         "testcorruptinput",
-        100,
-        Why::Differs("Task 7: PermMap constants (c6932471)"),
-    ),
-    (
-        "testcorruptinput",
-        101,
-        Why::Differs("Task 7: PermMap constants (c6932471)"),
-    ),
-    (
-        "testcorruptinput",
-        102,
-        Why::Crashes("Task 7: PermMap constants (c6932471)"),
-    ),
-    (
-        "testcorruptinput",
-        107,
-        Why::Crashes("Task 7: MathMap functions (aa915bed)"),
-    ),
-    (
-        "testcorruptinput",
-        108,
-        Why::Crashes("Task 7: MathMap functions (aa915bed)"),
-    ),
-    (
-        "testcorruptinput",
-        110,
-        Why::Crashes("Task 7: MatrixMap elements (da7d3330)"),
-    ),
-    (
-        "testcorruptinput",
-        111,
-        Why::Differs("Task 7: MatrixMap elements (da7d3330)"),
-    ),
-    (
-        "testcorruptinput",
         112,
         Why::Differs("Task 7: WcsMap axes (639232d1, cfdbbe8d)"),
     ),
@@ -338,36 +303,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         "testloaderhardening",
         7,
         Why::Differs("Task 7: LutMap table (cda35a7b)"),
-    ),
-    (
-        "testloaderhardening",
-        15,
-        Why::Differs("Task 7: MathMap functions (aa915bed)"),
-    ),
-    (
-        "testloaderhardening",
-        16,
-        Why::Differs("Task 7: MathMap functions (aa915bed)"),
-    ),
-    (
-        "testloaderhardening",
-        17,
-        Why::Differs("Task 7: MathMap functions (aa915bed)"),
-    ),
-    (
-        "testloaderhardening",
-        18,
-        Why::Differs("Task 7: MathMap functions (aa915bed)"),
-    ),
-    (
-        "testloaderhardening",
-        19,
-        Why::Differs("Task 7: MathMap functions (aa915bed)"),
-    ),
-    (
-        "testloaderhardening",
-        20,
-        Why::Differs("Task 7: MathMap functions (aa915bed)"),
     ),
     (
         "testloaderhardening",
