@@ -16,13 +16,19 @@ use super::table::{
     iter_multiplier_spellings, iter_multipliers,
 };
 use super::tree::{Oper, UnitNode};
+use crate::error::AstResult;
 
 /// Top-level entry point. Mirrors C `CreateTree` (`unit.c`:1283-1371).
 ///
 /// `basic = true` requests `RemakeTree` substitution (replace derived
 /// units with their basic-unit definitions). `false` keeps the tree
 /// referring to derived-unit symbols directly.
-pub(crate) fn create_tree(exp: &str, basic: bool) -> Option<Box<UnitNode>> {
+///
+/// # Errors
+///
+/// `ErrorCode::Badun` with C's message when a function of constants in the
+/// expression cannot be evaluated (see [`fix_constants`]).
+pub(crate) fn create_tree(exp: &str, basic: bool) -> AstResult<Option<Box<UnitNode>>> {
     // CleanExp: drop leading/trailing whitespace, collapse internal
     // whitespace, strip whitespace adjacent to operators or parens,
     // and rewrite a few non-standard idioms (e.g. <word><digit> →
@@ -30,18 +36,22 @@ pub(crate) fn create_tree(exp: &str, basic: bool) -> Option<Box<UnitNode>> {
     // → "(...m*1.0E-6)", leading "nano" → "n").
     let cleaned = clean_exp(exp);
     if cleaned.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     // Build the parsed tree.
-    let mut tree = make_tree(&cleaned)?;
+    let Some(mut tree) = make_tree(&cleaned) else {
+        return Ok(None);
+    };
 
     // Replace each subtree which simply combines constants (i.e. has
     // no OP_LDVAR nodes) with a single OP_LDCON node.
-    fix_constants(&mut tree, false);
+    fix_constants(&mut tree, false)?;
 
     // Invert literal constant unit multipliers.
-    invert_constants(&mut tree)?;
+    if invert_constants(&mut tree).is_none() {
+        return Ok(None);
+    }
 
     // Optionally substitute LDVAR(derived) with the parsed sub-tree
     // of the derived unit's definition.
@@ -49,7 +59,7 @@ pub(crate) fn create_tree(exp: &str, basic: bool) -> Option<Box<UnitNode>> {
         remake_tree(&mut tree);
     }
 
-    Some(tree)
+    Ok(Some(tree))
 }
 
 // ---------------------------------------------------------------------
@@ -757,14 +767,14 @@ mod tests {
 
     #[test]
     fn make_tree_simple_unit() {
-        let t = create_tree("Hz", false).unwrap();
+        let t = create_tree("Hz", false).unwrap().unwrap();
         assert_eq!(t.opcode, Oper::LdVar);
         assert_eq!(t.unit.unwrap().sym, "Hz");
     }
 
     #[test]
     fn make_tree_multiplied_unit() {
-        let t = create_tree("MHz", false).unwrap();
+        let t = create_tree("MHz", false).unwrap().unwrap();
         assert_eq!(t.opcode, Oper::LdVar);
         assert_eq!(t.unit.unwrap().sym, "Hz");
         assert_eq!(t.mult.unwrap().sym, "M");
@@ -772,20 +782,20 @@ mod tests {
 
     #[test]
     fn make_tree_division() {
-        let t = create_tree("m/s", false).unwrap();
+        let t = create_tree("m/s", false).unwrap().unwrap();
         assert_eq!(t.opcode, Oper::Div);
     }
 
     #[test]
     fn make_tree_pow() {
-        let t = create_tree("m**2", false).unwrap();
+        let t = create_tree("m**2", false).unwrap().unwrap();
         assert_eq!(t.opcode, Oper::Pow);
     }
 
     #[test]
     fn make_tree_basic_substitution() {
         // Hz with basic=true expands to 1/s.
-        let t = create_tree("Hz", true).unwrap();
+        let t = create_tree("Hz", true).unwrap().unwrap();
         assert_eq!(t.opcode, Oper::Div);
         assert!(t.arg[0].is_const());
         assert_eq!(t.arg[1].opcode, Oper::LdVar);

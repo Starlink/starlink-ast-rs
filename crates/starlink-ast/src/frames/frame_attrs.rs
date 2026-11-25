@@ -1524,11 +1524,19 @@ pub(crate) fn validate_axis(axis: usize, naxes: usize) -> AstResult<()> {
 /// are rewritten for the new Unit through `astUnitMapper` (so that `Dist`
 /// becomes `log( Dist )` for a change from `m` to `log(m)`), and a set
 /// Format is cleared when the Unit actually changes.
-pub(crate) fn new_unit(axis: &mut super::axis::Axis, old_units: &str, new_units: &str) {
+///
+/// # Errors
+///
+/// Passes on the unit parser's error.
+pub(crate) fn new_unit(
+    axis: &mut super::axis::Axis,
+    old_units: &str,
+    new_units: &str,
+) -> AstResult<()> {
     for text in [&mut axis.label, &mut axis.symbol] {
         if let Some(current) = text.as_deref() {
             if let Some((_, Some(rewritten))) =
-                crate::units::unit_mapper_label(old_units, new_units, current)
+                crate::units::unit_mapper_label(old_units, new_units, current)?
             {
                 *text = Some(rewritten);
             }
@@ -1537,6 +1545,7 @@ pub(crate) fn new_unit(axis: &mut super::axis::Axis, old_units: &str, new_units:
     if old_units != new_units {
         axis.format = None;
     }
+    Ok(())
 }
 
 /// A default Label or Symbol rewritten for a Unit that has been set, as the
@@ -1545,14 +1554,24 @@ pub(crate) fn new_unit(axis: &mut super::axis::Axis, old_units: &str, new_units:
 /// label `astUnitMapper` returns for a change from the System's default
 /// units, so that a Unit of `"log(Hz)"` makes `"Frequency"` into
 /// `"log( Frequency )"`. Unchanged when no Unit is set or no label results.
-pub(crate) fn relabel_for_unit(label: String, default_unit: &str, unit: Option<&str>) -> String {
+///
+/// # Errors
+///
+/// Passes on the unit parser's error.
+pub(crate) fn relabel_for_unit(
+    label: String,
+    default_unit: &str,
+    unit: Option<&str>,
+) -> AstResult<String> {
     let Some(unit) = unit else {
-        return label;
+        return Ok(label);
     };
-    match crate::units::unit_mapper_label(default_unit, unit, &label) {
-        Some((_, Some(new_label))) => new_label,
-        _ => label,
-    }
+    Ok(
+        match crate::units::unit_mapper_label(default_unit, unit, &label)? {
+            Some((_, Some(new_label))) => new_label,
+            _ => label,
+        },
+    )
 }
 
 /// Set, test and clear for the named per-axis attributes, as C's Frame
@@ -1579,7 +1598,7 @@ macro_rules! axis_attrs_store {
             let value = value.trim_end();
             if $crate::frames::Frame::get_active_unit(self) {
                 let old = $crate::frames::Frame::unit(self, axis)?;
-                $crate::frames::frame_attrs::new_unit(self.ax_mut(axis)?, &old, value);
+                $crate::frames::frame_attrs::new_unit(self.ax_mut(axis)?, &old, value)?;
             }
             self.ax_mut(axis)?.unit = Some(value.to_string());
             Ok(())
@@ -1595,7 +1614,7 @@ macro_rules! axis_attrs_store {
             };
             if $crate::frames::Frame::get_active_unit(self) {
                 let new = $crate::frames::Frame::unit(self, axis)?;
-                $crate::frames::frame_attrs::new_unit(self.ax_mut(axis)?, &old, &new);
+                $crate::frames::frame_attrs::new_unit(self.ax_mut(axis)?, &old, &new)?;
             }
             Ok(())
         }

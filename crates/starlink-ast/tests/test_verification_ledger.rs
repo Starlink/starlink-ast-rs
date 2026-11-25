@@ -217,16 +217,6 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          mirror; the port's message must begin with C's",
     ),
     (
-        "test_flux_badun.rs",
-        "UNIT_MESSAGE_EXCLUDED",
-        1,
-        "unusable_unit_expression: C reports the unit parser's BADUN message for \
-         log of a value that is not positive; the port's unit trees cannot carry \
-         that error out of unit_mapper and it gives its own System message \
-         (PLAN.md section 2, stage 5); excluded_unit_messages_still_differ fails \
-         when it matches",
-    ),
-    (
         "test_plot_frame_methods.rs",
         "CENTRE_EXCLUDED",
         9,

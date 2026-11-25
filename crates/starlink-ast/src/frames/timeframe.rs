@@ -327,7 +327,7 @@ impl TimeFrame {
     // Defaults of the Frame-class attributes, for the `frame_attrs_*`
     // macros.
     fn frame_default_title(&self) -> AstResult<String> {
-        Ok(self.default_title())
+        self.default_title()
     }
     fn frame_default_domain(&self) -> &'static str {
         "TIME"
@@ -450,7 +450,7 @@ impl TimeFrame {
     #[doc(alias = "TimeOrigin")]
     // C: timeframe.c `GetTimeOriginCur`, which is what the TimeOrigin
     // attribute reports.
-    pub fn time_origin_cur(&self) -> f64 {
+    pub fn time_origin_cur(&self) -> AstResult<f64> {
         self.get_time_origin_cur()
     }
 
@@ -466,7 +466,7 @@ impl TimeFrame {
     pub fn set_time_origin_cur(&mut self, value: f64) -> AstResult<()> {
         let def = self.system.default_units();
         let cur = self.unit_or_default().to_string();
-        let Some(map) = crate::units::unit_mapper(&cur, def) else {
+        let Some(map) = crate::units::unit_mapper(&cur, def)? else {
             return Err(AstError::new(
                 ErrorCode::Badun,
                 format!(
@@ -859,7 +859,7 @@ impl TimeFrame {
     /// absolute `iso.0` date/time (` offset from <date>`, with a trailing
     /// ` 00:00:00` time-of-day stripped). A Local Time timescale appends the
     /// `(UTC±offset)` suffix.
-    fn default_axis_label(&self) -> String {
+    fn default_axis_label(&self) -> AstResult<String> {
         let (is_date, ndp, _sep) = date_format(self.set_format());
         let mut result = if is_date {
             if ndp >= 0 {
@@ -890,7 +890,7 @@ impl TimeFrame {
                 result,
                 self.system.default_units(),
                 self.axis.unit.as_deref(),
-            );
+            )?;
         }
 
         // Local Time, whatever the label (C timeframe.c:2726-2734): indicate the offset from UTC (C timeframe.c:2726-2734).
@@ -903,7 +903,7 @@ impl TimeFrame {
             }
         }
 
-        result
+        Ok(result)
     }
 
     /// The offset from UTC to Local Time, in hours: the LTOffset attribute,
@@ -1070,7 +1070,7 @@ impl TimeFrame {
     // --- Serialization helpers ---
 
     /// Return the default title: "SystemLabel [TimeScale]".
-    fn default_title(&self) -> String {
+    fn default_title(&self) -> AstResult<String> {
         // Mirrors C `GetTitle` (timeframe.c:3107). Start with the system
         // label (already capitalized), append the timescale in brackets when
         // it is *set* (and the system is not BEPOCH, which is TT-only), and
@@ -1095,7 +1095,7 @@ impl TimeFrame {
 
         // Append "offset from <date>" when a non-zero origin is set and the
         // Format does not already render an (absolute) date string.
-        let orig = self.get_time_origin_cur();
+        let orig = self.get_time_origin_cur()?;
         if orig != 0.0 && !date_format(self.set_format()).0 {
             // Format the origin (axis value 0.0) as an absolute iso.0 time.
             if let Ok(date) = self.format_iso0_zero() {
@@ -1104,26 +1104,26 @@ impl TimeFrame {
             }
         }
 
-        title
+        Ok(title)
     }
 
     /// The TimeOrigin expressed in the current axis units. Mirrors C
     /// `GetTimeOriginCur` (timeframe.c): the stored origin (in the system's
     /// default units) converted to the per-instance Unit.
-    fn get_time_origin_cur(&self) -> f64 {
+    fn get_time_origin_cur(&self) -> AstResult<f64> {
         let result = self.time_origin();
         if result == 0.0 {
-            return result;
+            return Ok(result);
         }
         let def = self.system.default_units();
         let cur = self.unit_or_default();
         if cur == def {
-            return result;
+            return Ok(result);
         }
-        match crate::units::unit_mapper(def, cur) {
+        Ok(match crate::units::unit_mapper(def, cur)? {
             Some(map) => transform_scalar(map.as_ref(), result, true).unwrap_or(result),
             None => result,
-        }
+        })
     }
 
     /// Format the axis value 0.0 (i.e. the TimeOrigin) as an absolute
@@ -1553,7 +1553,7 @@ impl TimeFrame {
 /// Build a units-conversion Mapping or report an incompatible-units error
 /// (mirrors C `astUnitMapper` returning NULL → AST__INTGES error path).
 fn unit_mapper_or_err(unit1: &str, unit2: &str) -> AstResult<DynMapping> {
-    crate::units::unit_mapper(unit1, unit2).ok_or_else(|| {
+    crate::units::unit_mapper(unit1, unit2)?.ok_or_else(|| {
         AstError::new(
             ErrorCode::Badun,
             format!("TimeFrame: cannot convert between units \"{unit1}\" and \"{unit2}\""),
@@ -1784,7 +1784,7 @@ impl Frame for TimeFrame {
     fn label(&self, axis: usize) -> AstResult<String> {
         Ok(match &self.ax(axis)?.label {
             Some(label) => label.clone(),
-            None => self.default_axis_label(),
+            None => self.default_axis_label()?,
         })
     }
 
@@ -1804,11 +1804,11 @@ impl Frame for TimeFrame {
             TimeSystem::Bepoch => "BEP",
             TimeSystem::Jepoch => "JEP",
         };
-        Ok(super::frame_attrs::relabel_for_unit(
+        super::frame_attrs::relabel_for_unit(
             symbol.to_string(),
             self.system.default_units(),
             self.axis.unit.as_deref(),
-        ))
+        )
     }
 
     /// The Unit, set or default; see [`Frame::unit`].
@@ -1849,7 +1849,7 @@ impl Frame for TimeFrame {
         let unit = unit.trim_end();
         if self.get_active_unit() {
             let old = Frame::unit(self, axis)?;
-            super::frame_attrs::new_unit(&mut self.axis, &old, unit);
+            super::frame_attrs::new_unit(&mut self.axis, &old, unit)?;
         }
         self.axis.unit = Some(unit.to_string());
         Ok(())
@@ -1865,7 +1865,7 @@ impl Frame for TimeFrame {
         if let Some(old) = self.ax_mut(axis)?.unit.take() {
             if self.get_active_unit() {
                 let new = Frame::unit(self, axis)?;
-                super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+                super::frame_attrs::new_unit(&mut self.axis, &old, &new)?;
             }
         }
         Ok(())

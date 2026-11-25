@@ -35,6 +35,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Changed
 
+- `starlink-ast`: a unit expression that takes the logarithm or square root of a constant out of range, or divides by zero, gives the C library's message, such as `Illegal negative or zero constant value '-0.872603' encountered.` (`ErrorCode::Badun`), from setting the Unit, from every conversion that uses it, and from a FluxFrame's System; `TimeFrame::time_origin_cur` returns `AstResult`, as the conversion to the current Unit can fail.
 - `starlink-ast`: `FrameSet::variant`, `test_variant`, `clear_variant` and `all_variants` return `AstResult`: Frames that mirror each other's variants in a loop, as in a FrameSet read from a corrupt dump, give `ErrorCode::Frsin`, as in the C library, where they looped for ever.
 - `starlink-ast`: `UnitMap::new`, `ShiftMap::new` and `CmpFrame::new` return `AstResult`, as the C library refuses more than `constants::MXAXES` coordinates or axes; each was infallible.
 - `starlink-ast`: an invalid axis permutation, given to `Frame::perm_axes` or read from a dump, fails with the C library's two messages, `astPermAxes(<class>): Invalid axis permutation array.` and `Each axis index should lie in the range 1 to <n> and should occur only once.`; `frames::validate_permutation`, which gave the port's own text, is removed.

@@ -132,7 +132,7 @@ fn std_of_rest(text: &str, class: &str) -> AstResult<StdOfRest> {
 // C: specframe.c ToUnits, for the method "astSetSpecOrigin".
 fn to_default_units<F: SpecClass + ?Sized>(frame: &F, unit: &str, value: f64) -> AstResult<f64> {
     let def = frame.spec_part().system().default_display_units();
-    let map = unit_mapper(unit, def).ok_or_else(|| {
+    let map = unit_mapper(unit, def)?.ok_or_else(|| {
         AstError::new(
             ErrorCode::Badun,
             format!(
@@ -149,9 +149,9 @@ fn to_default_units<F: SpecClass + ?Sized>(frame: &F, unit: &str, value: f64) ->
 /// frequency, a wavelength or an energy.
 fn rest_freq_hz(value: f64, unit: &str, class: &str) -> AstResult<f64> {
     let shown = || format!("{} {unit}", sprintf_double("%g", value));
-    if let Some(map) = unit_mapper(unit, "Hz") {
+    if let Some(map) = unit_mapper(unit, "Hz")? {
         tran1(map.as_ref(), value)
-    } else if let Some(map) = unit_mapper(unit, "m") {
+    } else if let Some(map) = unit_mapper(unit, "m")? {
         let metres = tran1(map.as_ref(), value)?;
         if metres != BAD_VALUE && metres != 0.0 {
             Ok(SPEED_OF_LIGHT / metres)
@@ -164,7 +164,7 @@ fn rest_freq_hz(value: f64, unit: &str, class: &str) -> AstResult<f64> {
                 ),
             ))
         }
-    } else if let Some(map) = unit_mapper(unit, "J") {
+    } else if let Some(map) = unit_mapper(unit, "J")? {
         let joules = tran1(map.as_ref(), value)?;
         if joules != BAD_VALUE {
             Ok(joules * (1.0 / PLANCK))
@@ -412,7 +412,7 @@ pub(crate) fn dsbspecframe_set(frame: &mut DSBSpecFrame, setting: &str) -> AstRe
             Some(v)
         } else if let Some(scan) = scan_whole(setting, "dsbcentre= %lg %n%*s %n", 1) {
             let unit = &setting[scan.count(1)..];
-            match unit_mapper(unit, &frame.unit(1)?) {
+            match unit_mapper(unit, &frame.unit(1)?)? {
                 Some(map) => Some(tran1(map.as_ref(), scan.double(0))?).filter(|v| *v != BAD_VALUE),
                 None => {
                     return Err(AstError::new(
@@ -443,7 +443,7 @@ pub(crate) fn dsbspecframe_set(frame: &mut DSBSpecFrame, setting: &str) -> AstRe
         Ok(())
     } else if let Some(scan) = scan_whole(setting, "if= %lg %n%*s %n", 1) {
         let unit = &setting[scan.count(1)..];
-        match unit_mapper(unit, "Hz") {
+        match unit_mapper(unit, "Hz")? {
             Some(map) => {
                 frame.set_ifr(tran1(map.as_ref(), scan.double(0))?);
                 Ok(())

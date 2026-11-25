@@ -21,6 +21,7 @@
 //! 4. Dispatch the final test tree to `MakeMapping`, which emits a
 //!    `UnitMap`, `ZoomMap`, or `MathMap` depending on the tree shape.
 
+use crate::error::AstResult;
 use crate::mappings::{DynMapping, MathMap, UnitMap, ZoomMap};
 
 use super::cmp::cmp_tree;
@@ -78,7 +79,7 @@ fn make_mapping(tree: &UnitNode) -> Option<DynMapping> {
 /// Run the per-unit fixed-mask loop. Returns the final test tree if
 /// every basic unit produced an equivalent result, or `None` if any
 /// pair failed.
-fn build_test_tree(in_tree: &UnitNode, out_tree: &UnitNode) -> Option<Box<UnitNode>> {
+fn build_test_tree(in_tree: &UnitNode, out_tree: &UnitNode) -> AstResult<Option<Box<UnitNode>>> {
     // Collect all distinct LdVar names in either tree.
     let mut names: Vec<String> = Vec::new();
     locate_units(in_tree, &mut names);
@@ -90,8 +91,8 @@ fn build_test_tree(in_tree: &UnitNode, out_tree: &UnitNode) -> Option<Box<UnitNo
         // Mask all units other than `name` to 1, then simplify(std=1).
         let mut intemp = fix_units(in_tree, name);
         let mut outtemp = fix_units(out_tree, name);
-        simplify_tree(&mut intemp, true);
-        simplify_tree(&mut outtemp, true);
+        simplify_tree(&mut intemp, true)?;
+        simplify_tree(&mut outtemp, true)?;
 
         let in_const = intemp.con != BAD_VALUE;
         let out_const = outtemp.con != BAD_VALUE;
@@ -104,28 +105,32 @@ fn build_test_tree(in_tree: &UnitNode, out_tree: &UnitNode) -> Option<Box<UnitNo
 
         if in_const || out_const {
             // Only one tree depends on this unit — incompatible.
-            return None;
+            return Ok(None);
         }
 
         // Build inverted intemp using "input_units" as the new leaf,
         // then concat with outtemp, then simplify.
         let mut src = UnitNode::new(Oper::LdVar);
         src.name = Some("input_units".to_string());
-        let inv = invert_tree(&intemp, Box::new(src))?;
-        let mut totaltree = concat_tree(&inv, &outtemp)?;
-        simplify_tree(&mut totaltree, true);
+        let Some(inv) = invert_tree(&intemp, Box::new(src)) else {
+            return Ok(None);
+        };
+        let Some(mut totaltree) = concat_tree(&inv, &outtemp) else {
+            return Ok(None);
+        };
+        simplify_tree(&mut totaltree, true)?;
 
         match testtree.as_ref() {
             None => testtree = Some(totaltree),
             Some(prev) => {
                 if cmp_tree(&totaltree, prev, false) != 0 {
-                    return None;
+                    return Ok(None);
                 }
             }
         }
     }
 
-    testtree
+    Ok(testtree)
 }
 
 /// A `Mapping` between two unit strings, and the label `in_lab` rewritten
@@ -139,35 +144,47 @@ pub(crate) fn unit_mapper_label(
     in_unit: &str,
     out_unit: &str,
     in_lab: &str,
-) -> Option<(DynMapping, Option<String>)> {
+) -> AstResult<Option<(DynMapping, Option<String>)>> {
+    let unit_map = || -> DynMapping { Box::new(UnitMap::within_limit(1)) };
     if in_unit == out_unit {
-        return Some((Box::new(UnitMap::within_limit(1)), Some(in_lab.to_string())));
+        return Ok(Some((unit_map(), Some(in_lab.to_string()))));
     }
-    let in_tree = create_tree(in_unit, true);
-    let out_tree = create_tree(out_unit, true);
+    let in_tree = create_tree(in_unit, true)?;
+    let out_tree = create_tree(out_unit, true)?;
     let (in_tree, out_tree) = match (in_tree, out_tree) {
-        (None, None) => {
-            return Some((Box::new(UnitMap::within_limit(1)), Some(in_lab.to_string())));
-        }
+        (None, None) => return Ok(Some((unit_map(), Some(in_lab.to_string())))),
         (Some(i), Some(o)) => (i, o),
-        _ => return None,
+        _ => return Ok(None),
     };
-    let (testtree, swapped) = match build_test_tree(&in_tree, &out_tree) {
-        Some(t) => (t, false),
-        None => (build_test_tree(&out_tree, &in_tree)?, true),
+    let Some(final_tree) = mapping_tree(&in_tree, &out_tree)? else {
+        return Ok(None);
     };
-    let final_tree = if swapped {
-        let mut src = UnitNode::new(Oper::LdVar);
-        src.name = Some("input_units".to_string());
-        invert_tree(&testtree, Box::new(src))?
-    } else {
-        testtree
+    let Some(map) = make_mapping(&final_tree) else {
+        return Ok(None);
     };
-    let map = make_mapping(&final_tree)?;
-    let labtree = super::label::make_label_tree(in_lab)?;
-    let mut total = concat_tree(&labtree, &final_tree)?;
-    simplify_tree(&mut total, true);
-    Some((map, super::label::make_label_exp(&total)))
+    let Some(labtree) = super::label::make_label_tree(in_lab) else {
+        return Ok(None);
+    };
+    let Some(mut total) = concat_tree(&labtree, &final_tree) else {
+        return Ok(None);
+    };
+    simplify_tree(&mut total, true)?;
+    Ok(Some((map, super::label::make_label_exp(&total))))
+}
+
+/// The tree giving the output units from the input units: the test tree
+/// built forward, or failing that built backward and inverted, as
+/// `unit.c`:5533-5688 tries them.
+fn mapping_tree(in_tree: &UnitNode, out_tree: &UnitNode) -> AstResult<Option<Box<UnitNode>>> {
+    if let Some(t) = build_test_tree(in_tree, out_tree)? {
+        return Ok(Some(t));
+    }
+    let Some(t) = build_test_tree(out_tree, in_tree)? else {
+        return Ok(None);
+    };
+    let mut src = UnitNode::new(Oper::LdVar);
+    src.name = Some("input_units".to_string());
+    Ok(invert_tree(&t, Box::new(src)))
 }
 
 /// Build a `Mapping` between two unit strings. Returns `None` if
@@ -175,41 +192,31 @@ pub(crate) fn unit_mapper_label(
 /// uninvertible.
 ///
 /// Mirrors C `astUnitMapper_` (`unit.c`:5238).
-pub(crate) fn unit_mapper(in_unit: &str, out_unit: &str) -> Option<DynMapping> {
+///
+/// # Errors
+///
+/// Passes on the unit parser's error, as C's `astUnitMapper` reports it.
+pub(crate) fn unit_mapper(in_unit: &str, out_unit: &str) -> AstResult<Option<DynMapping>> {
     // Strict identical-string fast path — `unit.c`:5468.
     if in_unit == out_unit {
-        return Some(Box::new(UnitMap::within_limit(1)));
+        return Ok(Some(Box::new(UnitMap::within_limit(1))));
     }
 
     // Equivalent normalized strings — also a UnitMap.
     let cleaned_in = clean_exp(in_unit);
     let cleaned_out = clean_exp(out_unit);
     if cleaned_in == cleaned_out {
-        return Some(Box::new(UnitMap::within_limit(1)));
+        return Ok(Some(Box::new(UnitMap::within_limit(1))));
     }
 
     // Parse both with basic-unit substitution.
-    let in_tree = create_tree(in_unit, true)?;
-    let out_tree = create_tree(out_unit, true)?;
-
-    // Two-pass loop: try forward direction first; if that fails, swap
-    // and invert. Mirrors `unit.c`:5533-5688.
-    let (testtree, swapped) = match build_test_tree(&in_tree, &out_tree) {
-        Some(t) => (t, false),
-        None => {
-            let t = build_test_tree(&out_tree, &in_tree)?;
-            (t, true)
-        }
+    let (Some(in_tree), Some(out_tree)) =
+        (create_tree(in_unit, true)?, create_tree(out_unit, true)?)
+    else {
+        return Ok(None);
     };
-
-    // If we swapped, invert the test tree before constructing the Mapping.
-    let final_tree = if swapped {
-        let mut src = UnitNode::new(Oper::LdVar);
-        src.name = Some("input_units".to_string());
-        invert_tree(&testtree, Box::new(src))?
-    } else {
-        testtree
+    let Some(final_tree) = mapping_tree(&in_tree, &out_tree)? else {
+        return Ok(None);
     };
-
-    make_mapping(&final_tree)
+    Ok(make_mapping(&final_tree))
 }

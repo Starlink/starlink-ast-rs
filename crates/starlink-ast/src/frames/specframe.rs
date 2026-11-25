@@ -1795,7 +1795,7 @@ impl SpecFrame {
     pub fn set_spec_origin_cur(&mut self, value: f64) -> AstResult<()> {
         let def = self.system.default_display_units();
         let cur = Frame::unit(self, 1)?;
-        let map = unit_mapper(&cur, def).ok_or_else(|| {
+        let map = unit_mapper(&cur, def)?.ok_or_else(|| {
             AstError::new(
                 ErrorCode::Badun,
                 format!(
@@ -1835,7 +1835,7 @@ impl SpecFrame {
         if cur == def || def.is_empty() {
             return Ok(origin);
         }
-        let map = unit_mapper(def, cur).ok_or_else(|| {
+        let map = unit_mapper(def, cur)?.ok_or_else(|| {
             AstError::new(
                 ErrorCode::Badun,
                 format!("SpecFrame: the current units ({cur}) are not suitable for a SpecFrame"),
@@ -2147,8 +2147,8 @@ impl SpecFrame {
         };
         let in_unit = target.unit_or_default();
         let out_unit = result.unit_or_default();
-        let umap1 = unit_mapper(in_unit, target_system.specmap_units());
-        let umap2 = unit_mapper(result_system.specmap_units(), out_unit);
+        let umap1 = unit_mapper(in_unit, target_system.specmap_units())?;
+        let umap2 = unit_mapper(result_system.specmap_units(), out_unit)?;
         let mut matched = true;
         let mut mapping: DynMapping = match (umap1, umap2) {
             (Some(umap1), Some(umap2)) => {
@@ -2301,11 +2301,11 @@ impl Frame for SpecFrame {
         if origin != 0.0 {
             label.push_str(&format!(" offset from {}", self.format(axis, origin)?));
         }
-        Ok(super::frame_attrs::relabel_for_unit(
+        super::frame_attrs::relabel_for_unit(
             label,
             self.system.default_display_units(),
             self.axis.unit.as_deref(),
-        ))
+        )
     }
 
     /// The symbol of the axis; see [`Frame::symbol`].
@@ -2318,11 +2318,11 @@ impl Frame for SpecFrame {
         if let Some(symbol) = &self.ax(axis)?.symbol {
             return Ok(symbol.clone());
         }
-        Ok(super::frame_attrs::relabel_for_unit(
+        super::frame_attrs::relabel_for_unit(
             self.system.as_str().to_string(),
             self.system.default_display_units(),
             self.axis.unit.as_deref(),
-        ))
+        )
     }
 
     /// The units of the axis; see [`Frame::unit`].
@@ -2352,7 +2352,7 @@ impl Frame for SpecFrame {
         // The Frame class's SetUnit follows (frame.c:10775).
         if self.get_active_unit() {
             let new = unit.trim_end().to_string();
-            super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+            super::frame_attrs::new_unit(&mut self.axis, &old, &new)?;
         }
         Ok(())
     }
@@ -2367,7 +2367,7 @@ impl Frame for SpecFrame {
         if let Some(old) = self.axis.unit.take() {
             if self.get_active_unit() {
                 let new = self.unit_or_default().to_string();
-                super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+                super::frame_attrs::new_unit(&mut self.axis, &old, &new)?;
             }
         }
         Ok(())

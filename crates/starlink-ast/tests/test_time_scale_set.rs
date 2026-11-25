@@ -49,7 +49,7 @@ fn run(from: &str, action: &str) -> Result<(String, String, String, f64), String
         f.system().as_str().to_string(),
         f.timescale().as_str().to_string(),
         Frame::unit(&f, 1).unwrap(),
-        f.time_origin_cur(),
+        f.time_origin_cur().unwrap(),
     ))
 }
 

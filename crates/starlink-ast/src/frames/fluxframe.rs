@@ -473,7 +473,7 @@ impl FluxFrame {
             FluxSystem::SBright,
             FluxSystem::SBrightW,
         ] {
-            if crate::units::unit_mapper(u, sys.default_units()).is_some() {
+            if crate::units::unit_mapper(u, sys.default_units())?.is_some() {
                 return Ok(sys);
             }
         }
@@ -785,7 +785,7 @@ fn unit_or_unit_map(from: &str, to: &str) -> AstResult<Option<DynMapping>> {
     if from == to {
         return Ok(Some(Box::new(crate::mappings::UnitMap::new(1)?)));
     }
-    Ok(crate::units::unit_mapper(from, to))
+    crate::units::unit_mapper(from, to)
 }
 
 /// Transform a single scalar through a 1-D Mapping in the given direction,
@@ -850,11 +850,11 @@ impl Frame for FluxFrame {
         // GetSystem, which takes the System from a set Unit when the System
         // is not set.
         let system = self.system()?;
-        Ok(super::frame_attrs::relabel_for_unit(
+        super::frame_attrs::relabel_for_unit(
             system.label().to_string(),
             system.default_units(),
             self.axis.unit.as_deref(),
-        ))
+        )
     }
 
     /// The Symbol, set or default; see [`Frame::symbol`].
@@ -872,11 +872,11 @@ impl Frame for FluxFrame {
             return Ok(symbol.clone());
         }
         let system = self.system()?;
-        Ok(super::frame_attrs::relabel_for_unit(
+        super::frame_attrs::relabel_for_unit(
             system.symbol().to_string(),
             system.default_units(),
             self.axis.unit.as_deref(),
-        ))
+        )
     }
 
     /// The Unit, set or default: the System's default unit, as
@@ -904,11 +904,11 @@ impl Frame for FluxFrame {
         let unit = unit.trim_end();
         if self.get_active_unit() {
             let old = Frame::unit(self, axis)?;
-            super::frame_attrs::new_unit(&mut self.axis, &old, unit);
+            super::frame_attrs::new_unit(&mut self.axis, &old, unit)?;
         }
         self.ax_mut(axis)?.unit = Some(unit.to_string());
         let system = self.system()?;
-        if crate::units::unit_mapper(system.default_units(), unit).is_some() {
+        if crate::units::unit_mapper(system.default_units(), unit)?.is_some() {
             self.used_units[system.index()] = Some(unit.to_string());
         } else {
             self.system_set = false;
@@ -927,7 +927,7 @@ impl Frame for FluxFrame {
         if let Some(old) = self.axis.unit.take() {
             if self.get_active_unit() {
                 let new = Frame::unit(self, axis)?;
-                super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+                super::frame_attrs::new_unit(&mut self.axis, &old, &new)?;
             }
         }
         Ok(())

@@ -210,7 +210,10 @@ fn value(obj: &Obj, attr: &str) -> (V, Option<bool>) {
                 s(f.align_timescale().as_str().to_string()),
                 Some(f.test_align_timescale()),
             ),
-            "TimeOrigin" => (V::D(f.time_origin_cur()), Some(f.test_time_origin())),
+            "TimeOrigin" => (
+                V::D(f.time_origin_cur().unwrap()),
+                Some(f.test_time_origin()),
+            ),
             "LTOffset" => (V::D(f.lt_offset()), Some(f.test_lt_offset())),
             other => panic!("unexpected attribute {other}"),
         },

@@ -73,30 +73,6 @@ const UNUSABLE_UNIT: &str = "log(log(log(log(log(Jy)))))";
 const UNUSABLE_UNIT_MESSAGE: &str =
     "Illegal negative or zero constant value '-0.872603' encountered.";
 
-/// Cases whose messages are not yet the C library's, each with its reason.
-const UNIT_MESSAGE_EXCLUDED: &[(&str, &str)] = &[(
-    "unusable_unit_expression",
-    "the unit parser's constant folding reports nothing: the port's unit trees \
-     cannot carry an error out of unit_mapper (PLAN.md section 2), so the System \
-     error is the port's \"cannot be used with any of the supported flux \
-     systems\" in place of C's message",
-)];
-
-/// Whether the excluded case now gives the C library's messages.
-fn unusable_unit_matches_c() -> bool {
-    let mut f = FluxFrame::with_spec_val(starlink_ast::constants::BAD_VALUE, None);
-    let set = f.set_unit(1, UNUSABLE_UNIT);
-    let system = f.system_string();
-    let is_c = |r: &AstResult<_>| {
-        matches!(r, Err(e) if e.code() == ErrorCode::Badun
-            && e.message() == UNUSABLE_UNIT_MESSAGE
-            && e.context().is_empty())
-    };
-    is_c(&set.map(|()| String::new()))
-        && is_c(&system.map(|s| s.unwrap_or("").to_string()))
-        && Frame::unit(&f, 1).ok().as_deref() == Some(UNUSABLE_UNIT)
-}
-
 /// The Unit is stored and an error is given, whatever its message.
 #[test]
 fn an_unusable_unit_expression_is_an_error() {
@@ -109,13 +85,20 @@ fn an_unusable_unit_expression_is_an_error() {
     assert_eq!(f.system_string().unwrap_err().code(), ErrorCode::Badun);
 }
 
-/// An excluded case that starts giving C's messages must leave the list.
+/// The unit parser's message for the logarithm of a value that is not
+/// positive is passed on, as the C library reports it, when the Unit is set
+/// and when the System is read from it.
 #[test]
-fn excluded_unit_messages_still_differ() {
-    for (name, reason) in UNIT_MESSAGE_EXCLUDED {
-        assert!(
-            !unusable_unit_matches_c(),
-            "{name} now matches C; remove it from UNIT_MESSAGE_EXCLUDED ({reason})"
-        );
-    }
+fn an_unusable_unit_expression_gives_the_unit_parsers_message() {
+    let mut f = FluxFrame::with_spec_val(starlink_ast::constants::BAD_VALUE, None);
+    let is_c = |e: &starlink_ast::error::AstError| {
+        e.code() == ErrorCode::Badun
+            && e.message() == UNUSABLE_UNIT_MESSAGE
+            && e.context().is_empty()
+    };
+    let err = f.set_unit(1, UNUSABLE_UNIT).unwrap_err();
+    assert!(is_c(&err), "{err}");
+    let err = f.system_string().unwrap_err();
+    assert!(is_c(&err), "{err}");
+    assert_eq!(Frame::unit(&f, 1).unwrap(), UNUSABLE_UNIT);
 }

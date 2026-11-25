@@ -692,7 +692,7 @@ fn apply_unit_remap(fs: &FrameSet) -> AstResult<FrameSet> {
             let intunit = pframe.internal_unit(paxis_1)?;
             if intunit == extunit {
                 Box::new(UnitMap::new(1)?)
-            } else if let Some(umap) = crate::units::unit_mapper(&intunit, &extunit) {
+            } else if let Some(umap) = crate::units::unit_mapper(&intunit, &extunit)? {
                 any_remap = true;
                 umap
             } else if intunit == "rad" {

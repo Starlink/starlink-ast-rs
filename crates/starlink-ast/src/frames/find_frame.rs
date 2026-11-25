@@ -737,7 +737,7 @@ pub(crate) fn default_sub_frame(
                 let aumap = if target_axis >= 0 {
                     let tu = target.unit(target_axis as usize + 1)?;
                     let ru = result.unit(result_axis + 1)?;
-                    crate::units::unit_mapper(&tu, &ru)
+                    crate::units::unit_mapper(&tu, &ru)?
                 } else {
                     None
                 };

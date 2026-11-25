@@ -123,8 +123,10 @@ pub(crate) fn complicate_tree(node: &mut Box<UnitNode>) -> bool {
     if let Some(nn) = newnode {
         *node = nn;
         result = true;
-        // Re-simplify (without standardization) and re-complicate.
-        simplify_tree(node, false);
+        // Re-simplify (without standardization) and re-complicate. The
+        // tree's constants were folded when it was made, so this cannot
+        // fail; were it to, the tree is left as rewritten.
+        let _ = simplify_tree(node, false);
         complicate_tree(node);
     }
 

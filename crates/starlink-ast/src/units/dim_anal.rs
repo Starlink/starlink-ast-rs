@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn dim_anal_basic() {
         // "m" → powers = [0,1,0,...], scale = 1.
-        let t = create_tree("m", true).unwrap();
+        let t = create_tree("m", true).unwrap().unwrap();
         let (p, s) = dim_anal(&t).unwrap();
         assert_eq!(p[quant_idx::M], 1.0);
         assert_eq!(s, 1.0);
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn dim_anal_mhz() {
-        let t = create_tree("MHz", true).unwrap();
+        let t = create_tree("MHz", true).unwrap().unwrap();
         let (p, s) = dim_anal(&t).unwrap();
         assert_eq!(p[quant_idx::S], -1.0);
         assert!((s - 1.0e6).abs() < 1.0); // 1 MHz = 1e6 Hz
@@ -211,13 +211,13 @@ mod tests {
 
     #[test]
     fn dim_anal_log_returns_none() {
-        let t = create_tree("log(Hz)", true).unwrap();
+        let t = create_tree("log(Hz)", true).unwrap().unwrap();
         assert!(dim_anal(&t).is_none());
     }
 
     #[test]
     fn locate_units_dedups() {
-        let t = create_tree("m/s", true).unwrap();
+        let t = create_tree("m/s", true).unwrap().unwrap();
         let mut units = Vec::new();
         locate_units(&t, &mut units);
         assert!(units.iter().any(|n| n == "m"));

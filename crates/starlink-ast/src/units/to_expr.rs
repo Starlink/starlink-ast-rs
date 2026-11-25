@@ -334,9 +334,10 @@ fn modify_prefix(old: &UnitNode) -> Option<Box<UnitNode>> {
 // crate-level `allow(dead_code)`.
 // ---------------------------------------------------------------------
 #[allow(dead_code)]
-fn relabel_pass(node: &mut Box<UnitNode>) {
-    fix_constants(node, true);
-    while simplify_tree(node, false) {
-        fix_constants(node, true);
+fn relabel_pass(node: &mut Box<UnitNode>) -> crate::error::AstResult<()> {
+    fix_constants(node, true)?;
+    while simplify_tree(node, false)? {
+        fix_constants(node, true)?;
     }
+    Ok(())
 }
