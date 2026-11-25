@@ -12,7 +12,7 @@
 
 # Excluded paths — applied to the file-hygiene hooks below. We keep
 # vendored upstream sources (crates/starlink-ast/vendor/) and test fixtures (FITS headers,
-# AST native dumps, expected outputs) byte-exact: rewriting whitespace
+# AST native dumps, expected outputs, inputs the fuzzer found) byte-exact: rewriting whitespace
 # or trailing newlines would either drift them away from the upstream
 # we're tracking or break tests that compare output against the
 # checked-in reference verbatim.
@@ -20,6 +20,7 @@ exclude: |
   (?x)^(
     crates/starlink-ast/vendor/.*|
     crates/starlink-ast/tests/fixtures/.*|
+    crates/starlink-ast/tests/regressions/.*|
     crates/ast-plotter-wasm/tests/fixtures/.*|
     reference/.*
   )$

@@ -144,9 +144,13 @@ pub(crate) fn wrap_warning_text(text: &str) -> Vec<String> {
                 c -= 1;
             }
         }
-        let nc = c - a + 1;
-        lines.push(text[a..a + nc].to_string());
-        a = c + 1;
+        // A line ends after the character holding byte `c`.
+        let mut end = c + 1;
+        while !text.is_char_boundary(end) {
+            end += 1;
+        }
+        lines.push(text[a..end].to_string());
+        a = end;
     }
     lines
 }
@@ -408,9 +412,11 @@ impl FitsCard {
         let (card, nc) = prepare_card(card);
         let bytes = card.as_bytes();
 
-        // Extract keyword (columns 1-8, i.e. indices 0..8).
-        let raw_name = &card[..FITS_NAME_LEN];
-        let keyword = raw_name.trim_end().to_uppercase();
+        // Extract keyword (columns 1-8, i.e. indices 0..8). A character that
+        // spans column 8 is left to the text after the name.
+        let name_end = floor_char_boundary(&card, FITS_NAME_LEN);
+        let raw_name = &card[..name_end];
+        let keyword = raw_name.trim_end().to_ascii_uppercase();
         let blank_name = keyword.is_empty();
 
         // C's `CheckFitsName` stops at the first character that is not a
@@ -439,8 +445,8 @@ impl FitsCard {
         if is_commentary {
             // C copies the characters supplied after column 8, not the
             // padding.
-            let text = if nc > FITS_NAME_LEN {
-                &card[FITS_NAME_LEN..nc]
+            let text = if nc > name_end {
+                &card[name_end..nc]
             } else {
                 ""
             };
@@ -701,7 +707,9 @@ impl FitsCard {
 /// The card padded with spaces to 80 characters, and C's `nc`, the number of
 /// characters `Split` reads: at most 80, less any non-printing characters
 /// that end them.
+/// A NUL ends the card, as it ends the C library's string.
 fn prepare_card(input: &str) -> (String, usize) {
+    let input = input.split('\0').next().unwrap_or_default();
     let truncated: String = input.chars().take(FITS_CARD_LEN).collect();
     let trimmed = truncated.trim_end_matches(|c: char| !c.is_ascii_graphic() && c != ' ');
     let nc = trimmed.len();
@@ -710,6 +718,24 @@ fn prepare_card(input: &str) -> (String, usize) {
         card.push(' ');
     }
     (card, nc)
+}
+
+/// The keyword name of `card` in its own case: its first 8 bytes, less
+/// trailing spaces, after the preparation `split` gives every card.
+pub(crate) fn raw_keyword(card: &str) -> String {
+    let (card, _) = prepare_card(card);
+    card[..floor_char_boundary(&card, FITS_NAME_LEN)]
+        .trim_end()
+        .to_string()
+}
+
+/// The largest index no greater than `i` that starts a character of `s`.
+fn floor_char_boundary(s: &str, i: usize) -> usize {
+    let mut i = i.min(s.len());
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
 }
 
 /// Parse a string value (starts with quote) from the value area.

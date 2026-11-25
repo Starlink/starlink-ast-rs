@@ -404,7 +404,7 @@ impl CardList {
 
     fn note_written(&self, keyword: &str) {
         if let Some(names) = self.written_names.borrow_mut().as_mut() {
-            names.push(keyword.to_uppercase());
+            names.push(keyword.to_ascii_uppercase());
         }
     }
 
@@ -992,7 +992,7 @@ impl CardList {
     /// Set an integer keyword value. Overwrites if keyword exists, appends if not.
     pub(crate) fn set_int(&mut self, keyword: &str, value: i64, comment: &str) {
         let card = FitsCard {
-            keyword: keyword.to_uppercase(),
+            keyword: keyword.to_ascii_uppercase(),
             value: FitsValue::Int(value),
             comment: card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
@@ -1004,7 +1004,7 @@ impl CardList {
     pub(crate) fn set_float(&mut self, keyword: &str, value: f64, comment: &str) {
         self.note_written(keyword);
         let card = FitsCard {
-            keyword: keyword.to_uppercase(),
+            keyword: keyword.to_ascii_uppercase(),
             value: FitsValue::Float(value),
             comment: card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
@@ -1016,7 +1016,7 @@ impl CardList {
     pub(crate) fn set_string(&mut self, keyword: &str, value: &str, comment: &str) {
         self.note_written(keyword);
         let card = FitsCard {
-            keyword: keyword.to_uppercase(),
+            keyword: keyword.to_ascii_uppercase(),
             value: FitsValue::String(value.to_string()),
             comment: card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
@@ -1189,7 +1189,7 @@ impl Default for CardList {
 /// list, so C inserts new cards *before* a trailing RESTFREQ card
 /// rather than after it.
 fn is_findwcs_keyword(keyword: &str) -> bool {
-    let kw = keyword.to_uppercase();
+    let kw = keyword.to_ascii_uppercase();
 
     // Exact-match keywords from FindWcs (with `%0c` alt-letter
     // suffix expansions handled by the optional-trailing-letter

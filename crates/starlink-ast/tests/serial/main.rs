@@ -13,6 +13,8 @@
 
 #[path = "../common/mod.rs"]
 mod common;
+#[path = "../fuzz_entry/mod.rs"]
+mod fuzz_entry;
 
 #[path = "../test_channel.rs"]
 mod test_channel;
@@ -40,6 +42,8 @@ mod test_frameset_variant_link_oracle;
 mod test_frameset_variants_oracle;
 #[path = "../test_framesetload.rs"]
 mod test_framesetload;
+#[path = "../test_fuzz_regressions.rs"]
+mod test_fuzz_regressions;
 #[path = "../test_hardening_oracle.rs"]
 mod test_hardening_oracle;
 #[path = "../test_keymap.rs"]

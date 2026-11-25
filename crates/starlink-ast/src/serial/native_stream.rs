@@ -223,7 +223,7 @@ fn match_name_equals(b: &[u8]) -> Option<(usize, usize)> {
 fn match_keyword<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     let b = line.as_bytes();
     let n = keyword.len();
-    if b.len() < n || !line[..n].eq_ignore_ascii_case(keyword) {
+    if b.len() < n || !b[..n].eq_ignore_ascii_case(keyword.as_bytes()) {
         return None;
     }
     let start = skip_space(b, n);

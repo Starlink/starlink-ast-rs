@@ -871,7 +871,7 @@ impl FitsChan {
     }
 
     /// The keyword and comment C's `Split` finds when it reads a setter's or
-    /// getter's keyword name as a card: the first 8 characters, in their own
+    /// getter's keyword name as a card: its keyword name, in its own
     /// case (`NewCard` upper-cases them when a card is stored), and any text
     /// after them. As with any card, an illegal name or value is warned of.
     fn split_name(&mut self, name: &str, method: &'static str) -> AstResult<(String, String)> {
@@ -881,8 +881,7 @@ impl FitsChan {
             FitsValue::Comment(text) => text.trim().to_string(),
             _ => card.comment.clone().unwrap_or_default(),
         };
-        let raw: String = name.chars().take(8).collect();
-        let keyword = raw.trim_end().to_string();
+        let keyword = crate::fitschan::card::raw_keyword(name);
         debug_assert!(keyword.eq_ignore_ascii_case(&card.keyword));
         Ok((keyword, comment))
     }
@@ -1661,7 +1660,7 @@ impl FitsChan {
     /// the comment, as C's `NewCard` does for a card with a value.
     fn store_card(&mut self, keyword: String, value: FitsValue, comment: &str, overwrite: bool) {
         let card = FitsCard {
-            keyword: keyword.to_uppercase(),
+            keyword: keyword.to_ascii_uppercase(),
             value,
             comment: card_list::card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
@@ -1962,7 +1961,7 @@ impl FitsChan {
         let same = self.cards.current().is_some_and(|c| c.keyword == lname);
         let card = if !overwrite || !same {
             FitsCard {
-                keyword: lname.to_uppercase(),
+                keyword: lname.to_ascii_uppercase(),
                 value: FitsValue::Comment(com.unwrap_or_default()),
                 comment: None,
                 flags: crate::fitschan::card::CardFlags::default(),
