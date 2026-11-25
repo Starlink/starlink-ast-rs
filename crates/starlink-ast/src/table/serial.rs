@@ -10,7 +10,9 @@ use super::Table;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::keymap::KeyMap;
 use crate::serial::node::Node;
-use crate::serial::{AnyObject, Serializable, any_object_from_node, any_object_to_node};
+use crate::serial::{
+    AnyObject, MXLOADEL, Serializable, any_object_from_node, any_object_to_node, too_many_values,
+};
 use std::cell::RefCell;
 
 impl Serializable for Table {
@@ -48,6 +50,14 @@ impl Serializable for Table {
         let part = node.section("Table");
         let class = &node.class;
         let nrow = part.get_int("Nrow", 0).max(0) as usize;
+        // A row's cells are named by their row number (see `MXLOADEL`).
+        if nrow > MXLOADEL {
+            return Err(too_many_values(
+                "astLoadTable",
+                class,
+                &format!("The Table read has {nrow} rows"),
+            ));
+        }
         let columns = read_keymap(&part, class, "Columns", "KeyMap of column definitions")?;
         // A column name makes the key of each of its cells, so it is no
         // longer than a column added to a Table may have (table.c

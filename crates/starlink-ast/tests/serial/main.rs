@@ -66,6 +66,8 @@ mod test_section_load;
 mod test_serialisation;
 #[path = "../test_show_tostring_oracle.rs"]
 mod test_show_tostring_oracle;
+#[path = "../test_size_limits.rs"]
+mod test_size_limits;
 #[path = "../test_table.rs"]
 mod test_table;
 #[path = "../test_table_oracle.rs"]

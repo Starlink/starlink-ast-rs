@@ -12,7 +12,9 @@ use crate::keymap::entry::{AstType, EntryValue, MapEntry, Scalar1D};
 use crate::keymap::sort::SortBy;
 use crate::keymap::{KeyMap, table};
 use crate::serial::node::Node;
-use crate::serial::{Serializable, any_object_to_node, boxed_any_object_from_node};
+use crate::serial::{
+    MXLOADEL, Serializable, any_object_to_node, boxed_any_object_from_node, too_many_values,
+};
 
 impl Serializable for KeyMap {
     fn class_name(&self) -> &'static str {
@@ -420,6 +422,14 @@ fn entry_layout(node: &Node, n: usize) -> AstResult<(AstType, usize, Vec<String>
     // `usize` wraparound that would otherwise blow up the unbounded
     // `.collect()` below.
     let nel = node.get_int(&format!("Nel{n}"), 0).max(0) as usize;
+    // The elements are named `V<n>_1` onward (see `MXLOADEL`).
+    if nel > MXLOADEL {
+        return Err(too_many_values(
+            "astLoadKeyMap",
+            "KeyMap",
+            &format!("Entry {n} read has {nel} elements"),
+        ));
+    }
     let names: Vec<String> = if nel == 0 {
         vec![format!("Val{n}")]
     } else {

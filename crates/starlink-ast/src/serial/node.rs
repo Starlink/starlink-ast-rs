@@ -4,6 +4,7 @@
 //! The Node tree -- intermediate representation for serialization.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::error::{AstError, ErrorCode};
@@ -94,7 +95,31 @@ pub(crate) struct Node {
     /// of, which a failure to load it names; `None` for a top-level object
     /// or one made in memory.
     pub item: ItemName,
+    /// The positions of the items by key, for a large object.
+    index: KeyIndex,
 }
+
+/// The positions in a [`Node`]'s items of each key, lower-cased, made when
+/// a large object is first searched and remade when items have been added.
+///
+/// C's loaders find each value in a hash table, so an object of n items
+/// loads in time proportional to n; searching the items for each key would
+/// take time proportional to n squared.
+#[derive(Debug, Clone, Default)]
+struct KeyIndex(RefCell<Option<(usize, Positions)>>);
+
+/// The positions of the items with each lower-cased key.
+type Positions = HashMap<String, Vec<usize>>;
+
+impl PartialEq for KeyIndex {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+/// The most items a [`Node`] searches one by one rather than through its
+/// [`KeyIndex`].
+const UNINDEXED_ITEMS: usize = 32;
 
 /// The name of the item a nested object was read under. Two Nodes are equal
 /// whatever their item names, as a Node read from text and one made in
@@ -118,7 +143,43 @@ impl Node {
             full_capped: false,
             accessed: ReadFlag::default(),
             item: ItemName::default(),
+            index: KeyIndex::default(),
         }
+    }
+
+    /// `f` of the positions, in order, of the items called `key`, from the
+    /// index of a large object.
+    fn indexed<R>(&self, key: &str, f: impl FnOnce(&[usize]) -> R) -> R {
+        let mut index = self.index.0.borrow_mut();
+        // Items are only ever added, so an index made for as many items as
+        // there are now is up to date.
+        if index
+            .as_ref()
+            .is_none_or(|(len, _)| *len != self.items.len())
+        {
+            let mut map = Positions::new();
+            for (i, item) in self.items.iter().enumerate() {
+                map.entry(item.key.to_ascii_lowercase())
+                    .or_default()
+                    .push(i);
+            }
+            *index = Some((self.items.len(), map));
+        }
+        let (_, map) = index.as_ref().expect("made above");
+        f(map
+            .get(&key.to_ascii_lowercase())
+            .map_or(&[], Vec::as_slice))
+    }
+
+    /// The first item called `key`.
+    ///
+    /// Key comparison is case-insensitive (ASCII); see [`Node::get`].
+    fn first(&self, key: &str) -> Option<&NodeItem> {
+        if self.items.len() <= UNINDEXED_ITEMS {
+            return self.items.iter().find(|i| i.key.eq_ignore_ascii_case(key));
+        }
+        self.indexed(key, |p| p.first().copied())
+            .map(|i| &self.items[i])
     }
 
     /// Add an integer attribute.
@@ -313,16 +374,12 @@ impl Node {
     /// uppercase letters (e.g. `MapA`, `InvB`, `SimpFI`).
     pub fn get(&self, key: &str) -> Option<&NodeValue> {
         self.accessed.set();
-        for item in &self.items {
-            if item.key.eq_ignore_ascii_case(key) {
-                if let NodeValue::Unset(_) = &item.value {
-                    return None;
-                }
-                item.read.set();
-                return Some(&item.value);
-            }
+        let item = self.first(key)?;
+        if let NodeValue::Unset(_) = &item.value {
+            return None;
         }
-        None
+        item.read.set();
+        Some(&item.value)
     }
 
     /// The part of this object's description that belongs to `class`, as
@@ -362,16 +419,12 @@ impl Node {
     /// Key comparison is **case-insensitive** (ASCII); see [`Node::get`].
     pub fn get_any(&self, key: &str) -> Option<&NodeValue> {
         self.accessed.set();
-        for item in &self.items {
-            if item.key.eq_ignore_ascii_case(key) {
-                item.read.set();
-                if let NodeValue::Unset(inner) = &item.value {
-                    return Some(inner.as_ref());
-                }
-                return Some(&item.value);
-            }
+        let item = self.first(key)?;
+        item.read.set();
+        if let NodeValue::Unset(inner) = &item.value {
+            return Some(inner.as_ref());
         }
-        None
+        Some(&item.value)
     }
 
     /// Look up the first item's raw value with the given key, preserving the
@@ -390,10 +443,7 @@ impl Node {
     /// [`Node::get`] finds it.
     fn set_item(&self, key: &str) -> Option<&NodeItem> {
         self.accessed.set();
-        let item = self
-            .items
-            .iter()
-            .find(|i| i.key.eq_ignore_ascii_case(key))?;
+        let item = self.first(key)?;
         if let NodeValue::Unset(_) = &item.value {
             return None;
         }
@@ -547,10 +597,18 @@ impl Node {
     /// a Channel does not report them as unrecognized.
     pub fn mark_read(&self, key: &str) {
         self.accessed.set();
-        for item in &self.items {
-            if item.key.eq_ignore_ascii_case(key) {
-                item.read.set();
+        if self.items.len() <= UNINDEXED_ITEMS {
+            for item in &self.items {
+                if item.key.eq_ignore_ascii_case(key) {
+                    item.read.set();
+                }
             }
+        } else {
+            self.indexed(key, |p| {
+                for &i in p {
+                    self.items[i].read.set();
+                }
+            });
         }
     }
 

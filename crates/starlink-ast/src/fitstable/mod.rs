@@ -420,7 +420,9 @@ impl FitsTable {
                     let Some((dim, nc)) = scan_int(p) else {
                         break;
                     };
-                    nel *= dim;
+                    // C's int product wraps; a product too large to hold
+                    // cannot match the repeat count either way.
+                    nel = nel.saturating_mul(dim);
                     dims.push(dim);
                     p = &p[nc..];
                     p = p.strip_prefix(',').unwrap_or(p);

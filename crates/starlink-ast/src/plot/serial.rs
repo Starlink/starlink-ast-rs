@@ -28,7 +28,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{FrameRef, FrameSet};
 use crate::mappings::Mapping;
-use crate::serial::{Node, Serializable};
+use crate::serial::{MXLOADEL, Node, Serializable, too_many_values};
 
 /// The names C writes for Edge, Labelling and TextGapType, in the order of
 /// their values.
@@ -763,6 +763,15 @@ impl Serializable for Plot {
                         "astLoadPlot({class}): Invalid number of {which} tick mark values ({n}) \
                          read for axis {axis}."
                     ),
+                ));
+            }
+            // The values are named `mjtk<axis>_1` or `mntk<axis>_1` onward
+            // (see `MXLOADEL`).
+            if n as u64 > MXLOADEL as u64 {
+                return Err(too_many_values(
+                    "astLoadPlot",
+                    class,
+                    &format!("The Plot read has {n} {which} tick mark values for axis {axis}"),
                 ));
             }
             Ok(n)

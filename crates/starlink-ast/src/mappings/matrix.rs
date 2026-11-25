@@ -14,7 +14,7 @@ use ndarray::Array2;
 use crate::constants::BAD_VALUE;
 use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+use crate::serial::{MXLOADEL, Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
@@ -1514,7 +1514,6 @@ impl Serializable for MatrixMap {
         // A dump names a full matrix's elements `M0` to `M9999998`, so one
         // that claims more was not written by AST (matrixmap.c
         // `astLoadMatrixMap`); nothing is read or sized for it.
-        const MXLOADEL: usize = 9_999_999;
         if form != "Unit" && form != "Diagonal" && nin.saturating_mul(nout) > MXLOADEL {
             return Err(AstError::new(
                 ErrorCode::Lderr,
@@ -1522,6 +1521,20 @@ impl Serializable for MatrixMap {
                     "astLoadMatrixMap({}): The full matrix read has {nout} rows and {nin} \
                      columns, but a dump cannot hold more than {MXLOADEL} elements.",
                     whole.class
+                ),
+            ));
+        }
+        // A port-only limit: C stores a unit or diagonal matrix as its
+        // diagonal, and the port stores every matrix whole.
+        if (form == "Unit" || form == "Diagonal") && nin.saturating_mul(nout) > MXLOADEL {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadMatrixMap({}): The {} matrix read has {nout} rows and {nin} \
+                     columns, but the port stores it whole and cannot hold more than \
+                     {MXLOADEL} elements.",
+                    whole.class,
+                    form.to_lowercase()
                 ),
             ));
         }

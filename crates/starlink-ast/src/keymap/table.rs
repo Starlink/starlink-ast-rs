@@ -8,6 +8,7 @@
 
 use crate::error::{AstError, AstResult, ErrorCode};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 /// The smallest hash table C ever allocates.
 pub(crate) const MIN_TABLE_SIZE: usize = 16;
@@ -138,21 +139,26 @@ pub(crate) fn map_sz(keys: &[String], sizeguess: Option<usize>) -> usize {
         None => MIN_TABLE_SIZE,
     };
 
-    let mut counts = vec![0usize; mapsize];
+    // Only the buckets that hold keys are counted, so a SizeGuess read from
+    // a dump sizes nothing.
+    let mut counts: HashMap<usize, usize> = HashMap::new();
     let mut placed = 0usize;
     while placed < keys.len() {
         let itab = hash_fun(&keys[placed], (mapsize - 1) as u64);
-        counts[itab] += 1;
+        let count = counts.entry(itab).or_default();
+        *count += 1;
         placed += 1;
 
         // DoubleTableSize fires when one bucket passes the limit. It
         // doubles once and redistributes, without re-checking the new
         // distribution, so a single insert never doubles twice.
-        if counts[itab] > MAX_ENTRIES_PER_TABLE_ENTRY {
+        if *count > MAX_ENTRIES_PER_TABLE_ENTRY {
             mapsize *= 2;
-            counts = vec![0usize; mapsize];
+            counts.clear();
             for key in &keys[..placed] {
-                counts[hash_fun(key, (mapsize - 1) as u64)] += 1;
+                *counts
+                    .entry(hash_fun(key, (mapsize - 1) as u64))
+                    .or_default() += 1;
             }
         }
     }

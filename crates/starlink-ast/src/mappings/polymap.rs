@@ -9,7 +9,9 @@ use nalgebra::{DMatrix, DVector, Dyn, OMatrix, OVector, VecStorage};
 use crate::constants::BAD_VALUE;
 use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+use crate::serial::{
+    MXLOADEL, Node, Serializable, read_mapping_base, too_many_values, write_mapping_base,
+};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::ast_equal;
@@ -2405,6 +2407,34 @@ pub(crate) fn read_poly_terms(
                 "astLoadPolyMap({class}): Illegal number of coefficients ({n}) read for \
                  polynomial {} of the {direction} transformation - it should not be negative.",
                 ipoly + 1
+            ),
+        ));
+    }
+    // The coefficients are named `C<dir><n>` and their powers
+    // `P<dir><n>`, and a power sizes a table of that many values, so none
+    // of them can be more than a dump can name (see `MXLOADEL`).
+    if let Some((iax, m)) = mxpow
+        .iter()
+        .enumerate()
+        .find(|(_, m)| **m as u64 > MXLOADEL as u64)
+    {
+        return Err(too_many_values(
+            "astLoadPolyMap",
+            class,
+            &format!(
+                "The maximum power read for axis {} of the {direction} transformation is {m}",
+                iax + 1
+            ),
+        ));
+    }
+    let total: u64 = ncoeff.iter().map(|&n| n as u64).sum();
+    if total.saturating_mul(nvar as u64) > MXLOADEL as u64 {
+        return Err(too_many_values(
+            "astLoadPolyMap",
+            class,
+            &format!(
+                "The {direction} transformation read has {total} coefficients of {nvar} powers \
+                 each"
             ),
         ));
     }

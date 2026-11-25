@@ -46,6 +46,28 @@ pub(crate) trait Serializable {
         Self: Sized;
 }
 
+/// The most values a dump can name, C's `MXLOADEL`.
+///
+/// A name in a dump has at most eight characters (`MAX_NAME` in channel.c),
+/// and the names that number a class's values, such as a MatrixMap's `M0`
+/// to `M9999998`, start with at least one letter, so no dump can supply
+/// more values than this. C's MatrixMap and PointSet loaders refuse a dump
+/// claiming more; the port's loaders refuse any count read from a dump
+/// that would make them size or read more, so that a few bytes of input
+/// cannot make them allocate or loop without bound.
+pub(crate) const MXLOADEL: usize = 9_999_999;
+
+/// The error for a dump read by `loader` (such as `astLoadLutMap`) for an
+/// Object of class `class` whose count `claim`, such as "The LutMap read
+/// has 10000000 lookup table elements", needs more than [`MXLOADEL`]
+/// values.
+pub(crate) fn too_many_values(loader: &str, class: &str, claim: &str) -> AstError {
+    AstError::new(
+        ErrorCode::Lderr,
+        format!("{loader}({class}): {claim}, but a dump cannot hold more than {MXLOADEL} values."),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Mapping base helpers
 // ---------------------------------------------------------------------------
@@ -1274,6 +1296,15 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     } else {
         0
     };
+    // A port-only limit: a mesh of more points than a dump can name (see
+    // `MXLOADEL`) is refused rather than sized.
+    if mesh_size > MXLOADEL {
+        return Err(too_many_values(
+            "astLoadRegion",
+            class,
+            &format!("The MeshSize read is {mesh_size}"),
+        ));
+    }
     let closed = node.get_int("Closed", 1) != 0;
     // C tracks Closed via `closed != -INT_MAX` (`region.c` line 12766). For
     // the round-trip we model the same explicit-set state via `closed_set`:

@@ -231,22 +231,8 @@ pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<Stri
         Arg::Double(x)
     };
     let prefix = buf.len();
-    let (text, conversion) = sprintf_marked(&p.fmt, arg).map_err(|e| {
+    let overflow = || {
         AstError::new(
-            ErrorCode::Fmter,
-            format!(
-                "astAxisFormat(Axis): Error formatting a coordinate value of {value}: {e}. \
-                 The format string was \"{}\".",
-                String::from_utf8_lossy(&p.fmt)
-            ),
-        )
-    })?;
-    buf.extend(text);
-    if log {
-        buf.extend_from_slice(LOG_END.as_bytes());
-    }
-    if buf.len() > BUFF_LEN {
-        return Err(AstError::new(
             ErrorCode::Fmter,
             format!(
                 "astAxisFormat(Axis): Internal buffer overflow while formatting a coordinate \
@@ -255,7 +241,28 @@ pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<Stri
                 sprintf_double("%1.17G", value),
                 String::from_utf8_lossy(&p.fmt)
             ),
-        ));
+        )
+    };
+    let (text, conversion) = match sprintf_marked(&p.fmt, arg, BUFF_LEN.saturating_sub(prefix)) {
+        Ok(done) => done,
+        Err(PrintfError::TooLong) => return Err(overflow()),
+        Err(PrintfError::Invalid(e)) => {
+            return Err(AstError::new(
+                ErrorCode::Fmter,
+                format!(
+                    "astAxisFormat(Axis): Error formatting a coordinate value of {value}: {e}. \
+                     The format string was \"{}\".",
+                    String::from_utf8_lossy(&p.fmt)
+                ),
+            ));
+        }
+    };
+    buf.extend(text);
+    if log {
+        buf.extend_from_slice(LOG_END.as_bytes());
+    }
+    if buf.len() > BUFF_LEN {
+        return Err(overflow());
     }
 
     // The result is a C string, so it ends at the first NUL, which `%c`
@@ -310,15 +317,40 @@ pub(crate) fn sprintf_double(fmt: &str, value: f64) -> String {
 /// C's `sprintf( buf, fmt, arg )` for a format with at most one
 /// conversion. The error is a short reason; the caller reports it.
 fn sprintf(fmt: &[u8], arg: Arg) -> Result<Vec<u8>, String> {
-    sprintf_marked(fmt, arg).map(|(out, _)| out)
+    match sprintf_marked(fmt, arg, usize::MAX) {
+        Ok((out, _)) => Ok(out),
+        Err(PrintfError::Invalid(e)) => Err(e),
+        Err(PrintfError::TooLong) => unreachable!("no output is longer than usize::MAX"),
+    }
 }
+
+/// Why [`sprintf_marked`] gave no output.
+enum PrintfError {
+    /// The format cannot be applied to the argument; the short reason.
+    Invalid(String),
+    /// The conversion's field width or precision makes its output longer
+    /// than the most allowed, which C's `snprintf` reports by giving the
+    /// length the output would have had.
+    TooLong,
+}
+
+/// The most significant digits `%g` without the `#` flag can give: the
+/// exact decimal value of a `double` has at most 767, so a greater
+/// precision gives the same result, with its trailing zeros removed.
+const G_MAX_PRECISION: usize = 800;
 
 /// The byte range of the output a conversion wrote, and its character.
 type Conversion = (std::ops::Range<usize>, u8);
 
 /// [`sprintf`], with the [`Conversion`] in its output, or `None` for a
-/// format with no conversion.
-fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>), String> {
+/// format with no conversion, failing with [`PrintfError::TooLong`] before
+/// formatting a conversion whose field width or precision makes it longer
+/// than `max_len`.
+fn sprintf_marked(
+    fmt: &[u8],
+    arg: Arg,
+    max_len: usize,
+) -> Result<(Vec<u8>, Option<Conversion>), PrintfError> {
     let mut out = Vec::new();
     let mut conversion = None;
     let mut used = false;
@@ -351,7 +383,9 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
             i += 1;
         }
         if fmt.get(i) == Some(&b'*') {
-            return Err("a * field width needs a second argument".into());
+            return Err(PrintfError::Invalid(
+                "a * field width needs a second argument".into(),
+            ));
         }
         while let Some(d) = fmt.get(i).filter(|b| b.is_ascii_digit()) {
             spec.width = spec
@@ -363,7 +397,9 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
         if fmt.get(i) == Some(&b'.') {
             i += 1;
             if fmt.get(i) == Some(&b'*') {
-                return Err("a * precision needs a second argument".into());
+                return Err(PrintfError::Invalid(
+                    "a * precision needs a second argument".into(),
+                ));
             }
             let mut p = 0usize;
             while let Some(d) = fmt.get(i).filter(|b| b.is_ascii_digit()) {
@@ -378,17 +414,46 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
         if long {
             i += 1;
         } else if fmt.get(i).is_some_and(|b| b"hLqjzt".contains(b)) {
-            return Err("a length modifier changes the argument type".into());
+            return Err(PrintfError::Invalid(
+                "a length modifier changes the argument type".into(),
+            ));
         }
         let Some(&conv) = fmt.get(i) else {
-            return Err("the format ends inside a conversion".into());
+            return Err(PrintfError::Invalid(
+                "the format ends inside a conversion".into(),
+            ));
         };
         i += 1;
         if used {
-            return Err("a second conversion has no argument".into());
+            return Err(PrintfError::Invalid(
+                "a second conversion has no argument".into(),
+            ));
         }
         used = true;
         let start = out.len();
+
+        // C's snprintf fails for a width or precision an int cannot hold;
+        // below that, refuse a conversion whose width or precision alone
+        // makes the output too long, before making any of it.
+        let prec = spec.prec.unwrap_or(0);
+        if spec.width > i32::MAX as usize || prec > i32::MAX as usize {
+            return Err(PrintfError::Invalid(
+                "the field width or precision is too large for an int".into(),
+            ));
+        }
+        let prec_len = match conv {
+            b'd' | b'i' | b'u' | b'o' | b'x' | b'X' | b'e' | b'E' | b'f' | b'F' | b'a' | b'A' => {
+                prec
+            }
+            b'g' | b'G' if spec.alt => prec,
+            _ => 0,
+        };
+        if out.len().saturating_add(spec.width.max(prec_len)) > max_len {
+            return Err(PrintfError::TooLong);
+        }
+        if matches!(conv, b'g' | b'G') && !spec.alt {
+            spec.prec = spec.prec.map(|p| p.min(G_MAX_PRECISION));
+        }
 
         match (conv, arg) {
             (b'd' | b'i' | b'u' | b'o' | b'x' | b'X', Arg::Int(v)) if !long => {
@@ -396,7 +461,9 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
             }
             (b'c', Arg::Int(v)) if !long => {
                 if spec.zero {
-                    return Err("the 0 flag is undefined for %c".into());
+                    return Err(PrintfError::Invalid(
+                        "the 0 flag is undefined for %c".into(),
+                    ));
                 }
                 // The int is converted to unsigned char.
                 let body = [v as u8];
@@ -407,14 +474,14 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
             }
             (b'a' | b'A', Arg::Double(v)) => out.extend(format_hex(&spec, conv == b'A', v)),
             _ => {
-                return Err(format!(
+                return Err(PrintfError::Invalid(format!(
                     "%{} does not take the {} argument",
                     conv as char,
                     match arg {
                         Arg::Int(_) => "int",
                         Arg::Double(_) => "double",
                     }
-                ));
+                )));
             }
         }
         conversion = Some((start..out.len(), conv));
@@ -439,7 +506,7 @@ pub(crate) fn plain_minus_signs(fmt: &str, text: &str) -> Vec<usize> {
     } else {
         Arg::Double(0.0)
     };
-    let Ok((zero, Some((span, conv)))) = sprintf_marked(&p.fmt, arg) else {
+    let Ok((zero, Some((span, conv)))) = sprintf_marked(&p.fmt, arg, BUFF_LEN) else {
         return Vec::new();
     };
     // %c writes a byte of the value, not a number.

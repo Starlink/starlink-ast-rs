@@ -140,6 +140,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 
 - [`CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping](#cmpmap-dumps-invainvb-disagreeing-with-the-childs-own-invert-recording-pointer-sharing-rather-than-the-mapping)
 - [The port refuses a MathMap expression nested more than 100 deep, which C compiles](#the-port-refuses-a-mathmap-expression-nested-more-than-100-deep-which-c-compiles)
+- [The port refuses any count in a dump that needs more than 9999999 values](#the-port-refuses-any-count-in-a-dump-that-needs-more-than-9999999-values)
 - [`Frame::unformat` reads numbers as the C library's `sscanf` does, which varies between libraries](#frameunformat-reads-numbers-as-the-c-librarys-sscanf-does-which-varies-between-libraries)
 - [CmpMap `Rate` chain-rule override is defined but never installed](#cmpmap-rate-chain-rule-override-is-defined-but-never-installed)
 - [FrameSet variants: stored FrameSet-side, not on the Frame (Rust divergence)](#frameset-variants-stored-frameset-side-not-on-the-frame-rust-divergence)
@@ -2516,6 +2517,17 @@ C orders an expression's symbols for evaluation with an explicit stack, so it co
 The port compiles with a recursive operator-precedence parser (`mappings/mathmap/parser.rs`), which recurses once for each parenthesis, function argument, unary operator and right operand of `**`, so it refuses an expression nested more than `constants::MAX_EXPRESSION_NESTING` (100) deep with `AST__MIOPA` "the expression is nested more than 100 deep", rather than overflowing the stack.
 The deepest expression among the tests nests 5 deep, and one nested to the limit compiles on a 2 MiB stack in an unoptimized build (`an_expression_nested_to_the_limit_compiles` in `tests/test_nesting_limits.rs`).
 The limit goes if the parser is replaced by a port of `EvaluationSort` (PLAN.md §2).
+
+### The port refuses any count in a dump that needs more than 9999999 values
+
+C location: `matrixmap.c` `astLoadMatrixMap` (`MXLOADEL`, matrixmap.c:6478) and `pointset.c` `astLoadPointSet` (`MXLOADVAL`, pointset.c:3126).
+
+A name in a dump has at most eight characters (`MAX_NAME`, channel.c:150), so a class that numbers its values with names such as `M0` or `X1` cannot be given more than 9999999 of them.
+C's MatrixMap and PointSet loaders refuse a dump that claims more, so that a few bytes of input cannot make them allocate and fill arrays of any size; C's other loaders allocate whatever a count asks for, and fail with `AST__NOMEM` only if the allocation does.
+The port refuses, with `AST__LDERR` "..., but a dump cannot hold more than 9999999 values.", every count read from a dump that would make it size or read more (`serial::MXLOADEL`, `serial::too_many_values`): a LutMap's `Nlut`, a PolyMap's coefficients (`NCF<n>`, `NCI<n>`) times its inputs and its maximum powers (`MPF<n>`, `MPI<n>`, which size tables of powers), a SplineMap's `NX` times `NY`, a KeyMap entry's `Nel<n>`, a Table's `Nrow`, a Plot's tick mark counts (`nmjtk<n>`, `nmntk<n>`) and a Region's `MeshSz`.
+It also refuses a unit or diagonal MatrixMap of more than 9999999 elements, which C stores as its diagonal and the port stores whole.
+None of these limits is reached by a dump AST writes, as the item names show, except a MatrixMap of more than about 3162 inputs and outputs stored as unit or diagonal, or a Region whose MeshSize was set that high; C reads both.
+`tests/test_size_limits.rs` holds each; the counts there are one above the limit.
 
 ## Resolved upstream
 

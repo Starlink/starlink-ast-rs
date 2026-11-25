@@ -15,7 +15,9 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+use crate::serial::{
+    MXLOADEL, Node, Serializable, read_mapping_base, too_many_values, write_mapping_base,
+};
 
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
@@ -1356,6 +1358,14 @@ impl Serializable for SplineMap {
         let ny = node.get_int("NY", 0);
         check_sizes("astLoadSplineMap", kx, ky, nx, ny)?;
         let (kx, ky, nx, ny) = (kx as usize, ky as usize, nx as usize, ny as usize);
+        // The coefficients are named `CU1` onward (see `MXLOADEL`).
+        if nx * ny > MXLOADEL {
+            return Err(too_many_values(
+                "astLoadSplineMap",
+                &whole.class,
+                &format!("The spline read has {nx} by {ny} coefficients"),
+            ));
+        }
 
         let tx: Vec<f64> = (0..nx + kx)
             .map(|i| node.get_double(&format!("TX{}", i + 1), BAD_VALUE))

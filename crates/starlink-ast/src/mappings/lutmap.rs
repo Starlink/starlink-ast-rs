@@ -6,7 +6,9 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{Node, NodeValue, Serializable, read_mapping_base, write_mapping_base};
+use crate::serial::{
+    MXLOADEL, Node, NodeValue, Serializable, read_mapping_base, too_many_values, write_mapping_base,
+};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
@@ -989,6 +991,14 @@ impl Serializable for LutMap {
                     "astLoadLutMap({class}): An input value increment of zero between lookup \
                      table elements is not allowed."
                 ),
+            ));
+        }
+        // The elements are named `L1` onward (see `MXLOADEL`).
+        if nlut as u64 > MXLOADEL as u64 {
+            return Err(too_many_values(
+                "astLoadLutMap",
+                class,
+                &format!("The LutMap read has {nlut} lookup table elements"),
             ));
         }
         let nlut = nlut as usize;
