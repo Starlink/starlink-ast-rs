@@ -202,10 +202,10 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_hardening_oracle.rs",
         "HARDENING_EXCLUDED",
-        53,
+        16,
         "corrupt dumps of the C hardening tests that the port refuses or loads \
          otherwise than the C library, each naming the stage 5 task and upstream \
-         commit that fixes it; 5 crash the port and run in a child process; \
+         commit that fixes it, or why it stays; \
          excluded_cases_still_differ fails when one matches",
     ),
     (

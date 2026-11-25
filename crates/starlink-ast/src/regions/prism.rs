@@ -448,9 +448,12 @@ impl RegionGeometry for Prism {
             let mesh1 = sized(&self.region1, msz1).reg_mesh()?;
             let grid1 = sized(&self.region1, gsz1).reg_grid()?;
 
-            let mut result = Vec::with_capacity(
-                grid1.npoint() * mesh2.npoint() + mesh1.npoint() * grid2.npoint(),
-            );
+            let mut result = Vec::with_capacity(mesh_size(
+                grid1.npoint(),
+                mesh2.npoint(),
+                mesh1.npoint(),
+                grid2.npoint(),
+            )?);
             for i in 0..mesh2.npoint() {
                 for j in 0..grid1.npoint() {
                     let mut point = grid1.point(j).to_vec();
@@ -1509,9 +1512,40 @@ impl Mapping for Prism {
     }
 }
 
+/// The number of points in a Prism's boundary mesh made from its first
+/// component's grid of `gsz1` points at each of the second's `msz2` mesh
+/// points, and the second's grid of `gsz2` at each of the first's `msz1`: an
+/// error if a C `int` cannot count them, as prism.c `RegBaseMesh` reports
+/// before making the mesh.
+fn mesh_size(gsz1: usize, msz2: usize, msz1: usize, gsz2: usize) -> AstResult<usize> {
+    let n = gsz1 as f64 * msz2 as f64 + msz1 as f64 * gsz2 as f64;
+    if n > f64::from(i32::MAX) {
+        return Err(AstError::new(
+            ErrorCode::Inter,
+            "astRegBaseMesh(Prism): The mesh for the Prism would have more points than can be \
+             created.",
+        ));
+    }
+    Ok(gsz1 * msz2 + msz1 * gsz2)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// prism.c `RegBaseMesh`: a mesh of more points than a C `int` counts is
+    /// an error, found before any point is made.
+    #[test]
+    fn a_mesh_too_large_to_count_is_refused() {
+        assert_eq!(mesh_size(10, 20, 30, 40).unwrap(), 10 * 20 + 30 * 40);
+        let err = mesh_size(46341, 46341, 46341, 46341).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Inter);
+        assert_eq!(
+            err.message(),
+            "astRegBaseMesh(Prism): The mesh for the Prism would have more points than can be \
+             created."
+        );
+    }
 
     /// A Prism with a component unbounded on one side has no mesh.
     #[test]

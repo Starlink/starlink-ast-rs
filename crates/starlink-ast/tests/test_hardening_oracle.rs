@@ -19,8 +19,7 @@
 //! - The C tests' other checks (constructors, transformations, documents) are
 //!   in the Rust ports of each test.
 
-use std::process::Command;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use starlink_ast::error::{AstError, AstResult};
 use starlink_ast::from_native_string;
@@ -43,281 +42,59 @@ pub(crate) struct Case {
 mod cases;
 use cases::CASES;
 
-/// Why a case is excluded.
-enum Why {
-    /// The port refuses or loads it otherwise than C does.
-    Differs(&'static str),
-    /// The port crashes, hangs or exhausts memory on it, so it is run in a
-    /// child process.
-    Crashes(&'static str),
-}
-
 /// The cases the port does not yet match, each with the reason.
-const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
+const HARDENING_EXCLUDED: &[(&str, usize, &str)] = &[
     (
         "testcorruptinput",
         23,
-        Why::Differs("Task 9: Table and FitsTable components (1e1ae0fe)"),
+        "Task 9: Table and FitsTable components (1e1ae0fe)",
     ),
     (
         "testcorruptinput",
         24,
-        Why::Differs("Task 9: Table and FitsTable components (1e1ae0fe)"),
+        "Task 9: Table and FitsTable components (1e1ae0fe)",
     ),
     (
         "testcorruptinput",
         25,
-        Why::Differs("Task 9: Table and FitsTable components (1e1ae0fe)"),
+        "Task 9: Table and FitsTable components (1e1ae0fe)",
     ),
     (
         "testcorruptinput",
         26,
-        Why::Differs("Task 9: Table and FitsTable components (1e1ae0fe)"),
-    ),
-    (
-        "testcorruptinput",
-        28,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        29,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        30,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        31,
-        Why::Crashes("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        32,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        33,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        34,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        35,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        37,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        38,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        39,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        40,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        42,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        43,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        45,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        47,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        49,
-        Why::Crashes("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        50,
-        Why::Crashes("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        51,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        52,
-        Why::Crashes("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        54,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        56,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        57,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        58,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        59,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        60,
-        Why::Crashes("Task 3: AST__MXAXES (b3a1143b)"),
-    ),
-    (
-        "testcorruptinput",
-        62,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        63,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        64,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        65,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        67,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        68,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        69,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        70,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
+        "Task 9: Table and FitsTable components (1e1ae0fe)",
     ),
     (
         "testcorruptinput",
         71,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        72,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        73,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        74,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
+        "the port has no PointSet object to load; the dump is refused as an unknown class (PLAN.md section 1)",
     ),
     (
         "testcorruptinput",
         120,
-        Why::Differs("Task 9: Table and KeyMap loaders (e384383c, 8c542c65)"),
+        "Task 9: Table and KeyMap loaders (e384383c, 8c542c65)",
     ),
-    (
-        "testloaderhardening",
-        45,
-        Why::Differs("Plot3D is not ported"),
-    ),
-    (
-        "testloaderhardening",
-        46,
-        Why::Differs("Plot3D is not ported"),
-    ),
-    (
-        "testloaderhardening",
-        47,
-        Why::Differs("Plot3D is not ported"),
-    ),
-    (
-        "testloaderhardening",
-        48,
-        Why::Differs("Plot3D is not ported"),
-    ),
-    (
-        "testloaderhardening",
-        49,
-        Why::Differs("Plot3D is not ported"),
-    ),
-    (
-        "testloaderhardening",
-        50,
-        Why::Differs("Plot3D is not ported"),
-    ),
-    (
-        "testloaderhardening",
-        51,
-        Why::Differs("Plot3D is not ported"),
-    ),
+    ("testloaderhardening", 45, "Plot3D is not ported"),
+    ("testloaderhardening", 46, "Plot3D is not ported"),
+    ("testloaderhardening", 47, "Plot3D is not ported"),
+    ("testloaderhardening", 48, "Plot3D is not ported"),
+    ("testloaderhardening", 49, "Plot3D is not ported"),
+    ("testloaderhardening", 50, "Plot3D is not ported"),
+    ("testloaderhardening", 51, "Plot3D is not ported"),
     (
         "testloaderhardening",
         53,
-        Why::Differs("Task 9: Moc ranges and MaxOrder (d3f5b711)"),
+        "Task 9: Moc ranges and MaxOrder (d3f5b711)",
     ),
     (
         "testloaderhardening",
         54,
-        Why::Differs("Task 9: Moc ranges and MaxOrder (d3f5b711)"),
+        "Task 9: Moc ranges and MaxOrder (d3f5b711)",
     ),
     (
         "testloaderhardening",
         55,
-        Why::Differs("Task 9: Moc ranges and MaxOrder (d3f5b711)"),
+        "Task 9: Moc ranges and MaxOrder (d3f5b711)",
     ),
 ];
 
@@ -376,11 +153,11 @@ fn within_10s<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Resu
     }
 }
 
-fn excluded(case: &Case) -> Option<&'static Why> {
+fn excluded(case: &Case) -> Option<&'static str> {
     HARDENING_EXCLUDED
         .iter()
         .find(|(t, o, _)| *t == case.test && *o == case.ordinal)
-        .map(|(_, _, why)| why)
+        .map(|(_, _, why)| *why)
 }
 
 /// Read `case` and describe how the port's result differs from C's, or
@@ -422,8 +199,9 @@ fn cases_match_the_c_library() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// The case named by `AST_HARDENING_CASE`, when `excluded_cases_still_differ`
-/// runs this test in a child process; otherwise nothing.
+/// The case named by `AST_HARDENING_CASE` (`<test>#<ordinal>`), failing
+/// with how the port differs from C, so that one case can be looked at
+/// alone; otherwise nothing.
 #[test]
 fn run_one_case() {
     let Ok(wanted) = std::env::var("AST_HARDENING_CASE") else {
@@ -438,67 +216,15 @@ fn run_one_case() {
     }
 }
 
-/// Start the case in a child process, in which `run_one_case` runs it.
-fn spawn_case(case: &Case) -> std::process::Child {
-    Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "test_hardening_oracle::run_one_case",
-            "--test-threads=1",
-        ])
-        .env("AST_HARDENING_CASE", name(case))
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .unwrap()
-}
-
-/// Of `cases`, each run at once in its own child process, those that
-/// matched C: a child that fails, or is still running after 20 s and is
-/// killed, still crashes.
-fn matching_in_children<'a>(cases: &[&'a Case]) -> Vec<&'a Case> {
-    let mut children: Vec<_> = cases.iter().map(|c| (*c, spawn_case(c), None)).collect();
-    let start = Instant::now();
-    while start.elapsed() < Duration::from_secs(20)
-        && children.iter().any(|(_, _, done)| done.is_none())
-    {
-        for (_, child, done) in &mut children {
-            if done.is_none() {
-                *done = child.try_wait().unwrap().map(|s| s.success());
-            }
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    children
-        .into_iter()
-        .filter_map(|(case, mut child, done)| {
-            if done.is_none() {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
-            (done == Some(true)).then_some(case)
-        })
-        .collect()
-}
-
 #[test]
 fn excluded_cases_still_differ() {
-    let crashing: Vec<&Case> = CASES
-        .iter()
-        .filter(|c| matches!(excluded(c), Some(Why::Crashes(_))))
-        .collect();
-    let crashing_now_match = matching_in_children(&crashing);
     let now_matching: Vec<String> = CASES
         .iter()
         .filter_map(|c| {
-            let (matches, reason) = match excluded(c)? {
-                Why::Differs(reason) => (difference(c).is_none(), reason),
-                Why::Crashes(reason) => (
-                    crashing_now_match.iter().any(|m| std::ptr::eq(*m, c)),
-                    reason,
-                ),
-            };
-            matches.then(|| format!("{} ({reason})", name(c)))
+            let reason = excluded(c)?;
+            difference(c)
+                .is_none()
+                .then(|| format!("{} ({reason})", name(c)))
         })
         .collect();
     assert!(

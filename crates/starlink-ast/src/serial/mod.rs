@@ -893,11 +893,28 @@ fn write_pointset_node(points: &[Vec<f64>]) -> Node {
 /// Returns `Vec<Vec<f64>>` where `result[i]` is point `i` (length
 /// `ncoord`). Iteration matches C `pointset.c::Dump` (point-outer,
 /// coord-inner) — see `write_pointset_node` for the byte layout.
+///
+/// As pointset.c `astLoadPointSet` reads them, a number of points or
+/// coordinates below 1 is 1, and a PointSet claiming more values than a dump
+/// can name (`X1` to `X9999999`) is refused before anything is sized from it.
 fn read_pointset_node(node: &Node) -> AstResult<Vec<Vec<f64>>> {
-    let ncoord = node.get_int("Ncoord", 0) as usize;
-    let npoint = node.get_int("Npoint", 0) as usize;
-
-    if ncoord == 0 || npoint == 0 {
+    const MXLOADVAL: i64 = 9_999_999;
+    let npoint = node.get_int("Npoint", 1).max(1);
+    let ncoord = node.get_int("Ncoord", 1).max(1);
+    if ncoord > MXLOADVAL || npoint > MXLOADVAL / ncoord {
+        return Err(AstError::new(
+            ErrorCode::Lderr,
+            format!(
+                "astLoadPointSet({}): The PointSet read has {npoint} points with {ncoord} \
+                 coordinates each, but a dump cannot hold more than {MXLOADVAL} coordinate \
+                 values.",
+                node.class
+            ),
+        ));
+    }
+    let (npoint, ncoord) = (npoint as usize, ncoord as usize);
+    // A PointSet holding no data (pointset.c `Empty`).
+    if node.get_int("Empty", 0) != 0 {
         return Ok(Vec::new());
     }
 
@@ -1120,6 +1137,67 @@ pub(crate) fn push_frame_isa_marker(node: &mut Node) {
     node.push_isa("Frame", Some("Coordinate system description".to_string()));
 }
 
+/// The two component Regions, `RegionA` and `RegionB`, of a CmpRegion or
+/// Prism of class `class`, each of which must be there and be a Region
+/// (`astCheckLoaded`).
+fn component_regions(node: &Node, class: &str) -> AstResult<(DynRegion, DynRegion)> {
+    let read = |key: &str, item: &str| -> AstResult<DynRegion> {
+        let n = check_loaded(node.get_object(key), "Region", true, class, item)?
+            .expect("a needed component is there");
+        region_from_node(n)
+    };
+    let region1 = read("RegionA", "first component Region")?;
+    let region2 = read("RegionB", "second component Region")?;
+    Ok((region1, region2))
+}
+
+/// C's `astCheckLoadedPoints` (region.c): a Region of class `name` read
+/// from a dump has `naxes` base Frame axes (any number if 0) and between
+/// `minpt` and `maxpt` defining points (no upper limit if `None`).
+fn check_loaded_points(
+    data: &RegionData,
+    name: &str,
+    minpt: usize,
+    maxpt: Option<usize>,
+    naxes: usize,
+) -> AstResult<()> {
+    let nax = data.frameset.base().naxes();
+    let np = data.points.len();
+    let message = if naxes > 0 && nax != naxes {
+        format!("The {name} read has {nax} axes, but a {name} must have {naxes}.")
+    } else if data.points.is_empty() {
+        format!("The points that define the {name} are missing from the {name} read.")
+    } else if np < minpt || maxpt.is_some_and(|m| np > m) {
+        format!(
+            "The {name} read is defined by {np} points, which is not a number that a {name} can have."
+        )
+    } else {
+        return Ok(());
+    };
+    Err(AstError::new(
+        ErrorCode::Lderr,
+        format!("astLoad({name}): {message}"),
+    ))
+}
+
+/// C's check at the start of `astSetRegFS` (region.c): a Region of class
+/// `class` defined by points of `ncoord` coordinates, if it has points,
+/// cannot be given a Frame with another number of axes.
+fn check_reg_fs(class: &str, ncoord: Option<usize>, frame: &dyn Frame) -> AstResult<()> {
+    match ncoord {
+        Some(n) if n != frame.naxes() => Err(AstError::new(
+            ErrorCode::Regin,
+            format!(
+                "astSetRegFS({class}): The {class} is defined by points with {n} coordinate \
+                 value(s), so it cannot be given a {} with {} axes.",
+                crate::frames::class_name(frame),
+                frame.naxes()
+            ),
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// Read common Region attributes from a node, returning a RegionData.
 ///
 /// This reads the Region-level attributes, the FrameSet or Frame, the
@@ -1129,6 +1207,12 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     // loaders read through astReadClassData (region.c, object.c).
     let object = &whole.section("Object");
     let node = &whole.section("Region");
+    let class = whole.class.as_str();
+    // astLoadFrame reads the Region's own Frame part first. A Region then
+    // has no FrameSet, so a System given there is not recognised (region.c).
+    let frame_part = whole.section("Frame");
+    crate::frames::frame_attrs::load_frame_axes(&frame_part, class)?;
+    crate::frames::frame_attrs::read_system_item(&frame_part, "System", "System", |_| None::<()>)?;
     let negated = node.get_int("Negate", 0) != 0;
     // C reads Negate and Adapt with a default of the unset sentinel, so each
     // is set only when the dump has an uncommented line for it
@@ -1177,23 +1261,47 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)));
     let adaptive = node.get_int("Adapt", 1) != 0;
 
-    // Read defining points first: their coordinate count sizes a dummy
-    // FrameSet when neither `Frm` nor `FrmSet` is present (C uses `naxpt`,
-    // `region.c:13543,13597`).
-    let points = if let Some(pts_node) = node.get_object("Points") {
-        read_pointset_node(pts_node)?
-    } else {
-        Vec::new()
-    };
-    // Axis count per point: from the PointSet if present, else from the
-    // `RegAxes` attribute (C `region.c:13543,13554` — a Region with no
-    // points, e.g. a Prism/NullRegion, records its axis span there).
-    let naxpt = match points.first() {
-        Some(p) => p.len(),
-        None => node.get_int("RegAxes", 0) as usize,
+    // The defining points, which must be a PointSet, with the number of
+    // coordinates each has; with none, the number of axes the Region spans
+    // is its `RegAxes` value, for a Region such as a NullRegion (region.c
+    // `astLoadRegion`). Their coordinate count sizes a dummy FrameSet when
+    // neither `Frm` nor `FrmSet` is present.
+    let (points, naxpt) = match node.get_object("Points") {
+        Some(pts_node) if node_is_a(pts_node, "PointSet") => {
+            let points = load_object(pts_node, || read_pointset_node(pts_node))?;
+            let ncoord = usize::try_from(pts_node.get_int("Ncoord", 1).max(1)).unwrap_or(1);
+            (points, ncoord)
+        }
+        Some(pts_node) => {
+            any_object_from_node(pts_node)?;
+            return Err(AstError::new(
+                ErrorCode::Regin,
+                format!(
+                    "astLoadRegion({class}): Corrupt {class} specifies points using a {} \
+                     (should be a PointSet).",
+                    pts_node.class
+                ),
+            ));
+        }
+        None => (
+            Vec::new(),
+            usize::try_from(node.get_int("RegAxes", 0)).unwrap_or(0),
+        ),
     };
 
-    // Read the FrameSet or Frame. Detect which one was emitted by key
+    // The uncertainty Region, which must be a Region.
+    let mut uncertainty = match check_loaded(
+        node.get_object("Unc"),
+        "Region",
+        false,
+        class,
+        "uncertainty Region",
+    )? {
+        Some(unc_node) => Some(region_from_node(unc_node)?),
+        None => None,
+    };
+
+    // The FrameSet or Frame. Detect which one was emitted by key
     // presence — the C library only writes `RegFS` when RegionFS was
     // explicitly set (rare), so most dumps have either `Frm` or `FrmSet`
     // and no `RegFS` line. A nested region (an uncertainty sub-region, or
@@ -1204,19 +1312,34 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     // `dummy_fs` flag.
     // C loader (region.c `Load`): `Frm` present → RegionFS = 1; otherwise
     // `FrmSet` present → read RegFS (default 1); neither → dummy FrameSet
-    // with RegionFS = 0. `nax` is the number of base Frame axes.
-    let (frameset, dummy_fs, region_fs, nax) = if let Some(frm_node) = node.get_object("Frm") {
+    // with RegionFS = 0. `nax` is the number of base Frame axes. Each must
+    // be of its class.
+    let ncoord = (!points.is_empty()).then_some(naxpt);
+    let frm = check_loaded(node.get_object("Frm"), "Frame", false, class, "Frame")?;
+    let frmset = if frm.is_none() {
+        check_loaded(
+            node.get_object("FrmSet"),
+            "FrameSet",
+            false,
+            class,
+            "FrameSet",
+        )?
+    } else {
+        None
+    };
+    let (frameset, dummy_fs, region_fs, nax) = if let Some(frm_node) = frm {
         // Only a single Frame stored — create a 2-frame FrameSet with
         // UnitMap connecting base to current (matches the C library and
-        // keeps with_integrity working).
+        // keeps with_integrity working), as astSetRegFS does.
         let frame = frame_from_node(frm_node)?;
+        check_reg_fs(class, ncoord, frame.as_ref())?;
         let naxes = frame.naxes();
         let current_snap = frame.snapshot();
         let mut fs = FrameSet::new(frame);
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)?), current_snap)
             .expect("adding current frame to region FrameSet");
         (fs, false, true, naxes)
-    } else if let Some(fs_node) = node.get_object("FrmSet") {
+    } else if let Some(fs_node) = frmset {
         let region_fs = node.get_int("RegFS", 1) != 0;
         let fs = FrameSet::from_node(fs_node)?;
         let nin = fs.base().naxes();
@@ -1226,11 +1349,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         // marked dummy so the parent re-associates the real frame.
         // RegionFS = 0 (the Frame is inferred from the enclosing context).
         let nax = if naxpt > 0 { naxpt } else { 1 };
-        let frame: DynFrame = Box::new(
-            BasicFrameBuilder::new(nax)
-                .build()
-                .expect("building dummy region frame"),
-        );
+        let frame: DynFrame = Box::new(BasicFrameBuilder::new(nax).build()?);
         let current_snap = frame.snapshot();
         let mut fs = FrameSet::new(frame);
         fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(nax)?), current_snap)
@@ -1238,9 +1357,29 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         (fs, true, false, nax)
     };
 
+    // An uncertainty Region dumped frame-less (dummy FS) is given this
+    // Region's base Frame, as C's `astSetRegFS` does for the Frame read, or
+    // the loader for a FrameSet (region.c), with the same check.
+    if !dummy_fs
+        && let Some(unc) = uncertainty.as_mut()
+        && unc.has_dummy_fs()
+    {
+        let base_frame = frameset.base().snapshot();
+        let unc_ncoord = unc
+            .base_points()
+            .ok()
+            .filter(|p| p.npoint() > 0)
+            .map(|p| p.ncoord());
+        check_reg_fs(
+            crate::regions::class_name(unc.as_any()),
+            unc_ncoord,
+            base_frame.as_ref(),
+        )?;
+        unc.set_region_fs(base_frame.as_ref());
+    }
+
     // The points must have one value per base Frame axis (region.c `Load`).
     if !points.is_empty() && naxpt != nax {
-        let class = &whole.class;
         return Err(AstError::new(
             ErrorCode::Regin,
             format!(
@@ -1253,14 +1392,21 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         )));
     }
 
-    // Read uncertainty.
-    let uncertainty = if let Some(unc_node) = node.get_object("Unc") {
-        Some(region_from_node(unc_node)?)
-    } else {
-        None
-    };
+    // The uncertainty Region is defined in the base Frame, so has its axes.
+    if let Some(unc) = &uncertainty
+        && unc.naxes() != nax
+    {
+        return Err(AstError::new(
+            ErrorCode::Lderr,
+            format!(
+                "astLoadRegion({class}): The uncertainty Region read for a {class} has {} axes, \
+                 but the {class} has {nax}.",
+                unc.naxes()
+            ),
+        ));
+    }
 
-    let mut data = RegionData {
+    let data = RegionData {
         frameset,
         ident: object.get_string_if_set("Ident"),
         id: crate::object_id::ObjectId::from_object_part(object),
@@ -1289,18 +1435,6 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         class_cache: RefCell::new(None),
         def_unc: RefCell::new(None),
     };
-
-    // If this region has a real frame but its uncertainty region was
-    // dumped frame-less (dummy FS), re-associate the uncertainty with a
-    // copy of this region's base frame — mirroring C `astSetRegFS`'s
-    // recursive uncertainty fix-up (`region.c:10745-10751`).
-    if !data.dummy_fs
-        && let Some(unc) = data.uncertainty.as_mut()
-        && unc.has_dummy_fs()
-    {
-        let base_frame = data.frameset.base().snapshot();
-        unc.set_region_fs(base_frame.as_ref());
-    }
 
     Ok(data)
 }
@@ -1445,6 +1579,7 @@ impl Serializable for Circle {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
+        check_loaded_points(&data, &node.class, 2, Some(2), 0)?;
         Ok(Circle { data })
     }
 }
@@ -1461,6 +1596,7 @@ impl Serializable for BoxRegion {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
+        check_loaded_points(&data, &node.class, 2, Some(2), 0)?;
         Ok(BoxRegion { data })
     }
 }
@@ -1477,6 +1613,7 @@ impl Serializable for Ellipse {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
+        check_loaded_points(&data, &node.class, 3, Some(3), 2)?;
         Ok(Ellipse { data })
     }
 }
@@ -1516,6 +1653,27 @@ impl Serializable for Polygon {
         let node = &whole.section("Polygon");
         let _base = read_mapping_base(whole);
         let data = read_region_base(whole)?;
+        check_loaded_points(&data, &whole.class, 1, None, 2)?;
+        // Every vertex is defined, as the constructor requires (polygon.c
+        // `astLoadPolygon`), checked axis by axis.
+        for axis in 0..2 {
+            if let Some(vertex) = data
+                .points
+                .iter()
+                .position(|p| p[axis] == crate::constants::BAD_VALUE)
+            {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoad({0}): Vertex number {1} of the {0} read has an undefined value on \
+                         axis {2}.",
+                        whole.class,
+                        vertex + 1,
+                        axis + 1
+                    ),
+                ));
+            }
+        }
         // polygon.c:7300 reads SimpVT back as a boolean; an absent card leaves
         // the attribute unset.
         let simp_vertices = node.get_int_any_if_set("SimpVT").map(|v| v != 0);
@@ -1548,6 +1706,7 @@ impl Serializable for Interval {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
+        check_loaded_points(&data, &node.class, 2, Some(2), 0)?;
         Ok(Interval { data })
     }
 }
@@ -1580,6 +1739,7 @@ impl Serializable for PointList {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
+        check_loaded_points(&data, &node.class, 1, None, 0)?;
         Ok(PointList { data })
     }
 }
@@ -1636,15 +1796,31 @@ impl Serializable for CmpRegion {
 
         let oper_int = node.get_int("Operator", 1);
 
-        let node_a = node
-            .get_object("RegionA")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpRegion: missing RegionA"))?;
-        let node_b = node
-            .get_object("RegionB")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpRegion: missing RegionB"))?;
-
-        let mut region1 = region_from_node(node_a)?;
-        let mut region2 = region_from_node(node_b)?;
+        // The components, which must be Regions with the axes of the base
+        // Frame both are defined in, and the operator, which must be AND, OR
+        // or XOR (cmpregion.c `astLoadCmpRegion`).
+        let class = &whole.class;
+        let (mut region1, mut region2) = component_regions(node, class)?;
+        let nax = data.frameset.base().naxes();
+        if !(1..=3).contains(&oper_int) {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadCmpRegion({class}): Illegal boolean operator value ({oper_int}) read \
+                     for a {class}."
+                ),
+            ));
+        } else if region1.naxes() != nax || region2.naxes() != nax {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadCmpRegion({class}): The component Regions read for a {class} have {} \
+                     and {} axes, but the {class} has {nax}.",
+                    region1.naxes(),
+                    region2.naxes()
+                ),
+            ));
+        }
 
         // Re-associate any dummy-FS component with the CmpRegion's base
         // frame (both components span the same axes). Mirrors C
@@ -1742,23 +1918,50 @@ impl<K: crate::regions::StcKind> Serializable for crate::regions::Stc<K> {
         let _base = read_mapping_base(whole);
         let data = read_region_base(whole)?;
 
-        let region_node = node.get_object("Region").ok_or_else(|| {
-            AstError::new(ErrorCode::Lderr, format!("{}: missing Region", K::CLASS))
-        })?;
+        // The encapsulated Region, which must be a Region in the Stc's base
+        // Frame (stc.c `astLoadStc`).
+        let class = &whole.class;
+        let region_node = check_loaded(
+            node.get_object("Region"),
+            "Region",
+            true,
+            class,
+            "encapsulated Region",
+        )?
+        .expect("a needed component is there");
         let mut region = region_from_node(region_node)?;
+        let nax = data.frameset.base().naxes();
+        if region.naxes() != nax {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadStc({class}): The Region encapsulated by the {class} read has {} axes, \
+                     but the {class} has {nax}.",
+                    region.naxes()
+                ),
+            ));
+        }
         let f1 = data.frameset.base().snapshot();
         if !data.dummy_fs && region.has_dummy_fs() {
             region.set_region_fs(f1.as_ref());
         }
 
-        let ncoord = node.get_int("Ncoord", 0).max(0) as usize;
-        let mut coords = Vec::with_capacity(ncoord);
+        // The AstroCoords KeyMaps, read in turn, each of which must be a
+        // KeyMap; the number claimed sizes nothing.
+        let ncoord = node.get_int("Ncoord", 0).max(0);
+        let mut coords = Vec::new();
         for ico in 1..=ncoord {
-            let key = format!("Coord{ico}");
-            let km_node = node.get_object(&key).ok_or_else(|| {
-                AstError::new(ErrorCode::Lderr, format!("{}: missing {key}", K::CLASS))
+            let km_node = check_loaded(
+                node.get_object(&format!("Coord{ico}")),
+                "KeyMap",
+                true,
+                class,
+                "AstroCoords KeyMap",
+            )?
+            .expect("a needed component is there");
+            let mut keymap = load_object(km_node, || {
+                <crate::keymap::KeyMap as Serializable>::from_node(km_node)
             })?;
-            let mut keymap = <crate::keymap::KeyMap as Serializable>::from_node(km_node)?;
             if !data.dummy_fs {
                 crate::regions::stc_set_coord_frames(&mut keymap, f1.as_ref())?;
             }
@@ -1938,15 +2141,22 @@ impl Serializable for Prism {
         let _base = read_mapping_base(whole);
         let data = read_region_base(whole)?;
 
-        let node_a = node
-            .get_object("RegionA")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Prism: missing RegionA"))?;
-        let node_b = node
-            .get_object("RegionB")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Prism: missing RegionB"))?;
-
-        let mut region1 = region_from_node(node_a)?;
-        let mut region2 = region_from_node(node_b)?;
+        // The components, which must be Regions whose axes together are
+        // those of the Prism's base Frame (prism.c `astLoadPrism`).
+        let class = &whole.class;
+        let (mut region1, mut region2) = component_regions(node, class)?;
+        let nax = data.frameset.base().naxes();
+        if region1.naxes() + region2.naxes() != nax {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadPrism({class}): The component Regions read for a {class} have {} and \
+                     {} axes, but the {class} has {nax}.",
+                    region1.naxes(),
+                    region2.naxes()
+                ),
+            ));
+        }
 
         // Either component may carry a dummy FrameSet (dumped frame-less).
         // If this Prism itself has a real frame, re-associate each dummy-FS
@@ -2844,6 +3054,15 @@ fn any_object_from_node_inner(node: &Node) -> AstResult<AnyObject> {
         "FitsChan" => Ok(AnyObject::FitsChan(Box::new(
             crate::fitschan::FitsChan::from_node(node)?,
         ))),
+        // A PointSet, which the port does not load as an object of its own,
+        // is still checked as C's loader checks it.
+        "PointSet" => {
+            read_pointset_node(node)?;
+            Err(AstError::new(
+                ErrorCode::Lderr,
+                "unknown AST class: PointSet".to_string(),
+            ))
+        }
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown AST class: {other}"),

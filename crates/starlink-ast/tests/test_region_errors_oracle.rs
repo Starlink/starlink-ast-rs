@@ -266,7 +266,8 @@ fn loader_rejects_points_of_the_wrong_length() {
     assert_eq!(err.code().as_raw() as i32, cases::LOAD_NCOORD);
     assert_eq!(
         err.message(),
-        "astLoadRegion(Box): Corrupt Box contains  incorrect number of coordinate values per point (3)."
+        "astSetRegFS(Box): The Box is defined by points with 3 coordinate value(s), so it \
+         cannot be given a Frame with 2 axes."
     );
 }
 
