@@ -24,6 +24,8 @@ mod test_chebymap;
 mod test_cmpmap;
 #[path = "../test_dss_merge_oracle.rs"]
 mod test_dss_merge_oracle;
+#[path = "../test_dssmap.rs"]
+mod test_dssmap;
 #[path = "../test_equal.rs"]
 mod test_equal;
 #[path = "../test_grismmap.rs"]

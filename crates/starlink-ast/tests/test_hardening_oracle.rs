@@ -319,26 +319,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         55,
         Why::Differs("Task 9: Moc ranges and MaxOrder (d3f5b711)"),
     ),
-    (
-        "testdssmap",
-        6,
-        Why::Differs("Task 7: DssMap plate centre and offsets (cba0743a)"),
-    ),
-    (
-        "testdssmap",
-        7,
-        Why::Differs("Task 7: DssMap plate centre and offsets (cba0743a)"),
-    ),
-    (
-        "testdssmap",
-        8,
-        Why::Differs("Task 7: DssMap plate centre and offsets (cba0743a)"),
-    ),
-    (
-        "testdssmap",
-        9,
-        Why::Differs("Task 7: DssMap plate centre and offsets (cba0743a)"),
-    ),
 ];
 
 /// Cases whose first message C cuts to fit its 1023-character buffer, which

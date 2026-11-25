@@ -121,8 +121,11 @@ impl XphMap {
         self.projection
     }
 
-    /// Transform one position, transcribing xphmap.c `Transform` (grid
-    /// indices are C `int`s, so integer division truncates toward zero).
+    /// Transform one position, transcribing xphmap.c `Transform`. Grid and
+    /// facet indices, their sums and differences are whole numbers held in
+    /// doubles, as in C: a position may be any distance from the grid, and
+    /// they are exact until far outside it. A facet index is truncated
+    /// toward zero.
     fn transform_point(&self, forward: bool, x: f64, y: f64) -> (f64, f64) {
         const BAD: (f64, f64) = (BAD_VALUE, BAD_VALUE);
         // C tests for AST__BAD only; NaN and infinity are bad here too, as
@@ -130,27 +133,27 @@ impl XphMap {
         if is_bad(x) || is_bad(y) {
             return BAD;
         }
-        let nppf: i64 = 1 << self.order;
+        let nppf = f64::from(1u32 << self.order);
         let (n2, n3, n4, n5, n6, n7, n9) = (
-            2 * nppf,
-            3 * nppf,
-            4 * nppf,
-            5 * nppf,
-            6 * nppf,
-            7 * nppf,
-            9 * nppf,
+            2.0 * nppf,
+            3.0 * nppf,
+            4.0 * nppf,
+            5.0 * nppf,
+            6.0 * nppf,
+            7.0 * nppf,
+            9.0 * nppf,
         );
-        let f = |n: i64| n as f64;
+        let f = |n: f64| n;
 
         // The cell holding a position, with the low RA edges in the cell
         // and the high RA edges in the neighboring one, and its facet;
         // `None` when the facet is not one of the HPX layout's.
-        let hpx_cell = || -> Option<i64> {
-            let ix = (x - 1.5).ceil() as i64;
-            let iy = (y - 1.5).ceil() as i64;
-            let (fx, fy) = (ix / nppf, iy / nppf);
-            if (0..5).contains(&fx) && (0..5).contains(&fy) && (fx - fy).abs() <= 1 {
-                Some(ix + iy + 1)
+        let hpx_cell = || -> Option<f64> {
+            let ix = (x - 1.5).ceil();
+            let iy = (y - 1.5).ceil();
+            let (fx, fy) = ((ix / nppf).trunc(), (iy / nppf).trunc());
+            if (0.0..5.0).contains(&fx) && (0.0..5.0).contains(&fy) && (fx - fy).abs() <= 1.0 {
+                Some(ix + iy + 1.0)
             } else {
                 None
             }
@@ -175,17 +178,17 @@ impl XphMap {
                 XphProjection::Xphn => {
                     let edge = f(n2) + 0.5;
                     if x < edge && y >= edge {
-                        let ix = (x - 0.5).floor() as i64;
-                        let iy = (y - 0.5).floor() as i64;
-                        let s = ix + iy + 1;
+                        let ix = (x - 0.5).floor();
+                        let iy = (y - 0.5).floor();
+                        let s = ix + iy + 1.0;
                         if s < n5 && s >= n3 {
                             (f(n4) + 1.0 - x, f(n6) + 1.0 - y)
                         } else {
                             BAD
                         }
                     } else if x >= edge && y > edge {
-                        let ix = (x - 0.5).floor() as i64;
-                        let iy = (y - 1.5).ceil() as i64;
+                        let ix = (x - 0.5).floor();
+                        let iy = (y - 1.5).ceil();
                         let d = ix - iy;
                         if d >= -nppf && d < nppf {
                             (y - f(nppf), f(n5) + 1.0 - x)
@@ -193,17 +196,17 @@ impl XphMap {
                             BAD
                         }
                     } else if x > edge && y <= edge {
-                        let ix = (x - 1.5).ceil() as i64;
-                        let iy = (y - 1.5).ceil() as i64;
-                        let s = ix + iy + 1;
+                        let ix = (x - 1.5).ceil();
+                        let iy = (y - 1.5).ceil();
+                        let s = ix + iy + 1.0;
                         if s > n3 && s <= n5 {
                             (x - f(n2), y)
                         } else {
                             BAD
                         }
                     } else {
-                        let ix = (x - 1.5).ceil() as i64;
-                        let iy = (y - 0.5).floor() as i64;
+                        let ix = (x - 1.5).ceil();
+                        let iy = (y - 0.5).floor();
                         let d = ix - iy;
                         if d > -nppf && d <= nppf {
                             (f(n5) + 1.0 - y, f(n3) + x)
@@ -215,8 +218,8 @@ impl XphMap {
                 XphProjection::Xphs => {
                     let edge = f(n2) + 0.5;
                     if x < edge && y <= edge {
-                        let ix = (x - 0.5).floor() as i64;
-                        let iy = (y - 1.5).ceil() as i64;
+                        let ix = (x - 0.5).floor();
+                        let iy = (y - 1.5).ceil();
                         let d = ix - iy;
                         if d >= -nppf && d < nppf {
                             (f(n2) + y, f(n4) + 1.0 - x)
@@ -224,17 +227,17 @@ impl XphMap {
                             BAD
                         }
                     } else if x >= edge && y < edge {
-                        let ix = (x - 0.5).floor() as i64;
-                        let iy = (y - 0.5).floor() as i64;
-                        let s = ix + iy + 1;
+                        let ix = (x - 0.5).floor();
+                        let iy = (y - 0.5).floor();
+                        let s = ix + iy + 1.0;
                         if s >= n3 && s < n5 {
                             (f(n5) + 1.0 - x, f(n3) + 1.0 - y)
                         } else {
                             BAD
                         }
                     } else if x > edge && y >= edge {
-                        let ix = (x - 1.5).ceil() as i64;
-                        let iy = (y - 0.5).floor() as i64;
+                        let ix = (x - 1.5).ceil();
+                        let iy = (y - 0.5).floor();
                         let d = ix - iy;
                         if d <= nppf && d > -nppf {
                             (f(n4) + 1.0 - y, x - f(n2))
@@ -242,9 +245,9 @@ impl XphMap {
                             BAD
                         }
                     } else {
-                        let ix = (x - 1.5).ceil() as i64;
-                        let iy = (y - 1.5).ceil() as i64;
-                        let s = ix + iy + 1;
+                        let ix = (x - 1.5).ceil();
+                        let iy = (y - 1.5).ceil();
+                        let s = ix + iy + 1.0;
                         if s <= n5 && s > n3 {
                             (f(n3) + x, f(nppf) + y)
                         } else {
@@ -498,6 +501,19 @@ impl Serializable for XphMap {
                 ),
             )
         })?;
+        // The order is a shift count, so it must be one the constructor
+        // accepts (xphmap.c `astLoadXphMap`).
+        let max = crate::regions::MOC_MAX_ORDER;
+        if !(0..=i64::from(max)).contains(&order) {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoad({0}): The HEALPix order read for a {0} ({order}) is not in the \
+                     range 0 to {max}.",
+                    whole.class
+                ),
+            ));
+        }
         let mut m = XphMap::new(order as u32, projection);
         if base.inverted {
             m.invert();

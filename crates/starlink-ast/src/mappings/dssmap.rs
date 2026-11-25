@@ -99,6 +99,10 @@ pub struct DssMap {
     mapping_flags: crate::mappings::MappingFlags,
 }
 
+/// The magnitude a value must be less than for C's `NINT` to convert it to
+/// an integer (dssmap.c `MAXNINT`).
+const MAXNINT: f64 = i32::MAX as f64 - 1.0;
+
 impl DssMap {
     /// Create a new `DssMap` from explicit plate solution parameters.
     ///
@@ -649,7 +653,11 @@ impl Mapping for DssMap {
                 cnpix2 = b[1] * (cnpix2 - 0.5) - a[1] + 0.5;
             }
 
-            // The CNPIX values must be integer to a good approximation
+            // The CNPIX values must be small enough to be converted to an
+            // integer, and integer to a good approximation.
+            if cnpix1.abs() >= MAXNINT || cnpix2.abs() >= MAXNINT {
+                return None;
+            }
             let cnpix1_rounded = cnpix1.round();
             let cnpix2_rounded = cnpix2.round();
             if (cnpix1 - cnpix1_rounded).abs() >= 0.01 || (cnpix2 - cnpix2_rounded).abs() >= 0.01 {
@@ -861,6 +869,26 @@ impl Serializable for DssMap {
         let y_pixel_offset = required("CNPix2", "Y pixel offset")?;
         let x_pixel_size = required("XPixSz", "X pixel size")?;
         let y_pixel_size = required("YPixSz", "Y pixel size")?;
+
+        // A DssMap describes itself in the DSS FITS keywords, which hold the
+        // pixel offsets and the plate centre's hours and degrees as integers,
+        // so a dump with values too large for them is not valid (dssmap.c
+        // `astLoadDssMap`).
+        let dd2r = std::f64::consts::PI / 180.0;
+        if x_pixel_offset.abs() >= MAXNINT
+            || y_pixel_offset.abs() >= MAXNINT
+            || (plate_ra / (dd2r * 15.0)).abs() >= MAXNINT
+            || (plate_dec / dd2r).abs() >= MAXNINT
+        {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoad({0}): The plate centre or pixel offsets read for a {0} are too \
+                     large to be stored in the DSS FITS keywords.",
+                    whole.class
+                ),
+            ));
+        }
 
         let mut ppo_coeff = [0.0; 6];
         for (i, coeff) in ppo_coeff.iter_mut().enumerate() {
