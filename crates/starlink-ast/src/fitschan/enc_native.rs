@@ -53,7 +53,10 @@ pub(crate) fn classify(keyword: &str) -> KeywordKind {
         return KeywordKind::Other;
     }
     // The trailing 2 characters must both be SEQ_CHARS to be a NATIVE card.
-    let (head, suffix) = keyword.split_at(len - 2);
+    // Two characters that end inside a character are not both SEQ_CHARS.
+    let Some((head, suffix)) = keyword.split_at_checked(len - 2) else {
+        return KeywordKind::Other;
+    };
     if !is_two_char_seq_suffix(suffix) {
         return KeywordKind::Other;
     }

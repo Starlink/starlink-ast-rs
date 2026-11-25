@@ -325,22 +325,22 @@ fn classify_celestial(ctype: &str) -> Option<bool> {
     if nc < 4 {
         return None;
     }
-    if &ctype[..4] == "RA--" || &ctype[..4] == "AZ--" {
+    if ctype.get(..4) == Some("RA--") || ctype.get(..4) == Some("AZ--") {
         return Some(true);
     }
-    if &ctype[..4] == "DEC-" || &ctype[..4] == "EL--" {
+    if ctype.get(..4) == Some("DEC-") || ctype.get(..4) == Some("EL--") {
         return Some(false);
     }
-    if nc > 1 && &ctype[1..(1 + 3).min(nc)] == "LON" {
+    if nc > 1 && ctype.get(1..(1 + 3).min(nc)) == Some("LON") {
         return Some(true);
     }
-    if nc > 1 && &ctype[1..(1 + 3).min(nc)] == "LAT" {
+    if nc > 1 && ctype.get(1..(1 + 3).min(nc)) == Some("LAT") {
         return Some(false);
     }
-    if nc > 2 && &ctype[2..(2 + 2).min(nc)] == "LN" {
+    if nc > 2 && ctype.get(2..(2 + 2).min(nc)) == Some("LN") {
         return Some(true);
     }
-    if nc > 2 && &ctype[2..(2 + 2).min(nc)] == "LT" {
+    if nc > 2 && ctype.get(2..(2 + 2).min(nc)) == Some("LT") {
         return Some(false);
     }
     None
@@ -412,14 +412,13 @@ fn translate_early_paper_iii_spectral(cards: &mut CardList) {
             if ctype.len() < 8 {
                 continue;
             }
-            let suffix = &ctype[4..8];
-            let x_char = match suffix {
+            let x_char = match ctype.get(4..8).unwrap_or_default() {
                 "-WAV" => 'W',
                 "-FRQ" => 'F',
                 "-VEL" => 'V',
                 _ => continue,
             };
-            let prefix = &ctype[..4];
+            let prefix = ctype.get(..4).unwrap_or_default();
             let p_char = match prefix {
                 "FREQ" | "ENER" | "WAVN" | "VRAD" => 'F',
                 "WAVE" | "VOPT" | "ZOPT" => 'W',
@@ -1691,10 +1690,10 @@ fn projection_suffix(ctype: &str) -> Option<&str> {
     if ctype.len() < 8 {
         return None;
     }
-    if &ctype[4..5] != "-" {
+    if ctype.get(4..5) != Some("-") {
         return None;
     }
-    Some(&ctype[5..8])
+    ctype.get(5..8)
 }
 
 /// Replace the 3-letter projection suffix in `cards[key]` with `new_prj`.

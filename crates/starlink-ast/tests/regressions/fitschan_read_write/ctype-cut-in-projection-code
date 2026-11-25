@@ -1,0 +1,8 @@
+NAXIS1  =                 -Inf
+NAXIS2  =          ]         99
+CTYPE1  = 'RA---TPN'
+CTYPE2  = 'DEC--ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿNCP'           / NCP project]on (converted to SIN)              
+CRVAL1  =   t]on (converted to SIN)   àßßß       
+CRVAL1  =                1                 
+CDELT2  =            0.0002778 / Degrees/pixel                                  
+DATE-O#S= '2020-06-15T10:30:00.000' / Date of observation                                        

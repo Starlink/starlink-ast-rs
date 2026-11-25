@@ -38,6 +38,7 @@ use super::node::{ItemName, NodeItem, ReadFlag};
 use super::{Node, NodeValue};
 use crate::constants::MAX_NATIVE_NESTING;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::text::floor_char_boundary;
 
 /// The parent of each class C can load, whose loader each class's loader
 /// calls first (`astLoad<Parent>` in each `astLoad<Class>`), `Object` having
@@ -443,7 +444,7 @@ impl<'a> Reader<'a> {
                     }
                 }
                 let shown = if line.len() > 50 {
-                    format!("{}...", &line[..50])
+                    format!("{}...", &line[..floor_char_boundary(line, 50)])
                 } else {
                     line.to_string()
                 };

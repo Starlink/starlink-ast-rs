@@ -11,6 +11,7 @@ use super::card_value::{scan_all, scan_double, scan_int};
 use super::format::{VALUE_MAXWIDTH, VALUE_WIDTH, encode_float, encode_float_in};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::axis_format::{is_c_space, sprintf_double};
+use crate::text::floor_char_boundary;
 
 /// Length of a FITS header card in characters.
 pub(super) const FITS_CARD_LEN: usize = 80;
@@ -727,15 +728,6 @@ pub(crate) fn raw_keyword(card: &str) -> String {
     card[..floor_char_boundary(&card, FITS_NAME_LEN)]
         .trim_end()
         .to_string()
-}
-
-/// The largest index no greater than `i` that starts a character of `s`.
-fn floor_char_boundary(s: &str, i: usize) -> usize {
-    let mut i = i.min(s.len());
-    while !s.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
 }
 
 /// Parse a string value (starts with quote) from the value area.
