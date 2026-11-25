@@ -524,7 +524,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
                         .unwrap(),
                 )
             };
-            let cf = starlink_ast::frames::CmpFrame::new(one(), one());
+            let cf = starlink_ast::frames::CmpFrame::new(one(), one()).unwrap();
             result(fc.write(&AnyObject::CmpFrame(cf)), |n| format!("= {n}\n"))
         }
         "W" => {

@@ -295,7 +295,7 @@ pub(crate) fn make_sky_mapping_verified(
 
     // Both UNKNOWN: assume they are the same (skyframe.c:6077).
     if from_sys == SkySystem::Unknown && to_sys == SkySystem::Unknown {
-        return Ok(Some(Box::new(UnitMap::new(2))));
+        return Ok(Some(Box::new(UnitMap::new(2)?)));
     }
 
     // Determine which of the 4 pipeline steps are needed.
@@ -394,7 +394,7 @@ pub(crate) fn make_sky_mapping_verified(
     // each SlaMap can introduce semantic drift if the simplifier
     // collapses the pair to UnitMap.
     let result: DynMapping = if sla.is_empty() {
-        Box::new(UnitMap::new(2))
+        Box::new(UnitMap::new(2)?)
     } else {
         Box::new(sla)
     };
@@ -690,7 +690,7 @@ pub(crate) fn sky_offset_map(
     sky_ref_set: bool,
 ) -> AstResult<DynMapping> {
     if !sky_ref_set || matches!(sky_ref_is, SkyRefIs::Ignored) {
-        return Ok(Box::new(UnitMap::new(2)));
+        return Ok(Box::new(UnitMap::within_limit(2)));
     }
     let mat = build_offset_matrix(sky_ref, sky_ref_p, sky_ref_is)?;
     let mut m = Array2::<f64>::zeros((3, 3));

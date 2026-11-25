@@ -686,12 +686,12 @@ fn apply_unit_remap(fs: &FrameSet) -> AstResult<FrameSet> {
             && crate::frames::Frame::domain(pframe) == "SKY";
 
         let axmap: DynMapping = if is_spec || is_sky_domain {
-            Box::new(UnitMap::new(1))
+            Box::new(UnitMap::new(1)?)
         } else {
             let extunit = pframe.unit(paxis_1)?;
             let intunit = pframe.internal_unit(paxis_1)?;
             if intunit == extunit {
-                Box::new(UnitMap::new(1))
+                Box::new(UnitMap::new(1)?)
             } else if let Some(umap) = crate::units::unit_mapper(&intunit, &extunit) {
                 any_remap = true;
                 umap
@@ -702,7 +702,7 @@ fn apply_unit_remap(fs: &FrameSet) -> AstResult<FrameSet> {
                 any_remap = true;
                 Box::new(ZoomMap::new(1, DR2D)?)
             } else {
-                Box::new(UnitMap::new(1))
+                Box::new(UnitMap::new(1)?)
             }
         };
 
@@ -839,7 +839,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     // canonical CmpFrame with the spectral axis first. Mirrors C
     // `astCmpFrame( specfrm, skyfrm, "" )` (fitschan.c:2550).
     let cmpfrm: crate::frames::DynFrame =
-        Box::new(CmpFrame::new(source_spec_frame, Box::new(target_sky)));
+        Box::new(CmpFrame::new(source_spec_frame, Box::new(target_sky))?);
 
     // Convert the current Frame to the canonical template via the
     // generic frame-conversion machinery. Mirrors C `astConvert( cfrm,
@@ -1235,7 +1235,7 @@ mod tests {
         let mut fs = FrameSet::new(Box::new(pixel));
         fs.add_frame(
             FrameRef::Base,
-            Box::new(ShiftMap::new(vec![10.0, 20.0])),
+            Box::new(ShiftMap::within_limit(vec![10.0, 20.0])),
             Box::new(world),
         )
         .unwrap();
@@ -1272,8 +1272,12 @@ mod tests {
             .build()
             .unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(world))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(world),
+        )
+        .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
         let (store, ok) =

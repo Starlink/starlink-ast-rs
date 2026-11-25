@@ -217,8 +217,14 @@ fn poly(c: &[f64]) -> DynMapping {
 /// its sky Mapping.
 fn poly_sky(fs: &FrameSet, c: &[f64]) -> DynMapping {
     series(
-        series(Box::new(ShiftMap::new(vec![-50.0, -100.0])), poly(c)),
-        series(Box::new(ShiftMap::new(vec![50.0, 100.0])), fmap(fs)),
+        series(
+            Box::new(ShiftMap::new(vec![-50.0, -100.0]).unwrap()),
+            poly(c),
+        ),
+        series(
+            Box::new(ShiftMap::new(vec![50.0, 100.0]).unwrap()),
+            fmap(fs),
+        ),
     )
 }
 
@@ -231,7 +237,7 @@ fn sky_and_prim() -> FrameSet {
         .unwrap();
     fs.add_frame(
         FrameRef::Base,
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         frame(2, "Domain=PRIM"),
     )
     .unwrap();
@@ -251,8 +257,12 @@ type Case = fn() -> Result<(), String>;
 const CASES: &[(&str, Case)] = &[
     ("a CmpMap with an Ident", || {
         let fs = tan_frameset();
-        let mut map =
-            CmpMap::new(fmap(&fs), Box::new(UnitMap::new(2)), Composition::Series).unwrap();
+        let mut map = CmpMap::new(
+            fmap(&fs),
+            Box::new(UnitMap::new(2).unwrap()),
+            Composition::Series,
+        )
+        .unwrap();
         map.set_ident("X");
         let fs2 = two_frame(base(&fs), Box::new(map), current(&fs));
         check_write(&mut fitschan("Encoding=FITS-WCS", &[]), fs2, 0)
@@ -275,7 +285,7 @@ const CASES: &[(&str, Case)] = &[
         let pm = PermMap::new(&[1, 1, 2], &[1, 3], &[]).unwrap();
         let map = series(
             Box::new(pm),
-            parallel(lut(&LUT2), Box::new(UnitMap::new(1))),
+            parallel(lut(&LUT2), Box::new(UnitMap::new(1).unwrap())),
         );
         let fs = two_frame(frame(3, "Domain=GRID"), map, frame(2, "Domain=WORLD"));
         let mut fc = fitschan(
@@ -288,7 +298,7 @@ const CASES: &[(&str, Case)] = &[
         let pm = PermMap::new(&[-1, -1, 1], &[3, 3], &[1.0]).unwrap();
         let map = series(
             Box::new(pm),
-            parallel(lut(&LUT3), Box::new(UnitMap::new(1))),
+            parallel(lut(&LUT3), Box::new(UnitMap::new(1).unwrap())),
         );
         let fs = two_frame(frame(3, "Domain=GRID"), map, frame(2, "Domain=WORLD"));
         check_write(&mut fitschan("Encoding=FITS-WCS,TabOK=1", &[]), fs, 0)
@@ -309,8 +319,8 @@ const CASES: &[(&str, Case)] = &[
     }),
     ("distorted sky axes and a third axis", || {
         let fs = tan_frameset();
-        let map = parallel(poly_sky(&fs, &COEFFS2), Box::new(UnitMap::new(1)));
-        let cur = CmpFrame::new(current(&fs), frame(1, "Domain=OTHER"));
+        let map = parallel(poly_sky(&fs, &COEFFS2), Box::new(UnitMap::new(1).unwrap()));
+        let cur = CmpFrame::new(current(&fs), frame(1, "Domain=OTHER")).unwrap();
         let fs2 = two_frame(frame(3, "Domain=GRID"), map, Box::new(cur));
         let mut fc = fitschan(
             "Encoding=FITS-WCS",
@@ -327,9 +337,9 @@ const CASES: &[(&str, Case)] = &[
             let pm = PermMap::new(&[1, 2, 3, -1], &[1, 2, 3, 3], &[1.0]).unwrap();
             let map = series(
                 Box::new(pm),
-                parallel(poly_sky(&fs, &COEFFS2), Box::new(UnitMap::new(2))),
+                parallel(poly_sky(&fs, &COEFFS2), Box::new(UnitMap::new(2).unwrap())),
             );
-            let cur = CmpFrame::new(current(&fs), frame(2, "Domain=OTHER"));
+            let cur = CmpFrame::new(current(&fs), frame(2, "Domain=OTHER")).unwrap();
             let fs2 = two_frame(frame(4, "Domain=GRID"), map, Box::new(cur));
             let mut fc = fitschan(
                 "Encoding=FITS-WCS",
@@ -399,7 +409,7 @@ const CASES: &[(&str, Case)] = &[
         .unwrap();
         fs.add_frame(
             FrameRef::Base,
-            Box::new(UnitMap::new(2)),
+            Box::new(UnitMap::new(2).unwrap()),
             frame(2, "Domain=PRIM"),
         )
         .unwrap();
@@ -425,12 +435,13 @@ const CASES: &[(&str, Case)] = &[
         let win = WinMap::from_corners(&[0.0], &[1.0], &[1.0e11], &[1.0e11 + 1.0e6]).unwrap();
         let map = parallel(
             parallel(Box::new(win), fmap(&sky)),
-            Box::new(UnitMap::new(1)),
+            Box::new(UnitMap::new(1).unwrap()),
         );
         let wcs = CmpFrame::new(
-            Box::new(CmpFrame::new(freq, current(&sky))),
+            Box::new(CmpFrame::new(freq, current(&sky)).unwrap()),
             frame(1, "Symbol(1)=STOKES"),
-        );
+        )
+        .unwrap();
         let fs = two_frame(frame(4, "Domain=GRID"), map, Box::new(wcs));
         let mut fc = fitschan(
             "Encoding=FITS-CLASS",
@@ -459,7 +470,7 @@ const CASES: &[(&str, Case)] = &[
     ("a Domain that is nearly the axis Symbol", || {
         let fs = two_frame(
             frame(1, "Domain=GRID"),
-            Box::new(UnitMap::new(1)),
+            Box::new(UnitMap::new(1).unwrap()),
             frame(1, "Symbol(1)=ABCD,Domain=ABCX"),
         );
         let mut fc = fitschan("Encoding=FITS-WCS", &[]);
@@ -469,7 +480,7 @@ const CASES: &[(&str, Case)] = &[
     ("a Domain that is the axis Symbol", || {
         let fs = two_frame(
             frame(1, "Domain=GRID"),
-            Box::new(UnitMap::new(1)),
+            Box::new(UnitMap::new(1).unwrap()),
             frame(1, "Symbol(1)=ABCD,Domain=abcd"),
         );
         let mut fc = fitschan("Encoding=FITS-WCS", &[]);
@@ -481,7 +492,7 @@ const CASES: &[(&str, Case)] = &[
         f.set_attribute("Symbol(1)", " ").unwrap();
         let fs = two_frame(
             frame(1, "Domain=GRID"),
-            Box::new(UnitMap::new(1)),
+            Box::new(UnitMap::new(1).unwrap()),
             Box::new(f),
         );
         let mut fc = fitschan(
@@ -585,8 +596,8 @@ fn a_skyframe_outside_the_sky_domain_is_an_ordinary_axis() {
         second.set_attribute("Domain", domain).unwrap();
         let fs = two_frame(
             frame(4, "Domain=GRID"),
-            parallel(fmap(&sky), Box::new(UnitMap::new(2))),
-            Box::new(CmpFrame::new(current(&sky), Box::new(second))),
+            parallel(fmap(&sky), Box::new(UnitMap::new(2).unwrap())),
+            Box::new(CmpFrame::new(current(&sky), Box::new(second)).unwrap()),
         );
         for encoding in ["FITS-WCS", "FITS-PC"] {
             let mut fc = fitschan(&format!("Encoding={encoding}"), &[]);
@@ -618,7 +629,7 @@ fn a_degenerate_axis_outside_the_sky_domain_has_a_unit_scale() {
                 Box::new(PermMap::new(&[1], &[1, -1], &[0.5]).unwrap()),
             ),
         ),
-        Box::new(CmpFrame::new(current(&sky), Box::new(second))),
+        Box::new(CmpFrame::new(current(&sky), Box::new(second)).unwrap()),
     );
     for encoding in ["FITS-WCS", "FITS-PC"] {
         let mut fc = fitschan(&format!("Encoding={encoding}"), &[]);
@@ -666,7 +677,7 @@ fn class_needs_a_skyframe_in_the_sky_domain() {
     let polanal = two_frame(
         base(&fs),
         fmap(&fs),
-        Box::new(CmpFrame::new(cmp.frame1().snapshot(), sky)),
+        Box::new(CmpFrame::new(cmp.frame1().snapshot(), sky).unwrap()),
     );
     let mut fc = fitschan("Encoding=FITS-CLASS", &naxes);
     check_write(&mut fc, polanal, 0).unwrap();

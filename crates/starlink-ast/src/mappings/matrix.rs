@@ -1044,7 +1044,7 @@ impl Mapping for MatrixMap {
             let product = first.mtr_mult(&second).ok()?.forward_matrix().clone();
 
             return if is_identity_matrix(&product) {
-                Some(Box::new(UnitMap::new(product.nrows())))
+                Some(Box::new(UnitMap::within_limit(product.nrows())))
             } else {
                 MatrixMap::new(product)
                     .ok()
@@ -1078,7 +1078,9 @@ impl Mapping for MatrixMap {
             // identity: an inverted result has to survive so its orientation
             // reaches serialization.
             if !scaled.is_inverted() && is_identity_matrix(scaled.forward_matrix()) {
-                return Some(Box::new(UnitMap::new(scaled.forward_matrix().nrows())));
+                return Some(Box::new(UnitMap::within_limit(
+                    scaled.forward_matrix().nrows(),
+                )));
             }
             return Some(Box::new(scaled) as DynMapping);
         }
@@ -1127,7 +1129,7 @@ impl Mapping for MatrixMap {
             // Result = P * A (PermMap applied after MatrixMap).
             let product = mtr_product(&perm_mat, &a);
             if is_identity_matrix(&product) {
-                return Some(Box::new(UnitMap::new(product.nrows())));
+                return Some(Box::new(UnitMap::within_limit(product.nrows())));
             }
             // C merges a MatrixMap and a PermMap only via `MatPerm`, which is
             // gated by `PermOK` (matrixmap.c:1967, 4607): the PermMap must have

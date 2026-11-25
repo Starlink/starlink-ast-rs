@@ -119,8 +119,8 @@ If `mapa` and `mapb` are our two original Mappings, we could form a CmpMap which
 ```rust
 use starlink_ast::mappings::{CmpMap, Composition, Mapping};
 # use starlink_ast::mappings::ShiftMap;
-# let mapa = ShiftMap::new([10.0, 20.0]);
-# let mapb = ShiftMap::new([12.0, 19.0]);
+# let mapa = ShiftMap::new([10.0, 20.0]).unwrap();
+# let mapb = ShiftMap::new([12.0, 19.0]).unwrap();
 
 let mut inverse_b = mapb.clone();
 inverse_b.invert();
@@ -181,7 +181,7 @@ If this were contained in a CmpMap, it could be simplified as follows:
 # let swap = PermMap::new(&[2, 3, 1], &[3, 1, 2], &[])?;
 # let unswap = PermMap::new(&[3, 1, 2], &[2, 3, 1], &[])?;
 # let zooms = CmpMap::new(Box::new(ZoomMap::new(2, 5.0)?), Box::new(ZoomMap::new(2, 0.2)?), Series)?;
-# let middle = CmpMap::new(Box::new(UnitMap::new(1)), Box::new(zooms), Parallel)?;
+# let middle = CmpMap::new(Box::new(UnitMap::new(1).unwrap()), Box::new(zooms), Parallel)?;
 # let cmpmap = CmpMap::new(Box::new(swap), Box::new(middle), Series)?;
 # let cmpmap: DynMapping = Box::new(CmpMap::new(Box::new(cmpmap), Box::new(unswap), Series)?);
 let simpler = cmpmap.simplify()?;

@@ -1228,7 +1228,7 @@ impl Mapping for WcsMap {
             }
             // Neither celestial axis selected: returned mapping is a UnitMap
             // over the kept pass-through axes. Mirrors C's astUnitMap branch.
-            (None, None) => Ok(Some((result, Box::new(UnitMap::new(nin))))),
+            (None, None) => Ok(Some((result, Box::new(UnitMap::new(nin)?)))),
             // Only one celestial axis selected: drop it. The C code treats
             // this as nin > 1 only — for nin == 1 (the lone kept input is
             // the celestial), it frees the result and returns NULL.
@@ -1294,7 +1294,7 @@ impl Mapping for WcsMap {
             && self.params_equal(other_wcs)
         {
             // WcsMap always has nin == nout == ncoord.
-            Some(Box::new(UnitMap::new(self.ncoord)))
+            Some(Box::new(UnitMap::within_limit(self.ncoord)))
         } else {
             None
         }

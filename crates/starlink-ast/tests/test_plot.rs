@@ -60,10 +60,13 @@ fn frame(id: &str) -> Box<dyn Frame> {
             Box::new(f)
         }
         "sky" => Box::new(SkyFrame::unset_system()),
-        "sky_spec" => Box::new(CmpFrame::new(
-            Box::new(SkyFrame::unset_system()),
-            Box::new(SpecFrame::unset_system()),
-        )),
+        "sky_spec" => Box::new(
+            CmpFrame::new(
+                Box::new(SkyFrame::unset_system()),
+                Box::new(SpecFrame::unset_system()),
+            )
+            .unwrap(),
+        ),
         "fs_cube" => {
             let mut fs = FrameSet::new(Box::new(
                 BasicFrameBuilder::new(3).domain("CUBE").build().unwrap(),
@@ -77,13 +80,16 @@ fn frame(id: &str) -> Box<dyn Frame> {
             Box::new(fs)
         }
         "fs_sky_spec" => {
-            let mut fs = FrameSet::new(Box::new(CmpFrame::new(
-                Box::new(SkyFrame::unset_system()),
-                Box::new(SpecFrame::unset_system()),
-            )));
+            let mut fs = FrameSet::new(Box::new(
+                CmpFrame::new(
+                    Box::new(SkyFrame::unset_system()),
+                    Box::new(SpecFrame::unset_system()),
+                )
+                .unwrap(),
+            ));
             fs.add_frame(
                 FrameRef::Base,
-                Box::new(UnitMap::new(3)),
+                Box::new(UnitMap::new(3).unwrap()),
                 Box::new(BasicFrameBuilder::new(3).domain("WORLD").build().unwrap()),
             )
             .unwrap();
@@ -310,7 +316,8 @@ fn attrs_plot(id: &str) -> Plot {
             &CmpFrame::new(
                 Box::new(SpecFrame::unset_system()),
                 Box::new(SkyFrame::unset_system()),
-            ),
+            )
+            .unwrap(),
             g,
             [1.0, 1.0, 2.0, 2.0],
         ),
@@ -774,7 +781,7 @@ fn frames_are_added_and_selected_through_the_plot() {
     extra.set_domain("EXTRA");
     plot.add_frame(
         FrameRef::Current,
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         Box::new(extra),
     )
     .unwrap();
@@ -811,7 +818,7 @@ fn a_plot_is_named_as_a_plot_in_messages() {
 #[test]
 fn label_units_finds_a_sky_axis_inside_a_frameset() {
     let inner = FrameSet::new(Box::new(SkyFrame::unset_system()));
-    let frame = CmpFrame::new(Box::new(inner), Box::new(SpecFrame::unset_system()));
+    let frame = CmpFrame::new(Box::new(inner), Box::new(SpecFrame::unset_system())).unwrap();
     let plot = Plot::new(&frame, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 1.0, 1.0]).unwrap();
     assert!(!plot.label_units(1).unwrap());
     assert!(!plot.label_units(2).unwrap());

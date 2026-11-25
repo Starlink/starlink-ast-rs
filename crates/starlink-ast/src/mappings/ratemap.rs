@@ -425,7 +425,7 @@ impl Mapping for RateMap {
         // Result: nin=self.nin=1, nout=other.nout=1 → UnitMap(1).
         let result_nax = if self_inv { 1 } else { self.intrinsic_nin() };
 
-        Some(Box::new(UnitMap::new(result_nax)))
+        Some(Box::new(UnitMap::within_limit(result_nax)))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

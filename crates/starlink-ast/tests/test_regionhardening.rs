@@ -119,7 +119,7 @@ fn grids() {
     // but not their product.
     expect_err(
         within_10s(|| {
-            let cmp = CmpFrame::new(Box::new(plain(2)), Box::new(plain(2)));
+            let cmp = CmpFrame::new(Box::new(plain(2)), Box::new(plain(2))).unwrap();
             box_grid(cmp, &[0.0; 4], &[1.0e5, 1.0e-5, 1.0e5, 1.0e-5])
         }),
         ErrorCode::Attin,
@@ -153,7 +153,7 @@ fn grids() {
     check_grid_inside(&box_grid(frame, &a, &b).unwrap(), 10, &a, &b);
 
     // A 3-D Box with no width on axis 3, in a CmpFrame.
-    let cmp = CmpFrame::new(Box::new(plain(2)), Box::new(plain(1)));
+    let cmp = CmpFrame::new(Box::new(plain(2)), Box::new(plain(1))).unwrap();
     let (a, b) = ([0.0, 0.0, 0.0], [1.0, 1.0, 0.0]);
     check_grid_inside(&box_grid(cmp, &a, &b).unwrap(), 18, &a, &b);
 

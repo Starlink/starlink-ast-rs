@@ -276,7 +276,7 @@ pub(crate) fn tab_mapping(
                             unit = false;
                             map
                         }
-                        None => Box::new(UnitMap::new(1)),
+                        None => Box::new(UnitMap::new(1)?),
                     };
                     indexmap = Some(match indexmap {
                         Some(prev) => Box::new(CmpMap::new(prev, tmap1, Composition::Parallel)?),
@@ -317,7 +317,7 @@ pub(crate) fn tab_mapping(
                 permout[nperm] = iaxis as i64;
                 permin[iaxis] = nperm as i64;
                 nperm += 1;
-                Box::new(UnitMap::new(1))
+                Box::new(UnitMap::new(1)?)
             }
         };
         tmap0 = Some(match tmap0 {

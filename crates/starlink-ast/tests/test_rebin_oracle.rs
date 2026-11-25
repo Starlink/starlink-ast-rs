@@ -26,8 +26,8 @@ use starlink_ast::pixel::RebinValue;
 
 fn mapping(name: &str) -> DynMapping {
     match name {
-        "unit2" => Box::new(UnitMap::new(2)),
-        "shift_half" => Box::new(ShiftMap::new(vec![0.5, -0.25])),
+        "unit2" => Box::new(UnitMap::new(2).unwrap()),
+        "shift_half" => Box::new(ShiftMap::new(vec![0.5, -0.25]).unwrap()),
         "zoom2" => Box::new(ZoomMap::new(2, 1.7).unwrap()),
         "shrink2" => Box::new(ZoomMap::new(2, 0.45).unwrap()),
         "perm" => Box::new(PermMap::new(&[2, 1], &[2, 1], &[]).unwrap()),
@@ -296,7 +296,7 @@ fn too_few_params_is_an_error() {
         (Spread::Gauss, &[2.0][..]),
     ] {
         let e = rebin(
-            &UnitMap::new(2),
+            &UnitMap::new(2).unwrap(),
             &RebinInput {
                 lbnd: l,
                 ubnd: u,

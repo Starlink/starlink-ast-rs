@@ -467,7 +467,7 @@ pub(crate) fn win_map_merge(
     let all_scales_one = win.scales().iter().all(|&b| ast_equal(b, 1.0));
     if all_scales_one {
         let shifts: Vec<f64> = eff_shifts.clone();
-        let sm = ShiftMap::new(shifts);
+        let sm = ShiftMap::within_limit(shifts);
         ctx.set_pair_single(where_, (Box::new(sm), false, false));
         return Some(where_);
     }

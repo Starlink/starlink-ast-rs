@@ -231,7 +231,7 @@ impl Mapping for NormMap {
             } else if self.frame.as_any().is::<BasicFrame>() {
                 // A basic Frame's astNorm does nothing, so the NormMap is a
                 // UnitMap (normmap.c:632-640).
-                Some(Box::new(UnitMap::new(self.naxes())))
+                Some(Box::new(UnitMap::within_limit(self.naxes())))
             } else {
                 None
             };
@@ -261,7 +261,7 @@ impl Mapping for NormMap {
         // if the frames are equal.
         if self_inv != other_inv {
             if self.frame.equal(other_nm.frame.as_ref()) {
-                return Some(Box::new(UnitMap::new(self.naxes())));
+                return Some(Box::new(UnitMap::within_limit(self.naxes())));
             }
             return None;
         }

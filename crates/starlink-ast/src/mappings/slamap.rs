@@ -773,7 +773,7 @@ pub(crate) fn sla_map_merge(
     }
 
     let new: DynMapping = if unit {
-        Box::new(UnitMap::new(2))
+        Box::new(UnitMap::within_limit(2))
     } else {
         let mut result = SlaMap::new();
         for cvt in steps {
@@ -1580,7 +1580,7 @@ impl Mapping for SlaMap {
         sla_simplify_steps(&mut steps);
 
         if steps.is_empty() {
-            Some(Box::new(UnitMap::new(2)))
+            Some(Box::new(UnitMap::within_limit(2)))
         } else {
             let mut result = SlaMap::new();
             for cvt in steps {

@@ -63,7 +63,7 @@ fn round_trip_zoom_via_channel() {
 
 #[test]
 fn round_trip_shiftmap_via_channel() {
-    let shift = ShiftMap::new(vec![10.0, -20.0, 30.0]);
+    let shift = ShiftMap::new(vec![10.0, -20.0, 30.0]).unwrap();
     let obj = AnyObject::ShiftMap(shift);
 
     let mut ch = NativeChannel::with_string_sink();
@@ -296,7 +296,7 @@ fn round_trip_multiple_types() {
     assert_eq!(restored.as_mapping().unwrap().nin(), 2);
 
     // ShiftMap.
-    let shift = ShiftMap::new(vec![1.0, 2.0]);
+    let shift = ShiftMap::new(vec![1.0, 2.0]).unwrap();
     let obj = AnyObject::ShiftMap(shift);
     let text = native_dump(&obj).unwrap();
     let restored = from_native_string(&text).unwrap();
@@ -374,7 +374,7 @@ fn channel_write(obj: &AnyObject, configure: impl FnOnce(&mut NativeChannel)) ->
 fn nested_object() -> AnyObject {
     let mut zoom = ZoomMap::new(2, 4.0).unwrap();
     zoom.set_id("zoom_id");
-    let shift = ShiftMap::new(vec![100.0, -200.0]);
+    let shift = ShiftMap::new(vec![100.0, -200.0]).unwrap();
     let cmp = CmpMap::new(Box::new(zoom), Box::new(shift), Composition::Series).unwrap();
     AnyObject::CmpMap(cmp)
 }
@@ -432,7 +432,7 @@ fn write_multiple_objects_read_back() {
     // Write two objects to separate channels and read them back.
     // (NativeChannel reads all source at once, so we test with separate texts.)
     let zoom = ZoomMap::new(1, 9.0).unwrap();
-    let shift = ShiftMap::new(vec![5.0]);
+    let shift = ShiftMap::new(vec![5.0]).unwrap();
 
     // Write each to its own string.
     let mut ch1 = NativeChannel::with_string_sink();

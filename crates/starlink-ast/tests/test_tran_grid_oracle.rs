@@ -57,7 +57,7 @@ fn tan() -> DynMapping {
 
 /// The 3-D CmpMap of `testtrangrid.c`.
 fn cmp3() -> DynMapping {
-    let c1: DynMapping = Box::new(ShiftMap::new(vec![-1.0]));
+    let c1: DynMapping = Box::new(ShiftMap::new(vec![-1.0]).unwrap());
     let c2: DynMapping = Box::new(MatrixMap::new(array![[1.0, 2.0], [-2.0, 3.0]]).unwrap());
     let c3 = CmpMap::new(c1, c2, Composition::Parallel).unwrap();
     let c1: DynMapping = Box::new(PermMap::new(&[3, 2, 1], &[3, 2, 1], &[]).unwrap());

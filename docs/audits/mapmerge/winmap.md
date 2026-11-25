@@ -17,7 +17,7 @@ a neighbor in series; distribute the WinMap into a neighboring parallel CmpMap;
 swap toward the nearest mergeable Mapping; merge with a neighbor in parallel;
 and, only if nothing else fired, convert an all-unit-scale WinMap to a ShiftMap.
 
-`WinMap::map_merge` (`winmap.rs:450-457 (fn map_merge)`) delegates to
+`WinMap::map_merge` (`winmap.rs:451-458 (fn map_merge)`) delegates to
 `winmap_merge::win_map_merge` (`winmap_merge.rs:412-487 (fn win_map_merge)`), so Rust sites are in
 `winmap_merge.rs` unless stated.
 

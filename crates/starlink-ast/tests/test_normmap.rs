@@ -279,7 +279,8 @@ fn permuted_cmpframe_normmap() -> NormMap {
     let mut f = CmpFrame::new(
         Box::new(SpecFrame::new(SpecSystem::Wavelen)),
         Box::new(SkyFrame::new(SkySystem::Icrs)),
-    );
+    )
+    .unwrap();
     f.perm_axes(&[3, 1, 2]).unwrap();
     NormMap::new(Box::new(f))
 }

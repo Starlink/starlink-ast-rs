@@ -56,7 +56,7 @@ fn xyz_unnamed() -> FrameSet {
     .unwrap();
     fs.add_frame(
         FrameRef::Index(2),
-        Box::new(ShiftMap::new(vec![1.0, 2.0])),
+        Box::new(ShiftMap::new(vec![1.0, 2.0]).unwrap()),
         make_named_frame(2, "Z"),
     )
     .unwrap();
@@ -107,7 +107,7 @@ fn new_given_a_frameset_takes_its_frames_and_mappings() {
 #[test]
 fn new_given_a_frameset_takes_its_variants_and_mirrors() {
     let mut old = xyz_unnamed();
-    old.add_variant(Some(Box::new(ShiftMap::new(vec![5.0, 5.0]))), "V2")
+    old.add_variant(Some(Box::new(ShiftMap::new(vec![5.0, 5.0]).unwrap())), "V2")
         .unwrap();
     old.set_current(FrameRef::Index(2)).unwrap();
     old.mirror_variants(FrameRef::Index(3)).unwrap();
@@ -242,7 +242,7 @@ fn mapping_chain_composes() {
     let mut fs = FrameSet::new(make_frame(2));
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
     fs.add_frame(FrameRef::Current, z, make_frame(2)).unwrap();
-    let s: DynMapping = Box::new(ShiftMap::new([10.0, 20.0]));
+    let s: DynMapping = Box::new(ShiftMap::new([10.0, 20.0]).unwrap());
     fs.add_frame(FrameRef::Current, s, make_frame(2)).unwrap();
 
     assert_eq!(fs.nframe(), 3);
@@ -259,7 +259,7 @@ fn mapping_by_index() {
     let mut fs = FrameSet::new(make_frame(2));
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
     fs.add_frame(FrameRef::Current, z, make_frame(2)).unwrap();
-    let s: DynMapping = Box::new(ShiftMap::new([10.0, 10.0]));
+    let s: DynMapping = Box::new(ShiftMap::new([10.0, 10.0]).unwrap());
     fs.add_frame(FrameRef::Current, s, make_frame(2)).unwrap();
 
     // Index 1→2: zoom by 2
@@ -286,7 +286,7 @@ fn tree_topology_path_composition() {
     let mut fs = FrameSet::new(make_frame(2));
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
     fs.add_frame(FrameRef::Index(1), z, make_frame(2)).unwrap();
-    let s: DynMapping = Box::new(ShiftMap::new([10.0, 10.0]));
+    let s: DynMapping = Box::new(ShiftMap::new([10.0, 10.0]).unwrap());
     fs.add_frame(FrameRef::Index(1), s, make_frame(2)).unwrap();
 
     assert_eq!(fs.nframe(), 3);
@@ -330,7 +330,7 @@ fn frameset_transform_inverse() {
 #[test]
 fn frameset_transform_multi_point() {
     let mut fs = FrameSet::new(make_frame(2));
-    let s: DynMapping = Box::new(ShiftMap::new([1.0, -1.0]));
+    let s: DynMapping = Box::new(ShiftMap::new([1.0, -1.0]).unwrap());
     fs.add_frame(FrameRef::Base, s, make_frame(2)).unwrap();
 
     let pts = PointSet::from_rows([[0.0, 0.0], [10.0, 20.0], [100.0, 200.0]]);
@@ -363,7 +363,7 @@ fn frame_delegation_distance() {
 #[test]
 fn frame_delegation_format() {
     let mut fs = FrameSet::new(make_frame(1));
-    let u: DynMapping = Box::new(UnitMap::new(1));
+    let u: DynMapping = Box::new(UnitMap::new(1).unwrap());
     fs.add_frame(FrameRef::Base, u, make_frame(1)).unwrap();
     let s = fs.format(1, 3.14).unwrap();
     assert!(s.contains("3.14"));
@@ -469,7 +469,7 @@ fn remove_frame_reduces_count() {
     let mut fs = FrameSet::new(make_frame(2));
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
     fs.add_frame(FrameRef::Current, z, make_frame(2)).unwrap();
-    let s: DynMapping = Box::new(ShiftMap::new([10.0, 20.0]));
+    let s: DynMapping = Box::new(ShiftMap::new([10.0, 20.0]).unwrap());
     fs.add_frame(FrameRef::Current, s, make_frame(2)).unwrap();
 
     assert_eq!(fs.nframe(), 3);
@@ -504,7 +504,7 @@ fn remove_current_makes_the_last_frame_current() {
     for d in ["B", "C"] {
         fs.add_frame(
             FrameRef::Base,
-            Box::new(UnitMap::new(2)),
+            Box::new(UnitMap::new(2).unwrap()),
             make_named_frame(2, d),
         )
         .unwrap();
@@ -534,7 +534,7 @@ fn remap_frame_appends_delta() {
 
     // Remap current with an additional shift. New base→current =
     // old_zoom ∘ shift, so (1, 2) → (2, 4) → (7, 9).
-    let s: DynMapping = Box::new(ShiftMap::new([5.0, 5.0]));
+    let s: DynMapping = Box::new(ShiftMap::new([5.0, 5.0]).unwrap());
     fs.remap_frame(FrameRef::Current, s).unwrap();
     let out = fs.transform(&pts, true).unwrap();
     assert_eq!(out.point(0), &[7.0, 9.0]);
@@ -670,7 +670,7 @@ fn single_frame_transform_is_identity() {
 #[test]
 fn transform_into_preallocated() {
     let mut fs = FrameSet::new(make_frame(2));
-    let s: DynMapping = Box::new(ShiftMap::new([1.0, 2.0]));
+    let s: DynMapping = Box::new(ShiftMap::new([1.0, 2.0]).unwrap());
     fs.add_frame(FrameRef::Base, s, make_frame(2)).unwrap();
 
     let pts = PointSet::from_rows([[10.0, 20.0]]);
@@ -711,7 +711,7 @@ fn add_frameset_reverses_links_and_round_trips() {
     inner
         .add_frame(
             FrameRef::Base,
-            Box::new(ShiftMap::new(vec![10.0])),
+            Box::new(ShiftMap::new(vec![10.0]).unwrap()),
             Box::new(b),
         )
         .unwrap();
@@ -782,7 +782,7 @@ fn add_frame_with_a_frameset_merges_it() {
     let mut c = FrameSet::new(make_named_frame(2, "GRID"));
     c.add_frame(
         FrameRef::Base,
-        Box::new(ShiftMap::new([1.0, 1.0])),
+        Box::new(ShiftMap::new([1.0, 1.0]).unwrap()),
         Box::new(a),
     )
     .unwrap();
@@ -1216,7 +1216,7 @@ fn first_domain_pair() -> (FrameSet, FrameSet) {
     let mut to = FrameSet::new(make_named_frame(1, "A"));
     to.add_frame(
         FrameRef::Index(1),
-        Box::new(UnitMap::new(1)),
+        Box::new(UnitMap::new(1).unwrap()),
         make_named_frame(1, "B"),
     )
     .unwrap();

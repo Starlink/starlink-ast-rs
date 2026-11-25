@@ -159,7 +159,12 @@ impl BasicFrameBuilder {
         Self {
             naxes,
             attrs: FrameAttrs::default(),
-            axes: vec![Axis::default(); naxes],
+            // A count over the limit makes no axes, as `build` refuses it.
+            axes: if naxes <= crate::constants::MXAXES {
+                vec![Axis::default(); naxes]
+            } else {
+                Vec::new()
+            },
         }
     }
 
@@ -238,8 +243,24 @@ impl BasicFrameBuilder {
     ///
     /// A Frame may have no axes, as one picked from another with none
     /// selected has.
-    // C: frame.c `astInitFrame` refuses only a negative number of axes.
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Naxin` if the number of axes is more than
+    /// [`MXAXES`](crate::constants::MXAXES).
+    // C: frame.c `astInitFrame`.
     pub fn build(self) -> AstResult<BasicFrame> {
+        let limit = crate::constants::MXAXES;
+        if self.naxes > limit {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "astInitFrame(Frame): Number of axes ({}) is invalid - this number should \
+                     not exceed {limit}.",
+                    self.naxes
+                ),
+            ));
+        }
         Ok(BasicFrame {
             naxes: self.naxes,
             attrs: self.attrs,
@@ -1072,7 +1093,7 @@ impl Frame for BasicFrame {
     /// in internal order.
     // C: frame.c `PermAxes`.
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
-        super::validate_permutation(perm, self.naxes)?;
+        super::check_perm_axes("Frame", perm, self.naxes)?;
         let old = self.perm.clone();
         for (i, &p) in perm.iter().enumerate() {
             self.perm[i] = old[p - 1];
@@ -1282,8 +1303,8 @@ impl Serializable for BasicFrame {
         let whole = node;
         let node = &whole.section("Frame");
         // A missing or negative Naxes loads a Frame with no axes
-        // (frame.c:15199), which the public builder does not make.
-        let naxes = node.get_int("Naxes", 0).max(0) as usize;
+        // (frame.c `astLoadFrame`).
+        let naxes = super::frame_attrs::loaded_naxes(node, &whole.class);
         let mut frame = BasicFrame {
             naxes,
             attrs: FrameAttrs::default(),
@@ -1309,15 +1330,16 @@ impl Serializable for BasicFrame {
         }
 
         // The permutation, `Prm{n}` being the 1-based internal axis of
-        // external axis n.
-        #[allow(clippy::needless_range_loop)]
-        for ext in 0..naxes {
-            let p = node.get_int(&format!("Prm{}", ext + 1), ext as i64 + 1);
-            if p >= 1 && (p as usize) <= naxes {
-                frame.perm[ext] = p as usize - 1;
-            }
-        }
-        super::validate_permutation(&frame.perm.iter().map(|p| p + 1).collect::<Vec<_>>(), naxes)?;
+        // external axis n; one of zero or less is invalid (frame.c
+        // `astLoadFrame`, then `astCheckPermArray`).
+        let perm: Vec<i64> = (0..naxes)
+            .map(|ext| {
+                let p = node.get_int(&format!("Prm{}", ext + 1), ext as i64 + 1);
+                if p > 0 { p - 1 } else { -1 }
+            })
+            .collect();
+        super::check_perm_array("astLoadFrame", &whole.class, &perm, naxes)?;
+        frame.perm = perm.iter().map(|&p| p as usize).collect();
 
         Ok(frame)
     }

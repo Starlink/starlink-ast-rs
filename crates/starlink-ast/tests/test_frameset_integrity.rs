@@ -52,8 +52,12 @@ fn frameset(current: Box<dyn Frame>) -> FrameSet {
     let naxes = current.naxes();
     let base = BasicFrameBuilder::new(naxes).build().unwrap();
     let mut fs = FrameSet::new(Box::new(base));
-    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current)
-        .unwrap();
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(naxes).unwrap()),
+        current,
+    )
+    .unwrap();
     fs
 }
 
@@ -172,7 +176,8 @@ fn run(name: &str) -> AstResult<FrameSet> {
             let cmp = CmpFrame::new(
                 Box::new(sky(SkySystem::Fk5)),
                 Box::new(spec_ghz(SpecSystem::Freq)),
-            );
+            )
+            .unwrap();
             fs = frameset(Box::new(cmp));
             if name == "cmp_sky_spec_equinox" {
                 through_cmp_sky(&mut fs, |f| f.set_equinox_mjd(J2050))?;

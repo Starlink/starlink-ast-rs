@@ -504,6 +504,11 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
 /// versions wrote in the Frame part, for as many axes as `Naxes` gives.
 pub(crate) fn mark_frame_axes_read(frame_part: &Node) {
     let naxes = frame_part.get_int("Naxes", 0).max(0);
+    let naxes = if naxes as usize > crate::constants::MXAXES {
+        0
+    } else {
+        naxes
+    };
     for i in 1..=naxes {
         for key in [
             "Ax", "Lbl", "Sym", "Fmt", "Uni", "Dir", "Top", "Bot", "Dig", "Prm",
@@ -578,14 +583,35 @@ pub(crate) fn read_system_item<T>(
     })
 }
 
+/// The number of axes the Frame part `frame_part` of a description of an
+/// object of class `class` gives, as frame.c `astLoadFrame` reads it: a
+/// missing or negative Naxes is 0, and one over
+/// [`MXAXES`](crate::constants::MXAXES) records C's error for the load and
+/// is taken as 0, so that nothing is sized from it.
+pub(crate) fn loaded_naxes(frame_part: &Node, class: &str) -> usize {
+    let naxes = usize::try_from(frame_part.get_int("Naxes", 0)).unwrap_or(0);
+    let limit = crate::constants::MXAXES;
+    if naxes > limit {
+        crate::serial::node::record_load_error(AstError::new(
+            ErrorCode::Naxin,
+            format!(
+                "astLoadFrame({class}): Number of axes ({naxes}) read from the dump is \
+                 invalid - this number should not exceed {limit}."
+            ),
+        ));
+        return 0;
+    }
+    naxes
+}
+
 pub(crate) fn read_frame_attrs(whole: &Node) -> FrameAttrs {
     // The Object and Frame classes' parts of the description, which their
     // loaders read in C (object.c, frame.c `astLoadFrame`).
     let object = whole.section("Object");
     let node = &whole.section("Frame");
-    // astLoadFrame reads the number of axes, which each class takes from
-    // its own description.
-    node.mark_read("Naxes");
+    // astLoadFrame reads and checks the number of axes, which each class
+    // takes from its own description.
+    loaded_naxes(node, &whole.class);
     let bool_of = |key: &str| node.get(key).map(|_| node.get_int(key, 0) != 0);
     let f64_of = |key: &str| node.get(key).map(|_| node.get_double(key, 0.0));
     // astLoadFrame passes each value it reads through the class's setter,

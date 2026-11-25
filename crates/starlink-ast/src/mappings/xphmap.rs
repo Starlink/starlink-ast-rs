@@ -393,7 +393,7 @@ impl Mapping for XphMap {
         if !first.equal(oriented(imap1 + 1).as_ref()) {
             return None;
         }
-        ctx.replace_pair_with(imap1, Box::new(UnitMap::new(2)), false);
+        ctx.replace_pair_with(imap1, Box::new(UnitMap::within_limit(2)), false);
         Some(imap1)
     }
 

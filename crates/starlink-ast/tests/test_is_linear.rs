@@ -28,9 +28,13 @@ fn is_linear_matches_the_c_library() {
     .unwrap();
     let perm = || PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
     let cases: Vec<(&str, Box<dyn Mapping>, bool)> = vec![
-        ("unitmap", Box::new(UnitMap::new(2)), true),
+        ("unitmap", Box::new(UnitMap::new(2).unwrap()), true),
         ("zoommap", Box::new(ZoomMap::new(2, 2.0).unwrap()), true),
-        ("shiftmap", Box::new(ShiftMap::new(vec![1.0, 2.0])), true),
+        (
+            "shiftmap",
+            Box::new(ShiftMap::new(vec![1.0, 2.0]).unwrap()),
+            true,
+        ),
         (
             "winmap",
             Box::new(WinMap::new(&[1.0, 2.0], &[2.0, 3.0]).unwrap()),
@@ -64,7 +68,7 @@ fn is_linear_matches_the_c_library() {
             Box::new(
                 CmpMap::new(
                     Box::new(ZoomMap::new(2, 2.0).unwrap()),
-                    Box::new(ShiftMap::new(vec![1.0, 2.0])),
+                    Box::new(ShiftMap::new(vec![1.0, 2.0]).unwrap()),
                     Composition::Series,
                 )
                 .unwrap(),

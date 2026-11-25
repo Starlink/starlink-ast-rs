@@ -26,3 +26,14 @@ pub const BAD_VALUE: f64 = -f64::MAX;
 // The C build's `PACKAGE_STRING`, from `version.number` in that release.
 #[doc(alias = "astVersion")]
 pub const PACKAGE_STRING: &str = "ast 9.5.0";
+
+/// The largest number of inputs or outputs a Mapping, or axes a Frame, may
+/// have.
+///
+/// A constructor given more, or a dump that describes more, fails with
+/// `ErrorCode::Badni`, `ErrorCode::Badno` or `ErrorCode::Naxin`.
+///
+/// # See also
+///
+/// - `AST__MXAXES`, the C constant with the same value.
+pub const MXAXES: usize = 65536;

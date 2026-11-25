@@ -837,11 +837,17 @@ impl FrameSet {
     fn append_axes(&mut self, frame: DynFrame) -> AstResult<()> {
         let nextra = frame.naxes();
 
-        // Replace every Frame with CmpFrame(original, frame).
+        // Replace every Frame with CmpFrame(original, frame), once C's
+        // check has passed for them all.
+        for orig in &self.frames {
+            super::CmpFrame::check_naxes(orig.naxes() + nextra)?;
+        }
         let old_frames = std::mem::take(&mut self.frames);
         self.frames = old_frames
             .into_iter()
-            .map(|orig| -> DynFrame { Box::new(super::CmpFrame::new(orig, frame.snapshot())) })
+            .map(|orig| -> DynFrame {
+                Box::new(super::CmpFrame::within_limit(orig, frame.snapshot()))
+            })
             .collect();
 
         // Replace every edge Mapping with a parallel CmpMap(original,
@@ -851,7 +857,7 @@ impl FrameSet {
         for edge in old_edges {
             let cmp = CmpMap::new(
                 edge.mapping,
-                Box::new(UnitMap::new(nextra)),
+                Box::new(UnitMap::new(nextra)?),
                 Composition::Parallel,
             )?;
             let mapping = <dyn Mapping>::simplify(&cmp)?;
@@ -1198,7 +1204,7 @@ impl FrameSet {
                 return Ok(map);
             }
             let naxes = self.frames[from_idx].naxes();
-            return Ok(Box::new(UnitMap::new(naxes)));
+            return Ok(Box::new(UnitMap::new(naxes)?));
         }
         let from_node = self.node_map[from_idx];
         let to_node = self.node_map[to_idx];
@@ -1662,7 +1668,7 @@ impl FrameSet {
     /// - Passes on the error of permuting the Frame or of the remapping.
     pub fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         let naxes = self.current().naxes();
-        super::validate_permutation(perm, naxes)?;
+        super::check_perm_axes(super::class_name(self.current()), perm, naxes)?;
 
         // Permute the current frame's internal axis data.
         self.frames[self.current_idx].perm_axes(perm)?;

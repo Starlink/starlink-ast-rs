@@ -178,8 +178,12 @@ mod tests {
         let pixel = BasicFrameBuilder::new(2).domain("GRID").build().unwrap();
         let world = BasicFrameBuilder::new(2).domain("WORLD").build().unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(world))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(world),
+        )
+        .unwrap();
         let dim = vec![Some(100.0), Some(100.0)];
         let planes =
             collect_plane_stores(&fs, &dim, Encoding::FitsWcs, WriteAttrs::default()).unwrap();
@@ -195,11 +199,19 @@ mod tests {
         alt.set_ident("A");
 
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(primary))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(primary),
+        )
+        .unwrap();
         // After add_frame, current == newly added frame (frame 2).
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(alt))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(alt),
+        )
+        .unwrap();
         // Reset current to primary (frame 2).
         fs.set_current(FrameRef::Index(2)).unwrap();
 

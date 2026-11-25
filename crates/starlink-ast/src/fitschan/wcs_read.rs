@@ -892,7 +892,7 @@ fn build_pixel_to_world(
 
     let map2: DynMapping = match celestial {
         Some(cel) => cel.mapping,
-        None => Box::new(UnitMap::new(naxis)),
+        None => Box::new(UnitMap::new(naxis)?),
     };
     let mut spectral_maps: Vec<Option<DynMapping>> = (0..naxis).map(|_| None).collect();
     for spec in spectral {
@@ -901,18 +901,18 @@ fn build_pixel_to_world(
     let map3: DynMapping = parallel_per_axis(
         spectral_maps
             .into_iter()
-            .map(|m| Ok(m.unwrap_or_else(|| Box::new(UnitMap::new(1)) as DynMapping))),
+            .map(|m| Ok(m.unwrap_or_else(|| Box::new(UnitMap::within_limit(1)) as DynMapping))),
     )?;
     let map4: DynMapping = if claimed.contains(&false) {
         parallel_per_axis((0..naxis).map(|i| {
             if claimed[i] {
-                Ok(Box::new(UnitMap::new(1)) as DynMapping)
+                Ok(Box::new(UnitMap::within_limit(1)) as DynMapping)
             } else {
                 others_axis_map(store, i)
             }
         }))?
     } else {
-        Box::new(UnitMap::new(naxis))
+        Box::new(UnitMap::new(naxis)?)
     };
 
     let mut result: DynMapping = pixel_to_iwc;
@@ -948,12 +948,14 @@ fn others_axis_map(store: &FitsStore, axis: usize) -> AstResult<DynMapping> {
     let crval = store.crval[axis].unwrap_or(0.0);
     let ctype = store.ctype[axis].as_deref().unwrap_or("");
     if ctype.len() > 3 && ctype.ends_with("-LOG") {
-        return Ok(wcs_spectral::log_wcs(crval).unwrap_or_else(|| Box::new(UnitMap::new(1))));
+        return Ok(
+            wcs_spectral::log_wcs(crval).unwrap_or_else(|| Box::new(UnitMap::within_limit(1)))
+        );
     }
     Ok(if crval != 0.0 {
-        Box::new(ShiftMap::new(vec![crval]))
+        Box::new(ShiftMap::new(vec![crval])?)
     } else {
-        Box::new(UnitMap::new(1))
+        Box::new(UnitMap::within_limit(1))
     })
 }
 
@@ -1221,7 +1223,7 @@ fn morph_in_sub_frame(
     // attributes, ActiveUnit among them, onto the Frame it makes.
     let pick: Vec<usize> = others.iter().map(|&i| i as usize + 1).collect();
     let (ofrm, _) = crate::frames::pick_axes(frame.as_ref(), &pick)?;
-    let mut cmp = CmpFrame::new(ofrm, new_frame);
+    let mut cmp = CmpFrame::new(ofrm, new_frame)?;
 
     // Build the external→internal permutation (1-based for `perm_axes`).
     // Built (internal) order is: others at 0..n_others, then new_axes at the

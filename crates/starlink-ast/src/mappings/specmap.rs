@@ -1495,7 +1495,7 @@ pub(crate) fn spec_map_merge(
     }
 
     let new: DynMapping = if unit {
-        Box::new(UnitMap::new(nin))
+        Box::new(UnitMap::within_limit(nin))
     } else {
         // C rebuilds the merged SpecMap via `AddSpecCvt` for each surviving
         // step, which blanks the cached (pre-calculated) argument slots.
@@ -1684,7 +1684,7 @@ impl Mapping for SpecMap {
         simplify_steps(&mut steps);
 
         if steps.is_empty() {
-            Some(Box::new(UnitMap::new(self.nin)))
+            Some(Box::new(UnitMap::within_limit(self.nin)))
         } else {
             // C rebuilds via `AddSpecCvt`, blanking cached argument slots.
             reset_cached_args(&mut steps);

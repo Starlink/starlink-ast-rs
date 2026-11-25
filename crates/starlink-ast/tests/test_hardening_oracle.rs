@@ -56,36 +56,6 @@ enum Why {
 const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     (
         "testcorruptinput",
-        9,
-        Why::Differs("Task 3: AST__MXAXES (b3a1143b)"),
-    ),
-    (
-        "testcorruptinput",
-        10,
-        Why::Differs("Task 3: AST__MXAXES (b3a1143b)"),
-    ),
-    (
-        "testcorruptinput",
-        11,
-        Why::Crashes("Task 3: AST__MXAXES (b3a1143b)"),
-    ),
-    (
-        "testcorruptinput",
-        12,
-        Why::Differs("Task 3: AST__MXAXES (b3a1143b)"),
-    ),
-    (
-        "testcorruptinput",
-        13,
-        Why::Crashes("Task 3: AST__MXAXES (b3a1143b)"),
-    ),
-    (
-        "testcorruptinput",
-        14,
-        Why::Differs("Task 3: AST__MXAXES (b3a1143b)"),
-    ),
-    (
-        "testcorruptinput",
         16,
         Why::Differs("Task 4: Frame components and permutations (1e1ae0fe, 80e779ba, afd8c283)"),
     ),
@@ -106,18 +76,8 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     ),
     (
         "testcorruptinput",
-        20,
-        Why::Differs("Task 4: Frame components and permutations (1e1ae0fe, 80e779ba, afd8c283)"),
-    ),
-    (
-        "testcorruptinput",
         21,
         Why::Differs("Task 4: Frame components and permutations (1e1ae0fe, 80e779ba, afd8c283)"),
-    ),
-    (
-        "testcorruptinput",
-        22,
-        Why::Differs("Task 3: a component of the wrong class (a247426e)"),
     ),
     (
         "testcorruptinput",
@@ -823,26 +783,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         "testloaderhardening",
         108,
         Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testframeperm",
-        0,
-        Why::Differs("Task 4: Frame permutations (80e779ba, afd8c283, 7e48793d)"),
-    ),
-    (
-        "testframeperm",
-        1,
-        Why::Differs("Task 4: Frame permutations (80e779ba, afd8c283, 7e48793d)"),
-    ),
-    (
-        "testframeperm",
-        2,
-        Why::Differs("Task 4: Frame permutations (80e779ba, afd8c283, 7e48793d)"),
-    ),
-    (
-        "testframeperm",
-        3,
-        Why::Differs("Task 4: Frame permutations (80e779ba, afd8c283, 7e48793d)"),
     ),
     (
         "testframeperm",

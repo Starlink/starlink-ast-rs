@@ -49,7 +49,7 @@ fn run(current: usize, link: &str, variant: &str) -> (String, [f64; 2], String, 
     let mut outer = FrameSet::new(frame("GRID"));
     let mut inner = FrameSet::new(frame("A"));
     let ab: DynMapping = match link {
-        "shift" => Box::new(ShiftMap::new(vec![10.0])),
+        "shift" => Box::new(ShiftMap::new(vec![10.0]).unwrap()),
         _ => Box::new(MathMap::new(1, 1, &["y=x+10"], &["x=y-10"]).unwrap()),
     };
     inner.add_frame(FrameRef::Base, ab, frame("B")).unwrap();
@@ -62,8 +62,8 @@ fn run(current: usize, link: &str, variant: &str) -> (String, [f64; 2], String, 
         .unwrap();
     outer.set_current(FrameRef::Index(current)).unwrap();
     let vmap: DynMapping = match variant {
-        "unit" => Box::new(UnitMap::new(1)),
-        "shift" => Box::new(ShiftMap::new(vec![5.0])),
+        "unit" => Box::new(UnitMap::new(1).unwrap()),
+        "shift" => Box::new(ShiftMap::new(vec![5.0]).unwrap()),
         _ => Box::new(ZoomMap::new(1, 3.0).unwrap()),
     };
     outer.add_variant(Some(vmap), "V2").unwrap();

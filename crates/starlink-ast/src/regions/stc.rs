@@ -1235,7 +1235,7 @@ impl<K: StcKind> Mapping for Stc<K> {
     // region.c `RemoveRegions`: a Region becomes its Frame, which as a
     // Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<DynMapping> {
-        Some(Box::new(UnitMap::new(self.nin())))
+        Some(Box::new(UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.

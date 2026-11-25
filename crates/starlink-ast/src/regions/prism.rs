@@ -164,7 +164,7 @@ impl PrismBuilder {
         // Create a CmpFrame combining the frames of both sub-regions.
         let frame1 = self.region1.get_region_frame();
         let frame2 = self.region2.get_region_frame();
-        let cmpframe = CmpFrame::new(frame1, frame2);
+        let cmpframe = CmpFrame::new(frame1, frame2)?;
 
         // Prism has no defining points of its own (geometry is in sub-regions).
         let points = Vec::new();
@@ -1206,7 +1206,7 @@ impl Mapping for Prism {
     /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
     /// Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {
-        Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
+        Some(Box::new(crate::mappings::UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.

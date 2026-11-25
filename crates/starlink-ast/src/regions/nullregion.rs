@@ -459,9 +459,9 @@ impl Region for NullRegion {
         let bfrm_this = self.data.frameset.base().snapshot();
         let bfrm_reg = other_reg.get_region_frameset().base().snapshot();
         let bfrm = if intfirst {
-            crate::frames::CmpFrame::new(bfrm_this, bfrm_reg)
+            crate::frames::CmpFrame::new(bfrm_this, bfrm_reg)?
         } else {
-            crate::frames::CmpFrame::new(bfrm_reg, bfrm_this)
+            crate::frames::CmpFrame::new(bfrm_reg, bfrm_this)?
         };
 
         // NullRegion has no defining points.
@@ -504,9 +504,9 @@ impl Region for NullRegion {
         let cfrm_this = self.data.frameset.current().snapshot();
         let cfrm_reg = other_reg.get_region_frame();
         let cfrm = if intfirst {
-            crate::frames::CmpFrame::new(cfrm_this, cfrm_reg)
+            crate::frames::CmpFrame::new(cfrm_this, cfrm_reg)?
         } else {
-            crate::frames::CmpFrame::new(cfrm_reg, cfrm_this)
+            crate::frames::CmpFrame::new(cfrm_reg, cfrm_this)?
         };
 
         // The two base->current Mappings, in parallel (nullregion.c:724-735).
@@ -688,7 +688,7 @@ impl Mapping for NullRegion {
     /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
     /// Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {
-        Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
+        Some(Box::new(crate::mappings::UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.

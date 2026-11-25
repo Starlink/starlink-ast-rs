@@ -478,7 +478,7 @@ Assuming you have obtained a WCS calibration for your original image in the form
 use starlink_ast::frames::{FrameRef, FrameSet, SkyFrame, SkySystem};
 # use starlink_ast::mappings::{Mapping, ShiftMap};
 # let wcsinfo1 = FrameSet::new(Box::new(SkyFrame::new(SkySystem::Fk5)));
-# let newmap = ShiftMap::new(vec![1.0, 2.0]);
+# let newmap = ShiftMap::new(vec![1.0, 2.0]).unwrap();
 
 // If necessary, make a copy of the WCS calibration, since we are about
 // to alter it.

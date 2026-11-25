@@ -1200,7 +1200,7 @@ impl Mapping for SplineMap {
                     return None;
                 }
             }
-            return Some(Box::new(UnitMap::new(2)));
+            return Some(Box::new(UnitMap::within_limit(2)));
         }
 
         None

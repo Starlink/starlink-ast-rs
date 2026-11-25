@@ -117,7 +117,7 @@ fn testmap(map: &dyn Mapping, itest: i32, tol: f64) {
 
 #[test]
 fn unitmap() {
-    testmap(&UnitMap::new(2), 1, 0.5);
+    testmap(&UnitMap::new(2).unwrap(), 1, 0.5);
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn tranmap() {
 
 #[test]
 fn cmpmap_3d() {
-    let c1: DynMapping = Box::new(ShiftMap::new(vec![-1.0]));
+    let c1: DynMapping = Box::new(ShiftMap::new(vec![-1.0]).unwrap());
     let c2: DynMapping = Box::new(MatrixMap::new(array![[1.0, 2.0], [-2.0, 3.0]]).unwrap());
     let c3 = CmpMap::new(c1, c2, Composition::Parallel).unwrap();
     let c1: DynMapping = Box::new(PermMap::new(&[3, 2, 1], &[3, 2, 1], &[0.0]).unwrap());

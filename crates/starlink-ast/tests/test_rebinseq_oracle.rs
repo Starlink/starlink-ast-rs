@@ -29,10 +29,10 @@ use starlink_ast::pixel::RebinValue;
 
 fn mapping(name: &str) -> DynMapping {
     match name {
-        "unit2" => Box::new(UnitMap::new(2)),
-        "shift_half" => Box::new(ShiftMap::new(vec![0.5, -0.25])),
-        "shift_whole" => Box::new(ShiftMap::new(vec![1.0, -2.0])),
-        "far" => Box::new(ShiftMap::new(vec![1000.0, 1000.0])),
+        "unit2" => Box::new(UnitMap::new(2).unwrap()),
+        "shift_half" => Box::new(ShiftMap::new(vec![0.5, -0.25]).unwrap()),
+        "shift_whole" => Box::new(ShiftMap::new(vec![1.0, -2.0]).unwrap()),
+        "far" => Box::new(ShiftMap::new(vec![1000.0, 1000.0]).unwrap()),
         "zoom2" => Box::new(ZoomMap::new(2, 1.7).unwrap()),
         "shrink2" => Box::new(ZoomMap::new(2, 0.45).unwrap()),
         "perm" => Box::new(PermMap::new(&[2, 1], &[2, 1], &[]).unwrap()),
@@ -279,7 +279,7 @@ impl ErrorCase<'_> {
         let mut weights = vec![5.0; nw];
         let mut nused: i64 = 9;
         let status = match rebin_seq(
-            &UnitMap::new(2),
+            &UnitMap::new(2).unwrap(),
             Some(&RebinInput {
                 lbnd: &self.lbnd_in[..self.ndim_in],
                 ubnd: &u2[..self.ndim_in],

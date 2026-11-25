@@ -20,6 +20,8 @@ mod test_channel;
 mod test_channel_dump_oracle;
 #[path = "../test_channel_read_oracle.rs"]
 mod test_channel_read_oracle;
+#[path = "../test_corruptinput.rs"]
+mod test_corruptinput;
 #[path = "../test_deferred_fixtures.rs"]
 mod test_deferred_fixtures;
 #[path = "../test_fitstable.rs"]

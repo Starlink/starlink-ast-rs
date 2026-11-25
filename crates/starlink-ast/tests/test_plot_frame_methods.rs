@@ -59,7 +59,8 @@ fn frame(id: &str) -> Box<dyn Frame> {
             let mut f = CmpFrame::new(
                 Box::new(SkyFrame::unset_system()),
                 Box::new(time_frame("time_iso")),
-            );
+            )
+            .unwrap();
             f.set_digits(10).unwrap();
             if id == "cmp_perm" {
                 f.perm_axes(&[3, 1, 2]).unwrap();
@@ -72,8 +73,12 @@ fn frame(id: &str) -> Box<dyn Frame> {
         )),
         "frameset_sky" => {
             let mut fs = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build().unwrap()));
-            fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), frame("sky_fmt"))
-                .unwrap();
+            fs.add_frame(
+                FrameRef::Base,
+                Box::new(UnitMap::new(2).unwrap()),
+                frame("sky_fmt"),
+            )
+            .unwrap();
             Box::new(fs)
         }
         "box_time_iso" => Box::new(

@@ -118,7 +118,7 @@ fn sky_frame() {
 #[test]
 fn cmp_frame() {
     let one = || -> DynFrame { Box::new(BasicFrameBuilder::new(1).build().unwrap()) };
-    let frame = CmpFrame::new(one(), one());
+    let frame = CmpFrame::new(one(), one()).unwrap();
     geometry(
         "cmp",
         &frame,

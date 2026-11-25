@@ -773,7 +773,7 @@ impl Mapping for LutMap {
                 }
                 probe.invert();
                 if self.applied_equal(&probe, eff_inv) {
-                    ctx.replace_pair_with(ilo, Box::new(UnitMap::new(1)), false);
+                    ctx.replace_pair_with(ilo, Box::new(UnitMap::within_limit(1)), false);
                     // C reports `where`, not `ilo`, even when the pair it
                     // replaced started at `where - 1` (lutmap.c:1234).
                     return Some(where_);

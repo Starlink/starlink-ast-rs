@@ -106,6 +106,7 @@ impl UnitNormMap {
     #[doc(alias = "astUnitNormMap")]
     pub fn new(centre: impl Into<Vec<f64>>) -> AstResult<Self> {
         let centre = centre.into();
+        crate::mappings::check_init_mapping("UnitNormMap", centre.len(), centre.len() + 1)?;
         if centre.is_empty() {
             return Err(AstError::new(
                 ErrorCode::Badsm,
@@ -461,7 +462,7 @@ impl Mapping for UnitNormMap {
                 } else {
                     self.ncoord()
                 };
-                return Some(Box::new(UnitMap::new(n)));
+                return Some(Box::new(UnitMap::within_limit(n)));
             }
 
             // Different centers: forward + inverse = ShiftMap
@@ -473,7 +474,7 @@ impl Mapping for UnitNormMap {
                     .zip(other_unm.centre.iter())
                     .map(|(&a, &b)| b - a)
                     .collect();
-                return Some(Box::new(ShiftMap::new(shift)));
+                return Some(Box::new(ShiftMap::within_limit(shift)));
             }
 
             return None;

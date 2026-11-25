@@ -509,7 +509,7 @@ fn simplify_invert_normalize_fixture_roundtrip() {
 #[test]
 fn decompose_gives_components_and_invert_values_like_c() {
     use starlink_ast::mappings::ShiftMap;
-    let mut shift = ShiftMap::new(vec![1.0]);
+    let mut shift = ShiftMap::new(vec![1.0]).unwrap();
     shift.invert();
     let mut map = TranMap::new(Box::new(ZoomMap::new(1, 2.0).unwrap()), Box::new(shift)).unwrap();
     let d = map.decompose();
@@ -568,7 +568,11 @@ fn failing_component() -> CmpMap {
 #[test]
 fn an_error_simplifying_a_component_is_passed_up() {
     use starlink_ast::mappings::UnitMap;
-    let map = TranMap::new(Box::new(failing_component()), Box::new(UnitMap::new(2))).unwrap();
+    let map = TranMap::new(
+        Box::new(failing_component()),
+        Box::new(UnitMap::new(2).unwrap()),
+    )
+    .unwrap();
     let err = <dyn Mapping>::simplify(&map).unwrap_err();
     assert_eq!(err.code(), starlink_ast::error::ErrorCode::Wcspa);
 }
@@ -580,12 +584,12 @@ fn an_error_merging_two_tranmaps_is_passed_up() {
     use starlink_ast::mappings::{PermMap, UnitMap, WcsMap, WcsProjection};
     let constants = TranMap::new(
         Box::new(PermMap::new(&[0, 0], &[-1, -2], &[0.1, 0.2]).unwrap()),
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
     )
     .unwrap();
     let conic = TranMap::new(
         Box::new(WcsMap::new(2, WcsProjection::Coe, 1, 2).unwrap()),
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
     )
     .unwrap();
     let map = CmpMap::new(Box::new(constants), Box::new(conic), Composition::Series).unwrap();
@@ -601,12 +605,12 @@ fn a_merged_tranmap_keeps_the_order_of_the_inverses() {
     use ndarray::array;
     use starlink_ast::mappings::{MatrixMap, UnitMap};
     let lower = TranMap::new(
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         Box::new(MatrixMap::new(array![[1.0, 2.0], [0.0, 1.0]]).unwrap()),
     )
     .unwrap();
     let higher = TranMap::new(
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         Box::new(MatrixMap::new(array![[1.0, 0.0], [3.0, 1.0]]).unwrap()),
     )
     .unwrap();

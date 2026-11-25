@@ -42,7 +42,7 @@ fn tran1_applies_the_inverse_transform() {
 fn tran1_agrees_with_the_pointset_path() {
     // The convenience method must be a pure shorthand: same numbers as
     // building the one-column PointSet by hand.
-    let shift = ShiftMap::new([3.25]);
+    let shift = ShiftMap::new([3.25]).unwrap();
     let xin = [0.0, 1.5, -2.75, 1e9];
 
     let via_tran1 = shift.tran1(&xin, true).expect("tran1 succeeds");
@@ -104,7 +104,7 @@ fn tran1_rejects_a_mapping_of_the_wrong_arity() {
 
 #[test]
 fn tran2_applies_both_axes() {
-    let shift = ShiftMap::new([1.0, -2.0]);
+    let shift = ShiftMap::new([1.0, -2.0]).unwrap();
     let (x, y) = shift
         .tran2(&[0.0, 10.0], &[0.0, 10.0], true)
         .expect("tran2 succeeds");
@@ -114,7 +114,7 @@ fn tran2_applies_both_axes() {
 
 #[test]
 fn tran2_agrees_with_the_pointset_path() {
-    let shift = ShiftMap::new([0.5, 7.0]);
+    let shift = ShiftMap::new([0.5, 7.0]).unwrap();
     let xin = [1.0, 2.0, 3.0];
     let yin = [-1.0, 0.0, 1.0];
 
@@ -145,7 +145,7 @@ fn tran2_respects_axis_order() {
 fn tran2_rejects_mismatched_input_lengths() {
     // Rust-only condition: C takes one npoint for both arrays and so cannot
     // express a mismatch.
-    let unit = UnitMap::new(2);
+    let unit = UnitMap::new(2).unwrap();
     let err = unit
         .tran2(&[1.0, 2.0], &[1.0], true)
         .expect_err("mismatched lengths must be rejected");
@@ -159,7 +159,7 @@ fn tran2_rejects_mismatched_input_lengths() {
 
 #[test]
 fn tran2_rejects_a_mapping_of_the_wrong_arity() {
-    let unit1d = UnitMap::new(1);
+    let unit1d = UnitMap::new(1).unwrap();
     let err = unit1d
         .tran2(&[1.0], &[1.0], true)
         .expect_err("a 1-D Mapping cannot serve tran2");
@@ -204,7 +204,7 @@ fn tran1_and_tran2_are_available_through_a_trait_object() {
     let boxed: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 4.0).expect("1-D ZoomMap"));
     assert_eq!(boxed.tran1(&[2.0], true).expect("tran1"), vec![8.0]);
 
-    let boxed2: Box<dyn Mapping> = Box::new(ShiftMap::new([1.0, 1.0]));
+    let boxed2: Box<dyn Mapping> = Box::new(ShiftMap::new([1.0, 1.0]).unwrap());
     let (x, y) = boxed2.tran2(&[0.0], &[0.0], true).expect("tran2");
     assert_eq!((x, y), (vec![1.0], vec![1.0]));
 }

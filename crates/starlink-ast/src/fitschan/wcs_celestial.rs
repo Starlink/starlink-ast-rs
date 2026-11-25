@@ -368,8 +368,8 @@ fn build_unprojected_mapping(
     }
     let winmap = WinMap::from_corners(&ina, &inb, &outa, &outb)?;
     let step1 = CmpMap::new(
-        Box::new(UnitMap::new(naxis)),
-        Box::new(UnitMap::new(naxis)),
+        Box::new(UnitMap::new(naxis)?),
+        Box::new(UnitMap::new(naxis)?),
         Composition::Series,
     )?;
     let full = CmpMap::new(Box::new(step1), Box::new(winmap), Composition::Series)?;
@@ -961,7 +961,7 @@ fn apply_ref_overrides(
         zoom[[lon_axis, lon_axis]] = deg2rad;
         zoom[[lat_axis, lat_axis]] = deg2rad;
         let zoom = crate::mappings::MatrixMap::new(zoom)?;
-        let map = std::mem::replace(&mut tab.map, Box::new(UnitMap::new(naxis)));
+        let map = std::mem::replace(&mut tab.map, Box::new(UnitMap::new(naxis)?));
         tab.map = Box::new(CmpMap::new(map, Box::new(zoom), Composition::Series)?);
         if let Some((lon, lat)) = ref_pos {
             let mut ina = vec![0.0; naxis];
@@ -1079,7 +1079,7 @@ fn embed_celestial_in_naxis(
     // Stages 4/5: place a UnitMap in parallel for the non-celestial axes,
     // but only when there are any (fitschan.c:38509 `if( nax_rem > 0 )`).
     let core: DynMapping = if naxis > 2 {
-        let unit_rest = UnitMap::new(naxis - 2);
+        let unit_rest = UnitMap::within_limit(naxis - 2);
         Box::new(CmpMap::new(inner, Box::new(unit_rest), Composition::Parallel).ok()?)
     } else {
         inner

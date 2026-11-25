@@ -2141,7 +2141,7 @@ impl SpecFrame {
         // system, so bracket it with Mappings from the target's Unit and to
         // the result's (specframe.c:2891-2934).
         let specmap: DynMapping = if specmap.is_empty() {
-            Box::new(UnitMap::new(1))
+            Box::new(UnitMap::new(1)?)
         } else {
             Box::new(specmap)
         };
@@ -2184,7 +2184,7 @@ impl SpecFrame {
         // prepend a ShiftMap by the target origin (specframe.c:2937-2945).
         let target_origin = target.spec_origin_cur()?;
         if target_origin != 0.0 {
-            let sm = ShiftMap::new(vec![target_origin]);
+            let sm = ShiftMap::new(vec![target_origin])?;
             mapping = Box::new(CmpMap::new(Box::new(sm), mapping, Composition::Series)?);
         }
 
@@ -2207,7 +2207,7 @@ impl SpecFrame {
             result.spec_origin_cur()?
         };
         if result_origin != 0.0 {
-            let sm = ShiftMap::new(vec![-result_origin]);
+            let sm = ShiftMap::new(vec![-result_origin])?;
             mapping = Box::new(CmpMap::new(mapping, Box::new(sm), Composition::Series)?);
         }
 

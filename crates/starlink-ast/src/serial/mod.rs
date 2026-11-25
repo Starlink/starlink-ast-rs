@@ -299,14 +299,32 @@ pub(crate) struct MappingBaseAttrs {
 
 /// Read common Mapping attributes from the Mapping part of a description
 /// (mapping.c `astLoadMapping` reads them through astReadClassData).
+///
+/// As in C, a negative Nin or Nout is 0, a missing Nout is Nin, and a number
+/// over [`MXAXES`](crate::constants::MXAXES) records C's error for the load
+/// and is taken, with the other, as 0, so that nothing is sized from it.
 pub(crate) fn read_mapping_base(whole: &Node) -> MappingBaseAttrs {
     let node = &whole.section("Mapping");
-    let nin = node.get_int("Nin", 0) as usize;
-    let nout_raw = node.get_int("Nout", 0);
-    let nout = if nout_raw <= 0 {
-        nin
+    let nin = usize::try_from(node.get_int("Nin", 0)).unwrap_or(0);
+    let nout = usize::try_from(node.get_int("Nout", nin as i64)).unwrap_or(0);
+    let limit = crate::constants::MXAXES;
+    let (nin, nout) = if nin > limit || nout > limit {
+        let (code, which, n) = if nin > limit {
+            (ErrorCode::Badni, "input", nin)
+        } else {
+            (ErrorCode::Badno, "output", nout)
+        };
+        node::record_load_error(AstError::new(
+            code,
+            format!(
+                "astLoadMapping({}): Bad number of {which} coordinates ({n}) read from the \
+                 dump - this number should not exceed {limit}.",
+                whole.class
+            ),
+        ));
+        (0, 0)
     } else {
-        nout_raw as usize
+        (nin, nout)
     };
     MappingBaseAttrs {
         nin,
@@ -1152,7 +1170,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         let naxes = frame.naxes();
         let current_snap = frame.snapshot();
         let mut fs = FrameSet::new(frame);
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)?), current_snap)
             .expect("adding current frame to region FrameSet");
         (fs, false, true, naxes)
     } else if let Some(fs_node) = node.get_object("FrmSet") {
@@ -1172,7 +1190,7 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         );
         let current_snap = frame.snapshot();
         let mut fs = FrameSet::new(frame);
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(nax)), current_snap)
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(nax)?), current_snap)
             .expect("adding current frame to dummy region FrameSet");
         (fs, true, false, nax)
     };
@@ -2629,7 +2647,19 @@ pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
 /// for the innermost such Object.
 pub(crate) fn load_object<T>(node: &Node, load: impl FnOnce() -> AstResult<T>) -> AstResult<T> {
     let outer = node::take_read_error();
-    let result = load();
+    // object.c `astLoadObject`, which every loader runs first, reads the
+    // Object's associated KeyMap and checks it is one.
+    let object_part = node.section("Object");
+    let result = match check_loaded(
+        object_part.get_object("KeyMap"),
+        "KeyMap",
+        false,
+        &node.class,
+        "associated KeyMap",
+    ) {
+        Ok(_) => load(),
+        Err(e) => Err(e),
+    };
     let recorded = node::take_read_error();
     node::restore_read_error(outer);
     let result = match recorded {
@@ -2640,6 +2670,49 @@ pub(crate) fn load_object<T>(node: &Node, load: impl FnOnce() -> AstResult<T>) -
         (Some(name), Err(e)) => Err(e.in_object_value(name)),
         (_, result) => result,
     }
+}
+
+/// C's `astCheckLoaded` (object.c) for the component a loader reads as the
+/// value of item `item` of an object of class `name`: `node`, read as an
+/// object of any class, must be one of class `class`, and must be there
+/// if `needed`. Gives the component, or `None` when it is not there.
+pub(crate) fn check_loaded(
+    node: Option<&Node>,
+    class: &str,
+    needed: bool,
+    name: &str,
+    item: &str,
+) -> AstResult<Option<AnyObject>> {
+    let Some(node) = node else {
+        if needed {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!("astLoad({name}): The {item} is missing from the {name} read."),
+            ));
+        }
+        return Ok(None);
+    };
+    let object = any_object_from_node(node)?;
+    let is_a = match class {
+        "Mapping" => object.as_mapping().is_some(),
+        "Frame" => object.as_frame().is_some(),
+        "Region" => object.as_region().is_some(),
+        "KeyMap" => matches!(
+            object,
+            AnyObject::KeyMap(_) | AnyObject::Table(_) | AnyObject::FitsTable(_)
+        ),
+        _ => node.class == class,
+    };
+    if !is_a {
+        return Err(AstError::new(
+            ErrorCode::Lderr,
+            format!(
+                "astLoad({name}): The {item} read for a {name} is a {}, which is not a {class}.",
+                node.class
+            ),
+        ));
+    }
+    Ok(Some(object))
 }
 
 fn any_object_from_node_inner(node: &Node) -> AstResult<AnyObject> {

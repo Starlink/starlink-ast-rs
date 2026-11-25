@@ -56,6 +56,7 @@ impl ZoomMap {
     /// `ErrorCode::Zoomi` if `factor` is zero.
     #[doc(alias = "astZoomMap")]
     pub fn new(ncoord: usize, factor: f64) -> AstResult<Self> {
+        crate::mappings::check_init_mapping("ZoomMap", ncoord, ncoord)?;
         if factor == 0.0 {
             return Err(AstError::new(
                 ErrorCode::Zoomi,
@@ -337,7 +338,7 @@ impl Mapping for ZoomMap {
             };
             let product = f1 * f2;
             if ast_equal(product, 1.0) {
-                return Some(Box::new(UnitMap::new(self.ncoord)));
+                return Some(Box::new(UnitMap::within_limit(self.ncoord)));
             }
             return ZoomMap::new(self.ncoord, product)
                 .ok()

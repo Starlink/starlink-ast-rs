@@ -316,7 +316,7 @@ fn zpx_mapping(
     // With no correction surface on either axis there is no distortion to
     // apply (fitschan.c:41784).
     if coeffs[0].is_empty() && coeffs[1].is_empty() {
-        return Ok(Some(Box::new(UnitMap::new(naxes))));
+        return Ok(Some(Box::new(UnitMap::within_limit(naxes))));
     }
 
     // Store the coefficients in an inverted TPN WcsMap. It corrects the ZPN
@@ -434,7 +434,7 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
     let inverse_terms = build_sip_inverse_terms(store);
 
     if forward_terms.is_empty() && inverse_terms.is_empty() {
-        return Ok(Box::new(UnitMap::new(naxis)));
+        return Ok(Box::new(UnitMap::new(naxis)?));
     }
 
     let inv = if inverse_terms.is_empty() {
@@ -481,7 +481,7 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
     } else {
         // SIP applies only to the first 2 axes; other axes pass through.
         // Compose PolyMap (axes 1,2) in parallel with UnitMap (remaining axes).
-        let unit = UnitMap::new(naxis - 2);
+        let unit = UnitMap::new(naxis - 2)?;
         let cmp = CmpMap::new(Box::new(polymap), Box::new(unit), Composition::Parallel)?;
         Ok(Box::new(cmp))
     }

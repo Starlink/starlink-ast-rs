@@ -81,7 +81,7 @@ fn convert_domain_gate_blocks_mismatch() {
 fn convert_basic_cmp_permmap() {
     let sf = SkyFrame::new(SkySystem::Fk5);
     let df = SpecFrame::new(SpecSystem::Freq);
-    let mut cf = CmpFrame::new(Box::new(df), Box::new(sf));
+    let mut cf = CmpFrame::new(Box::new(df), Box::new(sf)).unwrap();
 
     // Domain=NOTSKY blocks the conversion in both directions.
     let mut bf_notsky = BasicFrameBuilder::new(2).domain("NOTSKY").build().unwrap();
@@ -123,7 +123,7 @@ fn convert_basic_cmp_permmap() {
 fn convert_sky_cmp_permmap() {
     let mut sf = SkyFrame::new(SkySystem::Fk5);
     let df = SpecFrame::new(SpecSystem::Freq);
-    let mut cf = CmpFrame::new(Box::new(df), Box::new(sf.clone()));
+    let mut cf = CmpFrame::new(Box::new(df), Box::new(sf.clone())).unwrap();
 
     let fs = sf
         .convert_to(&mut cf, &[])
@@ -157,7 +157,7 @@ fn convert_sky_cmp_permmap() {
 fn find_frame_cmp_needs_widened_axes() {
     let mut sf = SkyFrame::new(SkySystem::Fk5);
     let df = SpecFrame::new(SpecSystem::Freq);
-    let mut cf = CmpFrame::new(Box::new(df), Box::new(sf.clone()));
+    let mut cf = CmpFrame::new(Box::new(df), Box::new(sf.clone())).unwrap();
 
     // astFindFrame(sf, cf): a CmpFrame template against a SkyFrame target
     // is found (the SkyFrame supplies a sky axis pair).

@@ -198,7 +198,7 @@ fn build_spectral_axis(
     let crval = store.crval[axis].unwrap_or(0.0);
     let mut warnings: Warnings = epoch_warnings;
     let mapping: Option<DynMapping> = if algcode.is_empty() {
-        Some(Box::new(ShiftMap::new(vec![crval])))
+        Some(Box::new(ShiftMap::new(vec![crval])?))
     } else if algcode == "-LOG" {
         log_wcs(crval)
     } else if is_nonlin_x2p(&algcode) {
@@ -479,7 +479,7 @@ fn grism_spec_wcs(
     // Build map2 = ZoomMap(dg) ∘ ShiftMap(gcrv): w → grism-parameter.
     // Mirrors C:14355-14358.
     let map2a: DynMapping = Box::new(ZoomMap::new(1, dg)?);
-    let map2b: DynMapping = Box::new(ShiftMap::new(vec![gcrv]));
+    let map2b: DynMapping = Box::new(ShiftMap::new(vec![gcrv])?);
     let map2 = CmpMap::new(map2a, map2b, Composition::Series)?;
 
     // Invert map1 to get grism-parameter → S, then compose map2 with it

@@ -692,14 +692,23 @@ pub(crate) fn with_read_channel<T>(class: &str, f: impl FnOnce() -> T) -> T {
 /// is recorded already: as in C, where a failed read sets the status and
 /// later reads do nothing, the first error is the one reported.
 pub(crate) fn record_read_error(message: String) {
+    let channel = LOAD.with(|l| l.borrow().channel.clone());
+    let channel = channel.as_deref().unwrap_or("Channel");
+    record_load_error(AstError::new(
+        ErrorCode::Badin,
+        format!("astRead({channel}): {message}"),
+    ));
+}
+
+/// Record `error` as the error of the current load, unless one is recorded
+/// already, for a check C's loader makes that the port's loader, which
+/// cannot fail at that point, makes without stopping: the load then
+/// reports it ahead of anything the loader goes on to do.
+pub(crate) fn record_load_error(error: AstError) {
     LOAD.with(|l| {
         let mut l = l.borrow_mut();
         if l.error.is_none() {
-            let channel = l.channel.as_deref().unwrap_or("Channel");
-            l.error = Some(AstError::new(
-                ErrorCode::Badin,
-                format!("astRead({channel}): {message}"),
-            ));
+            l.error = Some(error);
         }
     });
 }

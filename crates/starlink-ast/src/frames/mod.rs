@@ -1761,8 +1761,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     /// ```
     #[doc(alias = "astPermAxes")]
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
-        validate_permutation(perm, self.naxes())?;
-        Ok(())
+        check_perm_axes(class_name(self.as_dyn_frame()), perm, self.naxes())
     }
 
     /// The axis permutation, `perm[external] = internal`, 0-based: C's
@@ -2904,7 +2903,7 @@ pub trait Frame: AsAny + AsDynFrame + Send + fmt::Debug {
     ///
     /// let sky = SkyFrame::unset_system();
     /// let spec = BasicFrameBuilder::new(1).build().unwrap();
-    /// let cmp = CmpFrame::new(Box::new(spec), Box::new(sky.clone()));
+    /// let cmp = CmpFrame::new(Box::new(spec), Box::new(sky.clone())).unwrap();
     /// assert_eq!(cmp.match_axes(&sky).unwrap(), vec![2, 3]);
     /// ```
     #[doc(alias = "astMatchAxes")]
@@ -3569,40 +3568,45 @@ pub(crate) fn validate_axis_selection(
     Ok(())
 }
 
-/// Validate that `perm` is a valid 1-based permutation of length `naxes`.
-pub fn validate_permutation(perm: &[usize], naxes: usize) -> AstResult<()> {
-    if perm.len() != naxes {
-        return Err(AstError::new(
-            ErrorCode::Prmin,
-            format!(
-                "permutation array has {} elements but frame has {} axes",
-                perm.len(),
-                naxes
-            ),
-        ));
+/// C's check that `perm` is a permutation of `naxes` axes (frame.c
+/// `astCheckPermArray`), `perm` holding 0-based axis indices, -1 for one read
+/// as zero or less. `method` and `class` name the C function and the class
+/// of the object, as C's message does.
+pub(crate) fn check_perm_array(
+    method: &str,
+    class: &str,
+    perm: &[i64],
+    naxes: usize,
+) -> AstResult<()> {
+    let mut there = vec![0u32; naxes];
+    let in_range = perm.len() == naxes
+        && perm.iter().all(|&p| match usize::try_from(p) {
+            Ok(p) if p < naxes => {
+                there[p] += 1;
+                true
+            }
+            _ => false,
+        });
+    if in_range && there.iter().all(|&n| n == 1) {
+        return Ok(());
     }
-    let mut seen = vec![false; naxes];
-    for (i, &p) in perm.iter().enumerate() {
-        if p < 1 || p > naxes {
-            return Err(AstError::new(
-                ErrorCode::Prmin,
-                format!(
-                    "permutation element {} (at position {}) is out of range 1..={}",
-                    p,
-                    i + 1,
-                    naxes
-                ),
-            ));
-        }
-        if seen[p - 1] {
-            return Err(AstError::new(
-                ErrorCode::Prmin,
-                format!("axis {} appears more than once in permutation", p),
-            ));
-        }
-        seen[p - 1] = true;
-    }
-    Ok(())
+    Err(AstError::new(
+        ErrorCode::Prmin,
+        format!("{method}({class}): Invalid axis permutation array."),
+    )
+    .with_context(format!(
+        "Each axis index should lie in the range 1 to {naxes} and should occur only once."
+    )))
+}
+
+/// [`check_perm_array`] for the 1-based permutation given to
+/// [`Frame::perm_axes`] of a Frame of class `class` with `naxes` axes.
+pub(crate) fn check_perm_axes(class: &str, perm: &[usize], naxes: usize) -> AstResult<()> {
+    let perm: Vec<i64> = perm
+        .iter()
+        .map(|&p| i64::try_from(p).map_or(-1, |p| p - 1))
+        .collect();
+    check_perm_array("astPermAxes", class, &perm, naxes)
 }
 
 /// Panic unless every point in `points` holds at least `naxes` coordinates.

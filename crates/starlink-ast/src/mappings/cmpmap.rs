@@ -340,7 +340,7 @@ impl CmpMap {
     ///
     /// // Multiply by 2, then add 1.
     /// let zoom = ZoomMap::new(1, 2.0).unwrap();
-    /// let shift = ShiftMap::new([1.0]);
+    /// let shift = ShiftMap::new([1.0]).unwrap();
     /// let map = CmpMap::new(Box::new(zoom), Box::new(shift), Composition::Series).unwrap();
     /// assert_eq!(map.tran1(&[3.0], true).unwrap(), vec![7.0]);
     /// assert_eq!(map.tran1(&[7.0], false).unwrap(), vec![3.0]);
@@ -379,6 +379,11 @@ impl CmpMap {
                 ),
             ));
         }
+        let (nin, nout) = match kind {
+            Composition::Series => (first.nin(), second.nout()),
+            Composition::Parallel => (first.nin() + second.nin(), first.nout() + second.nout()),
+        };
+        crate::mappings::check_init_mapping("CmpMap", nin, nout)?;
         let inv_a = first.is_inverted();
         let inv_b = second.is_inverted();
         // Both the series forward path and the parallel forward path apply
@@ -439,7 +444,7 @@ impl CmpMap {
     ///
     /// let mut map = CmpMap::new(
     ///     Box::new(ZoomMap::new(1, 2.0).unwrap()),
-    ///     Box::new(ShiftMap::new([1.0])),
+    ///     Box::new(ShiftMap::new([1.0]).unwrap()),
     ///     Composition::Series,
     /// )
     /// .unwrap();
@@ -955,7 +960,7 @@ impl Mapping for CmpMap {
             Composition::Series if unit1 => alone(map2, self.inv_b),
             Composition::Series if unit2 => alone(map1, self.inv_a),
             Composition::Parallel if unit1 && unit2 => {
-                Box::new(UnitMap::new(map1.nin() + map2.nin()))
+                Box::new(UnitMap::within_limit(map1.nin() + map2.nin()))
             }
             _ => {
                 let mut new = self.clone();

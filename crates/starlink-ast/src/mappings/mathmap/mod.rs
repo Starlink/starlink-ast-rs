@@ -903,7 +903,7 @@ impl Mapping for MathMap {
         }
 
         // They cancel — return a UnitMap
-        Some(Box::new(UnitMap::new(nin1)))
+        Some(Box::new(UnitMap::within_limit(nin1)))
     }
 
     fn ident(&self) -> &str {

@@ -504,7 +504,7 @@ impl Mapping for PcdMap {
                 && ast_equal(self.pcdcen[1], other_pcd.pcdcen[1])
                 && self_inv != other_inv
             {
-                return Some(Box::new(UnitMap::new(2)));
+                return Some(Box::new(UnitMap::within_limit(2)));
             }
             return None;
         }

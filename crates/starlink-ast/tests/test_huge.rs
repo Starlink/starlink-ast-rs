@@ -118,7 +118,7 @@ fn huge() {
     fill_array(&mut ip1);
 
     let shifts = [0.5, 0.5];
-    let map = ShiftMap::new(shifts.to_vec());
+    let map = ShiftMap::new(shifts.to_vec()).unwrap();
 
     let lbnd = [-10, -10];
     let ubnd = [lbnd[0] - 1 + NX, lbnd[1] - 1 + NY];

@@ -801,11 +801,11 @@ impl PolyMap {
         let mm: DynMapping = if mm.has_inverse() {
             Box::new(mm)
         } else {
-            Box::new(UnitMap::new(nin))
+            Box::new(UnitMap::new(nin)?)
         };
         let mut result: DynMapping = Box::new(CmpMap::new(
             mm,
-            Box::new(ShiftMap::new(vector)),
+            Box::new(ShiftMap::new(vector)?),
             Composition::Series,
         )?);
         if inverse {
@@ -1051,7 +1051,7 @@ impl PolyMap {
         // leaves `IsSimp` on the replacement.
         let m = ndarray::Array2::from_shape_vec((nout, nin), matrix).ok()?;
         let mm = MatrixMap::new(m).ok()?;
-        let sm = ShiftMap::new(offsets);
+        let sm = ShiftMap::within_limit(offsets);
         let cm = CmpMap::new(Box::new(mm), Box::new(sm), Composition::Series).ok()?;
         let cm: &dyn Mapping = &cm;
         cm.simplify().ok()
@@ -1960,7 +1960,7 @@ impl Mapping for PolyMap {
         // Input dimension of the pair depends on which direction
         // self is being used in.
         let pair_nin = if self_inv { self.nout } else { self.nin };
-        Some(Box::new(UnitMap::new(pair_nin)))
+        Some(Box::new(UnitMap::within_limit(pair_nin)))
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

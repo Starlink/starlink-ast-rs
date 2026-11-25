@@ -448,7 +448,7 @@ fn frameset_integrity_sideband_change() {
     let base_frame: Box<dyn Frame> = Box::new(dsb.clone());
     let current_frame: Box<dyn Frame> = Box::new(dsb);
     let identity: Box<dyn starlink_ast::mappings::Mapping> =
-        Box::new(starlink_ast::mappings::UnitMap::new(1));
+        Box::new(starlink_ast::mappings::UnitMap::new(1).unwrap());
     let mut fs = FrameSet::new(base_frame);
     fs.add_frame(FrameRef::Base, identity, current_frame)
         .unwrap();

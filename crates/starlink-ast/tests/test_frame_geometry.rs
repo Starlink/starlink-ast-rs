@@ -133,7 +133,7 @@ fn match_axes_finds_sky_in_cmp() {
     // against the C library: astMatchAxes(cf, sky) -> [2, 3].
     let sf = SkyFrame::new(SkySystem::Fk5);
     let df = SpecFrame::new(SpecSystem::Freq);
-    let cf = CmpFrame::new(Box::new(df), Box::new(sf.clone()));
+    let cf = CmpFrame::new(Box::new(df), Box::new(sf.clone())).unwrap();
     let axes = cf.match_axes(&sf).unwrap();
     assert_eq!(axes, vec![2, 3]);
 }
@@ -211,7 +211,7 @@ fn sky() -> starlink_ast::frames::SkyFrame {
 }
 
 fn cmp_plain() -> starlink_ast::frames::CmpFrame {
-    starlink_ast::frames::CmpFrame::new(Box::new(bf_basic(1)), Box::new(bf_basic(2)))
+    starlink_ast::frames::CmpFrame::new(Box::new(bf_basic(1)), Box::new(bf_basic(2))).unwrap()
 }
 
 fn bf_basic(n: usize) -> starlink_ast::frames::BasicFrame {

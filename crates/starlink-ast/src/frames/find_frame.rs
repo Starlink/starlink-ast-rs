@@ -710,7 +710,7 @@ pub(crate) fn default_sub_frame(
     // Mapping construction: UnitMap if no permutation/selection,
     // PermMap otherwise. Mirrors frame.c:11062-11072.
     let map: DynMapping = if unit {
-        Box::new(UnitMap::new(result_naxes))
+        Box::new(UnitMap::new(result_naxes)?)
     } else {
         Box::new(PermMap::new(&inperm, &outperm, &[])?)
     };

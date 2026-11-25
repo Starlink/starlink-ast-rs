@@ -1137,7 +1137,7 @@ mod check_tests {
     fn rtrip_excuses_only_rows_the_reference_also_fails() {
         // A 1-axis identity mapping, so the alias escape is easy to reason
         // about: a recovered pixel forward-maps to itself.
-        let map = starlink_ast::mappings::UnitMap::new(1);
+        let map = starlink_ast::mappings::UnitMap::new(1).unwrap();
         let fwd = Section {
             relpath: "synthetic.head".into(),
             nin: 1,

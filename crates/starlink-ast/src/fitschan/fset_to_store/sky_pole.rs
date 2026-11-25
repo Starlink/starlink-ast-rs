@@ -374,7 +374,7 @@ mod tests {
     /// non-zenithal path: identity mapping over the same dimension
     /// as the WcsMap.
     fn unit_map3(naxes: usize) -> Box<dyn Mapping> {
-        Box::new(UnitMap::new(naxes))
+        Box::new(UnitMap::within_limit(naxes))
     }
 
     #[test]

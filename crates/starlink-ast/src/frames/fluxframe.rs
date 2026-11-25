@@ -783,7 +783,7 @@ impl FluxFrame {
 /// `map1`/`map3` come back NULL).
 fn unit_or_unit_map(from: &str, to: &str) -> AstResult<Option<DynMapping>> {
     if from == to {
-        return Ok(Some(Box::new(crate::mappings::UnitMap::new(1))));
+        return Ok(Some(Box::new(crate::mappings::UnitMap::new(1)?)));
     }
     Ok(crate::units::unit_mapper(from, to))
 }

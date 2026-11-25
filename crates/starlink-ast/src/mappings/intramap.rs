@@ -566,7 +566,7 @@ impl Mapping for IntraMap {
         if !simpler {
             return None;
         }
-        ctx.replace_pair_with(where_, Box::new(UnitMap::new(nin1)), false);
+        ctx.replace_pair_with(where_, Box::new(UnitMap::within_limit(nin1)), false);
         Some(where_)
     }
 

@@ -1033,7 +1033,7 @@ impl Plot {
                 Composition::Series,
             )?)
         };
-        let unit: DynMapping = Box::new(UnitMap::new(1));
+        let unit: DynMapping = Box::new(UnitMap::new(1)?);
         let remap2 = if axis == 1 {
             CmpMap::new(remap1, unit, Composition::Parallel)?
         } else {

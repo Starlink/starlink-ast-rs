@@ -208,7 +208,7 @@ fn nan_protocol_zoommap() {
 #[test]
 fn nan_protocol_shiftmap() {
     use starlink_ast::mappings::ShiftMap;
-    let map = ShiftMap::new([1.0, -2.0]);
+    let map = ShiftMap::new([1.0, -2.0]).unwrap();
     let mut rows: Vec<Vec<f64>> = (0..64)
         .map(|i| vec![i as f64 * 0.1, -i as f64 * 0.2])
         .collect();

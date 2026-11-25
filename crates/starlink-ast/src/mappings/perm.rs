@@ -116,6 +116,7 @@ impl PermMap {
     /// ```
     #[doc(alias = "astPermMap")]
     pub fn new(inperm: &[i64], outperm: &[i64], constants: &[f64]) -> AstResult<Self> {
+        crate::mappings::check_init_mapping("PermMap", inperm.len(), outperm.len())?;
         // No validation is performed on the perm-array values, mirroring C
         // astInitPermMap (permmap.c:2849-2903), which stores the supplied
         // arrays verbatim. A positive entry referring to a non-existent axis,
@@ -266,7 +267,7 @@ impl PermMap {
         // Collapse to a UnitMap when both transforms are null and the
         // dimensions match (permmap.c:1350).
         if out_is_copy && in_is_copy && nin == nout {
-            return Some(Box::new(UnitMap::new(nin)));
+            return Some(Box::new(UnitMap::within_limit(nin)));
         }
 
         // C `simpler` (permmap.c:1362-1373) for a lone PermMap: the Invert flag
@@ -830,7 +831,7 @@ impl Mapping for PermMap {
                 result.push(permval);
             }
             let out_idx: Vec<usize> = result.iter().map(|&v| v as usize).collect();
-            let unit: DynMapping = Box::new(UnitMap::new(in_axes.len()));
+            let unit: DynMapping = Box::new(UnitMap::new(in_axes.len())?);
             return Ok(Some((out_idx, unit)));
         }
 
@@ -1059,7 +1060,7 @@ impl Mapping for PermMap {
             // Result = A * P (MatrixMap applied after PermMap).
             let product = super::matrix::mtr_product(&a, &perm_mat);
             if super::matrix::is_identity_matrix_pub(&product) {
-                return Some(Box::new(UnitMap::new(product.nrows())));
+                return Some(Box::new(UnitMap::within_limit(product.nrows())));
             }
             // A dimension-changing PermMap (perm_nin != perm_nout) produces a
             // rectangular product matrix. A rectangular MatrixMap has no
@@ -1251,7 +1252,7 @@ impl Mapping for PermMap {
             .all(|(i, &p)| p == (i as i64 + 1));
 
         if fwd_is_identity && inv_is_identity {
-            Some(Box::new(UnitMap::new(nin)))
+            Some(Box::new(UnitMap::within_limit(nin)))
         } else {
             // Build a new PermMap.  The constructor validates the arrays.
             match PermMap::new(&inv_perm_merged, &fwd_perm_merged, &merged_constants) {

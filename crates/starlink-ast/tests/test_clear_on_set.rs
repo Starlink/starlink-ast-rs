@@ -470,7 +470,7 @@ fn re_setting_an_explicit_seed_to_the_same_value_keeps_the_record() {
 /// setter, so its loader must honor the card.
 #[test]
 fn load_keeps_the_record_for_a_class_that_routes_nothing() {
-    let mut m = ShiftMap::new([1.0, 2.0]);
+    let mut m = ShiftMap::new([1.0, 2.0]).unwrap();
     m.set_has_been_simplified(true);
     let text = native_dump(&AnyObject::from_mapping(&m).unwrap()).unwrap();
     let back = from_native_string(&text).unwrap();

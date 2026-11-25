@@ -100,7 +100,7 @@ fn case(name: &str) -> Case {
         ),
         "map_with_wrong_inputs" => (
             circle(3.0, 3.0, 2.0),
-            Some(Box::new(UnitMap::new(3))),
+            Some(Box::new(UnitMap::new(3).unwrap())),
             true,
             g5.0,
             g5.1,

@@ -388,7 +388,7 @@ fn flux_frame_domain_is_cleaned() {
 fn cmp_frame_domain_is_cleaned_and_empty_is_set() {
     let a = TimeFrame::new(TimeSystem::Mjd);
     let b = FluxFrame::new(FluxSystem::FluxDen);
-    let mut cf = CmpFrame::new(Box::new(a), Box::new(b));
+    let mut cf = CmpFrame::new(Box::new(a), Box::new(b)).unwrap();
     cf.set_domain("my cmp");
     assert_eq!(Frame::domain(&cf), "MYCMP");
     cf.set_domain("");

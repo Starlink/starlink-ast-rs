@@ -843,7 +843,7 @@ impl DSBSpecFrame {
     /// If already USB, returns a unit (identity) mapping.
     pub fn to_usb_mapping(&self) -> AstResult<DynMapping> {
         if self.sideband() == SideBand::USB {
-            return Ok(Box::new(UnitMap::new(1)));
+            return Ok(Box::new(UnitMap::new(1)?));
         }
         self.verify_attrs("create a Mapping to another sideband", "IF DSBCentre")?;
         let f_lo = self.lo_freq()?;
@@ -868,7 +868,7 @@ impl DSBSpecFrame {
     /// If already LSB, returns a unit (identity) mapping.
     pub fn to_lsb_mapping(&self) -> AstResult<DynMapping> {
         if self.sideband() == SideBand::LSB {
-            return Ok(Box::new(UnitMap::new(1)));
+            return Ok(Box::new(UnitMap::new(1)?));
         }
         self.verify_attrs("create a Mapping to another sideband", "IF DSBCentre")?;
         let f_lo = self.lo_freq()?;
@@ -893,7 +893,7 @@ impl DSBSpecFrame {
     /// If already LO, returns a unit (identity) mapping.
     pub fn to_lo_mapping(&self) -> AstResult<DynMapping> {
         if self.sideband() == SideBand::LO {
-            return Ok(Box::new(UnitMap::new(1)));
+            return Ok(Box::new(UnitMap::new(1)?));
         }
         self.verify_attrs("create a Mapping to another sideband", "IF DSBCentre")?;
         let f_lo = self.lo_freq()?;

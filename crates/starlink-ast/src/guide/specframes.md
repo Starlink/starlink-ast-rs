@@ -179,7 +179,7 @@ let mut skyframe = SkyFrame::unset_system();
 skyframe.set_epoch_year(2002.0);
 let mut specframe = SpecFrame::new(SpecSystem::Freq);
 specframe.set_std_of_rest(StdOfRest::Lsrk)?;
-let cmpframe = CmpFrame::new(Box::new(skyframe), Box::new(specframe));
+let cmpframe = CmpFrame::new(Box::new(skyframe), Box::new(specframe)).unwrap();
 # assert_eq!(cmpframe.naxes(), 3);
 # assert_eq!(cmpframe.label(3)?, "Frequency");
 # Ok::<(), starlink_ast::error::AstError>(())

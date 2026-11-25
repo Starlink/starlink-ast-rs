@@ -91,8 +91,12 @@ pub(crate) fn clipped_plot(transform: Arc<CopyOrFail>) -> Plot {
     let intra = IntraMap::new(transform, 2, 2).unwrap();
     fset.add_frame(FrameRef::Base, Box::new(intra), frame("CLIP"))
         .unwrap();
-    fset.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), frame("SKY"))
-        .unwrap();
+    fset.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(2).unwrap()),
+        frame("SKY"),
+    )
+    .unwrap();
     let mut plot = Plot::new(&fset, [0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 1.0, 1.0]).unwrap();
     plot.set_clip_region(FrameRef::Index(3), &[0.1, 0.1], &[0.9, 0.9])
         .unwrap();

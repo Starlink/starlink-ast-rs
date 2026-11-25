@@ -62,21 +62,21 @@ fn switchmap_basic_construction() {
 
 #[test]
 fn switchmap_no_routes_rejected() {
-    let result = SwitchMap::new(Some(Box::new(UnitMap::new(1))), None, vec![]);
+    let result = SwitchMap::new(Some(Box::new(UnitMap::new(1).unwrap())), None, vec![]);
     assert!(result.is_err());
 }
 
 #[test]
 fn switchmap_no_selectors_rejected() {
-    let route: DynMapping = Box::new(UnitMap::new(2));
+    let route: DynMapping = Box::new(UnitMap::new(2).unwrap());
     let result = SwitchMap::new(None, None, vec![route]);
     assert!(result.is_err());
 }
 
 #[test]
 fn switchmap_mismatched_routes_rejected() {
-    let r1: DynMapping = Box::new(UnitMap::new(2));
-    let r2: DynMapping = Box::new(UnitMap::new(3));
+    let r1: DynMapping = Box::new(UnitMap::new(2).unwrap());
+    let r2: DynMapping = Box::new(UnitMap::new(3).unwrap());
     let sel: DynMapping = Box::new(ZoomMap::new(2, 1.0).unwrap());
     let result = SwitchMap::new(Some(sel), None, vec![r1, r2]);
     assert!(result.is_err());
@@ -484,7 +484,7 @@ fn a_selector_value_beyond_any_integer_selects_no_route() {
         Box::new(ZoomMap::new(1, 2.0).unwrap()),
         Box::new(ZoomMap::new(1, 3.0).unwrap()),
     ];
-    let m = SwitchMap::new(Some(Box::new(UnitMap::new(1))), None, routes).unwrap();
+    let m = SwitchMap::new(Some(Box::new(UnitMap::new(1).unwrap())), None, routes).unwrap();
     let inp = [-1.0e30, 0.49, 0.5, 2.25, 2.5, 1.0e30, -f64::MAX];
     let out = m
         .transform(&PointSet::from_rows(inp.iter().map(|&v| vec![v])), true)

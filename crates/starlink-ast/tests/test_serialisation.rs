@@ -45,7 +45,7 @@ fn assert_close(actual: f64, expected: f64, tol: f64, label: &str) {
 
 #[test]
 fn round_trip_unit_map() {
-    let original = UnitMap::new(3);
+    let original = UnitMap::new(3).unwrap();
     let text = native_dump(&AnyObject::UnitMap(original)).unwrap();
 
     // Structural markers.
@@ -67,7 +67,7 @@ fn round_trip_unit_map() {
 
 #[test]
 fn round_trip_unit_map_inverse() {
-    let original = UnitMap::new(2);
+    let original = UnitMap::new(2).unwrap();
     let text = native_dump(&AnyObject::UnitMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
@@ -131,7 +131,7 @@ fn round_trip_zoom_map_fractional_factor() {
 
 #[test]
 fn round_trip_shift_map() {
-    let original = ShiftMap::new([1.5, -2.7]);
+    let original = ShiftMap::new([1.5, -2.7]).unwrap();
     let text = native_dump(&AnyObject::ShiftMap(original)).unwrap();
 
     assert!(text.contains("Begin ShiftMap"), "missing Begin ShiftMap");
@@ -150,7 +150,7 @@ fn round_trip_shift_map() {
 
 #[test]
 fn round_trip_shift_map_inverse() {
-    let original = ShiftMap::new([1.5, -2.7]);
+    let original = ShiftMap::new([1.5, -2.7]).unwrap();
     let text = native_dump(&AnyObject::ShiftMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
@@ -271,7 +271,7 @@ fn round_trip_perm_map_inverse() {
 #[test]
 fn round_trip_cmp_map_series() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(2, 2.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0, 20.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0, 20.0]).unwrap());
     let original = CmpMap::new(z, s, Composition::Series).unwrap();
     let text = native_dump(&AnyObject::CmpMap(original)).unwrap();
 
@@ -296,7 +296,7 @@ fn round_trip_cmp_map_series() {
 #[test]
 fn round_trip_cmp_map_parallel() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 3.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([100.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([100.0]).unwrap());
     let original = CmpMap::new(z, s, Composition::Parallel).unwrap();
     let text = native_dump(&AnyObject::CmpMap(original)).unwrap();
 
@@ -315,7 +315,7 @@ fn round_trip_cmp_map_parallel() {
 #[test]
 fn round_trip_cmp_map_series_inverse() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]).unwrap());
     let original = CmpMap::new(z, s, Composition::Series).unwrap();
     let text = native_dump(&AnyObject::CmpMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
@@ -419,7 +419,7 @@ fn round_trip_basic_frame_with_epoch() {
 fn round_trip_cmp_frame() {
     let f1: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(1).label(1, "RA").build().unwrap());
     let f2: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(1).label(1, "Dec").build().unwrap());
-    let original = CmpFrame::new(f1, f2);
+    let original = CmpFrame::new(f1, f2).unwrap();
     let text = native_dump(&AnyObject::CmpFrame(original)).unwrap();
 
     assert!(text.contains("Begin CmpFrame"), "missing Begin CmpFrame");
@@ -434,7 +434,7 @@ fn round_trip_cmp_frame() {
 fn round_trip_cmp_frame_3plus2() {
     let f1: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(3).build().unwrap());
     let f2: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(2).build().unwrap());
-    let original = CmpFrame::new(f1, f2);
+    let original = CmpFrame::new(f1, f2).unwrap();
     let text = native_dump(&AnyObject::CmpFrame(original)).unwrap();
 
     let restored = from_native_string(&text).unwrap();
@@ -446,7 +446,7 @@ fn round_trip_cmp_frame_3plus2() {
 fn round_trip_cmp_frame_distance() {
     let f1: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(1).build().unwrap());
     let f2: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(1).build().unwrap());
-    let original = CmpFrame::new(f1, f2);
+    let original = CmpFrame::new(f1, f2).unwrap();
     let text = native_dump(&AnyObject::CmpFrame(original)).unwrap();
 
     let restored = from_native_string(&text).unwrap();
@@ -509,7 +509,7 @@ fn round_trip_frameset_as_frame() {
     let current: Box<dyn Frame> =
         Box::new(BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap());
     let mut fs = FrameSet::new(base);
-    let u: DynMapping = Box::new(UnitMap::new(2));
+    let u: DynMapping = Box::new(UnitMap::new(2).unwrap());
     fs.add_frame(FrameRef::Base, u, current).unwrap();
 
     let text = native_dump(&AnyObject::FrameSet(fs)).unwrap();
@@ -532,7 +532,7 @@ fn round_trip_frameset_chain() {
     let mut fs = FrameSet::new(fa);
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
     fs.add_frame(FrameRef::Current, z, fb).unwrap();
-    let s: DynMapping = Box::new(ShiftMap::new([10.0, 20.0]));
+    let s: DynMapping = Box::new(ShiftMap::new([10.0, 20.0]).unwrap());
     fs.add_frame(FrameRef::Current, s, fc).unwrap();
 
     let text = native_dump(&AnyObject::FrameSet(fs)).unwrap();
@@ -568,7 +568,7 @@ fn any_object_as_frame_returns_none_for_zoom_map() {
 
 #[test]
 fn any_object_into_mapping() {
-    let mapping = ShiftMap::new([1.0, 2.0]);
+    let mapping = ShiftMap::new([1.0, 2.0]).unwrap();
     let obj = AnyObject::ShiftMap(mapping);
     let dyn_mapping = obj.into_mapping().unwrap();
     assert_eq!(dyn_mapping.nin(), 2);
@@ -606,7 +606,7 @@ fn double_round_trip_zoom_map() {
 
 #[test]
 fn double_round_trip_shift_map() {
-    let original = ShiftMap::new([1.5, -2.7, 0.0]);
+    let original = ShiftMap::new([1.5, -2.7, 0.0]).unwrap();
     let text1 = native_dump(&AnyObject::ShiftMap(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
     let text2 = native_dump(&restored).unwrap();
@@ -648,7 +648,7 @@ fn double_round_trip_frameset() {
 #[test]
 fn double_round_trip_cmp_map() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]).unwrap());
     let original = CmpMap::new(z, s, Composition::Series).unwrap();
 
     let text1 = native_dump(&AnyObject::CmpMap(original)).unwrap();
@@ -682,7 +682,7 @@ fn double_round_trip_matrix_map() {
 fn double_round_trip_cmp_frame() {
     let f1: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(2).build().unwrap());
     let f2: Box<dyn Frame> = Box::new(BasicFrameBuilder::new(1).build().unwrap());
-    let original = CmpFrame::new(f1, f2);
+    let original = CmpFrame::new(f1, f2).unwrap();
     let text1 = native_dump(&AnyObject::CmpFrame(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
     let text2 = native_dump(&restored).unwrap();
@@ -691,7 +691,7 @@ fn double_round_trip_cmp_frame() {
 
 #[test]
 fn double_round_trip_unit_map() {
-    let original = UnitMap::new(4);
+    let original = UnitMap::new(4).unwrap();
     let text1 = native_dump(&AnyObject::UnitMap(original)).unwrap();
     let restored = from_native_string(&text1).unwrap();
     let text2 = native_dump(&restored).unwrap();
@@ -718,7 +718,7 @@ fn round_trip_zoom_map_multi_point() {
 
 #[test]
 fn round_trip_shift_map_multi_point() {
-    let original = ShiftMap::new([100.0, -50.0]);
+    let original = ShiftMap::new([100.0, -50.0]).unwrap();
     let text = native_dump(&AnyObject::ShiftMap(original)).unwrap();
     let restored = from_native_string(&text).unwrap();
     let mapping = restored.as_mapping().unwrap();
@@ -792,7 +792,7 @@ fn native_text_frameset_has_nested_objects() {
 #[test]
 fn native_text_cmpmap_has_series_flag() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]).unwrap());
     let cm = CmpMap::new(z, s, Composition::Series).unwrap();
     let text = native_dump(&AnyObject::CmpMap(cm)).unwrap();
 

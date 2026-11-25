@@ -19,7 +19,7 @@ use starlink_ast::mappings::{CmpMap, Composition, Mapping, PermMap, ShiftMap, Un
 #[test]
 fn cmpmap_series_zoom_then_shift() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]).unwrap());
     let cm = CmpMap::new(z, s, Composition::Series).unwrap();
     assert_eq!(cm.nin(), 1);
     assert_eq!(cm.nout(), 1);
@@ -32,7 +32,7 @@ fn cmpmap_series_zoom_then_shift() {
 #[test]
 fn cmpmap_series_inverse() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]).unwrap());
     let cm = CmpMap::new(z, s, Composition::Series).unwrap();
     // Forward: 5 → 20.  Inverse of 20 → 5.
     let pts = PointSet::from_rows([[20.0]]);
@@ -48,7 +48,7 @@ fn cmpmap_series_inverse() {
 #[test]
 fn cmpmap_parallel_zoom_alongside_shift() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 3.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([100.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([100.0]).unwrap());
     let cm = CmpMap::new(z, s, Composition::Parallel).unwrap();
     assert_eq!(cm.nin(), 2);
     assert_eq!(cm.nout(), 2);
@@ -78,7 +78,7 @@ fn cmpmap_series_dimension_mismatch_error() {
 #[test]
 fn cmpmap_series_bad_value_propagation() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]).unwrap());
     let cm = CmpMap::new(z, s, Composition::Series).unwrap();
     let pts = PointSet::from_rows([[BAD_VALUE]]);
     let out = cm.transform(&pts, true).unwrap();
@@ -89,7 +89,7 @@ fn cmpmap_series_bad_value_propagation() {
 #[test]
 fn cmpmap_parallel_bad_value_propagation() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([10.0]).unwrap());
     let cm = CmpMap::new(z, s, Composition::Parallel).unwrap();
     let pts = PointSet::from_rows([[BAD_VALUE, 5.0]]);
     let out = cm.transform(&pts, true).unwrap();
@@ -103,8 +103,8 @@ fn cmpmap_parallel_bad_value_propagation() {
 /// Two UnitMaps in series simplify to a single UnitMap.
 #[test]
 fn cmpmap_simplified_two_unitmaps_series() {
-    let a: Box<dyn Mapping> = Box::new(UnitMap::new(2));
-    let b: Box<dyn Mapping> = Box::new(UnitMap::new(2));
+    let a: Box<dyn Mapping> = Box::new(UnitMap::new(2).unwrap());
+    let b: Box<dyn Mapping> = Box::new(UnitMap::new(2).unwrap());
     let cm = CmpMap::new(a, b, Composition::Series).unwrap();
     let simp = <dyn Mapping>::simplify(&cm).unwrap();
     let pts = PointSet::from_rows([[3.0, 7.0]]);
@@ -115,8 +115,8 @@ fn cmpmap_simplified_two_unitmaps_series() {
 /// Two UnitMaps in parallel simplify to a single wider UnitMap.
 #[test]
 fn cmpmap_simplified_two_unitmaps_parallel() {
-    let a: Box<dyn Mapping> = Box::new(UnitMap::new(1));
-    let b: Box<dyn Mapping> = Box::new(UnitMap::new(2));
+    let a: Box<dyn Mapping> = Box::new(UnitMap::new(1).unwrap());
+    let b: Box<dyn Mapping> = Box::new(UnitMap::new(2).unwrap());
     let cm = CmpMap::new(a, b, Composition::Parallel).unwrap();
     let simp = <dyn Mapping>::simplify(&cm).unwrap();
     assert_eq!(simp.nin(), 3);
@@ -133,7 +133,7 @@ fn cmpmap_simplified_two_unitmaps_parallel() {
 #[test]
 fn dyn_mapping_then_method() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([5.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([5.0]).unwrap());
     let cm = z.then(s).unwrap();
     let pts = PointSet::from_rows([[3.0]]);
     let out = cm.transform(&pts, true).unwrap();
@@ -145,7 +145,7 @@ fn dyn_mapping_then_method() {
 #[test]
 fn dyn_mapping_alongside_method() {
     let z: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 4.0).unwrap());
-    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([100.0]));
+    let s: Box<dyn Mapping> = Box::new(ShiftMap::new([100.0]).unwrap());
     let cm = z.alongside(s).unwrap();
     assert_eq!(cm.nin(), 2);
     assert_eq!(cm.nout(), 2);
@@ -266,10 +266,10 @@ fn cmpmap_equality_compares_components_as_applied() {
         m
     };
     let zoom = |f: f64| -> Box<dyn Mapping> { Box::new(ZoomMap::new(1, f).unwrap()) };
-    let shift = || -> Box<dyn Mapping> { Box::new(ShiftMap::new(vec![1.0])) };
+    let shift = || -> Box<dyn Mapping> { Box::new(ShiftMap::new(vec![1.0]).unwrap()) };
 
-    let a = series(inverted(Box::new(UnitMap::new(1))), zoom(2.0));
-    let b = series(Box::new(UnitMap::new(1)), zoom(2.0));
+    let a = series(inverted(Box::new(UnitMap::new(1).unwrap())), zoom(2.0));
+    let b = series(Box::new(UnitMap::new(1).unwrap()), zoom(2.0));
     assert!(a.equal(&b));
 
     let a = series(inverted(zoom(2.0)), shift());
@@ -297,7 +297,12 @@ fn a_frameset_component_becomes_its_mapping() {
         frame(),
     )
     .unwrap();
-    let cmp = CmpMap::new(Box::new(fs), Box::new(UnitMap::new(2)), Composition::Series).unwrap();
+    let cmp = CmpMap::new(
+        Box::new(fs),
+        Box::new(UnitMap::new(2).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
     let want = [
         " Begin CmpMap \t# Compound Mapping",
         "    Nin = 2 \t# Number of input coordinates",
@@ -328,7 +333,7 @@ fn a_frameset_component_becomes_its_mapping() {
 fn decompose_gives_components_and_invert_values_like_c() {
     let zoom = || -> Box<dyn Mapping> { Box::new(ZoomMap::new(1, 2.0).unwrap()) };
     let shift = || -> Box<dyn Mapping> {
-        let mut s = ShiftMap::new(vec![1.0]);
+        let mut s = ShiftMap::new(vec![1.0]).unwrap();
         s.invert();
         Box::new(s)
     };

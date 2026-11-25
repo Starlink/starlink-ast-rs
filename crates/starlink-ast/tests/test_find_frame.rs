@@ -101,14 +101,16 @@ fn cmpframe_overlay_template_copies_domain() {
     let mut template = CmpFrame::new(
         Box::new(BasicFrameBuilder::new(2).build().unwrap()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     template.set_domain("MYCMP");
 
     // Matching Domain on target → Match passes the Domain gate.
     let mut target = CmpFrame::new(
         Box::new(BasicFrameBuilder::new(2).build().unwrap()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     target.set_domain("MYCMP");
     let result = target
         .find_frame_template(&template, "")
@@ -121,7 +123,8 @@ fn cmpframe_overlay_template_copies_domain() {
     let mut other_target = CmpFrame::new(
         Box::new(BasicFrameBuilder::new(2).build().unwrap()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     other_target.set_domain("OTHER");
     assert!(
         other_target
@@ -140,7 +143,8 @@ fn cmpframe_sub_frame_identity() {
     let target = CmpFrame::new(
         Box::new(BasicFrameBuilder::new(2).build().unwrap()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     let target_axes: Vec<i32> = (0..3).collect();
     let template_axes: Vec<i32> = (0..3).collect();
     let (map, result) = target
@@ -166,11 +170,13 @@ fn cmpframe_match_against_cmpframe_template() {
     let template = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Fk5)),
         Box::new(SpecFrame::new(SpecSystem::Freq)),
-    );
+    )
+    .unwrap();
     let target = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Fk5)),
         Box::new(SpecFrame::new(SpecSystem::Freq)),
-    );
+    )
+    .unwrap();
     let m = template
         .match_template(&target, false)
         .unwrap()
@@ -191,7 +197,8 @@ fn cmpframe_match_with_default_max_axes_fails() {
     let target = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Fk5)),
         Box::new(SpecFrame::new(SpecSystem::Freq)),
-    );
+    )
+    .unwrap();
     let result = template.match_template(&target, false).unwrap();
     assert!(result.is_none());
 }
@@ -210,8 +217,12 @@ use starlink_ast::mappings::UnitMap;
 #[test]
 fn frameset_find_frame_self_returns_current() {
     let mut fs = FrameSet::new(Box::new(bf(2)));
-    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(bf(2)))
-        .unwrap();
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(2).unwrap()),
+        Box::new(bf(2)),
+    )
+    .unwrap();
     let template = bf(2);
     let result = fs
         .find_frame(&template, &[])
@@ -235,8 +246,12 @@ fn frameset_find_frame_priority_order() {
     current.set_domain("CURRENT");
 
     let mut fs = FrameSet::new(Box::new(base));
-    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(current))
-        .unwrap();
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(2).unwrap()),
+        Box::new(current),
+    )
+    .unwrap();
     // After add_frame, the current is the newly-added frame
     // (Domain="CURRENT").
 
@@ -262,8 +277,12 @@ fn frameset_find_frame_domain_filter() {
     current.set_domain("CURRENT");
 
     let mut fs = FrameSet::new(Box::new(base));
-    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(current))
-        .unwrap();
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(2).unwrap()),
+        Box::new(current),
+    )
+    .unwrap();
 
     let template = bf(2);
     let result = fs
@@ -282,8 +301,12 @@ fn frameset_find_frame_no_match_returns_none() {
     let mut current = bf(2);
     current.set_domain("CURRENT");
     let mut fs = FrameSet::new(Box::new(base));
-    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(current))
-        .unwrap();
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(2).unwrap()),
+        Box::new(current),
+    )
+    .unwrap();
     let template = bf(2);
     let result = fs.find_frame(&template, &["NOSUCH"]).unwrap();
     assert!(result.is_none());
@@ -306,7 +329,8 @@ fn cmpframe_match_against_skyframe_template_with_max_axes() {
     let target = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Fk5)),
         Box::new(SpecFrame::new(SpecSystem::Freq)),
-    );
+    )
+    .unwrap();
     let m = template
         .match_template(&target, false)
         .unwrap()
@@ -339,7 +363,8 @@ fn find_frame_specframe_template_into_cmpframe_sky_spec() {
     let mut target = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Fk5)),
         Box::new(SpecFrame::new(SpecSystem::Freq)),
-    );
+    )
+    .unwrap();
 
     let result = target
         .find_frame_template(&template, "")
@@ -368,7 +393,8 @@ fn find_frame_specframe_template_into_cmpframe_spec_sky() {
     let mut target = CmpFrame::new(
         Box::new(SpecFrame::new(SpecSystem::Freq)),
         Box::new(SkyFrame::new(SkySystem::Fk5)),
-    );
+    )
+    .unwrap();
 
     let result = target
         .find_frame_template(&template, "")

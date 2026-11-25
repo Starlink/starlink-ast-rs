@@ -230,7 +230,7 @@ pub(crate) fn is_map_tab_1d(
         // The Mappings before and after the LutMap, each combined in
         // series behind a UnitMap.
         let combine = |range: &[(DynMapping, bool, bool)]| -> AstResult<DynMapping> {
-            let mut combined: DynMapping = Box::new(UnitMap::new(1));
+            let mut combined: DynMapping = Box::new(UnitMap::new(1)?);
             for (m, inv, _) in range {
                 let m = if *inv {
                     inverted(m.as_ref())

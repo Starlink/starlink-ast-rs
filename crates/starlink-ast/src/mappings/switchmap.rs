@@ -1027,6 +1027,6 @@ fn merge_with_neighbour(ctx: &mut super::simplify::MergeCtx, where_: usize) -> O
         return None;
     }
     let nin = as_object(ilo).nin();
-    ctx.replace_range_with(ilo, ilo + 1, Box::new(UnitMap::new(nin)));
+    ctx.replace_range_with(ilo, ilo + 1, Box::new(UnitMap::within_limit(nin)));
     Some(where_)
 }

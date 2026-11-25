@@ -41,7 +41,8 @@ fn run(cmp_settings: &str, c1_settings: &str) -> Option<Vec<(String, f64)>> {
     let mut t = CmpFrame::new(
         Box::new(c1),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     apply(&mut t, cmp_settings);
     let fs = target.find_frame_template(&t, "").unwrap()?;
     let result = fs.frame(FrameRef::Current).unwrap();

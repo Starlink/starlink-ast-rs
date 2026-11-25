@@ -64,11 +64,13 @@ fn cmp(kind: usize, permuted: bool) -> starlink_ast::frames::CmpFrame {
             Box::new(SkyFrame::unset_system()),
             Box::new(SpecFrame::unset_system()),
         )
+        .unwrap()
     } else {
         CmpFrame::new(
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
             Box::new(SkyFrame::unset_system()),
         )
+        .unwrap()
     };
     if permuted {
         f.perm_axes(&[3, 2, 1]).unwrap();
@@ -127,7 +129,7 @@ fn frameset_resolves_and_intersects_in_its_current_frame() {
         let mut fs = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build().unwrap()));
         fs.add_frame(
             FrameRef::Base,
-            Box::new(UnitMap::new(2)),
+            Box::new(UnitMap::new(2).unwrap()),
             Box::new(sky(permuted)),
         )
         .unwrap();

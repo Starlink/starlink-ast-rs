@@ -141,7 +141,7 @@ pub fn analyse_poly(polymap: &PolyMap) -> AstResult<Option<AnalysePolyResult>> {
 
     // Step 3: ShiftMap that translates input by (-xo, -yo).
     let shift = [-xo, -yo];
-    let map1 = ShiftMap::new(shift.to_vec());
+    let map1 = ShiftMap::new(shift.to_vec())?;
 
     // Step 4: build pm1 = polymap composed with the inverse of map1
     // (i.e. substitute x→x+xo, y→y+yo into the forward terms).

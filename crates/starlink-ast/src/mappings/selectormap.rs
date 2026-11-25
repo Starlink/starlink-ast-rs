@@ -465,7 +465,7 @@ impl Mapping for SelectorMap {
             }
         }
 
-        Some(Box::new(UnitMap::new(self.intrinsic_nin())))
+        Some(Box::new(UnitMap::within_limit(self.intrinsic_nin())))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {

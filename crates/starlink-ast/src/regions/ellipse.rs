@@ -1306,7 +1306,7 @@ impl Mapping for Ellipse {
     /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
     /// Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {
-        Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
+        Some(Box::new(crate::mappings::UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.

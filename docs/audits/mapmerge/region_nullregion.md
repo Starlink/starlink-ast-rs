@@ -19,7 +19,7 @@ current Frame. `GetDefUnc` (`nullregion.c:230-250 (fn GetDefUnc)`) is a zero-rad
 at the origin.
 
 `NullRegion::map_merge` (`nullregion.rs:858-861 (fn map_merge)`) delegates to
-`simplify::region_map_merge` (`mappings/simplify.rs:1781-1848 (fn region_map_merge)`), which every
+`simplify::region_map_merge` (`mappings/simplify.rs:1784-1851 (fn region_map_merge)`), which every
 Region shares; `NullRegion::simplified` (`nullregion.rs:752-821 (fn simplified)`) and
 `NullRegion::get_def_unc` (`nullregion.rs:397-407 (fn get_def_unc)`) are the other two.
 
@@ -29,20 +29,20 @@ Region shares; `NullRegion::simplified` (`nullregion.rs:752-821 (fn simplified)`
 | 2 | Check the global error status and bail out | nullregion.c:498-500 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Get a pointer to the NullRegion | nullregion.c:501-503 (fn MapMerge) | -- | ceremony | n/a: the Rust function already has `this: &dyn Region` |
 | 4 | Banner: first see whether the NullRegion reduces on its own, without reference to its neighbors | nullregion.c:504-507 (fn MapMerge) | -- | ceremony | n/a: a section banner, not a step |
-| 5 | Simplify the NullRegion, assuming a changed pointer means something happened | nullregion.c:508-512 (fn MapMerge) | mappings/simplify.rs:1795-1796 (fn region_map_merge) | architecture | ported |
-| 6 | Annul the NullRegion pointer in the list, replace it with the new Region, and mark it forward | nullregion.c:513-519 (fn MapMerge) | mappings/simplify.rs:1797 (fn region_map_merge) | architecture | ported |
-| 7 | Return the index of the first modified element | nullregion.c:520-522 (fn MapMerge) | mappings/simplify.rs:1798 (fn region_map_merge) | architecture | ported |
-| 8 | Failing that, merge with the Regions on either side — which is possible in parallel only | nullregion.c:523-527 (fn MapMerge) | mappings/simplify.rs:1808 (fn region_map_merge) | architecture | ported |
+| 5 | Simplify the NullRegion, assuming a changed pointer means something happened | nullregion.c:508-512 (fn MapMerge) | mappings/simplify.rs:1798-1799 (fn region_map_merge) | architecture | ported |
+| 6 | Annul the NullRegion pointer in the list, replace it with the new Region, and mark it forward | nullregion.c:513-519 (fn MapMerge) | mappings/simplify.rs:1800 (fn region_map_merge) | architecture | ported |
+| 7 | Return the index of the first modified element | nullregion.c:520-522 (fn MapMerge) | mappings/simplify.rs:1801 (fn region_map_merge) | architecture | ported |
+| 8 | Failing that, merge with the Regions on either side — which is possible in parallel only | nullregion.c:523-527 (fn MapMerge) | mappings/simplify.rs:1811 (fn region_map_merge) | architecture | ported |
 | 9 | Annul the unwanted simplified pointer | nullregion.c:528-529 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
-| 10 | Attempt to merge the NullRegion with its lower neighbor, if that neighbor is a Region | nullregion.c:530-539 (fn MapMerge) | mappings/simplify.rs:1811-1825 (fn region_map_merge) | architecture | ported |
-| 11 | Failing that, attempt the upper neighbor the same way | nullregion.c:540-550 (fn MapMerge) | mappings/simplify.rs:1829-1844 (fn region_map_merge) | architecture | ported |
-| 12 | Act only if one of the two produced a merged Region | nullregion.c:551-553 (fn MapMerge) | mappings/simplify.rs:1819 (fn region_map_merge),1822 (fn region_map_merge) | architecture | ported |
+| 10 | Attempt to merge the NullRegion with its lower neighbor, if that neighbor is a Region | nullregion.c:530-539 (fn MapMerge) | mappings/simplify.rs:1814-1828 (fn region_map_merge) | architecture | ported |
+| 11 | Failing that, attempt the upper neighbor the same way | nullregion.c:540-550 (fn MapMerge) | mappings/simplify.rs:1832-1847 (fn region_map_merge) | architecture | ported |
+| 12 | Act only if one of the two produced a merged Region | nullregion.c:551-553 (fn MapMerge) | mappings/simplify.rs:1822 (fn region_map_merge),1825 (fn region_map_merge) | architecture | ported |
 | 13 | Annul the first of the two Mappings, replace it with the merged Region, and clear its invert flag | nullregion.c:554-559 (fn MapMerge) | mappings/simplify.rs:681 (fn replace_pair_with) | architecture | ported |
 | 14 | Annul the second and shuffle the rest of the list down to fill the gap | nullregion.c:560-567 (fn MapMerge) | mappings/simplify.rs:681 (fn replace_pair_with) | architecture | ported |
 | 15 | Clear the vacated element at the end | nullregion.c:568-571 (fn MapMerge) | -- | ceremony | n/a: the list is a `Vec`, so the removed entry leaves no slot to blank |
-| 16 | Decrement the Mapping count and return the index of the first modified element | nullregion.c:572-577 (fn MapMerge) | mappings/simplify.rs:1821 (fn region_map_merge),1824 (fn region_map_merge) | architecture | ported |
+| 16 | Decrement the Mapping count and return the index of the first modified element | nullregion.c:572-577 (fn MapMerge) | mappings/simplify.rs:1824 (fn region_map_merge),1827 (fn region_map_merge) | architecture | ported |
 | 17 | In series, annul the simplified pointer and do nothing | nullregion.c:578-581 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped, and the series case falls through to `None` |
-| 18 | Return the result | nullregion.c:582-584 (fn MapMerge) | mappings/simplify.rs:1847 (fn region_map_merge) | architecture | ported |
+| 18 | Return the result | nullregion.c:582-584 (fn MapMerge) | mappings/simplify.rs:1850 (fn region_map_merge) | architecture | ported |
 | 19 | `Simplify`: initialize the returned pointer | nullregion.c:1381-1383 (fn Simplify) | -- | ceremony | n/a: the Rust returns `AstResult<(DynMapping, bool)>`, so there is no sentinel to initialize |
 | 20 | Check the global error status and bail out | nullregion.c:1384-1386 (fn Simplify) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 21 | Get a pointer to the supplied Region structure | nullregion.c:1387-1389 (fn Simplify) | -- | ceremony | n/a: the Rust method already has `&self` |
@@ -92,7 +92,7 @@ spells the same condition as `simpler || !map.as_any().is::<UnitMap>()`, where
 C offers the lower neighbor before the upper, and passes `intfirst = 0` for the
 first and `1` for the second, which is the order the merged Region's axes end up
 in. `region_map_merge` keeps that order and that flag
-(`mappings/simplify.rs:1817 (fn region_map_merge)`,1480). The lower-neighbor case cannot come
+(`mappings/simplify.rs:1820 (fn region_map_merge)`,1480). The lower-neighbor case cannot come
 through `NullRegion::try_merge` (`nullregion.rs:837-850 (fn try_merge)`), because
 `default_map_merge` only ever offers a nominee the entry at `where + 1`; sharing
 this body across the Region classes is what gives every one of them C's

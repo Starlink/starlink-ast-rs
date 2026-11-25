@@ -58,7 +58,7 @@ fn assert_inverse_full_matrix_rates(m: &dyn Mapping, errs: [u32; 4]) {
 /// inverse of a PermMap followed by an inverted ZoomMap.
 pub(crate) fn compound_map() -> CmpMap {
     let c3 = CmpMap::new(
-        Box::new(ShiftMap::new(vec![-1.0, 1.0])),
+        Box::new(ShiftMap::new(vec![-1.0, 1.0]).unwrap()),
         Box::new(MatrixMap::new(array![[1.0, 2.0], [-2.0, 3.0]]).unwrap()),
         Composition::Parallel,
     )
@@ -99,7 +99,7 @@ pub(crate) const COMPOUND_INVERSE: [(usize, usize, f64, bool); 8] = [
 
 #[test]
 fn unit_map() {
-    let mut m = UnitMap::new(2);
+    let mut m = UnitMap::new(2).unwrap();
     assert_eq!(rate(&m, &AT, 1, 1), 1.0, "Error 1");
     assert_eq!(rate(&m, &AT, 2, 1), 0.0, "Error 2");
     m.invert();
@@ -149,7 +149,7 @@ fn full_matrix_map() {
 
 #[test]
 fn shift_map() {
-    let mut m = ShiftMap::new(vec![-1.2, 1.2]);
+    let mut m = ShiftMap::new(vec![-1.2, 1.2]).unwrap();
     assert_eq!(rate(&m, &AT, 1, 1), 1.0, "Error 20");
     assert_eq!(rate(&m, &AT, 2, 1), 0.0, "Error 21");
     m.invert();

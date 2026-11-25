@@ -445,7 +445,7 @@ impl Frame for SpecFluxFrame {
     }
 
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
-        super::validate_permutation(perm, 2)?;
+        super::check_perm_axes("SpecFluxFrame", perm, 2)?;
         // Two-element permutation: identity is [1,2]; swap is [2,1].
         if perm[0] == 2 && perm[1] == 1 {
             self.swap = !self.swap;
@@ -584,7 +584,7 @@ fn make_map_f(x1: &SpecFrame, x2: &SpecFrame) -> AstResult<DynMapping> {
     let rate = RateMap::new(m.clone_box(), 1, 1)?;
     // div: 2-in/1-out, out = in0 / abs(in1) (inverse undefined, matching C).
     let div = MathMap::new(2, 1, &["out=in0/abs(in1)"], &["in0", "in1"])?;
-    let unit = UnitMap::new(1);
+    let unit = UnitMap::new(1)?;
     // perm: 2-in/3-out; C inperm=[0,2], outperm=[0,1,1] -> 1-based [1,3]/[1,2,2].
     let perm = PermMap::new(&[1, 3], &[1, 2, 2], &[])?;
 
@@ -612,7 +612,7 @@ fn make_map_i(x1: &SpecFrame, x2: &SpecFrame) -> AstResult<DynMapping> {
     m_inv.invert();
     // mult: 2-in/1-out, out = in0 * abs(in1) (inverse undefined, matching C).
     let mult = MathMap::new(2, 1, &["out=in0*abs(in1)"], &["in0", "in1"])?;
-    let unit = UnitMap::new(1);
+    let unit = UnitMap::new(1)?;
     let perm = PermMap::new(&[1, 3], &[1, 2, 2], &[])?;
 
     // cmap1 = unit ∥ rate  : (v2,x1) -> (v2, dx2/dx1)
@@ -655,7 +655,7 @@ fn make_map2(sff: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
     let s2 = sff.std_spec_frame()?;
     let ax2_map = s1.make_spec_mapping(&s2)?;
     // ax3_map: UnitMap on the copied flux axis.
-    let ax3_map = UnitMap::new(1);
+    let ax3_map = UnitMap::new(1)?;
 
     let tmap = CmpMap::new(ax1_map, ax2_map, Composition::Parallel)?;
     let ret = CmpMap::new(Box::new(tmap), Box::new(ax3_map), Composition::Parallel)?;
@@ -713,7 +713,7 @@ fn make_sf_mapping(
     if Frame::equal(&target.spec_frame, &result.spec_frame)
         && Frame::equal(&target.flux_frame, &result.flux_frame)
     {
-        return Ok(Some(Box::new(UnitMap::new(2))));
+        return Ok(Some(Box::new(UnitMap::new(2)?)));
     }
 
     // map1: PermMap copying v1 to output 0 and x1 to outputs 1 and 2.
@@ -825,7 +825,7 @@ fn specfluxframe_sub_frame(
 
         // No template — identity Mapping over the (possibly
         // permuted) result.
-        let map: DynMapping = Box::new(UnitMap::new(2));
+        let map: DynMapping = Box::new(UnitMap::new(2)?);
         return Ok(Some((map, Box::new(result))));
     }
 

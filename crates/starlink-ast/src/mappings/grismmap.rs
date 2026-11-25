@@ -896,7 +896,7 @@ impl Mapping for GrismMap {
                 && ast_equal(self.grism_theta, other_grism.grism_theta)
                 && self_inv != other_inv
             {
-                return Some(Box::new(UnitMap::new(1)));
+                return Some(Box::new(UnitMap::within_limit(1)));
             }
             return None;
         }

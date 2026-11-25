@@ -174,7 +174,7 @@ fn selecting_the_only_variant_of_a_frame_without_variants() {
 fn selecting_a_variant_of_a_frame_on_the_root_node() {
     let mut fs = base_fs();
     fs.set_current(FrameRef::Index(1)).unwrap();
-    let shift = ShiftMap::new(vec![10.0, 20.0]);
+    let shift = ShiftMap::new(vec![10.0, 20.0]).unwrap();
     fs.add_variant(Some(Box::new(shift)), "SHIFTED").unwrap();
     assert_eq!(fs.variant(), "SHIFTED");
     assert_eq!(fs.nframe(), 2);
@@ -193,7 +193,7 @@ fn selecting_a_variant_of_a_frame_on_the_root_node() {
             .unwrap();
         (out.point(0)[0], out.point(0)[1])
     };
-    let mut unshift = ShiftMap::new(vec![10.0, 20.0]);
+    let mut unshift = ShiftMap::new(vec![10.0, 20.0]).unwrap();
     unshift.invert();
     let p2fmap =
         WinMap::from_corners(&[1.0, 1.0], &[100.0, 200.0], &[-2.5, -1.0], &[2.5, 1.0]).unwrap();
@@ -247,7 +247,7 @@ fn add_variant_to_mirror_errors() {
     // Add a new DSB frame on top of the current variant frame.
     fs.add_frame(
         FrameRef::Current,
-        Box::new(starlink_ast::mappings::UnitMap::new(2)),
+        Box::new(starlink_ast::mappings::UnitMap::new(2).unwrap()),
         Box::new(frm("DSB")),
     )
     .unwrap();
@@ -378,7 +378,9 @@ fn remapping_a_frame_drops_its_variants() {
     )
     .unwrap();
     fs.add_variant(
-        Some(Box::new(starlink_ast::mappings::ShiftMap::new([1.0, 1.0]))),
+        Some(Box::new(
+            starlink_ast::mappings::ShiftMap::new([1.0, 1.0]).unwrap(),
+        )),
         "V2",
     )
     .unwrap();
@@ -392,7 +394,9 @@ fn remapping_a_frame_drops_its_variants() {
     assert!(!fs.test_variant());
 
     fs.add_variant(
-        Some(Box::new(starlink_ast::mappings::ShiftMap::new([1.0, 1.0]))),
+        Some(Box::new(
+            starlink_ast::mappings::ShiftMap::new([1.0, 1.0]).unwrap(),
+        )),
         "V3",
     )
     .unwrap();
@@ -425,7 +429,9 @@ fn set_variant_replaces_the_owner_node_mapping() {
     )
     .unwrap();
     fs.add_variant(
-        Some(Box::new(starlink_ast::mappings::ShiftMap::new([1.0, 1.0]))),
+        Some(Box::new(
+            starlink_ast::mappings::ShiftMap::new([1.0, 1.0]).unwrap(),
+        )),
         "V2",
     )
     .unwrap();

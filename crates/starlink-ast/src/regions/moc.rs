@@ -187,14 +187,14 @@ fn hpx12_mapping(order: i32) -> AstResult<DynMapping> {
 fn hpx12_grid_to_icrs(order: i32) -> AstResult<CmpMap> {
     let nppf = f64::from(1_i32 << order);
     let s = -0.5 * (1.0 + 5.0 * nppf);
-    let sm1 = ShiftMap::new(vec![s, s]);
+    let sm1 = ShiftMap::new(vec![s, s])?;
     let m = DPI / (4.0 * nppf);
     let mm = MatrixMap::new(ndarray::array![[m, m], [-m, m]])?;
     let mut wm = WcsMap::new(2, WcsProjection::Hpx, 1, 2)?;
     wm.set_pv(1, 3, 180.0)?;
     wm.set_lon_check(false);
     wm.invert();
-    let sm2 = ShiftMap::new(vec![DPI, 0.0]);
+    let sm2 = ShiftMap::new(vec![DPI, 0.0])?;
     let map1 = CmpMap::new(Box::new(sm1), Box::new(mm), Composition::Series)?;
     let map2 = CmpMap::new(Box::new(map1), Box::new(wm), Composition::Series)?;
     CmpMap::new(Box::new(map2), Box::new(sm2), Composition::Series)
@@ -3001,7 +3001,7 @@ impl Moc {
             ));
         };
 
-        let maps = order_maps(Box::new(UnitMap::new(2)), maxorder, minorder)?;
+        let maps = order_maps(Box::new(UnitMap::new(2)?), maxorder, minorder)?;
         let b = bounds_at_minorder(&maps, maxorder, minorder, b, method)?;
         let test = |pts: &PointSet| -> AstResult<Vec<bool>> {
             let out = mapped_min.transform(pts, true)?;
@@ -4111,7 +4111,7 @@ impl Mapping for Moc {
     // region.c `RemoveRegions`: a Region becomes its Frame, which as a
     // Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<DynMapping> {
-        Some(Box::new(UnitMap::new(self.nin())))
+        Some(Box::new(UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.
@@ -4208,7 +4208,7 @@ mod tests {
             let maps: Vec<Option<DynMapping>> = vec![
                 None,
                 Some(Box::new(shrink)),
-                Some(Box::new(UnitMap::new(2))),
+                Some(Box::new(UnitMap::within_limit(2))),
             ];
             let err = bounds_at_minorder(&maps, 2, 1, [-5, -5, 5, 5], "astAddRegion").unwrap_err();
             assert_eq!(err.code(), ErrorCode::Nodef, "scale {scale}");

@@ -784,7 +784,7 @@ impl Mapping for ChebyMap {
 
         // The pair's input dimension depends on which direction self is used.
         let pair_nin = if self_inv { self.nout() } else { self.nin() };
-        Some(Box::new(UnitMap::new(pair_nin)))
+        Some(Box::new(UnitMap::within_limit(pair_nin)))
     }
 
     fn map_merge(

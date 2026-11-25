@@ -33,7 +33,7 @@ fn three_frame_chain() -> FrameSet {
     .unwrap();
     fs.add_frame(
         FrameRef::Index(2),
-        Box::new(ShiftMap::new(vec![1.0])),
+        Box::new(ShiftMap::new(vec![1.0]).unwrap()),
         frame_with_domain(1, "THIRD"),
     )
     .unwrap();
@@ -104,8 +104,12 @@ fn frameset_delegates_domain_but_owns_ident() {
     let mut sky = SkyFrame::new(SkySystem::Icrs);
     sky.set_ident("Q");
     let mut fs = FrameSet::new(frame_with_domain(2, "PIXEL"));
-    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(sky))
-        .unwrap();
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(2).unwrap()),
+        Box::new(sky),
+    )
+    .unwrap();
 
     // C forwards GetDomain to the current frame.
     assert_eq!(Frame::domain(&fs), "SKY");
@@ -142,7 +146,7 @@ fn frameset_template_matches_like_current_frame() {
     let mut fs = FrameSet::new(frame_with_domain(2, "PIXEL"));
     fs.add_frame(
         FrameRef::Base,
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         Box::new(SkyFrame::new(SkySystem::Icrs)),
     )
     .unwrap();
@@ -173,7 +177,7 @@ fn frameset_simplified_returns_frameset() {
     let mut z2: Box<dyn Mapping> = Box::new(ZoomMap::new(1, 2.0).unwrap());
     z2.invert();
     let cmp = starlink_ast::mappings::CmpMap::new(
-        std::mem::replace(&mut z1, Box::new(UnitMap::new(1))),
+        std::mem::replace(&mut z1, Box::new(UnitMap::new(1).unwrap())),
         z2,
         starlink_ast::mappings::Composition::Series,
     )
@@ -238,8 +242,12 @@ fn convert_via_noncurrent_member_frame() {
     let fk5 = SkyFrame::new(SkySystem::Fk5);
     let mut fs = FrameSet::new(Box::new(fk5));
     let pixel = BasicFrameBuilder::new(2).domain("PIXEL").build().unwrap();
-    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(pixel))
-        .unwrap();
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(2).unwrap()),
+        Box::new(pixel),
+    )
+    .unwrap();
     // current == PIXEL, base == FK5 SkyFrame.
 
     let mut gal = SkyFrame::new(SkySystem::Galactic);
@@ -267,7 +275,7 @@ fn convert_via_current_frame_still_works() {
     let mut fs = FrameSet::new(Box::new(pixel));
     fs.add_frame(
         FrameRef::Base,
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         Box::new(SkyFrame::new(SkySystem::Fk5)),
     )
     .unwrap();
@@ -309,7 +317,7 @@ fn add_frame_allframes_appends_axes() {
     // The Mapping argument is ignored in AllFrames mode.
     fs.add_frame(
         FrameRef::AllFrames,
-        Box::new(UnitMap::new(1)),
+        Box::new(UnitMap::new(1).unwrap()),
         frame_with_domain(1, "SPEC"),
     )
     .unwrap();

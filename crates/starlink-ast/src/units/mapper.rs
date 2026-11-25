@@ -39,7 +39,7 @@ use crate::constants::BAD_VALUE;
 fn make_mapping(tree: &UnitNode) -> Option<DynMapping> {
     // Pure LDVAR → identity.
     if tree.opcode == Oper::LdVar {
-        return Some(Box::new(UnitMap::new(1)));
+        return Some(Box::new(UnitMap::within_limit(1)));
     }
 
     // OP_MULT(LdCon(k), LdVar) → UnitMap (k≈1) or ZoomMap.
@@ -49,7 +49,7 @@ fn make_mapping(tree: &UnitNode) -> Option<DynMapping> {
     {
         let k = tree.arg[0].con;
         if k == 1.0 {
-            return Some(Box::new(UnitMap::new(1)));
+            return Some(Box::new(UnitMap::within_limit(1)));
         }
         return ZoomMap::new(1, k).ok().map(|z| Box::new(z) as DynMapping);
     }
@@ -141,13 +141,13 @@ pub(crate) fn unit_mapper_label(
     in_lab: &str,
 ) -> Option<(DynMapping, Option<String>)> {
     if in_unit == out_unit {
-        return Some((Box::new(UnitMap::new(1)), Some(in_lab.to_string())));
+        return Some((Box::new(UnitMap::within_limit(1)), Some(in_lab.to_string())));
     }
     let in_tree = create_tree(in_unit, true);
     let out_tree = create_tree(out_unit, true);
     let (in_tree, out_tree) = match (in_tree, out_tree) {
         (None, None) => {
-            return Some((Box::new(UnitMap::new(1)), Some(in_lab.to_string())));
+            return Some((Box::new(UnitMap::within_limit(1)), Some(in_lab.to_string())));
         }
         (Some(i), Some(o)) => (i, o),
         _ => return None,
@@ -178,14 +178,14 @@ pub(crate) fn unit_mapper_label(
 pub(crate) fn unit_mapper(in_unit: &str, out_unit: &str) -> Option<DynMapping> {
     // Strict identical-string fast path — `unit.c`:5468.
     if in_unit == out_unit {
-        return Some(Box::new(UnitMap::new(1)));
+        return Some(Box::new(UnitMap::within_limit(1)));
     }
 
     // Equivalent normalized strings — also a UnitMap.
     let cleaned_in = clean_exp(in_unit);
     let cleaned_out = clean_exp(out_unit);
     if cleaned_in == cleaned_out {
-        return Some(Box::new(UnitMap::new(1)));
+        return Some(Box::new(UnitMap::within_limit(1)));
     }
 
     // Parse both with basic-unit substitution.

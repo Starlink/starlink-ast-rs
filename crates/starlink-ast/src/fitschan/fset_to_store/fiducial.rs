@@ -163,7 +163,7 @@ mod tests {
     fn wcs_with_unit_map2_returns_native_fiducial() {
         // map2 = identity ⇒ celestial fiducial == native fiducial.
         let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-        let map2 = UnitMap::new(2);
+        let map2 = UnitMap::within_limit(2);
         let (phi, theta) = get_fiducial_nsc(&wm);
         let r = get_fiducial_wcs(&wm, &map2, 0, 1).unwrap().unwrap();
         assert!((r.0 - phi).abs() < 1e-12);
@@ -176,7 +176,7 @@ mod tests {
         wm.set_pv(1, 0, 1.0).unwrap();
         wm.set_pv(1, 1, 45.0).unwrap();
         wm.set_pv(1, 2, 30.0).unwrap();
-        let map2 = UnitMap::new(2);
+        let map2 = UnitMap::within_limit(2);
         let r = get_fiducial_wcs(&wm, &map2, 0, 1).unwrap().unwrap();
         assert!((r.0 - 45.0_f64.to_radians()).abs() < 1e-12);
         assert!((r.1 - 30.0_f64.to_radians()).abs() < 1e-12);
@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn invalid_axes_return_none() {
         let wm = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
-        let map2 = UnitMap::new(2);
+        let map2 = UnitMap::within_limit(2);
         assert!(get_fiducial_wcs(&wm, &map2, 5, 1).unwrap().is_none());
     }
 }

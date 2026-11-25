@@ -196,7 +196,8 @@ fn object(name: &str) -> AnyObject {
             simplified(Box::new(m))
         }
         "cmpframe" => {
-            let mut f = CmpFrame::new(Box::new(frame(1, Some("a"))), Box::new(frame(1, Some("b"))));
+            let mut f = CmpFrame::new(Box::new(frame(1, Some("a"))), Box::new(frame(1, Some("b"))))
+                .unwrap();
             f.set_id("c").unwrap();
             AnyObject::CmpFrame(f)
         }

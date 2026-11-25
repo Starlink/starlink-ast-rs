@@ -210,7 +210,7 @@ fn test1(ndim: usize, spread: Spread) -> Result<(), String> {
         ..Default::default()
     };
 
-    let map = UnitMap::new(ndim);
+    let map = UnitMap::new(ndim).unwrap();
     call(
         &map,
         ndim,
@@ -253,7 +253,7 @@ fn test2(ndim: usize, spread: Spread) -> Result<(), String> {
         ..Default::default()
     };
 
-    let map = UnitMap::new(ndim);
+    let map = UnitMap::new(ndim).unwrap();
     for i in 1..=3 {
         if i == 3 {
             flags = RebinSeqFlags {
@@ -305,7 +305,7 @@ fn test3(ndim: usize, spread: Spread) -> Result<(), String> {
         ..Default::default()
     };
 
-    let map = UnitMap::new(ndim);
+    let map = UnitMap::new(ndim).unwrap();
     for _ in 1..=3 {
         call(
             &map,
@@ -748,7 +748,7 @@ fn test8(ndim: usize, spread: Spread) -> Result<(), String> {
     let map = if ndim < 3 {
         CmpMap::new(
             Box::new(ZoomMap::new(ndim, 0.5).expect("ZoomMap")),
-            Box::new(ShiftMap::new(&shifts[..ndim])),
+            Box::new(ShiftMap::new(&shifts[..ndim]).unwrap()),
             Composition::Series,
         )
         .expect("CmpMap")
@@ -757,12 +757,12 @@ fn test8(ndim: usize, spread: Spread) -> Result<(), String> {
             Box::new(
                 CmpMap::new(
                     Box::new(ZoomMap::new(2, 0.5).expect("ZoomMap")),
-                    Box::new(ShiftMap::new(&shifts[..2])),
+                    Box::new(ShiftMap::new(&shifts[..2]).unwrap()),
                     Composition::Series,
                 )
                 .expect("CmpMap"),
             ),
-            Box::new(UnitMap::new(1)),
+            Box::new(UnitMap::new(1).unwrap()),
             Composition::Parallel,
         )
         .expect("CmpMap")

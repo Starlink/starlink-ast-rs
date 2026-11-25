@@ -67,6 +67,7 @@ impl WinMap {
     /// `ErrorCode::Badwm` if `shifts` and `scales` differ in length or are
     /// empty.
     pub fn new(shifts: &[f64], scales: &[f64]) -> AstResult<Self> {
+        crate::mappings::check_init_mapping("WinMap", shifts.len(), shifts.len())?;
         if shifts.len() != scales.len() {
             return Err(AstError::new(
                 ErrorCode::Badwm,
@@ -418,7 +419,7 @@ impl Mapping for WinMap {
                         .zip(&ow.scales)
                         .all(|(a, b)| ast_equal(*a, *b))
                 {
-                    return Some(Box::new(UnitMap::new(self.shifts.len())));
+                    return Some(Box::new(UnitMap::within_limit(self.shifts.len())));
                 }
             }
         }
@@ -664,12 +665,12 @@ pub(crate) fn finalize_linear(new_shifts: Vec<f64>, new_scales: Vec<f64>) -> Opt
     if new_scales.iter().all(|&s| ast_equal(s, 1.0))
         && new_shifts.iter().all(|&s| ast_equal(s, 0.0))
     {
-        return Some(Box::new(UnitMap::new(n)));
+        return Some(Box::new(UnitMap::within_limit(n)));
     }
 
     // Pure shift: all scales are 1.
     if new_scales.iter().all(|&s| ast_equal(s, 1.0)) {
-        return Some(Box::new(ShiftMap::new(new_shifts)));
+        return Some(Box::new(ShiftMap::within_limit(new_shifts)));
     }
 
     // Pure scale (all shifts are 0): zoom or diagonal matrix.

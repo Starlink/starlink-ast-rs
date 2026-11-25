@@ -48,7 +48,7 @@ use starlink_ast::frames::{BasicFrameBuilder, Frame};
 use starlink_ast::mappings::{Mapping, UnitMap};
 
 let frame = BasicFrameBuilder::new(2).build()?;
-let identity = UnitMap::new(frame.naxes());
+let identity = UnitMap::new(frame.naxes()).unwrap();
 let (x, y) = identity.tran2(&[1.0, 2.0], &[2.0, 4.0], true)?;
 assert_eq!((x, y), (vec![1.0, 2.0], vec![2.0, 4.0]));
 # Ok::<(), starlink_ast::error::AstError>(())

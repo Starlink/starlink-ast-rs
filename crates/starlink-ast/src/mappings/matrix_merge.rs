@@ -344,7 +344,7 @@ fn merge_matrix_pair(
 /// Turn a product matrix into a `UnitMap` (if identity) or a `MatrixMap`.
 fn mat_or_unit(product: Array2<f64>) -> AstResult<DynMapping> {
     if super::matrix::is_identity_matrix_pub(&product) {
-        return Ok(Box::new(UnitMap::new(product.nrows())));
+        return Ok(Box::new(UnitMap::new(product.nrows())?));
     }
     Ok(Box::new(MatrixMap::new(product)?))
 }
@@ -1032,7 +1032,7 @@ fn replace_with_simpler(
 
     // Square UNIT matrix → UnitMap.
     if mm.is_unit_form() && nin == nout {
-        return Ok(Some((Box::new(UnitMap::new(nin)), false)));
+        return Ok(Some((Box::new(UnitMap::new(nin)?), false)));
     }
 
     // Square DIAGONAL matrix with equal diagonal terms → ZoomMap (unless the

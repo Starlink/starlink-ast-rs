@@ -66,7 +66,7 @@ fn region_grids_follow_the_c_library() {
         &mut failures,
     );
 
-    let cmp = CmpFrame::new(Box::new(plain(1)), Box::new(plain(1)));
+    let cmp = CmpFrame::new(Box::new(plain(1)), Box::new(plain(1))).unwrap();
     let mut b = BoxRegionBuilder::from_bounds(cmp, &lo[..2], &hi[..2])
         .unwrap()
         .build()
@@ -79,7 +79,7 @@ fn region_grids_follow_the_c_library() {
         &mut failures,
     );
 
-    let cmp = CmpFrame::new(Box::new(SkyFrame::unset_system()), Box::new(plain(1)));
+    let cmp = CmpFrame::new(Box::new(SkyFrame::unset_system()), Box::new(plain(1))).unwrap();
     let mut b = BoxRegionBuilder::from_bounds(cmp, &[-0.2, -0.1, 0.0], &[0.2, 0.1, 3.0])
         .unwrap()
         .build()

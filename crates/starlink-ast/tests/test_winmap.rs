@@ -405,7 +405,12 @@ fn offdiagonal_cd_chain_fuses_deg2rad_into_the_matrixmap() {
     wcs.invert();
 
     let c1 = CmpMap::new(Box::new(win), Box::new(cd), Composition::Series).unwrap();
-    let c2 = CmpMap::new(Box::new(c1), Box::new(UnitMap::new(2)), Composition::Series).unwrap();
+    let c2 = CmpMap::new(
+        Box::new(c1),
+        Box::new(UnitMap::new(2).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
     let c3 = CmpMap::new(Box::new(c2), Box::new(deg2rad), Composition::Series).unwrap();
     let chain: DynMapping =
         Box::new(CmpMap::new(Box::new(c3), Box::new(wcs), Composition::Series).unwrap());
@@ -487,7 +492,12 @@ fn nonuniform_cdelt_chain_keeps_deg2rad_in_the_winmap() {
 
     let c1 = CmpMap::new(Box::new(win), Box::new(pc), Composition::Series).unwrap();
     let c2 = CmpMap::new(Box::new(c1), Box::new(cdelt), Composition::Series).unwrap();
-    let c3 = CmpMap::new(Box::new(c2), Box::new(UnitMap::new(2)), Composition::Series).unwrap();
+    let c3 = CmpMap::new(
+        Box::new(c2),
+        Box::new(UnitMap::new(2).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
     let c4 = CmpMap::new(Box::new(c3), Box::new(deg2rad), Composition::Series).unwrap();
     let chain: DynMapping =
         Box::new(CmpMap::new(Box::new(c4), Box::new(wcs), Composition::Series).unwrap());
@@ -537,13 +547,13 @@ fn winmap_merge_with_a_bad_term_is_undefined() {
     let w: DynMapping = Box::new(
         CmpMap::new(
             Box::new(ZoomMap::new(1, 1e10).unwrap()),
-            Box::new(ShiftMap::new(vec![f64::MAX])),
+            Box::new(ShiftMap::new(vec![f64::MAX]).unwrap()),
             Composition::Series,
         )
         .unwrap(),
     );
     let w = w.simplify().unwrap();
-    let mut s: DynMapping = Box::new(ShiftMap::new(vec![f64::MAX]));
+    let mut s: DynMapping = Box::new(ShiftMap::new(vec![f64::MAX]).unwrap());
     s.invert();
     let m: DynMapping = Box::new(CmpMap::new(w, s, Composition::Series).unwrap());
     let simplified = m.simplify().unwrap();

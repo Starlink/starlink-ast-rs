@@ -63,7 +63,7 @@ fn unit_circle(frame: impl Frame + 'static) -> Circle {
 
 /// A plain CmpFrame that has a Domain, and components that have Domains.
 pub(crate) fn cmp_abc() -> CmpFrame {
-    let mut cmp = CmpFrame::new(Box::new(frame(1, "A")), Box::new(frame(1, "B")));
+    let mut cmp = CmpFrame::new(Box::new(frame(1, "A")), Box::new(frame(1, "B"))).unwrap();
     cmp.set_domain("C");
     cmp
 }
@@ -88,8 +88,9 @@ fn conversions() {
     let cmp1 = CmpFrame::new(
         Box::new(unit_circle(frame(2, "A"))),
         Box::new(SpecFrame::unset_system()),
-    );
-    let cmp2 = CmpFrame::new(Box::new(frame(2, "B")), Box::new(SpecFrame::unset_system()));
+    )
+    .unwrap();
+    let cmp2 = CmpFrame::new(Box::new(frame(2, "B")), Box::new(SpecFrame::unset_system())).unwrap();
     check_no_conversion("from a CmpFrame that holds a Region", &cmp1, &cmp2);
     check_no_conversion("to a CmpFrame that holds a Region", &cmp2, &cmp1);
 
@@ -97,7 +98,8 @@ fn conversions() {
     let cmp1 = CmpFrame::new(
         Box::new(unit_circle(SkyFrame::unset_system())),
         Box::new(SpecFrame::unset_system()),
-    );
+    )
+    .unwrap();
     check_no_conversion("from a CmpFrame that holds a sky Region", &cmp1, &cmp2);
     check_no_conversion("to a CmpFrame that holds a sky Region", &cmp2, &cmp1);
 
@@ -108,12 +110,16 @@ fn conversions() {
 
     // Nor does a CmpFrame of three axes that holds a CmpFrame.
     let nested = CmpFrame::new(
-        Box::new(CmpFrame::new(
-            Box::new(SkyFrame::unset_system()),
-            Box::new(SpecFrame::unset_system()),
-        )),
+        Box::new(
+            CmpFrame::new(
+                Box::new(SkyFrame::unset_system()),
+                Box::new(SpecFrame::unset_system()),
+            )
+            .unwrap(),
+        ),
         Box::new(frame(1, "B")),
-    );
+    )
+    .unwrap();
     check_no_conversion(
         "from a SpecFluxFrame to a CmpFrame that holds a CmpFrame",
         &sff2,

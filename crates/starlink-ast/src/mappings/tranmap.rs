@@ -437,7 +437,7 @@ impl Mapping for TranMap {
             // Both components act on the TranMap's own inputs, so the result
             // has its number of inputs (C gives the sum of the two, fixed
             // upstream).
-            return Some(Box::new(UnitMap::new(map1.nin())));
+            return Some(Box::new(UnitMap::within_limit(map1.nin())));
         }
         let mut new = self.clone();
         new.map1 = map1;

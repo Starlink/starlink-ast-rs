@@ -3106,7 +3106,7 @@ impl Frame for SkyFrame {
     }
 
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
-        super::validate_permutation(perm, 2)?;
+        super::check_perm_axes("SkyFrame", perm, 2)?;
         let old = self.perm;
         self.perm[0] = old[perm[0] - 1];
         self.perm[1] = old[perm[1] - 1];
@@ -3588,7 +3588,7 @@ fn make_sky_frame_mapping(
     // UnitMap before forming the offset-system Mappings (skyframe.c:6077),
     // so that a change such as a new Title keeps an UNKNOWN FrameSet intact.
     if target.system == SkySystem::Unknown && result.system == SkySystem::Unknown {
-        return Ok(Some(Box::new(UnitMap::new(2))));
+        return Ok(Some(Box::new(UnitMap::new(2)?)));
     }
     // C obtains the LAST and diurnal aberration of both frames for every
     // conversion, whether or not a step uses them, the target's LAST first
@@ -3632,7 +3632,7 @@ fn make_sky_frame_mapping(
         map.as_ref(),
         target.sky_tol().min(result.sky_tol()),
     ) {
-        map = Box::new(UnitMap::new(2));
+        map = Box::new(UnitMap::new(2)?);
     }
 
     // Prepend source offset removal (offset→standard).
@@ -3732,7 +3732,7 @@ fn skyframe_sub_frame(
         // Otherwise build the Mapping that takes account of changes
         // between the target and result systems (skyframe.c:10179).
         let mut map: DynMapping = if aligned_in_offsets {
-            Box::new(UnitMap::new(2))
+            Box::new(UnitMap::new(2)?)
         } else {
             match make_sky_frame_mapping(target, &result, align_sys, exempt)? {
                 Some(map) => map,

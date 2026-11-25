@@ -1330,7 +1330,7 @@ impl TimeFrame {
             // conversion (if any) remains.
             if ast_equals(off1, off2, 1.0e3) {
                 if unit1 == unit2 {
-                    return Ok(Box::new(UnitMap::new(1)));
+                    return Ok(Box::new(UnitMap::new(1)?));
                 }
                 return unit_mapper_or_err(unit1, unit2);
             }
@@ -1343,7 +1343,7 @@ impl TimeFrame {
                 let umap = unit_mapper_or_err(du1, unit2)?;
                 shift = transform_scalar(umap.as_ref(), shift, true)?;
             }
-            let shift_map: DynMapping = Box::new(ShiftMap::new(vec![shift]));
+            let shift_map: DynMapping = Box::new(ShiftMap::new(vec![shift])?);
             if unit1 != unit2 {
                 let umap = unit_mapper_or_err(unit1, unit2)?;
                 return Ok(Box::new(CmpMap::new(umap, shift_map, Composition::Series)?));
@@ -1361,7 +1361,7 @@ impl TimeFrame {
         self.build_timemap(&mut timemap, sys1, sys2, ts1, ts2, off1, off2, mjd_off1);
 
         let timemap: DynMapping = if timemap.is_empty() {
-            Box::new(UnitMap::new(1))
+            Box::new(UnitMap::new(1)?)
         } else {
             Box::new(timemap)
         };

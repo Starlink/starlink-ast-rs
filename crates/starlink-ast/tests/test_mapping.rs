@@ -381,7 +381,7 @@ fn a_simplified_mapping_set_to_unit_simplifies_again() {
     let input: DynMapping = Box::new(
         CmpMap::new(
             Box::new(PcdMap::new(0.01, [0.0, 0.0])),
-            Box::new(UnitMap::new(2)),
+            Box::new(UnitMap::new(2).unwrap()),
             Composition::Series,
         )
         .unwrap(),
@@ -478,7 +478,7 @@ fn simplify_clears_an_undefined_transformation_error() {
     assert!(!mm.has_forward());
     let par = CmpMap::new(
         Box::new(mm),
-        Box::new(UnitMap::new(1)),
+        Box::new(UnitMap::new(1).unwrap()),
         Composition::Parallel,
     )
     .unwrap();
@@ -535,7 +535,7 @@ fn failing_series() -> CmpMap {
     let mm = MathMap::new(1, 1, &["y"], &["x=y"]).unwrap();
     let par = CmpMap::new(
         Box::new(mm),
-        Box::new(UnitMap::new(1)),
+        Box::new(UnitMap::new(1).unwrap()),
         Composition::Parallel,
     )
     .unwrap();
@@ -556,7 +556,7 @@ fn dump_of_simplified(map: &dyn Mapping) -> String {
 fn a_component_whose_simplification_fails_is_not_recorded_as_simplified() {
     let map = CmpMap::new(
         Box::new(failing_series()),
-        Box::new(UnitMap::new(1)),
+        Box::new(UnitMap::new(1).unwrap()),
         Composition::Parallel,
     )
     .unwrap();
@@ -584,7 +584,7 @@ fn a_failing_pair_does_not_stop_the_merge() {
     .unwrap();
     let inner = CmpMap::new(
         Box::new(mm),
-        Box::new(UnitMap::new(1)),
+        Box::new(UnitMap::new(1).unwrap()),
         Composition::Parallel,
     )
     .unwrap();
@@ -759,7 +759,7 @@ fn series_failing_with_wcspa() -> CmpMap {
 fn an_error_simplifying_a_component_is_passed_up() {
     let map = CmpMap::new(
         Box::new(series_failing_with_wcspa()),
-        Box::new(UnitMap::new(1)),
+        Box::new(UnitMap::new(1).unwrap()),
         Composition::Parallel,
     )
     .unwrap();

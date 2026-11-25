@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn shift_3d() {
-        let sm = ShiftMap::new(vec![10.0, 20.0, 30.0]);
+        let sm = ShiftMap::within_limit(vec![10.0, 20.0, 30.0]);
         let fit = sm
             .linear_approx(&[0.0, 0.0, 0.0], &[100.0, 100.0, 100.0], 0.001)
             .unwrap()

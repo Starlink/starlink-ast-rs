@@ -1291,7 +1291,7 @@ pub(crate) fn time_map_merge(
     }
 
     let new: DynMapping = if unit {
-        Box::new(UnitMap::new(1))
+        Box::new(UnitMap::within_limit(1))
     } else {
         let mut result = TimeMap::new();
         result.conversions = steps;
@@ -1438,7 +1438,7 @@ impl Mapping for TimeMap {
         time_simplify_steps(&mut steps);
 
         if steps.is_empty() {
-            Some(Box::new(UnitMap::new(1)))
+            Some(Box::new(UnitMap::within_limit(1)))
         } else {
             let mut result = TimeMap::new();
             result.conversions = steps;

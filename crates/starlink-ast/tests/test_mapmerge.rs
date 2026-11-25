@@ -229,7 +229,7 @@ fn zoom(n: usize, z: f64) -> DynMapping {
 }
 
 fn shift(s: &[f64]) -> DynMapping {
-    Box::new(ShiftMap::new(s.to_vec()))
+    Box::new(ShiftMap::new(s.to_vec()).unwrap())
 }
 
 fn winmap(ina: &[f64], inb: &[f64], outa: &[f64], outb: &[f64]) -> DynMapping {

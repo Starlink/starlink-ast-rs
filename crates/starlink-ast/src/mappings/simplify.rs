@@ -1083,7 +1083,7 @@ pub(crate) fn zoom_map_merge(
         // A product that underflows to zero is refused by the constructor,
         // and C leaves that error in the global status.
         let new: DynMapping = if unit {
-            Box::new(UnitMap::new(nin))
+            Box::new(UnitMap::within_limit(nin))
         } else {
             Box::new(ctx.settle(ZoomMap::new(nin, zoom_acc).map(Some))?)
         };
@@ -1143,7 +1143,7 @@ pub(crate) fn zoom_map_merge(
 
     let nin = zooms.len();
     let new: DynMapping = if unit {
-        Box::new(UnitMap::new(nin))
+        Box::new(UnitMap::within_limit(nin))
     } else if single {
         Box::new(ctx.settle(ZoomMap::new(nin, minzoom).map(Some))?)
     } else {
@@ -1216,7 +1216,10 @@ pub(crate) fn wcs_map_merge(
     // neighbor in the same pass. The replacement carries a cleared Invert flag
     // (wcsmap.c:3104).
     if wcs.projection() == crate::mappings::WcsProjection::Unknown {
-        ctx.set_pair_single(where_, (Box::new(UnitMap::new(wcs.nin())), false, false));
+        ctx.set_pair_single(
+            where_,
+            (Box::new(UnitMap::within_limit(wcs.nin())), false, false),
+        );
         return Some(where_);
     }
 
@@ -2387,7 +2390,7 @@ fn swap_wcsmap_perm_unassigned(
         }
 
         let new_pm = PermMap::new(inperm, outperm, &new_constants)?;
-        let unit = UnitMap::new(npout);
+        let unit = UnitMap::new(npout)?;
 
         // Result: [PermMap (at original PermMap position), UnitMap (replacing WcsMap)]
         // Swapped order: [UnitMap, PermMap] — but UnitMap will be stripped.
@@ -2434,7 +2437,7 @@ fn swap_wcsmap_perm_unassigned(
         }
 
         let new_pm = PermMap::new(inperm, outperm, &new_constants)?;
-        let unit = UnitMap::new(npin);
+        let unit = UnitMap::new(npin)?;
 
         // Swapped: [UnitMap (replacing WcsMap), PermMap]
         Ok((
@@ -2954,7 +2957,7 @@ fn swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) 
     let nout_b = effective_nout(par_list[1].0.as_ref(), par_list[1].1);
 
     let new_a: DynMapping = if aconstants {
-        Box::new(UnitMap::new(nout_a))
+        Box::new(UnitMap::new(nout_a)?)
     } else {
         let mut a = par_list[0].0.clone_box();
         if par_list[0].1 {
@@ -2963,7 +2966,7 @@ fn swap_permmap_parallel_at(list: &mut Vec<(DynMapping, bool, bool)>, i: usize) 
         a
     };
     let new_b: DynMapping = if bconstants {
-        Box::new(UnitMap::new(nout_b))
+        Box::new(UnitMap::new(nout_b)?)
     } else {
         let mut b = par_list[1].0.clone_box();
         if par_list[1].1 {
@@ -3131,7 +3134,7 @@ pub(crate) fn pcd_map_merge(
     // the `if` of an if/else whose `else` holds the whole neighbor search, so
     // a reduced PcdMap never looks at a neighbor in the same pass.
     if ast_equal(pcd.disc(), 0.0) {
-        ctx.set_pair_single(where_, (Box::new(UnitMap::new(2)), false, false));
+        ctx.set_pair_single(where_, (Box::new(UnitMap::within_limit(2)), false, false));
         return Some(where_);
     }
 
@@ -4100,7 +4103,7 @@ mod tests {
         let pair1: DynMapping = Box::new(
             CmpMap::new(
                 Box::new(sla1),
-                Box::new(UnitMap::new(1)),
+                Box::new(UnitMap::within_limit(1)),
                 Composition::Parallel,
             )
             .unwrap(),
@@ -4108,8 +4111,8 @@ mod tests {
 
         let pair2: DynMapping = Box::new(
             CmpMap::new(
-                Box::new(UnitMap::new(2)),
-                Box::new(ShiftMap::new(vec![0.001])),
+                Box::new(UnitMap::within_limit(2)),
+                Box::new(ShiftMap::within_limit(vec![0.001])),
                 Composition::Parallel,
             )
             .unwrap(),
@@ -4120,7 +4123,7 @@ mod tests {
         let pair3: DynMapping = Box::new(
             CmpMap::new(
                 Box::new(sla2),
-                Box::new(UnitMap::new(1)),
+                Box::new(UnitMap::within_limit(1)),
                 Composition::Parallel,
             )
             .unwrap(),
@@ -4328,7 +4331,7 @@ mod tests {
     fn flatten_nested_series_three_elements() {
         // CmpMap(CmpMap(A, B, Series), C, Series) → [A, B, C]
         let a = dyn_map(ZoomMap::new(1, 2.0).unwrap());
-        let b = dyn_map(ShiftMap::new([10.0]));
+        let b = dyn_map(ShiftMap::within_limit([10.0]));
         let inner = CmpMap::new(a, b, Composition::Series).unwrap();
         let c = dyn_map(ZoomMap::new(1, 5.0).unwrap());
         let outer = CmpMap::new(dyn_map(inner), c, Composition::Series).unwrap();
@@ -4344,7 +4347,7 @@ mod tests {
     fn flatten_parallel_cmpmap_not_absorbed_by_series() {
         // A parallel CmpMap is opaque when flattening for series.
         let a = dyn_map(ZoomMap::new(1, 2.0).unwrap());
-        let b = dyn_map(ShiftMap::new([10.0]));
+        let b = dyn_map(ShiftMap::within_limit([10.0]));
         let par = CmpMap::new(a, b, Composition::Parallel).unwrap();
         let list = flatten(&par, false, true).unwrap(); // flatten for series
         assert_eq!(list.len(), 1); // parallel treated as leaf
@@ -4353,7 +4356,7 @@ mod tests {
     #[test]
     fn flatten_inverted_series_reverses_order() {
         let a = dyn_map(ZoomMap::new(2, 2.0).unwrap());
-        let b = dyn_map(ShiftMap::new([10.0, 20.0]));
+        let b = dyn_map(ShiftMap::within_limit([10.0, 20.0]));
         let mut cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         cmp.invert();
         let list = flatten(&cmp, false, true).unwrap();
@@ -4370,7 +4373,7 @@ mod tests {
     #[test]
     fn flatten_parallel_cmpmap_for_parallel() {
         let a = dyn_map(ZoomMap::new(1, 2.0).unwrap());
-        let b = dyn_map(ShiftMap::new([10.0]));
+        let b = dyn_map(ShiftMap::within_limit([10.0]));
         let cmp = CmpMap::new(a, b, Composition::Parallel).unwrap();
         // Flatten for parallel: absorbs the parallel CmpMap.
         let list = flatten(&cmp, false, false).unwrap();
@@ -4387,7 +4390,7 @@ mod tests {
 
         // Types that have no cross-type merge rule should not merge.
         let a = dyn_map(SphMap::new());
-        let b = dyn_map(ShiftMap::new([10.0, 20.0]));
+        let b = dyn_map(ShiftMap::within_limit([10.0, 20.0]));
         let mut list: Vec<(DynMapping, bool, bool)> = vec![(a, false, false), (b, false, false)];
         merge_loop(&mut list, true);
         assert_eq!(list.len(), 2);
@@ -4396,8 +4399,8 @@ mod tests {
     #[test]
     fn merge_loop_strips_unitmaps_from_series() {
         let a = dyn_map(ZoomMap::new(1, 3.0).unwrap());
-        let u = dyn_map(UnitMap::new(1));
-        let b = dyn_map(ShiftMap::new([5.0]));
+        let u = dyn_map(UnitMap::within_limit(1));
+        let b = dyn_map(ShiftMap::within_limit([5.0]));
         let mut list: Vec<(DynMapping, bool, bool)> =
             vec![(a, false, false), (u, false, false), (b, false, false)];
         merge_loop(&mut list, true);
@@ -4409,7 +4412,7 @@ mod tests {
     #[test]
     fn merge_loop_merges_linear_parallel() {
         let a = dyn_map(ZoomMap::new(1, 3.0).unwrap());
-        let u = dyn_map(UnitMap::new(1));
+        let u = dyn_map(UnitMap::within_limit(1));
         let mut list: Vec<(DynMapping, bool, bool)> = vec![(a, false, false), (u, false, false)];
         merge_loop(&mut list, false);
         // Parallel: linear mappings are merged into a wider WinMap.
@@ -4419,8 +4422,8 @@ mod tests {
 
     #[test]
     fn merge_loop_all_unitmaps_preserves_one() {
-        let u1 = dyn_map(UnitMap::new(2));
-        let u2 = dyn_map(UnitMap::new(2));
+        let u1 = dyn_map(UnitMap::within_limit(2));
+        let u2 = dyn_map(UnitMap::within_limit(2));
         let mut list: Vec<(DynMapping, bool, bool)> = vec![(u1, false, false), (u2, false, false)];
         merge_loop(&mut list, true);
         // All UnitMaps stripped → fallback pushes one back.
@@ -4451,7 +4454,7 @@ mod tests {
         use crate::coords::PointSet;
 
         let z = dyn_map(ZoomMap::new(1, 2.0).unwrap());
-        let s = dyn_map(ShiftMap::new([10.0]));
+        let s = dyn_map(ShiftMap::within_limit([10.0]));
         let result = reconstruct(vec![(z, false, false), (s, false, false)], true).unwrap();
         // zoom(2) then shift(10): 5 → 10 → 20
         let pts = PointSet::from_rows([[5.0]]);
@@ -4464,7 +4467,7 @@ mod tests {
         use crate::coords::PointSet;
 
         let a = dyn_map(ZoomMap::new(1, 2.0).unwrap());
-        let b = dyn_map(ShiftMap::new([10.0]));
+        let b = dyn_map(ShiftMap::within_limit([10.0]));
         let c = dyn_map(ZoomMap::new(1, 3.0).unwrap());
         let result = reconstruct(
             vec![(a, false, false), (b, false, false), (c, false, false)],
@@ -4482,7 +4485,7 @@ mod tests {
         use crate::coords::PointSet;
 
         let z = dyn_map(ZoomMap::new(1, 3.0).unwrap());
-        let s = dyn_map(ShiftMap::new([100.0]));
+        let s = dyn_map(ShiftMap::within_limit([100.0]));
         let result = reconstruct(vec![(z, false, false), (s, false, false)], false).unwrap();
         assert_eq!(result.nin(), 2);
         let pts = PointSet::from_rows([[2.0, 5.0]]);
@@ -4508,7 +4511,7 @@ mod tests {
         use crate::coords::PointSet;
 
         let a = dyn_map(ZoomMap::new(1, 2.0).unwrap());
-        let b = dyn_map(ShiftMap::new([10.0]));
+        let b = dyn_map(ShiftMap::within_limit([10.0]));
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
         // Must be functionally equivalent: 5 → 20.
@@ -4522,7 +4525,7 @@ mod tests {
         use crate::coords::PointSet;
 
         let a = dyn_map(ZoomMap::new(1, 2.0).unwrap());
-        let b = dyn_map(ShiftMap::new([10.0]));
+        let b = dyn_map(ShiftMap::within_limit([10.0]));
         let mut cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         cmp.invert();
         // Inverted: inverse of (zoom(2) then shift(10)) = inv_shift(10) then inv_zoom(2)
@@ -4541,7 +4544,7 @@ mod tests {
     #[test]
     fn simplify_unitmap_series_zoom_removes_unit() {
         // CmpMap(UnitMap(2), ZoomMap(2,3), Series) → ZoomMap(2,3)
-        let a = dyn_map(UnitMap::new(2));
+        let a = dyn_map(UnitMap::within_limit(2));
         let b = dyn_map(ZoomMap::new(2, 3.0).unwrap());
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
@@ -4588,8 +4591,8 @@ mod tests {
     #[test]
     fn simplify_shift_series_merges_offsets() {
         // CmpMap(ShiftMap([1,2]), ShiftMap([3,4]), Series) → ShiftMap([4,6])
-        let a = dyn_map(ShiftMap::new(vec![1.0, 2.0]));
-        let b = dyn_map(ShiftMap::new(vec![3.0, 4.0]));
+        let a = dyn_map(ShiftMap::within_limit(vec![1.0, 2.0]));
+        let b = dyn_map(ShiftMap::within_limit(vec![3.0, 4.0]));
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
         assert!(result.as_any().is::<ShiftMap>());
@@ -4602,8 +4605,8 @@ mod tests {
     #[test]
     fn simplify_shift_series_cancels_to_unit() {
         // CmpMap(ShiftMap([1,2]), ShiftMap([-1,-2]), Series) → UnitMap(2)
-        let a = dyn_map(ShiftMap::new(vec![1.0, 2.0]));
-        let b = dyn_map(ShiftMap::new(vec![-1.0, -2.0]));
+        let a = dyn_map(ShiftMap::within_limit(vec![1.0, 2.0]));
+        let b = dyn_map(ShiftMap::within_limit(vec![-1.0, -2.0]));
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
         assert!(result.as_any().is::<UnitMap>());
@@ -4642,8 +4645,8 @@ mod tests {
     fn simplify_preserves_transform_shift_series() {
         use crate::coords::PointSet;
 
-        let a = dyn_map(ShiftMap::new(vec![10.0, 20.0]));
-        let b = dyn_map(ShiftMap::new(vec![30.0, 40.0]));
+        let a = dyn_map(ShiftMap::within_limit(vec![10.0, 20.0]));
+        let b = dyn_map(ShiftMap::within_limit(vec![30.0, 40.0]));
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let simplified = simplify_mapping(&cmp).unwrap();
 
@@ -4685,8 +4688,8 @@ mod tests {
     #[test]
     fn simplify_unitmap_parallel_merges() {
         // CmpMap(UnitMap(2), UnitMap(3), Parallel) → UnitMap(5)
-        let a = dyn_map(UnitMap::new(2));
-        let b = dyn_map(UnitMap::new(3));
+        let a = dyn_map(UnitMap::within_limit(2));
+        let b = dyn_map(UnitMap::within_limit(3));
         let cmp = CmpMap::new(a, b, Composition::Parallel).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
         assert!(result.as_any().is::<UnitMap>());
@@ -5087,7 +5090,7 @@ mod tests {
 
         // WinMap(s=1,c=2) then ShiftMap([10]): out = 1*(2*x+1) + 10 = 2*x + 11
         let a = dyn_map(WinMap::new(&[1.0], &[2.0]).unwrap());
-        let b = dyn_map(ShiftMap::new(vec![10.0]));
+        let b = dyn_map(ShiftMap::within_limit(vec![10.0]));
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
         assert!(result.as_any().is::<WinMap>());
@@ -5103,7 +5106,7 @@ mod tests {
         use crate::mappings::WinMap;
 
         // ShiftMap([10]) then WinMap(s=1,c=2): out = 2*(x+10) + 1 = 2*x + 21
-        let a = dyn_map(ShiftMap::new(vec![10.0]));
+        let a = dyn_map(ShiftMap::within_limit(vec![10.0]));
         let b = dyn_map(WinMap::new(&[1.0], &[2.0]).unwrap());
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
@@ -5127,7 +5130,7 @@ mod tests {
 
         // ZoomMap(1,3) then ShiftMap([10]): out = 3*x + 10
         let a = dyn_map(ZoomMap::new(1, 3.0).unwrap());
-        let b = dyn_map(ShiftMap::new(vec![10.0]));
+        let b = dyn_map(ShiftMap::within_limit(vec![10.0]));
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
         // Should produce a WinMap (shift + scale).
@@ -5147,7 +5150,7 @@ mod tests {
         use crate::mappings::WinMap;
 
         // ShiftMap([10]) then ZoomMap(1,3): out = 3*(x + 10) = 3*x + 30
-        let a = dyn_map(ShiftMap::new(vec![10.0]));
+        let a = dyn_map(ShiftMap::within_limit(vec![10.0]));
         let b = dyn_map(ZoomMap::new(1, 3.0).unwrap());
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
@@ -5190,7 +5193,7 @@ mod tests {
         use crate::coords::PointSet;
 
         // ShiftMap([10])^-1 then ZoomMap(1,2): out = 2*(x - 10) = 2*x - 20
-        let mut s = ShiftMap::new(vec![10.0]);
+        let mut s = ShiftMap::within_limit(vec![10.0]);
         s.invert();
         let z = ZoomMap::new(1, 2.0).unwrap();
         let cmp = CmpMap::new(dyn_map(s), dyn_map(z), Composition::Series).unwrap();
@@ -5214,7 +5217,7 @@ mod tests {
         use crate::mappings::WinMap;
 
         // 2-axis: ShiftMap([1,2]) then ZoomMap(2,3) → WinMap with scales=[3,3], shifts=[3,6]
-        let a = dyn_map(ShiftMap::new(vec![1.0, 2.0]));
+        let a = dyn_map(ShiftMap::within_limit(vec![1.0, 2.0]));
         let b = dyn_map(ZoomMap::new(2, 3.0).unwrap());
         let cmp = CmpMap::new(a, b, Composition::Series).unwrap();
         let result = simplify_mapping(&cmp).unwrap();
@@ -5259,10 +5262,10 @@ mod tests {
         // Step 1: x + 1
         // Step 2: 3*(x+1) = 3*x + 3
         // Step 3: 3*x + 3 + 10 = 3*x + 13
-        let a = dyn_map(ShiftMap::new(vec![1.0]));
+        let a = dyn_map(ShiftMap::within_limit(vec![1.0]));
         let b = dyn_map(ZoomMap::new(1, 3.0).unwrap());
         let inner = CmpMap::new(a, b, Composition::Series).unwrap();
-        let c = dyn_map(ShiftMap::new(vec![10.0]));
+        let c = dyn_map(ShiftMap::within_limit(vec![10.0]));
         let outer = CmpMap::new(dyn_map(inner), c, Composition::Series).unwrap();
         let result = simplify_mapping(&outer).unwrap();
 
@@ -5454,7 +5457,7 @@ mod tests {
         // These can't form a valid CmpMap in series either, but try_merge
         // should return None regardless.
         let z = ZoomMap::new(2, 3.0).unwrap();
-        let s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
+        let s = ShiftMap::within_limit(vec![1.0, 2.0, 3.0]);
         let result = z.try_merge(&s, true, false, false);
         assert!(result.is_none());
     }
@@ -5496,12 +5499,12 @@ mod tests {
 
         // Par(Shift([2]), Shift([3])) ; Par(Shift([5]), Shift([7]))
         // → Par(Shift([7]), Shift([10]))
-        let s1 = ShiftMap::new(vec![2.0]);
-        let s2 = ShiftMap::new(vec![3.0]);
+        let s1 = ShiftMap::within_limit(vec![2.0]);
+        let s2 = ShiftMap::within_limit(vec![3.0]);
         let par1 = CmpMap::new(dyn_map(s1), dyn_map(s2), Composition::Parallel).unwrap();
 
-        let s3 = ShiftMap::new(vec![5.0]);
-        let s4 = ShiftMap::new(vec![7.0]);
+        let s3 = ShiftMap::within_limit(vec![5.0]);
+        let s4 = ShiftMap::within_limit(vec![7.0]);
         let par2 = CmpMap::new(dyn_map(s3), dyn_map(s4), Composition::Parallel).unwrap();
 
         let series = CmpMap::new(dyn_map(par1), dyn_map(par2), Composition::Series).unwrap();
@@ -5664,8 +5667,8 @@ mod tests {
         // After swap: Par(Shift([20]), Shift([10])) followed by identity PermMap
         // Which then simplifies away.
         let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
-        let s1 = ShiftMap::new(vec![10.0]);
-        let s2 = ShiftMap::new(vec![20.0]);
+        let s1 = ShiftMap::within_limit(vec![10.0]);
+        let s2 = ShiftMap::within_limit(vec![20.0]);
         let par = CmpMap::new(dyn_map(s1), dyn_map(s2), Composition::Parallel).unwrap();
 
         let series = CmpMap::new(dyn_map(pm), dyn_map(par), Composition::Series).unwrap();
@@ -5687,8 +5690,8 @@ mod tests {
         // PermMap that is NOT a block swap: outperm=[1,2] (identity).
         // This doesn't have the block-swap structure needed.
         let pm = PermMap::new(&[1, 2], &[1, 2], &[]).unwrap();
-        let s1 = ShiftMap::new(vec![10.0]);
-        let s2 = ShiftMap::new(vec![20.0]);
+        let s1 = ShiftMap::within_limit(vec![10.0]);
+        let s2 = ShiftMap::within_limit(vec![20.0]);
         let par = CmpMap::new(dyn_map(s1), dyn_map(s2), Composition::Parallel).unwrap();
 
         let series = CmpMap::new(dyn_map(pm), dyn_map(par), Composition::Series).unwrap();
@@ -5741,11 +5744,11 @@ mod tests {
         let wcs = WcsMap::new(2, WcsProjection::Tan, 1, 2).unwrap();
         let par = CmpMap::new(
             Box::new(wcs),
-            Box::new(UnitMap::new(1)),
+            Box::new(UnitMap::within_limit(1)),
             Composition::Parallel,
         )
         .unwrap();
-        let shift = ShiftMap::new(vec![0.0, 0.0, 7.5]);
+        let shift = ShiftMap::within_limit(vec![0.0, 0.0, 7.5]);
         let series = CmpMap::new(Box::new(par), Box::new(shift), Composition::Series).unwrap();
 
         let result = simplify_mapping(&series).unwrap();
@@ -5837,7 +5840,8 @@ mod tests {
             err.message()
                 .contains("have 2 inputs and 1 outputs and do not feed one another")
         );
-        let same: Vec<(DynMapping, bool, bool)> = vec![(Box::new(UnitMap::new(2)), false, false)];
+        let same: Vec<(DynMapping, bool, bool)> =
+            vec![(Box::new(UnitMap::within_limit(2)), false, false)];
         assert!(merger_axes_error(&zoom, true, 2, 2, &same).is_none());
         assert!(merger_axes_error(&zoom, false, 2, 2, &same).is_none());
     }

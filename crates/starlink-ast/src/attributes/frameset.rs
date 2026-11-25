@@ -424,7 +424,7 @@ mod tests {
         let mut fs = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build().unwrap()));
         fs.add_frame(
             FrameRef::Base,
-            Box::new(UnitMap::new(2)),
+            Box::new(UnitMap::within_limit(2)),
             Box::new(SkyFrame::new(SkySystem::Icrs)),
         )
         .unwrap();

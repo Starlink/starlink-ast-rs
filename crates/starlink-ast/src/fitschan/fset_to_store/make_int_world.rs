@@ -495,7 +495,7 @@ mod tests {
         // 0.5*(1+100)) = (50.5, 50.5). w0 = identity(50.5, 50.5) =
         // (50.5, 50.5). CRPIX = g0 - y = (50.5, 50.5) - (50.5, 50.5)
         // = (0, 0).
-        let fs = build_2axis_fs(Box::new(UnitMap::new(2)));
+        let fs = build_2axis_fs(Box::new(UnitMap::within_limit(2)));
         let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
         let mut store = FitsStore::new(2);
         let dim = vec![Some(100.0), Some(100.0)];
@@ -589,7 +589,7 @@ mod tests {
             .unwrap();
         let mm = MatrixMap::new(m).unwrap();
         // Compose pixel-shift before to give a non-zero CRPIX target.
-        let shift = ShiftMap::new(vec![-50.5, -50.5]);
+        let shift = ShiftMap::within_limit(vec![-50.5, -50.5]);
         let chain = CmpMap::new(Box::new(shift), Box::new(mm), Composition::Series).unwrap();
         let fs = build_2axis_fs(Box::new(chain));
         let map = fs.mapping(FrameRef::Base, FrameRef::Current).unwrap();
@@ -737,7 +737,7 @@ mod tests {
         }
 
         let crpix = 128.0;
-        let sm = ShiftMap::new(vec![-crpix, -crpix]);
+        let sm = ShiftMap::within_limit(vec![-crpix, -crpix]);
         let pm = PolyMap::new(2, 2, &fwd, Some(&inv)).unwrap();
         let cd = [
             0.000249756880272355_f64,

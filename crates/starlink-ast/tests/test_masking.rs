@@ -20,7 +20,7 @@ fn mask_outside_circle_2d() {
         .radius(2.0)
         .build()
         .unwrap();
-    let mapping = UnitMap::new(2);
+    let mapping = UnitMap::new(2).unwrap();
 
     let mut data = vec![1.0f64; 25];
     let count = mask(
@@ -55,7 +55,7 @@ fn mask_integer_data() {
         .radius(1.0)
         .build()
         .unwrap();
-    let mapping = UnitMap::new(2);
+    let mapping = UnitMap::new(2).unwrap();
 
     let mut data = vec![0i32; 9]; // 3x3 grid
     let count = mask(
@@ -145,7 +145,7 @@ fn mask_3d_prism() {
         .unwrap()
         .build()
         .unwrap();
-    let mapping = UnitMap::new(3);
+    let mapping = UnitMap::new(3).unwrap();
 
     let mut data = vec![0.0f64; 125]; // 5x5x5
     let count = mask(
@@ -186,7 +186,7 @@ fn mask_mismatched_bounds_lengths() {
         .radius(1.0)
         .build()
         .unwrap();
-    let mapping = UnitMap::new(2);
+    let mapping = UnitMap::new(2).unwrap();
 
     let mut data = vec![0.0f64; 10];
     let result = mask(
@@ -209,7 +209,7 @@ fn mask_wrong_mapping_nin() {
         .radius(1.0)
         .build()
         .unwrap();
-    let mapping = UnitMap::new(3); // 3 inputs but grid is 2D
+    let mapping = UnitMap::new(3).unwrap(); // 3 inputs but grid is 2D
 
     let mut data = vec![0.0f64; 25];
     let result = mask(
@@ -232,7 +232,7 @@ fn mask_wrong_data_length() {
         .radius(1.0)
         .build()
         .unwrap();
-    let mapping = UnitMap::new(2);
+    let mapping = UnitMap::new(2).unwrap();
 
     let mut data = vec![0.0f64; 10]; // should be 25 for 5x5
     let result = mask(
@@ -255,7 +255,7 @@ fn mask_ubnd_less_than_lbnd() {
         .radius(1.0)
         .build()
         .unwrap();
-    let mapping = UnitMap::new(2);
+    let mapping = UnitMap::new(2).unwrap();
 
     let mut data = vec![0.0f64; 1];
     let result = mask(

@@ -39,12 +39,26 @@ impl UnitMap {
     /// ```
     /// use starlink_ast::mappings::{Mapping, UnitMap};
     ///
-    /// let map = UnitMap::new(2);
+    /// let map = UnitMap::new(2).unwrap();
     /// let (x, y) = map.tran2(&[1.0, 2.0], &[3.0, 4.0], true).unwrap();
     /// assert_eq!((x, y), (vec![1.0, 2.0], vec![3.0, 4.0]));
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Badni` if `ncoord` is more than
+    /// [`MXAXES`](crate::constants::MXAXES).
     #[doc(alias = "astUnitMap")]
-    pub fn new(ncoord: usize) -> Self {
+    pub fn new(ncoord: usize) -> AstResult<Self> {
+        crate::mappings::check_init_mapping("UnitMap", ncoord, ncoord)?;
+        Ok(Self::within_limit(ncoord))
+    }
+
+    /// A UnitMap of `ncoord` coordinates, where `ncoord` is the number of
+    /// coordinates of a Mapping or Frame that already exists, so within
+    /// [`MXAXES`](crate::constants::MXAXES).
+    pub(crate) fn within_limit(ncoord: usize) -> Self {
+        debug_assert!(ncoord <= crate::constants::MXAXES);
         Self {
             ncoord,
             inverted: false,
@@ -205,7 +219,7 @@ impl Mapping for UnitMap {
         }
 
         // Replace the run with one UnitMap applied forward (unitmap.c:588-624).
-        ctx.replace_range_with(i1, i2, Box::new(UnitMap::new(nin)));
+        ctx.replace_range_with(i1, i2, Box::new(UnitMap::within_limit(nin)));
         Some(i1)
     }
 
@@ -226,7 +240,7 @@ impl Mapping for UnitMap {
         }
         Ok(Some((
             in_axes.to_vec(),
-            Box::new(UnitMap::new(in_axes.len())),
+            Box::new(UnitMap::new(in_axes.len())?),
         )))
     }
 

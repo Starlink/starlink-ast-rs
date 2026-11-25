@@ -465,7 +465,7 @@ impl Mapping for SphMap {
             }
             3
         };
-        Some(Box::new(UnitMap::new(nin_pair)))
+        Some(Box::new(UnitMap::within_limit(nin_pair)))
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {

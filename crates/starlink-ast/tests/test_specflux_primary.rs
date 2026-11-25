@@ -72,7 +72,8 @@ fn templates_find_component_axes_as_in_the_c_library() {
     let cmp = CmpFrame::new(
         Box::new(specflux()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     let mut failures = Vec::new();
     for &(name, want) in cases::CASES {
         let got = match name {

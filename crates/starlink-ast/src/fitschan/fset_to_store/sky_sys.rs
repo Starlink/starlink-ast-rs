@@ -1061,8 +1061,12 @@ mod tests {
         use crate::frames::BasicFrameBuilder;
         let pixel = BasicFrameBuilder::new(2).build().unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(sky))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(sky),
+        )
+        .unwrap();
         fs
     }
 

@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn unit_map_is_linear() {
-        let m = UnitMap::new(2);
+        let m = UnitMap::within_limit(2);
         let r = is_map_linear(&m, &[0.0, 0.0], &[1.0, 1.0], 0).unwrap();
         assert!(r);
         let r = is_map_linear(&m, &[0.0, 0.0], &[1.0, 1.0], 1).unwrap();
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn shift_map_is_linear() {
-        let m = ShiftMap::new(vec![5.0, 10.0]);
+        let m = ShiftMap::within_limit(vec![5.0, 10.0]);
         let r = is_map_linear(&m, &[0.0, 0.0], &[100.0, 100.0], 0).unwrap();
         assert!(r);
     }
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn out_of_range_axis_returns_false() {
-        let m = UnitMap::new(2);
+        let m = UnitMap::within_limit(2);
         let r = is_map_linear(&m, &[0.0, 0.0], &[1.0, 1.0], 5).unwrap();
         assert!(!r);
     }

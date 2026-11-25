@@ -47,13 +47,13 @@ input normalization as an argument. What differs is only which of them
 | 15 | The only merge available is a PolyMap with its own inverse, in series | polymap.c:3957-3961 (fn MapMerge) | polymap.rs:1933-1940 (fn try_merge) | architecture | ported |
 | 16 | Temporarily set the nominated PolyMap's Invert flag to the requested value | polymap.c:3963-3967 (fn MapMerge) | polymap.rs:1948-1952 (fn try_merge) | architecture | ported |
 | 17 | Read the nominated PolyMap's shape at that orientation | polymap.c:3969-3971 (fn MapMerge) | polymap.rs:1960-1962 (fn try_merge) | architecture | ported |
-| 18 | Take each neighbor in turn, skipping one that does not exist or is not a PolyMap | polymap.c:3973-3983 (fn MapMerge) | mappings/simplify.rs:1672-1693 (fn default_map_merge) | architecture | ported |
+| 18 | Take each neighbor in turn, skipping one that does not exist or is not a PolyMap | polymap.c:3973-3983 (fn MapMerge) | mappings/simplify.rs:1675-1696 (fn default_map_merge) | architecture | ported |
 | 19 | Require the neighbor to be used in the opposite direction | polymap.c:3985-3986 (fn MapMerge) | polymap.rs:1937-1939 (fn try_merge) | architecture | ported |
 | 20 | Set the neighbor's Invert flag so the equality test compares like with like | polymap.c:3988-3996 (fn MapMerge) | polymap.rs:1953-1955 (fn try_merge) | architecture | ported |
 | 21 | Use astEqual to check the coefficients and the rest are equal | polymap.c:3998-4000 (fn MapMerge) | polymap.rs:1956-1958 (fn try_merge), polymap.rs:1966-2002 (fn equal) | architecture | ported |
 | 22 | Re-instate the neighbor's Invert flag | polymap.c:4002-4003 (fn MapMerge) | -- | ceremony | n/a: the two PolyMaps are compared as copies, so the list entries are never mutated and nothing is restored |
 | 23 | Move on if the neighbor differs | polymap.c:4005-4007 (fn MapMerge) | polymap.rs:1956-1958 (fn try_merge) | architecture | ported |
-| 24 | Otherwise replace both with UnitMaps and leave the loop | polymap.c:4009-4031 (fn MapMerge) | polymap.rs:1962-1963 (fn try_merge), mappings/simplify.rs:1746-1753 (fn default_map_merge) | architecture | ported |
+| 24 | Otherwise replace both with UnitMaps and leave the loop | polymap.c:4009-4031 (fn MapMerge) | polymap.rs:1962-1963 (fn try_merge), mappings/simplify.rs:1749-1756 (fn default_map_merge) | architecture | ported |
 | 25 | Re-instate the nominated PolyMap's Invert flag if it was not replaced | polymap.c:4034-4036 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
 | 26 | Return the result | polymap.c:4039-4040 (fn MapMerge) | polymap.rs:1918 (fn map_merge) | ceremony | ported |
 | 27 | Setting or clearing IterInverse, NiterInverse or TolInverse clears the simplified record | polymap.c:6433 (fn astMAKE_CLEAR1), polymap.c:6439-6446 (fn astMAKE_SET1) | polymap.rs:362-363 (fn set_iter_inverse), polymap.rs:383-386 (fn clear_iter_inverse), polymap.rs:421-423 (fn set_niter_inverse), polymap.rs:472-474 (fn set_tol_inverse) | ceremony | ported |
@@ -139,7 +139,7 @@ returns before any per-class `MapMerge` runs when the nominated Mapping's `Ident
 attribute is set (`mapping.c:24569 (fn astMapMerge_)`), so an identified PolyMap
 keeps its coefficients as constructed even when the tree around it simplifies.
 The port applies the same guard in one place, `dispatch_map_merge`
-(`mappings/simplify.rs:1491-1659 (fn dispatch_map_merge)`), which is how every
+(`mappings/simplify.rs:1494-1662 (fn dispatch_map_merge)`), which is how every
 call site gets it; see PLAN.md §10.29.
 
 ## Rows 16 to 21 — the Invert forcing is what makes the comparison possible

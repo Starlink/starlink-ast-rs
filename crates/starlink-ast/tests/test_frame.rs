@@ -173,7 +173,8 @@ fn cmp_frame_norm_unit_comes_from_the_component() {
     let cmp = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Galactic)),
         Box::new(one_axis_frame("s*(m/s)")),
-    );
+    )
+    .unwrap();
     assert_eq!(cmp.norm_unit(1).unwrap(), "deg");
     assert_eq!(cmp.norm_unit(2).unwrap(), "deg");
     assert_eq!(cmp.norm_unit(3).unwrap(), "m");
@@ -318,7 +319,8 @@ fn units_of_an_axis_out_of_range_are_an_error() {
     let cmp = CmpFrame::new(
         Box::new(sky.clone()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     let fs = FrameSet::new(Box::new(sky.clone()));
     let basic = BasicFrameBuilder::new(2).build().unwrap();
     let frames: [(&str, &dyn Frame); 4] = [
@@ -370,7 +372,8 @@ fn picked_sky_axis_has_an_internal_unit_of_radians() {
     let cmp = CmpFrame::new(
         picked,
         Box::new(BasicFrameBuilder::new(1).unit(1, "km").build().unwrap()),
-    );
+    )
+    .unwrap();
     assert_eq!(cmp.internal_unit(1).unwrap(), "rad");
     assert_eq!(cmp.internal_unit(2).unwrap(), "km");
 }
@@ -400,7 +403,8 @@ fn cmp_frame_norm_unit_keeps_a_sky_description() {
         let cmp = CmpFrame::new(
             Box::new(sky),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         assert_eq!(cmp.norm_unit(1).unwrap(), want, "CmpFrame {settings:?}");
     }
 }

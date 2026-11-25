@@ -164,8 +164,8 @@ For example, to make the Frame with index 3 become the current Frame, you could 
 # use starlink_ast::frames::{BasicFrameBuilder, FrameRef, FrameSet};
 # use starlink_ast::mappings::UnitMap;
 # let mut frameset = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build()?));
-# frameset.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2)), Box::new(BasicFrameBuilder::new(2).build()?))?;
-# frameset.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2)), Box::new(BasicFrameBuilder::new(2).build()?))?;
+# frameset.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2).unwrap()), Box::new(BasicFrameBuilder::new(2).build()?))?;
+# frameset.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2).unwrap()), Box::new(BasicFrameBuilder::new(2).build()?))?;
 frameset.set_current(FrameRef::Index(3))?;
 # Ok::<(), starlink_ast::error::AstError>(())
 ```
@@ -188,7 +188,7 @@ For example, when adding a new Frame to a FrameSet ([Adding New Frames to a Fram
 # use starlink_ast::frames::{BasicFrameBuilder, FrameRef, FrameSet};
 # use starlink_ast::mappings::UnitMap;
 # let mut frameset = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build()?));
-# let (mapping, frame) = (UnitMap::new(2), BasicFrameBuilder::new(2).build()?);
+# let (mapping, frame) = (UnitMap::new(2).unwrap(), BasicFrameBuilder::new(2).build()?);
 frameset.add_frame(FrameRef::Current, Box::new(mapping), Box::new(frame))?;
 # Ok::<(), starlink_ast::error::AstError>(())
 ```
