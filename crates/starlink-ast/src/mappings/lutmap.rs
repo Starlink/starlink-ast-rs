@@ -967,9 +967,31 @@ impl Serializable for LutMap {
         let node = &whole.section("LutMap");
         let base = read_mapping_base(whole);
         crate::serial::check_loaded_coords(&whole.class, &base, 1, 1)?;
-        let nlut = node.get_int("Nlut", 0) as usize;
+        let nlut = node.get_int("Nlut", 2);
         let start = node.get_double("Start", 0.0);
         let inc = node.get_double("Incr", 1.0);
+        // The constructor's checks (lutmap.c `astLoadLutMap`): a table of
+        // fewer than two elements would be read beyond its ends.
+        let class = &whole.class;
+        if nlut < 2 {
+            return Err(AstError::new(
+                ErrorCode::Lutin,
+                format!(
+                    "astLoadLutMap({class}): Invalid number of lookup table elements ({nlut})."
+                ),
+            )
+            .with_context("This value should be at least 2."));
+        }
+        if inc == 0.0 {
+            return Err(AstError::new(
+                ErrorCode::Lutii,
+                format!(
+                    "astLoadLutMap({class}): An input value increment of zero between lookup \
+                     table elements is not allowed."
+                ),
+            ));
+        }
+        let nlut = nlut as usize;
         let interp_val = node.get_int("LutInt", 0);
         let interp = match interp_val {
             1 => LutInterp::Nearest,
@@ -981,6 +1003,7 @@ impl Serializable for LutMap {
             *entry = node.get_double(&format!("L{}", i + 1), BAD_VALUE);
         }
 
+        let ngood = lut.iter().filter(|v| **v != BAD_VALUE).count();
         let lut_epsilon = node.get_double("LutEps", f64::EPSILON);
         let lut_epsilon_set = node.get("LutEps").is_some();
         let (monotonic, inverse_table) = get_monotonic(&lut);
@@ -998,7 +1021,9 @@ impl Serializable for LutMap {
             ident: None,
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
-            tran_inverse: base.has_inverse,
+            // The inverse interpolates between two good values, so a table of
+            // fewer has none, whatever the dump says.
+            tran_inverse: base.has_inverse && ngood >= 2,
         };
         if base.inverted {
             m.invert();

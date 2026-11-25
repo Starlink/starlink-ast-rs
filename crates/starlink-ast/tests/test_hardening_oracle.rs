@@ -276,36 +276,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     ),
     (
         "testloaderhardening",
-        1,
-        Why::Differs("Task 7: PolyMap powers (2ae11f85)"),
-    ),
-    (
-        "testloaderhardening",
-        2,
-        Why::Differs("Task 7: PolyMap powers (2ae11f85)"),
-    ),
-    (
-        "testloaderhardening",
-        3,
-        Why::Differs("Task 7: PolyMap powers (2ae11f85)"),
-    ),
-    (
-        "testloaderhardening",
-        4,
-        Why::Differs("Task 7: PolyMap powers (2ae11f85)"),
-    ),
-    (
-        "testloaderhardening",
-        6,
-        Why::Differs("Task 7: LutMap table (cda35a7b)"),
-    ),
-    (
-        "testloaderhardening",
-        7,
-        Why::Differs("Task 7: LutMap table (cda35a7b)"),
-    ),
-    (
-        "testloaderhardening",
         22,
         Why::Differs("Task 7: WcsMap axes (639232d1)"),
     ),

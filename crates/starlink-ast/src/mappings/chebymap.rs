@@ -1300,8 +1300,10 @@ impl Serializable for ChebyMap {
 
         // The PolyMap part's coefficients.
         let forward =
-            crate::mappings::polymap::read_poly_terms(poly, 'F', nin, nout).unwrap_or_default();
-        let inverse = crate::mappings::polymap::read_poly_terms(poly, 'I', nout, nin);
+            crate::mappings::polymap::read_poly_terms(poly, &whole.class, 'F', nin, nout)?
+                .unwrap_or_default();
+        let inverse =
+            crate::mappings::polymap::read_poly_terms(poly, &whole.class, 'I', nout, nin)?;
 
         // Build the inner PolyMap directly (avoid re-validation of potentially
         // BAD_VALUE sentinel coefficients).

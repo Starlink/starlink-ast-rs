@@ -202,7 +202,7 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_hardening_oracle.rs",
         "HARDENING_EXCLUDED",
-        76,
+        70,
         "corrupt dumps of the C hardening tests that the port refuses or loads \
          otherwise than the C library, each naming the stage 5 task and upstream \
          commit that fixes it; 6 crash the port and run in a child process; \
