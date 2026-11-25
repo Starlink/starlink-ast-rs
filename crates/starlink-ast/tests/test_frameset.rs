@@ -124,8 +124,8 @@ fn new_given_a_frameset_takes_its_variants_and_mirrors() {
         native_dump(&AnyObject::FrameSet(fs.clone())).unwrap(),
         expected
     );
-    assert_eq!(fs.variant(), "V2");
-    assert_eq!(fs.all_variants(), "Z V2");
+    assert_eq!(fs.variant().unwrap(), "V2");
+    assert_eq!(fs.all_variants().unwrap(), "Z V2");
     assert_eq!(
         fs.mapping(FrameRef::Index(1), FrameRef::Index(3))
             .unwrap()
@@ -137,7 +137,7 @@ fn new_given_a_frameset_takes_its_variants_and_mirrors() {
     // Selecting a variant through the mirror changes the mirrored Frame.
     fs.set_variant("Z").unwrap();
     fs.set_current(FrameRef::Index(3)).unwrap();
-    assert_eq!(fs.variant(), "Z");
+    assert_eq!(fs.variant().unwrap(), "Z");
     assert_eq!(
         fs.mapping(FrameRef::Index(1), FrameRef::Index(3))
             .unwrap()
@@ -630,8 +630,8 @@ fn add_variant_succeeds() {
     let mut fs = FrameSet::new(make_frame(2));
     let z: DynMapping = Box::new(ZoomMap::new(2, 2.0).unwrap());
     fs.add_variant(Some(z), "ZOOMED").unwrap();
-    assert!(fs.test_variant());
-    assert_eq!(fs.variant(), "ZOOMED");
+    assert!(fs.test_variant().unwrap());
+    assert_eq!(fs.variant().unwrap(), "ZOOMED");
 }
 
 // ---- find_frame (stub) ----

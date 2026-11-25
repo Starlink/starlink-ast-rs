@@ -840,36 +840,38 @@ fn a_loaded_log_plot_keeps_its_value() {
     assert!(plot_dump(&plot).contains("    LgPlt1 = 5 \t"));
 }
 
-/// A clipping Frame given in a dump as AST__CURRENT (-1) or AST__BASE (0)
-/// means the current or base Frame when the Plot clips, as in C.
+/// A clipping Frame given in a dump as AST__CURRENT (-1) or AST__BASE (0),
+/// which `astClip` never stores, is refused, as the C library's loader
+/// refuses any index that is not one of the Plot's Frames.
 #[test]
-fn a_clipping_frame_of_current_or_base_is_resolved_when_clipping() {
-    for (what, from, to) in [
+fn a_clipping_frame_of_current_or_base_is_refused() {
+    for (what, from, to, index) in [
         (
             "sky clipped in the current Frame",
             "ClpFrm = 2 \t",
             "ClpFrm = -1 \t",
+            -1,
         ),
         (
             "basic2 clipped in the base Frame",
             "ClpFrm = 1 \t",
             "ClpFrm = 0 \t",
+            0,
         ),
     ] {
         let case = native::LOAD_CASES.iter().find(|c| c.what == what).unwrap();
         assert!(case.dump.contains(from), "{what}");
-        let plot = read_plot(&case.dump.replace(from, to));
-        assert!(plot_dump(&plot).contains(to), "{what}");
-        for (k, g) in [[0.15, 0.2], [0.5, 0.5], [0.85, 0.8]].iter().enumerate() {
-            let out = plot
-                .transform(&starlink_ast::coords::PointSet::from_rows([g]), true)
-                .unwrap();
-            let out = out.point(0).to_vec();
-            assert!(
-                crate::common::c_values_eq(&out, case.forward[k]),
-                "{what}: point {k} goes to {out:?}, C gives {:?}",
-                case.forward[k]
-            );
-        }
+        let err = starlink_ast::from_native_string(&case.dump.replace(from, to))
+            .err()
+            .unwrap_or_else(|| panic!("{what}: the Plot was read"));
+        assert_eq!(err.code(), starlink_ast::error::ErrorCode::Lderr, "{what}");
+        assert_eq!(
+            err.message(),
+            format!(
+                "astLoadPlot(Plot): Invalid clipping Frame index ({index}) read for a Plot \
+                 containing 2 Frames."
+            ),
+            "{what}"
+        );
     }
 }

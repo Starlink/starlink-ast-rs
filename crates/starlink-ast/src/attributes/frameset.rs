@@ -336,7 +336,7 @@ pub(crate) fn frameset_get<F: FrameSetClass + ?Sized>(obj: &F, name: &str) -> As
     let count = |v: usize| fmt_int(i32::try_from(v).unwrap_or(i32::MAX));
     let flag = |v: bool| fmt_int(i32::from(v));
     Ok(match name {
-        "allvariants" => fs.all_variants(),
+        "allvariants" => fs.all_variants()?,
         "base" => count(fs.base_index()),
         "class" => obj.attr_class().to_string(),
         "current" => count(fs.current_index()),
@@ -351,7 +351,7 @@ pub(crate) fn frameset_get<F: FrameSetClass + ?Sized>(obj: &F, name: &str) -> As
         "report" => flag(Mapping::report(fs)),
         "tranforward" => flag(Mapping::has_forward(fs)),
         "traninverse" => flag(Mapping::has_inverse(fs)),
-        "variant" => fs.variant(),
+        "variant" => fs.variant()?,
         _ => return fs.current().attr_get(name),
     })
 }
@@ -366,7 +366,7 @@ pub(crate) fn frameset_test<F: FrameSetClass + ?Sized>(obj: &F, name: &str) -> A
         "ident" => obj.test_ident(),
         "invert" => Mapping::test_invert(fs),
         "report" => Mapping::test_report(fs),
-        "variant" => fs.test_variant(),
+        "variant" => fs.test_variant()?,
         _ if READ_ONLY.contains(&name) => false,
         _ => return fs.current().attr_test(name),
     })
@@ -391,7 +391,7 @@ pub(crate) fn frameset_clear<F: FrameSetClass + ?Sized>(obj: &mut F, name: &str)
             });
         }
         "report" => Mapping::clear_report(obj.fs_mut()),
-        "variant" => obj.fs_mut().clear_variant(),
+        "variant" => obj.fs_mut().clear_variant()?,
         _ if READ_ONLY.contains(&name) => return Err(read_only_clear(name, obj.attr_class())),
         _ => {
             let result = obj.fs_mut().frame_mut(FrameRef::Current)?.attr_clear(name);

@@ -45,21 +45,21 @@ fn variant_lifecycle_matches_c() {
 
     // Errors 1-3: default state — the only variant is the current frame's
     // Domain (FPLANE); Variant is not "set".
-    assert_eq!(fs.all_variants(), "FPLANE");
-    assert_eq!(fs.variant(), "FPLANE");
-    assert!(!fs.test_variant());
+    assert_eq!(fs.all_variants().unwrap(), "FPLANE");
+    assert_eq!(fs.variant().unwrap(), "FPLANE");
+    assert!(!fs.test_variant().unwrap());
 
     // Errors 4-6: AddVariant(None, "FP1") renames the current variant.
     fs.add_variant(None, "FP1").unwrap();
-    assert_eq!(fs.all_variants(), "FP1");
-    assert_eq!(fs.variant(), "FP1");
-    assert!(fs.test_variant());
+    assert_eq!(fs.all_variants().unwrap(), "FP1");
+    assert_eq!(fs.variant().unwrap(), "FP1");
+    assert!(fs.test_variant().unwrap());
 
     // Errors 7-9: clearing reverts to the frame Domain default.
-    fs.clear_variant();
-    assert_eq!(fs.all_variants(), "FPLANE");
-    assert_eq!(fs.variant(), "FPLANE");
-    assert!(!fs.test_variant());
+    fs.clear_variant().unwrap();
+    assert_eq!(fs.all_variants().unwrap(), "FPLANE");
+    assert_eq!(fs.variant().unwrap(), "FPLANE");
+    assert!(!fs.test_variant().unwrap());
 
     // Re-add FP1, then add FP2 reached by an extra WinMap.
     fs.add_variant(None, "FP1").unwrap();
@@ -83,9 +83,9 @@ fn variant_lifecycle_matches_c() {
     fs.add_variant(Some(fp2), "FP2").unwrap();
 
     // Errors 10-12.
-    assert_eq!(fs.all_variants(), "FP1 FP2");
-    assert_eq!(fs.variant(), "FP2");
-    assert!(fs.test_variant());
+    assert_eq!(fs.all_variants().unwrap(), "FP1 FP2");
+    assert_eq!(fs.variant().unwrap(), "FP2");
+    assert!(fs.test_variant().unwrap());
 
     // Error 13: under FP2, pixel (50.5,100.5) maps to (150,150).
     let (x, y) = tran(&fs, 50.5, 100.5);
@@ -117,9 +117,9 @@ fn variant_lifecycle_matches_c() {
     fs.add_variant(Some(fp3), "FP3").unwrap();
 
     // Errors 15-17.
-    assert_eq!(fs.all_variants(), "FP1 FP2 FP3");
-    assert_eq!(fs.variant(), "FP3");
-    assert!(fs.test_variant());
+    assert_eq!(fs.all_variants().unwrap(), "FP1 FP2 FP3");
+    assert_eq!(fs.variant().unwrap(), "FP3");
+    assert!(fs.test_variant().unwrap());
 
     // Error 18: under FP3, (50.5,100.5) → (-150,-150).
     let (x, y) = tran(&fs, 50.5, 100.5);
@@ -151,8 +151,8 @@ fn set_unknown_variant_errors() {
 fn selecting_the_only_variant_of_a_frame_without_variants() {
     let mut fs = base_fs();
     fs.set_variant("  fplane ").unwrap();
-    assert_eq!(fs.variant(), "FPLANE");
-    assert!(!fs.test_variant());
+    assert_eq!(fs.variant().unwrap(), "FPLANE");
+    assert!(!fs.test_variant().unwrap());
     for name in ["FP1", "pixel"] {
         let err = fs.set_variant(name).unwrap_err();
         assert_eq!(err.code(), ErrorCode::Attin);
@@ -176,7 +176,7 @@ fn selecting_a_variant_of_a_frame_on_the_root_node() {
     fs.set_current(FrameRef::Index(1)).unwrap();
     let shift = ShiftMap::new(vec![10.0, 20.0]).unwrap();
     fs.add_variant(Some(Box::new(shift)), "SHIFTED").unwrap();
-    assert_eq!(fs.variant(), "SHIFTED");
+    assert_eq!(fs.variant().unwrap(), "SHIFTED");
     assert_eq!(fs.nframe(), 2);
 
     // PIXEL is now the root shifted by (10, 20); FPLANE still derives from
@@ -216,7 +216,7 @@ fn selecting_a_variant_of_a_frame_on_the_root_node() {
     assert_eq!(pix_to_fp(&back), pix_to_fp(&fs));
 
     fs.set_variant("PIXEL").unwrap();
-    assert_eq!(fs.variant(), "PIXEL");
+    assert_eq!(fs.variant().unwrap(), "PIXEL");
     let out = fs
         .mapping(FrameRef::Index(1), FrameRef::Index(2))
         .unwrap()
@@ -253,12 +253,12 @@ fn add_variant_to_mirror_errors() {
     .unwrap();
 
     // A frame with no variants of its own reports just its Domain.
-    assert_eq!(fs.all_variants(), "DSB");
-    assert!(!fs.test_variant());
+    assert_eq!(fs.all_variants().unwrap(), "DSB");
+    assert!(!fs.test_variant().unwrap());
 
     // Mirror the original (FP*) frame's variants.
     fs.mirror_variants(FrameRef::Index(orig)).unwrap();
-    assert_eq!(fs.all_variants(), "FP1 FP2 FP3");
+    assert_eq!(fs.all_variants().unwrap(), "FP1 FP2 FP3");
 
     // Adding a variant to a mirror frame is illegal.
     let z = WinMap::from_corners(&[1.0, 1.0], &[2.0, 2.0], &[1.0, 1.0], &[2.0, 2.0]).unwrap();
@@ -323,8 +323,8 @@ fn variants_native_round_trip() {
     let AnyObject::FrameSet(fs2) = from_native_string(&text).unwrap() else {
         panic!("expected FrameSet");
     };
-    assert_eq!(fs2.all_variants(), "FP1 FP2 FP3");
-    assert_eq!(fs2.variant(), "FP2");
+    assert_eq!(fs2.all_variants().unwrap(), "FP1 FP2 FP3");
+    assert_eq!(fs2.variant().unwrap(), "FP2");
     let (x, y) = tran(&fs2, 50.5, 100.5);
     assert!((x - 150.0).abs() < 1e-6 && (y - 150.0).abs() < 1e-6);
 }
@@ -347,9 +347,9 @@ fn reads_c_generated_variant_dump() {
         panic!("expected FrameSet");
     };
 
-    assert_eq!(fs.all_variants(), "FP1 FP2");
-    assert_eq!(fs.variant(), "FP2");
-    assert!(fs.test_variant());
+    assert_eq!(fs.all_variants().unwrap(), "FP1 FP2");
+    assert_eq!(fs.variant().unwrap(), "FP2");
+    assert!(fs.test_variant().unwrap());
     let (x, y) = tran(&fs, 50.5, 100.5);
     assert!(
         (x - 150.0).abs() < 1e-6 && (y - 150.0).abs() < 1e-6,
@@ -384,14 +384,14 @@ fn remapping_a_frame_drops_its_variants() {
         "V2",
     )
     .unwrap();
-    assert_eq!(fs.all_variants(), "SKYX V2");
+    assert_eq!(fs.all_variants().unwrap(), "SKYX V2");
     fs.remap_frame(
         FrameRef::Current,
         Box::new(starlink_ast::mappings::ZoomMap::new(2, 3.0).unwrap()),
     )
     .unwrap();
-    assert_eq!(fs.all_variants(), "SKYX");
-    assert!(!fs.test_variant());
+    assert_eq!(fs.all_variants().unwrap(), "SKYX");
+    assert!(!fs.test_variant().unwrap());
 
     fs.add_variant(
         Some(Box::new(
@@ -400,9 +400,9 @@ fn remapping_a_frame_drops_its_variants() {
         "V3",
     )
     .unwrap();
-    assert_eq!(fs.all_variants(), "SKYX V3");
+    assert_eq!(fs.all_variants().unwrap(), "SKYX V3");
     fs.perm_axes(&[2, 1]).unwrap();
-    assert_eq!(fs.all_variants(), "SKYX");
+    assert_eq!(fs.all_variants().unwrap(), "SKYX");
 }
 
 /// The point (1,1) mapped from Frame `a` to Frame `b`.
@@ -446,7 +446,7 @@ fn set_variant_replaces_the_owner_node_mapping() {
 
     fs.set_current(FrameRef::Index(2)).unwrap();
     fs.set_variant("SKY").unwrap();
-    assert_eq!(fs.variant(), "SKY");
+    assert_eq!(fs.variant().unwrap(), "SKY");
     assert_eq!(map11(&fs, 1, 2), (2.0, 2.0));
     assert_eq!(map11(&fs, 1, 3), (6.0, 6.0));
     assert_eq!(map11(&fs, 2, 3), (3.0, 3.0));
@@ -454,7 +454,7 @@ fn set_variant_replaces_the_owner_node_mapping() {
     fs.set_current(FrameRef::Index(3)).unwrap();
     fs.mirror_variants(FrameRef::Index(2)).unwrap();
     fs.set_variant("V2").unwrap();
-    assert_eq!(fs.variant(), "V2");
+    assert_eq!(fs.variant().unwrap(), "V2");
     assert_eq!(map11(&fs, 1, 2), (3.0, 3.0));
     assert_eq!(map11(&fs, 1, 3), (9.0, 9.0));
     assert_eq!(map11(&fs, 2, 3), (3.0, 3.0));

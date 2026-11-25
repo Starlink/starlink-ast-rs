@@ -266,61 +266,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     ),
     (
         "testcorruptinput",
-        76,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        77,
-        Why::Crashes("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        78,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        79,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        80,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        81,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        82,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        83,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        84,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        85,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        86,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
         97,
         Why::Differs("Task 6: Mapping loader messages (65df6bf8, 744ddab4)"),
     ),
@@ -498,31 +443,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         "testloaderhardening",
         35,
         Why::Differs("Task 7: SplineMap sizes and knots (ca7c350e)"),
-    ),
-    (
-        "testloaderhardening",
-        38,
-        Why::Differs("Task 5: the axes, ticks and clipping of a Plot (a48c4a04)"),
-    ),
-    (
-        "testloaderhardening",
-        39,
-        Why::Differs("Task 5: the axes, ticks and clipping of a Plot (a48c4a04)"),
-    ),
-    (
-        "testloaderhardening",
-        40,
-        Why::Differs("Task 5: the axes, ticks and clipping of a Plot (a48c4a04)"),
-    ),
-    (
-        "testloaderhardening",
-        41,
-        Why::Differs("Task 5: the axes, ticks and clipping of a Plot (a48c4a04)"),
-    ),
-    (
-        "testloaderhardening",
-        42,
-        Why::Differs("Task 5: the axes, ticks and clipping of a Plot (a48c4a04)"),
     ),
     (
         "testloaderhardening",
@@ -723,31 +643,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         "testloaderhardening",
         108,
         Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testframesetload",
-        1,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testframesetload",
-        2,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testframesetload",
-        3,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testframesetload",
-        4,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testframesetload",
-        5,
-        Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
     ),
     (
         "testdssmap",
