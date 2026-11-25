@@ -1199,15 +1199,17 @@ impl FrameSet {
     pub fn mapping(&self, from: FrameRef, to: FrameRef) -> AstResult<DynMapping> {
         let from_idx = self.resolve(from)?;
         let to_idx = self.resolve(to)?;
-        if from_idx == to_idx {
-            if let Some(map) = self.frame_mapping(self.node_map[from_idx]) {
+        let from_node = self.node_map[from_idx];
+        let to_node = self.node_map[to_idx];
+        // Two Frames at the same node, or one Frame, have a path of no
+        // steps: the first Frame as a Mapping.
+        if from_node == to_node {
+            if let Some(map) = self.frame_as_mapping(from_idx) {
                 return Ok(map);
             }
             let naxes = self.frames[from_idx].naxes();
             return Ok(Box::new(UnitMap::new(naxes)?));
         }
-        let from_node = self.node_map[from_idx];
-        let to_node = self.node_map[to_idx];
         let path = self.find_path(from_node, to_node)?;
         self.compose_path(&path)
     }
@@ -1217,6 +1219,12 @@ impl FrameSet {
     /// is such a Frame here, and a Region is its own Mapping.
     fn frame_mapping(&self, node: usize) -> Option<DynMapping> {
         let idx = self.node_map.iter().position(|&n| n == node)?;
+        self.frame_as_mapping(idx)
+    }
+
+    /// The Frame at index `idx` as a Mapping, if it is not equivalent to a
+    /// UnitMap.
+    fn frame_as_mapping(&self, idx: usize) -> Option<DynMapping> {
         let frame = self.frames[idx].as_ref();
         if frame.is_unit_frame() {
             return None;
