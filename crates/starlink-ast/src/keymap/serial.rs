@@ -107,16 +107,11 @@ impl Serializable for KeyMap {
         // C reads each attribute before any entry, and applies it through
         // its own setter. SizeGuess and KeyCase refuse on a non-empty map,
         // which is why the read has to happen first.
+        // SizeGuess is kept as read but sizes nothing: the table only grows
+        // as entries are added, so a dump cannot demand memory for entries
+        // it does not hold (keymap.c `astLoadKeyMap`, upstream 8c542c65).
         if let Some(v) = node.get_int_any_if_set("SzGss") {
-            // A negative card would wrap to an enormous `usize` and blow
-            // up the `HashMap::reserve` inside `set_size_guess`. C's own
-            // `SetSizeGuess`/`NewTable` (`keymap.c:9463`, `keymap.c:8720`)
-            // clamps any size at or below `MIN_TABLE_SIZE` -- which
-            // includes zero, negative, and any small positive quotient --
-            // down to the same minimum table without erroring, so
-            // treating a negative guess as 0 here has the same "smallest
-            // table" effect C's own clamp would produce.
-            km.set_size_guess(v.max(0) as usize)?;
+            km.sizeguess = Some(v.max(0) as usize);
         }
         if let Some(v) = node.get_string_if_set("SortBy") {
             km.set_sort_by(SortBy::parse(&v, "astRead")?);

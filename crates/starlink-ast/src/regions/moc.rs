@@ -1177,12 +1177,27 @@ const TL: usize = 1;
 const TR: usize = 2;
 const BR: usize = 3;
 
+/// An angle with its whole turns removed if it is far out of range, as
+/// moc.c does before bringing an angle into range a turn at a time, which
+/// for such a value would take a time in proportion to it, or never end if
+/// a turn cannot change it (upstream `f38b4a9e`). An infinite value gives
+/// NaN, which no loop changes.
+fn reduce_turns(angle: f64) -> f64 {
+    if angle.abs() > 1.0e6 {
+        angle % (2.0 * DPI)
+    } else {
+        angle
+    }
+}
+
 /// moc.c `Comp_corner`: Dec first, within `tol`, then RA, within `tol`
 /// scaled by the larger cos(Dec) unless `exact`; RA taken in [-PI,PI[ for
 /// the second of the two sorts.
 fn comp_corner(a: &MeshCorner, b: &MeshCorner, tol: f64, exact: bool, loop_: bool) -> i32 {
     let (mut ra1, mut ra2) = (a.ra, b.ra);
     if loop_ {
+        ra1 = reduce_turns(ra1);
+        ra2 = reduce_turns(ra2);
         while ra1 < -DPI {
             ra1 += 2.0 * DPI;
         }
@@ -1329,6 +1344,7 @@ impl Mesh<'_> {
                          error).",
                     ));
                 }
+                ra = reduce_turns(ra);
                 while ra >= 2.0 * DPI {
                     ra -= 2.0 * DPI;
                 }
@@ -2204,7 +2220,10 @@ impl Moc {
         let invalid_string =
             |text: &[u8], detail: String| bad("Invalid string MOC supplied", text, detail);
 
-        let mut orders: Vec<Vec<i64>> = vec![Vec::new(); (MXORDHPX + 1) as usize];
+        // The cells read at each order, as ranges of NPIX values, first and
+        // last: a range is not expanded into its cells, of which there can
+        // be very many (moc.c `astAddMocText`).
+        let mut orders: Vec<Vec<(i64, i64)>> = vec![Vec::new(); (MXORDHPX + 1) as usize];
         let mut mxord = -1;
         let mut order: i32 = -1;
         let mut npix: i64 = 0;
@@ -2340,7 +2359,7 @@ impl Moc {
                                 if list.is_empty() {
                                     mxord = mxord.max(order);
                                 }
-                                list.push(npix);
+                                list.push((npix, npix));
                             }
                         }
                         7 => {
@@ -2417,7 +2436,7 @@ impl Moc {
                             format!("Range start ({npix0}) is after range end ({npix})."),
                         ));
                     }
-                    orders[order as usize].extend(npix0..=npix);
+                    orders[order as usize].push((npix0, npix));
                     state = 1;
                 } else if c == b'/' {
                     if npix > i64::from(MXORDHPX) {
@@ -2474,12 +2493,14 @@ impl Moc {
             if !isrange {
                 npix0 = npix;
             }
-            orders[order as usize].extend(npix0..=npix);
+            orders[order as usize].push((npix0, npix));
         }
 
         for (o, values) in orders.iter().enumerate() {
             let ncell = 12 * (1_i64 << (2 * o));
-            if let Some(&v) = values.iter().find(|&&v| v >= ncell) {
+            // A range does not end before it starts, so only its last value
+            // needs checking.
+            if let Some(&(_, v)) = values.iter().find(|&&(_, hi)| hi >= ncell) {
                 return Err(AstError::new(
                     ErrorCode::Inmoc,
                     format!(
@@ -2514,11 +2535,11 @@ impl Moc {
             .take((maxorder.max(mxord) + 1) as usize)
         {
             let shift = 2 * (maxorder - o as i32);
-            for &v in values {
+            for &(lo, hi) in values {
                 if shift > 0 {
-                    self.range.extend([v << shift, ((v + 1) << shift) - 1]);
+                    self.range.extend([lo << shift, ((hi + 1) << shift) - 1]);
                 } else {
-                    self.range.extend([v >> -shift, v >> -shift]);
+                    self.range.extend([lo >> -shift, hi >> -shift]);
                 }
             }
         }
@@ -3568,7 +3589,7 @@ impl RegionGeometry for Moc {
             if dec > maxdec {
                 maxdec = dec;
             }
-            let mut ra12 = ra;
+            let mut ra12 = reduce_turns(ra);
             while ra12 < 0.0 {
                 ra12 += 2.0 * DPI;
             }
@@ -3581,7 +3602,7 @@ impl RegionGeometry for Moc {
             if ra12 > maxra12 {
                 maxra12 = ra12;
             }
-            let mut ra0 = ra;
+            let mut ra0 = reduce_turns(ra);
             while ra0 < -DPI {
                 ra0 += 2.0 * DPI;
             }
@@ -3974,7 +3995,7 @@ impl Region for Moc {
                 if p[1] > dec_high {
                     break;
                 }
-                let mut dra = p[0] - ra_pin;
+                let mut dra = reduce_turns(p[0] - ra_pin);
                 while dra >= DPI {
                     dra -= 2.0 * DPI;
                 }

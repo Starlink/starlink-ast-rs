@@ -2053,17 +2053,28 @@ impl Serializable for Moc {
         if is_set("MinOrder") {
             moc.set_min_order(node.get_int("MinOrder", 0) as i32);
         }
-        let max_nest = if moc.test_max_order() {
-            12 * (1_i64 << (2 * moc.max_order()))
-        } else {
-            i64::MAX
-        };
         let join = |lo: i64, hi: i64| ((hi as u32 as u64) << 32 | (lo as u32 as u64)) as i64;
         let ill_formed = |detail: String| {
             AstError::new(ErrorCode::Lderr, "astLoadMoc(Moc): Ill-formed Moc.").with_context(detail)
         };
-        let nrange = node.get_int("NRange", 0).max(0) as usize;
-        let mut range = Vec::with_capacity(2 * nrange);
+        // moc.c `astLoadMoc`: the number of ranges is not negative, a Moc
+        // with ranges has a valid MaxOrder (C's unset value is -INT_MAX),
+        // and the ranges are read in turn, the stated number sizing nothing;
+        // a missing range reads as [0:0], which overlaps its predecessor.
+        let nrange = node.get_int("NRange", 0);
+        if nrange < 0 {
+            return Err(ill_formed(format!("Invalid number of ranges ({nrange}).")));
+        }
+        let max_order = moc.test_max_order().then(|| moc.max_order());
+        let valid_order = max_order.filter(|o| (0..=crate::regions::MOC_MAX_ORDER).contains(o));
+        if nrange > 0 && valid_order.is_none() {
+            return Err(ill_formed(format!(
+                "Missing or invalid MaxOrder ({}) for a Moc containing {nrange} range(s).",
+                max_order.unwrap_or(-i32::MAX)
+            )));
+        }
+        let max_nest = valid_order.map_or(0, |o| 12 * (1_i64 << (2 * o)));
+        let mut range = Vec::new();
         let (mut llast, mut ulast) = (0_i64, 0_i64);
         for irange in 0..nrange {
             let lo = join(
@@ -2074,6 +2085,9 @@ impl Serializable for Moc {
                 node.get_int(&format!("K{irange}"), 0),
                 node.get_int(&format!("L{irange}"), 0),
             );
+            if lo < 0 {
+                return Err(ill_formed(format!("Lower bound ({lo}) is negative.")));
+            }
             let hi = if hi > 0 { hi } else { lo };
             if hi >= max_nest {
                 return Err(ill_formed(format!(

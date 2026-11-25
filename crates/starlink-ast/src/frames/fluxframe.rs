@@ -1346,7 +1346,13 @@ impl Serializable for FluxFrame {
         }
 
         // The encapsulated SpecFrame (SpcFr).
-        if let Some(sf_node) = node.get_object("SpcFr") {
+        if let Some(sf_node) = crate::serial::check_loaded(
+            node.get_object("SpcFr"),
+            "SpecFrame",
+            false,
+            &whole.class,
+            "SpecFrame",
+        )? {
             let frame = crate::serial::frame_from_node(sf_node)?;
             if let Some(sf) = frame.as_any().downcast_ref::<super::specframe::SpecFrame>() {
                 ff.specframe = Some(Box::new(sf.clone()));

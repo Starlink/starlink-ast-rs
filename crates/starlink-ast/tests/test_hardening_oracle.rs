@@ -46,33 +46,8 @@ use cases::CASES;
 const HARDENING_EXCLUDED: &[(&str, usize, &str)] = &[
     (
         "testcorruptinput",
-        23,
-        "Task 9: Table and FitsTable components (1e1ae0fe)",
-    ),
-    (
-        "testcorruptinput",
-        24,
-        "Task 9: Table and FitsTable components (1e1ae0fe)",
-    ),
-    (
-        "testcorruptinput",
-        25,
-        "Task 9: Table and FitsTable components (1e1ae0fe)",
-    ),
-    (
-        "testcorruptinput",
-        26,
-        "Task 9: Table and FitsTable components (1e1ae0fe)",
-    ),
-    (
-        "testcorruptinput",
         71,
         "the port has no PointSet object to load; the dump is refused as an unknown class (PLAN.md section 1)",
-    ),
-    (
-        "testcorruptinput",
-        120,
-        "Task 9: Table and KeyMap loaders (e384383c, 8c542c65)",
     ),
     ("testloaderhardening", 45, "Plot3D is not ported"),
     ("testloaderhardening", 46, "Plot3D is not ported"),
@@ -81,21 +56,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, &str)] = &[
     ("testloaderhardening", 49, "Plot3D is not ported"),
     ("testloaderhardening", 50, "Plot3D is not ported"),
     ("testloaderhardening", 51, "Plot3D is not ported"),
-    (
-        "testloaderhardening",
-        53,
-        "Task 9: Moc ranges and MaxOrder (d3f5b711)",
-    ),
-    (
-        "testloaderhardening",
-        54,
-        "Task 9: Moc ranges and MaxOrder (d3f5b711)",
-    ),
-    (
-        "testloaderhardening",
-        55,
-        "Task 9: Moc ranges and MaxOrder (d3f5b711)",
-    ),
 ];
 
 /// Cases whose first message C cuts to fit its 1023-character buffer, which

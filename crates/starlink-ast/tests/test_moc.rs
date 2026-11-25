@@ -522,3 +522,47 @@ fn check_bad_nuniq() {
     assert_eq!(err.code(), ErrorCode::Inmoc);
     assert_eq!(moc.moc_length().unwrap(), 0);
 }
+
+/// testmoc.c `checkCells`: `moc` holds the cells the string MOC `expected`
+/// gives at its MaxOrder.
+fn check_cells(moc: &Moc, expected: &str) {
+    let mut want = Moc::new();
+    want.set_max_order(moc.max_order()).unwrap();
+    want.add_moc_string(CmpOperator::Or, false, -1, expected)
+        .unwrap();
+    assert!(equal(moc, &want), "the Moc is not {expected}");
+}
+
+/// testmoc.c `checkLargeRange`: a range in a string MOC is read as a range,
+/// however many cells it holds; this one is the whole sky at the largest
+/// order, 2^57 cells.
+#[test]
+fn a_large_range_is_read_as_a_range() {
+    let mut moc = Moc::new();
+    moc.add_moc_string(CmpOperator::Or, false, -1, "27/0-216172782113783807")
+        .unwrap();
+    check_cells(&moc, "0/0-11 27/");
+}
+
+/// A pin whose longitude is far out of range, or infinite, is judged in
+/// bounded time: C removes whole turns from such a value before turning it
+/// into range one turn at a time (moc.c `RegPins`, upstream `f38b4a9e`). An
+/// infinite longitude is on no boundary; a finite one far out of range lands
+/// wherever its whole turns leave it.
+#[test]
+fn a_pin_far_out_of_range_is_judged_in_bounded_time() {
+    let mut moc = Moc::new();
+    moc.add_cell(CmpOperator::Or, 2, 37).unwrap();
+    let dec = mesh(&moc)[0][1];
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let pins = PointSet::from_rows([[1e300, dec], [f64::INFINITY, dec], [-1e300, dec]]);
+        let _ = tx.send(moc.reg_pins_mask(&pins, None).map(|(_, mask)| mask));
+    });
+    let mask = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("took more than 10 s")
+        .unwrap();
+    assert_eq!(mask.len(), 3);
+    assert!(!mask[1], "an infinite longitude is on the boundary");
+}

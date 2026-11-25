@@ -46,9 +46,27 @@ impl Serializable for Table {
     fn from_node(node: &Node) -> AstResult<Self> {
         let map = KeyMap::from_node(node)?;
         let part = node.section("Table");
+        let class = &node.class;
         let nrow = part.get_int("Nrow", 0).max(0) as usize;
-        let columns = read_keymap(&part, "Columns")?;
-        let parameters = read_keymap(&part, "Params")?;
+        let columns = read_keymap(&part, class, "Columns", "KeyMap of column definitions")?;
+        // A column name makes the key of each of its cells, so it is no
+        // longer than a column added to a Table may have (table.c
+        // `astLoadTable`).
+        for icol in 0..columns.map_size() {
+            let name = columns.map_key(icol)?;
+            if name.trim_end_matches(' ').chars().count() > super::MXCOLNAMLEN {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoad({class}): The name of column {} read for a {class} is too long \
+                         (it must have no more than {} characters).",
+                        icol + 1,
+                        super::MXCOLNAMLEN
+                    ),
+                ));
+            }
+        }
+        let parameters = read_keymap(&part, class, "Params", "KeyMap of parameter definitions")?;
         Ok(Table {
             map,
             columns: RefCell::new(columns),
@@ -59,18 +77,24 @@ impl Serializable for Table {
     }
 }
 
-/// The KeyMap written as item `name`. C's `Dump` always writes it, and a
-/// Table read without it would fail when first used.
-fn read_keymap(part: &Node, name: &str) -> AstResult<KeyMap> {
-    let missing = || {
-        AstError::new(
-            ErrorCode::Badin,
-            format!("astLoadTable(Table): No {name} KeyMap found whilst reading a Table."),
-        )
+/// The KeyMap written as item `key` of a Table of class `class`, which
+/// must be a KeyMap if it is there (table.c `astLoadTable`, with
+/// astCheckLoaded); an empty one when it is not.
+fn read_keymap(part: &Node, class: &str, key: &str, item: &str) -> AstResult<KeyMap> {
+    let Some(object) =
+        crate::serial::check_loaded(part.get_object(key), "KeyMap", false, class, item)?
+    else {
+        return Ok(KeyMap::new());
     };
-    let object = part.get_object(name).ok_or_else(missing)?;
     match any_object_from_node(object)? {
         AnyObject::KeyMap(km) => Ok(*km),
-        _ => Err(missing()),
+        AnyObject::Table(t) => Ok(t.as_keymap().clone()),
+        other => Err(AstError::new(
+            ErrorCode::Lderr,
+            format!(
+                "astLoad({class}): The {item} read for a {class} is a {}, which is not a KeyMap.",
+                other.class_name()
+            ),
+        )),
     }
 }
