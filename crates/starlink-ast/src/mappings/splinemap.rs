@@ -182,38 +182,17 @@ impl SplineMap {
         cv: Vec<f64>,
     ) -> AstResult<Self> {
         // splinemap.c astInitSplineMap: each is AST__ATTIN.
-        let attin = |msg: String| Err(AstError::new(ErrorCode::Attin, format!("SplineMap: {msg}")));
-        if !(1..=MAX_K).contains(&kx) {
-            return attin(format!(
-                "the spline order in X ({kx}) must be in the range [1,{MAX_K}]"
-            ));
-        }
-        if !(1..=MAX_K).contains(&ky) {
-            return attin(format!(
-                "the spline order in Y ({ky}) must be in the range [1,{MAX_K}]"
-            ));
-        }
-        if nx < kx {
-            return attin(format!(
-                "the number of coefficients in X ({nx}) must be at least {kx}"
-            ));
-        }
-        if ny < ky {
-            return attin(format!(
-                "the number of coefficients in Y ({ny}) must be at least {ky}"
-            ));
-        }
+        check_sizes("astSplineMap", kx as i64, ky as i64, nx as i64, ny as i64)?;
         // The array lengths C takes on trust from its arguments.
         if tx.len() != nx + kx || ty.len() != ny + ky || cu.len() != nx * ny || cv.len() != nx * ny
         {
-            return attin("the knot or coefficient arrays have the wrong lengths".to_string());
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                "astSplineMap: The knot or coefficient arrays have the wrong lengths.",
+            ));
         }
-        if tx.windows(2).any(|w| w[0] > w[1]) {
-            return attin("the knots in the X direction are not monotonic increasing".to_string());
-        }
-        if ty.windows(2).any(|w| w[0] > w[1]) {
-            return attin("the knots in the Y direction are not monotonic increasing".to_string());
-        }
+        check_knots("astSplineMap", "X", &tx)?;
+        check_knots("astSplineMap", "Y", &ty)?;
 
         Ok(Self {
             kx,
@@ -1352,10 +1331,31 @@ impl Serializable for SplineMap {
         let node = &whole.section("SplineMap");
         let base = read_mapping_base(whole);
 
-        let kx = node.get_int("KX", 0) as usize;
-        let ky = node.get_int("KY", 0) as usize;
-        let nx = node.get_int("NX", 0) as usize;
-        let ny = node.get_int("NY", 0) as usize;
+        // A SplineMap has two inputs and two outputs, and the spline orders,
+        // coefficient counts and knots pass the constructor's checks, the
+        // sizes before anything is sized from them (splinemap.c
+        // `astLoadSplineMap`).
+        let (nin, nout) = if base.inverted {
+            (base.nout, base.nin)
+        } else {
+            (base.nin, base.nout)
+        };
+        if nin != 2 || nout != 2 {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadSplineMap({0}): Invalid number of inputs ({nin}) or outputs ({nout}) \
+                     read for a {0} - both must be 2.",
+                    whole.class
+                ),
+            ));
+        }
+        let kx = node.get_int("KX", 0);
+        let ky = node.get_int("KY", 0);
+        let nx = node.get_int("NX", 0);
+        let ny = node.get_int("NY", 0);
+        check_sizes("astLoadSplineMap", kx, ky, nx, ny)?;
+        let (kx, ky, nx, ny) = (kx as usize, ky as usize, nx as usize, ny as usize);
 
         let tx: Vec<f64> = (0..nx + kx)
             .map(|i| node.get_double(&format!("TX{}", i + 1), BAD_VALUE))
@@ -1373,6 +1373,8 @@ impl Serializable for SplineMap {
         let cv: Vec<f64> = (0..nc)
             .map(|i| node.get_double(&format!("CV{}", i + 1), BAD_VALUE))
             .collect();
+        check_knots("astLoadSplineMap", "X", &tx)?;
+        check_knots("astLoadSplineMap", "Y", &ty)?;
 
         // Read optional attributes
         let inv_niter_raw = node.get_int("NiterInv", i64::MIN);
@@ -1430,6 +1432,62 @@ impl Serializable for SplineMap {
         }
         Ok(m)
     }
+}
+
+/// C's `CheckSizes` (splinemap.c), shared by the constructor and the
+/// loader, `method` naming the C function: each spline order is in
+/// `1..=MAX_K`, each count of coefficients at least its order, and the
+/// counts small enough that the knot and coefficient arrays can be
+/// counted with a C `int`.
+fn check_sizes(method: &str, kx: i64, ky: i64, nx: i64, ny: i64) -> AstResult<()> {
+    let max_k = MAX_K as i64;
+    let int_max = i64::from(i32::MAX);
+    let message = if !(1..=max_k).contains(&kx) {
+        format!(
+            "The supplied spline order in the X direction ({kx}) is invalid - it must be in \
+             the range [1,{max_k}]."
+        )
+    } else if !(1..=max_k).contains(&ky) {
+        format!(
+            "The supplied spline order in the Y direction ({ky}) is invalid - it must be in \
+             the range [1,{max_k}]."
+        )
+    } else if nx < kx {
+        format!(
+            "The supplied number of coefficients in the X direction ({nx}) is too small - it \
+             must be larger than or equal to {kx}."
+        )
+    } else if ny < ky {
+        format!(
+            "The supplied number of coefficients in the Y direction ({ny}) is too small - it \
+             must be larger than or equal to {ky}."
+        )
+    } else if nx > int_max - kx || ny > int_max - ky || nx > int_max / ny {
+        format!(
+            "The supplied numbers of coefficients in the X and Y directions ({nx} and {ny}) are \
+             too large."
+        )
+    } else {
+        return Ok(());
+    };
+    Err(AstError::new(
+        ErrorCode::Attin,
+        format!("{method}: {message}"),
+    ))
+}
+
+/// C's `CheckKnots` (splinemap.c): the knots `t` in direction `dir` (`"X"`
+/// or `"Y"`) are monotonic increasing.
+fn check_knots(method: &str, dir: &str, t: &[f64]) -> AstResult<()> {
+    if t.windows(2).any(|w| w[0] > w[1]) {
+        return Err(AstError::new(
+            ErrorCode::Attin,
+            format!(
+                "{method}: The supplied knots in the {dir} direction are not monotonic increasing."
+            ),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -271,31 +271,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     ),
     (
         "testloaderhardening",
-        31,
-        Why::Differs("Task 7: SplineMap sizes and knots (ca7c350e)"),
-    ),
-    (
-        "testloaderhardening",
-        32,
-        Why::Differs("Task 7: SplineMap sizes and knots (ca7c350e)"),
-    ),
-    (
-        "testloaderhardening",
-        33,
-        Why::Crashes("Task 7: SplineMap sizes and knots (ca7c350e)"),
-    ),
-    (
-        "testloaderhardening",
-        34,
-        Why::Differs("Task 7: SplineMap sizes and knots (ca7c350e)"),
-    ),
-    (
-        "testloaderhardening",
-        35,
-        Why::Differs("Task 7: SplineMap sizes and knots (ca7c350e)"),
-    ),
-    (
-        "testloaderhardening",
         45,
         Why::Differs("Plot3D is not ported"),
     ),
