@@ -1304,7 +1304,7 @@ impl Serializable for BasicFrame {
         let node = &whole.section("Frame");
         // A missing or negative Naxes loads a Frame with no axes
         // (frame.c `astLoadFrame`).
-        let naxes = super::frame_attrs::loaded_naxes(node, &whole.class);
+        let (naxes, perm) = super::frame_attrs::load_frame_axes(node, &whole.class)?;
         let mut frame = BasicFrame {
             naxes,
             attrs: FrameAttrs::default(),
@@ -1329,17 +1329,7 @@ impl Serializable for BasicFrame {
             axis.apply_frame_axis_keys(node, i + 1);
         }
 
-        // The permutation, `Prm{n}` being the 1-based internal axis of
-        // external axis n; one of zero or less is invalid (frame.c
-        // `astLoadFrame`, then `astCheckPermArray`).
-        let perm: Vec<i64> = (0..naxes)
-            .map(|ext| {
-                let p = node.get_int(&format!("Prm{}", ext + 1), ext as i64 + 1);
-                if p > 0 { p - 1 } else { -1 }
-            })
-            .collect();
-        super::check_perm_array("astLoadFrame", &whole.class, &perm, naxes)?;
-        frame.perm = perm.iter().map(|&p| p as usize).collect();
+        frame.perm = perm;
 
         Ok(frame)
     }

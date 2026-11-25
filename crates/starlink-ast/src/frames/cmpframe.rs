@@ -392,29 +392,6 @@ fn frame_is_cartesian(f: &dyn Frame) -> bool {
     false
 }
 
-/// Number of axes described by a serialized frame node.
-///
-/// A `CmpFrame` strips its own (commented) `Naxes` card before embedding a
-/// child, so a nested compound frame's count must be derived by summing its
-/// `FrameA`/`FrameB` components. Non-compound frames carry a readable
-/// `Naxes` (active or commented, hence `get_int_any`); as a last resort the
-/// count falls back to the number of `Ax{n}` axis sub-objects present.
-fn node_naxes(whole: &Node) -> usize {
-    if whole.class == "CmpFrame" {
-        let node = whole.section("CmpFrame");
-        let a = node.get_object("FrameA").map(node_naxes).unwrap_or(0);
-        let b = node.get_object("FrameB").map(node_naxes).unwrap_or(0);
-        return a + b;
-    }
-    let node = whole.section("Frame");
-    if let Some(n) = node.get_int_any("Naxes") {
-        return n as usize;
-    }
-    (1..)
-        .take_while(|i| node.get_object(&format!("Ax{i}")).is_some())
-        .count()
-}
-
 impl Frame for CmpFrame {
     fn axis_perm(&self) -> Vec<usize> {
         self.perm.clone()
@@ -1337,39 +1314,49 @@ impl Serializable for CmpFrame {
         let whole = node;
         let frame = &whole.section("Frame");
         let node = &whole.section("CmpFrame");
-        let node_a = node
-            .get_object("FrameA")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpFrame: missing FrameA"))?;
-        let node_b = node
-            .get_object("FrameB")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpFrame: missing FrameB"))?;
+        // Both component Frames, a Frame of one axis for one that is missing
+        // (cmpframe.c `astLoadCmpFrame`).
+        let component = |key: &str, item: &str| -> AstResult<DynFrame> {
+            match crate::serial::check_loaded(
+                node.get_object(key),
+                "Frame",
+                false,
+                &whole.class,
+                item,
+            )? {
+                Some(n) => frame_from_node(n),
+                None => Ok(Box::new(super::BasicFrameBuilder::new(1).build()?)),
+            }
+        };
+        let frame1 = component("FrameA", "first component Frame")?;
+        let frame2 = component("FrameB", "second component Frame")?;
 
-        // The CmpFrame's own Frame part has no axes, so astLoadFrame reads
-        // no per-axis items for it; the component Frames carry their own.
-        let n1 = node_naxes(node_a);
-        let n2 = node_naxes(node_b);
-        let naxes = n1 + n2;
-
-        // Axis permutation array. C `CmpFrame::astLoad`
-        // (cmpframe.c:11020-11031) reads `Axp{ext}` (1-based internal
-        // axis index) for each external axis, defaulting to the
-        // identity. It is applied via `perm_axes` below.
-        let axp: Vec<usize> = (1..=naxes)
-            .map(|ext| node.get_int(&format!("Axp{ext}"), ext as i64) as usize)
-            .collect();
-
-        let frame1 = frame_from_node(node_a)?;
-        let frame2 = frame_from_node(node_b)?;
-
-        let mut cmp = CmpFrame::new(frame1, frame2)?;
-
-        // Apply the axis permutation (no-op when `axp` is the identity).
-        // `perm_axes` takes a 1-based external→internal mapping, which
-        // is exactly the `Axp{ext}` values read above. Mirrors
-        // cmpframe.c:11027 (`new->perm[axis] = astReadInt(...) - 1`).
-        if axp.iter().enumerate().any(|(i, &v)| v != i + 1) {
-            cmp.perm_axes(&axp)?;
+        let naxes = frame1.naxes() + frame2.naxes();
+        if naxes > crate::constants::MXAXES {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "astLoadCmpFrame({}): Number of axes ({naxes}) read from the dump is \
+                     invalid - this number should not exceed {}.",
+                    whole.class,
+                    crate::constants::MXAXES
+                ),
+            ));
         }
+
+        // The axis permutation, `Axp<n>` being the 1-based internal axis of
+        // external axis n, the identity by default; one of zero or less is
+        // invalid.
+        let perm: Vec<i64> = (0..naxes)
+            .map(|axis| {
+                let p = node.get_int(&format!("Axp{}", axis + 1), axis as i64 + 1);
+                if p > 0 { p - 1 } else { -1 }
+            })
+            .collect();
+        super::check_perm_array("astLoadCmpFrame", &whole.class, &perm, naxes)?;
+
+        let mut cmp = CmpFrame::within_limit(frame1, frame2);
+        cmp.perm = perm.iter().map(|&p| p as usize).collect();
 
         // The Frame part's own values: ActUnt, Digits, Domain, Title, ID,
         // Ident, UseDefs and the matching attributes, which the CmpFrame

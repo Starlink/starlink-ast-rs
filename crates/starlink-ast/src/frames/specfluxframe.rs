@@ -865,19 +865,39 @@ impl Serializable for SpecFluxFrame {
     fn from_node(node: &Node) -> AstResult<Self> {
         let cmp = <super::CmpFrame as Serializable>::from_node(node)?;
         let (frame_a, frame_b, perm, attrs) = cmp.into_parts();
+        // The components must be a SpecFrame and a FluxFrame, in that order
+        // (specfluxframe.c `astLoadSpecFluxFrame`, with astCheckLoaded).
+        let check = |frame: &DynFrame, class: &str, item: &str| -> AstResult<()> {
+            let found = super::class_name(frame.as_ref());
+            let is_a = crate::serial::native_stream::class_chain(found)
+                .is_some_and(|chain| chain.contains(&class));
+            if is_a {
+                return Ok(());
+            }
+            Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoad({0}): The {item} read for a {0} is a {found}, which is not a {class}.",
+                    node.class
+                ),
+            ))
+        };
+        check(&frame_a, "SpecFrame", "first component Frame")?;
+        check(&frame_b, "FluxFrame", "second component Frame")?;
         let spec_frame = frame_a
             .as_any()
             .downcast_ref::<SpecFrame>()
             .ok_or_else(|| {
-                AstError::new(ErrorCode::Lderr, "SpecFluxFrame: FrameA is not a SpecFrame")
+                AstError::new(
+                    ErrorCode::Lderr,
+                    "A SpecFluxFrame whose SpecFrame is a DSBSpecFrame cannot be loaded.",
+                )
             })?
             .clone();
         let flux_frame = frame_b
             .as_any()
             .downcast_ref::<FluxFrame>()
-            .ok_or_else(|| {
-                AstError::new(ErrorCode::Lderr, "SpecFluxFrame: FrameB is not a FluxFrame")
-            })?
+            .expect("checked to be a FluxFrame")
             .clone();
         let mut sff = SpecFluxFrame::new(spec_frame, flux_frame);
         sff.swap = perm == [1, 0];

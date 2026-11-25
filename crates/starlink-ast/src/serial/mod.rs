@@ -2650,13 +2650,14 @@ pub(crate) fn load_object<T>(node: &Node, load: impl FnOnce() -> AstResult<T>) -
     // object.c `astLoadObject`, which every loader runs first, reads the
     // Object's associated KeyMap and checks it is one.
     let object_part = node.section("Object");
-    let result = match check_loaded(
+    let keymap = check_loaded(
         object_part.get_object("KeyMap"),
         "KeyMap",
         false,
         &node.class,
         "associated KeyMap",
-    ) {
+    );
+    let result = match keymap.and_then(|km| km.map(any_object_from_node).transpose()) {
         Ok(_) => load(),
         Err(e) => Err(e),
     };
@@ -2673,16 +2674,18 @@ pub(crate) fn load_object<T>(node: &Node, load: impl FnOnce() -> AstResult<T>) -
 }
 
 /// C's `astCheckLoaded` (object.c) for the component a loader reads as the
-/// value of item `item` of an object of class `name`: `node`, read as an
-/// object of any class, must be one of class `class`, and must be there
-/// if `needed`. Gives the component, or `None` when it is not there.
-pub(crate) fn check_loaded(
-    node: Option<&Node>,
+/// value of item `item` of an object of class `name`: `node` must be an
+/// object of class `class` or a class derived from it, and must be there if
+/// `needed`. Gives the component's description, for the caller to load, or
+/// `None` when it is not there. A component of another class is read first,
+/// as C reads it before checking it, so that its own error comes first.
+pub(crate) fn check_loaded<'a>(
+    node: Option<&'a Node>,
     class: &str,
     needed: bool,
     name: &str,
     item: &str,
-) -> AstResult<Option<AnyObject>> {
+) -> AstResult<Option<&'a Node>> {
     let Some(node) = node else {
         if needed {
             return Err(AstError::new(
@@ -2692,27 +2695,22 @@ pub(crate) fn check_loaded(
         }
         return Ok(None);
     };
-    let object = any_object_from_node(node)?;
-    let is_a = match class {
-        "Mapping" => object.as_mapping().is_some(),
-        "Frame" => object.as_frame().is_some(),
-        "Region" => object.as_region().is_some(),
-        "KeyMap" => matches!(
-            object,
-            AnyObject::KeyMap(_) | AnyObject::Table(_) | AnyObject::FitsTable(_)
-        ),
-        _ => node.class == class,
-    };
-    if !is_a {
-        return Err(AstError::new(
-            ErrorCode::Lderr,
-            format!(
-                "astLoad({name}): The {item} read for a {name} is a {}, which is not a {class}.",
-                node.class
-            ),
-        ));
+    let is_a = native_stream::class_chain(&node.class).is_some_and(|chain| chain.contains(&class));
+    if is_a {
+        return Ok(Some(node));
     }
-    Ok(Some(object))
+    // The port loads an Axis or a PointSet only as part of the object
+    // holding it.
+    if !matches!(node.class.as_str(), "Axis" | "SkyAxis" | "PointSet") {
+        any_object_from_node(node)?;
+    }
+    Err(AstError::new(
+        ErrorCode::Lderr,
+        format!(
+            "astLoad({name}): The {item} read for a {name} is a {}, which is not a {class}.",
+            node.class
+        ),
+    ))
 }
 
 fn any_object_from_node_inner(node: &Node) -> AstResult<AnyObject> {

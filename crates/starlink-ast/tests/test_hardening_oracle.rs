@@ -56,31 +56,6 @@ enum Why {
 const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     (
         "testcorruptinput",
-        16,
-        Why::Differs("Task 4: Frame components and permutations (1e1ae0fe, 80e779ba, afd8c283)"),
-    ),
-    (
-        "testcorruptinput",
-        17,
-        Why::Differs("Task 4: Frame components and permutations (1e1ae0fe, 80e779ba, afd8c283)"),
-    ),
-    (
-        "testcorruptinput",
-        18,
-        Why::Differs("Task 4: Frame components and permutations (1e1ae0fe, 80e779ba, afd8c283)"),
-    ),
-    (
-        "testcorruptinput",
-        19,
-        Why::Differs("Task 4: Frame components and permutations (1e1ae0fe, 80e779ba, afd8c283)"),
-    ),
-    (
-        "testcorruptinput",
-        21,
-        Why::Differs("Task 4: Frame components and permutations (1e1ae0fe, 80e779ba, afd8c283)"),
-    ),
-    (
-        "testcorruptinput",
         23,
         Why::Differs("Task 9: Table and FitsTable components (1e1ae0fe)"),
     ),
@@ -343,41 +318,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         "testcorruptinput",
         86,
         Why::Differs("Task 5: the FrameSet graph (6716f499, 14ffe4a9)"),
-    ),
-    (
-        "testcorruptinput",
-        87,
-        Why::Differs("Task 4: the axes of a fixed-axis Frame (2572667b)"),
-    ),
-    (
-        "testcorruptinput",
-        88,
-        Why::Differs("Task 4: the axes of a fixed-axis Frame (2572667b)"),
-    ),
-    (
-        "testcorruptinput",
-        89,
-        Why::Differs("Task 4: the axes of a fixed-axis Frame (2572667b)"),
-    ),
-    (
-        "testcorruptinput",
-        90,
-        Why::Differs("Task 4: the axes of a fixed-axis Frame (2572667b)"),
-    ),
-    (
-        "testcorruptinput",
-        91,
-        Why::Differs("Task 4: the axes of a fixed-axis Frame (2572667b)"),
-    ),
-    (
-        "testcorruptinput",
-        92,
-        Why::Differs("Task 4: the axes of a fixed-axis Frame (2572667b)"),
-    ),
-    (
-        "testcorruptinput",
-        93,
-        Why::Differs("Task 4: the axes of a fixed-axis Frame (2572667b)"),
     ),
     (
         "testcorruptinput",
@@ -783,11 +723,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         "testloaderhardening",
         108,
         Why::Differs("Task 6: Mapping inputs, outputs and components (6d87f732, d5fee31d)"),
-    ),
-    (
-        "testframeperm",
-        7,
-        Why::Differs("Task 4: Frame permutations (80e779ba, afd8c283, 7e48793d)"),
     ),
     (
         "testframesetload",

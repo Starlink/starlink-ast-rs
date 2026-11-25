@@ -58,7 +58,7 @@ frame_api_probe	make	tools	-	-	crates/starlink-ast/tests/frame_api_oracle/cases.
 frame_attrs_probe	make	tools	-	-	crates/starlink-ast/tests/frame_oracle/cases.rs	-
 frame_axis_attrs_probe	make	tools	-	-	crates/starlink-ast/tests/frame_axis_oracle/cases.rs	-
 frame_class_attrs_probe	make	tools	-	-	crates/starlink-ast/tests/frame_class_oracle/cases.rs	-
-frame_load_probe	make	tools	-	-	crates/starlink-ast/tests/frame_load_oracle/cases.rs	fe26cc9b sync stage 5: a SkyFrame dump without axis descriptions gets SkyAxes
+frame_load_probe	make	tools	-	-	crates/starlink-ast/tests/frame_load_oracle/cases.rs	-
 frameset_current_probe	make	tools	-	-	crates/starlink-ast/tests/frameset_current_oracle/cases.rs	-
 frameset_variant_link_probe	fast	tools	-	-	crates/starlink-ast/tests/frameset_variant_link_oracle/cases.rs	-
 frameset_variants_probe	make	tools	-	-	crates/starlink-ast/tests/frameset_variants_oracle/cases.rs	-
@@ -135,7 +135,7 @@ sky_geometry_probe	make	tools	-	-	crates/starlink-ast/tests/sky_geometry_oracle/
 sky_interleave_probe	make	tools	-	-	crates/starlink-ast/tests/sky_interleave_oracle/cases.rs	-
 sky_last_probe	make	tools	-	-	crates/starlink-ast/tests/sky_last_oracle/cases.rs	-
 sky_norm_probe	make	tools	-	-	crates/starlink-ast/tests/sky_norm_oracle/cases.rs	-
-sky_plain_axis_probe	make	tools	-	-	crates/starlink-ast/tests/sky_plain_axis_oracle/cases.rs	fe26cc9b sync stage 5: a SkyFrame dump without axis descriptions gets SkyAxes
+sky_plain_axis_probe	make	tools	-	-	crates/starlink-ast/tests/sky_plain_axis_oracle/cases.rs	-
 sky_pole_probe	make	tools	-	-	crates/starlink-ast/tests/sky_pole_oracle/cases.rs	-
 sky_use_defs_probe	make	tools	-	-	crates/starlink-ast/tests/sky_use_defs_oracle/cases.rs	-
 skyframe_attrs_probe	make	tools	-	-	crates/starlink-ast/tests/skyframe_attrs_oracle/cases.rs	-

@@ -3947,6 +3947,10 @@ impl Serializable for SkyFrame {
         // C's loaders read them through astReadClassData (channel.c).
         let whole = node;
         let frame = &whole.section("Frame");
+        // astLoadFrame's checks of the axes, then the class's own that it
+        // has two (frame.c `astCheckLoadedNaxes`).
+        let (naxes, perm) = super::frame_attrs::load_frame_axes(frame, &whole.class)?;
+        super::frame_attrs::check_loaded_naxes(&whole.class, naxes, 2)?;
         let node = &whole.section("SkyFrame");
 
         // System is a Frame item. A SkyFrame section may also carry one,
@@ -4057,18 +4061,16 @@ impl Serializable for SkyFrame {
                 None => FrameAxis::Plain(super::axis::Axis::default()),
             };
             sky.axes[i].apply_frame_axis_keys(frame, i + 1);
+            // Each axis is a SkyAxis, one that is not replaced by a SkyAxis
+            // with its attributes (skyframe.c `astLoadSkyFrame`).
+            sky.sky_axis_mut(i);
         }
 
-        // Axis permutation `Prm{n}` (1-based internal axis for each
-        // external axis). Mirrors C `Frame::Dump`/load. Apply last so it
-        // is not clobbered by earlier per-axis state, and only when it
-        // differs from the identity. `perm_axes` takes a 1-based
-        // external→internal mapping, which is exactly the `Prm{n}` values.
-        let prm: Vec<usize> = (1..=2)
-            .map(|n| frame.get_int(&format!("Prm{n}"), n as i64) as usize)
-            .collect();
-        if prm != [1, 2] {
-            Frame::perm_axes(&mut sky, &prm)?;
+        // The axis permutation, applied last so it is not clobbered by
+        // earlier per-axis state, and only when it differs from the
+        // identity.
+        if perm != [0, 1] {
+            Frame::perm_axes(&mut sky, &[perm[0] + 1, perm[1] + 1])?;
         }
 
         Ok(sky)

@@ -2964,6 +2964,10 @@ impl Serializable for SpecFrame {
         // C's loaders read them through astReadClassData (channel.c).
         let whole = node;
         let frame = &whole.section("Frame");
+        // astLoadFrame's checks of the axes, then the class's own that it
+        // has one (frame.c `astCheckLoadedNaxes`).
+        let (naxes, _) = super::frame_attrs::load_frame_axes(frame, &whole.class)?;
+        super::frame_attrs::check_loaded_naxes(&whole.class, naxes, 1)?;
         let node = &whole.section("SpecFrame");
         // Read System. The unset default is WAVELEN (specframe.c:2015),
         // so an absent `System=` line decodes to a WAVELEN frame with

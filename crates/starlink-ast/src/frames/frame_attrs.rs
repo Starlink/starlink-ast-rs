@@ -604,6 +604,58 @@ pub(crate) fn loaded_naxes(frame_part: &Node, class: &str) -> usize {
     naxes
 }
 
+/// What frame.c `astLoadFrame` reads and checks of the axes in the Frame
+/// part `frame_part` of an object of class `class`: the number of axes (see
+/// [`loaded_naxes`]), that each `Ax<n>` that is there is an Axis
+/// (`astCheckLoaded`), and that the `Prm<n>` values are a permutation
+/// (`astCheckPermArray`). Gives the number of axes and the permutation,
+/// `perm[external] = internal`, 0-based.
+pub(crate) fn load_frame_axes(frame_part: &Node, class: &str) -> AstResult<(usize, Vec<usize>)> {
+    let naxes = loaded_naxes(frame_part, class);
+    for n in 1..=naxes {
+        loaded_axis(frame_part, class, n)?;
+    }
+    let perm: Vec<i64> = (0..naxes)
+        .map(|ext| {
+            let p = frame_part.get_int(&format!("Prm{}", ext + 1), ext as i64 + 1);
+            if p > 0 { p - 1 } else { -1 }
+        })
+        .collect();
+    super::check_perm_array("astLoadFrame", class, &perm, naxes)?;
+    Ok((naxes, perm.iter().map(|&p| p as usize).collect()))
+}
+
+/// The description of axis `n` in the Frame part `frame_part` of an object of
+/// class `class`, which must be an Axis if it is there (frame.c
+/// `astLoadFrame`).
+pub(crate) fn loaded_axis<'a>(
+    frame_part: &'a Node,
+    class: &str,
+    n: usize,
+) -> AstResult<Option<&'a Node>> {
+    crate::serial::check_loaded(
+        frame_part.get_object(&format!("Ax{n}")),
+        "Axis",
+        false,
+        class,
+        "Axis",
+    )
+}
+
+/// C's `astCheckLoadedNaxes` (frame.c): an object of class `class`, which
+/// always has `want` axes, must have been read with that many.
+pub(crate) fn check_loaded_naxes(class: &str, naxes: usize, want: usize) -> AstResult<()> {
+    if naxes == want {
+        return Ok(());
+    }
+    Err(AstError::new(
+        ErrorCode::Lderr,
+        format!(
+            "astLoad({class}): The {class} read has {naxes} axes, but a {class} must have {want}."
+        ),
+    ))
+}
+
 pub(crate) fn read_frame_attrs(whole: &Node) -> FrameAttrs {
     // The Object and Frame classes' parts of the description, which their
     // loaders read in C (object.c, frame.c `astLoadFrame`).
@@ -612,6 +664,16 @@ pub(crate) fn read_frame_attrs(whole: &Node) -> FrameAttrs {
     // astLoadFrame reads and checks the number of axes, which each class
     // takes from its own description.
     loaded_naxes(node, &whole.class);
+    // and the FrameSet of variant Mappings, which a FrameSet's loader takes.
+    if let Err(e) = crate::serial::check_loaded(
+        node.get_object("Vrnts"),
+        "FrameSet",
+        false,
+        &whole.class,
+        "FrameSet of variant Mappings",
+    ) {
+        crate::serial::node::record_load_error(e);
+    }
     let bool_of = |key: &str| node.get(key).map(|_| node.get_int(key, 0) != 0);
     let f64_of = |key: &str| node.get(key).map(|_| node.get_double(key, 0.0));
     // astLoadFrame passes each value it reads through the class's setter,

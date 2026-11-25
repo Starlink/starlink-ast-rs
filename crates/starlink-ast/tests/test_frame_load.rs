@@ -63,13 +63,13 @@ fn frame_keys_survive_a_round_trip() {
 /// ObsLon are absent.
 #[test]
 fn legacy_observer_keys_are_read() {
-    let spec = "Begin SpecFrame\n Naxes = 1\n Domain = \"SPECTRUM\"\n System = \"FREQ\"\n \
+    let spec = "Begin SpecFrame\n Naxes = 1\n Domain = \"SPECTRUM\"\n System = \"FREQ\"\n IsA Frame\n \
                 GeoLat = 0.3\n GeoLon = 1.2\nEnd SpecFrame\n";
     let s = from_native_string(spec).unwrap();
     let s = s.as_frame().unwrap();
     assert_eq!((s.obs_lat(), s.obs_lon()), (0.3, 1.2));
 
-    let time = "Begin TimeFrame\n Naxes = 1\n Domain = \"TIME\"\n System = \"MJD\"\n \
+    let time = "Begin TimeFrame\n Naxes = 1\n Domain = \"TIME\"\n System = \"MJD\"\n IsA Frame\n \
                 ClLat = -0.4\n ClLon = 2.5\nEnd TimeFrame\n";
     let t = from_native_string(time).unwrap();
     let t = t.as_frame().unwrap();

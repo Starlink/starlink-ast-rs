@@ -3450,7 +3450,7 @@ pub(crate) fn too_many_grid_points(frame: &dyn Frame, size: i32) -> AstError {
 }
 
 /// The AST class name of a Frame or Region, as C's `astGetClass` gives it.
-fn class_name(frame: &dyn Frame) -> &'static str {
+pub(crate) fn class_name(frame: &dyn Frame) -> &'static str {
     let any = frame.as_any();
     if crate::regions::any_as_region(any).is_some() {
         crate::regions::class_name(any)

@@ -117,7 +117,7 @@ const PARENTS: &[(&str, &str)] = &[
 /// The classes whose loaders build an Object of class `class`, in the order
 /// they read their parts of its description (`Object` first), or `None`
 /// for a class C cannot load (loader.c `astGetLoader`).
-fn class_chain(class: &str) -> Option<Vec<&'static str>> {
+pub(crate) fn class_chain(class: &str) -> Option<Vec<&'static str>> {
     let mut chain = Vec::new();
     let mut name: &'static str = if class == "Object" {
         "Object"
