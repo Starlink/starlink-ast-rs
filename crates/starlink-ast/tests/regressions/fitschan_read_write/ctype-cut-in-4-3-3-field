@@ -1,0 +1,13 @@
+END
+NAXIS1  =           2147483648
+NAXIS2  =           2147483648
+CTYPE1 '= 'RA---MER'          / Mercator projection
+CTYPE2  = 'DEC--ÿÿÿÿÿÿÿÿÿÿÿMER'           / Mercator projection
+CRVAL2  =          -2147483648
+CRPIX1  =              180.50 0R/ eference pixel on axis 1
+CRPIX2  =                    T
+CDELT1  = 'abc'
+CDELT2  =              0.01000 / Degrees/pixel
+RADESYS = 'FK5     '           /!Reference frame
+EQUINOX =               2000.0 / Equinox of coordinates
+END

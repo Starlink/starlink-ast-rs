@@ -27,6 +27,7 @@ use crate::error::AstResult;
 use crate::mappings::{
     CmpMap, Composition, DynMapping, Mapping, MatrixMap, PolyMap, PolyTerm, UnitMap, WcsMap, WinMap,
 };
+use crate::text::floor_char_boundary;
 use crate::wcslib::WcsProjection;
 
 /// Build the pixel-to-Intermediate World Coordinate (IWC) mapping.
@@ -256,7 +257,10 @@ fn split_4_3_3(ctype: &str) -> Option<(&str, &str, &str)> {
             .take(width)
             .take_while(|c| !c.is_ascii_whitespace())
             .count();
-        (len > 0).then(|| (&ctype[start..start + len], start + len))
+        // A field that ends inside a character ends before it; such a
+        // field matches no code either way.
+        let end = floor_char_boundary(ctype, start + len);
+        (end > start).then(|| (&ctype[start..end], end))
     };
     let dash = |at: usize| (ctype.as_bytes().get(at) == Some(&b'-')).then_some(at + 1);
     let (axis, at) = field(0, 4)?;

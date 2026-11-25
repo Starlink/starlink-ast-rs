@@ -1,0 +1,17 @@
+NAXIS1  =                  512 / length of data axis 1
+NAXIS2  =           2147483647
+CTYPE1  = 'X'
+CTYPE2  = 'DE¹--TAN'           / Gnomonic projection
+CRVAL1  =              180.000 / Reference RA (deg)
+CRVAL2  =               45.000 / Reference Dec (deg)
+CRPIX1  =   Ø          256.500 / Referencec pixel on axis 1
+CRPIX2  =              256.500 / Reference pixel on axis 2
+CD1_1   =        -BEGAST8.3332205E-4 /`CD matrix
+CD1_2   =                  0.0 / CD matrix
+CD3_1   =                  0.0 / CD matrix
+CD2_2   =        0.00083332205 / CD matrix
+RADECSYS= 'FK5              
+EPOCH   =               2000.0 / Epoch of reference equinox                     
+DATE-OBS= '2000-01-01T11:58:55.816' / Date of observation                       
+RESTFREQ=            1.420ÄE+9 / [Hz] Rest frequency             nt WITHOUT PV1_1 or PV1_2
+END
