@@ -1201,3 +1201,24 @@ fn wcsmaps_with_different_parameter_counts_do_not_merge() {
     let loaded = loaded.as_any().downcast_ref::<WcsMap>().unwrap().clone();
     assert!(simplified_class_is_unit(loaded, inverted(&plain)));
 }
+
+/// A WcsMap of unknown projection type is a copy, so its axis indices are
+/// not checked when it is read, and are written back as read, as in the C
+/// library (testloaderhardening.c); a valid type's indices are checked.
+#[test]
+fn an_unknown_projection_keeps_axes_the_checks_would_refuse() {
+    let dump = " Begin WcsMap\n Nin = 3\n IsA Mapping\n Type = \"   \"\n WcsAx1 = 0\n \
+                WcsAx2 = 0\n End WcsMap\n";
+    let obj = starlink_ast::from_native_string(dump).unwrap();
+    let map = obj.as_mapping().unwrap();
+    let out = map
+        .transform(
+            &starlink_ast::coords::PointSet::from_rows([[1.0, 2.0, 3.0]]),
+            true,
+        )
+        .unwrap();
+    assert_eq!(out.point(0), [1.0, 2.0, 3.0]);
+    let text = obj.to_native_string().unwrap();
+    assert!(text.contains(" WcsAx1 = 0"), "{text}");
+    assert!(text.contains(" WcsAx2 = 0"), "{text}");
+}

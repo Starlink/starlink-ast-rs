@@ -266,48 +266,8 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     ),
     (
         "testcorruptinput",
-        112,
-        Why::Differs("Task 7: WcsMap axes (639232d1, cfdbbe8d)"),
-    ),
-    (
-        "testcorruptinput",
         120,
         Why::Differs("Task 9: Table and KeyMap loaders (e384383c, 8c542c65)"),
-    ),
-    (
-        "testloaderhardening",
-        22,
-        Why::Differs("Task 7: WcsMap axes (639232d1)"),
-    ),
-    (
-        "testloaderhardening",
-        23,
-        Why::Differs("Task 7: WcsMap axes (639232d1)"),
-    ),
-    (
-        "testloaderhardening",
-        24,
-        Why::Differs("Task 7: WcsMap axes (639232d1)"),
-    ),
-    (
-        "testloaderhardening",
-        25,
-        Why::Differs("Task 7: WcsMap axes (639232d1)"),
-    ),
-    (
-        "testloaderhardening",
-        27,
-        Why::Differs("Task 7: WcsMap axes (639232d1)"),
-    ),
-    (
-        "testloaderhardening",
-        28,
-        Why::Differs("Task 7: WcsMap axes (639232d1)"),
-    ),
-    (
-        "testloaderhardening",
-        29,
-        Why::Differs("Task 7: WcsMap axes (639232d1)"),
     ),
     (
         "testloaderhardening",
