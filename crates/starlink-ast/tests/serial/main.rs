@@ -54,6 +54,8 @@ mod test_mapping_load;
 mod test_native_errors;
 #[path = "../test_native_roundtrip_all.rs"]
 mod test_native_roundtrip_all;
+#[path = "../test_nesting_limits.rs"]
+mod test_nesting_limits;
 #[path = "../test_object_id_oracle.rs"]
 mod test_object_id_oracle;
 #[path = "../test_report.rs"]

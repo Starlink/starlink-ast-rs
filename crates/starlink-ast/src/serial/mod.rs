@@ -384,6 +384,30 @@ pub(crate) fn check_loaded_map(
 // Mapping dispatch
 // ---------------------------------------------------------------------------
 
+// The dispatches below load each class through one of these, so that the
+// dispatch's own frame holds only a pointer. A `match` building every
+// class's value in place would need room for all of them at once in an
+// unoptimized build, and loading recurses through the dispatch once per
+// level of nesting.
+
+/// Load a `T` and box it as a Mapping.
+#[inline(never)]
+fn boxed_mapping<T: Serializable + Mapping + 'static>(node: &Node) -> AstResult<DynMapping> {
+    Ok(Box::new(T::from_node(node)?))
+}
+
+/// Load a `T` and box it as a Frame.
+#[inline(never)]
+fn boxed_frame<T: Serializable + Frame + 'static>(node: &Node) -> AstResult<DynFrame> {
+    Ok(Box::new(T::from_node(node)?))
+}
+
+/// Load a `T` and box it as a Region.
+#[inline(never)]
+fn boxed_region<T: Serializable + Region + 'static>(node: &Node) -> AstResult<DynRegion> {
+    Ok(Box::new(T::from_node(node)?))
+}
+
 /// Reconstruct a concrete Mapping from a Node tree, dispatching by class name.
 pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
     load_object(node, || {
@@ -432,51 +456,51 @@ fn load_mapping<T: Serializable + Mapping>(node: &Node) -> AstResult<T> {
 
 fn mapping_from_node_inner(node: &Node) -> AstResult<DynMapping> {
     match node.class.as_str() {
-        "UnitMap" => Ok(Box::new(UnitMap::from_node(node)?)),
-        "ZoomMap" => Ok(Box::new(ZoomMap::from_node(node)?)),
-        "ShiftMap" => Ok(Box::new(ShiftMap::from_node(node)?)),
-        "MatrixMap" => Ok(Box::new(MatrixMap::from_node(node)?)),
-        "PermMap" => Ok(Box::new(PermMap::from_node(node)?)),
-        "WinMap" => Ok(Box::new(WinMap::from_node(node)?)),
-        "LutMap" => Ok(Box::new(LutMap::from_node(node)?)),
-        "PolyMap" => Ok(Box::new(PolyMap::from_node(node)?)),
-        "ChebyMap" => Ok(Box::new(ChebyMap::from_node(node)?)),
-        "CmpMap" => Ok(Box::new(CmpMap::from_node(node)?)),
-        "WcsMap" => Ok(Box::new(WcsMap::from_node(node)?)),
-        "SlaMap" => Ok(Box::new(SlaMap::from_node(node)?)),
-        "SpecMap" => Ok(Box::new(SpecMap::from_node(node)?)),
-        "TimeMap" => Ok(Box::new(TimeMap::from_node(node)?)),
-        "PcdMap" => Ok(Box::new(PcdMap::from_node(node)?)),
-        "SphMap" => Ok(Box::new(SphMap::from_node(node)?)),
-        "GrismMap" => Ok(Box::new(GrismMap::from_node(node)?)),
-        "UnitNormMap" => Ok(Box::new(UnitNormMap::from_node(node)?)),
-        "XphMap" => Ok(Box::new(XphMap::from_node(node)?)),
-        "IntraMap" => Ok(Box::new(IntraMap::from_node(node)?)),
-        "TranMap" => Ok(Box::new(TranMap::from_node(node)?)),
-        "RateMap" => Ok(Box::new(RateMap::from_node(node)?)),
-        "SplineMap" => Ok(Box::new(SplineMap::from_node(node)?)),
-        "DssMap" => Ok(Box::new(DssMap::from_node(node)?)),
-        "NormMap" => Ok(Box::new(NormMap::from_node(node)?)),
-        "MathMap" => Ok(Box::new(MathMap::from_node(node)?)),
-        "SelectorMap" => Ok(Box::new(SelectorMap::from_node(node)?)),
-        "SwitchMap" => Ok(Box::new(SwitchMap::from_node(node)?)),
-        "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
-        "Plot" => Ok(Box::new(Plot::from_node(node)?)),
+        "UnitMap" => boxed_mapping::<UnitMap>(node),
+        "ZoomMap" => boxed_mapping::<ZoomMap>(node),
+        "ShiftMap" => boxed_mapping::<ShiftMap>(node),
+        "MatrixMap" => boxed_mapping::<MatrixMap>(node),
+        "PermMap" => boxed_mapping::<PermMap>(node),
+        "WinMap" => boxed_mapping::<WinMap>(node),
+        "LutMap" => boxed_mapping::<LutMap>(node),
+        "PolyMap" => boxed_mapping::<PolyMap>(node),
+        "ChebyMap" => boxed_mapping::<ChebyMap>(node),
+        "CmpMap" => boxed_mapping::<CmpMap>(node),
+        "WcsMap" => boxed_mapping::<WcsMap>(node),
+        "SlaMap" => boxed_mapping::<SlaMap>(node),
+        "SpecMap" => boxed_mapping::<SpecMap>(node),
+        "TimeMap" => boxed_mapping::<TimeMap>(node),
+        "PcdMap" => boxed_mapping::<PcdMap>(node),
+        "SphMap" => boxed_mapping::<SphMap>(node),
+        "GrismMap" => boxed_mapping::<GrismMap>(node),
+        "UnitNormMap" => boxed_mapping::<UnitNormMap>(node),
+        "XphMap" => boxed_mapping::<XphMap>(node),
+        "IntraMap" => boxed_mapping::<IntraMap>(node),
+        "TranMap" => boxed_mapping::<TranMap>(node),
+        "RateMap" => boxed_mapping::<RateMap>(node),
+        "SplineMap" => boxed_mapping::<SplineMap>(node),
+        "DssMap" => boxed_mapping::<DssMap>(node),
+        "NormMap" => boxed_mapping::<NormMap>(node),
+        "MathMap" => boxed_mapping::<MathMap>(node),
+        "SelectorMap" => boxed_mapping::<SelectorMap>(node),
+        "SwitchMap" => boxed_mapping::<SwitchMap>(node),
+        "FrameSet" => boxed_mapping::<FrameSet>(node),
+        "Plot" => boxed_mapping::<Plot>(node),
         // Regions implement Mapping.
-        "Circle" => Ok(Box::new(Circle::from_node(node)?)),
-        "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
-        "Ellipse" => Ok(Box::new(Ellipse::from_node(node)?)),
-        "Polygon" => Ok(Box::new(Polygon::from_node(node)?)),
-        "Interval" => Ok(Box::new(Interval::from_node(node)?)),
-        "NullRegion" => Ok(Box::new(NullRegion::from_node(node)?)),
-        "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
-        "PointList" => Ok(Box::new(PointList::from_node(node)?)),
-        "Prism" => Ok(Box::new(Prism::from_node(node)?)),
-        "Moc" => Ok(Box::new(Moc::from_node(node)?)),
-        "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
-        "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
-        "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
-        "StcObsDataLocation" => Ok(Box::new(StcObsDataLocation::from_node(node)?)),
+        "Circle" => boxed_mapping::<Circle>(node),
+        "Box" => boxed_mapping::<BoxRegion>(node),
+        "Ellipse" => boxed_mapping::<Ellipse>(node),
+        "Polygon" => boxed_mapping::<Polygon>(node),
+        "Interval" => boxed_mapping::<Interval>(node),
+        "NullRegion" => boxed_mapping::<NullRegion>(node),
+        "CmpRegion" => boxed_mapping::<CmpRegion>(node),
+        "PointList" => boxed_mapping::<PointList>(node),
+        "Prism" => boxed_mapping::<Prism>(node),
+        "Moc" => boxed_mapping::<Moc>(node),
+        "StcResourceProfile" => boxed_mapping::<StcResourceProfile>(node),
+        "StcSearchLocation" => boxed_mapping::<StcSearchLocation>(node),
+        "StcCatalogEntryLocation" => boxed_mapping::<StcCatalogEntryLocation>(node),
+        "StcObsDataLocation" => boxed_mapping::<StcObsDataLocation>(node),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown Mapping class: {other}"),
@@ -778,31 +802,31 @@ pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
 
 fn frame_from_node_inner(node: &Node) -> AstResult<DynFrame> {
     match node.class.as_str() {
-        "Frame" => Ok(Box::new(BasicFrame::from_node(node)?)),
-        "SkyFrame" => Ok(Box::new(SkyFrame::from_node(node)?)),
-        "DSBSpecFrame" => Ok(Box::new(DSBSpecFrame::from_node(node)?)),
-        "SpecFrame" => Ok(Box::new(SpecFrame::from_node(node)?)),
-        "TimeFrame" => Ok(Box::new(TimeFrame::from_node(node)?)),
-        "FluxFrame" => Ok(Box::new(FluxFrame::from_node(node)?)),
-        "SpecFluxFrame" => Ok(Box::new(SpecFluxFrame::from_node(node)?)),
-        "CmpFrame" => Ok(Box::new(CmpFrame::from_node(node)?)),
-        "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
-        "Plot" => Ok(Box::new(Plot::from_node(node)?)),
+        "Frame" => boxed_frame::<BasicFrame>(node),
+        "SkyFrame" => boxed_frame::<SkyFrame>(node),
+        "DSBSpecFrame" => boxed_frame::<DSBSpecFrame>(node),
+        "SpecFrame" => boxed_frame::<SpecFrame>(node),
+        "TimeFrame" => boxed_frame::<TimeFrame>(node),
+        "FluxFrame" => boxed_frame::<FluxFrame>(node),
+        "SpecFluxFrame" => boxed_frame::<SpecFluxFrame>(node),
+        "CmpFrame" => boxed_frame::<CmpFrame>(node),
+        "FrameSet" => boxed_frame::<FrameSet>(node),
+        "Plot" => boxed_frame::<Plot>(node),
         // Regions implement Frame.
-        "Circle" => Ok(Box::new(Circle::from_node(node)?)),
-        "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
-        "Ellipse" => Ok(Box::new(Ellipse::from_node(node)?)),
-        "Polygon" => Ok(Box::new(Polygon::from_node(node)?)),
-        "Interval" => Ok(Box::new(Interval::from_node(node)?)),
-        "NullRegion" => Ok(Box::new(NullRegion::from_node(node)?)),
-        "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
-        "PointList" => Ok(Box::new(PointList::from_node(node)?)),
-        "Prism" => Ok(Box::new(Prism::from_node(node)?)),
-        "Moc" => Ok(Box::new(Moc::from_node(node)?)),
-        "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
-        "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
-        "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
-        "StcObsDataLocation" => Ok(Box::new(StcObsDataLocation::from_node(node)?)),
+        "Circle" => boxed_frame::<Circle>(node),
+        "Box" => boxed_frame::<BoxRegion>(node),
+        "Ellipse" => boxed_frame::<Ellipse>(node),
+        "Polygon" => boxed_frame::<Polygon>(node),
+        "Interval" => boxed_frame::<Interval>(node),
+        "NullRegion" => boxed_frame::<NullRegion>(node),
+        "CmpRegion" => boxed_frame::<CmpRegion>(node),
+        "PointList" => boxed_frame::<PointList>(node),
+        "Prism" => boxed_frame::<Prism>(node),
+        "Moc" => boxed_frame::<Moc>(node),
+        "StcResourceProfile" => boxed_frame::<StcResourceProfile>(node),
+        "StcSearchLocation" => boxed_frame::<StcSearchLocation>(node),
+        "StcCatalogEntryLocation" => boxed_frame::<StcCatalogEntryLocation>(node),
+        "StcObsDataLocation" => boxed_frame::<StcObsDataLocation>(node),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown or unsupported Frame class: {other}"),
@@ -1507,20 +1531,20 @@ pub(crate) fn region_from_node(node: &Node) -> AstResult<DynRegion> {
 
 fn region_from_node_inner(node: &Node) -> AstResult<DynRegion> {
     match node.class.as_str() {
-        "Circle" => Ok(Box::new(Circle::from_node(node)?)),
-        "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
-        "Ellipse" => Ok(Box::new(Ellipse::from_node(node)?)),
-        "Polygon" => Ok(Box::new(Polygon::from_node(node)?)),
-        "Interval" => Ok(Box::new(Interval::from_node(node)?)),
-        "NullRegion" => Ok(Box::new(NullRegion::from_node(node)?)),
-        "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
-        "PointList" => Ok(Box::new(PointList::from_node(node)?)),
-        "Prism" => Ok(Box::new(Prism::from_node(node)?)),
-        "Moc" => Ok(Box::new(Moc::from_node(node)?)),
-        "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
-        "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
-        "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
-        "StcObsDataLocation" => Ok(Box::new(StcObsDataLocation::from_node(node)?)),
+        "Circle" => boxed_region::<Circle>(node),
+        "Box" => boxed_region::<BoxRegion>(node),
+        "Ellipse" => boxed_region::<Ellipse>(node),
+        "Polygon" => boxed_region::<Polygon>(node),
+        "Interval" => boxed_region::<Interval>(node),
+        "NullRegion" => boxed_region::<NullRegion>(node),
+        "CmpRegion" => boxed_region::<CmpRegion>(node),
+        "PointList" => boxed_region::<PointList>(node),
+        "Prism" => boxed_region::<Prism>(node),
+        "Moc" => boxed_region::<Moc>(node),
+        "StcResourceProfile" => boxed_region::<StcResourceProfile>(node),
+        "StcSearchLocation" => boxed_region::<StcSearchLocation>(node),
+        "StcCatalogEntryLocation" => boxed_region::<StcCatalogEntryLocation>(node),
+        "StcObsDataLocation" => boxed_region::<StcObsDataLocation>(node),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown Region class: {other}"),
@@ -2901,7 +2925,16 @@ impl AnyObject {
 
 /// Reconstruct an [`AnyObject`] from a [`Node`], dispatching by class name.
 pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
-    load_object(node, || any_object_from_node_inner(node))
+    boxed_any_object_from_node(node).map(|obj| *obj)
+}
+
+/// [`any_object_from_node`], boxed.
+///
+/// Boxed through `load_object`, whose frame would otherwise hold several
+/// AnyObjects: the Objects in a KeyMap load through here, so KeyMaps nested
+/// in KeyMaps recurse through it.
+pub(crate) fn boxed_any_object_from_node(node: &Node) -> AstResult<Box<AnyObject>> {
+    load_object(node, || any_object_from_node_inner(node).map(Box::new))
 }
 
 /// Load `node` with `load` as C loads an Object, giving C's error.
@@ -2985,89 +3018,93 @@ pub(crate) fn check_loaded<'a>(
     ))
 }
 
+/// Load a `T` and wrap it as an [`AnyObject`], in a frame of its own, as
+/// [`boxed_mapping`] does for the Mapping dispatch.
+#[inline(never)]
+fn wrapped<T: Serializable>(node: &Node, wrap: fn(T) -> AnyObject) -> AstResult<AnyObject> {
+    Ok(wrap(T::from_node(node)?))
+}
+
+/// [`wrapped`] for a Mapping, applying the items every Mapping shares.
+#[inline(never)]
+fn wrapped_mapping<T: Serializable + Mapping>(
+    node: &Node,
+    wrap: fn(T) -> AnyObject,
+) -> AstResult<AnyObject> {
+    Ok(wrap(load_mapping::<T>(node)?))
+}
+
 fn any_object_from_node_inner(node: &Node) -> AstResult<AnyObject> {
     match node.class.as_str() {
-        "UnitMap" => Ok(AnyObject::UnitMap(load_mapping::<UnitMap>(node)?)),
-        "ZoomMap" => Ok(AnyObject::ZoomMap(load_mapping::<ZoomMap>(node)?)),
-        "ShiftMap" => Ok(AnyObject::ShiftMap(load_mapping::<ShiftMap>(node)?)),
-        "MatrixMap" => Ok(AnyObject::MatrixMap(load_mapping::<MatrixMap>(node)?)),
-        "PermMap" => Ok(AnyObject::PermMap(load_mapping::<PermMap>(node)?)),
-        "WinMap" => Ok(AnyObject::WinMap(load_mapping::<WinMap>(node)?)),
-        "LutMap" => Ok(AnyObject::LutMap(load_mapping::<LutMap>(node)?)),
-        "PolyMap" => Ok(AnyObject::PolyMap(load_mapping::<PolyMap>(node)?)),
-        "ChebyMap" => Ok(AnyObject::ChebyMap(load_mapping::<ChebyMap>(node)?)),
-        "CmpMap" => Ok(AnyObject::CmpMap(load_mapping::<CmpMap>(node)?)),
-        "WcsMap" => Ok(AnyObject::WcsMap(load_mapping::<WcsMap>(node)?)),
-        "SlaMap" => Ok(AnyObject::SlaMap(load_mapping::<SlaMap>(node)?)),
-        "SpecMap" => Ok(AnyObject::SpecMap(load_mapping::<SpecMap>(node)?)),
-        "TimeMap" => Ok(AnyObject::TimeMap(load_mapping::<TimeMap>(node)?)),
-        "PcdMap" => Ok(AnyObject::PcdMap(load_mapping::<PcdMap>(node)?)),
-        "GrismMap" => Ok(AnyObject::GrismMap(load_mapping::<GrismMap>(node)?)),
-        "SphMap" => Ok(AnyObject::SphMap(load_mapping::<SphMap>(node)?)),
-        "UnitNormMap" => Ok(AnyObject::UnitNormMap(load_mapping::<UnitNormMap>(node)?)),
-        "XphMap" => Ok(AnyObject::XphMap(load_mapping::<XphMap>(node)?)),
-        "IntraMap" => Ok(AnyObject::IntraMap(load_mapping::<IntraMap>(node)?)),
-        "TranMap" => Ok(AnyObject::TranMap(load_mapping::<TranMap>(node)?)),
-        "RateMap" => Ok(AnyObject::RateMap(load_mapping::<RateMap>(node)?)),
-        "MathMap" => Ok(AnyObject::MathMap(load_mapping::<MathMap>(node)?)),
-        "SplineMap" => Ok(AnyObject::SplineMap(load_mapping::<SplineMap>(node)?)),
-        "DssMap" => Ok(AnyObject::DssMap(load_mapping::<DssMap>(node)?)),
-        "NormMap" => Ok(AnyObject::NormMap(load_mapping::<NormMap>(node)?)),
-        "SelectorMap" => Ok(AnyObject::SelectorMap(load_mapping::<SelectorMap>(node)?)),
-        "SwitchMap" => Ok(AnyObject::SwitchMap(load_mapping::<SwitchMap>(node)?)),
-        "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
-        "SkyFrame" => Ok(AnyObject::SkyFrame(SkyFrame::from_node(node)?)),
-        "SpecFrame" => Ok(AnyObject::SpecFrame(SpecFrame::from_node(node)?)),
-        "DSBSpecFrame" => Ok(AnyObject::DSBSpecFrame(DSBSpecFrame::from_node(node)?)),
-        "TimeFrame" => Ok(AnyObject::TimeFrame(TimeFrame::from_node(node)?)),
-        "FluxFrame" => Ok(AnyObject::FluxFrame(FluxFrame::from_node(node)?)),
-        "SpecFluxFrame" => Ok(AnyObject::SpecFluxFrame(Box::new(
-            SpecFluxFrame::from_node(node)?,
-        ))),
-        "CmpFrame" => Ok(AnyObject::CmpFrame(CmpFrame::from_node(node)?)),
-        "FrameSet" => Ok(AnyObject::FrameSet(FrameSet::from_node(node)?)),
-        "Plot" => Ok(AnyObject::Plot(Box::new(Plot::from_node(node)?))),
+        "UnitMap" => wrapped_mapping::<UnitMap>(node, AnyObject::UnitMap),
+        "ZoomMap" => wrapped_mapping::<ZoomMap>(node, AnyObject::ZoomMap),
+        "ShiftMap" => wrapped_mapping::<ShiftMap>(node, AnyObject::ShiftMap),
+        "MatrixMap" => wrapped_mapping::<MatrixMap>(node, AnyObject::MatrixMap),
+        "PermMap" => wrapped_mapping::<PermMap>(node, AnyObject::PermMap),
+        "WinMap" => wrapped_mapping::<WinMap>(node, AnyObject::WinMap),
+        "LutMap" => wrapped_mapping::<LutMap>(node, AnyObject::LutMap),
+        "PolyMap" => wrapped_mapping::<PolyMap>(node, AnyObject::PolyMap),
+        "ChebyMap" => wrapped_mapping::<ChebyMap>(node, AnyObject::ChebyMap),
+        "CmpMap" => wrapped_mapping::<CmpMap>(node, AnyObject::CmpMap),
+        "WcsMap" => wrapped_mapping::<WcsMap>(node, AnyObject::WcsMap),
+        "SlaMap" => wrapped_mapping::<SlaMap>(node, AnyObject::SlaMap),
+        "SpecMap" => wrapped_mapping::<SpecMap>(node, AnyObject::SpecMap),
+        "TimeMap" => wrapped_mapping::<TimeMap>(node, AnyObject::TimeMap),
+        "PcdMap" => wrapped_mapping::<PcdMap>(node, AnyObject::PcdMap),
+        "GrismMap" => wrapped_mapping::<GrismMap>(node, AnyObject::GrismMap),
+        "SphMap" => wrapped_mapping::<SphMap>(node, AnyObject::SphMap),
+        "UnitNormMap" => wrapped_mapping::<UnitNormMap>(node, AnyObject::UnitNormMap),
+        "XphMap" => wrapped_mapping::<XphMap>(node, AnyObject::XphMap),
+        "IntraMap" => wrapped_mapping::<IntraMap>(node, AnyObject::IntraMap),
+        "TranMap" => wrapped_mapping::<TranMap>(node, AnyObject::TranMap),
+        "RateMap" => wrapped_mapping::<RateMap>(node, AnyObject::RateMap),
+        "MathMap" => wrapped_mapping::<MathMap>(node, AnyObject::MathMap),
+        "SplineMap" => wrapped_mapping::<SplineMap>(node, AnyObject::SplineMap),
+        "DssMap" => wrapped_mapping::<DssMap>(node, AnyObject::DssMap),
+        "NormMap" => wrapped_mapping::<NormMap>(node, AnyObject::NormMap),
+        "SelectorMap" => wrapped_mapping::<SelectorMap>(node, AnyObject::SelectorMap),
+        "SwitchMap" => wrapped_mapping::<SwitchMap>(node, AnyObject::SwitchMap),
+        "Frame" => wrapped::<BasicFrame>(node, AnyObject::BasicFrame),
+        "SkyFrame" => wrapped::<SkyFrame>(node, AnyObject::SkyFrame),
+        "SpecFrame" => wrapped::<SpecFrame>(node, AnyObject::SpecFrame),
+        "DSBSpecFrame" => wrapped::<DSBSpecFrame>(node, AnyObject::DSBSpecFrame),
+        "TimeFrame" => wrapped::<TimeFrame>(node, AnyObject::TimeFrame),
+        "FluxFrame" => wrapped::<FluxFrame>(node, AnyObject::FluxFrame),
+        "SpecFluxFrame" => {
+            wrapped::<SpecFluxFrame>(node, |v| AnyObject::SpecFluxFrame(Box::new(v)))
+        }
+        "CmpFrame" => wrapped::<CmpFrame>(node, AnyObject::CmpFrame),
+        "FrameSet" => wrapped::<FrameSet>(node, AnyObject::FrameSet),
+        "Plot" => wrapped::<Plot>(node, |v| AnyObject::Plot(Box::new(v))),
         // Regions.
-        "Circle" => Ok(AnyObject::Circle(Circle::from_node(node)?)),
-        "Box" => Ok(AnyObject::BoxRegion(BoxRegion::from_node(node)?)),
-        "Ellipse" => Ok(AnyObject::Ellipse(Ellipse::from_node(node)?)),
-        "Polygon" => Ok(AnyObject::Polygon(Polygon::from_node(node)?)),
-        "Interval" => Ok(AnyObject::Interval(Interval::from_node(node)?)),
-        "NullRegion" => Ok(AnyObject::NullRegion(NullRegion::from_node(node)?)),
-        "CmpRegion" => Ok(AnyObject::CmpRegion(CmpRegion::from_node(node)?)),
-        "PointList" => Ok(AnyObject::PointList(PointList::from_node(node)?)),
-        "Prism" => Ok(AnyObject::Prism(Prism::from_node(node)?)),
-        "Moc" => Ok(AnyObject::Moc(Moc::from_node(node)?)),
-        "StcResourceProfile" => Ok(AnyObject::StcResourceProfile(
-            StcResourceProfile::from_node(node)?,
-        )),
-        "StcSearchLocation" => Ok(AnyObject::StcSearchLocation(StcSearchLocation::from_node(
-            node,
-        )?)),
-        "StcCatalogEntryLocation" => Ok(AnyObject::StcCatalogEntryLocation(
-            StcCatalogEntryLocation::from_node(node)?,
-        )),
-        "StcObsDataLocation" => Ok(AnyObject::StcObsDataLocation(
-            StcObsDataLocation::from_node(node)?,
-        )),
-        "KeyMap" => Ok(AnyObject::KeyMap(Box::new(
-            crate::keymap::KeyMap::from_node(node)?,
-        ))),
-        "Table" => Ok(AnyObject::Table(Box::new(crate::table::Table::from_node(
-            node,
-        )?))),
-        "FitsTable" => Ok(AnyObject::FitsTable(Box::new(
-            crate::fitstable::FitsTable::from_node(node)?,
-        ))),
-        "Channel" => Ok(AnyObject::NativeChannel(Box::new(
-            crate::channel::NativeChannel::from_node(node)?,
-        ))),
-        "MocChan" => Ok(AnyObject::MocChan(Box::new(
-            crate::channel::MocChan::from_node(node)?,
-        ))),
-        "FitsChan" => Ok(AnyObject::FitsChan(Box::new(
-            crate::fitschan::FitsChan::from_node(node)?,
-        ))),
+        "Circle" => wrapped::<Circle>(node, AnyObject::Circle),
+        "Box" => wrapped::<BoxRegion>(node, AnyObject::BoxRegion),
+        "Ellipse" => wrapped::<Ellipse>(node, AnyObject::Ellipse),
+        "Polygon" => wrapped::<Polygon>(node, AnyObject::Polygon),
+        "Interval" => wrapped::<Interval>(node, AnyObject::Interval),
+        "NullRegion" => wrapped::<NullRegion>(node, AnyObject::NullRegion),
+        "CmpRegion" => wrapped::<CmpRegion>(node, AnyObject::CmpRegion),
+        "PointList" => wrapped::<PointList>(node, AnyObject::PointList),
+        "Prism" => wrapped::<Prism>(node, AnyObject::Prism),
+        "Moc" => wrapped::<Moc>(node, AnyObject::Moc),
+        "StcResourceProfile" => wrapped::<StcResourceProfile>(node, AnyObject::StcResourceProfile),
+        "StcSearchLocation" => wrapped::<StcSearchLocation>(node, AnyObject::StcSearchLocation),
+        "StcCatalogEntryLocation" => {
+            wrapped::<StcCatalogEntryLocation>(node, AnyObject::StcCatalogEntryLocation)
+        }
+        "StcObsDataLocation" => wrapped::<StcObsDataLocation>(node, AnyObject::StcObsDataLocation),
+        "KeyMap" => wrapped::<crate::keymap::KeyMap>(node, |v| AnyObject::KeyMap(Box::new(v))),
+        "Table" => wrapped::<crate::table::Table>(node, |v| AnyObject::Table(Box::new(v))),
+        "FitsTable" => {
+            wrapped::<crate::fitstable::FitsTable>(node, |v| AnyObject::FitsTable(Box::new(v)))
+        }
+        "Channel" => wrapped::<crate::channel::NativeChannel>(node, |v| {
+            AnyObject::NativeChannel(Box::new(v))
+        }),
+        "MocChan" => wrapped::<crate::channel::MocChan>(node, |v| AnyObject::MocChan(Box::new(v))),
+        "FitsChan" => {
+            wrapped::<crate::fitschan::FitsChan>(node, |v| AnyObject::FitsChan(Box::new(v)))
+        }
         // A PointSet, which the port does not load as an object of its own,
         // is still checked as C's loader checks it.
         "PointSet" => {

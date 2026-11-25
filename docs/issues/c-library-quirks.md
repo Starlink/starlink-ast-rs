@@ -133,10 +133,13 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A write keeps one list of replaced cards for every FitsChan in its thread](#a-write-keeps-one-list-of-replaced-cards-for-every-fitschan-in-its-thread)
 - [A Polygon with vertices near 1e308 contains positions outside it](#a-polygon-with-vertices-near-1e308-contains-positions-outside-it)
 - [A Polygon with a vertex at infinity leaves out positions inside it](#a-polygon-with-a-vertex-at-infinity-leaves-out-positions-inside-it)
+- [A dump nested deep enough crashes the reader](#a-dump-nested-deep-enough-crashes-the-reader)
+- [A units string nested deep enough crashes the unit parser](#a-units-string-nested-deep-enough-crashes-the-unit-parser)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
 - [`CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping](#cmpmap-dumps-invainvb-disagreeing-with-the-childs-own-invert-recording-pointer-sharing-rather-than-the-mapping)
+- [The port refuses a MathMap expression nested more than 100 deep, which C compiles](#the-port-refuses-a-mathmap-expression-nested-more-than-100-deep-which-c-compiles)
 - [`Frame::unformat` reads numbers as the C library's `sscanf` does, which varies between libraries](#frameunformat-reads-numbers-as-the-c-librarys-sscanf-does-which-varies-between-libraries)
 - [CmpMap `Rate` chain-rule override is defined but never installed](#cmpmap-rate-chain-rule-override-is-defined-but-never-installed)
 - [FrameSet variants: stored FrameSet-side, not on the Frame (Rust divergence)](#frameset-variants-stored-frameset-side-not-on-the-frame-rust-divergence)
@@ -1978,6 +1981,30 @@ Consequence: positions inside such a Polygon are taken to be outside it.
 The port mirrors it, by decision (2026-11-23): its Frame geometry takes an infinite value to be a number, as C's does, which gives C's answer here (`polygons` in `tests/test_regionhardening.rs`); before, it took infinity to be bad and kept (0.1, 0.1), the right answer for the wrong reason.
 Question for upstream: should a Polygon refuse a vertex that is not finite, as it refuses one that is `AST__BAD`?
 
+### A dump nested deep enough crashes the reader
+
+C location: `channel.c` `Read` (channel.c:2493) and `ReadObject` (channel.c:3319), through each class's loader.
+
+Reading an Object value recurses: `ReadObject` calls `Read`, which calls the class's loader, which calls `ReadObject` for each Object the class holds.
+There is no limit on the depth, so a dump of CmpMaps nested 100 000 deep, under 6 MB of text, overflows the stack: `astFromString` on it ends the process with SIGBUS on an 8 MiB thread on macOS arm64 (a probe built as in `docs/issues/c-oracle-probe-recipe.md`), where 10 000 deep loads.
+Consequence: a hostile or corrupt dump crashes any program that reads it, rather than giving an error.
+The port refuses a dump that nests Objects more than `constants::MAX_NATIVE_NESTING` (130) deep with `AST__LDERR` "Objects nested more than 130 deep cannot be read." (`serial::native_stream::Reader::read`), ten times the deepest nesting among the fixtures (13, `simplify/rigby.map`).
+The limit is set so that a dump nested to it loads on a 2 MiB stack, the default for a spawned thread, in an unoptimized build: the loaders keep their recursive frames small for that (`boxed_mapping` and its siblings in `serial/mod.rs`, and the KeyMap loader's split in `keymap/serial.rs`).
+So a dump nested between 131 and some thousands deep, which C reads, is refused by the port.
+`tests/test_nesting_limits.rs` holds both sides: a dump 100 000 deep is refused, and a dump of each class that holds others, nested to the limit, loads on a 2 MiB stack.
+Question for upstream: should `Read` refuse nesting past a fixed depth?
+
+### A units string nested deep enough crashes the unit parser
+
+C location: `unit.c` `MakeTree` (unit.c:3708).
+
+`MakeTree` splits a units string at its last operator outside parentheses, or strips a pair of enclosing parentheses or a function, and calls itself on each part, so its depth is the depth of the parentheses plus the number of operators in a chain such as `Jy*Jy*Jy`.
+There is no limit on the depth, so a Unit of `Jy` inside 100 000 pairs of parentheses overflows the stack: setting it on a FluxFrame ends the process with SIGBUS on an 8 MiB thread (probe as above), where 1000 pairs are used.
+Each level also rescans the string, so the work grows with the length times the depth.
+The port refuses a units string that nests more than `constants::MAX_UNIT_NESTING` (100) deep with `AST__BADUN` "The units string is nested more than 100 deep." (`units::parser::make_tree`), wherever the string is parsed: setting a Unit, converting between units, and the Frames that read their System from their Unit.
+The deepest units string among the tests nests 5 deep; a string nested to the limit is used on a 2 MiB stack in an unoptimized build (`a_unit_nested_to_the_limit_is_used` in `tests/test_nesting_limits.rs`).
+Question for upstream: should `MakeTree` refuse nesting past a fixed depth?
+
 ## Addressed here, and not going upstream
 
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.
@@ -2480,6 +2507,15 @@ They differ from a bad input's where a Mapping ignores a bad input: a full Matri
 The port takes a NaN input to be a bad value and makes every bad output `BAD_VALUE` (the design rule in CLAUDE.md), and its NaN protocol carries bad values as NaN through the Mappings, which needs a NaN to behave as a bad value does.
 So the port gives a NaN input the result C gives `AST__BAD`.
 `tools/oracle_fixtures/mapping_bad_probe.c` gives C `AST__BAD` where the port is given NaN, and sets `AST_REPLACE_NAN`; `tests/test_mapping_bad.rs` holds the MatrixMap cases.
+
+### The port refuses a MathMap expression nested more than 100 deep, which C compiles
+
+C location: `mathmap.c` `EvaluationSort` (mathmap.c:2787).
+
+C orders an expression's symbols for evaluation with an explicit stack, so it compiles an expression nested to any depth: `y=(((…x…)))` with 100 000 pairs of parentheses gives a MathMap (probe as in `docs/issues/c-oracle-probe-recipe.md`).
+The port compiles with a recursive operator-precedence parser (`mappings/mathmap/parser.rs`), which recurses once for each parenthesis, function argument, unary operator and right operand of `**`, so it refuses an expression nested more than `constants::MAX_EXPRESSION_NESTING` (100) deep with `AST__MIOPA` "the expression is nested more than 100 deep", rather than overflowing the stack.
+The deepest expression among the tests nests 5 deep, and one nested to the limit compiles on a 2 MiB stack in an unoptimized build (`an_expression_nested_to_the_limit_compiles` in `tests/test_nesting_limits.rs`).
+The limit goes if the parser is replaced by a port of `EvaluationSort` (PLAN.md §2).
 
 ## Resolved upstream
 

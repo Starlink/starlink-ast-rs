@@ -5,6 +5,7 @@
 //!
 //! Converts a token stream into a compiled expression (opcodes + constants).
 
+use crate::constants::MAX_EXPRESSION_NESTING;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::opcode::{CompiledExpr, Opcode};
@@ -22,6 +23,7 @@ pub(crate) fn compile(tokens: &[Token]) -> AstResult<CompiledExpr> {
         constants: Vec::new(),
         stack_size: 0,
         max_stack: 0,
+        depth: 0,
     };
     compiler.parse_expr(0)?;
 
@@ -47,6 +49,8 @@ struct Compiler<'a> {
     constants: Vec<f64>,
     stack_size: i32,
     max_stack: usize,
+    /// How many calls of `parse_expr` enclose the current one.
+    depth: usize,
 }
 
 impl<'a> Compiler<'a> {
@@ -69,6 +73,22 @@ impl<'a> Compiler<'a> {
 
     /// Parse an expression with minimum binding power `min_bp`.
     fn parse_expr(&mut self, min_bp: u8) -> AstResult<()> {
+        // A port-only limit: C's EvaluationSort does not recurse.
+        if self.depth > MAX_EXPRESSION_NESTING {
+            return Err(AstError::new(
+                ErrorCode::Miopa,
+                format!("the expression is nested more than {MAX_EXPRESSION_NESTING} deep"),
+            ));
+        }
+        self.depth += 1;
+        let result = self.parse_operand_and_operators(min_bp);
+        self.depth -= 1;
+        result
+    }
+
+    /// The body of `parse_expr`: an operand and the infix operators that
+    /// bind to it at least as tightly as `min_bp`.
+    fn parse_operand_and_operators(&mut self, min_bp: u8) -> AstResult<()> {
         // Parse prefix / atom
         self.parse_prefix()?;
 

@@ -37,3 +37,26 @@ pub const PACKAGE_STRING: &str = "ast 9.5.0";
 ///
 /// - `AST__MXAXES`, the C constant with the same value.
 pub const MXAXES: usize = 65536;
+
+/// The deepest an Object may be nested inside others in a Native dump.
+///
+/// A dump that nests Objects deeper fails to read with `ErrorCode::Lderr`,
+/// rather than overflowing the stack of the recursive reader.
+/// The C library has no such limit.
+pub const MAX_NATIVE_NESTING: usize = 130;
+
+/// The deepest a MathMap expression may nest parentheses, function
+/// arguments, unary operators and the right operands of `**`.
+///
+/// An expression nested deeper fails with `ErrorCode::Miopa`, rather than
+/// overflowing the stack of the recursive parser.
+/// The C library has no such limit, as its parser does not recurse.
+pub const MAX_EXPRESSION_NESTING: usize = 100;
+
+/// The deepest a units string may nest, counting each parenthesis, function
+/// and operator that splits it.
+///
+/// A units string nested deeper fails with `ErrorCode::Badun` wherever it
+/// is used, rather than overflowing the stack of the recursive parser.
+/// The C library has no such limit.
+pub const MAX_UNIT_NESTING: usize = 100;

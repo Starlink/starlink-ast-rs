@@ -36,6 +36,7 @@
 use super::native_read::{parse_scalar_value, split_comment, try_parse_commented_default};
 use super::node::{ItemName, NodeItem, ReadFlag};
 use super::{Node, NodeValue};
+use crate::constants::MAX_NATIVE_NESTING;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 /// The parent of each class C can load, whose loader each class's loader
@@ -289,6 +290,8 @@ pub(crate) struct Reader<'a> {
     report_level: i32,
     /// The warnings made, as C's `astAddWarning` stores them.
     pub(crate) warnings: Vec<String>,
+    /// How many Objects enclose the one being read.
+    depth: usize,
 }
 
 impl<'a> Reader<'a> {
@@ -306,6 +309,7 @@ impl<'a> Reader<'a> {
             strict,
             report_level,
             warnings: Vec::new(),
+            depth: 0,
         }
     }
 
@@ -478,9 +482,18 @@ impl<'a> Reader<'a> {
                 format!("astGetLoader: Object of unknown class \"{class}\" cannot be loaded."),
             ));
         };
+        // A port-only limit: C's reader recurses without one.
+        if self.depth >= MAX_NATIVE_NESTING {
+            return Err(self.error(
+                ErrorCode::Lderr,
+                format!("Objects nested more than {MAX_NATIVE_NESTING} deep cannot be read."),
+            ));
+        }
         let mut node = Node::new(class.clone());
         node.class_comment = datum.comment;
+        self.depth += 1;
         let result = self.read_classes(&mut node, &class, &chain);
+        self.depth -= 1;
         let result = result.map(|events| ReadObject { node, events });
         if top {
             result.map(Some).map_err(|e| {

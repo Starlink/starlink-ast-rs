@@ -16,7 +16,8 @@ use super::table::{
     iter_multiplier_spellings, iter_multipliers,
 };
 use super::tree::{Oper, UnitNode};
-use crate::error::AstResult;
+use crate::constants::MAX_UNIT_NESTING;
+use crate::error::{AstError, AstResult, ErrorCode};
 
 /// Top-level entry point. Mirrors C `CreateTree` (`unit.c`:1283-1371).
 ///
@@ -40,7 +41,7 @@ pub(crate) fn create_tree(exp: &str, basic: bool) -> AstResult<Option<Box<UnitNo
     }
 
     // Build the parsed tree.
-    let Some(mut tree) = make_tree(&cleaned) else {
+    let Some(mut tree) = make_tree(&cleaned)? else {
         return Ok(None);
     };
 
@@ -390,11 +391,30 @@ fn starts_with_func(head: &str, func: &str) -> bool {
 /// Build a `UnitNode` tree from a (cleaned) unit expression. `nc` is
 /// the number of bytes from `exp` to use. Mirrors C `MakeTree`
 /// (`unit.c`:3599).
-pub(crate) fn make_tree(exp: &str) -> Option<Box<UnitNode>> {
-    make_tree_n(exp.as_bytes(), exp.len())
+///
+/// # Errors
+///
+/// `ErrorCode::Badun` when the expression nests more than
+/// [`MAX_UNIT_NESTING`] deep, a limit C's `MakeTree` does not have.
+pub(crate) fn make_tree(exp: &str) -> AstResult<Option<Box<UnitNode>>> {
+    let mut too_deep = false;
+    let tree = make_tree_n(exp.as_bytes(), exp.len(), 0, &mut too_deep);
+    if too_deep {
+        return Err(AstError::new(
+            ErrorCode::Badun,
+            format!("The units string is nested more than {MAX_UNIT_NESTING} deep."),
+        ));
+    }
+    Ok(tree)
 }
 
-fn make_tree_n(exp: &[u8], nc: usize) -> Option<Box<UnitNode>> {
+/// `MakeTree` on the first `nc` bytes of `exp`, `level` calls below the
+/// first, setting `too_deep` and giving `None` beyond [`MAX_UNIT_NESTING`].
+fn make_tree_n(exp: &[u8], nc: usize, level: usize, too_deep: &mut bool) -> Option<Box<UnitNode>> {
+    if level > MAX_UNIT_NESTING {
+        *too_deep = true;
+        return None;
+    }
     if nc == 0 {
         return None;
     }
@@ -494,8 +514,8 @@ fn make_tree_n(exp: &[u8], nc: usize) -> Option<Box<UnitNode>> {
         let left_len = li;
         let right_start = li + oplen;
         let right_len = nc - li - oplen;
-        let left = make_tree_n(exp, left_len)?;
-        let right = make_tree_n(&exp[right_start..], right_len)?;
+        let left = make_tree_n(exp, left_len, level + 1, too_deep)?;
+        let right = make_tree_n(&exp[right_start..], right_len, level + 1, too_deep)?;
         return Some(UnitNode::binary(op, left, right));
     }
 
@@ -536,10 +556,10 @@ fn make_tree_n(exp: &[u8], nc: usize) -> Option<Box<UnitNode>> {
     }
 
     if op != Oper::Null {
-        let left = make_tree_n(exp, split_i)?;
+        let left = make_tree_n(exp, split_i, level + 1, too_deep)?;
         let right_start = split_i + oplen;
         let right_len = nc - split_i - oplen;
-        let right = make_tree_n(&exp[right_start..], right_len)?;
+        let right = make_tree_n(&exp[right_start..], right_len, level + 1, too_deep)?;
         return Some(UnitNode::binary(op, left, right));
     }
 
@@ -560,13 +580,13 @@ fn make_tree_n(exp: &[u8], nc: usize) -> Option<Box<UnitNode>> {
     if let Some(fo) = func_op {
         let arg_start = func_oplen;
         let arg_len = nc - func_oplen;
-        let arg = make_tree_n(&exp[arg_start..], arg_len)?;
+        let arg = make_tree_n(&exp[arg_start..], arg_len, level + 1, too_deep)?;
         return Some(UnitNode::unary(fo, arg));
     }
 
     // -------- Branch D: whole expression in parentheses ---------
     if exp[0] == b'(' && exp[nc - 1] == b')' {
-        return make_tree_n(&exp[1..], nc - 2);
+        return make_tree_n(&exp[1..], nc - 2, level + 1, too_deep);
     }
 
     // -------- Branch E: numerical constant ---------
