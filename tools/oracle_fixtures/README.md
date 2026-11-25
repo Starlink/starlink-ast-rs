@@ -272,6 +272,18 @@ No file of another platform's values is committed, because they change with the 
 A new root needs an entry in both.
 To add calls, write their lines with the inputs and any well-formed output, such as `nan`, and run the script: it replaces the outputs.
 
+## `build_hardening_probe.sh` — what does C report for a corrupt dump?
+
+`hardening_probe.c` includes one of the C hardening tests (`testcorruptinput.c`, `testloaderhardening.c`, `testframeperm.c`, `testframesetload.c`, `testdssmap.c`) whole, with its `main` renamed, and records every dump the test reads with `astFromString`, the status C is left with and each message it reports during the call.
+`build_hardening_probe.sh` builds it once per test and prints `crates/starlink-ast/tests/hardening_oracle/cases.rs`, which `test_hardening_oracle.rs` replays through the port:
+
+```shell
+./tools/oracle_fixtures/build_hardening_probe.sh > crates/starlink-ast/tests/hardening_oracle/cases.rs
+```
+
+The tests print to stdout and stderr themselves, so the probe writes the cases to file descriptor 3.
+`check_probes_fresh.sh` runs it through its `ctests` recipe.
+
 ## `build_simplify_trace.sh` — watch C simplify
 
 When a question is "does C reach this node, and in what state?", reasoning about

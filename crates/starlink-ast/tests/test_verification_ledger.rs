@@ -199,6 +199,15 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          excluded_cases_still_differ fails when it matches",
     ),
     (
+        "test_hardening_oracle.rs",
+        "HARDENING_EXCLUDED",
+        184,
+        "corrupt dumps of the C hardening tests that the port refuses or loads \
+         otherwise than the C library, each naming the stage 5 task and upstream \
+         commit that fixes it; 14 crash the port and run in a child process; \
+         excluded_cases_still_differ fails when one matches",
+    ),
+    (
         "test_flux_badun.rs",
         "UNIT_MESSAGE_EXCLUDED",
         1,

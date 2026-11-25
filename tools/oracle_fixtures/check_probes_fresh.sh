@@ -93,6 +93,10 @@ build_probe() {
     plain)
         (cd "$ref/build" && cc "$here/$probe.c" -I. -L. -last -lm -Wl,-rpath,"$PWD" \
             -o "$here/$probe") ;;
+    ctests)
+        # The probe includes each C test in turn; build_<probe>.sh builds and
+        # runs them, so the program run is a copy of that script.
+        cp "$here/build_$probe.sh" "$here/$probe" && chmod +x "$here/$probe" ;;
     *)
         echo "unknown build recipe $recipe" >&2
         return 1 ;;

@@ -6,7 +6,8 @@
 #
 #   probe    the probe's name, tools/oracle_fixtures/<probe>.c
 #   build    make: the Makefile; fast, plain, grflog, grflog-ownerr: the recipes in
-#            check_probes_fresh.sh, each the compiler line the probe's header documents
+#            check_probes_fresh.sh, each the compiler line the probe's header documents;
+#            ctests: build_<probe>.sh, which builds the probe once per C test and runs it
 #   run_dir  tools: tools/oracle_fixtures; build: the reference library's build directory;
 #            fixtures: crates/starlink-ast/tests/fixtures
 #   env      VAR=value set for the run, or -
@@ -158,3 +159,4 @@ unit_mapper_probe	make	tools	-	-	crates/starlink-ast/tests/unit_mapper_oracle/ca
 use_defs_probe	make	tools	-	-	crates/starlink-ast/tests/use_defs_oracle/cases.rs	-
 wcsmap_pv_probe	make	tools	-	-	crates/starlink-ast/tests/wcsmap_pv_oracle/cases.rs	-
 xphmap_probe	make	tools	-	-	crates/starlink-ast/tests/xphmap_oracle/cases.rs	-
+hardening_probe	ctests	tools	-	-	crates/starlink-ast/tests/hardening_oracle/cases.rs	-

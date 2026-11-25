@@ -36,6 +36,8 @@ mod test_frame_load;
 mod test_frameset_variant_link_oracle;
 #[path = "../test_frameset_variants_oracle.rs"]
 mod test_frameset_variants_oracle;
+#[path = "../test_hardening_oracle.rs"]
+mod test_hardening_oracle;
 #[path = "../test_keymap.rs"]
 mod test_keymap;
 #[path = "../test_keymap_properties.rs"]
