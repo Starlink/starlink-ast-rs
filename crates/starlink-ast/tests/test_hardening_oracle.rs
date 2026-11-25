@@ -56,36 +56,6 @@ enum Why {
 const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     (
         "testcorruptinput",
-        2,
-        Why::Differs("Task 2: an integer an int cannot hold (57a16d1a)"),
-    ),
-    (
-        "testcorruptinput",
-        3,
-        Why::Differs("Task 2: an integer an int cannot hold (57a16d1a)"),
-    ),
-    (
-        "testcorruptinput",
-        4,
-        Why::Differs("Task 2: an integer an int cannot hold (57a16d1a)"),
-    ),
-    (
-        "testcorruptinput",
-        5,
-        Why::Differs("Task 2: an integer an int cannot hold (57a16d1a)"),
-    ),
-    (
-        "testcorruptinput",
-        6,
-        Why::Differs("Task 2: an integer an int cannot hold (57a16d1a)"),
-    ),
-    (
-        "testcorruptinput",
-        7,
-        Why::Differs("Task 2: an integer an int cannot hold (57a16d1a)"),
-    ),
-    (
-        "testcorruptinput",
         9,
         Why::Differs("Task 3: AST__MXAXES (b3a1143b)"),
     ),
@@ -207,11 +177,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     (
         "testcorruptinput",
         35,
-        Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
-    ),
-    (
-        "testcorruptinput",
-        36,
         Why::Differs("Task 8: Region and PointSet loaders (8078ddd8, aa29054e, 63c9f42f)"),
     ),
     (
@@ -486,11 +451,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     ),
     (
         "testcorruptinput",
-        105,
-        Why::Differs("Task 6: Mapping loader messages (65df6bf8, 744ddab4)"),
-    ),
-    (
-        "testcorruptinput",
         107,
         Why::Crashes("Task 7: MathMap functions (aa915bed)"),
     ),
@@ -513,16 +473,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         "testcorruptinput",
         112,
         Why::Differs("Task 7: WcsMap axes (639232d1, cfdbbe8d)"),
-    ),
-    (
-        "testcorruptinput",
-        117,
-        Why::Crashes("Task 2: an integer an int cannot hold (57a16d1a)"),
-    ),
-    (
-        "testcorruptinput",
-        118,
-        Why::Differs("Task 2: the context line of a failed load"),
     ),
     (
         "testcorruptinput",
@@ -722,11 +672,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     (
         "testloaderhardening",
         55,
-        Why::Differs("Task 9: Moc ranges and MaxOrder (d3f5b711)"),
-    ),
-    (
-        "testloaderhardening",
-        56,
         Why::Differs("Task 9: Moc ranges and MaxOrder (d3f5b711)"),
     ),
     (
@@ -931,21 +876,6 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
     ),
     (
         "testdssmap",
-        1,
-        Why::Differs("Task 2: the context line of a failed load"),
-    ),
-    (
-        "testdssmap",
-        2,
-        Why::Differs("Task 2: the context line of a failed load"),
-    ),
-    (
-        "testdssmap",
-        3,
-        Why::Differs("Task 2: the context line of a failed load"),
-    ),
-    (
-        "testdssmap",
         4,
         Why::Differs("Task 6: DssMap inputs and outputs (6d87f732)"),
     ),
@@ -975,6 +905,38 @@ const HARDENING_EXCLUDED: &[(&str, usize, Why)] = &[
         Why::Differs("Task 7: DssMap plate centre and offsets (cba0743a)"),
     ),
 ];
+
+/// Cases whose first message C cuts to fit its 1023-character buffer, which
+/// the port does not mirror: the port's message must begin with C's and go
+/// on with the rest of the value C left out.
+const CUT_BY_C: &[(&str, usize, &str)] = &[
+    (
+        "testcorruptinput",
+        117,
+        "a Naxes of 5000 digits, which the message quotes",
+    ),
+    (
+        "testcorruptinput",
+        118,
+        "a System of 5000 characters, which the message quotes",
+    ),
+];
+
+/// Whether the port's `got` messages are C's `want`, allowing for C's cut
+/// of the first when `case` is one of [`CUT_BY_C`].
+fn same_messages(case: &Case, got: &[&str], want: &[&str]) -> bool {
+    if got == want {
+        return true;
+    }
+    let cut = CUT_BY_C
+        .iter()
+        .any(|(t, o, _)| *t == case.test && *o == case.ordinal);
+    cut && got.len() == want.len()
+        && got[0].len() > want[0].len()
+        && want[0].len() >= 1023
+        && got[0].starts_with(want[0])
+        && got[1..] == want[1..]
+}
 
 /// The messages of `err` in C's order: its message, a line at a time, then
 /// its context, oldest first.
@@ -1020,7 +982,7 @@ fn difference(case: &'static Case) -> Option<String> {
         (Err(e), 0) => Some(format!("refused with {e}, where C loads it")),
         (Err(e), code) => {
             let got = messages(&e);
-            (e.code().as_raw() != code || got != case.messages).then(|| {
+            (e.code().as_raw() != code || !same_messages(case, &got, case.messages)).then(|| {
                 format!(
                     "gave {} {got:?}, where C gave {code} {:?}",
                     e.code().as_raw(),
@@ -1138,6 +1100,22 @@ fn excluded_cases_are_in_the_corpus() {
                 .iter()
                 .any(|c| c.test == *test && c.ordinal == *ordinal),
             "{test}#{ordinal} is not a case"
+        );
+    }
+}
+
+/// Each case in [`CUT_BY_C`] is one whose message C cut: were it not, the
+/// relaxation would be hiding a difference.
+#[test]
+fn cut_cases_are_cut_by_c() {
+    for (test, ordinal, what) in CUT_BY_C {
+        let case = CASES
+            .iter()
+            .find(|c| c.test == *test && c.ordinal == *ordinal)
+            .unwrap_or_else(|| panic!("{test}#{ordinal} is not a case"));
+        assert!(
+            case.messages.first().is_some_and(|m| m.len() >= 1023),
+            "{test}#{ordinal} ({what}): C did not cut its message"
         );
     }
 }

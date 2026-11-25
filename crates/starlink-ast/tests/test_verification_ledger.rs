@@ -113,9 +113,10 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_channel_read_oracle.rs",
         "EXCLUDED",
-        2,
-        "C reports AST__BADIN for a string read as a number and stops part way \
-         through the Object; the port reads the string without error",
+        1,
+        "string_for_int: C stops reading part way through an Object whose \
+         number it cannot read, so its next read starts there; the port reads \
+         the whole Object first",
     ),
     (
         "test_fixture_read_warnings_oracle.rs",
@@ -201,11 +202,19 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_hardening_oracle.rs",
         "HARDENING_EXCLUDED",
-        184,
+        170,
         "corrupt dumps of the C hardening tests that the port refuses or loads \
          otherwise than the C library, each naming the stage 5 task and upstream \
-         commit that fixes it; 14 crash the port and run in a child process; \
+         commit that fixes it; 13 crash the port and run in a child process; \
          excluded_cases_still_differ fails when one matches",
+    ),
+    (
+        "test_hardening_oracle.rs",
+        "CUT_BY_C",
+        2,
+        "testcorruptinput 117 and 118: C cuts the message quoting a 5000-character \
+         value at 1023 characters to fit its buffer, which the port does not \
+         mirror; the port's message must begin with C's",
     ),
     (
         "test_flux_badun.rs",

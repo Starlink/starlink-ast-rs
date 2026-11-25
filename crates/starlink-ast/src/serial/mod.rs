@@ -325,9 +325,11 @@ pub(crate) fn read_mapping_base(whole: &Node) -> MappingBaseAttrs {
 
 /// Reconstruct a concrete Mapping from a Node tree, dispatching by class name.
 pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
-    let mut result = mapping_from_node_inner(node)?;
-    apply_mapping_object_items(result.as_mut(), node);
-    Ok(result)
+    load_object(node, || {
+        let mut result = mapping_from_node_inner(node)?;
+        apply_mapping_object_items(result.as_mut(), node);
+        Ok(result)
+    })
 }
 
 /// Apply the Object and Mapping items that every Mapping class shares and
@@ -710,6 +712,10 @@ pub(crate) fn frame_class_name(frame: &dyn std::any::Any) -> &'static str {
 
 /// Reconstruct a concrete Frame from a Node tree, dispatching by class name.
 pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
+    load_object(node, || frame_from_node_inner(node))
+}
+
+fn frame_from_node_inner(node: &Node) -> AstResult<DynFrame> {
     match node.class.as_str() {
         "Frame" => Ok(Box::new(BasicFrame::from_node(node)?)),
         "SkyFrame" => Ok(Box::new(SkyFrame::from_node(node)?)),
@@ -1301,6 +1307,10 @@ impl RegionToNode for dyn Region {
 
 /// Reconstruct a concrete Region from a Node tree, dispatching by class name.
 pub(crate) fn region_from_node(node: &Node) -> AstResult<DynRegion> {
+    load_object(node, || region_from_node_inner(node))
+}
+
+fn region_from_node_inner(node: &Node) -> AstResult<DynRegion> {
     match node.class.as_str() {
         "Circle" => Ok(Box::new(Circle::from_node(node)?)),
         "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
@@ -2606,6 +2616,33 @@ impl AnyObject {
 
 /// Reconstruct an [`AnyObject`] from a [`Node`], dispatching by class name.
 pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
+    load_object(node, || any_object_from_node_inner(node))
+}
+
+/// Load `node` with `load` as C loads an Object, giving C's error.
+///
+/// A typed read that fails records its error and lets the loader go on
+/// (see [`node::record_read_error`]), where C's loader, the status set,
+/// would do nothing more; so an error recorded while `load` ran is the one
+/// reported, ahead of any the loader went on to raise. An Object read as an
+/// item's value adds C's `Failed to read the "<item>" Object value.`, once,
+/// for the innermost such Object.
+pub(crate) fn load_object<T>(node: &Node, load: impl FnOnce() -> AstResult<T>) -> AstResult<T> {
+    let outer = node::take_read_error();
+    let result = load();
+    let recorded = node::take_read_error();
+    node::restore_read_error(outer);
+    let result = match recorded {
+        Some(e) => Err(e),
+        None => result,
+    };
+    match (&node.item.0, result) {
+        (Some(name), Err(e)) => Err(e.in_object_value(name)),
+        (_, result) => result,
+    }
+}
+
+fn any_object_from_node_inner(node: &Node) -> AstResult<AnyObject> {
     match node.class.as_str() {
         "UnitMap" => Ok(AnyObject::UnitMap(load_mapping::<UnitMap>(node)?)),
         "ZoomMap" => Ok(AnyObject::ZoomMap(load_mapping::<ZoomMap>(node)?)),

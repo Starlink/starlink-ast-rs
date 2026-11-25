@@ -34,7 +34,7 @@
 //! [`ReadFlag`]: super::node::ReadFlag
 
 use super::native_read::{parse_scalar_value, split_comment, try_parse_commented_default};
-use super::node::{NodeItem, ReadFlag};
+use super::node::{ItemName, NodeItem, ReadFlag};
 use super::{Node, NodeValue};
 use crate::error::{AstError, AstResult, ErrorCode};
 
@@ -572,6 +572,7 @@ impl<'a> Reader<'a> {
                             node.items.push(NodeItem {
                                 key: datum.key,
                                 value: parse_scalar_value(&datum.raw),
+                                text: Some(val),
                                 comment: datum.comment,
                                 read: ReadFlag::default(),
                                 helpful: true,
@@ -601,7 +602,9 @@ impl<'a> Reader<'a> {
                                 item: index,
                                 events: nested.events,
                             });
-                            node.push_object(&datum.key, nested.node, datum.comment);
+                            let mut child = nested.node;
+                            child.item = ItemName(Some(datum.name.clone()));
+                            node.push_object(&datum.key, child, datum.comment);
                         }
                     }
                 }

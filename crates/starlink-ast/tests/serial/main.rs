@@ -46,6 +46,8 @@ mod test_keymap_properties;
 mod test_keymap_serial;
 #[path = "../test_mapping_load.rs"]
 mod test_mapping_load;
+#[path = "../test_native_errors.rs"]
+mod test_native_errors;
 #[path = "../test_native_roundtrip_all.rs"]
 mod test_native_roundtrip_all;
 #[path = "../test_object_id_oracle.rs"]

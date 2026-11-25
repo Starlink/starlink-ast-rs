@@ -68,6 +68,9 @@ pub struct AstError {
     message: String,
     context: Vec<String>,
     source_location: Option<&'static Location<'static>>,
+    /// Whether a load has added the name of the Object value it was reading
+    /// (C's `astreadclassdata_msg`), which only the innermost does.
+    object_value_named: bool,
 }
 
 impl AstError {
@@ -78,6 +81,7 @@ impl AstError {
             message: message.into(),
             context: Vec::new(),
             source_location: None,
+            object_value_named: false,
         };
         err.trace();
         err
@@ -92,6 +96,7 @@ impl AstError {
             message: message.into(),
             context: Vec::new(),
             source_location: Some(Location::caller()),
+            object_value_named: false,
         };
         err.trace();
         err
@@ -147,6 +152,18 @@ impl AstError {
     /// operation failed, and return it.
     pub fn with_context(mut self, ctx: impl Into<String>) -> Self {
         self.context.push(ctx.into());
+        self
+    }
+
+    /// Add C's `Failed to read the "<name>" Object value.` unless a load
+    /// nested more deeply has added it, as C reports it once, for the
+    /// innermost Object whose loading failed.
+    pub(crate) fn in_object_value(mut self, name: &str) -> Self {
+        if !self.object_value_named {
+            self.object_value_named = true;
+            self.context
+                .push(format!("Failed to read the \"{name}\" Object value."));
+        }
         self
     }
 }

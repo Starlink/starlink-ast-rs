@@ -149,6 +149,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [FitsChan cuts long strings to the buffers it copies them into](#fitschan-cuts-long-strings-to-the-buffers-it-copies-them-into)
 - [Frame classes cut long default Labels, Symbols, Domains and Titles to their buffers](#frame-classes-cut-long-default-labels-symbols-domains-and-titles-to-their-buffers)
 - [A `%c` Format writes a byte of the value, which outside ASCII is not text](#a-c-format-writes-a-byte-of-the-value-which-outside-ascii-is-not-text)
+- [An error message is cut to 1023 characters](#an-error-message-is-cut-to-1023-characters)
 
 ### [Resolved upstream](#resolved-upstream)
 
@@ -2028,6 +2029,15 @@ A value of 128 to 255 gives a byte that is not ASCII, and is not UTF-8 on its ow
 
 The port holds a formatted value as a Rust string, which cannot hold such a byte, so it writes the character of that code in ISO 8859-1 (233 is `é`), padded to the Format's width as the one byte would be (`formats` in `tests/test_fields.rs`).
 A zero ends the text, as in C.
+
+### An error message is cut to 1023 characters
+
+C location: `error.c` `astError_` and `channel.c` `astAddWarning`, the buffers upstream `2d00a457` stopped overrunning.
+
+An error message is formatted into a buffer of 1024 bytes and a Channel warning into one of 201, so a message quoting a long value is cut short: reading a Frame dump whose Naxes is 5000 digits reports `astRead(Channel): The value "naxes = 7777…` cut at 1023 characters.
+Before the change the message overran the buffer; now it is cut.
+
+The port does not mirror the cut, which exists only to protect the buffer: an `AstError` holds the whole message. `test_hardening_oracle.rs` compares the two cases of `testcorruptinput.c` that reach it (`CUT_BY_C`) as C would have written them whole.
 
 ### `CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping
 

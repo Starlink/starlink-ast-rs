@@ -188,6 +188,7 @@ pub(crate) fn try_parse_commented_default(after_hash: &str) -> Option<NodeItem> 
     Some(NodeItem {
         key: key.to_string(),
         value: NodeValue::Unset(Box::new(inner_value)),
+        text: None,
         comment: comment.map(|s| s.to_string()),
         read: Default::default(),
         helpful: true,
@@ -291,6 +292,7 @@ fn parse_object(
                 node.items.push(NodeItem {
                     key: key.to_string(),
                     value,
+                    text: None,
                     comment: comment.map(|s| s.to_string()),
                     read: Default::default(),
                     helpful: true,

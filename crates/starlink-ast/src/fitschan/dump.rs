@@ -435,7 +435,7 @@ fn read_card(part: &Node, n: usize, ty: CardType) -> FitsCard {
         CardType::String => FitsValue::String(part.get_string(&item("Dt"), "")),
         CardType::Continue => FitsValue::Continue(part.get_string(&item("Dt"), "")),
         CardType::Int => FitsValue::Int(part.get_int(&item("Dt"), 0)),
-        CardType::KInt => FitsValue::KInt(part.get_int(&item("Dt"), 0)),
+        CardType::KInt => FitsValue::KInt(part.get_int64(&item("Dt"), 0)),
         CardType::Logical => FitsValue::Logical(part.get_int(&item("Dt"), 0) != 0),
         CardType::ComplexF => FitsValue::ComplexFloat(
             part.get_double(&item("Dr"), BAD_VALUE),

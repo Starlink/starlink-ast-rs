@@ -381,7 +381,7 @@ fn load_entry(
             }
         }
         AstType::KInt => {
-            let v: Vec<i64> = names.iter().map(|nm| node.get_int(nm, 0)).collect();
+            let v: Vec<i64> = names.iter().map(|nm| node.get_int64(nm, 0)).collect();
             if nel == 0 {
                 km.put_0k(key, v[0], comment)?;
             } else {
