@@ -102,6 +102,7 @@ pub(crate) fn hfk5z_consts(date1: f64, date2: f64) -> Hfk5zConsts {
 /// FK5 proper motions (radians per year).
 ///
 /// The date is the two-part Julian Date of the Hipparcos position.
+#[cfg(test)]
 pub(crate) fn hfk5z(rh: f64, dh: f64, date1: f64, date2: f64) -> (f64, f64, f64, f64) {
     hfk5z_with(&hfk5z_consts(date1, date2), rh, dh)
 }

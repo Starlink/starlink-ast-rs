@@ -1396,6 +1396,8 @@ fn apply_step_inverse(
         | SlaCvtType::Eqhpr
         | SlaCvtType::Heeq
         | SlaCvtType::Eqhe => stp_apply(step.matrix(), alpha, delta),
+        SlaCvtType::Fk5hz => unreachable!("FK5HZ runs per step"),
+        SlaCvtType::Hfk5z => unreachable!("HFK5Z runs per step"),
         // For all other types, use the inverse type's forward operation. The
         // step constants were built for that type (`StepConsts::new`), and
         // Map.inverse()=Amp and Amp.inverse()=Map share the same mappa

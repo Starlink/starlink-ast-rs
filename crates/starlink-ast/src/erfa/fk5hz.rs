@@ -94,6 +94,7 @@ pub(crate) fn fk5hz_consts(date1: f64, date2: f64) -> Fk5hzConsts {
 /// (R.A., Dec) in radians.
 ///
 /// The date is the two-part Julian Date of the FK5 position.
+#[cfg(test)]
 pub(crate) fn fk5hz(r5: f64, d5: f64, date1: f64, date2: f64) -> (f64, f64) {
     fk5hz_with(&fk5hz_consts(date1, date2), r5, d5)
 }
