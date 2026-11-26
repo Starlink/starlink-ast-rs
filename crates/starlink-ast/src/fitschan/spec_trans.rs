@@ -1275,25 +1275,29 @@ fn translate_msx_car(cards: &mut CardList) {
 }
 
 /// Effective CDELT for a matrix row derived from CD keywords, matching C's
-/// CD→PC/CDELT conversion (fitschan.c:31446-31460): the length of the row
-/// vector, signed by the diagonal element. Returns `None` when the header
-/// carries no `CD{row}_{i}` keywords, so the caller falls through as it would
-/// for a header with neither CDELT nor CD.
+/// CD→PC/CDELT conversion (fitschan.c:32459-32482): the length of the row
+/// vector, signed by the diagonal element. C converts the rows and columns
+/// up to the highest row index of the `CD<j>_<i>` keywords present
+/// (`astKeyFields`), so this returns `None` when there are none, or none
+/// with a row index as high as `row`, and the caller falls through as it
+/// would for a header with neither CDELT nor CD.
 fn cd_row_cdelt(cards: &CardList, row: usize) -> Option<f64> {
-    let naxis = cards.get_int("NAXIS").unwrap_or(0).max(0) as usize;
+    let (nmatch, ubnd) = key_fields(cards, "CD%d_%d", 1);
+    let naxis = ubnd[0].max(0) as usize;
+    if nmatch == 0 || row > naxis {
+        return None;
+    }
     let mut rowsum2 = 0.0;
     let mut diag = 1.0;
-    let mut found = false;
     for i in 1..=naxis {
         if let Some(v) = cards.get_float(&format!("CD{row}_{i}")) {
-            found = true;
             rowsum2 += v * v;
             if i == row {
                 diag = if v >= 0.0 { 1.0 } else { -1.0 };
             }
         }
     }
-    found.then(|| crate::math::sqrt(rowsum2) * diag)
+    Some(crate::math::sqrt(rowsum2) * diag)
 }
 
 /// Translation #20 helper: RESTFREQ → RESTFRQ with MHz/GHz unit

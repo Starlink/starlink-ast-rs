@@ -1,0 +1,4 @@
+NAXIS   =           2147483647
+CTYPE1  = 'GLON-CAR'           /
+CTYPE2  = 'GLAT-CAR'        0  /
+CROTA2  =    ]      0.000000000 /
