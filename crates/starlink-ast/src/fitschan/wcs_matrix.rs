@@ -23,7 +23,7 @@ use ndarray::Array2;
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use crate::constants::BAD_VALUE;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{
     CmpMap, Composition, DynMapping, Mapping, MatrixMap, PolyMap, PolyTerm, UnitMap, WcsMap, WinMap,
 };
@@ -63,8 +63,9 @@ pub(crate) fn build_pixel_to_iwc(
     // If CD matrix is present, it replaces both PC and CDELT.
     let (pc_map, cdelt_map) = build_rotation_and_scale(store)?;
 
-    // A PC/CD matrix with a wholly zero row or column has no inverse, which
-    // makes the whole pixel→IWC chain uninvertible (fitschan.c:37798-37803).
+    // C warns of a PC or CD matrix that cannot be inverted (fitschan.c:38814),
+    // but WcsPCMatrix has already failed the read for one, so the warning is
+    // never given (c-library-quirks.md); the order is kept.
     if !pc_map.has_inverse() {
         warnings.push(Warning::new("badmat", BADMAT_WARNING))?;
     }
@@ -388,7 +389,8 @@ fn build_rotation_and_scale(store: &FitsStore) -> AstResult<(DynMapping, DynMapp
 /// Build a MatrixMap from the PC matrix elements.
 ///
 /// Missing diagonal elements default to 1.0, off-diagonal to 0.0.
-/// This mirrors the C `WcsPCMatrix` function.
+/// This mirrors the C `WcsPCMatrix` function, which fails for a matrix
+/// that cannot be inverted (fitschan.c:39177).
 fn build_pc_matrix(store: &FitsStore) -> AstResult<DynMapping> {
     let naxis = store.naxis;
     let mut mat = Array2::zeros((naxis, naxis));
@@ -401,6 +403,13 @@ fn build_pc_matrix(store: &FitsStore) -> AstResult<DynMapping> {
     }
 
     let mm = MatrixMap::new(mat)?;
+    if !mm.has_inverse() {
+        return Err(AstError::new(
+            ErrorCode::Bdfts,
+            "astRead(FitsChan): Unusable rotation matrix (PC or CD) found in the FITS-WCS header - \
+             the matrix cannot be inverted.",
+        ));
+    }
     Ok(Box::new(mm))
 }
 

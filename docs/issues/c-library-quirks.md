@@ -137,6 +137,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A units string nested deep enough crashes the unit parser](#a-units-string-nested-deep-enough-crashes-the-unit-parser)
 - [Writing a FITS header takes about eight times as long for each axis WCSAXES adds](#writing-a-fits-header-takes-about-eight-times-as-long-for-each-axis-wcsaxes-adds)
 - [A PolyMap's NiterInverse has no upper limit, so a dump can make its inverse run for hours](#a-polymaps-niterinverse-has-no-upper-limit-so-a-dump-can-make-its-inverse-run-for-hours)
+- [The `badmat` warning is never given, as reading a matrix that cannot be inverted fails first](#the-badmat-warning-is-never-given-as-reading-a-matrix-that-cannot-be-inverted-fails-first)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -2039,6 +2040,15 @@ A dump of a FrameSet whose PolyMap has `IterInv = 1` and `NiterInv = 2147483647`
 Consequence: a dump of a few kilobytes makes any program that uses the inverse of the Mapping it reads stop responding.
 The port does the same, as its `newton_raphson_inverse` takes the same limit; the fuzz input is not in `tests/regressions/`.
 It is left as C has it until the C library is changed (PLAN.md §2).
+
+### The `badmat` warning is never given, as reading a matrix that cannot be inverted fails first
+
+C location: `fitschan.c` `WcsIntWorld` (fitschan.c:38813-38819) and `WcsPCMatrix` (fitschan.c:39177).
+
+`WcsIntWorld` makes the PC matrix's MatrixMap with `WcsPCMatrix` and then adds the `badmat` warning, "The pixel rotation matrix in the original FITS header (specified by CD or PC keywords) could not be inverted...", if the MatrixMap has no inverse.
+But `WcsPCMatrix` has already failed with `AST__BDFTS` "Unusable rotation matrix (PC or CD) found in the FITS-WCS header - the matrix cannot be inverted." in that case, so the warning is never added, and a header with such a matrix cannot be read at all, though `badmat` is a documented warning condition.
+The port does the same: `wcs_matrix::build_pc_matrix` fails, and the warning that follows it is never reached (`test_corruptinput.rs`, `fits_singular_pc_matrix`).
+One or the other should go: either `WcsPCMatrix` should leave the decision to its caller and the header read with the warning, or the warning should be removed from the documented conditions.
 
 ## Addressed here, and not going upstream
 

@@ -417,7 +417,10 @@ pub(crate) fn mark_wcs_cards(
                     warnings,
                     Err(AstError::new(
                         ErrorCode::Fundef,
-                        format!("the FITS keyword '{}' has an undefined value", card.keyword),
+                        format!(
+                            "The FITS keyword '{}' has an undefined value.",
+                            card.keyword
+                        ),
                     )),
                 );
             }

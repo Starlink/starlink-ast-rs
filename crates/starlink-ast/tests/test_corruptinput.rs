@@ -1340,3 +1340,49 @@ fn dsb_spec_frame_dump_with_an_unknown_side_band() {
         );
     }
 }
+
+/// A WCS keyword with no value fails the read with the C library's message.
+#[test]
+fn fits_wcs_keyword_with_no_value() {
+    expect(
+        read_header(&[
+            "CTYPE1  = 'RA---TAN'",
+            "CTYPE2  = 'DEC--TAN'",
+            "CRVAL1  =                 10.0",
+            "CRVAL2  =                 20.0",
+            "CRPIX1  =                  1.0",
+            "CRPIX2  =                  1.0",
+            "CDELT1  =",
+            "CDELT2  =                  0.1",
+        ]),
+        ErrorCode::Fundef,
+        &["The FITS keyword 'CDELT1' has an undefined value."],
+    );
+}
+
+/// A PC matrix that cannot be inverted fails the read with the C library's
+/// message.
+#[test]
+fn fits_singular_pc_matrix() {
+    expect(
+        read_header(&[
+            "CTYPE1  = 'RA---TAN'",
+            "CTYPE2  = 'DEC--TAN'",
+            "CRVAL1  =                 10.0",
+            "CRVAL2  =                 20.0",
+            "CRPIX1  =                  1.0",
+            "CRPIX2  =                  1.0",
+            "CDELT1  =                 -0.1",
+            "CDELT2  =                  0.1",
+            "PC1_1   =                  1.0",
+            "PC1_2   =                  2.0",
+            "PC2_1   =                  2.0",
+            "PC2_2   =                  4.0",
+        ]),
+        ErrorCode::Bdfts,
+        &[
+            "astRead(FitsChan): Unusable rotation matrix (PC or CD) found in the FITS-WCS header - \
+           the matrix cannot be inverted.",
+        ],
+    );
+}
