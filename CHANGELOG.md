@@ -77,6 +77,8 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 - `starlink-ast`: a FITS header with a CROTA but without the CDELT of each celestial axis fails to read with `ErrorCode::Bdfts` and the C library's message, where the port read it without the rotation.
 - `starlink-ast`: a FITS header with a CAR projection and a huge `NAXIS` is read at once; the CD matrix's rows and columns are counted from the `CD<j>_<i>` keywords present, as in the C library, rather than from `NAXIS`.
 - `starlink-ast`: writing a Frame of many axes takes time in proportion to their number, as in the C library, where each axis's values searched the axis permutation; a Frame of 65536 axes was written in seconds. Writing or reading any Object holds about half as much memory as before.
+- `starlink-ast`: a MatrixMap dump whose `Form` is not `Full`, `Diagonal` or `Unit` fails to read with `ErrorCode::Rderr` and the C library's message, where it was read as a full matrix.
+  As in the C library, the name may be given in any case.
 - `starlink-ast`: a `MatrixMap` stores its matrices as the C library does, every element of a full matrix but only the diagonal of a diagonal one and none of a unit one, so a diagonal or unit MatrixMap of many axes no longer takes memory for every element.
   A ShiftMap of 65536 axes with no shifts read from a dump now simplifies to a UnitMap at once rather than building a matrix of 34 GB.
   A dump of a unit or diagonal MatrixMap is no longer refused for having more than 9999999 elements, as it is not in the C library, and a diagonal MatrixMap with more outputs than inputs, or more inputs than outputs, keeps its scaling when merged with a ZoomMap.

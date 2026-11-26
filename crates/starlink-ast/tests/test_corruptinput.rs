@@ -1169,3 +1169,28 @@ fn fits_crota_without_both_cdelts() {
         assert!(err.to_string().contains(&want), "{cdelt}: {err}");
     }
 }
+
+/// A MatrixMap dump's Form is one of the three storage forms, named in any
+/// case; any other fails with the C library's messages.
+#[test]
+fn matrix_map_dump_with_an_unknown_form() {
+    let dump = |form: &str| {
+        format!(
+            " Begin MatrixMap\n Nin = 2\n IsA Mapping\n M0 = 2\n M1 = 3\n \
+             Form = {form}\n End MatrixMap\n"
+        )
+    };
+    expect(
+        from_native_string(&dump("100000")),
+        ErrorCode::Rderr,
+        &[
+            "astRead(Channel): Illegal value '100000' supplied for the MatrixMap component \
+             'Form'.",
+            "Error while reading a MatrixMap from a Channel.",
+        ],
+    );
+    let obj = from_native_string(&dump("\"dIaGoNaL\"")).unwrap();
+    let text = obj.to_native_string().unwrap();
+    assert!(text.contains(" Form = \"Diagonal\"\n"), "{text}");
+    assert!(text.contains(" IM1 = 0.33333333333333331\n"), "{text}");
+}

@@ -1486,12 +1486,26 @@ impl Serializable for MatrixMap {
         // reads `Form` into the single `form` field and never re-compresses, so
         // a dumped MatrixMap loads back in exactly the form it was written in.
         // An absent `Form` defaults to FULL, not to a form derived from the
-        // element values.
-        let form = match node.get_string("Form", "Full").as_str() {
-            "Unit" => MatrixForm::Unit,
-            "Diagonal" => MatrixForm::Diagonal,
-            _ => MatrixForm::Full,
-        };
+        // element values. C's FindString (matrixmap.c:1124) matches the name
+        // whole, ignoring case, and refuses any other.
+        let text = node.get_string("Form", "Full");
+        let form = [
+            ("Full", MatrixForm::Full),
+            ("Diagonal", MatrixForm::Diagonal),
+            ("Unit", MatrixForm::Unit),
+        ]
+        .into_iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(&text))
+        .map(|(_, form)| form)
+        .ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Rderr,
+                format!(
+                    "astRead(Channel): Illegal value '{text}' supplied for the MatrixMap \
+                     component 'Form'."
+                ),
+            )
+        })?;
 
         // The number of elements stored for each matrix. A dump names a full
         // matrix's elements `M0` to `M9999998`, so one that claims more was
