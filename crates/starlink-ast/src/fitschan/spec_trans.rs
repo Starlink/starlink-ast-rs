@@ -232,7 +232,7 @@ pub(crate) fn spec_trans_inplace(
     // restricted native longitude range to bring the array into.
     // Per-version letter, no encoding gate.
     if !attrs.car_lin {
-        translate_msx_car(cards);
+        translate_msx_car(cards)?;
     }
 
     // Translation 20 (fitschan.c:31702-31743): RESTFREQ → RESTFRQ
@@ -1234,32 +1234,34 @@ pub(crate) fn concat_wat(cards: &CardList, axis: usize) -> String {
 /// CRPIX shifted so the image's mid-pixel longitude lies in
 /// [-180°, 180°]. Mirrors fitschan.c:32073-32101. Primary plane only;
 /// no encoding gate. The caller applies C's `!astGetCarLin( this )` gate.
-fn translate_msx_car(cards: &mut CardList) {
+fn translate_msx_car(cards: &mut CardList) -> AstResult<()> {
     let Some((axlon, _axlat)) = celestial_axes(cards, ' ') else {
-        return;
+        return Ok(());
     };
     let Some(ctype_lon) = cards.get_string(&format!("CTYPE{axlon}")) else {
-        return;
+        return Ok(());
     };
     if !projection_suffix(ctype_lon.trim()).is_some_and(|p| p.eq_ignore_ascii_case("CAR")) {
-        return;
+        return Ok(());
     }
     // C `SpecTrans` converts a CD matrix to PC + CDELT (CDELT = row-vector
     // length, fitschan.c:31460) before this block, so its longitude scale
     // comes from CDELT even for a CDi_j-only header. The Rust store keeps the
     // CD matrix directly, so derive the effective longitude CDELT the same way
-    // when the CDELT keyword is absent.
-    let Some(cdelti) = cards
-        .get_float(&format!("CDELT{axlon}"))
-        .or_else(|| cd_row_cdelt(cards, axlon))
-    else {
-        return;
+    // when the CDELT keyword is absent. C reads it reporting an error if
+    // there is none (fitschan.c:33175).
+    let key = format!("CDELT{axlon}");
+    let Some(cdelti) = cards.get_float(&key).or_else(|| cd_row_cdelt(cards, axlon)) else {
+        return Err(AstError::new(
+            ErrorCode::Bdfts,
+            format!("astRead(FitsChan): Unable to find a value for FITS keyword \"{key}\"."),
+        ));
     };
     let Some(crpix_old) = cards.get_float(&format!("CRPIX{axlon}")) else {
-        return;
+        return Ok(());
     };
     if cdelti == 0.0 {
-        return;
+        return Ok(());
     }
     let dim = cards.get_int(&format!("NAXIS{axlon}")).unwrap_or(0) as f64;
     let offset = 0.5 * (dim + 1.0);
@@ -1273,6 +1275,7 @@ fn translate_msx_car(cards: &mut CardList) {
         .and_then(|c| c.comment.clone())
         .unwrap_or_default();
     cards.set_float(&format!("CRPIX{axlon}"), crpix_new, &comment);
+    Ok(())
 }
 
 /// Effective CDELT for a matrix row derived from CD keywords, matching C's

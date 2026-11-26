@@ -1194,3 +1194,25 @@ fn matrix_map_dump_with_an_unknown_form() {
     assert!(text.contains(" Form = \"Diagonal\"\n"), "{text}");
     assert!(text.contains(" IM1 = 0.33333333333333331\n"), "{text}");
 }
+
+/// A CAR header must give the longitude axis a CDELT, which the C library
+/// reads to bring the image into the projection's longitude range.
+#[test]
+fn fits_car_without_a_longitude_cdelt() {
+    let err = read_header(&[
+        "CTYPE1  = 'RA---CAR'",
+        "CTYPE2  = 'DEC--CAR'",
+        "CRVAL1  =                  0.0",
+        "CRVAL2  =                  0.0",
+        "CRPIX1  =                 10.0",
+        "CRPIX2  =                 10.0",
+        "CDELT2  =                 0.01",
+    ])
+    .unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Bdfts, "{err}");
+    assert!(
+        err.to_string()
+            .contains("astRead(FitsChan): Unable to find a value for FITS keyword \"CDELT1\"."),
+        "{err}"
+    );
+}
