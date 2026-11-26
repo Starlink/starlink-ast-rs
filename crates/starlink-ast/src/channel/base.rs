@@ -216,13 +216,14 @@ impl ChannelBase {
             return match &mut files.fd_in {
                 Some(fd) => read_text_line(fd),
                 None => read_text_line(&mut io::stdin().lock()),
-            };
+            }
+            .map(end_at_nul);
         }
         drop(files);
         let mut source = lock(self.source.as_ref()?);
         match source.returned.pop_front() {
             Some(line) => Some(line),
-            None => source.source.read_line(),
+            None => source.source.read_line().map(end_at_nul),
         }
     }
 
@@ -535,4 +536,13 @@ pub(crate) fn read_parts(node: &Node, c: &mut ChannelConfig) -> (ObjectId, Optio
         c.set_comment(v != 0);
     }
     (id, ident)
+}
+
+/// `line` up to its first NUL: the C library reads each line as a C string,
+/// which ends there.
+fn end_at_nul(mut line: String) -> String {
+    if let Some(end) = line.find('\0') {
+        line.truncate(end);
+    }
+    line
 }

@@ -1095,3 +1095,31 @@ fn fits_write_with_an_image_dimension_that_is_not_a_number() {
         "{err}"
     );
 }
+
+/// A line of a dump ends at a NUL, as a C string does.
+#[test]
+fn a_dump_line_ends_at_a_nul() {
+    let obj = from_native_string(
+        " Begin ZoomMap\n Nin = 2\0 = 3\n IsA Mapping\n Zoom = 4\0\u{e9}\n End ZoomMap\n",
+    )
+    .unwrap();
+    let map = obj.as_mapping().unwrap();
+    assert_eq!(map.nin(), 2);
+    assert_eq!(map.tran1(&[1.0], true).ok(), None);
+    let (x, _) = map.tran2(&[1.0], &[1.0], true).unwrap();
+    assert_eq!(x, [4.0]);
+    // An item whose name is all NULs is a blank line, so the Object after
+    // it is not that item's value; C then finds no first Mapping.
+    let err = from_native_string(
+        " Begin CmpMap\n Nin = 1\n IsA Mapping\n MapA =\n Begin UnitMap\n Nin = 1\n \
+         IsA Mapping\n End UnitMap\n \0\0\0\0 =\n Begin UnitMap\n Nin = 1\n IsA Mapping\n \
+         End UnitMap\n End CmpMap\n",
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains(
+            "astLoad(CmpMap): The first component Mapping is missing from the CmpMap read."
+        ),
+        "{err}"
+    );
+}

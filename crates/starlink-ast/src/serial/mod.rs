@@ -3147,9 +3147,18 @@ fn any_object_from_node_inner(node: &Node) -> AstResult<AnyObject> {
         }
         other => Err(AstError::new(
             ErrorCode::Lderr,
-            format!("unknown AST class: {other}"),
+            format!("{NO_LOADER}{other}"),
         )),
     }
+}
+
+/// The start of the error for a class with no loader of its own, such as
+/// an Axis, which only a Frame's loader reads.
+const NO_LOADER: &str = "unknown AST class: ";
+
+/// Whether `e` is the error for loading a class with no loader of its own.
+pub(crate) fn is_no_loader_error(e: &AstError) -> bool {
+    e.code() == ErrorCode::Lderr && e.message().starts_with(NO_LOADER)
 }
 
 // ---------------------------------------------------------------------------

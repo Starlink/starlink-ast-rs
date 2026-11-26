@@ -646,11 +646,23 @@ impl<'a> Reader<'a> {
             })),
         }
         if !end_of_object {
+            // C's `Read` checks for the End once the class loaders have run,
+            // so an error a loader raises from what was read comes first.
+            loads_alone(node)?;
             return Err(self.error(
                 ErrorCode::Badin,
                 format!("Unexpected end of input (missing end of {class})."),
             ));
         }
         Ok(events)
+    }
+}
+
+/// Load `node` as its class's loader would, for the error the loader gives.
+/// A class with no loader of its own, such as an Axis, gives none.
+fn loads_alone(node: &Node) -> AstResult<()> {
+    match super::any_object_from_node(node) {
+        Err(e) if super::is_no_loader_error(&e) => Ok(()),
+        other => other.map(|_| ()),
     }
 }
