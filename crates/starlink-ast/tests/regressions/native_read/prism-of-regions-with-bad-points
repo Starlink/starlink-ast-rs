@@ -1,0 +1,109 @@
+ Begin Prism 	# Region extrusion into higher dimensions
+    Frm = 	# Coordinate system
+       Begin CmpFrame 	# Compound coordinate system description
+          FrameA = 	# First component Frame
+             Begin CmpFrame 	# Compound coordinate system description
+                FrameA = 	# First component Frame
+                   Begin CmpFrame 	# Compound coordinate system description
+                      FrameA = 	# First component Frame
+                         Begin TimeFrame 	# Description of time coordinate system
+                            Naxes = 1 	# Number of coordinate axes
+                            Ax1 = 	# Axis number 1
+                               Begin Axis 	# Coordinate axis
+                               End Axis
+                         IsA Frame 	# Coordinate system description
+                         End TimeFrame
+                      FrameB = 	# Second component Frame
+                         Begin SkyFrame 	# Description of celestial coordinate system
+                            Naxes = 2 	# Number of coordinate axes
+                            Ax1 = 	# Axis number 1
+                               Begin SkyAxis 	# Celestial coordinate axis
+                               End SkyAxis
+                            Ax2 = 	# Axis number 2
+                               Begin SkyAxis 	# Celestial coordinate axis
+                               End SkyAxis
+                         IsA Frame 	# Coordinate system description
+                         End SkyFrame
+                   End CmpFrame
+                FrameB = 	# Second component Frame
+                   Begin SpecFrame 	# Description of spectral coordinate system
+                      Naxes = 1 	# Number of coordinate axes
+                      Ax1 = 	# Axis number 1
+                         Begin Axis 	# Coordinate axis
+                         End Axis
+                   IsA Frame 	# Coordinate system description
+                   End SpecFrame
+             End CmpFrame
+          FrameB = 	# Second component Frame
+             Begin SpecFrame 	# Description of spectral coordinate system
+                Naxes = 1 	# Number of coordinate axes
+                Domain = <bad>
+                Ax1 = 	# Axis number 1
+                   Begin Axis 	# Coordinate axis
+                   End Axis
+             IsA Frame 	# Coordinate system description
+             End SpecFrame
+       End CmpFrame
+ IsA Region 	# An area within a coordinate system
+    RegionA = 	# First component Region
+       Begin Prism 	# Region extrusion into higher dimensions
+          RegAxes = 4 	# Number of axes spanned by the Region
+       IsA Region 	# An area within a coordinate system
+          RegionA = 	# First component Region
+             Begin Prism 	# Region extrusion into higher dimensions
+                RegAxes = 3 	# Number of axes spanned by the Re›ion
+             IsA Region 	# An area within a coordinate system
+                RegionA = 	# First component Region
+                   Begin Box 	# Axis intervals
+                      Points = 	# Points defining the shape
+                         Begin PointSet 	# Container for a set of points
+                            Npoint = 2 	# Number of points
+                         End PointSet
+                      Unc = 	# Region defining positional uncertainties.
+                         Begin Box 	# Axis intervals
+                            Points = 	# Points defining the shape
+                               Begin PointSet 	# Container for a set of points
+                                  Npoint = 2 	# Number of points
+                               End PointSet
+                         IsA Region 	# An area within a coordinate system
+                         End Box
+                   IsA Region 	# An area within a coordinate system
+                   End Box
+                RegionB = 	# Second component Region
+                   Begin Circle 	# Circular IntraMapical region
+                      Points = 	# Points defining the shape
+                         Begin PointSet 	# Container for a set of points
+                            Npoint = 2 	# Number of points
+                            Ncoord = 2 	# Number of coordinates per point
+                         End PointSet
+                      Unc = 	# Region defining positional uncertainties.
+                         Begin Box 	# Axis intervals
+                            Points = 	# Points defining the shape
+                               Begin PointSet 	# Container for a set of points
+                                  Npoint = 2 	# Number of points
+                                  Ncoord = 2 	# Number of coordinates per point
+                               End PointSet
+                         IsA Region 	# An area within a coordinate system
+                         End Box
+                   IsA Region 	# An area within a coordinate system
+                   End Circle
+             End Prism
+          RegionB = 	# Second component Region
+             Begin PointList 	# Collection of points
+                Points = 	# Points defining the shape
+                   Begin PointSet 	# Container for a set of points
+                   End PointSet
+             IsA Region 	# An area within a coordinate system
+             End PointList
+       End Prism
+    RegionB = 	# Second component Region
+       Begin Box 	# Axis intervals
+          Points = 	# Points defining the shape
+             Begin PointSet 	# Container for a set of points
+                Npoint = 2 	# Number of points
+                X1 = 1250 	# Coordinate values...
+                X2 = 2300
+             End PointSet
+       IsA Region 	# An area within a coordinate system
+       End Box
+ End Prism

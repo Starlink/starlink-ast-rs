@@ -1292,7 +1292,7 @@ impl Mapping for Prism {
             reg2.clone_region(),
             Composition::Parallel,
         )?;
-        let smap = <dyn Mapping>::simplify(&cmpmap)?;
+        let (smap, changed) = <dyn Mapping>::simplify_reporting_change(&cmpmap)?;
 
         // Initially assume we cannot form a new Region from the simplified
         // CmpMap.
@@ -1310,10 +1310,15 @@ impl Mapping for Prism {
                 (super::as_region(cm.first()), super::as_region(cm.second()))
         {
             // The C `(AstRegion *) map1 != reg1` pointer test guards against
-            // rebuilding an identical Prism. Rust has value semantics, so
-            // compare by structural equality of the component Regions.
-            let same = (m1 as &dyn Mapping).equal(reg1.as_ref() as &dyn Mapping)
-                && (m2 as &dyn Mapping).equal(reg2.as_ref() as &dyn Mapping);
+            // rebuilding an identical Prism. Rust has value semantics: when
+            // the simplification changed nothing, C's components are the
+            // originals; otherwise a component equal to its original stands
+            // for one C left in place. Equality alone is not enough, as a
+            // Region holding a bad or NaN value is not equal to itself, and
+            // the Prism rebuilt from it would be simplified again without end.
+            let same = !changed
+                || ((m1 as &dyn Mapping).equal(reg1.as_ref() as &dyn Mapping)
+                    && (m2 as &dyn Mapping).equal(reg2.as_ref() as &dyn Mapping));
             if !same {
                 let prism =
                     PrismBuilder::from_dyn(m1.clone_region(), m2.clone_region())?.build()?;
