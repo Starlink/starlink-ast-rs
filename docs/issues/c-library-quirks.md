@@ -138,6 +138,8 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Writing a FITS header takes about eight times as long for each axis WCSAXES adds](#writing-a-fits-header-takes-about-eight-times-as-long-for-each-axis-wcsaxes-adds)
 - [A PolyMap's NiterInverse has no upper limit, so a dump can make its inverse run for hours](#a-polymaps-niterinverse-has-no-upper-limit-so-a-dump-can-make-its-inverse-run-for-hours)
 - [The `badmat` warning is never given, as reading a matrix that cannot be inverted fails first](#the-badmat-warning-is-never-given-as-reading-a-matrix-that-cannot-be-inverted-fails-first)
+- [A QV card with a string value crashes SpecTrans](#a-qv-card-with-a-string-value-crashes-spectrans)
+- [An IsA or End item written as an Object value crashes the reader](#an-isa-or-end-item-written-as-an-object-value-crashes-the-reader)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -2050,6 +2052,26 @@ But `WcsPCMatrix` has already failed with `AST__BDFTS` "Unusable rotation matrix
 The port does the same: `wcs_matrix::build_pc_matrix` fails, and the warning that follows it is never reached (`test_corruptinput.rs`, `fits_singular_pc_matrix`).
 One or the other should go: either `WcsPCMatrix` should leave the decision to its caller and the header read with the warning, or the warning should be removed from the documented conditions.
 
+### A QV card with a string value crashes SpecTrans
+
+C location: `fitschan.c` `SpecTrans`, the QV to PV translation (fitschan.c:33029-33040), through `SetValue` (fitschan.c:29183) and `SetFits` (fitschan.c:16309).
+
+SpecTrans renames each `QVi_m` card as `PVi_m`, storing its value with `SetValue( ret, keyname, CardData( this, &size, status ), CardType( this, status ), ... )`.
+For a string card `CardData` gives the characters, but `SetValue`, given `AST__STRING`, takes the pointer it is given as the address of a `char *` and reads one from it.
+So a header such as a TAN projection with `QV1_1   = 'abcdefghijklmnop'` makes C use eight characters of the value as a pointer: the read segfaults at fe26cc9b on macOS arm64, and with a value shorter than eight characters AddressSanitizer reports a heap buffer overflow at fitschan.c:16309.
+`tools/oracle_fixtures/load_one fits` on `crates/starlink-ast/tests/regressions/fitschan_read_write/qv-card-with-a-string-value` shows it; 17 inputs of the `fitschan_read_write` fuzz corpus crash C this way.
+The port stores the card's value as it is and reads the header.
+A C fix: pass `&cval` for a string card, as the other `SetValue` calls do.
+
+### An IsA or End item written as an Object value crashes the reader
+
+C location: `channel.c` `ReadClassData` (channel.c:2848-2850, and the `end` branch after it).
+
+A line `IsA =` or `End =` in a dump reads as an item named `isa` or `end` whose value is an Object, so its value string is NULL.
+`ReadClassData` tests the name before the value, takes it for the end of a class's data, and passes the NULL value to `strcmp`, which segfaults (fe26cc9b, macOS arm64; one input of the `native_read` fuzz corpus).
+The port reads the line as the item it is, and the dump then fails with "Unexpected end of input"; `crates/starlink-ast/tests/regressions/native_read/isa-item-given-an-object` and `end-item-given-an-object` hold it.
+A C fix: test that the value is not NULL before taking `isa` or `end` as a keyword, as `GetNextData` makes them only with a class name.
+
 ## Addressed here, and not going upstream
 
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.
@@ -2567,7 +2589,7 @@ The limit goes if the parser is replaced by a port of `EvaluationSort` (PLAN.md 
 C location: `matrixmap.c` `astLoadMatrixMap` (`MXLOADEL`, matrixmap.c:6478) and `pointset.c` `astLoadPointSet` (`MXLOADVAL`, pointset.c:3126).
 
 A name in a dump has at most eight characters (`MAX_NAME`, channel.c:150), so a class that numbers its values with names such as `M0` or `X1` cannot be given more than 9999999 of them.
-C's MatrixMap and PointSet loaders refuse a dump that claims more, so that a few bytes of input cannot make them allocate and fill arrays of any size; C's other loaders allocate whatever a count asks for, and fail with `AST__NOMEM` only if the allocation does.
+C's MatrixMap and PointSet loaders refuse a dump that claims more, so that a few bytes of input cannot make them allocate and fill arrays of any size; C's other loaders allocate whatever a count asks for, and fail with `AST__NOMEM` only if the allocation does; a LutMap dump claiming `Nlut = 2147483647` makes C read two billion values, which takes more than 20 s (six inputs of the `native_read` fuzz corpus).
 The port refuses, with `AST__LDERR` "..., but a dump cannot hold more than 9999999 values.", every count read from a dump that would make it size or read more (`serial::MXLOADEL`, `serial::too_many_values`): a LutMap's `Nlut`, a PolyMap's coefficients (`NCF<n>`, `NCI<n>`) times its inputs and its maximum powers (`MPF<n>`, `MPI<n>`, which size tables of powers), a SplineMap's `NX` times `NY`, a KeyMap entry's `Nel<n>`, a Table's `Nrow`, a Plot's tick mark counts (`nmjtk<n>`, `nmntk<n>`) and a Region's `MeshSz`.
 Like C's, the port's MatrixMap limit counts the elements a MatrixMap stores: every element of a full matrix, but only the diagonal of a diagonal one and none of a unit one, so it never refuses a unit or diagonal MatrixMap, whose diagonal cannot be longer than the most axes a Mapping can have (65536).
 None of these limits is reached by a dump AST writes, as the item names show, except a Region whose MeshSize was set that high, which C reads.
