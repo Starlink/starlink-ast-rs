@@ -136,6 +136,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A dump nested deep enough crashes the reader](#a-dump-nested-deep-enough-crashes-the-reader)
 - [A units string nested deep enough crashes the unit parser](#a-units-string-nested-deep-enough-crashes-the-unit-parser)
 - [Writing a FITS header takes about eight times as long for each axis WCSAXES adds](#writing-a-fits-header-takes-about-eight-times-as-long-for-each-axis-wcsaxes-adds)
+- [A PolyMap's NiterInverse has no upper limit, so a dump can make its inverse run for hours](#a-polymaps-niterinverse-has-no-upper-limit-so-a-dump-can-make-its-inverse-run-for-hours)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -2027,6 +2028,16 @@ With `WCSAXES` set to 7, 8 and 9 the write takes 0.39 s, 2.9 s and 27.6 s, so ea
 Almost all of the time is in `astMapSplit` on the pixel-to-WCS CmpMap, split once for each output `IsMapLinear` tests.
 Consequence: a header of a few cards makes any program that writes the WCS it reads (a copy, a reprojection) run for minutes or longer.
 The port does the same work, as its `fset_to_store::is_map_linear` and `CmpMap::map_split` follow C, and takes about 9 s for the nine axes; the fuzz target `fitschan_read_write` reached it, and its inputs that take more than ten seconds are not in `tests/regressions/`.
+It is left as C has it until the C library is changed (PLAN.md §2).
+
+### A PolyMap's NiterInverse has no upper limit, so a dump can make its inverse run for hours
+
+C location: `polymap.c` `SetNiterInverse` and `GetNiterInverse` (polymap.c:6481), used as the iteration limit of the iterative inverse (polymap.c:2656).
+
+NiterInverse, the most iterations the iterative inverse of a PolyMap makes for each point, defaults to 4, and any positive value is accepted, from a setting or from a dump's `NiterInv`.
+A dump of a FrameSet whose PolyMap has `IterInv = 1` and `NiterInv = 2147483647`, found by the fuzz target `native_read`, makes C's inverse transformation of six points run for more than a minute without finishing (a release build at fe26cc9b on macOS arm64), as each point that does not converge is iterated two billion times.
+Consequence: a dump of a few kilobytes makes any program that uses the inverse of the Mapping it reads stop responding.
+The port does the same, as its `newton_raphson_inverse` takes the same limit; the fuzz input is not in `tests/regressions/`.
 It is left as C has it until the C library is changed (PLAN.md §2).
 
 ## Addressed here, and not going upstream
