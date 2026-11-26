@@ -74,6 +74,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a FITS header whose `NAXIS<i>` value is not a number fails a read with `ErrorCode::Ftcnv` and the C library's messages, as does a write to a FitsChan holding one, where the port took the dimension as unknown.
 - `starlink-ast`: a FitsChan write in the Native Encoding that fails removes the cards it had added, as every other write does and as in the C library.
 - `starlink-ast`: the Mapping between two Frames of a FrameSet that share a node is the first Frame as a Mapping, as in the C library, where it panicked.
 - `starlink-ast`: a Native dump or FITS header holding text that is not ASCII no longer panics when a keyword or a FITS warning would be cut inside a character. A FITS card ends at a NUL, as a C string does, and a FITS keyword name is upper-cased in ASCII only, as the C library's `toupper` does.

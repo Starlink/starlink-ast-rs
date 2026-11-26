@@ -3725,10 +3725,10 @@ impl FitsChan {
                 // them.
                 // The image dimensions, from NAXIS1 to NAXIS<nin> for the
                 // FrameSet's pixel axes, as C's `Write` reads them
-                // (fitschan.c:40937-40945), before positioning the cursor.
+                // (fitschan.c:41600-41604), before positioning the cursor.
                 let dims = match obj {
                     AnyObject::FrameSet(fs) => {
-                        extract_naxis_dims(&self.cards, crate::mappings::Mapping::nin(fs))
+                        extract_naxis_dims(&self.cards, crate::mappings::Mapping::nin(fs))?
                     }
                     _ => Vec::new(),
                 };
@@ -3886,11 +3886,12 @@ fn move_cursor_to_last_naxis(cards: &mut CardList, naxes: usize) {
 }
 
 /// The size of each of `naxis` pixel axes: the value of `NAXIS<i>` as a
-/// floating point number, or `None` if there is none, as C's `Write` reads
-/// them with `astGetFitsF` (fitschan.c:40941-40944).
-fn extract_naxis_dims(cards: &CardList, naxis: usize) -> Vec<Option<f64>> {
+/// floating point number, or `None` if there is none, which fails for one
+/// whose value is not a number.
+// C: `Write` reads them with `astGetFitsF` (fitschan.c:41600-41604).
+fn extract_naxis_dims(cards: &CardList, naxis: usize) -> AstResult<Vec<Option<f64>>> {
     (1..=naxis)
-        .map(|i| cards.get_float(&format!("NAXIS{i}")))
+        .map(|i| cards.get_fits_float(&format!("NAXIS{i}")))
         .collect()
 }
 

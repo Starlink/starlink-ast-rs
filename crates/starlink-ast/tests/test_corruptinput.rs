@@ -1047,3 +1047,51 @@ fn fits_integer_overflow() {
     assert_eq!(fc.get_fits_i(Some("NAXIS2")).unwrap(), Some(100));
     assert_eq!(fc.get_fits_i(Some("NAXIS1")).ok().flatten(), None);
 }
+
+/// An image dimension that is not a number fails a read, with the C
+/// library's messages, as the dimensions are read with `astGetFitsF`; one
+/// that is missing does not.
+#[test]
+fn fits_image_dimension_that_is_not_a_number() {
+    let tail = [
+        "CRVAL2  =                0.000 / Reference offset lat (deg)",
+        "CRPIX2  =               50.500 / Reference pixel",
+    ];
+    for naxis2 in ["NAXIS2  =          `      1000", "NAXIS2  = 'abc'"] {
+        let err = read_header(&with(&[naxis2], &tail)).expect_err(naxis2);
+        assert_eq!(err.code(), ErrorCode::Ftcnv, "{naxis2}: {err}");
+        let text = err.to_string();
+        for line in [
+            "astGetFitsF(FitsChan): Cannot convert FITS keyword 'NAXIS2' to floating point.",
+            "astGetFitsF(FitsChan): Cannot get value for FITS keyword 'NAXIS2'.",
+        ] {
+            assert!(text.contains(line), "{naxis2}: {text}");
+        }
+    }
+    assert!(read_header(&tail).is_ok());
+}
+
+/// A write reads the image dimensions from the FitsChan it writes to, as C's
+/// does, so one holding an image dimension that is not a number fails it.
+#[test]
+#[cfg_attr(ast_dist_tier = "cutdown", ignore = "fixture not distributed")]
+fn fits_write_with_an_image_dimension_that_is_not_a_number() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/programs/joye_car_headers/CHIPASS_Equ.head"
+    ))
+    .unwrap();
+    let cards: Vec<&str> = text.lines().collect();
+    let obj = read_header(&cards).unwrap().unwrap();
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_encoding(Encoding::FitsWcs);
+    fc.put_fits("NAXIS1  = 'abc'", false).unwrap();
+    let err = fc.write(&obj).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Ftcnv, "{err}");
+    assert!(
+        err.to_string().contains(
+            "astGetFitsF(FitsChan): Cannot convert FITS keyword 'NAXIS1' to floating point."
+        ),
+        "{err}"
+    );
+}

@@ -168,8 +168,6 @@ pub(crate) fn extract_wcs_keywords(cards: &CardList, s: char, npix: usize) -> As
         store.cdelt[i] = lookup_with_fallback(cards, "CDELT", Some(axis_num), s, |c, k| {
             c.get_float_marked(k)
         });
-        // NAXISn is structural (not a WCS keyword); never consumed.
-        store.dims[i] = cards.get_float(&format!("NAXIS{axis_num}"));
         store.ctype[i] = CardList::strip_wcs_store_string(lookup_with_fallback(
             cards,
             "CTYPE",

@@ -119,7 +119,7 @@ struct DistortionMaps {
     map4: Option<DynMapping>,
 }
 
-/// Port of C `DistortMaps` (fitschan.c:8801).
+/// Port of C `DistortMaps` (fitschan.c:9159).
 ///
 /// Inspects the CTYPE values for a Paper IV distortion code and returns the
 /// Mappings that implement it. Every distortion code found — recognized or
@@ -136,6 +136,13 @@ fn distort_maps(
     cursors: &mut super::wcs_read::ReadCursors,
 ) -> AstResult<DistortionMaps> {
     let mut ret = DistortionMaps::default();
+
+    // C notes the image dimensions first, reading each `NAXIS<i>` with
+    // `astGetFitsF` (fitschan.c:9263), which fails for one whose value is not
+    // a number. They are not WCS keywords, so are never consumed.
+    for (i, dim) in store.dims.iter_mut().enumerate().take(naxes) {
+        *dim = cards.get_fits_float(&format!("NAXIS{}", i + 1))?;
+    }
 
     // "-SIP": Spitzer distortion, limited to axes 1 and 2.
     //

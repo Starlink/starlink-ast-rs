@@ -7,7 +7,7 @@ use std::cell::RefCell;
 
 use super::card::{Consumption, FitsCard, FitsValue, bad_value_warning, check_fits_name};
 use super::fits_match::{match_keyword, match_keyword_checked};
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 
 /// An ordered collection of [`FitsCard`]s with position-based iteration.
 ///
@@ -279,6 +279,42 @@ impl CardList {
             FitsValue::Float(v) => Some(*v as i64),
             _ => None,
         })
+    }
+
+    /// The floating-point value of the first card named `keyword`, as C's
+    /// `astGetFitsF` gives it to the reader: `None` when there is no such
+    /// card, and C's errors when its value does not convert.
+    // C: fitschan.c `GetFits<X>` with `CnvValue`.
+    pub(crate) fn get_fits_float(&self, keyword: &str) -> AstResult<Option<f64>> {
+        let Some(card) = self.find(keyword) else {
+            return Ok(None);
+        };
+        let context = |e: AstError| {
+            AstError::new(
+                e.code(),
+                format!(
+                    "{}\nastGetFitsF(FitsChan): Cannot get value for FITS keyword '{keyword}'.",
+                    e.message()
+                ),
+            )
+        };
+        match super::card_value::cnv_type(
+            Some(&card.value),
+            super::card_value::Want::Float,
+            0,
+            card.c_name(),
+        )
+        .map_err(context)?
+        {
+            Some(super::card_value::Got::Float(v)) => Ok(Some(v)),
+            _ => Err(context(AstError::new(
+                ErrorCode::Ftcnv,
+                format!(
+                    "astGetFitsF(FitsChan): Cannot convert FITS keyword '{}' to floating point.",
+                    card.c_name()
+                ),
+            ))),
+        }
     }
 
     /// Get the floating-point value of the first card matching keyword,

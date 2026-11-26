@@ -104,8 +104,8 @@ fn cases() -> Vec<(String, PlotRequest)> {
         "no_wcs".into(),
         request("SIMPLE  =                    T\n", "", "", ' '),
     ));
-    // Headers the probe makes: AITOFF with no pixels, and a ZoomMap in the
-    // Native encoding.
+    // Headers the probe makes: AITOFF with no pixels and with a string
+    // NAXIS1, and a ZoomMap in the Native encoding.
     let made = |case: &str| {
         let path = root().join(format!(
             "crates/ast-plotter-wasm/tests/fixtures/{case}.head"
@@ -115,6 +115,10 @@ fn cases() -> Vec<(String, PlotRequest)> {
     cases.push((
         "zero_naxis".into(),
         request(&made("zero_naxis"), &example("AITOFF").settings, "", ' '),
+    ));
+    cases.push((
+        "string_naxis1".into(),
+        request(&made("string_naxis1"), &example("AITOFF").settings, "", ' '),
     ));
     cases.push((
         "native_zoommap".into(),
@@ -177,7 +181,7 @@ fn show(r: &Result<String, String>) -> String {
 #[test]
 fn outputs_match_the_c_library() {
     let cases = cases();
-    assert_eq!(cases.len(), 16);
+    assert_eq!(cases.len(), 17);
     let failures: Vec<String> = cases
         .iter()
         .flat_map(|(name, request)| {
