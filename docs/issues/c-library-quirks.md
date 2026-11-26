@@ -135,6 +135,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A Polygon with a vertex at infinity leaves out positions inside it](#a-polygon-with-a-vertex-at-infinity-leaves-out-positions-inside-it)
 - [A dump nested deep enough crashes the reader](#a-dump-nested-deep-enough-crashes-the-reader)
 - [A units string nested deep enough crashes the unit parser](#a-units-string-nested-deep-enough-crashes-the-unit-parser)
+- [Writing a FITS header takes about eight times as long for each axis WCSAXES adds](#writing-a-fits-header-takes-about-eight-times-as-long-for-each-axis-wcsaxes-adds)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
@@ -154,6 +155,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Frame classes cut long default Labels, Symbols, Domains and Titles to their buffers](#frame-classes-cut-long-default-labels-symbols-domains-and-titles-to-their-buffers)
 - [A `%c` Format writes a byte of the value, which outside ASCII is not text](#a-c-format-writes-a-byte-of-the-value-which-outside-ascii-is-not-text)
 - [An error message is cut to 1023 characters](#an-error-message-is-cut-to-1023-characters)
+- [The port refuses a FITS card holding a character that is not printable ASCII](#the-port-refuses-a-fits-card-holding-a-character-that-is-not-printable-ascii)
 
 ### [Resolved upstream](#resolved-upstream)
 
@@ -2006,6 +2008,27 @@ The port refuses a units string that nests more than `constants::MAX_UNIT_NESTIN
 The deepest units string among the tests nests 5 deep; a string nested to the limit is used on a 2 MiB stack in an unoptimized build (`a_unit_nested_to_the_limit_is_used` in `tests/test_nesting_limits.rs`).
 Question for upstream: should `MakeTree` refuse nesting past a fixed depth?
 
+### Writing a FITS header takes about eight times as long for each axis WCSAXES adds
+
+C location: `fitschan.c` `IsMapLinear` (fitschan.c:19964), called from `LogAxis` (fitschan.c:21445) and `OtherAxes` (fitschan.c:25200) as `Write` describes each axis, through `cmpmap.c` `MapSplit` (cmpmap.c:3096).
+
+These five cards describe a 2-dimensional image with nine WCS axes:
+
+```text
+CTYPE1  = 'OFLN-TAN'           / Offset longitude
+CTYPE2  = 'OFLT-TAN'           / Offset latitude
+CRVAL2  =                0.000 / Reference offset lat (deg)
+CRPIX2  =               50.500 / Reference pixel
+WCSAXES =                    9
+```
+
+Reading them is immediate, but writing the FrameSet read from them back to a FitsChan with the default (FITS-WCS) Encoding takes 27.6 s in C at fe26cc9b (a release build on macOS arm64).
+With `WCSAXES` set to 7, 8 and 9 the write takes 0.39 s, 2.9 s and 27.6 s, so each axis multiplies the time by about eight; `WCSAXES` may be as large as 99.
+Almost all of the time is in `astMapSplit` on the pixel-to-WCS CmpMap, split once for each output `IsMapLinear` tests.
+Consequence: a header of a few cards makes any program that writes the WCS it reads (a copy, a reprojection) run for minutes or longer.
+The port does the same work, as its `fset_to_store::is_map_linear` and `CmpMap::map_split` follow C, and takes about 9 s for the nine axes; the fuzz target `fitschan_read_write` reached it, and its inputs that take more than ten seconds are not in `tests/regressions/`.
+It is left as C has it until the C library is changed (PLAN.md §2).
+
 ## Addressed here, and not going upstream
 
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.
@@ -2528,6 +2551,17 @@ The port refuses, with `AST__LDERR` "..., but a dump cannot hold more than 99999
 It also refuses a unit or diagonal MatrixMap of more than 9999999 elements, which C stores as its diagonal and the port stores whole.
 None of these limits is reached by a dump AST writes, as the item names show, except a MatrixMap of more than about 3162 inputs and outputs stored as unit or diagonal, or a Region whose MeshSize was set that high; C reads both.
 `tests/test_size_limits.rs` holds each; the counts there are one above the limit.
+
+### The port refuses a FITS card holding a character that is not printable ASCII
+
+C location: `fitschan.c` `PutFits` (fitschan.c:26204) and `Split` (fitschan.c:33339), `SetFits<X>`, and `Write` (fitschan.c:41434).
+
+A FITS header may hold only the printable ASCII characters, 0x20 to 0x7E (FITS Standard 4.0, section 4.1.1).
+C stores any bytes it is given in a card, warning only of an illegal keyword name (`badkeyname`) and of a value whose type it cannot tell (`badkeyvalue`), and an Object's text, such as a Title in UTF-8, goes into the cards `astWrite` makes as it is.
+The port refuses, with `AST__BDFTS` "... holds 'é' (U+00E9), but a FITS header may hold only printable ASCII characters.", any card text given to `put_fits`, `put_cards`, `from_header` or a source, and any keyword name, string value or comment given to a `set_fits_*` method, that holds another character once it is cut as C cuts it: at a NUL, and before the control characters that end it, such as a carriage return, and for a comment, without the white space around it.
+A write whose cards would hold another character, such as a Native write of a Frame whose Title is `Flux in µJy`, fails the same way and leaves the FitsChan as it found it.
+So no FITS card in the port holds text that is not ASCII, and the code that reads a card by its columns never meets a character of more than one byte.
+`tests/test_fits_characters.rs` holds each; `badkeyname-nonprint` of `testfitschanerrors.c`, a keyword holding byte 0x01 that C warns of and stores, is in `FITSCHAN_ERRORS_DESIGN_EXCLUDED`.
 
 ## Resolved upstream
 

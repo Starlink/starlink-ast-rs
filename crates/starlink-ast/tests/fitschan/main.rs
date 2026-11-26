@@ -18,6 +18,8 @@ mod common;
 mod test_alt_wcs_read;
 #[path = "../test_alt_wcs_round_trip.rs"]
 mod test_alt_wcs_round_trip;
+#[path = "../test_fits_characters.rs"]
+mod test_fits_characters;
 #[path = "../test_fitschan.rs"]
 mod test_fitschan;
 #[path = "../test_fitschan_alt_epoch_oracle.rs"]

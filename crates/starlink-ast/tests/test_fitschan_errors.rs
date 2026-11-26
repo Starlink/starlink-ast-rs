@@ -49,6 +49,17 @@ const FITSCHAN_ERRORS_GAP_EXCLUDED: &[(&str, &str)] = &[(
      up and takes the first, so it reads FK5 (PLAN.md section 5)",
 )];
 
+/// Cases where the port departs from C by design, each with the reason.
+/// Each is checked to give the port's own error
+/// (`diverged_cases_give_the_ports_error`).
+const FITSCHAN_ERRORS_DESIGN_EXCLUDED: &[(&str, &str)] = &[(
+    "badkeyname-nonprint",
+    "the keyword holds U+0001. A FITS header may hold only printable ASCII \
+     characters (FITS Standard 4.0, section 4.1.1), so the port refuses the \
+     card with ErrorCode::Bdfts, where C warns of the illegal keyword name \
+     and stores the card (c-library-quirks.md)",
+)];
+
 /// Set the attributes a case names, as C's `astSet` does.
 fn set_attrs(fc: &mut FitsChan, attrs: &str) -> starlink_ast::error::AstResult<()> {
     fc.set_attributes(attrs)
@@ -141,6 +152,7 @@ fn bad_headers_match_the_c_library() {
         .filter(|t| {
             !FITSCHAN_ERRORS_GAP_EXCLUDED
                 .iter()
+                .chain(FITSCHAN_ERRORS_DESIGN_EXCLUDED)
                 .any(|(n, _)| *n == t.name)
         })
         .filter_map(|t| check_case(t).err().map(|e| format!("{}: {e}", t.name)))
@@ -159,5 +171,23 @@ fn port_gap_cases_still_differ() {
             check_case(t).is_err(),
             "{name} now matches C; remove it from FITSCHAN_ERRORS_GAP_EXCLUDED. Reason on record: {reason}"
         );
+    }
+}
+
+#[test]
+fn diverged_cases_give_the_ports_error() {
+    for (name, reason) in FITSCHAN_ERRORS_DESIGN_EXCLUDED {
+        let t = cases::CASES
+            .iter()
+            .find(|t| t.name == *name)
+            .unwrap_or_else(|| panic!("{name} is not a row of C's table"));
+        let mut fc = FitsChan::new().unwrap();
+        let err = t
+            .cards
+            .lines()
+            .find_map(|card| fc.put_fits(card, false).err())
+            .unwrap_or_else(|| panic!("{name} stored its cards. Reason on record: {reason}"));
+        assert_eq!(err.code(), ErrorCode::Bdfts, "{name}: {err}");
+        assert!(err.to_string().contains("printable ASCII"), "{name}: {err}");
     }
 }

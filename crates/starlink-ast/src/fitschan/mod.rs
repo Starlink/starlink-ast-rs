@@ -645,6 +645,7 @@ impl FitsChan {
     pub fn from_header(text: &str) -> AstResult<Self> {
         let mut fc = Self::new()?;
         for line in text.lines() {
+            card::check_card_text(line, "astPutFits")?;
             let Ok((card, bad_value)) = FitsCard::split(line) else {
                 continue;
             };
@@ -875,6 +876,7 @@ impl FitsChan {
     /// case (`NewCard` upper-cases them when a card is stored), and any text
     /// after them. As with any card, an illegal name or value is warned of.
     fn split_name(&mut self, name: &str, method: &'static str) -> AstResult<(String, String)> {
+        card::check_card_text(name, method)?;
         let (card, bad_value) = FitsCard::split(name)?;
         self.split_warnings(name, bad_value, method)?;
         let comment = match &card.value {
@@ -1003,6 +1005,7 @@ impl FitsChan {
     #[doc(alias = "astPutFits")]
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()> {
         self.read_from_source()?;
+        card::check_card_text(card, "astPutFits")?;
         let (parsed, bad_value) = FitsCard::split(card)?;
         self.split_warnings(card, bad_value, "astPutFits")?;
         match parsed.value {
@@ -1646,6 +1649,12 @@ impl FitsChan {
     ) -> AstResult<()> {
         self.read_from_source()?;
         let (lname, lcom) = self.split_name(name, method)?;
+        if let FitsValue::String(text) | FitsValue::Continue(text) = &value {
+            card::check_card_field(text, method)?;
+        }
+        // The comment is checked as it is stored, without the white space
+        // that ends it.
+        card::check_card_field(comment.trim(), method)?;
         let com = if comment.trim().is_empty() {
             lcom
         } else {
@@ -1953,6 +1962,7 @@ impl FitsChan {
     fn set_fits_com(&mut self, name: &str, comment: &str, overwrite: bool) -> AstResult<()> {
         self.read_from_source()?;
         let (lname, _) = self.split_name(name, "astSetFitsCom")?;
+        card::check_card_field(comment.trim(), "astSetFitsCom")?;
         let com = if comment.trim().is_empty() {
             None
         } else {
@@ -3646,7 +3656,14 @@ impl Channel for FitsChan {
         // remove them again. Mirrors C `Write` (fitschan.c:40754-40758).
         let card0 = self.cards.position();
         self.cards.begin_marking_new();
-        let result = self.write_inner(obj);
+        let result = self.write_inner(obj).and_then(|n| {
+            // A FITS header may hold only printable ASCII characters, which
+            // an Object's text, such as a Unicode Title, need not be.
+            for card in self.cards.iter().filter(|c| c.flags.new_write) {
+                card.check_characters("astWrite")?;
+            }
+            Ok(n)
+        });
 
         // A write that failed, for either reason, leaves the header exactly
         // as it was found: the cards it had added are removed and the entry

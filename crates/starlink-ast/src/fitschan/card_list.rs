@@ -109,8 +109,15 @@ impl CardList {
 
     /// Insert a block of cards in front of the current card, preserving
     /// their order, and leave that card current. Used by the NATIVE writer,
-    /// whose cards C stores one at a time with `InsCard`.
-    pub(crate) fn insert_at_current(&mut self, block: Vec<FitsCard>) {
+    /// whose cards C stores one at a time with `InsCard`, so they are
+    /// flagged new as [`ins_card`](Self::ins_card) flags them.
+    pub(crate) fn insert_at_current(&mut self, mut block: Vec<FitsCard>) {
+        if self.mark_new {
+            for card in &mut block {
+                card.flags.new_write = true;
+                card.flags.new_version = true;
+            }
+        }
         let n = block.len();
         let at = self.position.min(self.cards.len());
         self.cards.splice(at..at, block);
@@ -1126,6 +1133,7 @@ impl CardList {
         let mut list = Self::new();
         let mut warnings = Vec::new();
         for line in text.lines() {
+            super::card::check_card_text(line, "astPutFits")?;
             match FitsCard::split(line) {
                 Ok((card, bad_value)) => {
                     // Validate the keyword name (original case, columns 1-8)

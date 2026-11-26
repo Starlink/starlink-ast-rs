@@ -13,6 +13,46 @@ use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::axis_format::{is_c_space, sprintf_double};
 use crate::text::floor_char_boundary;
 
+/// The first character of `text` that a FITS header may not hold: one that
+/// is not printable ASCII (FITS Standard 4.0, section 4.1.1).
+fn illegal_char(text: &str) -> Option<char> {
+    text.chars().find(|c| !(' '..='~').contains(c))
+}
+
+/// The error for `text`, given to or made by `method`, holding `c`.
+fn illegal_char_error(method: &str, what: &str, text: &str, c: char) -> AstError {
+    AstError::new(
+        ErrorCode::Bdfts,
+        format!(
+            "{method}(FitsChan): {what} \"{}\" holds {c:?} (U+{:04X}), but a FITS header may \
+             hold only printable ASCII characters.",
+            text.escape_debug(),
+            u32::from(c)
+        ),
+    )
+}
+
+/// Check that the card text given to `method` holds only printable ASCII
+/// characters, once it is cut as the C library cuts it: at a NUL, and before
+/// the control characters that end it, such as a carriage return.
+pub(crate) fn check_card_text(card: &str, method: &str) -> AstResult<()> {
+    let card = card.split('\0').next().unwrap_or_default();
+    let card = card.trim_end_matches(|c: char| c.is_ascii_control());
+    match illegal_char(card) {
+        Some(c) => Err(illegal_char_error(method, "The FITS header card", card, c)),
+        None => Ok(()),
+    }
+}
+
+/// Check that a value or comment given to `method` for a card holds only
+/// printable ASCII characters.
+pub(crate) fn check_card_field(field: &str, method: &str) -> AstResult<()> {
+    match illegal_char(field) {
+        Some(c) => Err(illegal_char_error(method, "The text", field, c)),
+        None => Ok(()),
+    }
+}
+
 /// Length of a FITS header card in characters.
 pub(super) const FITS_CARD_LEN: usize = 80;
 
@@ -343,6 +383,30 @@ pub struct FitsCard {
 }
 
 impl FitsCard {
+    /// An error if the keyword, value or comment of this card, made by
+    /// `method`, holds a character a FITS header may not.
+    pub(crate) fn check_characters(&self, method: &str) -> AstResult<()> {
+        let value = match &self.value {
+            FitsValue::String(s) | FitsValue::Continue(s) | FitsValue::Comment(s) => s.as_str(),
+            _ => "",
+        };
+        for field in [
+            self.keyword.as_str(),
+            value,
+            self.comment.as_deref().unwrap_or(""),
+        ] {
+            if let Some(c) = illegal_char(field) {
+                return Err(illegal_char_error(
+                    method,
+                    &format!("The {} card would hold the text", self.keyword),
+                    field,
+                    c,
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// The card's data type, as the FitsChan
     /// [CardType](super::FitsChan::card_type) attribute gives it for the
     /// current card.
