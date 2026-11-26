@@ -1,0 +1,4 @@
+ Begin ShiftMap 	# Shift each coordinate axis
+    Nin = 65536
+ IsA Mapping 	# MaChannelpping beor axis 2
+ End ShiftMap
