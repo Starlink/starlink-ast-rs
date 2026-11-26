@@ -74,6 +74,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a dump whose value opens a quote it does not close fails to read with `ErrorCode::Unmqt` and the C library's messages, where the port took the rest of the line as the value.
 - `starlink-ast`: an Object read from FITS cards in the Native encoding fails, with `ErrorCode::Badin` and the C library's messages, when a card inside it is neither a comment nor a data item with a string or numeric value, such as a logical item or a FITS-WCS keyword; the port left such a card out. An error reading such an Object ends with "Error while reading a <class> from a FitsChan.", as in C.
 - `starlink-ast`: a FITS header with a CAR projection and no CDELT for its longitude axis fails to read with `ErrorCode::Bdfts` and the C library's message, where the port read it.
 - `starlink-ast`: a FITS header with a CROTA but without the CDELT of each celestial axis fails to read with `ErrorCode::Bdfts` and the C library's message, where the port read it without the rotation.

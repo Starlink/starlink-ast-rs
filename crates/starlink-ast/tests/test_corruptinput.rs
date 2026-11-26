@@ -1257,3 +1257,17 @@ fn fits_native_object_with_a_card_it_cannot_hold() {
         Ok(Some(AnyObject::ZoomMap(_)))
     ));
 }
+
+/// A value in a dump with a quote that is not closed fails the read, with
+/// the C library's messages.
+#[test]
+fn dump_value_with_unmatched_quotes() {
+    expect(
+        from_native_string(" Begin Frame\n Naxes = 1\n Title = \"abc\n End Frame\n"),
+        ErrorCode::Unmqt,
+        &[
+            "astRead(Channel): Unmatched quotes in input data: abc.",
+            "Error while reading a Frame from a Channel.",
+        ],
+    );
+}

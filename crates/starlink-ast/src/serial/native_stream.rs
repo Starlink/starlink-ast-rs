@@ -165,8 +165,9 @@ fn clean(line: &str) -> &str {
 }
 
 /// C's `Unquote`: remove the quotes of each quoted string, turning a doubled
-/// quote within one into a single quote.
-fn unquote(s: &str) -> String {
+/// quote within one into a single quote. The flag is set when a quoted
+/// string is not closed, which C reports as an error.
+fn unquote(s: &str) -> (String, bool) {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut quoted = false;
@@ -184,7 +185,7 @@ fn unquote(s: &str) -> String {
         }
         i += 1;
     }
-    String::from_utf8_lossy(&out).into_owned()
+    (String::from_utf8_lossy(&out).into_owned(), quoted)
 }
 
 fn is_space(b: u8) -> bool {
@@ -419,14 +420,17 @@ impl<'a> Reader<'a> {
                 let key = &line[..name_end];
                 let name = key.to_ascii_lowercase();
                 let value = &line[value_start..];
-                return Ok((
-                    Some(if value.is_empty() {
-                        datum(name, None, key, "")
-                    } else {
-                        datum(name, Some(unquote(value)), key, value)
-                    }),
-                    defaults,
-                ));
+                if value.is_empty() {
+                    return Ok((Some(datum(name, None, key, "")), defaults));
+                }
+                let (text, unmatched) = unquote(value);
+                if unmatched {
+                    return Err(self.error(
+                        ErrorCode::Unmqt,
+                        format!("Unmatched quotes in input data: {text}."),
+                    ));
+                }
+                return Ok((Some(datum(name, Some(text), key, value)), defaults));
             }
             if let Some(class) = match_keyword(line, "begin") {
                 return Ok((
