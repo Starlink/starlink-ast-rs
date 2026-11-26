@@ -74,6 +74,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a DSBSpecFrame read from a dump with a SideBand other than `USB`, `LSB` or `LO`, as written, fails with `ErrorCode::Attin` and the C library's message, where the port ignored it or read it in any case.
 - `starlink-ast`: an Object in a dump that no loader reads, such as the Mapping of a FrameSet node that two Frames share, fails the read when it cannot be loaded, as in the C library, which loads every Object it reads; a class loader's error for one was ignored.
 - `starlink-ast`: a MatrixMap of no inputs and outputs reads from a dump, as in the C library, where the port refused it with a message of its own; and a MatrixMap read with no elements of its matrix has no inverse, as in C, so simplifying one no longer panics.
 - `starlink-ast`: a dump whose value opens a quote it does not close fails to read with `ErrorCode::Unmqt` and the C library's messages, where the port took the rest of the line as the value.

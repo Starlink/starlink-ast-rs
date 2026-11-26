@@ -1401,14 +1401,21 @@ impl Serializable for DSBSpecFrame {
             None
         };
 
-        // SideBn
-        let sideband = {
-            let sb_str = node.get_string("SideBn", "");
-            if sb_str.is_empty() {
-                None
-            } else {
-                SideBand::parse(&sb_str)
-            }
+        // SideBn: C's loader takes exactly `USB`, `LSB` or `LO` and refuses
+        // any other (dsbspecframe.c:3217-3229).
+        let sideband = match node.get_string_if_set("SideBn") {
+            None => None,
+            Some(text) => match text.as_str() {
+                "USB" => Some(SideBand::USB),
+                "LSB" => Some(SideBand::LSB),
+                "LO" => Some(SideBand::LO),
+                _ => {
+                    return Err(AstError::new(
+                        ErrorCode::Attin,
+                        format!("astRead(Channel): Invalid SideBand description \"{text}\"."),
+                    ));
+                }
+            },
         };
 
         // AlSdBn

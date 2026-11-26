@@ -1315,3 +1315,28 @@ fn dump_with_a_bad_object_no_loader_reads() {
         ],
     );
 }
+
+/// A DSBSpecFrame read from a dump with a SideBand other than `USB`, `LSB`
+/// or `LO`, as written, fails with the C library's message.
+#[test]
+fn dsb_spec_frame_dump_with_an_unknown_side_band() {
+    let dump = DSBSpecFrame::new(SpecSystem::Freq)
+        .to_native_string()
+        .unwrap();
+    for value in ["2147483647", "\"usb\""] {
+        let bad = dump.replacen(
+            " End DSBSpecFrame",
+            &format!(" SideBn = {value}\n End DSBSpecFrame"),
+            1,
+        );
+        let err = from_native_string(&bad).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Attin, "{value}: {err}");
+        let text = value.trim_matches('"');
+        assert!(
+            err.to_string().contains(&format!(
+                "astRead(Channel): Invalid SideBand description \"{text}\"."
+            )),
+            "{value}: {err}"
+        );
+    }
+}
