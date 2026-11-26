@@ -285,7 +285,7 @@ impl ChannelBase {
                 // is loaded here for its reports. A class the port cannot load
                 // on its own, such as an Axis or a PointSet, is left.
                 let mut load = |node: &Node| match any_object_from_node(node) {
-                    Err(e) if e.code() == ErrorCode::Lderr => Ok(()),
+                    Err(e) if crate::serial::is_no_loader_error(&e) => Ok(()),
                     other => other.map(|_| ()),
                 };
                 match reader.report_object(&object, &mut load) {

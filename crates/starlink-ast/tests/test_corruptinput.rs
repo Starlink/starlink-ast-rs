@@ -1294,3 +1294,24 @@ fn matrix_map_dump_of_no_axes() {
     assert!(!map.has_inverse());
     assert_eq!(map.simplify().unwrap().nin(), 0);
 }
+
+/// An Object in a dump that no loader reads is still loaded, as C loads
+/// every Object it reads, so its error fails the read.
+#[test]
+fn dump_with_a_bad_object_no_loader_reads() {
+    expect(
+        from_native_string(
+            " Begin ZoomMap\n Nin = 1\n IsA Mapping\n Zoom = 2\n Extra =\n Begin CmpMap\n \
+             Nin = 2\n IsA Mapping\n MapA =\n Begin UnitMap\n Nin = 1\n IsA Mapping\n \
+             End UnitMap\n MapB =\n Begin UnitMap\n Nin = 1\n IsA Mapping\n End UnitMap\n \
+             End CmpMap\n End ZoomMap\n",
+        ),
+        ErrorCode::Lderr,
+        &[
+            "astLoad(CmpMap): Invalid numbers of inputs (2) and outputs (2) read for a CmpMap - \
+             there should be 1 and 1.",
+            "Failed to read the \"extra\" Object value.",
+            "Error while reading a ZoomMap from a Channel.",
+        ],
+    );
+}
