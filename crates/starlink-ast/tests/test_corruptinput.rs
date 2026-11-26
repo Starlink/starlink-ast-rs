@@ -1271,3 +1271,26 @@ fn dump_value_with_unmatched_quotes() {
         ],
     );
 }
+
+/// A MatrixMap of no inputs and outputs reads and writes, as in the C
+/// library, whose loader has no check on their number.
+#[test]
+fn matrix_map_dump_of_no_axes() {
+    let obj = from_native_string(
+        " Begin MatrixMap\n Nin = 0\n IsA Mapping\n Form = \"Full\"\n End MatrixMap\n",
+    )
+    .unwrap();
+    let map = obj.as_mapping().unwrap();
+    assert_eq!((map.nin(), map.nout()), (0, 0));
+    let text = obj.to_native_string().unwrap();
+    assert!(text.contains("Begin MatrixMap"), "{text}");
+    // With no element read, C stores no matrix and so no inverse, and
+    // simplifying leaves the MatrixMap as it is.
+    let diagonal = from_native_string(
+        " Begin MatrixMap\n Nin = 0\n IsA Mapping\n Form = \"Diagonal\"\n End MatrixMap\n",
+    )
+    .unwrap();
+    let map = diagonal.as_mapping().unwrap();
+    assert!(!map.has_inverse());
+    assert_eq!(map.simplify().unwrap().nin(), 0);
+}

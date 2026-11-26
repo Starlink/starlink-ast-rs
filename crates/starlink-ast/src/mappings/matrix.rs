@@ -1474,13 +1474,6 @@ impl Serializable for MatrixMap {
         let nin = base.nin;
         let nout = base.nout;
 
-        if nin == 0 || nout == 0 {
-            return Err(AstError::new(
-                ErrorCode::Lderr,
-                "MatrixMap: zero-dimensional matrix",
-            ));
-        }
-
         // The storage form recorded in the source is authoritative, and the
         // inverse uses the same layout: C `astLoadMatrixMap` (matrixmap.c:6401)
         // reads `Form` into the single `form` field and never re-compresses, so
@@ -1544,20 +1537,26 @@ impl Serializable for MatrixMap {
         // C rebuilds it otherwise with `InvertMatrix( new->form, ... )`, so the
         // form selects the arithmetic: element-wise reciprocals for DIAGONAL,
         // palDmat for FULL. A unit matrix stores neither.
+        // C keeps no forward matrix when none of its elements was read,
+        // which a matrix of no elements never has, and then builds no
+        // inverse (matrixmap.c:6573-6616).
+        let f_read = f_matrix.iter().any(|&v| !is_bad(v));
         let i_matrix = match form {
             MatrixForm::Unit => None,
             MatrixForm::Diagonal => {
                 if (0..nel).any(|i| node.get(&format!("IM{i}")).is_some()) {
                     Some(read("IM"))
-                } else {
+                } else if f_read {
                     Some(diagonal_inverse(&f_matrix))
+                } else {
+                    None
                 }
             }
             MatrixForm::Full => {
                 let dumped = read("IM");
                 if dumped.iter().any(|&v| !is_bad(v)) {
                     Some(dumped)
-                } else if nin == nout {
+                } else if f_read && nin == nout {
                     gauss_jordan_inverse(&f_matrix, nin).ok()
                 } else {
                     None
