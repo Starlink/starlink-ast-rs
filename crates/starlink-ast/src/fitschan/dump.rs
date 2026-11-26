@@ -342,7 +342,10 @@ impl Serializable for FitsChan {
             }
             let ty = CardType::from_dump_name(&name)
                 .ok_or_else(|| illegal(&name, "a FitsChan keyword data type"))?;
-            fc.cards.push(read_card(&part, n, ty));
+            let card = read_card(&part, n, ty);
+            // A FitsChan holds only cards it would accept from a header.
+            card.check_characters("astLoadFitsChan")?;
+            fc.cards.push(card);
         }
         fc.cards.set_card(part.get_int("Card", 0));
         if let Some(object) = part.get_object("Tables") {

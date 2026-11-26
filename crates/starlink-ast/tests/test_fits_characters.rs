@@ -71,3 +71,44 @@ fn an_object_whose_description_is_not_printable_ascii_is_not_written() {
     assert_refused(fc.write(&AnyObject::BasicFrame(frame)), "U+00B5");
     assert_eq!(fc.ncard().unwrap(), 0);
 }
+
+/// A setter checks the text as the card would hold it: a commentary card
+/// keeps the whole of its text, while the comment of a card with a value
+/// loses the white space at each end.
+#[test]
+fn a_comment_is_checked_as_the_card_would_hold_it() {
+    let mut fc = FitsChan::new().unwrap();
+    assert_refused(
+        fc.set_fits_cm(&format!("{}\u{a0}", "a".repeat(71)), false),
+        "U+00A0",
+    );
+    assert_refused(fc.set_fits_cm("\u{2003}note", false), "U+2003");
+    assert_refused(fc.set_fits_cm("note\t", false), "U+0009");
+    assert_eq!(fc.ncard().unwrap(), 0);
+
+    fc.set_fits_f("CRVAL1", 1.0, "\u{2003}deg\t\u{a0}", false)
+        .unwrap();
+    let header = fc.to_header().unwrap();
+    assert!(header.is_ascii() && !header.contains('\t'), "{header:?}");
+    assert!(header.contains("/ deg "), "{header:?}");
+}
+
+/// A FitsChan read from a dump holds only cards a FitsChan would accept.
+#[test]
+fn a_fitschan_dump_whose_cards_are_not_printable_ascii_is_refused() {
+    let dump = |field: &str| {
+        format!(
+            " Begin FitsChan\n Card = 1\n Nm1 = \"CRVAL1\"\n {field}\n \
+             Ty1 = \"floating point\"\n Dt1 = 1.5\n End FitsChan\n"
+        )
+    };
+    assert_refused(
+        starlink_ast::from_native_string(&dump(&format!("Cm1 = \"{}\"", "\u{e9}".repeat(60)))),
+        "U+00E9",
+    );
+    assert_refused(
+        starlink_ast::from_native_string(&dump("Cm1 = \"a\tb\"")),
+        "U+0009",
+    );
+    assert!(starlink_ast::from_native_string(&dump("Cm1 = \"deg\"")).is_ok());
+}

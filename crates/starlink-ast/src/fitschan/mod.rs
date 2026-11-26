@@ -1652,14 +1652,15 @@ impl FitsChan {
         if let FitsValue::String(text) | FitsValue::Continue(text) = &value {
             card::check_card_field(text, method)?;
         }
-        // The comment is checked as it is stored, without the white space
-        // that ends it.
-        card::check_card_field(comment.trim(), method)?;
         let com = if comment.trim().is_empty() {
             lcom
         } else {
             comment.to_string()
         };
+        // The comment is checked as the card holds it.
+        if let Some(stored) = card_list::card_comment(&com) {
+            card::check_card_field(&stored, method)?;
+        }
         self.store_card(lname, value, &com, overwrite);
         Ok(())
     }
@@ -1962,7 +1963,6 @@ impl FitsChan {
     fn set_fits_com(&mut self, name: &str, comment: &str, overwrite: bool) -> AstResult<()> {
         self.read_from_source()?;
         let (lname, _) = self.split_name(name, "astSetFitsCom")?;
-        card::check_card_field(comment.trim(), "astSetFitsCom")?;
         let com = if comment.trim().is_empty() {
             None
         } else {
@@ -1984,11 +1984,19 @@ impl FitsChan {
                     ..old
                 },
                 _ => FitsCard {
-                    comment: com.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()),
+                    comment: com.as_deref().and_then(card_list::card_comment),
                     ..old
                 },
             }
         };
+        // The text is checked as the card holds it: a commentary card
+        // keeps the whole of its text.
+        if let FitsValue::Comment(text) = &card.value {
+            card::check_card_field(text, "astSetFitsCom")?;
+        }
+        if let Some(text) = &card.comment {
+            card::check_card_field(text, "astSetFitsCom")?;
+        }
         self.cards.ins_card(card, overwrite);
         Ok(())
     }
