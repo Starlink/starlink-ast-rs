@@ -30,7 +30,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::mappings::helpers::{ast_equal, is_bad};
 
-use super::matrix::{MatrixMap, is_diagonal};
+use super::matrix::{MatrixMap, StoredMatrix};
 use super::perm::PermMap;
 use super::simplify::MergeCtx;
 use super::unit::UnitMap;
@@ -100,17 +100,6 @@ pub(crate) fn matrix_map_merge(
     // step 2, and one it cannot is left for that neighbor's own merge (a
     // ShiftMap, for instance, becomes a WinMap first).
     None
-}
-
-/// Effective forward matrix of a MatrixMap entry, honoring the applied
-/// direction: the stored inverse when `inv`, else the stored forward matrix.
-/// Returns `None` when an inverse is required but not defined.
-fn eff_matrix(mm: &MatrixMap, inv: bool) -> Option<Array2<f64>> {
-    if inv {
-        mm.inverse_matrix().cloned()
-    } else {
-        Some(mm.forward_matrix().clone())
-    }
 }
 
 /// What step 2 of a MatrixMap's merge did.
@@ -251,7 +240,7 @@ fn merge_matrix_pair(
         let Some(product) = first.mtr_product(&second)? else {
             return Ok(None);
         };
-        return mat_or_unit(product.forward_matrix().clone()).map(Some);
+        return Ok(Some(mat_or_unit(product)?));
     }
 
     // MatZoom (matrixmap.c MatZoom): the product of the MatrixMap, in the
@@ -278,7 +267,7 @@ fn merge_matrix_pair(
         let Some(product) = applied.mtr_product(&zmm)? else {
             return Ok(None);
         };
-        return mat_or_unit(product.forward_matrix().clone()).map(Some);
+        return Ok(Some(mat_or_unit(product)?));
     }
 
     // MatPerm (matrixmap.c:2608): merge with an invertible PermMap.
@@ -292,11 +281,10 @@ fn merge_matrix_pair(
     // MatWin2 (matrixmap.c:3230): diagonal MatrixMap + WinMap → WinMap. Since
     // the matrix is diagonal, this reduces to a per-axis linear composition.
     if other.as_any().is::<WinMap>() {
-        let Some(m) = eff_matrix(mm, mm_inv).filter(is_diagonal) else {
+        let Some(diag) = mm.square_diagonal(mm_inv) else {
             return Ok(None);
         };
-        let n = m.nrows();
-        let diag: Vec<f64> = (0..n).map(|i| m[[i, i]]).collect();
+        let n = diag.len();
         let zeros = vec![0.0; n];
         let Some((wshifts, wscales)) = extract_linear_params(other, other_inv) else {
             return Ok(None);
@@ -341,12 +329,13 @@ fn merge_matrix_pair(
     Ok(None)
 }
 
-/// Turn a product matrix into a `UnitMap` (if identity) or a `MatrixMap`.
-fn mat_or_unit(product: Array2<f64>) -> AstResult<DynMapping> {
-    if super::matrix::is_identity_matrix_pub(&product) {
-        return Ok(Box::new(UnitMap::new(product.nrows())?));
+/// Turn a product MatrixMap into a `UnitMap` if its matrix is the unit
+/// matrix.
+fn mat_or_unit(product: MatrixMap) -> AstResult<DynMapping> {
+    if product.is_identity() {
+        return Ok(Box::new(UnitMap::new(product.nout())?));
     }
-    Ok(Box::new(MatrixMap::new(product)?))
+    Ok(Box::new(product))
 }
 
 /// C `matrixmap.c::MatPerm` (2608): merge a MatrixMap and a (square,
@@ -388,7 +377,8 @@ fn mat_perm(
         }
     }
 
-    let Some(m) = eff_matrix(mm, mm_inv) else {
+    // The MatrixMap's matrix in full, as C's Multiply expands it.
+    let Some(m) = mm.expanded(mm_inv) else {
         return Ok(None);
     };
     // astMtrMult(this, a) = a·this (this applied first). MatPerm:
@@ -412,7 +402,10 @@ fn mat_perm(
     if !usable(&p) || !usable(&product) {
         return Ok(None);
     }
-    mat_or_unit(product).map(Some)
+    if super::matrix::is_identity_matrix_pub(&product) {
+        return Ok(Some(Box::new(UnitMap::new(product.nrows())?)));
+    }
+    Ok(Some(Box::new(MatrixMap::new(product)?)))
 }
 
 /// C `matrixmap.c::PermOK` (4535): a PermMap can merge with a MatrixMap only
@@ -515,7 +508,7 @@ fn can_swap(map1: &dyn Mapping, inv1: bool, map2: &dyn Mapping, inv2: bool) -> (
         }
 
         // Effective forward matrix, for the constant scaling-row/col check.
-        let Some(eff) = eff_matrix(mm, mat_inv) else {
+        let Some(eff) = mm.stored(mat_inv) else {
             return (false, false);
         };
 
@@ -527,7 +520,7 @@ fn can_swap(map1: &dyn Mapping, inv1: bool, map2: &dyn Mapping, inv2: bool) -> (
                 return (false, false);
             }
             for (i, &p) in outperm.iter().enumerate() {
-                if (p < 0 || p >= nin) && !scaling_row_col(&eff, i) {
+                if (p < 0 || p >= nin) && !scaling_row_col(eff, i) {
                     return (false, false);
                 }
             }
@@ -536,7 +529,7 @@ fn can_swap(map1: &dyn Mapping, inv1: bool, map2: &dyn Mapping, inv2: bool) -> (
                 return (false, false);
             }
             for (i, &p) in inperm.iter().enumerate() {
-                if (p < 0 || p >= nout) && !scaling_row_col(&eff, i) {
+                if (p < 0 || p >= nout) && !scaling_row_col(eff, i) {
                     return (false, false);
                 }
             }
@@ -558,17 +551,17 @@ fn can_swap(map1: &dyn Mapping, inv1: bool, map2: &dyn Mapping, inv2: bool) -> (
 /// square matrix are all (effectively) zero except for a non-zero diagonal
 /// term. Uses the `DBL_EPSILON` magnitude test C uses on a FULL matrix; a
 /// non-FULL (diagonal/unit) matrix trivially qualifies.
-fn scaling_row_col(m: &Array2<f64>, axis: usize) -> bool {
+fn scaling_row_col(m: StoredMatrix<'_>, axis: usize) -> bool {
     // A diagonal matrix is a simple scaling on every axis.
-    if is_diagonal(m) {
+    if m.square_diagonal().is_some() {
         return true;
     }
-    let n = m.nrows();
+    let n = m.nrow();
     if axis >= n {
         return false;
     }
     for i in 0..n {
-        let el = m[[axis, i]].abs();
+        let el = m.get(axis, i).abs();
         if i == axis {
             if el <= f64::EPSILON {
                 return false;
@@ -578,7 +571,7 @@ fn scaling_row_col(m: &Array2<f64>, axis: usize) -> bool {
         }
     }
     for i in 0..n {
-        let el = m[[i, axis]].abs();
+        let el = m.get(i, axis).abs();
         if i == axis {
             if el <= f64::EPSILON {
                 return false;
@@ -828,9 +821,10 @@ fn mat_perm_swap(
     let mat_inv = mat_entry.1;
     let perm_inv = perm_entry.1;
 
-    // Effective forward matrix of the MatrixMap (full form), row-major.
-    // `CanSwap` admits only a MatrixMap with both matrices (matrixmap.c:466-469).
-    let Some(matrix) = eff_matrix(mm, mat_inv) else {
+    // Effective forward matrix of the MatrixMap in full form, as C expands it
+    // (matrixmap.c:2930). `CanSwap` admits only a MatrixMap with both
+    // matrices (matrixmap.c:466-469).
+    let Some(matrix) = mm.expanded(mat_inv) else {
         return Ok(None);
     };
     let nin_p = if perm_inv { pm.nout() } else { pm.nin() };
@@ -1028,7 +1022,9 @@ fn replace_with_simpler(
     // stored forward matrix. C reads `mm->f_matrix` for the structural tests
     // (uniformity / off-diagonal-zero) and picks the zoom factor from
     // `f_matrix`/`i_matrix` per `invert_list[where]`.
-    let fwd = mm.forward_matrix();
+    let fwd = mm
+        .stored(false)
+        .expect("the forward matrix is always stored");
 
     // Square UNIT matrix → UnitMap.
     if mm.is_unit_form() && nin == nout {
@@ -1039,21 +1035,21 @@ fn replace_with_simpler(
     // diagonal is all zero / BAD).
     if mm.is_diagonal_form()
         && nin == nout
-        && mm.inverse_matrix().is_some()
-        && fwd[[0, 0]] != crate::constants::BAD_VALUE
+        && mm.stored(true).is_some()
+        && fwd.get(0, 0) != crate::constants::BAD_VALUE
     {
         // Uniformity is tested on the stored forward diagonal (C loops
         // `mm->f_matrix`).
-        let n = fwd.nrows();
-        let uniform = (1..n).all(|i| ast_equal(fwd[[i, i]], fwd[[i - 1, i - 1]]));
+        let n = fwd.nrow();
+        let uniform = (1..n).all(|i| ast_equal(fwd.get(i, i), fwd.get(i - 1, i - 1)));
         if uniform {
             let factor = if eff_inv {
-                match mm.inverse_matrix() {
-                    Some(inverse) => inverse[[0, 0]],
+                match mm.stored(true) {
+                    Some(inverse) => inverse.get(0, 0),
                     None => return Ok(None),
                 }
             } else {
-                fwd[[0, 0]]
+                fwd.get(0, 0)
             };
             if factor != 0.0 && factor != crate::constants::BAD_VALUE {
                 return Ok(Some((Box::new(ZoomMap::new(nin, factor)?), false)));
@@ -1067,17 +1063,17 @@ fn replace_with_simpler(
     // `mm->f_matrix`, so it is equivalent to the old one used the same way,
     // and needs a diagonal element with a value (matrixmap.c MapMerge).
     if mm.is_full_form() && nin == nout {
-        let n = fwd.nrows();
+        let n = fwd.nrow();
         let mut off_diag_zero = true;
         'outer: for i in 0..n {
             for j in 0..n {
-                if i != j && fwd[[i, j]] != 0.0 {
+                if i != j && fwd.get(i, j) != 0.0 {
                     off_diag_zero = false;
                     break 'outer;
                 }
             }
         }
-        let diag: Vec<f64> = (0..n).map(|i| fwd[[i, i]]).collect();
+        let diag: Vec<f64> = (0..n).map(|i| fwd.get(i, i)).collect();
         if off_diag_zero && diag.iter().any(|&v| v != crate::constants::BAD_VALUE) {
             return Ok(Some((Box::new(MatrixMap::diagonal(n, n, &diag)?), eff_inv)));
         }

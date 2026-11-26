@@ -25,7 +25,7 @@ use crate::mappings::helpers::ast_equal;
 use super::ViaSimplify;
 use super::cmpmap::{CmpMap, Composition};
 use super::grismmap::GrismMap;
-use super::matrix::{MatrixMap, is_diagonal};
+use super::matrix::MatrixMap;
 use super::pcdmap::PcdMap;
 use super::perm::PermMap;
 use super::shift::ShiftMap;
@@ -3547,11 +3547,10 @@ fn extract_3d_diagonal(m: &dyn Mapping, _inv: bool) -> Option<[f64; 3]> {
             return Some([f, f, f]);
         }
     }
-    if let Some(mm) = m.as_any().downcast_ref::<MatrixMap>() {
-        let mat = mm.forward_matrix();
-        if mat.nrows() == 3 && mat.ncols() == 3 && is_diagonal(mat) {
-            return Some([mat[[0, 0]], mat[[1, 1]], mat[[2, 2]]]);
-        }
+    if let Some(mm) = m.as_any().downcast_ref::<MatrixMap>()
+        && let Some(&[d0, d1, d2]) = mm.square_diagonal(false).as_deref()
+    {
+        return Some([d0, d1, d2]);
     }
     None
 }

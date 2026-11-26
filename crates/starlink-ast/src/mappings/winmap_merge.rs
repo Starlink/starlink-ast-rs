@@ -33,7 +33,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::mappings::helpers::ast_equal;
 
-use super::matrix::{MatrixMap, is_diagonal};
+use super::matrix::MatrixMap;
 use super::perm::PermMap;
 use super::shift::ShiftMap;
 use super::simplify::{MergeCtx, build_winperm_swap};
@@ -65,9 +65,7 @@ fn is_mergeable(m: &dyn Mapping, inv: bool) -> bool {
 /// as many inputs as outputs, and the matrix it applies with Invert set to
 /// `inv` has a value for every axis.
 fn is_square_diagonal(mm: &MatrixMap, inv: bool) -> bool {
-    (mm.is_unit_form() || mm.is_diagonal_form() || is_diagonal(mm.forward_matrix()))
-        && mm.nin() == mm.nout()
-        && mm.mtr_usable(inv)
+    mm.square_diagonal(false).is_some() && mm.mtr_usable(inv)
 }
 
 /// Classes the WinMap can *swap* past while seeking a merge target:

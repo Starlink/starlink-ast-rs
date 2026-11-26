@@ -27,12 +27,12 @@ was actually simplified.
 | 3 | In series, search adjacent lower-numbered Mappings until one is neither a PermMap nor a UnitMap | permmap.c:959-975 (fn MapMerge) | mappings/simplify.rs:1696-1705 (fn default_map_merge) | architecture | ported |
 | 4 | Search adjacent higher-numbered Mappings the same way | permmap.c:976-986 (fn MapMerge) | mappings/simplify.rs:1683-1692 (fn default_map_merge) | architecture | ported |
 | 5 | Take the first Mapping found and how its Invert attribute is applied | permmap.c:987-991 (fn MapMerge) | -- | architecture | n/a: a pairwise merge composes two entries at a time, so there is no run to take endpoints from |
-| 6 | Use it to fix the replacement's input coordinate count | permmap.c:992-1000 (fn MapMerge) | perm.rs:1202-1207 (fn try_merge) | architecture | ported |
-| 7 | Repeat for the last Mapping found to fix the output coordinate count | permmap.c:1001-1010 (fn MapMerge) | perm.rs:1193-1198 (fn try_merge) | architecture | ported |
+| 6 | Use it to fix the replacement's input coordinate count | permmap.c:992-1000 (fn MapMerge) | perm.rs:1198-1203 (fn try_merge) | architecture | ported |
+| 7 | Repeat for the last Mapping found to fix the output coordinate count | permmap.c:1001-1010 (fn MapMerge) | perm.rs:1189-1194 (fn try_merge) | architecture | ported |
 | 8 | Allocate the replacement's input and output permutation arrays and its constants list | permmap.c:1011-1020 (fn MapMerge) | perm.rs:561-562 (fn compose_perms) | architecture | ported |
-| 9 | Loop twice, building the forward and then the inverse permutation array | permmap.c:1021-1032 (fn MapMerge) | perm.rs:1192-1207 (fn try_merge) | architecture | ported |
+| 9 | Loop twice, building the forward and then the inverse permutation array | permmap.c:1021-1032 (fn MapMerge) | perm.rs:1188-1203 (fn try_merge) | architecture | ported |
 | 10 | Set the scan limits so the run is walked forward or in reverse as the direction requires | permmap.c:1033-1038 (fn MapMerge) | -- | architecture | n/a: a pair has no scan order to choose; the two entries are composed in list order |
-| 11 | Walk the run, taking each Mapping and the Invert value to apply, inverted for the reverse pass | permmap.c:1039-1051 (fn MapMerge) | perm.rs:1168-1190 (fn try_merge) | architecture | ported |
+| 11 | Walk the run, taking each Mapping and the Invert value to apply, inverted for the reverse pass | permmap.c:1039-1051 (fn MapMerge) | perm.rs:1164-1186 (fn try_merge) | architecture | ported |
 | 12 | For a PermMap take the relevant permutation array; for a UnitMap treat it as the identity | permmap.c:1052-1061 (fn MapMerge) | perm.rs:922-930 (fn try_merge) | architecture | ported |
 | 13 | Obtain each Mapping's effective output count for the direction being built | permmap.c:1062-1075 (fn MapMerge) | perm.rs:561 (fn compose_perms) | architecture | ported |
 | 14 | Accumulate the current Mapping's effect into the running permutation array | permmap.c:1076-1088 (fn MapMerge) | perm.rs:564-603 (fn compose_perms) | architecture | ported |

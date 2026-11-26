@@ -1026,11 +1026,7 @@ impl Mapping for PermMap {
             }
 
             // Get effective matrix for the MatrixMap.
-            let a = if other_inv {
-                other_mat.inverse_matrix()?.clone()
-            } else {
-                other_mat.forward_matrix().clone()
-            };
+            let a = other_mat.expanded(other_inv)?;
 
             // Dimensions: PermMap output feeds MatrixMap input.
             // a.ncols() == perm_nout must hold.

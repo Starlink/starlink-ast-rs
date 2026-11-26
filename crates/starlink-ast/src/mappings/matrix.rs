@@ -61,19 +61,96 @@ use super::zoom::ZoomMap;
 use super::{DynMapping, Mapping};
 use crate::mappings::SimplifiedRecord;
 
-/// Storage form of a matrix, used to select optimized transform paths.
+/// Storage form of a MatrixMap's matrices, C's `form` field (matrixmap.c).
 ///
-/// This mirrors the C library's `form` field in `matrixmap.c`, which dispatches
-/// between O(N) diagonal and O(N²) full matrix-vector products.
+/// A MatrixMap stores only the elements its form needs, so a unit or diagonal
+/// matrix of many axes costs no more than its diagonal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MatrixForm {
-    /// Full matrix: O(N²) matrix-vector product per point.
+    /// Every element is stored, row by row.
     Full,
-    /// Diagonal matrix: O(N) per-axis multiply per point.
+    /// Only the `min(nrow, ncol)` diagonal elements are stored; every other
+    /// element is zero.
     Diagonal,
-    /// Identity matrix: no elements stored in dump, mathematically a no-op.
-    /// Preserved across round-trip so byte-exact serialization matches C.
+    /// No element is stored: the diagonal elements are 1 and the others zero.
     Unit,
+}
+
+/// One of a MatrixMap's two matrices as it is stored: the forward matrix,
+/// with a row for each output and a column for each input, or the inverse,
+/// with a row for each input and a column for each output.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StoredMatrix<'a> {
+    form: MatrixForm,
+    nrow: usize,
+    ncol: usize,
+    /// The stored elements: all of them, row by row, in the full form; the
+    /// diagonal in the diagonal form; none in the unit form.
+    elems: &'a [f64],
+}
+
+impl StoredMatrix<'_> {
+    /// The number of rows.
+    pub(crate) fn nrow(&self) -> usize {
+        self.nrow
+    }
+
+    /// The number of diagonal elements, `min(nrow, ncol)`.
+    fn ndiag(&self) -> usize {
+        self.nrow.min(self.ncol)
+    }
+
+    /// The element in row `row` and column `col`, both 0-based.
+    pub(crate) fn get(&self, row: usize, col: usize) -> f64 {
+        match self.form {
+            MatrixForm::Full => self.elems[row * self.ncol + col],
+            MatrixForm::Diagonal if row == col => self.elems[row],
+            MatrixForm::Unit if row == col => 1.0,
+            _ => 0.0,
+        }
+    }
+
+    /// Every element of the matrix, C's `ExpandMatrix` (matrixmap.c:1007).
+    fn expand(&self) -> Array2<f64> {
+        match self.form {
+            MatrixForm::Full => Array2::from_shape_vec((self.nrow, self.ncol), self.elems.to_vec())
+                .expect("a full matrix stores nrow * ncol elements"),
+            _ => {
+                let mut m = Array2::zeros((self.nrow, self.ncol));
+                for i in 0..self.ndiag() {
+                    m[[i, i]] = self.get(i, i);
+                }
+                m
+            }
+        }
+    }
+
+    /// The diagonal elements if the matrix is square and each element off
+    /// the diagonal is zero within `ast_equal`, which a unit or diagonal
+    /// matrix always is.
+    pub(crate) fn square_diagonal(&self) -> Option<Vec<f64>> {
+        if self.nrow != self.ncol {
+            return None;
+        }
+        let n = self.nrow;
+        if self.form == MatrixForm::Full {
+            for i in 0..n {
+                for j in 0..n {
+                    if i != j && !ast_equal(self.get(i, j), 0.0) {
+                        return None;
+                    }
+                }
+            }
+        }
+        Some((0..n).map(|i| self.get(i, i)).collect())
+    }
+
+    /// Whether the matrix is square and equals the unit matrix within
+    /// `ast_equal`.
+    fn is_identity(&self) -> bool {
+        self.square_diagonal()
+            .is_some_and(|d| d.iter().all(|&v| ast_equal(v, 1.0)))
+    }
 }
 
 /// Map coordinates by multiplying by a matrix.
@@ -91,10 +168,22 @@ enum MatrixForm {
 /// bad elements; [`has_inverse`](Mapping::has_inverse) reports which.
 #[derive(Debug, Clone)]
 pub struct MatrixMap {
-    /// The forward transformation matrix, shape (nout, nin).
-    matrix: Array2<f64>,
-    /// The inverse transformation matrix, shape (nin, nout), if available.
-    inverse: Option<Array2<f64>>,
+    /// The number of columns of the forward matrix: the inputs when not
+    /// inverted.
+    ncol: usize,
+    /// The number of rows of the forward matrix: the outputs when not
+    /// inverted.
+    nrow: usize,
+    /// The storage form of both matrices.
+    form: MatrixForm,
+    /// The stored elements of the forward matrix (C's `f_matrix`): all
+    /// `nrow * ncol`, row by row, in the full form, the diagonal in the
+    /// diagonal form, none in the unit form.
+    f_matrix: Vec<f64>,
+    /// The stored elements of the inverse matrix (C's `i_matrix`), which has
+    /// `ncol` rows and `nrow` columns, in the same form; `None` in the unit
+    /// form, which needs none, and for a full matrix with no inverse.
+    i_matrix: Option<Vec<f64>>,
     /// Whether the mapping is currently inverted.
     inverted: bool,
     /// Whether this mapping has already been simplified (C `IsSimple`).
@@ -104,10 +193,6 @@ pub struct MatrixMap {
     id: crate::object_id::ObjectId,
     /// The flags C keeps on the base Mapping class (mapping.c).
     mapping_flags: crate::mappings::MappingFlags,
-    /// Cached form of the forward matrix (Full or Diagonal).
-    form: MatrixForm,
-    /// Cached form of the inverse matrix (Full or Diagonal).
-    inv_form: MatrixForm,
 }
 
 impl MatrixMap {
@@ -161,9 +246,8 @@ impl MatrixMap {
         // C builds the inverse from the *uncompressed* FULL matrix with
         // `InvertMatrix(FULL, ...)`, i.e. palDmat's SFA singularity gate; a
         // non-square matrix has no inverse (matrixmap.c:1554-1608).
-        let mut matrix = matrix;
         let inverse = if nrows == ncols {
-            gauss_jordan_inverse(&matrix).ok()
+            gauss_jordan_inverse_array(&matrix).ok()
         } else {
             None
         };
@@ -177,29 +261,7 @@ impl MatrixMap {
         // whose reciprocals invert them whatever the shape, so a rectangular
         // matrix that compresses to one of those forms gains an inverse it did
         // not have as a FULL matrix (matrixmap.c:1523-1551).
-        let mut form = MatrixForm::Full;
-        let new_inv = compress_matrix(&mut matrix, &mut form);
-        let inverse = match form {
-            MatrixForm::Unit => Some(rect_eye(ncols, nrows)),
-            MatrixForm::Diagonal => Some(diagonal_inverse(&matrix)),
-            MatrixForm::Full if new_inv && nrows == ncols => gauss_jordan_inverse(&matrix).ok(),
-            MatrixForm::Full => inverse,
-        };
-        // The stored inverse always uses the same layout as the forward
-        // matrix; C keeps a single `form` field for both.
-        let inv_form = form;
-
-        Ok(Self {
-            matrix,
-            inverse,
-            inverted: false,
-            simplified: SimplifiedRecord::default(),
-            ident: None,
-            id: Default::default(),
-            mapping_flags: crate::mappings::MappingFlags::default(),
-            form,
-            inv_form,
-        })
+        Ok(Self::compressed(matrix, inverse, true))
     }
 
     /// Create a MatrixMap with `nin` inputs and `nout` outputs whose matrix is
@@ -255,40 +317,36 @@ impl MatrixMap {
                 ),
             ));
         }
-        let mut matrix = Array2::zeros((nout, nin));
-        let mut nuse = 0;
-        for (i, &v) in diag.iter().enumerate() {
-            matrix[[i, i]] = if v.is_finite() { v } else { BAD_VALUE };
-            if !is_bad(matrix[[i, i]]) {
-                nuse += 1;
-            }
-        }
-        if nuse == 0 {
+        let f_matrix: Vec<f64> = diag
+            .iter()
+            .map(|&v| if v.is_finite() { v } else { BAD_VALUE })
+            .collect();
+        if f_matrix.iter().all(|&v| is_bad(v)) {
             return Err(AstError::new(
                 ErrorCode::Mtrmt,
                 "supplied matrix contains only bad values",
             ));
         }
-        let mut form = MatrixForm::Diagonal;
-        compress_matrix(&mut matrix, &mut form);
-        let inverse = match form {
-            MatrixForm::Unit => {
-                matrix = rect_eye(nout, nin);
-                rect_eye(nin, nout)
-            }
-            _ => diagonal_inverse(&matrix),
-        };
-        Ok(Self {
-            matrix,
-            inverse: Some(inverse),
-            inverted: false,
-            simplified: SimplifiedRecord::default(),
-            ident: None,
-            id: Default::default(),
-            mapping_flags: crate::mappings::MappingFlags::default(),
-            form,
-            inv_form: form,
-        })
+        // CompressMatrix of a diagonal matrix (matrixmap.c:695-712): it is a
+        // unit matrix if every element equals 1 within astEQUAL, and is
+        // otherwise inverted element by element.
+        if f_matrix.iter().all(|&v| ast_equal(v, 1.0)) {
+            return Ok(Self::from_parts(
+                nin,
+                nout,
+                MatrixForm::Unit,
+                Vec::new(),
+                None,
+            ));
+        }
+        let i_matrix = diagonal_inverse(&f_matrix);
+        Ok(Self::from_parts(
+            nin,
+            nout,
+            MatrixForm::Diagonal,
+            f_matrix,
+            Some(i_matrix),
+        ))
     }
 
     /// Construct a MatrixMap from an explicit forward matrix and inverse.
@@ -311,38 +369,111 @@ impl MatrixMap {
         // Compress the forward matrix as C `astInitMatrixMap` does, then follow
         // C in deriving the inverse for the compressed forms — a UNIT matrix
         // stores nothing and a DIAGONAL one is inverted element-wise. Only the
-        // FULL case keeps the caller's inverse, which is the case this
-        // constructor exists for: re-deriving it would perturb the last ULP of
-        // the serialized `IMn` values.
-        let mut matrix = matrix;
-        let mut form = MatrixForm::Full;
-        compress_matrix(&mut matrix, &mut form);
-        let inverse = match form {
-            MatrixForm::Unit => rect_eye(matrix.ncols(), matrix.nrows()),
-            MatrixForm::Diagonal => diagonal_inverse(&matrix),
-            MatrixForm::Full => inverse,
-        };
-        Ok(Self {
-            matrix,
-            inverse: Some(inverse),
+        // FULL case keeps the caller's inverse, even where compression zeroes
+        // an element, which is the case this constructor exists for:
+        // re-deriving it would perturb the last ULP of the serialized `IMn`
+        // values.
+        Ok(Self::compressed(matrix, Some(inverse), false))
+    }
+
+    /// A MatrixMap holding the given stored matrices, not inverted.
+    fn from_parts(
+        ncol: usize,
+        nrow: usize,
+        form: MatrixForm,
+        f_matrix: Vec<f64>,
+        i_matrix: Option<Vec<f64>>,
+    ) -> Self {
+        Self {
+            ncol,
+            nrow,
+            form,
+            f_matrix,
+            i_matrix,
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
-            form,
-            inv_form: form,
+        }
+    }
+
+    /// A MatrixMap holding the full forward matrix `matrix` and its inverse
+    /// `inverse`, if any, reduced to its most compressed form by C's
+    /// `CompressMatrix` (matrixmap.c:630) for a full matrix.
+    ///
+    /// An element off the diagonal that is insignificant to both its row and
+    /// its column becomes zero. A matrix that is then unit keeps no elements,
+    /// and one that is diagonal keeps its diagonal and is inverted element by
+    /// element. A matrix that stays full keeps `inverse`, unless an element
+    /// changed and `recompute` is set, when the inverse is found again from
+    /// the changed matrix, as C does.
+    fn compressed(mut matrix: Array2<f64>, inverse: Option<Array2<f64>>, recompute: bool) -> Self {
+        let (nrow, ncol) = matrix.dim();
+        let (form, new_inv) = compress_full(&mut matrix);
+        match form {
+            MatrixForm::Unit => Self::from_parts(ncol, nrow, form, Vec::new(), None),
+            MatrixForm::Diagonal => {
+                let f_matrix: Vec<f64> = (0..nrow.min(ncol)).map(|i| matrix[[i, i]]).collect();
+                let i_matrix = diagonal_inverse(&f_matrix);
+                Self::from_parts(ncol, nrow, form, f_matrix, Some(i_matrix))
+            }
+            MatrixForm::Full => {
+                let f_matrix: Vec<f64> = matrix.iter().copied().collect();
+                let i_matrix = if new_inv && recompute {
+                    (nrow == ncol)
+                        .then(|| gauss_jordan_inverse(&f_matrix, nrow).ok())
+                        .flatten()
+                } else {
+                    inverse.map(|m| m.iter().copied().collect())
+                };
+                Self::from_parts(ncol, nrow, form, f_matrix, i_matrix)
+            }
+        }
+    }
+
+    /// The stored forward matrix, or with `inverse` set the stored inverse,
+    /// in the MatrixMap's storage form; `None` for an inverse that is not
+    /// defined. A unit MatrixMap has both.
+    pub(crate) fn stored(&self, inverse: bool) -> Option<StoredMatrix<'_>> {
+        let (nrow, ncol) = if inverse {
+            (self.ncol, self.nrow)
+        } else {
+            (self.nrow, self.ncol)
+        };
+        let elems: &[f64] = match (self.form, inverse) {
+            (MatrixForm::Unit, _) => &[],
+            (_, false) => &self.f_matrix,
+            (_, true) => self.i_matrix.as_deref()?,
+        };
+        Some(StoredMatrix {
+            form: self.form,
+            nrow,
+            ncol,
+            elems,
         })
     }
 
-    /// Returns a reference to the forward transformation matrix.
-    pub(crate) fn forward_matrix(&self) -> &Array2<f64> {
-        &self.matrix
+    /// Every element of the stored forward matrix, or with `inverse` set of
+    /// the stored inverse; `None` for an inverse that is not defined.
+    ///
+    /// This is C's `ExpandMatrix` (matrixmap.c:1007), for the algorithms that
+    /// work on a full matrix whatever the storage form.
+    pub(crate) fn expanded(&self, inverse: bool) -> Option<Array2<f64>> {
+        self.stored(inverse).map(|m| m.expand())
     }
 
-    /// Returns a reference to the inverse matrix, if available.
-    pub(crate) fn inverse_matrix(&self) -> Option<&Array2<f64>> {
-        self.inverse.as_ref()
+    /// The diagonal of the stored forward matrix, or with `inverse` set of
+    /// the stored inverse, if that matrix is defined and square and each of
+    /// its elements off the diagonal is zero within `ast_equal`.
+    pub(crate) fn square_diagonal(&self, inverse: bool) -> Option<Vec<f64>> {
+        self.stored(inverse)?.square_diagonal()
+    }
+
+    /// Whether the stored forward matrix is square and equals the unit
+    /// matrix within `ast_equal`.
+    pub(crate) fn is_identity(&self) -> bool {
+        self.stored(false).is_some_and(|m| m.is_identity())
     }
 
     /// Whether the matrix is stored in UNIT form (identity, no elements
@@ -371,24 +502,9 @@ impl MatrixMap {
     /// the stored forward or inverse matrix by `invert`, not by the Invert
     /// flag.
     pub(crate) fn mtr_usable(&self, invert: bool) -> bool {
-        if self.is_unit_form() {
-            return true;
-        }
-        let (matrix, form) = if invert {
-            match self.inverse.as_ref() {
-                Some(m) => (m, self.inv_form),
-                None => return false,
-            }
-        } else {
-            (&self.matrix, self.form)
-        };
-        let usable = |v: f64| v.is_finite() && !is_bad(v);
-        match form {
-            MatrixForm::Diagonal => {
-                (0..matrix.nrows().min(matrix.ncols())).all(|i| usable(matrix[[i, i]]))
-            }
-            _ => matrix.iter().all(|&v| usable(v)),
-        }
+        // Every stored element must have a value; a unit matrix stores none.
+        self.stored(invert)
+            .is_some_and(|m| m.elems.iter().all(|&v| v.is_finite() && !is_bad(v)))
     }
 
     /// The inputs on which the given outputs depend, in ascending order, if
@@ -402,12 +518,10 @@ impl MatrixMap {
     /// split find the one subset of outputs a MatrixMap can give for a set of
     /// inputs without searching every subset.
     pub(crate) fn mtr_split_inputs(&self, outputs: &[usize]) -> Option<Vec<usize>> {
-        let matrix = if self.inverted {
-            self.inverse.as_ref()?
-        } else {
-            &self.matrix
-        };
-        let (nrow, ncol) = matrix.dim();
+        // C expands the matrix (matrixmap.c astMtrSplitInputs); reading its
+        // elements through the storage form gives the same values.
+        let matrix = self.stored(self.inverted)?;
+        let (nrow, ncol) = (matrix.nrow, matrix.ncol);
         if outputs.is_empty() {
             return None;
         }
@@ -422,9 +536,9 @@ impl MatrixMap {
         let mut used = vec![false; ncol];
         for irow in (0..nrow).filter(|&r| wanted[r]) {
             let mut any = false;
-            for icol in 0..ncol {
-                if depends(matrix[[irow, icol]]) {
-                    used[icol] = true;
+            for (icol, used) in used.iter_mut().enumerate() {
+                if depends(matrix.get(irow, icol)) {
+                    *used = true;
                     any = true;
                 }
             }
@@ -433,7 +547,7 @@ impl MatrixMap {
             }
         }
         for irow in (0..nrow).filter(|&r| !wanted[r]) {
-            if (0..ncol).any(|icol| used[icol] && depends(matrix[[irow, icol]])) {
+            if (0..ncol).any(|icol| used[icol] && depends(matrix.get(irow, icol))) {
                 return None;
             }
         }
@@ -457,8 +571,10 @@ impl MatrixMap {
             return Ok(None);
         }
         let product = self.mtr_mult(a)?;
+        // An element of a unit or diagonal product that is not stored is
+        // zero, so checking the stored elements checks them all.
         Ok(product
-            .matrix
+            .f_matrix
             .iter()
             .all(|&v| v.is_finite() && !is_bad(v))
             .then_some(product))
@@ -493,13 +609,15 @@ impl MatrixMap {
                 ));
             }
         }
+        // C expands `this` to a full matrix (matrixmap.c Multiply) and reads
+        // `a` in its storage form.
         let this_matrix = self.effective_forward_matrix();
-        let a_matrix = a.effective_forward_matrix();
+        let a_matrix = a.applied_matrix();
 
         let nrow_this = this_matrix.nrows();
         let ncol_this = this_matrix.ncols();
-        let nrow_a = a_matrix.nrows();
-        let ncol_a = a_matrix.ncols();
+        let nrow_a = a_matrix.nrow;
+        let ncol_a = a_matrix.ncol;
 
         if ncol_a != nrow_this {
             return Err(AstError::new(
@@ -530,7 +648,7 @@ impl MatrixMap {
             }
             MatrixForm::Diagonal => {
                 for row in 0..minrow {
-                    let factor = a_matrix[[row, row]];
+                    let factor = a_matrix.get(row, row);
                     for col in 0..ncol_this {
                         let tv = this_matrix[[row, col]];
                         product[[row, col]] = if is_bad(factor) || is_bad(tv) {
@@ -541,7 +659,7 @@ impl MatrixMap {
                     }
                 }
             }
-            MatrixForm::Full => product = mtr_product(&a_matrix, &this_matrix),
+            MatrixForm::Full => product = mtr_product(&a_matrix.expand(), &this_matrix),
         }
 
         MatrixMap::new(product)
@@ -549,7 +667,7 @@ impl MatrixMap {
 
     /// Return a copy of this MatrixMap scaled by `zoom`, applied in the
     /// effective direction `inv` (the direction the MatrixMap is used in
-    /// within a merge). Faithful port of C `matrixmap.c::MtrZoom` (3988):
+    /// within a merge). Faithful port of C `matrixmap.c::MtrZoom` (4217):
     /// copy the MatrixMap *preserving its orientation*, scale the current
     /// forward matrix by `zoom` and divide the current inverse by it. Keeping
     /// the orientation (rather than collapsing to a fresh forward matrix)
@@ -558,33 +676,26 @@ impl MatrixMap {
     /// `zoom` is the effective forward zoom factor of the neighboring
     /// ZoomMap in the composition.
     pub(crate) fn mtr_zoom(&self, zoom: f64, inv: bool) -> MatrixMap {
-        // Current forward / inverse matrices for the effective orientation.
-        let (cur_fwd, cur_inv) = if inv {
-            (self.inverse.clone(), Some(self.matrix.clone()))
-        } else {
-            (Some(self.matrix.clone()), self.inverse.clone())
-        };
-        // Scale forward by zoom, inverse by 1/zoom.
-        let new_fwd = cur_fwd.map(|m| &m * zoom);
-        let new_inv = cur_inv.map(|m| &m / zoom);
-
-        // Re-assemble into stored (f_matrix, i_matrix) honoring orientation:
-        // when `inv`, the effective forward is the stored inverse.
-        let (stored_fwd, stored_inv) = if inv {
-            (new_inv, new_fwd)
-        } else {
-            (new_fwd, new_inv)
-        };
-
-        let mut out = match (stored_fwd, stored_inv) {
-            (Some(f), Some(i)) => MatrixMap::new_with_inverse(f, i)
-                .unwrap_or_else(|_| MatrixMap::new(self.matrix.clone()).unwrap()),
-            (Some(f), None) => MatrixMap::new(f).unwrap(),
-            _ => self.clone(),
-        };
+        // C expands both matrices (matrixmap.c:4274), scales them, and
+        // compresses the result.
+        let mut f = self
+            .expanded(false)
+            .expect("the forward matrix is always stored");
+        let mut i = self.expanded(true);
+        // With `inv` set the matrix applied forward is the stored inverse.
         if inv {
-            out.inverted = true;
+            if let Some(i) = i.as_mut() {
+                *i *= zoom;
+            }
+            f /= zoom;
+        } else {
+            f *= zoom;
+            if let Some(i) = i.as_mut() {
+                *i /= zoom;
+            }
         }
+        let mut out = Self::compressed(f, i, true);
+        out.inverted = inv;
         out
     }
 
@@ -706,20 +817,35 @@ impl MatrixMap {
     /// The effective forward matrix, honoring the current Invert flag: the
     /// stored forward matrix when not inverted, else the inverse matrix
     /// (falling back to the forward matrix when no inverse exists).
+    ///
+    /// Every element is given, as C's `ExpandMatrix` gives them for
+    /// `Multiply` and `MtrRot` (matrixmap.c:3822, 4101, 4152).
     fn effective_forward_matrix(&self) -> Array2<f64> {
-        if self.inverted {
-            self.inverse.clone().unwrap_or_else(|| self.matrix.clone())
-        } else {
-            self.matrix.clone()
-        }
+        self.applied_matrix().expand()
     }
 
-    fn effective_forward(&self, forward: bool) -> bool {
-        forward != self.inverted
+    /// The stored matrix the MatrixMap applies in its forward direction: the
+    /// inverse when inverted, falling back to the forward matrix when no
+    /// inverse exists.
+    fn applied_matrix(&self) -> StoredMatrix<'_> {
+        self.stored(self.inverted)
+            .or_else(|| self.stored(false))
+            .expect("the forward matrix is always stored")
     }
 
-    /// Apply the matrix `m` (shape `nout × nin`) to each point in `pts`
-    /// and write results into `out`.
+    /// The stored matrix that transforms in the direction `forward`, or a
+    /// `Nodef` error if it is not defined.
+    fn matrix_for(&self, forward: bool) -> AstResult<StoredMatrix<'_>> {
+        self.stored(forward == self.inverted).ok_or_else(|| {
+            AstError::new(
+                ErrorCode::Nodef,
+                "MatrixMap inverse is not defined (non-square or singular matrix)",
+            )
+        })
+    }
+
+    /// Apply the stored matrix `m` to each point in `pts` and write the
+    /// results into `out`.
     ///
     /// BAD handling follows `matrixmap.c::Transform` (5170-5283). A BAD matrix
     /// element always yields BAD output. A BAD input yields BAD output unless
@@ -728,33 +854,26 @@ impl MatrixMap {
     /// depend on it. A zero coefficient is otherwise multiplied through
     /// normally; it is not a special case.
     ///
-    /// The `form` parameter selects the fast path:
-    /// - `Diagonal`: O(N) per-axis multiply (each output depends only on the
-    ///   corresponding input).
-    /// - `Full`: O(N²) matrix-vector product (the general case).
+    /// The storage form selects the path:
+    /// - unit and diagonal: O(N) per-axis multiply (each output depends only
+    ///   on the corresponding input), a unit matrix multiplying by 1.
+    /// - full: O(N²) matrix-vector product (the general case).
     ///
     /// For the diagonal and unit forms the matrix need not be square. C stores
     /// only `nax = min(nin, nout)` scale factors for those forms and writes
     /// zeros into any surplus output axes (matrixmap.c:5228-5283); the loop
     /// below does the same.
-    fn apply_matrix(m: &Array2<f64>, form: MatrixForm, pts: &Points<'_>, out: &mut PointsMut<'_>) {
+    fn apply_matrix(m: StoredMatrix<'_>, pts: &Points<'_>, out: &mut PointsMut<'_>) {
         let n = pts.npoint();
-        // Math-wise Unit is just a special-case diagonal.
-        let form = if matches!(form, MatrixForm::Unit) {
-            MatrixForm::Diagonal
-        } else {
-            form
-        };
-        match form {
-            MatrixForm::Unit => unreachable!(),
-            MatrixForm::Diagonal => {
-                let nax = m.nrows().min(m.ncols());
+        match m.form {
+            MatrixForm::Unit | MatrixForm::Diagonal => {
+                let nax = m.ndiag();
                 for j in 0..nax {
                     // A BAD diagonal element makes the whole output axis
                     // BAD; otherwise BAD input gives BAD output. C tests the
                     // diagonal once per axis, outside the point loop
                     // (matrixmap.c:5253).
-                    let diag = m[[j, j]];
+                    let diag = m.get(j, j);
                     let o = &mut out.axis_mut(j)[..n];
                     if is_bad(diag) {
                         o.fill(BAD_VALUE);
@@ -764,17 +883,14 @@ impl MatrixMap {
                         *o = if is_bad(v) { BAD_VALUE } else { diag * v };
                     }
                 }
-                for j in nax..m.nrows() {
+                for j in nax..m.nrow {
                     out.axis_mut(j)[..n].fill(0.0);
                 }
             }
             MatrixForm::Full => {
                 let pin = pts.axis_slices();
-                // Rows as plain slices: per-element ndarray access costs
-                // more than the arithmetic at small point counts.
-                let m = m.as_standard_layout();
-                let elems = m.as_slice().expect("standard layout is contiguous");
-                for (coeffs, o) in elems.chunks_exact(m.ncols()).zip(out.axes_iter_mut()) {
+                // The rows are plain slices of the stored elements.
+                for (coeffs, o) in m.elems.chunks_exact(m.ncol).zip(out.axes_iter_mut()) {
                     let o = &mut o[..n];
                     // A BAD element makes its whole row BAD.
                     if coeffs.iter().any(|&c| is_bad(c)) {
@@ -851,19 +967,11 @@ impl Mapping for MatrixMap {
     }
 
     fn nin(&self) -> usize {
-        if self.inverted {
-            self.matrix.nrows()
-        } else {
-            self.matrix.ncols()
-        }
+        if self.inverted { self.nrow } else { self.ncol }
     }
 
     fn nout(&self) -> usize {
-        if self.inverted {
-            self.matrix.ncols()
-        } else {
-            self.matrix.nrows()
-        }
+        if self.inverted { self.ncol } else { self.nrow }
     }
 
     fn is_inverted(&self) -> bool {
@@ -876,22 +984,9 @@ impl Mapping for MatrixMap {
 
     fn transform(&self, pts: &PointSet, forward: bool) -> AstResult<PointSet> {
         crate::mappings::validate_transform(self, pts, forward, None)?;
-        let fwd = self.effective_forward(forward);
-        let (nout_coords, m, form) = if fwd {
-            (self.matrix.nrows(), &self.matrix, self.form)
-        } else {
-            match &self.inverse {
-                Some(inv) => (inv.nrows(), inv, self.inv_form),
-                None => {
-                    return Err(AstError::new(
-                        ErrorCode::Nodef,
-                        "MatrixMap inverse is not defined (non-square or singular matrix)",
-                    ));
-                }
-            }
-        };
-        let mut out = PointSet::zeros(pts.npoint(), nout_coords);
-        Self::apply_matrix(m, form, &pts.as_points(), &mut out.as_points_mut());
+        let m = self.matrix_for(forward)?;
+        let mut out = PointSet::zeros(pts.npoint(), m.nrow);
+        Self::apply_matrix(m, &pts.as_points(), &mut out.as_points_mut());
         Ok(out)
     }
 
@@ -902,21 +997,8 @@ impl Mapping for MatrixMap {
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
         crate::mappings::validate_transform_into(self, &pts, forward, Some(&out))?;
-        let fwd = self.effective_forward(forward);
-        let (m, form) = if fwd {
-            (&self.matrix, self.form)
-        } else {
-            match &self.inverse {
-                Some(inv) => (inv, self.inv_form),
-                None => {
-                    return Err(AstError::new(
-                        ErrorCode::Nodef,
-                        "MatrixMap inverse is not defined (non-square or singular matrix)",
-                    ));
-                }
-            }
-        };
-        Self::apply_matrix(m, form, &pts, &mut out);
+        let m = self.matrix_for(forward)?;
+        Self::apply_matrix(m, &pts, &mut out);
         Ok(())
     }
 
@@ -932,34 +1014,15 @@ impl Mapping for MatrixMap {
         forward: bool,
         mut out: PointsMut<'_>,
     ) -> AstResult<()> {
-        let fwd = self.effective_forward(forward);
-        let (m, form) = if fwd {
-            (&self.matrix, self.form)
-        } else {
-            match &self.inverse {
-                Some(inv) => (inv, self.inv_form),
-                None => {
-                    return Err(AstError::new(
-                        ErrorCode::Nodef,
-                        "MatrixMap inverse is not defined (non-square or singular matrix)",
-                    ));
-                }
-            }
-        };
-        let form = if matches!(form, MatrixForm::Unit) {
-            MatrixForm::Diagonal
-        } else {
-            form
-        };
+        let m = self.matrix_for(forward)?;
         let n = pts.npoint();
-        match form {
-            MatrixForm::Unit => unreachable!(),
-            MatrixForm::Diagonal => {
-                let nax = m.nrows().min(m.ncols());
+        match m.form {
+            MatrixForm::Unit | MatrixForm::Diagonal => {
+                let nax = m.ndiag();
                 // A bad input stays bad even with a zero element, and a bad
                 // element makes its axis bad (matrixmap.c Transform).
                 for j in 0..nax {
-                    let diag = m[[j, j]];
+                    let diag = m.get(j, j);
                     let o = &mut out.axis_mut(j)[..n];
                     if diag == BAD_VALUE {
                         o.fill(f64::NAN);
@@ -969,15 +1032,15 @@ impl Mapping for MatrixMap {
                         *o = diag * v;
                     }
                 }
-                for j in nax..m.nrows() {
+                for j in nax..m.nrow {
                     out.axis_mut(j)[..n].fill(0.0);
                 }
             }
             MatrixForm::Full => {
-                for row in 0..m.nrows() {
+                for (row, coeffs) in m.elems.chunks_exact(m.ncol).enumerate() {
                     // A bad element makes its row bad (matrixmap.c
                     // Transform).
-                    if (0..m.ncols()).any(|col| m[[row, col]] == BAD_VALUE) {
+                    if coeffs.contains(&BAD_VALUE) {
                         out.axis_mut(row)[..n].fill(f64::NAN);
                         continue;
                     }
@@ -985,8 +1048,7 @@ impl Mapping for MatrixMap {
                     // axes in order.
                     let sum = &mut out.axis_mut(row)[..n];
                     sum.fill(0.0);
-                    for col in 0..m.ncols() {
-                        let coeff = m[[row, col]];
+                    for (col, &coeff) in coeffs.iter().enumerate() {
                         if coeff == 0.0 {
                             continue;
                         }
@@ -1014,20 +1076,12 @@ impl Mapping for MatrixMap {
         // MatrixMap + MatrixMap → MatrixMap.
         if let Some(other_mat) = other.as_any().downcast_ref::<MatrixMap>() {
             // Get effective forward matrices, accounting for inversion.
-            let a = if self_inv {
-                self.inverse.as_ref()?.clone()
-            } else {
-                self.matrix.clone()
-            };
-            let b = if other_inv {
-                other_mat.inverse.as_ref()?.clone()
-            } else {
-                other_mat.matrix.clone()
-            };
+            let a = self.stored(self_inv)?;
+            let b = other_mat.stored(other_inv)?;
 
             // Series: self first (matrix a), then other (matrix b).
             // Result = b * a. Requires b.ncols() == a.nrows().
-            if b.ncols() != a.nrows() {
+            if b.ncol != a.nrow {
                 return None;
             }
 
@@ -1041,14 +1095,12 @@ impl Mapping for MatrixMap {
             if other_inv {
                 second.invert();
             }
-            let product = first.mtr_mult(&second).ok()?.forward_matrix().clone();
+            let product = first.mtr_mult(&second).ok()?;
 
-            return if is_identity_matrix(&product) {
-                Some(Box::new(UnitMap::within_limit(product.nrows())))
+            return if product.is_identity() {
+                Some(Box::new(UnitMap::within_limit(product.nrow)))
             } else {
-                MatrixMap::new(product)
-                    .ok()
-                    .map(|m| Box::new(m) as DynMapping)
+                Some(Box::new(product))
             };
         }
 
@@ -1077,10 +1129,8 @@ impl Mapping for MatrixMap {
             // Collapse to a UnitMap only when the whole Mapping is the
             // identity: an inverted result has to survive so its orientation
             // reaches serialization.
-            if !scaled.is_inverted() && is_identity_matrix(scaled.forward_matrix()) {
-                return Some(Box::new(UnitMap::within_limit(
-                    scaled.forward_matrix().nrows(),
-                )));
+            if !scaled.is_inverted() && scaled.is_identity() {
+                return Some(Box::new(UnitMap::within_limit(scaled.nrow)));
             }
             return Some(Box::new(scaled) as DynMapping);
         }
@@ -1090,11 +1140,7 @@ impl Mapping for MatrixMap {
         // Result = P * A where P is the permutation matrix and A is self's matrix.
         // The PermMap permutes the rows (outputs) of the MatrixMap.
         if let Some(pm) = other.as_any().downcast_ref::<PermMap>() {
-            let a = if self_inv {
-                self.inverse.as_ref()?.clone()
-            } else {
-                self.matrix.clone()
-            };
+            let a = self.expanded(self_inv)?;
 
             // Get effective outperm: when other_inv is set, the PermMap's
             // forward direction uses inperm instead of outperm.
@@ -1149,15 +1195,8 @@ impl Mapping for MatrixMap {
         // Diagonal MatrixMap + WinMap → WinMap (absorb diagonal scales).
         // Matches C matrixmap.c:3230 (MatWin2).
         if other.as_any().downcast_ref::<WinMap>().is_some() {
-            let a = if self_inv {
-                self.inverse.as_ref()?.clone()
-            } else {
-                self.matrix.clone()
-            };
-            if !is_diagonal(&a) {
-                return None;
-            }
-            let n = a.nrows();
+            let diag = self.square_diagonal(self_inv)?;
+            let n = diag.len();
             // Extract effective (shifts, scales) from the WinMap.
             let (wshifts, wscales) = super::winmap::extract_linear_params(other, other_inv)?;
             if wshifts.len() != n {
@@ -1166,7 +1205,6 @@ impl Mapping for MatrixMap {
             // Combined: out = wshift + wscale * (diag * x)
             //         = wshift + (wscale * diag) * x
             // Use compose_linear with s1=[0..], c1=diag, s2=wshifts, c2=wscales.
-            let diag: Vec<f64> = (0..n).map(|i| a[[i, i]]).collect();
             let zeros = vec![0.0; n];
             // C merges a diagonal MatrixMap with a WinMap via MatWin2 /
             // WinDiagMat, which transform the terms without WinWin's
@@ -1188,18 +1226,13 @@ impl Mapping for MatrixMap {
 
     fn rate(&self, _at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
         crate::mappings::validate_rate(self, _at, ax1, ax2)?;
-        let m = if self.inverted {
-            match &self.inverse {
-                Some(inv) => inv,
-                None => return Ok(BAD_VALUE),
-            }
-        } else {
-            &self.matrix
+        let Some(m) = self.stored(self.inverted) else {
+            return Ok(BAD_VALUE);
         };
         let row = ax1 - 1;
         let col = ax2 - 1;
-        if row < m.nrows() && col < m.ncols() {
-            Ok(m[[row, col]])
+        if row < m.nrow && col < m.ncol {
+            Ok(m.get(row, col))
         } else {
             Ok(0.0)
         }
@@ -1215,26 +1248,22 @@ impl Mapping for MatrixMap {
         if self.nin() != other.nin() || self.nout() != other.nout() {
             return false;
         }
-        fn applied(m: &MatrixMap) -> Option<&Array2<f64>> {
-            if m.inverted {
-                m.inverse.as_ref()
-            } else {
-                Some(&m.matrix)
-            }
-        }
-        fn opposite(m: &MatrixMap) -> Option<&Array2<f64>> {
-            if m.inverted {
-                Some(&m.matrix)
-            } else {
-                m.inverse.as_ref()
-            }
-        }
-        let pair = match (applied(self), applied(other)) {
+        let pair = match (self.stored(self.inverted), other.stored(other.inverted)) {
             (Some(a), Some(b)) => Some((a, b)),
-            _ => opposite(self).zip(opposite(other)),
+            _ => self
+                .stored(!self.inverted)
+                .zip(other.stored(!other.inverted)),
         };
+        // C compares every element of the two matrices expanded to full
+        // form. An element off the diagonal of a unit or diagonal matrix is
+        // zero, so when neither matrix is full only the diagonals can differ.
         match pair {
-            Some((a, b)) => a.iter().zip(b.iter()).all(|(x, y)| ast_equal(*x, *y)),
+            Some((a, b)) if a.form != MatrixForm::Full && b.form != MatrixForm::Full => {
+                (0..a.ndiag()).all(|i| ast_equal(a.get(i, i), b.get(i, i)))
+            }
+            Some((a, b)) => {
+                (0..a.nrow).all(|r| (0..a.ncol).all(|c| ast_equal(a.get(r, c), b.get(r, c))))
+            }
             None => true,
         }
     }
@@ -1275,13 +1304,10 @@ impl Mapping for MatrixMap {
         // Pick the effective forward matrix, matching C's `mat` selection.
         // When inverted but no inverse is available, the split is impossible
         // (C: `if( !mat || !astOK ) ok = 0`).
-        let m: &Array2<f64> = if self.inverted {
-            let Some(inverse) = self.inverse.as_ref() else {
-                return Ok(None);
-            };
-            inverse
-        } else {
-            &self.matrix
+        // C expands the matrix (matrixmap.c:2483); reading its elements
+        // through the storage form gives the same values.
+        let Some(m) = self.stored(self.inverted) else {
+            return Ok(None);
         };
 
         // Classify each output row.
@@ -1292,7 +1318,7 @@ impl Mapping for MatrixMap {
             let mut sel = false;
             let mut unsel = false;
             for i in 0..nin {
-                let el = m[[j, i]];
+                let el = m.get(j, i);
                 if el != 0.0 && !is_bad(el) {
                     if kept.contains(&i) {
                         sel = true;
@@ -1307,7 +1333,7 @@ impl Mapping for MatrixMap {
                 // kept row can have one in a selected column; C declines the
                 // split then, rather than build a matrix with a gap in it.
                 for &i in in_axes {
-                    if is_bad(m[[j, i]]) {
+                    if is_bad(m.get(j, i)) {
                         return Ok(None);
                     }
                     good = true;
@@ -1328,7 +1354,7 @@ impl Mapping for MatrixMap {
         let mut sub_m = Array2::<f64>::zeros((kept_outs.len(), in_axes.len()));
         for (rj, &j) in kept_outs.iter().enumerate() {
             for (ri, &i) in in_axes.iter().enumerate() {
-                sub_m[[rj, ri]] = m[[j, i]];
+                sub_m[[rj, ri]] = m.get(j, i);
             }
         }
         let sub = MatrixMap::new(sub_m)?;
@@ -1382,7 +1408,7 @@ impl Mapping for MatrixMap {
             return true;
         }
         if self.inverted {
-            self.inverse.is_some()
+            self.i_matrix.is_some()
         } else {
             true
         }
@@ -1395,7 +1421,7 @@ impl Mapping for MatrixMap {
         if self.inverted {
             true
         } else {
-            self.inverse.is_some()
+            self.i_matrix.is_some()
         }
     }
 
@@ -1414,73 +1440,18 @@ impl Serializable for MatrixMap {
         node.class_comment = Some("Matrix transformation".to_string());
         write_mapping_base(&mut node, self);
 
-        let nout = self.matrix.nrows();
-        let nin = self.matrix.ncols();
-
-        match self.form {
-            MatrixForm::Unit => {
-                // Identity: no elements emitted.
-            }
-            MatrixForm::Diagonal => {
-                let nel = nin.min(nout);
-                for i in 0..nel {
-                    let val = self.matrix[[i, i]];
-                    if !is_bad(val) {
-                        node.push_double(
-                            &format!("M{i}"),
-                            val,
-                            Some("Forward matrix value".to_string()),
-                        );
-                    }
-                }
-            }
-            MatrixForm::Full => {
-                for i in 0..(nout * nin) {
-                    let row = i / nin;
-                    let col = i % nin;
-                    let val = self.matrix[[row, col]];
-                    if !is_bad(val) {
-                        node.push_double(
-                            &format!("M{i}"),
-                            val,
-                            Some("Forward matrix value".to_string()),
-                        );
-                    }
-                }
-            }
-        }
-
-        if let Some(ref inv) = self.inverse {
-            match self.inv_form {
-                MatrixForm::Unit => {
-                    // Identity inverse: no elements emitted.
-                }
-                MatrixForm::Diagonal => {
-                    let nel = nin.min(nout);
-                    for i in 0..nel {
-                        let val = inv[[i, i]];
-                        if !is_bad(val) {
-                            node.push_double(
-                                &format!("IM{i}"),
-                                val,
-                                Some("Inverse matrix value".to_string()),
-                            );
-                        }
-                    }
-                }
-                MatrixForm::Full => {
-                    for i in 0..(nin * nout) {
-                        let row = i / nout;
-                        let col = i % nout;
-                        let val = inv[[row, col]];
-                        if !is_bad(val) {
-                            node.push_double(
-                                &format!("IM{i}"),
-                                val,
-                                Some("Inverse matrix value".to_string()),
-                            );
-                        }
-                    }
+        // The stored elements of each matrix, numbered from 0 as C's Dump
+        // numbers them (matrixmap.c:5857): every element row by row for a
+        // full matrix, the diagonal for a diagonal one, none for a unit one.
+        // A bad element is not written, and reads back as bad.
+        let stored = [
+            ("M", "Forward matrix value", Some(&self.f_matrix)),
+            ("IM", "Inverse matrix value", self.i_matrix.as_ref()),
+        ];
+        for (prefix, comment, elems) in stored {
+            for (i, &val) in elems.into_iter().flatten().enumerate() {
+                if !is_bad(val) {
+                    node.push_double(&format!("{prefix}{i}"), val, Some(comment.to_string()));
                 }
             }
         }
@@ -1510,253 +1481,161 @@ impl Serializable for MatrixMap {
             ));
         }
 
-        let form = node.get_string("Form", "Full");
-        // A dump names a full matrix's elements `M0` to `M9999998`, so one
-        // that claims more was not written by AST (matrixmap.c
-        // `astLoadMatrixMap`); nothing is read or sized for it.
-        if form != "Unit" && form != "Diagonal" && nin.saturating_mul(nout) > MXLOADEL {
-            return Err(AstError::new(
-                ErrorCode::Lderr,
-                format!(
-                    "astLoadMatrixMap({}): The full matrix read has {nout} rows and {nin} \
-                     columns, but a dump cannot hold more than {MXLOADEL} elements.",
-                    whole.class
-                ),
-            ));
-        }
-        // A port-only limit: C stores a unit or diagonal matrix as its
-        // diagonal, and the port stores every matrix whole.
-        if (form == "Unit" || form == "Diagonal") && nin.saturating_mul(nout) > MXLOADEL {
-            return Err(AstError::new(
-                ErrorCode::Lderr,
-                format!(
-                    "astLoadMatrixMap({}): The {} matrix read has {nout} rows and {nin} \
-                     columns, but the port stores it whole and cannot hold more than \
-                     {MXLOADEL} elements.",
-                    whole.class,
-                    form.to_lowercase()
-                ),
-            ));
-        }
-
-        // Read forward matrix based on storage form.
-        let matrix = match form.as_str() {
-            "Unit" => {
-                // Identity matrix — no elements stored.
-                rect_eye(nout, nin)
-            }
-            "Diagonal" => {
-                // Only min(nout, nin) diagonal elements stored. A bad element
-                // is not written, so a missing one reads as bad (matrixmap.c
-                // Dump and Load).
-                let nel = nin.min(nout);
-                let mut mat = Array2::zeros((nout, nin));
-                for i in 0..nel {
-                    mat[[i, i]] = node.get_double(&format!("M{i}"), BAD_VALUE);
-                }
-                mat
-            }
-            _ => {
-                // "Full" — nout*nin elements in row-major order.
-                let mut fwd_flat = Vec::with_capacity(nout * nin);
-                for i in 0..(nout * nin) {
-                    fwd_flat.push(node.get_double(&format!("M{i}"), BAD_VALUE));
-                }
-                Array2::from_shape_vec((nout, nin), fwd_flat).unwrap()
-            }
-        };
-
-        // Read inverse matrix based on storage form.
-        let inverse = match form.as_str() {
-            "Unit" => {
-                // Identity inverse — same as forward.
-                Some(rect_eye(nin, nout))
-            }
-            "Diagonal" => {
-                // Check if any IM elements exist.
-                let nel = nin.min(nout);
-                let has_inv = (0..nel).any(|i| node.get(&format!("IM{i}")).is_some());
-                if has_inv {
-                    // A missing diagonal IMi element defaults to AST__BAD on
-                    // load (matrixmap.c: BAD inverse elements are not written
-                    // and load back as AST__BAD), not to zero.
-                    let mut mat = Array2::zeros((nin, nout));
-                    for i in 0..nel {
-                        mat[[i, i]] = node.get_double(&format!("IM{i}"), BAD_VALUE);
-                    }
-                    Some(mat)
-                } else {
-                    None
-                }
-            }
-            _ => {
-                // "Full" — nin*nout elements.
-                let mut has_inverse = false;
-                let mut inv_flat = Vec::with_capacity(nin * nout);
-                for i in 0..(nin * nout) {
-                    let val = node.get_double(&format!("IM{i}"), BAD_VALUE);
-                    inv_flat.push(val);
-                    if !is_bad(val) {
-                        has_inverse = true;
-                    }
-                }
-                if has_inverse {
-                    Some(Array2::from_shape_vec((nin, nout), inv_flat).unwrap())
-                } else {
-                    None
-                }
-            }
-        };
-
         // The storage form recorded in the source is authoritative, and the
-        // inverse uses the same layout: C `astLoadMatrixMap` (matrixmap.c:6210)
+        // inverse uses the same layout: C `astLoadMatrixMap` (matrixmap.c:6401)
         // reads `Form` into the single `form` field and never re-compresses, so
         // a dumped MatrixMap loads back in exactly the form it was written in.
-        // An absent `Form` defaults to FULL (matrixmap.c:6219), not to a form
-        // derived from the element values.
-        let form = match form.as_str() {
+        // An absent `Form` defaults to FULL, not to a form derived from the
+        // element values.
+        let form = match node.get_string("Form", "Full").as_str() {
             "Unit" => MatrixForm::Unit,
             "Diagonal" => MatrixForm::Diagonal,
             _ => MatrixForm::Full,
         };
-        let inv_form = form;
 
-        // When the dump carried no inverse elements, C rebuilds the inverse
-        // with `InvertMatrix( new->form, ... )` (matrixmap.c:6279) — so the
-        // form selects the arithmetic: element-wise reciprocals for DIAGONAL,
-        // palDmat for FULL. (UNIT never reaches here; it stores no elements
-        // and its inverse is the identity.)
-        let inverse = match inverse {
-            Some(inv) => Some(inv),
-            None => match form {
-                MatrixForm::Unit => Some(rect_eye(nin, nout)),
-                MatrixForm::Diagonal => Some(diagonal_inverse(&matrix)),
-                MatrixForm::Full if matrix.nrows() == matrix.ncols() => {
-                    gauss_jordan_inverse(&matrix).ok()
+        // The number of elements stored for each matrix. A dump names a full
+        // matrix's elements `M0` to `M9999998`, so one that claims more was
+        // not written by AST, and nothing is read or sized for it
+        // (matrixmap.c astLoadMatrixMap, `MXLOADEL`). A diagonal matrix
+        // stores no more elements than a Mapping has axes.
+        let nel = match form {
+            MatrixForm::Full => {
+                if nin.saturating_mul(nout) > MXLOADEL {
+                    return Err(AstError::new(
+                        ErrorCode::Lderr,
+                        format!(
+                            "astLoadMatrixMap({}): The full matrix read has {nout} rows and \
+                             {nin} columns, but a dump cannot hold more than {MXLOADEL} \
+                             elements.",
+                            whole.class
+                        ),
+                    ));
                 }
-                MatrixForm::Full => None,
-            },
+                nin * nout
+            }
+            MatrixForm::Diagonal => nin.min(nout),
+            MatrixForm::Unit => 0,
         };
 
-        Ok(MatrixMap {
-            matrix,
-            inverse,
-            inverted: base.inverted,
-            simplified: SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified),
-            ident: None,
-            id: Default::default(),
-            mapping_flags: crate::mappings::MappingFlags::default(),
-            form,
-            inv_form,
-        })
+        // A bad element is not written, so a missing one reads as bad
+        // (matrixmap.c Dump and Load).
+        let read = |prefix: &str| -> Vec<f64> {
+            (0..nel)
+                .map(|i| node.get_double(&format!("{prefix}{i}"), BAD_VALUE))
+                .collect()
+        };
+        let f_matrix = read("M");
+
+        // The inverse is the one dumped if any of its elements were written.
+        // C rebuilds it otherwise with `InvertMatrix( new->form, ... )`, so the
+        // form selects the arithmetic: element-wise reciprocals for DIAGONAL,
+        // palDmat for FULL. A unit matrix stores neither.
+        let i_matrix = match form {
+            MatrixForm::Unit => None,
+            MatrixForm::Diagonal => {
+                if (0..nel).any(|i| node.get(&format!("IM{i}")).is_some()) {
+                    Some(read("IM"))
+                } else {
+                    Some(diagonal_inverse(&f_matrix))
+                }
+            }
+            MatrixForm::Full => {
+                let dumped = read("IM");
+                if dumped.iter().any(|&v| !is_bad(v)) {
+                    Some(dumped)
+                } else if nin == nout {
+                    gauss_jordan_inverse(&f_matrix, nin).ok()
+                } else {
+                    None
+                }
+            }
+        };
+
+        let mut map = Self::from_parts(nin, nout, form, f_matrix, i_matrix);
+        map.inverted = base.inverted;
+        map.simplified = SimplifiedRecord::for_orientation(base.inverted, base.has_been_simplified);
+        Ok(map)
     }
 }
 
-/// Reduce a matrix to its most compressed storage form, zeroing insignificant
-/// off-diagonal elements in the process. Faithful port of C `CompressMatrix`
-/// (matrixmap.c:587).
+/// The storage form a full matrix compresses to, zeroing insignificant
+/// off-diagonal elements in the process: the full-matrix branch of C's
+/// `CompressMatrix` (matrixmap.c:630).
 ///
-/// `form` is the form the matrix is currently stored in, and is updated to the
-/// compressed form. The matrix itself is modified in place: off-diagonal
-/// elements insignificant to *both* their own row and their own column are set
-/// to exactly `0.0`, which is what turns the ~1e-16 trig residue of a
-/// spherical-rotation product into the structural zeros C serializes.
+/// The matrix is modified in place: off-diagonal elements insignificant to
+/// *both* their own row and their own column are set to exactly `0.0`, which
+/// is what turns the ~1e-16 trig residue of a spherical-rotation product into
+/// the structural zeros C serializes.
 ///
-/// Returns `true` when an off-diagonal element changed value, which is C's
-/// `new_inv` flag: the caller must then recompute the inverse from the
-/// compressed forward matrix, because the stored inverse no longer corresponds
-/// to it.
+/// Also returns `true` when an off-diagonal element changed value, which is
+/// C's `new_inv` flag: the inverse built from the matrix as it was no longer
+/// corresponds to it.
 ///
-/// The three branches mirror C exactly:
+/// The row/column significance sweep starts at `Unit` and degrades: a
+/// `BAD_VALUE` element anywhere forces `Full`; a diagonal element that is not
+/// exactly 1.0 drops `Unit` to `Diagonal`; an off-diagonal element too large
+/// to zero forces `Full`.
 ///
-///  * `Unit` — already maximally compressed; nothing to do.
-///  * `Diagonal` — collapses to `Unit` when every stored diagonal element is
-///    `astEQUAL` to 1.0 (matrixmap.c:668-682). Off-diagonal elements are not
-///    stored in this form, so none can be zeroed.
-///  * `Full` — the row/column significance sweep (matrixmap.c:687-782). The
-///    form starts at `Unit` and degrades: a `BAD_VALUE` element anywhere forces
-///    `Full`; a diagonal element that is not exactly 1.0 drops `Unit` to
-///    `Diagonal`; an off-diagonal element too large to zero forces `Full`.
-///
-/// Note the diagonal test in the `Full` branch is exact (`*a != 1.0`,
-/// matrixmap.c:756) while the `Diagonal` branch's is tolerant (`astEQUAL`,
-/// matrixmap.c:672) — a difference in the C that is preserved here.
-fn compress_matrix(m: &mut Array2<f64>, form: &mut MatrixForm) -> bool {
+/// The diagonal test here is exact (`*a != 1.0`), while C's test of a matrix
+/// already stored as diagonal, in [`MatrixMap::diagonal`], is tolerant
+/// (`astEQUAL`) — a difference in the C that is preserved here.
+fn compress_full(m: &mut Array2<f64>) -> (MatrixForm, bool) {
     let nrow = m.nrows();
     let ncol = m.ncols();
-    let ndiag = nrow.min(ncol);
-
-    match *form {
-        // Already maximally compressed (matrixmap.c:661).
-        MatrixForm::Unit => false,
-
-        // Diagonal storage: only the diagonal exists, so the sole question is
-        // whether it is all ones (matrixmap.c:668-682).
-        MatrixForm::Diagonal => {
-            if (0..ndiag).all(|i| ast_equal(m[[i, i]], 1.0)) {
-                *form = MatrixForm::Unit;
-            }
-            false
-        }
-
-        MatrixForm::Full => {
-            // Largest magnitude in each row and column, scaled by
-            // sqrt(DBL_EPSILON) to become the lower limit for a significant
-            // value (matrixmap.c:691-724). BAD elements never participate.
-            let tol = crate::math::sqrt(f64::EPSILON);
-            let mut rowmax = vec![0.0_f64; nrow];
-            let mut colmax = vec![0.0_f64; ncol];
-            for i in 0..nrow {
-                for j in 0..ncol {
-                    let v = m[[i, j]];
-                    if !is_bad(v) {
-                        let a = v.abs();
-                        if a > rowmax[i] {
-                            rowmax[i] = a;
-                        }
-                        if a > colmax[j] {
-                            colmax[j] = a;
-                        }
-                    }
+    // Largest magnitude in each row and column, scaled by
+    // sqrt(DBL_EPSILON) to become the lower limit for a significant
+    // value (matrixmap.c:691-724). BAD elements never participate.
+    let tol = crate::math::sqrt(f64::EPSILON);
+    let mut rowmax = vec![0.0_f64; nrow];
+    let mut colmax = vec![0.0_f64; ncol];
+    for i in 0..nrow {
+        for j in 0..ncol {
+            let v = m[[i, j]];
+            if !is_bad(v) {
+                let a = v.abs();
+                if a > rowmax[i] {
+                    rowmax[i] = a;
+                }
+                if a > colmax[j] {
+                    colmax[j] = a;
                 }
             }
-            for r in rowmax.iter_mut() {
-                *r *= tol;
-            }
-            for c in colmax.iter_mut() {
-                *c *= tol;
-            }
-
-            // Assume Unit and degrade (matrixmap.c:738-782).
-            let mut new_form = MatrixForm::Unit;
-            let mut new_inv = false;
-            for k in 0..nrow {
-                for j in 0..ncol {
-                    let v = m[[k, j]];
-                    if is_bad(v) {
-                        new_form = MatrixForm::Full;
-                    } else if j == k {
-                        if v != 1.0 && new_form == MatrixForm::Unit {
-                            new_form = MatrixForm::Diagonal;
-                        }
-                    } else {
-                        let a = v.abs();
-                        if a <= rowmax[k] && a <= colmax[j] {
-                            if v != 0.0 {
-                                new_inv = true;
-                            }
-                            m[[k, j]] = 0.0;
-                        } else {
-                            new_form = MatrixForm::Full;
-                        }
-                    }
-                }
-            }
-
-            *form = new_form;
-            new_inv
         }
     }
+    for r in rowmax.iter_mut() {
+        *r *= tol;
+    }
+    for c in colmax.iter_mut() {
+        *c *= tol;
+    }
+
+    // Assume Unit and degrade (matrixmap.c:738-782).
+    let mut new_form = MatrixForm::Unit;
+    let mut new_inv = false;
+    for k in 0..nrow {
+        for j in 0..ncol {
+            let v = m[[k, j]];
+            if is_bad(v) {
+                new_form = MatrixForm::Full;
+            } else if j == k {
+                if v != 1.0 && new_form == MatrixForm::Unit {
+                    new_form = MatrixForm::Diagonal;
+                }
+            } else {
+                let a = v.abs();
+                if a <= rowmax[k] && a <= colmax[j] {
+                    if v != 0.0 {
+                        new_inv = true;
+                    }
+                    m[[k, j]] = 0.0;
+                } else {
+                    new_form = MatrixForm::Full;
+                }
+            }
+        }
+    }
+
+    (new_form, new_inv)
 }
 
 /// The product `a · this` of two full matrices, formed as C's `MtrMult`
@@ -1796,7 +1675,7 @@ pub(crate) fn mtr_product(a: &Array2<f64>, this: &Array2<f64>) -> Array2<f64> {
     product
 }
 
-/// Run [`compress_matrix`] over a full-form matrix held outside a `MatrixMap`,
+/// Run [`compress_full`] over a full-form matrix held outside a `MatrixMap`,
 /// zeroing its insignificant off-diagonal elements.
 ///
 /// C compresses such intermediate matrices in place inside `astMtrRot`
@@ -1806,25 +1685,7 @@ pub(crate) fn mtr_product(a: &Array2<f64>, this: &Array2<f64>) -> Array2<f64> {
 /// discarded; whichever `MatrixMap` eventually receives the array derives its
 /// own form from it.
 pub(crate) fn compress_full_matrix(m: &mut Array2<f64>) {
-    let mut form = MatrixForm::Full;
-    compress_matrix(m, &mut form);
-}
-
-/// Check if a square matrix is diagonal (all off-diagonal elements are
-/// zero within `ast_equal` tolerance).
-pub(crate) fn is_diagonal(m: &Array2<f64>) -> bool {
-    let n = m.nrows();
-    if n != m.ncols() {
-        return false;
-    }
-    for i in 0..n {
-        for j in 0..n {
-            if i != j && !ast_equal(m[[i, j]], 0.0) {
-                return false;
-            }
-        }
-    }
-    true
+    compress_full(m);
 }
 
 /// Check if a matrix is the identity (within `ast_equal` tolerance).
@@ -1849,44 +1710,23 @@ fn is_identity_matrix(m: &Array2<f64>) -> bool {
     true
 }
 
-/// The `nrow × ncol` matrix with 1.0 on its leading diagonal and zeros
-/// elsewhere — the explicit form of a UNIT MatrixMap.
-///
-/// C stores no elements at all for UNIT form and its `Transform` copies the
-/// first `min(nin, nout)` input axes straight through (matrixmap.c:5239),
-/// zero-filling any remaining outputs. Holding the equivalent matrix keeps
-/// `nin`/`nout` in the array shape, as every other form here does.
-fn rect_eye(nrow: usize, ncol: usize) -> Array2<f64> {
-    let mut m = Array2::zeros((nrow, ncol));
-    for i in 0..nrow.min(ncol) {
-        m[[i, i]] = 1.0;
-    }
-    m
-}
-
-/// Invert a diagonal matrix element-wise, mirroring C's
-/// `InvertMatrix(DIAGONAL, …)` (matrixmap.c:1525): each of the
-/// `min(nrow, ncol)` diagonal elements is replaced by its reciprocal, with
-/// zero or `BAD_VALUE` diagonals mapping to `BAD_VALUE`. Unlike the FULL path
-/// this has no determinant threshold, so a near-singular-but-nonzero diagonal
-/// still yields a stored inverse — and it applies to non-square matrices too,
-/// since a diagonal matrix's inverse is well defined regardless of shape.
-///
-/// The result is transposed relative to the input (`ncol × nrow`), as the
-/// inverse maps `nout` values back to `nin`.
-fn diagonal_inverse(m: &Array2<f64>) -> Array2<f64> {
-    let nrow = m.nrows();
-    let ncol = m.ncols();
-    let mut inv = Array2::zeros((ncol, nrow));
-    for i in 0..nrow.min(ncol) {
-        let d = m[[i, i]];
-        inv[[i, i]] = if d != 0.0 && !is_bad(d) {
-            1.0 / d
-        } else {
-            BAD_VALUE
-        };
-    }
-    inv
+/// Invert a diagonal matrix, given as its diagonal elements, element-wise,
+/// mirroring C's `InvertMatrix(DIAGONAL, …)` (matrixmap.c:1486): each
+/// element is replaced by its reciprocal, with zero or `BAD_VALUE` elements
+/// mapping to `BAD_VALUE`. Unlike the FULL path this has no determinant
+/// threshold, so a near-singular-but-nonzero diagonal still yields a stored
+/// inverse — and it applies to non-square matrices too, since a diagonal
+/// matrix's inverse is well defined regardless of shape.
+fn diagonal_inverse(diag: &[f64]) -> Vec<f64> {
+    diag.iter()
+        .map(|&d| {
+            if d != 0.0 && !is_bad(d) {
+                1.0 / d
+            } else {
+                BAD_VALUE
+            }
+        })
+        .collect()
 }
 
 /// Compute the inverse of a square matrix by delegating to the port of the
@@ -1905,23 +1745,20 @@ fn diagonal_inverse(m: &Array2<f64>) -> Array2<f64> {
 /// singular (a pivot magnitude below its internal `SFA = 1e-20`). `palDmat` also solves
 /// `A·Y = X`; for a pure inverse the right-hand side is the zero vector,
 /// so the solution is carried but unused.
-fn gauss_jordan_inverse(m: &Array2<f64>) -> AstResult<Array2<f64>> {
-    let n = m.nrows();
-    debug_assert_eq!(n, m.ncols(), "matrix must be square");
-    if m.iter().any(|&v| v == BAD_VALUE) {
+///
+/// `m` holds the `n * n` elements of the matrix row by row, and so does the
+/// result.
+fn gauss_jordan_inverse(m: &[f64], n: usize) -> AstResult<Vec<f64>> {
+    debug_assert_eq!(m.len(), n * n, "matrix must be square");
+    if m.contains(&BAD_VALUE) {
         return Err(AstError::new(
             ErrorCode::Nodef,
             "a matrix holding a bad element has no inverse",
         ));
     }
 
-    // Flatten to the row-major `n*n` block palDmat mutates in place.
-    let mut a: Vec<f64> = Vec::with_capacity(n * n);
-    for row in 0..n {
-        for col in 0..n {
-            a.push(m[[row, col]]);
-        }
-    }
+    // A copy of the row-major `n*n` block, which palDmat mutates in place.
+    let mut a = m.to_vec();
     let mut y: Vec<f64> = vec![0.0; n];
 
     if !crate::pal::dmat(n, &mut a, &mut y) {
@@ -1931,7 +1768,15 @@ fn gauss_jordan_inverse(m: &Array2<f64>) -> AstResult<Array2<f64>> {
         ));
     }
 
-    Ok(Array2::from_shape_vec((n, n), a).unwrap())
+    Ok(a)
+}
+
+/// [`gauss_jordan_inverse`] of a square matrix held as an array.
+fn gauss_jordan_inverse_array(m: &Array2<f64>) -> AstResult<Array2<f64>> {
+    let n = m.nrows();
+    let elems: Vec<f64> = m.iter().copied().collect();
+    let inv = gauss_jordan_inverse(&elems, n)?;
+    Ok(Array2::from_shape_vec((n, n), inv).expect("an n by n inverse"))
 }
 
 #[cfg(test)]
@@ -1943,7 +1788,7 @@ mod tests {
     fn gauss_jordan_2x2() {
         // [[2, 0], [0, 4]] → [[0.5, 0], [0, 0.25]]
         let m = array![[2.0_f64, 0.0], [0.0, 4.0]];
-        let inv = gauss_jordan_inverse(&m).unwrap();
+        let inv = gauss_jordan_inverse_array(&m).unwrap();
         assert!((inv[[0, 0]] - 0.5).abs() < 1e-12);
         assert!((inv[[1, 1]] - 0.25).abs() < 1e-12);
         assert!(inv[[0, 1]].abs() < 1e-12);
@@ -1953,7 +1798,47 @@ mod tests {
     #[test]
     fn gauss_jordan_singular() {
         let m = array![[1.0_f64, 2.0], [2.0, 4.0]];
-        assert!(gauss_jordan_inverse(&m).is_err());
+        assert!(gauss_jordan_inverse_array(&m).is_err());
+    }
+
+    /// A diagonal matrix that is not square is scaled like any other.
+    #[test]
+    fn mtr_zoom_scales_a_rectangular_diagonal_matrix() {
+        let map = MatrixMap::diagonal(3, 2, &[2.0, 4.0]).unwrap();
+        let zoomed = map.mtr_zoom(3.0, false);
+        assert!(zoomed.is_diagonal_form());
+        assert_eq!(zoomed.f_matrix, [6.0, 12.0]);
+        assert_eq!(
+            zoomed.i_matrix.as_deref(),
+            Some(&[1.0 / 6.0, 1.0 / 12.0][..])
+        );
+        let zoomed = map.mtr_zoom(3.0, true);
+        assert!(zoomed.is_inverted());
+        assert_eq!(zoomed.f_matrix, [2.0 / 3.0, 4.0 / 3.0]);
+    }
+
+    /// The stored elements of each form, and the matrix they expand to.
+    #[test]
+    fn storage_forms() {
+        let unit = MatrixMap::diagonal(2, 3, &[1.0, 1.0]).unwrap();
+        assert!(unit.is_unit_form());
+        assert!(unit.f_matrix.is_empty() && unit.i_matrix.is_none());
+        assert_eq!(
+            unit.expanded(true).unwrap(),
+            array![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+        );
+        let diag = MatrixMap::new(array![[2.0, 0.0], [0.0, 4.0], [0.0, 0.0]]).unwrap();
+        assert!(diag.is_diagonal_form());
+        assert_eq!(diag.f_matrix, [2.0, 4.0]);
+        assert_eq!(diag.i_matrix.as_deref(), Some(&[0.5, 0.25][..]));
+        assert_eq!(
+            diag.expanded(false).unwrap(),
+            array![[2.0, 0.0], [0.0, 4.0], [0.0, 0.0]]
+        );
+        let full = MatrixMap::new(array![[1.0, 2.0], [3.0, 4.0]]).unwrap();
+        assert!(full.is_full_form());
+        assert_eq!(full.f_matrix, [1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(full.i_matrix.as_ref().map(Vec::len), Some(4));
     }
 
     /// As C's strict `Multiply`: an unusable matrix or product gives no

@@ -34,7 +34,7 @@ a `SphMap(inverted), diagonal, SphMap(forward)` sandwich into
 | 12 | Close the gap, clear the vacated slots, and return the first modified index | sphmap.c:794-812 (fn MapMerge) | mappings/simplify.rs:1672-1745 (fn default_map_merge) | architecture | ported |
 | 13 | Otherwise look for an inverted SphMap followed by a ZoomMap or diagonal MatrixMap and then a SphMap | sphmap.c:813-827 (fn MapMerge) | mappings/simplify.rs:3434-3444 (fn try_sphmap_diagonal_pattern_at) | architecture | ported |
 | 14 | Require the third Mapping to be a non-inverted SphMap | sphmap.c:828-832 (fn MapMerge) | mappings/simplify.rs:3446-3450 (fn try_sphmap_diagonal_pattern_at) | architecture | ported |
-| 15 | Require the middle Mapping to be a ZoomMap, or a diagonal MatrixMap whose diagonal elements have equal magnitude | sphmap.c:833-879 (fn MapMerge) | mappings/simplify.rs:3452-3461 (fn try_sphmap_diagonal_pattern_at), mappings/simplify.rs:3543-3557 (fn extract_3d_diagonal) | architecture | ported |
+| 15 | Require the middle Mapping to be a ZoomMap, or a diagonal MatrixMap whose diagonal elements have equal magnitude | sphmap.c:833-879 (fn MapMerge) | mappings/simplify.rs:3452-3461 (fn try_sphmap_diagonal_pattern_at), mappings/simplify.rs:3543-3556 (fn extract_3d_diagonal) | architecture | ported |
 | 16 | Only proceed if all those conditions held | sphmap.c:880-882 (fn MapMerge) | mappings/simplify.rs:3459-3461 (fn try_sphmap_diagonal_pattern_at) | architecture | ported |
 | 17 | Create a WinMap that modifies the longitude and latitude values | sphmap.c:883-886 (fn MapMerge) | mappings/simplify.rs:3487-3490 (fn try_sphmap_diagonal_pattern_at) | architecture | ported |
 | 18 | Store scales and offsets that depend only on the signs of the diagonal elements | sphmap.c:887-916 (fn MapMerge) | mappings/simplify.rs:3463-3477 (fn try_sphmap_diagonal_pattern_at) | architecture | ported |
@@ -56,7 +56,7 @@ a `SphMap(inverted), diagonal, SphMap(forward)` sandwich into
 C reads the diagonal without consulting the middle Mapping's Invert flag
 (`sphmap.c:826-827 (fn MapMerge)`), because only the *signs* of the diagonal elements matter to
 the WinMap it builds and inversion does not change them. `extract_3d_diagonal`
-(`mappings/simplify.rs:3543-3557 (fn extract_3d_diagonal)`) uses the forward matrix or factor for the same reason.
+(`mappings/simplify.rs:3543-3556 (fn extract_3d_diagonal)`) uses the forward matrix or factor for the same reason.
 
 ## Row 21 — the PolarLong check is what makes the rewrite legal
 

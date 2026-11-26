@@ -10,9 +10,10 @@
 
 use std::time::Duration;
 
+use starlink_ast::coords::PointSet;
 use starlink_ast::error::{AstError, ErrorCode};
 use starlink_ast::frames::{BasicFrameBuilder, Frame};
-use starlink_ast::mappings::LutMap;
+use starlink_ast::mappings::{LutMap, Mapping, MatrixMap, UnitMap};
 use starlink_ast::plot::Plot;
 use starlink_ast::regions::CircleBuilder;
 use starlink_ast::{AnyObject, from_native_string};
@@ -99,14 +100,71 @@ fn a_splinemap_of_too_many_coefficients_is_refused() {
     );
 }
 
+/// The limit is on the elements a MatrixMap stores, as C's is: a full matrix
+/// stores every element, a diagonal one its diagonal and a unit one none.
 #[test]
-fn a_full_or_diagonal_matrix_of_too_many_elements_is_refused() {
-    for form in ["Unit", "Diagonal"] {
-        assert_too_many(format!(
+fn a_full_matrix_of_too_many_elements_is_refused() {
+    let dump = |form: &str| {
+        format!(
             " Begin MatrixMap\n Nin = 3163\n Nout = 3162\n IsA Mapping\n \
              Form = \"{form}\"\n End MatrixMap\n"
-        ));
+        )
+    };
+    assert_too_many(dump("Full"));
+    for form in ["Unit", "Diagonal"] {
+        let dump = dump(form);
+        let (nin, nout) = within_10s(move || {
+            let obj = from_native_string(&dump).unwrap();
+            let map = obj.as_mapping().unwrap();
+            (map.nin(), map.nout())
+        })
+        .unwrap();
+        assert_eq!((nin, nout), (3163, 3162), "{form}");
     }
+}
+
+/// A ShiftMap of the most axes a Mapping can have, with no shifts, simplifies
+/// through a unit MatrixMap to a UnitMap, which stores no matrix at all.
+#[test]
+fn a_shiftmap_of_the_most_axes_simplifies_to_a_unitmap() {
+    let dump = " Begin ShiftMap\n Nin = 65536\n IsA Mapping\n End ShiftMap\n";
+    let (is_unit, nin) = within_10s(move || {
+        let obj = from_native_string(dump).unwrap();
+        let simp = obj.as_mapping().unwrap().simplify().unwrap();
+        (simp.as_any().is::<UnitMap>(), simp.nin())
+    })
+    .unwrap();
+    assert!(is_unit);
+    assert_eq!(nin, 65536);
+}
+
+/// A diagonal MatrixMap of the most axes a Mapping can have holds only its
+/// diagonal, so it is quick to make, copy, use and write.
+#[test]
+fn a_diagonal_matrixmap_of_the_most_axes_is_stored_as_its_diagonal() {
+    const N: usize = 65536;
+    let (fwd, inv, dump) = within_10s(|| {
+        let original = MatrixMap::diagonal(N, N, &vec![2.0; N]).unwrap();
+        let map = original.clone();
+        let columns: Vec<Vec<f64>> = (0..N).map(|i| vec![i as f64, 1.0, -3.0]).collect();
+        let refs: Vec<&[f64]> = columns.iter().map(Vec::as_slice).collect();
+        let pts = PointSet::from_columns(&refs).unwrap();
+        let fwd = map.transform(&pts, true).unwrap();
+        let inv = map.transform(&pts, false).unwrap();
+        let dump = AnyObject::MatrixMap(map).to_native_string().unwrap();
+        (fwd, inv, dump)
+    })
+    .unwrap();
+    assert_eq!(fwd.axis(N - 1), [2.0 * (N - 1) as f64, 2.0, -6.0]);
+    assert_eq!(inv.axis(3), [1.5, 0.5, -1.5]);
+    assert!(
+        dump.contains(" M65535 = 2\n"),
+        "{}",
+        &dump[dump.len() - 200..]
+    );
+    assert!(dump.contains(" IM65535 = 0.5\n"));
+    assert!(dump.contains(" Form = \"Diagonal\"\n"));
+    assert!(!dump.contains(" M65536 ="));
 }
 
 #[test]

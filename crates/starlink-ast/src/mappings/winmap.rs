@@ -10,7 +10,7 @@ use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::{ast_equal, is_bad};
-use super::matrix::{MatrixMap, is_diagonal};
+use super::matrix::MatrixMap;
 use super::shift::ShiftMap;
 use super::unit::UnitMap;
 use super::unitnormmap::try_merge_into_unitnormmap;
@@ -546,17 +546,8 @@ pub(crate) fn extract_linear_params(
         return Some((shifts, vec![1.0; sm.nin()]));
     }
     if let Some(mm) = mapping.as_any().downcast_ref::<MatrixMap>() {
-        let m = if inv {
-            mm.inverse_matrix()?
-        } else {
-            mm.forward_matrix()
-        };
-        if !is_diagonal(m) {
-            return None;
-        }
-        let n = m.nrows();
-        let shifts = vec![0.0; n];
-        let scales: Vec<f64> = (0..n).map(|i| m[[i, i]]).collect();
+        let scales = mm.square_diagonal(inv)?;
+        let shifts = vec![0.0; scales.len()];
         return Some((shifts, scales));
     }
     if let Some(um) = mapping.as_any().downcast_ref::<UnitMap>() {
