@@ -52,6 +52,7 @@ The build keeps debug assertions and overflow checks, so either is a finding.
 | Input | What happens | `PLAN.md` |
 |---|---|---|
 | `fitschan_read_write/slow-write-of-nine-axes` | Writing the FrameSet back takes about 9 s in the port and 28 s in C, each axis WCSAXES adds multiplying the time by about eight | §5, waiting on the C library |
+| `native_read/three-frames-of-65536-axes-written-back` | A FrameSet of three Frames of 65536 axes loads in 50 MB, but writing it back peaks at 2.1 GB, the description built before the text | §5 |
 | `native_read/polymap-niterinverse-of-two-billion` | A PolyMap's inverse iterates up to 2147483647 times a point, in C as in the port | §2, waiting on the C library |
 | `fitschan_read_write/undefined-cd-value-*` | C fails the read for a card with an undefined value; the port reads on, into the slow write above | §5 |
 | `fitschan_read_write/invalid-alternate-wcsaxes` | C fails the read for an invalid WCSAXES in an alternate description; the port reads on, into the slow write above | §5 |
