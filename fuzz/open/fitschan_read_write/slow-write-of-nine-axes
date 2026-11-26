@@ -1,0 +1,5 @@
+CTYPE1  = 'OFLN-TAN'           / Offset longitude
+CTYPE2  = 'OFLT-TAN'           / Offset latitude
+CRVAL2  =                0.000 / Reference offset lat (deg)
+CRPIX2  =               50.500 / Reference pixel
+WCSAXES =                    9

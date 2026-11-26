@@ -21,6 +21,7 @@ exclude: |
     crates/starlink-ast/vendor/.*|
     crates/starlink-ast/tests/fixtures/.*|
     crates/starlink-ast/tests/regressions/.*|
+    fuzz/open/.*|
     crates/ast-plotter-wasm/tests/fixtures/.*|
     reference/.*
   )$

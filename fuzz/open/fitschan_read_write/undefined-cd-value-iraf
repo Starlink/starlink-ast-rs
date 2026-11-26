@@ -1,0 +1,298 @@
+NAXIS1  =                  100 / Spectral axis
+NAXIS2  =                  100 / Spatial axis
+NAXIS3  =                  100 / Spatial axis
+TELESCOP= 'JCMT    '           / Telescope name (enables DTAI)
+CTYPE1  = 'FREQ    '           / Frequency axis
+CTYPE2  = 'RA---TAN'           / Right Ascension
+CTYPE3  = 'DEC--TAN'           / Declination
+CRVAL1  =           3.4500E+11 / Reference frequency (Hz)
+CRVAL2  =               -1e300
+CRVAL3  =               22.014 / Reference Dec (deg)
+CRPIX1  =                 50.0 / Reference pixel
+CRPIX2  =                 50.5 / Reference pixel
+CRPIX3  =                 50.5 / Reference pixel
+CDELT1  =           6.1035E+04 / Frequency increment (Hz)
+CDELT2  =           -0.0002778 / Degrees/pixel
+CDELT3  =            0.0002778 / Degrees/pixel
+CUNIT1  = 'Hz      '           / Frequency units
+CUNIT2  = 'deg     '           / Angular units
+CUNIT3  = 'deg     '           / Angular units
+CNAME1  = 'Frequency'          / Axis name
+CNAME2  = 'Right Ascension'    / Axis name
+CNAME3  = 'Declination'        / Ax0.0 / Equinox
+SPECSYS = 'LSRK    '           / Spectral reference frame
+SSYSSRC = 'LSRK    '           / Source velocity reference frame
+ZSOURCE =            0.0000100 / Source redshift
+RESTFRQ =           3.4506E+11 / Rest frequency (Hz)
+LONPOLE =              180.000 / Native longitude of celestial pole
+LATPOLE =               22.014 / Native latitude of celestial pole
+DTAI    =               37.000 / TAI-UTC (seconds)
+MJD-OBS =          59000.50000 / MJD of observation
+DATE-OBS= '2020-06-15T12:00:00'/ Date of observation
+WCSNAMEA= 'Galactic'           / Alternate WCS name
+CTYPE1A = 'FREQ    '           / Frequency axis (alternate A)
+CTYPE2A = 'GLON-TAN'           / Galactic longitude (alternate A)
+CTYPE3A = 'GLAT-TAN'           / Galactic latitude (alternate A)
+CRVAL1A =           3.4500E+11 / Reference frequency (Hz)
+CRVAL2A =              172.173 / Reference Galactic lon (deg)
+CRVAL3A =              -12.774 / Reference Galactic lat (deg)
+CRPIX1A =                 50.0 / Reference pixel
+CRPIX2A =                 50.5 / Reference pixel
+CRPIX3A =                 50.5 / Reference pixel
+CDELT1A =           6.1035E+04 / Frequency increment (Hz)
+CDELT2A =           -0.0002778 / Degrees/pixel
+CDELT3A =            0.0002778 / Degrees/pixel
+CUNIT1A = 'Hz      '           / Frequency units
+CUNIT2A = 'deg     '           / Angular units
+CUNIT3A = 'deg     '           / Angular units
+CNAME1A = 'Frequency'          / Axis name (alternate A)
+CNAME2A = 'Galactic Longitude A'
+CTYs 2
+CDELT1  =             -0.01000 / Degrees/pixelerence pixel
+CDELT1  =               1e-320
+CUNIT1  = 'm   
+CDELT2  = 'abc'
+RADESYS = 'FK5     '           / Referen™™™™™™™™™™™™™™™™™™    '           / Axis units
+RESTFRQ =           5.996E+14  / Rest frequency (Hz)
+SPECSYS = 'BARYsions
+NAXIS1  =                 1000
+CTY,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,PE1  = 'AWAV-A2F'           / Non-linear: aL1  = '
+CTY,,,,,,,,,,,,,NAXIS1  =         
+NAXIS2  =                  180 / length of data axis 2
+CTYPE1  = ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,PE1  = 'AWAV-A2F'           / Non-linear: air wavelength sampled, expressed as frequency
+RESTFRQ =           5.996E+14  / Rest frequency (Hz)
+CRPIX1  =              024.500 / Ref'DEC--RA'
+CTYs 2
+CDELT1  =             -0.01000 / Degrees/pixelerence pixel
+CDELT1  =               1e-320
+CUNIT1  = 'm   
+CDELT2  = 'abc'
+RADESYS = 'FK5     '           / Referen™™™™™™™™™™™™™™™™™™    '           / Axis units
+RESTFRQ =           5.996E+14  / Rest frequency (Hz)
+SPECSYS = 'BARYCENT'        ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™   / ™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™™/
+CD2_2   =         0.0016666667 /
+WAVELENG=          8.28000e-06 / Isophotal wavelength in meters
+BUNIT   = 'W/m^2-sr'           /
+SECURITY= 'Unclassified'       /
+TELESCOP= 'MSX     '           /
+INSTRUME= 'SPIRITIII'          /
+ORI             1999.0 / Epoch of refegth of data axis 2
+CTYPE1  = 'RA---TAN'           / Celestial longitude
+CTYPE2  = 'DEC--TAN'           / Celestial latitude
+CRVAL1  =               83.633 / Reference RA (deg)
+CRVAL2  =                  Inf
+CRPIX1  =               50.500 / Reference pixel on axis 1
+CRPIX2  =       on matrix element                  
+RADESYS = 'ICRS    '           / Reference frame for RA/DEC values              
+WCSAXESA=                   99
+WCSNAMEA= 'NORMEDPIXELS'       / Reference name for the coord. frame            
+CRPIX1A =                0 1.0 / Reference pixel on axis 1                      
+CRPIX2A =                  1.0 / Reference pixel on axis 2                      
+CRVAL1A =          -0.99950872 / Value at ref. pixel on axis 1                  
+CRVAL2A =          -0.99949987 / Value at ref. pixel on axis 2                  
+CTYPE1A = 'DEC--TAN'
+CTYPE2A = 'NORMEDPIXELS2'      / Type of co-ordinate on axis 2                  
+CD1_1A  =        0.00049127978 / Transformation matrix element                  
+CD2_2A  =        0.00050012503 / Transformation matrix element                  
+WCSAXESB=                    2 / Number of WCS axes                             
+WCSNAMEB= 'INTERMEDIATE0'      / Reference name for the coord. frame            
+CRPIX1B =           2147483648
+CRPIX2B =                  1.0 / Reference pixel on axis 2                      
+CRVAL1B =          -0.20445279 / Value at ref. pixel on axis 1                  
+CRVAL2B =          -0.41816747 / Value at ref. pixel on axis 2                  
+CTYPE1B = 'INTERMEDIATE02'     / Type of co-ordinate on axis 2                  
+CTYPE2B = 'INTERMEDIATE01'     / Type of co-ordinate on axis 1                  
+CD1_1B  =         5.4335614E-5 / Transformation matrix element                  
+CD1_2B  =        -1.2310545E-5 / Transformation matrix element                  
+CD2_1B  =     ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ    1.2446136E-5 / Transformation matrix element                  
+CD2_2B  =         5.4332918E-5 / Transformation matrix element                  
+A_0_2   =         7.4418702E-7 / SIP forward distortion coeff                   
+A_0_3   =        1.1430494E-10 / SIP forward distortion coeff                   
+A_0_4   =        7.0338511E-15 / = '2000-01-01T11:58:55.816' / Date of observation                       
+QV1_0   =        0.00037777814 / Projection parameter                           
+QV1_1   =                     
+QV1_2   =         1.4659181E-5 / Projection parameter                           
+QV1_4   =        -5.6541834E-9 / Projection parameter                           
+QV1_5   =        -1.659862E-10 / Projection parameter      60.264403 / Value at ref. pixel on axis 2                  
+CTYPE1  = 'RA---TAN'           / Type of co-ordinate on axis 1           CTYPE3  = 'RA---TAN'EC--TAN'           / Type of co-ordinate on axis 2                  
+CTYPE2  = 'DEC--XXX'
+CD1_1   =          -0.02528445 / Transformation matrix element                  
+CD2_2   = 'abc'
+MJD-OBS =            1.0E99999
+DATE-OBS= '2000-01-01T11:58:55.816' / Date of observation                       
+QV1_0   =        0.00037777814 / Projection parameter                           
+QV1_1   =          0.018675372 / Projection parameter                           
+QV1_2   =         1.4659181E-5 / Projection parameter                           
+QV1_4   =        -5.6541834E-9 / Projection parameter      0                    
+QV1_5   =        -1.659862E-10 / Projection pa   on axis 1                  
+CRVAL2A =          -0.99949987 / Value at ref. pixel on axis 2                  
+CTYPE1A = 'DEC--TAN'
+CTYPE2A = 'NORMEDPIXELS2'      / Type of co-ordinate on axis 2                  
+CD1_1A  =        0.00049127978 / Transformation matrix element                  
+CD2_2A  =        0.00050012503 / Transformation matrix element                  
+WCSAXESB=                    2 / Number of WCS axes                             
+WCSNAMEB= 'INTERMEDIATE0'      / Reference name for the coord. frame            
+CRPIX1B =           2147483648
+CRPIX2B =                  1.0 / Reference pixel on axis 2                      
+CRVAL1B =          -0.20445279 / Value at ref. pixel on axis 1                  
+CRVAL2B =          -0.41816747 / Value at ref. pixel on axis 2                  
+CTYPE1B = 'INTERMEDIATE02'     / Type of co-ordinate on axis 2                  
+CTYPE2B = 'INTERMEDIATE01'     / Type of co-ordinate on axis 1                  
+CD1_1B  =         5.4335614E-5 / Transformation matrix element                  
+CD1_2B  279 / Value at ref. pixel on axis 1                  
+CRVAL2B =          -0.41816747 / Value at ref. pixel on axis 2                  
+CTYPE1B = 'INTERMEDIATE02'     / Type of co-ordinate on axis 2                  
+CTYPE2B = 'INTERMEDIATE01'     / Type of co-ordinate on axis 1                  
+CD1_1B  =         5.4335614E-5 / Transformation matrix element                  
+CD1_2B  =        -1.2310545E-5 / Transformation matrix element                  
+CD2_1B  =     ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ    1.2446136E-5 / Transformation matrix element                  
+CD2_2B  =         5.4332918E-5 / Transformation matrix element                  
+A_0_2   =         7.4418702E-7 / SIP forward distortion coeff                   
+A_0_3   =        1.1430494E-10 / SIP forward distortion coeff         NAXIS1  =                  512 / length of data axis 1
+NAXIS2  =                   -1
+CTYPE1  = 'RA---TAN'           / Gnomonic projection
+CTYPE2  = 'DEC-   50.500 / Reference pixel on axis 2
+CDELT1-TAN'           / Gnomonic projection
+CRVAL1  = 'abc'
+A_ORDER =     N'           / Gnomonic projection
+CRVAL1  = 'abc'
+A_ORDER =               100000
+CRVAL2  =               45.000 / Reference Dec (deg)
+CRPIX1  =   Ø          256.500 / ReferCTYPE1  = 'RA---ZPN'ence pixel on axis 1
+CRPIX2 ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ =              256.500 / Reference pixel ovn axis 2
+CD1_1   =        -BEGAST8.3332205E-4 / CD matrix
+A_ORDER =               100000
+MJD-OBS =                   -1
+CD1_2   =                  0.0 / CD matrix
+CD3_1   =                  0.0 / CD matrix
+CD2_2   =  =           -0.0002778 / Degrees/pixel
+CDELT2  =            0.0002778 / Degrees/pixel
+PC1_1           0.00083332206 / CD matrix
+RADECSYS= 'FK5              
+EPOCH   =               1999.0 / Epoch of reference equinox                     
+DATE-OBS= '2   
+RESTFREQ=            1.4204E=                    0
+CUNIT1  = 'furlong'
+RADESYS = 'FK4     '           / FK4 reference frame, no EQUINOX supp+9 / [Hz] Rest frequency       lied
+EN      nt WITHOUT PV1_1 orrence equinox                     
+DATE-eg)
+CRVAL2  = 'abc'
+CRPIX1  =               50.500 / Reference pixel on axis 1
+CRPIX2  =            NAXIS1  =                  512 / length of data axis 1
+NAXIS2  =                   -1
+CTYPE1  = 'RA---TAN'           / Gnomonic projection
+CTYPE2  = 'DEC-   50.500 / Reference pixel on axis 2
+CDELT1-TAN'           / Gnomonic projection
+CRVAL1  = 'abc'
+A_ORDER =     N'           / Gnomonic projection
+CRVAL1  = 'abc'
+A_ORDER =               100000
+CRVAL2  =               45.000 / Reference Dec (deg)
+CRPIX1  =   Ø          256.500 / ReferCTYPE1  = 'RA---ZPN'ence pixel on axis 1
+CRPIX2  =              256.500 / Reference pixel ovn axis 2
+CD1_1   =        -BEGAST8.3332205E-4 / CD matrix
+A_ORDER =               100000
+MJD-OBS =                   -1
+CD1_2   =                      -5.533 / Reference value (deg)                          
+CRPIX1B =                150.5 / Reference pixel                                
+CRPIX2B =                150.5 / Reference pixel                                
+CD1_1   =                   150.5 / Reference pixel                                
+CD1_1   =                   -0
+CD2_2   =                 0.01 / Transformation matrix element                  
+MJD-OBS =            51544.499 / Modified Julian Date of observation            
+DATE-OBS= '2000-01-01T11:58:55.816' / Date of observation                0.0 / CD matrix
+CD3_1   =                  0.0 / CD matrix
+CD2_2   =  =           -0.0002778 / Degrees/pixel
+CDELT2  =            0.0002778 / Degrees/pixel
+PC1_1           0.00083332206 / CD matrix
+RADECSYS= 'FK5              
+EPOCH   =               1999.0 / Epoch of refegth of data axis 2
+CTYPE1  = 'RA---TAN'           / Celestial longitude
+CTYPE2  = 'DEC--TAN'           / Celestial latitude
+CRVAL1  =               83.633 / Reference RA (deg)
+CRVAL2  =                  Inf
+CRPIX1  =               50.500 / Reference pixel on axis 1
+CRPIX2  =            NAXIS1  =                  512 / length of data axis 1
+NAXIS2  =                   -1
+CTCTYPE1  = 'RA---TAN'           / Gnomonic projection
+CTYPE2  = 'DEC-   50.500 / Reference pixel on axis 2
+CDELT1-TAN'           / Gnomonic projection
+CRVAL1  = 'abc'
+A_ORDER =     N'           / Gnomonic projection
+CRVAL1  = 'abc'
+A_ORDER =               100000
+CRVAL2  =               45.000 / Reference Dec (deg)
+CRPIX1  =   Ø          256.500 / ReferCTYPE1  = 'RA---ZPN'ence pixel on axis 1
+CRPIX2  =              256.500 / Reference pixel ovn axis 2
+CD1_1   =        -BEGAST8.3332205E-4 / CD matrix
+A_ORDER =               100000
+MJD-OBS =                   -1
+CD1_2   =                      -5.533 / Reference value (deg)                          
+CRPIX1B =                150.5 / Reference pixel                                
+CRPIX2B =                150.5 / Reference pixel                                
+CD1_1   =                   150.5 / Reference pixel                                
+CD1_1   =                   -0
+CD2_2   =                 0.01 / Transformation matrix element                  
+MJD-OBS =            51544.499 / Modified Julian Date of observation            
+DATE-OBS= '2000-01-01T11:58:55.816' / Date of observation                0.0 / CD matrix
+CD3_1   =                  0.0 / CD matrix
+CD2_2   =  =           -0.0002778 / Degrees/pixel
+CDELT2  =            0.0002778 / Degrees/pixel
+PC1_1           0.00083332206 / CD matrix
+RADECSYS= 'FK5              
+EPOCH   =               1999.0 / Epoch of refegth of data axis 2
+CTYPE1  = 'RA---TAN'           / Celestial longitude
+CTYPE2  = 'DEC--TAN'           / Celestial latitude
+CRVAL1  =               83.633 / Reference RA (deg)
+CRVAL2  =                  Inf
+CRPIX1  =               50.500 / Reference pixel on axis 1
+CRPIX2  =            NAXIS1  =                  512 / length of data axis 1
+NAXIS2  =                   -1
+CTYPE1  = 'RA---TAN'           / Gnomonic projection
+CTYPE2  = 'DEC-   50          
+CD1_1A  =                -0.01 / Transformation matrix element                  
+CD2_2A  =                 0.01 / ersion 6.0.Transformation matrix element                  
+RADESYSA= 'ICRS    '           / Reference frame for RA/DEC values              
+CD1_1B  = 'abc'
+HISTORY Makeimage Version 3.2
+HISTORY Destriped
+HISTORY Data collected in J2000 FK.500 / Reference pixel on axis 2
+CDELT1-TAN'           / Gnomonic projection
+CRVAL1  = 'abc'
+A_ORDER =     N'           / Gnomonic projection
+CRVAL1  = 'abc'
+A_ORDER =               100000
+CRVAL2  =               45.000 / Reference Dec (deg)
+CTYPE1A = 'RA---TAN'
+CRPIX1  =   Ø          256.500 / ReferCTYPE1  = 'RA---ZPN'ence pixel on axis 1
+CRPIX2  = '1.0'
+CD1_1   =        -BEGAST8.3332205E-4 / CD matrix
+A_ORDER =               100000
+MJD-OBS =                   -1
+CD1_2   =                  0.0 / CD matrix
+CD3_1   =                  0.0 / CD matrix
+CD2_2   =  =           -0.0002778 / Degrees/pixel
+CDELT2  =            5 coordinates
+HISTORY Data samples transformed to Galactic coordinates
+HISTORY and convolved onto image grid using sigma=3.0 arcsec
+HISTORY Gaussian k     101.255 / Alternate A: Galactic lon ref
+C1VAL2  =               16.177 / Alternate A: Galactic lat re' / Axis name (alternate A)
+CNAME3A = 'Galactic Latitude'  / Axis name (alternate A)
+SPECSYSA= 'LSRK    '           / Spectral ref frame (alternate A)
+SSYSSRCA= 'LSRK    '           / Source velocity ref (alternate A)
+ZSOURCEA=            0.0000100 / Source red0.0002778 / Degrees/pixel
+PC1_1           0.00083332206 / CD matrix
+RADECSYS= 'FK5    shift (alternate A)
+RESTFRQA=           3.4506E+11 / Rest frequency (alternate A)
+LONPOLEA=              180.000 / LONPOLE (alternate A)
+LATPOLEA=              -12.774 / LATPOLE (alternate A)
+END
+          
+EPOCH   =               1999.0 / Epoch of reference equinox                     
+DATE-OBS= '2   
+RESTFREQ=            1.4204E=               OBS= '2   
+RESTFREQ=            1.4204E=                    0
+RADESYS = 'FK4     '           / FK4 reference frame, no EQUINOX supp+9 / [Hz] Rest frequency       lied
+EN      nt WITHOUT PV1_1 or PV1_2
+DEND
+
