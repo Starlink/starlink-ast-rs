@@ -31,12 +31,12 @@ self-simplification itself, in `SelectorMap::reduced_children`
 | 6 | If anything simplified, build a new SelectorMap from the results | selectormap.c:716-725 (fn MapMerge) | selectormap.rs:222-234 (fn reduced_children) | architecture | ported |
 | 7 | Release resources | selectormap.c:726-732 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 8 | Otherwise merge with a neighboring SelectorMap, in series only | selectormap.c:733-738 (fn MapMerge) | selectormap.rs:439-469 (fn try_merge) | architecture | ported |
-| 9 | Check the higher neighbor first, noting the lower index of the pair | selectormap.c:739-745 (fn MapMerge) | mappings/simplify.rs:1675-1684 (fn default_map_merge) | architecture | ported |
-| 10 | Failing that, check the lower neighbor the same way | selectormap.c:746-756 (fn MapMerge) | mappings/simplify.rs:1688-1697 (fn default_map_merge) | architecture | ported |
+| 9 | Check the higher neighbor first, noting the lower index of the pair | selectormap.c:739-745 (fn MapMerge) | mappings/simplify.rs:1683-1692 (fn default_map_merge) | architecture | ported |
+| 10 | Failing that, check the lower neighbor the same way | selectormap.c:746-756 (fn MapMerge) | mappings/simplify.rs:1696-1705 (fn default_map_merge) | architecture | ported |
 | 11 | Cancel the pair only if the two SelectorMaps are equal with opposite invert flags | selectormap.c:757-765 (fn MapMerge) | selectormap.rs:450-466 (fn try_merge) | architecture | ported |
 | 12 | Replace the first of the pair with a UnitMap and set its invert flag | selectormap.c:766-773 (fn MapMerge) | selectormap.rs:468 (fn try_merge) | architecture | ported |
-| 13 | Annul the second and shuffle the rest down, clearing the vacated slot | selectormap.c:774-785 (fn MapMerge) | mappings/simplify.rs:1753-1754 (fn default_map_merge) | architecture | ported |
-| 14 | Decrement the Mapping count and return the index of the first modified element | selectormap.c:786-793 (fn MapMerge) | mappings/simplify.rs:1754-1755 (fn default_map_merge) | architecture | ported |
+| 13 | Annul the second and shuffle the rest down, clearing the vacated slot | selectormap.c:774-785 (fn MapMerge) | mappings/simplify.rs:1761-1762 (fn default_map_merge) | architecture | ported |
+| 14 | Decrement the Mapping count and return the index of the first modified element | selectormap.c:786-793 (fn MapMerge) | mappings/simplify.rs:1762-1763 (fn default_map_merge) | architecture | ported |
 | 15 | Clear the result value if an error occurred | selectormap.c:794-796 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |
 | 16 | Return the result | selectormap.c:797-798 (fn MapMerge) | selectormap.rs:436 (fn map_merge) | ceremony | ported |
 

@@ -31,17 +31,17 @@ basic-Frame test of row 6 only when the Frame did not reduce.
 | 6 | A basic Frame's `astNorm` does nothing, so the NormMap becomes a UnitMap | normmap.c:637-645 (fn MapMerge) | normmap.rs:231-234 (fn map_merge) | architecture | ported |
 | 7 | Otherwise: cancel with its own inverse in series, or drop duplicates | normmap.c:646-650 (fn MapMerge) | normmap.rs:244-279 (fn try_merge) | architecture | ported |
 | 8 | Start with nothing to cancel against | normmap.c:651-653 (fn MapMerge) | -- | architecture | n/a: the port's pairwise hook is asked about one neighbor at a time, so there is no candidate index to initialize |
-| 9 | Consider the lower neighbor | normmap.c:654-656 (fn MapMerge) | mappings/simplify.rs:1688-1697 (fn default_map_merge) | architecture | ported |
+| 9 | Consider the lower neighbor | normmap.c:654-656 (fn MapMerge) | mappings/simplify.rs:1696-1705 (fn default_map_merge) | architecture | ported |
 | 10 | Require the two Invert flags to be opposite | normmap.c:657-661 (fn MapMerge) | normmap.rs:262-267 (fn try_merge) | architecture | ported |
 | 11 | Require the encapsulated Frames to be equal | normmap.c:662-669 (fn MapMerge) | normmap.rs:263 (fn try_merge) | architecture | ported |
-| 12 | Likewise consider the upper neighbor | normmap.c:670-683 (fn MapMerge) | mappings/simplify.rs:1675-1684 (fn default_map_merge) | architecture | ported |
+| 12 | Likewise consider the upper neighbor | normmap.c:670-683 (fn MapMerge) | mappings/simplify.rs:1683-1692 (fn default_map_merge) | architecture | ported |
 | 13 | On a cancel, replace both with UnitMaps and report the lower index | normmap.c:684-693 (fn MapMerge) | normmap.rs:264 (fn try_merge) | architecture | ported |
 | 14 | Otherwise look for a run of identical NormMaps following the nominated one | normmap.c:694-698 (fn MapMerge) | normmap.rs:269-276 (fn try_merge) | architecture | ported |
-| 15 | Walk forward until the list ends or a non-NormMap is reached | normmap.c:699-706 (fn MapMerge) | -- | architecture | n/a: the run collapses a pair at a time, the driver re-nominating the survivor until a pass makes no change (`mappings/simplify.rs:1946-2005 (fn run_nominate_loop)`) |
+| 15 | Walk forward until the list ends or a non-NormMap is reached | normmap.c:699-706 (fn MapMerge) | -- | architecture | n/a: the run collapses a pair at a time, the driver re-nominating the survivor until a pass makes no change (`mappings/simplify.rs:1954-2016 (fn run_nominate_loop)`) |
 | 16 | Require the Invert flags to be equal | normmap.c:707-709 (fn MapMerge) | normmap.rs:262-272 (fn try_merge) | architecture | ported |
 | 17 | Require the Frames to be equal | normmap.c:710-713 (fn MapMerge) | normmap.rs:272 (fn try_merge) | architecture | ported |
 | 18 | Replace each later NormMap with a UnitMap | normmap.c:714-718 (fn MapMerge) | normmap.rs:273-275 (fn try_merge) | architecture | ported |
-| 19 | Report the index of the *first* modified Mapping, so a later change does not overwrite it | normmap.c:719-727 (fn MapMerge) | mappings/simplify.rs:1754-1756 (fn default_map_merge) | architecture | ported |
+| 19 | Report the index of the *first* modified Mapping, so a later change does not overwrite it | normmap.c:719-727 (fn MapMerge) | mappings/simplify.rs:1762-1764 (fn default_map_merge) | architecture | ported |
 | 20 | Free resources | normmap.c:728-730 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 21 | Re-instate the nominated NormMap's Invert attribute | normmap.c:731-733 (fn MapMerge) | -- | ceremony | n/a: nothing was mutated, so nothing is restored |
 | 22 | Clear the result value if an error occurred | normmap.c:734-736 (fn MapMerge) | -- | ceremony | n/a: an error is a `Result::Err`, not a value to be cleared alongside one |

@@ -273,13 +273,15 @@ pub(crate) mod trace {
     /// The oscillation check froze an element. C's `FREEZE`.
     #[inline]
     #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
-    pub(crate) fn freeze(modified: usize, m: &dyn Mapping) {
+    /// `m` is `None` when the merge removed the modified element, which C
+    /// shows as `<NULL>`.
+    pub(crate) fn freeze(modified: usize, m: Option<&dyn Mapping>) {
         #[cfg(feature = "tracing")]
         tracing::debug!(
             target: "ast::simplify",
             depth = depth(),
             modified,
-            class = %class_of(m),
+            class = %m.map_or_else(|| "<NULL>".to_string(), class_of),
             "FREEZE",
         );
     }
@@ -629,6 +631,12 @@ impl MergeCtx {
         if let Some((m, _, _)) = self.list.get_mut(index) {
             m.mapping_flags_mut().frozen = true;
         }
+    }
+
+    /// Borrow a `(mapping, effective_inv, orig_inv)` entry, if there is one
+    /// at `index`.
+    pub(crate) fn get(&self, index: usize) -> Option<&(DynMapping, bool, bool)> {
+        self.list.get(index)
     }
 
     /// Borrow a `(mapping, effective_inv, orig_inv)` entry.
@@ -1991,8 +1999,11 @@ fn run_nominate_loop(
             if w1 > 0 {
                 // Repeating pattern: freeze the modified mapping so it stops
                 // contributing to the argument (C astSetFrozen).
+                // A merge that removed the modified element, as a UnitMap in
+                // series removes itself, leaves nothing at `modified`;
+                // C's `astSetFrozen` of the emptied slot does nothing.
                 ctx.freeze(modified);
-                trace::freeze(modified, ctx.entry(modified).0.as_ref());
+                trace::freeze(modified, ctx.get(modified).map(|e| e.0.as_ref()));
             } else {
                 improved = true;
                 any = true;

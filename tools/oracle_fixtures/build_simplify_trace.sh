@@ -125,6 +125,8 @@ static int ast__merge_depth = 0;
 
 /* The class as astGetClass gives it, naming a CmpMap's composition too. */
 const char *ast__TraceClass( AstMapping *map, int *status ){
+   /* The oscillation check can name a slot a merge has emptied. */
+   if( !map ) return "<NULL>";
    if( astIsACmpMap( map ) ) {
       return ( (AstCmpMap *) map )->series ? "CmpMap[series]" : "CmpMap[parallel]";
    }

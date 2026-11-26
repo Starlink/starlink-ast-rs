@@ -20,8 +20,8 @@ swap only if one of the swapped Mappings then simplifies. A PcdMap combines in
 parallel with nothing.
 
 `PcdMap::map_merge` (`pcdmap.rs:478-485 (fn map_merge)`) delegates to
-`simplify::pcd_map_merge` (`mappings/simplify.rs:3125-3159 (fn pcd_map_merge)`), whose swap half is
-`pcd_swap_strategy` (`mappings/simplify.rs:3168-3226 (fn pcd_swap_strategy)`), so Rust sites below
+`simplify::pcd_map_merge` (`mappings/simplify.rs:3136-3170 (fn pcd_map_merge)`), whose swap half is
+`pcd_swap_strategy` (`mappings/simplify.rs:3179-3237 (fn pcd_swap_strategy)`), so Rust sites below
 are in `mappings/simplify.rs` unless stated.
 
 C's `CanMerge`, `CanSwap`, `PcdZoom` and `PcdPerm` are file-local helpers that
@@ -36,43 +36,43 @@ must discard the simplified record.
 |---|---|---|---|---|---|
 | 1 | Initialize the returned result to -1 | pcdmap.c:1416-1418 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | pcdmap.c:1419-1421 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | See whether the PcdMap can be replaced by a simpler Mapping without reference to its neighbors | pcdmap.c:1427-1429 (fn MapMerge) | mappings/simplify.rs:3131-3139 (fn pcd_map_merge) | architecture | ported |
-| 4 | A zero distortion coefficient means the PcdMap is a UnitMap | pcdmap.c:1430-1433 (fn MapMerge) | mappings/simplify.rs:3136 (fn pcd_map_merge) | architecture | ported |
+| 3 | See whether the PcdMap can be replaced by a simpler Mapping without reference to its neighbors | pcdmap.c:1427-1429 (fn MapMerge) | mappings/simplify.rs:3142-3150 (fn pcd_map_merge) | architecture | ported |
+| 4 | A zero distortion coefficient means the PcdMap is a UnitMap | pcdmap.c:1430-1433 (fn MapMerge) | mappings/simplify.rs:3147 (fn pcd_map_merge) | architecture | ported |
 | 5 | Annul the PcdMap in the list, replace it with a two-axis UnitMap and clear the entry's Invert flag | pcdmap.c:1434-1440 (fn MapMerge) | mappings/simplify.rs:3134 (fn pcd_map_merge) | architecture | ported |
-| 6 | Return the index of the first modified element | pcdmap.c:1441-1443 (fn MapMerge) | mappings/simplify.rs:3138 (fn pcd_map_merge) | architecture | ported |
-| 7 | If the PcdMap itself could not be simplified, see whether it merges with the Mappings on either side | pcdmap.c:1444-1447 (fn MapMerge) | mappings/simplify.rs:3147-3154 (fn pcd_map_merge) | architecture | ported |
-| 8 | Store the classes of the neighboring Mappings in the list | pcdmap.c:1448-1451 (fn MapMerge) | mappings/simplify.rs:1675-1697 (fn default_map_merge) | ceremony | ported |
-| 9 | Everything that follows is in series | pcdmap.c:1452-1455 (fn MapMerge) | mappings/simplify.rs:3143-3145 (fn pcd_map_merge) | architecture | ported |
+| 6 | Return the index of the first modified element | pcdmap.c:1441-1443 (fn MapMerge) | mappings/simplify.rs:3149 (fn pcd_map_merge) | architecture | ported |
+| 7 | If the PcdMap itself could not be simplified, see whether it merges with the Mappings on either side | pcdmap.c:1444-1447 (fn MapMerge) | mappings/simplify.rs:3158-3165 (fn pcd_map_merge) | architecture | ported |
+| 8 | Store the classes of the neighboring Mappings in the list | pcdmap.c:1448-1451 (fn MapMerge) | mappings/simplify.rs:1683-1705 (fn default_map_merge) | ceremony | ported |
+| 9 | Everything that follows is in series | pcdmap.c:1452-1455 (fn MapMerge) | mappings/simplify.rs:3154-3156 (fn pcd_map_merge) | architecture | ported |
 | 10 | Look on each side for a neighbor the PcdMap can merge with directly — its own inverse, or a UnitMap | pcdmap.c:1456-1479 (fn MapMerge) | pcdmap.rs:487-521 (fn try_merge) | architecture | ported |
 | 11 | If it can, create the merged Mapping | pcdmap.c:1480-1483 (fn MapMerge) | pcdmap.rs:498-518 (fn try_merge) | architecture | ported |
 | 12 | A PcdMap neighbor must be the nominated Mapping's inverse, so the pair becomes a UnitMap | pcdmap.c:1484-1489 (fn MapMerge) | pcdmap.rs:499-510 (fn try_merge) | architecture | ported |
 | 13 | A UnitMap neighbor merges to a clone of the nominated PcdMap, carrying the entry's Invert flag | pcdmap.c:1490-1496 (fn MapMerge) | pcdmap.rs:513-518 (fn try_merge) | architecture | ported |
-| 14 | Proceed only if the merged Mapping was built successfully | pcdmap.c:1497-1499 (fn MapMerge) | mappings/simplify.rs:3152 (fn pcd_map_merge) | ceremony | ported |
-| 15 | Annul the first of the two Mappings, replace it with the merged Mapping and set its Invert flag | pcdmap.c:1500-1505 (fn MapMerge) | mappings/simplify.rs:1749-1754 (fn default_map_merge) | architecture | ported |
-| 16 | Annul the second and shuffle the rest of the list down to fill the gap | pcdmap.c:1506-1513 (fn MapMerge) | mappings/simplify.rs:1754 (fn default_map_merge) | architecture | ported |
+| 14 | Proceed only if the merged Mapping was built successfully | pcdmap.c:1497-1499 (fn MapMerge) | mappings/simplify.rs:3163 (fn pcd_map_merge) | ceremony | ported |
+| 15 | Annul the first of the two Mappings, replace it with the merged Mapping and set its Invert flag | pcdmap.c:1500-1505 (fn MapMerge) | mappings/simplify.rs:1757-1762 (fn default_map_merge) | architecture | ported |
+| 16 | Annul the second and shuffle the rest of the list down to fill the gap | pcdmap.c:1506-1513 (fn MapMerge) | mappings/simplify.rs:1762 (fn default_map_merge) | architecture | ported |
 | 17 | Clear the vacated element at the end | pcdmap.c:1514-1517 (fn MapMerge) | -- | ceremony | n/a: removing the element shortens the `Vec`, so there is no vacated slot to clear |
-| 18 | Decrement the Mapping count and return the index of the first modified element | pcdmap.c:1518-1524 (fn MapMerge) | mappings/simplify.rs:1755-1756 (fn default_map_merge) | architecture | ported |
-| 19 | If no direct merge was possible, consider whether swapping the PcdMap with a neighbor would be worthwhile | pcdmap.c:1525-1535 (fn MapMerge) | mappings/simplify.rs:3158 (fn pcd_map_merge) | architecture | ported |
-| 20 | Set a flag for whether the PcdMap could swap with its higher neighbor | pcdmap.c:1536-1545 (fn MapMerge) | mappings/simplify.rs:3176 (fn pcd_swap_strategy) | architecture | ported |
-| 21 | If so, step forward through the following Mappings looking for one the PcdMap could merge with | pcdmap.c:1546-1555 (fn MapMerge) | mappings/simplify.rs:3182-3186 (fn pcd_swap_strategy) | architecture | ported |
-| 22 | On finding a UnitMap or PcdMap, note the number of Mappings separating the two and leave the loop | pcdmap.c:1556-1565 (fn MapMerge) | mappings/simplify.rs:3253-3258 (fn pcd_steps_to_merge_target) | architecture | ported |
-| 23 | On finding a Mapping the PcdMap could not swap past, leave with -1 steps; only ZoomMaps and PermMaps may be stepped over | pcdmap.c:1566-1577 (fn MapMerge) | mappings/simplify.rs:3260-3262 (fn pcd_steps_to_merge_target) | architecture | ported |
-| 24 | Do the same working from the PcdMap towards the start of the list | pcdmap.c:1578-1609 (fn MapMerge) | mappings/simplify.rs:3177 (fn pcd_swap_strategy),3181-3185 (fn pcd_swap_strategy) | architecture | ported |
-| 25 | Choose which neighbor to swap with so the PcdMap moves towards the nearest Mapping it can merge with | pcdmap.c:1610-1623 (fn MapMerge) | mappings/simplify.rs:3194-3200 (fn pcd_swap_strategy) | architecture | ported |
-| 26 | With a target Mapping in reach, replace the supplied pair with the swapped pair | pcdmap.c:1624-1628 (fn MapMerge) | mappings/simplify.rs:3203-3205 (fn pcd_swap_strategy) | architecture | ported |
-| 27 | Swap the Mappings, by the ZoomMap route or the PermMap route | pcdmap.c:1629-1636 (fn MapMerge) | mappings/simplify.rs:3349-3407 (fn pcd_swap_pair) | architecture | ported |
-| 28 | And then merge them, running `astMapMerge` over the sub-list that starts at the new adjacency | pcdmap.c:1637-1660 (fn MapMerge) | mappings/simplify.rs:3212-3217 (fn pcd_swap_strategy) | architecture | ported |
-| 29 | With no Mapping available for merging, a swap may still pay because the swapped Mappings may be simpler | pcdmap.c:1661-1665 (fn MapMerge) | mappings/simplify.rs:3222-3224 (fn pcd_swap_strategy) | architecture | ported |
-| 30 | Try swapping with each possible neighbor in turn | pcdmap.c:1666-1668 (fn MapMerge) | mappings/simplify.rs:3276 (fn pcd_speculative_swap) | architecture | ported |
-| 31 | Set up the class and pointers for the pair to be swapped, the lower neighbor first and then the upper | pcdmap.c:1669-1684 (fn MapMerge) | mappings/simplify.rs:3277-3283 (fn pcd_speculative_swap) | architecture | ported |
-| 32 | Proceed only when there is a Mapping to swap with | pcdmap.c:1685-1687 (fn MapMerge) | mappings/simplify.rs:3281-3282 (fn pcd_speculative_swap) | architecture | ported |
-| 33 | Take copies of the Mappings and Invert flags so the supplied values are not changed | pcdmap.c:1688-1694 (fn MapMerge) | mappings/simplify.rs:3335-3339 (fn pcd_clone_pair) | architecture | ported |
-| 34 | Swap these Mappings | pcdmap.c:1695-1701 (fn MapMerge) | mappings/simplify.rs:3286-3292 (fn pcd_speculative_swap) | architecture | ported |
-| 35 | If neither swapped Mapping simplifies to a different class there is no point in swapping, so discard the copies | pcdmap.c:1702-1712 (fn MapMerge) | mappings/simplify.rs:3297-3308 (fn pcd_speculative_swap) | architecture | ported |
-| 36 | Otherwise annul the supplied Mappings, store the swapped pair with its Invert flags, record the first index and stop | pcdmap.c:1713-1729 (fn MapMerge) | mappings/simplify.rs:3311-3315 (fn pcd_speculative_swap) | architecture | ported |
+| 18 | Decrement the Mapping count and return the index of the first modified element | pcdmap.c:1518-1524 (fn MapMerge) | mappings/simplify.rs:1763-1764 (fn default_map_merge) | architecture | ported |
+| 19 | If no direct merge was possible, consider whether swapping the PcdMap with a neighbor would be worthwhile | pcdmap.c:1525-1535 (fn MapMerge) | mappings/simplify.rs:3169 (fn pcd_map_merge) | architecture | ported |
+| 20 | Set a flag for whether the PcdMap could swap with its higher neighbor | pcdmap.c:1536-1545 (fn MapMerge) | mappings/simplify.rs:3187 (fn pcd_swap_strategy) | architecture | ported |
+| 21 | If so, step forward through the following Mappings looking for one the PcdMap could merge with | pcdmap.c:1546-1555 (fn MapMerge) | mappings/simplify.rs:3193-3197 (fn pcd_swap_strategy) | architecture | ported |
+| 22 | On finding a UnitMap or PcdMap, note the number of Mappings separating the two and leave the loop | pcdmap.c:1556-1565 (fn MapMerge) | mappings/simplify.rs:3264-3269 (fn pcd_steps_to_merge_target) | architecture | ported |
+| 23 | On finding a Mapping the PcdMap could not swap past, leave with -1 steps; only ZoomMaps and PermMaps may be stepped over | pcdmap.c:1566-1577 (fn MapMerge) | mappings/simplify.rs:3271-3273 (fn pcd_steps_to_merge_target) | architecture | ported |
+| 24 | Do the same working from the PcdMap towards the start of the list | pcdmap.c:1578-1609 (fn MapMerge) | mappings/simplify.rs:3188 (fn pcd_swap_strategy),3192-3196 (fn pcd_swap_strategy) | architecture | ported |
+| 25 | Choose which neighbor to swap with so the PcdMap moves towards the nearest Mapping it can merge with | pcdmap.c:1610-1623 (fn MapMerge) | mappings/simplify.rs:3205-3211 (fn pcd_swap_strategy) | architecture | ported |
+| 26 | With a target Mapping in reach, replace the supplied pair with the swapped pair | pcdmap.c:1624-1628 (fn MapMerge) | mappings/simplify.rs:3214-3216 (fn pcd_swap_strategy) | architecture | ported |
+| 27 | Swap the Mappings, by the ZoomMap route or the PermMap route | pcdmap.c:1629-1636 (fn MapMerge) | mappings/simplify.rs:3360-3418 (fn pcd_swap_pair) | architecture | ported |
+| 28 | And then merge them, running `astMapMerge` over the sub-list that starts at the new adjacency | pcdmap.c:1637-1660 (fn MapMerge) | mappings/simplify.rs:3223-3228 (fn pcd_swap_strategy) | architecture | ported |
+| 29 | With no Mapping available for merging, a swap may still pay because the swapped Mappings may be simpler | pcdmap.c:1661-1665 (fn MapMerge) | mappings/simplify.rs:3233-3235 (fn pcd_swap_strategy) | architecture | ported |
+| 30 | Try swapping with each possible neighbor in turn | pcdmap.c:1666-1668 (fn MapMerge) | mappings/simplify.rs:3287 (fn pcd_speculative_swap) | architecture | ported |
+| 31 | Set up the class and pointers for the pair to be swapped, the lower neighbor first and then the upper | pcdmap.c:1669-1684 (fn MapMerge) | mappings/simplify.rs:3288-3294 (fn pcd_speculative_swap) | architecture | ported |
+| 32 | Proceed only when there is a Mapping to swap with | pcdmap.c:1685-1687 (fn MapMerge) | mappings/simplify.rs:3292-3293 (fn pcd_speculative_swap) | architecture | ported |
+| 33 | Take copies of the Mappings and Invert flags so the supplied values are not changed | pcdmap.c:1688-1694 (fn MapMerge) | mappings/simplify.rs:3346-3350 (fn pcd_clone_pair) | architecture | ported |
+| 34 | Swap these Mappings | pcdmap.c:1695-1701 (fn MapMerge) | mappings/simplify.rs:3297-3303 (fn pcd_speculative_swap) | architecture | ported |
+| 35 | If neither swapped Mapping simplifies to a different class there is no point in swapping, so discard the copies | pcdmap.c:1702-1712 (fn MapMerge) | mappings/simplify.rs:3308-3319 (fn pcd_speculative_swap) | architecture | ported |
+| 36 | Otherwise annul the supplied Mappings, store the swapped pair with its Invert flags, record the first index and stop | pcdmap.c:1713-1729 (fn MapMerge) | mappings/simplify.rs:3322-3326 (fn pcd_speculative_swap) | architecture | ported |
 | 37 | Annul the simplified Mappings | pcdmap.c:1730-1738 (fn MapMerge) | -- | ceremony | n/a: the simplification is an owned value dropped at the end of the worthwhile test |
-| 38 | In parallel, a PcdMap cannot combine with any other Mapping | pcdmap.c:1739-1744 (fn MapMerge) | mappings/simplify.rs:3143-3145 (fn pcd_map_merge) | architecture | ported |
-| 39 | Return the result | pcdmap.c:1745-1746 (fn MapMerge) | mappings/simplify.rs:3158 (fn pcd_map_merge) | ceremony | ported |
+| 38 | In parallel, a PcdMap cannot combine with any other Mapping | pcdmap.c:1739-1744 (fn MapMerge) | mappings/simplify.rs:3154-3156 (fn pcd_map_merge) | architecture | ported |
+| 39 | Return the result | pcdmap.c:1745-1746 (fn MapMerge) | mappings/simplify.rs:3169 (fn pcd_map_merge) | ceremony | ported |
 | 40 | Setting or clearing Disco clears the simplified record | pcdmap.c:2598 (fn astMAKE_CLEAR1),2601 (fn astMAKE_SET1) | pcdmap.rs:165-184 (fn set_disc) | ceremony | ported |
 
 ## Rows 3 to 6 — the reduction, and the ordering around it
@@ -165,7 +165,7 @@ being applied, and it is `Transform` that reciprocates — so the factor the mer
 list actually applies has to be formed explicitly
 (`pcdmap.c:2378-2384 (fn PcdZoom)`), and the ZoomMap the swap creates is stored
 with a cleared Invert flag so it holds that factor directly. The port does the
-same in `mappings/simplify.rs:3373 (fn pcd_swap_pair)`, gated by
+same in `mappings/simplify.rs:3384 (fn pcd_swap_pair)`, gated by
 `pcdmap_swap_past_an_inverted_zoommap_preserves_the_transformation` in
 `crates/starlink-ast/tests/test_pcdmap.rs`. C read the stored factor raw until
 `3a4a2a7b`; `docs/issues/c-library-quirks.md` carries the history.
