@@ -9,7 +9,7 @@ Extension points: classified
 Uncited C steps:
 - dssmap.c:996 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
-At the `fe26cc9b` pin C rewrote the code some rows here cite (`cba0743a`: the CNPIX test now also requires both values to be small enough to convert to an integer); those rows are re-anchored to the new code but describe the port of the old behavior until stage 5 of `docs/superpowers/specs/2026-11-22-upstream-sync-fe26cc9b-design.md` ports it.
+At the `fe26cc9b` pin C rewrote the code row 9 cites (`cba0743a`: the CNPIX test now also requires both values to be small enough to convert to an integer); stage 5 of `docs/superpowers/specs/2026-11-22-upstream-sync-fe26cc9b-design.md` ported it (`0b05f183`).
 
 C's body runs `dssmap.c:1015-1165 (fn MapMerge)` and does exactly one thing: absorb a WinMap
 that maps pixel coordinates immediately before an un-inverted DssMap, by folding
@@ -30,7 +30,7 @@ rebuilding the DssMap from the amended FITS cards.
 | 6 | Check the scale and shift terms are usable | dssmap.c:1044-1048 (fn MapMerge) | dssmap.rs:625-633 (fn try_merge) | architecture | ported |
 | 7 | Read the keywords defining the DssMap's pixel origin and scales | dssmap.c:1049-1058 (fn MapMerge) | dssmap.rs:635-638 (fn try_merge) | architecture | ported |
 | 8 | Compute new values that account for the WinMap | dssmap.c:1059-1072 (fn MapMerge) | dssmap.rs:642-654 (fn try_merge) | architecture | ported |
-| 9 | CNPIX1 and CNPIX2 are integer keywords, so accept only values integral to one hundredth of a pixel | dssmap.c:1073-1080 (fn MapMerge) | dssmap.rs:661-665 (fn try_merge) | architecture | ported |
+| 9 | CNPIX1 and CNPIX2 are integer keywords, so accept only values small enough to convert to an integer and integral to one hundredth of a pixel | dssmap.c:1073-1080 (fn MapMerge) | dssmap.rs:661-665 (fn try_merge) | architecture | ported |
 | 10 | Take a copy of the FitsChan holding the DssMap's defining cards | dssmap.c:1081-1086 (fn MapMerge) | -- | ceremony | n/a: the port stores the plate parameters as fields, so it amends those directly instead of round-tripping a FitsChan; the round trip's one numeric effect, the plate center passing through its sexagesimal cards, is reproduced by `plate_centre_through_fits` (`tests/test_dss_merge_oracle.rs`) |
 | 11 | Update each changed keyword in that copy | dssmap.c:1087-1117 (fn MapMerge) | dssmap.rs:669-675 (fn try_merge) | architecture | ported |
 | 12 | If every keyword updated, build the new DssMap from the amended cards | dssmap.c:1118-1122 (fn MapMerge) | dssmap.rs:669-677 (fn try_merge) | architecture | ported |
