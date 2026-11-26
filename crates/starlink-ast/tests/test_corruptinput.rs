@@ -1123,3 +1123,25 @@ fn a_dump_line_ends_at_a_nul() {
         "{err}"
     );
 }
+
+/// A SpecFrame read from a dump with a standard of rest it does not know
+/// fails, with the C library's messages.
+#[test]
+fn spec_frame_dump_with_an_unknown_standard_of_rest() {
+    let dump = SpecFrame::new(SpecSystem::Freq).to_native_string().unwrap();
+    for (item, message) in [
+        (
+            "SoR = 1e-320",
+            "astRead(Channel): Invalid standard of rest description \"1e-320\".",
+        ),
+        (
+            "AlSoR = \"Nowhere\"",
+            "astRead(Channel): Invalid alignment standard of rest description \"Nowhere\".",
+        ),
+    ] {
+        let bad = dump.replacen(" End SpecFrame", &format!(" {item}\n End SpecFrame"), 1);
+        let err = from_native_string(&bad).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Attin, "{item}: {err}");
+        assert!(err.to_string().contains(message), "{item}: {err}");
+    }
+}

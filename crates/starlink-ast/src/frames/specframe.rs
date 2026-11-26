@@ -2993,13 +2993,12 @@ impl Serializable for SpecFrame {
             sf.attrs.obs_lon = Some(node.get_double("GeoLon", 0.0));
         }
 
-        // SoR (StdOfRest).
-        let sor_str = node.get_string("SoR", "Heliocentric");
-        if let Some(sor) = StdOfRest::parse(&sor_str) {
+        // SoR (StdOfRest), which must be one C knows (specframe.c:7097).
+        if let Some(sor) =
+            super::frame_attrs::read_system_item(node, "SoR", "standard of rest", StdOfRest::parse)?
+        {
             sf.std_of_rest = sor;
-            if node.get("SoR").is_some() {
-                sf.sor_set = true;
-            }
+            sf.sor_set = true;
         }
 
         // UsedUnits block: restore every `U<system>` card into the per-system
@@ -3036,10 +3035,14 @@ impl Serializable for SpecFrame {
             sf.axis.unit = Some(u);
         }
 
-        // AlSoR (AlignStdOfRest).
-        let alsor_str = node.get_string("AlSoR", "");
-        if !alsor_str.is_empty() {
-            sf.align_std_of_rest = StdOfRest::parse(&alsor_str);
+        // AlSoR (AlignStdOfRest), likewise (specframe.c:7120).
+        if let Some(sor) = super::frame_attrs::read_system_item(
+            node,
+            "AlSoR",
+            "alignment standard of rest",
+            StdOfRest::parse,
+        )? {
+            sf.align_std_of_rest = Some(sor);
         }
 
         // AlSys (AlignSystem).
