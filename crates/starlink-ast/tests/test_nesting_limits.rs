@@ -17,8 +17,9 @@ use starlink_ast::error::{AstResult, ErrorCode};
 use starlink_ast::frames::{BasicFrameBuilder, CmpFrame, FluxFrame, Frame};
 use starlink_ast::from_native_string;
 use starlink_ast::keymap::KeyMap;
-use starlink_ast::mappings::{MathMap, TranMap, UnitMap};
+use starlink_ast::mappings::{CmpMap, Composition, MathMap, TranMap, UnitMap};
 use starlink_ast::regions::{CircleBuilder, CmpOperator, CmpRegionBuilder};
+use starlink_ast::{Channel, Encoding, FitsChan};
 
 /// Far deeper than any reader's limit.
 const DEEP: usize = 100_000;
@@ -227,4 +228,48 @@ fn each_container_class_nested_to_the_limit_loads() {
         assert_eq!(dump_depth(&dump), MAX_NATIVE_NESTING, "{kind}");
         on_small_stack(move || drop(from_native_string(&dump).unwrap()));
     }
+}
+
+/// A FITS header in the Native encoding describing CmpMaps nested `depth`
+/// deep, written on a large stack.
+fn nested_cmpmap_header(depth: usize) -> String {
+    std::thread::Builder::new()
+        .stack_size(1 << 28)
+        .spawn(move || {
+            let unit = || Box::new(UnitMap::new(1).unwrap());
+            let mut m = CmpMap::new(unit(), unit(), Composition::Series).unwrap();
+            for _ in 2..depth {
+                m = CmpMap::new(Box::new(m), unit(), Composition::Series).unwrap();
+            }
+            let mut fc = FitsChan::new().unwrap();
+            fc.set_encoding(Encoding::Native);
+            assert_eq!(fc.write(&AnyObject::CmpMap(m)).unwrap(), 1);
+            fc.to_header().unwrap()
+        })
+        .unwrap()
+        .join()
+        .unwrap()
+}
+
+/// Read the first Object from a FITS header on a 2 MiB stack.
+fn read_header(header: String) -> AstResult<Option<AnyObject>> {
+    on_small_stack(move || {
+        let mut fc = FitsChan::from_header(&header)?;
+        fc.read()
+    })
+}
+
+#[test]
+fn a_native_fits_header_nested_beyond_the_limit_is_refused() {
+    let err = read_header(nested_cmpmap_header(3000)).unwrap_err();
+    assert_refused(&err, ErrorCode::Lderr, MAX_NATIVE_NESTING);
+}
+
+#[test]
+fn a_native_fits_header_nested_to_the_limit_loads() {
+    let header = nested_cmpmap_header(MAX_NATIVE_NESTING);
+    assert!(matches!(
+        read_header(header),
+        Ok(Some(AnyObject::CmpMap(_)))
+    ));
 }

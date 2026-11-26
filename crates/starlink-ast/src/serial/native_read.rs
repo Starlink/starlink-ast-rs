@@ -15,6 +15,7 @@
 //! - `# Key = Value # comment` is a commented-out default (Unset).
 //! - Other `#` lines are plain comments and are skipped.
 
+use crate::constants::MAX_NATIVE_NESTING;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::node::{Node, NodeItem, NodeValue};
 
@@ -48,7 +49,7 @@ pub(crate) fn parse_native(text: &str) -> AstResult<Node> {
     let (class, class_comment) = parse_begin_line(trimmed)?;
     pos += 1;
 
-    let (node, _end_pos) = parse_object(&lines, pos, &class, class_comment)?;
+    let (node, _end_pos) = parse_object(&lines, pos, &class, class_comment, 0)?;
     Ok(node)
 }
 
@@ -198,13 +199,24 @@ pub(crate) fn try_parse_commented_default(after_hash: &str) -> Option<NodeItem> 
 /// Parse the body of an object block (lines after `Begin` up to and
 /// including `End`).
 ///
+/// `depth` is the number of Objects enclosing this one; an Object nested
+/// [`MAX_NATIVE_NESTING`] deep is refused, as the Native stream reader
+/// refuses it, rather than recursing without a bound.
+///
 /// Returns `(node, line_index_after_End)`.
 fn parse_object(
     lines: &[&str],
     start: usize,
     class: &str,
     class_comment: Option<String>,
+    depth: usize,
 ) -> AstResult<(Node, usize)> {
+    if depth >= MAX_NATIVE_NESTING {
+        return Err(AstError::new(
+            ErrorCode::Lderr,
+            format!("Objects nested more than {MAX_NATIVE_NESTING} deep cannot be read."),
+        ));
+    }
     let mut node = Node::new(class);
     node.class_comment = class_comment;
     let mut pos = start;
@@ -282,7 +294,8 @@ fn parse_object(
                 let next_trimmed = lines[pos].trim();
                 let (child_class, child_comment) = parse_begin_line(next_trimmed)?;
                 pos += 1;
-                let (child_node, new_pos) = parse_object(lines, pos, &child_class, child_comment)?;
+                let (child_node, new_pos) =
+                    parse_object(lines, pos, &child_class, child_comment, depth + 1)?;
 
                 node.push_object(key, child_node, comment.map(|s| s.to_string()));
                 pos = new_pos;
