@@ -180,6 +180,18 @@ fn built_dump(kind: &'static str, depth: usize) -> String {
                     }
                     k.to_native_string().unwrap()
                 }
+                "unc" => {
+                    let mut r = circle();
+                    for _ in 1..depth {
+                        r = CircleBuilder::new(frame(2), vec![0.0, 0.0])
+                            .unwrap()
+                            .radius(1.0)
+                            .uncertainty(Box::new(r))
+                            .build()
+                            .unwrap();
+                    }
+                    r.to_native_string().unwrap()
+                }
                 "tranmap" => {
                     let unit = || Box::new(UnitMap::new(1).unwrap());
                     let mut m = TranMap::new(unit(), unit()).unwrap();
@@ -213,10 +225,10 @@ fn dump_depth(dump: &str) -> usize {
 
 /// Each class that holds other Objects, in a dump nested to the limit,
 /// loads: the Mapping, Frame, Region and KeyMap loaders each recurse in
-/// their own way.
+/// their own way, and a Region also recurses through its uncertainty.
 #[test]
 fn each_container_class_nested_to_the_limit_loads() {
-    for kind in ["cmpframe", "cmpregion", "keymap", "tranmap"] {
+    for kind in ["cmpframe", "cmpregion", "keymap", "tranmap", "unc"] {
         // The Objects inside the innermost level, such as a Frame's Axes,
         // nest further.
         let mut levels = MAX_NATIVE_NESTING - (dump_depth(&built_dump(kind, 2)) - 2);

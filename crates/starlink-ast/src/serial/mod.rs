@@ -1249,10 +1249,53 @@ fn check_reg_fs(class: &str, ncoord: Option<usize>, frame: &dyn Frame) -> AstRes
 /// This reads the Region-level attributes, the FrameSet or Frame, the
 /// defining points, and the optional uncertainty region.
 pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
-    // The Region and Object classes' parts of the description, which their
-    // loaders read through astReadClassData (region.c, object.c).
-    let object = &whole.section("Object");
-    let node = &whole.section("Region");
+    // The uncertainty is itself a Region, so a chain of them recurses
+    // through here once a level. What is read before and after it is in
+    // functions of its own, which keeps this frame, the only one held
+    // across the recursion, small enough for a chain nested to
+    // `MAX_NATIVE_NESTING` on a 2 MiB stack in an unoptimized build.
+    let before = read_region_before_unc(whole)?;
+    let uncertainty = match check_loaded(
+        before.node.get_object("Unc"),
+        "Region",
+        false,
+        whole.class.as_str(),
+        "uncertainty Region",
+    )? {
+        Some(unc_node) => Some(region_from_node(unc_node)?),
+        None => None,
+    };
+    read_region_after_unc(whole, before, uncertainty)
+}
+
+/// What a Region's description gives before its uncertainty Region.
+struct RegionBeforeUnc {
+    /// The Region class's part of the description.
+    node: Node,
+    negated: bool,
+    negated_set: bool,
+    adaptive: bool,
+    adaptive_set: bool,
+    fill_factor: f64,
+    fill_factor_set: bool,
+    mesh_size: usize,
+    mesh_size_set: bool,
+    closed: bool,
+    closed_set: bool,
+    /// The defining points.
+    points: Vec<Vec<f64>>,
+    /// The number of coordinates each point has, or with no points the
+    /// number of axes the Region spans.
+    naxpt: usize,
+}
+
+/// Read the part of a Region's description before its uncertainty Region:
+/// its Frame part, its attributes and its defining points.
+fn read_region_before_unc(whole: &Node) -> AstResult<RegionBeforeUnc> {
+    // The Region class's part of the description, which its loader reads
+    // through astReadClassData (region.c).
+    let region_part = whole.section("Region");
+    let node = &region_part;
     let class = whole.class.as_str();
     // astLoadFrame reads the Region's own Frame part first. A Region then
     // has no FrameSet, so a System given there is not recognised (region.c).
@@ -1344,17 +1387,50 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         ),
     };
 
-    // The uncertainty Region, which must be a Region.
-    let mut uncertainty = match check_loaded(
-        node.get_object("Unc"),
-        "Region",
-        false,
-        class,
-        "uncertainty Region",
-    )? {
-        Some(unc_node) => Some(region_from_node(unc_node)?),
-        None => None,
-    };
+    Ok(RegionBeforeUnc {
+        node: region_part,
+        negated,
+        negated_set,
+        adaptive,
+        adaptive_set,
+        fill_factor,
+        fill_factor_set,
+        mesh_size,
+        mesh_size_set,
+        closed,
+        closed_set,
+        points,
+        naxpt,
+    })
+}
+
+/// Read the part of a Region's description after its uncertainty Region,
+/// its Frame or FrameSet, and make the Region's data.
+fn read_region_after_unc(
+    whole: &Node,
+    before: RegionBeforeUnc,
+    mut uncertainty: Option<DynRegion>,
+) -> AstResult<RegionData> {
+    let RegionBeforeUnc {
+        node,
+        negated,
+        negated_set,
+        adaptive,
+        adaptive_set,
+        fill_factor,
+        fill_factor_set,
+        mesh_size,
+        mesh_size_set,
+        closed,
+        closed_set,
+        points,
+        naxpt,
+    } = before;
+    let node = &node;
+    // The Object class's part of the description, which its loader reads
+    // through astReadClassData (object.c).
+    let object = &whole.section("Object");
+    let class = whole.class.as_str();
 
     // The FrameSet or Frame. Detect which one was emitted by key
     // presence — the C library only writes `RegFS` when RegionFS was
