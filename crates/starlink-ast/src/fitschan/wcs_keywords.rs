@@ -686,7 +686,8 @@ END";
             crate::Encoding::FitsWcs,
             crate::fitschan::spec_trans::TransAttrs::default(),
             &mut crate::fitschan::spec_trans::TransWarnings::default(),
-        );
+        )
+        .unwrap();
         let store = extract_wcs_keywords(&cards, ' ', 2).unwrap();
 
         assert!(store.has_pc_matrix());
@@ -734,7 +735,8 @@ END";
             crate::Encoding::FitsWcs,
             crate::fitschan::spec_trans::TransAttrs::default(),
             &mut crate::fitschan::spec_trans::TransWarnings::default(),
-        );
+        )
+        .unwrap();
         let store = extract_wcs_keywords(&cards, ' ', 2).unwrap();
 
         // Verify basic keywords.

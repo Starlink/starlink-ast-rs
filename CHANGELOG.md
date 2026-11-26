@@ -74,6 +74,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a FITS header with a CROTA but without the CDELT of each celestial axis fails to read with `ErrorCode::Bdfts` and the C library's message, where the port read it without the rotation.
 - `starlink-ast`: a FITS header with a CAR projection and a huge `NAXIS` is read at once; the CD matrix's rows and columns are counted from the `CD<j>_<i>` keywords present, as in the C library, rather than from `NAXIS`.
 - `starlink-ast`: writing a Frame of many axes takes time in proportion to their number, as in the C library, where each axis's values searched the axis permutation; a Frame of 65536 axes was written in seconds. Writing or reading any Object holds about half as much memory as before.
 - `starlink-ast`: simplifying a Mapping no longer panics when the merge loop finds a repeating pattern just after a UnitMap in series removed itself from the end of the list; as in the C library, there is then nothing to freeze.

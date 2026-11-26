@@ -1145,3 +1145,27 @@ fn spec_frame_dump_with_an_unknown_standard_of_rest() {
         assert!(err.to_string().contains(message), "{item}: {err}");
     }
 }
+
+/// A header whose CROTA must become a PC matrix fails to read, with the C
+/// library's message, without the CDELT of each celestial axis.
+#[test]
+fn fits_crota_without_both_cdelts() {
+    let head = [
+        "CTYPE1  = 'RA---TAN'",
+        "CTYPE2  = 'DEC--TAN'",
+        "CRVAL1  =                150.0",
+        "CRVAL2  =                  0.0",
+        "CRPIX1  =                 10.0",
+        "CROTA2  =                 30.0",
+    ];
+    for (cdelt, missing) in [
+        ("CDELT2  =                 0.01", "CDELT1"),
+        ("CDELT1  =                -0.01", "CDELT2"),
+    ] {
+        let err = read_header(&with(&head, &[cdelt])).expect_err(cdelt);
+        assert_eq!(err.code(), ErrorCode::Bdfts, "{cdelt}: {err}");
+        let want =
+            format!("astRead(FitsChan): Unable to find a value for FITS keyword \"{missing}\".");
+        assert!(err.to_string().contains(&want), "{cdelt}: {err}");
+    }
+}
