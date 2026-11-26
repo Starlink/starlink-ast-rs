@@ -9,15 +9,16 @@ use crate::constants::MAX_EXPRESSION_NESTING;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::opcode::{CompiledExpr, Opcode};
-use super::token::Token;
+use super::token::{CLASS, Token};
 
 /// Compile a tokenized expression into opcodes and constants.
 ///
 /// This implements operator-precedence parsing (a variant of Pratt parsing)
 /// following the same precedence as the C library's symbol table.
-pub(crate) fn compile(tokens: &[Token]) -> AstResult<CompiledExpr> {
+pub(crate) fn compile(tokens: &[Token], method: &str) -> AstResult<CompiledExpr> {
     let mut compiler = Compiler {
         tokens,
+        method,
         pos: 0,
         opcodes: Vec::new(),
         constants: Vec::new(),
@@ -44,6 +45,8 @@ pub(crate) fn compile(tokens: &[Token]) -> AstResult<CompiledExpr> {
 
 struct Compiler<'a> {
     tokens: &'a [Token],
+    /// The entry point that is compiling, which a message names.
+    method: &'a str,
     pos: usize,
     opcodes: Vec<Opcode>,
     constants: Vec<f64>,
@@ -77,7 +80,10 @@ impl<'a> Compiler<'a> {
         if self.depth > MAX_EXPRESSION_NESTING {
             return Err(AstError::new(
                 ErrorCode::Miopa,
-                format!("the expression is nested more than {MAX_EXPRESSION_NESTING} deep"),
+                format!(
+                    "{}({CLASS}): The expression is nested more than {MAX_EXPRESSION_NESTING} deep.",
+                    self.method
+                ),
             ));
         }
         self.depth += 1;

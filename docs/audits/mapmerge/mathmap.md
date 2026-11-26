@@ -14,9 +14,9 @@ the MathMap that immediately follows it in series, when the two are inverses of
 each other and both permit the cancellation, replacing the pair with a UnitMap.
 There is no replace-with-simpler step and no lower-neighbor case.
 
-`MathMap::map_merge` (`mathmap/mod.rs:792-803 (fn map_merge)`) calls `default_map_merge`
+`MathMap::map_merge` (`mathmap/mod.rs:788-799 (fn map_merge)`) calls `default_map_merge`
 (`mappings/simplify.rs:1672-1765 (fn default_map_merge)`), whose neighbor attempt reaches
-`MathMap::try_merge` (`mathmap/mod.rs:834-907 (fn try_merge)`).
+`MathMap::try_merge` (`mathmap/mod.rs:830-903 (fn try_merge)`).
 
 The last row is not part of `MapMerge` but of the rule that governs it: an
 attribute setter whose value feeds the class's own `MapMerge` must discard the
@@ -27,24 +27,24 @@ simplified record.
 | 1 | Initialize the returned result to -1 | mathmap.c:4156-4157 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
 | 2 | Check the global error status and bail out | mathmap.c:4159-4160 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
 | 3 | Initialize the locals to silence uninitialized-variable warnings | mathmap.c:4162-4172 (fn MapMerge) | -- | ceremony | n/a: Rust locals are bound where they are computed, so none can be read before assignment |
-| 4 | MathMaps are only worth simplifying in series | mathmap.c:4174-4175 (fn MapMerge) | mathmap/mod.rs:841-843 (fn try_merge) | architecture | ported |
+| 4 | MathMaps are only worth simplifying in series | mathmap.c:4174-4175 (fn MapMerge) | mathmap/mod.rs:837-839 (fn try_merge) | architecture | ported |
 | 5 | Take the nominated index and the one after it, and check that a Mapping exists there | mathmap.c:4177-4184 (fn MapMerge) | mappings/simplify.rs:1673-1677 (fn default_map_merge) | architecture | ported |
-| 6 | Check that both Mappings are of class MathMap | mathmap.c:4186-4193 (fn MapMerge) | mathmap/mod.rs:844 (fn try_merge) | architecture | ported |
+| 6 | Check that both Mappings are of class MathMap | mathmap.c:4186-4193 (fn MapMerge) | mathmap/mod.rs:840 (fn try_merge) | architecture | ported |
 | 7 | Obtain pointers to the two MathMaps and their associated invert flags | mathmap.c:4195-4201 (fn MapMerge) | mappings/simplify.rs:1684-1685 (fn default_map_merge) | architecture | ported |
-| 8 | Take SimpFI or SimpIF from each according to its invert flag, and require both to permit simplification | mathmap.c:4203-4210 (fn MapMerge) | mathmap/mod.rs:846-860 (fn try_merge) | architecture | ported |
-| 9 | Compare the first MathMap's effective input count with the second's effective output count | mathmap.c:4212-4225 (fn MapMerge) | mathmap/mod.rs:862-867 (fn try_merge) | architecture | ported |
-| 10 | Compare the first's effective number of forward functions with the second's effective number of inverse functions | mathmap.c:4227-4238 (fn MapMerge) | mathmap/mod.rs:880-882 (fn try_merge) | architecture | ported |
-| 11 | Compare the two sets of function strings, forward of the first against inverse of the second | mathmap.c:4240-4253 (fn MapMerge) | mathmap/mod.rs:869-885 (fn try_merge) | architecture | ported |
-| 12 | Repeat that comparison for the inverse of the first against the forward of the second | mathmap.c:4255-4270 (fn MapMerge) | mathmap/mod.rs:887-903 (fn try_merge) | architecture | ported |
-| 13 | If the two can be merged, create a UnitMap as the replacement | mathmap.c:4272-4275 (fn MapMerge) | mathmap/mod.rs:905-906 (fn try_merge) | architecture | ported |
+| 8 | Take SimpFI or SimpIF from each according to its invert flag, and require both to permit simplification | mathmap.c:4203-4210 (fn MapMerge) | mathmap/mod.rs:842-856 (fn try_merge) | architecture | ported |
+| 9 | Compare the first MathMap's effective input count with the second's effective output count | mathmap.c:4212-4225 (fn MapMerge) | mathmap/mod.rs:858-863 (fn try_merge) | architecture | ported |
+| 10 | Compare the first's effective number of forward functions with the second's effective number of inverse functions | mathmap.c:4227-4238 (fn MapMerge) | mathmap/mod.rs:876-878 (fn try_merge) | architecture | ported |
+| 11 | Compare the two sets of function strings, forward of the first against inverse of the second | mathmap.c:4240-4253 (fn MapMerge) | mathmap/mod.rs:865-881 (fn try_merge) | architecture | ported |
+| 12 | Repeat that comparison for the inverse of the first against the forward of the second | mathmap.c:4255-4270 (fn MapMerge) | mathmap/mod.rs:883-899 (fn try_merge) | architecture | ported |
+| 13 | If the two can be merged, create a UnitMap as the replacement | mathmap.c:4272-4275 (fn MapMerge) | mathmap/mod.rs:901-902 (fn try_merge) | architecture | ported |
 | 14 | Annul the pointers to the two original MathMaps | mathmap.c:4277-4280 (fn MapMerge) | -- | ceremony | n/a: owned values are dropped |
 | 15 | Store the UnitMap in place of the first of the pair, with a cleared invert flag | mathmap.c:4282-4285 (fn MapMerge) | mappings/simplify.rs:1757-1762 (fn default_map_merge) | architecture | ported |
 | 16 | Shuffle the following Mappings and invert flags down to close the gap | mathmap.c:4287-4292 (fn MapMerge) | mappings/simplify.rs:1762 (fn default_map_merge) | architecture | ported |
 | 17 | Clear the final entry in each array | mathmap.c:4294-4296 (fn MapMerge) | -- | ceremony | n/a: the Rust list is a `Vec`, so removing the second of the pair shortens it; there is no vacated slot to clear |
 | 18 | Decrement the Mapping count and return the index of the first modified element | mathmap.c:4298-4301 (fn MapMerge) | mappings/simplify.rs:1762-1763 (fn default_map_merge) | architecture | ported |
 | 19 | Clear the returned value if an error occurred | mathmap.c:4305-4306 (fn MapMerge) | -- | ceremony | n/a: an error is an `Err`, not a value that has to be scrubbed on the way out |
-| 20 | Return the result | mathmap.c:4308-4309 (fn MapMerge) | mathmap/mod.rs:802 (fn map_merge) | ceremony | ported |
-| 21 | Setting or clearing Seed, SimpFI or SimpIF clears the simplified record | mathmap.c:5743-5756 (fn astMAKE_CLEAR1), mathmap.c:5828-5835 (fn astMAKE_CLEAR1), mathmap.c:5903-5910 (fn astMAKE_CLEAR1) | mathmap/mod.rs:466-476 (fn set_simp_fi), mathmap/mod.rs:500-536 (fn set_simp_if), mathmap/mod.rs:562-577 (fn set_seed), mathmap/mod.rs:589-593 (fn clear_seed) | ceremony | ported |
+| 20 | Return the result | mathmap.c:4308-4309 (fn MapMerge) | mathmap/mod.rs:798 (fn map_merge) | ceremony | ported |
+| 21 | Setting or clearing Seed, SimpFI or SimpIF clears the simplified record | mathmap.c:5743-5756 (fn astMAKE_CLEAR1), mathmap.c:5828-5835 (fn astMAKE_CLEAR1), mathmap.c:5903-5910 (fn astMAKE_CLEAR1) | mathmap/mod.rs:462-472 (fn set_simp_fi), mathmap/mod.rs:496-532 (fn set_simp_if), mathmap/mod.rs:558-573 (fn set_seed), mathmap/mod.rs:585-589 (fn clear_seed) | ceremony | ported |
 
 ## Row 8 — the flag pairing is asymmetric
 
@@ -52,7 +52,7 @@ C reads `SimpIF` from the first MathMap when its invert flag is set and `SimpFI`
 when it is clear, and the *opposite* pair from the second
 (`mathmap.c:4206-4209 (fn MapMerge)`). The two attributes say which composition order the
 author certified as cancelling, so which one applies depends on the side of the
-pair as well as the direction. `mathmap/mod.rs:846-856 (fn try_merge)` keeps both halves of that
+pair as well as the direction. `mathmap/mod.rs:842-852 (fn try_merge)` keeps both halves of that
 pairing.
 
 ## Row 13 — one UnitMap, not the pair of them

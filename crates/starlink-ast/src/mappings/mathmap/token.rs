@@ -33,6 +33,9 @@
 
 use crate::error::{AstError, AstResult, ErrorCode};
 
+/// The class name in the `method(class):` prefix of an error message.
+pub(crate) const CLASS: &str = "MathMap";
+
 /// A token in a MathMap expression.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Token {
@@ -363,7 +366,7 @@ fn is_function(tok: &Token) -> bool {
 ///
 /// Each symbol is read either as an operator or as an operand, according to the symbol before it, as C's `CompileExpression` does: after an operand only an operator may follow, and text that reads as no operator there is a missing operator (`ErrorCode::Miopr`) rather than the start of a name.
 /// Where an operand is expected, text that matches no operand symbol is read as a numeric constant, then as a variable name, and otherwise is a missing operand (`ErrorCode::Miopa`).
-pub(crate) fn tokenize(expr: &str, variables: &[&str]) -> AstResult<Vec<Token>> {
+pub(crate) fn tokenize(expr: &str, variables: &[&str], method: &str) -> AstResult<Vec<Token>> {
     let bytes = expr.as_bytes();
     let mut tokens = Vec::new();
     let mut pos = 0;
@@ -377,22 +380,22 @@ pub(crate) fn tokenize(expr: &str, variables: &[&str]) -> AstResult<Vec<Token>> 
                 return Err(AstError::new(
                     ErrorCode::Miopr,
                     format!(
-                        "missing or invalid operator in the expression \"{}\"",
+                        "{method}({CLASS}): Missing or invalid operator in the expression \"{}\".",
                         through_char_at(expr, pos)
                     ),
                 ));
             };
-            validate_symbol(&tok, &mut levels, &expr[..pos + len])?;
+            validate_symbol(&tok, &mut levels, &expr[..pos + len], method)?;
             operator_next = ends_operand(&tok);
             tokens.push(tok);
             pos += len;
         } else if let Some((tok, len)) = longest_match(rest, OPERANDS) {
-            validate_symbol(&tok, &mut levels, &expr[..pos + len])?;
+            validate_symbol(&tok, &mut levels, &expr[..pos + len], method)?;
             operator_next = ends_operand(&tok);
             tokens.push(tok);
             pos += len;
         } else if bytes[pos].is_ascii_digit() || bytes[pos] == b'.' {
-            let (val, end) = parse_number(expr, pos)?;
+            let (val, end) = parse_number(expr, pos, method)?;
             tokens.push(Token::Number(val));
             operator_next = true;
             pos = end;
@@ -402,7 +405,7 @@ pub(crate) fn tokenize(expr: &str, variables: &[&str]) -> AstResult<Vec<Token>> 
                 return Err(AstError::new(
                     ErrorCode::Udvof,
                     format!(
-                        "undefined variable or function in the expression \"{}\"",
+                        "{method}({CLASS}): Undefined variable or function in the expression \"{}\".",
                         &expr[..end]
                     ),
                 ));
@@ -414,7 +417,7 @@ pub(crate) fn tokenize(expr: &str, variables: &[&str]) -> AstResult<Vec<Token>> 
             return Err(AstError::new(
                 ErrorCode::Miopa,
                 format!(
-                    "missing or invalid operand in the expression \"{}\"",
+                    "{method}({CLASS}): Missing or invalid operand in the expression \"{}\".",
                     through_char_at(expr, pos)
                 ),
             ));
@@ -424,13 +427,13 @@ pub(crate) fn tokenize(expr: &str, variables: &[&str]) -> AstResult<Vec<Token>> 
     if !operator_next {
         return Err(AstError::new(
             ErrorCode::Miopa,
-            format!("missing or invalid operand in the expression \"{expr}\""),
+            format!("{method}({CLASS}): Missing or invalid operand in the expression \"{expr}\"."),
         ));
     }
     if !levels.is_empty() {
         return Err(AstError::new(
             ErrorCode::Mrpar,
-            format!("missing right parenthesis in the expression \"{expr}\""),
+            format!("{method}({CLASS}): Missing right parenthesis in the expression \"{expr}\"."),
         ));
     }
 
@@ -470,14 +473,21 @@ fn opened_nargs(tok: &Token) -> Option<i32> {
 ///
 /// A comma must be inside a function call's parentheses (`ErrorCode::Comin`), a closing parenthesis must have an opening one (`ErrorCode::Mlpar`), and a function call must close with the number of arguments the function takes (`ErrorCode::Wrnfa`).
 /// `quoted` is the expression through the symbol, which an error message quotes.
-fn validate_symbol(tok: &Token, levels: &mut Vec<ParenLevel>, quoted: &str) -> AstResult<()> {
+fn validate_symbol(
+    tok: &Token,
+    levels: &mut Vec<ParenLevel>,
+    quoted: &str,
+    method: &str,
+) -> AstResult<()> {
     if *tok == Token::Comma {
         match levels.last_mut() {
             Some(level) if level.argcount != 0 => level.argcount += 1,
             _ => {
                 return Err(AstError::new(
                     ErrorCode::Comin,
-                    format!("spurious comma encountered in the expression \"{quoted}\""),
+                    format!(
+                        "{method}({CLASS}): Spurious comma encountered in the expression \"{quoted}\"."
+                    ),
                 ));
             }
         }
@@ -490,19 +500,25 @@ fn validate_symbol(tok: &Token, levels: &mut Vec<ParenLevel>, quoted: &str) -> A
         let Some(level) = levels.last() else {
             return Err(AstError::new(
                 ErrorCode::Mlpar,
-                format!("missing left parenthesis in the expression \"{quoted}\""),
+                format!(
+                    "{method}({CLASS}): Missing left parenthesis in the expression \"{quoted}\"."
+                ),
             ));
         };
         if level.nargs > 0 && level.argcount != level.nargs {
             return Err(AstError::new(
                 ErrorCode::Wrnfa,
-                format!("wrong number of function arguments in the expression \"{quoted}\""),
+                format!(
+                    "{method}({CLASS}): Wrong number of function arguments in the expression \"{quoted}\"."
+                ),
             ));
         }
         if level.nargs < 0 && level.argcount < -level.nargs {
             return Err(AstError::new(
                 ErrorCode::Wrnfa,
-                format!("insufficient function arguments in the expression \"{quoted}\""),
+                format!(
+                    "{method}({CLASS}): Insufficient function arguments in the expression \"{quoted}\"."
+                ),
             ));
         }
         levels.pop();
@@ -535,7 +551,7 @@ pub(crate) fn parse_name(expr: &str, pos: usize) -> Option<usize> {
 /// The constant extends while each character may continue it: digits, one `.` before any exponent, one `d` or `e` exponent marker after a digit, and one sign directly after the marker.
 /// A `.`, exponent marker or sign that cannot continue it makes the constant invalid (`ErrorCode::Conin`), except that a sign after a digit ends it.
 /// Every field must contain a digit.
-fn parse_number(expr: &str, pos: usize) -> AstResult<(f64, usize)> {
+fn parse_number(expr: &str, pos: usize, method: &str) -> AstResult<(f64, usize)> {
     let bytes = expr.as_bytes();
     let mut numer = bytes[pos].is_ascii_digit();
     let mut dpoint = bytes[pos] == b'.';
@@ -594,7 +610,7 @@ fn parse_number(expr: &str, pos: usize) -> AstResult<(f64, usize)> {
         AstError::new(
             ErrorCode::Conin,
             format!(
-                "invalid constant syntax in the expression \"{}\"",
+                "{method}({CLASS}): Invalid constant syntax in the expression \"{}\".",
                 &expr[..end]
             ),
         )

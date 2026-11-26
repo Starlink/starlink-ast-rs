@@ -40,8 +40,8 @@ use starlink_ast::frames::{
     SpecSystem, TimeFrame, TimeSystem,
 };
 use starlink_ast::mappings::{
-    CmpMap, Composition, Mapping, MatrixMap, PermMap, ShiftMap, SplineMap, UnitMap, UnitNormMap,
-    WcsMap, WcsProjection, WinMap, ZoomMap,
+    CmpMap, Composition, Mapping, MathMap, MatrixMap, PermMap, ShiftMap, SplineMap, UnitMap,
+    UnitNormMap, WcsMap, WcsProjection, WinMap, ZoomMap,
 };
 use starlink_ast::{AnyObject, AstType, Channel, Encoding, FitsChan, Table, from_native_string};
 
@@ -1383,6 +1383,201 @@ fn fits_singular_pc_matrix() {
         &[
             "astRead(FitsChan): Unusable rotation matrix (PC or CD) found in the FITS-WCS header - \
            the matrix cannot be inverted.",
+        ],
+    );
+}
+
+/// A native dump of a 1-in 1-out MathMap with the given functions.
+fn mathmap_dump(fwd: &str, inv: &str) -> String {
+    format!(
+        " Begin MathMap\n Nin = 1\n Nout = 1\n IsA Mapping\n Fwd1 = \"{fwd}\"\n \
+         Inv1 = \"{inv}\"\n End MathMap\n"
+    )
+}
+
+/// An expression that does not compile names the entry point reading the
+/// dump and the class, and ends in a full stop, as C's messages do.
+#[test]
+fn mathmap_expression_errors_on_load() {
+    let cases = [
+        (
+            ErrorCode::Udvof,
+            "y=sqrt(q",
+            "x=y",
+            "Undefined variable or function in the expression \"sqrt(q\".",
+            "forward",
+        ),
+        (
+            ErrorCode::Mrpar,
+            "y=sqrt(x",
+            "x=y",
+            "Missing right parenthesis in the expression \"sqrt(x\".",
+            "forward",
+        ),
+        (
+            ErrorCode::Conin,
+            "y=1.2.3",
+            "x=y",
+            "Invalid constant syntax in the expression \"1.2.\".",
+            "forward",
+        ),
+        (
+            ErrorCode::Comin,
+            "y=x,x",
+            "x=y",
+            "Spurious comma encountered in the expression \"x,\".",
+            "forward",
+        ),
+        (
+            ErrorCode::Varin,
+            "y=x",
+            "2x=y",
+            "Variable name is invalid: \"2x\".",
+            "inverse",
+        ),
+        (
+            ErrorCode::Norhs,
+            "y=",
+            "x=y",
+            "Missing right hand side in expression: \"y=\".",
+            "forward",
+        ),
+        (
+            ErrorCode::Udvof,
+            "y=x",
+            "x=q+",
+            "Undefined variable or function in the expression \"q\".",
+            "inverse",
+        ),
+    ];
+    for (code, fwd, inv, text, function) in cases {
+        let messages = [
+            format!("astLoadMathMap(MathMap): {text}"),
+            format!("Error in {function} transformation function 1."),
+            "Error while reading a MathMap from a Channel.".to_string(),
+        ];
+        let refs: Vec<&str> = messages.iter().map(String::as_str).collect();
+        expect(from_native_string(&mathmap_dump(fwd, inv)), code, &refs);
+    }
+}
+
+/// The same expressions given to the constructor name the constructor's
+/// entry point and have no line about reading a dump.
+#[test]
+fn mathmap_expression_errors_on_construction() {
+    let cases = [
+        (
+            ErrorCode::Udvof,
+            "y=sqrt(q",
+            "Undefined variable or function in the expression \"sqrt(q\".",
+        ),
+        (
+            ErrorCode::Mrpar,
+            "y=sqrt(x",
+            "Missing right parenthesis in the expression \"sqrt(x\".",
+        ),
+        (
+            ErrorCode::Miopa,
+            "y=x+",
+            "Missing or invalid operand in the expression \"x+\".",
+        ),
+        (
+            ErrorCode::Mlpar,
+            "y=x)",
+            "Missing left parenthesis in the expression \"x)\".",
+        ),
+        (
+            ErrorCode::Wrnfa,
+            "y=sin(x,x)",
+            "Wrong number of function arguments in the expression \"sin(x,x)\".",
+        ),
+        (
+            ErrorCode::Wrnfa,
+            "y=max(x)",
+            "Insufficient function arguments in the expression \"max(x)\".",
+        ),
+        // The constructor removes blanks, so this reads as the name "xx".
+        (
+            ErrorCode::Udvof,
+            "y=x x",
+            "Undefined variable or function in the expression \"xx\".",
+        ),
+        (
+            ErrorCode::Misvn,
+            "=x",
+            "No left hand side in expression: \"=x\".",
+        ),
+        (
+            ErrorCode::Norhs,
+            "y=",
+            "Missing right hand side in expression: \"y=\".",
+        ),
+    ];
+    for (code, fwd, text) in cases {
+        let messages = [
+            format!("astInitMathMap(MathMap): {text}"),
+            "Error in forward transformation function 1.".to_string(),
+        ];
+        let refs: Vec<&str> = messages.iter().map(String::as_str).collect();
+        expect(MathMap::new(1, 1, &[fwd], &["x=y"]), code, &refs);
+    }
+}
+
+/// The checks on the numbers of inputs, outputs and functions that C makes
+/// in its constructor.
+#[test]
+fn mathmap_constructor_counts() {
+    expect(
+        MathMap::new(0, 1, &["y=x"], &["x=y"]),
+        ErrorCode::Badni,
+        &[
+            "astInitMathMap(MathMap): Bad number of input coordinates (0).",
+            "This number should be one or more.",
+        ],
+    );
+    expect(
+        MathMap::new(1, 0, &["y=x"], &["x=y"]),
+        ErrorCode::Badno,
+        &[
+            "astInitMathMap(MathMap): Bad number of output coordinates (0).",
+            "This number should be one or more.",
+        ],
+    );
+    expect(
+        MathMap::new(1, 2, &["y=x"], &["x=y"]),
+        ErrorCode::Inntf,
+        &[
+            "astInitMathMap(MathMap): Too few forward transformation functions given (1).",
+            "At least 2 forward transformation functions must be supplied. ",
+        ],
+    );
+    expect(
+        MathMap::new(2, 1, &["y=x"], &["x=y"]),
+        ErrorCode::Inntf,
+        &[
+            "astInitMathMap(MathMap): Too few inverse transformation functions given (1).",
+            "At least 2 inverse transformation functions must be supplied. ",
+        ],
+    );
+}
+
+/// A variable defined twice, and a left-hand side that is not a name.
+#[test]
+fn mathmap_variable_name_errors() {
+    expect(
+        MathMap::new(1, 1, &["y=x"], &["y=y"]),
+        ErrorCode::Duvar,
+        &[
+            "astInitMathMap(MathMap): Duplicate definition of variable name: \"y\".",
+            "Conflict between forward function 1 and inverse function 1.",
+        ],
+    );
+    expect(
+        MathMap::new(1, 1, &["y=x"], &["q+"]),
+        ErrorCode::Varin,
+        &[
+            "astInitMathMap(MathMap): Variable name is invalid: \"q+\".",
+            "Error in inverse transformation function 1.",
         ],
     );
 }
