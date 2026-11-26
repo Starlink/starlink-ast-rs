@@ -201,3 +201,13 @@ fn a_huge_g_precision_gives_the_shortest_result() {
     assert_eq!(formatted("%.99999999g", None).unwrap(), "0.5");
     assert_eq!(formatted("%.*G", Some(99_999_999)).unwrap(), "0.5");
 }
+
+/// A Frame of many axes is written in time proportional to their number.
+#[test]
+fn a_frame_of_many_axes_dumps_in_linear_time() {
+    within_10s(|| {
+        let frame = BasicFrameBuilder::new(65536).build().unwrap();
+        frame.to_native_string().unwrap()
+    })
+    .unwrap();
+}

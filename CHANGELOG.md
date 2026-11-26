@@ -74,6 +74,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: writing a Frame of many axes takes time in proportion to their number, as in the C library, where each axis's values searched the axis permutation; a Frame of 65536 axes was written in seconds. Writing or reading any Object holds about half as much memory as before.
 - `starlink-ast`: simplifying a Mapping no longer panics when the merge loop finds a repeating pattern just after a UnitMap in series removed itself from the end of the list; as in the C library, there is then nothing to freeze.
 - `starlink-ast`: a line read by a Channel ends at a NUL, as a C string does, so a dump with an item name of NULs reads as one with a blank line. An Object whose End is missing gives first any error its loader gives for what was read, as in the C library, where the error for the missing End came first.
 - `starlink-ast`: simplifying a Prism whose component Regions hold bad values no longer recurses until the stack overflows; it stops when the simplification changes nothing, as in the C library.

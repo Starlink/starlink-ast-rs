@@ -134,22 +134,25 @@ pub(crate) trait FrameDumpSource {
     fn dump_system(&self) -> (bool, String);
     /// The AlignSystem: whether it is set, and its name.
     fn dump_align_system(&self) -> (bool, String);
-    /// Label, Symbol, Unit and Format of an internal axis, set or default.
-    fn dump_label(&self, axis: usize) -> String;
+    /// Label, Symbol, Unit and Format of external axis `ext` (1-based), set
+    /// or default. The dump visits the internal axes in order and reads
+    /// each through the external axis the inverse permutation gives, as C's
+    /// does.
+    fn dump_label(&self, ext: usize) -> String;
     /// See [`dump_label`](Self::dump_label).
-    fn dump_symbol(&self, axis: usize) -> String;
+    fn dump_symbol(&self, ext: usize) -> String;
     /// See [`dump_label`](Self::dump_label).
-    fn dump_unit(&self, axis: usize) -> String;
+    fn dump_unit(&self, ext: usize) -> String;
     /// See [`dump_label`](Self::dump_label).
-    fn dump_format(&self, axis: usize) -> String;
-    /// The axis's own Digits, if set.
-    fn dump_axis_digits(&self, axis: usize) -> Option<i32>;
-    /// The Direction of an internal axis, set or default.
-    fn dump_direction(&self, axis: usize) -> bool;
-    /// Bottom and Top of an internal axis, set or default.
-    fn dump_bottom(&self, axis: usize) -> f64;
+    fn dump_format(&self, ext: usize) -> String;
+    /// The own Digits of external axis `ext`, if set.
+    fn dump_axis_digits(&self, ext: usize) -> Option<i32>;
+    /// The Direction of external axis `ext`, set or default.
+    fn dump_direction(&self, ext: usize) -> bool;
+    /// Bottom and Top of external axis `ext`, set or default.
+    fn dump_bottom(&self, ext: usize) -> f64;
     /// See [`dump_bottom`](Self::dump_bottom).
-    fn dump_top(&self, axis: usize) -> f64;
+    fn dump_top(&self, ext: usize) -> f64;
     /// PreserveAxes, Permute, MinAxes, MaxAxes and MatchEnd, set or default.
     fn dump_preserve_axes(&self) -> bool;
     /// See [`dump_preserve_axes`](Self::dump_preserve_axes).
@@ -253,13 +256,24 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
         comment.into(),
     );
 
+    // C's Dump reads each internal axis's values through the inverse of the
+    // axis permutation, which it makes once (frame.c:14552).
+    let perm = f.dump_perm();
+    let mut invperm: Vec<usize> = (0..naxes).collect();
+    for (ext, &internal) in perm.iter().enumerate() {
+        if let Some(slot) = invperm.get_mut(internal) {
+            *slot = ext;
+        }
+    }
+    let ext = |axis: usize| invperm[axis] + 1;
+
     for axis in 0..naxes {
         string(
             node,
             &format!("Lbl{}", axis + 1),
             false,
             true,
-            f.dump_label(axis),
+            f.dump_label(ext(axis)),
             format!("Label for axis {}", axis + 1),
         );
     }
@@ -269,7 +283,7 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
             &format!("Sym{}", axis + 1),
             false,
             false,
-            f.dump_symbol(axis),
+            f.dump_symbol(ext(axis)),
             format!("Symbol for axis {}", axis + 1),
         );
     }
@@ -294,7 +308,7 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
     );
 
     for axis in 0..naxes {
-        let unit = f.dump_unit(axis);
+        let unit = f.dump_unit(ext(axis));
         let comment = match crate::units::unit_label(&unit) {
             Some(lab) if lab != unit => format!("Units for axis {} ({lab})", axis + 1),
             _ => format!("Units for axis {}", axis + 1),
@@ -315,7 +329,7 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
     let frame_digits = f.dump_digits();
     let mut any_axis_digits = false;
     for axis in 0..naxes {
-        let own = f.dump_axis_digits(axis);
+        let own = f.dump_axis_digits(ext(axis));
         any_axis_digits |= own.is_some();
         int(
             node,
@@ -339,14 +353,14 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
             node,
             &format!("Fmt{}", axis + 1),
             false,
-            f.dump_axis_digits(axis).is_some(),
-            f.dump_format(axis),
+            f.dump_axis_digits(ext(axis)).is_some(),
+            f.dump_format(ext(axis)),
             format!("Format specifier for axis {}", axis + 1),
         );
     }
 
     for axis in 0..naxes {
-        let dir = f.dump_direction(axis);
+        let dir = f.dump_direction(ext(axis));
         let comment = if dir {
             format!("Plot axis {} in conventional direction", axis + 1)
         } else {
@@ -362,7 +376,7 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
         );
     }
     for axis in 0..naxes {
-        let v = f.dump_bottom(axis);
+        let v = f.dump_bottom(ext(axis));
         double(
             node,
             &format!("Bot{}", axis + 1),
@@ -373,7 +387,7 @@ pub(crate) fn write_frame_cards(node: &mut Node, f: &impl FrameDumpSource) -> As
         );
     }
     for axis in 0..naxes {
-        let v = f.dump_top(axis);
+        let v = f.dump_top(ext(axis));
         double(
             node,
             &format!("Top{}", axis + 1),
@@ -2155,17 +2169,6 @@ pub(crate) struct TraitDump<'a> {
     pub mapping: Option<crate::serial::MappingPart>,
 }
 
-impl TraitDump<'_> {
-    /// The 1-based external axis of an internal one.
-    fn ext(&self, internal: usize) -> usize {
-        self.perm
-            .iter()
-            .position(|&p| p == internal)
-            .unwrap_or(internal)
-            + 1
-    }
-}
-
 impl FrameDumpSource for TraitDump<'_> {
     fn attrs(&self) -> &FrameAttrs {
         self.attrs
@@ -2217,34 +2220,33 @@ impl FrameDumpSource for TraitDump<'_> {
     fn dump_align_system(&self) -> (bool, String) {
         self.align_system.clone()
     }
-    fn dump_label(&self, axis: usize) -> String {
-        self.frame.label(self.ext(axis)).unwrap_or_default()
+    fn dump_label(&self, ext: usize) -> String {
+        self.frame.label(ext).unwrap_or_default()
     }
-    fn dump_symbol(&self, axis: usize) -> String {
-        self.frame.symbol(self.ext(axis)).unwrap_or_default()
+    fn dump_symbol(&self, ext: usize) -> String {
+        self.frame.symbol(ext).unwrap_or_default()
     }
-    fn dump_unit(&self, axis: usize) -> String {
-        self.frame.unit(self.ext(axis)).unwrap_or_default()
+    fn dump_unit(&self, ext: usize) -> String {
+        self.frame.unit(ext).unwrap_or_default()
     }
-    fn dump_format(&self, axis: usize) -> String {
-        self.frame.format_str(self.ext(axis)).unwrap_or_default()
+    fn dump_format(&self, ext: usize) -> String {
+        self.frame.format_str(ext).unwrap_or_default()
     }
-    fn dump_axis_digits(&self, axis: usize) -> Option<i32> {
-        let ext = self.ext(axis);
+    fn dump_axis_digits(&self, ext: usize) -> Option<i32> {
         if self.frame.test_axis_digits(ext).unwrap_or(false) {
             self.frame.axis_digits(ext).ok()
         } else {
             None
         }
     }
-    fn dump_direction(&self, axis: usize) -> bool {
-        self.frame.direction(self.ext(axis)).unwrap_or(true)
+    fn dump_direction(&self, ext: usize) -> bool {
+        self.frame.direction(ext).unwrap_or(true)
     }
-    fn dump_bottom(&self, axis: usize) -> f64 {
-        self.frame.bottom(self.ext(axis)).unwrap_or(-f64::MAX)
+    fn dump_bottom(&self, ext: usize) -> f64 {
+        self.frame.bottom(ext).unwrap_or(-f64::MAX)
     }
-    fn dump_top(&self, axis: usize) -> f64 {
-        self.frame.top(self.ext(axis)).unwrap_or(f64::MAX)
+    fn dump_top(&self, ext: usize) -> f64 {
+        self.frame.top(ext).unwrap_or(f64::MAX)
     }
     fn dump_preserve_axes(&self) -> bool {
         self.frame.preserve_axes()

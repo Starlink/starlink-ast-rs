@@ -18,8 +18,10 @@ pub(crate) enum NodeValue {
     Double(f64),
     /// String attribute.
     String(String),
-    /// Nested object.
-    Object(Node),
+    /// Nested object, boxed so that an item of any other kind stays small:
+    /// a description of many items, such as a Frame's per-axis values,
+    /// would otherwise take a Node's size for each.
+    Object(Box<Node>),
     /// Commented-out default -- preserves `# Key = Value` lines
     /// from C output for byte-exact round-trip.
     Unset(Box<NodeValue>),
@@ -222,7 +224,7 @@ impl Node {
     pub fn push_object(&mut self, key: &str, node: Node, comment: impl Into<Option<String>>) {
         self.items.push(NodeItem {
             key: key.to_string(),
-            value: NodeValue::Object(node),
+            value: NodeValue::Object(Box::new(node)),
             text: None,
             comment: comment.into(),
             read: ReadFlag::default(),
@@ -242,7 +244,7 @@ impl Node {
             index,
             NodeItem {
                 key: key.to_string(),
-                value: NodeValue::Object(node),
+                value: NodeValue::Object(Box::new(node)),
                 text: None,
                 comment: comment.into(),
                 read: ReadFlag::default(),

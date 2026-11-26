@@ -322,16 +322,6 @@ impl BasicFrame {
         Ok(&self.axes[self.internal(axis)?])
     }
 
-    /// The external (1-based) axis of internal axis `internal`, as C's
-    /// inverse permutation gives it.
-    fn external(&self, internal: usize) -> usize {
-        self.perm
-            .iter()
-            .position(|&p| p == internal)
-            .unwrap_or(internal)
-            + 1
-    }
-
     /// Validate that `axis` is in 1..=naxes, returning an error if not.
     fn validate_axis(&self, axis: usize) -> AstResult<()> {
         if axis < 1 || axis > self.naxes {
@@ -1217,30 +1207,31 @@ impl FrameDumpSource for BasicFrame {
         )
     }
     // The Frame dump reads each value with the Frame's getter on the
-    // external axis of each internal one (frame.c:14358).
-    fn dump_label(&self, axis: usize) -> String {
-        self.label(self.external(axis)).unwrap_or_default()
+    // external axis of each internal one (frame.c:14621).
+    fn dump_label(&self, ext: usize) -> String {
+        self.label(ext).unwrap_or_default()
     }
-    fn dump_symbol(&self, axis: usize) -> String {
-        self.symbol(self.external(axis)).unwrap_or_default()
+    fn dump_symbol(&self, ext: usize) -> String {
+        self.symbol(ext).unwrap_or_default()
     }
-    fn dump_unit(&self, axis: usize) -> String {
-        self.unit(self.external(axis)).unwrap_or_default()
+    fn dump_unit(&self, ext: usize) -> String {
+        self.unit(ext).unwrap_or_default()
     }
-    fn dump_format(&self, axis: usize) -> String {
-        self.format_str(self.external(axis)).unwrap_or_default()
+    fn dump_format(&self, ext: usize) -> String {
+        self.format_str(ext).unwrap_or_default()
     }
-    fn dump_axis_digits(&self, axis: usize) -> Option<i32> {
-        self.axes[axis].axis().digits
+    fn dump_axis_digits(&self, ext: usize) -> Option<i32> {
+        self.axis_object(ext).ok()?.axis().digits
     }
-    fn dump_direction(&self, axis: usize) -> bool {
-        self.axes[axis].direction_value()
+    fn dump_direction(&self, ext: usize) -> bool {
+        self.axis_object(ext).map_or(true, |a| a.direction_value())
     }
-    fn dump_bottom(&self, axis: usize) -> f64 {
-        self.axes[axis].bottom_value()
+    fn dump_bottom(&self, ext: usize) -> f64 {
+        self.axis_object(ext)
+            .map_or(-f64::MAX, |a| a.bottom_value())
     }
-    fn dump_top(&self, axis: usize) -> f64 {
-        self.axes[axis].top_value()
+    fn dump_top(&self, ext: usize) -> f64 {
+        self.axis_object(ext).map_or(f64::MAX, |a| a.top_value())
     }
     fn dump_preserve_axes(&self) -> bool {
         self.preserve_axes()
