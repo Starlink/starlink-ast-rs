@@ -221,23 +221,38 @@ fn format_native_float(x: f64) -> String {
 /// Translate a card list with keyword-card NATIVE encoding into the
 /// line-oriented text format consumed by [`crate::serial::native_read::parse_native`].
 ///
-/// The card list is walked in order. Cards that are not part of NATIVE
-/// keyword-card encoding (SIMPLE, NAXIS, COMMENT, etc.) are silently
-/// skipped. Data cards whose value type is not representable as a NATIVE
-/// scalar (Logical, Comment, Continue, Undef, complex) are also silently
-/// skipped — this matches the C library's value-type gate in
-/// `fitschan.c::GetNextData` (lines 17887, 17918, 17943, 17971-17978) where
-/// `BEGAST`/`ENDAST`/`ISA` require `AST__STRING` and data cards require
-/// `AST__STRING | AST__INT | AST__KINT | AST__FLOAT`.
+/// The cards are those of one Object, from its `BEGAST` card to its
+/// `ENDAST` card, walked in order. C's `GetNextData` reads them without
+/// skipping (fitschan.c:18697-18890): a commentary card or one a read has
+/// already used is passed over, `BEGAST`, `ENDAST` and `ISA` need a string
+/// value, and any other card must be a data item, a keyword of the Native
+/// form with a string, integer or floating value.
 ///
-/// Returns an error only if a `BEGAST`/`ENDAST`/`ISA` marker has a
-/// non-string value (an outright invalid header).
+/// # Errors
+///
+/// [`ErrorCode::Badin`] "Cannot interpret the input data given by FITS
+/// keyword" for any other card, as C gives it, and an error for a `BEGAST`,
+/// `ENDAST` or `ISA` card without a string value.
 pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
     let mut out = String::new();
     let card_vec: Vec<&FitsCard> = cards.iter().collect();
     let mut i = 0;
     while i < card_vec.len() {
         let card = card_vec[i];
+        if card.is_consumed() || matches!(card.value, FitsValue::Comment(_)) {
+            i += 1;
+            continue;
+        }
+        let cannot_interpret = || {
+            AstError::new(
+                ErrorCode::Badin,
+                format!(
+                    "astRead(FitsChan): Cannot interpret the input data given by FITS keyword \
+                     \"{}\".",
+                    card.keyword
+                ),
+            )
+        };
         let kind = classify(&card.keyword);
         match kind {
             KeywordKind::Begin => {
@@ -274,19 +289,24 @@ pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
                         out.push_str(&name);
                         out.push_str(" =\n");
                     }
-                    None => {
-                        // Non-scalar Data card; skip silently. C library gates
-                        // Data emission on AST__STRING|AST__INT|AST__KINT|AST__FLOAT
-                        // (fitschan.c::GetNextData lines 17971-17978).
-                    }
+                    None => return Err(cannot_interpret()),
                 }
                 i += advance;
             }
-            KeywordKind::Other => {}
+            KeywordKind::Other => return Err(cannot_interpret()),
         }
         i += 1;
     }
     Ok(out)
+}
+
+/// The class a `BEGAST` card names, or nothing if `card` is not one with a
+/// string value.
+pub(crate) fn begin_class(card: Option<&FitsCard>) -> String {
+    match card.map(|c| &c.value) {
+        Some(FitsValue::String(s)) => un_pre_quote(s.trim_end()).to_string(),
+        _ => String::new(),
+    }
 }
 
 fn expect_class_name(value: &FitsValue, keyword: &str) -> AstResult<String> {
@@ -1186,10 +1206,10 @@ END
     }
 
     #[test]
-    fn cards_to_native_text_skips_non_scalar_data_cards() {
-        // A card whose name happens to end in two SEQ_CHARS but whose value
-        // is logical (e.g. SIMPLE = T in a header that also has BEGAST
-        // somewhere) must be silently skipped, not error.
+    fn cards_to_native_text_reads_the_span_of_one_object() {
+        // The caller passes the cards from BEGAST to ENDAST; SIMPLE before
+        // them, whose name ends as a data item's would, is not part of the
+        // Object.
         let header = "\
 SIMPLE  =                    T / not a NATIVE data card despite name suffix
 BEGAST_A= 'FrameSet'
@@ -1198,8 +1218,8 @@ ENDAST_A= 'FrameSet'
 END
 ";
         let cards = cards_from(header);
-        let text = cards_to_native_text(&cards).expect("translates");
-        // SIMPLE -> Data("Simp") classification, but value is Logical -> skip.
+        let (first, last) = native_span(&cards, 0).expect("an Object");
+        let text = cards_to_native_text(&cards.sub_list(first..=last)).expect("translates");
         assert!(!text.contains("Simp"));
         // FrameSet body still emitted.
         assert!(text.contains("Begin FrameSet"));

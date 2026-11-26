@@ -74,6 +74,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: an Object read from FITS cards in the Native encoding fails, with `ErrorCode::Badin` and the C library's messages, when a card inside it is neither a comment nor a data item with a string or numeric value, such as a logical item or a FITS-WCS keyword; the port left such a card out. An error reading such an Object ends with "Error while reading a <class> from a FitsChan.", as in C.
 - `starlink-ast`: a FITS header with a CAR projection and no CDELT for its longitude axis fails to read with `ErrorCode::Bdfts` and the C library's message, where the port read it.
 - `starlink-ast`: a FITS header with a CROTA but without the CDELT of each celestial axis fails to read with `ErrorCode::Bdfts` and the C library's message, where the port read it without the rotation.
 - `starlink-ast`: a FITS header with a CAR projection and a huge `NAXIS` is read at once; the CD matrix's rows and columns are counted from the `CD<j>_<i>` keywords present, as in the C library, rather than from `NAXIS`.

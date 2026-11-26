@@ -3374,10 +3374,17 @@ impl Channel for FitsChan {
                     if !skip {
                         mark_from_start(&mut self.cards, first);
                     }
-                    let text =
-                        enc_native::cards_to_native_text(&self.cards.sub_list(first..=last))?;
-                    let node = serial::native_read::parse_native(&text)?;
-                    let obj = with_registry(&self.intra, || serial::any_object_from_node(&node))?;
+                    // C's Read adds this to any error reading a top-level
+                    // Object (channel.c Read).
+                    let class = enc_native::begin_class(self.cards.iter().nth(first));
+                    let context = |e: AstError| {
+                        e.with_context(format!("Error while reading a {class} from a FitsChan."))
+                    };
+                    let text = enc_native::cards_to_native_text(&self.cards.sub_list(first..=last))
+                        .map_err(context)?;
+                    let node = serial::native_read::parse_native(&text).map_err(context)?;
+                    let obj = with_registry(&self.intra, || serial::any_object_from_node(&node))
+                        .map_err(context)?;
 
                     // C `Read` calls `FixUsed( this, 0, 1, remove )` with
                     // `remove` set for NATIVE encoding (fitschan.c:25923-25929),

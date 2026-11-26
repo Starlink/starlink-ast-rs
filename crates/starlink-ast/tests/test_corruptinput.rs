@@ -1216,3 +1216,44 @@ fn fits_car_without_a_longitude_cdelt() {
         "{err}"
     );
 }
+
+/// Inside an Object written in the Native encoding, a card that is neither a
+/// comment nor a data item of a string or numeric value fails the read, with
+/// the C library's messages.
+#[test]
+fn fits_native_object_with_a_card_it_cannot_hold() {
+    for (card, keyword) in [
+        ("ZOOM_A  =                    T", "ZOOM_A"),
+        ("CTYPE1  = 'x'", "CTYPE1"),
+    ] {
+        let cards = [
+            "BEGAST_A= 'ZoomMap '",
+            "NIN_A   =                    1",
+            "ISA_A   = 'Mapping '",
+            card,
+            "ENDAST_A= 'ZoomMap '",
+        ];
+        expect(
+            read_header(&cards),
+            ErrorCode::Badin,
+            &[
+                &format!(
+                    "astRead(FitsChan): Cannot interpret the input data given by FITS keyword \
+                     \"{keyword}\"."
+                ),
+                "Error while reading a ZoomMap from a FitsChan.",
+            ],
+        );
+    }
+    let cards = [
+        "BEGAST_A= 'ZoomMap '",
+        "NIN_A   =                    1",
+        "ISA_A   = 'Mapping '",
+        "COMMENT just a comment",
+        "ENDAST_A= 'ZoomMap '",
+    ];
+    assert!(matches!(
+        read_header(&cards),
+        Ok(Some(AnyObject::ZoomMap(_)))
+    ));
+}
