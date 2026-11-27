@@ -98,8 +98,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_fitschan_cursor_oracle.rs",
         "EXCLUDED",
-        5,
-        "four NATIVE reads the port parses whole where C reads card by card, \
+        4,
+        "three NATIVE reads the port parses whole where C reads card by card, \
          and native_full_1, whose RefCnt and Nobj comment cards the port has \
          no counterpart for (the rest is compared)",
     ),

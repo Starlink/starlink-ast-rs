@@ -74,6 +74,7 @@ Each crate is versioned on its own, so a version heading names its crate, and an
 
 ### Fixed
 
+- `starlink-ast`: a FitsChan reads a header in the Native encoding through the Channel's reader, as the C library's FitsChan reads through the Channel class, so a value no loader can read fails the read with the Channel's error (`NIN = 2.5` in a UnitMap gives `ErrorCode::Badin` "The value \"nin = 2.5\" cannot be read as an integer."), the items no loader reads are the FitsChan's warnings or, with Strict set, its error, and a nested Object that fails to load is reported as a Channel reports it. The FitsChan's own parser took such a value as truncated or as its default, and reported nothing.
 - `starlink-ast`: a FITS header whose PC or CD matrix cannot be inverted fails to read with `ErrorCode::Bdfts` and the C library's message, and a WCS keyword with no value fails with C's message text.
 - `starlink-ast`: a DSBSpecFrame read from a dump with a SideBand other than `USB`, `LSB` or `LO`, as written, fails with `ErrorCode::Attin` and the C library's message, where the port ignored it or read it in any case.
 - `starlink-ast`: the messages of a MathMap that does not compile give the C library's text, as in `astInitMathMap(MathMap): Undefined variable or function in the expression "sqrt(q".` from `MathMap::new` and `astLoadMathMap(MathMap): ...` when a dump is read, and the checks on the numbers of inputs, outputs and functions give its text too; the error codes are unchanged.

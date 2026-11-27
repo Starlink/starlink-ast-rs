@@ -562,7 +562,6 @@ const EXCLUDED: &[(&str, &str)] = &[
          of Objects of its class, which the port does not have; \
          native_full_1_matches_c_but_for_process_counts compares the rest",
     ),
-    ("native_unknown_item", NATIVE_WHOLE),
     ("native_unknown_item_strict", NATIVE_WHOLE),
     ("native_bad_value", NATIVE_WHOLE),
     ("native_bad_value_clean", NATIVE_WHOLE),

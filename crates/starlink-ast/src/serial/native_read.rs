@@ -1,82 +1,25 @@
 // Copyright 2026 Association of Universities for Research in Astronomy (AURA)
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-//! Native text format parser: text -> Node tree.
-//!
-//! Reads AST's plain-text "Native" serialization format and produces a
-//! class-agnostic [`Node`] tree. The format is line-oriented:
-//!
-//! - `Begin ClassName # comment` starts an object block.
-//! - `Key = Value # comment` is a scalar attribute.
-//! - `Key = \t# comment` (empty value) introduces a nested object on the
-//!   next line.
-//! - `IsA ClassName # comment` is an inheritance marker.
-//! - `End ClassName` closes the block.
-//! - `# Key = Value # comment` is a commented-out default (Unset).
-//! - Other `#` lines are plain comments and are skipped.
+//! The pieces of a line of Native text that the Channel's reader
+//! ([`crate::serial::native_stream`]) reads: the comment after an unquoted
+//! `#`, a scalar value, and a commented-out default (`# Key = Value`).
 
-use crate::constants::MAX_NATIVE_NESTING;
-use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::node::{Node, NodeItem, NodeValue};
+use crate::serial::node::{NodeItem, NodeValue};
 
-/// Parse a Native-format text string into a [`Node`] tree.
-///
-/// The input should contain a single top-level object (one `Begin`/`End`
-/// pair). Leading blank lines and comment lines before the first `Begin`
-/// are silently skipped.
-pub(crate) fn parse_native(text: &str) -> AstResult<Node> {
-    let lines: Vec<&str> = text.lines().collect();
-    let mut pos = 0;
-
-    // Skip leading blank lines and comment-only lines until we find Begin.
-    while pos < lines.len() {
-        let trimmed = lines[pos].trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            pos += 1;
-            continue;
-        }
-        break;
-    }
-
-    if pos >= lines.len() {
-        return Err(AstError::new(
-            ErrorCode::Rderr,
-            "no Begin found in native text",
-        ));
-    }
-
-    let trimmed = lines[pos].trim();
-    let (class, class_comment) = parse_begin_line(trimmed)?;
-    pos += 1;
-
-    let (node, _end_pos) = parse_object(&lines, pos, &class, class_comment, 0)?;
-    Ok(node)
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-/// Parse a `Begin ClassName # comment` line.
-///
-/// Returns `(class_name, optional_comment)`.
-fn parse_begin_line(trimmed: &str) -> AstResult<(String, Option<String>)> {
-    if !trimmed.starts_with("Begin ") {
-        return Err(AstError::new(
-            ErrorCode::Rderr,
-            format!("expected 'Begin', got: {trimmed}"),
-        ));
-    }
-
-    let rest = &trimmed["Begin ".len()..];
-    let (content, comment) = split_comment(rest);
-    let class = content.trim().to_string();
-
-    if class.is_empty() {
-        return Err(AstError::new(ErrorCode::Rderr, "empty class name in Begin"));
-    }
-
-    Ok((class, comment.map(|s| s.to_string())))
+/// Read one Native dump from `text` as a Channel reads it, for tests of
+/// the reader and the writer: the Node of its first Object, with no report of
+/// the items no loader read.
+#[cfg(test)]
+pub(crate) fn parse_native(text: &str) -> crate::error::AstResult<crate::serial::node::Node> {
+    use crate::error::{AstError, ErrorCode};
+    let mut lines = text.lines().map(str::to_string);
+    let mut next_line = || lines.next();
+    let mut reader = super::native_stream::Reader::new(&mut next_line, "Channel", false, 1);
+    reader
+        .read(true, true)?
+        .map(|object| object.node)
+        .ok_or_else(|| AstError::new(ErrorCode::Eochn, "no Object in the text"))
 }
 
 /// Split a line at the first `#` that is not inside double quotes.
@@ -97,20 +40,6 @@ pub(crate) fn split_comment(line: &str) -> (&str, Option<&str>) {
         }
     }
     (line, None)
-}
-
-/// Find the byte position of the first `=` that is not inside double
-/// quotes. Returns `None` if there is no such `=`.
-fn find_equals(line: &str) -> Option<usize> {
-    let mut in_quotes = false;
-    for (i, b) in line.bytes().enumerate() {
-        if b == b'"' {
-            in_quotes = !in_quotes;
-        } else if b == b'=' && !in_quotes {
-            return Some(i);
-        }
-    }
-    None
 }
 
 /// Parse a scalar value string into a [`NodeValue`].
@@ -196,139 +125,11 @@ pub(crate) fn try_parse_commented_default(after_hash: &str) -> Option<NodeItem> 
     })
 }
 
-/// Parse the body of an object block (lines after `Begin` up to and
-/// including `End`).
-///
-/// `depth` is the number of Objects enclosing this one; an Object nested
-/// [`MAX_NATIVE_NESTING`] deep is refused, as the Native stream reader
-/// refuses it, rather than recursing without a bound.
-///
-/// Returns `(node, line_index_after_End)`.
-fn parse_object(
-    lines: &[&str],
-    start: usize,
-    class: &str,
-    class_comment: Option<String>,
-    depth: usize,
-) -> AstResult<(Node, usize)> {
-    if depth >= MAX_NATIVE_NESTING {
-        return Err(AstError::new(
-            ErrorCode::Lderr,
-            format!("Objects nested more than {MAX_NATIVE_NESTING} deep cannot be read."),
-        ));
-    }
-    let mut node = Node::new(class);
-    node.class_comment = class_comment;
-    let mut pos = start;
-
-    while pos < lines.len() {
-        let line = lines[pos];
-        let trimmed = line.trim();
-
-        // Skip blank lines.
-        if trimmed.is_empty() {
-            pos += 1;
-            continue;
-        }
-
-        // End marker — must match the class name.
-        if let Some(rest) = trimmed.strip_prefix("End ") {
-            let (end_class, _comment) = split_comment(rest);
-            let end_class = end_class.trim();
-            if end_class != class {
-                return Err(AstError::new(
-                    ErrorCode::Rderr,
-                    format!(
-                        "mismatched End on line {}: expected '{class}', got '{end_class}'",
-                        pos + 1,
-                    ),
-                ));
-            }
-            return Ok((node, pos + 1));
-        }
-
-        // IsA marker.
-        if let Some(rest) = trimmed.strip_prefix("IsA ") {
-            let (content, comment) = split_comment(rest);
-            let isa_class = content.trim();
-            node.push_isa(isa_class, comment.map(|s| s.to_string()));
-            pos += 1;
-            continue;
-        }
-
-        // Comment line: either a commented-out default or a plain comment.
-        if let Some(after_hash) = trimmed.strip_prefix('#') {
-            if let Some(item) = try_parse_commented_default(after_hash) {
-                node.items.push(item);
-            }
-            // Plain comments are silently skipped.
-            pos += 1;
-            continue;
-        }
-
-        // Attribute: Key = Value # comment
-        if let Some(eq_pos) = find_equals(trimmed) {
-            let key = trimmed[..eq_pos].trim();
-            let after_eq = &trimmed[eq_pos + 1..];
-
-            let (value_str, comment) = split_comment(after_eq);
-            let value_str = value_str.trim();
-
-            if value_str.is_empty() {
-                // Empty value → nested object on the next non-blank line.
-                pos += 1;
-                while pos < lines.len() && lines[pos].trim().is_empty() {
-                    pos += 1;
-                }
-
-                if pos >= lines.len() {
-                    return Err(AstError::new(
-                        ErrorCode::Rderr,
-                        format!(
-                            "expected Begin for nested object after '{key}', \
-                             got end of input"
-                        ),
-                    ));
-                }
-
-                let next_trimmed = lines[pos].trim();
-                let (child_class, child_comment) = parse_begin_line(next_trimmed)?;
-                pos += 1;
-                let (child_node, new_pos) =
-                    parse_object(lines, pos, &child_class, child_comment, depth + 1)?;
-
-                node.push_object(key, child_node, comment.map(|s| s.to_string()));
-                pos = new_pos;
-            } else {
-                // Scalar value.
-                let value = parse_scalar_value(value_str);
-                node.items.push(NodeItem {
-                    key: key.to_string(),
-                    value,
-                    text: None,
-                    comment: comment.map(|s| s.to_string()),
-                    read: Default::default(),
-                    helpful: true,
-                });
-                pos += 1;
-            }
-        } else {
-            return Err(AstError::new(
-                ErrorCode::Rderr,
-                format!("unexpected line {}: {trimmed}", pos + 1),
-            ));
-        }
-    }
-
-    Err(AstError::new(
-        ErrorCode::Rderr,
-        format!("unexpected end of input: no End found for class '{class}'"),
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorCode;
+    use crate::serial::node::Node;
 
     #[test]
     fn split_comment_basic() {
@@ -569,21 +370,24 @@ mod tests {
     }
 
     #[test]
+    fn error_unknown_class() {
+        let text = " Begin Foo\n End Foo\n";
+        let err = parse_native(text).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Ocluk, "{err}");
+    }
+
+    #[test]
     fn error_mismatched_end() {
-        let text = " Begin Foo\n End Bar\n";
-        let result = parse_native(text);
-        assert!(result.is_err());
-        let msg = result.unwrap_err().message().to_string();
-        assert!(msg.contains("mismatched End"));
+        let text = " Begin UnitMap\n    Nin = 1\n IsA Mapping\n End ZoomMap\n";
+        let err = parse_native(text).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Badin, "{err}");
     }
 
     #[test]
     fn error_no_end() {
-        let text = " Begin Foo\n    Nin = 1\n";
-        let result = parse_native(text);
-        assert!(result.is_err());
-        let msg = result.unwrap_err().message().to_string();
-        assert!(msg.contains("no End found"));
+        let text = " Begin UnitMap\n    Nin = 1\n";
+        let err = parse_native(text).unwrap_err();
+        assert!(err.to_string().contains("Unexpected end of input"), "{err}");
     }
 
     // ---------------------------------------------------------------

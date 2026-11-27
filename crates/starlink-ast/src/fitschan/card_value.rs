@@ -121,8 +121,9 @@ pub(crate) fn cnv_type(
 }
 
 /// A floating value as C writes it for a string: `%.17g`, then `CheckZero`
-/// (no sign on zero, long runs of 0s and 9s rounded out).
-fn float_text(v: f64, fitsrnd: usize) -> String {
+/// (no sign on zero, long runs of 0s and 9s rounded out); `fitsrnd` is the
+/// FitsRounding.
+pub(crate) fn float_text(v: f64, fitsrnd: usize) -> String {
     if v == BAD_VALUE {
         return BAD_STRING.to_string();
     }

@@ -51,7 +51,8 @@ use crate::channel::{Channel, ChannelConfig, Sink};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::intramap::with_registry;
 use crate::mappings::{IntraRegistry, IntraTransform};
-use crate::serial::node::Node;
+use crate::serial::native_stream::Reader;
+use crate::serial::node::{Node, with_read_channel};
 use crate::serial::{self, AnyObject};
 
 /// C's `astChrMatchN`: whether `a` and `b` match in their first `n`
@@ -3388,11 +3389,45 @@ impl Channel for FitsChan {
                     let context = |e: AstError| {
                         e.with_context(format!("Error while reading a {class} from a FitsChan."))
                     };
-                    let text = enc_native::cards_to_native_text(&self.cards.sub_list(first..=last))
-                        .map_err(context)?;
-                    let node = serial::native_read::parse_native(&text).map_err(context)?;
-                    let obj = with_registry(&self.intra, || serial::any_object_from_node(&node))
-                        .map_err(context)?;
+                    let fitsrnd = self.fits_rounding() as usize;
+                    let text = enc_native::cards_to_native_text(
+                        &self.cards.sub_list(first..=last),
+                        fitsrnd,
+                    )
+                    .map_err(context)?;
+                    // The text is read by the Channel's reader, so that each
+                    // value is checked as its loader reads it and the items
+                    // no loader reads are reported, as for a Channel
+                    // (channel.c Read; C's FitsChan reads through the
+                    // Channel class).
+                    let strict = self.config.strict();
+                    let report_level = self.config.report_level();
+                    let mut lines = text.lines().map(str::to_string);
+                    let mut next_line = || lines.next();
+                    let mut reader = Reader::new(&mut next_line, "FitsChan", strict, report_level);
+                    let obj = with_registry(&self.intra, || {
+                        with_read_channel("FitsChan", || -> AstResult<AnyObject> {
+                            let object = reader
+                                .read(true, skip)?
+                                .expect("the cards from a BEGAST card describe an Object");
+                            let loaded =
+                                serial::any_object_from_node(&object.node).map_err(context)?;
+                            // C loads every nested Object it reads, so one no
+                            // loader read is loaded here for its reports.
+                            let mut load = |node: &Node| match serial::any_object_from_node(node) {
+                                Err(e) if serial::is_no_loader_error(&e) => Ok(()),
+                                other => other.map(|_| ()),
+                            };
+                            reader
+                                .report_object(&object, &mut load)
+                                .map_err(|(e, _)| context(e))?;
+                            Ok(loaded)
+                        })
+                    });
+                    let warnings = std::mem::take(&mut reader.warnings);
+                    drop(reader);
+                    self.warnings.extend(warnings);
+                    let obj = obj?;
 
                     // C `Read` calls `FixUsed( this, 0, 1, remove )` with
                     // `remove` set for NATIVE encoding (fitschan.c:25923-25929),
