@@ -1196,6 +1196,24 @@ fn mappa_cached(eq: f64, ep: f64) -> [f64; 21] {
     })
 }
 
+/// An FK5HZ or HFK5Z step at its epoch, as the conversion it applies.
+enum Hipparcos {
+    FromFk5(crate::erfa::Fk5hzConsts),
+    ToFk5(crate::erfa::Hfk5zConsts),
+}
+
+impl Hipparcos {
+    fn apply(&self, alpha: f64, delta: f64) -> (f64, f64) {
+        match self {
+            Self::FromFk5(consts) => pal::fk5hz_with(consts, alpha, delta),
+            Self::ToFk5(consts) => {
+                let (r5, d5, _, _) = pal::hfk5z_with(consts, alpha, delta);
+                (r5, d5)
+            }
+        }
+    }
+}
+
 /// Apply a single conversion step to a scalar `(alpha, delta)` pair, in the
 /// forward direction.
 ///
@@ -1225,11 +1243,8 @@ fn apply_step_forward(
         }
         SlaCvtType::Fk45z => unreachable!("FK45Z runs on slices"),
         SlaCvtType::Fk54z => unreachable!("FK54Z runs on slices"),
-        SlaCvtType::Fk5hz => pal::fk5hz(alpha, delta, args[0]),
-        SlaCvtType::Hfk5z => {
-            let (r5, d5, _, _) = pal::hfk5z(alpha, delta, args[0]);
-            (r5, d5)
-        }
+        SlaCvtType::Fk5hz => unreachable!("FK5HZ runs per step"),
+        SlaCvtType::Hfk5z => unreachable!("HFK5Z runs per step"),
         // Ecliptic (of date) to equatorial J2000.0.  C builds the combined
         // matrix precessing J2000 equatorial to the date then rotating to
         // ecliptic (slamap.c:3888); ECLEQ applies its inverse (palDimxv).
@@ -1381,6 +1396,8 @@ fn apply_step_inverse(
         | SlaCvtType::Eqhpr
         | SlaCvtType::Heeq
         | SlaCvtType::Eqhe => stp_apply(step.matrix(), alpha, delta),
+        SlaCvtType::Fk5hz => unreachable!("FK5HZ runs per step"),
+        SlaCvtType::Hfk5z => unreachable!("HFK5Z runs per step"),
         // For all other types, use the inverse type's forward operation. The
         // step constants were built for that type (`StepConsts::new`), and
         // Map.inverse()=Amp and Amp.inverse()=Map share the same mappa
@@ -1472,6 +1489,32 @@ impl Mapping for SlaMap {
             };
             if let Some((slice, name)) = fk_slice {
                 apply_fk_step(slice, name, cvt.args[0], oa, od);
+                continue;
+            }
+
+            // FK5HZ and HFK5Z work out their rotation matrices and spin from
+            // the epoch alone, so the step works them out once, and each
+            // point then gets the same arithmetic as in `pal::fk5hz` and
+            // `pal::hfk5z`. The inverse of each is the other's forward
+            // conversion.
+            let hipparcos = match (cvt.cvt_type, fwd) {
+                (SlaCvtType::Fk5hz, true) | (SlaCvtType::Hfk5z, false) => {
+                    Some(Hipparcos::FromFk5(pal::fk5hz_consts(cvt.args[0])))
+                }
+                (SlaCvtType::Hfk5z, true) | (SlaCvtType::Fk5hz, false) => {
+                    Some(Hipparcos::ToFk5(pal::hfk5z_consts(cvt.args[0])))
+                }
+                _ => None,
+            };
+            if let Some(hipparcos) = hipparcos {
+                for i in 0..npoint {
+                    let (alpha, delta) = (oa[i], od[i]);
+                    (oa[i], od[i]) = if is_bad(alpha) || is_bad(delta) {
+                        (BAD_VALUE, BAD_VALUE)
+                    } else {
+                        hipparcos.apply(alpha, delta)
+                    };
+                }
                 continue;
             }
 

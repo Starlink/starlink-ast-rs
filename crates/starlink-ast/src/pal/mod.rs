@@ -517,6 +517,7 @@ fn fk54z_slice_body<const FMA: bool>(
 }
 
 /// FK5 J2000 to ICRS (Hipparcos frame), assuming zero proper motion.
+#[cfg(test)]
 pub(crate) fn fk5hz(r5: f64, d5: f64, epoch: f64) -> (f64, f64) {
     crate::call_counts::hit("astPalFk5hz");
     // palFk5hz converts the epoch to a Julian date, then calls eraFk5hz.
@@ -524,9 +525,38 @@ pub(crate) fn fk5hz(r5: f64, d5: f64, epoch: f64) -> (f64, f64) {
     crate::erfa::fk5hz(r5, d5, date1, date2)
 }
 
+/// [`fk5hz`]'s constants for the Julian epoch `epoch`, for [`fk5hz_with`].
+pub(crate) fn fk5hz_consts(epoch: f64) -> crate::erfa::Fk5hzConsts {
+    let (date1, date2) = crate::erfa::epj2jd(epoch);
+    crate::erfa::fk5hz_consts(date1, date2)
+}
+
+/// [`fk5hz`] at the epoch `consts` were made for.
+pub(crate) fn fk5hz_with(consts: &crate::erfa::Fk5hzConsts, r5: f64, d5: f64) -> (f64, f64) {
+    crate::call_counts::hit("astPalFk5hz");
+    crate::erfa::fk5hz_with(consts, r5, d5)
+}
+
+/// [`hfk5z`]'s constants for the Julian epoch `epoch`, for [`hfk5z_with`].
+pub(crate) fn hfk5z_consts(epoch: f64) -> crate::erfa::Hfk5zConsts {
+    let (date1, date2) = crate::erfa::epj2jd(epoch);
+    crate::erfa::hfk5z_consts(date1, date2)
+}
+
+/// [`hfk5z`] at the epoch `consts` were made for.
+pub(crate) fn hfk5z_with(
+    consts: &crate::erfa::Hfk5zConsts,
+    rh: f64,
+    dh: f64,
+) -> (f64, f64, f64, f64) {
+    crate::call_counts::hit("astPalHfk5z");
+    crate::erfa::hfk5z_with(consts, rh, dh)
+}
+
 /// ICRS (Hipparcos frame) to FK5 J2000, assuming zero proper motion.
 ///
 /// Returns `(r5, d5, dr5, dd5)`.
+#[cfg(test)]
 pub(crate) fn hfk5z(rh: f64, dh: f64, epoch: f64) -> (f64, f64, f64, f64) {
     crate::call_counts::hit("astPalHfk5z");
     // palHfk5z converts the epoch to a Julian date, then calls eraHfk5z.
