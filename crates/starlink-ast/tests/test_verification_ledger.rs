@@ -330,15 +330,6 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          the first. port_gap_cases_still_differ fails when it closes",
     ),
     (
-        "test_fitschan_errors.rs",
-        "FITSCHAN_ERRORS_DESIGN_EXCLUDED",
-        1,
-        "badkeyname-nonprint: the port refuses a FITS card holding a character \
-         that is not printable ASCII (FITS Standard 4.0) with ErrorCode::Bdfts, \
-         where C warns of the illegal keyword name and stores the card; \
-         diverged_cases_give_the_ports_error checks the port's error",
-    ),
-    (
         "test_fitschan_tab_read_oracle.rs",
         "TAB_READ_EXCLUDED",
         0,

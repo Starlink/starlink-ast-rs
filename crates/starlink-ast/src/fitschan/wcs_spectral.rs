@@ -528,15 +528,10 @@ pub(super) fn log_wcs(crval: f64) -> Option<DynMapping> {
 /// (fitschan.c:20419-20548).
 fn parse_spectral_ctype(store: &FitsStore, axis: usize) -> Option<(SpecSystem, String)> {
     let ctype = store.ctype[axis].as_ref()?;
-    if ctype.len() < 4 {
-        return None;
-    }
-    let prefix = &ctype[..4];
-    let algcode = if ctype.len() > 4 {
-        ctype[4..].trim_end().to_string()
-    } else {
-        String::new()
-    };
+    // The first four bytes, as C reads them; a character of more than one
+    // byte across the fourth is no system name.
+    let prefix = ctype.get(..4)?;
+    let algcode = ctype[4..].trim_end().to_string();
     let system = SpecSystem::parse(prefix)?;
     Some((system, algcode))
 }

@@ -32,9 +32,11 @@ fn illegal_char_error(method: &str, what: &str, text: &str, c: char) -> AstError
     )
 }
 
-/// Check that the card text given to `method` holds only printable ASCII
-/// characters, once it is cut as the C library cuts it: at a NUL, and before
-/// the control characters that end it, such as a carriage return.
+/// Check that the keyword name given to `method`, a setter or getter, holds
+/// only printable ASCII characters, once it is cut as the C library cuts a
+/// card: at a NUL, and before the control characters that end it, such as a
+/// carriage return.
+/// A card read from a header is stored whatever it holds, as in C.
 pub(crate) fn check_card_text(card: &str, method: &str) -> AstResult<()> {
     let card = card.split('\0').next().unwrap_or_default();
     let card = card.trim_end_matches(|c: char| c.is_ascii_control());
@@ -89,23 +91,26 @@ pub(crate) fn check_fits_name(raw_name: &str) -> Option<String> {
         return None;
     }
 
-    for &c in trimmed.as_bytes() {
-        if !is_fits_name_char(c) {
+    for c in trimmed.chars() {
+        if !(c.is_ascii() && is_fits_name_char(c as u8)) {
             // An `=` is reported as an error by C, not a warning.
-            if c == b'=' {
+            if c == '=' {
                 return None;
             }
-            if c < b' ' {
+            if c < ' ' {
                 return Some(format!(
                     "The FITS keyword name ('{trimmed}') contains an illegal \
-                     non-printing character (ascii value {c})."
+                     non-printing character (ascii value {}).",
+                    u32::from(c)
                 ));
             }
-            if c > b' ' {
+            // C reads the name byte by byte, so names the first byte of a
+            // character outside ASCII (as a negative value where `char` is
+            // signed); the port names the character.
+            if c > ' ' {
                 return Some(format!(
                     "The FITS keyword name ('{trimmed}') contains an illegal \
-                     character ('{}').",
-                    c as char
+                     character ('{c}')."
                 ));
             }
             // C's chain has no arm for a space (fitschan.c:6072-6095): it
@@ -801,13 +806,16 @@ fn parse_string_value(
     quote_pos: usize,
     is_continue: bool,
 ) -> AstResult<FitsCard> {
-    let bytes = value_area.as_bytes();
     let mut result = String::new();
-    let mut i = quote_pos + 1; // skip opening quote
+    let start = quote_pos + 1; // skip opening quote
+    // The byte index of the first character after the closing quote, or the
+    // end of the area when the closing quote ends it or is missing.
+    let mut after = value_area.len();
     let mut last_was_quote = false;
 
-    while i < bytes.len() {
-        let ch = bytes[i] as char;
+    // Character by character, so that a character of more than one byte is
+    // kept as it is.
+    for (offset, ch) in value_area[start..].char_indices() {
         if ch == '\'' {
             if last_was_quote {
                 // Two adjacent quotes → one literal quote.
@@ -818,16 +826,13 @@ fn parse_string_value(
             }
         } else {
             if last_was_quote {
-                // Single quote ended the string. 'i' points to first char after closing quote.
+                // Single quote ended the string.
+                after = start + offset;
                 break;
             }
             result.push(ch);
         }
-        i += 1;
     }
-
-    // If we ended the loop with last_was_quote true and didn't break,
-    // that means the closing quote was at the end of the area.
 
     // The value is kept as written, trailing spaces included: C's `Split`
     // stores it so, and only `astGetFitsS` (`MAKE_FGET`) strips the
@@ -835,11 +840,7 @@ fn parse_string_value(
 
     // Everything after the closing quote is potential comment area.
     // Find the '/' comment separator in the remainder.
-    let remainder = if i < bytes.len() {
-        &value_area[i..]
-    } else {
-        ""
-    };
+    let remainder = &value_area[after..];
     let comment = find_comment_in_remainder(remainder);
 
     let value = if is_continue {

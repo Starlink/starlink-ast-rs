@@ -308,7 +308,11 @@ pub(crate) fn tab_mapping(
 
                 // The axis is linear from now on: what remains maps pixel
                 // coordinates to the psi values the look-up starts from.
-                let name = format!("{}{}", &ctype[..4], &ctype[8..]);
+                let name = format!(
+                    "{}{}",
+                    ctype.get(..4).unwrap_or(ctype),
+                    ctype.get(8..).unwrap_or("")
+                );
                 store.ctype[iaxis] = Some(name);
                 tabaxis[iaxis] = true;
                 tmap2

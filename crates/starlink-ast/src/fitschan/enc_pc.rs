@@ -414,13 +414,12 @@ pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut Card
 /// - ATF → AIT (old Aitoff → Hammer-Aitoff)
 #[allow(dead_code)]
 fn translate_pc_ctype_read(ctype: &str) -> String {
-    if ctype.len() >= 8 {
-        let suffix = &ctype[5..8];
+    if let (Some(system), Some(suffix)) = (ctype.get(..4), ctype.get(5..8)) {
         if suffix.eq_ignore_ascii_case("GLS") {
-            return format!("{}-SFL", &ctype[..4]);
+            return format!("{system}-SFL");
         }
         if suffix.eq_ignore_ascii_case("ATF") {
-            return format!("{}-AIT", &ctype[..4]);
+            return format!("{system}-AIT");
         }
     }
     ctype.to_string()

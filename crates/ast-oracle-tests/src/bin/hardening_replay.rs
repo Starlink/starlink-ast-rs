@@ -47,7 +47,6 @@ const PORT_ONLY_LIMITS: &[&str] = &[
     "but a dump cannot hold more than 9999999 values",
     "Objects nested more than 130 deep cannot be read.",
     "is nested more than 100 deep",
-    "but a FITS header may hold only printable ASCII characters",
 ];
 
 /// Print `err` as the C library reports it: its message and then each

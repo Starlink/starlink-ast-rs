@@ -646,7 +646,6 @@ impl FitsChan {
     pub fn from_header(text: &str) -> AstResult<Self> {
         let mut fc = Self::new()?;
         for line in text.lines() {
-            card::check_card_text(line, "astPutFits")?;
             let Ok((card, bad_value)) = FitsCard::split(line) else {
                 continue;
             };
@@ -876,8 +875,17 @@ impl FitsChan {
     /// getter's keyword name as a card: its keyword name, in its own
     /// case (`NewCard` upper-cases them when a card is stored), and any text
     /// after them. As with any card, an illegal name or value is warned of.
-    fn split_name(&mut self, name: &str, method: &'static str) -> AstResult<(String, String)> {
-        card::check_card_text(name, method)?;
+    /// With `checked`, a name holding a character a FITS header may not hold
+    /// is refused; a card read from a header is stored whatever it holds.
+    fn split_name(
+        &mut self,
+        name: &str,
+        method: &'static str,
+        checked: bool,
+    ) -> AstResult<(String, String)> {
+        if checked {
+            card::check_card_text(name, method)?;
+        }
         let (card, bad_value) = FitsCard::split(name)?;
         self.split_warnings(name, bad_value, method)?;
         let comment = match &card.value {
@@ -930,7 +938,7 @@ impl FitsChan {
     pub fn test_fits(&mut self, name: Option<&str>) -> AstResult<Option<bool>> {
         self.read_from_source()?;
         let lname = match name {
-            Some(name) => Some(self.split_name(name, "astTestFits")?.0),
+            Some(name) => Some(self.split_name(name, "astTestFits", true)?.0),
             None => None,
         };
         let icard = self.cards.get_card();
@@ -1006,14 +1014,13 @@ impl FitsChan {
     #[doc(alias = "astPutFits")]
     pub fn put_fits(&mut self, card: &str, overwrite: bool) -> AstResult<()> {
         self.read_from_source()?;
-        card::check_card_text(card, "astPutFits")?;
         let (parsed, bad_value) = FitsCard::split(card)?;
         self.split_warnings(card, bad_value, "astPutFits")?;
         match parsed.value {
             // `PutFits` hands a commentary card to `SetFitsCom`.
             FitsValue::Comment(ref text) => {
                 let name: String = card.chars().take(8).collect();
-                self.set_fits_com(&name, text, overwrite)?;
+                self.set_fits_com(&name, text, overwrite, false)?;
             }
             _ => {
                 // The `astSetFits<X>` the card is handed to splits its
@@ -1376,7 +1383,7 @@ impl FitsChan {
         self.read_from_source()?;
         let lname = match name {
             Some(name) => {
-                let (lname, _) = self.split_name(name, method)?;
+                let (lname, _) = self.split_name(name, method, true)?;
                 Some(lname)
             }
             None => None,
@@ -1649,7 +1656,7 @@ impl FitsChan {
         method: &'static str,
     ) -> AstResult<()> {
         self.read_from_source()?;
-        let (lname, lcom) = self.split_name(name, method)?;
+        let (lname, lcom) = self.split_name(name, method, true)?;
         if let FitsValue::String(text) | FitsValue::Continue(text) = &value {
             card::check_card_field(text, method)?;
         }
@@ -1955,15 +1962,21 @@ impl FitsChan {
     /// As for [`card`](Self::card).
     #[doc(alias = "astSetFitsCM")]
     pub fn set_fits_cm(&mut self, comment: &str, overwrite: bool) -> AstResult<()> {
-        self.set_fits_com("", comment, overwrite)
+        self.set_fits_com("", comment, overwrite, true)
     }
 
     /// C's `SetFitsCom`: store a commentary card with keyword `name`. When
     /// overwriting a card with the same keyword, the card keeps its type and
     /// value and takes the new comment.
-    fn set_fits_com(&mut self, name: &str, comment: &str, overwrite: bool) -> AstResult<()> {
+    fn set_fits_com(
+        &mut self,
+        name: &str,
+        comment: &str,
+        overwrite: bool,
+        checked: bool,
+    ) -> AstResult<()> {
         self.read_from_source()?;
-        let (lname, _) = self.split_name(name, "astSetFitsCom")?;
+        let (lname, _) = self.split_name(name, "astSetFitsCom", checked)?;
         let com = if comment.trim().is_empty() {
             None
         } else {
@@ -1990,13 +2003,15 @@ impl FitsChan {
                 },
             }
         };
-        // The text is checked as the card holds it: a commentary card
-        // keeps the whole of its text.
-        if let FitsValue::Comment(text) = &card.value {
-            card::check_card_field(text, "astSetFitsCom")?;
-        }
-        if let Some(text) = &card.comment {
-            card::check_card_field(text, "astSetFitsCom")?;
+        // Text given to the setter is checked as the card holds it: a
+        // commentary card keeps the whole of its text.
+        if checked {
+            if let FitsValue::Comment(text) = &card.value {
+                card::check_card_field(text, "astSetFitsCom")?;
+            }
+            if let Some(text) = &card.comment {
+                card::check_card_field(text, "astSetFitsCom")?;
+            }
         }
         self.cards.ins_card(card, overwrite);
         Ok(())

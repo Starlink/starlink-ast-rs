@@ -1169,7 +1169,6 @@ impl CardList {
         let mut list = Self::new();
         let mut warnings = Vec::new();
         for line in text.lines() {
-            super::card::check_card_text(line, "astPutFits")?;
             match FitsCard::split(line) {
                 Ok((card, bad_value)) => {
                     // Validate the keyword name (original case, columns 1-8)
@@ -1294,16 +1293,15 @@ fn is_findwcs_keyword(keyword: &str) -> bool {
     // Per-axis WCS keywords (CRPIXn, CRVALn, etc.) and PC/CD/PV/PS
     // matrices, but not the AIPS-specific aliases (RESTFREQ, etc.);
     // DSS-only keywords are enumerated above.
-    if kw.len() >= 6 {
-        let prefix5 = &kw[..5];
-        if matches!(prefix5, "CRPIX" | "CRVAL" | "CDELT" | "CTYPE" | "CUNIT") {
-            let rest = &kw[5..];
-            if rest
+    if let (Some(prefix5), Some(rest)) = (kw.get(..5), kw.get(5..))
+        && !rest.is_empty()
+    {
+        if matches!(prefix5, "CRPIX" | "CRVAL" | "CDELT" | "CTYPE" | "CUNIT")
+            && rest
                 .chars()
                 .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase())
-            {
-                return true;
-            }
+        {
+            return true;
         }
         if kw.starts_with("CROTA") {
             return true;

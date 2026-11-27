@@ -159,7 +159,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [Frame classes cut long default Labels, Symbols, Domains and Titles to their buffers](#frame-classes-cut-long-default-labels-symbols-domains-and-titles-to-their-buffers)
 - [A `%c` Format writes a byte of the value, which outside ASCII is not text](#a-c-format-writes-a-byte-of-the-value-which-outside-ascii-is-not-text)
 - [An error message is cut to 1023 characters](#an-error-message-is-cut-to-1023-characters)
-- [The port refuses a FITS card holding a character that is not printable ASCII](#the-port-refuses-a-fits-card-holding-a-character-that-is-not-printable-ascii)
+- [The port refuses to make a FITS card holding a character that is not printable ASCII](#the-port-refuses-to-make-a-fits-card-holding-a-character-that-is-not-printable-ascii)
 
 ### [Resolved upstream](#resolved-upstream)
 
@@ -2595,16 +2595,18 @@ Like C's, the port's MatrixMap limit counts the elements a MatrixMap stores: eve
 None of these limits is reached by a dump AST writes, as the item names show, except a Region whose MeshSize was set that high, which C reads.
 `tests/test_size_limits.rs` holds each; the counts there are one above the limit.
 
-### The port refuses a FITS card holding a character that is not printable ASCII
+### The port refuses to make a FITS card holding a character that is not printable ASCII
 
-C location: `fitschan.c` `PutFits` (fitschan.c:26204) and `Split` (fitschan.c:33339), `SetFits<X>`, and `Write` (fitschan.c:41434).
+C location: `fitschan.c` `SetFits<X>` and `Write` (fitschan.c:41434); `PutFits` (fitschan.c:26204) and `Split` (fitschan.c:33339) for what is read.
 
 A FITS header may hold only the printable ASCII characters, 0x20 to 0x7E (FITS Standard 4.0, section 4.1.1).
 C stores any bytes it is given in a card, warning only of an illegal keyword name (`badkeyname`) and of a value whose type it cannot tell (`badkeyvalue`), and an Object's text, such as a Title in UTF-8, goes into the cards `astWrite` makes as it is.
-The port refuses, with `AST__BDFTS` "... holds 'é' (U+00E9), but a FITS header may hold only printable ASCII characters.", any card text given to `put_fits`, `put_cards`, `from_header` or a source, and any keyword name, string value or comment given to a `set_fits_*` method, that holds another character once it is cut as C cuts it: at a NUL, and before the control characters that end it, such as a carriage return, and for a comment, without the white space around it.
-A write whose cards would hold another character, such as a Native write of a Frame whose Title is `Flux in µJy`, fails the same way and leaves the FitsChan as it found it.
-So no FITS card in the port holds text that is not ASCII, and the code that reads a card by its columns never meets a character of more than one byte.
-`tests/test_fits_characters.rs` holds each; `badkeyname-nonprint` of `testfitschanerrors.c`, a keyword holding byte 0x01 that C warns of and stores, is in `FITSCHAN_ERRORS_DESIGN_EXCLUDED`.
+The port reads as C does: a card given to `put_fits`, `put_cards`, `from_header` or a source, or read from a dump, is stored whatever it holds, once it is cut as C cuts it (at a NUL, and before the control characters that end it, such as a carriage return), and `to_header` and `write_fits` write it back as it is.
+Headers in archives do hold such characters, in an observer's name or a comment, and refusing the whole header for one of them would make a valid WCS unreadable; `astropy.io.fits` likewise keeps every byte it reads (as Latin-1) and reports them only under `verify`, and `fitsrs` substitutes U+FFFD.
+Such a character at the end of a card is cut with the trailing blanks, in the port as in C, whose `isprint` takes a byte outside ASCII to be non-printing.
+For a keyword name holding such a character, C's `CheckFitsName` reads byte by byte and so names the first byte of the character, as a negative value where `char` is signed; the port's `badkeyname` warning names the character.
+The port refuses, with `AST__BDFTS` "... holds 'é' (U+00E9), but a FITS header may hold only printable ASCII characters.", to make such a card itself: a keyword name, string value or comment given to a `set_fits_*` method (as `astropy.io.fits` raises `ValueError` for), and a write whose cards would hold another character, such as a Native write of a Frame whose Title is `Flux in µJy`, which fails the same way and leaves the FitsChan as it found it.
+`tests/test_fits_characters.rs` holds each.
 
 ## Resolved upstream
 
