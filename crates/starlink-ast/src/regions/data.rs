@@ -249,8 +249,12 @@ impl RegionData {
         let naxes = resolved.naxes();
         let current = resolved.snapshot();
         let mut fs = FrameSet::new(resolved);
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current)
-            .expect("adding current frame to region FrameSet");
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(naxes)),
+            current,
+        )
+        .expect("adding current frame to region FrameSet");
         Self::with_frameset(fs, points)
     }
 
@@ -297,8 +301,12 @@ impl RegionData {
         let naxes = frame.naxes();
         let mut fs = FrameSet::new(frame.snapshot());
         let current_snap = frame.snapshot();
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
-            .expect("adding current frame to region FrameSet");
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(naxes)),
+            current_snap,
+        )
+        .expect("adding current frame to region FrameSet");
         self.frameset = fs;
         self.dummy_fs = false;
         self.invalidate_cache();

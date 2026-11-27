@@ -394,6 +394,7 @@ impl Interval {
         ];
 
         let mut result = 0i32;
+        let mut prevnolim = true;
         for ic in 0..nc {
             // Joint uncertainty width on this axis (interval.c:1954-1960).
             let err_this = ubndu_this[ic] - lbndu_this[ic];
@@ -512,12 +513,30 @@ impl Interval {
                 4
             };
 
-            // Combine with the axes already seen (interval.c:2099-2110).
+            // Neither Interval puts any limit on this axis.
+            let nolim = inc_this
+                && inc_that
+                && lb_this == -f64::MAX
+                && ub_this == f64::MAX
+                && lb_that == -f64::MAX
+                && ub_that == f64::MAX;
+
+            // Combine with the axes already seen. The table has no entry for
+            // an axis on which one Interval is the negation of the other: the
+            // two are each other's negation only if no other axis has a
+            // limit, and otherwise have no positions in common.
             result = if ic == 0 {
                 ov
+            } else if result == 6 {
+                if nolim { 6 } else { 1 }
+            } else if ov == 6 {
+                if prevnolim { 6 } else { 1 }
             } else {
                 NEW_RESULT[(result - 1) as usize][(ov - 1) as usize]
             };
+            if !nolim {
+                prevnolim = false;
+            }
             if result == 1 {
                 break;
             }
@@ -1697,18 +1716,18 @@ impl Region for Interval {
         let bfrm_this = self.data.frameset.base().snapshot();
         let bfrm_reg = other_reg.get_region_frameset().base().snapshot();
         let bfrm: DynFrame = if intfirst {
-            Box::new(crate::frames::CmpFrame::new(bfrm_this, bfrm_reg))
+            Box::new(crate::frames::CmpFrame::new(bfrm_this, bfrm_reg)?)
         } else {
-            Box::new(crate::frames::CmpFrame::new(bfrm_reg, bfrm_this))
+            Box::new(crate::frames::CmpFrame::new(bfrm_reg, bfrm_this)?)
         };
 
         // The two current Frames, combined in the same order (interval.c:1573-1584).
         let f_this = self.data.frameset.current().snapshot();
         let f_reg = other_reg.get_region_frame();
         let cfrm: DynFrame = if intfirst {
-            Box::new(crate::frames::CmpFrame::new(f_this, f_reg))
+            Box::new(crate::frames::CmpFrame::new(f_this, f_reg)?)
         } else {
-            Box::new(crate::frames::CmpFrame::new(f_reg, f_this))
+            Box::new(crate::frames::CmpFrame::new(f_reg, f_this)?)
         };
 
         // The two base->current Mappings, in parallel (interval.c:1586-1598).
@@ -1900,7 +1919,7 @@ impl Mapping for Interval {
     /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
     /// Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {
-        Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
+        Some(Box::new(crate::mappings::UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.

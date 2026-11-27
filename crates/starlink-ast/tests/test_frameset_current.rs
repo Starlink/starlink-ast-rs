@@ -27,7 +27,7 @@ fn frame(i: usize) -> Box<dyn Frame> {
 fn frameset(n: usize) -> FrameSet {
     let mut fs = FrameSet::new(frame(1));
     for i in 2..=n {
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(1)), frame(i))
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(1).unwrap()), frame(i))
             .unwrap();
     }
     fs

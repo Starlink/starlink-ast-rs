@@ -2227,3 +2227,19 @@ fn map_length_reports_an_over_long_key() {
     assert_eq!(err.code(), ErrorCode::Bigkey);
     assert!(err.to_string().contains("astMapLength(KeyMap): "), "{err}");
 }
+
+/// A dump's SizeGuess is kept but sizes nothing, so one asking for a table of
+/// 2^31 entries reads at once and works (upstream 8c542c65).
+#[test]
+fn a_huge_size_guess_in_a_dump_sizes_nothing() {
+    let mut km = KeyMap::new();
+    km.put_0i("a", 3, None).unwrap();
+    let text = native_dump(&AnyObject::KeyMap(Box::new(km))).unwrap();
+    let begin = text.lines().next().unwrap();
+    let dump = text.replacen(begin, &format!("{begin}\n SzGss = 2147483647"), 1);
+    let AnyObject::KeyMap(km) = from_native_string(&dump).unwrap() else {
+        panic!("not a KeyMap");
+    };
+    assert_eq!(km.size_guess(), 2147483647);
+    assert_eq!(km.get_0i("a").unwrap(), Some(3));
+}

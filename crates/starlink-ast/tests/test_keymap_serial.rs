@@ -478,7 +478,7 @@ fn every_scalar_type_round_trips() {
     km.put_u("undefined", None).unwrap();
     km.put_0a(
         "an_object",
-        AnyObject::UnitMap(starlink_ast::mappings::UnitMap::new(2)),
+        AnyObject::UnitMap(starlink_ast::mappings::UnitMap::new(2).unwrap()),
         None,
     )
     .unwrap();
@@ -571,7 +571,9 @@ fn a_null_object_entry_round_trips() {
     km.put_1a(
         "objects",
         vec![
-            Some(AnyObject::UnitMap(starlink_ast::mappings::UnitMap::new(1))),
+            Some(AnyObject::UnitMap(
+                starlink_ast::mappings::UnitMap::new(1).unwrap(),
+            )),
             None,
         ],
         None,
@@ -599,8 +601,12 @@ fn a_non_first_object_vector_element_has_no_trailing_space() {
     km.put_1a(
         "objects",
         vec![
-            Some(AnyObject::UnitMap(starlink_ast::mappings::UnitMap::new(1))),
-            Some(AnyObject::UnitMap(starlink_ast::mappings::UnitMap::new(2))),
+            Some(AnyObject::UnitMap(
+                starlink_ast::mappings::UnitMap::new(1).unwrap(),
+            )),
+            Some(AnyObject::UnitMap(
+                starlink_ast::mappings::UnitMap::new(2).unwrap(),
+            )),
         ],
         None,
     )

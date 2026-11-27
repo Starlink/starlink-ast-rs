@@ -37,10 +37,13 @@ fn make(class: &str) -> DynFrame {
             SpecFrame::new(SpecSystem::Wavelen),
             FluxFrame::new(FluxSystem::FluxDen),
         )),
-        "CmpFrame" => Box::new(CmpFrame::new(
-            Box::new(SkyFrame::new(SkySystem::Icrs)),
-            Box::new(SpecFrame::new(SpecSystem::Wavelen)),
-        )),
+        "CmpFrame" => Box::new(
+            CmpFrame::new(
+                Box::new(SkyFrame::new(SkySystem::Icrs)),
+                Box::new(SpecFrame::new(SpecSystem::Wavelen)),
+            )
+            .unwrap(),
+        ),
         "FrameSet" => Box::new(FrameSet::new(Box::new(SkyFrame::new(SkySystem::Icrs)))),
         "Circle" => Box::new(
             CircleBuilder::new(SkyFrame::new(SkySystem::Icrs), vec![0.0, 0.0])

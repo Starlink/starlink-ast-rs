@@ -31,7 +31,7 @@ fn fwd_point(m: &dyn Mapping, input: &[f64]) -> Vec<f64> {
 
 #[test]
 fn unit_split_picks_chosen_axes() {
-    let u = UnitMap::new(3);
+    let u = UnitMap::new(3).unwrap();
     let (outs, sub) = u.map_split_zero_based(&[0, 2]).unwrap().expect("split");
     assert_eq!(outs, vec![0, 2]);
     assert_eq!(sub.nin(), 2);
@@ -42,7 +42,7 @@ fn unit_split_picks_chosen_axes() {
 
 #[test]
 fn unit_split_full_inputs() {
-    let u = UnitMap::new(3);
+    let u = UnitMap::new(3).unwrap();
     let (outs, sub) = u.map_split_zero_based(&[0, 1, 2]).unwrap().expect("split");
     assert_eq!(outs, vec![0, 1, 2]);
     assert_eq!(sub.nin(), 3);
@@ -51,7 +51,7 @@ fn unit_split_full_inputs() {
 
 #[test]
 fn unit_split_reorders() {
-    let u = UnitMap::new(3);
+    let u = UnitMap::new(3).unwrap();
     let (outs, sub) = u.map_split_zero_based(&[2, 0, 1]).unwrap().expect("split");
     // For UnitMap the output axes are exactly in_axes.
     assert_eq!(outs, vec![2, 0, 1]);
@@ -62,7 +62,7 @@ fn unit_split_reorders() {
 #[test]
 fn unit_split_accepts_a_repeated_input() {
     // unitmap.c MapSplit checks only that each index is in range.
-    let u = UnitMap::new(3);
+    let u = UnitMap::new(3).unwrap();
     let (outs, sub) = u.map_split_zero_based(&[1, 1]).unwrap().unwrap();
     assert_eq!(outs, vec![1, 1]);
     assert_eq!(sub.nin(), 2);
@@ -70,7 +70,7 @@ fn unit_split_accepts_a_repeated_input() {
 
 #[test]
 fn unit_split_rejects_out_of_range() {
-    let u = UnitMap::new(3);
+    let u = UnitMap::new(3).unwrap();
     assert!(u.map_split_zero_based(&[0, 3]).unwrap().is_none());
 }
 
@@ -124,7 +124,7 @@ fn zoom_split_out_of_range_gives_none_and_accepts_a_repeat() {
 
 #[test]
 fn shift_split_picks_axis_offset() {
-    let s = ShiftMap::new(vec![10.0, 20.0, 30.0]);
+    let s = ShiftMap::new(vec![10.0, 20.0, 30.0]).unwrap();
     let (outs, sub) = s.map_split_zero_based(&[2, 0]).unwrap().expect("split");
     assert_eq!(outs, vec![2, 0]);
     assert_eq!(sub.nin(), 2);
@@ -138,7 +138,7 @@ fn shift_split_picks_axis_offset() {
 
 #[test]
 fn shift_split_full_inputs_in_order() {
-    let s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
+    let s = ShiftMap::new(vec![1.0, 2.0, 3.0]).unwrap();
     let (outs, sub) = s.map_split_zero_based(&[0, 1, 2]).unwrap().expect("split");
     // ShiftMap has its own map_split override (shift.rs); this test
     // confirms it succeeds for full inputs in order and applies each
@@ -152,7 +152,7 @@ fn shift_split_full_inputs_in_order() {
 
 #[test]
 fn shift_split_preserves_invert() {
-    let mut s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
+    let mut s = ShiftMap::new(vec![1.0, 2.0, 3.0]).unwrap();
     s.invert();
     let (outs, sub) = s.map_split_zero_based(&[0, 1]).unwrap().expect("split");
     assert_eq!(outs, vec![0, 1]);
@@ -164,7 +164,7 @@ fn shift_split_preserves_invert() {
 fn shift_split_out_of_range_gives_none_and_accepts_a_repeat() {
     // shiftmap.c MapSplit: as for ZoomMap, with the repeated axis's shift
     // used for each copy.
-    let s = ShiftMap::new(vec![1.0, 2.0]);
+    let s = ShiftMap::new(vec![1.0, 2.0]).unwrap();
     assert!(s.map_split_zero_based(&[2]).unwrap().is_none());
     let (outs, sub) = s.map_split_zero_based(&[0, 0]).unwrap().unwrap();
     assert_eq!(outs, vec![0, 0]);
@@ -733,8 +733,8 @@ fn wcs_split_full_set_permuted_simplifies_through() {
 fn cmpmap_parallel_split_per_child() {
     use starlink_ast::mappings::{CmpMap, Composition, ShiftMap};
     // Parallel of two ShiftMaps: axes 0,1 from first; 2,3 from second.
-    let s1 = ShiftMap::new(vec![1.0, 2.0]);
-    let s2 = ShiftMap::new(vec![10.0, 20.0]);
+    let s1 = ShiftMap::new(vec![1.0, 2.0]).unwrap();
+    let s2 = ShiftMap::new(vec![10.0, 20.0]).unwrap();
     let cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
     let (outs, _sub) = cm
         .map_split_zero_based(&[2])
@@ -752,7 +752,7 @@ fn cmpmap_parallel_split_per_child() {
 fn cmpmap_series_split_threads_through() {
     use starlink_ast::mappings::{CmpMap, Composition, ShiftMap, ZoomMap};
     // shift(3) -> zoom(3, 5): linear chain, every axis independent.
-    let s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
+    let s = ShiftMap::new(vec![1.0, 2.0, 3.0]).unwrap();
     let z = ZoomMap::new(3, 5.0).unwrap();
     let cm = CmpMap::new(Box::new(s), Box::new(z), Composition::Series).unwrap();
     let (outs, sub) = cm.map_split_zero_based(&[1]).unwrap().expect("split");
@@ -772,7 +772,7 @@ fn cmpmap_parallel_one_child_rejects_returns_none() {
     // from the matrix half is impossible (matrix.map_split returns None);
     // the whole CmpMap split must propagate that None.
     let coupled = MatrixMap::new(array![[1.0_f64, 1.0], [1.0, 1.0]]).unwrap();
-    let s = ShiftMap::new(vec![10.0]);
+    let s = ShiftMap::new(vec![10.0]).unwrap();
     let cm = CmpMap::new(Box::new(coupled), Box::new(s), Composition::Parallel).unwrap();
     // axis 0 belongs to the coupled matrix; matrix rejects partial input.
     assert!(cm.map_split_zero_based(&[0]).unwrap().is_none());
@@ -794,8 +794,8 @@ fn cmpmap_nested_series_of_parallel() {
     // Build (Shift(2) || Shift(2)) -> (Zoom(4)). The inner parallel has
     // 4 inputs / 4 outputs, then a 4-axis ZoomMap. Splitting on a single
     // axis must recurse through both layers.
-    let inner1 = ShiftMap::new(vec![1.0, 2.0]);
-    let inner2 = ShiftMap::new(vec![10.0, 20.0]);
+    let inner1 = ShiftMap::new(vec![1.0, 2.0]).unwrap();
+    let inner2 = ShiftMap::new(vec![10.0, 20.0]).unwrap();
     let parallel = CmpMap::new(Box::new(inner1), Box::new(inner2), Composition::Parallel).unwrap();
     let zoom = ZoomMap::new(4, 3.0).unwrap();
     let cm = CmpMap::new(Box::new(parallel), Box::new(zoom), Composition::Series).unwrap();
@@ -818,7 +818,7 @@ fn cmpmap_inverted_series_split() {
     use starlink_ast::mappings::{CmpMap, Composition, ShiftMap, ZoomMap};
     // (Shift; Zoom) inverted: forward becomes Zoom^-1 then Shift^-1.
     // For axis i: y = (x / scale) - shift_i.
-    let s = ShiftMap::new(vec![1.0, 2.0, 3.0]);
+    let s = ShiftMap::new(vec![1.0, 2.0, 3.0]).unwrap();
     let z = ZoomMap::new(3, 5.0).unwrap();
     let mut cm = CmpMap::new(Box::new(s), Box::new(z), Composition::Series).unwrap();
     cm.invert();
@@ -842,8 +842,8 @@ fn cmpmap_inverted_parallel_split() {
     // (Shift([1,2]) || Shift([10,20])) inverted: forward subtracts the
     // shifts. After invert(), the CmpMap still has nin=4, nout=4 with the
     // same axis-to-child partition (axes 0,1 -> first; 2,3 -> second).
-    let s1 = ShiftMap::new(vec![1.0, 2.0]);
-    let s2 = ShiftMap::new(vec![10.0, 20.0]);
+    let s1 = ShiftMap::new(vec![1.0, 2.0]).unwrap();
+    let s2 = ShiftMap::new(vec![10.0, 20.0]).unwrap();
     let mut cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
     cm.invert();
     // Axis 3 = second child's axis 1 = inverse shift -20.
@@ -866,7 +866,7 @@ fn cmpmap_series_second_child_couples_returns_none() {
     // Shift(2) -> coupled MatrixMap. Splitting on a single input asks the
     // matrix to split into one of its rows -- it can't, so the whole
     // series split returns None.
-    let s = ShiftMap::new(vec![1.0, 2.0]);
+    let s = ShiftMap::new(vec![1.0, 2.0]).unwrap();
     let coupled = MatrixMap::new(array![[1.0_f64, 1.0], [1.0, 1.0]]).unwrap();
     let cm = CmpMap::new(Box::new(s), Box::new(coupled), Composition::Series).unwrap();
     assert!(cm.map_split_zero_based(&[0]).unwrap().is_none());
@@ -889,8 +889,8 @@ fn cmpmap_parallel_input_reorder_via_permmap() {
     // order so the per-class impl prepends a PermMap. Verify the forward
     // action matches feeding the same values through the original CmpMap
     // at the corresponding axes.
-    let s1 = ShiftMap::new(vec![1.0, 2.0]);
-    let s2 = ShiftMap::new(vec![10.0, 20.0]);
+    let s1 = ShiftMap::new(vec![1.0, 2.0]).unwrap();
+    let s2 = ShiftMap::new(vec![10.0, 20.0]).unwrap();
     let cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
     // Request axes in reversed order: [3, 1, 2, 0].
     let in_axes = [3usize, 1, 2, 0];
@@ -929,8 +929,8 @@ fn cmpmap_split_out_of_range_gives_none_and_accepts_a_repeat() {
     // cmpmap.c MapSplit0 gives no split for an index out of range and
     // passes a repeated one to the components.
     use starlink_ast::mappings::{CmpMap, Composition, ShiftMap};
-    let s1 = ShiftMap::new(vec![1.0, 2.0]);
-    let s2 = ShiftMap::new(vec![10.0, 20.0]);
+    let s1 = ShiftMap::new(vec![1.0, 2.0]).unwrap();
+    let s2 = ShiftMap::new(vec![10.0, 20.0]).unwrap();
     let cm = CmpMap::new(Box::new(s1), Box::new(s2), Composition::Parallel).unwrap();
     assert!(cm.map_split_zero_based(&[4]).unwrap().is_none());
     let (outs, _) = cm.map_split_zero_based(&[0, 0]).unwrap().unwrap();
@@ -950,7 +950,7 @@ fn cmpmap_mapsplit2_no_false_positive_when_genuinely_coupled() {
     // both inputs. No subset depends only on input 0.
     use ndarray::array;
     use starlink_ast::mappings::{CmpMap, Composition, MatrixMap, ShiftMap};
-    let s = ShiftMap::new(vec![1.0, 2.0]);
+    let s = ShiftMap::new(vec![1.0, 2.0]).unwrap();
     let m = MatrixMap::new(array![[1.0, 1.0], [1.0, -1.0]]).unwrap();
     let cm = CmpMap::new(Box::new(s), Box::new(m), Composition::Series).unwrap();
     // Forward path: MatrixMap.map_split_zero_based([0]).unwrap() on a fully-coupled 2x2 fails.
@@ -1060,8 +1060,8 @@ fn tranmap_split_picks_per_axis() {
     // TranMap of two ShiftMaps: forward = ShiftMap(+a), inverse =
     // ShiftMap(-a). Splitting on [1] should pick the shift on axis 1
     // for both directions.
-    let fwd = ShiftMap::new(vec![10.0, 20.0, 30.0]);
-    let mut inv = ShiftMap::new(vec![-10.0, -20.0, -30.0]);
+    let fwd = ShiftMap::new(vec![10.0, 20.0, 30.0]).unwrap();
+    let mut inv = ShiftMap::new(vec![-10.0, -20.0, -30.0]).unwrap();
     inv.invert();
     let tm = TranMap::new(Box::new(fwd), Box::new(inv)).unwrap();
     let (outs, sub) = tm.map_split_zero_based(&[1]).unwrap().expect("split");
@@ -1083,7 +1083,7 @@ fn ratemap_split_diff_output_dropped_returns_none() {
     // ShiftMap.map_split_zero_based([0]).unwrap() returns Some([0], one-axis), which lacks
     // output 1 (= 1-based axis 2, the differentiated output). So the
     // RateMap split must return None.
-    let s = ShiftMap::new(vec![10.0, 20.0, 30.0]);
+    let s = ShiftMap::new(vec![10.0, 20.0, 30.0]).unwrap();
     let rm = RateMap::new(Box::new(s), 2, 1).unwrap();
     assert_eq!(rm.nin(), 3);
     assert_eq!(rm.nout(), 1);
@@ -1114,7 +1114,7 @@ fn ratemap_split_rejects_when_inverted() {
     //
     // What we CAN test: a non-inverted partial split that succeeds via
     // the per-class fallback path.
-    let s = ShiftMap::new(vec![10.0, 20.0, 30.0]);
+    let s = ShiftMap::new(vec![10.0, 20.0, 30.0]).unwrap();
     // RateMap differentiating output 1 wrt input 1 (1-based).
     let rm = RateMap::new(Box::new(s), 1, 1).unwrap();
     assert_eq!(rm.nin(), 3);
@@ -1172,7 +1172,7 @@ fn public_map_split_is_one_based_in_and_out() {
 fn public_map_split_rejects_zero_axis() {
     // A 0 entry is not a valid 1-based index; the wrapper rejects it rather
     // than underflowing to usize::MAX.
-    let u = UnitMap::new(3);
+    let u = UnitMap::new(3).unwrap();
     assert!(u.map_split(&[0]).unwrap().is_none());
     assert!(u.map_split(&[1, 0]).unwrap().is_none());
 }
@@ -1180,7 +1180,7 @@ fn public_map_split_rejects_zero_axis() {
 #[test]
 fn public_map_split_rejects_out_of_range() {
     // 1-based: valid indices are 1..=nin. nin+1 is out of range.
-    let u = UnitMap::new(3);
+    let u = UnitMap::new(3).unwrap();
     assert!(u.map_split(&[4]).unwrap().is_none());
     let (outs, sub) = u
         .map_split(&[1, 2, 3])
@@ -1214,7 +1214,7 @@ fn frameset_splits_its_base_to_current_mapping() {
 
     let map = CmpMap::new(
         Box::new(ZoomMap::new(1, 2.0).unwrap()),
-        Box::new(ShiftMap::new(vec![5.0])),
+        Box::new(ShiftMap::new(vec![5.0]).unwrap()),
         Composition::Parallel,
     )
     .unwrap();
@@ -1244,7 +1244,7 @@ fn frameset_splits_its_base_to_current_mapping() {
 fn testcmpmap_split_of_nested_parallel_cmpmap() {
     use starlink_ast::mappings::{CmpMap, Composition, MatrixMap};
     let inner = CmpMap::new(
-        Box::new(UnitMap::new(1)),
+        Box::new(UnitMap::new(1).unwrap()),
         Box::new(ZoomMap::new(2, 2.0).unwrap()),
         Composition::Parallel,
     )
@@ -1287,4 +1287,20 @@ fn testcmpmap_split_of_splittest1() {
     assert_eq!(y2[0], y[0], "Error 11");
     assert_eq!(y2[1], y[1], "Error 12");
     assert_eq!(y2[2], y[3], "Error 13");
+}
+
+/// A CmpMap whose Ident is set may not be decomposed, so it cannot be split,
+/// as in the C library; without Ident it can.
+#[test]
+fn cmpmap_with_ident_is_not_split() {
+    use starlink_ast::mappings::{CmpMap, Composition};
+    let mut map = CmpMap::new(
+        Box::new(ZoomMap::new(1, 2.0).unwrap()),
+        Box::new(ZoomMap::new(1, 3.0).unwrap()),
+        Composition::Parallel,
+    )
+    .unwrap();
+    assert!(map.map_split(&[2]).unwrap().is_some());
+    map.set_ident("keep");
+    assert!(map.map_split(&[2]).unwrap().is_none());
 }

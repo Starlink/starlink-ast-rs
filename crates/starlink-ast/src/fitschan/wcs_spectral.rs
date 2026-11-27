@@ -198,7 +198,7 @@ fn build_spectral_axis(
     let crval = store.crval[axis].unwrap_or(0.0);
     let mut warnings: Warnings = epoch_warnings;
     let mapping: Option<DynMapping> = if algcode.is_empty() {
-        Some(Box::new(ShiftMap::new(vec![crval])))
+        Some(Box::new(ShiftMap::new(vec![crval])?))
     } else if algcode == "-LOG" {
         log_wcs(crval)
     } else if is_nonlin_x2p(&algcode) {
@@ -206,7 +206,7 @@ fn build_spectral_axis(
         warnings.append(warns);
         map
     } else if algcode == "-GRI" || algcode == "-GRA" {
-        grism_spec_wcs(&algcode, store, axis, &frame)?
+        grism_spec_wcs(&algcode, store, s, axis, &frame)?
     } else {
         None
     };
@@ -216,7 +216,8 @@ fn build_spectral_axis(
             ErrorCode::Bdfts,
             format!(
                 "astRead(FitsChan): Cannot implement spectral algorithm code '{algcode}' \
-                 specified in FITS keyword '{key}'."
+                 specified in FITS keyword '{key}'.\nastRead(FitsChan): Unknown algorithm \
+                 code or unusable parameter values."
             ),
         ));
     };
@@ -381,6 +382,7 @@ fn nonlin_spec_wcs(
 fn grism_spec_wcs(
     algcode: &str,
     store: &FitsStore,
+    s: char,
     axis: usize,
     specfrm: &SpecFrame,
 ) -> AstResult<Option<DynMapping>> {
@@ -426,7 +428,23 @@ fn grism_spec_wcs(
     // Round to nearest, not toward zero: a grism interference order is
     // commonly negative, and `(v + 0.5) as i32` turns -1 into 0
     // (fitschan.c:14422, fixed upstream at 1199880a).
-    let m_order = pv(1).map(|v| v.round() as i32).unwrap_or(0);
+    // An order an `int` cannot hold is refused (fitschan.c, the GrismMap
+    // set-up in SpecTrans's caller), by a test a NaN fails too.
+    let m_order = match pv(1) {
+        Some(v) if v.is_nan() || v.abs() >= f64::from(i32::MAX) => {
+            return Err(AstError::new(
+                ErrorCode::Bdfts,
+                format!(
+                    "astRead(FitsChan): The FITS keyword PV{}_1{s} has an invalid value ({}) for \
+                     the diffraction order of a grism.",
+                    axis + 1,
+                    crate::frames::axis_format::sprintf_double("%g", v)
+                ),
+            ));
+        }
+        Some(v) => v.round() as i32,
+        None => 0,
+    };
     let alpha = pv(2).map(|v| v * DD2R).unwrap_or(0.0);
     let nr = pv(3).unwrap_or(1.0);
     let nrp = pv(4).unwrap_or(0.0);
@@ -453,7 +471,7 @@ fn grism_spec_wcs(
 
     // Rate of change dg/dS at the reference point. Mirrors C:14349-14350.
     let dg = match map1.rate(&[crv], 1, 1) {
-        Ok(r) if r != 0.0 && r.is_finite() => r,
+        Ok(r) if r != crate::constants::BAD_VALUE && r != 0.0 => r,
         _ => return Ok(None),
     };
 
@@ -461,7 +479,7 @@ fn grism_spec_wcs(
     // Build map2 = ZoomMap(dg) ∘ ShiftMap(gcrv): w → grism-parameter.
     // Mirrors C:14355-14358.
     let map2a: DynMapping = Box::new(ZoomMap::new(1, dg)?);
-    let map2b: DynMapping = Box::new(ShiftMap::new(vec![gcrv]));
+    let map2b: DynMapping = Box::new(ShiftMap::new(vec![gcrv])?);
     let map2 = CmpMap::new(map2a, map2b, Composition::Series)?;
 
     // Invert map1 to get grism-parameter → S, then compose map2 with it
@@ -510,15 +528,10 @@ pub(super) fn log_wcs(crval: f64) -> Option<DynMapping> {
 /// (fitschan.c:20419-20548).
 fn parse_spectral_ctype(store: &FitsStore, axis: usize) -> Option<(SpecSystem, String)> {
     let ctype = store.ctype[axis].as_ref()?;
-    if ctype.len() < 4 {
-        return None;
-    }
-    let prefix = &ctype[..4];
-    let algcode = if ctype.len() > 4 {
-        ctype[4..].trim_end().to_string()
-    } else {
-        String::new()
-    };
+    // The first four bytes, as C reads them; a character of more than one
+    // byte across the fourth is no system name.
+    let prefix = ctype.get(..4)?;
+    let algcode = ctype[4..].trim_end().to_string();
     let system = SpecSystem::parse(prefix)?;
     Some((system, algcode))
 }

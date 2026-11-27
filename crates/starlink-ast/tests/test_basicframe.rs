@@ -26,12 +26,11 @@ fn builder_basic() {
     assert_eq!(frame.domain(), "TEST");
 }
 
+/// A Frame of no axes is made, as `astFrame( 0, "" )` makes one.
 #[test]
-fn builder_zero_axes_rejected() {
-    let result = BasicFrameBuilder::new(0).build();
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert_eq!(err.code(), ErrorCode::Naxin);
+fn builder_zero_axes_accepted() {
+    let frame = BasicFrameBuilder::new(0).build().unwrap();
+    assert_eq!(frame.naxes(), 0);
 }
 
 #[test]

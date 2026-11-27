@@ -113,9 +113,11 @@ pub(crate) fn make_label_exp(tree: &UnitNode) -> Option<String> {
 fn label_exp(tree: &UnitNode, top: bool) -> Option<String> {
     let mut node = Box::new(tree.clone());
     complicate_tree(&mut node);
-    fix_constants(&mut node, true);
-    while simplify_tree(&mut node, false) {
-        fix_constants(&mut node, true);
+    // The tree's constants were folded when it was made, so folding them
+    // again cannot fail; were it to, C's MakeExp gives no string.
+    fix_constants(&mut node, true).ok()?;
+    while simplify_tree(&mut node, false).ok()? {
+        fix_constants(&mut node, true).ok()?;
     }
 
     if node.con != BAD_VALUE {

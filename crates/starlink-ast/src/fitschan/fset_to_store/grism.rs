@@ -36,7 +36,7 @@ pub(crate) fn extract_grism_map(
     // Case 1: leaf GrismMap (un-inverted). Mirrors C:10236-10240.
     if let Some(g) = map.as_any().downcast_ref::<GrismMap>() {
         if !g.is_inverted() {
-            return Ok(Some((g.clone(), Box::new(UnitMap::new(1)))));
+            return Ok(Some((g.clone(), Box::new(UnitMap::new(1)?))));
         }
         return Ok(None);
     }
@@ -162,7 +162,7 @@ mod tests {
     fn shift_then_grism_in_series_extracts() {
         // Series: ShiftMap → GrismMap. The GrismMap is at the end ⇒
         // extractable. The replacement chain becomes ShiftMap → UnitMap.
-        let shift = ShiftMap::new(vec![3.5]);
+        let shift = ShiftMap::within_limit(vec![3.5]);
         let g = make_grism();
         let chain = CmpMap::new(Box::new(shift), Box::new(g.clone()), Composition::Series).unwrap();
 
@@ -179,7 +179,7 @@ mod tests {
         // by the trailing shift, so extraction must fail. Mirrors the
         // "GrismMap must be at the end" requirement.
         let g = make_grism();
-        let shift = ShiftMap::new(vec![3.5]);
+        let shift = ShiftMap::within_limit(vec![3.5]);
         let chain = CmpMap::new(Box::new(g), Box::new(shift), Composition::Series).unwrap();
 
         assert!(extract_grism_map(&chain, 0).unwrap().is_none());
@@ -190,7 +190,7 @@ mod tests {
         // Parallel: UnitMap (axis 0) || GrismMap (axis 1). Asking for
         // output 1 returns the GrismMap; the replacement is
         // UnitMap || UnitMap.
-        let unit = UnitMap::new(1);
+        let unit = UnitMap::within_limit(1);
         let g = make_grism();
         let chain =
             CmpMap::new(Box::new(unit), Box::new(g.clone()), Composition::Parallel).unwrap();
@@ -205,7 +205,7 @@ mod tests {
     fn parallel_grism_wrong_axis_does_not_extract() {
         // Asking for output 0 from UnitMap || GrismMap returns None
         // (UnitMap doesn't carry a GrismMap).
-        let unit = UnitMap::new(1);
+        let unit = UnitMap::within_limit(1);
         let g = make_grism();
         let chain = CmpMap::new(Box::new(unit), Box::new(g), Composition::Parallel).unwrap();
 
@@ -215,8 +215,8 @@ mod tests {
     #[test]
     fn no_grism_anywhere_returns_none() {
         let chain = CmpMap::new(
-            Box::new(ShiftMap::new(vec![1.0])),
-            Box::new(UnitMap::new(1)),
+            Box::new(ShiftMap::within_limit(vec![1.0])),
+            Box::new(UnitMap::within_limit(1)),
             Composition::Series,
         )
         .unwrap();

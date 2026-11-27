@@ -230,7 +230,7 @@ pub(crate) fn is_map_tab_1d(
         // The Mappings before and after the LutMap, each combined in
         // series behind a UnitMap.
         let combine = |range: &[(DynMapping, bool, bool)]| -> AstResult<DynMapping> {
-            let mut combined: DynMapping = Box::new(UnitMap::new(1));
+            let mut combined: DynMapping = Box::new(UnitMap::new(1)?);
             for (m, inv, _) in range {
                 let m = if *inv {
                     inverted(m.as_ref())
@@ -459,11 +459,20 @@ pub(crate) fn store_tab_axis(
 
 /// The PermMap from WCS axis order to FITS axis order `wperm`.
 pub(crate) fn fits_order_perm(wperm: &[usize]) -> AstResult<PermMap> {
+    // `wperm` can name an axis past the last when two world axes depend on
+    // one pixel axis. C then stores past its array, and the PermMap takes
+    // the index as a bad value, so the write fails later; here such an index
+    // is a bad value, and an output no axis feeds is bad too.
     let n = wperm.len();
     let mut outperm = vec![0i64; n];
-    let inperm: Vec<i64> = wperm.iter().map(|&w| w as i64 + 1).collect();
+    let inperm: Vec<i64> = wperm
+        .iter()
+        .map(|&w| if w < n { w as i64 + 1 } else { 0 })
+        .collect();
     for (i, &w) in wperm.iter().enumerate() {
-        outperm[w] = i as i64 + 1;
+        if w < n {
+            outperm[w] = i as i64 + 1;
+        }
     }
     PermMap::new(&inperm, &outperm, &[])
 }

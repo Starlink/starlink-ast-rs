@@ -896,7 +896,7 @@ impl Mapping for GrismMap {
                 && ast_equal(self.grism_theta, other_grism.grism_theta)
                 && self_inv != other_inv
             {
-                return Some(Box::new(UnitMap::new(1)));
+                return Some(Box::new(UnitMap::within_limit(1)));
             }
             return None;
         }
@@ -1046,6 +1046,7 @@ impl Serializable for GrismMap {
         let node = &whole.section("GrismMap");
         use crate::serial::NodeValue;
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, 1, 1)?;
         let nr = node.get_double("GrmNR", 1.0);
         let nrp = node.get_double("GrmNRP", 0.0);
         let wave_r = node.get_double("GrmWR", 5000.0);

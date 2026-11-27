@@ -159,8 +159,11 @@ pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut Card
     let (mut primeq, mut primlt, mut primln, mut primdt) =
         (BAD_VALUE, BAD_VALUE, BAD_VALUE, BAD_VALUE);
     let mut primpv = [BAD_VALUE; 10];
-    // C bounds every description's search for projection parameters by
-    // the primary description's highest parameter index.
+    let mut primnaxis = 0;
+    // C bounds each description's search for projection parameters by the
+    // highest parameter index of the primary description or, for a
+    // secondary one, of either (fitschan.c PCFromStore), so a secondary
+    // description may have a value for which the primary has none.
     let primmaxm = planes.first().and_then(|p| p.max_pv_m());
 
     for (&store, &s) in planes.iter().zip(letters) {
@@ -212,8 +215,9 @@ pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut Card
                     }
                 }
                 primpc = matrix;
-            } else if !primpc.is_empty()
-                && !matrix.iter().zip(&primpc).all(|(a, b)| ast_equal(*a, *b))
+                primnaxis = naxis;
+            } else if naxis != primnaxis
+                || !matrix.iter().zip(&primpc).all(|(a, b)| ast_equal(*a, *b))
             {
                 return false;
             }
@@ -335,11 +339,9 @@ pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut Card
                 primdt = val;
                 if val != BAD_VALUE {
                     cards.set_float("MJD-OBS", val, "Modified Julian Date of observation");
-                    cards.set_string(
-                        "DATE-OBS",
-                        &super::wcs_write::mjd_to_date_str(val),
-                        "Date of observation",
-                    );
+                    if let Some(date) = super::wcs_write::mjd_to_date_obs(val) {
+                        cards.set_string("DATE-OBS", &date, "Date of observation");
+                    }
                 }
             } else if val != BAD_VALUE && !ast_equal(val, primdt) {
                 return false;
@@ -348,7 +350,12 @@ pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut Card
             // Projection parameters, only on the latitude axis, only the
             // first 10, and none for TAN.
             let (axlon, axlat, _) = store.lon_lat_spec_axes();
-            if let (Some(axlon), Some(axlat), Some(maxm)) = (axlon, axlat, primmaxm) {
+            let maxm = if primary {
+                primmaxm
+            } else {
+                primmaxm.max(store.max_pv_m())
+            };
+            if let (Some(axlon), Some(axlat), Some(maxm)) = (axlon, axlat, maxm) {
                 let prj = store.ctype[axlat]
                     .as_deref()
                     .and_then(|c| c.get(4..))
@@ -407,13 +414,12 @@ pub(crate) fn write_pc(planes: &[&FitsStore], letters: &[char], cards: &mut Card
 /// - ATF → AIT (old Aitoff → Hammer-Aitoff)
 #[allow(dead_code)]
 fn translate_pc_ctype_read(ctype: &str) -> String {
-    if ctype.len() >= 8 {
-        let suffix = &ctype[5..8];
+    if let (Some(system), Some(suffix)) = (ctype.get(..4), ctype.get(5..8)) {
         if suffix.eq_ignore_ascii_case("GLS") {
-            return format!("{}-SFL", &ctype[..4]);
+            return format!("{system}-SFL");
         }
         if suffix.eq_ignore_ascii_case("ATF") {
-            return format!("{}-AIT", &ctype[..4]);
+            return format!("{system}-AIT");
         }
     }
     ctype.to_string()

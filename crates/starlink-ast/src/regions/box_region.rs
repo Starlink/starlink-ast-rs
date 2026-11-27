@@ -407,7 +407,7 @@ impl BoxRegion {
             // Put the original current Frame back in place of the Prism's
             // CmpFrame, then simplify the Prism.
             let frm = self.data.frameset.current().snapshot();
-            let um = UnitMap::new(nout);
+            let um = UnitMap::new(nout)?;
             let newprism = prism.reg_map_region(&um, frm.as_ref())?;
             let simplified = <dyn Mapping>::simplify(newprism.as_ref())?;
             let result = super::merge_util::mapping_into_region(simplified).unwrap_or(newprism);
@@ -1688,18 +1688,18 @@ impl Region for BoxRegion {
         let bfrm_this = self.data.frameset.base().snapshot();
         let bfrm_reg = other_reg.get_region_frameset().base().snapshot();
         let bfrm: DynFrame = if intfirst {
-            Box::new(crate::frames::CmpFrame::new(bfrm_this, bfrm_reg))
+            Box::new(crate::frames::CmpFrame::new(bfrm_this, bfrm_reg)?)
         } else {
-            Box::new(crate::frames::CmpFrame::new(bfrm_reg, bfrm_this))
+            Box::new(crate::frames::CmpFrame::new(bfrm_reg, bfrm_this)?)
         };
 
         // The two current Frames, combined in the same order (box.c:2019-2030).
         let f_this = self.data.frameset.current().snapshot();
         let f_reg = other_reg.get_region_frame();
         let cfrm: DynFrame = if intfirst {
-            Box::new(crate::frames::CmpFrame::new(f_this, f_reg))
+            Box::new(crate::frames::CmpFrame::new(f_this, f_reg)?)
         } else {
-            Box::new(crate::frames::CmpFrame::new(f_reg, f_this))
+            Box::new(crate::frames::CmpFrame::new(f_reg, f_this)?)
         };
 
         // The two base->current Mappings, in parallel (box.c:2032-2044).
@@ -1891,7 +1891,7 @@ impl Mapping for BoxRegion {
     /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
     /// Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {
-        Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
+        Some(Box::new(crate::mappings::UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.

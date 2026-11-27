@@ -443,9 +443,14 @@ impl FrameAxis {
     }
 
     /// `astAxisAbbrev` on this Axis object.
-    pub(crate) fn axis_abbrev(&self, fmt: &str, str1: Option<&str>, str2: &str) -> usize {
+    pub(crate) fn axis_abbrev(
+        &self,
+        fmt: &str,
+        str1: Option<&str>,
+        str2: &str,
+    ) -> crate::error::AstResult<usize> {
         match self {
-            FrameAxis::Plain(_) => plain_axis_abbrev(str1, str2),
+            FrameAxis::Plain(_) => Ok(plain_axis_abbrev(str1, str2)),
             FrameAxis::Sky(s) => {
                 super::skyaxis::sky_axis_abbrev(fmt, s.digits_value(AXIS_DIGITS), str1, str2)
             }
@@ -464,7 +469,12 @@ impl FrameAxis {
     }
 
     /// `astAxisFields` on this Axis object.
-    pub(crate) fn axis_fields(&self, fmt: &str, text: &str, maxfld: usize) -> super::FieldSplit {
+    pub(crate) fn axis_fields(
+        &self,
+        fmt: &str,
+        text: &str,
+        maxfld: usize,
+    ) -> crate::error::AstResult<super::FieldSplit> {
         match self {
             FrameAxis::Plain(_) => plain_axis_fields(fmt, text, maxfld),
             FrameAxis::Sky(s) => {
@@ -613,17 +623,21 @@ pub(crate) fn plain_axis_abbrev(str1: Option<&str>, str2: &str) -> usize {
 // C: axis.c `AxisFields` (axis.c:414). Only the `log` flag of the parsed
 // Format is used, so the Digits handed to `ParseAxisFormat` do not matter.
 // The log delimiter depends on whether escape sequences are on.
-pub(crate) fn plain_axis_fields(fmt: &str, text: &str, maxfld: usize) -> super::FieldSplit {
+pub(crate) fn plain_axis_fields(
+    fmt: &str,
+    text: &str,
+    maxfld: usize,
+) -> crate::error::AstResult<super::FieldSplit> {
     use crate::constants::BAD_VALUE;
     let mut out = super::FieldSplit {
         fields: Vec::new(),
         value: BAD_VALUE,
     };
-    let parsed = super::axis_format::parse_axis_format(fmt, AXIS_DIGITS);
+    let parsed = super::axis_format::parse_axis_format(fmt, AXIS_DIGITS)?;
     let s = text.as_bytes();
     if parsed.log {
         if maxfld <= 1 {
-            return out;
+            return Ok(out);
         }
         let start = s.iter().take_while(|&&b| b == b' ').count();
         let mut p = start;
@@ -672,5 +686,5 @@ pub(crate) fn plain_axis_fields(fmt: &str, text: &str, maxfld: usize) -> super::
             out.value = value;
         }
     }
-    out
+    Ok(out)
 }

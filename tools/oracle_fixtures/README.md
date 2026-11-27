@@ -170,6 +170,40 @@ by a platform difference in the same file:
 Run this whenever the submodule pin moves. It belongs in the upstream-sync
 protocol in `CLAUDE.md`.
 
+## `check_probes_fresh.sh` — is each generated probe oracle still what C prints?
+
+About 140 `crates/starlink-ast/tests/*_oracle/cases.rs` files are printed by the probes here, each built and run as its header documents.
+`probes.tsv` lists them with how each is built (the Makefile, or one of the compiler lines in the script), where it runs and what it writes.
+
+```shell
+./tools/oracle_fixtures/check_probes_fresh.sh                       # compare every probe with its committed file
+./tools/oracle_fixtures/check_probes_fresh.sh <probe>...            # only those
+./tools/oracle_fixtures/check_probes_fresh.sh --capture <dir>       # write each probe's output to <dir>/<probe>
+./tools/oracle_fixtures/check_probes_fresh.sh --write <probe>...    # replace the committed files; run cargo fmt after
+```
+
+Each probe prints `SAME`, `DIFFERS <n> lines`, `KNOWN <reason>`, `FIXED` or `FAILED <why>`, and `DIFFERS`, `FIXED` and `FAILED` exit non-zero.
+A probe whose output matches only after `rustfmt` is `SAME`, since `cargo fmt` reformats the generated files it is not told to skip, and the `DIFFERS` count is against whichever of the two forms is nearer the committed file.
+A named probe that `probes.tsv` does not list is `FAILED`; `test_probes_table` keeps the table listing every generated file.
+The compiler lines load the error library whole, with `-force_load` on macOS and `--whole-archive` elsewhere; they have been run on macOS only.
+
+A committed file that is known to differ from its probe names the reason in the `known` column of `probes.tsv`, and the probe then reports `KNOWN`.
+Some were edited after capture (American spelling in comments, `-inf` written as `BAD_VALUE`), some probes print the time, a probe over the fixture tree misses fixtures added since its file was written, and some wait for the stage of a sync that ports the C behind them.
+A known probe that matches again reports `FIXED` and fails, so that the change which regenerates or fixes its file also removes the entry.
+
+To see what a pin move changed, capture at both pins and diff the directories; `AST_REFERENCE` points the script at a checkout of the old pin, built with cmake as for the reference library:
+
+```shell
+git -C reference/starlink-ast worktree add --detach <scratch>/ast-old <old pin>
+# build <scratch>/ast-old into its build/ directory as reference/starlink-ast is built
+AST_REFERENCE=<scratch>/ast-old ./tools/oracle_fixtures/check_probes_fresh.sh --capture <scratch>/old
+./tools/oracle_fixtures/check_probes_fresh.sh --capture <scratch>/new
+diff -r <scratch>/old <scratch>/new
+```
+
+Run it after every move of the `reference/starlink-ast` pin, alongside `check_corpus_fresh.sh` and `check_simplify_fresh.sh`.
+A probe the pin changes is regenerated, whole, by the change that ports the C behind it.
+
 ## `recapture_wcslib_golden.sh` — are the wcslib golden values still what C computes?
 
 `crates/starlink-ast/tests/wcslib_golden/projections.tsv` holds the results of the reference library's wcslib projections, which `src/wcslib/golden_tests.rs` compares the native projections against bit for bit.
@@ -237,6 +271,39 @@ No file of another platform's values is committed, because they change with the 
 `recapture_erfa_pal_golden.c` maps each root to its C routine as `run()` in `golden_tests.rs` maps it to the port's, and a root it does not know is an error naming the line.
 A new root needs an entry in both.
 To add calls, write their lines with the inputs and any well-formed output, such as `nan`, and run the script: it replaces the outputs.
+
+## `build_hardening_probe.sh` — what does C report for a corrupt dump?
+
+`hardening_probe.c` includes one of the C hardening tests (`testcorruptinput.c`, `testloaderhardening.c`, `testframeperm.c`, `testframesetload.c`, `testdssmap.c`) whole, with its `main` renamed, and records every dump the test reads with `astFromString`, the status C is left with and each message it reports during the call.
+`build_hardening_probe.sh` builds it once per test and prints `crates/starlink-ast/tests/hardening_oracle/cases.rs`, which `test_hardening_oracle.rs` replays through the port:
+
+```shell
+./tools/oracle_fixtures/build_hardening_probe.sh > crates/starlink-ast/tests/hardening_oracle/cases.rs
+```
+
+The tests print to stdout and stderr themselves, so the probe writes the cases to file descriptor 3.
+`check_probes_fresh.sh` runs it through its `ctests` recipe.
+
+## `load_one` and `hardening_replay` — do the port and C read a corpus alike?
+
+`load_one.c` reads every Object from one file with the C library, as a Native dump or as FITS header cards, and prints each message C reports, each Object read, and the error or end it reached.
+`hardening_replay` (in `crates/ast-oracle-tests`) runs it and the port, which prints the same lines, on every file of a directory, each in a child process limited to 20 seconds, and reports the files they read alike, those they read differently, those the port refuses by a limit of its own, and those C or the port crashes or hangs on:
+
+```shell
+cd reference/starlink-ast/build
+cc -O2 -I. ../../../tools/oracle_fixtures/load_one.c -L. -last -lm -Wl,-rpath,$PWD \
+   -o ../../../tools/oracle_fixtures/load_one
+cd ../../..
+cargo run --release -p ast-oracle-tests --bin hardening_replay -- fuzz/corpus/native_read
+cargo run --release -p ast-oracle-tests --bin hardening_replay -- fuzz/corpus/fitschan_read_write --fits
+cargo run --release -p ast-oracle-tests --bin hardening_replay -- --one <file> [--fits]   # the port's side alone
+```
+
+Two readings are the same when they give the same Objects, or the same messages in the same order and the same error.
+C cuts text at a byte count, which can split a character; a C line that differs from the port's only by the half character before `...` or at its end counts as the same.
+A port-only limit is recognized by its message (`PORT_ONLY_LIMITS` in `hardening_replay.rs`), so add a new limit's message there.
+There is no MOC mode: a MOC read is not a Native dump.
+The differences it found in the fuzz corpora of stage 5 of the `fe26cc9b` sync that are not yet fixed are `PLAN.md` rows ("The order of the errors of a corrupt dump" and "FITS read error parity").
 
 ## `build_simplify_trace.sh` — watch C simplify
 

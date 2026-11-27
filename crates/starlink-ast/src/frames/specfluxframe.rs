@@ -6,7 +6,7 @@
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, FluxFrame, Frame, SpecFrame};
-use crate::mappings::helpers::{is_bad, point_has_bad};
+use crate::mappings::helpers::{is_c_bad, point_has_c_bad};
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable};
 
@@ -227,6 +227,20 @@ impl SpecFluxFrame {
 // ---------------------------------------------------------------------------
 
 impl Frame for SpecFluxFrame {
+    // cmpframe.c `Cast`, which SpecFluxFrame inherits: into a class derived
+    // from CmpFrame only if this is one of that class, so into a
+    // SpecFluxFrame or a CmpFrame, and into any other class through a basic
+    // Frame with this Frame's axes and attributes.
+    fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        if other.as_any().is::<SpecFluxFrame>() {
+            return Ok(Some(self.snapshot()));
+        }
+        if other.as_any().is::<super::CmpFrame>() {
+            return Ok(Some(Box::new(self.as_cmp_frame())));
+        }
+        super::reduce_to_basic_frame(self)?.cast(other)
+    }
+
     fn axis_perm(&self) -> Vec<usize> {
         if self.swap { vec![1, 0] } else { vec![0, 1] }
     }
@@ -343,7 +357,7 @@ impl Frame for SpecFluxFrame {
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         super::assert_points_len("distance", self.naxes(), &[a, b]);
-        if point_has_bad(a) || point_has_bad(b) {
+        if point_has_c_bad(a) || point_has_c_bad(b) {
             return Ok(BAD_VALUE);
         }
         // Euclidean distance in the 2-D compound space.
@@ -354,7 +368,7 @@ impl Frame for SpecFluxFrame {
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
         super::assert_points_len("angle", self.naxes(), &[a, b, c]);
-        if point_has_bad(a) || point_has_bad(b) || point_has_bad(c) {
+        if point_has_c_bad(a) || point_has_c_bad(b) || point_has_c_bad(c) {
             return Ok(BAD_VALUE);
         }
         let ba0 = a[0] - b[0];
@@ -378,7 +392,7 @@ impl Frame for SpecFluxFrame {
         // split between the two one-axis components in proportion to their
         // distances, so the path passes through the second point, and each
         // component applies the Frame-class offset to its share.
-        if point_has_bad(from) || point_has_bad(to) || is_bad(dist) {
+        if point_has_c_bad(from) || point_has_c_bad(to) || is_c_bad(dist) {
             return Ok(vec![BAD_VALUE; 2]);
         }
         let d1 = super::cartesian_distance(&from[..1], &to[..1]);
@@ -394,7 +408,7 @@ impl Frame for SpecFluxFrame {
         };
         let r1 = super::cartesian_offset(&from[..1], &to[..1], off1)[0];
         let r2 = super::cartesian_offset(&from[1..2], &to[1..2], off2)[0];
-        if is_bad(r1) || is_bad(r2) {
+        if is_c_bad(r1) || is_c_bad(r2) {
             return Ok(vec![BAD_VALUE; 2]);
         }
         Ok(vec![r1, r2])
@@ -431,7 +445,7 @@ impl Frame for SpecFluxFrame {
     }
 
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
-        super::validate_permutation(perm, 2)?;
+        super::check_perm_axes("SpecFluxFrame", perm, 2)?;
         // Two-element permutation: identity is [1,2]; swap is [2,1].
         if perm[0] == 2 && perm[1] == 1 {
             self.swap = !self.swap;
@@ -570,7 +584,7 @@ fn make_map_f(x1: &SpecFrame, x2: &SpecFrame) -> AstResult<DynMapping> {
     let rate = RateMap::new(m.clone_box(), 1, 1)?;
     // div: 2-in/1-out, out = in0 / abs(in1) (inverse undefined, matching C).
     let div = MathMap::new(2, 1, &["out=in0/abs(in1)"], &["in0", "in1"])?;
-    let unit = UnitMap::new(1);
+    let unit = UnitMap::new(1)?;
     // perm: 2-in/3-out; C inperm=[0,2], outperm=[0,1,1] -> 1-based [1,3]/[1,2,2].
     let perm = PermMap::new(&[1, 3], &[1, 2, 2], &[])?;
 
@@ -598,7 +612,7 @@ fn make_map_i(x1: &SpecFrame, x2: &SpecFrame) -> AstResult<DynMapping> {
     m_inv.invert();
     // mult: 2-in/1-out, out = in0 * abs(in1) (inverse undefined, matching C).
     let mult = MathMap::new(2, 1, &["out=in0*abs(in1)"], &["in0", "in1"])?;
-    let unit = UnitMap::new(1);
+    let unit = UnitMap::new(1)?;
     let perm = PermMap::new(&[1, 3], &[1, 2, 2], &[])?;
 
     // cmap1 = unit ∥ rate  : (v2,x1) -> (v2, dx2/dx1)
@@ -641,7 +655,7 @@ fn make_map2(sff: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
     let s2 = sff.std_spec_frame()?;
     let ax2_map = s1.make_spec_mapping(&s2)?;
     // ax3_map: UnitMap on the copied flux axis.
-    let ax3_map = UnitMap::new(1);
+    let ax3_map = UnitMap::new(1)?;
 
     let tmap = CmpMap::new(ax1_map, ax2_map, Composition::Parallel)?;
     let ret = CmpMap::new(Box::new(tmap), Box::new(ax3_map), Composition::Parallel)?;
@@ -651,7 +665,8 @@ fn make_map2(sff: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
 /// The third Mapping of MakeSFMapping (specfluxframe.c::MakeMap3, 631): a
 /// 3-in/3-out parallel CmpMap. The first two axes are a `TranMap` between
 /// standardized `(v1,x1)` and `(v2,x2)` (the flux scaling); the third axis is
-/// the unmodified `x1 -> x2` spectral mapping.
+/// the conversion between the supplied SpecFrames, or `None` if they have
+/// none.
 fn make_map3(target: &SpecFluxFrame, result: &SpecFluxFrame) -> AstResult<Option<DynMapping>> {
     // Standardized SpecFrames for the flux-scaling TranMap.
     let sf1 = target.std_spec_frame()?;
@@ -660,8 +675,13 @@ fn make_map3(target: &SpecFluxFrame, result: &SpecFluxFrame) -> AstResult<Option
     let imap = make_map_i(&sf1, &sf2)?;
     let mapa = TranMap::new(fmap, imap)?;
 
-    // Third axis: the unmodified supplied x1 -> x2 spectral mapping.
-    let mapb = target.spec_frame.make_spec_mapping(&result.spec_frame)?;
+    // Third axis: the conversion from the supplied SpecFrame of the target
+    // to that of the result, which `astConvert` finds, so that a difference
+    // in Domain, say, gives none.
+    let Some(fs) = super::find_frame::convert(&target.spec_frame, &result.spec_frame, &[])? else {
+        return Ok(None);
+    };
+    let mapb = fs.mapping(super::FrameRef::Base, super::FrameRef::Current)?;
 
     let ret = CmpMap::new(Box::new(mapa), mapb, Composition::Parallel)?;
     Ok(Some(Box::new(ret)))
@@ -693,7 +713,7 @@ fn make_sf_mapping(
     if Frame::equal(&target.spec_frame, &result.spec_frame)
         && Frame::equal(&target.flux_frame, &result.flux_frame)
     {
-        return Ok(Some(Box::new(UnitMap::new(2))));
+        return Ok(Some(Box::new(UnitMap::new(2)?)));
     }
 
     // map1: PermMap copying v1 to output 0 and x1 to outputs 1 and 2.
@@ -805,7 +825,7 @@ fn specfluxframe_sub_frame(
 
         // No template — identity Mapping over the (possibly
         // permuted) result.
-        let map: DynMapping = Box::new(UnitMap::new(2));
+        let map: DynMapping = Box::new(UnitMap::new(2)?);
         return Ok(Some((map, Box::new(result))));
     }
 
@@ -845,19 +865,39 @@ impl Serializable for SpecFluxFrame {
     fn from_node(node: &Node) -> AstResult<Self> {
         let cmp = <super::CmpFrame as Serializable>::from_node(node)?;
         let (frame_a, frame_b, perm, attrs) = cmp.into_parts();
+        // The components must be a SpecFrame and a FluxFrame, in that order
+        // (specfluxframe.c `astLoadSpecFluxFrame`, with astCheckLoaded).
+        let check = |frame: &DynFrame, class: &str, item: &str| -> AstResult<()> {
+            let found = super::class_name(frame.as_ref());
+            let is_a = crate::serial::native_stream::class_chain(found)
+                .is_some_and(|chain| chain.contains(&class));
+            if is_a {
+                return Ok(());
+            }
+            Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoad({0}): The {item} read for a {0} is a {found}, which is not a {class}.",
+                    node.class
+                ),
+            ))
+        };
+        check(&frame_a, "SpecFrame", "first component Frame")?;
+        check(&frame_b, "FluxFrame", "second component Frame")?;
         let spec_frame = frame_a
             .as_any()
             .downcast_ref::<SpecFrame>()
             .ok_or_else(|| {
-                AstError::new(ErrorCode::Lderr, "SpecFluxFrame: FrameA is not a SpecFrame")
+                AstError::new(
+                    ErrorCode::Lderr,
+                    "A SpecFluxFrame whose SpecFrame is a DSBSpecFrame cannot be loaded.",
+                )
             })?
             .clone();
         let flux_frame = frame_b
             .as_any()
             .downcast_ref::<FluxFrame>()
-            .ok_or_else(|| {
-                AstError::new(ErrorCode::Lderr, "SpecFluxFrame: FrameB is not a FluxFrame")
-            })?
+            .expect("checked to be a FluxFrame")
             .clone();
         let mut sff = SpecFluxFrame::new(spec_frame, flux_frame);
         sff.swap = perm == [1, 0];

@@ -1,0 +1,9 @@
+CTYPE1  = 'RA---TAN'
+CTYPE2  = 'DEC--TAN'
+CRVAL1  =                 10.0
+CRVAL2  =                 20.0
+CRPIX1  =                  1.0
+CRPIX2  =                  1.0
+CDELT1  =                 -0.1
+CDELT2  =                  0.1
+QV1_1   = 'abcdefghijklmnop'

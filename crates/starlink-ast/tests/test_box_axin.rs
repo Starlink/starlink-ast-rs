@@ -28,7 +28,7 @@ fn plain(n: usize) -> starlink_ast::frames::BasicFrame {
 }
 
 fn cmp() -> CmpFrame {
-    CmpFrame::new(Box::new(sky()), Box::new(plain(1)))
+    CmpFrame::new(Box::new(sky()), Box::new(plain(1))).unwrap()
 }
 
 /// The Box from (350,-10) to (10,10) degrees, by its two corners.

@@ -843,7 +843,7 @@ impl DSBSpecFrame {
     /// If already USB, returns a unit (identity) mapping.
     pub fn to_usb_mapping(&self) -> AstResult<DynMapping> {
         if self.sideband() == SideBand::USB {
-            return Ok(Box::new(UnitMap::new(1)));
+            return Ok(Box::new(UnitMap::new(1)?));
         }
         self.verify_attrs("create a Mapping to another sideband", "IF DSBCentre")?;
         let f_lo = self.lo_freq()?;
@@ -868,7 +868,7 @@ impl DSBSpecFrame {
     /// If already LSB, returns a unit (identity) mapping.
     pub fn to_lsb_mapping(&self) -> AstResult<DynMapping> {
         if self.sideband() == SideBand::LSB {
-            return Ok(Box::new(UnitMap::new(1)));
+            return Ok(Box::new(UnitMap::new(1)?));
         }
         self.verify_attrs("create a Mapping to another sideband", "IF DSBCentre")?;
         let f_lo = self.lo_freq()?;
@@ -893,7 +893,7 @@ impl DSBSpecFrame {
     /// If already LO, returns a unit (identity) mapping.
     pub fn to_lo_mapping(&self) -> AstResult<DynMapping> {
         if self.sideband() == SideBand::LO {
-            return Ok(Box::new(UnitMap::new(1)));
+            return Ok(Box::new(UnitMap::new(1)?));
         }
         self.verify_attrs("create a Mapping to another sideband", "IF DSBCentre")?;
         let f_lo = self.lo_freq()?;
@@ -1110,9 +1110,12 @@ impl Frame for DSBSpecFrame {
     // (same MinAxes / MaxAxes / Permute defaults).
     // -----------------------------------------------------------------
 
+    // object.c `Cast`: a copy into its own class, and into the classes it is
+    // derived from, SpecFrame and a plain Frame, a copy of the part it is.
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // DSBSpecFrame -> SpecFrame (truncate to the parent), or
-        // -> BasicFrame (plain Frame).
+        if other.as_any().is::<DSBSpecFrame>() {
+            return Ok(Some(self.snapshot()));
+        }
         if other
             .as_any()
             .downcast_ref::<crate::frames::SpecFrame>()
@@ -1398,14 +1401,21 @@ impl Serializable for DSBSpecFrame {
             None
         };
 
-        // SideBn
-        let sideband = {
-            let sb_str = node.get_string("SideBn", "");
-            if sb_str.is_empty() {
-                None
-            } else {
-                SideBand::parse(&sb_str)
-            }
+        // SideBn: C's loader takes exactly `USB`, `LSB` or `LO` and refuses
+        // any other (dsbspecframe.c:3217-3229).
+        let sideband = match node.get_string_if_set("SideBn") {
+            None => None,
+            Some(text) => match text.as_str() {
+                "USB" => Some(SideBand::USB),
+                "LSB" => Some(SideBand::LSB),
+                "LO" => Some(SideBand::LO),
+                _ => {
+                    return Err(AstError::new(
+                        ErrorCode::Attin,
+                        format!("astRead(Channel): Invalid SideBand description \"{text}\"."),
+                    ));
+                }
+            },
         };
 
         // AlSdBn

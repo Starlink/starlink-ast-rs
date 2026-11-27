@@ -1007,7 +1007,7 @@ mod tests {
 
     #[test]
     fn unit_map_box() {
-        let m = UnitMap::new(2);
+        let m = UnitMap::within_limit(2);
         let r = map_box_default(&m, &[1.0, 2.0], &[10.0, 20.0], true, 0).unwrap();
         assert!(approx(r.lbnd_out, 1.0, 1e-9));
         assert!(approx(r.ubnd_out, 10.0, 1e-9));
@@ -1029,7 +1029,7 @@ mod tests {
 
     #[test]
     fn shift_map_box() {
-        let m = ShiftMap::new(vec![10.0, -5.0]);
+        let m = ShiftMap::within_limit(vec![10.0, -5.0]);
         let r = map_box_default(&m, &[0.0, 0.0], &[1.0, 2.0], true, 0).unwrap();
         assert!(approx(r.lbnd_out, 10.0, 1e-9));
         assert!(approx(r.ubnd_out, 11.0, 1e-9));

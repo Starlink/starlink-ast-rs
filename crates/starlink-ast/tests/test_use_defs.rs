@@ -45,19 +45,17 @@ fn build(name: &str) -> AnyObject {
             AnyObject::SkyFrame(f)
         }
         "time_off" => AnyObject::TimeFrame(off(TimeFrame::unset_system())),
-        "cmp_from_first" => AnyObject::CmpFrame(CmpFrame::new(
-            Box::new(off(SkyFrame::unset_system())),
-            Box::new(basic(1)),
-        )),
-        "cmp_second_ignored" => AnyObject::CmpFrame(CmpFrame::new(
-            Box::new(basic(1)),
-            Box::new(off(SkyFrame::unset_system())),
-        )),
+        "cmp_from_first" => AnyObject::CmpFrame(
+            CmpFrame::new(Box::new(off(SkyFrame::unset_system())), Box::new(basic(1))).unwrap(),
+        ),
+        "cmp_second_ignored" => AnyObject::CmpFrame(
+            CmpFrame::new(Box::new(basic(1)), Box::new(off(SkyFrame::unset_system()))).unwrap(),
+        ),
         "frameset_from_current" | "frameset_own" => {
             let mut fs = FrameSet::new(Box::new(basic(2)));
             fs.add_frame(
                 FrameRef::Base,
-                Box::new(UnitMap::new(2)),
+                Box::new(UnitMap::new(2).unwrap()),
                 Box::new(off(basic(2))),
             )
             .unwrap();

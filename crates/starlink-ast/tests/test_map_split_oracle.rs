@@ -71,11 +71,11 @@ fn zoom(n: usize, f: f64) -> DynMapping {
 fn mapping(name: &str) -> DynMapping {
     let prefix = |p: &str| name.starts_with(p);
     if prefix("unitmap_") {
-        Box::new(UnitMap::new(3))
+        Box::new(UnitMap::new(3).unwrap())
     } else if prefix("zoommap_inverted_") {
         inverted(zoom(3, 2.0))
     } else if prefix("shiftmap_inverted_") {
-        inverted(Box::new(ShiftMap::new(vec![1.0, 2.0, 3.0])))
+        inverted(Box::new(ShiftMap::new(vec![1.0, 2.0, 3.0]).unwrap()))
     } else if prefix("winmap_inverted_") {
         inverted(Box::new(
             WinMap::from_corners(&[0.0, 0.0], &[1.0, 1.0], &[1.0, 2.0], &[3.0, 6.0]).unwrap(),
@@ -99,7 +99,7 @@ fn mapping(name: &str) -> DynMapping {
         Box::new(
             CmpMap::new(
                 zoom(1, 2.0),
-                Box::new(ShiftMap::new(vec![1.0, 2.0])),
+                Box::new(ShiftMap::new(vec![1.0, 2.0]).unwrap()),
                 Composition::Parallel,
             )
             .unwrap(),

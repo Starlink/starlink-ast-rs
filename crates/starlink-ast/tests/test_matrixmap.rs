@@ -661,23 +661,33 @@ fn inverted_singular() -> MatrixMap {
     m
 }
 
-/// Merging a MatrixMap with a neighbor multiplies the matrices, which an
-/// inverted singular MatrixMap cannot take part in, and C passes the error
-/// up from the simplification.
+/// Merging a MatrixMap with another multiplies the matrices, which an
+/// inverted singular MatrixMap cannot take part in, so C leaves the pair as
+/// it is; a ZoomMap after one scales it without needing its forward matrix.
+/// The results are the C library's.
 #[test]
-fn merging_with_an_inverted_singular_matrix_is_an_error() {
+fn merging_with_an_inverted_singular_matrix_leaves_the_pair() {
     use starlink_ast::mappings::{CmpMap, Composition, ZoomMap};
     let full = MatrixMap::new(array![[1.0_f64, 2.0], [3.0, 4.0]]).unwrap();
-    let pairs: [(Box<dyn Mapping>, Box<dyn Mapping>); 2] = [
-        (Box::new(full), Box::new(inverted_singular())),
-        (
-            Box::new(inverted_singular()),
-            Box::new(ZoomMap::new(2, 3.0).unwrap()),
-        ),
-    ];
-    for (first, second) in pairs {
-        let map = CmpMap::new(first, second, Composition::Series).unwrap();
-        let err = <dyn Mapping>::simplify(&map).unwrap_err();
-        assert_eq!(err.code(), ErrorCode::Mtrml);
-    }
+    let map = CmpMap::new(
+        Box::new(full),
+        Box::new(inverted_singular()),
+        Composition::Series,
+    )
+    .unwrap();
+    let simp = <dyn Mapping>::simplify(&map).unwrap();
+    let cmp = simp.as_any().downcast_ref::<CmpMap>().expect("a CmpMap");
+    let (parts, kind) = cmp.decompose();
+    assert_eq!(kind, Composition::Series);
+    assert!(parts.map1.as_any().is::<MatrixMap>() && !parts.invert1);
+    assert!(parts.map2.as_any().is::<MatrixMap>() && parts.invert2);
+
+    let map = CmpMap::new(
+        Box::new(inverted_singular()),
+        Box::new(ZoomMap::new(2, 3.0).unwrap()),
+        Composition::Series,
+    )
+    .unwrap();
+    let simp = <dyn Mapping>::simplify(&map).unwrap();
+    assert!(simp.as_any().is::<MatrixMap>());
 }

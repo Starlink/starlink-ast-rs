@@ -276,7 +276,7 @@ pub(crate) fn tab_mapping(
                             unit = false;
                             map
                         }
-                        None => Box::new(UnitMap::new(1)),
+                        None => Box::new(UnitMap::new(1)?),
                     };
                     indexmap = Some(match indexmap {
                         Some(prev) => Box::new(CmpMap::new(prev, tmap1, Composition::Parallel)?),
@@ -308,7 +308,11 @@ pub(crate) fn tab_mapping(
 
                 // The axis is linear from now on: what remains maps pixel
                 // coordinates to the psi values the look-up starts from.
-                let name = format!("{}{}", &ctype[..4], &ctype[8..]);
+                let name = format!(
+                    "{}{}",
+                    ctype.get(..4).unwrap_or(ctype),
+                    ctype.get(8..).unwrap_or("")
+                );
                 store.ctype[iaxis] = Some(name);
                 tabaxis[iaxis] = true;
                 tmap2
@@ -317,7 +321,7 @@ pub(crate) fn tab_mapping(
                 permout[nperm] = iaxis as i64;
                 permin[iaxis] = nperm as i64;
                 nperm += 1;
-                Box::new(UnitMap::new(1))
+                Box::new(UnitMap::new(1)?)
             }
         };
         tmap0 = Some(match tmap0 {

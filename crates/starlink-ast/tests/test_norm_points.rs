@@ -54,7 +54,8 @@ fn norm_points_follows_the_c_library() {
     let cmp = CmpFrame::new(
         Box::new(sky.clone()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     let fs = FrameSet::new(Box::new(sky.clone()));
 
     let got: Vec<(&str, PointSet)> = vec![
@@ -112,7 +113,8 @@ fn norm_points_rejects_a_wrong_coordinate_count() {
     let cmp = CmpFrame::new(
         Box::new(sky.clone()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     let fs = FrameSet::new(Box::new(sky.clone()));
     let circle = CircleBuilder::new(sky.clone(), vec![0.0, 0.0])
         .unwrap()

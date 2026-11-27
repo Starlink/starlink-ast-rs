@@ -58,7 +58,7 @@ fn testresimp_restricted_cancellation_keeps_the_shiftmaps() {
     let mut zm1 = ZoomMap::new(1, 2.0).unwrap();
     zm1.set_allow_simplify(true);
     let cm1 = CmpMap::new(
-        Box::new(ShiftMap::new(vec![1.0])),
+        Box::new(ShiftMap::new(vec![1.0]).unwrap()),
         Box::new(zm1),
         Composition::Series,
     )
@@ -116,7 +116,7 @@ fn testresimp_restricted_shift_zoom_shift_keeps_the_last_shiftmap() {
     let mut zm1 = ZoomMap::new(1, 2.0).unwrap();
     zm1.set_allow_simplify(true);
     let cm1 = CmpMap::new(
-        Box::new(ShiftMap::new(vec![1.0])),
+        Box::new(ShiftMap::new(vec![1.0]).unwrap()),
         Box::new(zm1),
         Composition::Series,
     )
@@ -124,7 +124,7 @@ fn testresimp_restricted_shift_zoom_shift_keeps_the_last_shiftmap() {
     let mut cm2: DynMapping = Box::new(
         CmpMap::new(
             Box::new(cm1),
-            Box::new(ShiftMap::new(vec![-2.0])),
+            Box::new(ShiftMap::new(vec![-2.0]).unwrap()),
             Composition::Series,
         )
         .unwrap(),
@@ -147,7 +147,7 @@ fn testresimp_restricted_shift_zoom_shift_keeps_the_last_shiftmap() {
 fn testresimp_unrestricted_shift_zoom_shift_is_a_zoommap() {
     use starlink_ast::mappings::{CmpMap, Composition, DynMapping, ShiftMap, ZoomMap};
     let cm1 = CmpMap::new(
-        Box::new(ShiftMap::new(vec![1.0])),
+        Box::new(ShiftMap::new(vec![1.0]).unwrap()),
         Box::new(ZoomMap::new(1, 2.0).unwrap()),
         Composition::Series,
     )
@@ -155,7 +155,7 @@ fn testresimp_unrestricted_shift_zoom_shift_is_a_zoommap() {
     let cm2: DynMapping = Box::new(
         CmpMap::new(
             Box::new(cm1),
-            Box::new(ShiftMap::new(vec![-2.0])),
+            Box::new(ShiftMap::new(vec![-2.0]).unwrap()),
             Composition::Series,
         )
         .unwrap(),

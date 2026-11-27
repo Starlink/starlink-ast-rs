@@ -5,23 +5,26 @@
 //!
 //! Converts a token stream into a compiled expression (opcodes + constants).
 
+use crate::constants::MAX_EXPRESSION_NESTING;
 use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::opcode::{CompiledExpr, Opcode};
-use super::token::Token;
+use super::token::{CLASS, Token};
 
 /// Compile a tokenized expression into opcodes and constants.
 ///
 /// This implements operator-precedence parsing (a variant of Pratt parsing)
 /// following the same precedence as the C library's symbol table.
-pub(crate) fn compile(tokens: &[Token]) -> AstResult<CompiledExpr> {
+pub(crate) fn compile(tokens: &[Token], method: &str) -> AstResult<CompiledExpr> {
     let mut compiler = Compiler {
         tokens,
+        method,
         pos: 0,
         opcodes: Vec::new(),
         constants: Vec::new(),
         stack_size: 0,
         max_stack: 0,
+        depth: 0,
     };
     compiler.parse_expr(0)?;
 
@@ -42,11 +45,15 @@ pub(crate) fn compile(tokens: &[Token]) -> AstResult<CompiledExpr> {
 
 struct Compiler<'a> {
     tokens: &'a [Token],
+    /// The entry point that is compiling, which a message names.
+    method: &'a str,
     pos: usize,
     opcodes: Vec<Opcode>,
     constants: Vec<f64>,
     stack_size: i32,
     max_stack: usize,
+    /// How many calls of `parse_expr` enclose the current one.
+    depth: usize,
 }
 
 impl<'a> Compiler<'a> {
@@ -69,6 +76,25 @@ impl<'a> Compiler<'a> {
 
     /// Parse an expression with minimum binding power `min_bp`.
     fn parse_expr(&mut self, min_bp: u8) -> AstResult<()> {
+        // A port-only limit: C's EvaluationSort does not recurse.
+        if self.depth > MAX_EXPRESSION_NESTING {
+            return Err(AstError::new(
+                ErrorCode::Miopa,
+                format!(
+                    "{}({CLASS}): The expression is nested more than {MAX_EXPRESSION_NESTING} deep.",
+                    self.method
+                ),
+            ));
+        }
+        self.depth += 1;
+        let result = self.parse_operand_and_operators(min_bp);
+        self.depth -= 1;
+        result
+    }
+
+    /// The body of `parse_expr`: an operand and the infix operators that
+    /// bind to it at least as tightly as `min_bp`.
+    fn parse_operand_and_operators(&mut self, min_bp: u8) -> AstResult<()> {
         // Parse prefix / atom
         self.parse_prefix()?;
 

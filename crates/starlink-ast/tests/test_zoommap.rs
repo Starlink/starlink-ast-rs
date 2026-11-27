@@ -153,7 +153,7 @@ fn zoom_attribute_set_clear_and_get() {
 
     let _cmp = CmpMap::new(
         Box::new(zm.clone()),
-        Box::new(UnitMap::new(1)),
+        Box::new(UnitMap::new(1).unwrap()),
         Composition::Series,
     )
     .unwrap();

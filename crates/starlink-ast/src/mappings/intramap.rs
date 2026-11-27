@@ -476,15 +476,18 @@ impl Mapping for IntraMap {
         self.transform
             .transform(self, &pts, forward != self.inverted, &mut out)
             .map_err(|e| {
-                AstError::new(
-                    e.code(),
-                    format!(
-                        "astTransform(IntraMap): Error signalled by \"{}\" transformation \
-                         function: {}",
-                        self.name,
-                        e.message()
-                    ),
-                )
+                // C reports its message after any the function reported; a
+                // function that only set the status reported none.
+                let signalled = format!(
+                    "astTransform(IntraMap): Error signalled by \"{}\" transformation function.",
+                    self.name
+                );
+                let message = if e.message().is_empty() {
+                    signalled
+                } else {
+                    format!("{}\n{signalled}", e.message())
+                };
+                AstError::new(e.code(), message)
             })
     }
 
@@ -563,7 +566,7 @@ impl Mapping for IntraMap {
         if !simpler {
             return None;
         }
-        ctx.replace_pair_with(where_, Box::new(UnitMap::new(nin1)), false);
+        ctx.replace_pair_with(where_, Box::new(UnitMap::within_limit(nin1)), false);
         Some(where_)
     }
 

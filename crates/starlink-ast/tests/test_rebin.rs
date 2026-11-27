@@ -350,7 +350,7 @@ impl RebinTest for Test1 {
             ubnd_out: vec![20],
             lbnd: vec![11],
             ubnd: vec![17],
-            map: Box::new(UnitMap::new(1)),
+            map: Box::new(UnitMap::new(1).unwrap()),
             params,
             tol: 0.1,
         }
@@ -394,7 +394,7 @@ impl RebinTest for Test2 {
             ubnd_out: vec![3, 5],
             lbnd: vec![-1, 3],
             ubnd: vec![1, 6],
-            map: Box::new(UnitMap::new(2)),
+            map: Box::new(UnitMap::new(2).unwrap()),
             params: [2.0, 2.0],
             tol: 0.0,
         }
@@ -434,7 +434,7 @@ impl RebinTest for Test3 {
             ubnd_out: vec![3, 5, 2],
             lbnd: vec![-1, 3, -1],
             ubnd: vec![1, 6, 1],
-            map: Box::new(UnitMap::new(3)),
+            map: Box::new(UnitMap::new(3).unwrap()),
             params: [2.0, 2.0],
             tol: 0.0,
         }
@@ -477,7 +477,7 @@ impl RebinTest for Test4 {
             ubnd_out: vec![20],
             lbnd: vec![11],
             ubnd: vec![17],
-            map: Box::new(ShiftMap::new(vec![3.0])),
+            map: Box::new(ShiftMap::new(vec![3.0]).unwrap()),
             params: [2.0, 2.0],
             tol: 0.1,
         }
@@ -518,7 +518,7 @@ impl RebinTest for Test5 {
             ubnd_out: vec![3, 5],
             lbnd: vec![-1, 3],
             ubnd: vec![1, 6],
-            map: Box::new(ShiftMap::new(vec![3.0, -1.0])),
+            map: Box::new(ShiftMap::new(vec![3.0, -1.0]).unwrap()),
             params: [2.0, 2.0],
             tol: 0.0,
         }
@@ -558,7 +558,7 @@ impl RebinTest for Test6 {
             ubnd_out: vec![3, 5, 2],
             lbnd: vec![-1, 3, -1],
             ubnd: vec![1, 6, 1],
-            map: Box::new(ShiftMap::new(vec![3.0, -1.0, 1.0])),
+            map: Box::new(ShiftMap::new(vec![3.0, -1.0, 1.0]).unwrap()),
             params: [2.0, 2.0],
             tol: 0.0,
         }
@@ -599,7 +599,7 @@ impl RebinTest for Test7 {
             ubnd_out: vec![20],
             lbnd: vec![11],
             ubnd: vec![17],
-            map: Box::new(ShiftMap::new(vec![1.5])),
+            map: Box::new(ShiftMap::new(vec![1.5]).unwrap()),
             params: [2.0, 2.0],
             tol: 0.1,
         }
@@ -659,7 +659,7 @@ impl RebinTest for Test8 {
             ubnd_out: vec![3, 5],
             lbnd: vec![-2, 0],
             ubnd: vec![3, 5],
-            map: Box::new(ShiftMap::new(vec![0.5, -0.5])),
+            map: Box::new(ShiftMap::new(vec![0.5, -0.5]).unwrap()),
             params: [2.0, 2.0],
             tol: 0.0,
         }
@@ -731,7 +731,7 @@ impl RebinTest for Test9 {
             ubnd_out: vec![6; 3],
             lbnd: vec![0; 3],
             ubnd: vec![6; 3],
-            map: Box::new(ShiftMap::new(shifts)),
+            map: Box::new(ShiftMap::new(shifts).unwrap()),
             params: [2.0, 2.0],
             tol: 0.0,
         }

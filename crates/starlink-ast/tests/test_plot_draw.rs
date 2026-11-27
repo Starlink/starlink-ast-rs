@@ -341,7 +341,7 @@ fn car3_3d() -> Plot {
     let mut plot = testgrid_plot(grid_cases().iter().find(|c| c.name == "car3").unwrap());
     let sky = plot.frameset().current().snapshot();
     let one = Box::new(BasicFrameBuilder::new(1).build().unwrap());
-    let cube = CmpFrame::new(sky, one);
+    let cube = CmpFrame::new(sky, one).unwrap();
     let pm = PermMap::new(&[1, 2], &[1, 2, -1], &[0.0]).unwrap();
     plot.add_frame(FrameRef::Current, Box::new(pm), Box::new(cube))
         .unwrap();
@@ -733,7 +733,7 @@ fn draw_poly_curve_rejects_the_wrong_axis_count() {
 fn draw_gen_curve_rejects_a_two_input_mapping() {
     let mut plot = plot_of(None, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 10.0, 10.0]);
     let err = plot
-        .draw_gen_curve(&mut LogGrf::new(Vec::new()), &UnitMap::new(2))
+        .draw_gen_curve(&mut LogGrf::new(Vec::new()), &UnitMap::new(2).unwrap())
         .unwrap_err();
     assert_eq!(err.code(), ErrorCode::Ncpin);
 }

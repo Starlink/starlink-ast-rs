@@ -1,0 +1,45 @@
+[package]
+name = "starlink-ast-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "LGPL-3.0-or-later"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+starlink-ast = { path = "../crates/starlink-ast" }
+
+# Not a member of the repository's workspace: it needs a nightly toolchain.
+[workspace]
+members = ["."]
+
+# cargo fuzz builds in release; keep the checks a debug build makes, so an
+# overflow or a failed debug assertion is a finding.
+[profile.release]
+debug = 1
+debug-assertions = true
+overflow-checks = true
+
+[[bin]]
+name = "native_read"
+path = "fuzz_targets/native_read.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fitschan_read_write"
+path = "fuzz_targets/fitschan_read_write.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mocchan_read"
+path = "fuzz_targets/mocchan_read.rs"
+test = false
+doc = false
+bench = false

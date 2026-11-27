@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::constants::BAD_VALUE;
+use crate::error::{AstError, AstResult, ErrorCode};
 
 use super::parser::create_tree;
 use super::table::iter_known_units;
@@ -56,7 +57,9 @@ fn definition_heads() -> &'static HashMap<&'static str, Box<UnitNode>> {
             }
             if let Some(def) = unit.definition {
                 let prev = LOOKUP_OVERRIDE.with(|cell| cell.replace(Some(&map as *const _)));
-                let parsed = create_tree(def, true);
+                // A built-in definition is a valid expression, so it parses
+                // without error.
+                let parsed = create_tree(def, true).ok().flatten();
                 LOOKUP_OVERRIDE.with(|cell| cell.set(prev));
                 if let Some(tree) = parsed {
                     map.insert(unit.sym, tree);
@@ -166,15 +169,21 @@ pub(crate) fn remake_tree(node: &mut Box<UnitNode>) {
 /// the second argument is a `LdVar`, `Pow`, or `Sqrt` node, replace
 /// the constant value by `1.0` (this is used by the C SimplifyTree
 /// driver to "forget" the value of multiplicative coefficients).
-pub(crate) fn fix_constants(node: &mut Box<UnitNode>, unity: bool) {
+///
+/// # Errors
+///
+/// `ErrorCode::Badun` with C's message for a constant a function cannot
+/// take: the logarithm of one that is not positive, the square root or
+/// non-integer power of a negative one, or division by zero.
+pub(crate) fn fix_constants(node: &mut Box<UnitNode>, unity: bool) -> AstResult<()> {
     if node.arg.is_empty() {
-        return;
+        return Ok(());
     }
 
     // Recurse first.
     let mut all_const = true;
     for child in node.arg.iter_mut() {
-        fix_constants(child, unity);
+        fix_constants(child, unity)?;
         if child.con == BAD_VALUE {
             all_const = false;
         }
@@ -194,9 +203,11 @@ pub(crate) fn fix_constants(node: &mut Box<UnitNode>, unity: bool) {
     }
 
     if !all_const {
-        return;
+        return Ok(());
     }
 
+    let bad = |message: String| Err(AstError::new(ErrorCode::Badun, message));
+    let g = |v: f64| crate::frames::axis_format::sprintf_double("%g", v);
     // Compute the folded constant value.
     let new_con: Option<f64> = match op {
         Oper::Log => {
@@ -204,7 +215,10 @@ pub(crate) fn fix_constants(node: &mut Box<UnitNode>, unity: bool) {
             if v > 0.0 {
                 Some(crate::math::log10(v))
             } else {
-                None
+                return bad(format!(
+                    "Illegal negative or zero constant value '{}' encountered.",
+                    g(v)
+                ));
             }
         }
         Oper::Ln => {
@@ -212,7 +226,10 @@ pub(crate) fn fix_constants(node: &mut Box<UnitNode>, unity: bool) {
             if v > 0.0 {
                 Some(crate::math::ln(v))
             } else {
-                None
+                return bad(format!(
+                    "Illegal negative or zero constant value '{}' encountered.",
+                    g(v)
+                ));
             }
         }
         Oper::Exp => Some(crate::math::exp(node.arg[0].con)),
@@ -221,7 +238,10 @@ pub(crate) fn fix_constants(node: &mut Box<UnitNode>, unity: bool) {
             if v >= 0.0 {
                 Some(crate::math::sqrt(v))
             } else {
-                None
+                return bad(format!(
+                    "Illegal negative constant value '{}' encountered.",
+                    g(v)
+                ));
             }
         }
         Oper::Pow => {
@@ -230,13 +250,20 @@ pub(crate) fn fix_constants(node: &mut Box<UnitNode>, unity: bool) {
             if base >= 0.0 || (exponent.trunc() == exponent) {
                 Some(crate::math::powf(base, exponent))
             } else {
-                None
+                return bad(format!(
+                    "Illegal negative constant value '{}' encountered.",
+                    g(base)
+                ));
             }
         }
         Oper::Div => {
             let a = node.arg[0].con;
             let b = node.arg[1].con;
-            if b != 0.0 { Some(a / b) } else { None }
+            if b != 0.0 {
+                Some(a / b)
+            } else {
+                return bad("Illegal zero constant value encountered.".to_string());
+            }
         }
         Oper::Mult => Some(node.arg[0].con * node.arg[1].con),
         // LdPi and LdE have narg=0 so don't get here. LdVar likewise.
@@ -246,6 +273,7 @@ pub(crate) fn fix_constants(node: &mut Box<UnitNode>, unity: bool) {
     if let Some(c) = new_con {
         *node = UnitNode::ldcon(c);
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------
@@ -325,15 +353,15 @@ fn ast_equal(a: f64, b: f64) -> bool {
 /// standardizations needed to compare two trees for equivalence
 /// (FindFactors / CombineFactors and the ln/log/sqrt rewrites).
 /// When `std=false`, only genuine simplifications run.
-pub(crate) fn simplify_tree(node: &mut Box<UnitNode>, std: bool) -> bool {
+pub(crate) fn simplify_tree(node: &mut Box<UnitNode>, std: bool) -> AstResult<bool> {
     let mut result = false;
 
     // Constant fold first (C: FixConstants(node, 0)).
-    fix_constants(node, false);
+    fix_constants(node, false)?;
 
     // Recurse into children.
     for child in node.arg.iter_mut() {
-        if simplify_tree(child, std) {
+        if simplify_tree(child, std)? {
             result = true;
         }
     }
@@ -489,10 +517,10 @@ pub(crate) fn simplify_tree(node: &mut Box<UnitNode>, std: bool) -> bool {
 
     // Re-simplify if anything changed (mirrors C tail recursion).
     if result {
-        simplify_tree(node, std);
+        simplify_tree(node, std)?;
     }
 
-    result
+    Ok(result)
 }
 
 // ---------------------------------------------------------------------
@@ -704,14 +732,14 @@ mod tests {
     #[test]
     fn remake_tree_substitutes_derived() {
         // "Hz" with basic=true should expand to "1/s".
-        let tree = create_tree("Hz", true).unwrap();
+        let tree = create_tree("Hz", true).unwrap().unwrap();
         assert_eq!(tree.opcode, Oper::Div);
     }
 
     #[test]
     fn remake_tree_handles_multiplier() {
         // "MHz" with basic=true should be MULT(LdCon(1e-6), Div(1, s)).
-        let tree = create_tree("MHz", true).unwrap();
+        let tree = create_tree("MHz", true).unwrap().unwrap();
         assert_eq!(tree.opcode, Oper::Mult);
         assert!(tree.arg[0].is_const());
         assert!((tree.arg[0].con - 1.0e-6).abs() < 1e-30);
@@ -721,7 +749,7 @@ mod tests {
     fn invert_constants_in_div() {
         // "1/60 deg" parses to OP_MULT(OP_DIV(1, 60), LdVar(deg)).
         // After InvertConstants, the 60 in the denominator is inverted.
-        let tree = create_tree("1/60 deg", false).unwrap();
+        let tree = create_tree("1/60 deg", false).unwrap().unwrap();
         // Easier check: walk the tree and find the constant.
         fn find_const(n: &UnitNode) -> Option<f64> {
             if n.is_const() {

@@ -336,8 +336,9 @@ impl Region for NullRegion {
         // C overrides the base-class method rather than inheriting it
         // (nullregion.c:1203): a NullRegion has no boundary to transform into
         // the current Frame, so the same empty-extent bounds are returned
-        // whatever the base->current Mapping is.
-        let naxes = self.data.frameset.base().naxes();
+        // whatever the base->current Mapping is, one for each current Frame
+        // axis.
+        let naxes = self.data.frameset.current().naxes();
         Ok((vec![1.0; naxes], vec![-1.0; naxes]))
     }
 
@@ -458,9 +459,9 @@ impl Region for NullRegion {
         let bfrm_this = self.data.frameset.base().snapshot();
         let bfrm_reg = other_reg.get_region_frameset().base().snapshot();
         let bfrm = if intfirst {
-            crate::frames::CmpFrame::new(bfrm_this, bfrm_reg)
+            crate::frames::CmpFrame::new(bfrm_this, bfrm_reg)?
         } else {
-            crate::frames::CmpFrame::new(bfrm_reg, bfrm_this)
+            crate::frames::CmpFrame::new(bfrm_reg, bfrm_this)?
         };
 
         // NullRegion has no defining points.
@@ -503,9 +504,9 @@ impl Region for NullRegion {
         let cfrm_this = self.data.frameset.current().snapshot();
         let cfrm_reg = other_reg.get_region_frame();
         let cfrm = if intfirst {
-            crate::frames::CmpFrame::new(cfrm_this, cfrm_reg)
+            crate::frames::CmpFrame::new(cfrm_this, cfrm_reg)?
         } else {
-            crate::frames::CmpFrame::new(cfrm_reg, cfrm_this)
+            crate::frames::CmpFrame::new(cfrm_reg, cfrm_this)?
         };
 
         // The two base->current Mappings, in parallel (nullregion.c:724-735).
@@ -687,7 +688,7 @@ impl Mapping for NullRegion {
     /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
     /// Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {
-        Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
+        Some(Box::new(crate::mappings::UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.
@@ -865,5 +866,33 @@ impl Mapping for NullRegion {
 
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frames::{BasicFrameBuilder, FrameRef};
+    use crate::mappings::PermMap;
+
+    /// The bounds have one element for each current Frame axis, which a
+    /// NullRegion whose FrameSet maps two base axes to one current axis
+    /// needs.
+    #[test]
+    fn bounds_have_an_element_for_each_current_axis() {
+        let mut null = NullRegionBuilder::new(BasicFrameBuilder::new(2).build().unwrap())
+            .build()
+            .unwrap();
+        let map = PermMap::new(&[1, -1], &[1], &[0.0]).unwrap();
+        null.data
+            .frameset
+            .add_frame(
+                FrameRef::Base,
+                Box::new(map),
+                Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+            )
+            .unwrap();
+        let (lbnd, ubnd) = null.get_region_bounds().unwrap();
+        assert_eq!((lbnd, ubnd), (vec![1.0], vec![-1.0]));
     }
 }

@@ -3,11 +3,11 @@
 C source: reference/starlink-ast/src/shiftmap.c
 Rust: crates/starlink-ast/src/mappings/shift.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin 3d3f255f
+Citations: verified against pin fe26cc9b
 Extension points: classified
 
 Uncited C steps:
-- shiftmap.c:653 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
+- shiftmap.c:657 (fn MapMerge) — `Local Variables:` is the local-variable declaration block, not a step
 
 C's whole body is a conversion to WinMap and back, so every merge rule a
 ShiftMap participates in lives in `winmap.c`'s `MapMerge` and is audited in
@@ -15,18 +15,18 @@ ShiftMap participates in lives in `winmap.c`'s `MapMerge` and is audited in
 
 | # | C step | C site | Rust site | extension point | verdict |
 |---|---|---|---|---|---|
-| 1 | Initialize the returned index to -1 | shiftmap.c:665-666 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
-| 2 | Check the global error status and bail out | shiftmap.c:668-669 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
-| 3 | A ShiftMap is equivalent to a WinMap with unit scaling; create a WinMap with undefined corners | shiftmap.c:671-678 (fn MapMerge) | shift.rs:224-238 (fn map_merge) | architecture | ported |
-| 4 | Store unit scale terms and the shift terms, negating them when the ShiftMap is applied inverted | shiftmap.c:680-694 (fn MapMerge) | shift.rs:230-235 (fn map_merge) | architecture | ported |
-| 5 | Replace the nominated ShiftMap in the list with the WinMap, recording the old invert flag, and clear that flag | shiftmap.c:695-701 (fn MapMerge) | shift.rs:225 (fn map_merge),233 (fn map_merge) | architecture | ported |
-| 6 | Delegate to WinMap's MapMerge, recording the list length first | shiftmap.c:703-707 (fn MapMerge) | shift.rs:240-245 (fn map_merge) | architecture | ported |
-| 7 | Detect the round trip where the merge merely turned the WinMap back into an equivalent lone ShiftMap | shiftmap.c:709-719 (fn MapMerge) | shift.rs:247-257 (fn map_merge) | architecture | ported |
-| 8 | Also revert when the merge reported no change at all | shiftmap.c:720-722 (fn MapMerge) | shift.rs:259 (fn map_merge) | architecture | ported |
-| 9 | Revert an inverted ShiftMap with astCopy plus negated shift terms, and report a change | shiftmap.c:724-732 (fn MapMerge) | shift.rs:270-274 (fn map_merge) | architecture | ported |
-| 10 | Revert a forward ShiftMap with astClone, and report no change | shiftmap.c:733-739 (fn MapMerge) | shift.rs:270-274 (fn map_merge) | architecture | ported |
-| 11 | Leave the reverted ShiftMap to be used in a forward sense | shiftmap.c:740-742 (fn MapMerge) | shift.rs:272-273 (fn map_merge) | architecture | ported |
-| 12 | Return the result | shiftmap.c:746-747 (fn MapMerge) | shift.rs:277 (fn map_merge) | ceremony | ported |
+| 1 | Initialize the returned index to -1 | shiftmap.c:669-670 (fn MapMerge) | -- | ceremony | n/a: the Rust signature returns `Option<usize>`, so "no change" is `None` rather than a sentinel index |
+| 2 | Check the global error status and bail out | shiftmap.c:672-673 (fn MapMerge) | -- | ceremony | n/a: errors travel in `AstResult`, so there is no ambient status to test on entry |
+| 3 | A ShiftMap is equivalent to a WinMap with unit scaling; create a WinMap with undefined corners | shiftmap.c:675-682 (fn MapMerge) | shift.rs:240-254 (fn map_merge) | architecture | ported |
+| 4 | Store unit scale terms and the shift terms, negating them when the ShiftMap is applied inverted | shiftmap.c:684-698 (fn MapMerge) | shift.rs:246-251 (fn map_merge) | architecture | ported |
+| 5 | Replace the nominated ShiftMap in the list with the WinMap, recording the old invert flag, and clear that flag | shiftmap.c:699-705 (fn MapMerge) | shift.rs:241 (fn map_merge),249 (fn map_merge) | architecture | ported |
+| 6 | Delegate to WinMap's MapMerge, recording the list length first | shiftmap.c:707-711 (fn MapMerge) | shift.rs:256-261 (fn map_merge) | architecture | ported |
+| 7 | Detect the round trip where the merge merely turned the WinMap back into an equivalent lone ShiftMap | shiftmap.c:713-723 (fn MapMerge) | shift.rs:263-273 (fn map_merge) | architecture | ported |
+| 8 | Also revert when the merge reported no change at all | shiftmap.c:724-726 (fn MapMerge) | shift.rs:275 (fn map_merge) | architecture | ported |
+| 9 | Revert an inverted ShiftMap with astCopy plus negated shift terms, and report a change | shiftmap.c:728-736 (fn MapMerge) | shift.rs:286-290 (fn map_merge) | architecture | ported |
+| 10 | Revert a forward ShiftMap with astClone, and report no change | shiftmap.c:737-743 (fn MapMerge) | shift.rs:286-290 (fn map_merge) | architecture | ported |
+| 11 | Leave the reverted ShiftMap to be used in a forward sense | shiftmap.c:744-746 (fn MapMerge) | shift.rs:288-289 (fn map_merge) | architecture | ported |
+| 12 | Return the result | shiftmap.c:750-751 (fn MapMerge) | shift.rs:293 (fn map_merge) | ceremony | ported |
 
 ## The lone ShiftMap has no reduction of its own
 
@@ -34,10 +34,10 @@ C gives ShiftMap no `Simplify` vtab slot, so a ShiftMap nominated on its own
 reaches the same body as one in a run: it becomes a WinMap and `winmap.c`'s
 `MapMerge` decides. Both reductions a lone ShiftMap can undergo come from there.
 An effectively inverted one is rebuilt forward with negated shift terms by the
-revert path (rows 9 and 11, `shift.rs:259-275 (fn map_merge)`). An all-zero one never comes
+revert path (rows 9 and 11, `shift.rs:275-291 (fn map_merge)`). An all-zero one never comes
 back at all: `win_map_merge`'s replace-with-simpler step sees every shift zero
 and yields a diagonal `MatrixMap`, which reduces on to a `UnitMap`
-(`winmap_merge.rs:392-401 (fn win_map_merge)`, C `winmap.c:1827 (fn MapMerge)`).
+(`winmap_merge.rs:419-431 (fn win_map_merge)`, C `winmap.c:1886 (fn MapMerge)`).
 
 ## Notes on rows 9 and 10
 

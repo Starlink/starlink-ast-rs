@@ -26,9 +26,9 @@ use super::elements::{NPID, PlotElement, grf_item};
 use super::{ClipRegion, Plot, TickValues};
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::frames::FrameSet;
+use crate::frames::{FrameRef, FrameSet};
 use crate::mappings::Mapping;
-use crate::serial::{Node, Serializable};
+use crate::serial::{MXLOADEL, Node, Serializable, too_many_values};
 
 /// The names C writes for Edge, Labelling and TextGapType, in the order of
 /// their values.
@@ -573,8 +573,20 @@ impl Serializable for Plot {
         // Each class's items come from its own part of the description, as
         // C's loaders read them through astReadClassData (channel.c).
         let frameset = FrameSet::from_node(node)?;
+        let class = node.class.as_str();
         let node = &node.section("Plot");
-        let nax = Mapping::nin(&frameset).min(3);
+        // plot.c `astLoadPlot`: the per-axis attributes have room for three
+        // axes, as for a Plot3D.
+        let nax = Mapping::nin(&frameset);
+        if nax > 3 {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "astLoadPlot({class}): The base Frame of the {class} read from the dump \
+                     has too many axes ({nax})."
+                ),
+            ));
+        }
         let mut plot = Plot {
             frameset,
             xlo: 0.0,
@@ -692,6 +704,33 @@ impl Serializable for Plot {
         let clip_axes = node.get_int("clpaxs", 0).max(0) as usize;
         // C: AST__NOFRAME.
         let clip_frame = node.get_int("clpfrm", -99) as i32;
+        // The clipping Frame is one of the Plot's, with a pair of bounds for
+        // each of its axes, as astClip makes it.
+        if clip_axes > 0 {
+            let nframe = plot.frameset.nframe();
+            let index = usize::try_from(clip_frame)
+                .ok()
+                .filter(|&i| (1..=nframe).contains(&i));
+            let Some(index) = index else {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoadPlot({class}): Invalid clipping Frame index ({clip_frame}) read \
+                         for a {class} containing {nframe} Frames."
+                    ),
+                ));
+            };
+            let nclip = plot.frameset.frame(FrameRef::Index(index))?.naxes();
+            if nclip != clip_axes {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoadPlot({class}): Clipping bounds were read for {clip_axes} axes, \
+                         but the clipping Frame has {nclip} axes."
+                    ),
+                ));
+            }
+        }
         if clip_axes > 0 {
             let mut lbnd = Vec::with_capacity(clip_axes);
             let mut ubnd = Vec::with_capacity(clip_axes);
@@ -714,16 +753,40 @@ impl Serializable for Plot {
         for (i, key) in ["xb1", "yb1", "xb2", "yb2"].into_iter().enumerate() {
             plot.bbox[i] = node.get_double(key, BAD_VALUE);
         }
+        // The numbers of tick mark values, each of which must not be negative.
+        let count = |key: &str, which: &str, axis: usize| -> AstResult<i64> {
+            let n = node.get_int(key, 0);
+            if n < 0 {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoadPlot({class}): Invalid number of {which} tick mark values ({n}) \
+                         read for axis {axis}."
+                    ),
+                ));
+            }
+            // The values are named `mjtk<axis>_1` or `mntk<axis>_1` onward
+            // (see `MXLOADEL`).
+            if n as u64 > MXLOADEL as u64 {
+                return Err(too_many_values(
+                    "astLoadPlot",
+                    class,
+                    &format!("The Plot read has {n} {which} tick mark values for axis {axis}"),
+                ));
+            }
+            Ok(n)
+        };
         for (axis, ticks) in plot.tick_values.iter_mut().enumerate() {
             let axis = axis + 1;
-            *ticks = TickValues {
-                major: (1..=node.get_int(&format!("nmjtk{axis}"), 0).max(0))
-                    .map(|i| node.get_double(&format!("mjtk{axis}_{i}"), BAD_VALUE))
-                    .collect(),
-                minor: (1..=node.get_int(&format!("nmntk{axis}"), 0).max(0))
-                    .map(|i| node.get_double(&format!("mntk{axis}_{i}"), BAD_VALUE))
-                    .collect(),
-            };
+            let nmajor = count(&format!("nmjtk{axis}"), "major", axis)?;
+            let major = (1..=nmajor)
+                .map(|i| node.get_double(&format!("mjtk{axis}_{i}"), BAD_VALUE))
+                .collect();
+            let nminor = count(&format!("nmntk{axis}"), "minor", axis)?;
+            let minor = (1..=nminor)
+                .map(|i| node.get_double(&format!("mntk{axis}_{i}"), BAD_VALUE))
+                .collect();
+            *ticks = TickValues { major, minor };
         }
         Ok(plot)
     }

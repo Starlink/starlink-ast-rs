@@ -385,3 +385,19 @@ fn testfitstable() {
         "error 42"
     );
 }
+
+/// TDIM dimensions whose product overflows give the error for a TDIM that
+/// does not match TFORM's repeat count.
+#[test]
+fn tdim_dimensions_too_large_to_multiply_do_not_match_tform() {
+    let mut header = header_of(&[
+        "XTENSION= 'BINTABLE'",
+        "TFIELDS =                    1",
+        "TFORM1  = '6D      '",
+        "TTYPE1  = 'HUGE    '",
+        "TDIM1   = '(2000000000,2000000000,2000000000)'",
+    ]);
+    let err = FitsTable::from_header(&mut header).unwrap_err();
+    assert_eq!(err.code(), ErrorCode::Bdfts, "{err}");
+    assert!(err.message().contains("inconsistent"), "{err}");
+}

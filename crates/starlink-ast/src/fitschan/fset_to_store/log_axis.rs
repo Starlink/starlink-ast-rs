@@ -96,7 +96,7 @@ fn embed_axis(map: DynMapping, iax: usize, nax: usize) -> AstResult<DynMapping> 
     let mut ret = map;
     if iax > 0 {
         ret = Box::new(CmpMap::new(
-            Box::new(UnitMap::new(iax)),
+            Box::new(UnitMap::new(iax)?),
             ret,
             Composition::Parallel,
         )?);
@@ -104,7 +104,7 @@ fn embed_axis(map: DynMapping, iax: usize, nax: usize) -> AstResult<DynMapping> 
     if iax + nmap < nax {
         ret = Box::new(CmpMap::new(
             ret,
-            Box::new(UnitMap::new(nax - iax - nmap)),
+            Box::new(UnitMap::new(nax - iax - nmap)?),
             Composition::Parallel,
         )?);
     }
@@ -141,21 +141,21 @@ mod tests {
     #[test]
     fn linear_axis_is_not_log() {
         // A pure linear mapping shouldn't be detected as log.
-        let m = ShiftMap::new(vec![10.0, 20.0]);
+        let m = ShiftMap::within_limit(vec![10.0, 20.0]);
         let r = log_axis(&m, 0, 2, &[1.0, 1.0], &[100.0, 100.0], 5.0).unwrap();
         assert!(r.is_none(), "linear ShiftMap should not be log");
     }
 
     #[test]
     fn zero_crval_returns_none() {
-        let m = UnitMap::new(2);
+        let m = UnitMap::within_limit(2);
         let r = log_axis(&m, 0, 2, &[1.0, 1.0], &[100.0, 100.0], 0.0).unwrap();
         assert!(r.is_none());
     }
 
     #[test]
     fn out_of_range_axis_returns_none() {
-        let m = UnitMap::new(2);
+        let m = UnitMap::within_limit(2);
         let r = log_axis(&m, 5, 2, &[1.0, 1.0], &[100.0, 100.0], 5.0).unwrap();
         assert!(r.is_none());
     }

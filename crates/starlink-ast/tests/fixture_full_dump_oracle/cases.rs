@@ -1005,7 +1005,7 @@ pub const CASES: &[(&str, u64)] = &[
     ("./wcsconv/framesets/wave-f2w-head.ast", 0xcc86e5509fbb45e6),
     ("./wcsconv/framesets/wave-w2f-head.ast", 0x58f9ddecddfe70c0),
     ("./wcsconv/framesets/wavn-frq-head.ast", 0x41edcf4a74b1185e),
-    ("./wcsconv/framesets/zero-cdelt-head.ast", 0xcf135cd9e5d8dcd0),
+    ("./wcsconv/framesets/zero-cdelt-head.ast", 0x8ce39475ab8ab88f),
     ("./wcsconv/framesets/zopt-frq-head.ast", 0x742d5e18070817c4),
     ("./wcsconv/framesets/zpn-head.ast", 0xfbb35747a37b4388),
     ("./wcsconv/framesets/zpx-head.ast", 0x1ad0f340830d1be9),

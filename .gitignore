@@ -42,4 +42,5 @@ __pycache__/
 
 # Probe programs built from tools/oracle_fixtures/*.c
 /tools/oracle_fixtures/*_probe
+/tools/oracle_fixtures/load_one
 /tools/oracle_fixtures/fitschanerrors_table

@@ -42,21 +42,27 @@ mod tests;
 #[allow(unused_imports)] // wired into SpecFrame in commit 3
 pub(crate) use mapper::{unit_mapper, unit_mapper_label};
 
+use crate::error::AstResult;
 use crate::keymap::convert::scan_double;
 
 /// Return a standard FITS-WCS form of a units string, or `None` if it
-/// cannot be parsed as a units expression (where C reports `AST__BADUN`).
+/// cannot be parsed as a units expression (where C reports `AST__BADUN`),
+/// or the unit parser's error.
 /// Mirrors C `astUnitNormaliser_` (`unit.c`:5869).
-pub(crate) fn unit_normaliser(input: &str) -> Option<String> {
-    let mut tree = parser::create_tree(input, false)?;
+pub(crate) fn unit_normaliser(input: &str) -> AstResult<Option<String>> {
+    let Some(mut tree) = parser::create_tree(input, false)? else {
+        return Ok(None);
+    };
 
     // C passes `std = 1`, so the standardizing rewrites run too.
-    simplify::simplify_tree(&mut tree, true);
+    simplify::simplify_tree(&mut tree, true)?;
 
     // `create_tree` has already inverted the literal constants; C inverts
     // them a second time here, so that a constant of 1000 for "m" is
     // formatted as a unit of "1000 m" (`unit.c`:5933).
-    simplify::invert_constants(&mut tree)?;
+    if simplify::invert_constants(&mut tree).is_none() {
+        return Ok(None);
+    }
 
     let mut result = to_expr::make_units_exp(&tree);
 
@@ -66,15 +72,19 @@ pub(crate) fn unit_normaliser(input: &str) -> Option<String> {
     if scan_double(&result).is_some() {
         result.clear();
     }
-    Some(result)
+    Ok(Some(result))
 }
 
 /// Normalize a units string, returning it unchanged if it is not a units
 /// expression: a blank Unit, or a description of axis values such as
 /// `"ddd:mm:ss"`. Mirrors C `astNormUnit_` (`unit.c`:5960), which recovers
-/// from `AST__BADUN` only; no other failure is possible here.
+/// from `AST__BADUN` only; the unit parser's errors are all `AST__BADUN`,
+/// so no other failure is possible here.
 pub(crate) fn norm_unit(input: &str) -> String {
-    unit_normaliser(input).unwrap_or_else(|| input.to_string())
+    unit_normaliser(input)
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| input.to_string())
 }
 
 /// Public-API analogue of C `astUnitLabel_` (`unit.c`:5171-5236).

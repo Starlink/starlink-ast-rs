@@ -37,7 +37,7 @@ fn spec() -> Box<dyn Frame> {
 }
 
 fn spec_sky() -> CmpFrame {
-    CmpFrame::new(spec(), sky())
+    CmpFrame::new(spec(), sky()).unwrap()
 }
 
 /// Frame `i` of the list `match_axes_probe.c` builds in `make`.
@@ -51,21 +51,21 @@ fn frame(i: usize) -> Box<dyn Frame> {
         }
         2 => spec(),
         3 => basic(1),
-        4 => Box::new(CmpFrame::new(sky(), spec())),
+        4 => Box::new(CmpFrame::new(sky(), spec()).unwrap()),
         5 => {
-            let mut f = CmpFrame::new(sky(), spec());
+            let mut f = CmpFrame::new(sky(), spec()).unwrap();
             f.perm_axes(&[3, 2, 1]).unwrap();
             Box::new(f)
         }
         6 => Box::new(spec_sky()),
         7 => {
-            let mut f = CmpFrame::new(basic(1), sky());
+            let mut f = CmpFrame::new(basic(1), sky()).unwrap();
             f.perm_axes(&[2, 3, 1]).unwrap();
             Box::new(f)
         }
         8 => {
             let mut fs = FrameSet::new(basic(2));
-            fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), sky())
+            fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2).unwrap()), sky())
                 .unwrap();
             Box::new(fs)
         }
@@ -73,7 +73,7 @@ fn frame(i: usize) -> Box<dyn Frame> {
             let mut fs = FrameSet::new(basic(3));
             fs.add_frame(
                 FrameRef::Base,
-                Box::new(UnitMap::new(3)),
+                Box::new(UnitMap::new(3).unwrap()),
                 Box::new(spec_sky()),
             )
             .unwrap();
@@ -86,7 +86,7 @@ fn frame(i: usize) -> Box<dyn Frame> {
                 .build()
                 .unwrap(),
         ),
-        11 => Box::new(CmpFrame::new(Box::new(spec_sky()), basic(1))),
+        11 => Box::new(CmpFrame::new(Box::new(spec_sky()), basic(1)).unwrap()),
         12 => Box::new(TimeFrame::unset_system()),
         _ => unreachable!(),
     }

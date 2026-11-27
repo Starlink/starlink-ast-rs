@@ -304,7 +304,8 @@ fn an_unreadable_axis_value_without_an_index_is_an_error() {
         Box::new(starlink_ast::frames::SkyFrame::new(
             starlink_ast::frames::SkySystem::Icrs,
         )),
-    );
+    )
+    .unwrap();
     let err = cmp.set_attributes("Top(1)=high").unwrap_err();
     assert_eq!(
         err.message(),

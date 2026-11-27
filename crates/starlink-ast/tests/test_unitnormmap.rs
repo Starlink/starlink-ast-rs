@@ -362,7 +362,7 @@ fn merge_unitnormmap_inv_plus_shift() {
     // UnitNormMap(inv) + ShiftMap → UnitNormMap(inv) with adjusted center
     // In the simplify engine, self has inverted=false, self_inv=true
     let unm = UnitNormMap::new(vec![1.0, 2.0]).unwrap();
-    let shift = ShiftMap::new(vec![3.0, -1.0]);
+    let shift = ShiftMap::new(vec![3.0, -1.0]).unwrap();
 
     // self=unm (stored forward, but effectively inverted via self_inv=true)
     // other=shift (forward, other_inv=false)
@@ -380,7 +380,7 @@ fn merge_unitnormmap_inv_plus_shift() {
 #[test]
 fn merge_shift_plus_unitnormmap_fwd() {
     // ShiftMap + UnitNormMap(fwd) → UnitNormMap(fwd) with adjusted center
-    let shift = ShiftMap::new(vec![3.0, -1.0]);
+    let shift = ShiftMap::new(vec![3.0, -1.0]).unwrap();
     let unm = UnitNormMap::new(vec![5.0, 10.0]).unwrap();
 
     // ShiftMap.try_merge(UnitNormMap, series=true, shift_inv=false, unm_inv=false)
@@ -549,7 +549,7 @@ fn c_testsimplify() {
     let unm2 = UnitNormMap::new(centre2).unwrap();
     let mut unm2inv = unm2.clone();
     unm2inv.invert();
-    let shiftmap = ShiftMap::new(shift.to_vec());
+    let shiftmap = ShiftMap::new(shift.to_vec()).unwrap();
     let winmap = |scale: f64| {
         let b: Vec<f64> = shift.iter().map(|s| scale + s).collect();
         WinMap::from_corners(&[0.0; 3], &shift, &[1.0; 3], &b).unwrap()

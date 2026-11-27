@@ -7,7 +7,7 @@ use std::fmt;
 
 use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::mappings::helpers::{is_bad, point_has_bad};
+use crate::mappings::helpers::{is_c_bad, point_has_c_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, PermMap};
 use crate::serial::{FrameToNode, Node, Serializable, frame_from_node};
 
@@ -61,7 +61,7 @@ use super::{AxisKind, DynFrame, Frame};
 ///
 /// let sky = SkyFrame::new(SkySystem::Icrs);
 /// let spec = SpecFrame::new(SpecSystem::Freq);
-/// let cmp = CmpFrame::new(Box::new(sky), Box::new(spec));
+/// let cmp = CmpFrame::new(Box::new(sky), Box::new(spec)).unwrap();
 /// assert_eq!(cmp.naxes(), 3);
 /// assert_eq!(cmp.domain(), "SKY-SPECTRUM");
 /// assert_eq!(cmp.system_string().unwrap(), Some("Compound"));
@@ -120,9 +120,39 @@ impl CmpFrame {
     /// It owns the two Frames; changes to them afterwards are made through
     /// [`frame1_mut`](CmpFrame::frame1_mut) and
     /// [`frame2_mut`](CmpFrame::frame2_mut).
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Naxin` if the two Frames have more than
+    /// [`MXAXES`](crate::constants::MXAXES) axes between them.
     #[doc(alias = "astCmpFrame")]
-    pub fn new(frame1: DynFrame, frame2: DynFrame) -> Self {
+    pub fn new(frame1: DynFrame, frame2: DynFrame) -> AstResult<Self> {
+        Self::check_naxes(frame1.naxes() + frame2.naxes())?;
+        Ok(Self::within_limit(frame1, frame2))
+    }
+
+    /// C's check that a CmpFrame of `naxes` axes may be made
+    /// (cmpframe.c `astInitCmpFrame`).
+    pub(crate) fn check_naxes(naxes: usize) -> AstResult<()> {
+        if naxes > crate::constants::MXAXES {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "astInitCmpFrame(CmpFrame): Number of axes ({naxes}) is invalid - this \
+                     number should not exceed {}.",
+                    crate::constants::MXAXES
+                ),
+            ));
+        }
+        Ok(())
+    }
+
+    /// A CmpFrame of two Frames whose axes, together, are known to be
+    /// within [`MXAXES`](crate::constants::MXAXES): those of an existing
+    /// CmpFrame, or checked with [`check_naxes`](Self::check_naxes).
+    pub(crate) fn within_limit(frame1: DynFrame, frame2: DynFrame) -> Self {
         let naxes = frame1.naxes() + frame2.naxes();
+        debug_assert!(naxes <= crate::constants::MXAXES);
         Self {
             attrs: super::frame_attrs::FrameAttrs::default(),
             frame1,
@@ -204,7 +234,7 @@ impl CmpFrame {
         perm: Vec<usize>,
         attrs: super::frame_attrs::FrameAttrs,
     ) -> Self {
-        let mut cmp = CmpFrame::new(frame1, frame2);
+        let mut cmp = CmpFrame::within_limit(frame1, frame2);
         cmp.perm = perm;
         cmp.attrs = attrs;
         cmp
@@ -360,29 +390,6 @@ fn frame_is_cartesian(f: &dyn Frame) -> bool {
         return frame_is_cartesian(cf.frame1.as_ref()) && frame_is_cartesian(cf.frame2.as_ref());
     }
     false
-}
-
-/// Number of axes described by a serialized frame node.
-///
-/// A `CmpFrame` strips its own (commented) `Naxes` card before embedding a
-/// child, so a nested compound frame's count must be derived by summing its
-/// `FrameA`/`FrameB` components. Non-compound frames carry a readable
-/// `Naxes` (active or commented, hence `get_int_any`); as a last resort the
-/// count falls back to the number of `Ax{n}` axis sub-objects present.
-fn node_naxes(whole: &Node) -> usize {
-    if whole.class == "CmpFrame" {
-        let node = whole.section("CmpFrame");
-        let a = node.get_object("FrameA").map(node_naxes).unwrap_or(0);
-        let b = node.get_object("FrameB").map(node_naxes).unwrap_or(0);
-        return a + b;
-    }
-    let node = whole.section("Frame");
-    if let Some(n) = node.get_int_any("Naxes") {
-        return n as usize;
-    }
-    (1..)
-        .take_while(|i| node.get_object(&format!("Ax{i}")).is_some())
-        .count()
 }
 
 impl Frame for CmpFrame {
@@ -627,7 +634,7 @@ impl Frame for CmpFrame {
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         super::assert_points_len("distance", self.naxes(), &[a, b]);
-        if point_has_bad(a) || point_has_bad(b) {
+        if point_has_c_bad(a) || point_has_c_bad(b) {
             return Ok(BAD_VALUE);
         }
         // Project both points into the component frames through the
@@ -643,7 +650,7 @@ impl Frame for CmpFrame {
         }
         let d1 = self.frame1.distance(&p1[..n1], &p2[..n1])?;
         let d2 = self.frame2.distance(&p1[n1..], &p2[n1..])?;
-        if is_bad(d1) || is_bad(d2) {
+        if is_c_bad(d1) || is_c_bad(d2) {
             return Ok(BAD_VALUE);
         }
         Ok(crate::math::sqrt(d1 * d1 + d2 * d2))
@@ -651,7 +658,7 @@ impl Frame for CmpFrame {
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
         super::assert_points_len("angle", self.naxes(), &[a, b, c]);
-        if point_has_bad(a) || point_has_bad(b) || point_has_bad(c) {
+        if point_has_c_bad(a) || point_has_c_bad(b) || point_has_c_bad(c) {
             return Ok(BAD_VALUE);
         }
         // When every axis belongs to a plain Cartesian frame, use the
@@ -674,9 +681,9 @@ impl Frame for CmpFrame {
         let ang1 = self.frame1.angle(&pa[..n1], &pb[..n1], &pc[..n1])?;
         let ang2 = self.frame2.angle(&pa[n1..], &pb[n1..], &pc[n1..])?;
         // Defined only when exactly one component defines it.
-        if is_bad(ang1) {
+        if is_c_bad(ang1) {
             Ok(ang2)
-        } else if is_bad(ang2) {
+        } else if is_c_bad(ang2) {
             Ok(ang1)
         } else {
             Ok(BAD_VALUE)
@@ -700,9 +707,9 @@ impl Frame for CmpFrame {
         super::assert_points_len("resolve", self.naxes(), &[point1, point2, point3]);
         let naxes = self.naxes();
         let bad = (vec![BAD_VALUE; naxes], BAD_VALUE, BAD_VALUE);
-        if point_has_bad(&point1[..naxes])
-            || point_has_bad(&point2[..naxes])
-            || point_has_bad(&point3[..naxes])
+        if point_has_c_bad(&point1[..naxes])
+            || point_has_c_bad(&point2[..naxes])
+            || point_has_c_bad(&point3[..naxes])
         {
             return Ok(bad);
         }
@@ -716,16 +723,16 @@ impl Frame for CmpFrame {
         let (_, mut d1b, _) = self.frame2.resolve(&p1[n1..], &p2[n1..], &p3[n1..])?;
         let da = self.frame1.distance(&p1[..n1], &p2[..n1])?;
         let db = self.frame2.distance(&p1[n1..], &p2[n1..])?;
-        if is_bad(da) || is_bad(db) {
+        if is_c_bad(da) || is_c_bad(db) {
             return Ok(bad);
         }
-        if is_bad(d1a) && da == 0.0 {
+        if is_c_bad(d1a) && da == 0.0 {
             d1a = 0.0;
         }
-        if is_bad(d1b) && db == 0.0 {
+        if is_c_bad(d1b) && db == 0.0 {
             d1b = 0.0;
         }
-        if is_bad(d1a) || is_bad(d1b) {
+        if is_c_bad(d1a) || is_c_bad(d1b) {
             return Ok(bad);
         }
         let d = crate::math::sqrt(da * da + db * db);
@@ -762,7 +769,7 @@ impl Frame for CmpFrame {
         let p2 = self.to_internal(point2);
         let b1 = self.frame1.distance(&p1[..n1], &p2[..n1])?;
         let b2 = self.frame2.distance(&p1[n1..], &p2[n1..])?;
-        if is_bad(b1) || is_bad(b2) || (b1 == 0.0 && b2 == 0.0) {
+        if is_c_bad(b1) || is_c_bad(b2) || (b1 == 0.0 && b2 == 0.0) {
             return crate::coords::PointSet::from_columns(&[&d1v, &d2v]);
         }
         let b = crate::math::sqrt(b1 * b1 + b2 * b2);
@@ -787,13 +794,13 @@ impl Frame for CmpFrame {
         for ipoint in 0..npoint {
             let mut d1_1 = out1.point(ipoint)[0];
             let mut d1_2 = out2.point(ipoint)[0];
-            if is_bad(d1_1) && b1 == 0.0 {
+            if is_c_bad(d1_1) && b1 == 0.0 {
                 d1_1 = 0.0;
             }
-            if is_bad(d1_2) && b2 == 0.0 {
+            if is_c_bad(d1_2) && b2 == 0.0 {
                 d1_2 = 0.0;
             }
-            if !is_bad(d1_1) && !is_bad(d1_2) {
+            if !is_c_bad(d1_1) && !is_c_bad(d1_2) {
                 let d1 = (b1 * d1_1 + b2 * d1_2) / b;
                 let p4 = self.offset(point1, point2, d1)?;
                 d1v[ipoint] = d1;
@@ -806,7 +813,7 @@ impl Frame for CmpFrame {
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
         super::assert_points_len("offset", self.naxes(), &[from, to]);
         let n = self.naxes();
-        if point_has_bad(from) || point_has_bad(to) || is_bad(dist) {
+        if point_has_c_bad(from) || point_has_c_bad(to) || is_c_bad(dist) {
             return Ok(vec![BAD_VALUE; n]);
         }
         // Project into the components, split the offset between them
@@ -822,7 +829,7 @@ impl Frame for CmpFrame {
         }
         let d1 = self.frame1.distance(&p1[..n1], &p2[..n1])?;
         let d2 = self.frame2.distance(&p1[n1..], &p2[n1..])?;
-        if is_bad(d1) || is_bad(d2) {
+        if is_c_bad(d1) || is_c_bad(d2) {
             return Ok(vec![BAD_VALUE; n]);
         }
         let total = crate::math::sqrt(d1 * d1 + d2 * d2);
@@ -841,7 +848,7 @@ impl Frame for CmpFrame {
         let mut result = vec![0.0; n];
         for i in 0..n {
             result[i] = p3[self.perm[i]];
-            if is_bad(result[i]) {
+            if is_c_bad(result[i]) {
                 return Ok(vec![BAD_VALUE; n]);
             }
         }
@@ -920,6 +927,9 @@ impl Frame for CmpFrame {
         let size2 = (size as f64 / size1 as f64).round() as i32;
         let ps1 = self.frame1.frame_grid(size1, &lbnd1, &ubnd1)?;
         let ps2 = self.frame2.frame_grid(size2, &lbnd2, &ubnd2)?;
+        if ps1.npoint() as f64 * ps2.npoint() as f64 > i32::MAX as f64 {
+            return Err(super::too_many_grid_points(self, size));
+        }
         let mut rows = Vec::with_capacity(ps1.npoint() * ps2.npoint());
         for ip1 in 0..ps1.npoint() {
             for ip2 in 0..ps2.npoint() {
@@ -1080,7 +1090,7 @@ impl Frame for CmpFrame {
 
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         let n = self.naxes();
-        super::validate_permutation(perm, n)?;
+        super::check_perm_axes("CmpFrame", perm, n)?;
         let old = self.perm.clone();
         for i in 0..n {
             self.perm[i] = old[perm[i] - 1];
@@ -1107,7 +1117,7 @@ impl Frame for CmpFrame {
     }
 
     fn snapshot(&self) -> DynFrame {
-        let mut cmp = CmpFrame::new(self.frame1.snapshot(), self.frame2.snapshot());
+        let mut cmp = CmpFrame::within_limit(self.frame1.snapshot(), self.frame2.snapshot());
         cmp.perm = self.perm.clone();
         cmp.attrs.active_unit = self.attrs.active_unit;
         cmp.attrs.ident = self.attrs.ident.clone();
@@ -1173,16 +1183,15 @@ impl Frame for CmpFrame {
         super::find_frame::frames_equal(self, other)
     }
 
+    // cmpframe.c `Cast`: into a class derived from CmpFrame only if this is
+    // one of that class, so a CmpFrame is copied into a CmpFrame and not
+    // cast into a SpecFluxFrame, whose components it need not have.
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // If `other` is a CmpFrame, a same-class copy is appropriate
-        // (the direct Match path normally handles this; provide the
-        // copy for completeness).
-        if other
-            .as_any()
-            .downcast_ref::<crate::frames::CmpFrame>()
-            .is_some()
-        {
+        if other.as_any().is::<crate::frames::CmpFrame>() {
             return Ok(Some(self.snapshot()));
+        }
+        if other.as_any().is::<crate::frames::SpecFluxFrame>() {
+            return Ok(None);
         }
         // Otherwise build a plain BasicFrame with the same axes +
         // overlaid attributes, then cast THAT to `other`'s class
@@ -1305,39 +1314,49 @@ impl Serializable for CmpFrame {
         let whole = node;
         let frame = &whole.section("Frame");
         let node = &whole.section("CmpFrame");
-        let node_a = node
-            .get_object("FrameA")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpFrame: missing FrameA"))?;
-        let node_b = node
-            .get_object("FrameB")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpFrame: missing FrameB"))?;
+        // Both component Frames, a Frame of one axis for one that is missing
+        // (cmpframe.c `astLoadCmpFrame`).
+        let component = |key: &str, item: &str| -> AstResult<DynFrame> {
+            match crate::serial::check_loaded(
+                node.get_object(key),
+                "Frame",
+                false,
+                &whole.class,
+                item,
+            )? {
+                Some(n) => frame_from_node(n),
+                None => Ok(Box::new(super::BasicFrameBuilder::new(1).build()?)),
+            }
+        };
+        let frame1 = component("FrameA", "first component Frame")?;
+        let frame2 = component("FrameB", "second component Frame")?;
 
-        // The CmpFrame's own Frame part has no axes, so astLoadFrame reads
-        // no per-axis items for it; the component Frames carry their own.
-        let n1 = node_naxes(node_a);
-        let n2 = node_naxes(node_b);
-        let naxes = n1 + n2;
-
-        // Axis permutation array. C `CmpFrame::astLoad`
-        // (cmpframe.c:11020-11031) reads `Axp{ext}` (1-based internal
-        // axis index) for each external axis, defaulting to the
-        // identity. It is applied via `perm_axes` below.
-        let axp: Vec<usize> = (1..=naxes)
-            .map(|ext| node.get_int(&format!("Axp{ext}"), ext as i64) as usize)
-            .collect();
-
-        let frame1 = frame_from_node(node_a)?;
-        let frame2 = frame_from_node(node_b)?;
-
-        let mut cmp = CmpFrame::new(frame1, frame2);
-
-        // Apply the axis permutation (no-op when `axp` is the identity).
-        // `perm_axes` takes a 1-based external→internal mapping, which
-        // is exactly the `Axp{ext}` values read above. Mirrors
-        // cmpframe.c:11027 (`new->perm[axis] = astReadInt(...) - 1`).
-        if axp.iter().enumerate().any(|(i, &v)| v != i + 1) {
-            cmp.perm_axes(&axp)?;
+        let naxes = frame1.naxes() + frame2.naxes();
+        if naxes > crate::constants::MXAXES {
+            return Err(AstError::new(
+                ErrorCode::Naxin,
+                format!(
+                    "astLoadCmpFrame({}): Number of axes ({naxes}) read from the dump is \
+                     invalid - this number should not exceed {}.",
+                    whole.class,
+                    crate::constants::MXAXES
+                ),
+            ));
         }
+
+        // The axis permutation, `Axp<n>` being the 1-based internal axis of
+        // external axis n, the identity by default; one of zero or less is
+        // invalid.
+        let perm: Vec<i64> = (0..naxes)
+            .map(|axis| {
+                let p = node.get_int(&format!("Axp{}", axis + 1), axis as i64 + 1);
+                if p > 0 { p - 1 } else { -1 }
+            })
+            .collect();
+        super::check_perm_array("astLoadCmpFrame", &whole.class, &perm, naxes)?;
+
+        let mut cmp = CmpFrame::within_limit(frame1, frame2);
+        cmp.perm = perm.iter().map(|&p| p as usize).collect();
 
         // The Frame part's own values: ActUnt, Digits, Domain, Title, ID,
         // Ident, UseDefs and the matching attributes, which the CmpFrame
@@ -1401,7 +1420,7 @@ impl Serializable for CmpFrame {
 
 /// Generate the next axis selection in lexicographic order.
 ///
-/// Mirrors C `GenAxisSelection` (cmpframe.c:204). On entry, `axes`
+/// Mirrors C `GenAxisSelection` (cmpframe.c:3464). On entry, `axes`
 /// holds `nselect` distinct zero-based axis indices in
 /// strictly-increasing order; on exit the indices are advanced to the
 /// lexicographically-next selection of the same size from `0..naxes`.
@@ -1413,10 +1432,8 @@ impl Serializable for CmpFrame {
 /// `false` once every selection has been emitted (in which case the
 /// array contents are exhausted and must not be used).
 pub(crate) fn gen_axis_selection(naxes: usize, nselect: usize, axes: &mut [i32]) -> bool {
-    // C returns 0 when `nselect == 0` regardless of the loop body —
-    // its final check is `nselect > 0 && axes[nselect-1] < naxes`. We
-    // short-circuit here both for clarity and to avoid an out-of-range
-    // read of `axes[nselect+1]` in the empty case.
+    // There is only one way to select no axes, so there is no further
+    // selection, and no element to update.
     if nselect == 0 {
         return false;
     }
@@ -1723,7 +1740,7 @@ pub(crate) fn part_match(
 
     // Step 5: build the basic result CmpFrame from the two child
     // results in parallel (cmpframe.c:419-420).
-    let mut result_frame: DynFrame = Box::new(CmpFrame::new(m1.result, m2.result));
+    let mut result_frame: DynFrame = Box::new(CmpFrame::new(m1.result, m2.result)?);
 
     // Step 6: permute the result axes to match the reference Frame
     // (template if PreserveAxes==0, target if PreserveAxes==1).
@@ -2018,10 +2035,10 @@ pub(crate) fn component_match(
 
     let result_frame: DynFrame = if icomp == 1 {
         let other = template.frame1().snapshot();
-        Box::new(CmpFrame::new(other, m.result))
+        Box::new(CmpFrame::new(other, m.result)?)
     } else {
         let other = template.frame2().snapshot();
-        Box::new(CmpFrame::new(m.result, other))
+        Box::new(CmpFrame::new(m.result, other)?)
     };
 
     // Suffix PermMap that lifts the partial-component Mapping's naxr
@@ -2558,7 +2575,7 @@ fn cmpframe_sub_frame(
     // Build result CmpFrame and apply the suffix permutation to its
     // axes (cmpframe.c:9637-9641). astPermAxes uses 1-based perm
     // values; outperm_suff is already 1-based.
-    let mut result_frame: DynFrame = Box::new(CmpFrame::new(sub_result1, sub_result2));
+    let mut result_frame: DynFrame = Box::new(CmpFrame::new(sub_result1, sub_result2)?);
     let perm_args: Vec<usize> = outperm_suff.iter().map(|&v| v as usize).collect();
     result_frame.perm_axes(&perm_args)?;
 
@@ -2695,6 +2712,7 @@ mod tests {
             Box::new(SkyFrame::new(SkySystem::Fk5)),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
         )
+        .unwrap()
     }
 
     // -----------------------------------------------------------------------
@@ -2774,7 +2792,8 @@ mod tests {
         let cf = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let a = [1.0, 0.0, 0.0];
         let b = [0.0, 0.0, 0.0];
         let c = [0.0, 1.0, 1.0];
@@ -2812,7 +2831,8 @@ mod tests {
         let cf2 = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         assert_eq!(Frame::domain(&cf2), "CMP");
 
         // Explicit Domain wins.
@@ -2846,7 +2866,8 @@ mod tests {
         let cf = CmpFrame::new(
             Box::new(sky),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         assert!(
             (cf.epoch_mjd() - mjd).abs() < 1e-9,
             "got {}",
@@ -2868,7 +2889,8 @@ mod tests {
         let cf2 = CmpFrame::new(
             Box::new(sky2),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         assert_eq!(Frame::obs_lat(&cf2), 0.25);
     }
 
@@ -2901,7 +2923,8 @@ mod tests {
         let cmp = CmpFrame::new(
             Box::new(sky),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
 
         let template = BasicFrameBuilder::new(3).build().unwrap();
         let casted = cmp.cast(&template).unwrap().unwrap();
@@ -2932,7 +2955,8 @@ mod tests {
         let cmp = CmpFrame::new(
             Box::new(sky),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
 
         let template = BasicFrameBuilder::new(3).build().unwrap();
         let out = cmp.cast(&template).unwrap().unwrap();
@@ -2971,7 +2995,8 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let target = BasicFrameBuilder::new(3).build().unwrap();
         let m = part_match(&template, &target, false, &[0, 1], &[2])
             .unwrap()
@@ -2989,7 +3014,8 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let target = BasicFrameBuilder::new(3).build().unwrap();
         let result = part_match(&template, &target, false, &[0], &[1, 2]).unwrap();
         assert!(result.is_none());
@@ -3011,7 +3037,8 @@ mod tests {
         let mut template = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         template.set_preserve_axes(true).unwrap();
         let target = BasicFrameBuilder::new(2).build().unwrap();
 
@@ -3037,7 +3064,8 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         assert!(!template.preserve_axes());
         let target = BasicFrameBuilder::new(2).build().unwrap();
 
@@ -3065,7 +3093,8 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let target = BasicFrameBuilder::new(1).build().unwrap();
 
         let m = component_match(&template, &target, false, 1)
@@ -3093,7 +3122,8 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         // Target is 1-axis BasicFrame; component 0 expects 2.
         let target = BasicFrameBuilder::new(1).build().unwrap();
         let result = component_match(&template, &target, false, 0).unwrap();
@@ -3114,7 +3144,8 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let target = BasicFrameBuilder::new(3).build().unwrap();
         let m = template
             .match_template(&target, false)
@@ -3131,7 +3162,8 @@ mod tests {
         let mut template = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         // Without raising MaxAxes the 1-axis target fails
         // cardinality (3 vs default min=max=3). Allowing 1..=3 lets
         // the partition loop run with naxes1=0..=1, but naxes_min1=2
@@ -3159,7 +3191,8 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(frame1),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         // Force the CmpFrame's *own* Domain to be set (the base
         // CmpFrame domain isn't directly settable on the trait, so
         // verify via test_domain — domain on a CmpFrame defaults to
@@ -3184,7 +3217,8 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let target = BasicFrameBuilder::new(5).build().unwrap();
         let result = template.match_template(&target, false).unwrap();
         assert!(result.is_none());
@@ -3202,7 +3236,8 @@ mod tests {
         let target = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let target_axes: Vec<i32> = vec![0, 1, 2];
         let template_axes: Vec<i32> = vec![0, 1, 2];
         let (map, result) = target
@@ -3222,7 +3257,8 @@ mod tests {
         let target = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let (map, result) = target
             .sub_frame(None, 2, &[0, 1], &[0, 1])
             .unwrap()
@@ -3240,7 +3276,8 @@ mod tests {
         let target = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let (map, result) = target
             .sub_frame(None, 1, &[2], &[0])
             .unwrap()
@@ -3259,7 +3296,8 @@ mod tests {
         let target = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let (map, result) = target
             .sub_frame(None, 2, &[2, 0], &[0, 1])
             .unwrap()
@@ -3277,11 +3315,13 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let target = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         let m = part_match(&template, &target, false, &[0, 1], &[2])
             .unwrap()
             .expect("CmpFrame partition match");
@@ -3296,7 +3336,8 @@ mod tests {
         let mut target = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         target.set_domain("MYCMP");
         target.set_title("custom title");
         assert!(target.test_domain());
@@ -3321,7 +3362,8 @@ mod tests {
         let mut target = CmpFrame::new(
             Box::new(BasicFrameBuilder::new(2).build().unwrap()),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         target.set_domain("MYCMP");
         let (_map, result) = target
             .sub_frame(None, 2, &[0, 1], &[0, 1])
@@ -3348,13 +3390,17 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(sky_template),
             Box::new(SpecFrame::new(SpecSystem::Freq)),
-        );
+        )
+        .unwrap();
 
         let result_sky = SkyFrame::new(SkySystem::Fk5);
-        let mut result: DynFrame = Box::new(CmpFrame::new(
-            Box::new(result_sky),
-            Box::new(SpecFrame::new(SpecSystem::Freq)),
-        ));
+        let mut result: DynFrame = Box::new(
+            CmpFrame::new(
+                Box::new(result_sky),
+                Box::new(SpecFrame::new(SpecSystem::Freq)),
+            )
+            .unwrap(),
+        );
 
         // Identity association: result axis i ↔ template axis i.
         let template_axes: Vec<i32> = (0..result.naxes() as i32).collect();
@@ -3379,7 +3425,8 @@ mod tests {
         let template = CmpFrame::new(
             Box::new(SkyFrame::new(SkySystem::Galactic)),
             Box::new(SpecFrame::new(SpecSystem::Freq)),
-        );
+        )
+        .unwrap();
 
         // Result is a plain BasicFrame with same axis count. Without
         // any matching downcast the SkyFrame / SpecFrame component
@@ -3406,17 +3453,21 @@ mod tests {
         let mut template = CmpFrame::new(
             Box::new(SkyFrame::new(SkySystem::Galactic)),
             Box::new(SpecFrame::new(SpecSystem::Freq)),
-        );
+        )
+        .unwrap();
         template.perm_axes(&[1, 3, 2]).unwrap();
 
         // Result: identity-permuted CmpFrame(SkyFrame, SpecFrame).
         // result.frame1 = SkyFrame (2 axes), result.frame2 = SpecFrame (1 axis).
         // Identity template_axes maps result external axis i to template
         // external axis i.
-        let mut result: DynFrame = Box::new(CmpFrame::new(
-            Box::new(SkyFrame::new(SkySystem::Fk5)),
-            Box::new(SpecFrame::new(SpecSystem::Freq)),
-        ));
+        let mut result: DynFrame = Box::new(
+            CmpFrame::new(
+                Box::new(SkyFrame::new(SkySystem::Fk5)),
+                Box::new(SpecFrame::new(SpecSystem::Freq)),
+            )
+            .unwrap(),
+        );
         let template_axes: Vec<i32> = vec![0, 1, 2];
         // First result subframe (SkyFrame, 2 axes) receives (lon, freq) from
         // the template, which crosses the partition boundary, so the
@@ -3429,7 +3480,8 @@ mod tests {
         let mut cmp = CmpFrame::new(
             Box::new(SkyFrame::new(SkySystem::Fk5)),
             Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        );
+        )
+        .unwrap();
         cmp.set_ident("ORIGINAL");
         cmp.set_epoch_mjd(51544.5).unwrap();
 

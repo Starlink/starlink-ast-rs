@@ -23,6 +23,7 @@ use crate::mappings::intramap::with_registry;
 use crate::object_id::ObjectId;
 use crate::serial::Node;
 use crate::serial::native_stream::Reader;
+use crate::serial::node::with_read_channel;
 use crate::serial::{AnyObject, any_object_from_node};
 
 /// A sink that is either a [`StringSink`], whose text can be taken back,
@@ -215,13 +216,14 @@ impl ChannelBase {
             return match &mut files.fd_in {
                 Some(fd) => read_text_line(fd),
                 None => read_text_line(&mut io::stdin().lock()),
-            };
+            }
+            .map(end_at_nul);
         }
         drop(files);
         let mut source = lock(self.source.as_ref()?);
         match source.returned.pop_front() {
             Some(line) => Some(line),
-            None => source.source.read_line(),
+            None => source.source.read_line().map(end_at_nul),
         }
     }
 
@@ -268,28 +270,35 @@ impl ChannelBase {
         let mut next_line = || this.read_line(class);
         let mut reader = Reader::new(&mut next_line, class, strict, report_level);
         let mut returned = Vec::new();
-        let result = with_registry(&this.intra, || -> AstResult<Option<AnyObject>> {
-            let Some(object) = reader.read(true, skip)? else {
-                return Ok(None);
-            };
-            let loaded = any_object_from_node(&object.node)?;
-            // C loads every nested Object it reads, so one no loader read
-            // is loaded here for its reports. A class the port cannot load
-            // on its own, such as an Axis or a PointSet, is left.
-            let mut load = |node: &Node| match any_object_from_node(node) {
-                Err(e) if e.code() == ErrorCode::Lderr => Ok(()),
-                other => other.map(|_| ()),
-            };
-            match reader.report_object(&object, &mut load) {
-                Ok(()) => Ok(Some(loaded)),
-                Err((e, lines)) => {
-                    returned = reader.lines[lines..].to_vec();
-                    Err(e.with_context(format!(
+        let result = with_registry(&this.intra, || {
+            with_read_channel(class, || -> AstResult<Option<AnyObject>> {
+                let Some(object) = reader.read(true, skip)? else {
+                    return Ok(None);
+                };
+                let loaded = any_object_from_node(&object.node).map_err(|e| {
+                    e.with_context(format!(
                         "Error while reading a {} from a {class}.",
                         object.node.class
-                    )))
+                    ))
+                })?;
+                // C loads every nested Object it reads, so one no loader read
+                // is loaded here for its reports. A class the port cannot load
+                // on its own, such as an Axis or a PointSet, is left.
+                let mut load = |node: &Node| match any_object_from_node(node) {
+                    Err(e) if crate::serial::is_no_loader_error(&e) => Ok(()),
+                    other => other.map(|_| ()),
+                };
+                match reader.report_object(&object, &mut load) {
+                    Ok(()) => Ok(Some(loaded)),
+                    Err((e, lines)) => {
+                        returned = reader.lines[lines..].to_vec();
+                        Err(e.with_context(format!(
+                            "Error while reading a {} from a {class}.",
+                            object.node.class
+                        )))
+                    }
                 }
-            }
+            })
         });
         let warnings = std::mem::take(&mut reader.warnings);
         drop(reader);
@@ -527,4 +536,13 @@ pub(crate) fn read_parts(node: &Node, c: &mut ChannelConfig) -> (ObjectId, Optio
         c.set_comment(v != 0);
     }
     (id, ident)
+}
+
+/// `line` up to its first NUL: the C library reads each line as a C string,
+/// which ends there.
+fn end_at_nul(mut line: String) -> String {
+    if let Some(end) = line.find('\0') {
+        line.truncate(end);
+    }
+    line
 }

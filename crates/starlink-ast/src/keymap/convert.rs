@@ -845,7 +845,7 @@ mod tests {
         // — it is what makes a NULL Object element representable, per C's
         // `aval ? astClone(aval) : NULL` at keymap.c:2202.
         let obj = RawValue::Object(Some(Box::new(AnyObject::UnitMap(
-            crate::mappings::UnitMap::new(1),
+            crate::mappings::UnitMap::within_limit(1),
         ))));
         assert!(matches!(
             convert_value(&obj, AstType::Object).unwrap(),

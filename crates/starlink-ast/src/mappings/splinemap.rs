@@ -15,7 +15,9 @@
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+use crate::serial::{
+    MXLOADEL, Node, Serializable, read_mapping_base, too_many_values, write_mapping_base,
+};
 
 use super::helpers::{ast_equal, is_bad};
 use super::rate::numeric_rate;
@@ -45,6 +47,10 @@ const DEFAULT_INV_TOL: f64 = 1.0e-6;
 /// No extrapolation is performed: input positions outside the area covered by
 /// the knots cannot be transformed (but see
 /// [`out_unit`](SplineMap::out_unit)).
+/// On each axis, a spline of order K with N coefficients covers the range
+/// from knot K to knot N+1 (counting from one).
+/// This is the full range of the knots if the first K knots are coincident
+/// and the last K knots are coincident, as is usual.
 ///
 /// An iterative method is used to evaluate the inverse transformation from
 /// the forward transformation (see [`inv_tol`](SplineMap::inv_tol) and
@@ -178,38 +184,17 @@ impl SplineMap {
         cv: Vec<f64>,
     ) -> AstResult<Self> {
         // splinemap.c astInitSplineMap: each is AST__ATTIN.
-        let attin = |msg: String| Err(AstError::new(ErrorCode::Attin, format!("SplineMap: {msg}")));
-        if !(1..=MAX_K).contains(&kx) {
-            return attin(format!(
-                "the spline order in X ({kx}) must be in the range [1,{MAX_K}]"
-            ));
-        }
-        if !(1..=MAX_K).contains(&ky) {
-            return attin(format!(
-                "the spline order in Y ({ky}) must be in the range [1,{MAX_K}]"
-            ));
-        }
-        if nx < kx {
-            return attin(format!(
-                "the number of coefficients in X ({nx}) must be at least {kx}"
-            ));
-        }
-        if ny < ky {
-            return attin(format!(
-                "the number of coefficients in Y ({ny}) must be at least {ky}"
-            ));
-        }
+        check_sizes("astSplineMap", kx as i64, ky as i64, nx as i64, ny as i64)?;
         // The array lengths C takes on trust from its arguments.
         if tx.len() != nx + kx || ty.len() != ny + ky || cu.len() != nx * ny || cv.len() != nx * ny
         {
-            return attin("the knot or coefficient arrays have the wrong lengths".to_string());
+            return Err(AstError::new(
+                ErrorCode::Attin,
+                "astSplineMap: The knot or coefficient arrays have the wrong lengths.",
+            ));
         }
-        if tx.windows(2).any(|w| w[0] > w[1]) {
-            return attin("the knots in the X direction are not monotonic increasing".to_string());
-        }
-        if ty.windows(2).any(|w| w[0] > w[1]) {
-            return attin("the knots in the Y direction are not monotonic increasing".to_string());
-        }
+        check_knots("astSplineMap", "X", &tx)?;
+        check_knots("astSplineMap", "Y", &ty)?;
 
         Ok(Self {
             kx,
@@ -640,6 +625,8 @@ impl SplineMap {
 
     /// [`Self::dbvalu`] for order `K`. C's work array holds the coefficients,
     /// then `dp`, then `dm`, `K` values each; here they are three arrays.
+    // C's range tests are negated so that a NaN fails them.
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
     fn dbvalu_k<const K: usize>(
         t: &[f64],
         a: &[f64],
@@ -660,11 +647,13 @@ impl SplineMap {
             return 0.0;
         }
 
-        if x < t[K - 1] {
+        // Written so that a NaN fails it too (splinemap.c `Dbvalu`).
+        if !(x >= t[K - 1]) {
             return BAD_VALUE;
         }
 
-        // Find i such that t[i] <= x < t[i+1]
+        // Find i in [K-1, n-1] such that t[i] <= x < t[i+1], or
+        // t[i] < t[i+1] = t[n] for x on the upper limit.
         let mut inbv_local = inbv;
         let (mut i, mflag) = Self::dintrv(t, n + 1, x, &mut inbv_local);
 
@@ -672,15 +661,17 @@ impl SplineMap {
             if x > t[i] {
                 return BAD_VALUE;
             }
-            // Handle upper boundary
-            while i != K - 1 {
+            // Step back to the last knot interval of non-zero width; there
+            // is no left limit if the first interval has zero width too.
+            loop {
+                if i == K - 1 {
+                    return BAD_VALUE;
+                }
                 i -= 1;
                 if x != t[i] {
                     break;
                 }
             }
-            // Note: Original C code comments out this check to allow upper edge.
-            // if i == k - 1 { return BAD_VALUE; }
         }
 
         // The coefficients and knots the rest reads: a[i+1-K..=i] and
@@ -732,6 +723,8 @@ impl SplineMap {
     /// - `bcoef`: coefficient array (nx * ny)
     ///
     /// Returns the spline value or `def` if out of range.
+    // C's range tests are negated so that a NaN fails them.
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
     fn db2val(&self, def: f64, xval: f64, yval: f64, idx: usize, idy: usize, bcoef: &[f64]) -> f64 {
         let tx = &self.tx;
         let ty = &self.ty;
@@ -740,34 +733,38 @@ impl SplineMap {
         let kx = self.kx;
         let ky = self.ky;
 
-        // Check bounds
-        if xval < tx[0] || xval > tx[nx + kx - 1] || yval < ty[0] || yval > ty[ny + ky - 1] {
+        // The spline is defined only within the basic interval of each
+        // knot sequence, knot k-1 to knot n, which is the full extent of
+        // the knots only when the first k and last k are coincident. The
+        // test is written so that a NaN fails it too (splinemap.c `Db2val`).
+        if !(xval >= tx[kx - 1] && xval <= tx[nx] && yval >= ty[ky - 1] && yval <= ty[ny]) {
             return def;
         }
 
-        // Find y interval
+        // Find lefty such that ty[lefty] <= yval < ty[lefty+1], searching
+        // only the knots up to the end of the basic interval, so that a
+        // position on its upper limit is flagged whatever the multiplicity
+        // of the final knots.
         let mut iloy: usize = 0;
-        let (lefty, mflag) = Self::dintrv(ty, ny + ky, yval, &mut iloy);
+        let (mut lefty, mflag) = Self::dintrv(ty, ny + 1, yval, &mut iloy);
 
-        // Handle upper Y boundary (DSB modification)
-        let lefty = if mflag != 0 {
+        // On the upper limit, step back to the last knot interval of
+        // non-zero width, as Dbvalu does, so that the value is the limit
+        // from below; none if the first interval has zero width too.
+        if mflag != 0 {
             if yval > ty[lefty] {
                 return BAD_VALUE;
             }
-            let mut lefty = lefty;
-            while lefty != ky - 1 {
+            loop {
+                if lefty == ky - 1 {
+                    return BAD_VALUE;
+                }
                 lefty -= 1;
                 if yval != ty[lefty] {
                     break;
                 }
             }
-            if lefty == ky - 1 {
-                return BAD_VALUE;
-            }
-            lefty
-        } else {
-            lefty
-        };
+        }
 
         // Evaluate the ky 1-D B-splines in x for each relevant row, giving
         // the coefficients of a 1-D B-spline in y.
@@ -777,6 +774,10 @@ impl SplineMap {
             kcol += 1;
             let coef_offset = nx * kcol as usize;
             *c = Self::dbvalu(tx, &bcoef[coef_offset..], nx, kx, idx, xval, 0);
+            // No value if no knot interval in x has a non-zero width.
+            if *c == BAD_VALUE {
+                return BAD_VALUE;
+            }
         }
 
         // Now evaluate the resulting 1-D B-spline in y.
@@ -1180,7 +1181,7 @@ impl Mapping for SplineMap {
                     return None;
                 }
             }
-            return Some(Box::new(UnitMap::new(2)));
+            return Some(Box::new(UnitMap::within_limit(2)));
         }
 
         None
@@ -1332,10 +1333,39 @@ impl Serializable for SplineMap {
         let node = &whole.section("SplineMap");
         let base = read_mapping_base(whole);
 
-        let kx = node.get_int("KX", 0) as usize;
-        let ky = node.get_int("KY", 0) as usize;
-        let nx = node.get_int("NX", 0) as usize;
-        let ny = node.get_int("NY", 0) as usize;
+        // A SplineMap has two inputs and two outputs, and the spline orders,
+        // coefficient counts and knots pass the constructor's checks, the
+        // sizes before anything is sized from them (splinemap.c
+        // `astLoadSplineMap`).
+        let (nin, nout) = if base.inverted {
+            (base.nout, base.nin)
+        } else {
+            (base.nin, base.nout)
+        };
+        if nin != 2 || nout != 2 {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadSplineMap({0}): Invalid number of inputs ({nin}) or outputs ({nout}) \
+                     read for a {0} - both must be 2.",
+                    whole.class
+                ),
+            ));
+        }
+        let kx = node.get_int("KX", 0);
+        let ky = node.get_int("KY", 0);
+        let nx = node.get_int("NX", 0);
+        let ny = node.get_int("NY", 0);
+        check_sizes("astLoadSplineMap", kx, ky, nx, ny)?;
+        let (kx, ky, nx, ny) = (kx as usize, ky as usize, nx as usize, ny as usize);
+        // The coefficients are named `CU1` onward (see `MXLOADEL`).
+        if nx * ny > MXLOADEL {
+            return Err(too_many_values(
+                "astLoadSplineMap",
+                &whole.class,
+                &format!("The spline read has {nx} by {ny} coefficients"),
+            ));
+        }
 
         let tx: Vec<f64> = (0..nx + kx)
             .map(|i| node.get_double(&format!("TX{}", i + 1), BAD_VALUE))
@@ -1353,6 +1383,8 @@ impl Serializable for SplineMap {
         let cv: Vec<f64> = (0..nc)
             .map(|i| node.get_double(&format!("CV{}", i + 1), BAD_VALUE))
             .collect();
+        check_knots("astLoadSplineMap", "X", &tx)?;
+        check_knots("astLoadSplineMap", "Y", &ty)?;
 
         // Read optional attributes
         let inv_niter_raw = node.get_int("NiterInv", i64::MIN);
@@ -1412,9 +1444,95 @@ impl Serializable for SplineMap {
     }
 }
 
+/// C's `CheckSizes` (splinemap.c), shared by the constructor and the
+/// loader, `method` naming the C function: each spline order is in
+/// `1..=MAX_K`, each count of coefficients at least its order, and the
+/// counts small enough that the knot and coefficient arrays can be
+/// counted with a C `int`.
+fn check_sizes(method: &str, kx: i64, ky: i64, nx: i64, ny: i64) -> AstResult<()> {
+    let max_k = MAX_K as i64;
+    let int_max = i64::from(i32::MAX);
+    let message = if !(1..=max_k).contains(&kx) {
+        format!(
+            "The supplied spline order in the X direction ({kx}) is invalid - it must be in \
+             the range [1,{max_k}]."
+        )
+    } else if !(1..=max_k).contains(&ky) {
+        format!(
+            "The supplied spline order in the Y direction ({ky}) is invalid - it must be in \
+             the range [1,{max_k}]."
+        )
+    } else if nx < kx {
+        format!(
+            "The supplied number of coefficients in the X direction ({nx}) is too small - it \
+             must be larger than or equal to {kx}."
+        )
+    } else if ny < ky {
+        format!(
+            "The supplied number of coefficients in the Y direction ({ny}) is too small - it \
+             must be larger than or equal to {ky}."
+        )
+    } else if nx > int_max - kx || ny > int_max - ky || nx > int_max / ny {
+        format!(
+            "The supplied numbers of coefficients in the X and Y directions ({nx} and {ny}) are \
+             too large."
+        )
+    } else {
+        return Ok(());
+    };
+    Err(AstError::new(
+        ErrorCode::Attin,
+        format!("{method}: {message}"),
+    ))
+}
+
+/// C's `CheckKnots` (splinemap.c): the knots `t` in direction `dir` (`"X"`
+/// or `"Y"`) are monotonic increasing.
+fn check_knots(method: &str, dir: &str, t: &[f64]) -> AstResult<()> {
+    if t.windows(2).any(|w| w[0] > w[1]) {
+        return Err(AstError::new(
+            ErrorCode::Attin,
+            format!(
+                "{method}: The supplied knots in the {dir} direction are not monotonic increasing."
+            ),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A NaN reaches the evaluators from the iterative inverse, whose
+    /// Jacobian is taken at each guess unchecked; it must be outside the
+    /// spline and give a bad value, where it used to select columns of
+    /// coefficients before the first.
+    #[test]
+    fn nan_is_outside_the_spline_in_the_evaluators() {
+        let c: Vec<f64> = (1..=6).map(f64::from).collect();
+        let map = SplineMap::from_scipy(
+            2,
+            2,
+            2,
+            3,
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![0.0, 1.0, 2.0, 3.0, 4.0],
+            &c,
+            &c,
+        )
+        .unwrap();
+        for (x, y) in [(f64::NAN, 2.0), (0.5, f64::NAN)] {
+            for (idx, idy) in [(0, 0), (1, 0), (0, 1)] {
+                assert_eq!(map.db2val(BAD_VALUE, x, y, idx, idy, &map.cu), BAD_VALUE);
+            }
+        }
+        let t = [0.0, 0.0, 1.0, 1.0];
+        assert_eq!(
+            SplineMap::dbvalu(&t, &[1.0, 2.0], 2, 2, 0, f64::NAN, 0),
+            BAD_VALUE
+        );
+    }
 
     /// A derivative of the spline's order or higher is zero, not bad
     /// (splinemap.c `Dbvalu`): an order-1 spline is constant on each piece.

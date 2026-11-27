@@ -25,7 +25,7 @@ fn make_frame(naxes: usize) -> Box<dyn Frame> {
 
 #[test]
 fn cmpframe_naxes() {
-    let cmp = CmpFrame::new(make_frame(2), make_frame(3));
+    let cmp = CmpFrame::new(make_frame(2), make_frame(3)).unwrap();
     assert_eq!(cmp.naxes(), 5);
     assert_eq!(cmp.naxes1(), 2);
 }
@@ -34,7 +34,7 @@ fn cmpframe_naxes() {
 
 #[test]
 fn cmpframe_format_delegates() {
-    let cmp = CmpFrame::new(make_frame(1), make_frame(1));
+    let cmp = CmpFrame::new(make_frame(1), make_frame(1)).unwrap();
     // Both children are BasicFrames, so format uses default float formatting.
     let s1 = cmp.format(1, 3.14).unwrap();
     assert!(s1.contains("3.14"));
@@ -53,7 +53,7 @@ fn cmpframe_direction_routes_to_component() {
     // Dir(2)=1, Dir(3)=1.
     let mut f1 = BasicFrameBuilder::new(2).build().unwrap();
     f1.set_direction(1, false).unwrap();
-    let cmp = CmpFrame::new(Box::new(f1), make_frame(1));
+    let cmp = CmpFrame::new(Box::new(f1), make_frame(1)).unwrap();
     assert!(!cmp.direction(1).unwrap()); // reversed axis from frame1
     assert!(cmp.direction(2).unwrap()); // default
     assert!(cmp.direction(3).unwrap()); // frame2 default
@@ -67,7 +67,7 @@ fn cmpframe_direction_routes_to_component() {
 #[test]
 fn cmpframe_unformat_delegates() {
     // 2+1 compound: axis 3 delegates to frame2 axis 1.
-    let cmp = CmpFrame::new(make_frame(2), make_frame(1));
+    let cmp = CmpFrame::new(make_frame(2), make_frame(1)).unwrap();
     // C `sscanf("%lf %n")` counts the trailing whitespace after the
     // number, so "42.5 rest" reports 5 characters read.
     let (val, consumed) = cmp.unformat(3, "42.5 rest").unwrap();
@@ -79,7 +79,7 @@ fn cmpframe_unformat_delegates() {
 
 #[test]
 fn cmpframe_axis_validation() {
-    let cmp = CmpFrame::new(make_frame(2), make_frame(1));
+    let cmp = CmpFrame::new(make_frame(2), make_frame(1)).unwrap();
     let total = cmp.naxes();
     assert_eq!(total, 3);
 
@@ -96,7 +96,7 @@ fn cmpframe_axis_validation() {
 
 #[test]
 fn cmpframe_distance() {
-    let cmp = CmpFrame::new(make_frame(2), make_frame(1));
+    let cmp = CmpFrame::new(make_frame(2), make_frame(1)).unwrap();
     // (0,0,0) -> (1,2,2): sqrt(1+4+4) = 3
     let d = cmp.distance(&[0.0, 0.0, 0.0], &[1.0, 2.0, 2.0]).unwrap();
     assert!((d - 3.0).abs() < 1e-12);
@@ -104,7 +104,7 @@ fn cmpframe_distance() {
 
 #[test]
 fn cmpframe_distance_bad_value() {
-    let cmp = CmpFrame::new(make_frame(1), make_frame(1));
+    let cmp = CmpFrame::new(make_frame(1), make_frame(1)).unwrap();
     let d = cmp.distance(&[BAD_VALUE, 0.0], &[1.0, 1.0]).unwrap();
     assert_eq!(d, BAD_VALUE);
 }
@@ -113,7 +113,7 @@ fn cmpframe_distance_bad_value() {
 
 #[test]
 fn cmpframe_offset() {
-    let cmp = CmpFrame::new(make_frame(1), make_frame(1));
+    let cmp = CmpFrame::new(make_frame(1), make_frame(1)).unwrap();
     // (0,0) -> (3,4) by dist 5 = exactly (3,4).
     let result = cmp.offset(&[0.0, 0.0], &[3.0, 4.0], 5.0).unwrap();
     assert!((result[0] - 3.0).abs() < 1e-12);
@@ -124,7 +124,7 @@ fn cmpframe_offset() {
 
 #[test]
 fn cmpframe_norm_delegates() {
-    let cmp = CmpFrame::new(make_frame(2), make_frame(1));
+    let cmp = CmpFrame::new(make_frame(2), make_frame(1)).unwrap();
     let mut coords = [1.0, 2.0, 3.0];
     cmp.norm(&mut coords).unwrap();
     // BasicFrame norm is a no-op; coordinates should be unchanged.
@@ -135,7 +135,7 @@ fn cmpframe_norm_delegates() {
 
 #[test]
 fn cmpframe_snapshot() {
-    let cmp = CmpFrame::new(make_frame(2), make_frame(3));
+    let cmp = CmpFrame::new(make_frame(2), make_frame(3)).unwrap();
     let snap = cmp.snapshot();
     assert_eq!(snap.naxes(), 5);
 }
@@ -158,7 +158,7 @@ fn cmpframe_axis_permutation_round_trips() {
         .build()
         .unwrap();
     let f2 = BasicFrameBuilder::new(1).label(1, "wave").build().unwrap();
-    let mut cmp = CmpFrame::new(Box::new(f1), Box::new(f2));
+    let mut cmp = CmpFrame::new(Box::new(f1), Box::new(f2)).unwrap();
 
     // Permute so external axes are (wave, lon, lat): external axis 1 ->
     // internal axis 3, 2 -> 1, 3 -> 2.
@@ -190,7 +190,7 @@ fn cmpframe_angle() {
     // All-Cartesian CmpFrame uses the Frame-class angle, which is
     // *signed* in 2 dimensions (frame.c:1230-1320): A on +X to C on
     // +Y is -pi/2.
-    let cmp = CmpFrame::new(make_frame(1), make_frame(1));
+    let cmp = CmpFrame::new(make_frame(1), make_frame(1)).unwrap();
     let a = &[1.0, 0.0];
     let b = &[0.0, 0.0];
     let c = &[0.0, 1.0];
@@ -215,7 +215,8 @@ fn norm_box_probe_carries_bad_on_the_other_components_axes() {
     let cmp = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Icrs)),
         Box::new(TimeFrame::new(TimeSystem::Mjd)),
-    );
+    )
+    .unwrap();
 
     let mut lbnd = [-0.3, 1.3, 0.0];
     let mut ubnd = [0.3, FRAC_PI_2, 1.0];
@@ -241,7 +242,8 @@ fn norm_box_reaches_the_sky_component() {
     let cmp = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Icrs)),
         Box::new(TimeFrame::new(TimeSystem::Mjd)),
-    );
+    )
+    .unwrap();
 
     let mut lbnd = [-0.3, 1.3, 0.0];
     let mut ubnd = [0.3, FRAC_PI_2, 1.0];
@@ -266,7 +268,8 @@ fn norm_box_delegates_to_a_second_component_of_a_different_size() {
     let cmp = CmpFrame::new(
         Box::new(TimeFrame::new(TimeSystem::Mjd)),
         Box::new(SkyFrame::new(SkySystem::Icrs)),
-    );
+    )
+    .unwrap();
 
     let mut lbnd = [0.0, -0.3, 1.3];
     let mut ubnd = [1.0, 0.3, FRAC_PI_2];
@@ -288,7 +291,8 @@ fn norm_box_reaches_a_sky_second_component() {
     let cmp = CmpFrame::new(
         Box::new(TimeFrame::new(TimeSystem::Mjd)),
         Box::new(SkyFrame::new(SkySystem::Icrs)),
-    );
+    )
+    .unwrap();
 
     let mut lbnd = [0.0, -0.3, 1.3];
     let mut ubnd = [1.0, 0.3, FRAC_PI_2];
@@ -315,11 +319,13 @@ fn norm_box_bounds_do_not_depend_on_component_order() {
     let sky_first = CmpFrame::new(
         Box::new(SkyFrame::new(SkySystem::Icrs)),
         Box::new(BasicFrameBuilder::new(1).domain("FPLANE").build().unwrap()),
-    );
+    )
+    .unwrap();
     let sky_last = CmpFrame::new(
         Box::new(BasicFrameBuilder::new(1).domain("FPLANE").build().unwrap()),
         Box::new(SkyFrame::new(SkySystem::Icrs)),
-    );
+    )
+    .unwrap();
 
     let c1 = CircleBuilder::new(sky_first, vec![0.0, 1.2707963267948966, 50.0])
         .unwrap()
@@ -367,7 +373,7 @@ fn norm_points_on_a_permuted_cmpframe_holding_a_swapped_skyframe() {
     let mut sky = SkyFrame::unset_system();
     sky.perm_axes(&[2, 1]).unwrap();
     let plane = BasicFrameBuilder::new(1).domain("FPLANE").build().unwrap();
-    let mut cmp = CmpFrame::new(Box::new(plane), Box::new(sky));
+    let mut cmp = CmpFrame::new(Box::new(plane), Box::new(sky)).unwrap();
     cmp.perm_axes(&[3, 1, 2]).unwrap();
 
     let ra = [6.1, 6.1, 0.04, 0.04];
@@ -391,4 +397,42 @@ fn norm_points_on_a_permuted_cmpframe_holding_a_swapped_skyframe() {
             "Errors 7-9, point {i}"
         );
     }
+}
+
+/// A conversion shares out the axes of a Frame between the two components
+/// of a CmpFrame in every possible way, which can give a component that is
+/// itself a CmpFrame no axes at all. A 1-D Frame has no conversion to or
+/// from three axes, and one whose Domain is that of the first converts to
+/// it alone. From testcmpframe.c `check_match_no_axes`, with the second
+/// case from a probe of the C library.
+#[test]
+fn match_with_a_selection_of_no_axes() {
+    use starlink_ast::frames::{BasicFrame, BasicFrameBuilder, CmpFrame, Frame, FrameSearch};
+    use starlink_ast::mappings::Mapping;
+    let frame = |domain: &str| -> BasicFrame {
+        let mut f = BasicFrameBuilder::new(1).build().unwrap();
+        if !domain.is_empty() {
+            Frame::set_domain(&mut f, domain).unwrap();
+        }
+        f
+    };
+    let nested = || {
+        CmpFrame::new(
+            Box::new(CmpFrame::new(Box::new(frame("A")), Box::new(frame("B"))).unwrap()),
+            Box::new(frame("C")),
+        )
+        .unwrap()
+    };
+    let mut one = frame("");
+    assert!(one.convert_to(&mut nested(), &[]).unwrap().is_none());
+    assert!(nested().convert_to(&mut one, &[]).unwrap().is_none());
+
+    let mut one_a = frame("A");
+    let fs = one_a
+        .convert_to(&mut nested(), &[])
+        .unwrap()
+        .expect("a conversion");
+    let ps = starlink_ast::coords::PointSet::from_rows([[5.0].as_slice()]);
+    let out = fs.transform(&ps, true).unwrap();
+    assert_eq!(out.point(0).to_vec(), [5.0, BAD_VALUE, BAD_VALUE]);
 }

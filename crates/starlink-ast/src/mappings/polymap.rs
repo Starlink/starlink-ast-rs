@@ -9,7 +9,9 @@ use nalgebra::{DMatrix, DVector, Dyn, OMatrix, OVector, VecStorage};
 use crate::constants::BAD_VALUE;
 use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
+use crate::serial::{
+    MXLOADEL, Node, Serializable, read_mapping_base, too_many_values, write_mapping_base,
+};
 
 use super::cmpmap::{CmpMap, Composition};
 use super::helpers::ast_equal;
@@ -50,8 +52,8 @@ pub struct PolyTerm {
 /// separately for each output.
 /// The forward and inverse transformations are defined independently by
 /// separate sets of coefficients.
-/// If no inverse transformation is supplied, the default is an iterative
-/// inverse that uses only the forward transformation (see
+/// If a forward but no inverse transformation is supplied, the default is an
+/// iterative inverse that uses only the forward transformation (see
 /// [`iter_inverse`](PolyMap::iter_inverse)).
 ///
 /// [`coeffs`](PolyMap::coeffs) returns the coefficients, and
@@ -143,8 +145,8 @@ impl PolyMap {
     /// `inverse`, if given, defines the inverse transformation the same way
     /// with inputs and outputs transposed: each term's `powers` has one entry
     /// per output, and its `out_axis` is in `1..=nin`.
-    /// When `inverse` is `None` or empty and `nin` equals `nout`, the inverse
-    /// is the iterative one described at
+    /// When `inverse` is `None` or empty, `forward` is not, and `nin` equals
+    /// `nout`, the inverse is the iterative one described at
     /// [`iter_inverse`](PolyMap::iter_inverse); otherwise it is undefined.
     ///
     /// A term with a zero coefficient contributes nothing and is dropped.
@@ -304,8 +306,12 @@ impl PolyMap {
     /// inverted PolyMap it is the forward transformation.
     /// The other transformation cannot be made iterative.
     ///
-    /// Default: true if no inverse coefficients were supplied and the PolyMap
-    /// has as many inputs as outputs, false otherwise.
+    /// An iterative inverse can be used only if the PolyMap has as many
+    /// inputs as outputs and was created with a forward transformation.
+    ///
+    /// Default: true if forward coefficients but no inverse coefficients were
+    /// supplied, and the PolyMap has as many inputs as outputs; false
+    /// otherwise.
     ///
     /// [`set_iter_inverse`](PolyMap::set_iter_inverse),
     /// [`test_iter_inverse`](PolyMap::test_iter_inverse) and
@@ -313,9 +319,11 @@ impl PolyMap {
     /// clear it.
     #[doc(alias = "IterInverse")]
     pub fn iter_inverse(&self) -> bool {
-        // The default is C's GetIterInverse default (polymap.c:6384-6387).
+        // The default is C's GetIterInverse default (polymap.c:6434-6438).
         self.iter_inverse.unwrap_or_else(|| {
-            self.inverse.as_ref().is_none_or(|v| v.is_empty()) && self.nin == self.nout
+            self.inverse.as_ref().is_none_or(|v| v.is_empty())
+                && self.forward_defined()
+                && self.nin == self.nout
         })
     }
 
@@ -327,14 +335,22 @@ impl PolyMap {
     /// # Errors
     ///
     /// `ErrorCode::Attin` if `v` is true and the PolyMap has unequal numbers
-    /// of inputs and outputs; the value is left unchanged.
+    /// of inputs and outputs or has no forward transformation; the value is
+    /// left unchanged.
     pub fn set_iter_inverse(&mut self, v: bool) -> AstResult<()> {
-        // As C's SetIterInverse (polymap.c:6388-6393).
-        if v && self.nin != self.nout {
+        // As C's SetIterInverse (polymap.c:6439-6447).
+        if v && !(self.nin == self.nout && self.forward_defined()) {
+            let why = if self.forward_defined() {
+                "has unequal numbers of inputs and outputs"
+            } else {
+                "was created without a forward transformation"
+            };
             return Err(AstError::new(
                 ErrorCode::Attin,
-                "PolyMap: cannot use an iterative inverse because the PolyMap has \
-                 unequal numbers of inputs and outputs",
+                format!(
+                    "astSetIterInverse(PolyMap): Cannot use an iterative inverse because the \
+                     PolyMap {why}."
+                ),
             ));
         }
         // `IterInverse` decides whether the inverse transformation is defined
@@ -787,11 +803,11 @@ impl PolyMap {
         let mm: DynMapping = if mm.has_inverse() {
             Box::new(mm)
         } else {
-            Box::new(UnitMap::new(nin))
+            Box::new(UnitMap::new(nin)?)
         };
         let mut result: DynMapping = Box::new(CmpMap::new(
             mm,
-            Box::new(ShiftMap::new(vector)),
+            Box::new(ShiftMap::new(vector)?),
             Composition::Series,
         )?);
         if inverse {
@@ -1037,7 +1053,7 @@ impl PolyMap {
         // leaves `IsSimp` on the replacement.
         let m = ndarray::Array2::from_shape_vec((nout, nin), matrix).ok()?;
         let mm = MatrixMap::new(m).ok()?;
-        let sm = ShiftMap::new(offsets);
+        let sm = ShiftMap::within_limit(offsets);
         let cm = CmpMap::new(Box::new(mm), Box::new(sm), Composition::Series).ok()?;
         let cm: &dyn Mapping = &cm;
         cm.simplify().ok()
@@ -1946,7 +1962,7 @@ impl Mapping for PolyMap {
         // Input dimension of the pair depends on which direction
         // self is being used in.
         let pair_nin = if self_inv { self.nout } else { self.nin };
-        Some(Box::new(UnitMap::new(pair_nin)))
+        Some(Box::new(UnitMap::within_limit(pair_nin)))
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {
@@ -2257,8 +2273,8 @@ impl Serializable for PolyMap {
         let nin = base.nin;
         let nout = base.nout;
 
-        let forward = read_poly_terms(node, 'F', nin, nout).unwrap_or_default();
-        let inverse = read_poly_terms(node, 'I', nout, nin);
+        let forward = read_poly_terms(node, &whole.class, 'F', nin, nout)?.unwrap_or_default();
+        let inverse = read_poly_terms(node, &whole.class, 'I', nout, nin)?;
 
         // Read iterative inverse attributes. An absent IterInv leaves
         // the attribute unset so the C default (no inverse coefficients
@@ -2347,22 +2363,82 @@ impl Serializable for PolyMap {
 /// outputs (`NCF<i>` or `NCI<i>`) is missing. Each coefficient is
 /// `CF<n>`, numbered through all the terms, or, if that is bad, the older
 /// `CF<i>_<j>`; each power is `PF<n>`, or, if that is 0, `PF<i>_<j>_<k>`.
-/// `dir` is `'F'` or `'I'`.
+/// `dir` is `'F'` or `'I'`, and `class` the class being read, for messages.
+///
+/// The maximum powers and term counts must not be negative, and each power
+/// must lie between 0 and its variable's maximum (C's `CheckLoadedCounts`
+/// and `CheckLoadedPowers`).
 pub(crate) fn read_poly_terms(
     node: &Node,
+    class: &str,
     dir: char,
     nvar: usize,
     nout: usize,
-) -> Option<Vec<PolyTerm>> {
-    // The maximum powers, which the port does not keep, are read only to
-    // find whether the direction is defined.
+) -> AstResult<Option<Vec<PolyTerm>>> {
+    let direction = if dir == 'F' { "forward" } else { "inverse" };
+    let mut mxpow = Vec::with_capacity(nvar);
     for i in 1..=nvar {
-        node.get_int_any_if_set(&format!("MP{dir}{i}"))?;
+        let Some(m) = node.get_int_any_if_set(&format!("MP{dir}{i}")) else {
+            return Ok(None);
+        };
+        mxpow.push(m);
     }
     let mut ncoeff = Vec::with_capacity(nout);
     for i in 1..=nout {
-        ncoeff.push(node.get_int_any_if_set(&format!("NC{dir}{i}"))?.max(0) as usize);
+        let Some(n) = node.get_int_any_if_set(&format!("NC{dir}{i}")) else {
+            return Ok(None);
+        };
+        ncoeff.push(n);
     }
+    if let Some((iax, m)) = mxpow.iter().enumerate().find(|(_, m)| **m < 0) {
+        return Err(AstError::new(
+            ErrorCode::Lderr,
+            format!(
+                "astLoadPolyMap({class}): Illegal maximum power ({m}) read for axis {} of the \
+                 {direction} transformation - it should not be negative.",
+                iax + 1
+            ),
+        ));
+    }
+    if let Some((ipoly, n)) = ncoeff.iter().enumerate().find(|(_, n)| **n < 0) {
+        return Err(AstError::new(
+            ErrorCode::Lderr,
+            format!(
+                "astLoadPolyMap({class}): Illegal number of coefficients ({n}) read for \
+                 polynomial {} of the {direction} transformation - it should not be negative.",
+                ipoly + 1
+            ),
+        ));
+    }
+    // The coefficients are named `C<dir><n>` and their powers
+    // `P<dir><n>`, and a power sizes a table of that many values, so none
+    // of them can be more than a dump can name (see `MXLOADEL`).
+    if let Some((iax, m)) = mxpow
+        .iter()
+        .enumerate()
+        .find(|(_, m)| **m as u64 > MXLOADEL as u64)
+    {
+        return Err(too_many_values(
+            "astLoadPolyMap",
+            class,
+            &format!(
+                "The maximum power read for axis {} of the {direction} transformation is {m}",
+                iax + 1
+            ),
+        ));
+    }
+    let total: u64 = ncoeff.iter().map(|&n| n as u64).sum();
+    if total.saturating_mul(nvar as u64) > MXLOADEL as u64 {
+        return Err(too_many_values(
+            "astLoadPolyMap",
+            class,
+            &format!(
+                "The {direction} transformation read has {total} coefficients of {nvar} powers \
+                 each"
+            ),
+        ));
+    }
+    let ncoeff: Vec<usize> = ncoeff.iter().map(|&n| n as usize).collect();
     let mut coeffs = Vec::new();
     let mut iv = 0;
     for (i, &nc) in ncoeff.iter().enumerate() {
@@ -2387,7 +2463,17 @@ pub(crate) fn read_poly_terms(
                 if power == 0 {
                     power = node.get_int(&format!("P{dir}{}_{j}_{k}", i + 1), 0);
                 }
-                powers.push(power.max(0) as usize);
+                if power < 0 || power > mxpow[k - 1] {
+                    return Err(AstError::new(
+                        ErrorCode::Badpw,
+                        format!(
+                            "astLoadPolyMap({class}): Illegal power ({power}) read for axis {k} \
+                             of coefficient {j} - it should be in the range 0 to {}.",
+                            mxpow[k - 1]
+                        ),
+                    ));
+                }
+                powers.push(power as usize);
             }
             // A coefficient missing from the dump is bad, as C reads it
             // (polymap.c:7388), and makes its output bad.
@@ -2398,5 +2484,5 @@ pub(crate) fn read_poly_terms(
             });
         }
     }
-    Some(terms)
+    Ok(Some(terms))
 }

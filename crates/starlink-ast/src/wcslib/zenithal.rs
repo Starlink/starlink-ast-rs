@@ -49,7 +49,7 @@ pub(super) fn c_copysign(x: f64, y: f64) -> f64 {
 // AZP: zenithal/azimuthal perspective
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astAZPset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAZPset; reference/starlink-ast at fe26cc9b.
 pub(super) fn azp_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -84,7 +84,7 @@ pub(super) fn azp_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astAZPfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAZPfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn azp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let cphi = T::cosd(phi);
@@ -237,7 +237,7 @@ pub(super) fn azp_fwd_t_near_zero(prm: &PrjPrm, sthe: f64, cthe: f64, cphi: f64)
     !clear_of_zero
 }
 
-// reference/starlink-ast/wcslib/proj.c, astAZPrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAZPrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn azp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // The tolerance on |t| = 1, `tol` in C.
@@ -288,7 +288,7 @@ pub(super) fn azp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // SZP: slant zenithal perspective
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astSZPset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSZPset; reference/starlink-ast at fe26cc9b.
 pub(super) fn szp_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -320,7 +320,7 @@ pub(super) fn szp_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astSZPfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSZPfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn szp_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let cphi = T::cosd(phi);
@@ -461,7 +461,7 @@ pub(super) fn szp_fwd_t_near_zero(prm: &PrjPrm, sthe: f64) -> bool {
     !clear_of_zero
 }
 
-// reference/starlink-ast/wcslib/proj.c, astSZPrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSZPrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn szp_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     szp_rev_rest::<T>(prm, x, y, szp_rev_front::<T>(prm, x, y))
@@ -626,7 +626,7 @@ pub(super) fn szp_rev_needs_special<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> bo
 // TAN: gnomonic
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astTANset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astTANset; reference/starlink-ast at fe26cc9b.
 pub(super) fn tan_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -638,7 +638,7 @@ pub(super) fn tan_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astTANfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astTANfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn tan_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let s = T::sind(theta);
@@ -656,7 +656,7 @@ pub(super) fn tan_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astTANrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astTANrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn tan_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let r = math::sqrt(x * x + y * y);
@@ -688,7 +688,7 @@ pub(super) fn tan_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, theta: f64
 // STG: stereographic
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astSTGset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSTGset; reference/starlink-ast at fe26cc9b.
 pub(super) fn stg_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -705,7 +705,7 @@ pub(super) fn stg_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astSTGfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSTGfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn stg_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let s = 1.0 + T::sind(theta);
@@ -749,7 +749,7 @@ pub(super) fn stg_fwd_s_near_zero(s: f64) -> bool {
     !clear_of_zero
 }
 
-// reference/starlink-ast/wcslib/proj.c, astSTGrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSTGrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn stg_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let r = math::sqrt(x * x + y * y);
@@ -763,7 +763,7 @@ pub(super) fn stg_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // SIN: orthographic/synthesis
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astSINset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSINset; reference/starlink-ast at fe26cc9b.
 pub(super) fn sin_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -780,7 +780,7 @@ pub(super) fn sin_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astSINfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSINfwd; reference/starlink-ast at fe26cc9b.
 // C tests `prj->w[1] == 0.0` for the validation only; the test is made once
 // here, which picks a body with that branch resolved.
 #[inline(always)]
@@ -914,7 +914,7 @@ pub(super) fn sin_fwd_synthesis_needs_special<T: Trig>(prm: &PrjPrm, phi: f64, t
     sin_fwd_orthographic_needs_special::<T>(prm, phi, theta) | !atand_covers(a) | !clear_of_limit
 }
 
-// reference/starlink-ast/wcslib/proj.c, astSINrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astSINrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn sin_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // How close beyond +-1 sin(theta) may be and still be taken as +-1,
@@ -1004,7 +1004,7 @@ pub(super) fn sin_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // ARC: zenithal/azimuthal equidistant
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astARCset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astARCset; reference/starlink-ast at fe26cc9b.
 pub(super) fn arc_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -1021,7 +1021,7 @@ pub(super) fn arc_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astARCfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astARCfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn arc_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let r = prm.w[0] * (90.0 - theta);
@@ -1039,7 +1039,7 @@ pub(super) fn arc_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, _theta: f6
     !sincosd_covers(phi)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astARCrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astARCrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn arc_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let r = math::sqrt(x * x + y * y);
@@ -1053,7 +1053,7 @@ pub(super) fn arc_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // ZPN: zenithal/azimuthal polynomial
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astZPNset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZPNset; reference/starlink-ast at fe26cc9b.
 // `plen`, C's `astSizeOf(prj->p)/sizeof(double)`, is the number of slots in
 // a parameter array.
 pub(super) fn zpn_set(prm: &mut PrjPrm) -> Status {
@@ -1165,7 +1165,7 @@ pub(super) fn zpn_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astZPNfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZPNfwd; reference/starlink-ast at fe26cc9b.
 // The loop runs from the degree `n` down, as AST's modification of wcslib
 // has it, not from the largest degree a parameter array holds.
 // C evaluates the polynomial before the sine and cosine; neither depends on
@@ -1233,7 +1233,7 @@ pub(super) fn zpn_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, _theta: f6
     !sincosd_covers(phi)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astZPNrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZPNrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn zpn_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // How far beyond a limit a root may be and still be taken as the limit,
@@ -1363,7 +1363,7 @@ pub(super) fn zpn_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // ZEA: zenithal/azimuthal equal area
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astZEAset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZEAset; reference/starlink-ast at fe26cc9b.
 pub(super) fn zea_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 90.0;
@@ -1380,7 +1380,7 @@ pub(super) fn zea_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astZEAfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZEAfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn zea_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     let r = prm.w[0] * T::sind((90.0 - theta) / 2.0);
@@ -1398,7 +1398,7 @@ pub(super) fn zea_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, theta: f64
     !sincosd_covers((90.0 - theta) / 2.0) | !sincosd_covers(phi)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astZEArev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astZEArev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn zea_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // How close r may be to the edge of the map, in the units of r, and be
@@ -1427,7 +1427,7 @@ pub(super) fn zea_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // AIR: Airy
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astAIRset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAIRset; reference/starlink-ast at fe26cc9b.
 pub(super) fn air_set(prm: &mut PrjPrm) -> Status {
     // Below this xi, in radians, the forward projection uses its small
     // angle form; `tol` in C.
@@ -1460,7 +1460,7 @@ pub(super) fn air_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astAIRfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAIRfwd; reference/starlink-ast at fe26cc9b.
 // C computes the radius before the sine and cosine of `phi`; neither depends
 // on the other.
 #[inline(always)]
@@ -1528,7 +1528,7 @@ pub(super) fn air_fwd_needs_special<T: Trig>(_prm: &PrjPrm, phi: f64, _theta: f6
     !sincosd_covers(phi)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astAIRrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astAIRrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn air_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     // How close the radius of the trial solution must be to the target to

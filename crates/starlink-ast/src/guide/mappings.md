@@ -185,7 +185,7 @@ For example:
 ```rust
 use starlink_ast::mappings::UnitMap;
 
-let unitmap = UnitMap::new(2);
+let unitmap = UnitMap::new(2).unwrap();
 ```
 
 will create a UnitMap that copies 2-dimensional coordinates.

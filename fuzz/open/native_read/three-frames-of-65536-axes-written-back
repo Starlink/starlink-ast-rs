@@ -1,0 +1,30 @@
+ Begin FrameSet
+    Nframe = 3
+    Base = 1
+    Currnt = 3
+    Nnode = 3
+    Frm1 =
+       Begin Frame
+          Naxes = 65536
+       End Frame
+    Frm2 =
+       Begin Frame
+          Naxes = 65536
+       End Frame
+    Frm3 =
+       Begin Frame
+          Naxes = 65536
+       End Frame
+    Lnk2 = 1
+    Lnk3 = 2
+    Map2 =
+       Begin UnitMap
+          Nin = 65536
+       IsA Mapping
+       End UnitMap
+    Map3 =
+       Begin UnitMap
+          Nin = 65536
+       IsA Mapping
+       End UnitMap
+ End FrameSet

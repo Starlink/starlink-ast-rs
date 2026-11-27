@@ -121,8 +121,9 @@ pub(crate) fn cnv_type(
 }
 
 /// A floating value as C writes it for a string: `%.17g`, then `CheckZero`
-/// (no sign on zero, long runs of 0s and 9s rounded out).
-fn float_text(v: f64, fitsrnd: usize) -> String {
+/// (no sign on zero, long runs of 0s and 9s rounded out); `fitsrnd` is the
+/// FitsRounding.
+pub(crate) fn float_text(v: f64, fitsrnd: usize) -> String {
     if v == BAD_VALUE {
         return BAD_STRING.to_string();
     }
@@ -135,14 +136,18 @@ fn float_text(v: f64, fitsrnd: usize) -> String {
 }
 
 fn from_float(v: f64, want: Want, fitsrnd: usize) -> Option<Got> {
+    // A value the integer type cannot hold is not converted, by tests that
+    // a NaN fails too (fitschan.c CnvType).
+    let int_ok = v >= f64::from(i32::MIN) && v <= f64::from(i32::MAX);
     Some(match want {
         Want::Float => Got::Float(v),
         Want::String | Want::Continue => Got::Str(float_text(v, fitsrnd)),
-        Want::Int => Got::Int(v as i32),
-        Want::KInt => Got::KInt(v as i64),
+        Want::Int if int_ok => Got::Int(v as i32),
+        Want::KInt if (-9.2e18..=9.2e18).contains(&v) => Got::KInt(v as i64),
         Want::Logical => Got::Logical(v != 0.0),
         Want::ComplexF => Got::ComplexF(v, 0.0),
-        Want::ComplexI => Got::ComplexI(v as i32, 0),
+        Want::ComplexI if int_ok => Got::ComplexI(v as i32, 0),
+        Want::Int | Want::KInt | Want::ComplexI => return None,
     })
 }
 

@@ -1,0 +1,9 @@
+WCSAXES =                   99
+CTYPE1  = 'RA---TAN'           / Celestial longitude      ?                      
+CTYPE2  = 'DEC--TAN'           / Celestial latitude                             
+CTYPE3  = 'VELO-LSD'         1.0 / Ref              / Type of co-ordinate on axis 3                  
+CRVAL1  =                150.0 / Reference RA (deg1                             
+CROTA2  =                  0.0 / Axis rotation                                  
+CRVAL2  =                   -0
+CRPIX1  =              180.500 / Reference pixel on axis 1
+CDELT2  =              0.01000 / Degrees/pixel

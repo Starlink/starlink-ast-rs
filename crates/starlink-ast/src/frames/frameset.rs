@@ -837,11 +837,17 @@ impl FrameSet {
     fn append_axes(&mut self, frame: DynFrame) -> AstResult<()> {
         let nextra = frame.naxes();
 
-        // Replace every Frame with CmpFrame(original, frame).
+        // Replace every Frame with CmpFrame(original, frame), once C's
+        // check has passed for them all.
+        for orig in &self.frames {
+            super::CmpFrame::check_naxes(orig.naxes() + nextra)?;
+        }
         let old_frames = std::mem::take(&mut self.frames);
         self.frames = old_frames
             .into_iter()
-            .map(|orig| -> DynFrame { Box::new(super::CmpFrame::new(orig, frame.snapshot())) })
+            .map(|orig| -> DynFrame {
+                Box::new(super::CmpFrame::within_limit(orig, frame.snapshot()))
+            })
             .collect();
 
         // Replace every edge Mapping with a parallel CmpMap(original,
@@ -851,7 +857,7 @@ impl FrameSet {
         for edge in old_edges {
             let cmp = CmpMap::new(
                 edge.mapping,
-                Box::new(UnitMap::new(nextra)),
+                Box::new(UnitMap::new(nextra)?),
                 Composition::Parallel,
             )?;
             let mapping = <dyn Mapping>::simplify(&cmp)?;
@@ -1193,15 +1199,17 @@ impl FrameSet {
     pub fn mapping(&self, from: FrameRef, to: FrameRef) -> AstResult<DynMapping> {
         let from_idx = self.resolve(from)?;
         let to_idx = self.resolve(to)?;
-        if from_idx == to_idx {
-            if let Some(map) = self.frame_mapping(self.node_map[from_idx]) {
+        let from_node = self.node_map[from_idx];
+        let to_node = self.node_map[to_idx];
+        // Two Frames at the same node, or one Frame, have a path of no
+        // steps: the first Frame as a Mapping.
+        if from_node == to_node {
+            if let Some(map) = self.frame_as_mapping(from_idx) {
                 return Ok(map);
             }
             let naxes = self.frames[from_idx].naxes();
-            return Ok(Box::new(UnitMap::new(naxes)));
+            return Ok(Box::new(UnitMap::new(naxes)?));
         }
-        let from_node = self.node_map[from_idx];
-        let to_node = self.node_map[to_idx];
         let path = self.find_path(from_node, to_node)?;
         self.compose_path(&path)
     }
@@ -1211,6 +1219,12 @@ impl FrameSet {
     /// is such a Frame here, and a Region is its own Mapping.
     fn frame_mapping(&self, node: usize) -> Option<DynMapping> {
         let idx = self.node_map.iter().position(|&n| n == node)?;
+        self.frame_as_mapping(idx)
+    }
+
+    /// The Frame at index `idx` as a Mapping, if it is not equivalent to a
+    /// UnitMap.
+    fn frame_as_mapping(&self, idx: usize) -> Option<DynMapping> {
         let frame = self.frames[idx].as_ref();
         if frame.is_unit_frame() {
             return None;
@@ -1301,17 +1315,26 @@ impl FrameSet {
     // ------------------------------------------------------------------ //
 
     /// Resolve the variant-owning frame for a 1-based frame index, following
-    /// the `varfrm` mirror chain. Mirrors C `GetVarFrm` (frameset.c:5975).
-    fn get_var_frm(&self, iframe: usize) -> usize {
+    /// the `varfrm` mirror chain. Mirrors C `GetVarFrm` (frameset.c), which
+    /// reports a chain that leaves the Frames or takes more steps than there
+    /// are Frames, as one read from a corrupt dump can.
+    fn get_var_frm(&self, iframe: usize) -> AstResult<usize> {
+        let nframe = self.frames.len();
         let mut result = iframe;
+        let mut nstep = 0;
         while self.varfrm[result - 1] > 0 {
             let next = self.varfrm[result - 1];
-            if next == result {
-                break; // corrupt; avoid infinite loop (C reports AST__INTER)
+            nstep += 1;
+            if next == result || next > nframe || nstep > nframe {
+                return Err(AstError::new(
+                    ErrorCode::Frsin,
+                    "astGetVarFrm(FrameSet): Invalid or corrupt FrameSet - the chain of \
+                     mirrored Frames is not valid.",
+                ));
             }
             result = next;
         }
-        result
+        Ok(result)
     }
 
     /// Store a new variant Mapping for the current Frame, or rename the
@@ -1432,7 +1455,7 @@ impl FrameSet {
     // C: frameset.c `SetVariant` (9894).
     pub fn set_variant(&mut self, name: &str) -> AstResult<()> {
         let icur = self.current_idx;
-        let owner = self.get_var_frm(icur + 1) - 1; // 0-based variant owner
+        let owner = self.get_var_frm(icur + 1)? - 1; // 0-based variant owner
 
         let myvar = name.trim().to_uppercase();
 
@@ -1465,7 +1488,7 @@ impl FrameSet {
                 ErrorCode::Attin,
                 format!(
                     "astSetVariant(FrameSet): Unknown Frame variant '{myvar}' requested - available variants are '{}'.",
-                    self.all_variants()
+                    self.all_variants()?
                 ),
             ));
         }
@@ -1568,31 +1591,47 @@ impl FrameSet {
     /// lists them.
     ///
     /// Default: the Domain of the current Frame, when it has no variants.
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Frsin` if Frames mirror each other's variants in a
+    /// loop, as in a FrameSet read from a corrupt dump.
     #[doc(alias = "Variant")]
     // C: frameset.c `GetVariant` (6041): the Domain of the current Frame
     // of the (mirror-resolved) Variants FrameSet.
-    pub fn variant(&self) -> String {
-        let owner = self.get_var_frm(self.current_idx + 1) - 1;
-        match &self.frame_variants[owner] {
+    pub fn variant(&self) -> AstResult<String> {
+        let owner = self.get_var_frm(self.current_idx + 1)? - 1;
+        Ok(match &self.frame_variants[owner] {
             Some(vfs) => vfs.current().domain().to_string(),
             None => self.frames[self.current_idx].domain().to_string(),
-        }
+        })
     }
 
     /// Whether the current Frame has variant Mappings, its own or those of a
     /// Frame it mirrors; see [`variant`](FrameSet::variant).
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Frsin` if Frames mirror each other's variants in a
+    /// loop, as in a FrameSet read from a corrupt dump.
     // C: frameset.c `TestVariant` (11010).
-    pub fn test_variant(&self) -> bool {
-        let owner = self.get_var_frm(self.current_idx + 1) - 1;
-        self.frame_variants[owner].is_some()
+    pub fn test_variant(&self) -> AstResult<bool> {
+        let owner = self.get_var_frm(self.current_idx + 1)? - 1;
+        Ok(self.frame_variants[owner].is_some())
     }
 
     /// Remove the variant Mappings of the current Frame, or of the Frame it
     /// mirrors, except the one in use; see [`variant`](FrameSet::variant).
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Frsin` if Frames mirror each other's variants in a
+    /// loop, as in a FrameSet read from a corrupt dump.
     // C: frameset.c `ClearVariant` (2905).
-    pub fn clear_variant(&mut self) {
-        let owner = self.get_var_frm(self.current_idx + 1) - 1;
+    pub fn clear_variant(&mut self) -> AstResult<()> {
+        let owner = self.get_var_frm(self.current_idx + 1)? - 1;
         self.frame_variants[owner] = None;
+        Ok(())
     }
 
     /// The names of all the variant Mappings of the current Frame,
@@ -1600,11 +1639,16 @@ impl FrameSet {
     ///
     /// With no variants it is the Domain of the current Frame; see
     /// [`variant`](FrameSet::variant).
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Frsin` if Frames mirror each other's variants in a
+    /// loop, as in a FrameSet read from a corrupt dump.
     #[doc(alias = "AllVariants")]
     // C: frameset.c `GetAllVariants` (6864).
-    pub fn all_variants(&self) -> String {
-        let owner = self.get_var_frm(self.current_idx + 1) - 1;
-        match &self.frame_variants[owner] {
+    pub fn all_variants(&self) -> AstResult<String> {
+        let owner = self.get_var_frm(self.current_idx + 1)? - 1;
+        Ok(match &self.frame_variants[owner] {
             Some(vfs) => {
                 let mut names = Vec::with_capacity(vfs.nframe());
                 for i in 1..=vfs.nframe() {
@@ -1615,7 +1659,7 @@ impl FrameSet {
                 names.join(" ")
             }
             None => self.frames[self.current_idx].domain().to_string(),
-        }
+        })
     }
 
     /// Make the current Frame mirror the variant Mappings of another Frame.
@@ -1662,7 +1706,7 @@ impl FrameSet {
     /// - Passes on the error of permuting the Frame or of the remapping.
     pub fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
         let naxes = self.current().naxes();
-        super::validate_permutation(perm, naxes)?;
+        super::check_perm_axes(super::class_name(self.current()), perm, naxes)?;
 
         // Permute the current frame's internal axis data.
         self.frames[self.current_idx].perm_axes(perm)?;
@@ -1872,6 +1916,17 @@ macro_rules! frameset_attr {
 }
 
 impl Frame for FrameSet {
+    // frameset.c `Cast`: into a FrameSet class only if this is one of that
+    // class (so not into a Plot), and into any other class by casting the
+    // current Frame.
+    fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
+        if other.as_frameset().is_some() {
+            let is_plot = other.as_any().is::<crate::plot::Plot>();
+            return Ok((!is_plot).then(|| self.snapshot()));
+        }
+        self.current().cast(other)
+    }
+
     // The attribute strings of C's FrameSet class, with its integrity
     // bracket around a whole setting string or clear list.
     #[cfg(feature = "attribute-strings")]
@@ -3030,100 +3085,177 @@ impl Serializable for FrameSet {
             frame_part.mark_read(key);
         }
         let node = &whole.section("FrameSet");
-        let nframe = node.get_int("Nframe", 0) as usize;
-        if nframe == 0 {
-            return Err(AstError::new(
-                ErrorCode::Lderr,
-                "FrameSet: Nframe is 0 or missing",
-            ));
-        }
-
-        // C reads `astReadInt("base", -INT_MAX)` and treats any value < 1 as
-        // unset (frameset.c:13209). `node.get_int` skips commented-out
-        // (Unset) defaults, so an absent or commented Base reads as unset.
-        let base_active = node.get_int("Base", 0);
-        let base_set = base_active >= 1;
-        let base = if base_set { base_active as usize } else { 1 };
-        // Currnt likewise; an unset Current defaults to the last Frame
-        // (frameset.c `GetCurrent`).
-        let current_active = node.get_int("Currnt", 0);
-        let current_set = current_active >= 1;
-        let current = if current_set {
-            current_active as usize
-        } else {
-            nframe
-        };
-        let nnode = node.get_int("Nnode", nframe as i64) as usize;
+        let class = whole.class.as_str();
+        // frameset.c `astLoadFrameSet`: the numbers of Frames and nodes,
+        // which bound the reading of the Frames and Mappings; each is needed,
+        // so the first that is missing fails the read.
+        let nframe = node.get_int("Nframe", 1);
+        let nframe = if nframe < 0 { 1 } else { nframe };
+        let nnode = node.get_int("Nnode", nframe).max(1);
 
         // The FrameSet's own Object-level `Ident` (`frameset.c:4841`), absent
         // when unset.
         let ident = object.get_string_if_set("Ident");
 
-        // Read frame-to-node mapping (Nod{i}, defaults to identity).
-        let mut node_map: Vec<usize> = Vec::with_capacity(nframe);
-        for i in 0..nframe {
-            let key = format!("Nod{}", i + 1);
-            let nod = node.get_int(&key, (i + 1) as i64) as usize;
-            node_map.push(nod - 1); // convert to 0-based
-        }
-
-        // Read frames, extracting each frame's optional Variants FrameSet
-        // (written by C inside the member Frame's block as object `Vrnts`,
-        // frame.c:14679).
-        let mut frames: Vec<DynFrame> = Vec::with_capacity(nframe);
-        let mut frame_variants: Vec<Option<FrameSet>> = Vec::with_capacity(nframe);
-        for i in 0..nframe {
-            let key = format!("Frm{}", i + 1);
-            let frame_node = node.get_object(&key).ok_or_else(|| {
-                AstError::new(ErrorCode::Lderr, format!("FrameSet: missing {key}"))
-            })?;
+        // The Frames, each with the node it sits at (0-based, -1 for an
+        // invalid index), the Frame whose variants it mirrors (1-based, 0
+        // for none) and its own variants FrameSet (written by C inside the
+        // member Frame's block as object `Vrnts`, frame.c:14679).
+        let mut frames: Vec<DynFrame> = Vec::new();
+        let mut frame_variants: Vec<Option<FrameSet>> = Vec::new();
+        let mut node_of: Vec<i64> = Vec::new();
+        let mut varfrm_of: Vec<i64> = Vec::new();
+        for ifr in 0..nframe {
+            let key = format!("Frm{}", ifr + 1);
+            let frame_node =
+                crate::serial::check_loaded(node.get_object(&key), "Frame", true, class, "Frame")?
+                    .expect("a needed component is there");
             frames.push(frame_from_node(frame_node)?);
-            let vrnts = match frame_node.section("Frame").get_object("Vrnts") {
+            frame_variants.push(match frame_node.section("Frame").get_object("Vrnts") {
                 Some(vn) => Some(FrameSet::from_node(vn)?),
                 None => None,
-            };
-            frame_variants.push(vrnts);
+            });
+            let nod = node.get_int(&format!("Nod{}", ifr + 1), ifr + 1);
+            node_of.push(if nod > 0 { nod - 1 } else { -1 });
+            varfrm_of.push(node.get_int(&format!("VFr{}", ifr + 1), 0));
         }
 
-        // Read the per-frame variant-mirror indices (VFr{i}, default 0).
-        let mut varfrm: Vec<usize> = Vec::with_capacity(nframe);
-        for i in 0..nframe {
-            let key = format!("VFr{}", i + 1);
-            varfrm.push(node.get_int(&key, 0) as usize);
-        }
-
-        // Read edges: for nodes 2..nnode (1-based), each has Lnk, Map.
-        let mut edges: Vec<Edge> = Vec::with_capacity(nnode.saturating_sub(1));
+        // The Mapping at each node after the first, with the node it is
+        // derived from (0-based, -1 for an invalid index) and whether it is
+        // used inverted.
+        let mut maps: Vec<(DynMapping, i64, bool)> = Vec::new();
         for inode in 1..nnode {
-            let lnk_key = format!("Lnk{}", inode + 1);
-            let parent = node.get_int(&lnk_key, 0) as usize;
-            if parent == 0 {
-                return Err(AstError::new(
-                    ErrorCode::Lderr,
-                    format!("FrameSet: missing or invalid {lnk_key}"),
-                ));
-            }
+            let key = format!("Map{}", inode + 1);
+            let map_node = crate::serial::check_loaded(
+                node.get_object(&key),
+                "Mapping",
+                true,
+                class,
+                "Mapping",
+            )?
+            .expect("a needed component is there");
+            let mapping = mapping_from_node(map_node)?;
+            let lnk = node.get_int(&format!("Lnk{}", inode + 1), 0);
+            let invert = node.get_int(&format!("Inv{}", inode + 1), 0) != 0;
+            maps.push((mapping, if lnk > 0 { lnk - 1 } else { -1 }, invert));
+        }
+        let nframe = frames.len();
+        let nnode = maps.len() + 1;
 
-            let map_key = format!("Map{}", inode + 1);
-            let map_node = node.get_object(&map_key).ok_or_else(|| {
-                AstError::new(ErrorCode::Lderr, format!("FrameSet: missing {map_key}"))
-            })?;
-            let mut mapping = mapping_from_node(map_node)?;
+        // C reads `astReadInt("base", -INT_MAX)` and treats any value < 1 as
+        // unset (frameset.c:13209). `node.get_int` skips commented-out
+        // (Unset) defaults, so an absent or commented Base reads as unset.
+        let base_read = node.get_int("Base", 0);
+        let current_read = node.get_int("Currnt", 0);
+
+        // The graph must be one the rest of the class can use: at least one
+        // Frame, every Frame at an existing node and mirroring an existing
+        // Frame or none, every node but the first derived from an existing
+        // node, and Base and Current unset or an existing Frame.
+        let corrupt = |what: &str| {
+            AstError::new(
+                ErrorCode::Frsin,
+                format!(
+                    "astLoadFrameSet({class}): Invalid or corrupt FrameSet read from the dump - \
+                     {what}"
+                ),
+            )
+        };
+        let index_ok = |i: i64, n: usize| usize::try_from(i).is_ok_and(|i| i < n);
+        let ok = nframe >= 1
+            && node_of.iter().all(|&n| index_ok(n, nnode))
+            && varfrm_of
+                .iter()
+                .all(|&v| usize::try_from(v).is_ok_and(|v| v <= nframe))
+            && maps.iter().all(|(_, link, _)| index_ok(*link, nnode))
+            && (base_read < 1 || base_read as usize <= nframe)
+            && (current_read < 1 || current_read as usize <= nframe);
+        if !ok {
+            return Err(corrupt(
+                "a Frame, node, variants or Base/Current index is out of range.",
+            ));
+        }
+        let links: Vec<usize> = maps.iter().map(|(_, l, _)| *l as usize).collect();
+        let link = |inode: usize| links[inode - 1];
+
+        // The nodes form a tree rooted at the first node, so following the
+        // links from any node reaches it; more steps than there are nodes
+        // means a loop.
+        let mut reaches_root = vec![false; nnode];
+        reaches_root[0] = true;
+        for inode in 1..nnode {
+            let mut jnode = inode;
+            let mut nstep = 0;
+            while !reaches_root[jnode] && nstep < nnode {
+                jnode = link(jnode);
+                nstep += 1;
+            }
+            if !reaches_root[jnode] {
+                return Err(corrupt("the links between its nodes form a loop."));
+            }
+            let mut jnode = inode;
+            while !reaches_root[jnode] {
+                reaches_root[jnode] = true;
+                jnode = link(jnode);
+            }
+        }
+
+        // The Mapping at each node fixes the number of coordinates at it and
+        // at the node it is derived from; they must agree with each other
+        // and with the axes of every Frame at the node.
+        let mut ncoord: Vec<Option<usize>> = vec![None; nnode];
+        let mut edges: Vec<Edge> = Vec::with_capacity(nnode - 1);
+        for (i, (mut mapping, _, invert)) in maps.into_iter().enumerate() {
+            let inode = i + 1;
             // The link uses the object with its Invert attribute set to the
             // link's flag.
             let object_invert = mapping.is_inverted();
-            let invert = node.get_int(&format!("Inv{}", inode + 1), 0) != 0;
             if invert != object_invert {
                 mapping.invert();
             }
-
+            let (nin, nout) = (mapping.nin(), mapping.nout());
+            let jnode = link(inode);
+            let want_in = *ncoord[jnode].get_or_insert(nin);
+            let want_out = *ncoord[inode].get_or_insert(nout);
+            if want_in != nin || want_out != nout {
+                return Err(corrupt(&format!(
+                    "the Mapping for node {} has {nin} inputs and {nout} outputs, which the \
+                     other Mappings do not allow.",
+                    inode + 1
+                )));
+            }
             edges.push(Edge {
-                from: parent - 1, // 0-based node index
-                to: inode,        // 0-based node index
+                from: jnode,
+                to: inode,
                 mapping,
                 object_invert,
             });
         }
+        let node_map: Vec<usize> = node_of.iter().map(|&n| n as usize).collect();
+        for (ifr, frame) in frames.iter().enumerate() {
+            if let Some(need) = ncoord[node_map[ifr]]
+                && need != frame.naxes()
+            {
+                return Err(corrupt(&format!(
+                    "Frame {} has {} axes but the Mappings that connect it to the other Frames \
+                     need it to have {need}.",
+                    ifr + 1,
+                    frame.naxes()
+                )));
+            }
+        }
+        let varfrm: Vec<usize> = varfrm_of.iter().map(|&v| v as usize).collect();
+
+        let base_set = base_read >= 1;
+        let base = if base_set { base_read as usize } else { 1 };
+        // An unset Current defaults to the last Frame (frameset.c
+        // `GetCurrent`).
+        let current_set = current_read >= 1;
+        let current = if current_set {
+            current_read as usize
+        } else {
+            nframe
+        };
 
         // An inverted FrameSet's stored Base and Current are exchanged to
         // give its effective ones, as C's `GetBase`/`GetCurrent` do.

@@ -503,3 +503,110 @@ fn null_permutation_constructor_checks_array_lengths() {
     let e = PermMap::with_null_perms(2, None, 2, Some(&[1, 2, 3]), &[]).unwrap_err();
     assert_eq!(e.code(), ErrorCode::Badno);
 }
+
+/// With PermSplit set, an input fed by a bad value, or by an output the
+/// PermMap does not have, cannot be split off, as in the C library.
+#[test]
+fn perm_split_refuses_an_input_with_no_output() {
+    for inperm in [[1, 0], [1, 5]] {
+        let mut pm = PermMap::new(&inperm, &[1, 2], &[]).unwrap();
+        pm.set_perm_split(true);
+        assert!(pm.map_split(&[2]).unwrap().is_none(), "inperm {inperm:?}");
+        // The input fed by an output it has still splits.
+        let (outs, _) = pm.map_split(&[1]).unwrap().expect("input 1 splits");
+        assert_eq!(outs, [1], "inperm {inperm:?}");
+    }
+}
+
+/// The PermMap from picking no axes, or an axis the Frame does not have,
+/// dumps as the C library's does: an empty array is not stored, and an
+/// axis with no partner is -1. The text is a probe of the pinned C library.
+#[test]
+fn picked_axes_dump_as_the_c_library_does() {
+    use starlink_ast::AnyObject;
+    use starlink_ast::frames::{BasicFrameBuilder, pick_axes};
+    let f = BasicFrameBuilder::new(2).build().unwrap();
+    let dump = |axes: &[usize]| {
+        let (_, map) = pick_axes(&f, axes).unwrap();
+        native_dump(&AnyObject::from_mapping(map.as_ref()).unwrap()).unwrap()
+    };
+    assert_eq!(
+        dump(&[]),
+        " Begin PermMap \t# Coordinate permutation\n\
+         \x20   Nin = 2 \t# Number of input coordinates\n\
+         \x20   Nout = 0 \t# Number of output coordinates\n\
+         \x20IsA Mapping \t# Mapping between coordinate systems\n\
+         \x20   OutCpy = 1 \t# Output coordinates = input coordinates\n\
+         \x20   In1 = -1 \t# Input coordinate 1 is \"bad\"\n\
+         \x20   In2 = -1 \t# Input coordinate 2 is \"bad\"\n\
+         \x20End PermMap\n"
+    );
+    assert_eq!(
+        dump(&[0]),
+        " Begin PermMap \t# Coordinate permutation\n\
+         \x20   Nin = 2 \t# Number of input coordinates\n\
+         \x20   Nout = 1 \t# Number of output coordinates\n\
+         \x20IsA Mapping \t# Mapping between coordinate systems\n\
+         \x20   Out1 = -1 \t# Output coordinate 1 is \"bad\"\n\
+         \x20   In1 = -1 \t# Input coordinate 1 is \"bad\"\n\
+         \x20   In2 = -1 \t# Input coordinate 2 is \"bad\"\n\
+         \x20End PermMap\n"
+    );
+}
+
+/// A negative entry with no constant to name is a bad value, as in the C
+/// library, when the PermMap is simplified with its neighbors in series,
+/// in parallel, or with a WinMap whose scaling folds into the constants.
+/// Such an entry comes from a picked axis the Frame does not have, or from
+/// a dump.
+#[test]
+fn a_constant_the_perm_map_does_not_have_simplifies_to_bad() {
+    use starlink_ast::mappings::{CmpMap, Composition, WinMap};
+    // One input, two outputs: the first output names constant 1, which
+    // the PermMap does not have, and the second copies the input.
+    let lone = || PermMap::new(&[2], &[-1, 1], &[]).unwrap();
+    let swap = || PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
+    let cases: Vec<(&str, CmpMap)> = vec![
+        (
+            "first in series",
+            CmpMap::new(Box::new(lone()), Box::new(swap()), Composition::Series).unwrap(),
+        ),
+        (
+            "second in series",
+            CmpMap::new(
+                Box::new(swap()),
+                Box::new(PermMap::new(&[1, 2], &[-1, 2], &[]).unwrap()),
+                Composition::Series,
+            )
+            .unwrap(),
+        ),
+        (
+            "first in parallel",
+            CmpMap::new(Box::new(lone()), Box::new(swap()), Composition::Parallel).unwrap(),
+        ),
+        (
+            "second in parallel",
+            CmpMap::new(Box::new(swap()), Box::new(lone()), Composition::Parallel).unwrap(),
+        ),
+        (
+            "before a WinMap",
+            CmpMap::new(
+                Box::new(lone()),
+                Box::new(WinMap::new(&[1.0, 2.0], &[3.0, 4.0]).unwrap()),
+                Composition::Series,
+            )
+            .unwrap(),
+        ),
+    ];
+    for (what, map) in cases {
+        let want = map
+            .transform(&PointSet::from_rows([vec![5.0; map.nin()]]), true)
+            .unwrap();
+        let simp = <dyn Mapping>::simplify(&map).unwrap_or_else(|e| panic!("{what}: {e}"));
+        let got = simp
+            .transform(&PointSet::from_rows([vec![5.0; map.nin()]]), true)
+            .unwrap();
+        assert_eq!(got.point(0), want.point(0), "{what}");
+        assert!(got.point(0).contains(&BAD_VALUE), "{what}");
+    }
+}

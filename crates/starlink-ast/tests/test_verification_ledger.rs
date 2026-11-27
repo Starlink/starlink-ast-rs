@@ -98,8 +98,8 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_fitschan_cursor_oracle.rs",
         "EXCLUDED",
-        5,
-        "four NATIVE reads the port parses whole where C reads card by card, \
+        4,
+        "three NATIVE reads the port parses whole where C reads card by card, \
          and native_full_1, whose RefCnt and Nobj comment cards the port has \
          no counterpart for (the rest is compared)",
     ),
@@ -113,9 +113,10 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
     (
         "test_channel_read_oracle.rs",
         "EXCLUDED",
-        2,
-        "C reports AST__BADIN for a string read as a number and stops part way \
-         through the Object; the port reads the string without error",
+        1,
+        "string_for_int: C stops reading part way through an Object whose \
+         number it cannot read, so its next read starts there; the port reads \
+         the whole Object first",
     ),
     (
         "test_fixture_read_warnings_oracle.rs",
@@ -191,13 +192,49 @@ const LEDGER: &[(&str, &str, usize, &str)] = &[
          it closes",
     ),
     (
+        "test_regionhardening.rs",
+        "REGION_HARDENING_EXCLUDED",
+        1,
+        "attribute_strings: no Region class is in the attribute-strings layer yet \
+         (PLAN.md section 1), so only the typed setters are tested; \
+         excluded_cases_still_differ fails when it matches",
+    ),
+    (
+        "test_hardening_oracle.rs",
+        "HARDENING_EXCLUDED",
+        8,
+        "corrupt dumps of the C hardening tests that the port refuses or loads \
+         otherwise than the C library, each naming the stage 5 task and upstream \
+         commit that fixes it, or why it stays; \
+         excluded_cases_still_differ fails when one matches",
+    ),
+    (
+        "test_hardening_oracle.rs",
+        "CUT_BY_C",
+        2,
+        "testcorruptinput 117 and 118: C cuts the message quoting a 5000-character \
+         value at 1023 characters to fit its buffer, which the port does not \
+         mirror; the port's message must begin with C's",
+    ),
+    (
+        "test_plot_frame_methods.rs",
+        "CENTRE_EXCLUDED",
+        9,
+        "TimeFrame centre with a date Format at a gap that changes the day, \
+         month or year: the port starts a day at 1 and takes the start of a \
+         month or year inside the window, where C zeroes the field, a \
+         divergence by decision (c-library-quirks.md, TimeFrame Centre); each \
+         entry gives its reason and asserts the port's value and that C's \
+         differs, and centre_excluded_cases_are_in_the_corpus fails for one \
+         that has gone",
+    ),
+    (
         "test_plot_frame_methods.rs",
         "FIELDS_EXCLUDED",
-        2,
-        "astFields on \"  -7 \" with maxfld 20 and 1: C's AxisFields reads past \
-         the end of a value with leading spaces (c-library-quirks.md); the port \
-         returns the value's own span. fields_excluded_cases_still_differ_from_c \
-         fails when C agrees",
+        0,
+        "empty: astFields on \"  -7 \", its two entries, matches C since upstream \
+         3a32fec8 stopped AxisFields reading past a value with leading spaces; kept so \
+         a newly diagnosed fields difference has a home",
     ),
     (
         "test_plot_frame_methods.rs",

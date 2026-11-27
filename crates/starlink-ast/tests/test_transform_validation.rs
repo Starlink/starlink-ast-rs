@@ -24,14 +24,14 @@ fn code<T>(r: starlink_ast::error::AstResult<T>) -> ErrorCode {
 
 fn mappings() -> Vec<Box<dyn Mapping>> {
     vec![
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         Box::new(ZoomMap::new(2, 2.0).unwrap()),
         Box::new(WinMap::new(&[1.0, -2.0], &[2.0, 3.0]).unwrap()),
         Box::new(PermMap::new(&[2, 1], &[2, 1], &[]).unwrap()),
         Box::new(
             CmpMap::new(
                 Box::new(ZoomMap::new(2, 2.0).unwrap()),
-                Box::new(UnitMap::new(2)),
+                Box::new(UnitMap::new(2).unwrap()),
                 Composition::Series,
             )
             .unwrap(),

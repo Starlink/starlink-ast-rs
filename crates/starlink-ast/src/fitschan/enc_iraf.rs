@@ -306,13 +306,12 @@ pub(crate) fn write_to_cards(
 /// - GLS → SFL (Global Sinusoidal → Sanson-Flamsteed)
 #[allow(dead_code)]
 fn translate_iraf_ctype_read(ctype: &str) -> String {
-    if ctype.len() >= 8 {
-        let suffix = &ctype[5..8];
+    if let (Some(system), Some(suffix)) = (ctype.get(..4), ctype.get(5..8)) {
         if suffix.eq_ignore_ascii_case("NCP") {
-            return format!("{}-SIN", &ctype[..4]);
+            return format!("{system}-SIN");
         }
         if suffix.eq_ignore_ascii_case("GLS") {
-            return format!("{}-SFL", &ctype[..4]);
+            return format!("{system}-SFL");
         }
     }
     ctype.to_string()
@@ -321,10 +320,9 @@ fn translate_iraf_ctype_read(ctype: &str) -> String {
 /// Translate standard projections back to IRAF legacy codes on write:
 /// - SFL → GLS
 fn translate_iraf_ctype_write(ctype: &str) -> String {
-    if ctype.len() >= 8 {
-        let suffix = &ctype[5..8];
+    if let (Some(head), Some(suffix)) = (ctype.get(..4), ctype.get(5..8)) {
         if suffix.eq_ignore_ascii_case("SFL") {
-            return format!("{}-GLS", &ctype[..4]);
+            return format!("{head}-GLS");
         }
     }
     ctype.to_string()

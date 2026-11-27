@@ -339,6 +339,12 @@ pub(crate) fn write_to_cards(store: &FitsStore, cards: &mut CardList) -> AstResu
     let Some(mut dec) = store.crval[1] else {
         return Ok(false);
     };
+    // Remove whole turns first from a value far out of range: one turn at a
+    // time takes a time in proportion to the value, and never ends for one
+    // too large to be changed by a turn (fitschan.c DSSFromStore).
+    if dec.abs() > 1.0e8 {
+        dec %= 360.0;
+    }
     while dec < -180.0 {
         dec += 360.0;
     }
@@ -595,6 +601,23 @@ END";
 
         assert_eq!(cards.get_string("PLTDECSN").unwrap(), "-");
         assert!((cards.get_float("PLTDECD").unwrap() - 60.0).abs() < 1e-10);
+    }
+
+    /// A declination far out of range has its whole turns removed first, as
+    /// C does, rather than one turn at a time, which never ends for a value
+    /// one turn cannot change.
+    #[test]
+    fn write_dss_huge_dec_terminates() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut store = tpn_store();
+            store.crval[1] = Some(1.0e20);
+            let mut cards = CardList::new();
+            let _ = write_to_cards(&store, &mut cards);
+            tx.send(()).unwrap();
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .expect("a DSS write of CRVAL2 = 1e20 did not finish in 10 seconds");
     }
 
     #[test]

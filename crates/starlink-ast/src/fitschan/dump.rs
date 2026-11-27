@@ -342,7 +342,8 @@ impl Serializable for FitsChan {
             }
             let ty = CardType::from_dump_name(&name)
                 .ok_or_else(|| illegal(&name, "a FitsChan keyword data type"))?;
-            fc.cards.push(read_card(&part, n, ty));
+            let card = read_card(&part, n, ty);
+            fc.cards.push(card);
         }
         fc.cards.set_card(part.get_int("Card", 0));
         if let Some(object) = part.get_object("Tables") {
@@ -435,7 +436,7 @@ fn read_card(part: &Node, n: usize, ty: CardType) -> FitsCard {
         CardType::String => FitsValue::String(part.get_string(&item("Dt"), "")),
         CardType::Continue => FitsValue::Continue(part.get_string(&item("Dt"), "")),
         CardType::Int => FitsValue::Int(part.get_int(&item("Dt"), 0)),
-        CardType::KInt => FitsValue::KInt(part.get_int(&item("Dt"), 0)),
+        CardType::KInt => FitsValue::KInt(part.get_int64(&item("Dt"), 0)),
         CardType::Logical => FitsValue::Logical(part.get_int(&item("Dt"), 0) != 0),
         CardType::ComplexF => FitsValue::ComplexFloat(
             part.get_double(&item("Dr"), BAD_VALUE),

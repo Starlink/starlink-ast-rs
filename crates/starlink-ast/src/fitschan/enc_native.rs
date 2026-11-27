@@ -4,8 +4,8 @@
 //! Keyword-card NATIVE encoding decoder.
 //!
 //! Translates `BEGAST_xx` / `ENDAST_xx` / `ISA_xx` / `<NAME>_xx` FITS keyword cards
-//! into the line-oriented text format consumed by
-//! [`crate::serial::native_read::parse_native`].
+//! into the line-oriented text of a Native dump, which the Channel's reader
+//! ([`crate::serial::native_stream`]) then reads as it reads a Channel.
 //!
 //! Mirrors C library `fitschan.c::GetNextData` (line 17703) and
 //! `fitschan.c::CreateKeyword` (line 8244).
@@ -53,7 +53,10 @@ pub(crate) fn classify(keyword: &str) -> KeywordKind {
         return KeywordKind::Other;
     }
     // The trailing 2 characters must both be SEQ_CHARS to be a NATIVE card.
-    let (head, suffix) = keyword.split_at(len - 2);
+    // Two characters that end inside a character are not both SEQ_CHARS.
+    let Some((head, suffix)) = keyword.split_at_checked(len - 2) else {
+        return KeywordKind::Other;
+    };
     if !is_two_char_seq_suffix(suffix) {
         return KeywordKind::Other;
     }
@@ -170,12 +173,14 @@ pub(crate) enum FormattedValue {
     ObjectMarker,
 }
 
-/// Format a `FitsValue` for emission as native-text scalar.
+/// Format a `FitsValue` for emission as native-text scalar; `fitsrnd` is the
+/// FitsChan's FitsRounding, which rounds a floating value's text as C's
+/// `GetNextData` rounds it.
 ///
 /// Returns `None` if the value type is not representable in NATIVE encoding
 /// (Comment, Logical, Undefined) — such cards should be ignored by the
 /// keyword-card decoder.
-pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
+pub(crate) fn format_value(value: &FitsValue, fitsrnd: usize) -> Option<FormattedValue> {
     match value {
         FitsValue::String(s) => {
             let trimmed = s.trim_end();
@@ -185,7 +190,7 @@ pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
                 // Reverse the FITS-level pre-quoting (fitschan.c:18106) before
                 // applying the channel-text quoting. Embedded double-quotes
                 // are escaped by doubling (`""`), matching the convention
-                // un-escaped by `parse_native::parse_scalar_value`. Backslash
+                // un-escaped by the reader's `parse_scalar_value`. Backslash
                 // is NOT a metacharacter in this format — it passes through
                 // unchanged.
                 let unquoted = un_pre_quote(trimmed);
@@ -194,47 +199,50 @@ pub(crate) fn format_value(value: &FitsValue) -> Option<FormattedValue> {
             }
         }
         FitsValue::Int(n) | FitsValue::KInt(n) => Some(FormattedValue::Scalar(n.to_string())),
-        FitsValue::Float(f) => Some(FormattedValue::Scalar(format_native_float(*f))),
+        FitsValue::Float(f) => Some(FormattedValue::Scalar(super::card_value::float_text(
+            *f, fitsrnd,
+        ))),
         // Logical, Comment, Undefined, Continue, ComplexFloat, ComplexInt are not native scalars.
         _ => None,
     }
 }
 
-/// Format a float for NATIVE text emission. Mirrors the C library's choice
-/// of `%.17g` (full double precision) so a NATIVE round-trip is value-exact.
-fn format_native_float(x: f64) -> String {
-    if x.is_nan() {
-        // Native format does not have a NaN literal; the AST library uses
-        // the BAD_VALUE sentinel for missing data and never serializes NaN.
-        // Emit a placeholder that downstream parsing will reject loudly.
-        return "<bad>".to_string();
-    }
-    let s = format!("{x:.17e}");
-    // Compress to a more compact form when round-tripping is preserved.
-    // Match parse_native's tolerance for both `1.5` and `1.5e0` styles.
-    s
-}
-
 /// Translate a card list with keyword-card NATIVE encoding into the
-/// line-oriented text format consumed by [`crate::serial::native_read::parse_native`].
+/// line-oriented text of a Native dump, for the Channel's reader
+/// ([`crate::serial::native_stream`]).
 ///
-/// The card list is walked in order. Cards that are not part of NATIVE
-/// keyword-card encoding (SIMPLE, NAXIS, COMMENT, etc.) are silently
-/// skipped. Data cards whose value type is not representable as a NATIVE
-/// scalar (Logical, Comment, Continue, Undef, complex) are also silently
-/// skipped — this matches the C library's value-type gate in
-/// `fitschan.c::GetNextData` (lines 17887, 17918, 17943, 17971-17978) where
-/// `BEGAST`/`ENDAST`/`ISA` require `AST__STRING` and data cards require
-/// `AST__STRING | AST__INT | AST__KINT | AST__FLOAT`.
+/// The cards are those of one Object, from its `BEGAST` card to its
+/// `ENDAST` card, walked in order without skipping: a commentary card or one
+/// a read has already used is passed over, `BEGAST`, `ENDAST` and `ISA` need
+/// a string value, and any other card must be a data item, a keyword of the
+/// Native form with a string, integer or floating value.
+// C: `GetNextData` (fitschan.c:18697-18890).
 ///
-/// Returns an error only if a `BEGAST`/`ENDAST`/`ISA` marker has a
-/// non-string value (an outright invalid header).
-pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
+/// # Errors
+///
+/// [`ErrorCode::Badin`] "Cannot interpret the input data given by FITS
+/// keyword" for any other card, as C gives it, and an error for a `BEGAST`,
+/// `ENDAST` or `ISA` card without a string value.
+pub(crate) fn cards_to_native_text(cards: &CardList, fitsrnd: usize) -> AstResult<String> {
     let mut out = String::new();
     let card_vec: Vec<&FitsCard> = cards.iter().collect();
     let mut i = 0;
     while i < card_vec.len() {
         let card = card_vec[i];
+        if card.is_consumed() || matches!(card.value, FitsValue::Comment(_)) {
+            i += 1;
+            continue;
+        }
+        let cannot_interpret = || {
+            AstError::new(
+                ErrorCode::Badin,
+                format!(
+                    "astRead(FitsChan): Cannot interpret the input data given by FITS keyword \
+                     \"{}\".",
+                    card.keyword
+                ),
+            )
+        };
         let kind = classify(&card.keyword);
         match kind {
             KeywordKind::Begin => {
@@ -257,7 +265,7 @@ pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
             }
             KeywordKind::Data(name) => {
                 let (formatted, advance) =
-                    format_value_with_continues(&card.value, &card_vec[i + 1..])?;
+                    format_value_with_continues(&card.value, &card_vec[i + 1..], fitsrnd)?;
                 match formatted {
                     Some(FormattedValue::Scalar(text)) => {
                         out.push_str("    ");
@@ -271,19 +279,24 @@ pub(crate) fn cards_to_native_text(cards: &CardList) -> AstResult<String> {
                         out.push_str(&name);
                         out.push_str(" =\n");
                     }
-                    None => {
-                        // Non-scalar Data card; skip silently. C library gates
-                        // Data emission on AST__STRING|AST__INT|AST__KINT|AST__FLOAT
-                        // (fitschan.c::GetNextData lines 17971-17978).
-                    }
+                    None => return Err(cannot_interpret()),
                 }
                 i += advance;
             }
-            KeywordKind::Other => {}
+            KeywordKind::Other => return Err(cannot_interpret()),
         }
         i += 1;
     }
     Ok(out)
+}
+
+/// The class a `BEGAST` card names, or nothing if `card` is not one with a
+/// string value.
+pub(crate) fn begin_class(card: Option<&FitsCard>) -> String {
+    match card.map(|c| &c.value) {
+        Some(FitsValue::String(s)) => un_pre_quote(s.trim_end()).to_string(),
+        _ => String::new(),
+    }
 }
 
 fn expect_class_name(value: &FitsValue, keyword: &str) -> AstResult<String> {
@@ -318,16 +331,17 @@ fn un_pre_quote(value: &str) -> &str {
 fn format_value_with_continues(
     value: &FitsValue,
     rest: &[&FitsCard],
+    fitsrnd: usize,
 ) -> AstResult<(Option<FormattedValue>, usize)> {
     let FitsValue::String(s) = value else {
-        return Ok((format_value(value), 0));
+        return Ok((format_value(value, fitsrnd), 0));
     };
     let trimmed = s.trim_end();
     if trimmed.is_empty() {
         return Ok((Some(FormattedValue::ObjectMarker), 0));
     }
     if !trimmed.ends_with('&') {
-        return Ok((format_value(value), 0));
+        return Ok((format_value(value, fitsrnd), 0));
     }
     // C stores the first card of a continued value raw (fitschan.c:18107) and
     // overwrites its trailing ampersand with the next segment; only the
@@ -1038,7 +1052,7 @@ END
     #[test]
     fn format_value_string_non_empty() {
         let v = FitsValue::String("FrameSet".to_string());
-        match format_value(&v) {
+        match format_value(&v, 10) {
             Some(FormattedValue::Scalar(s)) => assert_eq!(s, "\"FrameSet\""),
             other => panic!("expected Scalar, got {other:?}"),
         }
@@ -1048,7 +1062,7 @@ END
     fn format_value_string_empty_is_object_marker() {
         let v = FitsValue::String("        ".to_string());
         assert!(matches!(
-            format_value(&v),
+            format_value(&v, 10),
             Some(FormattedValue::ObjectMarker)
         ));
     }
@@ -1056,7 +1070,7 @@ END
     #[test]
     fn format_value_int() {
         let v = FitsValue::Int(42);
-        match format_value(&v) {
+        match format_value(&v, 10) {
             Some(FormattedValue::Scalar(s)) => assert_eq!(s, "42"),
             other => panic!("expected Scalar, got {other:?}"),
         }
@@ -1065,7 +1079,7 @@ END
     #[test]
     fn format_value_float_basic() {
         let v = FitsValue::Float(1.5);
-        match format_value(&v) {
+        match format_value(&v, 10) {
             Some(FormattedValue::Scalar(s)) => {
                 // Just confirm it's parseable by Rust as 1.5.
                 let parsed: f64 = s.parse().expect("parses");
@@ -1080,7 +1094,7 @@ END
         // The encoder doubles literal `"` so the parser's `""` -> `"` un-escape
         // recovers the original value.
         let v = FitsValue::String(r#"say "hi""#.to_string());
-        let Some(FormattedValue::Scalar(s)) = format_value(&v) else {
+        let Some(FormattedValue::Scalar(s)) = format_value(&v, 10) else {
             panic!("expected Scalar");
         };
         // Strip outer quotes, run the parser's inverse transform.
@@ -1094,7 +1108,7 @@ END
     fn format_value_string_with_backslash_passes_through() {
         // Backslash is not a metacharacter — it must round-trip as-is.
         let v = FitsValue::String(r"a\b".to_string());
-        let Some(FormattedValue::Scalar(s)) = format_value(&v) else {
+        let Some(FormattedValue::Scalar(s)) = format_value(&v, 10) else {
             panic!("expected Scalar");
         };
         assert_eq!(s, r#""a\b""#);
@@ -1120,7 +1134,7 @@ END
             "CONTINUE  '\",1)     \"'\n",
             "ENDAST_A= 'Frame   '\n",
         ));
-        let text = cards_to_native_text(&cards).expect("translates");
+        let text = cards_to_native_text(&cards, 10).expect("translates");
         assert!(
             text.contains("Title = \"first pixel at (1,1)     \""),
             "trailing spaces must survive un-quoting; got:\n{text}"
@@ -1136,7 +1150,7 @@ ENDAST_A= 'FrameSet'           / End of object definition
 END
 ";
         let cards = cards_from(header);
-        let text = cards_to_native_text(&cards).expect("translates");
+        let text = cards_to_native_text(&cards, 10).expect("translates");
         assert!(text.contains("Begin FrameSet"));
         assert!(text.contains("Nframe = 2"));
         assert!(text.contains("End FrameSet"));
@@ -1153,7 +1167,7 @@ ENDAST_B= 'FrameSet'
 END
 ";
         let cards = cards_from(header);
-        let text = cards_to_native_text(&cards).expect("translates");
+        let text = cards_to_native_text(&cards, 10).expect("translates");
         // The empty-string FRAMEA_A must produce a child-object marker.
         assert!(text.contains("Framea =\n"));
         // The next emitted line is `Begin Frame`.
@@ -1175,7 +1189,7 @@ ENDAST_A= 'Frame   '
 END
 ";
         let cards = cards_from(header);
-        let text = cards_to_native_text(&cards).expect("translates");
+        let text = cards_to_native_text(&cards, 10).expect("translates");
         assert!(
             text.contains("Title = \"first part    second part\""),
             "expected joined string, got: {text}"
@@ -1183,10 +1197,10 @@ END
     }
 
     #[test]
-    fn cards_to_native_text_skips_non_scalar_data_cards() {
-        // A card whose name happens to end in two SEQ_CHARS but whose value
-        // is logical (e.g. SIMPLE = T in a header that also has BEGAST
-        // somewhere) must be silently skipped, not error.
+    fn cards_to_native_text_reads_the_span_of_one_object() {
+        // The caller passes the cards from BEGAST to ENDAST; SIMPLE before
+        // them, whose name ends as a data item's would, is not part of the
+        // Object.
         let header = "\
 SIMPLE  =                    T / not a NATIVE data card despite name suffix
 BEGAST_A= 'FrameSet'
@@ -1195,8 +1209,8 @@ ENDAST_A= 'FrameSet'
 END
 ";
         let cards = cards_from(header);
-        let text = cards_to_native_text(&cards).expect("translates");
-        // SIMPLE -> Data("Simp") classification, but value is Logical -> skip.
+        let (first, last) = native_span(&cards, 0).expect("an Object");
+        let text = cards_to_native_text(&cards.sub_list(first..=last), 10).expect("translates");
         assert!(!text.contains("Simp"));
         // FrameSet body still emitted.
         assert!(text.contains("Begin FrameSet"));
@@ -1306,7 +1320,7 @@ END
         for c in block {
             cards.push(c);
         }
-        let text = cards_to_native_text(&cards).expect("decode");
+        let text = cards_to_native_text(&cards, 10).expect("decode");
         assert!(text.contains("Begin CmpMap"));
         assert!(text.contains("Nin = 2"));
         assert!(text.contains("Zoom = 5.5"));

@@ -363,6 +363,12 @@ int main( int argc, char **argv ) {
    set_card( &cases[ ncase - 1 ], "NAXIS2", "NAXIS2  =                    0" );
    write_head( argv[ 2 ], &cases[ ncase - 1 ] );
 
+   /* AITOFF with a string NAXIS1: the read fails, as the image dimensions
+      are read with astGetFitsF. */
+   derive( "aitoff", "string_naxis1", NULL, NULL, ' ' );
+   set_card( &cases[ ncase - 1 ], "NAXIS1", "NAXIS1  = 'abc'" );
+   write_head( argv[ 2 ], &cases[ ncase - 1 ] );
+
    /* A header holding a ZoomMap in the Native encoding: what is read is a
       Mapping, not a coordinate system. */
    {

@@ -123,7 +123,7 @@ fn run(name: &str) -> Option<DynFrame> {
             spec.clear_system().unwrap();
             Frame::set_title(&mut spec, "CmpSpec").unwrap();
             spec.set_label(1, "Freq").unwrap();
-            let t = CmpFrame::new(Box::new(spec), frame(1, |_| {}));
+            let t = CmpFrame::new(Box::new(spec), frame(1, |_| {})).unwrap();
             found(target.as_ref(), &t)
         }
         "spec_pick_padded" => {

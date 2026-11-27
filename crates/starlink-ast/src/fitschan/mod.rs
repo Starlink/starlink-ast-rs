@@ -51,7 +51,8 @@ use crate::channel::{Channel, ChannelConfig, Sink};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::intramap::with_registry;
 use crate::mappings::{IntraRegistry, IntraTransform};
-use crate::serial::node::Node;
+use crate::serial::native_stream::Reader;
+use crate::serial::node::{Node, with_read_channel};
 use crate::serial::{self, AnyObject};
 
 /// C's `astChrMatchN`: whether `a` and `b` match in their first `n`
@@ -871,18 +872,27 @@ impl FitsChan {
     }
 
     /// The keyword and comment C's `Split` finds when it reads a setter's or
-    /// getter's keyword name as a card: the first 8 characters, in their own
+    /// getter's keyword name as a card: its keyword name, in its own
     /// case (`NewCard` upper-cases them when a card is stored), and any text
     /// after them. As with any card, an illegal name or value is warned of.
-    fn split_name(&mut self, name: &str, method: &'static str) -> AstResult<(String, String)> {
+    /// With `checked`, a name holding a character a FITS header may not hold
+    /// is refused; a card read from a header is stored whatever it holds.
+    fn split_name(
+        &mut self,
+        name: &str,
+        method: &'static str,
+        checked: bool,
+    ) -> AstResult<(String, String)> {
+        if checked {
+            card::check_card_text(name, method)?;
+        }
         let (card, bad_value) = FitsCard::split(name)?;
         self.split_warnings(name, bad_value, method)?;
         let comment = match &card.value {
             FitsValue::Comment(text) => text.trim().to_string(),
             _ => card.comment.clone().unwrap_or_default(),
         };
-        let raw: String = name.chars().take(8).collect();
-        let keyword = raw.trim_end().to_string();
+        let keyword = crate::fitschan::card::raw_keyword(name);
         debug_assert!(keyword.eq_ignore_ascii_case(&card.keyword));
         Ok((keyword, comment))
     }
@@ -928,7 +938,7 @@ impl FitsChan {
     pub fn test_fits(&mut self, name: Option<&str>) -> AstResult<Option<bool>> {
         self.read_from_source()?;
         let lname = match name {
-            Some(name) => Some(self.split_name(name, "astTestFits")?.0),
+            Some(name) => Some(self.split_name(name, "astTestFits", true)?.0),
             None => None,
         };
         let icard = self.cards.get_card();
@@ -1010,7 +1020,7 @@ impl FitsChan {
             // `PutFits` hands a commentary card to `SetFitsCom`.
             FitsValue::Comment(ref text) => {
                 let name: String = card.chars().take(8).collect();
-                self.set_fits_com(&name, text, overwrite)?;
+                self.set_fits_com(&name, text, overwrite, false)?;
             }
             _ => {
                 // The `astSetFits<X>` the card is handed to splits its
@@ -1048,6 +1058,14 @@ impl FitsChan {
         }
         self.cards.clear_card();
         Ok(())
+    }
+
+    /// C's `FormatCard` as `astFindFits` calls it, with FitsDigits and
+    /// FitsRounding: a card that cannot be formatted is an error naming
+    /// `astFindFits`.
+    pub(crate) fn find_fits_text(&self, card: &FitsCard) -> AstResult<String> {
+        card.format_with_digits_and_rounding(self.fits_digits, self.fits_rounding() as usize)
+            .map_err(|e| AstError::new(e.code(), format!("astFindFits(FitsChan): {}", e.message())))
     }
 
     /// Search forward from the current card for one whose keyword matches
@@ -1121,11 +1139,7 @@ impl FitsChan {
         if !found {
             return Ok(None);
         }
-        let text = self
-            .cards
-            .current()
-            .expect("a card was found")
-            .format_with_digits_and_rounding(self.fits_digits, self.fits_rounding() as usize)?;
+        let text = self.find_fits_text(self.cards.current().expect("a card was found"))?;
         if inc {
             self.cards.move_card(1);
         }
@@ -1369,7 +1383,7 @@ impl FitsChan {
         self.read_from_source()?;
         let lname = match name {
             Some(name) => {
-                let (lname, _) = self.split_name(name, method)?;
+                let (lname, _) = self.split_name(name, method, true)?;
                 Some(lname)
             }
             None => None,
@@ -1377,7 +1391,10 @@ impl FitsChan {
         let context = |e: AstError, lname: &Option<String>| match lname {
             Some(n) if !n.is_empty() => AstError::new(
                 e.code(),
-                format!("{e}\n{method}(FitsChan): Cannot get value for FITS keyword '{n}'."),
+                format!(
+                    "{}\n{method}(FitsChan): Cannot get value for FITS keyword '{n}'.",
+                    e.message()
+                ),
             ),
             _ => e,
         };
@@ -1639,12 +1656,19 @@ impl FitsChan {
         method: &'static str,
     ) -> AstResult<()> {
         self.read_from_source()?;
-        let (lname, lcom) = self.split_name(name, method)?;
+        let (lname, lcom) = self.split_name(name, method, true)?;
+        if let FitsValue::String(text) | FitsValue::Continue(text) = &value {
+            card::check_card_field(text, method)?;
+        }
         let com = if comment.trim().is_empty() {
             lcom
         } else {
             comment.to_string()
         };
+        // The comment is checked as the card holds it.
+        if let Some(stored) = card_list::card_comment(&com) {
+            card::check_card_field(&stored, method)?;
+        }
         self.store_card(lname, value, &com, overwrite);
         Ok(())
     }
@@ -1653,11 +1677,10 @@ impl FitsChan {
     /// the new one is blank. Leading and trailing spaces are removed from
     /// the comment, as C's `NewCard` does for a card with a value.
     fn store_card(&mut self, keyword: String, value: FitsValue, comment: &str, overwrite: bool) {
-        let com = comment.trim().to_string();
         let card = FitsCard {
-            keyword: keyword.to_uppercase(),
+            keyword: keyword.to_ascii_uppercase(),
             value,
-            comment: (!com.is_empty()).then_some(com),
+            comment: card_list::card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
         };
         self.cards.put(card, overwrite);
@@ -1939,15 +1962,21 @@ impl FitsChan {
     /// As for [`card`](Self::card).
     #[doc(alias = "astSetFitsCM")]
     pub fn set_fits_cm(&mut self, comment: &str, overwrite: bool) -> AstResult<()> {
-        self.set_fits_com("", comment, overwrite)
+        self.set_fits_com("", comment, overwrite, true)
     }
 
     /// C's `SetFitsCom`: store a commentary card with keyword `name`. When
     /// overwriting a card with the same keyword, the card keeps its type and
     /// value and takes the new comment.
-    fn set_fits_com(&mut self, name: &str, comment: &str, overwrite: bool) -> AstResult<()> {
+    fn set_fits_com(
+        &mut self,
+        name: &str,
+        comment: &str,
+        overwrite: bool,
+        checked: bool,
+    ) -> AstResult<()> {
         self.read_from_source()?;
-        let (lname, _) = self.split_name(name, "astSetFitsCom")?;
+        let (lname, _) = self.split_name(name, "astSetFitsCom", checked)?;
         let com = if comment.trim().is_empty() {
             None
         } else {
@@ -1956,7 +1985,7 @@ impl FitsChan {
         let same = self.cards.current().is_some_and(|c| c.keyword == lname);
         let card = if !overwrite || !same {
             FitsCard {
-                keyword: lname.to_uppercase(),
+                keyword: lname.to_ascii_uppercase(),
                 value: FitsValue::Comment(com.unwrap_or_default()),
                 comment: None,
                 flags: crate::fitschan::card::CardFlags::default(),
@@ -1969,11 +1998,21 @@ impl FitsChan {
                     ..old
                 },
                 _ => FitsCard {
-                    comment: com.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()),
+                    comment: com.as_deref().and_then(card_list::card_comment),
                     ..old
                 },
             }
         };
+        // Text given to the setter is checked as the card holds it: a
+        // commentary card keeps the whole of its text.
+        if checked {
+            if let FitsValue::Comment(text) = &card.value {
+                card::check_card_field(text, "astSetFitsCom")?;
+            }
+            if let Some(text) = &card.comment {
+                card::check_card_field(text, "astSetFitsCom")?;
+            }
+        }
         self.cards.ins_card(card, overwrite);
         Ok(())
     }
@@ -3359,10 +3398,51 @@ impl Channel for FitsChan {
                     if !skip {
                         mark_from_start(&mut self.cards, first);
                     }
-                    let text =
-                        enc_native::cards_to_native_text(&self.cards.sub_list(first..=last))?;
-                    let node = serial::native_read::parse_native(&text)?;
-                    let obj = with_registry(&self.intra, || serial::any_object_from_node(&node))?;
+                    // C's Read adds this to any error reading a top-level
+                    // Object (channel.c Read).
+                    let class = enc_native::begin_class(self.cards.iter().nth(first));
+                    let context = |e: AstError| {
+                        e.with_context(format!("Error while reading a {class} from a FitsChan."))
+                    };
+                    let fitsrnd = self.fits_rounding() as usize;
+                    let text = enc_native::cards_to_native_text(
+                        &self.cards.sub_list(first..=last),
+                        fitsrnd,
+                    )
+                    .map_err(context)?;
+                    // The text is read by the Channel's reader, so that each
+                    // value is checked as its loader reads it and the items
+                    // no loader reads are reported, as for a Channel
+                    // (channel.c Read; C's FitsChan reads through the
+                    // Channel class).
+                    let strict = self.config.strict();
+                    let report_level = self.config.report_level();
+                    let mut lines = text.lines().map(str::to_string);
+                    let mut next_line = || lines.next();
+                    let mut reader = Reader::new(&mut next_line, "FitsChan", strict, report_level);
+                    let obj = with_registry(&self.intra, || {
+                        with_read_channel("FitsChan", || -> AstResult<AnyObject> {
+                            let object = reader
+                                .read(true, skip)?
+                                .expect("the cards from a BEGAST card describe an Object");
+                            let loaded =
+                                serial::any_object_from_node(&object.node).map_err(context)?;
+                            // C loads every nested Object it reads, so one no
+                            // loader read is loaded here for its reports.
+                            let mut load = |node: &Node| match serial::any_object_from_node(node) {
+                                Err(e) if serial::is_no_loader_error(&e) => Ok(()),
+                                other => other.map(|_| ()),
+                            };
+                            reader
+                                .report_object(&object, &mut load)
+                                .map_err(|(e, _)| context(e))?;
+                            Ok(loaded)
+                        })
+                    });
+                    let warnings = std::mem::take(&mut reader.warnings);
+                    drop(reader);
+                    self.warnings.extend(warnings);
+                    let obj = obj?;
 
                     // C `Read` calls `FixUsed( this, 0, 1, remove )` with
                     // `remove` set for NATIVE encoding (fitschan.c:25923-25929),
@@ -3641,7 +3721,14 @@ impl Channel for FitsChan {
         // remove them again. Mirrors C `Write` (fitschan.c:40754-40758).
         let card0 = self.cards.position();
         self.cards.begin_marking_new();
-        let result = self.write_inner(obj);
+        let result = self.write_inner(obj).and_then(|n| {
+            // A FITS header may hold only printable ASCII characters, which
+            // an Object's text, such as a Unicode Title, need not be.
+            for card in self.cards.iter().filter(|c| c.flags.new_write) {
+                card.check_characters("astWrite")?;
+            }
+            Ok(n)
+        });
 
         // A write that failed, for either reason, leaves the header exactly
         // as it was found: the cards it had added are removed and the entry
@@ -3650,6 +3737,9 @@ impl Channel for FitsChan {
         self.cards.fix_new(card_list::NewScope::Write, !wrote);
         self.cards.fix_new(card_list::NewScope::Version, !wrote);
         self.cards.end_marking_new();
+        // Every card a new card replaced has been dealt with; none is left
+        // for a later write to put back.
+        self.cards.fix_replaced(true, true, false);
         if !wrote {
             self.cards.set_position(card0);
         }
@@ -3700,10 +3790,10 @@ impl FitsChan {
                 // them.
                 // The image dimensions, from NAXIS1 to NAXIS<nin> for the
                 // FrameSet's pixel axes, as C's `Write` reads them
-                // (fitschan.c:40937-40945), before positioning the cursor.
+                // (fitschan.c:41600-41604), before positioning the cursor.
                 let dims = match obj {
                     AnyObject::FrameSet(fs) => {
-                        extract_naxis_dims(&self.cards, crate::mappings::Mapping::nin(fs))
+                        extract_naxis_dims(&self.cards, crate::mappings::Mapping::nin(fs))?
                     }
                     _ => Vec::new(),
                 };
@@ -3861,11 +3951,12 @@ fn move_cursor_to_last_naxis(cards: &mut CardList, naxes: usize) {
 }
 
 /// The size of each of `naxis` pixel axes: the value of `NAXIS<i>` as a
-/// floating point number, or `None` if there is none, as C's `Write` reads
-/// them with `astGetFitsF` (fitschan.c:40941-40944).
-fn extract_naxis_dims(cards: &CardList, naxis: usize) -> Vec<Option<f64>> {
+/// floating point number, or `None` if there is none, which fails for one
+/// whose value is not a number.
+// C: `Write` reads them with `astGetFitsF` (fitschan.c:41600-41604).
+fn extract_naxis_dims(cards: &CardList, naxis: usize) -> AstResult<Vec<Option<f64>>> {
     (1..=naxis)
-        .map(|i| cards.get_float(&format!("NAXIS{i}")))
+        .map(|i| cards.get_fits_float(&format!("NAXIS{i}")))
         .collect()
 }
 

@@ -537,8 +537,12 @@ fn parsed_c_format_pointset_preserves_bounds() {
     Frm =
        Begin Frame
           Naxes = 2
-          Ax1 = Begin Axis End Axis
-          Ax2 = Begin Axis End Axis
+          Ax1 =
+             Begin Axis
+             End Axis
+          Ax2 =
+             Begin Axis
+             End Axis
        End Frame
     Points =
        Begin PointSet

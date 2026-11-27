@@ -136,14 +136,9 @@ impl BasicFrameBuilder {
     /// axes.
     ///
     /// `naxes` is the number of dimensions of the coordinate space the
-    /// Frame describes.
+    /// Frame describes, which may be zero.
     /// The builder's methods set attributes of the new Frame, and
     /// [`build`](BasicFrameBuilder::build) creates it.
-    ///
-    /// # Errors
-    ///
-    /// This function does not fail; [`build`](BasicFrameBuilder::build)
-    /// raises `ErrorCode::Naxin` when `naxes` is zero.
     ///
     /// # Examples
     ///
@@ -157,14 +152,19 @@ impl BasicFrameBuilder {
     ///     .build()
     ///     .unwrap();
     /// assert_eq!(frame.label(1).unwrap(), "Energy");
-    /// assert!(BasicFrameBuilder::new(0).build().is_err());
+    /// assert_eq!(BasicFrameBuilder::new(0).build().unwrap().naxes(), 0);
     /// ```
     #[doc(alias = "astFrame")]
     pub fn new(naxes: usize) -> Self {
         Self {
             naxes,
             attrs: FrameAttrs::default(),
-            axes: vec![Axis::default(); naxes],
+            // A count over the limit makes no axes, as `build` refuses it.
+            axes: if naxes <= crate::constants::MXAXES {
+                vec![Axis::default(); naxes]
+            } else {
+                Vec::new()
+            },
         }
     }
 
@@ -241,12 +241,24 @@ impl BasicFrameBuilder {
 
     /// Build the [`BasicFrame`].
     ///
-    /// Returns an error if `naxes` is zero.
+    /// A Frame may have no axes, as one picked from another with none
+    /// selected has.
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Naxin` if the number of axes is more than
+    /// [`MXAXES`](crate::constants::MXAXES).
+    // C: frame.c `astInitFrame`.
     pub fn build(self) -> AstResult<BasicFrame> {
-        if self.naxes == 0 {
-            return Err(AstError::new_tracked(
+        let limit = crate::constants::MXAXES;
+        if self.naxes > limit {
+            return Err(AstError::new(
                 ErrorCode::Naxin,
-                "number of axes must be at least 1",
+                format!(
+                    "astInitFrame(Frame): Number of axes ({}) is invalid - this number should \
+                     not exceed {limit}.",
+                    self.naxes
+                ),
             ));
         }
         Ok(BasicFrame {
@@ -308,16 +320,6 @@ impl BasicFrame {
     /// The Axis object of a 1-based external axis.
     fn axis_object(&self, axis: usize) -> AstResult<&FrameAxis> {
         Ok(&self.axes[self.internal(axis)?])
-    }
-
-    /// The external (1-based) axis of internal axis `internal`, as C's
-    /// inverse permutation gives it.
-    fn external(&self, internal: usize) -> usize {
-        self.perm
-            .iter()
-            .position(|&p| p == internal)
-            .unwrap_or(internal)
-            + 1
     }
 
     /// Validate that `axis` is in 1..=naxes, returning an error if not.
@@ -853,9 +855,8 @@ impl Frame for BasicFrame {
     }
 
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // Casting a plain Frame to another plain Frame is a same-class
-        // copy (object.c Cast: generation_gap == 0 -> astCopy). Any other
-        // target class is below the Frame base, so the cast fails.
+        // object.c `Cast`: a copy into its own class; every other Frame
+        // class is derived from it, so the cast fails.
         if other.as_any().downcast_ref::<BasicFrame>().is_some() {
             Ok(Some(Box::new(BasicFrame::clone(self))))
         } else {
@@ -997,7 +998,7 @@ impl Frame for BasicFrame {
         str1: Option<&str>,
         str2: &str,
     ) -> AstResult<usize> {
-        Ok(self.axis_object(axis)?.axis_abbrev(fmt, str1, str2))
+        self.axis_object(axis)?.axis_abbrev(fmt, str1, str2)
     }
 
     fn axis_minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
@@ -1011,7 +1012,7 @@ impl Frame for BasicFrame {
         text: &str,
         maxfld: usize,
     ) -> AstResult<super::FieldSplit> {
-        Ok(self.axis_object(axis)?.axis_fields(fmt, text, maxfld))
+        self.axis_object(axis)?.axis_fields(fmt, text, maxfld)
     }
 
     fn set_active_unit(&mut self, value: bool) {
@@ -1082,7 +1083,7 @@ impl Frame for BasicFrame {
     /// in internal order.
     // C: frame.c `PermAxes`.
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
-        super::validate_permutation(perm, self.naxes)?;
+        super::check_perm_axes("Frame", perm, self.naxes)?;
         let old = self.perm.clone();
         for (i, &p) in perm.iter().enumerate() {
             self.perm[i] = old[p - 1];
@@ -1206,30 +1207,31 @@ impl FrameDumpSource for BasicFrame {
         )
     }
     // The Frame dump reads each value with the Frame's getter on the
-    // external axis of each internal one (frame.c:14358).
-    fn dump_label(&self, axis: usize) -> String {
-        self.label(self.external(axis)).unwrap_or_default()
+    // external axis of each internal one (frame.c:14621).
+    fn dump_label(&self, ext: usize) -> String {
+        self.label(ext).unwrap_or_default()
     }
-    fn dump_symbol(&self, axis: usize) -> String {
-        self.symbol(self.external(axis)).unwrap_or_default()
+    fn dump_symbol(&self, ext: usize) -> String {
+        self.symbol(ext).unwrap_or_default()
     }
-    fn dump_unit(&self, axis: usize) -> String {
-        self.unit(self.external(axis)).unwrap_or_default()
+    fn dump_unit(&self, ext: usize) -> String {
+        self.unit(ext).unwrap_or_default()
     }
-    fn dump_format(&self, axis: usize) -> String {
-        self.format_str(self.external(axis)).unwrap_or_default()
+    fn dump_format(&self, ext: usize) -> String {
+        self.format_str(ext).unwrap_or_default()
     }
-    fn dump_axis_digits(&self, axis: usize) -> Option<i32> {
-        self.axes[axis].axis().digits
+    fn dump_axis_digits(&self, ext: usize) -> Option<i32> {
+        self.axis_object(ext).ok()?.axis().digits
     }
-    fn dump_direction(&self, axis: usize) -> bool {
-        self.axes[axis].direction_value()
+    fn dump_direction(&self, ext: usize) -> bool {
+        self.axis_object(ext).map_or(true, |a| a.direction_value())
     }
-    fn dump_bottom(&self, axis: usize) -> f64 {
-        self.axes[axis].bottom_value()
+    fn dump_bottom(&self, ext: usize) -> f64 {
+        self.axis_object(ext)
+            .map_or(-f64::MAX, |a| a.bottom_value())
     }
-    fn dump_top(&self, axis: usize) -> f64 {
-        self.axes[axis].top_value()
+    fn dump_top(&self, ext: usize) -> f64 {
+        self.axis_object(ext).map_or(f64::MAX, |a| a.top_value())
     }
     fn dump_preserve_axes(&self) -> bool {
         self.preserve_axes()
@@ -1292,8 +1294,8 @@ impl Serializable for BasicFrame {
         let whole = node;
         let node = &whole.section("Frame");
         // A missing or negative Naxes loads a Frame with no axes
-        // (frame.c:15199), which the public builder does not make.
-        let naxes = node.get_int("Naxes", 0).max(0) as usize;
+        // (frame.c `astLoadFrame`).
+        let (naxes, perm) = super::frame_attrs::load_frame_axes(node, &whole.class)?;
         let mut frame = BasicFrame {
             naxes,
             attrs: FrameAttrs::default(),
@@ -1318,16 +1320,7 @@ impl Serializable for BasicFrame {
             axis.apply_frame_axis_keys(node, i + 1);
         }
 
-        // The permutation, `Prm{n}` being the 1-based internal axis of
-        // external axis n.
-        #[allow(clippy::needless_range_loop)]
-        for ext in 0..naxes {
-            let p = node.get_int(&format!("Prm{}", ext + 1), ext as i64 + 1);
-            if p >= 1 && (p as usize) <= naxes {
-                frame.perm[ext] = p as usize - 1;
-            }
-        }
-        super::validate_permutation(&frame.perm.iter().map(|p| p + 1).collect::<Vec<_>>(), naxes)?;
+        frame.perm = perm;
 
         Ok(frame)
     }

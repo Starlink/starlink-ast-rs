@@ -210,7 +210,10 @@ fn value(obj: &Obj, attr: &str) -> (V, Option<bool>) {
                 s(f.align_timescale().as_str().to_string()),
                 Some(f.test_align_timescale()),
             ),
-            "TimeOrigin" => (V::D(f.time_origin_cur()), Some(f.test_time_origin())),
+            "TimeOrigin" => (
+                V::D(f.time_origin_cur().unwrap()),
+                Some(f.test_time_origin()),
+            ),
             "LTOffset" => (V::D(f.lt_offset()), Some(f.test_lt_offset())),
             other => panic!("unexpected attribute {other}"),
         },
@@ -388,7 +391,7 @@ fn flux_frame_domain_is_cleaned() {
 fn cmp_frame_domain_is_cleaned_and_empty_is_set() {
     let a = TimeFrame::new(TimeSystem::Mjd);
     let b = FluxFrame::new(FluxSystem::FluxDen);
-    let mut cf = CmpFrame::new(Box::new(a), Box::new(b));
+    let mut cf = CmpFrame::new(Box::new(a), Box::new(b)).unwrap();
     cf.set_domain("my cmp");
     assert_eq!(Frame::domain(&cf), "MYCMP");
     cf.set_domain("");

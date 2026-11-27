@@ -18,13 +18,15 @@ use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::serial::{Node, Serializable, read_mapping_base, write_mapping_base};
 
+use super::helpers::ast_equal;
 use super::rate::numeric_rate;
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
 
 use crate::mappings::SimplifiedRecord;
-use opcode::CompiledExpr;
+use opcode::{CompiledExpr, Opcode};
 use rng::MathMapRng;
+use token::CLASS;
 
 /// Transform coordinates using mathematical expressions.
 ///
@@ -368,35 +370,30 @@ impl MathMap {
         if nin == 0 {
             return Err(AstError::new(
                 ErrorCode::Badni,
-                "MathMap nin must be at least 1".to_string(),
-            ));
+                format!("{INIT}({CLASS}): Bad number of input coordinates (0)."),
+            )
+            .with_context("This number should be one or more."));
         }
         if nout == 0 {
             return Err(AstError::new(
                 ErrorCode::Badno,
-                "MathMap nout must be at least 1".to_string(),
-            ));
+                format!("{INIT}({CLASS}): Bad number of output coordinates (0)."),
+            )
+            .with_context("This number should be one or more."));
         }
         // mathmap.c astInitMathMap: AST__INNTF for too few functions.
-        if fwd.len() < nout {
-            return Err(AstError::new(
-                ErrorCode::Inntf,
-                format!(
-                    "MathMap needs at least {} forward expressions, got {}",
-                    nout,
-                    fwd.len()
-                ),
-            ));
-        }
-        if inv.len() < nin {
-            return Err(AstError::new(
-                ErrorCode::Inntf,
-                format!(
-                    "MathMap needs at least {} inverse expressions, got {}",
-                    nin,
-                    inv.len()
-                ),
-            ));
+        for (given, need, dir) in [(fwd.len(), nout, "forward"), (inv.len(), nin, "inverse")] {
+            if given < need {
+                return Err(AstError::new(
+                    ErrorCode::Inntf,
+                    format!(
+                        "{INIT}({CLASS}): Too few {dir} transformation functions given ({given})."
+                    ),
+                )
+                .with_context(format!(
+                    "At least {need} {dir} transformation functions must be supplied. "
+                )));
+            }
         }
 
         // Clean expressions (lowercase, no whitespace)
@@ -404,7 +401,7 @@ impl MathMap {
         let inv_clean: Vec<String> = inv.iter().map(|s| clean_expr(s)).collect();
 
         // Compile both directions (cross-referencing variable names)
-        let compiled = compile_mapping(&fwd_clean, &inv_clean, nin, nout)?;
+        let compiled = compile_mapping(&fwd_clean, &inv_clean, nin, nout, INIT)?;
         let fwd_compiled = compiled.fwd;
         let inv_compiled = compiled.inv;
         let has_forward = compiled.has_fwd;
@@ -813,10 +810,21 @@ impl Mapping for MathMap {
         if self.nin != other.nin || self.nout != other.nout {
             return false;
         }
-        if self.inverted != other.inverted {
-            return false;
+        // C's Equal (mathmap.c:1594): the functions each MathMap uses in each
+        // direction, taking Invert into account, must compile to the same
+        // opcodes, and the constants that LdCon, LdVar, Max and Min consume
+        // must be equal by astEQUAL.
+        fn used(m: &MathMap, forward: bool) -> &[CompiledExpr] {
+            if forward != m.inverted {
+                &m.fwd_compiled
+            } else {
+                &m.inv_compiled
+            }
         }
-        self.fwd_exprs == other.fwd_exprs && self.inv_exprs == other.inv_exprs
+        [true, false].into_iter().all(|forward| {
+            let (these, those) = (used(self, forward), used(other, forward));
+            these.len() == those.len() && these.iter().zip(those).all(|(a, b)| compiled_equal(a, b))
+        })
     }
 
     fn try_merge(
@@ -891,7 +899,7 @@ impl Mapping for MathMap {
         }
 
         // They cancel — return a UnitMap
-        Some(Box::new(UnitMap::new(nin1)))
+        Some(Box::new(UnitMap::within_limit(nin1)))
     }
 
     fn ident(&self) -> &str {
@@ -1044,34 +1052,45 @@ impl Serializable for MathMap {
         let nin = base.nin;
         let nout = base.nout;
 
-        // Read Nfwd / Ninv with defaults
-        let nfwd = {
-            let v = node.get_int("Nfwd", 0);
-            if v > 0 { v as usize } else { nout }
-        };
-        let ninv = {
-            let v = node.get_int("Ninv", 0);
-            if v > 0 { v as usize } else { nin }
-        };
-
-        // Read forward expressions
-        let mut fwd_exprs = Vec::with_capacity(nfwd);
-        for i in 0..nfwd {
-            let key = format!("Fwd{}", i + 1);
-            let expr = node.get_string(&key, "");
-            fwd_exprs.push(expr.to_string());
+        // The numbers of functions, a forward one for each output and an
+        // inverse one for each input at least, each read in turn: a missing
+        // one is an error, so nothing is sized from a count before its
+        // functions are read (mathmap.c `astLoadMathMap`, `LoadFunctions`).
+        let class = &whole.class;
+        let nfwd = node.get_int("Nfwd", nout as i64);
+        let ninv = node.get_int("Ninv", nin as i64);
+        for (n, need, dir) in [(nfwd, nout, "forward"), (ninv, nin, "inverse")] {
+            if n < need as i64 {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoadMathMap({class}): Too few {dir} transformation functions ({n}) \
+                         read for a {class} - at least {need} are needed."
+                    ),
+                ));
+            }
         }
-
-        // Read inverse expressions
-        let mut inv_exprs = Vec::with_capacity(ninv);
-        for i in 0..ninv {
-            let key = format!("Inv{}", i + 1);
-            let expr = node.get_string(&key, "");
-            inv_exprs.push(expr.to_string());
-        }
+        let load_functions = |prefix: &str, dir: &str, n: i64| -> AstResult<Vec<String>> {
+            let mut functions = Vec::new();
+            for ifun in 1..=n {
+                let Some(fun) = node.get_string_if_set(&format!("{prefix}{ifun}")) else {
+                    return Err(AstError::new(
+                        ErrorCode::Lderr,
+                        format!(
+                            "astLoadMathMap({class}): The {dir} transformation function number \
+                             {ifun} of the {n} expected was not found."
+                        ),
+                    ));
+                };
+                functions.push(fun);
+            }
+            Ok(functions)
+        };
+        let fwd_exprs = load_functions("Fwd", "forward", nfwd)?;
+        let inv_exprs = load_functions("Inv", "inverse", ninv)?;
 
         // Compile both directions (cross-referencing variable names)
-        let compiled = compile_mapping(&fwd_exprs, &inv_exprs, nin, nout)?;
+        let compiled = compile_mapping(&fwd_exprs, &inv_exprs, nin, nout, LOAD)?;
         let fwd_compiled = compiled.fwd;
         let inv_compiled = compiled.inv;
         let has_forward = compiled.has_fwd;
@@ -1123,6 +1142,12 @@ impl Serializable for MathMap {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/// The entry point named in a message when a constructor compiles the functions.
+const INIT: &str = "astInitMathMap";
+
+/// The entry point named in a message when a loader compiles the functions.
+const LOAD: &str = "astLoadMathMap";
+
 /// Clean an expression: lowercase, remove whitespace.
 fn clean_expr(s: &str) -> String {
     s.chars()
@@ -1156,6 +1181,7 @@ fn extract_variables(
     nfwd: usize,
     ninv: usize,
     forward: bool,
+    method: &str,
 ) -> AstResult<Vec<String>> {
     let nprimary = if forward { nin } else { nout };
     let nextra = if forward { ninv - nin } else { nfwd - nout };
@@ -1164,15 +1190,15 @@ fn extract_variables(
         let lhs = fun.split('=').next().unwrap_or("");
         let error = if lhs.is_empty() {
             let msg = if fun.contains('=') {
-                format!("no left hand side in expression: \"{fun}\"")
+                format!("{method}({CLASS}): No left hand side in expression: \"{fun}\".")
             } else {
-                "transformation function contains no variable name".to_string()
+                format!("{method}: Transformation function contains no variable name.")
             };
             Some(AstError::new(ErrorCode::Misvn, msg))
         } else if token::parse_name(lhs, 0) != Some(lhs.len()) {
             Some(AstError::new(
                 ErrorCode::Varin,
-                format!("variable name is invalid: \"{lhs}\""),
+                format!("{method}({CLASS}): Variable name is invalid: \"{lhs}\"."),
             ))
         } else {
             None
@@ -1192,7 +1218,10 @@ fn extract_variables(
             };
             return Err(AstError::new(
                 ErrorCode::Duvar,
-                format!("duplicate definition of variable name: \"{}\"", names[i1]),
+                format!(
+                    "{method}({CLASS}): Duplicate definition of variable name: \"{}\".",
+                    names[i1]
+                ),
             )
             .with_context(format!("Conflict between {} and {}.", label(i1), label(i2))));
         }
@@ -1204,7 +1233,11 @@ fn extract_variables(
 ///
 /// Returns `None` when no function has an `=`, so that the transformation is undefined.
 /// A function whose `=` has nothing after it, or a mixture of functions with and without an `=`, has a missing right-hand side.
-fn extract_expressions(funs: &[String], forward: bool) -> AstResult<Option<Vec<String>>> {
+fn extract_expressions(
+    funs: &[String],
+    forward: bool,
+    method: &str,
+) -> AstResult<Option<Vec<String>>> {
     let dir = if forward { "forward" } else { "inverse" };
     let mut exprs = Vec::with_capacity(funs.len());
     let mut first_undefined = None;
@@ -1213,7 +1246,7 @@ fn extract_expressions(funs: &[String], forward: bool) -> AstResult<Option<Vec<S
             Some((_, "")) => {
                 return Err(AstError::new(
                     ErrorCode::Norhs,
-                    format!("missing right hand side in expression: \"{fun}\""),
+                    format!("{method}({CLASS}): Missing right hand side in expression: \"{fun}\"."),
                 )
                 .with_context(format!(
                     "Error in {dir} transformation function {}.",
@@ -1231,7 +1264,10 @@ fn extract_expressions(funs: &[String], forward: bool) -> AstResult<Option<Vec<S
         Some(_) if exprs.is_empty() => Ok(None),
         Some(iud) => Err(AstError::new(
             ErrorCode::Norhs,
-            format!("missing right hand side in function: \"{}\"", funs[iud]),
+            format!(
+                "{method}({CLASS}): Missing right hand side in function: \"{}\".",
+                funs[iud]
+            ),
         )
         .with_context(format!(
             "Error in {dir} transformation function {}.",
@@ -1250,8 +1286,9 @@ fn compile_direction(
     names: &[String],
     nprimary: usize,
     forward: bool,
+    method: &str,
 ) -> AstResult<Option<Vec<CompiledExpr>>> {
-    let Some(exprs) = extract_expressions(funs, forward)? else {
+    let Some(exprs) = extract_expressions(funs, forward, method)? else {
         return Ok(None);
     };
     let dir = if forward { "forward" } else { "inverse" };
@@ -1261,8 +1298,8 @@ fn compile_direction(
             .iter()
             .map(String::as_str)
             .collect();
-        let expr = token::tokenize(rhs, &vars)
-            .and_then(|tokens| parser::compile(&tokens))
+        let expr = token::tokenize(rhs, &vars, method)
+            .and_then(|tokens| parser::compile(&tokens, method))
             .map_err(|e| {
                 e.with_context(format!(
                     "Error in {dir} transformation function {}.",
@@ -1291,13 +1328,14 @@ fn compile_mapping(
     inv_exprs: &[String],
     nin: usize,
     nout: usize,
+    method: &str,
 ) -> AstResult<CompiledMapping> {
     let (nfwd, ninv) = (fwd_exprs.len(), inv_exprs.len());
     if nfwd < nout || ninv < nin {
         return Err(AstError::new(
             ErrorCode::Inntf,
             format!(
-                "MathMap needs at least {nout} forward and {nin} inverse functions, got {nfwd} and {ninv}"
+                "{method}({CLASS}): Too few transformation functions given ({nfwd} forward and {ninv} inverse)."
             ),
         ));
     }
@@ -1307,16 +1345,16 @@ fn compile_mapping(
         .chain(fwd_exprs)
         .map(String::as_str)
         .collect();
-    let fwd_names = extract_variables(&fwd_funs, nin, nout, nfwd, ninv, true)?;
-    let fwd = compile_direction(fwd_exprs, &fwd_names, nin, true)?;
+    let fwd_names = extract_variables(&fwd_funs, nin, nout, nfwd, ninv, true, method)?;
+    let fwd = compile_direction(fwd_exprs, &fwd_names, nin, true, method)?;
 
     let inv_funs: Vec<&str> = fwd_exprs[nfwd - nout..]
         .iter()
         .chain(inv_exprs)
         .map(String::as_str)
         .collect();
-    let inv_names = extract_variables(&inv_funs, nin, nout, nfwd, ninv, false)?;
-    let inv = compile_direction(inv_exprs, &inv_names, nout, false)?;
+    let inv_names = extract_variables(&inv_funs, nin, nout, nfwd, ninv, false, method)?;
+    let inv = compile_direction(inv_exprs, &inv_names, nout, false, method)?;
 
     Ok(CompiledMapping {
         has_fwd: fwd.is_some(),
@@ -1324,4 +1362,28 @@ fn compile_mapping(
         fwd: fwd.unwrap_or_default(),
         inv: inv.unwrap_or_default(),
     })
+}
+
+/// Whether two compiled functions have the same opcodes and constants, as
+/// C's `Equal` compares them.
+fn compiled_equal(a: &CompiledExpr, b: &CompiledExpr) -> bool {
+    if a.opcodes.len() != b.opcodes.len() {
+        return false;
+    }
+    let mut icon = 0;
+    for (&code, &that) in a.opcodes.iter().zip(&b.opcodes) {
+        if code != that {
+            return false;
+        }
+        if matches!(
+            code,
+            Opcode::LdCon | Opcode::LdVar | Opcode::Max | Opcode::Min
+        ) {
+            if !ast_equal(a.constants[icon], b.constants[icon]) {
+                return false;
+            }
+            icon += 1;
+        }
+    }
+    true
 }

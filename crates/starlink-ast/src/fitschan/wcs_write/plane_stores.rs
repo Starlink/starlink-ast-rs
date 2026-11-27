@@ -39,7 +39,10 @@ pub(crate) struct PlaneStore {
 /// out, or the character before `A` when it handed out none, from which
 /// the descriptions of absolute coordinates added for offset SkyFrames
 /// take their letters.
-pub(crate) fn version_letters(fs: &FrameSet, alt_axes: AltAxes) -> (Vec<Option<char>>, u8) {
+pub(crate) fn version_letters(
+    fs: &FrameSet,
+    alt_axes: AltAxes,
+) -> (Vec<Option<char>>, u8, [bool; 26]) {
     let nfrm = fs.nframe();
     let ibase = fs.base_idx() + 1;
     let icurr = fs.current_idx() + 1;
@@ -72,21 +75,26 @@ pub(crate) fn version_letters(fs: &FrameSet, alt_axes: AltAxes) -> (Vec<Option<c
             if ifrm == icurr || ifrm == ibase || iwc[ifrm] || sid[ifrm].is_some() {
                 continue;
             }
-            // C steps on past every letter already given; past `Z` there
-            // are no letters to give.
-            loop {
-                s += 1;
-                if s > b'Z' || !used[(s - b'A') as usize] {
-                    break;
-                }
-            }
+            s = free_version(&used, s);
             if s <= b'Z' {
                 used[(s - b'A') as usize] = true;
                 sid[ifrm] = Some(s as char);
             }
         }
     }
-    (sid, s)
+    (sid, s, used)
+}
+
+/// C's `FreeVersion`: the first letter after `s` that no description has
+/// taken, or a value past `Z` if there is none.
+fn free_version(used: &[bool; 26], mut s: u8) -> u8 {
+    while s <= b'Z' {
+        s += 1;
+        if s > b'Z' || !used[(s - b'A') as usize] {
+            break;
+        }
+    }
+    s
 }
 
 /// Build per-plane FitsStores for every coordinate-version letter
@@ -121,15 +129,18 @@ pub(crate) fn collect_plane_stores(
         return Ok(planes);
     }
 
-    let (sid, mut s) = version_letters(fs, attrs.alt_axes);
+    let (sid, mut s, mut used) = version_letters(fs, attrs.alt_axes);
     let push = |planes: &mut Vec<PlaneStore>, (store, ok): (FitsStore, bool), letter| {
         if ok {
             planes.push(PlaneStore { letter, store });
         }
     };
+    // The description of absolute coordinates takes the next letter no other
+    // description has, and keeps it from the rest (fitschan.c FsetToStore).
     if primary_isoff {
-        s += 1;
+        s = free_version(&used, s);
         if s <= b'Z' {
+            used[(s - b'A') as usize] = true;
             let made = fset_to_store_absolute(fs, dim, encoding, s as char, attrs.clone())?;
             push(&mut planes, made, s as char);
         }
@@ -143,8 +154,9 @@ pub(crate) fn collect_plane_stores(
         let made = fset_to_store(&alt_fs, dim, encoding, letter, attrs.clone())?;
         push(&mut planes, made, letter);
         if is_sky_off(fs, ifrm - 1) != 0 {
-            s += 1;
+            s = free_version(&used, s);
             if s <= b'Z' {
+                used[(s - b'A') as usize] = true;
                 let made =
                     fset_to_store_absolute(&alt_fs, dim, encoding, s as char, attrs.clone())?;
                 push(&mut planes, made, s as char);
@@ -166,8 +178,12 @@ mod tests {
         let pixel = BasicFrameBuilder::new(2).domain("GRID").build().unwrap();
         let world = BasicFrameBuilder::new(2).domain("WORLD").build().unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(world))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(world),
+        )
+        .unwrap();
         let dim = vec![Some(100.0), Some(100.0)];
         let planes =
             collect_plane_stores(&fs, &dim, Encoding::FitsWcs, WriteAttrs::default()).unwrap();
@@ -183,11 +199,19 @@ mod tests {
         alt.set_ident("A");
 
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(primary))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(primary),
+        )
+        .unwrap();
         // After add_frame, current == newly added frame (frame 2).
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(alt))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(alt),
+        )
+        .unwrap();
         // Reset current to primary (frame 2).
         fs.set_current(FrameRef::Index(2)).unwrap();
 

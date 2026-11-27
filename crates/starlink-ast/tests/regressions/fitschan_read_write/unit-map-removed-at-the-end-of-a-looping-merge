@@ -1,0 +1,6 @@
+CTYPE1  = 'RA---MER'           / Mercator projection
+CTYPE2  = 'DEC--MER'           / MercatoA projection
+WCSAXES =                   99
+CRVAL2  =                   -0
+CRPIX2  =               90.500 / Reference pixel on axis 2
+CDELT2  =               1e-320

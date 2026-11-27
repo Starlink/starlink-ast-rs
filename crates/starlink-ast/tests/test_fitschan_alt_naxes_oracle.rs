@@ -31,7 +31,7 @@ fn map_to(nout: usize, shift: f64) -> CmpMap {
         .map(|i| if i < 3 { i as i64 + 1 } else { -1 })
         .collect();
     let perm = PermMap::new(&inperm, &outperm, &[5.0]).unwrap();
-    let shift = ShiftMap::new((0..nout).map(|i| shift + i as f64).collect::<Vec<_>>());
+    let shift = ShiftMap::new((0..nout).map(|i| shift + i as f64).collect::<Vec<_>>()).unwrap();
     CmpMap::new(Box::new(perm), Box::new(shift), Composition::Series).unwrap()
 }
 

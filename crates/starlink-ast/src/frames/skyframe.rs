@@ -12,6 +12,7 @@ use crate::frames::sky_convert::{SkyRefIs, SkySystem, make_offset_mapping};
 use crate::frames::skyaxis::{SkyAxis, default_dhms_format, dhms_unit, unformat_sky_axis};
 use crate::frames::{AxisKind, DynFrame, Frame, FrameRef, LineDef, SkyLineDef};
 use crate::mappings::helpers::is_bad;
+use crate::mappings::helpers::is_c_bad;
 use crate::mappings::{CmpMap, Composition, DynMapping, UnitMap};
 use crate::pal;
 use crate::serial::{Node, Serializable};
@@ -2219,7 +2220,7 @@ impl Frame for SkyFrame {
         str1: Option<&str>,
         str2: &str,
     ) -> AstResult<usize> {
-        Ok(self.axes[self.physical_axis(axis)?].axis_abbrev(fmt, str1, str2))
+        self.axes[self.physical_axis(axis)?].axis_abbrev(fmt, str1, str2)
     }
 
     fn axis_minus_signs(&self, axis: usize, fmt: &str, text: &str) -> AstResult<Vec<usize>> {
@@ -2233,7 +2234,7 @@ impl Frame for SkyFrame {
         text: &str,
         maxfld: usize,
     ) -> AstResult<super::FieldSplit> {
-        Ok(self.axes[self.physical_axis(axis)?].axis_fields(fmt, text, maxfld))
+        self.axes[self.physical_axis(axis)?].axis_fields(fmt, text, maxfld)
     }
 
     fn unformat(&self, axis: usize, text: &str) -> AstResult<(f64, usize)> {
@@ -2255,7 +2256,7 @@ impl Frame for SkyFrame {
 
     fn distance(&self, a: &[f64], b: &[f64]) -> AstResult<f64> {
         super::assert_points_len("distance", self.naxes(), &[a, b]);
-        if is_bad(a[0]) || is_bad(a[1]) || is_bad(b[0]) || is_bad(b[1]) {
+        if is_c_bad(a[0]) || is_c_bad(a[1]) || is_c_bad(b[0]) || is_c_bad(b[1]) {
             return Ok(BAD_VALUE);
         }
         let lp = self.lon_pos();
@@ -2281,7 +2282,7 @@ impl Frame for SkyFrame {
         let (mut d1, mut d2) = (BAD_VALUE, BAD_VALUE);
         if [point1, point2, point3]
             .iter()
-            .any(|p| is_bad(p[0]) || is_bad(p[1]))
+            .any(|p| is_c_bad(p[0]) || is_c_bad(p[1]))
         {
             return Ok((point4, d1, d2));
         }
@@ -2327,7 +2328,7 @@ impl Frame for SkyFrame {
         let mut cross = vec![BAD_VALUE, BAD_VALUE];
         if [a1, a2, b1, b2]
             .iter()
-            .any(|p| is_bad(p[0]) || is_bad(p[1]))
+            .any(|p| is_c_bad(p[0]) || is_c_bad(p[1]))
         {
             return Ok(cross);
         }
@@ -2402,7 +2403,7 @@ impl Frame for SkyFrame {
             for ip in 0..npoint {
                 let point = input.point(ip);
                 let (px, py) = (point[0], point[1]);
-                if is_bad(px) || is_bad(py) {
+                if is_c_bad(px) || is_c_bad(py) {
                     continue;
                 }
 
@@ -2435,7 +2436,11 @@ impl Frame for SkyFrame {
 
     fn angle(&self, a: &[f64], b: &[f64], c: &[f64]) -> AstResult<f64> {
         super::assert_points_len("angle", self.naxes(), &[a, b, c]);
-        if a.iter().chain(b.iter()).chain(c.iter()).any(|&v| is_bad(v)) {
+        if a.iter()
+            .chain(b.iter())
+            .chain(c.iter())
+            .any(|&v| is_c_bad(v))
+        {
             return Ok(BAD_VALUE);
         }
         // The angle is undefined when either end point coincides with
@@ -2460,7 +2465,7 @@ impl Frame for SkyFrame {
 
     fn offset(&self, from: &[f64], to: &[f64], dist: f64) -> AstResult<Vec<f64>> {
         super::assert_points_len("offset", self.naxes(), &[from, to]);
-        if from.iter().chain(to.iter()).any(|&v| is_bad(v)) || is_bad(dist) {
+        if from.iter().chain(to.iter()).any(|&v| is_c_bad(v)) || is_c_bad(dist) {
             return Ok(vec![BAD_VALUE; 2]);
         }
 
@@ -2525,7 +2530,7 @@ impl Frame for SkyFrame {
         let bp = self.lat_pos();
         let mut lon = coords[lp];
         let mut lat = coords[bp];
-        if !is_bad(lon) && !is_bad(lat) {
+        if !is_c_bad(lon) && !is_c_bad(lat) {
             lon = pal::dranrm(lon);
             lat = pal::drange(lat);
             if lat > PI / 2.0 {
@@ -2535,9 +2540,9 @@ impl Frame for SkyFrame {
                 lon += if lon < PI { PI } else { -PI };
                 lat = -PI - lat;
             }
-        } else if !is_bad(lon) {
+        } else if !is_c_bad(lon) {
             lon = pal::dranrm(lon);
-        } else if !is_bad(lat) {
+        } else if !is_c_bad(lat) {
             lat = pal::drange(lat);
             if lat > PI / 2.0 {
                 lat = PI - lat;
@@ -2550,7 +2555,7 @@ impl Frame for SkyFrame {
         if (lon - 2.0 * PI).abs() <= 2.0 * PI * (f64::EPSILON * 2.0) {
             lon = 0.0;
         }
-        if !is_bad(lon) && self.neg_lon() {
+        if !is_c_bad(lon) && self.neg_lon() {
             lon = pal::drange(lon);
         }
         coords[lp] = lon;
@@ -2600,8 +2605,21 @@ impl Frame for SkyFrame {
         let dlon = hilon - lolon;
         let box_area = (dlon * (crate::math::sin(hilat) - crate::math::sin(lolat))).abs();
         let mut lat_size = crate::math::sqrt(box_area / size as f64);
-        // C's `(int)( 0.5 + ... )`.
-        let npar = ((0.5 + (hilat - lolat) / lat_size) as i32).max(2);
+        // The samples are shared between the parallels in proportion to the
+        // cosines of their latitudes, whose mean is at least half the largest,
+        // so no parallel gets a sample when there are more than twice as many
+        // parallels as samples; no more than that are used. The number is not
+        // a number for a box with no height and unlimited for one with no
+        // area.
+        let dpar = 0.5 + (hilat - lolat) / lat_size;
+        let maxpar = (2.0 * size as f64 + 2.0).min(i32::MAX as f64);
+        let npar = if dpar.is_nan() || dpar < 2.0 {
+            2
+        } else if dpar < maxpar {
+            dpar as i32
+        } else {
+            maxpar as i32
+        };
         lat_size = (hilat - lolat) / npar as f64;
         let mut totlen = 0.0;
         let mut lat = lolat + 0.5 * lat_size;
@@ -2610,18 +2628,30 @@ impl Frame for SkyFrame {
             lat += lat_size;
         }
         let lon_size = totlen / size as f64;
-        let ipmax = 2 * size;
+        let ipmax = if size <= i32::MAX / 2 {
+            2 * size
+        } else {
+            i32::MAX
+        };
         let mut points: Vec<[f64; 2]> = Vec::new();
         let mut ip = 0i32;
         lat = lolat + 0.5 * lat_size;
         for _ in 0..npar {
             let cl = crate::math::cos(lat);
             let mut inclon = if cl != 0.0 { lon_size / cl } else { 0.0 };
-            let mut nmer = (dlon / inclon) as i32;
-            if ip + nmer >= ipmax {
-                nmer = ipmax - ip;
+            // A parallel with no length, at a pole or in a box with no width,
+            // has no increment and gets no samples.
+            let dmer = if inclon != 0.0 { dlon / inclon } else { 0.0 };
+            let nmer = if dmer.is_nan() || dmer < 1.0 {
+                0
+            } else if dmer < (ipmax - ip) as f64 {
+                dmer as i32
+            } else {
+                ipmax - ip
+            };
+            if nmer > 0 {
+                inclon = dlon / nmer as f64;
             }
-            inclon = dlon / nmer as f64;
             let mut lon = lolon + 0.5 * inclon;
             for _ in 0..nmer {
                 let mut p = [0.0; 2];
@@ -2632,6 +2662,17 @@ impl Frame for SkyFrame {
                 ip += 1;
             }
             lat += lat_size;
+        }
+        // C truncates its PointSet of `ipmax` points to those used, which
+        // fails when there are none.
+        if points.is_empty() {
+            return Err(AstError::new(
+                ErrorCode::Nptin,
+                format!(
+                    "astSetNpoint(PointSet): Number of points (0) is not valid.\n\
+                     Should be in the range 1 to {ipmax}."
+                ),
+            ));
         }
         Ok(crate::coords::PointSet::from_rows(points))
     }
@@ -2736,7 +2777,7 @@ impl Frame for SkyFrame {
         let perm = self.perm;
 
         // Bad inputs give all-BAD output and a BAD returned angle.
-        if is_bad(point1[0]) || is_bad(point1[1]) || is_bad(angle) || is_bad(offset) {
+        if is_c_bad(point1[0]) || is_c_bad(point1[1]) || is_c_bad(angle) || is_c_bad(offset) {
             return Ok((vec![BAD_VALUE, BAD_VALUE], BAD_VALUE));
         }
 
@@ -2843,7 +2884,7 @@ impl Frame for SkyFrame {
 
         // If the box includes the north pole...
         if north_in {
-            let t = if !is_bad(ub[1]) && !is_bad(lb[1]) {
+            let t = if !is_c_bad(ub[1]) && !is_c_bad(lb[1]) {
                 let t = pal::drange(ub[1]);
                 let t2 = pal::drange(lb[1]);
                 if t2 < t { t2 } else { t }
@@ -2858,7 +2899,7 @@ impl Frame for SkyFrame {
 
         // If the box includes the south pole...
         if south_in {
-            let t = if !is_bad(ub[1]) && !is_bad(lb[1]) {
+            let t = if !is_c_bad(ub[1]) && !is_c_bad(lb[1]) {
                 let t = pal::drange(ub[1]);
                 let t2 = pal::drange(lb[1]);
                 if t2 > t { t2 } else { t }
@@ -2888,7 +2929,7 @@ impl Frame for SkyFrame {
     // by `line_def`.
 
     fn line_def(&self, start: &[f64], end: &[f64]) -> AstResult<Option<LineDef>> {
-        if is_bad(start[0]) || is_bad(start[1]) || is_bad(end[0]) || is_bad(end[1]) {
+        if is_c_bad(start[0]) || is_c_bad(start[1]) || is_c_bad(end[0]) || is_c_bad(end[1]) {
             return Ok(None);
         }
 
@@ -3039,7 +3080,7 @@ impl Frame for SkyFrame {
         let Some(sl) = l.sky.as_ref() else {
             unreachable!("line_owned_by checked the line");
         };
-        if is_bad(point[0]) || is_bad(point[1]) {
+        if is_c_bad(point[0]) || is_c_bad(point[1]) {
             return Ok(false);
         }
 
@@ -3065,7 +3106,7 @@ impl Frame for SkyFrame {
     }
 
     fn perm_axes(&mut self, perm: &[usize]) -> AstResult<()> {
-        super::validate_permutation(perm, 2)?;
+        super::check_perm_axes("SkyFrame", perm, 2)?;
         let old = self.perm;
         self.perm[0] = old[perm[0] - 1];
         self.perm[1] = old[perm[1] - 1];
@@ -3129,10 +3170,12 @@ impl Frame for SkyFrame {
         Ok(())
     }
 
+    // object.c `Cast`: a copy into its own class, and into the class it is
+    // derived from, a plain Frame, a copy of the Frame it is.
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // A specialized leaf frame can only be cast down to a plain
-        // Frame (BasicFrame). Same-class is handled by the direct Match
-        // (no cast needed), so only the BasicFrame target matters here.
+        if other.as_any().is::<SkyFrame>() {
+            return Ok(Some(self.snapshot()));
+        }
         if other
             .as_any()
             .downcast_ref::<crate::frames::BasicFrame>()
@@ -3545,7 +3588,7 @@ fn make_sky_frame_mapping(
     // UnitMap before forming the offset-system Mappings (skyframe.c:6077),
     // so that a change such as a new Title keeps an UNKNOWN FrameSet intact.
     if target.system == SkySystem::Unknown && result.system == SkySystem::Unknown {
-        return Ok(Some(Box::new(UnitMap::new(2))));
+        return Ok(Some(Box::new(UnitMap::new(2)?)));
     }
     // C obtains the LAST and diurnal aberration of both frames for every
     // conversion, whether or not a step uses them, the target's LAST first
@@ -3589,7 +3632,7 @@ fn make_sky_frame_mapping(
         map.as_ref(),
         target.sky_tol().min(result.sky_tol()),
     ) {
-        map = Box::new(UnitMap::new(2));
+        map = Box::new(UnitMap::new(2)?);
     }
 
     // Prepend source offset removal (offset→standard).
@@ -3689,7 +3732,7 @@ fn skyframe_sub_frame(
         // Otherwise build the Mapping that takes account of changes
         // between the target and result systems (skyframe.c:10179).
         let mut map: DynMapping = if aligned_in_offsets {
-            Box::new(UnitMap::new(2))
+            Box::new(UnitMap::new(2)?)
         } else {
             match make_sky_frame_mapping(target, &result, align_sys, exempt)? {
                 Some(map) => map,
@@ -3904,6 +3947,10 @@ impl Serializable for SkyFrame {
         // C's loaders read them through astReadClassData (channel.c).
         let whole = node;
         let frame = &whole.section("Frame");
+        // astLoadFrame's checks of the axes, then the class's own that it
+        // has two (frame.c `astCheckLoadedNaxes`).
+        let (naxes, perm) = super::frame_attrs::load_frame_axes(frame, &whole.class)?;
+        super::frame_attrs::check_loaded_naxes(&whole.class, naxes, 2)?;
         let node = &whole.section("SkyFrame");
 
         // System is a Frame item. A SkyFrame section may also carry one,
@@ -4014,18 +4061,16 @@ impl Serializable for SkyFrame {
                 None => FrameAxis::Plain(super::axis::Axis::default()),
             };
             sky.axes[i].apply_frame_axis_keys(frame, i + 1);
+            // Each axis is a SkyAxis, one that is not replaced by a SkyAxis
+            // with its attributes (skyframe.c `astLoadSkyFrame`).
+            sky.sky_axis_mut(i);
         }
 
-        // Axis permutation `Prm{n}` (1-based internal axis for each
-        // external axis). Mirrors C `Frame::Dump`/load. Apply last so it
-        // is not clobbered by earlier per-axis state, and only when it
-        // differs from the identity. `perm_axes` takes a 1-based
-        // external→internal mapping, which is exactly the `Prm{n}` values.
-        let prm: Vec<usize> = (1..=2)
-            .map(|n| frame.get_int(&format!("Prm{n}"), n as i64) as usize)
-            .collect();
-        if prm != [1, 2] {
-            Frame::perm_axes(&mut sky, &prm)?;
+        // The axis permutation, applied last so it is not clobbered by
+        // earlier per-axis state, and only when it differs from the
+        // identity.
+        if perm != [0, 1] {
+            Frame::perm_axes(&mut sky, &[perm[0] + 1, perm[1] + 1])?;
         }
 
         Ok(sky)

@@ -204,7 +204,7 @@ fn round_trip_normmap() {
 #[test]
 fn round_trip_tranmap() {
     let z = ZoomMap::new(2, 2.0).unwrap();
-    let s = ShiftMap::new([0.5, 0.5]);
+    let s = ShiftMap::new([0.5, 0.5]).unwrap();
     let m = TranMap::new(Box::new(z), Box::new(s)).unwrap();
     assert_double_round_trip(AnyObject::TranMap(m), "TranMap");
 }

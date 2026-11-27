@@ -31,8 +31,8 @@ use starlink_ast::pixel::PixelValue;
 
 fn mapping(name: &str) -> DynMapping {
     match name {
-        "unit2" => Box::new(UnitMap::new(2)),
-        "shift_half" => Box::new(ShiftMap::new(vec![0.5, -0.25])),
+        "unit2" => Box::new(UnitMap::new(2).unwrap()),
+        "shift_half" => Box::new(ShiftMap::new(vec![0.5, -0.25]).unwrap()),
         "zoom2" => Box::new(ZoomMap::new(2, 1.7).unwrap()),
         "zoom1" => Box::new(ZoomMap::new(1, 1.3).unwrap()),
         "perm" => Box::new(PermMap::new(&[2, 1], &[2, 1], &[]).unwrap()),
@@ -422,7 +422,7 @@ fn errors_match_c() {
             ..base()
         },
         ErrorCase {
-            map: Box::new(ShiftMap::new(vec![0.5, 0.5])),
+            map: Box::new(ShiftMap::new(vec![0.5, 0.5]).unwrap()),
             interp: Interp::UKern1(&tri_kernel),
             params: &[2.0, -1.0],
             ..base()
@@ -456,7 +456,7 @@ fn too_few_params_is_an_error() {
         (Interp::BlockAve, &[][..]),
     ] {
         let e = resample(
-            &UnitMap::new(2),
+            &UnitMap::new(2).unwrap(),
             &ResampleInput {
                 lbnd: l,
                 ubnd: u,

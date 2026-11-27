@@ -76,21 +76,21 @@ fn bad_vs_non_bad_different_index_is_not_equal() {
 
 #[test]
 fn unitmap_identity() {
-    let a = UnitMap::new(3);
+    let a = UnitMap::new(3).unwrap();
     assert!(a.equal(&a));
 }
 
 #[test]
 fn unitmap_same_ncoord() {
-    let a = UnitMap::new(3);
-    let b = UnitMap::new(3);
+    let a = UnitMap::new(3).unwrap();
+    let b = UnitMap::new(3).unwrap();
     assert!(a.equal(&b));
 }
 
 #[test]
 fn unitmap_different_ncoord() {
-    let a = UnitMap::new(3);
-    let b = UnitMap::new(2);
+    let a = UnitMap::new(3).unwrap();
+    let b = UnitMap::new(2).unwrap();
     assert!(!a.equal(&b));
 }
 
@@ -149,45 +149,45 @@ fn zoommap_invert_aware_mismatch() {
 
 #[test]
 fn shiftmap_identity() {
-    let a = ShiftMap::new(vec![1.0, 2.0, 3.0]);
+    let a = ShiftMap::new(vec![1.0, 2.0, 3.0]).unwrap();
     assert!(a.equal(&a));
 }
 
 #[test]
 fn shiftmap_same_values() {
-    let a = ShiftMap::new(vec![1.0, 2.0]);
-    let b = ShiftMap::new(vec![1.0, 2.0]);
+    let a = ShiftMap::new(vec![1.0, 2.0]).unwrap();
+    let b = ShiftMap::new(vec![1.0, 2.0]).unwrap();
     assert!(a.equal(&b));
 }
 
 #[test]
 fn shiftmap_different_shifts() {
-    let a = ShiftMap::new(vec![1.0, 2.0]);
-    let b = ShiftMap::new(vec![1.0, 3.0]);
+    let a = ShiftMap::new(vec![1.0, 2.0]).unwrap();
+    let b = ShiftMap::new(vec![1.0, 3.0]).unwrap();
     assert!(!a.equal(&b));
 }
 
 #[test]
 fn shiftmap_different_length() {
-    let a = ShiftMap::new(vec![1.0, 2.0]);
-    let b = ShiftMap::new(vec![1.0, 2.0, 3.0]);
+    let a = ShiftMap::new(vec![1.0, 2.0]).unwrap();
+    let b = ShiftMap::new(vec![1.0, 2.0, 3.0]).unwrap();
     assert!(!a.equal(&b));
 }
 
 #[test]
 fn shiftmap_invert_aware() {
     // ShiftMap([1, 2]) inverted should equal ShiftMap([-1, -2]) non-inverted.
-    let mut a = ShiftMap::new(vec![1.0, 2.0]);
+    let mut a = ShiftMap::new(vec![1.0, 2.0]).unwrap();
     a.invert();
-    let b = ShiftMap::new(vec![-1.0, -2.0]);
+    let b = ShiftMap::new(vec![-1.0, -2.0]).unwrap();
     assert!(a.equal(&b));
 }
 
 #[test]
 fn shiftmap_invert_aware_mismatch() {
-    let mut a = ShiftMap::new(vec![1.0, 2.0]);
+    let mut a = ShiftMap::new(vec![1.0, 2.0]).unwrap();
     a.invert();
-    let b = ShiftMap::new(vec![1.0, 2.0]);
+    let b = ShiftMap::new(vec![1.0, 2.0]).unwrap();
     assert!(!a.equal(&b));
 }
 
@@ -306,13 +306,13 @@ fn winmap_equal_cross_inversion() {
 fn cmpmap_series_same() {
     let a = CmpMap::new(
         Box::new(ZoomMap::new(2, 3.0).unwrap()),
-        Box::new(ShiftMap::new(vec![1.0, 2.0])),
+        Box::new(ShiftMap::new(vec![1.0, 2.0]).unwrap()),
         Composition::Series,
     )
     .unwrap();
     let b = CmpMap::new(
         Box::new(ZoomMap::new(2, 3.0).unwrap()),
-        Box::new(ShiftMap::new(vec![1.0, 2.0])),
+        Box::new(ShiftMap::new(vec![1.0, 2.0]).unwrap()),
         Composition::Series,
     )
     .unwrap();
@@ -323,13 +323,13 @@ fn cmpmap_series_same() {
 fn cmpmap_different_component() {
     let a = CmpMap::new(
         Box::new(ZoomMap::new(2, 3.0).unwrap()),
-        Box::new(ShiftMap::new(vec![1.0, 2.0])),
+        Box::new(ShiftMap::new(vec![1.0, 2.0]).unwrap()),
         Composition::Series,
     )
     .unwrap();
     let b = CmpMap::new(
         Box::new(ZoomMap::new(2, 4.0).unwrap()),
-        Box::new(ShiftMap::new(vec![1.0, 2.0])),
+        Box::new(ShiftMap::new(vec![1.0, 2.0]).unwrap()),
         Composition::Series,
     )
     .unwrap();
@@ -339,14 +339,14 @@ fn cmpmap_different_component() {
 #[test]
 fn cmpmap_different_kind() {
     let a = CmpMap::new(
-        Box::new(UnitMap::new(2)),
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
+        Box::new(UnitMap::new(2).unwrap()),
         Composition::Series,
     )
     .unwrap();
     let b = CmpMap::new(
-        Box::new(UnitMap::new(2)),
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
+        Box::new(UnitMap::new(2).unwrap()),
         Composition::Parallel,
     )
     .unwrap();
@@ -540,9 +540,9 @@ fn sphmap_inverted() {
 #[test]
 fn cmpmap_equal_different_tree_structure() {
     // (A ; (B ; C)) vs ((A ; B) ; C) — same effective pipeline.
-    let a = ShiftMap::new(vec![1.0, 2.0]);
+    let a = ShiftMap::new(vec![1.0, 2.0]).unwrap();
     let b = ZoomMap::new(2, 3.0).unwrap();
-    let c = ShiftMap::new(vec![4.0, 5.0]);
+    let c = ShiftMap::new(vec![4.0, 5.0]).unwrap();
 
     // Tree 1: A ; (B ; C)
     let bc = CmpMap::new(
@@ -572,13 +572,13 @@ fn cmpmap_equal_different_tree_structure() {
 #[test]
 fn cross_type_zoom_vs_shift() {
     let a = ZoomMap::new(2, 1.0).unwrap();
-    let b = ShiftMap::new(vec![0.0, 0.0]);
+    let b = ShiftMap::new(vec![0.0, 0.0]).unwrap();
     assert!(!a.equal(&b));
 }
 
 #[test]
 fn cross_type_unit_vs_zoom() {
-    let a = UnitMap::new(2);
+    let a = UnitMap::new(2).unwrap();
     let b = ZoomMap::new(2, 1.0).unwrap();
     assert!(!a.equal(&b));
 }
@@ -586,7 +586,7 @@ fn cross_type_unit_vs_zoom() {
 #[test]
 fn cross_type_winmap_vs_shiftmap() {
     let a = WinMap::new(&[0.0], &[1.0]).unwrap();
-    let b = ShiftMap::new(vec![0.0]);
+    let b = ShiftMap::new(vec![0.0]).unwrap();
     assert!(!a.equal(&b));
 }
 
@@ -678,11 +678,13 @@ fn cmpframe_same() {
     let a = CmpFrame::new(
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     let b = CmpFrame::new(
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     assert!(a.equal(&b));
 }
 
@@ -693,11 +695,13 @@ fn cmpframe_different_child() {
     let a = CmpFrame::new(
         Box::new(BasicFrameBuilder::new(1).domain("A").build().unwrap()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     let b = CmpFrame::new(
         Box::new(BasicFrameBuilder::new(1).domain("B").build().unwrap()),
         Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-    );
+    )
+    .unwrap();
     assert!(!a.equal(&b));
 }
 
@@ -893,7 +897,7 @@ fn serialise_round_trip_zoommap() {
 
 #[test]
 fn serialise_round_trip_shiftmap() {
-    let original = ShiftMap::new(vec![1.5, -2.7, 0.001]);
+    let original = ShiftMap::new(vec![1.5, -2.7, 0.001]).unwrap();
     let native = native_dump(&starlink_ast::AnyObject::ShiftMap(original.clone())).unwrap();
     let parsed = starlink_ast::from_native_string(&native).unwrap();
     if let starlink_ast::AnyObject::ShiftMap(ref restored) = parsed {
@@ -943,4 +947,18 @@ fn matrixmap_equal_cross_inversion() {
     // (they do different things)
     let mm_fwd = MatrixMap::new(m).unwrap();
     assert!(!mm_fwd.equal(&mm_inv));
+}
+
+/// Two Mappings holding the same infinite value are equal, as in C, where
+/// `astEQUAL` finds identical values equal whatever their size.
+#[test]
+fn shiftmap_with_an_infinite_shift_equals_itself() {
+    let a = ShiftMap::new(vec![f64::INFINITY]).unwrap();
+    assert!(a.equal(&a.clone()));
+}
+
+#[test]
+fn winmap_with_an_infinite_scale_equals_itself() {
+    let a = WinMap::from_corners(&[0.0], &[1.0], &[0.0], &[f64::INFINITY]).unwrap();
+    assert!(a.equal(&a.clone()));
 }

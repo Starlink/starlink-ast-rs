@@ -40,33 +40,162 @@ use std::fmt;
 
 use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{
-    MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
-};
+use crate::serial::{MappingToNode, Node, Serializable, read_mapping_base, write_mapping_base};
 
+use super::matrix::MatrixMap;
 use super::unit::UnitMap;
+use super::wcsmap::WcsMap;
 use super::{DynMapping, Mapping, ViaSimplify};
 use crate::mappings::SimplifiedRecord;
 
-/// Split `child` in the requested direction. If the direction matches the
-/// child's current orientation, just call its `map_split`. Otherwise,
-/// clone + invert the child and split the inverted view — this lets the
-/// per-class `map_split` handle the effective forward form without
-/// needing a `forward` parameter on the trait.
+/// Split a component of a CmpMap of composition `kind` in the requested
+/// direction, as C's `MapSplit0` splits each Mapping that `astMapList` gives
+/// it. `astMapList` replaces a component CmpMap of the same composition by
+/// its own components, unless it may not be simplified, so such a component
+/// is split through its components with no search of its own; any other
+/// component is split by [`map_split1`]. A component used in the other
+/// direction is split as an inverted copy.
 ///
 /// Used by [`CmpMap::map_split_forward`].
 fn split_child(
     child: &dyn Mapping,
     forward: bool,
     in_axes: &[usize],
+    kind: Composition,
 ) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
-    if forward {
-        child.map_split_zero_based(in_axes)
+    let mut tmp;
+    let child = if forward {
+        child
     } else {
-        let mut tmp = child.clone_box();
+        tmp = child.clone_box();
         tmp.invert();
-        tmp.map_split_zero_based(in_axes)
+        tmp.as_ref()
+    };
+    if let Some(cm) = child.as_any().downcast_ref::<CmpMap>()
+        && cm.kind == kind
+        && !cm.do_not_simplify()
+    {
+        return cm.map_split_forward(in_axes);
     }
+    map_split1(child, in_axes)
+}
+
+/// C's `MapSplit1`: split `this` as its own `map_split` does, and failing
+/// that by [`map_split2`]'s search of its inverse.
+fn map_split1(
+    this: &dyn Mapping,
+    in_axes: &[usize],
+) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+    if let Some(r) = this.map_split_zero_based(in_axes)? {
+        return Ok(Some(r));
+    }
+    map_split2(this, in_axes, true)
+}
+
+/// C's `MapSplit2`: split `this` through its inverse, by finding a subset of
+/// its outputs that the inverse splits into exactly `in_axes`, in order.
+///
+/// Every arrangement of every subset of fewer than all the outputs is tried,
+/// smallest first and the first index varying fastest, which takes a time
+/// that grows faster than the factorial of the number of outputs. With
+/// `shortcuts`, as C always does, a MatrixMap or WcsMap is given the one
+/// subset that search could find: for a MatrixMap the inputs must be in
+/// ascending order, the order its split returns them in, and
+/// [`MatrixMap::mtr_split_inputs`] gives the subset, tried in descending
+/// order, the arrangement the search reaches first; a WcsMap's split returns
+/// the inputs it is given, so only `in_axes` itself can work.
+fn map_split2(
+    this: &dyn Mapping,
+    in_axes: &[usize],
+    shortcuts: bool,
+) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+    let nout = this.nout();
+    let nin_req = in_axes.len();
+    let mut inv = this.clone_box();
+    inv.invert();
+
+    // Split the inverted copy on `out`, giving the split of `this` if the
+    // inverse's inputs for those outputs are exactly `in_axes`. A CmpMap is
+    // split without its own search, which would recurse (C's MapSplit0 with
+    // `reentry` set).
+    let attempt = |out: &[usize]| -> AstResult<Option<(Vec<usize>, DynMapping)>> {
+        if (1..out.len()).any(|i| (0..i).any(|j| out[i] == out[j])) {
+            return Ok(None);
+        }
+        let recursive = if let Some(cm) = inv.as_any().downcast_ref::<CmpMap>() {
+            // C's astMapList does not decompose one that may not be
+            // simplified, so it gives no split.
+            if cm.do_not_simplify() {
+                None
+            } else {
+                cm.map_split_forward(out)?
+            }
+        } else {
+            inv.map_split_zero_based(out)?
+        };
+        if let Some((result2, mut map2)) = recursive
+            && result2.len() == nin_req
+            && result2.iter().zip(in_axes).all(|(a, b)| a == b)
+        {
+            map2.invert();
+            return Ok(Some((out.to_vec(), map2)));
+        }
+        Ok(None)
+    };
+
+    if shortcuts {
+        let fixed = if let Some(mm) = inv.as_any().downcast_ref::<MatrixMap>() {
+            let ascending = in_axes.windows(2).all(|w| w[0] < w[1]);
+            Some(
+                match ascending.then(|| mm.mtr_split_inputs(in_axes)).flatten() {
+                    Some(sel) if !sel.is_empty() && sel.len() < nout => {
+                        sel.into_iter().rev().collect()
+                    }
+                    _ => Vec::new(),
+                },
+            )
+        } else if inv.as_any().is::<WcsMap>() {
+            Some(if nin_req > 0 && nin_req < nout {
+                in_axes.to_vec()
+            } else {
+                Vec::new()
+            })
+        } else {
+            None
+        };
+        if let Some(out) = fixed {
+            return if out.is_empty() {
+                Ok(None)
+            } else {
+                attempt(&out)
+            };
+        }
+    }
+
+    for mout in 1..nout {
+        let mut out = vec![0_usize; mout];
+        loop {
+            if let Some(r) = attempt(&out)? {
+                return Ok(Some(r));
+            }
+            // The next subset: out[0] increments first, carrying into out[1]
+            // and so on.
+            let mut i = 0;
+            out[i] += 1;
+            while out[i] == nout {
+                out[i] = 0;
+                i += 1;
+                if i >= mout {
+                    break;
+                }
+                out[i] += 1;
+            }
+            if i >= mout {
+                break;
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// Determines whether two mappings are composed in series or in parallel.
@@ -209,7 +338,7 @@ impl CmpMap {
     ///
     /// // Multiply by 2, then add 1.
     /// let zoom = ZoomMap::new(1, 2.0).unwrap();
-    /// let shift = ShiftMap::new([1.0]);
+    /// let shift = ShiftMap::new([1.0]).unwrap();
     /// let map = CmpMap::new(Box::new(zoom), Box::new(shift), Composition::Series).unwrap();
     /// assert_eq!(map.tran1(&[3.0], true).unwrap(), vec![7.0]);
     /// assert_eq!(map.tran1(&[7.0], false).unwrap(), vec![3.0]);
@@ -248,6 +377,11 @@ impl CmpMap {
                 ),
             ));
         }
+        let (nin, nout) = match kind {
+            Composition::Series => (first.nin(), second.nout()),
+            Composition::Parallel => (first.nin() + second.nin(), first.nout() + second.nout()),
+        };
+        crate::mappings::check_init_mapping("CmpMap", nin, nout)?;
         let inv_a = first.is_inverted();
         let inv_b = second.is_inverted();
         // Both the series forward path and the parallel forward path apply
@@ -308,7 +442,7 @@ impl CmpMap {
     ///
     /// let mut map = CmpMap::new(
     ///     Box::new(ZoomMap::new(1, 2.0).unwrap()),
-    ///     Box::new(ShiftMap::new([1.0])),
+    ///     Box::new(ShiftMap::new([1.0]).unwrap()),
     ///     Composition::Series,
     /// )
     /// .unwrap();
@@ -513,10 +647,13 @@ impl CmpMap {
                     (self.second.as_ref(), self.first.as_ref(), fwd2, fwd1)
                 };
 
-                let Some((mid_outs, sub1)) = split_child(first_in_flow, dir1, in_axes)? else {
+                let Some((mid_outs, sub1)) = split_child(first_in_flow, dir1, in_axes, self.kind)?
+                else {
                     return Ok(None);
                 };
-                let Some((out_outs, sub2)) = split_child(second_in_flow, dir2, &mid_outs)? else {
+                let Some((out_outs, sub2)) =
+                    split_child(second_in_flow, dir2, &mid_outs, self.kind)?
+                else {
                     return Ok(None);
                 };
                 let composed = CmpMap::new(sub1, sub2, Composition::Series)?;
@@ -548,7 +685,7 @@ impl CmpMap {
                         (true, true) => return Ok(None),
                         (false, true) => {
                             let Some((outs, sub)) =
-                                split_child(self.first.as_ref(), fwd1, &first_inputs)?
+                                split_child(self.first.as_ref(), fwd1, &first_inputs, self.kind)?
                             else {
                                 return Ok(None);
                             };
@@ -557,7 +694,7 @@ impl CmpMap {
                         }
                         (true, false) => {
                             let Some((outs, sub)) =
-                                split_child(self.second.as_ref(), fwd2, &second_inputs)?
+                                split_child(self.second.as_ref(), fwd2, &second_inputs, self.kind)?
                             else {
                                 return Ok(None);
                             };
@@ -566,13 +703,13 @@ impl CmpMap {
                         }
                         (false, false) => {
                             let Some((outs1, sub1)) =
-                                split_child(self.first.as_ref(), fwd1, &first_inputs)?
+                                split_child(self.first.as_ref(), fwd1, &first_inputs, self.kind)?
                             else {
                                 return Ok(None);
                             };
                             combined_outs.extend(outs1);
                             let Some((outs2, sub2)) =
-                                split_child(self.second.as_ref(), fwd2, &second_inputs)?
+                                split_child(self.second.as_ref(), fwd2, &second_inputs, self.kind)?
                             else {
                                 return Ok(None);
                             };
@@ -602,84 +739,26 @@ impl CmpMap {
         }
     }
 
-    /// Brute-force inverse-side fallback for [`Mapping::map_split`].
-    ///
-    /// Mirrors `cmpmap.c::MapSplit2` (~line 2214). Inverts the CmpMap,
-    /// then enumerates every ordered tuple of `mout in 1..nout` distinct
-    /// output indices. For each tuple, splits the inverted mapping with
-    /// the tuple as input axes; if the result has nout matching the
-    /// caller's `in_axes` exactly (same axes, same order), the tuple is
-    /// the answer.
-    ///
-    /// Re-entry into `MapSplit2` is suppressed during the recursive call
-    /// (mirrors C `MapSplit0(..., reentry=1)` at line 2333) — the inverted
-    /// CmpMap's `map_split_forward` is invoked directly to avoid an
-    /// infinite mutual recursion. Non-CmpMap mappings encountered during
-    /// the recursion don't have a MapSplit2 fallback to avoid.
-    ///
-    /// O(sum_{m=1..nout-1} P(nout, m)) calls to `map_split` — slow but
-    /// correct. Used only when [`Self::map_split_forward`] fails.
-    fn map_split2(&self, in_axes: &[usize]) -> AstResult<Option<(Vec<usize>, DynMapping)>> {
-        let nout = self.nout();
-        if nout < 2 {
-            return Ok(None);
-        }
-        let nin_req = in_axes.len();
-
-        let mut inv = self.clone_box();
-        inv.invert();
-
-        // Try subset sizes mout in 1..nout (C: `mout < nout`). The full
-        // nout-size subset would always be the trivial identity permutation
-        // and is handled by the forward path.
-        for mout in 1..nout {
-            let mut out = vec![0_usize; mout];
-            loop {
-                // Skip subsets with duplicate indices (C lines 2319-2327).
-                let has_dup = (1..mout).any(|i| (0..i).any(|j| out[i] == out[j]));
-                if !has_dup {
-                    // Recursive split of the inverted mapping. Mirrors
-                    // cmpmap.c::MapSplit2 lines 2330-2336: on a CmpMap,
-                    // call MapSplit0 with reentry=1 to skip the
-                    // MapSplit2 fallback; on a non-CmpMap, dispatch
-                    // through the protected astMapSplit (which has no
-                    // MapSplit2 path of its own). Both `out` and the
-                    // returned indices are 0-based here.
-                    let recursive = if let Some(cm) = inv.as_any().downcast_ref::<CmpMap>() {
-                        cm.map_split_forward(&out)?
-                    } else {
-                        inv.map_split_zero_based(&out)?
-                    };
-
-                    if let Some((result2, mut map2)) = recursive {
-                        if result2.len() == nin_req
-                            && result2.iter().zip(in_axes.iter()).all(|(a, b)| a == b)
-                        {
-                            map2.invert();
-                            return Ok(Some((out, map2)));
-                        }
-                    }
-                }
-
-                // Increment the subset counter (C lines 2367-2385).
-                // out[0] increments first; carry rolls into out[1], etc.
-                let mut i = 0;
-                out[i] += 1;
-                while out[i] == nout {
-                    out[i] = 0;
-                    i += 1;
-                    if i >= mout {
-                        break;
-                    }
-                    out[i] += 1;
-                }
-                if i >= mout {
-                    break;
-                }
+    /// The number of inputs of the CmpMap in its forward direction, before
+    /// its own Invert flag is considered.
+    fn forward_nin(&self) -> usize {
+        match self.kind {
+            Composition::Series => self.effective_first_nin(true),
+            Composition::Parallel => {
+                self.effective_first_nin(true) + self.effective_second_nin(true)
             }
         }
+    }
 
-        Ok(None)
+    /// The number of outputs of the CmpMap in its forward direction, before
+    /// its own Invert flag is considered.
+    fn forward_nout(&self) -> usize {
+        match self.kind {
+            Composition::Series => self.effective_second_nout(true),
+            Composition::Parallel => {
+                self.effective_first_nout(true) + self.effective_second_nout(true)
+            }
+        }
     }
 
     // ------------------------------------------------------------------ //
@@ -879,7 +958,7 @@ impl Mapping for CmpMap {
             Composition::Series if unit1 => alone(map2, self.inv_b),
             Composition::Series if unit2 => alone(map1, self.inv_a),
             Composition::Parallel if unit1 && unit2 => {
-                Box::new(UnitMap::new(map1.nin() + map2.nin()))
+                Box::new(UnitMap::within_limit(map1.nin() + map2.nin()))
             }
             _ => {
                 let mut new = self.clone();
@@ -897,21 +976,13 @@ impl Mapping for CmpMap {
     /// in the orientation the CmpMap applies it in.
     /// See [`Mapping::nin`].
     fn nin(&self) -> usize {
-        // The "forward nin" of the CmpMap (before considering self.inverted)
-        // is determined by the children in the CmpMap's nominal forward direction.
-        let fwd_nin = match self.kind {
-            Composition::Series => self.effective_first_nin(true),
-            Composition::Parallel => {
-                self.effective_first_nin(true) + self.effective_second_nin(true)
-            }
-        };
-        let fwd_nout = match self.kind {
-            Composition::Series => self.effective_second_nout(true),
-            Composition::Parallel => {
-                self.effective_first_nout(true) + self.effective_second_nout(true)
-            }
-        };
-        if self.inverted { fwd_nout } else { fwd_nin }
+        // Only the count needed is asked of the components: asking for both
+        // at every level takes a time exponential in the depth of nesting.
+        if self.inverted {
+            self.forward_nout()
+        } else {
+            self.forward_nin()
+        }
     }
 
     /// The number of output coordinates.
@@ -921,19 +992,11 @@ impl Mapping for CmpMap {
     /// taken in the orientation the CmpMap applies it in.
     /// See [`Mapping::nout`].
     fn nout(&self) -> usize {
-        let fwd_nin = match self.kind {
-            Composition::Series => self.effective_first_nin(true),
-            Composition::Parallel => {
-                self.effective_first_nin(true) + self.effective_second_nin(true)
-            }
-        };
-        let fwd_nout = match self.kind {
-            Composition::Series => self.effective_second_nout(true),
-            Composition::Parallel => {
-                self.effective_first_nout(true) + self.effective_second_nout(true)
-            }
-        };
-        if self.inverted { fwd_nin } else { fwd_nout }
+        if self.inverted {
+            self.forward_nin()
+        } else {
+            self.forward_nout()
+        }
     }
 
     fn is_inverted(&self) -> bool {
@@ -1078,10 +1141,15 @@ impl Mapping for CmpMap {
         if in_axes.iter().any(|&ix| ix >= self.nin()) {
             return Ok(None);
         }
-        if let Some(r) = self.map_split_forward(in_axes)? {
+        // A CmpMap that may not be simplified is not decomposed (C's
+        // astMapList gives a list of just itself, which MapSplit0 skips), so
+        // only the search applies to it.
+        if !self.do_not_simplify()
+            && let Some(r) = self.map_split_forward(in_axes)?
+        {
             return Ok(Some(r));
         }
-        self.map_split2(in_axes)
+        map_split2(self, in_axes, true)
     }
 
     fn ident(&self) -> &str {
@@ -1233,15 +1301,36 @@ impl Serializable for CmpMap {
         let inv_a = node.get_int("InvA", 0) != 0;
         let inv_b = node.get_int("InvB", 0) != 0;
 
-        let node_a = node
-            .get_object("MapA")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpMap: missing MapA"))?;
-        let node_b = node
-            .get_object("MapB")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpMap: missing MapB"))?;
-
-        let map_a = mapping_from_node(node_a)?;
-        let map_b = mapping_from_node(node_b)?;
+        // The components, checked as cmpmap.c `astLoadCmpMap` checks them,
+        // with the numbers of inputs and outputs each has as applied.
+        let class = &whole.class;
+        let (map_a, nin1, nout1) = crate::serial::check_loaded_map(
+            node.get_object("MapA"),
+            inv_a,
+            class,
+            "first component Mapping",
+        )?;
+        let (map_b, nin2, nout2) = crate::serial::check_loaded_map(
+            node.get_object("MapB"),
+            inv_b,
+            class,
+            "second component Mapping",
+        )?;
+        if is_series {
+            if nout1 != nin2 {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoad({class}): The number of outputs ({nout1}) of the first \
+                         component Mapping read for a {class} does not match the number of \
+                         inputs ({nin2}) of the second."
+                    ),
+                ));
+            }
+            crate::serial::check_loaded_coords(class, &base, nin1, nout2)?;
+        } else {
+            crate::serial::check_loaded_coords(class, &base, nin1 + nin2, nout1 + nout2)?;
+        }
 
         // Children keep their native Invert state as serialized.
         // inv_a/inv_b record the expected child state; the effective
@@ -1276,5 +1365,65 @@ impl Serializable for CmpMap {
         cmp.set_dump_simplified_in(inv, base.has_been_simplified);
         cmp.set_restricted_simplify(base.restricted_simplify);
         Ok(cmp)
+    }
+}
+
+#[cfg(test)]
+mod map_split2_tests {
+    use super::*;
+    use crate::mappings::{WcsProjection, ZoomMap};
+    use ndarray::array;
+
+    /// Every ordered selection of distinct inputs from `n`, of each size.
+    fn selections(n: usize) -> Vec<Vec<usize>> {
+        let mut level: Vec<Vec<usize>> = vec![vec![]];
+        let mut out = Vec::new();
+        for _ in 0..n {
+            let mut next = Vec::new();
+            for v in &level {
+                for i in (0..n).filter(|i| !v.contains(i)) {
+                    let mut w = v.clone();
+                    w.push(i);
+                    next.push(w);
+                }
+            }
+            out.extend(next.iter().cloned());
+            level = next;
+        }
+        out
+    }
+
+    /// The MatrixMap and WcsMap shortcuts give what the full search gives,
+    /// for every selection of inputs.
+    #[test]
+    fn shortcuts_find_what_the_search_finds() {
+        let maps: Vec<DynMapping> = vec![
+            Box::new(
+                MatrixMap::new(array![[1.0, 2.0, 0.0], [3.0, 4.0, 0.0], [0.0, 0.0, 5.0]]).unwrap(),
+            ),
+            Box::new(
+                MatrixMap::new(array![[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 2.0]]).unwrap(),
+            ),
+            Box::new(
+                MatrixMap::new(array![[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]).unwrap(),
+            ),
+            Box::new(MatrixMap::diagonal(3, 2, &[2.0, 3.0]).unwrap()),
+            Box::new(MatrixMap::diagonal(2, 3, &[2.0, 3.0]).unwrap()),
+            Box::new(MatrixMap::diagonal(3, 3, &[2.0, 0.0, 3.0]).unwrap()),
+            Box::new(WcsMap::new(3, WcsProjection::Tan, 1, 2).unwrap()),
+            Box::new(WcsMap::new(3, WcsProjection::Tan, 2, 3).unwrap()),
+            Box::new(ZoomMap::new(3, 2.0).unwrap()),
+        ];
+        for (k, m) in maps.iter().enumerate() {
+            let mut inverted = m.clone_box();
+            inverted.invert();
+            for this in [m.as_ref(), inverted.as_ref()] {
+                for ins in selections(this.nin()) {
+                    let fast = map_split2(this, &ins, true).unwrap().map(|r| r.0);
+                    let slow = map_split2(this, &ins, false).unwrap().map(|r| r.0);
+                    assert_eq!(fast, slow, "map {k}, inputs {ins:?}");
+                }
+            }
+        }
     }
 }

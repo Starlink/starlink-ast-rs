@@ -1,0 +1,8 @@
+NAXIS1  =                  100 / 
+NAXIS2  =                  100 / length of data axis 2
+CTYPE1  = 'RA--ӨAN'           / Celestial longitude
+CTYPE4  = 'DEC--TAN'           / Celestial latitude
+CRVAL1  =               83.633 / Reference RA (deg)
+CRVAL2  =                  Inf
+CRPIX1  =               50upplied
+END

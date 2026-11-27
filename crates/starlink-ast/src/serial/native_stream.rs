@@ -34,9 +34,11 @@
 //! [`ReadFlag`]: super::node::ReadFlag
 
 use super::native_read::{parse_scalar_value, split_comment, try_parse_commented_default};
-use super::node::{NodeItem, ReadFlag};
+use super::node::{ItemName, NodeItem, ReadFlag};
 use super::{Node, NodeValue};
+use crate::constants::MAX_NATIVE_NESTING;
 use crate::error::{AstError, AstResult, ErrorCode};
+use crate::text::floor_char_boundary;
 
 /// The parent of each class C can load, whose loader each class's loader
 /// calls first (`astLoad<Parent>` in each `astLoad<Class>`), `Object` having
@@ -117,7 +119,7 @@ const PARENTS: &[(&str, &str)] = &[
 /// The classes whose loaders build an Object of class `class`, in the order
 /// they read their parts of its description (`Object` first), or `None`
 /// for a class C cannot load (loader.c `astGetLoader`).
-fn class_chain(class: &str) -> Option<Vec<&'static str>> {
+pub(crate) fn class_chain(class: &str) -> Option<Vec<&'static str>> {
     let mut chain = Vec::new();
     let mut name: &'static str = if class == "Object" {
         "Object"
@@ -163,8 +165,9 @@ fn clean(line: &str) -> &str {
 }
 
 /// C's `Unquote`: remove the quotes of each quoted string, turning a doubled
-/// quote within one into a single quote.
-fn unquote(s: &str) -> String {
+/// quote within one into a single quote. The flag is set when a quoted
+/// string is not closed, which C reports as an error.
+fn unquote(s: &str) -> (String, bool) {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut quoted = false;
@@ -182,7 +185,7 @@ fn unquote(s: &str) -> String {
         }
         i += 1;
     }
-    String::from_utf8_lossy(&out).into_owned()
+    (String::from_utf8_lossy(&out).into_owned(), quoted)
 }
 
 fn is_space(b: u8) -> bool {
@@ -222,7 +225,7 @@ fn match_name_equals(b: &[u8]) -> Option<(usize, usize)> {
 fn match_keyword<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     let b = line.as_bytes();
     let n = keyword.len();
-    if b.len() < n || !line[..n].eq_ignore_ascii_case(keyword) {
+    if b.len() < n || !b[..n].eq_ignore_ascii_case(keyword.as_bytes()) {
         return None;
     }
     let start = skip_space(b, n);
@@ -289,6 +292,8 @@ pub(crate) struct Reader<'a> {
     report_level: i32,
     /// The warnings made, as C's `astAddWarning` stores them.
     pub(crate) warnings: Vec<String>,
+    /// How many Objects enclose the one being read.
+    depth: usize,
 }
 
 impl<'a> Reader<'a> {
@@ -306,6 +311,7 @@ impl<'a> Reader<'a> {
             strict,
             report_level,
             warnings: Vec::new(),
+            depth: 0,
         }
     }
 
@@ -414,14 +420,17 @@ impl<'a> Reader<'a> {
                 let key = &line[..name_end];
                 let name = key.to_ascii_lowercase();
                 let value = &line[value_start..];
-                return Ok((
-                    Some(if value.is_empty() {
-                        datum(name, None, key, "")
-                    } else {
-                        datum(name, Some(unquote(value)), key, value)
-                    }),
-                    defaults,
-                ));
+                if value.is_empty() {
+                    return Ok((Some(datum(name, None, key, "")), defaults));
+                }
+                let (text, unmatched) = unquote(value);
+                if unmatched {
+                    return Err(self.error(
+                        ErrorCode::Unmqt,
+                        format!("Unmatched quotes in input data: {text}."),
+                    ));
+                }
+                return Ok((Some(datum(name, Some(text), key, value)), defaults));
             }
             if let Some(class) = match_keyword(line, "begin") {
                 return Ok((
@@ -439,7 +448,7 @@ impl<'a> Reader<'a> {
                     }
                 }
                 let shown = if line.len() > 50 {
-                    format!("{}...", &line[..50])
+                    format!("{}...", &line[..floor_char_boundary(line, 50)])
                 } else {
                     line.to_string()
                 };
@@ -478,9 +487,18 @@ impl<'a> Reader<'a> {
                 format!("astGetLoader: Object of unknown class \"{class}\" cannot be loaded."),
             ));
         };
+        // A port-only limit: C's reader recurses without one.
+        if self.depth >= MAX_NATIVE_NESTING {
+            return Err(self.error(
+                ErrorCode::Lderr,
+                format!("Objects nested more than {MAX_NATIVE_NESTING} deep cannot be read."),
+            ));
+        }
         let mut node = Node::new(class.clone());
         node.class_comment = datum.comment;
+        self.depth += 1;
         let result = self.read_classes(&mut node, &class, &chain);
+        self.depth -= 1;
         let result = result.map(|events| ReadObject { node, events });
         if top {
             result.map(Some).map_err(|e| {
@@ -572,6 +590,7 @@ impl<'a> Reader<'a> {
                             node.items.push(NodeItem {
                                 key: datum.key,
                                 value: parse_scalar_value(&datum.raw),
+                                text: Some(val),
                                 comment: datum.comment,
                                 read: ReadFlag::default(),
                                 helpful: true,
@@ -601,7 +620,9 @@ impl<'a> Reader<'a> {
                                 item: index,
                                 events: nested.events,
                             });
-                            node.push_object(&datum.key, nested.node, datum.comment);
+                            let mut child = nested.node;
+                            child.item = ItemName(Some(datum.name.clone()));
+                            node.push_object(&datum.key, child, datum.comment);
                         }
                     }
                 }
@@ -629,11 +650,23 @@ impl<'a> Reader<'a> {
             })),
         }
         if !end_of_object {
+            // C's `Read` checks for the End once the class loaders have run,
+            // so an error a loader raises from what was read comes first.
+            loads_alone(node)?;
             return Err(self.error(
                 ErrorCode::Badin,
                 format!("Unexpected end of input (missing end of {class})."),
             ));
         }
         Ok(events)
+    }
+}
+
+/// Load `node` as its class's loader would, for the error the loader gives.
+/// A class with no loader of its own, such as an Axis, gives none.
+fn loads_alone(node: &Node) -> AstResult<()> {
+    match super::any_object_from_node(node) {
+        Err(e) if super::is_no_loader_error(&e) => Ok(()),
+        other => other.map(|_| ()),
     }
 }

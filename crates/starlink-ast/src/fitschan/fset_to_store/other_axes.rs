@@ -70,7 +70,7 @@ pub(crate) fn other_axes(mut args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
     // identity. Mirrors fitschan.c:24276-24283.
     let nother = args.axis_done.iter().filter(|&&done| !done).count();
     if nother == 0 {
-        return Ok(Box::new(UnitMap::new(nwcs)));
+        return Ok(Box::new(UnitMap::new(nwcs)?));
     }
 
     // pixel→wcs mapping and central-pixel WCS coordinates.
@@ -158,7 +158,7 @@ pub(crate) fn other_axes(mut args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
         let axmap: DynMapping = if !force_tab && is_map_linear(map.as_ref(), &lbnd_p, &ubnd_p, iax)?
         {
             // Linear path. Mirrors C:24240-24245.
-            let shift = ShiftMap::new(vec![-crval]);
+            let shift = ShiftMap::new(vec![-crval])?;
             add_unit_maps(Box::new(shift), iax, nwcs)?
         } else if let Some(lm) = (!force_tab)
             .then(|| log_axis(map.as_ref(), iax, nwcs, &lbnd_p, &ubnd_p, crval))
@@ -178,7 +178,7 @@ pub(crate) fn other_axes(mut args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
             // Fallback: build the same ShiftMap as the linear case;
             // make_int_world will reject the resulting non-linear
             // pixel→IWC. Mirrors C:24341-24347.
-            let shift = ShiftMap::new(vec![-crval]);
+            let shift = ShiftMap::new(vec![-crval])?;
             add_unit_maps(Box::new(shift), iax, nwcs)?
         };
 
@@ -209,7 +209,7 @@ pub(crate) fn other_axes(mut args: OtherAxesArgs<'_>) -> AstResult<DynMapping> {
     // Mirrors C:24411-24417.
     match ret {
         Some(m) => m.simplify(),
-        None => Ok(Box::new(UnitMap::new(nwcs))),
+        None => Ok(Box::new(UnitMap::new(nwcs)?)),
     }
 }
 
@@ -247,7 +247,7 @@ pub(super) fn add_unit_maps(map: DynMapping, iax: usize, nax: usize) -> AstResul
     let mut ret = map;
     if iax > 0 {
         ret = Box::new(CmpMap::new(
-            Box::new(UnitMap::new(iax)),
+            Box::new(UnitMap::new(iax)?),
             ret,
             Composition::Parallel,
         )?);
@@ -255,7 +255,7 @@ pub(super) fn add_unit_maps(map: DynMapping, iax: usize, nax: usize) -> AstResul
     if iax + nmap < nax {
         ret = Box::new(CmpMap::new(
             ret,
-            Box::new(UnitMap::new(nax - iax - nmap)),
+            Box::new(UnitMap::new(nax - iax - nmap)?),
             Composition::Parallel,
         )?);
     }
@@ -310,8 +310,12 @@ mod tests {
             .build()
             .unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(wcs))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(wcs),
+        )
+        .unwrap();
         fs
     }
 
@@ -482,8 +486,12 @@ mod tests {
         let pixel = BasicFrameBuilder::new(1).build().unwrap();
         let wcs = BasicFrameBuilder::new(1).build().unwrap(); // no label, no symbol, no unit
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(1)), Box::new(wcs))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(1)),
+            Box::new(wcs),
+        )
+        .unwrap();
 
         let dim = vec![Some(50.0)];
         let mut wperm = vec![0_usize];

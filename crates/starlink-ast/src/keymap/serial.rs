@@ -12,7 +12,9 @@ use crate::keymap::entry::{AstType, EntryValue, MapEntry, Scalar1D};
 use crate::keymap::sort::SortBy;
 use crate::keymap::{KeyMap, table};
 use crate::serial::node::Node;
-use crate::serial::{Serializable, any_object_from_node, any_object_to_node};
+use crate::serial::{
+    MXLOADEL, Serializable, any_object_to_node, boxed_any_object_from_node, too_many_values,
+};
 
 impl Serializable for KeyMap {
     fn class_name(&self) -> &'static str {
@@ -91,81 +93,16 @@ impl Serializable for KeyMap {
     }
 
     fn from_node(node: &Node) -> AstResult<Self> {
+        // Split into parts of their own so that the frame on the stack while
+        // nested Objects load, once per level of KeyMaps nested in KeyMaps,
+        // stays small.
         // The KeyMap class's items come from its own part of the
         // description, as keymap.c astLoadKeyMap reads them through
         // astReadClassData.
         let whole = node;
         let node = &whole.section("KeyMap");
-        let mut km = KeyMap::new();
-        // Ident, from the Object part (object.c astLoadObject).
-        let object = whole.section("Object");
-        km.id = crate::object_id::ObjectId::from_object_part(&object);
-        if let Some(ident) = object.get_string_if_set("Ident") {
-            km.set_ident(&ident);
-        }
-
-        // C reads each attribute before any entry, and applies it through
-        // its own setter. SizeGuess and KeyCase refuse on a non-empty map,
-        // which is why the read has to happen first.
-        if let Some(v) = node.get_int_any_if_set("SzGss") {
-            // A negative card would wrap to an enormous `usize` and blow
-            // up the `HashMap::reserve` inside `set_size_guess`. C's own
-            // `SetSizeGuess`/`NewTable` (`keymap.c:9463`, `keymap.c:8720`)
-            // clamps any size at or below `MIN_TABLE_SIZE` -- which
-            // includes zero, negative, and any small positive quotient --
-            // down to the same minimum table without erroring, so
-            // treating a negative guess as 0 here has the same "smallest
-            // table" effect C's own clamp would produce.
-            km.set_size_guess(v.max(0) as usize)?;
-        }
-        if let Some(v) = node.get_string_if_set("SortBy") {
-            km.set_sort_by(SortBy::parse(&v, "astRead")?);
-        }
-        if let Some(v) = node.get_int_any_if_set("KyCas") {
-            km.set_key_case(v != 0)?;
-        }
-        if let Some(v) = node.get_int_any_if_set("KyErr") {
-            km.set_key_error(v != 0);
-        }
-        // MapSz is C's bucket-count history and has no HashMap counterpart,
-        // so it is read and discarded. The written value is recomputed from
-        // the contents at dump time.
-        node.mark_read("MapSz");
-
-        // Presize from the number of Key%d cards present. C has no presize
-        // step at all -- this is purely a Rust-side allocation optimization
-        // -- so there is no C behavior to mirror here, only the
-        // requirement that it never panics. A node key can contain
-        // non-ASCII characters (the native reader's key-boundary predicate
-        // is `char::is_alphanumeric`, which is Unicode-aware), so this must
-        // not byte-slice the key by a fixed offset: `str::get` returns
-        // `None` for an out-of-range or non-boundary index instead of
-        // panicking, unlike `Index`.
-        let n_entries = node
-            .items
-            .iter()
-            .filter(|i| {
-                i.key
-                    .get(..3)
-                    .is_some_and(|p| p.eq_ignore_ascii_case("key"))
-                    && i.key.get(3..).is_some_and(|rest| {
-                        !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
-                    })
-            })
-            .count();
-        km.entries.reserve(n_entries);
-
-        let mut n = 0;
-        loop {
-            n += 1;
-            // The loop stops at the first missing key, so a gap in the
-            // numbering truncates the load.
-            let Some(key) = node.get_string_if_set(&format!("Key{n}")) else {
-                break;
-            };
-            let comment = node.get_string_if_set(&format!("Com{n}"));
-            load_entry(&mut km, node, n, &key, comment.as_deref())?;
-        }
+        let mut km = read_keymap_head(whole, node)?;
+        load_entries(&mut km, node)?;
 
         // MapLocked is applied *after* the entries: applying it beforehand
         // would refuse every put the loop above makes, since the KeyMap is
@@ -181,6 +118,91 @@ impl Serializable for KeyMap {
         km.member_count = node.get_int("MemCnt", 0) as u64;
         Ok(km)
     }
+}
+
+/// A KeyMap with the attributes read from `node`, the KeyMap part of the
+/// description `whole`, and room for its entries.
+#[inline(never)]
+fn read_keymap_head(whole: &Node, node: &Node) -> AstResult<KeyMap> {
+    let mut km = KeyMap::new();
+    // Ident, from the Object part (object.c astLoadObject).
+    let object = whole.section("Object");
+    km.id = crate::object_id::ObjectId::from_object_part(&object);
+    if let Some(ident) = object.get_string_if_set("Ident") {
+        km.set_ident(&ident);
+    }
+
+    // C reads each attribute before any entry, and applies it through
+    // its own setter. SizeGuess and KeyCase refuse on a non-empty map,
+    // which is why the read has to happen first.
+    // SizeGuess is kept as read but sizes nothing: the table only grows
+    // as entries are added, so a dump cannot demand memory for entries
+    // it does not hold (keymap.c `astLoadKeyMap`, upstream 8c542c65).
+    if let Some(v) = node.get_int_any_if_set("SzGss") {
+        km.sizeguess = Some(v.max(0) as usize);
+    }
+    if let Some(v) = node.get_string_if_set("SortBy") {
+        km.set_sort_by(SortBy::parse(&v, "astRead")?);
+    }
+    if let Some(v) = node.get_int_any_if_set("KyCas") {
+        km.set_key_case(v != 0)?;
+    }
+    if let Some(v) = node.get_int_any_if_set("KyErr") {
+        km.set_key_error(v != 0);
+    }
+    // MapSz is C's bucket-count history and has no HashMap counterpart,
+    // so it is read and discarded. The written value is recomputed from
+    // the contents at dump time.
+    node.mark_read("MapSz");
+
+    // Presize from the number of Key%d cards present. C has no presize
+    // step at all -- this is purely a Rust-side allocation optimization
+    // -- so there is no C behavior to mirror here, only the
+    // requirement that it never panics. A node key can contain
+    // non-ASCII characters (the native reader's key-boundary predicate
+    // is `char::is_alphanumeric`, which is Unicode-aware), so this must
+    // not byte-slice the key by a fixed offset: `str::get` returns
+    // `None` for an out-of-range or non-boundary index instead of
+    // panicking, unlike `Index`.
+    let n_entries = node
+        .items
+        .iter()
+        .filter(|i| {
+            i.key
+                .get(..3)
+                .is_some_and(|p| p.eq_ignore_ascii_case("key"))
+                && i.key.get(3..).is_some_and(|rest| {
+                    !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+                })
+        })
+        .count();
+    km.entries.reserve(n_entries);
+    Ok(km)
+}
+
+/// Load each entry of `node` into `km`, in order, as C's loader reads them.
+#[inline(never)]
+fn load_entries(km: &mut KeyMap, node: &Node) -> AstResult<()> {
+    let mut n = 0;
+    loop {
+        n += 1;
+        // The loop stops at the first missing key, so a gap in the
+        // numbering truncates the load.
+        let Some(key) = node.get_string_if_set(&format!("Key{n}")) else {
+            break;
+        };
+        let comment = node.get_string_if_set(&format!("Com{n}"));
+        let (ast_type, nel, names) = entry_layout(node, n)?;
+        // Objects load apart from the other types, so that the stack used
+        // by each level of KeyMaps nested in KeyMaps stays small.
+        if matches!(ast_type, AstType::Object) {
+            load_object_values(km, node, &key, &names, nel == 0, comment.as_deref())?;
+        } else {
+            load_entry(km, node, &key, ast_type, nel, &names, comment.as_deref())?;
+        }
+    }
+
+    Ok(())
 }
 
 impl KeyMap {
@@ -303,15 +325,60 @@ fn push_element(
     Ok(true)
 }
 
-/// Read one entry's cards and put it into `km`, matching `astLoadKeyMap`
-/// (`keymap.c:10844`).
-fn load_entry(
+/// Load the Objects of an entry, named by `names`, and put them into `km`,
+/// as one value if `scalar`.
+///
+/// The Objects stay boxed until [`put_object_values`] puts them, keeping
+/// this frame small: loading recurses through here once per level of
+/// KeyMaps nested in KeyMaps.
+#[inline(never)]
+fn load_object_values(
     km: &mut KeyMap,
     node: &Node,
-    n: usize,
     key: &str,
+    names: &[String],
+    scalar: bool,
     comment: Option<&str>,
 ) -> AstResult<()> {
+    let mut values = Vec::with_capacity(names.len());
+    for name in names {
+        values.push(match node.get_object(name) {
+            Some(n) => Some(boxed_any_object_from_node(n)?),
+            None => None,
+        });
+    }
+    put_object_values(km, key, values, scalar, comment)
+}
+
+/// Put the Objects `values` of an entry into `km`, as one value if `scalar`.
+#[inline(never)]
+fn put_object_values(
+    km: &mut KeyMap,
+    key: &str,
+    mut values: Vec<Option<Box<crate::serial::AnyObject>>>,
+    scalar: bool,
+    comment: Option<&str>,
+) -> AstResult<()> {
+    if scalar {
+        let obj = values.pop().flatten();
+        km.put_scalar(
+            key,
+            EntryValue::Object(Scalar1D::Scalar(obj)),
+            comment,
+            "astMapPut0A",
+        )
+    } else {
+        km.put_1a(
+            key,
+            values.into_iter().map(|v| v.map(|obj| *obj)).collect(),
+            comment,
+        )
+    }
+}
+
+/// The type, element count and value item names of entry `n`, matching `astLoadKeyMap`
+/// (`keymap.c:10844`).
+fn entry_layout(node: &Node, n: usize) -> AstResult<(AstType, usize, Vec<String>)> {
     // `astReadInt` (channel.c:3092) returns its default -- AST__BADTYPE, 0
     // -- both when the card is absent and when it is a commented-out
     // default, so `get_int_any_if_set` (which treats Unset like absent) is
@@ -355,12 +422,34 @@ fn load_entry(
     // `usize` wraparound that would otherwise blow up the unbounded
     // `.collect()` below.
     let nel = node.get_int(&format!("Nel{n}"), 0).max(0) as usize;
+    // The elements are named `V<n>_1` onward (see `MXLOADEL`).
+    if nel > MXLOADEL {
+        return Err(too_many_values(
+            "astLoadKeyMap",
+            "KeyMap",
+            &format!("Entry {n} read has {nel} elements"),
+        ));
+    }
     let names: Vec<String> = if nel == 0 {
         vec![format!("Val{n}")]
     } else {
         (1..=nel).map(|i| format!("V{n}_{i}")).collect()
     };
 
+    Ok((ast_type, nel, names))
+}
+
+/// Put entry `key`, of a type other than Object, into `km` from its values,
+/// named by `names`, as one value if `nel` is zero.
+fn load_entry(
+    km: &mut KeyMap,
+    node: &Node,
+    key: &str,
+    ast_type: AstType,
+    nel: usize,
+    names: &[String],
+    comment: Option<&str>,
+) -> AstResult<()> {
     // Loading goes through the public put path, so MapLocked and KeyCase
     // apply to the loaded keys exactly as they do to a caller's puts.
     match ast_type {
@@ -381,7 +470,7 @@ fn load_entry(
             }
         }
         AstType::KInt => {
-            let v: Vec<i64> = names.iter().map(|nm| node.get_int(nm, 0)).collect();
+            let v: Vec<i64> = names.iter().map(|nm| node.get_int64(nm, 0)).collect();
             if nel == 0 {
                 km.put_0k(key, v[0], comment)?;
             } else {
@@ -427,24 +516,7 @@ fn load_entry(
                 km.put_1c(key, &refs, comment)?;
             }
         }
-        AstType::Object => {
-            let v: Vec<Option<crate::serial::AnyObject>> = names
-                .iter()
-                .map(|nm| node.get_object(nm))
-                .map(|n| n.map(any_object_from_node).transpose())
-                .collect::<AstResult<Vec<_>>>()?;
-            if nel == 0 {
-                let obj = v.into_iter().next().flatten();
-                km.put_scalar(
-                    key,
-                    EntryValue::Object(Scalar1D::Scalar(obj.map(Box::new))),
-                    comment,
-                    "astMapPut0A",
-                )?;
-            } else {
-                km.put_1a(key, v, comment)?;
-            }
-        }
+        AstType::Object => unreachable!("Objects load through load_object_values"),
         AstType::Undef => km.put_u(key, comment)?,
         AstType::BadType => unreachable!("from_code rejects 0"),
     }

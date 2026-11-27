@@ -19,7 +19,7 @@ use starlink_ast::frames::{CmpFrame, SkyFrame, SpecFrame};
 
 let skyframe = SkyFrame::unset_system();
 let specframe = SpecFrame::unset_system();
-let cmpframe = CmpFrame::new(Box::new(skyframe), Box::new(specframe));
+let cmpframe = CmpFrame::new(Box::new(skyframe), Box::new(specframe)).unwrap();
 # use starlink_ast::frames::Frame;
 # assert_eq!(cmpframe.label(3)?, "Wavelength");
 # Ok::<(), starlink_ast::error::AstError>(())
@@ -32,7 +32,7 @@ If it was desired to make RA and Dec correspond to axes 1 and 3, with axis 2 bei
 ```rust
 use starlink_ast::frames::Frame;
 # use starlink_ast::frames::{CmpFrame, SkyFrame, SpecFrame};
-# let mut cmpframe = CmpFrame::new(Box::new(SkyFrame::unset_system()), Box::new(SpecFrame::unset_system()));
+# let mut cmpframe = CmpFrame::new(Box::new(SkyFrame::unset_system()), Box::new(SpecFrame::unset_system())).unwrap();
 
 let perm = [1, 3, 2];
 cmpframe.perm_axes(&perm)?;
@@ -57,7 +57,7 @@ Thus, default values for axis attributes will be the same as those provided by t
 ```rust
 use starlink_ast::frames::{CmpFrame, Frame, SkyFrame, SpecFrame};
 
-let cmpframe = CmpFrame::new(Box::new(SkyFrame::unset_system()), Box::new(SpecFrame::unset_system()));
+let cmpframe = CmpFrame::new(Box::new(SkyFrame::unset_system()), Box::new(SpecFrame::unset_system())).unwrap();
 assert_eq!(cmpframe.domain(), "SKY-SPECTRUM");
 assert_eq!(cmpframe.label(2)?, "Declination");
 # Ok::<(), starlink_ast::error::AstError>(())
@@ -73,7 +73,7 @@ use starlink_ast::frames::{CmpFrame, SkyFrame, SkySystem, SpecFrame};
 let mut cmpframe = CmpFrame::new(
     Box::new(SpecFrame::unset_system()),
     Box::new(SkyFrame::new(SkySystem::Fk5)),
-);
+).unwrap();
 let skyframe = cmpframe
     .frame2_mut()
     .as_any_mut()

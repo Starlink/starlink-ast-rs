@@ -220,7 +220,7 @@ impl FitsChan {
     ///
     /// - [`ErrorCode::Wrerr`] if the SinkFile cannot be created.
     /// - [`ErrorCode::Bdfts`] if a card cannot be formatted, as for
-    ///   [`to_header`](Self::to_header).
+    ///   [`find_fits`](Self::find_fits); the cards before it are written.
     /// - As for [`card`](Self::card).
     ///
     /// The cards are deleted even when writing them fails.
@@ -240,32 +240,28 @@ impl FitsChan {
     /// # Errors
     ///
     /// - [`ErrorCode::Bdfts`] if a card cannot be formatted, as for
-    ///   [`to_header`](Self::to_header); nothing is printed.
+    ///   [`find_fits`](Self::find_fits); the cards before it are printed.
     /// - As for [`card`](Self::card).
     #[doc(alias = "astShowFits")]
     pub fn show_fits(&mut self) -> AstResult<()> {
         self.read_from_source()?;
         let stdout = io::stdout();
         let mut out = stdout.lock();
-        for line in self.card_lines()? {
+        for line in self.card_lines() {
             // C's printf ignores a failure to write.
-            let _ = writeln!(out, "{line}");
+            let _ = writeln!(out, "{}", line?);
         }
         Ok(())
     }
 
     /// The text of each card a read has not consumed, formatted as C's
-    /// `astFindFits` with `%f` formats it.
-    fn card_lines(&self) -> AstResult<Vec<String>> {
+    /// `astFindFits` with `%f` formats it. A caller writes the lines in turn
+    /// up to the first card that cannot be formatted, as C does.
+    fn card_lines(&self) -> Vec<AstResult<String>> {
         self.cards
             .iter()
             .filter(|card| !card.is_consumed())
-            .map(|card| {
-                card.format_with_digits_and_rounding(
-                    self.fits_digits,
-                    self.fits_rounding() as usize,
-                )
-            })
+            .map(|card| self.find_fits_text(card))
             .collect()
     }
 
@@ -285,8 +281,8 @@ impl FitsChan {
             return Ok(());
         }
         self.read_from_source()?;
-        let lines = self.card_lines()?;
-        for line in lines {
+        for line in self.card_lines() {
+            let line = line?;
             match (&mut fd, &mut self.sink.0) {
                 // C's fprintf ignores a failure to write.
                 (Some(fd), _) => {

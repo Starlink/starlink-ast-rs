@@ -7,7 +7,7 @@ use std::cell::RefCell;
 
 use super::card::{Consumption, FitsCard, FitsValue, bad_value_warning, check_fits_name};
 use super::fits_match::{match_keyword, match_keyword_checked};
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 
 /// An ordered collection of [`FitsCard`]s with position-based iteration.
 ///
@@ -35,6 +35,19 @@ pub struct CardList {
     /// [`fix_new`](CardList::fix_new) can strip them again. Mirrors C's
     /// `mark_new` thread-global (fitschan.c:40758).
     mark_new: bool,
+    /// Copies of the cards a write replaced while marking cards new, most
+    /// recent last, so that abandoning the axis descriptions being written
+    /// can put them back. C's `replaced_cards` list (`SaveReplaced`).
+    replaced: Vec<ReplacedCard>,
+}
+
+/// A card a write replaced, and which of the new-card flags its
+/// replacement still carries (C's `ReplacedCard`).
+#[derive(Debug, Clone)]
+struct ReplacedCard {
+    card: FitsCard,
+    pending_write: bool,
+    pending_version: bool,
 }
 
 /// Which of C's two "new card" flags a [`fix_new`](CardList::fix_new) call
@@ -47,6 +60,14 @@ pub(crate) enum NewScope {
     Version,
 }
 
+/// A value card's comment as C's `NewCard` stores it: without its leading
+/// and trailing white space, and none if nothing is left. White space is
+/// Unicode's, which includes every character C's `isspace` accepts.
+pub(crate) fn card_comment(comment: &str) -> Option<String> {
+    let comment = comment.trim();
+    (!comment.is_empty()).then(|| comment.to_string())
+}
+
 impl CardList {
     /// Create an empty card list.
     pub fn new() -> Self {
@@ -56,6 +77,7 @@ impl CardList {
             consumed_names: RefCell::new(Vec::new()),
             written_names: RefCell::new(None),
             mark_new: false,
+            replaced: Vec::new(),
         }
     }
 
@@ -87,8 +109,15 @@ impl CardList {
 
     /// Insert a block of cards in front of the current card, preserving
     /// their order, and leave that card current. Used by the NATIVE writer,
-    /// whose cards C stores one at a time with `InsCard`.
-    pub(crate) fn insert_at_current(&mut self, block: Vec<FitsCard>) {
+    /// whose cards C stores one at a time with `InsCard`, so they are
+    /// flagged new as [`ins_card`](Self::ins_card) flags them.
+    pub(crate) fn insert_at_current(&mut self, mut block: Vec<FitsCard>) {
+        if self.mark_new {
+            for card in &mut block {
+                card.flags.new_write = true;
+                card.flags.new_version = true;
+            }
+        }
         let n = block.len();
         let at = self.position.min(self.cards.len());
         self.cards.splice(at..at, block);
@@ -252,6 +281,42 @@ impl CardList {
         })
     }
 
+    /// The floating-point value of the first card named `keyword`, as C's
+    /// `astGetFitsF` gives it to the reader: `None` when there is no such
+    /// card, and C's errors when its value does not convert.
+    // C: fitschan.c `GetFits<X>` with `CnvValue`.
+    pub(crate) fn get_fits_float(&self, keyword: &str) -> AstResult<Option<f64>> {
+        let Some(card) = self.find(keyword) else {
+            return Ok(None);
+        };
+        let context = |e: AstError| {
+            AstError::new(
+                e.code(),
+                format!(
+                    "{}\nastGetFitsF(FitsChan): Cannot get value for FITS keyword '{keyword}'.",
+                    e.message()
+                ),
+            )
+        };
+        match super::card_value::cnv_type(
+            Some(&card.value),
+            super::card_value::Want::Float,
+            0,
+            card.c_name(),
+        )
+        .map_err(context)?
+        {
+            Some(super::card_value::Got::Float(v)) => Ok(Some(v)),
+            _ => Err(context(AstError::new(
+                ErrorCode::Ftcnv,
+                format!(
+                    "astGetFitsF(FitsChan): Cannot convert FITS keyword '{}' to floating point.",
+                    card.c_name()
+                ),
+            ))),
+        }
+    }
+
     /// Get the floating-point value of the first card matching keyword,
     /// converted as [`FitsChan::get_fits_f`](super::FitsChan::get_fits_f)
     /// converts it, so that a logical, the real part of a complex value and a
@@ -382,7 +447,7 @@ impl CardList {
 
     fn note_written(&self, keyword: &str) {
         if let Some(names) = self.written_names.borrow_mut().as_mut() {
-            names.push(keyword.to_uppercase());
+            names.push(keyword.to_ascii_uppercase());
         }
     }
 
@@ -635,6 +700,9 @@ impl CardList {
     /// As in C, when any card is removed the position is left at
     /// end-of-file; when none is, the original position is retained.
     pub(crate) fn fix_new(&mut self, scope: NewScope, remove: bool) {
+        // Each flagged card that replaced an earlier one is changed back
+        // into it first when the flagged cards are to go, so it is kept.
+        self.fix_replaced(scope == NewScope::Write, scope == NewScope::Version, remove);
         let get = |f: &crate::fitschan::card::CardFlags| match scope {
             NewScope::Write => f.new_write,
             NewScope::Version => f.new_version,
@@ -655,6 +723,64 @@ impl CardList {
             }
         }
         self.position = self.position.min(self.cards.len());
+    }
+
+    /// C's `FixReplaced`: deal with the cards replaced by cards that carry
+    /// the `write` (NEW1) or `version` (NEW2) flag, most recent first. With
+    /// `restore` the replacement, the first card for the keyword that carries
+    /// the flag, is changed back into the card it replaced; if no card holds
+    /// the keyword any more, the card is appended at the end. Without it the
+    /// replacement is only noted as no longer carrying the flag. A copy whose
+    /// replacement carries neither flag is forgotten. The current card is
+    /// left as it was.
+    pub(crate) fn fix_replaced(&mut self, write: bool, version: bool, restore: bool) {
+        let at_end = self.position >= self.cards.len();
+        let mut i = self.replaced.len();
+        while i > 0 {
+            i -= 1;
+            let rep = &mut self.replaced[i];
+            let hit = (write && rep.pending_write) || (version && rep.pending_version);
+            if !hit {
+                continue;
+            }
+            if !restore {
+                if write {
+                    rep.pending_write = false;
+                }
+                if version {
+                    rep.pending_version = false;
+                }
+            } else {
+                let keyword = rep.card.keyword.clone();
+                let flagged =
+                    |c: &FitsCard| (write && c.flags.new_write) || (version && c.flags.new_version);
+                let mut nkey = 0;
+                let mut newcard = None;
+                for (k, c) in self.cards.iter().enumerate() {
+                    if c.keyword == keyword {
+                        nkey += 1;
+                        if flagged(c) {
+                            newcard = Some(k);
+                            break;
+                        }
+                    }
+                }
+                let rep = &mut self.replaced[i];
+                if newcard.is_none() && nkey == 0 {
+                    self.cards.push(rep.card.clone());
+                } else if let Some(k) = newcard {
+                    self.cards[k] = rep.card.clone();
+                }
+                rep.pending_write = false;
+                rep.pending_version = false;
+            }
+            if !self.replaced[i].pending_write && !self.replaced[i].pending_version {
+                self.replaced.remove(i);
+            }
+        }
+        if at_end {
+            self.position = self.cards.len();
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -909,13 +1035,9 @@ impl CardList {
     /// Set an integer keyword value. Overwrites if keyword exists, appends if not.
     pub(crate) fn set_int(&mut self, keyword: &str, value: i64, comment: &str) {
         let card = FitsCard {
-            keyword: keyword.to_uppercase(),
+            keyword: keyword.to_ascii_uppercase(),
             value: FitsValue::Int(value),
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
+            comment: card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
         };
         self.put_or_append(card);
@@ -925,13 +1047,9 @@ impl CardList {
     pub(crate) fn set_float(&mut self, keyword: &str, value: f64, comment: &str) {
         self.note_written(keyword);
         let card = FitsCard {
-            keyword: keyword.to_uppercase(),
+            keyword: keyword.to_ascii_uppercase(),
             value: FitsValue::Float(value),
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
+            comment: card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
         };
         self.put_or_append(card);
@@ -941,13 +1059,9 @@ impl CardList {
     pub(crate) fn set_string(&mut self, keyword: &str, value: &str, comment: &str) {
         self.note_written(keyword);
         let card = FitsCard {
-            keyword: keyword.to_uppercase(),
+            keyword: keyword.to_ascii_uppercase(),
             value: FitsValue::String(value.to_string()),
-            comment: if comment.is_empty() {
-                None
-            } else {
-                Some(comment.to_string())
-            },
+            comment: card_comment(comment),
             flags: crate::fitschan::card::CardFlags::default(),
         };
         self.put_or_append(card);
@@ -998,6 +1112,16 @@ impl CardList {
             _ => self.cards.iter().position(matches),
         };
         if let Some(idx) = found {
+            // C's `SaveReplaced`: keep a copy of a card that was in the
+            // FitsChan before the axis descriptions now being written, so
+            // that it can be put back if they are abandoned.
+            if self.mark_new && !self.cards[idx].flags.new_version {
+                self.replaced.push(ReplacedCard {
+                    card: self.cards[idx].clone(),
+                    pending_write: true,
+                    pending_version: true,
+                });
+            }
             if self.cards[idx].comment.is_some()
                 && values_similar(&self.cards[idx].value, &card.value)
             {
@@ -1108,7 +1232,7 @@ impl Default for CardList {
 /// list, so C inserts new cards *before* a trailing RESTFREQ card
 /// rather than after it.
 fn is_findwcs_keyword(keyword: &str) -> bool {
-    let kw = keyword.to_uppercase();
+    let kw = keyword.to_ascii_uppercase();
 
     // Exact-match keywords from FindWcs (with `%0c` alt-letter
     // suffix expansions handled by the optional-trailing-letter
@@ -1169,16 +1293,15 @@ fn is_findwcs_keyword(keyword: &str) -> bool {
     // Per-axis WCS keywords (CRPIXn, CRVALn, etc.) and PC/CD/PV/PS
     // matrices, but not the AIPS-specific aliases (RESTFREQ, etc.);
     // DSS-only keywords are enumerated above.
-    if kw.len() >= 6 {
-        let prefix5 = &kw[..5];
-        if matches!(prefix5, "CRPIX" | "CRVAL" | "CDELT" | "CTYPE" | "CUNIT") {
-            let rest = &kw[5..];
-            if rest
+    if let (Some(prefix5), Some(rest)) = (kw.get(..5), kw.get(5..))
+        && !rest.is_empty()
+    {
+        if matches!(prefix5, "CRPIX" | "CRVAL" | "CDELT" | "CTYPE" | "CUNIT")
+            && rest
                 .chars()
                 .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase())
-            {
-                return true;
-            }
+        {
+            return true;
         }
         if kw.starts_with("CROTA") {
             return true;
@@ -1286,6 +1409,59 @@ fn floats_similar(a: f64, b: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A failed write puts back each card it replaced, in its place, and a
+    /// replaced card whose keyword the write then removed comes back at the
+    /// end, as C's `FixReplaced` appends it. The current card is kept.
+    #[test]
+    fn a_failed_write_puts_back_replaced_cards() {
+        let mut cards = CardList::from_header(
+            "NAXIS1  =                  100\nCRVAL1  =                    5 / mine\n\
+             CRPIX2  =                  7.5 / also mine\nNAXIS2  =                  200",
+        )
+        .unwrap();
+        cards.set_position(3);
+        cards.begin_marking_new();
+        cards.set_float("CRVAL1", 10.0, "new");
+        cards.set_float("CRPIX2", 100.0, "new");
+        cards.set_float("CDELT1", -0.001, "new");
+        assert!(cards.delete("CRPIX2"));
+        cards.fix_new(NewScope::Write, true);
+        cards.end_marking_new();
+        let got: Vec<(String, Option<f64>)> = cards
+            .iter()
+            .map(|c| (c.keyword.clone(), cards_float(c)))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("NAXIS1".to_string(), Some(100.0)),
+                ("CRVAL1".to_string(), Some(5.0)),
+                ("NAXIS2".to_string(), Some(200.0)),
+                ("CRPIX2".to_string(), Some(7.5)),
+            ]
+        );
+    }
+
+    /// A write that succeeds keeps its replacements and forgets the copies.
+    #[test]
+    fn a_successful_write_keeps_its_replacements() {
+        let mut cards = CardList::from_header("CRVAL1  =                    5 / mine").unwrap();
+        cards.begin_marking_new();
+        cards.set_float("CRVAL1", 10.0, "new");
+        cards.fix_new(NewScope::Write, false);
+        cards.fix_new(NewScope::Version, false);
+        cards.end_marking_new();
+        cards.fix_replaced(true, true, false);
+        assert!(cards.replaced.is_empty());
+        assert_eq!(cards.get_float("CRVAL1"), Some(10.0));
+    }
+
+    fn cards_float(c: &FitsCard) -> Option<f64> {
+        let mut l = CardList::new();
+        l.cards.push(c.clone());
+        l.get_float(&c.keyword)
+    }
 
     fn sample_header() -> &'static str {
         "SIMPLE  =                    T / Fits standard\n\

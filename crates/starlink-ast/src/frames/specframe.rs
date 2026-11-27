@@ -7,6 +7,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame, FrameRef};
+use crate::mappings::helpers::is_c_bad;
 use crate::mappings::helpers::{ast_equal, is_bad};
 use crate::mappings::{CmpMap, Composition, DynMapping, ShiftMap, SpecCvtType, SpecMap, UnitMap};
 use crate::serial::{Node, Serializable};
@@ -1794,7 +1795,7 @@ impl SpecFrame {
     pub fn set_spec_origin_cur(&mut self, value: f64) -> AstResult<()> {
         let def = self.system.default_display_units();
         let cur = Frame::unit(self, 1)?;
-        let map = unit_mapper(&cur, def).ok_or_else(|| {
+        let map = unit_mapper(&cur, def)?.ok_or_else(|| {
             AstError::new(
                 ErrorCode::Badun,
                 format!(
@@ -1834,7 +1835,7 @@ impl SpecFrame {
         if cur == def || def.is_empty() {
             return Ok(origin);
         }
-        let map = unit_mapper(def, cur).ok_or_else(|| {
+        let map = unit_mapper(def, cur)?.ok_or_else(|| {
             AstError::new(
                 ErrorCode::Badun,
                 format!("SpecFrame: the current units ({cur}) are not suitable for a SpecFrame"),
@@ -2140,14 +2141,14 @@ impl SpecFrame {
         // system, so bracket it with Mappings from the target's Unit and to
         // the result's (specframe.c:2891-2934).
         let specmap: DynMapping = if specmap.is_empty() {
-            Box::new(UnitMap::new(1))
+            Box::new(UnitMap::new(1)?)
         } else {
             Box::new(specmap)
         };
         let in_unit = target.unit_or_default();
         let out_unit = result.unit_or_default();
-        let umap1 = unit_mapper(in_unit, target_system.specmap_units());
-        let umap2 = unit_mapper(result_system.specmap_units(), out_unit);
+        let umap1 = unit_mapper(in_unit, target_system.specmap_units())?;
+        let umap2 = unit_mapper(result_system.specmap_units(), out_unit)?;
         let mut matched = true;
         let mut mapping: DynMapping = match (umap1, umap2) {
             (Some(umap1), Some(umap2)) => {
@@ -2183,7 +2184,7 @@ impl SpecFrame {
         // prepend a ShiftMap by the target origin (specframe.c:2937-2945).
         let target_origin = target.spec_origin_cur()?;
         if target_origin != 0.0 {
-            let sm = ShiftMap::new(vec![target_origin]);
+            let sm = ShiftMap::new(vec![target_origin])?;
             mapping = Box::new(CmpMap::new(Box::new(sm), mapping, Composition::Series)?);
         }
 
@@ -2206,7 +2207,7 @@ impl SpecFrame {
             result.spec_origin_cur()?
         };
         if result_origin != 0.0 {
-            let sm = ShiftMap::new(vec![-result_origin]);
+            let sm = ShiftMap::new(vec![-result_origin])?;
             mapping = Box::new(CmpMap::new(mapping, Box::new(sm), Composition::Series)?);
         }
 
@@ -2300,11 +2301,11 @@ impl Frame for SpecFrame {
         if origin != 0.0 {
             label.push_str(&format!(" offset from {}", self.format(axis, origin)?));
         }
-        Ok(super::frame_attrs::relabel_for_unit(
+        super::frame_attrs::relabel_for_unit(
             label,
             self.system.default_display_units(),
             self.axis.unit.as_deref(),
-        ))
+        )
     }
 
     /// The symbol of the axis; see [`Frame::symbol`].
@@ -2317,11 +2318,11 @@ impl Frame for SpecFrame {
         if let Some(symbol) = &self.ax(axis)?.symbol {
             return Ok(symbol.clone());
         }
-        Ok(super::frame_attrs::relabel_for_unit(
+        super::frame_attrs::relabel_for_unit(
             self.system.as_str().to_string(),
             self.system.default_display_units(),
             self.axis.unit.as_deref(),
-        ))
+        )
     }
 
     /// The units of the axis; see [`Frame::unit`].
@@ -2351,7 +2352,7 @@ impl Frame for SpecFrame {
         // The Frame class's SetUnit follows (frame.c:10775).
         if self.get_active_unit() {
             let new = unit.trim_end().to_string();
-            super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+            super::frame_attrs::new_unit(&mut self.axis, &old, &new)?;
         }
         Ok(())
     }
@@ -2366,7 +2367,7 @@ impl Frame for SpecFrame {
         if let Some(old) = self.axis.unit.take() {
             if self.get_active_unit() {
                 let new = self.unit_or_default().to_string();
-                super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+                super::frame_attrs::new_unit(&mut self.axis, &old, &new)?;
             }
         }
         Ok(())
@@ -2390,7 +2391,7 @@ impl Frame for SpecFrame {
         let va = a[0];
         let vb = b[0];
         let vc = c[0];
-        if is_bad(va) || is_bad(vb) || is_bad(vc) {
+        if is_c_bad(va) || is_c_bad(vb) || is_c_bad(vc) {
             return Ok(BAD_VALUE);
         }
         let ab = va - vb;
@@ -2479,10 +2480,12 @@ impl Frame for SpecFrame {
         Ok(())
     }
 
+    // object.c `Cast`: a copy into its own class, and into the class it is
+    // derived from, a plain Frame, a copy of the Frame it is.
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // A specialized leaf frame can only be cast down to a plain
-        // Frame (BasicFrame). Same-class is handled by the direct Match
-        // (no cast needed), so only the BasicFrame target matters here.
+        if other.as_any().is::<SpecFrame>() {
+            return Ok(Some(self.snapshot()));
+        }
         if other
             .as_any()
             .downcast_ref::<crate::frames::BasicFrame>()
@@ -2961,6 +2964,10 @@ impl Serializable for SpecFrame {
         // C's loaders read them through astReadClassData (channel.c).
         let whole = node;
         let frame = &whole.section("Frame");
+        // astLoadFrame's checks of the axes, then the class's own that it
+        // has one (frame.c `astCheckLoadedNaxes`).
+        let (naxes, _) = super::frame_attrs::load_frame_axes(frame, &whole.class)?;
+        super::frame_attrs::check_loaded_naxes(&whole.class, naxes, 1)?;
         let node = &whole.section("SpecFrame");
         // Read System. The unset default is WAVELEN (specframe.c:2015),
         // so an absent `System=` line decodes to a WAVELEN frame with
@@ -2986,13 +2993,12 @@ impl Serializable for SpecFrame {
             sf.attrs.obs_lon = Some(node.get_double("GeoLon", 0.0));
         }
 
-        // SoR (StdOfRest).
-        let sor_str = node.get_string("SoR", "Heliocentric");
-        if let Some(sor) = StdOfRest::parse(&sor_str) {
+        // SoR (StdOfRest), which must be one C knows (specframe.c:7097).
+        if let Some(sor) =
+            super::frame_attrs::read_system_item(node, "SoR", "standard of rest", StdOfRest::parse)?
+        {
             sf.std_of_rest = sor;
-            if node.get("SoR").is_some() {
-                sf.sor_set = true;
-            }
+            sf.sor_set = true;
         }
 
         // UsedUnits block: restore every `U<system>` card into the per-system
@@ -3029,10 +3035,14 @@ impl Serializable for SpecFrame {
             sf.axis.unit = Some(u);
         }
 
-        // AlSoR (AlignStdOfRest).
-        let alsor_str = node.get_string("AlSoR", "");
-        if !alsor_str.is_empty() {
-            sf.align_std_of_rest = StdOfRest::parse(&alsor_str);
+        // AlSoR (AlignStdOfRest), likewise (specframe.c:7120).
+        if let Some(sor) = super::frame_attrs::read_system_item(
+            node,
+            "AlSoR",
+            "alignment standard of rest",
+            StdOfRest::parse,
+        )? {
+            sf.align_std_of_rest = Some(sor);
         }
 
         // AlSys (AlignSystem).

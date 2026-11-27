@@ -64,3 +64,41 @@ fn bad_units_are_reported_as_in_the_c_library() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// The parts of the C library's report for a Unit whose expression takes the
+/// logarithm of a value that is not positive: the Unit is stored, and the
+/// unit parser's message is given when it is set and when the System is
+/// read from it.
+const UNUSABLE_UNIT: &str = "log(log(log(log(log(Jy)))))";
+const UNUSABLE_UNIT_MESSAGE: &str =
+    "Illegal negative or zero constant value '-0.872603' encountered.";
+
+/// The Unit is stored and an error is given, whatever its message.
+#[test]
+fn an_unusable_unit_expression_is_an_error() {
+    let mut f = FluxFrame::with_spec_val(starlink_ast::constants::BAD_VALUE, None);
+    assert_eq!(
+        f.set_unit(1, UNUSABLE_UNIT).unwrap_err().code(),
+        ErrorCode::Badun
+    );
+    assert_eq!(Frame::unit(&f, 1).unwrap(), UNUSABLE_UNIT);
+    assert_eq!(f.system_string().unwrap_err().code(), ErrorCode::Badun);
+}
+
+/// The unit parser's message for the logarithm of a value that is not
+/// positive is passed on, as the C library reports it, when the Unit is set
+/// and when the System is read from it.
+#[test]
+fn an_unusable_unit_expression_gives_the_unit_parsers_message() {
+    let mut f = FluxFrame::with_spec_val(starlink_ast::constants::BAD_VALUE, None);
+    let is_c = |e: &starlink_ast::error::AstError| {
+        e.code() == ErrorCode::Badun
+            && e.message() == UNUSABLE_UNIT_MESSAGE
+            && e.context().is_empty()
+    };
+    let err = f.set_unit(1, UNUSABLE_UNIT).unwrap_err();
+    assert!(is_c(&err), "{err}");
+    let err = f.system_string().unwrap_err();
+    assert!(is_c(&err), "{err}");
+    assert_eq!(Frame::unit(&f, 1).unwrap(), UNUSABLE_UNIT);
+}

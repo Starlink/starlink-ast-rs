@@ -29,10 +29,13 @@ fn frame(id: &str) -> Box<dyn Frame> {
             f.perm_axes(&[2, 1]).unwrap();
             Box::new(f)
         }
-        "cmp" => Box::new(CmpFrame::new(
-            Box::new(SkyFrame::unset_system()),
-            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        )),
+        "cmp" => Box::new(
+            CmpFrame::new(
+                Box::new(SkyFrame::unset_system()),
+                Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+            )
+            .unwrap(),
+        ),
         _ => panic!("unknown frame id {id}"),
     }
 }

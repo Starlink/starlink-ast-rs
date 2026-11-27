@@ -524,7 +524,7 @@ fn run(fc: &mut FitsChan, op: &str, out: &mut String, h: &mut Harness) {
                         .unwrap(),
                 )
             };
-            let cf = starlink_ast::frames::CmpFrame::new(one(), one());
+            let cf = starlink_ast::frames::CmpFrame::new(one(), one()).unwrap();
             result(fc.write(&AnyObject::CmpFrame(cf)), |n| format!("= {n}\n"))
         }
         "W" => {
@@ -562,7 +562,6 @@ const EXCLUDED: &[(&str, &str)] = &[
          of Objects of its class, which the port does not have; \
          native_full_1_matches_c_but_for_process_counts compares the rest",
     ),
-    ("native_unknown_item", NATIVE_WHOLE),
     ("native_unknown_item_strict", NATIVE_WHOLE),
     ("native_bad_value", NATIVE_WHOLE),
     ("native_bad_value_clean", NATIVE_WHOLE),

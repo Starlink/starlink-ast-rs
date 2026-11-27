@@ -42,14 +42,30 @@ impl ShiftMap {
     /// ```
     /// use starlink_ast::mappings::{Mapping, ShiftMap};
     ///
-    /// let map = ShiftMap::new([10.0, -1.0]);
+    /// let map = ShiftMap::new([10.0, -1.0]).unwrap();
     /// let (x, y) = map.tran2(&[1.0], &[2.0], true).unwrap();
     /// assert_eq!((x, y), (vec![11.0], vec![1.0]));
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// `ErrorCode::Badni` if `shift` has more than
+    /// [`MXAXES`](crate::constants::MXAXES) elements.
     #[doc(alias = "astShiftMap")]
-    pub fn new(shift: impl Into<Vec<f64>>) -> Self {
+    pub fn new(shift: impl Into<Vec<f64>>) -> AstResult<Self> {
+        let shift = shift.into();
+        crate::mappings::check_init_mapping("ShiftMap", shift.len(), shift.len())?;
+        Ok(Self::within_limit(shift))
+    }
+
+    /// A ShiftMap of `shift`, whose length is the number of coordinates of
+    /// a Mapping or Frame that already exists, so within
+    /// [`MXAXES`](crate::constants::MXAXES).
+    pub(crate) fn within_limit(shift: impl Into<Vec<f64>>) -> Self {
+        let shift = shift.into();
+        debug_assert!(shift.len() <= crate::constants::MXAXES);
         Self {
-            shift: shift.into(),
+            shift,
             inverted: false,
             simplified: SimplifiedRecord::default(),
             ident: None,
@@ -197,7 +213,7 @@ impl Mapping for ShiftMap {
             return Ok(None);
         }
         let shifts: Vec<f64> = in_axes.iter().map(|&ix| self.shift[ix]).collect();
-        let mut sub = ShiftMap::new(shifts);
+        let mut sub = ShiftMap::new(shifts)?;
         if self.inverted {
             sub.invert();
         }
@@ -308,9 +324,9 @@ impl Mapping for ShiftMap {
                 combined.push(s1 + s2);
             }
             if combined.iter().all(|&s| ast_equal(s, 0.0)) {
-                return Some(Box::new(UnitMap::new(self.shift.len())));
+                return Some(Box::new(UnitMap::within_limit(self.shift.len())));
             }
-            return Some(Box::new(ShiftMap::new(combined)));
+            return Some(Box::new(ShiftMap::within_limit(combined)));
         }
 
         // ShiftMap + UnitNormMap(forward) → UnitNormMap(forward).
@@ -415,6 +431,7 @@ impl Serializable for ShiftMap {
         let whole = node;
         let node = &whole.section("ShiftMap");
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, base.nin, base.nin)?;
         let mut shifts = Vec::with_capacity(base.nin);
         for i in 0..base.nin {
             shifts.push(node.get_double(&format!("Sft{}", i + 1), 0.0));

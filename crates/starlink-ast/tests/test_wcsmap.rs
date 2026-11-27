@@ -862,9 +862,7 @@ fn unusable_projection_parameters_are_errors() {
     }
 
     // The first forward transformation of these WcsMaps reports the unusable
-    // parameters, in C as here. C reports nothing on later transformations,
-    // where the port still does
-    // (`unusable_parameters_are_an_error_on_every_transform`).
+    // parameters, as later ones do (`unusable_parameters_are_an_error_on_every_transform`).
     let azp = wcs(WcsProjection::Azp, &[(1, -1.0)]);
     assert_eq!(
         azp.transform(&pts, true).unwrap_err().code(),
@@ -1140,9 +1138,10 @@ fn unusable_parameters_are_an_error_only_for_good_points() {
 }
 
 /// Unusable projection parameters are reported by every transformation, not
-/// only the first; see `docs/issues/c-library-quirks.md`, "A WcsMap reports
-/// unusable parameters only on its first transformation", for C's behavior,
-/// which the port does not mirror.
+/// only the first, whatever the order of forward and inverse ones.
+// C reported them only on the first until upstream a87d1700; a probe of the
+// fixed library gives AST__WCSPA for every transformation of each sequence
+// below (docs/issues/c-library-quirks.md, "RESOLVED (upstream a87d1700)").
 #[test]
 fn unusable_parameters_are_an_error_on_every_transform() {
     let pts = PointSet::from_rows([[0.1, 0.2]]);
@@ -1163,4 +1162,63 @@ fn unusable_parameters_are_an_error_on_every_transform() {
         let err = map.transform(&pts, forward).unwrap_err();
         assert_eq!(err.code(), ErrorCode::Wcspa, "AZP forward={forward}");
     }
+}
+
+/// WcsMaps merge only if they hold the same number of projection parameters
+/// for each axis. A parameter that was set and then cleared still counts, as
+/// in C, where the count grows when a parameter is set and does not shrink
+/// when it is cleared; a Native dump does not record it, so after a round
+/// trip the two merge. The classes are the C library's.
+#[test]
+fn wcsmaps_with_different_parameter_counts_do_not_merge() {
+    use starlink_ast::mappings::{CmpMap, Composition, UnitMap};
+    let mut cleared = WcsMap::new(2, WcsProjection::Azp, 1, 2).unwrap();
+    cleared.set_pv(2, 1, 0.5).unwrap();
+    cleared.clear_pv(2, 1).unwrap();
+    let plain = WcsMap::new(2, WcsProjection::Azp, 1, 2).unwrap();
+    let inverted = |m: &WcsMap| {
+        let mut m = m.clone();
+        m.invert();
+        m
+    };
+    let simplified_class_is_unit = |a: WcsMap, b: WcsMap| {
+        let map = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
+        <dyn Mapping>::simplify(&map)
+            .unwrap()
+            .as_any()
+            .is::<UnitMap>()
+    };
+    assert!(!simplified_class_is_unit(cleared.clone(), inverted(&plain)));
+    assert!(!simplified_class_is_unit(plain.clone(), inverted(&cleared)));
+
+    let dump =
+        crate::common::native_dump(&starlink_ast::AnyObject::from_mapping(&cleared).unwrap())
+            .unwrap();
+    let loaded = starlink_ast::from_native_string(&dump)
+        .unwrap()
+        .into_mapping()
+        .unwrap();
+    let loaded = loaded.as_any().downcast_ref::<WcsMap>().unwrap().clone();
+    assert!(simplified_class_is_unit(loaded, inverted(&plain)));
+}
+
+/// A WcsMap of unknown projection type is a copy, so its axis indices are
+/// not checked when it is read, and are written back as read, as in the C
+/// library (testloaderhardening.c); a valid type's indices are checked.
+#[test]
+fn an_unknown_projection_keeps_axes_the_checks_would_refuse() {
+    let dump = " Begin WcsMap\n Nin = 3\n IsA Mapping\n Type = \"   \"\n WcsAx1 = 0\n \
+                WcsAx2 = 0\n End WcsMap\n";
+    let obj = starlink_ast::from_native_string(dump).unwrap();
+    let map = obj.as_mapping().unwrap();
+    let out = map
+        .transform(
+            &starlink_ast::coords::PointSet::from_rows([[1.0, 2.0, 3.0]]),
+            true,
+        )
+        .unwrap();
+    assert_eq!(out.point(0), [1.0, 2.0, 3.0]);
+    let text = obj.to_native_string().unwrap();
+    assert!(text.contains(" WcsAx1 = 0"), "{text}");
+    assert!(text.contains(" WcsAx2 = 0"), "{text}");
 }

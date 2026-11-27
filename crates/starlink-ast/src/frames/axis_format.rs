@@ -6,12 +6,13 @@
 //! the part of C's `printf` that call needs: a format with at most one
 //! conversion, given an `int` or a `double`.
 //!
-//! `sprintf` is called with one argument, so a Format whose conversions do
-//! not consume exactly that argument has undefined behavior in C: a second
-//! conversion, a `*` width or precision, a length modifier that changes the
-//! argument type, a conversion of the wrong type (`%ld`, `%s`), or a
-//! trailing `%`. Each is an `AST__FMTER` error here. `%a`, `%A` and the
-//! `'` flag are defined but not ported, and are errors too.
+//! `sprintf` is called with one argument, so `ParseAxisFormat` refuses a
+//! Format that asks for anything else with `AST__FMTER`: more than one
+//! conversion, a `*` width or precision, a length modifier other than an
+//! `l` before a floating code, or a conversion that is neither floating
+//! (`eEfFgGaA`) nor integer (`diuoxXc`). `%a` and `%A` write the value in
+//! hexadecimal as the macOS C library does, and the `'` flag groups no
+//! digits, as in the C locale.
 
 use crate::error::{AstError, AstResult, ErrorCode};
 
@@ -49,8 +50,51 @@ pub(crate) fn is_c_space(b: u8) -> bool {
     matches!(b, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
 }
 
-/// Port of `ParseAxisFormat` (axis.c:2015).
-pub(crate) fn parse_axis_format(fmt0: &str, digs: i32) -> ParsedFormat {
+/// axis.c `ValidAxisFormat`: whether `fmt`, given to `sprintf` with the
+/// axis value as its only argument, asks for nothing else. Text, `%%`, and
+/// at most one conversion with flags, a width and a precision given as
+/// digits, and a floating or integer code, an `l` allowed before a
+/// floating one.
+fn valid_axis_format(fmt: &[u8]) -> bool {
+    let mut nconv = 0;
+    let mut i = 0;
+    while let Some(off) = fmt[i..].iter().position(|&b| b == b'%') {
+        i += off + 1;
+        if fmt.get(i) == Some(&b'%') {
+            i += 1;
+            continue;
+        }
+        while fmt.get(i).is_some_and(|b| b"-+ #0'".contains(b)) {
+            i += 1;
+        }
+        while fmt.get(i).is_some_and(u8::is_ascii_digit) {
+            i += 1;
+        }
+        if fmt.get(i) == Some(&b'.') {
+            i += 1;
+            while fmt.get(i).is_some_and(u8::is_ascii_digit) {
+                i += 1;
+            }
+        }
+        if fmt.get(i) == Some(&b'l') && fmt.get(i + 1).is_some_and(|b| b"eEfFgGaA".contains(b)) {
+            i += 1;
+        }
+        if !fmt.get(i).is_some_and(|b| b"eEfFgGaAdiuoxXc".contains(b)) {
+            return false;
+        }
+        i += 1;
+        nconv += 1;
+    }
+    nconv <= 1
+}
+
+/// Port of `ParseAxisFormat` (axis.c).
+///
+/// # Errors
+///
+/// [`ErrorCode::Fmter`] if the Format asks `sprintf` for anything but the
+/// one axis value.
+pub(crate) fn parse_axis_format(fmt0: &str, digs: i32) -> AstResult<ParsedFormat> {
     let mut log = false;
     let mut sign = false;
     let mut lspace = false;
@@ -118,13 +162,24 @@ pub(crate) fn parse_axis_format(fmt0: &str, digs: i32) -> ParsedFormat {
         }
     }
 
-    ParsedFormat {
+    if !valid_axis_format(&result) {
+        return Err(AstError::new(
+            ErrorCode::Fmter,
+            format!(
+                "astFormat: The Format string \"{fmt0}\" cannot be used to format an axis \
+                 value. It should have no more than one conversion specification, for a \
+                 floating point or integer value."
+            ),
+        ));
+    }
+
+    Ok(ParsedFormat {
         fmt: result,
         log,
         sign,
         space: lspace,
         integ,
-    }
+    })
 }
 
 /// C's `(int) x`. The conversion is undefined outside the `int` range and
@@ -139,7 +194,7 @@ pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<Stri
     if crate::mappings::helpers::is_bad(value) {
         return Ok("<bad>".to_string());
     }
-    let p = parse_axis_format(fmt, digits);
+    let p = parse_axis_format(fmt, digits)?;
 
     // Zero is formatted normally. Otherwise a log Format gives "10^x",
     // after a sign, with x formatted by the Format.
@@ -175,27 +230,39 @@ pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<Stri
     } else {
         Arg::Double(x)
     };
-    buf.extend(sprintf(&p.fmt, arg).map_err(|e| {
+    let prefix = buf.len();
+    let overflow = || {
         AstError::new(
             ErrorCode::Fmter,
             format!(
-                "astAxisFormat(Axis): Error formatting a coordinate value of {value}: {e}. \
+                "astAxisFormat(Axis): Internal buffer overflow while formatting a coordinate \
+                 value of {} - result exceeds {BUFF_LEN} characters.\n\
                  The format string was \"{}\".",
+                sprintf_double("%1.17G", value),
                 String::from_utf8_lossy(&p.fmt)
             ),
         )
-    })?);
+    };
+    let (text, conversion) = match sprintf_marked(&p.fmt, arg, BUFF_LEN.saturating_sub(prefix)) {
+        Ok(done) => done,
+        Err(PrintfError::TooLong) => return Err(overflow()),
+        Err(PrintfError::Invalid(e)) => {
+            return Err(AstError::new(
+                ErrorCode::Fmter,
+                format!(
+                    "astAxisFormat(Axis): Error formatting a coordinate value of {value}: {e}. \
+                     The format string was \"{}\".",
+                    String::from_utf8_lossy(&p.fmt)
+                ),
+            ));
+        }
+    };
+    buf.extend(text);
     if log {
         buf.extend_from_slice(LOG_END.as_bytes());
     }
     if buf.len() > BUFF_LEN {
-        return Err(AstError::new(
-            ErrorCode::Fmter,
-            format!(
-                "astAxisFormat(Axis): Internal buffer overflow while formatting a coordinate \
-                 value of {value} - result exceeds {BUFF_LEN} characters."
-            ),
-        ));
+        return Err(overflow());
     }
 
     // The result is a C string, so it ends at the first NUL, which `%c`
@@ -203,12 +270,22 @@ pub(crate) fn format_value(fmt: &str, digits: i32, value: f64) -> AstResult<Stri
     if let Some(nul) = buf.iter().position(|&b| b == 0) {
         buf.truncate(nul);
     }
-    String::from_utf8(buf).map_err(|_| {
-        AstError::new(
-            ErrorCode::Fmter,
-            format!("astAxisFormat(Axis): formatting {value} with \"{fmt}\" gave a non-ASCII byte"),
-        )
-    })
+    // `%c` writes one byte of the value, padded with spaces, which outside
+    // ASCII is held as the character of that code in ISO 8859-1; the rest
+    // is the Format's own text, which is UTF-8.
+    let byte = match conversion {
+        Some((span, b'c')) => {
+            (prefix + span.start..(prefix + span.end).min(buf.len())).find(|&i| buf[i] >= 0x80)
+        }
+        _ => None,
+    };
+    let Some(at) = byte else {
+        return Ok(String::from_utf8_lossy(&buf).into_owned());
+    };
+    let mut out = String::from_utf8_lossy(&buf[..at]).into_owned();
+    out.push(char::from(buf[at]));
+    out.push_str(&String::from_utf8_lossy(&buf[at + 1..]));
+    Ok(out)
 }
 
 /// The one argument `AxisFormat` passes to `sprintf`.
@@ -240,15 +317,40 @@ pub(crate) fn sprintf_double(fmt: &str, value: f64) -> String {
 /// C's `sprintf( buf, fmt, arg )` for a format with at most one
 /// conversion. The error is a short reason; the caller reports it.
 fn sprintf(fmt: &[u8], arg: Arg) -> Result<Vec<u8>, String> {
-    sprintf_marked(fmt, arg).map(|(out, _)| out)
+    match sprintf_marked(fmt, arg, usize::MAX) {
+        Ok((out, _)) => Ok(out),
+        Err(PrintfError::Invalid(e)) => Err(e),
+        Err(PrintfError::TooLong) => unreachable!("no output is longer than usize::MAX"),
+    }
 }
+
+/// Why [`sprintf_marked`] gave no output.
+enum PrintfError {
+    /// The format cannot be applied to the argument; the short reason.
+    Invalid(String),
+    /// The conversion's field width or precision makes its output longer
+    /// than the most allowed, which C's `snprintf` reports by giving the
+    /// length the output would have had.
+    TooLong,
+}
+
+/// The most significant digits `%g` without the `#` flag can give: the
+/// exact decimal value of a `double` has at most 767, so a greater
+/// precision gives the same result, with its trailing zeros removed.
+const G_MAX_PRECISION: usize = 800;
 
 /// The byte range of the output a conversion wrote, and its character.
 type Conversion = (std::ops::Range<usize>, u8);
 
 /// [`sprintf`], with the [`Conversion`] in its output, or `None` for a
-/// format with no conversion.
-fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>), String> {
+/// format with no conversion, failing with [`PrintfError::TooLong`] before
+/// formatting a conversion whose field width or precision makes it longer
+/// than `max_len`.
+fn sprintf_marked(
+    fmt: &[u8],
+    arg: Arg,
+    max_len: usize,
+) -> Result<(Vec<u8>, Option<Conversion>), PrintfError> {
     let mut out = Vec::new();
     let mut conversion = None;
     let mut used = false;
@@ -274,13 +376,16 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
                 b' ' => spec.space = true,
                 b'0' => spec.zero = true,
                 b'#' => spec.alt = true,
-                b'\'' => return Err("the ' flag is not supported".into()),
+                // Groups digits by the locale, which in C's has no groups.
+                b'\'' => {}
                 _ => break,
             }
             i += 1;
         }
         if fmt.get(i) == Some(&b'*') {
-            return Err("a * field width needs a second argument".into());
+            return Err(PrintfError::Invalid(
+                "a * field width needs a second argument".into(),
+            ));
         }
         while let Some(d) = fmt.get(i).filter(|b| b.is_ascii_digit()) {
             spec.width = spec
@@ -292,7 +397,9 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
         if fmt.get(i) == Some(&b'.') {
             i += 1;
             if fmt.get(i) == Some(&b'*') {
-                return Err("a * precision needs a second argument".into());
+                return Err(PrintfError::Invalid(
+                    "a * precision needs a second argument".into(),
+                ));
             }
             let mut p = 0usize;
             while let Some(d) = fmt.get(i).filter(|b| b.is_ascii_digit()) {
@@ -307,17 +414,46 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
         if long {
             i += 1;
         } else if fmt.get(i).is_some_and(|b| b"hLqjzt".contains(b)) {
-            return Err("a length modifier changes the argument type".into());
+            return Err(PrintfError::Invalid(
+                "a length modifier changes the argument type".into(),
+            ));
         }
         let Some(&conv) = fmt.get(i) else {
-            return Err("the format ends inside a conversion".into());
+            return Err(PrintfError::Invalid(
+                "the format ends inside a conversion".into(),
+            ));
         };
         i += 1;
         if used {
-            return Err("a second conversion has no argument".into());
+            return Err(PrintfError::Invalid(
+                "a second conversion has no argument".into(),
+            ));
         }
         used = true;
         let start = out.len();
+
+        // C's snprintf fails for a width or precision an int cannot hold;
+        // below that, refuse a conversion whose width or precision alone
+        // makes the output too long, before making any of it.
+        let prec = spec.prec.unwrap_or(0);
+        if spec.width > i32::MAX as usize || prec > i32::MAX as usize {
+            return Err(PrintfError::Invalid(
+                "the field width or precision is too large for an int".into(),
+            ));
+        }
+        let prec_len = match conv {
+            b'd' | b'i' | b'u' | b'o' | b'x' | b'X' | b'e' | b'E' | b'f' | b'F' | b'a' | b'A' => {
+                prec
+            }
+            b'g' | b'G' if spec.alt => prec,
+            _ => 0,
+        };
+        if out.len().saturating_add(spec.width.max(prec_len)) > max_len {
+            return Err(PrintfError::TooLong);
+        }
+        if matches!(conv, b'g' | b'G') && !spec.alt {
+            spec.prec = spec.prec.map(|p| p.min(G_MAX_PRECISION));
+        }
 
         match (conv, arg) {
             (b'd' | b'i' | b'u' | b'o' | b'x' | b'X', Arg::Int(v)) if !long => {
@@ -325,7 +461,9 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
             }
             (b'c', Arg::Int(v)) if !long => {
                 if spec.zero {
-                    return Err("the 0 flag is undefined for %c".into());
+                    return Err(PrintfError::Invalid(
+                        "the 0 flag is undefined for %c".into(),
+                    ));
                 }
                 // The int is converted to unsigned char.
                 let body = [v as u8];
@@ -334,16 +472,16 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
             (b'e' | b'E' | b'f' | b'F' | b'g' | b'G', Arg::Double(v)) => {
                 out.extend(format_double(&spec, conv, v));
             }
-            (b'a' | b'A', Arg::Double(_)) => return Err("%a is not supported".into()),
+            (b'a' | b'A', Arg::Double(v)) => out.extend(format_hex(&spec, conv == b'A', v)),
             _ => {
-                return Err(format!(
+                return Err(PrintfError::Invalid(format!(
                     "%{} does not take the {} argument",
                     conv as char,
                     match arg {
                         Arg::Int(_) => "int",
                         Arg::Double(_) => "double",
                     }
-                ));
+                )));
             }
         }
         conversion = Some((start..out.len(), conv));
@@ -358,7 +496,9 @@ fn sprintf_marked(fmt: &[u8], arg: Arg) -> Result<(Vec<u8>, Option<Conversion>),
 /// is not one.
 pub(crate) fn plain_minus_signs(fmt: &str, text: &str) -> Vec<usize> {
     // Digits fills only a `.*` precision, which writes no text of its own.
-    let p = parse_axis_format(fmt, 0);
+    let Ok(p) = parse_axis_format(fmt, 0) else {
+        return Vec::new();
+    };
     // The Format's own text either side of its conversion is the same for
     // any value, so formatting zero finds it.
     let arg = if p.integ {
@@ -366,7 +506,7 @@ pub(crate) fn plain_minus_signs(fmt: &str, text: &str) -> Vec<usize> {
     } else {
         Arg::Double(0.0)
     };
-    let Ok((zero, Some((span, conv)))) = sprintf_marked(&p.fmt, arg) else {
+    let Ok((zero, Some((span, conv)))) = sprintf_marked(&p.fmt, arg, BUFF_LEN) else {
         return Vec::new();
     };
     // %c writes a byte of the value, not a number.
@@ -506,6 +646,86 @@ fn format_double(spec: &Spec, conv: u8, v: f64) -> Vec<u8> {
         }
     };
     pad(spec, prefix, body.as_bytes(), spec.zero)
+}
+
+/// `%a` and `%A` of a `double`, as C11 specifies them (7.21.6.1) and, where
+/// it leaves a choice, as the macOS C library writes them: a leading
+/// hexadecimal digit of 1 (0 for zero), subnormal values normalized, the
+/// fraction correctly rounded to the precision (a tie to even, where the
+/// macOS library rounds a tie down), a carry kept in the leading digit
+/// (`0x2p+3`), and a binary exponent of at least one digit.
+fn format_hex(spec: &Spec, upper: bool, v: f64) -> Vec<u8> {
+    let prefix: Vec<u8> = [
+        sign_prefix(spec, v.is_sign_negative()),
+        if upper { b"0X" } else { b"0x" },
+    ]
+    .concat();
+    let bits = v.abs().to_bits();
+    let (mut lead, mut frac, exp) = if bits == 0 {
+        (0u64, 0u64, 0i64)
+    } else {
+        let biased = (bits >> 52) as i64;
+        let mant = bits & ((1u64 << 52) - 1);
+        if biased == 0 {
+            // Shift the leading set bit into the implicit place.
+            let shift = mant.leading_zeros() as i64 - 11;
+            (1, (mant << shift) & ((1u64 << 52) - 1), -1022 - shift)
+        } else {
+            (1, mant, biased - 1023)
+        }
+    };
+    // Thirteen hexadecimal digits hold the 52 bits of the fraction.
+    let ndig = match spec.prec {
+        None => {
+            let mut n = 13;
+            while n > 0 && frac & 0xf == 0 {
+                frac >>= 4;
+                n -= 1;
+            }
+            frac <<= 4 * (13 - n);
+            n
+        }
+        Some(p) => p,
+    };
+    let mut digits = String::new();
+    if ndig < 13 {
+        let drop = 4 * (13 - ndig) as u32;
+        let rem = frac & ((1u64 << drop) - 1);
+        let mut keep = frac >> drop;
+        // Correctly rounded in the default rounding mode, as C11 requires
+        // (7.21.6.1): a tie goes to the even last digit, which is the
+        // leading digit when no others are kept.
+        let half = 1u64 << (drop - 1);
+        let last_odd = if ndig == 0 {
+            lead & 1 == 1
+        } else {
+            keep & 1 == 1
+        };
+        if rem > half || (rem == half && last_odd) {
+            keep += 1;
+            if ndig == 0 || keep >> (4 * ndig) != 0 {
+                lead += 1;
+                keep = 0;
+            }
+        }
+        if ndig > 0 {
+            digits = format!("{keep:0ndig$x}");
+        }
+    } else {
+        digits = format!("{frac:013x}");
+        digits.push_str(&"0".repeat(ndig - 13));
+    }
+    let point = if !digits.is_empty() || spec.alt {
+        "."
+    } else {
+        ""
+    };
+    let sign = if exp < 0 { '-' } else { '+' };
+    let mut body = format!("{lead}{point}{digits}p{sign}{}", exp.unsigned_abs());
+    if upper {
+        body = body.to_ascii_uppercase();
+    }
+    pad(spec, &prefix, body.as_bytes(), spec.zero)
 }
 
 /// The decimal exponent of `a` written with `decimals` digits after the
@@ -760,6 +980,260 @@ fn round_to_f64(mant: u64, sticky: bool, exp2: i64) -> f64 {
 mod tests {
     use super::*;
 
+    /// `%a` and `%A`: the macOS C library's results (`snprintf` at the C
+    /// library's reference build), each value given by its bits, except at
+    /// an exact tie, which C11 rounds to even and the macOS library rounds
+    /// down; those four are marked.
+    #[test]
+    fn hexadecimal_matches_c11_and_the_macos_c_library() {
+        let cases: &[(&str, u64, &str)] = &[
+            ("%a", 0x0000000000000000, "0x0p+0"),
+            ("%a", 0x8000000000000000, "-0x0p+0"),
+            ("%a", 0x3ff0000000000000, "0x1p+0"),
+            ("%a", 0x4050500000000000, "0x1.05p+6"),
+            ("%a", 0x3fb999999999999a, "0x1.999999999999ap-4"),
+            ("%a", 0xc004000000000000, "-0x1.4p+1"),
+            ("%a", 0x000012688b70e62b, "0x1.2688b70e62bp-1030"),
+            ("%a", 0x0000000000000001, "0x1p-1074"),
+            ("%a", 0x7fefffffffffffff, "0x1.fffffffffffffp+1023"),
+            ("%a", 0x3fd5555555555555, "0x1.5555555555555p-2"),
+            ("%a", 0x3fefffffffffffff, "0x1.fffffffffffffp-1"),
+            ("%a", 0x402ff00000000000, "0x1.ffp+3"),
+            ("%a", 0x3ff0800000000000, "0x1.08p+0"),
+            ("%a", 0x3ff1800000000000, "0x1.18p+0"),
+            ("%a", 0x3ff8000000000000, "0x1.8p+0"),
+            ("%a", 0x3fffff8000000000, "0x1.fff8p+0"),
+            ("%A", 0x0000000000000000, "0X0P+0"),
+            ("%A", 0x8000000000000000, "-0X0P+0"),
+            ("%A", 0x3ff0000000000000, "0X1P+0"),
+            ("%A", 0x4050500000000000, "0X1.05P+6"),
+            ("%A", 0x3fb999999999999a, "0X1.999999999999AP-4"),
+            ("%A", 0xc004000000000000, "-0X1.4P+1"),
+            ("%A", 0x000012688b70e62b, "0X1.2688B70E62BP-1030"),
+            ("%A", 0x0000000000000001, "0X1P-1074"),
+            ("%A", 0x7fefffffffffffff, "0X1.FFFFFFFFFFFFFP+1023"),
+            ("%A", 0x3fd5555555555555, "0X1.5555555555555P-2"),
+            ("%A", 0x3fefffffffffffff, "0X1.FFFFFFFFFFFFFP-1"),
+            ("%A", 0x402ff00000000000, "0X1.FFP+3"),
+            ("%A", 0x3ff0800000000000, "0X1.08P+0"),
+            ("%A", 0x3ff1800000000000, "0X1.18P+0"),
+            ("%A", 0x3ff8000000000000, "0X1.8P+0"),
+            ("%A", 0x3fffff8000000000, "0X1.FFF8P+0"),
+            ("%.0a", 0x0000000000000000, "0x0p+0"),
+            ("%.0a", 0x8000000000000000, "-0x0p+0"),
+            ("%.0a", 0x3ff0000000000000, "0x1p+0"),
+            ("%.0a", 0x4050500000000000, "0x1p+6"),
+            ("%.0a", 0x3fb999999999999a, "0x2p-4"),
+            ("%.0a", 0xc004000000000000, "-0x1p+1"),
+            ("%.0a", 0x000012688b70e62b, "0x1p-1030"),
+            ("%.0a", 0x0000000000000001, "0x1p-1074"),
+            ("%.0a", 0x7fefffffffffffff, "0x2p+1023"),
+            ("%.0a", 0x3fd5555555555555, "0x1p-2"),
+            ("%.0a", 0x3fefffffffffffff, "0x2p-1"),
+            ("%.0a", 0x402ff00000000000, "0x2p+3"),
+            ("%.0a", 0x3ff0800000000000, "0x1p+0"),
+            ("%.0a", 0x3ff1800000000000, "0x1p+0"),
+            ("%.0a", 0x3ff8000000000000, "0x2p+0"), /* tie; macOS 0x1p+0 */
+            ("%.0a", 0x3fffff8000000000, "0x2p+0"),
+            ("%.1a", 0x0000000000000000, "0x0.0p+0"),
+            ("%.1a", 0x8000000000000000, "-0x0.0p+0"),
+            ("%.1a", 0x3ff0000000000000, "0x1.0p+0"),
+            ("%.1a", 0x4050500000000000, "0x1.0p+6"),
+            ("%.1a", 0x3fb999999999999a, "0x1.ap-4"),
+            ("%.1a", 0xc004000000000000, "-0x1.4p+1"),
+            ("%.1a", 0x000012688b70e62b, "0x1.2p-1030"),
+            ("%.1a", 0x0000000000000001, "0x1.0p-1074"),
+            ("%.1a", 0x7fefffffffffffff, "0x2.0p+1023"),
+            ("%.1a", 0x3fd5555555555555, "0x1.5p-2"),
+            ("%.1a", 0x3fefffffffffffff, "0x2.0p-1"),
+            ("%.1a", 0x402ff00000000000, "0x2.0p+3"),
+            ("%.1a", 0x3ff0800000000000, "0x1.0p+0"),
+            ("%.1a", 0x3ff1800000000000, "0x1.2p+0"), /* tie; macOS 0x1.1p+0 */
+            ("%.1a", 0x3ff8000000000000, "0x1.8p+0"),
+            ("%.1a", 0x3fffff8000000000, "0x2.0p+0"),
+            ("%.3a", 0x0000000000000000, "0x0.000p+0"),
+            ("%.3a", 0x8000000000000000, "-0x0.000p+0"),
+            ("%.3a", 0x3ff0000000000000, "0x1.000p+0"),
+            ("%.3a", 0x4050500000000000, "0x1.050p+6"),
+            ("%.3a", 0x3fb999999999999a, "0x1.99ap-4"),
+            ("%.3a", 0xc004000000000000, "-0x1.400p+1"),
+            ("%.3a", 0x000012688b70e62b, "0x1.269p-1030"),
+            ("%.3a", 0x0000000000000001, "0x1.000p-1074"),
+            ("%.3a", 0x7fefffffffffffff, "0x2.000p+1023"),
+            ("%.3a", 0x3fd5555555555555, "0x1.555p-2"),
+            ("%.3a", 0x3fefffffffffffff, "0x2.000p-1"),
+            ("%.3a", 0x402ff00000000000, "0x1.ff0p+3"),
+            ("%.3a", 0x3ff0800000000000, "0x1.080p+0"),
+            ("%.3a", 0x3ff1800000000000, "0x1.180p+0"),
+            ("%.3a", 0x3ff8000000000000, "0x1.800p+0"),
+            ("%.3a", 0x3fffff8000000000, "0x2.000p+0"), /* tie; macOS 0x1.fffp+0 */
+            ("%.20a", 0x0000000000000000, "0x0.00000000000000000000p+0"),
+            ("%.20a", 0x8000000000000000, "-0x0.00000000000000000000p+0"),
+            ("%.20a", 0x3ff0000000000000, "0x1.00000000000000000000p+0"),
+            ("%.20a", 0x4050500000000000, "0x1.05000000000000000000p+6"),
+            ("%.20a", 0x3fb999999999999a, "0x1.999999999999a0000000p-4"),
+            ("%.20a", 0xc004000000000000, "-0x1.40000000000000000000p+1"),
+            (
+                "%.20a",
+                0x000012688b70e62b,
+                "0x1.2688b70e62b000000000p-1030",
+            ),
+            (
+                "%.20a",
+                0x0000000000000001,
+                "0x1.00000000000000000000p-1074",
+            ),
+            (
+                "%.20a",
+                0x7fefffffffffffff,
+                "0x1.fffffffffffff0000000p+1023",
+            ),
+            ("%.20a", 0x3fd5555555555555, "0x1.55555555555550000000p-2"),
+            ("%.20a", 0x3fefffffffffffff, "0x1.fffffffffffff0000000p-1"),
+            ("%.20a", 0x402ff00000000000, "0x1.ff000000000000000000p+3"),
+            ("%.20a", 0x3ff0800000000000, "0x1.08000000000000000000p+0"),
+            ("%.20a", 0x3ff1800000000000, "0x1.18000000000000000000p+0"),
+            ("%.20a", 0x3ff8000000000000, "0x1.80000000000000000000p+0"),
+            ("%.20a", 0x3fffff8000000000, "0x1.fff80000000000000000p+0"),
+            ("%20a", 0x0000000000000000, "              0x0p+0"),
+            ("%20a", 0x8000000000000000, "             -0x0p+0"),
+            ("%20a", 0x3ff0000000000000, "              0x1p+0"),
+            ("%20a", 0x4050500000000000, "           0x1.05p+6"),
+            ("%20a", 0x3fb999999999999a, "0x1.999999999999ap-4"),
+            ("%20a", 0xc004000000000000, "           -0x1.4p+1"),
+            ("%20a", 0x000012688b70e62b, "0x1.2688b70e62bp-1030"),
+            ("%20a", 0x0000000000000001, "           0x1p-1074"),
+            ("%20a", 0x7fefffffffffffff, "0x1.fffffffffffffp+1023"),
+            ("%20a", 0x3fd5555555555555, "0x1.5555555555555p-2"),
+            ("%20a", 0x3fefffffffffffff, "0x1.fffffffffffffp-1"),
+            ("%20a", 0x402ff00000000000, "           0x1.ffp+3"),
+            ("%20a", 0x3ff0800000000000, "           0x1.08p+0"),
+            ("%20a", 0x3ff1800000000000, "           0x1.18p+0"),
+            ("%20a", 0x3ff8000000000000, "            0x1.8p+0"),
+            ("%20a", 0x3fffff8000000000, "         0x1.fff8p+0"),
+            ("%-20a|", 0x0000000000000000, "0x0p+0              |"),
+            ("%-20a|", 0x8000000000000000, "-0x0p+0             |"),
+            ("%-20a|", 0x3ff0000000000000, "0x1p+0              |"),
+            ("%-20a|", 0x4050500000000000, "0x1.05p+6           |"),
+            ("%-20a|", 0x3fb999999999999a, "0x1.999999999999ap-4|"),
+            ("%-20a|", 0xc004000000000000, "-0x1.4p+1           |"),
+            ("%-20a|", 0x000012688b70e62b, "0x1.2688b70e62bp-1030|"),
+            ("%-20a|", 0x0000000000000001, "0x1p-1074           |"),
+            ("%-20a|", 0x7fefffffffffffff, "0x1.fffffffffffffp+1023|"),
+            ("%-20a|", 0x3fd5555555555555, "0x1.5555555555555p-2|"),
+            ("%-20a|", 0x3fefffffffffffff, "0x1.fffffffffffffp-1|"),
+            ("%-20a|", 0x402ff00000000000, "0x1.ffp+3           |"),
+            ("%-20a|", 0x3ff0800000000000, "0x1.08p+0           |"),
+            ("%-20a|", 0x3ff1800000000000, "0x1.18p+0           |"),
+            ("%-20a|", 0x3ff8000000000000, "0x1.8p+0            |"),
+            ("%-20a|", 0x3fffff8000000000, "0x1.fff8p+0         |"),
+            ("%+a", 0x0000000000000000, "+0x0p+0"),
+            ("%+a", 0x8000000000000000, "-0x0p+0"),
+            ("%+a", 0x3ff0000000000000, "+0x1p+0"),
+            ("%+a", 0x4050500000000000, "+0x1.05p+6"),
+            ("%+a", 0x3fb999999999999a, "+0x1.999999999999ap-4"),
+            ("%+a", 0xc004000000000000, "-0x1.4p+1"),
+            ("%+a", 0x000012688b70e62b, "+0x1.2688b70e62bp-1030"),
+            ("%+a", 0x0000000000000001, "+0x1p-1074"),
+            ("%+a", 0x7fefffffffffffff, "+0x1.fffffffffffffp+1023"),
+            ("%+a", 0x3fd5555555555555, "+0x1.5555555555555p-2"),
+            ("%+a", 0x3fefffffffffffff, "+0x1.fffffffffffffp-1"),
+            ("%+a", 0x402ff00000000000, "+0x1.ffp+3"),
+            ("%+a", 0x3ff0800000000000, "+0x1.08p+0"),
+            ("%+a", 0x3ff1800000000000, "+0x1.18p+0"),
+            ("%+a", 0x3ff8000000000000, "+0x1.8p+0"),
+            ("%+a", 0x3fffff8000000000, "+0x1.fff8p+0"),
+            ("% a", 0x0000000000000000, " 0x0p+0"),
+            ("% a", 0x8000000000000000, "-0x0p+0"),
+            ("% a", 0x3ff0000000000000, " 0x1p+0"),
+            ("% a", 0x4050500000000000, " 0x1.05p+6"),
+            ("% a", 0x3fb999999999999a, " 0x1.999999999999ap-4"),
+            ("% a", 0xc004000000000000, "-0x1.4p+1"),
+            ("% a", 0x000012688b70e62b, " 0x1.2688b70e62bp-1030"),
+            ("% a", 0x0000000000000001, " 0x1p-1074"),
+            ("% a", 0x7fefffffffffffff, " 0x1.fffffffffffffp+1023"),
+            ("% a", 0x3fd5555555555555, " 0x1.5555555555555p-2"),
+            ("% a", 0x3fefffffffffffff, " 0x1.fffffffffffffp-1"),
+            ("% a", 0x402ff00000000000, " 0x1.ffp+3"),
+            ("% a", 0x3ff0800000000000, " 0x1.08p+0"),
+            ("% a", 0x3ff1800000000000, " 0x1.18p+0"),
+            ("% a", 0x3ff8000000000000, " 0x1.8p+0"),
+            ("% a", 0x3fffff8000000000, " 0x1.fff8p+0"),
+            ("%#.0a", 0x0000000000000000, "0x0.p+0"),
+            ("%#.0a", 0x8000000000000000, "-0x0.p+0"),
+            ("%#.0a", 0x3ff0000000000000, "0x1.p+0"),
+            ("%#.0a", 0x4050500000000000, "0x1.p+6"),
+            ("%#.0a", 0x3fb999999999999a, "0x2.p-4"),
+            ("%#.0a", 0xc004000000000000, "-0x1.p+1"),
+            ("%#.0a", 0x000012688b70e62b, "0x1.p-1030"),
+            ("%#.0a", 0x0000000000000001, "0x1.p-1074"),
+            ("%#.0a", 0x7fefffffffffffff, "0x2.p+1023"),
+            ("%#.0a", 0x3fd5555555555555, "0x1.p-2"),
+            ("%#.0a", 0x3fefffffffffffff, "0x2.p-1"),
+            ("%#.0a", 0x402ff00000000000, "0x2.p+3"),
+            ("%#.0a", 0x3ff0800000000000, "0x1.p+0"),
+            ("%#.0a", 0x3ff1800000000000, "0x1.p+0"),
+            ("%#.0a", 0x3ff8000000000000, "0x2.p+0"), /* tie; macOS 0x1.p+0 */
+            ("%#.0a", 0x3fffff8000000000, "0x2.p+0"),
+            ("%020a", 0x0000000000000000, "0x000000000000000p+0"),
+            ("%020a", 0x8000000000000000, "-0x00000000000000p+0"),
+            ("%020a", 0x3ff0000000000000, "0x000000000000001p+0"),
+            ("%020a", 0x4050500000000000, "0x000000000001.05p+6"),
+            ("%020a", 0x3fb999999999999a, "0x1.999999999999ap-4"),
+            ("%020a", 0xc004000000000000, "-0x000000000001.4p+1"),
+            ("%020a", 0x000012688b70e62b, "0x1.2688b70e62bp-1030"),
+            ("%020a", 0x0000000000000001, "0x000000000001p-1074"),
+            ("%020a", 0x7fefffffffffffff, "0x1.fffffffffffffp+1023"),
+            ("%020a", 0x3fd5555555555555, "0x1.5555555555555p-2"),
+            ("%020a", 0x3fefffffffffffff, "0x1.fffffffffffffp-1"),
+            ("%020a", 0x402ff00000000000, "0x000000000001.ffp+3"),
+            ("%020a", 0x3ff0800000000000, "0x000000000001.08p+0"),
+            ("%020a", 0x3ff1800000000000, "0x000000000001.18p+0"),
+            ("%020a", 0x3ff8000000000000, "0x0000000000001.8p+0"),
+            ("%020a", 0x3fffff8000000000, "0x0000000001.fff8p+0"),
+            ("%'a", 0x0000000000000000, "0x0p+0"),
+            ("%'a", 0x8000000000000000, "-0x0p+0"),
+            ("%'a", 0x3ff0000000000000, "0x1p+0"),
+            ("%'a", 0x4050500000000000, "0x1.05p+6"),
+            ("%'a", 0x3fb999999999999a, "0x1.999999999999ap-4"),
+            ("%'a", 0xc004000000000000, "-0x1.4p+1"),
+            ("%'a", 0x000012688b70e62b, "0x1.2688b70e62bp-1030"),
+            ("%'a", 0x0000000000000001, "0x1p-1074"),
+            ("%'a", 0x7fefffffffffffff, "0x1.fffffffffffffp+1023"),
+            ("%'a", 0x3fd5555555555555, "0x1.5555555555555p-2"),
+            ("%'a", 0x3fefffffffffffff, "0x1.fffffffffffffp-1"),
+            ("%'a", 0x402ff00000000000, "0x1.ffp+3"),
+            ("%'a", 0x3ff0800000000000, "0x1.08p+0"),
+            ("%'a", 0x3ff1800000000000, "0x1.18p+0"),
+            ("%'a", 0x3ff8000000000000, "0x1.8p+0"),
+            ("%'a", 0x3fffff8000000000, "0x1.fff8p+0"),
+            ("%la", 0x0000000000000000, "0x0p+0"),
+            ("%la", 0x8000000000000000, "-0x0p+0"),
+            ("%la", 0x3ff0000000000000, "0x1p+0"),
+            ("%la", 0x4050500000000000, "0x1.05p+6"),
+            ("%la", 0x3fb999999999999a, "0x1.999999999999ap-4"),
+            ("%la", 0xc004000000000000, "-0x1.4p+1"),
+            ("%la", 0x000012688b70e62b, "0x1.2688b70e62bp-1030"),
+            ("%la", 0x0000000000000001, "0x1p-1074"),
+            ("%la", 0x7fefffffffffffff, "0x1.fffffffffffffp+1023"),
+            ("%la", 0x3fd5555555555555, "0x1.5555555555555p-2"),
+            ("%la", 0x3fefffffffffffff, "0x1.fffffffffffffp-1"),
+            ("%la", 0x402ff00000000000, "0x1.ffp+3"),
+            ("%la", 0x3ff0800000000000, "0x1.08p+0"),
+            ("%la", 0x3ff1800000000000, "0x1.18p+0"),
+            ("%la", 0x3ff8000000000000, "0x1.8p+0"),
+            ("%la", 0x3fffff8000000000, "0x1.fff8p+0"),
+        ];
+        let failures: Vec<String> = cases
+            .iter()
+            .filter_map(|&(fmt, bits, want)| {
+                let got = sprintf_double(fmt, f64::from_bits(bits));
+                (got != want).then(|| format!("{fmt} {bits:#018x}: got {got}, want {want}"))
+            })
+            .collect();
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
     // In log form the signs are the value's, before "10", and the
     // exponent's, and not the `-` of the escape sequence after "10".
     #[test]
@@ -797,25 +1271,32 @@ mod tests {
 
     #[test]
     fn parse_rewrites_as_c_does() {
-        let p = parse_axis_format("%.*G", 5);
+        let p = parse_axis_format("%.*G", 5).unwrap();
         assert_eq!(p.fmt, b"%.5G");
         assert!(!p.integ && !p.log);
 
-        let p = parse_axis_format("%+-&#8.2f  ", 7);
+        let p = parse_axis_format("%+-&#8.2f  ", 7).unwrap();
         assert_eq!(p.fmt, b"%-#8.2f");
         assert!(p.log && p.sign && !p.integ);
 
         // Without '&' the Format is unchanged apart from trailing space.
-        let p = parse_axis_format("%+ d ", 7);
+        let p = parse_axis_format("%+ d ", 7).unwrap();
         assert_eq!(p.fmt, b"%+ d");
         assert!(p.integ && !p.log);
     }
 
     #[test]
-    fn undefined_formats_are_errors() {
-        for f in ["%g %g", "%*g", "%.*g %d", "%ld", "%s", "%Lg", "%a", "%"] {
+    fn formats_the_c_library_refuses_are_errors() {
+        for f in ["%g %g", "%*g", "%.*g %d", "%ld", "%s", "%Lg", "%"] {
             let err = format_value(f, 7, 1.5).expect_err(f);
             assert_eq!(err.code(), ErrorCode::Fmter, "{f}");
+            assert!(
+                err.message().starts_with(&format!(
+                    "astFormat: The Format string \"{f}\" cannot be used"
+                )),
+                "{f}: {}",
+                err.message()
+            );
         }
     }
 

@@ -161,8 +161,12 @@ fn check_remove_regions() {
         .expect("ICRS converts to Galactic");
     let gin = tran2(&fs, &iin);
     let mut fs2 = FrameSet::new(Box::new(sf2.clone()));
-    fs2.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(sf2))
-        .unwrap();
+    fs2.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(2).unwrap()),
+        Box::new(sf2),
+    )
+    .unwrap();
     let fs = fs2
         .convert_to(&mut reg, &[])
         .unwrap()
@@ -257,7 +261,7 @@ fn check_null_region() {
 
     let f1 = SkyFrame::new(SkySystem::Icrs);
     let f2 = frame2();
-    let f3 = CmpFrame::new(Box::new(f1), Box::new(f2.clone()));
+    let f3 = CmpFrame::new(Box::new(f1), Box::new(f2.clone())).unwrap();
     let mut nr = NullRegionBuilder::new(f3).build().unwrap();
     check_dump(
         &nr,
@@ -903,7 +907,7 @@ fn check_circle() {
     let cir2 = edge_circle(&aa, &p1, &e, Some(&unc_aa));
     assert_eq!(overlap(&cir1, &cir2), 0, "Circle: Error 17");
     assert_eq!(overlap(&cir2, &cir1), 0, "Circle: Error 18");
-    let f3 = CmpFrame::new(Box::new(SkyFrame::new(SkySystem::Icrs)), Box::new(frame2()));
+    let f3 = CmpFrame::new(Box::new(SkyFrame::new(SkySystem::Icrs)), Box::new(frame2())).unwrap();
     let cir2 = edge_circle(&f3, &[1.0, 1.0, 3.0, 3.0], &[1.01, 1.02, 3.01, 3.01], None);
     assert_eq!(overlap(&cir2, &cir2), 5, "Circle: Error 18b");
 
@@ -1009,7 +1013,7 @@ fn check_ellipse() {
     let (picked, _) = pick_axes(&SkyFrame::new(SkySystem::Fk4), &[1]).unwrap();
     let mut spec = SpecFrame::new(SpecSystem::Wavelen);
     spec.set_unit(1, "um").unwrap();
-    let mut f3 = CmpFrame::new(picked, Box::new(spec));
+    let mut f3 = CmpFrame::new(picked, Box::new(spec)).unwrap();
     f3.perm_axes(&[2, 1]).unwrap();
     let ell1 = form0(&f3, [0.0, 0.0], [0.001, 0.001], [-0.001, 0.001], None);
     let pts = [
@@ -1370,7 +1374,7 @@ fn check_interval() {
     let frm1 = SkyFrame::unset_system();
     let mut frm2 = SpecFrame::unset_system();
     frm2.set_unit(1, "Angstrom").unwrap();
-    let frm3 = CmpFrame::new(Box::new(frm1.clone()), Box::new(frm2.clone()));
+    let frm3 = CmpFrame::new(Box::new(frm1.clone()), Box::new(frm2.clone())).unwrap();
     assert_eq!(frm1.internal_unit(1).unwrap(), "rad", "InternalUnit 1");
     assert_eq!(frm1.internal_unit(2).unwrap(), "rad", "InternalUnit 2");
     assert_eq!(frm2.internal_unit(1).unwrap(), "Angstrom", "InternalUnit 3");
@@ -1767,7 +1771,7 @@ fn check_box_sky() {
 
     fs.add_frame(
         FrameRef::Current,
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         Box::new(box1.clone()),
     )
     .unwrap();
@@ -1807,7 +1811,7 @@ fn check_box_sky() {
         .unwrap()
         .build()
         .unwrap();
-    let mut frm3 = CmpFrame::new(Box::new(box1), Box::new(box2));
+    let mut frm3 = CmpFrame::new(Box::new(box1), Box::new(box2)).unwrap();
     frm3.perm_axes(&[2, 3, 1]).unwrap();
     // External axis 1 is the Box on the sky and external axis 2 the Box on
     // the spectrum, so these are C's "System(1)" and "System(2)".

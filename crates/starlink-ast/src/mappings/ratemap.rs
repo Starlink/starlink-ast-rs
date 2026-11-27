@@ -9,9 +9,7 @@ use std::fmt;
 
 use crate::coords::{Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{
-    MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
-};
+use crate::serial::{MappingToNode, Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::unit::UnitMap;
 use super::{DynMapping, Mapping};
@@ -425,7 +423,7 @@ impl Mapping for RateMap {
         // Result: nin=self.nin=1, nout=other.nout=1 → UnitMap(1).
         let result_nax = if self_inv { 1 } else { self.intrinsic_nin() };
 
-        Some(Box::new(UnitMap::new(result_nax)))
+        Some(Box::new(UnitMap::within_limit(result_nax)))
     }
 
     fn rate(&self, at: &[f64], ax1: usize, ax2: usize) -> AstResult<f64> {
@@ -626,31 +624,49 @@ impl Serializable for RateMap {
         let node = &whole.section("RateMap");
         let base = read_mapping_base(whole);
 
-        // Read 0-based axis indices (default 0 = first axis).
-        let iin = node.get_int("IIn", 0) as usize;
-        let iout = node.get_int("IOut", 0) as usize;
-
-        // Convert to 1-based.
-        let ax1 = iout + 1;
-        let ax2 = iin + 1;
+        // The 0-based axis indices, the first by default.
+        let iin = node.get_int("IIn", 0);
+        let iout = node.get_int("IOut", 0);
 
         // The encapsulated mapping's invert flag. The Mapping part has an
         // `Inv` item of its own, the Mapping's inverse flag, which the
         // RateMap part keeps apart.
         let inv_snapshot = node.get_int("Inv", 0) != 0;
 
-        // Read the encapsulated mapping. Keep it in the orientation it was
-        // serialized in — its own `Invert` flag is independent of the
+        // The encapsulated Mapping, which must be there and be a Mapping,
+        // and whose input and output the axis indices must select, as
+        // ratemap.c `astLoadRateMap` checks. It is kept in the orientation
+        // it was serialized in — its own `Invert` flag is independent of the
         // RateMap's `Inv` direction record (C `ratemap.c` stores `this->map`
         // as loaded and `this->invert` separately; the two are only
         // reconciled transiently inside Transform/Rate via astSetInvert, not
         // at load). Flipping the child here to match `inv_snapshot` would
         // discard the child's stored orientation — losing, e.g., an inner
         // `CmpMap`'s `Invert=1` on round-trip.
-        let map_node = node
-            .get_object("Map")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "RateMap: missing Map"))?;
-        let map = mapping_from_node(map_node)?;
+        let class = &whole.class;
+        let (map, nin, nout) = crate::serial::check_loaded_map(
+            node.get_object("Map"),
+            inv_snapshot,
+            class,
+            "encapsulated Mapping",
+        )?;
+        for (which, index, n) in [("input", iin, nin), ("output", iout, nout)] {
+            if !usize::try_from(index).is_ok_and(|i| i < n) {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoad({class}): The {which} axis ({}) read for a {class} is out of \
+                         range - it should be in the range 1 to {n}.",
+                        index.saturating_add(1)
+                    ),
+                ));
+            }
+        }
+        crate::serial::check_loaded_coords(class, &base, nin, 1)?;
+
+        // The 1-based output and input axes.
+        let ax1 = iout as usize + 1;
+        let ax2 = iin as usize + 1;
 
         let mut rm = Self {
             map,

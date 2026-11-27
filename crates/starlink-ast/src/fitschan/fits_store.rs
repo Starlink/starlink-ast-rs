@@ -389,7 +389,9 @@ fn is_longitude_ctype(ctype: &str) -> bool {
     if b.len() <= 4 || b[4] != b'-' {
         return false;
     }
-    ct.starts_with("RA--") || ct.starts_with("AZ--") || &ct[1..4] == "LON" || &ct[2..4] == "LN"
+    // Compared in bytes, as C's `strncmp` compares them, so a character of
+    // more than one byte in the name cannot split a slice.
+    ct.starts_with("RA--") || ct.starts_with("AZ--") || &b[1..4] == b"LON" || &b[2..4] == b"LN"
 }
 
 /// Check if a CTYPE value represents a celestial latitude axis.
@@ -402,7 +404,7 @@ fn is_latitude_ctype(ctype: &str) -> bool {
     if b.len() <= 4 || b[4] != b'-' {
         return false;
     }
-    ct.starts_with("DEC-") || ct.starts_with("EL--") || &ct[1..4] == "LAT" || &ct[2..4] == "LT"
+    ct.starts_with("DEC-") || ct.starts_with("EL--") || &b[1..4] == b"LAT" || &b[2..4] == b"LT"
 }
 
 /// Check if a CTYPE value represents a spectral axis.
@@ -411,10 +413,20 @@ fn is_latitude_ctype(ctype: &str) -> bool {
 /// "VELO", "VRAD", "WAVE", "AWAV", "BETA".
 pub(crate) fn is_spectral_ctype(ctype: &str) -> bool {
     let ct = ctype.trim().to_uppercase();
-    let prefix = if ct.len() >= 4 { &ct[..4] } else { &ct };
+    let b = ct.as_bytes();
+    let prefix = b.get(..4).unwrap_or(b);
     matches!(
         prefix,
-        "FREQ" | "ENER" | "WAVN" | "VOPT" | "ZOPT" | "VELO" | "VRAD" | "WAVE" | "AWAV" | "BETA"
+        b"FREQ"
+            | b"ENER"
+            | b"WAVN"
+            | b"VOPT"
+            | b"ZOPT"
+            | b"VELO"
+            | b"VRAD"
+            | b"WAVE"
+            | b"AWAV"
+            | b"BETA"
     )
 }
 

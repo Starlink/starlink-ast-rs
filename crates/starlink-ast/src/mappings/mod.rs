@@ -57,6 +57,25 @@ mod sphmap;
 pub use sphmap::SphMap;
 mod cmpmap;
 pub use cmpmap::{CmpMap, Composition, Decomposition};
+
+/// C's check of the numbers of inputs and outputs a Mapping is made with
+/// (mapping.c `astInitMapping`): neither may exceed
+/// [`MXAXES`](crate::constants::MXAXES).
+pub(crate) fn check_init_mapping(class: &str, nin: usize, nout: usize) -> AstResult<()> {
+    let limit = crate::constants::MXAXES;
+    let (code, which, n) = if nin > limit {
+        (ErrorCode::Badni, "input", nin)
+    } else if nout > limit {
+        (ErrorCode::Badno, "output", nout)
+    } else {
+        return Ok(());
+    };
+    Err(AstError::new(
+        code,
+        format!("astInitMapping({class}): Bad number of {which} coordinates ({n})."),
+    )
+    .with_context(format!("This number should not exceed {limit}.")))
+}
 mod tranmap;
 pub use tranmap::TranMap;
 mod ratemap;

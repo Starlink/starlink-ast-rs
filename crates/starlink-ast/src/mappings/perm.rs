@@ -116,6 +116,7 @@ impl PermMap {
     /// ```
     #[doc(alias = "astPermMap")]
     pub fn new(inperm: &[i64], outperm: &[i64], constants: &[f64]) -> AstResult<Self> {
+        crate::mappings::check_init_mapping("PermMap", inperm.len(), outperm.len())?;
         // No validation is performed on the perm-array values, mirroring C
         // astInitPermMap (permmap.c:2849-2903), which stores the supplied
         // arrays verbatim. A positive entry referring to a non-existent axis,
@@ -125,6 +126,9 @@ impl PermMap {
         // from a C native dump, which may legitimately carry such entries
         // (e.g. a negative entry with no Nconst), round-trip and transform as
         // C does.
+        // C stores an array of no elements as no array at all (`astStore`
+        // of zero bytes gives NULL), so it is the null permutation, which a
+        // dump writes as `OutCpy = 1` or `InCpy = 1`.
         Ok(Self {
             outperm: outperm.to_vec(),
             inperm: inperm.to_vec(),
@@ -134,8 +138,8 @@ impl PermMap {
             ident: None,
             id: Default::default(),
             mapping_flags: crate::mappings::MappingFlags::default(),
-            out_is_copy: false,
-            in_is_copy: false,
+            out_is_copy: outperm.is_empty(),
+            in_is_copy: inperm.is_empty(),
             perm_split: None,
         })
     }
@@ -206,8 +210,8 @@ impl PermMap {
         let in_vec = inperm.map_or_else(|| null_perm(nin, nout), <[i64]>::to_vec);
         let out_vec = outperm.map_or_else(|| null_perm(nout, nin), <[i64]>::to_vec);
         let mut map = Self::new(&in_vec, &out_vec, constants)?;
-        map.in_is_copy = inperm.is_none();
-        map.out_is_copy = outperm.is_none();
+        map.in_is_copy |= inperm.is_none();
+        map.out_is_copy |= outperm.is_none();
         Ok(map)
     }
 
@@ -263,7 +267,7 @@ impl PermMap {
         // Collapse to a UnitMap when both transforms are null and the
         // dimensions match (permmap.c:1350).
         if out_is_copy && in_is_copy && nin == nout {
-            return Some(Box::new(UnitMap::new(nin)));
+            return Some(Box::new(UnitMap::within_limit(nin)));
         }
 
         // C `simpler` (permmap.c:1362-1373) for a lone PermMap: the Invert flag
@@ -468,8 +472,8 @@ impl PermMap {
 /// Materialize C's "null permutation" for a perm array of length `len`
 /// whose values index a coordinate space of size `max` (1-based, 0 = bad).
 ///
-/// Mirrors C `permmap.c::PERMVAL` (155): a NULL permutation array supplies
-/// `PERMVAL(NULL, i, max) = (i < max ? i : -1)` — the coordinate with the
+/// Mirrors C `permmap.c::PERMVAL`: a NULL permutation array supplies
+/// `PERMVAL(NULL, i, max) = (i < max ? i : max)` — the coordinate with the
 /// same index where it exists, and "bad" otherwise. In the Rust public
 /// encoding this is `i+1` for `i < max`, and `0` (bad) for the surplus
 /// entries. For a square PermMap (`len == max`) this is just the identity.
@@ -528,6 +532,14 @@ fn add_constant(constants: &mut Vec<f64>, val: f64) -> usize {
     constants.len() - 1
 }
 
+/// The constant a negative permutation entry `p` names, or `None` when
+/// there is no such constant, which is a bad value as in the C library.
+fn named_constant(constants: &[f64], p: i64) -> Option<f64> {
+    usize::try_from(-(p + 1))
+        .ok()
+        .and_then(|i| constants.get(i).copied())
+}
+
 /// Compose two permutation arrays in series (first then second).
 ///
 /// For each element `p2` in `second_perm`:
@@ -554,10 +566,14 @@ fn compose_perms(
             // BAD
             result_perm.push(0);
         } else if p2 < 0 {
-            // Constant from second
-            let val = second_constants[(-p2 - 1) as usize];
-            let idx = add_constant(&mut result_constants, val);
-            result_perm.push(-((idx + 1) as i64));
+            // Constant from second, or bad if there is no such constant.
+            match named_constant(second_constants, p2) {
+                Some(val) => {
+                    let idx = add_constant(&mut result_constants, val);
+                    result_perm.push(-((idx + 1) as i64));
+                }
+                None => result_perm.push(0),
+            }
         } else {
             // p2 > 0: look up in first_perm
             let first_idx = (p2 - 1) as usize;
@@ -570,10 +586,15 @@ fn compose_perms(
                     // BAD propagates
                     result_perm.push(0);
                 } else if p1 < 0 {
-                    // Constant from first
-                    let val = first_constants[(-p1 - 1) as usize];
-                    let idx = add_constant(&mut result_constants, val);
-                    result_perm.push(-((idx + 1) as i64));
+                    // Constant from first, or bad if there is no such
+                    // constant.
+                    match named_constant(first_constants, p1) {
+                        Some(val) => {
+                            let idx = add_constant(&mut result_constants, val);
+                            result_perm.push(-((idx + 1) as i64));
+                        }
+                        None => result_perm.push(0),
+                    }
                 } else {
                     // Pass through input coordinate
                     result_perm.push(p1);
@@ -763,21 +784,25 @@ impl Mapping for PermMap {
         // transform is consulted. The returned Mapping is a UnitMap with one
         // output per selected input, and the returned output indices are the
         // `inperm` values of the selected inputs. The split fails if a
-        // selected input is fed by a constant (negative entry) or if two
-        // selected inputs are fed by the same output.
+        // selected input is fed by a constant or a bad value rather than an
+        // output, or if two selected inputs are fed by the same output.
         if self.perm_split() {
             // C `PERMVAL(inp, iin, npout)` reduced to a zero-based output
-            // index (mirroring the macro at permmap.c:146). When the parent's
+            // index (mirroring the macro in permmap.c). When the parent's
             // inverse array is the NULL identity (`in_is_copy`), C uses
-            // `iin < npout ? iin : -1`; otherwise it reads the stored value
-            // verbatim. The Rust inperm is 1-based (positive) / 0 (bad) /
-            // negative (constant), so translate to C's 0-based encoding where
-            // a "bad" entry is a non-negative index >= npout.
+            // `iin < npout ? iin : npout`, a bad value; otherwise it reads the
+            // stored value verbatim. The Rust inperm is 1-based (positive) /
+            // 0 (bad) / negative (constant), so translate to C's 0-based
+            // encoding, where a bad entry is a non-negative index >= npout.
             let in_is_copy = self.in_is_copy;
             let mut result: Vec<i64> = Vec::with_capacity(in_axes.len());
             for &iin in in_axes {
                 let permval: i64 = if in_is_copy {
-                    if iin < npout { iin as i64 } else { -1 }
+                    if iin < npout {
+                        iin as i64
+                    } else {
+                        npout as i64
+                    }
                 } else {
                     let p = inp[iin];
                     if p > 0 {
@@ -793,8 +818,9 @@ impl Mapping for PermMap {
                     }
                 };
 
-                // C: a constant-fed input cannot be split (permmap.c:1643).
-                if permval < 0 {
+                // C: an input fed by a constant or a bad value, rather than
+                // an output, cannot be split (permmap.c MapSplit).
+                if permval < 0 || permval >= npout as i64 {
                     return Ok(None);
                 }
                 // C: fail if this output already feeds an earlier picked input
@@ -805,7 +831,7 @@ impl Mapping for PermMap {
                 result.push(permval);
             }
             let out_idx: Vec<usize> = result.iter().map(|&v| v as usize).collect();
-            let unit: DynMapping = Box::new(UnitMap::new(in_axes.len()));
+            let unit: DynMapping = Box::new(UnitMap::new(in_axes.len())?);
             return Ok(Some((out_idx, unit)));
         }
 
@@ -935,8 +961,7 @@ impl Mapping for PermMap {
             for &p in self_outperm {
                 if p > 0 {
                     new_outperm.push(p);
-                } else if p < 0 {
-                    let val = self.constants[(-p - 1) as usize];
+                } else if let Some(val) = named_constant(&self.constants, p) {
                     let idx = add_constant(&mut merged_constants, val);
                     new_outperm.push(-((idx + 1) as i64));
                 } else {
@@ -946,8 +971,7 @@ impl Mapping for PermMap {
             for &p in other_outperm {
                 if p > 0 {
                     new_outperm.push(p + n1_in as i64); // offset by first's input count
-                } else if p < 0 {
-                    let val = other_perm.constants[(-p - 1) as usize];
+                } else if let Some(val) = named_constant(&other_perm.constants, p) {
                     let idx = add_constant(&mut merged_constants, val);
                     new_outperm.push(-((idx + 1) as i64));
                 } else {
@@ -960,8 +984,7 @@ impl Mapping for PermMap {
             for &p in self_inperm {
                 if p > 0 {
                     new_inperm.push(p);
-                } else if p < 0 {
-                    let val = self.constants[(-p - 1) as usize];
+                } else if let Some(val) = named_constant(&self.constants, p) {
                     let idx = add_constant(&mut merged_constants, val);
                     new_inperm.push(-((idx + 1) as i64));
                 } else {
@@ -971,8 +994,7 @@ impl Mapping for PermMap {
             for &p in other_inperm {
                 if p > 0 {
                     new_inperm.push(p + n1_out as i64); // offset by first's output count
-                } else if p < 0 {
-                    let val = other_perm.constants[(-p - 1) as usize];
+                } else if let Some(val) = named_constant(&other_perm.constants, p) {
                     let idx = add_constant(&mut merged_constants, val);
                     new_inperm.push(-((idx + 1) as i64));
                 } else {
@@ -1004,11 +1026,7 @@ impl Mapping for PermMap {
             }
 
             // Get effective matrix for the MatrixMap.
-            let a = if other_inv {
-                other_mat.inverse_matrix()?.clone()
-            } else {
-                other_mat.forward_matrix().clone()
-            };
+            let a = other_mat.expanded(other_inv)?;
 
             // Dimensions: PermMap output feeds MatrixMap input.
             // a.ncols() == perm_nout must hold.
@@ -1038,7 +1056,7 @@ impl Mapping for PermMap {
             // Result = A * P (MatrixMap applied after PermMap).
             let product = super::matrix::mtr_product(&a, &perm_mat);
             if super::matrix::is_identity_matrix_pub(&product) {
-                return Some(Box::new(UnitMap::new(product.nrows())));
+                return Some(Box::new(UnitMap::within_limit(product.nrows())));
             }
             // A dimension-changing PermMap (perm_nin != perm_nout) produces a
             // rectangular product matrix. A rectangular MatrixMap has no
@@ -1123,7 +1141,10 @@ impl Mapping for PermMap {
                     }
                 } else if p < 0 {
                     let cidx = (-p - 1) as usize;
-                    let old_val = new_constants[cidx];
+                    // No such constant is a bad value, which stays bad.
+                    let Some(old_val) = named_constant(&new_constants, p) else {
+                        continue;
+                    };
                     if super::helpers::is_bad(old_val) {
                         continue;
                     }
@@ -1227,7 +1248,7 @@ impl Mapping for PermMap {
             .all(|(i, &p)| p == (i as i64 + 1));
 
         if fwd_is_identity && inv_is_identity {
-            Some(Box::new(UnitMap::new(nin)))
+            Some(Box::new(UnitMap::within_limit(nin)))
         } else {
             // Build a new PermMap.  The constructor validates the arrays.
             match PermMap::new(&inv_perm_merged, &fwd_perm_merged, &merged_constants) {
@@ -1528,9 +1549,50 @@ impl Serializable for PermMap {
             v
         };
 
+        // Every constant referred to must exist (permmap.c `astLoadPermMap`).
+        // A PermMap with no constants may refer to them, and uses bad for
+        // each. A dump names its constants `Con1` to `Con99999`, so one that
+        // claims more was not written by AST.
+        const MXLOADCON: i64 = 99999;
+        let class = &whole.class;
+        let nconst = node.get_int("Nconst", 0).max(0);
+        let neg = inperm
+            .iter()
+            .chain(&outperm)
+            .copied()
+            .min()
+            .unwrap_or(0)
+            .min(0);
+        if neg < -i64::from(i32::MAX) {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadPermMap({class}): The PermMap read has an invalid coordinate \
+                     permutation index ({neg})."
+                ),
+            ));
+        } else if nconst > MXLOADCON {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadPermMap({class}): The PermMap read has {nconst} constants, but a \
+                     dump cannot hold more than {MXLOADCON}."
+                ),
+            ));
+        } else if nconst > 0 && neg < -nconst {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadPermMap({class}): The PermMap read refers to constant number {}, \
+                     but the number of constants is {nconst}.",
+                    -neg
+                ),
+            ));
+        }
+
         // A constant that is absent, or written unset because it is bad,
         // reads as bad (permmap.c Load).
-        let nconst = node.get_int("Nconst", 0).max(0) as usize;
+        let nconst = nconst as usize;
         let mut constants = Vec::with_capacity(nconst);
         for i in 0..nconst {
             let key = format!("Con{}", i + 1);

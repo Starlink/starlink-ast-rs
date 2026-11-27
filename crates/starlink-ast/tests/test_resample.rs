@@ -77,7 +77,7 @@ fn test1_unitmap_is_the_identity() {
     ] {
         let mut out = vec![0.0; 30];
         run(
-            &UnitMap::new(1),
+            &UnitMap::new(1).unwrap(),
             &[1],
             &[30],
             &input,
@@ -103,7 +103,7 @@ fn test1_smoothing_schemes_keep_constant_data() {
     for interp in [Interp::Gauss, Interp::Somb, Interp::BlockAve] {
         let mut out = vec![0.0; 30];
         run(
-            &UnitMap::new(1),
+            &UnitMap::new(1).unwrap(),
             &[1],
             &[30],
             &input,
@@ -129,7 +129,7 @@ fn test2_integer_shift_nearest() {
         .collect();
     let mut out = vec![0.0; 19 * 19];
     run(
-        &ShiftMap::new(vec![1.0, 1.0]),
+        &ShiftMap::new(vec![1.0, 1.0]).unwrap(),
         &[1, 1],
         &[20, 20],
         &input,
@@ -156,7 +156,7 @@ fn test3_half_pixel_shift_linear() {
         .collect();
     let mut out = vec![0.0; 18 * 18];
     run(
-        &ShiftMap::new(vec![0.5, 0.5]),
+        &ShiftMap::new(vec![0.5, 0.5]).unwrap(),
         &[1, 1],
         &[20, 20],
         &input,
@@ -192,7 +192,7 @@ fn test4_kernels_keep_constant_data() {
     ] {
         let mut out = vec![0.0; 16 * 16];
         run(
-            &ShiftMap::new(vec![0.5, 0.5]),
+            &ShiftMap::new(vec![0.5, 0.5]).unwrap(),
             &[1, 1],
             &[20, 20],
             &input,
@@ -217,7 +217,7 @@ fn test5_integer_data() {
     for interp in [Interp::Nearest, Interp::Linear] {
         let mut out = vec![0; 20];
         run(
-            &UnitMap::new(1),
+            &UnitMap::new(1).unwrap(),
             &[1],
             &[20],
             &input,
@@ -234,7 +234,7 @@ fn test5_integer_data() {
     }
     let mut out = vec![0; 19];
     run(
-        &ShiftMap::new(vec![1.0]),
+        &ShiftMap::new(vec![1.0]).unwrap(),
         &[1],
         &[20],
         &input,
@@ -256,7 +256,7 @@ fn test6_float_data() {
     for interp in [Interp::Nearest, Interp::Linear] {
         let mut out = vec![0.0_f32; 20];
         run(
-            &UnitMap::new(1),
+            &UnitMap::new(1).unwrap(),
             &[1],
             &[20],
             &input,
@@ -283,7 +283,7 @@ fn test7_bad_pixels() {
     };
     let mut out = vec![0.0; 20];
     let nbad = run(
-        &UnitMap::new(1),
+        &UnitMap::new(1).unwrap(),
         &[1],
         &[20],
         &input,
@@ -301,7 +301,7 @@ fn test7_bad_pixels() {
 
     let mut out = vec![0.0; 18];
     let nbad = run(
-        &ShiftMap::new(vec![0.5]),
+        &ShiftMap::new(vec![0.5]).unwrap(),
         &[1],
         &[20],
         &input,
@@ -324,7 +324,7 @@ fn test8_variances() {
     let mut out = vec![0.0; 20];
     let mut out_var = vec![0.0; 20];
     run(
-        &UnitMap::new(1),
+        &UnitMap::new(1).unwrap(),
         &[1],
         &[20],
         &input,
@@ -347,7 +347,7 @@ fn test9_no_bad_leaves_bad_output_alone() {
     input[9] = BAD_VALUE;
     let mut out = vec![-999.0; 20];
     let nbad = run(
-        &UnitMap::new(1),
+        &UnitMap::new(1).unwrap(),
         &[1],
         &[20],
         &input,
@@ -395,7 +395,7 @@ fn user_flags_reach_the_callers_interpolator_and_kernel() {
     let data = [1.0, 2.0, 3.0, 4.0];
     let mut out = [0.0; 4];
     run(
-        &UnitMap::new(1),
+        &UnitMap::new(1).unwrap(),
         &[1],
         &[4],
         &data,
@@ -417,7 +417,7 @@ fn user_flags_reach_the_callers_interpolator_and_kernel() {
     };
     let mut out = [0.0; 4];
     run(
-        &UnitMap::new(1),
+        &UnitMap::new(1).unwrap(),
         &[1],
         &[4],
         &data,
@@ -441,7 +441,7 @@ fn user_flags_reach_the_callers_interpolator_and_kernel() {
         (flags, &mut flagged),
     ] {
         run(
-            &ShiftMap::new(vec![0.3]),
+            &ShiftMap::new(vec![0.3]).unwrap(),
             &[1],
             &[4],
             &data,

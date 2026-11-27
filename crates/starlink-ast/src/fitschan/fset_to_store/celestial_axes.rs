@@ -55,7 +55,7 @@ use super::world_axes::world_axes;
 /// and preserved by `TidyOffsets`), so it deliberately fails this test
 /// and falls through to `OtherAxes`, which emits the linear OFLN / OFLT
 /// axis description.
-fn is_a_sky_frame(frame: &dyn Frame) -> bool {
+pub(super) fn is_a_sky_frame(frame: &dyn Frame) -> bool {
     frame.as_any().is::<SkyFrame>() && frame.domain() == "SKY"
 }
 
@@ -124,7 +124,7 @@ fn celestial_tab(
     let nwcs = wcsfrm.naxes();
     let tab = args.tab;
     if tab.tab_ok <= 0 {
-        return Ok(Box::new(UnitMap::new(nwcs)));
+        return Ok(Box::new(UnitMap::new(nwcs)?));
     }
     let dim = args.dim;
     let ret = with_table(tab, |table| {
@@ -177,7 +177,7 @@ fn celestial_tab(
         }
 
         // WCS to psi, then psi to IWC by subtracting CRVAL.
-        let shift = crate::mappings::ShiftMap::new(vec![-crval[0], -crval[1]]);
+        let shift = crate::mappings::ShiftMap::new(vec![-crval[0], -crval[1]])?;
         let tmap0: DynMapping =
             Box::new(CmpMap::new(axes.map, Box::new(shift), Composition::Series)?);
         args.store.crval[fits_ilon] = Some(crval[0]);
@@ -209,7 +209,7 @@ fn celestial_tab(
         let tmap2: DynMapping = if nwcs > 2 {
             Box::new(CmpMap::new(
                 tmap0,
-                Box::new(UnitMap::new(nwcs - 2)),
+                Box::new(UnitMap::new(nwcs - 2)?),
                 Composition::Parallel,
             )?)
         } else {
@@ -236,7 +236,7 @@ fn celestial_tab(
     })?;
     match ret {
         Some(ret) => (Box::new(ret) as DynMapping).simplify(),
-        None => Ok(Box::new(UnitMap::new(nwcs))),
+        None => Ok(Box::new(UnitMap::new(nwcs)?)),
     }
 }
 
@@ -270,7 +270,7 @@ pub(crate) fn celestial_axes(mut args: CelestialAxesArgs<'_>) -> AstResult<DynMa
 
     let (ilon, ilat) = match (ilon, ilat) {
         (Some(a), Some(b)) => (a, b),
-        _ => return Ok(Box::new(UnitMap::new(nwcs))),
+        _ => return Ok(Box::new(UnitMap::new(nwcs)?)),
     };
 
     // Re-locate the SkyFrame for downstream property reads. We can't
@@ -281,7 +281,7 @@ pub(crate) fn celestial_axes(mut args: CelestialAxesArgs<'_>) -> AstResult<DynMa
     let (skyframe_holder, _) = wcsfrm.primary_frame(ilon);
     let skyfrm = match skyframe_holder.as_any().downcast_ref::<SkyFrame>() {
         Some(s) => s,
-        None => return Ok(Box::new(UnitMap::new(nwcs))),
+        None => return Ok(Box::new(UnitMap::new(nwcs)?)),
     };
 
     // Step 2: pixel→wcs mapping, simplified. Mirrors C:5092-5094.
@@ -329,7 +329,7 @@ pub(crate) fn celestial_axes(mut args: CelestialAxesArgs<'_>) -> AstResult<DynMa
     let (skyfid_lon_rad, skyfid_lat_rad) =
         match get_fiducial_wcs(&wcsmap_full, post.as_ref(), ilon, ilat)? {
             Some((a, b)) => (a, b),
-            None => return Ok(Box::new(UnitMap::new(nwcs))),
+            None => return Ok(Box::new(UnitMap::new(nwcs)?)),
         };
 
     // Normalize: replace BAD with 0, snap near-zero angles, then
@@ -472,7 +472,7 @@ pub(crate) fn celestial_axes(mut args: CelestialAxesArgs<'_>) -> AstResult<DynMa
             args.tab.tab_ok,
         )? {
             Some(tperm) => Some(tperm),
-            None => return Ok(Box::new(UnitMap::new(nwcs))),
+            None => return Ok(Box::new(UnitMap::new(nwcs)?)),
         }
     } else {
         None
@@ -539,7 +539,7 @@ pub(crate) fn split_map(
         for (i, v) in iwc_origin.iter_mut().enumerate() {
             *v = if i == ilon { -*v } else { 0.0 };
         }
-        let mapa = ShiftMap::new(iwc_origin);
+        let mapa = ShiftMap::new(iwc_origin)?;
         let map1: DynMapping = Box::new(CmpMap::new(
             map.clone_box(),
             Box::new(mapa.clone()),
@@ -606,7 +606,7 @@ pub(crate) fn split_map(
     w1[ilat] = -p0[ilat];
     let map1: DynMapping = Box::new(CmpMap::new(
         map.clone_box(),
-        Box::new(ShiftMap::new(w1)),
+        Box::new(ShiftMap::new(w1)?),
         Composition::Series,
     )?);
     Ok(Some((map1, map2, map3)))
@@ -626,6 +626,12 @@ pub(crate) fn split_map(
 /// count via the inserts handled inside `lift_wcsmap_to_full_axes`.
 pub(crate) fn split_map2(mapping: &dyn Mapping) -> Option<(DynMapping, DynMapping, DynMapping)> {
     if let Some(cmp) = mapping.as_any().downcast_ref::<CmpMap>() {
+        // A CmpMap that may not be simplified (one with an Ident, say) is
+        // one Mapping to C's astMapList, which then leaves it whole, so it
+        // is taken to contain no usable WcsMap (fitschan.c SplitMap2).
+        if cmp.do_not_simplify() {
+            return None;
+        }
         if cmp.composition() == Composition::Series {
             return split_map2_series(cmp);
         }
@@ -641,8 +647,8 @@ pub(crate) fn split_map2(mapping: &dyn Mapping) -> Option<(DynMapping, DynMappin
             return None;
         }
         let nax = wm.nin();
-        let pre: DynMapping = Box::new(UnitMap::new(nax));
-        let post: DynMapping = Box::new(UnitMap::new(nax));
+        let pre: DynMapping = Box::new(UnitMap::within_limit(nax));
+        let post: DynMapping = Box::new(UnitMap::within_limit(nax));
         return Some((pre, Box::new(wm.clone()) as DynMapping, post));
     }
     None
@@ -699,12 +705,12 @@ fn split_map2_parallel(cmp: &CmpMap) -> Option<(DynMapping, DynMapping, DynMappi
             } else {
                 // No WcsMap in this branch — pass-through on these axes.
                 pre_branches.push(branch.clone_box());
-                post_branches.push(Box::new(UnitMap::new(branch_axes)));
+                post_branches.push(Box::new(UnitMap::within_limit(branch_axes)));
             }
         } else {
             // Past the WcsMap branch — also pass-through.
             pre_branches.push(branch.clone_box());
-            post_branches.push(Box::new(UnitMap::new(branch_axes)));
+            post_branches.push(Box::new(UnitMap::within_limit(branch_axes)));
         }
         axis_offset += branch_axes;
     }
@@ -769,8 +775,11 @@ fn extract_child_effective(cmp: &CmpMap, first: bool) -> DynMapping {
 }
 
 fn push_or_recurse(m: DynMapping, kind: Composition, out: &mut Vec<DynMapping>) {
+    // As C's astMapList, which leaves whole a CmpMap that may not be
+    // simplified.
     if let Some(cmp) = m.as_any().downcast_ref::<CmpMap>()
         && cmp.composition() == kind
+        && !cmp.do_not_simplify()
     {
         if kind == Composition::Series {
             flatten_series(cmp, out);
@@ -905,7 +914,7 @@ fn build_wcs_to_iwc(
 
     // ShiftMap from IWC → PPC: subtract ppcfid (so when PPC == IWC,
     // i.e. ppcfid is zero, this is identity). Mirrors C:5210.
-    let shift_iwc_to_ppc = ShiftMap::new(ppcfid.to_vec());
+    let shift_iwc_to_ppc = ShiftMap::new(ppcfid.to_vec())?;
 
     // MatrixMap that scales PPC degrees to radians on the celestial
     // axes only. Mirrors C:5212-5219 (diagonal MatrixMap with form=1
@@ -1096,7 +1105,7 @@ fn embed_native_rotation(
     let embedded: DynMapping = if nax_rem > 0 {
         Box::new(CmpMap::new(
             rot_2d,
-            Box::new(UnitMap::new(nax_rem)),
+            Box::new(UnitMap::new(nax_rem)?),
             Composition::Parallel,
         )?)
     } else {
@@ -1169,8 +1178,12 @@ mod tests {
         let pixel = BasicFrameBuilder::new(2).build().unwrap();
         let other = BasicFrameBuilder::new(2).build().unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(other))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(other),
+        )
+        .unwrap();
         let dim = vec![Some(100.0), Some(100.0)];
         let mut wperm = vec![0_usize, 1];
         let mut store = FitsStore::new(2);

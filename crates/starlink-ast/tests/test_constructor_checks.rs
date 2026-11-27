@@ -37,7 +37,7 @@ fn forward_only() -> DynMapping {
 /// transformation and the second the inverse.
 #[test]
 fn a_tranmap_needs_its_two_directions() {
-    let unit = || -> DynMapping { Box::new(UnitMap::new(1)) };
+    let unit = || -> DynMapping { Box::new(UnitMap::new(1).unwrap()) };
     assert_eq!(code(TranMap::new(inverse_only(), unit())), ErrorCode::Intrd);
     assert_eq!(code(TranMap::new(unit(), forward_only())), ErrorCode::Intrd);
     assert!(TranMap::new(forward_only(), inverse_only()).is_ok());

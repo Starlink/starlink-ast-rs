@@ -44,9 +44,9 @@ fn mappings() -> Vec<(&'static str, Box<dyn Mapping>)> {
     )
     .unwrap();
     vec![
-        ("UnitMap", Box::new(UnitMap::new(2))),
+        ("UnitMap", Box::new(UnitMap::new(2).unwrap())),
         ("ZoomMap", Box::new(ZoomMap::new(2, 2.0).unwrap())),
-        ("ShiftMap", Box::new(ShiftMap::new(vec![1.0, 2.0]))),
+        ("ShiftMap", Box::new(ShiftMap::new(vec![1.0, 2.0]).unwrap())),
         (
             "WinMap",
             Box::new(WinMap::new(&[1.0, -2.0], &[2.0, 3.0]).unwrap()),
@@ -90,7 +90,7 @@ fn mappings() -> Vec<(&'static str, Box<dyn Mapping>)> {
             Box::new(
                 TranMap::new(
                     Box::new(ZoomMap::new(2, 2.0).unwrap()),
-                    Box::new(UnitMap::new(2)),
+                    Box::new(UnitMap::new(2).unwrap()),
                 )
                 .unwrap(),
             ),
@@ -100,7 +100,7 @@ fn mappings() -> Vec<(&'static str, Box<dyn Mapping>)> {
             Box::new(
                 CmpMap::new(
                     Box::new(ZoomMap::new(1, 2.0).unwrap()),
-                    Box::new(UnitMap::new(1)),
+                    Box::new(UnitMap::new(1).unwrap()),
                     Composition::Parallel,
                 )
                 .unwrap(),

@@ -81,9 +81,13 @@ fn from_mjd(frame: &TimeFrame, mjd: f64) -> AstResult<f64> {
 
 /// A TimeOrigin value with a unit, in the default units of the System, or
 /// `None` if the unit does not convert to them.
-// C: timeframe.c ToUnits, whose error SetAttrib discards for this form.
+// C: timeframe.c ToUnits, whose error SetAttrib discards for this form,
+// the unit parser's included.
 fn origin_in_default_units(frame: &TimeFrame, unit: &str, value: f64) -> AstResult<Option<f64>> {
-    let Some(map) = unit_mapper(unit, frame.system().default_units()) else {
+    let Some(map) = unit_mapper(unit, frame.system().default_units())
+        .ok()
+        .flatten()
+    else {
         return Ok(None);
     };
     let origin = tran1(map.as_ref(), value)?;
@@ -161,7 +165,7 @@ pub(crate) fn timeframe_get(frame: &TimeFrame, name: &str) -> AstResult<String> 
         "aligntimescale" => Ok(frame.align_timescale().as_str().to_string()),
         "clocklat" => frame.attr_get("obslat"),
         "clocklon" => frame.attr_get("obslon"),
-        "timeorigin" => Ok(fmt_double(frame.time_origin_cur())),
+        "timeorigin" => Ok(fmt_double(frame.time_origin_cur()?)),
         "ltoffset" => Ok(fmt_double(frame.lt_offset())),
         "timescale" => Ok(frame.timescale().as_str().to_string()),
         _ => frame_get(frame, name),

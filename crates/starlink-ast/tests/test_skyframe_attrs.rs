@@ -214,7 +214,8 @@ fn own_axes_have_no_is_latitude() {
                 .build()
                 .unwrap(),
         ),
-    );
+    )
+    .unwrap();
     assert_eq!(Frame::top(&cmp, 2).unwrap(), f64::MAX);
     assert_eq!(Frame::top(&sky, 2).unwrap(), std::f64::consts::FRAC_PI_2);
 }

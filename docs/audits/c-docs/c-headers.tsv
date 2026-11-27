@@ -421,7 +421,7 @@ function	astPolygon	astPolygon	polygon.c	21dbbdb79206475c
 class	PolyMap	PolyMap	polymap.c	a7dbeabe6ac92baf
 function	astPolyCoeffs	astPolyCoeffs	polymap.c	8bad35a29b14b7b1
 function	astPolyTran	astPolyTran	polymap.c	35a36017cd3eeb35
-attribute	IterInverse	IterInverse	polymap.c	32ff7b52b6d21069
+attribute	IterInverse	IterInverse	polymap.c	31d2dd9dbe0cde40
 attribute	NiterInverse	NiterInverse	polymap.c	66de6777ad49d181
 attribute	TolInverse	TolInverse	polymap.c	f9f848550827ff55
 function	astPolyMap	astPolyMap	polymap.c	470d52d08054ff95
@@ -497,7 +497,7 @@ class	SphMap	SphMap	sphmap.c	b61d786458d31f99
 attribute	UnitRadius	UnitRadius	sphmap.c	8d56d4ca5ef46180
 attribute	PolarLong	PolarLong	sphmap.c	e2424554b0710275
 function	astSphMap	astSphMap	sphmap.c	c224e71c4fd3eb59
-class	SplineMap	SplineMap	splinemap.c	bc81efed040b2943
+class	SplineMap	SplineMap	splinemap.c	477175c48ade52e2
 function	astSplineCoeffs	astSplineCoeffs	splinemap.c	65035ab9a1014335
 function	astSplineKnots	astSplineKnots	splinemap.c	000e06170c5dfd3d
 attribute	InvNiter	InvNiter	splinemap.c	bd9d0cbb5df0fc10

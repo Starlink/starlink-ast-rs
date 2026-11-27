@@ -2,6 +2,13 @@
 
 ## Revision history
 
+- **2026-11-23 (rev 44)**: "NaN accepted on input, `BAD_VALUE` always on
+  output" is the rule for transforms. Frame geometry (`distance`, `angle`,
+  `offset`, `resolve` and the like) tests a coordinate for `BAD_VALUE`
+  alone, as the C library does, so an infinite or NaN coordinate is a
+  number and a result can be NaN: a NaN arises inside the geometry from
+  infinities, where C passes it on, and cannot be told from one given as
+  input (stage 4 of the `fe26cc9b` sync).
 - **2026-11-19 (rev 43)**: The logging and SVG graphics backends,
   `LogGrf` and `SvgGrf`, live in `starlink-ast` (module `grf`, beside the
   `Grf` trait), not in `ast-plugins`: they need no other crate, the
@@ -1061,7 +1068,9 @@ impl Region for PointList { .. }
   `astSetPoints`. `starlink-ast-capi` is still a stub, so those entry points are
   not written yet.)*
 - **`BAD_VALUE` = `-f64::MAX`**, bit-identical to `AST__BAD` (unchanged
-  from v1). NaN accepted on input, `BAD_VALUE` always on output.
+  from v1). NaN accepted on input, `BAD_VALUE` always on output, for
+  transforms; Frame geometry treats NaN and infinity as numbers, as C
+  does *(rev 44)*.
 - **Transform signature** *(rev 34)*:
   `fn transform_into(&self, pts: Points<'_>, forward: bool, out: PointsMut<'_>) -> AstResult<()>`
   is the method each class implements, and

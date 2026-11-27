@@ -1,0 +1,10 @@
+NAXIS1  =                  100
+NAXIS2  =                  512 / length of data axis 2
+CTYPE1  = 'RA---TAN'           / Gnomonic projection
+CTYPE2  = 'DÿÿÿÿÿÿÿÿEC--TAN'           / Gnomonic rpojection
+CRVAL1  =                  Inf
+CRVAL2  =                1e300
+CRVA 2L =               45.000 /rojecti / MJD of observation                             
+CRPTA2                   0
+LONGPOLE=         tial pole
+END

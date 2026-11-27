@@ -13,6 +13,8 @@
 
 #[path = "../common/mod.rs"]
 mod common;
+#[path = "../fuzz_entry/mod.rs"]
+mod fuzz_entry;
 
 #[path = "../test_channel.rs"]
 mod test_channel;
@@ -20,6 +22,8 @@ mod test_channel;
 mod test_channel_dump_oracle;
 #[path = "../test_channel_read_oracle.rs"]
 mod test_channel_read_oracle;
+#[path = "../test_corruptinput.rs"]
+mod test_corruptinput;
 #[path = "../test_deferred_fixtures.rs"]
 mod test_deferred_fixtures;
 #[path = "../test_fitstable.rs"]
@@ -36,6 +40,12 @@ mod test_frame_load;
 mod test_frameset_variant_link_oracle;
 #[path = "../test_frameset_variants_oracle.rs"]
 mod test_frameset_variants_oracle;
+#[path = "../test_framesetload.rs"]
+mod test_framesetload;
+#[path = "../test_fuzz_regressions.rs"]
+mod test_fuzz_regressions;
+#[path = "../test_hardening_oracle.rs"]
+mod test_hardening_oracle;
 #[path = "../test_keymap.rs"]
 mod test_keymap;
 #[path = "../test_keymap_properties.rs"]
@@ -44,8 +54,12 @@ mod test_keymap_properties;
 mod test_keymap_serial;
 #[path = "../test_mapping_load.rs"]
 mod test_mapping_load;
+#[path = "../test_native_errors.rs"]
+mod test_native_errors;
 #[path = "../test_native_roundtrip_all.rs"]
 mod test_native_roundtrip_all;
+#[path = "../test_nesting_limits.rs"]
+mod test_nesting_limits;
 #[path = "../test_object_id_oracle.rs"]
 mod test_object_id_oracle;
 #[path = "../test_report.rs"]
@@ -56,6 +70,8 @@ mod test_section_load;
 mod test_serialisation;
 #[path = "../test_show_tostring_oracle.rs"]
 mod test_show_tostring_oracle;
+#[path = "../test_size_limits.rs"]
+mod test_size_limits;
 #[path = "../test_table.rs"]
 mod test_table;
 #[path = "../test_table_oracle.rs"]

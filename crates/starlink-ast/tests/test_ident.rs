@@ -84,7 +84,7 @@ fn a_blank_ident_is_set_and_written() {
 
     let one = || Box::new(BasicFrameBuilder::new(1).build().unwrap());
     let mut fs = FrameSet::new(one());
-    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(1)), one())
+    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(1).unwrap()), one())
         .unwrap();
     Frame::set_ident(&mut fs, "").unwrap();
     assert!(Frame::test_ident(&fs));

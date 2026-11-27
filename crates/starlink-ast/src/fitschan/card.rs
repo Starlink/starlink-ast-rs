@@ -11,6 +11,49 @@ use super::card_value::{scan_all, scan_double, scan_int};
 use super::format::{VALUE_MAXWIDTH, VALUE_WIDTH, encode_float, encode_float_in};
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::axis_format::{is_c_space, sprintf_double};
+use crate::text::floor_char_boundary;
+
+/// The first character of `text` that a FITS header may not hold: one that
+/// is not printable ASCII (FITS Standard 4.0, section 4.1.1).
+fn illegal_char(text: &str) -> Option<char> {
+    text.chars().find(|c| !(' '..='~').contains(c))
+}
+
+/// The error for `text`, given to or made by `method`, holding `c`.
+fn illegal_char_error(method: &str, what: &str, text: &str, c: char) -> AstError {
+    AstError::new(
+        ErrorCode::Bdfts,
+        format!(
+            "{method}(FitsChan): {what} \"{}\" holds {c:?} (U+{:04X}), but a FITS header may \
+             hold only printable ASCII characters.",
+            text.escape_debug(),
+            u32::from(c)
+        ),
+    )
+}
+
+/// Check that the keyword name given to `method`, a setter or getter, holds
+/// only printable ASCII characters, once it is cut as the C library cuts a
+/// card: at a NUL, and before the control characters that end it, such as a
+/// carriage return.
+/// A card read from a header is stored whatever it holds, as in C.
+pub(crate) fn check_card_text(card: &str, method: &str) -> AstResult<()> {
+    let card = card.split('\0').next().unwrap_or_default();
+    let card = card.trim_end_matches(|c: char| c.is_ascii_control());
+    match illegal_char(card) {
+        Some(c) => Err(illegal_char_error(method, "The FITS header card", card, c)),
+        None => Ok(()),
+    }
+}
+
+/// Check that a value or comment given to `method` for a card holds only
+/// printable ASCII characters.
+pub(crate) fn check_card_field(field: &str, method: &str) -> AstResult<()> {
+    match illegal_char(field) {
+        Some(c) => Err(illegal_char_error(method, "The text", field, c)),
+        None => Ok(()),
+    }
+}
 
 /// Length of a FITS header card in characters.
 pub(super) const FITS_CARD_LEN: usize = 80;
@@ -48,23 +91,26 @@ pub(crate) fn check_fits_name(raw_name: &str) -> Option<String> {
         return None;
     }
 
-    for &c in trimmed.as_bytes() {
-        if !is_fits_name_char(c) {
+    for c in trimmed.chars() {
+        if !(c.is_ascii() && is_fits_name_char(c as u8)) {
             // An `=` is reported as an error by C, not a warning.
-            if c == b'=' {
+            if c == '=' {
                 return None;
             }
-            if c < b' ' {
+            if c < ' ' {
                 return Some(format!(
                     "The FITS keyword name ('{trimmed}') contains an illegal \
-                     non-printing character (ascii value {c})."
+                     non-printing character (ascii value {}).",
+                    u32::from(c)
                 ));
             }
-            if c > b' ' {
+            // C reads the name byte by byte, so names the first byte of a
+            // character outside ASCII (as a negative value where `char` is
+            // signed); the port names the character.
+            if c > ' ' {
                 return Some(format!(
                     "The FITS keyword name ('{trimmed}') contains an illegal \
-                     character ('{}').",
-                    c as char
+                     character ('{c}')."
                 ));
             }
             // C's chain has no arm for a space (fitschan.c:6072-6095): it
@@ -144,9 +190,13 @@ pub(crate) fn wrap_warning_text(text: &str) -> Vec<String> {
                 c -= 1;
             }
         }
-        let nc = c - a + 1;
-        lines.push(text[a..a + nc].to_string());
-        a = c + 1;
+        // A line ends after the character holding byte `c`.
+        let mut end = c + 1;
+        while !text.is_char_boundary(end) {
+            end += 1;
+        }
+        lines.push(text[a..end].to_string());
+        a = end;
     }
     lines
 }
@@ -338,6 +388,30 @@ pub struct FitsCard {
 }
 
 impl FitsCard {
+    /// An error if the keyword, value or comment of this card, made by
+    /// `method`, holds a character a FITS header may not.
+    pub(crate) fn check_characters(&self, method: &str) -> AstResult<()> {
+        let value = match &self.value {
+            FitsValue::String(s) | FitsValue::Continue(s) | FitsValue::Comment(s) => s.as_str(),
+            _ => "",
+        };
+        for field in [
+            self.keyword.as_str(),
+            value,
+            self.comment.as_deref().unwrap_or(""),
+        ] {
+            if let Some(c) = illegal_char(field) {
+                return Err(illegal_char_error(
+                    method,
+                    &format!("The {} card would hold the text", self.keyword),
+                    field,
+                    c,
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// The card's data type, as the FitsChan
     /// [CardType](super::FitsChan::card_type) attribute gives it for the
     /// current card.
@@ -408,9 +482,11 @@ impl FitsCard {
         let (card, nc) = prepare_card(card);
         let bytes = card.as_bytes();
 
-        // Extract keyword (columns 1-8, i.e. indices 0..8).
-        let raw_name = &card[..FITS_NAME_LEN];
-        let keyword = raw_name.trim_end().to_uppercase();
+        // Extract keyword (columns 1-8, i.e. indices 0..8). A character that
+        // spans column 8 is left to the text after the name.
+        let name_end = floor_char_boundary(&card, FITS_NAME_LEN);
+        let raw_name = &card[..name_end];
+        let keyword = raw_name.trim_end().to_ascii_uppercase();
         let blank_name = keyword.is_empty();
 
         // C's `CheckFitsName` stops at the first character that is not a
@@ -439,8 +515,8 @@ impl FitsCard {
         if is_commentary {
             // C copies the characters supplied after column 8, not the
             // padding.
-            let text = if nc > FITS_NAME_LEN {
-                &card[FITS_NAME_LEN..nc]
+            let text = if nc > name_end {
+                &card[name_end..nc]
             } else {
                 ""
             };
@@ -701,7 +777,9 @@ impl FitsCard {
 /// The card padded with spaces to 80 characters, and C's `nc`, the number of
 /// characters `Split` reads: at most 80, less any non-printing characters
 /// that end them.
+/// A NUL ends the card, as it ends the C library's string.
 fn prepare_card(input: &str) -> (String, usize) {
+    let input = input.split('\0').next().unwrap_or_default();
     let truncated: String = input.chars().take(FITS_CARD_LEN).collect();
     let trimmed = truncated.trim_end_matches(|c: char| !c.is_ascii_graphic() && c != ' ');
     let nc = trimmed.len();
@@ -712,6 +790,15 @@ fn prepare_card(input: &str) -> (String, usize) {
     (card, nc)
 }
 
+/// The keyword name of `card` in its own case: its first 8 bytes, less
+/// trailing spaces, after the preparation `split` gives every card.
+pub(crate) fn raw_keyword(card: &str) -> String {
+    let (card, _) = prepare_card(card);
+    card[..floor_char_boundary(&card, FITS_NAME_LEN)]
+        .trim_end()
+        .to_string()
+}
+
 /// Parse a string value (starts with quote) from the value area.
 fn parse_string_value(
     keyword: &str,
@@ -719,13 +806,16 @@ fn parse_string_value(
     quote_pos: usize,
     is_continue: bool,
 ) -> AstResult<FitsCard> {
-    let bytes = value_area.as_bytes();
     let mut result = String::new();
-    let mut i = quote_pos + 1; // skip opening quote
+    let start = quote_pos + 1; // skip opening quote
+    // The byte index of the first character after the closing quote, or the
+    // end of the area when the closing quote ends it or is missing.
+    let mut after = value_area.len();
     let mut last_was_quote = false;
 
-    while i < bytes.len() {
-        let ch = bytes[i] as char;
+    // Character by character, so that a character of more than one byte is
+    // kept as it is.
+    for (offset, ch) in value_area[start..].char_indices() {
         if ch == '\'' {
             if last_was_quote {
                 // Two adjacent quotes → one literal quote.
@@ -736,16 +826,13 @@ fn parse_string_value(
             }
         } else {
             if last_was_quote {
-                // Single quote ended the string. 'i' points to first char after closing quote.
+                // Single quote ended the string.
+                after = start + offset;
                 break;
             }
             result.push(ch);
         }
-        i += 1;
     }
-
-    // If we ended the loop with last_was_quote true and didn't break,
-    // that means the closing quote was at the end of the area.
 
     // The value is kept as written, trailing spaces included: C's `Split`
     // stores it so, and only `astGetFitsS` (`MAKE_FGET`) strips the
@@ -753,11 +840,7 @@ fn parse_string_value(
 
     // Everything after the closing quote is potential comment area.
     // Find the '/' comment separator in the remainder.
-    let remainder = if i < bytes.len() {
-        &value_area[i..]
-    } else {
-        ""
-    };
+    let remainder = &value_area[after..];
     let comment = find_comment_in_remainder(remainder);
 
     let value = if is_continue {

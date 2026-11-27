@@ -9,9 +9,7 @@ use std::fmt;
 
 use crate::coords::{PointSet, Points, PointsMut};
 use crate::error::{AstError, AstResult, ErrorCode};
-use crate::serial::{
-    MappingToNode, Node, Serializable, mapping_from_node, read_mapping_base, write_mapping_base,
-};
+use crate::serial::{MappingToNode, Node, Serializable, read_mapping_base, write_mapping_base};
 
 use super::cmpmap::{CmpMap, Composition, Decomposition};
 use super::unit::UnitMap;
@@ -437,7 +435,7 @@ impl Mapping for TranMap {
             // Both components act on the TranMap's own inputs, so the result
             // has its number of inputs (C gives the sum of the two, fixed
             // upstream).
-            return Some(Box::new(UnitMap::new(map1.nin())));
+            return Some(Box::new(UnitMap::within_limit(map1.nin())));
         }
         let mut new = self.clone();
         new.map1 = map1;
@@ -848,15 +846,32 @@ impl Serializable for TranMap {
         let inv_a = node.get_int("InvA", 0) != 0;
         let inv_b = node.get_int("InvB", 0) != 0;
 
-        let node_a = node
-            .get_object("MapA")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "TranMap: missing MapA"))?;
-        let node_b = node
-            .get_object("MapB")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "TranMap: missing MapB"))?;
-
-        let map_a = mapping_from_node(node_a)?;
-        let map_b = mapping_from_node(node_b)?;
+        // The components, checked as tranmap.c `astLoadTranMap` checks them:
+        // they and the TranMap have the same numbers of inputs and outputs.
+        let class = &whole.class;
+        let (map_a, nin1, nout1) = crate::serial::check_loaded_map(
+            node.get_object("MapA"),
+            inv_a,
+            class,
+            "first component Mapping",
+        )?;
+        let (map_b, nin2, nout2) = crate::serial::check_loaded_map(
+            node.get_object("MapB"),
+            inv_b,
+            class,
+            "second component Mapping",
+        )?;
+        if nin1 != nin2 || nout1 != nout2 {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoad({class}): The component Mappings read for a {class} have \
+                     different numbers of inputs ({nin1} and {nin2}) or outputs ({nout1} and \
+                     {nout2})."
+                ),
+            ));
+        }
+        crate::serial::check_loaded_coords(class, &base, nin1, nout1)?;
 
         // Definedness is dynamic in C (GetTranForward/GetTranInverse
         // consult the components; the dumped base flags are always 1 for

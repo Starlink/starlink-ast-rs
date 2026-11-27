@@ -784,7 +784,7 @@ impl Mapping for ChebyMap {
 
         // The pair's input dimension depends on which direction self is used.
         let pair_nin = if self_inv { self.nout() } else { self.nin() };
-        Some(Box::new(UnitMap::new(pair_nin)))
+        Some(Box::new(UnitMap::within_limit(pair_nin)))
     }
 
     fn map_merge(
@@ -1300,8 +1300,10 @@ impl Serializable for ChebyMap {
 
         // The PolyMap part's coefficients.
         let forward =
-            crate::mappings::polymap::read_poly_terms(poly, 'F', nin, nout).unwrap_or_default();
-        let inverse = crate::mappings::polymap::read_poly_terms(poly, 'I', nout, nin);
+            crate::mappings::polymap::read_poly_terms(poly, &whole.class, 'F', nin, nout)?
+                .unwrap_or_default();
+        let inverse =
+            crate::mappings::polymap::read_poly_terms(poly, &whole.class, 'I', nout, nin)?;
 
         // Build the inner PolyMap directly (avoid re-validation of potentially
         // BAD_VALUE sentinel coefficients).

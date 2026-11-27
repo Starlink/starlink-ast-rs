@@ -75,7 +75,7 @@ fn reports_follow_the_c_library() {
     });
     assert_eq!(got, cases::ZOOM, "ZoomMap");
 
-    let mut shift = ShiftMap::new(vec![1.25]);
+    let mut shift = ShiftMap::new(vec![1.25]).unwrap();
     shift.set_report(true);
     let got = report_of(|| {
         shift.tran1(&x, true).unwrap();

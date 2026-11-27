@@ -7,7 +7,7 @@ use starlink_ast::mappings::{Mapping, UnitMap};
 
 #[test]
 fn unit_map_dimensions() {
-    let m = UnitMap::new(3);
+    let m = UnitMap::new(3).unwrap();
     assert_eq!(m.nin(), 3);
     assert_eq!(m.nout(), 3);
     assert!(!m.is_inverted());
@@ -15,7 +15,7 @@ fn unit_map_dimensions() {
 
 #[test]
 fn unit_map_forward_transform() {
-    let m = UnitMap::new(2);
+    let m = UnitMap::new(2).unwrap();
     let pts = PointSet::from_rows([[1.0, 2.0], [3.0, 4.0]]);
     let out = m.transform(&pts, true).unwrap();
     assert_eq!(out.point(0), &[1.0, 2.0]);
@@ -24,7 +24,7 @@ fn unit_map_forward_transform() {
 
 #[test]
 fn unit_map_inverse_transform() {
-    let m = UnitMap::new(2);
+    let m = UnitMap::new(2).unwrap();
     let pts = PointSet::from_rows([[5.0, 6.0]]);
     let out = m.transform(&pts, false).unwrap();
     assert_eq!(out.point(0), &[5.0, 6.0]);
@@ -32,7 +32,7 @@ fn unit_map_inverse_transform() {
 
 #[test]
 fn unit_map_bad_value_passthrough() {
-    let m = UnitMap::new(2);
+    let m = UnitMap::new(2).unwrap();
     let pts = PointSet::from_rows([[BAD_VALUE, 2.0]]);
     let out = m.transform(&pts, true).unwrap();
     assert_eq!(out.point(0), &[BAD_VALUE, 2.0]);
@@ -40,7 +40,7 @@ fn unit_map_bad_value_passthrough() {
 
 #[test]
 fn unit_map_invert_is_noop() {
-    let mut m = UnitMap::new(2);
+    let mut m = UnitMap::new(2).unwrap();
     m.invert();
     assert!(m.is_inverted());
     let pts = PointSet::from_rows([[1.0, 2.0]]);
@@ -50,7 +50,7 @@ fn unit_map_invert_is_noop() {
 
 #[test]
 fn unit_map_simplified_returns_self() {
-    let m = UnitMap::new(2);
+    let m = UnitMap::new(2).unwrap();
     let s = <dyn Mapping>::simplify(&m).unwrap();
     assert_eq!(s.nin(), 2);
     assert_eq!(s.nout(), 2);
@@ -58,7 +58,7 @@ fn unit_map_simplified_returns_self() {
 
 #[test]
 fn unit_map_rate() {
-    let m = UnitMap::new(2);
+    let m = UnitMap::new(2).unwrap();
     let r = m.rate(&[1.0, 1.0], 1, 1).unwrap();
     assert!((r - 1.0).abs() < 1e-6);
     let r = m.rate(&[1.0, 1.0], 1, 2).unwrap();
@@ -67,7 +67,7 @@ fn unit_map_rate() {
 
 #[test]
 fn unit_rate_analytical() {
-    let u = UnitMap::new(3);
+    let u = UnitMap::new(3).unwrap();
     assert_eq!(u.rate(&[1.0, 2.0, 3.0], 1, 1).unwrap(), 1.0);
     assert_eq!(u.rate(&[1.0, 2.0, 3.0], 1, 2).unwrap(), 0.0);
     assert_eq!(u.rate(&[1.0, 2.0, 3.0], 2, 2).unwrap(), 1.0);

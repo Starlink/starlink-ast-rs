@@ -1,0 +1,3 @@
+ERROR
+astGetFitsF(FitsChan): Cannot convert FITS keyword 'NAXIS1' to floating point.
+astGetFitsF(FitsChan): Cannot get value for FITS keyword 'NAXIS1'.

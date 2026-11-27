@@ -80,7 +80,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         }
     }
     let Some(spec_iax) = spec_axis else {
-        return Ok(Box::new(UnitMap::new(nwcs)));
+        return Ok(Box::new(UnitMap::new(nwcs)?));
     };
 
     // Re-resolve the SpecFrame so we can read its attributes. For a
@@ -93,7 +93,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     let (spec_holder, _) = wcsfrm.primary_frame(spec_iax);
     let specfrm = match spec_or_inner(spec_holder) {
         Some(s) => s,
-        None => return Ok(Box::new(UnitMap::new(nwcs))),
+        None => return Ok(Box::new(UnitMap::new(nwcs)?)),
     };
 
     let fits_i = args.wperm[spec_iax];
@@ -154,7 +154,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     let mut cleared = specfrm.clone();
     Frame::clear_unit(&mut cleared, 1)?;
     let Some(tfs) = crate::frames::find_frame::convert(specfrm, &cleared, &[])? else {
-        return Ok(Box::new(UnitMap::new(nwcs)));
+        return Ok(Box::new(UnitMap::new(nwcs)?));
     };
     let tmap1 = tfs.mapping(FrameRef::Base, FrameRef::Current)?;
     let unit_cleared = !is_map_linear(tmap1.as_ref(), &[lbnd_s], &[ubnd_s], 0)?;
@@ -184,7 +184,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     }
     if is_bad(crval) {
         // No usable spectral coordinate available.
-        return Ok(Box::new(UnitMap::new(nwcs)));
+        return Ok(Box::new(UnitMap::new(nwcs)?));
     }
 
     // Step 2d: snap crval so it corresponds to an integer pixel
@@ -201,7 +201,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
     if !force_tab {
         if is_map_linear(map.as_ref(), &lbnd_p, &ubnd_p, spec_iax)? {
             // Linear path: ShiftMap(-crval).
-            let shift = ShiftMap::new(vec![-crval]);
+            let shift = ShiftMap::new(vec![-crval])?;
             let mapping = embed_axis(Box::new(shift), spec_iax, nwcs)?;
             chosen = Some((mapping, orig_system_str.to_string()));
         } else if let Some((axmap, ctype)) = try_x2p_cascade(
@@ -277,7 +277,7 @@ pub(crate) fn spectral_axes(args: SpectralAxesArgs<'_>) -> AstResult<DynMapping>
         if unit_cleared {
             *args.unit_remap = Some(embed_axis(tmap1, spec_iax, nwcs)?);
         }
-        return Ok(Box::new(UnitMap::new(nwcs)));
+        return Ok(Box::new(UnitMap::new(nwcs)?));
     };
 
     args.store.ctype[fits_i] = Some(ctype);
@@ -485,7 +485,7 @@ fn try_x2p_cascade(
         // Build the WCS→IWC chain (1-D, on S inputs). Mirrors
         // C:30435-30445:
         //   S → X (s2x forward) → X − xval (ShiftMap) → (X − xval)·dsbydx (ZoomMap)
-        let shift = ShiftMap::new(vec![-xval]);
+        let shift = ShiftMap::new(vec![-xval])?;
         let zoom = crate::mappings::ZoomMap::new(1, dsbydx)?;
         let chain_1d: DynMapping = Box::new(CmpMap::new(
             Box::new(CmpMap::new(s2x, Box::new(shift), Composition::Series)?),
@@ -654,7 +654,7 @@ fn try_grism_cascade(
         // C:30551-30556 (ZoomMap(dgbyds) ∘ ShiftMap(gval), then
         // invert to get grism_param → w).
         let zoom = ZoomMap::new(1, dgbyds)?;
-        let shift = ShiftMap::new(vec![gval]);
+        let shift = ShiftMap::new(vec![gval])?;
         let mut g_to_w: DynMapping = Box::new(CmpMap::new(
             Box::new(zoom),
             Box::new(shift),
@@ -741,7 +741,7 @@ fn embed_axis(map: DynMapping, iax: usize, nax: usize) -> AstResult<DynMapping> 
     let mut ret = map;
     if iax > 0 {
         ret = Box::new(CmpMap::new(
-            Box::new(UnitMap::new(iax)),
+            Box::new(UnitMap::new(iax)?),
             ret,
             Composition::Parallel,
         )?);
@@ -749,7 +749,7 @@ fn embed_axis(map: DynMapping, iax: usize, nax: usize) -> AstResult<DynMapping> 
     if iax + nmap < nax {
         ret = Box::new(CmpMap::new(
             ret,
-            Box::new(UnitMap::new(nax - iax - nmap)),
+            Box::new(UnitMap::new(nax - iax - nmap)?),
             Composition::Parallel,
         )?);
     }
@@ -868,10 +868,14 @@ mod tests {
         let pixel = BasicFrameBuilder::new(2).build().unwrap();
         let basic = BasicFrameBuilder::new(1).build().unwrap();
         let spec = SpecFrame::new(SpecSystem::Freq);
-        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec)).unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(cmp),
+        )
+        .unwrap();
         fs
     }
 
@@ -880,8 +884,12 @@ mod tests {
         let pixel = BasicFrameBuilder::new(2).build().unwrap();
         let other = BasicFrameBuilder::new(2).build().unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(other))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(other),
+        )
+        .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
         let mut wperm = vec![0_usize, 1];
@@ -930,13 +938,13 @@ mod tests {
         // pixel → ShiftMap → GrismMap (1-D); we extend to 2-D for
         // realism with axis 0 identity.
         let chain_1d = crate::mappings::CmpMap::new(
-            Box::new(Sm::new(vec![-50.0])),
+            Box::new(Sm::within_limit(vec![-50.0])),
             Box::new(g.clone()),
             crate::mappings::Composition::Series,
         )
         .unwrap();
         let chain_2d = crate::mappings::CmpMap::new(
-            Box::new(crate::mappings::UnitMap::new(1)),
+            Box::new(crate::mappings::UnitMap::within_limit(1)),
             Box::new(chain_1d),
             crate::mappings::Composition::Parallel,
         )
@@ -975,7 +983,7 @@ mod tests {
         let pixel = BasicFrameBuilder::new(2).build().unwrap();
         let basic = BasicFrameBuilder::new(1).build().unwrap();
         let spec = SpecFrame::new(SpecSystem::Wavelen);
-        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec)).unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
 
         // Build pixel→spec with axis 1 linear in pixel→FREQ space:
@@ -1077,10 +1085,14 @@ mod tests {
         let basic = BasicFrameBuilder::new(1).build().unwrap();
         let mut spec = SpecFrame::new(SpecSystem::Wavelen);
         spec.set_rest_freq(1.42e9); // 21cm line
-        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec)).unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(cmp),
+        )
+        .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
         let mut wperm = vec![0_usize, 1];
@@ -1117,10 +1129,14 @@ mod tests {
         spec.set_obs_lon(0.0);
         spec.set_obs_lat(51.4778_f64.to_radians());
         spec.set_obs_alt(0.0);
-        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec)).unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(cmp),
+        )
+        .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
         let mut wperm = vec![0_usize, 1];
@@ -1155,10 +1171,14 @@ mod tests {
         let basic = BasicFrameBuilder::new(1).build().unwrap();
         let mut spec = SpecFrame::new(SpecSystem::Freq);
         spec.set_label(1, "MyFrequency").unwrap();
-        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec)).unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(cmp),
+        )
+        .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
         let mut wperm = vec![0_usize, 1];
@@ -1190,10 +1210,14 @@ mod tests {
         let mut spec = SpecFrame::new(SpecSystem::Freq);
         // 1000 km/s recession.
         spec.set_source_vel(1.0e6);
-        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec)).unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(cmp),
+        )
+        .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
         let mut wperm = vec![0_usize, 1];
@@ -1258,10 +1282,14 @@ mod tests {
         let basic = BasicFrameBuilder::new(1).build().unwrap();
         let mut spec = SpecFrame::new(system);
         spec.set_unit(1, unit_str).unwrap();
-        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec));
+        let cmp = crate::frames::CmpFrame::new(Box::new(basic), Box::new(spec)).unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(cmp))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(cmp),
+        )
+        .unwrap();
         fs
     }
 

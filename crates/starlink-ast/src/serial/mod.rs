@@ -46,6 +46,28 @@ pub(crate) trait Serializable {
         Self: Sized;
 }
 
+/// The most values a dump can name, C's `MXLOADEL`.
+///
+/// A name in a dump has at most eight characters (`MAX_NAME` in channel.c),
+/// and the names that number a class's values, such as a MatrixMap's `M0`
+/// to `M9999998`, start with at least one letter, so no dump can supply
+/// more values than this. C's MatrixMap and PointSet loaders refuse a dump
+/// claiming more; the port's loaders refuse any count read from a dump
+/// that would make them size or read more, so that a few bytes of input
+/// cannot make them allocate or loop without bound.
+pub(crate) const MXLOADEL: usize = 9_999_999;
+
+/// The error for a dump read by `loader` (such as `astLoadLutMap`) for an
+/// Object of class `class` whose count `claim`, such as "The LutMap read
+/// has 10000000 lookup table elements", needs more than [`MXLOADEL`]
+/// values.
+pub(crate) fn too_many_values(loader: &str, class: &str, claim: &str) -> AstError {
+    AstError::new(
+        ErrorCode::Lderr,
+        format!("{loader}({class}): {claim}, but a dump cannot hold more than {MXLOADEL} values."),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Mapping base helpers
 // ---------------------------------------------------------------------------
@@ -299,14 +321,32 @@ pub(crate) struct MappingBaseAttrs {
 
 /// Read common Mapping attributes from the Mapping part of a description
 /// (mapping.c `astLoadMapping` reads them through astReadClassData).
+///
+/// As in C, a negative Nin or Nout is 0, a missing Nout is Nin, and a number
+/// over [`MXAXES`](crate::constants::MXAXES) records C's error for the load
+/// and is taken, with the other, as 0, so that nothing is sized from it.
 pub(crate) fn read_mapping_base(whole: &Node) -> MappingBaseAttrs {
     let node = &whole.section("Mapping");
-    let nin = node.get_int("Nin", 0) as usize;
-    let nout_raw = node.get_int("Nout", 0);
-    let nout = if nout_raw <= 0 {
-        nin
+    let nin = usize::try_from(node.get_int("Nin", 0)).unwrap_or(0);
+    let nout = usize::try_from(node.get_int("Nout", nin as i64)).unwrap_or(0);
+    let limit = crate::constants::MXAXES;
+    let (nin, nout) = if nin > limit || nout > limit {
+        let (code, which, n) = if nin > limit {
+            (ErrorCode::Badni, "input", nin)
+        } else {
+            (ErrorCode::Badno, "output", nout)
+        };
+        node::record_load_error(AstError::new(
+            code,
+            format!(
+                "astLoadMapping({}): Bad number of {which} coordinates ({n}) read from the \
+                 dump - this number should not exceed {limit}.",
+                whole.class
+            ),
+        ));
+        (0, 0)
     } else {
-        nout_raw as usize
+        (nin, nout)
     };
     MappingBaseAttrs {
         nin,
@@ -319,15 +359,84 @@ pub(crate) fn read_mapping_base(whole: &Node) -> MappingBaseAttrs {
     }
 }
 
+/// C's `astCheckLoadedCoords` (mapping.c): the numbers of inputs and outputs
+/// `base` was read with, which describe the Mapping before any inversion,
+/// must be `nin` and `nout` for an object of class `name`.
+pub(crate) fn check_loaded_coords(
+    name: &str,
+    base: &MappingBaseAttrs,
+    nin: usize,
+    nout: usize,
+) -> AstResult<()> {
+    if base.nin == nin && base.nout == nout {
+        return Ok(());
+    }
+    Err(AstError::new(
+        ErrorCode::Lderr,
+        format!(
+            "astLoad({name}): Invalid numbers of inputs ({}) and outputs ({}) read for a \
+             {name} - there should be {nin} and {nout}.",
+            base.nin, base.nout
+        ),
+    ))
+}
+
+/// C's `astCheckLoadedMap` (mapping.c): the component Mapping an object of
+/// class `name` reads as item `item`, which must be there and be a Mapping.
+/// Gives it, with its numbers of inputs and outputs when used inverted if
+/// `invert`.
+pub(crate) fn check_loaded_map(
+    node: Option<&Node>,
+    invert: bool,
+    name: &str,
+    item: &str,
+) -> AstResult<(DynMapping, usize, usize)> {
+    let node =
+        check_loaded(node, "Mapping", true, name, item)?.expect("a needed component is there");
+    let map = mapping_from_node(node)?;
+    let (nin, nout) = if map.is_inverted() == invert {
+        (map.nin(), map.nout())
+    } else {
+        (map.nout(), map.nin())
+    };
+    Ok((map, nin, nout))
+}
+
 // ---------------------------------------------------------------------------
 // Mapping dispatch
 // ---------------------------------------------------------------------------
 
+// The dispatches below load each class through one of these, so that the
+// dispatch's own frame holds only a pointer. A `match` building every
+// class's value in place would need room for all of them at once in an
+// unoptimized build, and loading recurses through the dispatch once per
+// level of nesting.
+
+/// Load a `T` and box it as a Mapping.
+#[inline(never)]
+fn boxed_mapping<T: Serializable + Mapping + 'static>(node: &Node) -> AstResult<DynMapping> {
+    Ok(Box::new(T::from_node(node)?))
+}
+
+/// Load a `T` and box it as a Frame.
+#[inline(never)]
+fn boxed_frame<T: Serializable + Frame + 'static>(node: &Node) -> AstResult<DynFrame> {
+    Ok(Box::new(T::from_node(node)?))
+}
+
+/// Load a `T` and box it as a Region.
+#[inline(never)]
+fn boxed_region<T: Serializable + Region + 'static>(node: &Node) -> AstResult<DynRegion> {
+    Ok(Box::new(T::from_node(node)?))
+}
+
 /// Reconstruct a concrete Mapping from a Node tree, dispatching by class name.
 pub(crate) fn mapping_from_node(node: &Node) -> AstResult<DynMapping> {
-    let mut result = mapping_from_node_inner(node)?;
-    apply_mapping_object_items(result.as_mut(), node);
-    Ok(result)
+    load_object(node, || {
+        let mut result = mapping_from_node_inner(node)?;
+        apply_mapping_object_items(result.as_mut(), node);
+        Ok(result)
+    })
 }
 
 /// Apply the Object and Mapping items that every Mapping class shares and
@@ -369,51 +478,51 @@ fn load_mapping<T: Serializable + Mapping>(node: &Node) -> AstResult<T> {
 
 fn mapping_from_node_inner(node: &Node) -> AstResult<DynMapping> {
     match node.class.as_str() {
-        "UnitMap" => Ok(Box::new(UnitMap::from_node(node)?)),
-        "ZoomMap" => Ok(Box::new(ZoomMap::from_node(node)?)),
-        "ShiftMap" => Ok(Box::new(ShiftMap::from_node(node)?)),
-        "MatrixMap" => Ok(Box::new(MatrixMap::from_node(node)?)),
-        "PermMap" => Ok(Box::new(PermMap::from_node(node)?)),
-        "WinMap" => Ok(Box::new(WinMap::from_node(node)?)),
-        "LutMap" => Ok(Box::new(LutMap::from_node(node)?)),
-        "PolyMap" => Ok(Box::new(PolyMap::from_node(node)?)),
-        "ChebyMap" => Ok(Box::new(ChebyMap::from_node(node)?)),
-        "CmpMap" => Ok(Box::new(CmpMap::from_node(node)?)),
-        "WcsMap" => Ok(Box::new(WcsMap::from_node(node)?)),
-        "SlaMap" => Ok(Box::new(SlaMap::from_node(node)?)),
-        "SpecMap" => Ok(Box::new(SpecMap::from_node(node)?)),
-        "TimeMap" => Ok(Box::new(TimeMap::from_node(node)?)),
-        "PcdMap" => Ok(Box::new(PcdMap::from_node(node)?)),
-        "SphMap" => Ok(Box::new(SphMap::from_node(node)?)),
-        "GrismMap" => Ok(Box::new(GrismMap::from_node(node)?)),
-        "UnitNormMap" => Ok(Box::new(UnitNormMap::from_node(node)?)),
-        "XphMap" => Ok(Box::new(XphMap::from_node(node)?)),
-        "IntraMap" => Ok(Box::new(IntraMap::from_node(node)?)),
-        "TranMap" => Ok(Box::new(TranMap::from_node(node)?)),
-        "RateMap" => Ok(Box::new(RateMap::from_node(node)?)),
-        "SplineMap" => Ok(Box::new(SplineMap::from_node(node)?)),
-        "DssMap" => Ok(Box::new(DssMap::from_node(node)?)),
-        "NormMap" => Ok(Box::new(NormMap::from_node(node)?)),
-        "MathMap" => Ok(Box::new(MathMap::from_node(node)?)),
-        "SelectorMap" => Ok(Box::new(SelectorMap::from_node(node)?)),
-        "SwitchMap" => Ok(Box::new(SwitchMap::from_node(node)?)),
-        "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
-        "Plot" => Ok(Box::new(Plot::from_node(node)?)),
+        "UnitMap" => boxed_mapping::<UnitMap>(node),
+        "ZoomMap" => boxed_mapping::<ZoomMap>(node),
+        "ShiftMap" => boxed_mapping::<ShiftMap>(node),
+        "MatrixMap" => boxed_mapping::<MatrixMap>(node),
+        "PermMap" => boxed_mapping::<PermMap>(node),
+        "WinMap" => boxed_mapping::<WinMap>(node),
+        "LutMap" => boxed_mapping::<LutMap>(node),
+        "PolyMap" => boxed_mapping::<PolyMap>(node),
+        "ChebyMap" => boxed_mapping::<ChebyMap>(node),
+        "CmpMap" => boxed_mapping::<CmpMap>(node),
+        "WcsMap" => boxed_mapping::<WcsMap>(node),
+        "SlaMap" => boxed_mapping::<SlaMap>(node),
+        "SpecMap" => boxed_mapping::<SpecMap>(node),
+        "TimeMap" => boxed_mapping::<TimeMap>(node),
+        "PcdMap" => boxed_mapping::<PcdMap>(node),
+        "SphMap" => boxed_mapping::<SphMap>(node),
+        "GrismMap" => boxed_mapping::<GrismMap>(node),
+        "UnitNormMap" => boxed_mapping::<UnitNormMap>(node),
+        "XphMap" => boxed_mapping::<XphMap>(node),
+        "IntraMap" => boxed_mapping::<IntraMap>(node),
+        "TranMap" => boxed_mapping::<TranMap>(node),
+        "RateMap" => boxed_mapping::<RateMap>(node),
+        "SplineMap" => boxed_mapping::<SplineMap>(node),
+        "DssMap" => boxed_mapping::<DssMap>(node),
+        "NormMap" => boxed_mapping::<NormMap>(node),
+        "MathMap" => boxed_mapping::<MathMap>(node),
+        "SelectorMap" => boxed_mapping::<SelectorMap>(node),
+        "SwitchMap" => boxed_mapping::<SwitchMap>(node),
+        "FrameSet" => boxed_mapping::<FrameSet>(node),
+        "Plot" => boxed_mapping::<Plot>(node),
         // Regions implement Mapping.
-        "Circle" => Ok(Box::new(Circle::from_node(node)?)),
-        "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
-        "Ellipse" => Ok(Box::new(Ellipse::from_node(node)?)),
-        "Polygon" => Ok(Box::new(Polygon::from_node(node)?)),
-        "Interval" => Ok(Box::new(Interval::from_node(node)?)),
-        "NullRegion" => Ok(Box::new(NullRegion::from_node(node)?)),
-        "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
-        "PointList" => Ok(Box::new(PointList::from_node(node)?)),
-        "Prism" => Ok(Box::new(Prism::from_node(node)?)),
-        "Moc" => Ok(Box::new(Moc::from_node(node)?)),
-        "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
-        "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
-        "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
-        "StcObsDataLocation" => Ok(Box::new(StcObsDataLocation::from_node(node)?)),
+        "Circle" => boxed_mapping::<Circle>(node),
+        "Box" => boxed_mapping::<BoxRegion>(node),
+        "Ellipse" => boxed_mapping::<Ellipse>(node),
+        "Polygon" => boxed_mapping::<Polygon>(node),
+        "Interval" => boxed_mapping::<Interval>(node),
+        "NullRegion" => boxed_mapping::<NullRegion>(node),
+        "CmpRegion" => boxed_mapping::<CmpRegion>(node),
+        "PointList" => boxed_mapping::<PointList>(node),
+        "Prism" => boxed_mapping::<Prism>(node),
+        "Moc" => boxed_mapping::<Moc>(node),
+        "StcResourceProfile" => boxed_mapping::<StcResourceProfile>(node),
+        "StcSearchLocation" => boxed_mapping::<StcSearchLocation>(node),
+        "StcCatalogEntryLocation" => boxed_mapping::<StcCatalogEntryLocation>(node),
+        "StcObsDataLocation" => boxed_mapping::<StcObsDataLocation>(node),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown Mapping class: {other}"),
@@ -710,32 +819,36 @@ pub(crate) fn frame_class_name(frame: &dyn std::any::Any) -> &'static str {
 
 /// Reconstruct a concrete Frame from a Node tree, dispatching by class name.
 pub(crate) fn frame_from_node(node: &Node) -> AstResult<DynFrame> {
+    load_object(node, || frame_from_node_inner(node))
+}
+
+fn frame_from_node_inner(node: &Node) -> AstResult<DynFrame> {
     match node.class.as_str() {
-        "Frame" => Ok(Box::new(BasicFrame::from_node(node)?)),
-        "SkyFrame" => Ok(Box::new(SkyFrame::from_node(node)?)),
-        "DSBSpecFrame" => Ok(Box::new(DSBSpecFrame::from_node(node)?)),
-        "SpecFrame" => Ok(Box::new(SpecFrame::from_node(node)?)),
-        "TimeFrame" => Ok(Box::new(TimeFrame::from_node(node)?)),
-        "FluxFrame" => Ok(Box::new(FluxFrame::from_node(node)?)),
-        "SpecFluxFrame" => Ok(Box::new(SpecFluxFrame::from_node(node)?)),
-        "CmpFrame" => Ok(Box::new(CmpFrame::from_node(node)?)),
-        "FrameSet" => Ok(Box::new(FrameSet::from_node(node)?)),
-        "Plot" => Ok(Box::new(Plot::from_node(node)?)),
+        "Frame" => boxed_frame::<BasicFrame>(node),
+        "SkyFrame" => boxed_frame::<SkyFrame>(node),
+        "DSBSpecFrame" => boxed_frame::<DSBSpecFrame>(node),
+        "SpecFrame" => boxed_frame::<SpecFrame>(node),
+        "TimeFrame" => boxed_frame::<TimeFrame>(node),
+        "FluxFrame" => boxed_frame::<FluxFrame>(node),
+        "SpecFluxFrame" => boxed_frame::<SpecFluxFrame>(node),
+        "CmpFrame" => boxed_frame::<CmpFrame>(node),
+        "FrameSet" => boxed_frame::<FrameSet>(node),
+        "Plot" => boxed_frame::<Plot>(node),
         // Regions implement Frame.
-        "Circle" => Ok(Box::new(Circle::from_node(node)?)),
-        "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
-        "Ellipse" => Ok(Box::new(Ellipse::from_node(node)?)),
-        "Polygon" => Ok(Box::new(Polygon::from_node(node)?)),
-        "Interval" => Ok(Box::new(Interval::from_node(node)?)),
-        "NullRegion" => Ok(Box::new(NullRegion::from_node(node)?)),
-        "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
-        "PointList" => Ok(Box::new(PointList::from_node(node)?)),
-        "Prism" => Ok(Box::new(Prism::from_node(node)?)),
-        "Moc" => Ok(Box::new(Moc::from_node(node)?)),
-        "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
-        "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
-        "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
-        "StcObsDataLocation" => Ok(Box::new(StcObsDataLocation::from_node(node)?)),
+        "Circle" => boxed_frame::<Circle>(node),
+        "Box" => boxed_frame::<BoxRegion>(node),
+        "Ellipse" => boxed_frame::<Ellipse>(node),
+        "Polygon" => boxed_frame::<Polygon>(node),
+        "Interval" => boxed_frame::<Interval>(node),
+        "NullRegion" => boxed_frame::<NullRegion>(node),
+        "CmpRegion" => boxed_frame::<CmpRegion>(node),
+        "PointList" => boxed_frame::<PointList>(node),
+        "Prism" => boxed_frame::<Prism>(node),
+        "Moc" => boxed_frame::<Moc>(node),
+        "StcResourceProfile" => boxed_frame::<StcResourceProfile>(node),
+        "StcSearchLocation" => boxed_frame::<StcSearchLocation>(node),
+        "StcCatalogEntryLocation" => boxed_frame::<StcCatalogEntryLocation>(node),
+        "StcObsDataLocation" => boxed_frame::<StcObsDataLocation>(node),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown or unsupported Frame class: {other}"),
@@ -826,11 +939,28 @@ fn write_pointset_node(points: &[Vec<f64>]) -> Node {
 /// Returns `Vec<Vec<f64>>` where `result[i]` is point `i` (length
 /// `ncoord`). Iteration matches C `pointset.c::Dump` (point-outer,
 /// coord-inner) — see `write_pointset_node` for the byte layout.
+///
+/// As pointset.c `astLoadPointSet` reads them, a number of points or
+/// coordinates below 1 is 1, and a PointSet claiming more values than a dump
+/// can name (`X1` to `X9999999`) is refused before anything is sized from it.
 fn read_pointset_node(node: &Node) -> AstResult<Vec<Vec<f64>>> {
-    let ncoord = node.get_int("Ncoord", 0) as usize;
-    let npoint = node.get_int("Npoint", 0) as usize;
-
-    if ncoord == 0 || npoint == 0 {
+    const MXLOADVAL: i64 = 9_999_999;
+    let npoint = node.get_int("Npoint", 1).max(1);
+    let ncoord = node.get_int("Ncoord", 1).max(1);
+    if ncoord > MXLOADVAL || npoint > MXLOADVAL / ncoord {
+        return Err(AstError::new(
+            ErrorCode::Lderr,
+            format!(
+                "astLoadPointSet({}): The PointSet read has {npoint} points with {ncoord} \
+                 coordinates each, but a dump cannot hold more than {MXLOADVAL} coordinate \
+                 values.",
+                node.class
+            ),
+        ));
+    }
+    let (npoint, ncoord) = (npoint as usize, ncoord as usize);
+    // A PointSet holding no data (pointset.c `Empty`).
+    if node.get_int("Empty", 0) != 0 {
         return Ok(Vec::new());
     }
 
@@ -1053,15 +1183,125 @@ pub(crate) fn push_frame_isa_marker(node: &mut Node) {
     node.push_isa("Frame", Some("Coordinate system description".to_string()));
 }
 
+/// The two component Regions, `RegionA` and `RegionB`, of a CmpRegion or
+/// Prism of class `class`, each of which must be there and be a Region
+/// (`astCheckLoaded`).
+fn component_regions(node: &Node, class: &str) -> AstResult<(DynRegion, DynRegion)> {
+    let read = |key: &str, item: &str| -> AstResult<DynRegion> {
+        let n = check_loaded(node.get_object(key), "Region", true, class, item)?
+            .expect("a needed component is there");
+        region_from_node(n)
+    };
+    let region1 = read("RegionA", "first component Region")?;
+    let region2 = read("RegionB", "second component Region")?;
+    Ok((region1, region2))
+}
+
+/// C's `astCheckLoadedPoints` (region.c): a Region of class `name` read
+/// from a dump has `naxes` base Frame axes (any number if 0) and between
+/// `minpt` and `maxpt` defining points (no upper limit if `None`).
+fn check_loaded_points(
+    data: &RegionData,
+    name: &str,
+    minpt: usize,
+    maxpt: Option<usize>,
+    naxes: usize,
+) -> AstResult<()> {
+    let nax = data.frameset.base().naxes();
+    let np = data.points.len();
+    let message = if naxes > 0 && nax != naxes {
+        format!("The {name} read has {nax} axes, but a {name} must have {naxes}.")
+    } else if data.points.is_empty() {
+        format!("The points that define the {name} are missing from the {name} read.")
+    } else if np < minpt || maxpt.is_some_and(|m| np > m) {
+        format!(
+            "The {name} read is defined by {np} points, which is not a number that a {name} can have."
+        )
+    } else {
+        return Ok(());
+    };
+    Err(AstError::new(
+        ErrorCode::Lderr,
+        format!("astLoad({name}): {message}"),
+    ))
+}
+
+/// C's check at the start of `astSetRegFS` (region.c): a Region of class
+/// `class` defined by points of `ncoord` coordinates, if it has points,
+/// cannot be given a Frame with another number of axes.
+fn check_reg_fs(class: &str, ncoord: Option<usize>, frame: &dyn Frame) -> AstResult<()> {
+    match ncoord {
+        Some(n) if n != frame.naxes() => Err(AstError::new(
+            ErrorCode::Regin,
+            format!(
+                "astSetRegFS({class}): The {class} is defined by points with {n} coordinate \
+                 value(s), so it cannot be given a {} with {} axes.",
+                crate::frames::class_name(frame),
+                frame.naxes()
+            ),
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// Read common Region attributes from a node, returning a RegionData.
 ///
 /// This reads the Region-level attributes, the FrameSet or Frame, the
 /// defining points, and the optional uncertainty region.
 pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
-    // The Region and Object classes' parts of the description, which their
-    // loaders read through astReadClassData (region.c, object.c).
-    let object = &whole.section("Object");
-    let node = &whole.section("Region");
+    // The uncertainty is itself a Region, so a chain of them recurses
+    // through here once a level. What is read before and after it is in
+    // functions of its own, which keeps this frame, the only one held
+    // across the recursion, small enough for a chain nested to
+    // `MAX_NATIVE_NESTING` on a 2 MiB stack in an unoptimized build.
+    let before = read_region_before_unc(whole)?;
+    let uncertainty = match check_loaded(
+        before.node.get_object("Unc"),
+        "Region",
+        false,
+        whole.class.as_str(),
+        "uncertainty Region",
+    )? {
+        Some(unc_node) => Some(region_from_node(unc_node)?),
+        None => None,
+    };
+    read_region_after_unc(whole, before, uncertainty)
+}
+
+/// What a Region's description gives before its uncertainty Region.
+struct RegionBeforeUnc {
+    /// The Region class's part of the description.
+    node: Node,
+    negated: bool,
+    negated_set: bool,
+    adaptive: bool,
+    adaptive_set: bool,
+    fill_factor: f64,
+    fill_factor_set: bool,
+    mesh_size: usize,
+    mesh_size_set: bool,
+    closed: bool,
+    closed_set: bool,
+    /// The defining points.
+    points: Vec<Vec<f64>>,
+    /// The number of coordinates each point has, or with no points the
+    /// number of axes the Region spans.
+    naxpt: usize,
+}
+
+/// Read the part of a Region's description before its uncertainty Region:
+/// its Frame part, its attributes and its defining points.
+fn read_region_before_unc(whole: &Node) -> AstResult<RegionBeforeUnc> {
+    // The Region class's part of the description, which its loader reads
+    // through astReadClassData (region.c).
+    let region_part = whole.section("Region");
+    let node = &region_part;
+    let class = whole.class.as_str();
+    // astLoadFrame reads the Region's own Frame part first. A Region then
+    // has no FrameSet, so a System given there is not recognised (region.c).
+    let frame_part = whole.section("Frame");
+    crate::frames::frame_attrs::load_frame_axes(&frame_part, class)?;
+    crate::frames::frame_attrs::read_system_item(&frame_part, "System", "System", |_| None::<()>)?;
     let negated = node.get_int("Negate", 0) != 0;
     // C reads Negate and Adapt with a default of the unset sentinel, so each
     // is set only when the dump has an uncommented line for it
@@ -1099,6 +1339,15 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     } else {
         0
     };
+    // A port-only limit: a mesh of more points than a dump can name (see
+    // `MXLOADEL`) is refused rather than sized.
+    if mesh_size > MXLOADEL {
+        return Err(too_many_values(
+            "astLoadRegion",
+            class,
+            &format!("The MeshSize read is {mesh_size}"),
+        ));
+    }
     let closed = node.get_int("Closed", 1) != 0;
     // C tracks Closed via `closed != -INT_MAX` (`region.c` line 12766). For
     // the round-trip we model the same explicit-set state via `closed_set`:
@@ -1110,23 +1359,80 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         .is_some_and(|i| !matches!(&i.value, NodeValue::Unset(_)));
     let adaptive = node.get_int("Adapt", 1) != 0;
 
-    // Read defining points first: their coordinate count sizes a dummy
-    // FrameSet when neither `Frm` nor `FrmSet` is present (C uses `naxpt`,
-    // `region.c:13543,13597`).
-    let points = if let Some(pts_node) = node.get_object("Points") {
-        read_pointset_node(pts_node)?
-    } else {
-        Vec::new()
-    };
-    // Axis count per point: from the PointSet if present, else from the
-    // `RegAxes` attribute (C `region.c:13543,13554` — a Region with no
-    // points, e.g. a Prism/NullRegion, records its axis span there).
-    let naxpt = match points.first() {
-        Some(p) => p.len(),
-        None => node.get_int("RegAxes", 0) as usize,
+    // The defining points, which must be a PointSet, with the number of
+    // coordinates each has; with none, the number of axes the Region spans
+    // is its `RegAxes` value, for a Region such as a NullRegion (region.c
+    // `astLoadRegion`). Their coordinate count sizes a dummy FrameSet when
+    // neither `Frm` nor `FrmSet` is present.
+    let (points, naxpt) = match node.get_object("Points") {
+        Some(pts_node) if node_is_a(pts_node, "PointSet") => {
+            let points = load_object(pts_node, || read_pointset_node(pts_node))?;
+            let ncoord = usize::try_from(pts_node.get_int("Ncoord", 1).max(1)).unwrap_or(1);
+            (points, ncoord)
+        }
+        Some(pts_node) => {
+            any_object_from_node(pts_node)?;
+            return Err(AstError::new(
+                ErrorCode::Regin,
+                format!(
+                    "astLoadRegion({class}): Corrupt {class} specifies points using a {} \
+                     (should be a PointSet).",
+                    pts_node.class
+                ),
+            ));
+        }
+        None => (
+            Vec::new(),
+            usize::try_from(node.get_int("RegAxes", 0)).unwrap_or(0),
+        ),
     };
 
-    // Read the FrameSet or Frame. Detect which one was emitted by key
+    Ok(RegionBeforeUnc {
+        node: region_part,
+        negated,
+        negated_set,
+        adaptive,
+        adaptive_set,
+        fill_factor,
+        fill_factor_set,
+        mesh_size,
+        mesh_size_set,
+        closed,
+        closed_set,
+        points,
+        naxpt,
+    })
+}
+
+/// Read the part of a Region's description after its uncertainty Region,
+/// its Frame or FrameSet, and make the Region's data.
+fn read_region_after_unc(
+    whole: &Node,
+    before: RegionBeforeUnc,
+    mut uncertainty: Option<DynRegion>,
+) -> AstResult<RegionData> {
+    let RegionBeforeUnc {
+        node,
+        negated,
+        negated_set,
+        adaptive,
+        adaptive_set,
+        fill_factor,
+        fill_factor_set,
+        mesh_size,
+        mesh_size_set,
+        closed,
+        closed_set,
+        points,
+        naxpt,
+    } = before;
+    let node = &node;
+    // The Object class's part of the description, which its loader reads
+    // through astReadClassData (object.c).
+    let object = &whole.section("Object");
+    let class = whole.class.as_str();
+
+    // The FrameSet or Frame. Detect which one was emitted by key
     // presence — the C library only writes `RegFS` when RegionFS was
     // explicitly set (rare), so most dumps have either `Frm` or `FrmSet`
     // and no `RegFS` line. A nested region (an uncertainty sub-region, or
@@ -1137,19 +1443,34 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
     // `dummy_fs` flag.
     // C loader (region.c `Load`): `Frm` present → RegionFS = 1; otherwise
     // `FrmSet` present → read RegFS (default 1); neither → dummy FrameSet
-    // with RegionFS = 0. `nax` is the number of base Frame axes.
-    let (frameset, dummy_fs, region_fs, nax) = if let Some(frm_node) = node.get_object("Frm") {
+    // with RegionFS = 0. `nax` is the number of base Frame axes. Each must
+    // be of its class.
+    let ncoord = (!points.is_empty()).then_some(naxpt);
+    let frm = check_loaded(node.get_object("Frm"), "Frame", false, class, "Frame")?;
+    let frmset = if frm.is_none() {
+        check_loaded(
+            node.get_object("FrmSet"),
+            "FrameSet",
+            false,
+            class,
+            "FrameSet",
+        )?
+    } else {
+        None
+    };
+    let (frameset, dummy_fs, region_fs, nax) = if let Some(frm_node) = frm {
         // Only a single Frame stored — create a 2-frame FrameSet with
         // UnitMap connecting base to current (matches the C library and
-        // keeps with_integrity working).
+        // keeps with_integrity working), as astSetRegFS does.
         let frame = frame_from_node(frm_node)?;
+        check_reg_fs(class, ncoord, frame.as_ref())?;
         let naxes = frame.naxes();
         let current_snap = frame.snapshot();
         let mut fs = FrameSet::new(frame);
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), current_snap)
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)?), current_snap)
             .expect("adding current frame to region FrameSet");
         (fs, false, true, naxes)
-    } else if let Some(fs_node) = node.get_object("FrmSet") {
+    } else if let Some(fs_node) = frmset {
         let region_fs = node.get_int("RegFS", 1) != 0;
         let fs = FrameSet::from_node(fs_node)?;
         let nin = fs.base().naxes();
@@ -1159,21 +1480,37 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         // marked dummy so the parent re-associates the real frame.
         // RegionFS = 0 (the Frame is inferred from the enclosing context).
         let nax = if naxpt > 0 { naxpt } else { 1 };
-        let frame: DynFrame = Box::new(
-            BasicFrameBuilder::new(nax)
-                .build()
-                .expect("building dummy region frame"),
-        );
+        let frame: DynFrame = Box::new(BasicFrameBuilder::new(nax).build()?);
         let current_snap = frame.snapshot();
         let mut fs = FrameSet::new(frame);
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(nax)), current_snap)
+        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(nax)?), current_snap)
             .expect("adding current frame to dummy region FrameSet");
         (fs, true, false, nax)
     };
 
+    // An uncertainty Region dumped frame-less (dummy FS) is given this
+    // Region's base Frame, as C's `astSetRegFS` does for the Frame read, or
+    // the loader for a FrameSet (region.c), with the same check.
+    if !dummy_fs
+        && let Some(unc) = uncertainty.as_mut()
+        && unc.has_dummy_fs()
+    {
+        let base_frame = frameset.base().snapshot();
+        let unc_ncoord = unc
+            .base_points()
+            .ok()
+            .filter(|p| p.npoint() > 0)
+            .map(|p| p.ncoord());
+        check_reg_fs(
+            crate::regions::class_name(unc.as_any()),
+            unc_ncoord,
+            base_frame.as_ref(),
+        )?;
+        unc.set_region_fs(base_frame.as_ref());
+    }
+
     // The points must have one value per base Frame axis (region.c `Load`).
     if !points.is_empty() && naxpt != nax {
-        let class = &whole.class;
         return Err(AstError::new(
             ErrorCode::Regin,
             format!(
@@ -1186,14 +1523,21 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         )));
     }
 
-    // Read uncertainty.
-    let uncertainty = if let Some(unc_node) = node.get_object("Unc") {
-        Some(region_from_node(unc_node)?)
-    } else {
-        None
-    };
+    // The uncertainty Region is defined in the base Frame, so has its axes.
+    if let Some(unc) = &uncertainty
+        && unc.naxes() != nax
+    {
+        return Err(AstError::new(
+            ErrorCode::Lderr,
+            format!(
+                "astLoadRegion({class}): The uncertainty Region read for a {class} has {} axes, \
+                 but the {class} has {nax}.",
+                unc.naxes()
+            ),
+        ));
+    }
 
-    let mut data = RegionData {
+    let data = RegionData {
         frameset,
         ident: object.get_string_if_set("Ident"),
         id: crate::object_id::ObjectId::from_object_part(object),
@@ -1222,18 +1566,6 @@ pub(crate) fn read_region_base(whole: &Node) -> AstResult<RegionData> {
         class_cache: RefCell::new(None),
         def_unc: RefCell::new(None),
     };
-
-    // If this region has a real frame but its uncertainty region was
-    // dumped frame-less (dummy FS), re-associate the uncertainty with a
-    // copy of this region's base frame — mirroring C `astSetRegFS`'s
-    // recursive uncertainty fix-up (`region.c:10745-10751`).
-    if !data.dummy_fs
-        && let Some(unc) = data.uncertainty.as_mut()
-        && unc.has_dummy_fs()
-    {
-        let base_frame = data.frameset.base().snapshot();
-        unc.set_region_fs(base_frame.as_ref());
-    }
 
     Ok(data)
 }
@@ -1301,21 +1633,25 @@ impl RegionToNode for dyn Region {
 
 /// Reconstruct a concrete Region from a Node tree, dispatching by class name.
 pub(crate) fn region_from_node(node: &Node) -> AstResult<DynRegion> {
+    load_object(node, || region_from_node_inner(node))
+}
+
+fn region_from_node_inner(node: &Node) -> AstResult<DynRegion> {
     match node.class.as_str() {
-        "Circle" => Ok(Box::new(Circle::from_node(node)?)),
-        "Box" => Ok(Box::new(BoxRegion::from_node(node)?)),
-        "Ellipse" => Ok(Box::new(Ellipse::from_node(node)?)),
-        "Polygon" => Ok(Box::new(Polygon::from_node(node)?)),
-        "Interval" => Ok(Box::new(Interval::from_node(node)?)),
-        "NullRegion" => Ok(Box::new(NullRegion::from_node(node)?)),
-        "CmpRegion" => Ok(Box::new(CmpRegion::from_node(node)?)),
-        "PointList" => Ok(Box::new(PointList::from_node(node)?)),
-        "Prism" => Ok(Box::new(Prism::from_node(node)?)),
-        "Moc" => Ok(Box::new(Moc::from_node(node)?)),
-        "StcResourceProfile" => Ok(Box::new(StcResourceProfile::from_node(node)?)),
-        "StcSearchLocation" => Ok(Box::new(StcSearchLocation::from_node(node)?)),
-        "StcCatalogEntryLocation" => Ok(Box::new(StcCatalogEntryLocation::from_node(node)?)),
-        "StcObsDataLocation" => Ok(Box::new(StcObsDataLocation::from_node(node)?)),
+        "Circle" => boxed_region::<Circle>(node),
+        "Box" => boxed_region::<BoxRegion>(node),
+        "Ellipse" => boxed_region::<Ellipse>(node),
+        "Polygon" => boxed_region::<Polygon>(node),
+        "Interval" => boxed_region::<Interval>(node),
+        "NullRegion" => boxed_region::<NullRegion>(node),
+        "CmpRegion" => boxed_region::<CmpRegion>(node),
+        "PointList" => boxed_region::<PointList>(node),
+        "Prism" => boxed_region::<Prism>(node),
+        "Moc" => boxed_region::<Moc>(node),
+        "StcResourceProfile" => boxed_region::<StcResourceProfile>(node),
+        "StcSearchLocation" => boxed_region::<StcSearchLocation>(node),
+        "StcCatalogEntryLocation" => boxed_region::<StcCatalogEntryLocation>(node),
+        "StcObsDataLocation" => boxed_region::<StcObsDataLocation>(node),
         other => Err(AstError::new(
             ErrorCode::Lderr,
             format!("unknown Region class: {other}"),
@@ -1374,6 +1710,7 @@ impl Serializable for Circle {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
+        check_loaded_points(&data, &node.class, 2, Some(2), 0)?;
         Ok(Circle { data })
     }
 }
@@ -1390,6 +1727,7 @@ impl Serializable for BoxRegion {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
+        check_loaded_points(&data, &node.class, 2, Some(2), 0)?;
         Ok(BoxRegion { data })
     }
 }
@@ -1406,6 +1744,7 @@ impl Serializable for Ellipse {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
+        check_loaded_points(&data, &node.class, 3, Some(3), 2)?;
         Ok(Ellipse { data })
     }
 }
@@ -1445,6 +1784,27 @@ impl Serializable for Polygon {
         let node = &whole.section("Polygon");
         let _base = read_mapping_base(whole);
         let data = read_region_base(whole)?;
+        check_loaded_points(&data, &whole.class, 1, None, 2)?;
+        // Every vertex is defined, as the constructor requires (polygon.c
+        // `astLoadPolygon`), checked axis by axis.
+        for axis in 0..2 {
+            if let Some(vertex) = data
+                .points
+                .iter()
+                .position(|p| p[axis] == crate::constants::BAD_VALUE)
+            {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoad({0}): Vertex number {1} of the {0} read has an undefined value on \
+                         axis {2}.",
+                        whole.class,
+                        vertex + 1,
+                        axis + 1
+                    ),
+                ));
+            }
+        }
         // polygon.c:7300 reads SimpVT back as a boolean; an absent card leaves
         // the attribute unset.
         let simp_vertices = node.get_int_any_if_set("SimpVT").map(|v| v != 0);
@@ -1477,6 +1837,7 @@ impl Serializable for Interval {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
+        check_loaded_points(&data, &node.class, 2, Some(2), 0)?;
         Ok(Interval { data })
     }
 }
@@ -1509,6 +1870,7 @@ impl Serializable for PointList {
     fn from_node(node: &Node) -> AstResult<Self> {
         let _base = read_mapping_base(node);
         let data = read_region_base(node)?;
+        check_loaded_points(&data, &node.class, 1, None, 0)?;
         Ok(PointList { data })
     }
 }
@@ -1565,15 +1927,31 @@ impl Serializable for CmpRegion {
 
         let oper_int = node.get_int("Operator", 1);
 
-        let node_a = node
-            .get_object("RegionA")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpRegion: missing RegionA"))?;
-        let node_b = node
-            .get_object("RegionB")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "CmpRegion: missing RegionB"))?;
-
-        let mut region1 = region_from_node(node_a)?;
-        let mut region2 = region_from_node(node_b)?;
+        // The components, which must be Regions with the axes of the base
+        // Frame both are defined in, and the operator, which must be AND, OR
+        // or XOR (cmpregion.c `astLoadCmpRegion`).
+        let class = &whole.class;
+        let (mut region1, mut region2) = component_regions(node, class)?;
+        let nax = data.frameset.base().naxes();
+        if !(1..=3).contains(&oper_int) {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadCmpRegion({class}): Illegal boolean operator value ({oper_int}) read \
+                     for a {class}."
+                ),
+            ));
+        } else if region1.naxes() != nax || region2.naxes() != nax {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadCmpRegion({class}): The component Regions read for a {class} have {} \
+                     and {} axes, but the {class} has {nax}.",
+                    region1.naxes(),
+                    region2.naxes()
+                ),
+            ));
+        }
 
         // Re-associate any dummy-FS component with the CmpRegion's base
         // frame (both components span the same axes). Mirrors C
@@ -1671,23 +2049,50 @@ impl<K: crate::regions::StcKind> Serializable for crate::regions::Stc<K> {
         let _base = read_mapping_base(whole);
         let data = read_region_base(whole)?;
 
-        let region_node = node.get_object("Region").ok_or_else(|| {
-            AstError::new(ErrorCode::Lderr, format!("{}: missing Region", K::CLASS))
-        })?;
+        // The encapsulated Region, which must be a Region in the Stc's base
+        // Frame (stc.c `astLoadStc`).
+        let class = &whole.class;
+        let region_node = check_loaded(
+            node.get_object("Region"),
+            "Region",
+            true,
+            class,
+            "encapsulated Region",
+        )?
+        .expect("a needed component is there");
         let mut region = region_from_node(region_node)?;
+        let nax = data.frameset.base().naxes();
+        if region.naxes() != nax {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadStc({class}): The Region encapsulated by the {class} read has {} axes, \
+                     but the {class} has {nax}.",
+                    region.naxes()
+                ),
+            ));
+        }
         let f1 = data.frameset.base().snapshot();
         if !data.dummy_fs && region.has_dummy_fs() {
             region.set_region_fs(f1.as_ref());
         }
 
-        let ncoord = node.get_int("Ncoord", 0).max(0) as usize;
-        let mut coords = Vec::with_capacity(ncoord);
+        // The AstroCoords KeyMaps, read in turn, each of which must be a
+        // KeyMap; the number claimed sizes nothing.
+        let ncoord = node.get_int("Ncoord", 0).max(0);
+        let mut coords = Vec::new();
         for ico in 1..=ncoord {
-            let key = format!("Coord{ico}");
-            let km_node = node.get_object(&key).ok_or_else(|| {
-                AstError::new(ErrorCode::Lderr, format!("{}: missing {key}", K::CLASS))
+            let km_node = check_loaded(
+                node.get_object(&format!("Coord{ico}")),
+                "KeyMap",
+                true,
+                class,
+                "AstroCoords KeyMap",
+            )?
+            .expect("a needed component is there");
+            let mut keymap = load_object(km_node, || {
+                <crate::keymap::KeyMap as Serializable>::from_node(km_node)
             })?;
-            let mut keymap = <crate::keymap::KeyMap as Serializable>::from_node(km_node)?;
             if !data.dummy_fs {
                 crate::regions::stc_set_coord_frames(&mut keymap, f1.as_ref())?;
             }
@@ -1779,17 +2184,28 @@ impl Serializable for Moc {
         if is_set("MinOrder") {
             moc.set_min_order(node.get_int("MinOrder", 0) as i32);
         }
-        let max_nest = if moc.test_max_order() {
-            12 * (1_i64 << (2 * moc.max_order()))
-        } else {
-            i64::MAX
-        };
         let join = |lo: i64, hi: i64| ((hi as u32 as u64) << 32 | (lo as u32 as u64)) as i64;
         let ill_formed = |detail: String| {
             AstError::new(ErrorCode::Lderr, "astLoadMoc(Moc): Ill-formed Moc.").with_context(detail)
         };
-        let nrange = node.get_int("NRange", 0).max(0) as usize;
-        let mut range = Vec::with_capacity(2 * nrange);
+        // moc.c `astLoadMoc`: the number of ranges is not negative, a Moc
+        // with ranges has a valid MaxOrder (C's unset value is -INT_MAX),
+        // and the ranges are read in turn, the stated number sizing nothing;
+        // a missing range reads as [0:0], which overlaps its predecessor.
+        let nrange = node.get_int("NRange", 0);
+        if nrange < 0 {
+            return Err(ill_formed(format!("Invalid number of ranges ({nrange}).")));
+        }
+        let max_order = moc.test_max_order().then(|| moc.max_order());
+        let valid_order = max_order.filter(|o| (0..=crate::regions::MOC_MAX_ORDER).contains(o));
+        if nrange > 0 && valid_order.is_none() {
+            return Err(ill_formed(format!(
+                "Missing or invalid MaxOrder ({}) for a Moc containing {nrange} range(s).",
+                max_order.unwrap_or(-i32::MAX)
+            )));
+        }
+        let max_nest = valid_order.map_or(0, |o| 12 * (1_i64 << (2 * o)));
+        let mut range = Vec::new();
         let (mut llast, mut ulast) = (0_i64, 0_i64);
         for irange in 0..nrange {
             let lo = join(
@@ -1800,6 +2216,9 @@ impl Serializable for Moc {
                 node.get_int(&format!("K{irange}"), 0),
                 node.get_int(&format!("L{irange}"), 0),
             );
+            if lo < 0 {
+                return Err(ill_formed(format!("Lower bound ({lo}) is negative.")));
+            }
             let hi = if hi > 0 { hi } else { lo };
             if hi >= max_nest {
                 return Err(ill_formed(format!(
@@ -1867,15 +2286,22 @@ impl Serializable for Prism {
         let _base = read_mapping_base(whole);
         let data = read_region_base(whole)?;
 
-        let node_a = node
-            .get_object("RegionA")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Prism: missing RegionA"))?;
-        let node_b = node
-            .get_object("RegionB")
-            .ok_or_else(|| AstError::new(ErrorCode::Lderr, "Prism: missing RegionB"))?;
-
-        let mut region1 = region_from_node(node_a)?;
-        let mut region2 = region_from_node(node_b)?;
+        // The components, which must be Regions whose axes together are
+        // those of the Prism's base Frame (prism.c `astLoadPrism`).
+        let class = &whole.class;
+        let (mut region1, mut region2) = component_regions(node, class)?;
+        let nax = data.frameset.base().naxes();
+        if region1.naxes() + region2.naxes() != nax {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadPrism({class}): The component Regions read for a {class} have {} and \
+                     {} axes, but the {class} has {nax}.",
+                    region1.naxes(),
+                    region2.naxes()
+                ),
+            ));
+        }
 
         // Either component may carry a dummy FrameSet (dumped frame-less).
         // If this Prism itself has a real frame, re-associate each dummy-FS
@@ -2606,93 +3032,209 @@ impl AnyObject {
 
 /// Reconstruct an [`AnyObject`] from a [`Node`], dispatching by class name.
 pub(crate) fn any_object_from_node(node: &Node) -> AstResult<AnyObject> {
+    boxed_any_object_from_node(node).map(|obj| *obj)
+}
+
+/// [`any_object_from_node`], boxed.
+///
+/// Boxed through `load_object`, whose frame would otherwise hold several
+/// AnyObjects: the Objects in a KeyMap load through here, so KeyMaps nested
+/// in KeyMaps recurse through it.
+pub(crate) fn boxed_any_object_from_node(node: &Node) -> AstResult<Box<AnyObject>> {
+    load_object(node, || any_object_from_node_inner(node).map(Box::new))
+}
+
+/// Load `node` with `load` as C loads an Object, giving C's error.
+///
+/// A typed read that fails records its error and lets the loader go on
+/// (see [`node::record_read_error`]), where C's loader, the status set,
+/// would do nothing more; so an error recorded while `load` ran is the one
+/// reported, ahead of any the loader went on to raise. An Object read as an
+/// item's value adds C's `Failed to read the "<item>" Object value.`, once,
+/// for the innermost such Object.
+pub(crate) fn load_object<T>(node: &Node, load: impl FnOnce() -> AstResult<T>) -> AstResult<T> {
+    let outer = node::take_read_error();
+    // object.c `astLoadObject`, which every loader runs first, reads the
+    // Object's associated KeyMap and checks it is one.
+    let object_part = node.section("Object");
+    let keymap = check_loaded(
+        object_part.get_object("KeyMap"),
+        "KeyMap",
+        false,
+        &node.class,
+        "associated KeyMap",
+    );
+    let result = match keymap.and_then(|km| km.map(any_object_from_node).transpose()) {
+        Ok(_) => load(),
+        Err(e) => Err(e),
+    };
+    let recorded = node::take_read_error();
+    node::restore_read_error(outer);
+    let result = match recorded {
+        Some(e) => Err(e),
+        None => result,
+    };
+    match (&node.item.0, result) {
+        (Some(name), Err(e)) => Err(e.in_object_value(name)),
+        (_, result) => result,
+    }
+}
+
+/// Whether `node` describes an object of class `class` or of a class
+/// derived from it.
+pub(crate) fn node_is_a(node: &Node, class: &str) -> bool {
+    native_stream::class_chain(&node.class).is_some_and(|chain| chain.contains(&class))
+}
+
+/// C's `astCheckLoaded` (object.c) for the component a loader reads as the
+/// value of item `item` of an object of class `name`: `node` must be an
+/// object of class `class` or a class derived from it, and must be there if
+/// `needed`. Gives the component's description, for the caller to load, or
+/// `None` when it is not there. A component of another class is read first,
+/// as C reads it before checking it, so that its own error comes first.
+pub(crate) fn check_loaded<'a>(
+    node: Option<&'a Node>,
+    class: &str,
+    needed: bool,
+    name: &str,
+    item: &str,
+) -> AstResult<Option<&'a Node>> {
+    let Some(node) = node else {
+        if needed {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!("astLoad({name}): The {item} is missing from the {name} read."),
+            ));
+        }
+        return Ok(None);
+    };
+    if node_is_a(node, class) {
+        return Ok(Some(node));
+    }
+    // The port loads an Axis or a PointSet only as part of the object
+    // holding it.
+    if !matches!(node.class.as_str(), "Axis" | "SkyAxis" | "PointSet") {
+        any_object_from_node(node)?;
+    }
+    Err(AstError::new(
+        ErrorCode::Lderr,
+        format!(
+            "astLoad({name}): The {item} read for a {name} is a {}, which is not a {class}.",
+            node.class
+        ),
+    ))
+}
+
+/// Load a `T` and wrap it as an [`AnyObject`], in a frame of its own, as
+/// [`boxed_mapping`] does for the Mapping dispatch.
+#[inline(never)]
+fn wrapped<T: Serializable>(node: &Node, wrap: fn(T) -> AnyObject) -> AstResult<AnyObject> {
+    Ok(wrap(T::from_node(node)?))
+}
+
+/// [`wrapped`] for a Mapping, applying the items every Mapping shares.
+#[inline(never)]
+fn wrapped_mapping<T: Serializable + Mapping>(
+    node: &Node,
+    wrap: fn(T) -> AnyObject,
+) -> AstResult<AnyObject> {
+    Ok(wrap(load_mapping::<T>(node)?))
+}
+
+fn any_object_from_node_inner(node: &Node) -> AstResult<AnyObject> {
     match node.class.as_str() {
-        "UnitMap" => Ok(AnyObject::UnitMap(load_mapping::<UnitMap>(node)?)),
-        "ZoomMap" => Ok(AnyObject::ZoomMap(load_mapping::<ZoomMap>(node)?)),
-        "ShiftMap" => Ok(AnyObject::ShiftMap(load_mapping::<ShiftMap>(node)?)),
-        "MatrixMap" => Ok(AnyObject::MatrixMap(load_mapping::<MatrixMap>(node)?)),
-        "PermMap" => Ok(AnyObject::PermMap(load_mapping::<PermMap>(node)?)),
-        "WinMap" => Ok(AnyObject::WinMap(load_mapping::<WinMap>(node)?)),
-        "LutMap" => Ok(AnyObject::LutMap(load_mapping::<LutMap>(node)?)),
-        "PolyMap" => Ok(AnyObject::PolyMap(load_mapping::<PolyMap>(node)?)),
-        "ChebyMap" => Ok(AnyObject::ChebyMap(load_mapping::<ChebyMap>(node)?)),
-        "CmpMap" => Ok(AnyObject::CmpMap(load_mapping::<CmpMap>(node)?)),
-        "WcsMap" => Ok(AnyObject::WcsMap(load_mapping::<WcsMap>(node)?)),
-        "SlaMap" => Ok(AnyObject::SlaMap(load_mapping::<SlaMap>(node)?)),
-        "SpecMap" => Ok(AnyObject::SpecMap(load_mapping::<SpecMap>(node)?)),
-        "TimeMap" => Ok(AnyObject::TimeMap(load_mapping::<TimeMap>(node)?)),
-        "PcdMap" => Ok(AnyObject::PcdMap(load_mapping::<PcdMap>(node)?)),
-        "GrismMap" => Ok(AnyObject::GrismMap(load_mapping::<GrismMap>(node)?)),
-        "SphMap" => Ok(AnyObject::SphMap(load_mapping::<SphMap>(node)?)),
-        "UnitNormMap" => Ok(AnyObject::UnitNormMap(load_mapping::<UnitNormMap>(node)?)),
-        "XphMap" => Ok(AnyObject::XphMap(load_mapping::<XphMap>(node)?)),
-        "IntraMap" => Ok(AnyObject::IntraMap(load_mapping::<IntraMap>(node)?)),
-        "TranMap" => Ok(AnyObject::TranMap(load_mapping::<TranMap>(node)?)),
-        "RateMap" => Ok(AnyObject::RateMap(load_mapping::<RateMap>(node)?)),
-        "MathMap" => Ok(AnyObject::MathMap(load_mapping::<MathMap>(node)?)),
-        "SplineMap" => Ok(AnyObject::SplineMap(load_mapping::<SplineMap>(node)?)),
-        "DssMap" => Ok(AnyObject::DssMap(load_mapping::<DssMap>(node)?)),
-        "NormMap" => Ok(AnyObject::NormMap(load_mapping::<NormMap>(node)?)),
-        "SelectorMap" => Ok(AnyObject::SelectorMap(load_mapping::<SelectorMap>(node)?)),
-        "SwitchMap" => Ok(AnyObject::SwitchMap(load_mapping::<SwitchMap>(node)?)),
-        "Frame" => Ok(AnyObject::BasicFrame(BasicFrame::from_node(node)?)),
-        "SkyFrame" => Ok(AnyObject::SkyFrame(SkyFrame::from_node(node)?)),
-        "SpecFrame" => Ok(AnyObject::SpecFrame(SpecFrame::from_node(node)?)),
-        "DSBSpecFrame" => Ok(AnyObject::DSBSpecFrame(DSBSpecFrame::from_node(node)?)),
-        "TimeFrame" => Ok(AnyObject::TimeFrame(TimeFrame::from_node(node)?)),
-        "FluxFrame" => Ok(AnyObject::FluxFrame(FluxFrame::from_node(node)?)),
-        "SpecFluxFrame" => Ok(AnyObject::SpecFluxFrame(Box::new(
-            SpecFluxFrame::from_node(node)?,
-        ))),
-        "CmpFrame" => Ok(AnyObject::CmpFrame(CmpFrame::from_node(node)?)),
-        "FrameSet" => Ok(AnyObject::FrameSet(FrameSet::from_node(node)?)),
-        "Plot" => Ok(AnyObject::Plot(Box::new(Plot::from_node(node)?))),
+        "UnitMap" => wrapped_mapping::<UnitMap>(node, AnyObject::UnitMap),
+        "ZoomMap" => wrapped_mapping::<ZoomMap>(node, AnyObject::ZoomMap),
+        "ShiftMap" => wrapped_mapping::<ShiftMap>(node, AnyObject::ShiftMap),
+        "MatrixMap" => wrapped_mapping::<MatrixMap>(node, AnyObject::MatrixMap),
+        "PermMap" => wrapped_mapping::<PermMap>(node, AnyObject::PermMap),
+        "WinMap" => wrapped_mapping::<WinMap>(node, AnyObject::WinMap),
+        "LutMap" => wrapped_mapping::<LutMap>(node, AnyObject::LutMap),
+        "PolyMap" => wrapped_mapping::<PolyMap>(node, AnyObject::PolyMap),
+        "ChebyMap" => wrapped_mapping::<ChebyMap>(node, AnyObject::ChebyMap),
+        "CmpMap" => wrapped_mapping::<CmpMap>(node, AnyObject::CmpMap),
+        "WcsMap" => wrapped_mapping::<WcsMap>(node, AnyObject::WcsMap),
+        "SlaMap" => wrapped_mapping::<SlaMap>(node, AnyObject::SlaMap),
+        "SpecMap" => wrapped_mapping::<SpecMap>(node, AnyObject::SpecMap),
+        "TimeMap" => wrapped_mapping::<TimeMap>(node, AnyObject::TimeMap),
+        "PcdMap" => wrapped_mapping::<PcdMap>(node, AnyObject::PcdMap),
+        "GrismMap" => wrapped_mapping::<GrismMap>(node, AnyObject::GrismMap),
+        "SphMap" => wrapped_mapping::<SphMap>(node, AnyObject::SphMap),
+        "UnitNormMap" => wrapped_mapping::<UnitNormMap>(node, AnyObject::UnitNormMap),
+        "XphMap" => wrapped_mapping::<XphMap>(node, AnyObject::XphMap),
+        "IntraMap" => wrapped_mapping::<IntraMap>(node, AnyObject::IntraMap),
+        "TranMap" => wrapped_mapping::<TranMap>(node, AnyObject::TranMap),
+        "RateMap" => wrapped_mapping::<RateMap>(node, AnyObject::RateMap),
+        "MathMap" => wrapped_mapping::<MathMap>(node, AnyObject::MathMap),
+        "SplineMap" => wrapped_mapping::<SplineMap>(node, AnyObject::SplineMap),
+        "DssMap" => wrapped_mapping::<DssMap>(node, AnyObject::DssMap),
+        "NormMap" => wrapped_mapping::<NormMap>(node, AnyObject::NormMap),
+        "SelectorMap" => wrapped_mapping::<SelectorMap>(node, AnyObject::SelectorMap),
+        "SwitchMap" => wrapped_mapping::<SwitchMap>(node, AnyObject::SwitchMap),
+        "Frame" => wrapped::<BasicFrame>(node, AnyObject::BasicFrame),
+        "SkyFrame" => wrapped::<SkyFrame>(node, AnyObject::SkyFrame),
+        "SpecFrame" => wrapped::<SpecFrame>(node, AnyObject::SpecFrame),
+        "DSBSpecFrame" => wrapped::<DSBSpecFrame>(node, AnyObject::DSBSpecFrame),
+        "TimeFrame" => wrapped::<TimeFrame>(node, AnyObject::TimeFrame),
+        "FluxFrame" => wrapped::<FluxFrame>(node, AnyObject::FluxFrame),
+        "SpecFluxFrame" => {
+            wrapped::<SpecFluxFrame>(node, |v| AnyObject::SpecFluxFrame(Box::new(v)))
+        }
+        "CmpFrame" => wrapped::<CmpFrame>(node, AnyObject::CmpFrame),
+        "FrameSet" => wrapped::<FrameSet>(node, AnyObject::FrameSet),
+        "Plot" => wrapped::<Plot>(node, |v| AnyObject::Plot(Box::new(v))),
         // Regions.
-        "Circle" => Ok(AnyObject::Circle(Circle::from_node(node)?)),
-        "Box" => Ok(AnyObject::BoxRegion(BoxRegion::from_node(node)?)),
-        "Ellipse" => Ok(AnyObject::Ellipse(Ellipse::from_node(node)?)),
-        "Polygon" => Ok(AnyObject::Polygon(Polygon::from_node(node)?)),
-        "Interval" => Ok(AnyObject::Interval(Interval::from_node(node)?)),
-        "NullRegion" => Ok(AnyObject::NullRegion(NullRegion::from_node(node)?)),
-        "CmpRegion" => Ok(AnyObject::CmpRegion(CmpRegion::from_node(node)?)),
-        "PointList" => Ok(AnyObject::PointList(PointList::from_node(node)?)),
-        "Prism" => Ok(AnyObject::Prism(Prism::from_node(node)?)),
-        "Moc" => Ok(AnyObject::Moc(Moc::from_node(node)?)),
-        "StcResourceProfile" => Ok(AnyObject::StcResourceProfile(
-            StcResourceProfile::from_node(node)?,
-        )),
-        "StcSearchLocation" => Ok(AnyObject::StcSearchLocation(StcSearchLocation::from_node(
-            node,
-        )?)),
-        "StcCatalogEntryLocation" => Ok(AnyObject::StcCatalogEntryLocation(
-            StcCatalogEntryLocation::from_node(node)?,
-        )),
-        "StcObsDataLocation" => Ok(AnyObject::StcObsDataLocation(
-            StcObsDataLocation::from_node(node)?,
-        )),
-        "KeyMap" => Ok(AnyObject::KeyMap(Box::new(
-            crate::keymap::KeyMap::from_node(node)?,
-        ))),
-        "Table" => Ok(AnyObject::Table(Box::new(crate::table::Table::from_node(
-            node,
-        )?))),
-        "FitsTable" => Ok(AnyObject::FitsTable(Box::new(
-            crate::fitstable::FitsTable::from_node(node)?,
-        ))),
-        "Channel" => Ok(AnyObject::NativeChannel(Box::new(
-            crate::channel::NativeChannel::from_node(node)?,
-        ))),
-        "MocChan" => Ok(AnyObject::MocChan(Box::new(
-            crate::channel::MocChan::from_node(node)?,
-        ))),
-        "FitsChan" => Ok(AnyObject::FitsChan(Box::new(
-            crate::fitschan::FitsChan::from_node(node)?,
-        ))),
+        "Circle" => wrapped::<Circle>(node, AnyObject::Circle),
+        "Box" => wrapped::<BoxRegion>(node, AnyObject::BoxRegion),
+        "Ellipse" => wrapped::<Ellipse>(node, AnyObject::Ellipse),
+        "Polygon" => wrapped::<Polygon>(node, AnyObject::Polygon),
+        "Interval" => wrapped::<Interval>(node, AnyObject::Interval),
+        "NullRegion" => wrapped::<NullRegion>(node, AnyObject::NullRegion),
+        "CmpRegion" => wrapped::<CmpRegion>(node, AnyObject::CmpRegion),
+        "PointList" => wrapped::<PointList>(node, AnyObject::PointList),
+        "Prism" => wrapped::<Prism>(node, AnyObject::Prism),
+        "Moc" => wrapped::<Moc>(node, AnyObject::Moc),
+        "StcResourceProfile" => wrapped::<StcResourceProfile>(node, AnyObject::StcResourceProfile),
+        "StcSearchLocation" => wrapped::<StcSearchLocation>(node, AnyObject::StcSearchLocation),
+        "StcCatalogEntryLocation" => {
+            wrapped::<StcCatalogEntryLocation>(node, AnyObject::StcCatalogEntryLocation)
+        }
+        "StcObsDataLocation" => wrapped::<StcObsDataLocation>(node, AnyObject::StcObsDataLocation),
+        "KeyMap" => wrapped::<crate::keymap::KeyMap>(node, |v| AnyObject::KeyMap(Box::new(v))),
+        "Table" => wrapped::<crate::table::Table>(node, |v| AnyObject::Table(Box::new(v))),
+        "FitsTable" => {
+            wrapped::<crate::fitstable::FitsTable>(node, |v| AnyObject::FitsTable(Box::new(v)))
+        }
+        "Channel" => wrapped::<crate::channel::NativeChannel>(node, |v| {
+            AnyObject::NativeChannel(Box::new(v))
+        }),
+        "MocChan" => wrapped::<crate::channel::MocChan>(node, |v| AnyObject::MocChan(Box::new(v))),
+        "FitsChan" => {
+            wrapped::<crate::fitschan::FitsChan>(node, |v| AnyObject::FitsChan(Box::new(v)))
+        }
+        // A PointSet, which the port does not load as an object of its own,
+        // is still checked as C's loader checks it.
+        "PointSet" => {
+            read_pointset_node(node)?;
+            Err(AstError::new(
+                ErrorCode::Lderr,
+                "unknown AST class: PointSet".to_string(),
+            ))
+        }
         other => Err(AstError::new(
             ErrorCode::Lderr,
-            format!("unknown AST class: {other}"),
+            format!("{NO_LOADER}{other}"),
         )),
     }
+}
+
+/// The start of the error for a class with no loader of its own, such as
+/// an Axis, which only a Frame's loader reads.
+const NO_LOADER: &str = "unknown AST class: ";
+
+/// Whether `e` is the error for loading a class with no loader of its own.
+pub(crate) fn is_no_loader_error(e: &AstError) -> bool {
+    e.code() == ErrorCode::Lderr && e.message().starts_with(NO_LOADER)
 }
 
 // ---------------------------------------------------------------------------

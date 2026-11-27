@@ -27,7 +27,8 @@ fn found(perm: [usize; 4]) -> Option<[f64; 2]> {
     let mut target = CmpFrame::new(
         Box::new(sky(SkySystem::Fk5)),
         Box::new(sky(SkySystem::Galactic)),
-    );
+    )
+    .unwrap();
     target.perm_axes(&perm).unwrap();
     let mut template = sky(SkySystem::Fk5);
     template.set_max_axes(4).unwrap();

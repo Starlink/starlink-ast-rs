@@ -21,6 +21,20 @@ pub fn is_bad(v: f64) -> bool {
     (v == BAD_VALUE) | !v.is_finite()
 }
 
+/// Whether `v` is bad as the C library's Frame geometry tests it: equal to
+/// `BAD_VALUE`, and nothing else. An infinite value is a number, and so is
+/// a NaN that arithmetic on infinities gives, as in C.
+#[inline]
+pub(crate) fn is_c_bad(v: f64) -> bool {
+    v == BAD_VALUE
+}
+
+/// Whether any coordinate of `point` is bad by [`is_c_bad`].
+#[inline]
+pub(crate) fn point_has_c_bad(point: &[f64]) -> bool {
+    point.iter().any(|&v| is_c_bad(v))
+}
+
 #[inline]
 pub fn point_has_bad(point: &[f64]) -> bool {
     point.iter().any(|&v| is_bad(v))
@@ -36,9 +50,17 @@ pub fn point_has_bad(point: &[f64]) -> bool {
 /// double range — `1e5 * f64::MAX` is infinity, and an infinite tolerance
 /// makes every comparison report equality.
 ///
+/// Two identical values are equal, as are two NaNs, which matters for
+/// infinite and NaN values: the tolerance test never finds them equal to
+/// anything, themselves included, so a step repeated until its result
+/// stops changing would otherwise never stop once it had one.
 /// Both BAD values are considered equal. One BAD + one non-BAD are not.
 #[inline]
 pub fn ast_equals(a: f64, b: f64, tol: f64) -> bool {
+    // object.h.in astEQUALS, which tests this first.
+    if a == b || (a.is_nan() && b.is_nan()) {
+        return true;
+    }
     if a == BAD_VALUE {
         return b == BAD_VALUE;
     }
@@ -192,6 +214,15 @@ mod tests {
     fn ast_equals_keeps_its_near_zero_floor() {
         assert!(ast_equal(0.0, 1.0e-13));
         assert!(!ast_equal(0.0, 1.0e-11));
+    }
+
+    #[test]
+    fn ast_equals_identical_or_both_nan() {
+        assert!(ast_equal(f64::INFINITY, f64::INFINITY));
+        assert!(ast_equal(f64::NEG_INFINITY, f64::NEG_INFINITY));
+        assert!(ast_equal(f64::NAN, f64::NAN));
+        assert!(!ast_equal(f64::NAN, 0.0));
+        assert!(!ast_equal(0.0, f64::NAN));
     }
 
     #[test]

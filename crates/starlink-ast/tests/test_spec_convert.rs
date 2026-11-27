@@ -132,7 +132,8 @@ fn run(name: &str) -> Result<Option<[f64; 2]>, ()> {
             let mut cube = CmpFrame::new(
                 Box::new(SkyFrame::unset_system()),
                 Box::new(dsb(SideBand::LSB, false)),
-            );
+            )
+            .unwrap();
             let mut t = dsb(SideBand::LSB, false);
             t.set_system(SpecSystem::Vradio).unwrap();
             t.set_max_axes(3).unwrap();

@@ -215,3 +215,20 @@ fn numeric_rate_chebymap_cubic() {
         "chebymap cubic rate at x=0 (expected ~0), got {rate_zero}"
     );
 }
+
+/// At a position so close to zero that the first step is too small to
+/// represent, the step starts at the smallest normal number and grows from
+/// there, as in C; it used to stay zero for ever. The rate is found on
+/// another thread so that a hang fails the test rather than stalling it.
+#[test]
+fn rate_near_zero_terminates() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let map = MathMap::new(1, 1, &["y=2*x"], &["x=y/2"]).unwrap();
+        tx.send(map.rate(&[1.0e-320], 1, 1).unwrap()).unwrap();
+    });
+    let rate = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("rate at 1e-320 did not finish within 10 seconds");
+    assert!((rate - 2.0).abs() < 1.0e-6, "rate {rate}");
+}

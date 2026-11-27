@@ -106,6 +106,7 @@ impl UnitNormMap {
     #[doc(alias = "astUnitNormMap")]
     pub fn new(centre: impl Into<Vec<f64>>) -> AstResult<Self> {
         let centre = centre.into();
+        crate::mappings::check_init_mapping("UnitNormMap", centre.len(), centre.len() + 1)?;
         if centre.is_empty() {
             return Err(AstError::new(
                 ErrorCode::Badsm,
@@ -461,7 +462,7 @@ impl Mapping for UnitNormMap {
                 } else {
                     self.ncoord()
                 };
-                return Some(Box::new(UnitMap::new(n)));
+                return Some(Box::new(UnitMap::within_limit(n)));
             }
 
             // Different centers: forward + inverse = ShiftMap
@@ -473,7 +474,7 @@ impl Mapping for UnitNormMap {
                     .zip(other_unm.centre.iter())
                     .map(|(&a, &b)| b - a)
                     .collect();
-                return Some(Box::new(ShiftMap::new(shift)));
+                return Some(Box::new(ShiftMap::within_limit(shift)));
             }
 
             return None;
@@ -776,12 +777,20 @@ impl Serializable for UnitNormMap {
         let node = &whole.section("UnitNormMap");
         let base = read_mapping_base(whole);
 
-        // The center length equals the number of spatial axes, which is
-        // always min(nin, nout) in the forward direction. The serialized
-        // Nin/Nout are always the forward (non-inverted) dimensions
-        // regardless of the Invert flag, so ncoord = base.nin (which is
-        // always the smaller of the two for a UnitNormMap).
+        // The length of the centre, the number of inputs in the forward
+        // direction, which the stored Nin is whatever the Invert flag
+        // (unitnormmap.c `astLoadUnitNormMap`).
         let ncoord = base.nin;
+        if ncoord == 0 {
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadUnitNormMap({0}): The {0} read has 0 axes - it must have at least \
+                     one.",
+                    whole.class
+                ),
+            ));
+        }
 
         let mut centre = vec![0.0; ncoord];
         for (axis, c) in centre.iter_mut().enumerate() {
@@ -789,6 +798,7 @@ impl Serializable for UnitNormMap {
             *c = node.get_double(&key, 0.0);
         }
 
+        crate::serial::check_loaded_coords(&whole.class, &base, ncoord, ncoord + 1)?;
         let mut m = UnitNormMap::new(centre)?;
         if base.inverted {
             m.invert();

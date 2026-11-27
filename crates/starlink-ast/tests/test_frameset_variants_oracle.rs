@@ -52,7 +52,7 @@ fn current(name: &str) -> DynFrame {
             f.set_domain("SPEC");
             Box::new(f)
         }
-        "cmpframe" => Box::new(CmpFrame::new(basic(1, "A"), basic(1, "B"))),
+        "cmpframe" => Box::new(CmpFrame::new(basic(1, "A"), basic(1, "B")).unwrap()),
         "frame_digits" => {
             let mut f = BasicFrameBuilder::new(2).domain("CUR").build().unwrap();
             f.set_digits(4);
@@ -68,8 +68,12 @@ fn frameset(name: &str) -> AnyObject {
     let frame = current(name);
     let naxes = frame.naxes();
     let mut fs = FrameSet::new(basic(naxes, "PIX"));
-    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(naxes)), frame)
-        .unwrap();
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(naxes).unwrap()),
+        frame,
+    )
+    .unwrap();
     fs.add_variant(Some(Box::new(ZoomMap::new(naxes, 2.0).unwrap())), "Two")
         .unwrap();
     AnyObject::FrameSet(fs)

@@ -24,6 +24,8 @@ mod test_chebymap;
 mod test_cmpmap;
 #[path = "../test_dss_merge_oracle.rs"]
 mod test_dss_merge_oracle;
+#[path = "../test_dssmap.rs"]
+mod test_dssmap;
 #[path = "../test_equal.rs"]
 mod test_equal;
 #[path = "../test_grismmap.rs"]
@@ -42,6 +44,8 @@ mod test_lutmap_inverse;
 mod test_map_split;
 #[path = "../test_map_split_oracle.rs"]
 mod test_map_split_oracle;
+#[path = "../test_mapmerge.rs"]
+mod test_mapmerge;
 #[path = "../test_mapping.rs"]
 mod test_mapping;
 #[path = "../test_mapping_bad.rs"]
@@ -70,6 +74,8 @@ mod test_poly_iter_inverse_oracle;
 mod test_polymap;
 #[path = "../test_polymap_simd.rs"]
 mod test_polymap_simd;
+#[path = "../test_polymapinv.rs"]
+mod test_polymapinv;
 #[path = "../test_polytran.rs"]
 mod test_polytran;
 #[path = "../test_rate.rs"]
@@ -112,6 +118,8 @@ mod test_sphmap;
 mod test_splinemap;
 #[path = "../test_splinemap_c_api.rs"]
 mod test_splinemap_c_api;
+#[path = "../test_splinemapedge.rs"]
+mod test_splinemapedge;
 #[path = "../test_switchmap.rs"]
 mod test_switchmap;
 #[path = "../test_time_map_oracle.rs"]

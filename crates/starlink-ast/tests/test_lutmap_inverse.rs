@@ -38,3 +38,19 @@ fn inverse_matches_the_c_library() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// A table read from a dump with fewer than two good values has no inverse,
+/// whatever its Inv flag says, as the C library reads it: the inverse would
+/// interpolate between two good values (testloaderhardening.c).
+#[test]
+fn a_loaded_table_of_fewer_than_two_good_values_has_no_inverse() {
+    for dump in [
+        " Begin LutMap\n Nin = 1\n IsA Mapping\n Nlut = 2\n L1 = 1\n End LutMap\n",
+        " Begin LutMap\n Nin = 1\n IsA Mapping\n Nlut = 2\n End LutMap\n",
+    ] {
+        let obj = starlink_ast::from_native_string(dump).unwrap();
+        let map = obj.as_mapping().unwrap();
+        assert!(!map.has_inverse(), "{dump}");
+        assert!(map.has_forward(), "{dump}");
+    }
+}

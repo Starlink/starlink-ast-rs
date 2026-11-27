@@ -43,38 +43,46 @@ fn polywidth(
     let l1 = 0.5 * edges[i].length;
     let start = frm.line_offset(&edges[i], l1, 0.0)?;
 
-    // Move away at right angles. Start at 10*l1; for spherical Frames this may
-    // wrap around, so shrink until the end is actually the requested distance
-    // from the start.
-    let mut l2 = 10.0 * l1;
-    let mut end;
-    loop {
+    // Move away at right angles. Start at 10*l1, or the largest finite
+    // length if that is not finite; for spherical Frames this may wrap
+    // around, so halve it until the end is the requested distance from the
+    // start, or it can be halved no further.
+    let mut l2 = (10.0 * l1).min(f64::MAX);
+    let mut end = [BAD_VALUE; 2];
+    let mut usable = false;
+    while l2 > 0.0 {
         end = frm.line_offset(&edges[i], l1, l2)?;
         let d = frm.distance(&start, &end)?;
-        if !is_bad(d) && (d - l2).abs() < 1.0e-6 * l2 {
+        if d != BAD_VALUE && (d - l2).abs() < 1.0e-6 * l2 {
+            usable = true;
             break;
         }
         l2 *= 0.5;
     }
 
-    // Describe the perpendicular line, marked infinite so any crossing counts.
-    let mut line = frm
-        .line_def(&start, &end)?
-        .ok_or_else(|| AstError::new(ErrorCode::Inter, "polywidth: bad perpendicular line"))?;
-    line.infinite = true;
+    // With no usable line the width cannot be found, and the mid point of
+    // the edge stands for a position inside.
+    if !usable {
+        return Ok((result, start));
+    }
 
-    // Nearest crossing with any other edge.
-    for (j, edge) in edges.iter().enumerate().take(nv) {
-        if j == i {
-            continue;
-        }
-        let (crossed, _cross, d) = frm.line_crossing(&line, edge)?;
-        if crossed && !is_bad(d) && (d < result || is_bad(result)) {
-            result = d;
+    // Describe the perpendicular line, marked infinite so any crossing
+    // counts, and find its nearest crossing with any other edge. C tests
+    // the distances for AST__BAD alone.
+    if let Some(mut line) = frm.line_def(&start, &end)? {
+        line.infinite = true;
+        for (j, edge) in edges.iter().enumerate().take(nv) {
+            if j == i {
+                continue;
+            }
+            let (crossed, _cross, d) = frm.line_crossing(&line, edge)?;
+            if crossed && d != BAD_VALUE && (d < result || result == BAD_VALUE) {
+                result = d;
+            }
         }
     }
 
-    let cen = if !is_bad(result) {
+    let cen = if result != BAD_VALUE {
         let half = frm.offset(&start, &end, 0.5 * result)?;
         [half[0], half[1]]
     } else {
@@ -1010,6 +1018,7 @@ impl PolygonBuilder {
     /// - [`ErrorCode::Badin`] if `frame` does not have 2 axes.
     /// - [`ErrorCode::Nptin`] if `vertices` is empty.
     /// - [`ErrorCode::Naxin`] if a vertex does not have 2 values.
+    /// - [`ErrorCode::Badin`] if a vertex has a bad or NaN value.
     // C: astInitPolygon reports the Badin, and astPointSet the Nptin; C
     // accepts one or two vertices too.
     #[doc(alias = "astPolygon")]
@@ -1049,6 +1058,23 @@ impl PolygonBuilder {
                         i,
                         v.len(),
                         naxes
+                    ),
+                ));
+            }
+        }
+        // C checks each axis in turn through every vertex. A NaN is taken to
+        // be bad, as on any input.
+        for axis in 0..naxes {
+            if let Some(j) = vertices
+                .iter()
+                .position(|v| is_bad(v[axis]) && !v[axis].is_infinite())
+            {
+                return Err(AstError::new(
+                    ErrorCode::Badin,
+                    format!(
+                        "astInitPolygon(Polygon): One or more bad axis values supplied for the \
+                         vertex number {}.",
+                        j + 1
                     ),
                 ));
             }
@@ -1530,11 +1556,20 @@ impl Polygon {
 
         let mut edges: Vec<LineDef> = Vec::with_capacity(nv);
         let mut start = [ptr[nv - 1][0], ptr[nv - 1][1]];
-        for vertex in ptr.iter() {
+        // An edge that ends at an undefined position has no description,
+        // and the values cannot be found; the cache is left unset.
+        for (i, vertex) in ptr.iter().enumerate() {
             let end = [vertex[0], vertex[1]];
-            let edge = bfrm
-                .line_def(&start, &end)?
-                .ok_or_else(|| AstError::new(ErrorCode::Inter, "cache: bad polygon edge"))?;
+            let edge = bfrm.line_def(&start, &end)?.ok_or_else(|| {
+                AstError::new(
+                    ErrorCode::Badin,
+                    format!(
+                        "astPolygon(Polygon): Vertex number {} or its neighbour has an \
+                         undefined axis value.",
+                        i + 1
+                    ),
+                )
+            })?;
             edges.push(edge);
             start = end;
         }
@@ -1543,14 +1578,16 @@ impl Polygon {
         // with the greatest perpendicular width. `polcen` tracks the latest
         // probe center so that, if no positive width is found (a clockwise
         // polygon), `inside` falls back to a point outside the polygonal hole.
+        // The first vertex is used to begin with, so that there is a position
+        // even if no edge has any length.
         let mut maxwid = -1.0;
         let mut inside = [BAD_VALUE, BAD_VALUE];
-        let mut polcen = [BAD_VALUE, BAD_VALUE];
+        let mut polcen = [ptr[0][0], ptr[0][1]];
         for i in 0..nv {
             if edges[i].length > 0.0 {
                 let (polwid, cen) = polywidth(bfrm, &edges, i, nv)?;
                 polcen = cen;
-                if !is_bad(polwid) && polwid > maxwid {
+                if polwid != BAD_VALUE && polwid > maxwid {
                     maxwid = polwid;
                     inside = cen;
                 }
@@ -2279,7 +2316,7 @@ impl Mapping for Polygon {
     /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
     /// Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {
-        Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
+        Some(Box::new(crate::mappings::UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.
@@ -2450,5 +2487,36 @@ impl Mapping for Polygon {
 
     fn clone_box(&self) -> DynMapping {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frames::BasicFrameBuilder;
+
+    /// An edge that ends at an undefined vertex has no description; a
+    /// Polygon read from a dump can have one, as the loader does not check.
+    /// Each use reports it, as the cache is not kept.
+    #[test]
+    fn an_undefined_vertex_is_reported_on_use() {
+        let mut polygon = PolygonBuilder::new(
+            BasicFrameBuilder::new(2).build().unwrap(),
+            vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0]],
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        polygon.data.points[1][0] = BAD_VALUE;
+        polygon.data.invalidate_cache();
+        for _ in 0..2 {
+            let err = polygon.tran2(&[0.2], &[0.2], true).unwrap_err();
+            assert_eq!(err.code(), ErrorCode::Badin);
+            assert_eq!(
+                err.message(),
+                "astPolygon(Polygon): Vertex number 2 or its neighbour has an undefined axis \
+                 value."
+            );
+        }
     }
 }

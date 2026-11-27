@@ -168,7 +168,7 @@ use starlink_ast::mappings::Mapping;
 # // with the same celestial calibration in PIXEL coordinates.
 # let image = |shift: f64| -> starlink_ast::error::AstResult<FrameSet> {
 #     let mut fs = FrameSet::new(Box::new(BasicFrameBuilder::new(2).domain("GRID").build()?));
-#     fs.add_frame(FrameRef::Base, Box::new(ShiftMap::new([shift, shift])), Box::new(BasicFrameBuilder::new(2).domain("PIXEL").build()?))?;
+#     fs.add_frame(FrameRef::Base, Box::new(ShiftMap::new([shift, shift]).unwrap()), Box::new(BasicFrameBuilder::new(2).domain("PIXEL").build()?))?;
 #     fs.add_frame(FrameRef::Index(2), Box::new(ZoomMap::new(2, 1e-5)?), Box::new(SkyFrame::new(SkySystem::Fk5)))?;
 #     Ok(fs)
 # };
@@ -214,7 +214,7 @@ We can therefore simply invert either FrameSet (to make its base Frame become th
 # use starlink_ast::mappings::{Mapping, ShiftMap, ZoomMap};
 # let image = |shift: f64| -> starlink_ast::error::AstResult<FrameSet> {
 #     let mut fs = FrameSet::new(Box::new(BasicFrameBuilder::new(2).domain("GRID").build()?));
-#     fs.add_frame(FrameRef::Base, Box::new(ShiftMap::new([shift, shift])), Box::new(BasicFrameBuilder::new(2).domain("PIXEL").build()?))?;
+#     fs.add_frame(FrameRef::Base, Box::new(ShiftMap::new([shift, shift]).unwrap()), Box::new(BasicFrameBuilder::new(2).domain("PIXEL").build()?))?;
 #     fs.add_frame(FrameRef::Index(2), Box::new(ZoomMap::new(2, 1e-5)?), Box::new(SkyFrame::new(SkySystem::Fk5)))?;
 #     Ok(fs)
 # };
@@ -351,7 +351,7 @@ use starlink_ast::mappings::UnitMap;
 
 let skyframe = SkyFrame::unset_system();
 let mut frameset = FrameSet::new(Box::new(skyframe.clone()));
-frameset.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2)), Box::new(skyframe))?;
+frameset.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2).unwrap()), Box::new(skyframe))?;
 # Ok::<(), starlink_ast::error::AstError>(())
 ```
 
@@ -366,7 +366,7 @@ use starlink_ast::frames::SkySystem;
 # use starlink_ast::mappings::UnitMap;
 # let skyframe = SkyFrame::unset_system();
 # let mut frameset = FrameSet::new(Box::new(skyframe.clone()));
-# frameset.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2)), Box::new(skyframe))?;
+# frameset.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2).unwrap()), Box::new(skyframe))?;
 frameset.with_integrity(|frame| {
     let skyframe = frame.as_any_mut().downcast_mut::<SkyFrame>().expect("a SkyFrame");
     skyframe.set_system(SkySystem::Ecliptic);
@@ -385,7 +385,7 @@ use starlink_ast::mappings::Mapping;
 # use starlink_ast::mappings::UnitMap;
 # let skyframe = SkyFrame::unset_system();
 # let mut frameset = FrameSet::new(Box::new(skyframe.clone()));
-# frameset.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2)), Box::new(skyframe))?;
+# frameset.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2).unwrap()), Box::new(skyframe))?;
 # frameset.with_integrity(|frame| {
 #     frame.as_any_mut().downcast_mut::<SkyFrame>().unwrap().set_system(SkySystem::Ecliptic);
 #     Ok(())
@@ -448,12 +448,12 @@ For example, you might perform the merger shown in Figure 16 as follows:
 # use starlink_ast::mappings::UnitMap;
 # let three = || -> starlink_ast::error::AstResult<FrameSet> {
 #     let mut fs = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build()?));
-#     fs.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2)), Box::new(BasicFrameBuilder::new(2).build()?))?;
-#     fs.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2)), Box::new(BasicFrameBuilder::new(2).build()?))?;
+#     fs.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2).unwrap()), Box::new(BasicFrameBuilder::new(2).build()?))?;
+#     fs.add_frame(FrameRef::Index(1), Box::new(UnitMap::new(2).unwrap()), Box::new(BasicFrameBuilder::new(2).build()?))?;
 #     Ok(fs)
 # };
 # let (mut frameseta, framesetb) = (three()?, three()?);
-# let mapping = UnitMap::new(2);
+# let mapping = UnitMap::new(2).unwrap();
 frameseta.add_frameset(FrameRef::Index(1), Box::new(mapping), framesetb.clone())?;
 # assert_eq!((frameseta.nframe(), frameseta.base_index(), frameseta.current_index()), (6, 1, 6));
 # assert_eq!(framesetb.nframe(), 3);

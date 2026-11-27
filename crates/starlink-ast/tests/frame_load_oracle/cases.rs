@@ -176,8 +176,8 @@ pub const CASES: &[Case] = &[
             "End SkyFrame",
         ],
         Ok(&[
-            (("Lon", true), ("RA", false), ("", false), ("%1.3G", false), (3, true), (false, false), (1.7976931348623157e+308, false), (-1.7976931348623157e+308, false), ),
-            (("Declination", false), ("Dec", false), ("", false), ("dms.2", true), (7, false), (true, false), (1.5707963267948966, false), (-1.5707963267948966, false), ),
+            (("Lon", true), ("RA", false), ("hh:mm", false), ("hm", false), (3, true), (false, false), (1.7976931348623157e+308, false), (-1.7976931348623157e+308, false), ),
+            (("Declination", false), ("Dec", false), ("ddd:mm:ss", false), ("dms", false), (7, false), (true, false), (1.5707963267948966, false), (-1.5707963267948966, false), ),
         ]),
     ),
     (

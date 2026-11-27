@@ -59,7 +59,8 @@ fn frame(id: &str) -> Box<dyn Frame> {
             let mut f = CmpFrame::new(
                 Box::new(SkyFrame::unset_system()),
                 Box::new(time_frame("time_iso")),
-            );
+            )
+            .unwrap();
             f.set_digits(10).unwrap();
             if id == "cmp_perm" {
                 f.perm_axes(&[3, 1, 2]).unwrap();
@@ -72,8 +73,12 @@ fn frame(id: &str) -> Box<dyn Frame> {
         )),
         "frameset_sky" => {
             let mut fs = FrameSet::new(Box::new(BasicFrameBuilder::new(2).build().unwrap()));
-            fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), frame("sky_fmt"))
-                .unwrap();
+            fs.add_frame(
+                FrameRef::Base,
+                Box::new(UnitMap::new(2).unwrap()),
+                frame("sky_fmt"),
+            )
+            .unwrap();
             Box::new(fs)
         }
         "box_time_iso" => Box::new(
@@ -174,12 +179,67 @@ fn gap_of_zero_leaves_ntick_unset() {
     assert_eq!(f.gap(1, 0.0).unwrap(), (0.0, None));
 }
 
+/// `centre` cases where the port differs from C by decision, as `(frame
+/// id, axis, value, gap, the port's value, reason)`.
+/// Where C sets the first field that differs between the dates a gap
+/// either side of the value to zero, the port starts a day at 1, and takes
+/// the start of a month or year inside the window (quirk "TimeFrame
+/// `Centre` zeroes a calendar field that has no zero").
+const CENTRE_EXCLUDED: &[(&str, usize, f64, f64, f64, &str)] = &[
+    ("time_iso", 1, 56000.37, 1.0, 55987.0, DAY),
+    ("time_iso", 1, 56000.37, -1.0, 55987.0, DAY),
+    ("time_isodate", 1, 56000.37, 3.0, 55987.0, DAY),
+    ("time_jd_iso", 1, 2456000.87, 1.0, 2455987.5, DAY),
+    ("time_origin_iso", 1, 0.37, 1.0, -13.0, DAY),
+    ("box_time_iso", 1, 56000.37, 1.0, 55987.0, DAY),
+    ("cmp_perm", 1, 56000.37, 1.0, 55987.0, DAY),
+    ("time_iso", 1, 56000.37, 30.0, 56018.0, MONTH),
+    ("time_iso", 1, 56292.5, 2.0, 56293.0, YEAR),
+];
+
+const DAY: &str = "the day differs: the port gives the first of the month, C sets the day \
+                   to 0, the last day of the previous month; the ticks are the same";
+const MONTH: &str = "the month differs: the port gives the start of the month inside the \
+                     window, C sets it to 0, no date, and falls back to a multiple of the gap";
+const YEAR: &str = "the year differs: the port gives the start of the year inside the \
+                    window, C sets it to 0, no date, and falls back to a multiple of the gap";
+
+/// The port's own value for a `centre` case in [`CENTRE_EXCLUDED`].
+fn centre_excluded(id: &str, axis: usize, value: f64, gap: f64) -> Option<f64> {
+    CENTRE_EXCLUDED
+        .iter()
+        .find(|&&(i, a, v, g, _, _)| (i, a, v, g) == (id, axis, value, gap))
+        .map(|c| c.4)
+}
+
+/// Each excluded case is still in the corpus, so the list cannot hold a
+/// case that has gone; `centre_matches_the_c_library` fails for one that
+/// has started to agree with C.
+#[test]
+fn centre_excluded_cases_are_in_the_corpus() {
+    for &(id, axis, value, gap, _, reason) in CENTRE_EXCLUDED {
+        assert!(
+            cases::CENTRE_CASES
+                .iter()
+                .any(|&(i, a, v, g, _)| (i, a, v, g) == (id, axis, value, gap)),
+            "{id} axis {axis} value {value} gap {gap} ({reason}) is not in the corpus"
+        );
+    }
+}
+
 #[test]
 fn centre_matches_the_c_library() {
     let mut failures = Vec::new();
     for &(id, axis, value, gap, want) in cases::CENTRE_CASES {
         let got = frame(id).centre(axis, value, gap).unwrap();
-        if !crate::common::c_value_eq(got, want) {
+        if let Some(port) = centre_excluded(id, axis, value, gap) {
+            if got != port || got == want {
+                failures.push(format!(
+                    "{id} axis {axis} value {value} gap {gap}: got {got}, the port gives \
+                     {port} and C {want}; update CENTRE_EXCLUDED"
+                ));
+            }
+        } else if !crate::common::c_value_eq(got, want) {
             failures.push(format!(
                 "{id} axis {axis} value {value} gap {gap}: got {got}, C gives {want}"
             ));
@@ -204,24 +264,7 @@ fn abbrev_matches_the_c_library() {
 
 /// `fields` cases where the port differs from C, as `(frame id, axis, fmt,
 /// text, maxfld, reason)`.
-const FIELDS_EXCLUDED: &[(&str, usize, &str, &str, usize, &str)] = &[
-    (
-        "basic2",
-        1,
-        "%g",
-        "  -7 ",
-        20,
-        "C reads past the end of a value with leading spaces (c-library-quirks.md)",
-    ),
-    (
-        "basic2",
-        1,
-        "%g",
-        "  -7 ",
-        1,
-        "C reads past the end of a value with leading spaces (c-library-quirks.md)",
-    ),
-];
+const FIELDS_EXCLUDED: &[(&str, usize, &str, &str, usize, &str)] = &[];
 
 fn fields_excluded(id: &str, axis: usize, fmt: &str, text: &str, maxfld: usize) -> bool {
     FIELDS_EXCLUDED
@@ -285,12 +328,12 @@ fn sky_fields_without_a_named_separator_find_none() {
     assert_eq!(f.abbrev(1, "hms", Some("12"), "12:34:56").unwrap(), 0);
 }
 
-/// A TimeFrame's date centre across a month end zeroes the month and the
-/// fields after it to their first values, giving the start of the year.
+/// A TimeFrame's date centre across a month end is the start of the next
+/// month, the calendar boundary inside the window.
 #[test]
-fn time_centre_across_a_month_is_the_start_of_the_year() {
+fn time_centre_across_a_month_is_the_start_of_the_next_month() {
     let f = time_frame("time_iso");
-    assert_eq!(f.centre(1, 56000.37, 30.0).unwrap(), 55927.0);
+    assert_eq!(f.centre(1, 56000.37, 30.0).unwrap(), 56018.0);
 }
 
 /// A Region's `fields` reaches its Frame's Axis object, as C's does, so a
@@ -308,8 +351,7 @@ fn region_fields_bypass_timeframe_date_splitting() {
 }
 
 /// A TimeFrame's date centre of a bad value, which formats as `<bad>` with
-/// no numeric field to compare, is the value itself. C reads past the end
-/// of the formatted text here.
+/// no numeric field to compare, is the value itself, as in C.
 #[test]
 fn time_centre_of_a_bad_value_is_the_value() {
     let bad = starlink_ast::constants::BAD_VALUE;

@@ -44,7 +44,7 @@ use std::f64::consts::PI;
 // BON: Bonne's equal area
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astBONset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astBONset; reference/starlink-ast at fe26cc9b.
 // With `p[1] == 0` the projection is SFL's, whose set-up C runs from
 // `astSFLfwd` or `astSFLrev` on BON's struct (see the module documentation).
 pub(super) fn bon_set(prm: &mut PrjPrm) -> Status {
@@ -67,7 +67,7 @@ pub(super) fn bon_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astBONfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astBONfwd; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn bon_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f64, f64) {
     if prm.p[1] == 0.0 {
@@ -102,7 +102,7 @@ pub(super) fn bon_fwd_needs_special<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64)
     !sincosd_covers(theta) | !sincosd_covers(a)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astBONrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astBONrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn bon_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     if prm.p[1] == 0.0 {
@@ -176,7 +176,7 @@ pub(super) fn bon_rev_lon_drift(_prm: &PrjPrm, phi: f64) -> f64 {
 // PCO: polyconic
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astPCOset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astPCOset; reference/starlink-ast at fe26cc9b.
 pub(super) fn pco_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -196,7 +196,7 @@ pub(super) fn pco_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astPCOfwd; reference/starlink-ast at 3d3f255f,
+// reference/starlink-ast/wcslib/proj.c, astPCOfwd; reference/starlink-ast at fe26cc9b,
 // with the small-theta formula, which the C comments as upstream 4.22.
 // The body keeps the shape of the C, which declares each output before
 // the branches that assign it.
@@ -228,7 +228,7 @@ pub(super) fn pco_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
     (Status::Ok, x, y)
 }
 
-// reference/starlink-ast/wcslib/proj.c, astPCOrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astPCOrev; reference/starlink-ast at fe26cc9b.
 // The clamp keeps C's comparisons, which differ from `clamp` only in
 // panicking on a bound that is NaN, and the bounds are constants.
 #[allow(clippy::manual_clamp)]

@@ -863,3 +863,521 @@ fn fitschan_options_applies_to_every_new_fitschan() {
         }
     }
 }
+
+/// A value is written within its card whatever FitsDigits asks for: no
+/// more digits are used than the field holds. The cards are those of the
+/// C library at the pinned commit, which are the same for every value
+/// tried.
+#[test]
+fn fits_digits_of_any_size_writes_the_card() {
+    for digits in [1000, -100000, -1000, 15, -15, 73, -73, i32::MIN, i32::MAX] {
+        let mut fc = FitsChan::new().unwrap();
+        fc.set_fits_digits(digits);
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            fc.set_fits_f("A", 1e300, "", false).unwrap();
+            fc.set_fits_f("B", 0.1, "", false).unwrap();
+            fc.set_fits_cf("C", (-5.1e-4, 1e300), "", false).unwrap();
+        }));
+        assert!(caught.is_ok(), "FitsDigits {digits} panicked");
+        fc.clear_card().unwrap();
+        let mut cards = Vec::new();
+        while let Some(c) = fc.find_fits("%f", true).unwrap() {
+            cards.push(c.trim_end().to_string());
+        }
+        assert_eq!(
+            cards,
+            [
+                "A       =             1.0E+300",
+                "B       =                  0.1",
+                "C       =              -5.1E-4            1.0E+300",
+            ],
+            "FitsDigits {digits}"
+        );
+    }
+}
+
+/// DATE-OBS as the C library writes it from MJD-OBS at the pinned commit:
+/// `DD/MM/YY` before 1999, with the year less 1900 or 2000 whatever its
+/// sign, ISO 8601 from then on, and no card for a date with no calendar
+/// equivalent.
+#[test]
+fn date_obs_is_written_as_the_c_library_writes_it() {
+    let cases: [(&str, Option<&str>); 16] = [
+        ("55000.5", Some("'2009-06-18T12:00:00.000'")),
+        ("1.0E10", None),
+        ("1.0E300", None),
+        ("-2468570", Some("'01/03/-6800'")),
+        ("-50000.6", Some("'24/12/-179'")),
+        ("51179.9999999999", Some("'1999-01-01T24:00:00.000'")),
+        ("51178.5", Some("'31/12/98'")),
+        ("40000.0", Some("'24/05/68'")),
+        ("51179.0", Some("'1999-01-01T00:00:00.000'")),
+        ("-5.0", Some("'12/11/-42'")),
+        ("0.0", Some("'17/11/-42'")),
+        ("59999.123456789", Some("'2023-02-24T02:57:46.667'")),
+        ("-678941.0", Some("'01/01/-1900'")),
+        ("-2400000.5", Some("'24/11/-6613'")),
+        ("-2399963.5", Some("'31/12/-6613'")),
+        ("2973483.0", Some("'9999-12-31T00:00:00.000'")),
+    ];
+    for (mjd, want) in cases {
+        let mut fc = FitsChan::new().unwrap();
+        fc.set_encoding(Encoding::FitsWcs);
+        for card in [
+            "NAXIS   = 2",
+            "CTYPE1  = 'RA---TAN'",
+            "CTYPE2  = 'DEC--TAN'",
+            "CRPIX1  = 1",
+            "CRPIX2  = 1",
+            "CRVAL1  = 10",
+            "CRVAL2  = 20",
+            "CDELT1  = -0.001",
+            "CDELT2  = 0.001",
+            &format!("MJD-OBS = {mjd}"),
+        ] {
+            fc.put_fits(card, false).unwrap();
+        }
+        fc.clear_card().unwrap();
+        let obj = fc.read().unwrap().expect("a FrameSet");
+        let mut out = FitsChan::new().unwrap();
+        out.set_encoding(Encoding::FitsWcs);
+        assert_eq!(out.write(&obj).unwrap(), 1, "MJD-OBS {mjd}");
+        out.clear_card().unwrap();
+        let got = out
+            .find_fits("DATE-OBS", false)
+            .unwrap()
+            .map(|c| c[10..].split(" /").next().unwrap().trim().to_string());
+        assert_eq!(got.as_deref(), want, "MJD-OBS {mjd}");
+    }
+}
+
+/// WCSAXES must be a number of axes from 1 to 999, and FITS keywords index
+/// at most 99 intermediate axes; anything else is refused with the C
+/// library's error. Each read runs on another thread, so a hang fails the
+/// test rather than stalling it.
+#[test]
+fn wcsaxes_out_of_range_is_refused_as_c_refuses_it() {
+    use starlink_ast::error::ErrorCode;
+    let bad = |v: &str| {
+        format!(
+            "astRead(FitsChan): The FITS keyword WCSAXES  has an invalid value ({v}) - it should be \
+             an integer between 1 and 999."
+        )
+    };
+    let cases: Vec<(&str, Option<(ErrorCode, String)>)> = vec![
+        ("2147483647", Some((ErrorCode::Bdfts, bad("2.14748e+09")))),
+        ("1000", Some((ErrorCode::Bdfts, bad("1000")))),
+        ("1.0E300", Some((ErrorCode::Bdfts, bad("1e+300")))),
+        ("0", Some((ErrorCode::Bdfts, bad("0")))),
+        ("-3", Some((ErrorCode::Bdfts, bad("-3")))),
+        ("999.6", Some((ErrorCode::Bdfts, bad("999.6")))),
+        ("0.4", Some((ErrorCode::Bdfts, bad("0.4")))),
+        (
+            "100",
+            Some((
+                ErrorCode::Inter,
+                "GetItemC(fitschan): AST internal error; intermediate axis index 99 is invalid."
+                    .to_string(),
+            )),
+        ),
+        ("2", None),
+        ("1.6", None),
+        ("99", None),
+    ];
+    for (value, want) in cases {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let card = format!("WCSAXES = {value}");
+        std::thread::spawn(move || {
+            let mut fc = FitsChan::new().unwrap();
+            fc.set_encoding(Encoding::FitsWcs);
+            for c in [
+                "CTYPE1  = 'RA---TAN'",
+                "CTYPE2  = 'DEC--TAN'",
+                "CRVAL1  =                180.0",
+                "CRVAL2  =                 45.0",
+                "CRPIX1  =                256.5",
+                "CRPIX2  =                256.5",
+                "CDELT1  =              -0.0003",
+                "CDELT2  =               0.0003",
+                &card,
+            ] {
+                fc.put_fits(c, false).unwrap();
+            }
+            fc.clear_card().unwrap();
+            let got = match fc.read() {
+                Ok(Some(_)) => None,
+                Ok(None) => Some((ErrorCode::Inter, "no object read".to_string())),
+                Err(e) => Some((e.code(), e.message().to_string())),
+            };
+            tx.send(got).unwrap();
+        });
+        let got = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("WCSAXES {value}: the read did not finish in 10 seconds"));
+        assert_eq!(got, want, "WCSAXES {value}");
+    }
+}
+
+/// An axis keyword whose index the C library's store has no room for (an
+/// intermediate axis past 99 or below 1, a pixel axis or parameter past 100
+/// or below its first) is refused as the C library refuses it, at the first
+/// such card, even when it names no axis the header describes. Values from
+/// the C library at the pinned commit.
+#[test]
+fn an_axis_keyword_past_the_stores_limits_is_refused_as_c_refuses_it() {
+    use starlink_ast::error::ErrorCode;
+    let item = |which: &str, what: &str, n: i32| {
+        Some(format!(
+            "{which}(fitschan): AST internal error; {what} index {n} is invalid."
+        ))
+    };
+    let int = |n| item("SetItem", "intermediate axis", n);
+    let pix = |n| item("SetItem", "pixel axis or parameter", n);
+    let int_c = |n| item("SetItemC", "intermediate axis", n);
+    let pix_c = |n| item("SetItemC", "pixel axis or parameter", n);
+    let cases: Vec<(&str, Option<String>)> = vec![
+        ("CDELT100= 1", int(99)),
+        ("CRPIX100= 1", item("GetItemC", "intermediate axis", 99)),
+        ("CRPIX101= 1", pix(100)),
+        ("CRVAL100= 1", int(99)),
+        ("CTYPE100= 'X'", int_c(99)),
+        ("PC1_100 = 1", None),
+        ("PC1_101 = 1", pix(100)),
+        ("PC100_1 = 1", int(99)),
+        ("PV1_99  = 1", None),
+        ("PV1_100 = 1", pix(100)),
+        ("PV100_1 = 1", int(99)),
+        ("CD1_101 = 1", pix(100)),
+        ("CDELT99 = 1", None),
+        ("CROTA100= 1", None),
+        ("CUNIT100= 'm'", int_c(99)),
+        ("PS1_100 = 'x'", pix_c(100)),
+        ("CRVAL0  = 1", int(-1)),
+        ("CRPIX0  = 1", pix(-1)),
+        ("PC0_1   = 1", int(-1)),
+        ("PC1_0   = 1", pix(-1)),
+        ("PV1_0   = 1", None),
+        ("PV0_1   = 1", int(-1)),
+        ("CRVAL01 = 1", None),
+        ("CRVAL100= 'abc'", None),
+        ("A_0_0   = 1", None),
+        ("A_99_0  = 1", int(99)),
+        ("A_98_0  = 1", None),
+        ("A_0_99  = 1", None),
+        ("A_0_100 = 1", pix(100)),
+        ("SREF100 = 1", int(99)),
+        ("AXREF100= 1", int(99)),
+        ("SREFP100= 1", int(99)),
+        ("CNAME100= 'x'", int_c(99)),
+        ("CRVAL1Z = 1", None),
+        ("CDELT999= 1", int(998)),
+        ("PC1_1000= 1", pix(999)),
+        ("CTYPE0  = 'x'", int_c(-1)),
+    ];
+    let read = |encoding: Encoding, extra: &str| {
+        let mut fc = FitsChan::new().unwrap();
+        fc.set_encoding(encoding);
+        for c in [
+            "NAXIS   = 2",
+            "NAXIS1  = 100",
+            "NAXIS2  = 200",
+            "CRPIX1  = 50",
+            "CRPIX2  = 100",
+            "CRVAL1  = 10",
+            "CRVAL2  = 20",
+            "CTYPE1  = 'RA---TAN'",
+            "CTYPE2  = 'DEC--TAN'",
+            "CDELT1  = -0.001",
+            "CDELT2  = 0.001",
+            extra,
+        ] {
+            fc.put_fits(c, false).unwrap();
+        }
+        fc.clear_card().unwrap();
+        match fc.read() {
+            Ok(Some(_)) => None,
+            Ok(None) => Some("no object read".to_string()),
+            Err(e) => {
+                assert_eq!(e.code(), ErrorCode::Inter, "{encoding:?} {extra}");
+                Some(e.message().to_string())
+            }
+        }
+    };
+    let mut wrong = Vec::new();
+    for (card, want) in &cases {
+        let got = read(Encoding::FitsWcs, card);
+        if &got != want {
+            wrong.push(format!("{card}: got {got:?}, want {want:?}"));
+        }
+    }
+    for encoding in [
+        Encoding::FitsPc,
+        Encoding::FitsIraf,
+        Encoding::FitsAips,
+        Encoding::FitsAipsPP,
+    ] {
+        for (card, want) in &cases[..3] {
+            let got = read(encoding, card);
+            if &got != want {
+                wrong.push(format!("{encoding:?} {card}: got {got:?}, want {want:?}"));
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// A floating-point value that the integer type asked for cannot hold is
+/// not converted, with the C library's error, rather than saturating.
+#[test]
+fn a_float_an_integer_cannot_hold_is_not_converted() {
+    use starlink_ast::error::ErrorCode;
+    let fc_with = |value: &str| {
+        let mut fc = FitsChan::new().unwrap();
+        fc.put_fits(&format!("NAXIS1  = {value}"), false).unwrap();
+        fc
+    };
+    let refused = |method: &str, what: &str| {
+        format!(
+            "{method}(FitsChan): Cannot convert FITS keyword 'NAXIS1' to {what}.\n\
+             {method}(FitsChan): Cannot get value for FITS keyword 'NAXIS1'."
+        )
+    };
+    for value in ["-1.0E300", "2147483648.0", "-2147483649.0"] {
+        let err = fc_with(value).get_fits_i(Some("NAXIS1")).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Ftcnv, "I {value}");
+        assert_eq!(
+            err.message(),
+            refused("astGetFitsI", "integer"),
+            "I {value}"
+        );
+    }
+    assert_eq!(
+        fc_with("2147483647.0").get_fits_i(Some("NAXIS1")).unwrap(),
+        Some(i32::MAX)
+    );
+    assert_eq!(
+        fc_with("-2147483648.0").get_fits_i(Some("NAXIS1")).unwrap(),
+        Some(i32::MIN)
+    );
+    for value in ["9.3E18", "-9.3E18"] {
+        let err = fc_with(value).get_fits_k(Some("NAXIS1")).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Ftcnv, "K {value}");
+        assert_eq!(
+            err.message(),
+            refused("astGetFitsK", "64 bit integer"),
+            "K {value}"
+        );
+    }
+    assert_eq!(
+        fc_with("9.2E18").get_fits_k(Some("NAXIS1")).unwrap(),
+        Some(9_200_000_000_000_000_000)
+    );
+    let err = fc_with("3.0E9").get_fits_ci(Some("NAXIS1")).unwrap_err();
+    assert_eq!(err.message(), refused("astGetFitsCI", "complex integer"));
+}
+
+/// A grism diffraction order an `int` cannot hold is refused when the
+/// header is read, with the C library's error.
+#[test]
+fn a_grism_order_out_of_range_is_refused() {
+    use starlink_ast::error::ErrorCode;
+    let read = |order: &str| {
+        let mut fc = FitsChan::new().unwrap();
+        fc.set_encoding(Encoding::FitsWcs);
+        for c in [
+            "NAXIS   = 1",
+            "CTYPE1  = 'WAVE-GRI'",
+            "CRPIX1  = 1",
+            "CRVAL1  = 5.0E-7",
+            "CDELT1  = 1.0E-10",
+            "CUNIT1  = 'm'",
+            "PV1_0   = 1.0E6",
+            &format!("PV1_1   = {order}"),
+        ] {
+            fc.put_fits(c, false).unwrap();
+        }
+        fc.clear_card().unwrap();
+        fc.read()
+    };
+    for (order, shown) in [("1.0E10", "1e+10"), ("-2147483647", "-2.14748e+09")] {
+        let err = read(order).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Bdfts, "{order}");
+        assert_eq!(
+            err.message(),
+            format!(
+                "astRead(FitsChan): The FITS keyword PV1_1  has an invalid value ({shown}) for the \
+                 diffraction order of a grism."
+            ),
+            "{order}"
+        );
+    }
+    assert!(read("-1").unwrap().is_some());
+}
+
+/// A card's comment loses its leading blanks, as the C library's cards do:
+/// one given to `set_fits_s`, and the one written for an offset sky axis
+/// with an empty Symbol.
+#[test]
+fn a_comment_loses_its_leading_blanks() {
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_fits_s("A", "x", "   leading blanks", false).unwrap();
+    fc.clear_card().unwrap();
+    assert_eq!(
+        fc.find_fits("A", false).unwrap().unwrap().trim_end(),
+        "A       = 'x       '           / leading blanks"
+    );
+
+    use starlink_ast::attributes::Attributes;
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_encoding(Encoding::FitsWcs);
+    for c in [
+        "NAXIS   = 2",
+        "NAXIS1  = 100",
+        "NAXIS2  = 200",
+        "CRPIX1  = 50",
+        "CRPIX2  = 100",
+        "CRVAL1  = 10",
+        "CRVAL2  = 20",
+        "CTYPE1  = 'RA---TAN'",
+        "CTYPE2  = 'DEC--TAN'",
+        "CDELT1  = -0.001",
+        "CDELT2  = 0.001",
+    ] {
+        fc.put_fits(c, false).unwrap();
+    }
+    fc.clear_card().unwrap();
+    let Some(AnyObject::FrameSet(mut fs)) = fc.read().unwrap() else {
+        panic!("no FrameSet")
+    };
+    fs.set_attribute("SkyRef", "0:40:00, 20:00:00").unwrap();
+    fs.set_attribute("SkyRefIs", "Origin").unwrap();
+    let written_offset_sky = fs.clone();
+    fs.set_attribute("Symbol(1)", "").unwrap();
+    let mut out = FitsChan::new().unwrap();
+    out.set_encoding(Encoding::FitsWcs);
+    out.write(&AnyObject::FrameSet(fs)).unwrap();
+    out.clear_card().unwrap();
+    assert_eq!(
+        out.find_fits("CTYPE1", false).unwrap().unwrap().trim_end(),
+        "CTYPE1  = 'OFLN-TAN'           / offset from 0:40:00.0, 20:00:00"
+    );
+
+    // A comment also loses leading Unicode white space, wherever it comes
+    // from: here an offset axis whose Symbol, after the character the
+    // comment leaves out, starts with an em space.
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_fits_s("A", "x", "\u{2003}em space", false).unwrap();
+    fc.clear_card().unwrap();
+    assert_eq!(
+        fc.find_fits("A", false).unwrap().unwrap().trim_end(),
+        "A       = 'x       '           / em space"
+    );
+    let mut fs = written_offset_sky.clone();
+    fs.set_attribute("Symbol(1)", "D\u{2003}a").unwrap();
+    let mut out = FitsChan::new().unwrap();
+    out.set_encoding(Encoding::FitsWcs);
+    out.write(&AnyObject::FrameSet(fs)).unwrap();
+    out.clear_card().unwrap();
+    assert_eq!(
+        out.find_fits("CTYPE1", false).unwrap().unwrap().trim_end(),
+        "CTYPE1  = 'OFLN-TAN'           / a offset from 0:40:00.0, 20:00:00"
+    );
+}
+
+/// A card `find_fits` cannot format is reported as the C library's
+/// `astFindFits` reports it, naming the method (values from the C library at
+/// the pinned commit).
+#[test]
+fn a_card_find_fits_cannot_format_names_the_method() {
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_fits_cf("A", (-1.0 / 3.0, 2.0 / 3.0), "", false)
+        .unwrap();
+    fc.set_fits_digits(1000);
+    fc.clear_card().unwrap();
+    let e = fc.find_fits("A", false).unwrap_err();
+    assert_eq!(e.code(), starlink_ast::error::ErrorCode::Bdfts);
+    assert_eq!(
+        e.message(),
+        "astFindFits(FitsChan): Cannot encode imaginary part of a complex floating point \
+         value [-0.333333,0.666667] into a FITS header card for keyword 'A'."
+    );
+}
+
+/// `write_fits` writes the cards before one it cannot format, then reports
+/// that card as the C library's `astWriteFits` does, and the FitsChan is
+/// left empty (values from the C library at the pinned commit).
+#[test]
+fn write_fits_stops_at_a_card_it_cannot_format() {
+    struct Lines(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+    impl starlink_ast::channel::Sink for Lines {
+        fn write_line(&mut self, line: &str) {
+            self.0.lock().unwrap().push(line.trim_end().to_string());
+        }
+    }
+    let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut fc = FitsChan::new().unwrap();
+    fc.set_sink(Box::new(Lines(lines.clone())));
+    fc.set_fits_f("B", 1.0, "", false).unwrap();
+    fc.set_fits_cf("A", (-1.0 / 3.0, 2.0 / 3.0), "", false)
+        .unwrap();
+    fc.set_fits_digits(1000);
+    let e = fc.write_fits().unwrap_err();
+    assert_eq!(
+        e.message(),
+        "astFindFits(FitsChan): Cannot encode imaginary part of a complex floating point \
+         value [-0.333333,0.666667] into a FITS header card for keyword 'A'."
+    );
+    assert_eq!(*lines.lock().unwrap(), ["B       =                  1.0"]);
+    assert_eq!(fc.ncard().unwrap(), 0);
+}
+
+/// A grism whose equation has no solution at the reference wavelength, or
+/// whose order is zero, cannot be read, with the C library's two messages;
+/// orders that work at the reference wavelength read (values from the C
+/// library at the pinned commit).
+#[test]
+fn a_grism_unusable_at_the_reference_point_is_refused() {
+    let read = |order: &str, crval: &str| {
+        let mut fc = FitsChan::new().unwrap();
+        fc.set_encoding(Encoding::FitsWcs);
+        for c in [
+            "NAXIS   = 1",
+            "CTYPE1  = 'WAVE-GRI'",
+            "CRPIX1  = 1",
+            &format!("CRVAL1  = {crval}"),
+            "CDELT1  = 1.0E-10",
+            "CUNIT1  = 'm'",
+            "PV1_0   = 1.0E6",
+            &format!("PV1_1   = {order}"),
+        ] {
+            fc.put_fits(c, false).unwrap();
+        }
+        fc.clear_card().unwrap();
+        fc.read().map(|o| o.is_some())
+    };
+    for (order, crval) in [
+        ("1", "5.0E-7"),
+        ("2", "5.0E-7"),
+        ("-2", "5.0E-7"),
+        ("1000", "1.0E-10"),
+    ] {
+        assert!(read(order, crval).unwrap(), "order {order} at {crval}");
+    }
+    for (order, crval) in [
+        ("3", "5.0E-7"),
+        ("-3", "5.0E-7"),
+        ("1000", "5.0E-7"),
+        ("2", "9.99E-7"),
+        ("0", "5.0E-7"),
+    ] {
+        let e = read(order, crval).unwrap_err();
+        assert_eq!(e.code(), starlink_ast::error::ErrorCode::Bdfts);
+        assert_eq!(
+            e.message(),
+            "astRead(FitsChan): Cannot implement spectral algorithm code '-GRI' specified in \
+             FITS keyword 'CTYPE1'.\nastRead(FitsChan): Unknown algorithm code or unusable \
+             parameter values.",
+            "order {order} at {crval}"
+        );
+    }
+}

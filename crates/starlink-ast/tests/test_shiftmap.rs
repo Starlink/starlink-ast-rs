@@ -7,14 +7,14 @@ use starlink_ast::mappings::{Mapping, ShiftMap};
 
 #[test]
 fn shift_map_dimensions() {
-    let m = ShiftMap::new([1.0, 2.0, 3.0]);
+    let m = ShiftMap::new([1.0, 2.0, 3.0]).unwrap();
     assert_eq!(m.nin(), 3);
     assert_eq!(m.nout(), 3);
 }
 
 #[test]
 fn shift_map_forward() {
-    let m = ShiftMap::new([10.0, 20.0]);
+    let m = ShiftMap::new([10.0, 20.0]).unwrap();
     let pts = PointSet::from_rows([[1.0, 2.0], [3.0, 4.0]]);
     let out = m.transform(&pts, true).unwrap();
     assert_eq!(out.point(0), &[11.0, 22.0]);
@@ -23,7 +23,7 @@ fn shift_map_forward() {
 
 #[test]
 fn shift_map_inverse() {
-    let m = ShiftMap::new([10.0, 20.0]);
+    let m = ShiftMap::new([10.0, 20.0]).unwrap();
     let pts = PointSet::from_rows([[11.0, 22.0]]);
     let out = m.transform(&pts, false).unwrap();
     assert_eq!(out.point(0), &[1.0, 2.0]);
@@ -31,7 +31,7 @@ fn shift_map_inverse() {
 
 #[test]
 fn shift_map_bad_value() {
-    let m = ShiftMap::new([1.0, 2.0]);
+    let m = ShiftMap::new([1.0, 2.0]).unwrap();
     let pts = PointSet::from_rows([[f64::NAN, 5.0]]);
     let out = m.transform(&pts, true).unwrap();
     // Per-axis BAD: only the bad axis is blanked
@@ -41,7 +41,7 @@ fn shift_map_bad_value() {
 
 #[test]
 fn shift_map_simplified_zero() {
-    let m = ShiftMap::new([0.0, 0.0]);
+    let m = ShiftMap::new([0.0, 0.0]).unwrap();
     let s = <dyn Mapping>::simplify(&m).unwrap();
     let pts = PointSet::from_rows([[5.0, 6.0]]);
     let out = s.transform(&pts, true).unwrap();
@@ -50,14 +50,14 @@ fn shift_map_simplified_zero() {
 
 #[test]
 fn shift_map_rate() {
-    let m = ShiftMap::new([10.0, 20.0]);
+    let m = ShiftMap::new([10.0, 20.0]).unwrap();
     let r = m.rate(&[1.0, 1.0], 1, 1).unwrap();
     assert!((r - 1.0).abs() < 1e-6);
 }
 
 #[test]
 fn shift_rate_analytical() {
-    let sm = ShiftMap::new([10.0, 20.0]);
+    let sm = ShiftMap::new([10.0, 20.0]).unwrap();
     assert_eq!(sm.rate(&[1.0, 2.0], 1, 1).unwrap(), 1.0);
     assert_eq!(sm.rate(&[1.0, 2.0], 1, 2).unwrap(), 0.0);
     assert_eq!(sm.rate(&[1.0, 2.0], 2, 2).unwrap(), 1.0);
@@ -66,7 +66,7 @@ fn shift_rate_analytical() {
 
 #[test]
 fn shift_bad_per_axis() {
-    let sm = ShiftMap::new([10.0, 20.0, 30.0]);
+    let sm = ShiftMap::new([10.0, 20.0, 30.0]).unwrap();
     let pts = PointSet::from_rows([[1.0, BAD_VALUE, 3.0]]);
     let out = sm.transform(&pts, true).unwrap();
     assert_eq!(out.point(0)[0], 11.0);

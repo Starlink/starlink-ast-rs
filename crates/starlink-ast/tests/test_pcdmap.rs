@@ -178,7 +178,7 @@ fn pcdmap_equal_different_inversion() {
 #[test]
 fn pcdmap_not_equal_to_unitmap() {
     let a = PcdMap::new(0.001, [0.0, 0.0]);
-    let b = UnitMap::new(2);
+    let b = UnitMap::new(2).unwrap();
     assert!(!a.equal(&b));
 }
 
@@ -238,7 +238,7 @@ fn pcdmap_merge_different_disc_no_cancel() {
 #[test]
 fn pcdmap_merge_with_unitmap() {
     let pm = PcdMap::new(0.001, [100.0, 100.0]);
-    let um = UnitMap::new(2);
+    let um = UnitMap::new(2).unwrap();
     let result = pm.try_merge(&um, true, false, false);
     assert!(result.is_some());
     let merged = result.unwrap();

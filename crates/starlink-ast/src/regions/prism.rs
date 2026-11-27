@@ -164,7 +164,7 @@ impl PrismBuilder {
         // Create a CmpFrame combining the frames of both sub-regions.
         let frame1 = self.region1.get_region_frame();
         let frame2 = self.region2.get_region_frame();
-        let cmpframe = CmpFrame::new(frame1, frame2);
+        let cmpframe = CmpFrame::new(frame1, frame2)?;
 
         // Prism has no defining points of its own (geometry is in sub-regions).
         let points = Vec::new();
@@ -292,6 +292,20 @@ impl Prism {
                     && let super::PickedAxes::Region(that_base) =
                         super::pick_axes_region(that, &outax)?
                 {
+                    // The Regions picked from that carry its Negated attribute,
+                    // but the overlap is found below as if neither Prism were
+                    // negated and then allowed for negation, so they are used
+                    // un-negated.
+                    let mut that_ext = that_ext;
+                    let mut that_base = that_base;
+                    if that.is_negated() {
+                        for r in [&mut that_ext, &mut that_base] {
+                            if r.is_negated() {
+                                r.negate();
+                            }
+                        }
+                    }
+
                     // Map the two Regions picked from that into the Frames of
                     // this Prism's components, and compare each pair.
                     let mut emap = emap;
@@ -402,7 +416,7 @@ impl RegionGeometry for Prism {
             if !has_mesh(&self.region1)? || !has_mesh(&self.region2)? {
                 return Err(AstError::new(
                     ErrorCode::Inter,
-                    "astRegBaseMesh(Prism): No mesh can be produced for the Prism bacause \
+                    "astRegBaseMesh(Prism): No mesh can be produced for the Prism because \
                  one of its component Regions is unbounded.",
                 ));
             }
@@ -434,9 +448,12 @@ impl RegionGeometry for Prism {
             let mesh1 = sized(&self.region1, msz1).reg_mesh()?;
             let grid1 = sized(&self.region1, gsz1).reg_grid()?;
 
-            let mut result = Vec::with_capacity(
-                grid1.npoint() * mesh2.npoint() + mesh1.npoint() * grid2.npoint(),
-            );
+            let mut result = Vec::with_capacity(mesh_size(
+                grid1.npoint(),
+                mesh2.npoint(),
+                mesh1.npoint(),
+                grid2.npoint(),
+            )?);
             for i in 0..mesh2.npoint() {
                 for j in 0..grid1.npoint() {
                     let mut point = grid1.point(j).to_vec();
@@ -1192,7 +1209,7 @@ impl Mapping for Prism {
     /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
     /// Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {
-        Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
+        Some(Box::new(crate::mappings::UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.
@@ -1275,7 +1292,7 @@ impl Mapping for Prism {
             reg2.clone_region(),
             Composition::Parallel,
         )?;
-        let smap = <dyn Mapping>::simplify(&cmpmap)?;
+        let (smap, changed) = <dyn Mapping>::simplify_reporting_change(&cmpmap)?;
 
         // Initially assume we cannot form a new Region from the simplified
         // CmpMap.
@@ -1293,10 +1310,15 @@ impl Mapping for Prism {
                 (super::as_region(cm.first()), super::as_region(cm.second()))
         {
             // The C `(AstRegion *) map1 != reg1` pointer test guards against
-            // rebuilding an identical Prism. Rust has value semantics, so
-            // compare by structural equality of the component Regions.
-            let same = (m1 as &dyn Mapping).equal(reg1.as_ref() as &dyn Mapping)
-                && (m2 as &dyn Mapping).equal(reg2.as_ref() as &dyn Mapping);
+            // rebuilding an identical Prism. Rust has value semantics: when
+            // the simplification changed nothing, C's components are the
+            // originals; otherwise a component equal to its original stands
+            // for one C left in place. Equality alone is not enough, as a
+            // Region holding a bad or NaN value is not equal to itself, and
+            // the Prism rebuilt from it would be simplified again without end.
+            let same = !changed
+                || ((m1 as &dyn Mapping).equal(reg1.as_ref() as &dyn Mapping)
+                    && (m2 as &dyn Mapping).equal(reg2.as_ref() as &dyn Mapping));
             if !same {
                 let prism =
                     PrismBuilder::from_dyn(m1.clone_region(), m2.clone_region())?.build()?;
@@ -1492,5 +1514,72 @@ impl Mapping for Prism {
             ((self.region1.as_ref() as &dyn Mapping).clone_box(), false),
             ((self.region2.as_ref() as &dyn Mapping).clone_box(), false),
         ])
+    }
+}
+
+/// The number of points in a Prism's boundary mesh made from its first
+/// component's grid of `gsz1` points at each of the second's `msz2` mesh
+/// points, and the second's grid of `gsz2` at each of the first's `msz1`: an
+/// error if a C `int` cannot count them, as prism.c `RegBaseMesh` reports
+/// before making the mesh.
+fn mesh_size(gsz1: usize, msz2: usize, msz1: usize, gsz2: usize) -> AstResult<usize> {
+    let n = gsz1 as f64 * msz2 as f64 + msz1 as f64 * gsz2 as f64;
+    if n > f64::from(i32::MAX) {
+        return Err(AstError::new(
+            ErrorCode::Inter,
+            "astRegBaseMesh(Prism): The mesh for the Prism would have more points than can be \
+             created.",
+        ));
+    }
+    Ok(gsz1 * msz2 + msz1 * gsz2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// prism.c `RegBaseMesh`: a mesh of more points than a C `int` counts is
+    /// an error, found before any point is made.
+    #[test]
+    fn a_mesh_too_large_to_count_is_refused() {
+        assert_eq!(mesh_size(10, 20, 30, 40).unwrap(), 10 * 20 + 30 * 40);
+        let err = mesh_size(46341, 46341, 46341, 46341).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Inter);
+        assert_eq!(
+            err.message(),
+            "astRegBaseMesh(Prism): The mesh for the Prism would have more points than can be \
+             created."
+        );
+    }
+
+    /// A Prism with a component unbounded on one side has no mesh.
+    #[test]
+    fn a_prism_without_a_mesh_says_why() {
+        let half_line = crate::regions::IntervalBuilder::new(
+            crate::frames::BasicFrameBuilder::new(1).build().unwrap(),
+            vec![0.0],
+            vec![crate::constants::BAD_VALUE],
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let unit_box = crate::regions::BoxRegionBuilder::from_bounds(
+            crate::frames::BasicFrameBuilder::new(2).build().unwrap(),
+            &[0.0, 0.0],
+            &[1.0, 1.0],
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let prism = PrismBuilder::new(half_line, unit_box)
+            .unwrap()
+            .build()
+            .unwrap();
+        let err = prism.reg_base_mesh().unwrap_err();
+        assert_eq!(
+            err.message(),
+            "astRegBaseMesh(Prism): No mesh can be produced for the Prism because one of its \
+             component Regions is unbounded."
+        );
     }
 }

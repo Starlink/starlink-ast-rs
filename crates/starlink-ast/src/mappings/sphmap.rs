@@ -465,7 +465,7 @@ impl Mapping for SphMap {
             }
             3
         };
-        Some(Box::new(UnitMap::new(nin_pair)))
+        Some(Box::new(UnitMap::within_limit(nin_pair)))
     }
 
     fn equal(&self, other: &dyn Mapping) -> bool {
@@ -559,6 +559,7 @@ impl Serializable for SphMap {
         let node = &whole.section("SphMap");
         use crate::serial::NodeValue;
         let base = read_mapping_base(whole);
+        crate::serial::check_loaded_coords(&whole.class, &base, 3, 2)?;
         let unit_radius = node.get("UntRd").map(|_| node.get_int("UntRd", 0) != 0);
         // Distinguish "uncommented PlrLg = …" (explicitly set in source) from
         // "#   PlrLg = …" (commented default) — only the former counts as set.

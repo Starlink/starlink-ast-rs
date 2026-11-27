@@ -33,7 +33,7 @@ fn linear(diag: &[f64], shift: &[f64]) -> DynMapping {
     Box::new(
         CmpMap::new(
             Box::new(MatrixMap::new(m).unwrap()),
-            Box::new(ShiftMap::new(shift.to_vec())),
+            Box::new(ShiftMap::new(shift.to_vec()).unwrap()),
             Composition::Series,
         )
         .unwrap(),
@@ -45,10 +45,13 @@ fn case(name: &str) -> (DynFrame, DynMapping) {
     match name {
         "linear" => (sky(), linear(&[-0.001, 0.002], &[0.2, 0.3])),
         "linear_3d" => (
-            Box::new(CmpFrame::new(
-                sky(),
-                Box::new(BasicFrameBuilder::new(1).domain("X").build().unwrap()),
-            )),
+            Box::new(
+                CmpFrame::new(
+                    sky(),
+                    Box::new(BasicFrameBuilder::new(1).domain("X").build().unwrap()),
+                )
+                .unwrap(),
+            ),
             linear(&[-0.001, 0.002, 3.0], &[0.2, 0.3, 4.0]),
         ),
         "constant" => (

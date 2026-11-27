@@ -7,6 +7,7 @@ use crate::constants::BAD_VALUE;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, Frame};
 use crate::mappings::helpers::is_bad;
+use crate::mappings::helpers::is_c_bad;
 use crate::mappings::{DynMapping, UnitMap};
 use crate::serial::{Node, Serializable};
 
@@ -472,7 +473,7 @@ impl FluxFrame {
             FluxSystem::SBright,
             FluxSystem::SBrightW,
         ] {
-            if crate::units::unit_mapper(u, sys.default_units()).is_some() {
+            if crate::units::unit_mapper(u, sys.default_units())?.is_some() {
                 return Ok(sys);
             }
         }
@@ -782,9 +783,9 @@ impl FluxFrame {
 /// `map1`/`map3` come back NULL).
 fn unit_or_unit_map(from: &str, to: &str) -> AstResult<Option<DynMapping>> {
     if from == to {
-        return Ok(Some(Box::new(crate::mappings::UnitMap::new(1))));
+        return Ok(Some(Box::new(crate::mappings::UnitMap::new(1)?)));
     }
-    Ok(crate::units::unit_mapper(from, to))
+    crate::units::unit_mapper(from, to)
 }
 
 /// Transform a single scalar through a 1-D Mapping in the given direction,
@@ -849,11 +850,11 @@ impl Frame for FluxFrame {
         // GetSystem, which takes the System from a set Unit when the System
         // is not set.
         let system = self.system()?;
-        Ok(super::frame_attrs::relabel_for_unit(
+        super::frame_attrs::relabel_for_unit(
             system.label().to_string(),
             system.default_units(),
             self.axis.unit.as_deref(),
-        ))
+        )
     }
 
     /// The Symbol, set or default; see [`Frame::symbol`].
@@ -871,11 +872,11 @@ impl Frame for FluxFrame {
             return Ok(symbol.clone());
         }
         let system = self.system()?;
-        Ok(super::frame_attrs::relabel_for_unit(
+        super::frame_attrs::relabel_for_unit(
             system.symbol().to_string(),
             system.default_units(),
             self.axis.unit.as_deref(),
-        ))
+        )
     }
 
     /// The Unit, set or default: the System's default unit, as
@@ -903,11 +904,11 @@ impl Frame for FluxFrame {
         let unit = unit.trim_end();
         if self.get_active_unit() {
             let old = Frame::unit(self, axis)?;
-            super::frame_attrs::new_unit(&mut self.axis, &old, unit);
+            super::frame_attrs::new_unit(&mut self.axis, &old, unit)?;
         }
         self.ax_mut(axis)?.unit = Some(unit.to_string());
         let system = self.system()?;
-        if crate::units::unit_mapper(system.default_units(), unit).is_some() {
+        if crate::units::unit_mapper(system.default_units(), unit)?.is_some() {
             self.used_units[system.index()] = Some(unit.to_string());
         } else {
             self.system_set = false;
@@ -926,7 +927,7 @@ impl Frame for FluxFrame {
         if let Some(old) = self.axis.unit.take() {
             if self.get_active_unit() {
                 let new = Frame::unit(self, axis)?;
-                super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+                super::frame_attrs::new_unit(&mut self.axis, &old, &new)?;
             }
         }
         Ok(())
@@ -949,7 +950,7 @@ impl Frame for FluxFrame {
         let va = a[0];
         let vb = b[0];
         let vc = c[0];
-        if is_bad(va) || is_bad(vb) || is_bad(vc) {
+        if is_c_bad(va) || is_c_bad(vb) || is_c_bad(vc) {
             return Ok(BAD_VALUE);
         }
         let ab = va - vb;
@@ -1034,10 +1035,12 @@ impl Frame for FluxFrame {
         Ok(())
     }
 
+    // object.c `Cast`: a copy into its own class, and into the class it is
+    // derived from, a plain Frame, a copy of the Frame it is.
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // A specialized leaf frame can only be cast down to a plain
-        // Frame (BasicFrame). Same-class is handled by the direct Match
-        // (no cast needed), so only the BasicFrame target matters here.
+        if other.as_any().is::<FluxFrame>() {
+            return Ok(Some(self.snapshot()));
+        }
         if other
             .as_any()
             .downcast_ref::<crate::frames::BasicFrame>()
@@ -1309,6 +1312,10 @@ impl Serializable for FluxFrame {
         // C's loaders read them through astReadClassData (channel.c).
         let whole = node;
         let frame = &whole.section("Frame");
+        // astLoadFrame's checks of the axes, then the class's own that it
+        // has one (frame.c `astCheckLoadedNaxes`).
+        let (naxes, _) = super::frame_attrs::load_frame_axes(frame, &whole.class)?;
+        super::frame_attrs::check_loaded_naxes(&whole.class, naxes, 1)?;
         let node = &whole.section("FluxFrame");
         let mut ff = FluxFrame::unset_system();
         ff.attrs = super::frame_attrs::read_frame_attrs(whole);
@@ -1339,7 +1346,13 @@ impl Serializable for FluxFrame {
         }
 
         // The encapsulated SpecFrame (SpcFr).
-        if let Some(sf_node) = node.get_object("SpcFr") {
+        if let Some(sf_node) = crate::serial::check_loaded(
+            node.get_object("SpcFr"),
+            "SpecFrame",
+            false,
+            &whole.class,
+            "SpecFrame",
+        )? {
             let frame = crate::serial::frame_from_node(sf_node)?;
             if let Some(sf) = frame.as_any().downcast_ref::<super::specframe::SpecFrame>() {
                 ff.specframe = Some(Box::new(sf.clone()));

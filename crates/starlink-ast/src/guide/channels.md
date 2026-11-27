@@ -114,7 +114,7 @@ use starlink_ast::{AnyObject, Channel, NativeChannel};
 
 let mut out = NativeChannel::with_string_sink();
 out.write(&AnyObject::ZoomMap(ZoomMap::new(2, 5.0)?))?;
-out.write(&AnyObject::UnitMap(UnitMap::new(3)))?;
+out.write(&AnyObject::UnitMap(UnitMap::new(3).unwrap()))?;
 
 let mut input = NativeChannel::from_string(&out.into_string());
 while let Some(object) = input.read()? {
@@ -504,7 +504,7 @@ use std::path::Path;
 
 let mut channel = NativeChannel::to_file(Path::new("fred.txt"))?;
 let nobj = channel.write(&AnyObject::ZoomMap(ZoomMap::new(2, 5.0)?))?;
-let nobj = channel.write(&AnyObject::UnitMap(UnitMap::new(2)))?;
+let nobj = channel.write(&AnyObject::UnitMap(UnitMap::new(2).unwrap()))?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -529,7 +529,7 @@ impl<W: Write + Send> Sink for LineSink<W> {
 # use starlink_ast::mappings::UnitMap;
 # let mut channel = NativeChannel::new();
 # channel.set_sink(Box::new(LineSink(Vec::new())));
-# channel.write(&AnyObject::UnitMap(UnitMap::new(2)))?;
+# channel.write(&AnyObject::UnitMap(UnitMap::new(2).unwrap()))?;
 # Ok::<(), starlink_ast::error::AstError>(())
 ```
 

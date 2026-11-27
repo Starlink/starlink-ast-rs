@@ -182,3 +182,140 @@ fn a_non_finite_input_gives_bad_outputs() {
         }
     }
 }
+
+const TYPES: [&str; 4] = ["HPX0", "HPX12", "XPHN", "XPHS"];
+
+/// testxphmap.c `check_coverage`: of the pixel centres of a projection's
+/// grid, those an XphMap transforms number the pixels on the sky, and each
+/// comes back through the opposite transformation.
+#[test]
+fn each_pixel_appears_once_in_each_projection() {
+    for projection in TYPES {
+        for order in 0..=3 {
+            let map = load(order, projection);
+            let nppf = 1usize << order;
+            for forward in [true, false] {
+                let ncell = if forward && projection.starts_with('X') {
+                    4 * nppf
+                } else {
+                    5 * nppf
+                };
+                let (mut xin, mut yin) = (Vec::new(), Vec::new());
+                for iy in 1..=ncell {
+                    for ix in 1..=ncell {
+                        xin.push(ix as f64);
+                        yin.push(iy as f64);
+                    }
+                }
+                let (xm, ym) = map.tran2(&xin, &yin, forward).unwrap();
+                let (xout, yout) = map.tran2(&xm, &ym, !forward).unwrap();
+                let mut ngood = 0;
+                for i in 0..xin.len() {
+                    if xm[i] == BAD_VALUE || ym[i] == BAD_VALUE {
+                        continue;
+                    }
+                    ngood += 1;
+                    assert_eq!(
+                        (xout[i], yout[i]),
+                        (xin[i], yin[i]),
+                        "{projection} order {order} forward {forward}"
+                    );
+                }
+                assert_eq!(
+                    ngood,
+                    12 * nppf * nppf,
+                    "{projection} order {order} forward {forward}"
+                );
+            }
+        }
+    }
+}
+
+/// testxphmap.c `check_far_positions`: positions too far from the grid for
+/// an integer to index, and positions that are not finite, give bad values
+/// wherever the transformation tests a position against the grid, and never
+/// values that are not finite; the forward transformation of an XPH
+/// projection tests only the sides of a gore. Run with overflow checks, as
+/// `cargo test` builds, this is the Rust counterpart of the C test's run
+/// under UndefinedBehaviorSanitizer.
+#[test]
+fn far_positions_give_bad_or_finite_values() {
+    let far = [
+        1e10,
+        -1e10,
+        1e300,
+        -1e300,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NAN,
+    ];
+    let (mut xin, mut yin) = (Vec::new(), Vec::new());
+    for &b in &far {
+        for &a in &far {
+            xin.push(a);
+            yin.push(b);
+        }
+        xin.extend([b, 3.0]);
+        yin.extend([3.0, b]);
+    }
+    for projection in TYPES {
+        for order in [0, 3, 27] {
+            let map = load(order, projection);
+            for forward in [true, false] {
+                let bounded = !(forward && projection.starts_with('X'));
+                let (xout, yout) = map.tran2(&xin, &yin, forward).unwrap();
+                for i in 0..xin.len() {
+                    let want_bad = bounded || !xin[i].is_finite() || !yin[i].is_finite();
+                    let ok = if want_bad {
+                        xout[i] == BAD_VALUE && yout[i] == BAD_VALUE
+                    } else {
+                        xout[i].is_finite() && yout[i].is_finite()
+                    };
+                    assert!(
+                        ok,
+                        "{projection} order {order} forward {forward}: ({}, {}) gave ({}, {})",
+                        xin[i], yin[i], xout[i], yout[i]
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// testxphmap.c `check_bad_order`: the order is a shift count, so a dump's
+/// Order must be one the constructor accepts, 0 to 27.
+#[test]
+fn an_order_out_of_range_is_refused() {
+    for order in [-1, 28, 31, 32] {
+        let err = from_native_string(&dump(order, "HPX12")).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::Lderr, "{order}");
+        assert_eq!(
+            err.message(),
+            format!(
+                "astLoad(XphMap): The HEALPix order read for a XphMap ({order}) is not in the \
+                 range 0 to 27."
+            )
+        );
+    }
+}
+
+/// testxphmap.c `check_max_order`: at the largest order an HPX grid is
+/// 5*2^27 pixels wide; pixels at both ends of it, and positions a facet or
+/// more beyond them.
+#[test]
+fn the_largest_order_works() {
+    let n = 134217728.0;
+    let check = |map: &XphMap, x: f64, y: f64, want: Option<(f64, f64)>| {
+        let (xo, yo) = map.tran2(&[x], &[y], true).unwrap();
+        let want = want.unwrap_or((BAD_VALUE, BAD_VALUE));
+        assert_eq!((xo[0], yo[0]), want, "({x}, {y})");
+    };
+    let hpx = load(27, "HPX12");
+    check(&hpx, 1.0, n + 1.0, Some((1.0, n + 1.0)));
+    check(&hpx, -n, n + 1.0, None);
+    check(&hpx, 5.0 * n, 4.0 * n + 1.0, Some((5.0 * n, 4.0 * n + 1.0)));
+    check(&hpx, 6.0 * n, 4.0 * n + 1.0, None);
+    check(&hpx, 5.0 * n, 5.0 * n, None);
+    let xphn = load(27, "XPHN");
+    check(&xphn, 4.0 * n, 1.0, Some((2.0 * n, 1.0)));
+}

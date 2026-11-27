@@ -157,7 +157,7 @@ fn built() -> Vec<(&'static str, Moc)> {
     out.push(("galactic", m));
 
     let mut m = ordered(Some(6), Some(3));
-    let cf = CmpFrame::new(Box::new(SpecFrame::unset_system()), Box::new(icrs()));
+    let cf = CmpFrame::new(Box::new(SpecFrame::unset_system()), Box::new(icrs())).unwrap();
     let bx = BoxRegionBuilder::from_bounds(cf, &[5000.0, 1.0, 0.2], &[5100.0, 1.1, 0.3])
         .unwrap()
         .build()

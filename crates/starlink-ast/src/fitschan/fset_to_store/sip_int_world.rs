@@ -92,9 +92,7 @@ pub(crate) fn sip_int_world(
     dim: &[Option<f64>],
 ) -> AstResult<Option<SipResult>> {
     let nin = map.nin();
-    // C bug: uses Nin twice. We mirror the bug to keep semantics
-    // bit-identical.
-    let nout = nin;
+    let nout = map.nout();
 
     // Both transformations must be defined (mirrors C:28663).
     if !map.has_forward() || !map.has_inverse() {
@@ -184,8 +182,8 @@ pub(crate) fn sip_int_world(
             Some(prev) => Box::new(CmpMap::new(prev, piece, Composition::Series)?),
         });
     }
-    let mut map_lower: DynMapping = map_lower.unwrap_or_else(|| Box::new(UnitMap::new(2)));
-    let mut map_upper: DynMapping = map_upper.unwrap_or_else(|| Box::new(UnitMap::new(2)));
+    let mut map_lower: DynMapping = map_lower.unwrap_or_else(|| Box::new(UnitMap::within_limit(2)));
+    let mut map_upper: DynMapping = map_upper.unwrap_or_else(|| Box::new(UnitMap::within_limit(2)));
 
     // Sanity-check shapes (mirrors C:28759).
     if map_lower.nin() != 2
@@ -233,7 +231,7 @@ pub(crate) fn sip_int_world(
         }
         shift_x /= m00;
         shift_y /= m11;
-        map_lower = Box::new(ShiftMap::new(vec![shift_x, shift_y]));
+        map_lower = Box::new(ShiftMap::new(vec![shift_x, shift_y])?);
 
         let scales = [m00, m11];
         polymap = match scale_poly_inputs(&polymap, &scales)? {
@@ -252,7 +250,7 @@ pub(crate) fn sip_int_world(
         // map3 (matrix or unit) ∘ map_upper
         let map3: DynMapping = match decomp.map3_matrix {
             Some(mm) => Box::new(mm),
-            None => Box::new(UnitMap::new(2)),
+            None => Box::new(UnitMap::within_limit(2)),
         };
         map_upper = Box::new(CmpMap::new(map3, map_upper, Composition::Series)?);
 
@@ -346,9 +344,6 @@ pub(crate) fn sip_int_world(
     // the remaining (non-celestial) outputs so it can be put in
     // parallel with the (cleaned) celestial 2-in/2-out chain when the
     // result mapping is rebuilt.
-    //
-    // Note: per the C bug at fitschan.c:28784-28785 (`nout = astGetNin(map)`)
-    // the local `nout` here equals `nin`; we mirror the bug.
     let mut inax2: Option<Vec<usize>> = None;
     let mut tmap2: Option<DynMapping> = None;
     if nout > 2 {
@@ -368,6 +363,13 @@ pub(crate) fn sip_int_world(
         match inverted2.map_split_zero_based(&outrem)? {
             Some((axes, mut t2)) => {
                 t2.invert();
+                // The remaining outputs must be fed by all the grid axes
+                // that do not feed the celestial axes, and by no others,
+                // since the PermMap built below uses each grid axis once
+                // (fitschan.c SIPIntWorld).
+                if t2.nin() != nin - 2 || axes.iter().any(|&a| a == in_axes[0] || a == in_axes[1]) {
+                    return Ok(None);
+                }
                 inax2 = Some(axes);
                 tmap2 = Some(t2);
             }
@@ -887,7 +889,7 @@ mod tests {
     /// ShiftMap(-crpix) → PolyMap(SIP) → MatrixMap(CD).
     fn build_sip_2d_chain() -> DynMapping {
         let crpix = 128.0;
-        let sm = ShiftMap::new(vec![-crpix, -crpix]);
+        let sm = ShiftMap::within_limit(vec![-crpix, -crpix]);
         let pm = PolyMap::new(2, 2, &sip_2d_fwd_terms(), Some(&sip_2d_inv_terms())).unwrap();
         let cd = cd_2d();
         let mm = MatrixMap::new(
@@ -966,7 +968,7 @@ mod tests {
     fn non_sip_returns_none() {
         // Same chain without a PolyMap.
         let crpix = 128.0;
-        let sm = ShiftMap::new(vec![-crpix, -crpix]);
+        let sm = ShiftMap::within_limit(vec![-crpix, -crpix]);
         let cd = cd_2d();
         let mm = MatrixMap::new(
             Array2::from_shape_vec((2, 2), vec![cd[0], cd[1], cd[2], cd[3]]).unwrap(),

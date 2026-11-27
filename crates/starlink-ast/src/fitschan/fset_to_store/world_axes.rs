@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn unitmap_2d_returns_identity_perm() {
-        let m = UnitMap::new(2);
+        let m = UnitMap::within_limit(2);
         let dim = vec![Some(100.0), Some(100.0)];
         let perm = world_axes(&m, &dim, 0.1, 0).unwrap().unwrap();
         assert_eq!(perm, vec![0, 1]);
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn shiftmap_keeps_identity() {
-        let s = ShiftMap::new(vec![10.0, 20.0]);
+        let s = ShiftMap::within_limit(vec![10.0, 20.0]);
         let dim = vec![Some(50.0), Some(50.0)];
         let perm = world_axes(&s, &dim, 0.1, 0).unwrap().unwrap();
         assert_eq!(perm, vec![0, 1]);
@@ -339,7 +339,7 @@ mod tests {
     fn series_chain_of_shift_and_swap() {
         // ShiftMap then a swap-matrix in series: outputs should still
         // map to pixels 1, 0.
-        let shift = ShiftMap::new(vec![3.0, 7.0]);
+        let shift = ShiftMap::within_limit(vec![3.0, 7.0]);
         let mat = ndarray::arr2(&[[0.0, 1.0], [1.0, 0.0]]);
         let swap = MatrixMap::new(mat).unwrap();
         let chain = CmpMap::new(Box::new(shift), Box::new(swap), Composition::Series).unwrap();

@@ -22,10 +22,13 @@ fn make(class: &str) -> Box<dyn Frame> {
     match class {
         "Frame2" => Box::new(BasicFrameBuilder::new(2).build().unwrap()),
         "SkyFrame" => Box::new(SkyFrame::unset_system()),
-        "CmpFrame" => Box::new(CmpFrame::new(
-            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-            Box::new(BasicFrameBuilder::new(1).build().unwrap()),
-        )),
+        "CmpFrame" => Box::new(
+            CmpFrame::new(
+                Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+                Box::new(BasicFrameBuilder::new(1).build().unwrap()),
+            )
+            .unwrap(),
+        ),
         other => panic!("unknown class {other}"),
     }
 }

@@ -484,7 +484,8 @@ fn ellipse_bounds_measure_each_axis_by_its_own_rule() {
         let cf = CmpFrame::new(
             Box::new(SkyFrame::new(SkySystem::Fk5)),
             Box::new(BasicFrameBuilder::new(1).domain("T").build().unwrap()),
-        );
+        )
+        .unwrap();
         let pick = if sky_first { [1, 3] } else { [3, 1] };
         let (mixed, _map) = pick_axes(&cf, &pick).unwrap();
 

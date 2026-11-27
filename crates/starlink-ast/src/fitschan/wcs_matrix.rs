@@ -23,10 +23,11 @@ use ndarray::Array2;
 use super::card_list::CardList;
 use super::fits_store::FitsStore;
 use crate::constants::BAD_VALUE;
-use crate::error::AstResult;
+use crate::error::{AstError, AstResult, ErrorCode};
 use crate::mappings::{
     CmpMap, Composition, DynMapping, Mapping, MatrixMap, PolyMap, PolyTerm, UnitMap, WcsMap, WinMap,
 };
+use crate::text::floor_char_boundary;
 use crate::wcslib::WcsProjection;
 
 /// Build the pixel-to-Intermediate World Coordinate (IWC) mapping.
@@ -62,8 +63,9 @@ pub(crate) fn build_pixel_to_iwc(
     // If CD matrix is present, it replaces both PC and CDELT.
     let (pc_map, cdelt_map) = build_rotation_and_scale(store)?;
 
-    // A PC/CD matrix with a wholly zero row or column has no inverse, which
-    // makes the whole pixel→IWC chain uninvertible (fitschan.c:37798-37803).
+    // C warns of a PC or CD matrix that cannot be inverted (fitschan.c:38814),
+    // but WcsPCMatrix has already failed the read for one, so the warning is
+    // never given (c-library-quirks.md); the order is kept.
     if !pc_map.has_inverse() {
         warnings.push(Warning::new("badmat", BADMAT_WARNING))?;
     }
@@ -118,7 +120,7 @@ struct DistortionMaps {
     map4: Option<DynMapping>,
 }
 
-/// Port of C `DistortMaps` (fitschan.c:8801).
+/// Port of C `DistortMaps` (fitschan.c:9159).
 ///
 /// Inspects the CTYPE values for a Paper IV distortion code and returns the
 /// Mappings that implement it. Every distortion code found — recognized or
@@ -135,6 +137,13 @@ fn distort_maps(
     cursors: &mut super::wcs_read::ReadCursors,
 ) -> AstResult<DistortionMaps> {
     let mut ret = DistortionMaps::default();
+
+    // C notes the image dimensions first, reading each `NAXIS<i>` with
+    // `astGetFitsF` (fitschan.c:9263), which fails for one whose value is not
+    // a number. They are not WCS keywords, so are never consumed.
+    for (i, dim) in store.dims.iter_mut().enumerate().take(naxes) {
+        *dim = cards.get_fits_float(&format!("NAXIS{}", i + 1))?;
+    }
 
     // "-SIP": Spitzer distortion, limited to axes 1 and 2.
     //
@@ -256,7 +265,10 @@ fn split_4_3_3(ctype: &str) -> Option<(&str, &str, &str)> {
             .take(width)
             .take_while(|c| !c.is_ascii_whitespace())
             .count();
-        (len > 0).then(|| (&ctype[start..start + len], start + len))
+        // A field that ends inside a character ends before it; such a
+        // field matches no code either way.
+        let end = floor_char_boundary(ctype, start + len);
+        (end > start).then(|| (&ctype[start..end], end))
     };
     let dash = |at: usize| (ctype.as_bytes().get(at) == Some(&b'-')).then_some(at + 1);
     let (axis, at) = field(0, 4)?;
@@ -316,7 +328,7 @@ fn zpx_mapping(
     // With no correction surface on either axis there is no distortion to
     // apply (fitschan.c:41784).
     if coeffs[0].is_empty() && coeffs[1].is_empty() {
-        return Ok(Some(Box::new(UnitMap::new(naxes))));
+        return Ok(Some(Box::new(UnitMap::within_limit(naxes))));
     }
 
     // Store the coefficients in an inverted TPN WcsMap. It corrects the ZPN
@@ -377,7 +389,8 @@ fn build_rotation_and_scale(store: &FitsStore) -> AstResult<(DynMapping, DynMapp
 /// Build a MatrixMap from the PC matrix elements.
 ///
 /// Missing diagonal elements default to 1.0, off-diagonal to 0.0.
-/// This mirrors the C `WcsPCMatrix` function.
+/// This mirrors the C `WcsPCMatrix` function, which fails for a matrix
+/// that cannot be inverted (fitschan.c:39177).
 fn build_pc_matrix(store: &FitsStore) -> AstResult<DynMapping> {
     let naxis = store.naxis;
     let mut mat = Array2::zeros((naxis, naxis));
@@ -390,6 +403,13 @@ fn build_pc_matrix(store: &FitsStore) -> AstResult<DynMapping> {
     }
 
     let mm = MatrixMap::new(mat)?;
+    if !mm.has_inverse() {
+        return Err(AstError::new(
+            ErrorCode::Bdfts,
+            "astRead(FitsChan): Unusable rotation matrix (PC or CD) found in the FITS-WCS header - \
+             the matrix cannot be inverted.",
+        ));
+    }
     Ok(Box::new(mm))
 }
 
@@ -434,7 +454,7 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
     let inverse_terms = build_sip_inverse_terms(store);
 
     if forward_terms.is_empty() && inverse_terms.is_empty() {
-        return Ok(Box::new(UnitMap::new(naxis)));
+        return Ok(Box::new(UnitMap::new(naxis)?));
     }
 
     let inv = if inverse_terms.is_empty() {
@@ -481,7 +501,7 @@ fn build_sip_mapping(store: &FitsStore) -> AstResult<DynMapping> {
     } else {
         // SIP applies only to the first 2 axes; other axes pass through.
         // Compose PolyMap (axes 1,2) in parallel with UnitMap (remaining axes).
-        let unit = UnitMap::new(naxis - 2);
+        let unit = UnitMap::new(naxis - 2)?;
         let cmp = CmpMap::new(Box::new(polymap), Box::new(unit), Composition::Parallel)?;
         Ok(Box::new(cmp))
     }

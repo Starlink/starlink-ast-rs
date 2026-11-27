@@ -37,20 +37,14 @@ fn channel(options: &str, lines: &[&str]) -> NativeChannel {
 
 /// Cases the port does not yet match, with the reason; the companion test
 /// fails once one matches. C's loaders read their numbers with
-/// `astReadDouble` and `astReadInt`, which report AST__BADIN for a string
-/// value, and C has then read only up to that class's part of the Object,
-/// so its next read starts there; the port takes the string without error
-/// and reads the whole Object before loading it.
-const EXCLUDED: &[(&str, &str)] = &[
-    (
-        "string_for_double",
-        "a string read as a number is not an error",
-    ),
-    (
-        "string_for_int",
-        "a string read as a number is not an error",
-    ),
-];
+/// `astReadDouble` and `astReadInt`, which report AST__BADIN for a value they
+/// cannot read, and C has then read only up to that class's part of the
+/// Object, so its next read starts there; the port reads the whole Object
+/// before loading it, so its next read starts after it.
+const EXCLUDED: &[(&str, &str)] = &[(
+    "string_for_int",
+    "the next read starts after the whole Object, not after the part C read",
+)];
 
 /// The reads of a case, as the port makes them, each as the probe prints it.
 fn port_reads(options: &str, lines: &[&str], n: usize) -> Vec<(String, i32, Vec<String>)> {

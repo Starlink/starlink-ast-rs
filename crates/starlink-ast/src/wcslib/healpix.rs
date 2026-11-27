@@ -15,7 +15,7 @@
 //! saturate where its conversion is undefined.
 
 // Lineage: every function below is ported from `reference/starlink-ast/wcslib/proj.c`
-// (`reference/starlink-ast` at 3d3f255f); the `flag > 0` tests of the C
+// (`reference/starlink-ast` at fe26cc9b); the `flag > 0` tests of the C
 // bodies are applied unconditionally.
 
 use super::math;
@@ -27,7 +27,7 @@ use super::trig::{D2R, R2D, Trig};
 // HPX: HEALPix
 // ---------------------------------------------------------------------------
 
-// reference/starlink-ast/wcslib/proj.c, astHPXset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astHPXset; reference/starlink-ast at fe26cc9b.
 pub(super) fn hpx_set(prm: &mut PrjPrm) -> Status {
     prm.phi0 = 0.0;
     prm.theta0 = 0.0;
@@ -55,7 +55,7 @@ pub(super) fn hpx_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astHPXfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astHPXfwd; reference/starlink-ast at fe26cc9b.
 // phic is conditioned to improve the accuracy of floor for arguments just
 // below an integer (AST's change), and the phi = 180 meridian is put in the
 // expected place (wcslib 4.7 fix in the C).
@@ -104,7 +104,7 @@ const HPX_REV_TOL: f64 = 1.0e-12;
 // is zero.
 const HPX_POLE_SCALE: f64 = 1.0e9;
 
-// reference/starlink-ast/wcslib/proj.c, astHPXrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astHPXrev; reference/starlink-ast at fe26cc9b.
 // The polar zone extends to (K+1)/2 facets of 180/H degrees (wcslib 4.7 fix
 // in the C).  xc is conditioned as in astHPXfwd (AST's change).  A point is
 // on a facet when (x - xc)/sigma is within a facet half-width plus a
@@ -179,7 +179,7 @@ pub(super) fn hpx_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f6
 // angle formula for theta.
 const XPH_SIGMA_TOL: f64 = 1e-4;
 
-// reference/starlink-ast/wcslib/proj.c, astXPHset; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astXPHset; reference/starlink-ast at fe26cc9b.
 // The C leaves phi0 and theta0 as they were.
 pub(super) fn xph_set(prm: &mut PrjPrm) -> Status {
     if prm.r0 == 0.0 {
@@ -202,7 +202,7 @@ pub(super) fn xph_set(prm: &mut PrjPrm) -> Status {
     Status::Ok
 }
 
-// reference/starlink-ast/wcslib/proj.c, astXPHfwd; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astXPHfwd; reference/starlink-ast at fe26cc9b.
 // The C holds phi (rounded) in its output `y` and psi in `x` until the end;
 // they are `chi_phi` and `psi` here.
 #[inline(always)]
@@ -267,7 +267,7 @@ pub(super) fn xph_fwd<T: Trig>(prm: &PrjPrm, phi: f64, theta: f64) -> (Status, f
 // astXPHrev: a point may lie outside its facet by this much for rounding.
 const XPH_REV_TOL: f64 = 1.0e-12;
 
-// reference/starlink-ast/wcslib/proj.c, astXPHrev; reference/starlink-ast at 3d3f255f.
+// reference/starlink-ast/wcslib/proj.c, astXPHrev; reference/starlink-ast at fe26cc9b.
 #[inline(always)]
 pub(super) fn xph_rev<T: Trig>(prm: &PrjPrm, x: f64, y: f64) -> (Status, f64, f64) {
     let xr = x * prm.w[1];

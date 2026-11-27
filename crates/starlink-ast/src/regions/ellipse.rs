@@ -1153,16 +1153,19 @@ impl Region for Ellipse {
 
         // Find the direction and length of the offset between the old and new
         // center, then shift all three defining points by that same offset
-        // (ellipse.c:1352-1366).
+        // (ellipse.c `RegCentre`).
         let angle = bfrm.ax_angle(&old_centre, &bc, 2)?;
         let dist = bfrm.distance(&old_centre, &bc)?;
 
-        for ip in 0..self.data.points.len() {
-            let (shifted, _) = bfrm.offset2(&self.data.points[ip], angle, dist)?;
-            self.data.points[ip] = shifted;
+        // A new centre that is the old one gives the offset no direction,
+        // and leaves the points where they are.
+        if angle != BAD_VALUE && dist != BAD_VALUE && dist != 0.0 {
+            for ip in 0..self.data.points.len() {
+                let (shifted, _) = bfrm.offset2(&self.data.points[ip], angle, dist)?;
+                self.data.points[ip] = shifted;
+            }
+            self.data.invalidate_cache();
         }
-
-        self.data.invalidate_cache();
         Ok(())
     }
 
@@ -1303,7 +1306,7 @@ impl Mapping for Ellipse {
     /// region.c `RemoveRegions`: a Region becomes its Frame, which as a
     /// Mapping is a UnitMap with its number of axes.
     fn mapping_without_regions(&self) -> Option<crate::mappings::DynMapping> {
-        Some(Box::new(crate::mappings::UnitMap::new(self.nin())))
+        Some(Box::new(crate::mappings::UnitMap::within_limit(self.nin())))
     }
 
     // region.c `ReportPoints`: the current Frame formats the values.
@@ -1466,4 +1469,30 @@ fn check_naxes(frame: &dyn Frame) -> AstResult<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frames::BasicFrameBuilder;
+
+    /// C leaves the points alone only for a bad, or zero, offset: a move
+    /// whose length overflows, in a direction that does not, still moves
+    /// them.
+    #[test]
+    fn a_move_of_infinite_length_moves_the_points() {
+        let mut ellipse = EllipseBuilder::new(
+            BasicFrameBuilder::new(2).build().unwrap(),
+            vec![0.0, 0.0],
+            [1.0, 1.0],
+            0.0,
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        ellipse
+            .reg_centre_set(&[1.0e160, 0.0], FrameRef::Base)
+            .unwrap();
+        assert_ne!(ellipse.data.points[0], vec![0.0, 0.0]);
+    }
 }

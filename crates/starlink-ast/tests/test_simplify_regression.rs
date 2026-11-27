@@ -1085,9 +1085,9 @@ fn cmpmap_re_expands_after_merge() {
 
     // Create a chain: ShiftMap ; ZoomMap ; ShiftMap
     // Merging Shift+Zoom produces a WinMap, which should then merge with the final Shift.
-    let a = ShiftMap::new([1.0]);
+    let a = ShiftMap::new([1.0]).unwrap();
     let b = ZoomMap::new(1, 2.0).unwrap();
-    let c = ShiftMap::new([3.0]);
+    let c = ShiftMap::new([3.0]).unwrap();
 
     let ab = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
     let abc = CmpMap::new(Box::new(ab), Box::new(c), Composition::Series).unwrap();
@@ -1109,8 +1109,8 @@ fn cmpmap_re_expands_merged_cmpmap() {
     // which can merge with ZoomMaps on both sides.
     let z1 = ZoomMap::new(2, 2.0).unwrap();
     let inner = CmpMap::new(
-        Box::new(ShiftMap::new([1.0])),
-        Box::new(UnitMap::new(1)),
+        Box::new(ShiftMap::new([1.0]).unwrap()),
+        Box::new(UnitMap::new(1).unwrap()),
         Composition::Parallel,
     )
     .unwrap();
@@ -1220,7 +1220,7 @@ fn simplify_recursion_guard_identical_subtrees() {
     // Each simplification pass produces the same structure, triggering
     // the fingerprint-based cycle detection.
     let arm = || -> Box<dyn Mapping> {
-        let a = ShiftMap::new([1.0, 2.0]);
+        let a = ShiftMap::new([1.0, 2.0]).unwrap();
         let b = ZoomMap::new(2, 3.0).unwrap();
         Box::new(CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap())
     };
@@ -1241,7 +1241,7 @@ fn clone_box_preserves_transform() {
     use starlink_ast::coords::PointSet;
     use starlink_ast::mappings::{CmpMap, Composition, Mapping, ShiftMap, ZoomMap};
 
-    let a = ShiftMap::new([1.0, 2.0]);
+    let a = ShiftMap::new([1.0, 2.0]).unwrap();
     let b = ZoomMap::new(2, 3.0).unwrap();
     let cmp = CmpMap::new(Box::new(a), Box::new(b), Composition::Series).unwrap();
 
@@ -1466,10 +1466,10 @@ fn winmap_swap_enables_chain_simplification() {
     // ShiftMap([1,0]) is a WinMap(shifts=[1,0], scales=[1,1]).
     // After swap: MatrixMap[[0,1],[1,0]] ; ShiftMap([0,1]) ; ShiftMap([0,2])
     // = MatrixMap[[0,1],[1,0]] ; ShiftMap([0,3])
-    let s1 = ShiftMap::new([1.0, 0.0]);
+    let s1 = ShiftMap::new([1.0, 0.0]).unwrap();
     let m = array![[0.0, 1.0], [1.0, 0.0]]; // axis swap
     let mm = MatrixMap::new(m).unwrap();
-    let s2 = ShiftMap::new([0.0, 2.0]);
+    let s2 = ShiftMap::new([0.0, 2.0]).unwrap();
 
     let ab = CmpMap::new(
         Box::new(s1.clone()),
@@ -1509,9 +1509,9 @@ fn winmap_swaps_past_permmap() {
     use starlink_ast::coords::PointSet;
     use starlink_ast::mappings::{CmpMap, Composition, Mapping, PermMap, ShiftMap};
 
-    let s1 = ShiftMap::new([1.0, 2.0]);
+    let s1 = ShiftMap::new([1.0, 2.0]).unwrap();
     let pm = PermMap::new(&[2, 1], &[2, 1], &[]).unwrap();
-    let s2 = ShiftMap::new([3.0, 4.0]);
+    let s2 = ShiftMap::new([3.0, 4.0]).unwrap();
 
     let c1 = CmpMap::new(Box::new(s1), Box::new(pm), Composition::Series).unwrap();
     let full = CmpMap::new(Box::new(c1), Box::new(s2), Composition::Series).unwrap();
@@ -1598,7 +1598,7 @@ fn merge_loop_terminates_with_oscillation_guard() {
     let mut m: Box<dyn Mapping> = Box::new(ZoomMap::new(2, 1.5).unwrap());
     for i in 0..30 {
         let next: Box<dyn Mapping> = if i % 2 == 0 {
-            Box::new(ShiftMap::new([1.0, 1.0]))
+            Box::new(ShiftMap::new([1.0, 1.0]).unwrap())
         } else {
             Box::new(ZoomMap::new(2, 1.0).unwrap())
         };
@@ -1664,7 +1664,7 @@ fn series_in_parallel_different_lengths() {
     // is rejected because the series lists have different lengths.
     let branch1 = CmpMap::new(
         Box::new(ZoomMap::new(2, 3.0).unwrap()),
-        Box::new(ShiftMap::new([1.0, 1.0])),
+        Box::new(ShiftMap::new([1.0, 1.0]).unwrap()),
         Composition::Series,
     )
     .unwrap();
@@ -1766,7 +1766,7 @@ fn matrixmap_seek_through_shiftmap() {
     // because there is a MatrixMap at position i-1 that serves as a merge partner.
     let m1 = array![[1.0, 2.0], [0.0, 1.0]]; // upper triangular (non-diagonal)
     let mm1 = MatrixMap::new(m1).unwrap();
-    let sm = ShiftMap::new([1.0, 2.0]);
+    let sm = ShiftMap::new([1.0, 2.0]).unwrap();
     let m2 = array![[1.0, 0.0], [1.0, 1.0]]; // lower triangular (non-diagonal)
     let mm2 = MatrixMap::new(m2).unwrap();
 

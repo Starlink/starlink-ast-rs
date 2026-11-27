@@ -242,7 +242,7 @@ fn check_tab() {
             .set_system(SpecSystem::Freq)
     })
     .unwrap();
-    fs.remap_frame(FrameRef::Base, Box::new(ShiftMap::new(vec![50.0])))
+    fs.remap_frame(FrameRef::Base, Box::new(ShiftMap::new(vec![50.0]).unwrap()))
         .unwrap();
 
     // Remove the table and the header from the first write.

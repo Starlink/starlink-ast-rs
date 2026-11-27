@@ -7942,9 +7942,9 @@ pub const CASES: &[Case] = &[
         ops: &[
             (Op::Set("Gap=0"), Out::Done),
             (Op::Get("Gap(1)"), Out::Value("0")),
-            (Op::Get("Grid"), Out::Err(E::Plfmt, &["astGrid(Plot): No suitable format can be found to produce numerical labels for axis 1 of a Frame."])),
-            (Op::Get("Edge(1)"), Out::Err(E::Plfmt, &["astGrid(Plot): No suitable format can be found to produce numerical labels for axis 1 of a Frame."])),
-            (Op::Get("Labelling"), Out::Err(E::Plfmt, &["astGrid(Plot): No suitable format can be found to produce numerical labels for axis 1 of a Frame."])),
+            (Op::Get("Grid"), Out::Err(E::Inter, &["astGrid(Plot): No grid curves can be drawn for axis 1."])),
+            (Op::Get("Edge(1)"), Out::Err(E::Inter, &["astGrid(Plot): No grid curves can be drawn for axis 1."])),
+            (Op::Get("Labelling"), Out::Err(E::Inter, &["astGrid(Plot): No grid curves can be drawn for axis 1."])),
         ],
         dump: r###" Begin Plot 	# Provide facilities for 2D graphical output
 #   Title = "2-d coordinate system" 	# Title of coordinate system

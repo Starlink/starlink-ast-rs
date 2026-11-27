@@ -219,14 +219,14 @@ fn read_gregorian(value: &str) -> Result<f64, String> {
     }
 
     // Convert years, months and integral days to an MJD, a year of two
-    // digits or fewer in the century palCaldj gives it. A day outside the
-    // month is counted on from the month's start: C tests `palCaldj`'s
-    // status against SLALIB's positive codes, but ERFA's are negative, so
-    // its bad-day status (-3, with the MJD computed) never stops the read.
-    // A bad year or month (-1, -2) leaves C's MJD unset; the port does not
-    // read the value.
+    // digits or fewer in the century palCaldj gives it. A year or a month
+    // that is not valid gives no date; a day outside the month is counted on
+    // from the month's start, and used.
     let iday = day as i32;
-    let (mut mjd, _bad_day) = pal::caldj(year, month, iday).map_err(|_| form())?;
+    let (mut mjd, _bad_day) = pal::caldj(year, month, iday).map_err(|e| match e {
+        crate::erfa::Cal2jdError::BadYear => format!("Year value ({year}) is invalid."),
+        crate::erfa::Cal2jdError::BadMonth => format!("Month value ({month}) is invalid."),
+    })?;
 
     // Add any fractional part of the day.
     mjd += day - iday as f64;

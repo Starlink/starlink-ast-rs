@@ -82,7 +82,7 @@ fn rate(name: &str) -> f64 {
             ratemap_at(Box::new(ZoomMap::new(1, 3.0).unwrap()), &[BAD_VALUE])
         }
         "ratemap_unitmap_bad_other_axis" => {
-            ratemap_at(Box::new(UnitMap::new(2)), &[1.0, BAD_VALUE])
+            ratemap_at(Box::new(UnitMap::new(2).unwrap()), &[1.0, BAD_VALUE])
         }
         "tranmap_forward" | "tranmap_inverted" => {
             let mut tm = TranMap::new(

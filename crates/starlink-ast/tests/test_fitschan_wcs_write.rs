@@ -548,7 +548,7 @@ fn the_as_fits_wcs_wrapping_of_a_splinemap_frameset_also_writes_nothing() {
     outer
         .add_frame(
             FrameRef::Base,
-            Box::new(ShiftMap::new(vec![1.0, 1.0])),
+            Box::new(ShiftMap::new(vec![1.0, 1.0]).unwrap()),
             Box::new(BasicFrameBuilder::new(2).domain("GRID").build().unwrap()),
         )
         .unwrap();
@@ -589,8 +589,12 @@ fn alternate_descriptions_are_withheld_when_the_primary_cannot_be_written() {
     let sky = fs.nframe();
     let mut alt = BasicFrameBuilder::new(2).domain("MYALT").build().unwrap();
     alt.set_ident("A");
-    fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(alt))
-        .unwrap();
+    fs.add_frame(
+        FrameRef::Base,
+        Box::new(UnitMap::new(2).unwrap()),
+        Box::new(alt),
+    )
+    .unwrap();
     fs.set_current(FrameRef::Index(sky)).unwrap();
     let obj = starlink_ast::AnyObject::FrameSet(fs);
 
@@ -777,7 +781,7 @@ RADESYS = 'ICRS'
     let total = series(
         series(
             series(
-                Box::new(ShiftMap::new(vec![20000.0, 20000.0])),
+                Box::new(ShiftMap::new(vec![20000.0, 20000.0]).unwrap()),
                 Box::new(poly),
             ),
             Box::new(cubic),

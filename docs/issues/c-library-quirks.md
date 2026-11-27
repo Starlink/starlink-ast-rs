@@ -36,11 +36,12 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A curve clipped into arcs shorter than Crv's sample spacing is not drawn](#a-curve-clipped-into-arcs-shorter-than-crvs-sample-spacing-is-not-drawn)
 - [`astRegionOutline` leaves the Plot's Base set](#astregionoutline-leaves-the-plots-base-set)
 - [Plot's major tick search overflows `int` for a zero or tiny Gap](#plots-major-tick-search-overflows-int-for-a-zero-or-tiny-gap)
-- [`astReadDateTime` tests ERFA's status against SLALIB's codes](#astreaddatetime-tests-erfas-status-against-slalibs-codes)
-- [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
 - [TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply](#timeframe-gap-divides-a-sub-second-gap-by-86400-where-it-should-multiply)
-- [`AxisFields` reads past the end of a value with leading spaces](#axisfields-reads-past-the-end-of-a-value-with-leading-spaces)
-- [SkyAxis `AxisFields` dereferences a null pointer when a separator is missing](#skyaxis-axisfields-dereferences-a-null-pointer-when-a-separator-is-missing)
+- [TimeFrame `Fields` never counts the fields of a date](#timeframe-fields-never-counts-the-fields-of-a-date)
+- [TimeFrame `Centre` zeroes a calendar field that has no zero](#timeframe-centre-zeroes-a-calendar-field-that-has-no-zero)
+- [A `%a` Format gives different text on different platforms](#a-a-format-gives-different-text-on-different-platforms)
+- [SkyAxis gives `<bad>` for a value whose text passes 70 characters](#skyaxis-gives-bad-for-a-value-whose-text-passes-70-characters)
+- [SkyAxis formats an infinite value as `inf:00:00.1`](#skyaxis-formats-an-infinite-value-as-inf00001)
 - [A PointList's `Transform` moves its shared uncertainty Region twice per list point](#a-pointlists-transform-moves-its-shared-uncertainty-region-twice-per-list-point)
 - [SelectorMap's `Transform` negates and re-closes each selector Region in place](#selectormaps-transform-negates-and-re-closes-each-selector-region-in-place)
 - [`CompressMatrix` recomputes `sqrt( DBL_EPSILON )` for every row and column](#compressmatrix-recomputes-sqrt-dbl_epsilon--for-every-row-and-column)
@@ -75,7 +76,6 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`RegBaseGrid` fails when no grid point lies in the Region](#regbasegrid-fails-when-no-grid-point-lies-in-the-region)
 - [`WcsOthers` misses a repeated CTYPE comment when the celestial axes come first](#wcsothers-misses-a-repeated-ctype-comment-when-the-celestial-axes-come-first)
 - [SkyFrame LAST depends on which LAST values the process computed earlier](#skyframe-last-depends-on-which-last-values-the-process-computed-earlier)
-- [A WcsMap reports unusable parameters only on its first transformation](#a-wcsmap-reports-unusable-parameters-only-on-its-first-transformation)
 - [`IsZenithal` tests the wrong SZP parameter](#iszenithal-tests-the-wrong-szp-parameter)
 - [The `SombCos` resampling kernel is half `Somb` everywhere except at zero offset](#the-sombcos-resampling-kernel-is-half-somb-everywhere-except-at-zero-offset)
 - [Block averaging with variances lets one pixel's bad variance decide for others](#block-averaging-with-variances-lets-one-pixels-bad-variance-decide-for-others)
@@ -97,7 +97,6 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astMask<X>` documentation counts pixels set to a "badval" it does not take](#the-astmaskx-documentation-counts-pixels-set-to-a-badval-it-does-not-take)
 - [The `astInterval` documentation says at least one axis limit must be supplied](#the-astinterval-documentation-says-at-least-one-axis-limit-must-be-supplied)
 - [The `astDownsize` documentation does not say which Frame `maxerr` is measured in](#the-astdownsize-documentation-does-not-say-which-frame-maxerr-is-measured-in)
-- [A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded](#a-cmpregion-that-ands-two-nested-unbounded-regions-reports-itself-as-bounded)
 - [The `MinOrder` documentation gives a default of MaxOrder minus 4](#the-minorder-documentation-gives-a-default-of-maxorder-minus-4)
 - [The C edition of the `astAddMocData` and `astAddMocString` documentation describes `negate` the wrong way round](#the-c-edition-of-the-astaddmocdata-and-astaddmocstring-documentation-describes-negate-the-wrong-way-round)
 - [The `astAddMocString` documentation says cells above `maxorder` are ignored](#the-astaddmocstring-documentation-says-cells-above-maxorder-are-ignored)
@@ -128,11 +127,25 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [A FitsChan write gives `FsetToStore` its method and class names in the wrong order](#a-fitschan-write-gives-fsettostore-its-method-and-class-names-in-the-wrong-order)
 - [`GetCDMatrix` puts back the card current before the source was read](#getcdmatrix-puts-back-the-card-current-before-the-source-was-read)
 - [`WriteData` never refuses a SinkFile that is the SourceFile in use](#writedata-never-refuses-a-sinkfile-that-is-the-sourcefile-in-use)
+- [`CnvType` leaves a partly read number in the caller's buffer when it fails](#cnvtype-leaves-a-partly-read-number-in-the-callers-buffer-when-it-fails)
+- [Simplifying an inverted WinMap with a subnormal scale gives a ShiftMap of NaN](#simplifying-an-inverted-winmap-with-a-subnormal-scale-gives-a-shiftmap-of-nan)
 - [SUN/211 shows examples and output that the current library does not produce](#sun211-shows-examples-and-output-that-the-current-library-does-not-produce)
+- [A write keeps one list of replaced cards for every FitsChan in its thread](#a-write-keeps-one-list-of-replaced-cards-for-every-fitschan-in-its-thread)
+- [A Polygon with vertices near 1e308 contains positions outside it](#a-polygon-with-vertices-near-1e308-contains-positions-outside-it)
+- [A Polygon with a vertex at infinity leaves out positions inside it](#a-polygon-with-a-vertex-at-infinity-leaves-out-positions-inside-it)
+- [A dump nested deep enough crashes the reader](#a-dump-nested-deep-enough-crashes-the-reader)
+- [A units string nested deep enough crashes the unit parser](#a-units-string-nested-deep-enough-crashes-the-unit-parser)
+- [Writing a FITS header takes about eight times as long for each axis WCSAXES adds](#writing-a-fits-header-takes-about-eight-times-as-long-for-each-axis-wcsaxes-adds)
+- [A PolyMap's NiterInverse has no upper limit, so a dump can make its inverse run for hours](#a-polymaps-niterinverse-has-no-upper-limit-so-a-dump-can-make-its-inverse-run-for-hours)
+- [The `badmat` warning is never given, as reading a matrix that cannot be inverted fails first](#the-badmat-warning-is-never-given-as-reading-a-matrix-that-cannot-be-inverted-fails-first)
+- [A QV card with a string value crashes SpecTrans](#a-qv-card-with-a-string-value-crashes-spectrans)
+- [An IsA or End item written as an Object value crashes the reader](#an-isa-or-end-item-written-as-an-object-value-crashes-the-reader)
 
 ### [Addressed here, and not going upstream](#addressed-here-and-not-going-upstream)
 
 - [`CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping](#cmpmap-dumps-invainvb-disagreeing-with-the-childs-own-invert-recording-pointer-sharing-rather-than-the-mapping)
+- [The port refuses a MathMap expression nested more than 100 deep, which C compiles](#the-port-refuses-a-mathmap-expression-nested-more-than-100-deep-which-c-compiles)
+- [The port refuses any count in a dump that needs more than 9999999 values](#the-port-refuses-any-count-in-a-dump-that-needs-more-than-9999999-values)
 - [`Frame::unformat` reads numbers as the C library's `sscanf` does, which varies between libraries](#frameunformat-reads-numbers-as-the-c-librarys-sscanf-does-which-varies-between-libraries)
 - [CmpMap `Rate` chain-rule override is defined but never installed](#cmpmap-rate-chain-rule-override-is-defined-but-never-installed)
 - [FrameSet variants: stored FrameSet-side, not on the Frame (Rust divergence)](#frameset-variants-stored-frameset-side-not-on-the-frame-rust-divergence)
@@ -140,9 +153,19 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [`CheckCircle`'s `AST__KYCIR` guard has no Rust counterpart](#checkcircles-ast__kycir-guard-has-no-rust-counterpart)
 - [An `IsSimp` card can record a merge probe C threw away, because the probe shares its sub-Mappings with the live tree](#an-issimp-card-can-record-a-merge-probe-c-threw-away-because-the-probe-shares-its-sub-mappings-with-the-live-tree)
 - [C treats a NaN input as a number, not as a bad value](#c-treats-a-nan-input-as-a-number-not-as-a-bad-value)
+- [`astGetAllVariants` fails when the joined Domains pass 200 characters](#astgetallvariants-fails-when-the-joined-domains-pass-200-characters)
+- [The comment for an offset sky axis is cut to 79 characters](#the-comment-for-an-offset-sky-axis-is-cut-to-79-characters)
+- [FitsChan cuts long strings to the buffers it copies them into](#fitschan-cuts-long-strings-to-the-buffers-it-copies-them-into)
+- [Frame classes cut long default Labels, Symbols, Domains and Titles to their buffers](#frame-classes-cut-long-default-labels-symbols-domains-and-titles-to-their-buffers)
+- [A `%c` Format writes a byte of the value, which outside ASCII is not text](#a-c-format-writes-a-byte-of-the-value-which-outside-ascii-is-not-text)
+- [An error message is cut to 1023 characters](#an-error-message-is-cut-to-1023-characters)
+- [The port refuses to make a FITS card holding a character that is not printable ASCII](#the-port-refuses-to-make-a-fits-card-holding-a-character-that-is-not-printable-ascii)
 
 ### [Resolved upstream](#resolved-upstream)
 
+- [RESOLVED (upstream a87d1700): A WcsMap reports unusable parameters only on its first transformation](#resolved-upstream-a87d1700-a-wcsmap-reports-unusable-parameters-only-on-its-first-transformation)
+- [RESOLVED (upstream 45ae1bd8): SpecTrans replaces a zero CDELT with 1.0 whatever CRVAL is](#resolved-upstream-45ae1bd8-spectrans-replaces-a-zero-cdelt-with-10-whatever-crval-is)
+- [RESOLVED (upstream cba0743a): DssMap's inverse gives a far-side sky position a pixel position](#resolved-upstream-cba0743a-dssmaps-inverse-gives-a-far-side-sky-position-a-pixel-position)
 - [RESOLVED (upstream f6c0d187): `astRead` crashes on a non-spectral `-LOG` axis with a zero CRVAL](#resolved-upstream-f6c0d187-astread-crashes-on-a-non-spectral--log-axis-with-a-zero-crval)
 - [RESOLVED (upstream 9efa99f3): `OtherAxes` keeps the axis value as CRVAL for a `-TAB` axis](#resolved-upstream-9efa99f3-otheraxes-keeps-the-axis-value-as-crval-for-a--tab-axis)
 - [RESOLVED (upstream 9e6e4415): `IsMapTab2D` fails with AST__MPIND when only one celestial axis is tabular](#resolved-upstream-9e6e4415-ismaptab2d-fails-with-ast__mpind-when-only-one-celestial-axis-is-tabular)
@@ -209,6 +232,20 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [RESOLVED (upstream f444583f): `astLoadKeyMap` applies `MpLck` before loading any entry, so a locked non-empty KeyMap can never be reloaded](#resolved-upstream-f444583f-astloadkeymap-applies-mplck-before-loading-any-entry-so-a-locked-non-empty-keymap-can-never-be-reloaded)
 - [RESOLVED (upstream b7135abc): `DumpEntry` reads an `Entry1X` as an `Entry0X` for a zero-length vector, writing pointer bytes as the value](#resolved-upstream-b7135abc-dumpentry-reads-an-entry1x-as-an-entry0x-for-a-zero-length-vector-writing-pointer-bytes-as-the-value)
 - [RESOLVED (upstream 367a6a6b): `astMapGetElem<X>` reports success on an undefined entry, unlike `astMapGet0<X>` and `astMapGet1<X>`](#resolved-upstream-367a6a6b-astmapgetelemx-reports-success-on-an-undefined-entry-unlike-astmapget0x-and-astmapget1x)
+- [RESOLVED (upstream fd90f3b1): SplineMap evaluates the spline outside its basic interval and misses its upper limit](#resolved-upstream-fd90f3b1-splinemap-evaluates-the-spline-outside-its-basic-interval-and-misses-its-upper-limit)
+- [RESOLVED (upstream 2d9d4449): astEQUAL never finds an infinite or NaN value equal to itself](#resolved-upstream-2d9d4449-astequal-never-finds-an-infinite-or-nan-value-equal-to-itself)
+- [RESOLVED (upstream 7de5007a): astRate loops for ever at a position near zero](#resolved-upstream-7de5007a-astrate-loops-for-ever-at-a-position-near-zero)
+- [RESOLVED (upstream b9cf680b): MatrixMap and WinMap merges give Mappings that are not equivalent, or fail](#resolved-upstream-b9cf680b-matrixmap-and-winmap-merges-give-mappings-that-are-not-equivalent-or-fail)
+- [RESOLVED (upstream f8c7723e): CmpMap swaps a PermMap of constants with parallel Mappings](#resolved-upstream-f8c7723e-cmpmap-swaps-a-permmap-of-constants-with-parallel-mappings)
+- [RESOLVED (upstream f0230815): WcsMaps cancel when an axis holds different numbers of projection parameters](#resolved-upstream-f0230815-wcsmaps-cancel-when-an-axis-holds-different-numbers-of-projection-parameters)
+- [RESOLVED (upstream e7cb7d95): PermMap's PermSplit split accepts an input fed by no output](#resolved-upstream-e7cb7d95-permmaps-permsplit-split-accepts-an-input-fed-by-no-output)
+- [RESOLVED (upstream 4175c735): A failed FitsChan write loses the cards it replaced](#resolved-upstream-4175c735-a-failed-fitschan-write-loses-the-cards-it-replaced)
+- [RESOLVED (upstream bd9ffbfc): DATE-OBS is written for an MJD with no calendar date](#resolved-upstream-bd9ffbfc-date-obs-is-written-for-an-mjd-with-no-calendar-date)
+- [RESOLVED (upstream cfdbbe8d): A FITS value an integer cannot hold is converted to one](#resolved-upstream-cfdbbe8d-a-fits-value-an-integer-cannot-hold-is-converted-to-one)
+- [RESOLVED (upstream 3cce24ce): A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded](#resolved-upstream-3cce24ce-a-cmpregion-that-ands-two-nested-unbounded-regions-reports-itself-as-bounded)
+- [RESOLVED (upstream 86601275): `astReadDateTime` tests ERFA's status against SLALIB's codes](#resolved-upstream-86601275-astreaddatetime-tests-erfas-status-against-slalibs-codes)
+- [RESOLVED (upstream 49e2c58c): SkyAxis `AxisFields` dereferences a null pointer when a separator is missing](#resolved-upstream-49e2c58c-skyaxis-axisfields-dereferences-a-null-pointer-when-a-separator-is-missing)
+- [RESOLVED (upstream 3a32fec8): `AxisFields` reads past the end of a value with leading spaces](#resolved-upstream-3a32fec8-axisfields-reads-past-the-end-of-a-value-with-leading-spaces)
 - [PolyMap's linear `MapMerge` reduction changed a ChebyMap's transformation](#polymaps-linear-mapmerge-reduction-changed-a-chebymaps-transformation)
 - [`Box::Simplify`'s slice test assigns `isNull` rather than accumulating it, so the last constant-fed input decides](#boxsimplifys-slice-test-assigns-isnull-rather-than-accumulating-it-so-the-last-constant-fed-input-decides)
 - [`Polygon::Simplify`'s bad-vertex guard tests axis 1 only](#polygonsimplifys-bad-vertex-guard-tests-axis-1-only)
@@ -358,23 +395,11 @@ The fix is to save and restore Base's set state as well as its value, or to clea
 
 `plot.c` `FindMajTicks2` (plot.c:12617) turns each axis value into a tick index with `(int) floor( ( value - centre )/gap )` and then adds and subtracts those indices.
 A Gap of zero, or one so small beside the axis values that the quotient passes `INT_MAX`, makes the quotient infinite or huge; the cast is undefined there and saturates on arm64 (on x86-64 it gives `INT_MIN`), and the index arithmetic then overflows `int`, which is undefined too but wraps as compiled.
-The ticks that come out are nonsense, and `astGrid` goes on to fail: `testgrid` on `car3` and `aitoff` with `gap=0` reports "No suitable format can be found to produce numerical labels for axis 1 of a SkyFrame" (axis 2 for `gap(2)=0`), and with `gap=1e-300` "No grid curves can be drawn for axis 1".
+The ticks that come out are nonsense, and `astGrid` goes on to fail: `testgrid` on `car3` and `aitoff`, with `gap=0`, `gap(1)=0`, `gap(2)=0` or `gap=1e-300`, reports "No grid curves can be drawn for axis 1".
+Before upstream `2d9d4449` made `astEQUAL` find an infinite value equal to itself, a zero Gap reported "No suitable format can be found to produce numerical labels" for the axis instead.
 The port mirrors this (`find_maj_ticks2` in `crates/starlink-ast/src/plot/ticks.rs` saturates the cast, as Rust's `as` does, and wraps the index arithmetic), so it reports the same errors, where unchecked arithmetic panicked in a debug build; `a_zero_or_tiny_gap_gives_the_c_library_errors` in `tests/test_grid.rs` is the gate.
 Which error appears on x86-64, where the cast differs, has not been checked.
 The fix is to reject a Gap that is zero or too small for the axis values with an error of its own before the search.
-
-### `astReadDateTime` tests ERFA's status against SLALIB's codes
-
-`frame.c` `astReadDateTime` (frame.c:9282) converts the calendar date with `palCaldj` and reports an invalid year, month or day for a status of 1, 2 or 3, SLALIB's codes.
-`palCaldj` now returns `eraCal2jd`'s codes, -1, -2 and -3, so none of those errors is ever reported.
-For a bad day (-3) ERFA still computes the MJD, counting on from the month's start, so `2012-03-00` reads as 29 February and `2012-02-30` as 1 March.
-For a bad year or month (-1, -2) ERFA returns before setting the MJD, and the uninitialized value is returned as the result.
-TimeFrame `Centre` on a date axis zeroes every field from the first that differs between the value a gap below and a gap above, so whenever those two fell in different months or years it read a date with month zero, giving values like `3.4e301`; a Plot of a date axis spanning a month boundary met this.
-`Centre` is fixed on the submodule branch `u/timj/timeframe-centre-date` (timeframe.c History, 20-NOV-2026): a zeroed month or day now ends in 1, so the date it reads is valid, and a gap that changes the day now centres on the first of the month rather than the last day of the one before.
-The port follows the fixed C (`TimeFrame::centre`, pinned by `plot_frame_methods_probe.c`'s month, year and day cases, generated from that branch, and `plot_grid_values_probe.c`'s `timeplot_month_end`); until the pin moves to include it, those cases need the branch to regenerate.
-A zeroed year reads as 2000, through `palCaldj`'s rule that years 0 to 49 are 2000 to 2049, which `astReadDateTime` uses and the port now does too (`pal::caldj`).
-The port reads a bad day as C does (`date_time.rs`, `unformat_counts_days_outside_the_month_from_its_start` in `test_timeframe.rs`) and does not read a bad year or month.
-The fix is to switch on -1, -2 and -3; whether a bad day should then be an error is a question for upstream, since rejecting it would change what `Centre` gives for every date gap that changes the day.
 
 ### TimeFrame `Gap` divides a sub-second gap by 86400 where it should multiply
 
@@ -388,30 +413,87 @@ The port mirrors this (`TimeFrame::gap` in `timeframe.rs`), so the gaps match C'
 `timeframe.c` `Fields` (timeframe.c:1306), given a date Format, checks the text field by field with a state machine and stores each field's start and length, but never increments its result, so it returns 0 fields; only the value, read with `astUnformat`, is returned.
 Plot uses the count when it looks for the decimal point in a label and when it splits labels, so for date axes those steps find nothing.
 The port mirrors the count, since Plot's output depends on it: `TimeFrame::fields` returns no fields and the value.
-Separately, `Centre` (timeframe.c:603) walks both formatted dates past their terminating nulls: when they are identical, which happens when the gap is too small to change the text, it reads one character past the end of each; when one has no further numeric field, as a bad value formatted as `<bad>` has none, that pointer keeps advancing past its null while the other waits.
-The port stops at the end of either string and returns the value unchanged.
 
-### SkyAxis `AxisFields` dereferences a null pointer when a separator is missing
+### TimeFrame `Centre` zeroes a calendar field that has no zero
 
-`skyaxis.c` `AxisFields` (skyaxis.c:479) finds the end of each terminated field with `t = strstr( p, term )`, sets `ok = 0` when `t` is null, and then still computes `p = t + strlen( term )` and later calls `astChrLen( p )`.
-A value lacking a separator its Format names, such as `"12:34"` split with `hms`, therefore reads through an invalid pointer; on macOS arm64 the process crashes.
-Plot splits labels it formatted itself with the same Format, so its own calls do not meet this, but `astAbbrev` and `astFields` take any string.
-Two smaller defects sit beside it: with a `+` sign and a single unterminated field (Format `d` or `h`), `p` is advanced one byte past the field, past the terminating null when there is no trailing space; and when the text is blank before any field is read, `sscanf` returns `EOF`, which the code takes as success with `dval` uninitialized.
-The port returns no fields for a missing separator or blank text, and ends a `+`-signed field at its last non-blank character, which is what C gives whenever its read stays inside the string (`skyaxis::sky_axis_fields`); the first is pinned by `sky_fields_without_a_named_separator_find_none` in `crates/starlink-ast/tests/test_plot_frame_methods.rs`; the probe avoids them.
-Where `EOF` arrives in a later field `dval` holds the previous field's value, which is defined, and the port mirrors it: `"12:"` split with `dm` is 12 degrees 12 minutes.
-`AxisAbbrev` (skyaxis.c:307) has a related defect: with a null `str1` it returns `fld2[ nf2 - 1 ]`, the start of the last field of `str2`, and when `str2` has no fields that reads `fld2[ -1 ]`, an uninitialized slot before the array, and returns it as a pointer into `str2` (observed: an offset of 1786110374 for `"a:b:c"` with `hms`).
-Plot passes a null `str1` to find the last field of a label (plot.c:23849), so a label that does not parse with the axis Format reaches it.
-The port returns 0, the start of `str2` (`skyaxis::sky_axis_abbrev`).
+C location: `timeframe.c` `Centre`, at `fe26cc9b` (as changed by `b009d17c`).
 
-### `AxisFields` reads past the end of a value with leading spaces
+`Centre` is documented to return "an axis value which produces a nice formatted value suitable for a major tick mark on a plot axis, close to the supplied axis value".
+For a date Format it formats the dates one gap below and one gap above the value, finds the first numeric field in which they differ, sets that field and every later one to zero in the lower date, and reads the text back.
+For the fields that start at zero (hours, minutes, seconds) that gives the start of the next coarser unit, such as midnight, which is plainly the intent.
+For a day or a month it does not, as they start at 1, and for a year there is no coarser unit at all.
 
-`axis.c` `AxisFields` (axis.c:414, the decimal branch) skips the leading spaces of the formatted value, then finds the end of the field with `p += len`, where `len` is the length of the whole string.
-Starting from the first non-blank character, that lands past the terminating null by the number of leading spaces, and the trailing-space loop then reads the bytes beyond the string.
-The field length returned is the length of the whole string, plus or minus whatever spaces follow it in memory, rather than the length of the value.
-Observed through `astFields` on a plain Frame with `"  -7 "`: C returns one field of 5 characters starting at offset 2 (`tools/oracle_fixtures/plot_frame_methods_probe.c`).
-A value only has leading spaces when its Format pads it (`%10.3f`, say); Plot passes such a label's fields to its abbreviation and log-label logic.
-The fix is `p = str + len` before the trailing-space loop.
-The port does not mirror the read: `axis::plain_axis_fields` returns the field from the first to the last non-blank character, and `FIELDS_EXCLUDED` in `crates/starlink-ast/tests/test_plot_frame_methods.rs` names the C cases it differs on.
+Plot uses the centre as a phase: `FindMajTicks2` puts the ticks at `centre + k*gap`, so the centre need not be near the value, but it decides which values the ticks fall on.
+A gap is often several of the units that differ (6 hours, 10 minutes), so the start of the coarser unit is what makes the ticks round: midnight with a gap of 6 hours gives ticks at 00, 06, 12 and 18 hours, where a centre on the nearest whole hour, 17:00, would give 17, 23, 05 and 11.
+A month or a year has no fixed length, so no gap divides one, and for them only the start of a month or year near the data can be a tick.
+
+For the value MJD 56000.37 (2012-03-14 08:52:48), and for MJD 56017.98 (2012-03-31 23:31:12), whose window crosses the end of March:
+
+| value, gap | first field that differs | C at `fe26cc9b` | this port |
+|---|---|---|---|
+| 14 Mar, 0.01 day | hour | 00:00, 56000 | 00:00, 56000 |
+| 14 Mar, 1 day | day | 2012-02-29, 55986 | 2012-03-01, 55987 |
+| 14 Mar, 30 days | month | 2012-03-24, 56010 | 2012-04-01, 56018 |
+| 14 Mar, 400 days | year | 56000 | 2013-01-01, 56293 |
+| 31 Mar, 1 day | month | 2012-04-01, 56018 | 2012-04-01, 56018 |
+| 31 Mar, 7 days | month | 56021 | 2012-04-01, 56018 |
+
+- **A day of zero** is read as the day before the first of the month (`testfields.c` relies on it), so C gives the last day of the previous month, 2012-02-29: a date chosen by accident, though at a gap of a day or less its ticks are the same as the first of the month's.
+- **A month of zero** is not a date, so the text is not read in full; since `b009d17c` C then uses the Frame `Centre`, which rounds the value to a multiple of the gap and gives 2012-03-24, close to the value but not a calendar boundary, so no tick falls on the start of a month.
+- **A year of zero** is not a year near the value. C falls back to the Frame `Centre` as for a month; before `b009d17c` it returned a value that had not been set.
+
+`testfields.c` checks that the result at a gap of 30 or 400 days is within a gap of the value, a property of C's fallback rather than of `Centre`'s purpose.
+
+Consequence: a calendar-date axis with a gap of a week or a month has no tick on the start of a month, and one with a gap of a day centres on the last day of the previous month.
+
+This port does not mirror it, by decision (2026-11-24).
+When the first field that differs is the day or a time field, it sets that field and the later ones to their lowest values in the lower date, 1 for the day and 0 otherwise: the start of the coarser unit, as C intends, with the day starting at 1.
+When it is the month or the year, it keeps that field of the upper date and sets the later ones to their lowest values: the start of the month or year inside the window, which is at most a gap from the value and is a tick.
+It agrees with C for the time fields, and whenever C's fallback lands on the start of a month, as for 2012-03-31 at a gap of a day.
+`test_fields.rs` pins the port's values, and the CENTRE rows of `plot_frame_methods_oracle` that differ are named, each with its reason, in `CENTRE_EXCLUDED`; the Plot grid references, which C draws, are all matched.
+Two other rules were tried and dropped.
+Setting a differing day or month to 1 in the lower date, the start of the coarser unit throughout, set the month to 1 for a window across a month end and gave the start of the year, 90 gaps from the value at a gap of a day.
+Taking the start of the first differing unit inside the window throughout put the centre on a whole hour, so ticks several hours apart fell on odd hours, and the `timeplot` grid no longer matched C's.
+Proposed C change: start a zeroed day at 1, and for a month or year that differs keep the upper date's value and start the later fields; then drop `testfields.c`'s within-a-gap check, which the month and year cases then always meet, or replace it with the values in the table.
+
+### A `%a` Format gives different text on different platforms
+
+C location: `axis.c` `AxisFormat`, which hands the Format to the C library's `sprintf`; `ValidAxisFormat` (upstream `b6d4e160`) accepts `%a` and `%A`.
+
+C11 (7.21.6.1) requires a nonzero leading digit for a normalized value and leaves it unspecified otherwise, and requires the value to be correctly rounded to a given precision in the current rounding mode, which by default rounds a tie to even.
+The macOS C library writes a leading 1 for every non-zero value, normalizing subnormal values (`0x1p-1074`), keeps a carry from rounding in the leading digit (`%.0a` of 0.1 is `0x2p-4`), and rounds a tie down (`%.0a` of 1.5 is `0x1p+0`), which C11 does not allow.
+The GNU C library writes subnormal values with a leading 0 and rounds a tie to even, so the same Format gives different text on Linux.
+
+Consequence: an axis labelled with a `%a` Format is labelled differently on the two platforms, and on macOS a value at a tie is rounded the wrong way.
+
+The port follows C11, and the macOS library where C11 leaves a choice: a tie goes to even, and a subnormal value is normalized (`frames::axis_format::format_hex`; `hexadecimal_matches_c11_and_the_macos_c_library` holds 224 cases from the macOS library, four of them ties that the port rounds to even).
+A C fix would format `%a` itself rather than through `sprintf`, or document the Format as platform-dependent.
+
+### SkyAxis gives `<bad>` for a value whose text passes 70 characters
+
+C location: `skyaxis.c` `DHmsFormat` and `AddText` (upstream `50b6e3af`), with its buffer of `AST__SKYAXIS_DHMSFORMAT_BUFF_LEN` (70) characters.
+
+`DHmsFormat` writes the degrees or hours of a value with `%.0f`, so a huge value has as many digits as its integer part: a value can reach about 330 characters, a 309-digit integer and its fields.
+Since `50b6e3af` a value whose text would pass the buffer is formatted as `<bad>`: with Format `dms.3`, 1e58 radians is written in 70 characters and 1e59 is `<bad>`; with `hms`, which has fewer characters, 1e60 is still written.
+The limit is set by the buffer, not by what the value can show.
+A double has about 16 significant digits, so the seconds of a `dms` value mean nothing above about 2.5e12 degrees and even the degrees nothing above about 1e16; everything printed past that is the binary value's exact decimal expansion (`dms.3` of 1e17 radians is `5729577951308231680:00:00.001`).
+
+Consequence: values far beyond any meaningful angle are written as long strings of meaningless digits, up to the cut-off, which depends on the Format.
+
+The port mirrors it, by decision (2026-11-23): `dhms_format` gives `<bad>` when its text passes 70 characters (`huge_sky_values` in `tests/test_fields.rs`).
+Proposed C change: give `<bad>` once the smallest field the Format asks for is finer than the value's resolution, so that the cut-off follows the precision rather than the buffer.
+
+### SkyAxis formats an infinite value as `inf:00:00.1`
+
+C location: `skyaxis.c` `DHmsFormat`, and `axis.c` `AxisFormat`.
+
+`AxisFormat` tests a value only for `AST__BAD`, so it passes an infinite value or a NaN to `sprintf`, which writes `inf`, `INF`, `nan` or `NAN` as the Format's case asks.
+`DHmsFormat` splits the value into fields with `modf`, so an infinite value of a sky axis keeps `inf` as its first field, and a C-oracle probe in the stage 4 triage gave `inf:00:00.1`.
+
+Consequence: an infinite sky value is formatted as text that looks like an angle.
+
+The port formats an infinite or NaN value on any axis as `<bad>` (`axis_format::format_value` and `skyaxis::dhms_format` test with `is_bad`), not mirroring C; PLAN.md §2 has the row.
+Question for upstream: should a value that is not finite be formatted as `<bad>`?
 
 ### A PointList's `Transform` moves its shared uncertainty Region twice per list point
 
@@ -526,7 +608,7 @@ A C speed-up: the same split, with the bisection results for a block held in a s
 
 ### SplineMap's `Dbvalu` loops to the spline order at run time
 
-C location: `splinemap.c` `Dbvalu` (from line 478), called `ky + 1` times per output value by `Db2val`, so ten times per point for a bicubic spline's forward transform.
+C location: `splinemap.c` `Dbvalu` (from line 645), called `ky + 1` times per output value by `Db2val`, so ten times per point for a bicubic spline's forward transform.
 
 Every loop in `Dbvalu` runs to the order `k`, a run-time argument, and the coefficients, `dp` and `dm` share one work array indexed by sums of `k` and the loop counters.
 The compiler cannot unroll or keep the values in registers, though `k` is at most `MAX_K` (6) and is almost always 4.
@@ -1117,23 +1199,6 @@ The same holds for a SkyFrame inside a FrameSet: the FrameSet conversion passes 
 
 Question for upstream: is the history dependence intended, and would an exact calculation (or a cache keyed on the exact epoch only) be acceptable?
 
-### A WcsMap reports unusable parameters only on its first transformation
-
-**Status:** Confirmed against the C source and the built oracle (2026-10-07).
-
-`InitPrjPrm` (wcsmap.c) leaves wcslib's `flag` clear, so the first projection call runs the projection's set-up routine, and `Map` turns its failure (status 1) into `AST__WCSPA`.
-The set-up routines record themselves in `flag` before validating the parameters: `azpset` sets `prj->flag` and then returns 1 when `mu` is -1 (`crates/starlink-ast/vendor/wcslib/proj.c`).
-The next call therefore skips the set-up and projects with the unusable parameters, and wcslib reports a point it cannot project (status 2), which `Map` makes bad.
-An AZP WcsMap with `PV2_1 = -1` therefore raises `AST__WCSPA` on a first forward transformation and gives bad values on an inverse one after it.
-The inverse path calls the projection first, to find the longitude range (`LongRange`), so an inverse transformation of a fresh WcsMap fails the set-up silently there: it raises nothing and gives bad values, and a forward transformation after it projects with the partly set-up parameters, giving `(-0, 0)` for the input `(0.1, 0.2)`.
-
-The port does not mirror this.
-Its projection (`wcslib::prj::Prj`) runs the set-up once, when the WcsMap's parameters are set, keeps the set-up's status, and returns it from every projection call, so every transformation that has a good point reports `AST__WCSPA`, whatever the order of the transformations; a transformation whose points are all bad reports nothing and gives bad values, as in C.
-It never projects with partly set-up parameters.
-A first forward transformation agrees with C, which `unusable_projection_parameters_are_errors` in `crates/starlink-ast/tests/test_wcsmap.rs` covers; `unusable_parameters_are_an_error_on_every_transform` in the same file covers the later transformations and an inverse one first, where the port and C differ.
-
-Question for upstream: should the set-up routines leave `flag` clear when they fail, so that every transformation reports the parameters rather than projecting with them?
-
 ### `IsZenithal` tests the wrong SZP parameter
 
 **Status:** Confirmed against the C source (2026-10-07).
@@ -1382,21 +1447,6 @@ Consequence: documentation only.
 
 `Polygon::downsize` says the distance is measured in the Frame the Polygon was defined in.
 A C fix: say "within the Frame in which the Polygon was originally defined".
-
-### A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded
-
-C location: `cmpregion.c` `GetBounded`, the AND branch (line 817).
-
-When neither component of an AND is bounded, `GetBounded` calls the AND unbounded only if `astOverlap` gives 1 (no overlap), 4 (partial overlap) or 6 (negation), and bounded otherwise.
-When one component lies inside the other (2 or 3), the AND is the inner component, which is unbounded.
-A C-oracle probe ANDs two Intervals, x > 0 and x > 1: both are unbounded, `astOverlap` gives 3, and the CmpRegion reports `Bounded` as 1 while containing the point (1e30, 1e30).
-The same happens for two identical unbounded Regions (5).
-Conversely, when the two do not overlap (1), the AND is empty, yet it is reported as unbounded, while an empty Region such as a NullRegion is bounded.
-
-Consequence: the Bounded attribute of such CmpRegions is wrong.
-
-The port mirrors the test (`CmpRegion::get_bounded`); `and_of_nested_unbounded_regions_reports_bounded_as_c_does` in `tests/test_cmpregion.rs` pins it.
-Question for upstream: should overlap results 2, 3 and 5 make the AND unbounded, and 1 make it bounded?
 
 ### The `MinOrder` documentation gives a default of MaxOrder minus 4
 
@@ -1774,6 +1824,38 @@ Consequence: a Channel that reads and writes the same file truncates it when it 
 The port mirrors it: `ChannelBase::write_line` makes no check, and `ChannelBase::read_line` refuses a SourceFile the SinkFile has open.
 A C fix: test `this->fd_in` in `WriteData` and compare the names there.
 
+### `CnvType` leaves a partly read number in the caller's buffer when it fails
+
+C location: `fitschan.c` `CnvType`, the string to `AST__FLOAT`, `AST__INT` and `AST__KINT` branches, which read with `astSscanf( ostring, "%lf %n", (double *) buff, &nc )` and its integer forms.
+
+The prologue says that when the value cannot be converted "the contents of the output buffer are left unchanged".
+But `sscanf` stores the number it reads straight into `buff` before `nc < len` rejects the trailing text, so a string such as `'12.5abc'` fails the conversion and still leaves 12.5 in `buff`.
+`GetValue` and `GetValue2` pass the caller's own variable as `buff`, so a caller that sets a default, reads with `report` zero, and ignores the return value gets the partly read number instead of its default.
+
+Consequence: one header can be read two ways.
+With `CRVAL1 = '12.5abc'` and `CDELT1 = 0.0`, SpecTrans replaces the zero CDELT1 with 1.25e-5 (a millionth of 12.5), while the projection takes CRVAL1 as absent and puts pixel 1 at 0.
+A probe against the reference library at `fe26cc9b` gives a step of 1.2499999999999999e-05 from 0; the port replaces CDELT1 with 1.0, as C does for `'abc'`.
+WCSLIB 8 (astropy 8.0.1) goes further and rejects any string CRVAL1, even `'12.5'`, with the warning "a floating-point value was expected", treating it as absent.
+
+The port follows the prologue, not the code: `card_value::cnv_type` parses the whole string or nothing, so the caller's default stands (`crval_string_counts_only_when_wholly_numeric` in `src/fitschan/spec_trans.rs`).
+A C fix: read into a local and copy it to `buff` only when the whole string was consumed.
+
+### Simplifying an inverted WinMap with a subnormal scale gives a ShiftMap of NaN
+
+C location: `winmap.c` `MapMerge` and the merge of the WinMap with a following ZoomMap.
+
+An inverted WinMap whose scale is 1e-320 has an inverse scale too large to represent.
+Followed by a ZoomMap of factor 3 and simplified, the C library at `fe26cc9b` gives a ShiftMap whose shift is NaN.
+The original's inverse transforms 0.5 to 1.665e-321; the ShiftMap's gives NaN, which `AST_REPLACE_NAN` makes bad, so the simplified Mapping is not equivalent.
+
+Consequence: `astSimplify` changes the inverse transformation of such a Mapping.
+
+The cause is `WinTerms` on the inverted WinMap, which gives a scale of 1/1e-320, infinity, and a shift of -0 times infinity, NaN, its guard testing only for `AST__BAD`.
+`WinZoom` keeps both, and the closing step of WinMap's `MapMerge` then finds the infinite scale equal to 1.0 by `astEQUAL`, whose tolerance an infinite operand makes infinite, and makes a ShiftMap of the NaN shift.
+
+The port deliberately diverges: `compose_linear_terms` in `crates/starlink-ast/src/mappings/winmap.rs` treats any term that is not finite as bad, so the merged WinMap holds bad terms and is never taken for a unit-scale WinMap.
+Its result has the same forward and inverse transformations as C's (both bad) but stays a WinMap, and the same holds for any WinMap merge that meets a term overflowed to infinity; `winmap_with_a_subnormal_scale_beside_a_zoommap_simplifies` in `tests/test_winmap.rs`.
+
 ### SUN/211 shows examples and output that the current library does not produce
 
 C location: `sun_master.tex` (SUN/211 211.34), at the lines given below; found while porting it into `starlink_ast::guide`.
@@ -1870,11 +1952,186 @@ A label of `-1°05'` after `-1°10'` loses its sign the same way, but there the 
 Oracle-verified: `crates/ast-plotter-wasm/tests/fixtures/origin.svg`, written by `tools/oracle_fixtures/fits_plotter_probe.c` for the page's ORIGIN example, holds `-0`, `°`, `10`, `'`, then `05`, `'`, then `0`, `°`, `00`, `'`.
 The port mirrors it; keeping the sign when the shared field starts with one would be an upstream change to `AxisAbbrev`.
 
+### A write keeps one list of replaced cards for every FitsChan in its thread
+
+`fitschan.c` keeps the copies `SaveReplaced` makes of the cards a write overwrites in `replaced_cards`, and decides whether to make one by `mark_new`; both are per-thread globals, not members of a FitsChan.
+`astWrite` sets `mark_new` for the whole write, so a `SetValue` that overwrites a card in any FitsChan during the write adds a copy to the same list, and `FixReplaced` later puts each copy back into the FitsChan being written, appending a card for a keyword that FitsChan does not hold.
+A write reads headers of its own: `ReadCrval` reads a copy of the FitsChan being written, and `MakeFitsFrameSet` reads a header it builds for a SpecFrame's reference position.
+Each read goes through `SpecTrans`, whose translations write into a scratch FitsChan with `SetValue`, 19 times for CTYPE alone; a translation that overwrote a card an earlier one wrote would put a card of the scratch FitsChan on the list.
+No header has been found that does this, so the effect is unproven.
+The port keeps the list in each `CardList` (`crates/starlink-ast/src/fitschan/card_list.rs`), so a write puts back only its own cards.
+The fix is to keep the list, and the flag, in the FitsChan.
+
+
+### A Polygon with vertices near 1e308 contains positions outside it
+
+C location: `polygon.c` `Cache` and `Polywidth`, and frame.c `LineDef`.
+
+A C-oracle probe makes the Polygon (0, 0), (1e308, 0), (0, 1e308) and transforms (1, 2), (50, 50), (0, 0), (-1, -1) and (0.1, 0.1): it keeps all five, though (-1, -1) is outside the triangle.
+The length of the long edge overflows to infinity, so `Polywidth` starts at the mid point of an edge of infinite length and the position `Cache` keeps as inside is NaN.
+`LineDef` tests only for `AST__BAD`, so the line from that position to a test point is made, crosses no edge, and every position is taken to be inside.
+
+Consequence: such a Polygon contains every position.
+
+The port mirrors it: `line_def` tests for `BAD_VALUE` alone, and `polygons` in `tests/test_regionhardening.rs` pins the probe's result.
+A C fix would find the length of an edge without overflow (`hypot`), or refuse a Polygon whose edges have no finite length.
+
+### A Polygon with a vertex at infinity leaves out positions inside it
+
+C location: `polygon.c` `Cache` and `Polywidth`, and the frame.c axis distance and offset functions.
+
+A C-oracle probe makes the Polygon (0, 0), (inf, 0), (0, 1): it is bounded with bounds (0, 0) to (inf, 1), and it keeps (0, 0), a vertex, but makes (0.1, 0.1) bad, though that is inside the triangle.
+The edges to the infinite vertex have infinite length and a direction of NaN, so the position `Cache` finds as inside, and the crossings of the line from it, depend on arithmetic with infinities.
+
+Consequence: positions inside such a Polygon are taken to be outside it.
+
+The port mirrors it, by decision (2026-11-23): its Frame geometry takes an infinite value to be a number, as C's does, which gives C's answer here (`polygons` in `tests/test_regionhardening.rs`); before, it took infinity to be bad and kept (0.1, 0.1), the right answer for the wrong reason.
+Question for upstream: should a Polygon refuse a vertex that is not finite, as it refuses one that is `AST__BAD`?
+
+### A dump nested deep enough crashes the reader
+
+C location: `channel.c` `Read` (channel.c:2493) and `ReadObject` (channel.c:3319), through each class's loader.
+
+Reading an Object value recurses: `ReadObject` calls `Read`, which calls the class's loader, which calls `ReadObject` for each Object the class holds.
+There is no limit on the depth, so a dump of CmpMaps nested 100 000 deep, under 6 MB of text, overflows the stack: `astFromString` on it ends the process with SIGBUS on an 8 MiB thread on macOS arm64 (a probe built as in `docs/issues/c-oracle-probe-recipe.md`), where 10 000 deep loads.
+Consequence: a hostile or corrupt dump crashes any program that reads it, rather than giving an error.
+The port refuses a dump that nests Objects more than `constants::MAX_NATIVE_NESTING` (130) deep with `AST__LDERR` "Objects nested more than 130 deep cannot be read." (`serial::native_stream::Reader::read`), ten times the deepest nesting among the fixtures (13, `simplify/rigby.map`).
+The limit is set so that a dump nested to it loads on a 2 MiB stack, the default for a spawned thread, in an unoptimized build: the loaders keep their recursive frames small for that (`boxed_mapping` and its siblings in `serial/mod.rs`, and the KeyMap loader's split in `keymap/serial.rs`).
+So a dump nested between 131 and some thousands deep, which C reads, is refused by the port.
+`tests/test_nesting_limits.rs` holds both sides: a dump 100 000 deep is refused, and a dump of each class that holds others, nested to the limit, loads on a 2 MiB stack.
+Question for upstream: should `Read` refuse nesting past a fixed depth?
+
+### A units string nested deep enough crashes the unit parser
+
+C location: `unit.c` `MakeTree` (unit.c:3708).
+
+`MakeTree` splits a units string at its last operator outside parentheses, or strips a pair of enclosing parentheses or a function, and calls itself on each part, so its depth is the depth of the parentheses plus the number of operators in a chain such as `Jy*Jy*Jy`.
+There is no limit on the depth, so a Unit of `Jy` inside 100 000 pairs of parentheses overflows the stack: setting it on a FluxFrame ends the process with SIGBUS on an 8 MiB thread (probe as above), where 1000 pairs are used.
+Each level also rescans the string, so the work grows with the length times the depth.
+The port refuses a units string that nests more than `constants::MAX_UNIT_NESTING` (100) deep with `AST__BADUN` "The units string is nested more than 100 deep." (`units::parser::make_tree`), wherever the string is parsed: setting a Unit, converting between units, and the Frames that read their System from their Unit.
+The deepest units string among the tests nests 5 deep; a string nested to the limit is used on a 2 MiB stack in an unoptimized build (`a_unit_nested_to_the_limit_is_used` in `tests/test_nesting_limits.rs`).
+Question for upstream: should `MakeTree` refuse nesting past a fixed depth?
+
+### Writing a FITS header takes about eight times as long for each axis WCSAXES adds
+
+C location: `fitschan.c` `IsMapLinear` (fitschan.c:19964), called from `LogAxis` (fitschan.c:21445) and `OtherAxes` (fitschan.c:25200) as `Write` describes each axis, through `cmpmap.c` `MapSplit` (cmpmap.c:3096).
+
+These five cards describe a 2-dimensional image with nine WCS axes:
+
+```text
+CTYPE1  = 'OFLN-TAN'           / Offset longitude
+CTYPE2  = 'OFLT-TAN'           / Offset latitude
+CRVAL2  =                0.000 / Reference offset lat (deg)
+CRPIX2  =               50.500 / Reference pixel
+WCSAXES =                    9
+```
+
+Reading them is immediate, but writing the FrameSet read from them back to a FitsChan with the default (FITS-WCS) Encoding takes 27.6 s in C at fe26cc9b (a release build on macOS arm64).
+With `WCSAXES` set to 7, 8 and 9 the write takes 0.39 s, 2.9 s and 27.6 s, so each axis multiplies the time by about eight; `WCSAXES` may be as large as 99.
+Almost all of the time is in `astMapSplit` on the pixel-to-WCS CmpMap, split once for each output `IsMapLinear` tests.
+Consequence: a header of a few cards makes any program that writes the WCS it reads (a copy, a reprojection) run for minutes or longer.
+The port does the same work, as its `fset_to_store::is_map_linear` and `CmpMap::map_split` follow C, and takes about 9 s for the nine axes; the fuzz target `fitschan_read_write` reached it, and its inputs that take more than ten seconds are not in `tests/regressions/`.
+It is left as C has it until the C library is changed (PLAN.md §2).
+
+### A PolyMap's NiterInverse has no upper limit, so a dump can make its inverse run for hours
+
+C location: `polymap.c` `SetNiterInverse` and `GetNiterInverse` (polymap.c:6481), used as the iteration limit of the iterative inverse (polymap.c:2656).
+
+NiterInverse, the most iterations the iterative inverse of a PolyMap makes for each point, defaults to 4, and any positive value is accepted, from a setting or from a dump's `NiterInv`.
+A dump of a FrameSet whose PolyMap has `IterInv = 1` and `NiterInv = 2147483647`, found by the fuzz target `native_read`, makes C's inverse transformation of six points run for more than a minute without finishing (a release build at fe26cc9b on macOS arm64), as each point that does not converge is iterated two billion times.
+Consequence: a dump of a few kilobytes makes any program that uses the inverse of the Mapping it reads stop responding.
+The port does the same, as its `newton_raphson_inverse` takes the same limit; the fuzz input is not in `tests/regressions/`.
+It is left as C has it until the C library is changed (PLAN.md §2).
+
+### The `badmat` warning is never given, as reading a matrix that cannot be inverted fails first
+
+C location: `fitschan.c` `WcsIntWorld` (fitschan.c:38813-38819) and `WcsPCMatrix` (fitschan.c:39177).
+
+`WcsIntWorld` makes the PC matrix's MatrixMap with `WcsPCMatrix` and then adds the `badmat` warning, "The pixel rotation matrix in the original FITS header (specified by CD or PC keywords) could not be inverted...", if the MatrixMap has no inverse.
+But `WcsPCMatrix` has already failed with `AST__BDFTS` "Unusable rotation matrix (PC or CD) found in the FITS-WCS header - the matrix cannot be inverted." in that case, so the warning is never added, and a header with such a matrix cannot be read at all, though `badmat` is a documented warning condition.
+The port does the same: `wcs_matrix::build_pc_matrix` fails, and the warning that follows it is never reached (`test_corruptinput.rs`, `fits_singular_pc_matrix`).
+One or the other should go: either `WcsPCMatrix` should leave the decision to its caller and the header read with the warning, or the warning should be removed from the documented conditions.
+
+### A QV card with a string value crashes SpecTrans
+
+C location: `fitschan.c` `SpecTrans`, the QV to PV translation (fitschan.c:33029-33040), through `SetValue` (fitschan.c:29183) and `SetFits` (fitschan.c:16309).
+
+SpecTrans renames each `QVi_m` card as `PVi_m`, storing its value with `SetValue( ret, keyname, CardData( this, &size, status ), CardType( this, status ), ... )`.
+For a string card `CardData` gives the characters, but `SetValue`, given `AST__STRING`, takes the pointer it is given as the address of a `char *` and reads one from it.
+So a header such as a TAN projection with `QV1_1   = 'abcdefghijklmnop'` makes C use eight characters of the value as a pointer: the read segfaults at fe26cc9b on macOS arm64, and with a value shorter than eight characters AddressSanitizer reports a heap buffer overflow at fitschan.c:16309.
+`tools/oracle_fixtures/load_one fits` on `crates/starlink-ast/tests/regressions/fitschan_read_write/qv-card-with-a-string-value` shows it; 17 inputs of the `fitschan_read_write` fuzz corpus crash C this way.
+The port stores the card's value as it is and reads the header.
+A C fix: pass `&cval` for a string card, as the other `SetValue` calls do.
+
+### An IsA or End item written as an Object value crashes the reader
+
+C location: `channel.c` `ReadClassData` (channel.c:2848-2850, and the `end` branch after it).
+
+A line `IsA =` or `End =` in a dump reads as an item named `isa` or `end` whose value is an Object, so its value string is NULL.
+`ReadClassData` tests the name before the value, takes it for the end of a class's data, and passes the NULL value to `strcmp`, which segfaults (fe26cc9b, macOS arm64; one input of the `native_read` fuzz corpus).
+The port reads the line as the item it is, and the dump then fails with "Unexpected end of input"; `crates/starlink-ast/tests/regressions/native_read/isa-item-given-an-object` and `end-item-given-an-object` hold it.
+A C fix: test that the value is not NULL before taking `isa` or `end` as a keyword, as `GetNextData` makes them only with a class name.
+
 ## Addressed here, and not going upstream
 
 Each of these was investigated to a conclusion: the C behavior is deliberate, or is inherent to a representation C has chosen, and no upstream change is expected.
 The port's answer — mirror, or documented divergence — is recorded in the entry along with the test that holds it there.
 They are kept so the same question is not investigated a third time from scratch.
+
+### `astGetAllVariants` fails when the joined Domains pass 200 characters
+
+C location: `frameset.c` `GetAllVariants`, the `GETALLVARIANTS_BUFF_LEN` (200) test.
+
+C joins the Domains of the Frames in a FrameSet's variant Mappings into a static buffer of 200 characters, and reports `AST__INTER` "Buffer overflow - too many variants" when the next Domain would not fit.
+Upstream `73d3cc88` stopped it writing before the buffer's start when the first Domain did not fit, which leaves the error in place.
+
+The port does not mirror the limit, which exists only to protect the buffer: `FrameSet::all_variants` in `crates/starlink-ast/src/frames/frameset.rs` returns a `String` of every Domain, however long.
+
+### The comment for an offset sky axis is cut to 79 characters
+
+C location: `fitschan.c` `SkySys`, the comment `"<symbol> offset from <position>"` for the CTYPE of an offset sky axis.
+
+Upstream `e809b988` writes the comment with `snprintf` into a buffer of 80 characters, so a long Symbol cuts it at 79; before that a Symbol of 80 characters or more overran the buffer.
+The cut exists only to protect the buffer, and the card layer shortens any comment to fit its card in any case.
+
+The port does not mirror the cut: `crates/starlink-ast/src/fitschan/fset_to_store/sky_sys.rs` builds the comment as a `String` and the card layer fits it to the card.
+
+### FitsChan cuts long strings to the buffers it copies them into
+
+C location: `fitschan.c` and `fitstable.c`, the `snprintf` calls upstream `ef779057` put where strings were copied into fixed buffers.
+
+The strings are the TIMESYS value, keyword name and CTYPE values in warnings; the CTYPE values of spectral, `-TAB` and celestial axes copied so the projection code can be changed when a header is read or written; an axis Symbol used as a CTYPE value; a CTYPE or WCSNAME value used as a Label or Title; and a TPN CTYPE over 80 characters.
+Before the change a string set with `astSetFitsS`, or a Frame Symbol, Domain or Unit, longer than its buffer overran it; now it is cut short.
+
+The port does not mirror the cuts, which exist only to protect the buffers: it copies each string whole into a `String`.
+
+### Frame classes cut long default Labels, Symbols, Domains and Titles to their buffers
+
+C location: `specframe.c`, `timeframe.c`, `fluxframe.c`, `dsbspecframe.c`, `specfluxframe.c`, `cmpframe.c` and `skyframe.c`, the `snprintf` calls upstream `865e65bd`, `bdb3fb86`, `591f3f2e` and `84b6b007` put where default attribute values are built in fixed buffers.
+
+A default Label or Symbol of a SpecFrame, TimeFrame or FluxFrame, a SpecFluxFrame or FluxFrame Title, and a SpecFrame's origin Label are cut to 200 characters; a DSBSpecFrame Label and a CmpFrame Domain to 100; the comment on a SkyFrame's reference position in a dump to 99.
+Before the change a default built from a long Unit, Domain or component Label overran the buffer; now it is cut short.
+
+The port does not mirror the cuts, which exist only to protect the buffers: it builds each default whole (235, 246 and 243 characters in the triage's cases). `testcorruptinput.c`'s checks of these lengths (`2bd4ab23`) are buffer cases for stage 5.
+
+### A `%c` Format writes a byte of the value, which outside ASCII is not text
+
+C location: `axis.c` `AxisFormat`.
+
+`AxisFormat` converts the value to `int` for an integer conversion and passes it to `sprintf`, so a Format of `%c` writes the byte `(unsigned char) value`.
+A value of 128 to 255 gives a byte that is not ASCII, and is not UTF-8 on its own; a value of zero ends the C string there.
+
+The port holds a formatted value as a Rust string, which cannot hold such a byte, so it writes the character of that code in ISO 8859-1 (233 is `é`), padded to the Format's width as the one byte would be (`formats` in `tests/test_fields.rs`).
+A zero ends the text, as in C.
+
+### An error message is cut to 1023 characters
+
+C location: `error.c` `astError_` and `channel.c` `astAddWarning`, the buffers upstream `2d00a457` stopped overrunning.
+
+An error message is formatted into a buffer of 1024 bytes and a Channel warning into one of 201, so a message quoting a long value is cut short: reading a Frame dump whose Naxes is 5000 digits reports `astRead(Channel): The value "naxes = 7777…` cut at 1023 characters.
+Before the change the message overran the buffer; now it is cut.
+
+The port does not mirror the cut, which exists only to protect the buffer: an `AstError` holds the whole message. `test_hardening_oracle.rs` compares the two cases of `testcorruptinput.c` that reach it (`CUT_BY_C`) as C would have written them whole.
 
 ### `CmpMap` dumps `InvA`/`InvB` disagreeing with the child's own `Invert`, recording pointer sharing rather than the Mapping
 
@@ -2318,10 +2575,80 @@ The port takes a NaN input to be a bad value and makes every bad output `BAD_VAL
 So the port gives a NaN input the result C gives `AST__BAD`.
 `tools/oracle_fixtures/mapping_bad_probe.c` gives C `AST__BAD` where the port is given NaN, and sets `AST_REPLACE_NAN`; `tests/test_mapping_bad.rs` holds the MatrixMap cases.
 
+### The port refuses a MathMap expression nested more than 100 deep, which C compiles
+
+C location: `mathmap.c` `EvaluationSort` (mathmap.c:2787).
+
+C orders an expression's symbols for evaluation with an explicit stack, so it compiles an expression nested to any depth: `y=(((…x…)))` with 100 000 pairs of parentheses gives a MathMap (probe as in `docs/issues/c-oracle-probe-recipe.md`).
+The port compiles with a recursive operator-precedence parser (`mappings/mathmap/parser.rs`), which recurses once for each parenthesis, function argument, unary operator and right operand of `**`, so it refuses an expression nested more than `constants::MAX_EXPRESSION_NESTING` (100) deep with `AST__MIOPA` "the expression is nested more than 100 deep", rather than overflowing the stack.
+The deepest expression among the tests nests 5 deep, and one nested to the limit compiles on a 2 MiB stack in an unoptimized build (`an_expression_nested_to_the_limit_compiles` in `tests/test_nesting_limits.rs`).
+The limit goes if the parser is replaced by a port of `EvaluationSort` (PLAN.md §2).
+
+### The port refuses any count in a dump that needs more than 9999999 values
+
+C location: `matrixmap.c` `astLoadMatrixMap` (`MXLOADEL`, matrixmap.c:6478) and `pointset.c` `astLoadPointSet` (`MXLOADVAL`, pointset.c:3126).
+
+A name in a dump has at most eight characters (`MAX_NAME`, channel.c:150), so a class that numbers its values with names such as `M0` or `X1` cannot be given more than 9999999 of them.
+C's MatrixMap and PointSet loaders refuse a dump that claims more, so that a few bytes of input cannot make them allocate and fill arrays of any size; C's other loaders allocate whatever a count asks for, and fail with `AST__NOMEM` only if the allocation does; a LutMap dump claiming `Nlut = 2147483647` makes C read two billion values, which takes more than 20 s (six inputs of the `native_read` fuzz corpus).
+The port refuses, with `AST__LDERR` "..., but a dump cannot hold more than 9999999 values.", every count read from a dump that would make it size or read more (`serial::MXLOADEL`, `serial::too_many_values`): a LutMap's `Nlut`, a PolyMap's coefficients (`NCF<n>`, `NCI<n>`) times its inputs and its maximum powers (`MPF<n>`, `MPI<n>`, which size tables of powers), a SplineMap's `NX` times `NY`, a KeyMap entry's `Nel<n>`, a Table's `Nrow`, a Plot's tick mark counts (`nmjtk<n>`, `nmntk<n>`) and a Region's `MeshSz`.
+Like C's, the port's MatrixMap limit counts the elements a MatrixMap stores: every element of a full matrix, but only the diagonal of a diagonal one and none of a unit one, so it never refuses a unit or diagonal MatrixMap, whose diagonal cannot be longer than the most axes a Mapping can have (65536).
+None of these limits is reached by a dump AST writes, as the item names show, except a Region whose MeshSize was set that high, which C reads.
+`tests/test_size_limits.rs` holds each; the counts there are one above the limit.
+
+### The port refuses to make a FITS card holding a character that is not printable ASCII
+
+C location: `fitschan.c` `SetFits<X>` and `Write` (fitschan.c:41434); `PutFits` (fitschan.c:26204) and `Split` (fitschan.c:33339) for what is read.
+
+A FITS header may hold only the printable ASCII characters, 0x20 to 0x7E (FITS Standard 4.0, section 4.1.1).
+C stores any bytes it is given in a card, warning only of an illegal keyword name (`badkeyname`) and of a value whose type it cannot tell (`badkeyvalue`), and an Object's text, such as a Title in UTF-8, goes into the cards `astWrite` makes as it is.
+The port reads as C does: a card given to `put_fits`, `put_cards`, `from_header` or a source, or read from a dump, is stored whatever it holds, once it is cut as C cuts it (at a NUL, and before the control characters that end it, such as a carriage return), and `to_header` and `write_fits` write it back as it is.
+Headers in archives do hold such characters, in an observer's name or a comment, and refusing the whole header for one of them would make a valid WCS unreadable; `astropy.io.fits` likewise keeps every byte it reads (as Latin-1) and reports them only under `verify`, and `fitsrs` substitutes U+FFFD.
+Such a character at the end of a card is cut with the trailing blanks, in the port as in C, whose `isprint` takes a byte outside ASCII to be non-printing.
+For a keyword name holding such a character, C's `CheckFitsName` reads byte by byte and so names the first byte of the character, as a negative value where `char` is signed; the port's `badkeyname` warning names the character.
+The port refuses, with `AST__BDFTS` "... holds 'é' (U+00E9), but a FITS header may hold only printable ASCII characters.", to make such a card itself: a keyword name, string value or comment given to a `set_fits_*` method (as `astropy.io.fits` raises `ValueError` for), and a write whose cards would hold another character, such as a Native write of a Frame whose Title is `Flux in µJy`, which fails the same way and leaves the FitsChan as it found it.
+`tests/test_fits_characters.rs` holds each.
+
 ## Resolved upstream
 
 Each entry names the commit that fixed it.
 Where the port mirrored the defect, the entry also records the inversion, because a mirror of a fixed bug is a bug.
+
+### RESOLVED (upstream a87d1700): A WcsMap reports unusable parameters only on its first transformation
+
+`InitPrjPrm` (wcsmap.c) leaves wcslib's `flag` clear, so the first projection call runs the projection's set-up routine, and `Map` turns its failure (status 1) into `AST__WCSPA`.
+The set-up routines recorded themselves in `flag` before validating the parameters: `azpset` sets `prj->flag` and then returns 1 when `mu` is -1 (`wcslib/proj.c`).
+The next call therefore skips the set-up and projects with the unusable parameters, and wcslib reports a point it cannot project (status 2), which `Map` makes bad.
+An AZP WcsMap with `PV2_1 = -1` therefore raises `AST__WCSPA` on a first forward transformation and gives bad values on an inverse one after it.
+The inverse path calls the projection first, to find the longitude range (`LongRange`), so an inverse transformation of a fresh WcsMap fails the set-up silently there: it raises nothing and gives bad values, and a forward transformation after it projects with the partly set-up parameters, giving `(-0, 0)` for the input `(0.1, 0.2)`.
+
+The port never mirrored this.
+Its projection (`wcslib::prj::Prj`) runs the set-up once, when the WcsMap's parameters are set, keeps the set-up's status, and returns it from every projection call, so every transformation that has a good point reports `AST__WCSPA`, whatever the order of the transformations; a transformation whose points are all bad reports nothing and gives bad values, as in C.
+It never projects with partly set-up parameters.
+A first forward transformation agrees with C, which `unusable_projection_parameters_are_errors` in `crates/starlink-ast/tests/test_wcsmap.rs` covers; `unusable_parameters_are_an_error_on_every_transform` in the same file covers the later transformations and an inverse one first, where the port and C differed.
+
+Upstream now records the set-up in `flag` only after the parameters pass, in all ten routines (AZP, SZP, ZPN, AIR, CYP, CEA, COP, COE, COD, COO), so every transformation reports `AST__WCSPA`; a probe of the fixed library confirms it for each sequence `unusable_parameters_are_an_error_on_every_transform` covers.
+`LongRange` changed with it: it compares the two positions of its cyclic test only if both project, and does not project the second if the first fails.
+`WcsMap::long_range` had compared them whatever their status, and now follows C; `long_range_is_not_cyclic_when_projection_fails` covers it.
+
+### RESOLVED (upstream 45ae1bd8): SpecTrans replaces a zero CDELT with 1.0 whatever CRVAL is
+
+`SpecTrans` replaces a CDELT of zero so that a degenerate axis can be inverted, and its comment says the replacement is a millionth of the axis's CRVAL, or 1.0 if CRVAL is zero.
+The code fetched CDELT again in place of CRVAL, so the product was always zero and the replacement always 1.0.
+Upstream now fetches CRVAL, taking an absent or non-finite one as zero; `41e2f2c3`, in the same range, also stops it testing a CDELT that was never read.
+
+**Rust behavior:** `translate_zero_cdelt` in `crates/starlink-ast/src/fitschan/spec_trans.rs` had mirrored the 1.0, and now uses CRVAL as upstream does.
+It already skipped an absent or non-numeric CDELT, which is what `41e2f2c3` makes C do.
+The degenerate axes of `wcsconv/inputs/zero-cdelt.head` now have pixel sizes of 180e-6 and 45e-6 degrees, and its references were regenerated upstream.
+
+### RESOLVED (upstream cba0743a): DssMap's inverse gives a far-side sky position a pixel position
+
+`platepix` was documented as failing for a position too far from the plate centre but never did, so a sky position 90 degrees or more from the centre got the pixel position of the point on the opposite side of the sky.
+A plate solution that could not be evaluated (an enormous pixel position, a zero pixel size) gave values that were not finite numbers.
+Upstream gives both bad values; the same commit also hardens the DssMap loader and `MapMerge`.
+
+**Rust behavior:** `DssMap::platepix` and `transform_into` had mirrored both, and now give bad values as upstream does.
+The rows of the `simplify/dssmap_inv_winmap_absorb` oracle sections that upstream changed to bad are what exposed it.
+The loader and `MapMerge` halves of the commit are ported with the rest of the loader hardening.
 
 The four entries immediately below were found while porting `NormUnit` and were fixed on upstream branch `u/timj/norm-unit`, merged to C master on 2026-10-22 as PR #95, which the submodule pin includes.
 The three `unit.c` ones were found by reading `NormUnit(1)` from a one-axis C Frame across a table of Unit strings, now `C_ORACLE` in `crates/starlink-ast/tests/test_frame.rs`; the SkyAxis one by reading it through each class that can hold a SkyFrame axis.
@@ -3565,8 +3892,8 @@ C's buggy round-trip output `08:38:39.870`.
 ### RESOLVED (upstream 232643bc): `SIPIntWorld` reads `nout` from `astGetNin` (typo bug)
 
 **Status:** Fixed upstream at commit 232643bc (`astGetNin` → `astGetNout`).
-The Rust port already read `map.nout()` correctly, so no code change was
-needed. The historical discussion below is retained for context.
+The port mirrored the bug in `sip_int_world` (`let nout = nin;`) until stage 2 of the `fe26cc9b` sync, which reads `map.nout()` as C now does.
+The historical discussion below is retained for context.
 
 
 **C location:** `fitschan.c:28784-28785` — inside `SIPIntWorld`,
@@ -5346,3 +5673,156 @@ outside.
 `crates/starlink-ast/tests/test_pointlist.rs` pins all three.
 
 Fixed upstream in `dc424b56`.
+
+### RESOLVED (upstream fd90f3b1): SplineMap evaluates the spline outside its basic interval and misses its upper limit
+
+`Db2val` tested a position against the full extent of the knots, from the first to the last, though the B-spline is defined only on the basic interval, from knot k to knot n+1 (counting from one).
+The two are the same only when the first k and the last k knots are coincident.
+With open knots along Y, a position outside the basic interval selected columns of coefficients that do not exist, and with open knots along X it gave a value where there is none.
+The comparisons were also written so that a NaN passed them.
+On the upper limit of the basic interval both `Db2val` and `Dbvalu` stepped back to the last knot interval of non-zero width with a loop that stopped one interval early, so a spline with a single interval along an axis gave a bad value on its upper edge.
+Upstream (`0b427150`, `9a598e55`, `fd90f3b1`) tests the basic interval in a form a NaN fails, searches only the knots up to its end, and steps back as CMLIB's `dbvalu` does.
+
+**Rust behavior:** `db2val` and `dbvalu_k` in `crates/starlink-ast/src/mappings/splinemap.rs` mirrored all of it, and for open knots along Y indexed past the coefficients and panicked.
+They now follow the fixed C; `crates/starlink-ast/tests/test_splinemapedge.rs` ports `testsplinemapedge.c` and adds the open-knot positions with C's values.
+
+### RESOLVED (upstream 2d9d4449): astEQUAL never finds an infinite or NaN value equal to itself
+
+`astEQUALS` compared two values by their difference against a tolerance scaled by their size.
+The difference of two equal infinities, or of two NaNs, is a NaN, so the test never found such a value equal to anything, itself included.
+A step repeated until its result stopped changing never stopped once it had one; upstream found the simplifier looping for ever on a WinMap whose scale was 1e-320.
+Upstream now tests first for identical values, or two NaNs, which are equal.
+
+**Rust behavior:** `ast_equals` in `crates/starlink-ast/src/mappings/helpers/mod.rs` mirrored the macro, so a ShiftMap with an infinite shift was not equal to a copy of itself.
+It now tests as upstream does (`ast_equals_identical_or_both_nan`, and `shiftmap_with_an_infinite_shift_equals_itself` in `tests/test_equal.rs`).
+The upstream reproducer, a FITS header with a CDELT of 1e-320, did not hang the port, which reaches the comparison by another path.
+
+### RESOLVED (upstream 7de5007a): astRate loops for ever at a position near zero
+
+`Rate` starts its search for a working interval at a small fraction of the position, and multiplies it by ten until the gradient can be found.
+For a position below about 1e-301 the fraction underflows to zero, and ten times zero is zero, so the loop never ended.
+Upstream starts at the smallest normal number when the fraction is smaller.
+
+**Rust behavior:** `numeric_rate` in `crates/starlink-ast/src/mappings/rate.rs` mirrored the loop and hung; it now floors the first step as upstream does (`rate_near_zero_terminates` in `tests/test_numeric_rate.rs`).
+The floor also replaces a subnormal first step, for a position between about 1e-308 and 1e-301, so rates there can change slightly.
+
+### RESOLVED (upstream b9cf680b): MatrixMap and WinMap merges give Mappings that are not equivalent, or fail
+
+Several steps of MatrixMap's and WinMap's `MapMerge` gave a Mapping that was not equivalent, or raised an error that ended the whole simplification:
+a full MatrixMap that is really diagonal was replaced by a diagonal one used forward whatever the direction of the original;
+a merger or swap with an inverted singular MatrixMap, or one with no value for an axis, raised the error of `astMtrMult` or `astMatrixMap`;
+a WinMap moved past a MatrixMap that discards an axis the WinMap shifts lost that shift from the inverse;
+and a WinMap whose scale terms all lacked a value was turned into a MatrixMap of bad values.
+Upstream merges only when the matrices involved and their product are usable (`astMtrUsable`, `astMtrProduct`), keeps the replacement's direction, lets `MatWin` and `WinMat` refuse a swap, and leaves such a WinMap alone.
+
+**Rust behavior:** `matrix_merge.rs` and `winmap_merge.rs` mirrored all of it; `crates/starlink-ast/tests/test_mapmerge.rs` (the `test_matrixmap` and `test_winmap` cases of `testmapmerge.c`) failed seven cases.
+They now follow the fixed C, with `MatrixMap::mtr_usable` and `MatrixMap::mtr_product` for C's two new protected functions.
+`test_mapping.rs` had pinned C's former errors for a swap past a singular matrix; it now pins C's new results, regenerated from the C library at `fe26cc9b`.
+Where the old C unit and non-square diagonal MatrixMaps were merged with a WinMap as if square, the port already matched the fixed C.
+
+### RESOLVED (upstream f8c7723e): CmpMap swaps a PermMap of constants with parallel Mappings
+
+CmpMap's `MapMerge` swaps a PermMap with a following parallel CmpMap when the PermMap feeds each component from a contiguous block of inputs, or gives it constants.
+It allowed the swap when every PermMap output was constant, which replaced both components though the code that builds the result replaces at most one, and it allowed a constant block whose inputs the PermMap's inverse copies from an output.
+The first gave a new PermMap whose inverse transformation was wrong; the second was reported as an internal programming error.
+Upstream refuses both swaps.
+
+**Rust behavior:** `swap_permmap_parallel_at` in `crates/starlink-ast/src/mappings/simplify.rs` mirrored the test: it merged every-constant cases to one PermMap where C now keeps the CmpMap, lost an inverse coordinate for one, and copied an output index into the new PermMap for the other.
+It now refuses both as upstream does; five `test_permmap_parallel` cases of `testmapmerge.c` in `tests/test_mapmerge.rs`.
+The port already used the components' directions under an inverted CmpMap and checked the PermMap's shape before reading its arrays, the other two parts of the commit.
+
+### RESOLVED (upstream f0230815): WcsMaps cancel when an axis holds different numbers of projection parameters
+
+`CanMerge` decides whether two WcsMaps cancel, and meant to refuse when an axis holds a different number of projection parameters in each.
+It compared `GetNP( wcs1, i )` with itself, so the counts never differed, and it went on to compare only the first WcsMap's count of values.
+An AZP WcsMap whose `PV2_1` was set and then cleared still counts one parameter, so it cancelled the inverse of a plain AZP.
+Upstream compares the two counts.
+
+**Rust behavior:** `WcsMap::try_merge` in `crates/starlink-ast/src/mappings/wcsmap.rs` compared the values over the longer list, padding with bad values, which is what C's `Equal` does but not its `CanMerge`; it now also requires equal counts (`param_counts_equal`).
+A Native dump records only the parameters that are set, so after a round trip the count is that of the set parameters, in C and in the port alike; `wcsmaps_with_different_parameter_counts_do_not_merge` in `tests/test_wcsmap.rs` pins both.
+The other half of the commit, the direction `WcsPerm` gives the PermMap it returns unchanged, the port already had.
+
+### RESOLVED (upstream e7cb7d95): PermMap's PermSplit split accepts an input fed by no output
+
+`PERMVAL` stood in for an absent permutation array with `i < max ? i : -1`, and -1 names the first constant, so a PermMap created without one of its arrays gave the first constant where it should give a bad value.
+With PermSplit set, `MapSplit` returned the `inperm` value of each selected input, rejecting only a constant, so an input fed by a bad value or by an output the PermMap does not have was split off as if fed by that output.
+Upstream gives `max`, a bad value, for an absent coordinate, and rejects any value that is not an output.
+
+**Rust behavior:** the port already expanded an absent array to bad values (`null_perm` in `crates/starlink-ast/src/mappings/perm.rs`), so its transformations, merges and the `testmapmerge.c` PermMap cases matched the fixed C.
+`map_split_zero_based`'s PermSplit branch mirrored the split, and now rejects a value that is not an output (`perm_split_refuses_an_input_with_no_output` in `tests/test_permmap.rs`).
+
+### RESOLVED (upstream 4175c735): A failed FitsChan write loses the cards it replaced
+
+`SetValue` overwrites a card that holds the keyword it writes, and a write that fails removes every card it marked new.
+A card the write had overwritten was therefore lost, along with the value it held before the write, when the write, or one of its secondary axis descriptions, was abandoned.
+Upstream keeps a copy of each card it overwrites (`SaveReplaced`) and puts it back when the cards that replaced it are removed (`FixReplaced`), appending it at the end if its keyword has gone.
+
+**Rust behavior:** `CardList::put_or_append` in `crates/starlink-ast/src/fitschan/card_list.rs` mirrored the loss.
+It now keeps a replaced-card stack that `fix_new` and `fix_replaced` treat as C does; the two `test_failed_write` cases of `testfitswrite.c` in `tests/test_fitswrite.rs`, and `a_failed_write_puts_back_replaced_cards` in `card_list.rs`.
+The three FITS-PC writes of `fitschan_encodings_probe` that fail now leave the reference cards they replaced, so that oracle was regenerated.
+
+### RESOLVED (upstream bd9ffbfc): DATE-OBS is written for an MJD with no calendar date
+
+`MjdToDateObs` formatted DATE-OBS without checking that the MJD was a finite number, or that `palDjcl` and `palDjcal` had found a calendar date for it, so an MJD-OBS of 1e10 or NaN wrote a DATE-OBS from undefined values.
+Upstream writes none for either.
+
+**Rust behavior:** the port had its own calendar arithmetic (the Meeus algorithm) in place of `palDjcl` and `palDjcal`, so it wrote a DATE-OBS for those MJDs (`'27380803-10-02T09:59:08.694'` for 1e10), and differed from C for dates it can format: a year before 1900 or with a negative sign (MJD 0 is `'17/11/-42'` in C, `'17/11/42'` in the port), and the last instant of a day (`'1999-01-01T24:00:00.000'` in C, `'1999-01-02T00:00:00.000'`).
+`mjd_to_date_obs` in `crates/starlink-ast/src/fitschan/wcs_write/mod.rs` now ports `MjdToDateObs` on the native `palDjcl` and `palDd2tf`; `date_obs_is_written_as_the_c_library_writes_it` in `tests/test_fitschan.rs` pins sixteen MJDs to C's cards.
+
+### RESOLVED (upstream cfdbbe8d): A FITS value an integer cannot hold is converted to one
+
+`CnvType` converted a floating-point card value to `int` or `int64_t` with a cast, which is undefined for a value the type cannot hold, and the grism set-up cast the diffraction order (`PV<i>_1`) the same way.
+Upstream refuses a value outside the type's range (`AST__FTCNV` from `astGetFitsI`, `astGetFitsK` and `astGetFitsCI`, with `-9.2E18` to `9.2E18` for the 64-bit type) and a grism order whose magnitude is not below `INT_MAX` (`AST__BDFTS`).
+
+**Rust behavior:** `from_float` in `crates/starlink-ast/src/fitschan/card_value.rs` saturated, so `astGetFitsI` of -1e300 gave `i32::MIN`, and the grism order saturated likewise.
+Both now refuse as upstream does, with C's messages (`a_float_an_integer_cannot_hold_is_not_converted` and `a_grism_order_out_of_range_is_refused` in `tests/test_fitschan.rs`).
+The conversion error also no longer carries the error code's description in front of C's first message.
+The commit's LutMap half matches already (Rust's saturating cast puts an index beyond the table, as upstream's clamp does); its WcsMap loader half is for the hostile-input stage.
+
+### RESOLVED (upstream 3cce24ce): A CmpRegion that ANDs two nested unbounded Regions reports itself as bounded
+
+C location: `cmpregion.c` `GetBounded`, the AND branch.
+
+When neither component of an AND was bounded, `GetBounded` called the AND unbounded only if `astOverlap` gave 1 (no overlap), 4 (partial overlap) or 6 (negation), and bounded otherwise.
+When one component lies inside the other (2 or 3), the AND is the inner component, which is unbounded.
+A C-oracle probe ANDed two Intervals, x > 0 and x > 1: both are unbounded, `astOverlap` gives 3, and the CmpRegion reported `Bounded` as 1 while containing the point (1e30, 1e30).
+
+The port mirrored the test in `CmpRegion::get_bounded`.
+Upstream now calls the AND of two unbounded components unbounded whatever their overlap, since neither has a boundary mesh from which to make one for it, and the port follows: `and_of_nested_unbounded_regions_is_unbounded` in `tests/test_cmpregion.rs` and `cmpregions` in `tests/test_regionlogic.rs` cover it.
+
+### RESOLVED (upstream 86601275): `astReadDateTime` tests ERFA's status against SLALIB's codes
+
+C location: `frame.c` `astReadDateTime`.
+
+`astReadDateTime` converted the calendar date with `palCaldj` and reported an invalid year, month or day for a status of 1, 2 or 3, SLALIB's codes, but `palCaldj` returns `eraCal2jd`'s -1, -2 and -3, so none was reported: for a bad year or month ERFA returns before setting the MJD, and the value that had not been set was returned.
+Upstream now reports `Year value (N) is invalid.` and `Month value (N) is invalid.` for -1 and -2.
+A day that is not valid for its month is still accepted, deliberately, and counted on from the start of the month (`2012-03-00` is 29 February), which TimeFrame `Centre` relies on (see "TimeFrame `Centre` zeroes a calendar field that has no zero").
+
+The port never read a bad year or month, but reported it as "Date/time does not have the correct form."; it now gives C's messages (`dates` in `tests/test_fields.rs`), and reads a bad day as C does (`unformat_counts_days_outside_the_month_from_its_start` in `test_timeframe.rs`).
+
+### RESOLVED (upstream 49e2c58c): SkyAxis `AxisFields` dereferences a null pointer when a separator is missing
+
+`skyaxis.c` `AxisFields` (skyaxis.c:479) finds the end of each terminated field with `t = strstr( p, term )`, sets `ok = 0` when `t` is null, and then still computes `p = t + strlen( term )` and later calls `astChrLen( p )`.
+A value lacking a separator its Format names, such as `"12:34"` split with `hms`, therefore reads through an invalid pointer; on macOS arm64 the process crashes.
+Plot splits labels it formatted itself with the same Format, so its own calls do not meet this, but `astAbbrev` and `astFields` take any string.
+Two smaller defects sit beside it: with a `+` sign and a single unterminated field (Format `d` or `h`), `p` is advanced one byte past the field, past the terminating null when there is no trailing space; and when the text is blank before any field is read, `sscanf` returns `EOF`, which the code takes as success with `dval` uninitialized.
+The port returns no fields for a missing separator or blank text, and ends a `+`-signed field at its last non-blank character, which is what C gives whenever its read stays inside the string (`skyaxis::sky_axis_fields`); the first is pinned by `sky_fields_without_a_named_separator_find_none` in `crates/starlink-ast/tests/test_plot_frame_methods.rs`; the probe avoids them.
+Where `EOF` arrives in a later field `dval` holds the previous field's value, which is defined, and the port mirrors it: `"12:"` split with `dm` is 12 degrees 12 minutes.
+`AxisAbbrev` (skyaxis.c:307) has a related defect: with a null `str1` it returns `fld2[ nf2 - 1 ]`, the start of the last field of `str2`, and when `str2` has no fields that reads `fld2[ -1 ]`, an uninitialized slot before the array, and returns it as a pointer into `str2` (observed: an offset of 1786110374 for `"a:b:c"` with `hms`).
+Plot passes a null `str1` to find the last field of a label (plot.c:23849), so a label that does not parse with the axis Format reaches it.
+The port returns 0, the start of `str2` (`skyaxis::sky_axis_abbrev`).
+
+Upstream `49e2c58c` leaves the pointer where it is when a separator is not found, finds the end of a one-field value from its start (so a `+` sign is allowed for), and starts the value at zero, so a blank value is one field of zero; `f3e0de73` makes `AxisAbbrev` return 0, the start of `str2`, when it has no fields.
+The port already returned no fields for a missing separator, ended a `+`-signed field as C now does, and returned 0 from `AxisAbbrev`; it now reads a blank value as one field of zero, as C does (`sky` in `tests/test_fields.rs`).
+
+### RESOLVED (upstream 3a32fec8): `AxisFields` reads past the end of a value with leading spaces
+
+`axis.c` `AxisFields` (axis.c:414, the decimal branch) skips the leading spaces of the formatted value, then finds the end of the field with `p += len`, where `len` is the length of the whole string.
+Starting from the first non-blank character, that lands past the terminating null by the number of leading spaces, and the trailing-space loop then reads the bytes beyond the string.
+The field length returned is the length of the whole string, plus or minus whatever spaces follow it in memory, rather than the length of the value.
+Observed through `astFields` on a plain Frame with `"  -7 "`: C returns one field of 5 characters starting at offset 2 (`tools/oracle_fixtures/plot_frame_methods_probe.c`).
+A value only has leading spaces when its Format pads it (`%10.3f`, say); Plot passes such a label's fields to its abbreviation and log-label logic.
+The fix is `p = str + len` before the trailing-space loop.
+The port does not mirror the read: `axis::plain_axis_fields` returns the field from the first to the last non-blank character, and `FIELDS_EXCLUDED` in `crates/starlink-ast/tests/test_plot_frame_methods.rs` names the C cases it differs on.
+
+Upstream `3a32fec8` finds the end of the field from its start, giving one field of 2 characters at offset 2, which the port always gave; `FIELDS_EXCLUDED` in `test_plot_frame_methods.rs` is empty since the probe was regenerated at the pin.

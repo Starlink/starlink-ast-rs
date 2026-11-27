@@ -7,6 +7,7 @@ use crate::constants::BAD_VALUE;
 use crate::coords::PointSet;
 use crate::error::{AstError, AstResult, ErrorCode};
 use crate::frames::{DynFrame, FieldSplit, Frame};
+use crate::mappings::helpers::is_c_bad;
 use crate::mappings::helpers::{ast_equals, is_bad};
 use crate::mappings::{
     CmpMap, Composition, DynMapping, Mapping, ShiftMap, TimeCvtType, TimeMap, UnitMap,
@@ -326,7 +327,7 @@ impl TimeFrame {
     // Defaults of the Frame-class attributes, for the `frame_attrs_*`
     // macros.
     fn frame_default_title(&self) -> AstResult<String> {
-        Ok(self.default_title())
+        self.default_title()
     }
     fn frame_default_domain(&self) -> &'static str {
         "TIME"
@@ -449,7 +450,7 @@ impl TimeFrame {
     #[doc(alias = "TimeOrigin")]
     // C: timeframe.c `GetTimeOriginCur`, which is what the TimeOrigin
     // attribute reports.
-    pub fn time_origin_cur(&self) -> f64 {
+    pub fn time_origin_cur(&self) -> AstResult<f64> {
         self.get_time_origin_cur()
     }
 
@@ -465,7 +466,7 @@ impl TimeFrame {
     pub fn set_time_origin_cur(&mut self, value: f64) -> AstResult<()> {
         let def = self.system.default_units();
         let cur = self.unit_or_default().to_string();
-        let Some(map) = crate::units::unit_mapper(&cur, def) else {
+        let Some(map) = crate::units::unit_mapper(&cur, def)? else {
             return Err(AstError::new(
                 ErrorCode::Badun,
                 format!(
@@ -858,7 +859,7 @@ impl TimeFrame {
     /// absolute `iso.0` date/time (` offset from <date>`, with a trailing
     /// ` 00:00:00` time-of-day stripped). A Local Time timescale appends the
     /// `(UTC±offset)` suffix.
-    fn default_axis_label(&self) -> String {
+    fn default_axis_label(&self) -> AstResult<String> {
         let (is_date, ndp, _sep) = date_format(self.set_format());
         let mut result = if is_date {
             if ndp >= 0 {
@@ -889,7 +890,7 @@ impl TimeFrame {
                 result,
                 self.system.default_units(),
                 self.axis.unit.as_deref(),
-            );
+            )?;
         }
 
         // Local Time, whatever the label (C timeframe.c:2726-2734): indicate the offset from UTC (C timeframe.c:2726-2734).
@@ -902,7 +903,7 @@ impl TimeFrame {
             }
         }
 
-        result
+        Ok(result)
     }
 
     /// The offset from UTC to Local Time, in hours: the LTOffset attribute,
@@ -1069,7 +1070,7 @@ impl TimeFrame {
     // --- Serialization helpers ---
 
     /// Return the default title: "SystemLabel [TimeScale]".
-    fn default_title(&self) -> String {
+    fn default_title(&self) -> AstResult<String> {
         // Mirrors C `GetTitle` (timeframe.c:3107). Start with the system
         // label (already capitalized), append the timescale in brackets when
         // it is *set* (and the system is not BEPOCH, which is TT-only), and
@@ -1094,7 +1095,7 @@ impl TimeFrame {
 
         // Append "offset from <date>" when a non-zero origin is set and the
         // Format does not already render an (absolute) date string.
-        let orig = self.get_time_origin_cur();
+        let orig = self.get_time_origin_cur()?;
         if orig != 0.0 && !date_format(self.set_format()).0 {
             // Format the origin (axis value 0.0) as an absolute iso.0 time.
             if let Ok(date) = self.format_iso0_zero() {
@@ -1103,26 +1104,26 @@ impl TimeFrame {
             }
         }
 
-        title
+        Ok(title)
     }
 
     /// The TimeOrigin expressed in the current axis units. Mirrors C
     /// `GetTimeOriginCur` (timeframe.c): the stored origin (in the system's
     /// default units) converted to the per-instance Unit.
-    fn get_time_origin_cur(&self) -> f64 {
+    fn get_time_origin_cur(&self) -> AstResult<f64> {
         let result = self.time_origin();
         if result == 0.0 {
-            return result;
+            return Ok(result);
         }
         let def = self.system.default_units();
         let cur = self.unit_or_default();
         if cur == def {
-            return result;
+            return Ok(result);
         }
-        match crate::units::unit_mapper(def, cur) {
+        Ok(match crate::units::unit_mapper(def, cur)? {
             Some(map) => transform_scalar(map.as_ref(), result, true).unwrap_or(result),
             None => result,
-        }
+        })
     }
 
     /// Format the axis value 0.0 (i.e. the TimeOrigin) as an absolute
@@ -1134,8 +1135,15 @@ impl TimeFrame {
     /// formats with `ndp < 0`).
     fn format_iso0_zero(&self) -> AstResult<String> {
         let mjd = self.value_to_mjd(0.0)?;
-        // An unconvertible date leaves C's outputs as the zeros they start as.
-        let (iy, im, id, fd) = crate::pal::djcl(mjd).unwrap_or((0, 0, 0, 0.0));
+        // A time outside the calendar has no date, and is formatted as a bad
+        // value is.
+        let Some((iy, im, id, fd)) = mjd
+            .is_finite()
+            .then(|| crate::pal::djcl(mjd).ok())
+            .flatten()
+        else {
+            return Ok("<bad>".to_string());
+        };
         let (_sign, ihmsf) = crate::pal::dd2tf(0, fd);
         Ok(format!(
             "{iy:4}-{im:02}-{id:02} {:02}:{:02}:{:02}",
@@ -1322,7 +1330,7 @@ impl TimeFrame {
             // conversion (if any) remains.
             if ast_equals(off1, off2, 1.0e3) {
                 if unit1 == unit2 {
-                    return Ok(Box::new(UnitMap::new(1)));
+                    return Ok(Box::new(UnitMap::new(1)?));
                 }
                 return unit_mapper_or_err(unit1, unit2);
             }
@@ -1335,7 +1343,7 @@ impl TimeFrame {
                 let umap = unit_mapper_or_err(du1, unit2)?;
                 shift = transform_scalar(umap.as_ref(), shift, true)?;
             }
-            let shift_map: DynMapping = Box::new(ShiftMap::new(vec![shift]));
+            let shift_map: DynMapping = Box::new(ShiftMap::new(vec![shift])?);
             if unit1 != unit2 {
                 let umap = unit_mapper_or_err(unit1, unit2)?;
                 return Ok(Box::new(CmpMap::new(umap, shift_map, Composition::Series)?));
@@ -1353,7 +1361,7 @@ impl TimeFrame {
         self.build_timemap(&mut timemap, sys1, sys2, ts1, ts2, off1, off2, mjd_off1);
 
         let timemap: DynMapping = if timemap.is_empty() {
-            Box::new(UnitMap::new(1))
+            Box::new(UnitMap::new(1)?)
         } else {
             Box::new(timemap)
         };
@@ -1545,7 +1553,7 @@ impl TimeFrame {
 /// Build a units-conversion Mapping or report an incompatible-units error
 /// (mirrors C `astUnitMapper` returning NULL → AST__INTGES error path).
 fn unit_mapper_or_err(unit1: &str, unit2: &str) -> AstResult<DynMapping> {
-    crate::units::unit_mapper(unit1, unit2).ok_or_else(|| {
+    crate::units::unit_mapper(unit1, unit2)?.ok_or_else(|| {
         AstError::new(
             ErrorCode::Badun,
             format!("TimeFrame: cannot convert between units \"{unit1}\" and \"{unit2}\""),
@@ -1681,6 +1689,9 @@ fn date_format(fmt: &str) -> (bool, i32, char) {
         let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
         if !digits.is_empty() {
             if let Ok(ndp) = digits.parse::<i32>() {
+                // The fraction of a second is an int in C, which limits the
+                // seconds to 9 decimal places.
+                let ndp = ndp.min(9);
                 let after = &rest[digits.len()..];
                 let sep = match after.chars().next() {
                     Some('T') | Some('t') => 'T',
@@ -1773,7 +1784,7 @@ impl Frame for TimeFrame {
     fn label(&self, axis: usize) -> AstResult<String> {
         Ok(match &self.ax(axis)?.label {
             Some(label) => label.clone(),
-            None => self.default_axis_label(),
+            None => self.default_axis_label()?,
         })
     }
 
@@ -1793,11 +1804,11 @@ impl Frame for TimeFrame {
             TimeSystem::Bepoch => "BEP",
             TimeSystem::Jepoch => "JEP",
         };
-        Ok(super::frame_attrs::relabel_for_unit(
+        super::frame_attrs::relabel_for_unit(
             symbol.to_string(),
             self.system.default_units(),
             self.axis.unit.as_deref(),
-        ))
+        )
     }
 
     /// The Unit, set or default; see [`Frame::unit`].
@@ -1838,7 +1849,7 @@ impl Frame for TimeFrame {
         let unit = unit.trim_end();
         if self.get_active_unit() {
             let old = Frame::unit(self, axis)?;
-            super::frame_attrs::new_unit(&mut self.axis, &old, unit);
+            super::frame_attrs::new_unit(&mut self.axis, &old, unit)?;
         }
         self.axis.unit = Some(unit.to_string());
         Ok(())
@@ -1854,7 +1865,7 @@ impl Frame for TimeFrame {
         if let Some(old) = self.ax_mut(axis)?.unit.take() {
             if self.get_active_unit() {
                 let new = Frame::unit(self, axis)?;
-                super::frame_attrs::new_unit(&mut self.axis, &old, &new);
+                super::frame_attrs::new_unit(&mut self.axis, &old, &new)?;
             }
         }
         Ok(())
@@ -1963,101 +1974,80 @@ impl Frame for TimeFrame {
         Ok((xin.point(1)[0] - xin.point(0)[0], ntick))
     }
 
-    /// With a date Format, the value formatted a gap either side is
-    /// compared field by field, and the first field that differs, and every
-    /// field after it, is set to its lowest value: zero, or one for the
-    /// month and day.
-    // C: timeframe.c `Centre` (timeframe.c:603). When the two formatted
-    // values are identical, or one runs out of numeric fields first (a bad
-    // value formats as "<bad>"), C reads past the end of the strings; the
-    // port stops at the end and returns the value unchanged.
+    /// With a date Format, the value is formatted a gap either side, and
+    /// the two dates are compared field by field.
+    /// When the first field that differs is the day or a time field, the
+    /// result is the start of the coarser unit, taken from the earlier
+    /// date, so that ticks a whole number of units apart fall on round
+    /// values: midnight, or the first of the month.
+    /// When it is the month or the year, whose lengths vary so that no gap
+    /// divides them, the result is the start of that unit in the later
+    /// date, the calendar boundary inside the window.
+    // C: timeframe.c `Centre` (timeframe.c:625). The port differs from C
+    // here, by decision: C sets the first differing field and every later
+    // one to zero in the earlier date, so a day or month of zero is the
+    // last day of the previous month or no date at all, and a year of
+    // zero is no date (quirk "TimeFrame `Centre` zeroes a calendar field
+    // that has no zero"). Fields are compared as C compares them, as runs
+    // of digits read as integers.
     fn centre(&self, axis: usize, value: f64, gap: f64) -> AstResult<f64> {
         super::frame_attrs::validate_axis(axis, 1)?;
         if !date_format(&self.format_str(1)?).0 {
             return self.axis_centre(axis, value, gap);
         }
-        let date1 = self.format(1, value - gap)?;
-        let date2 = self.format(1, value + gap)?;
-        let (b1, b2) = (date1.as_bytes(), date2.as_bytes());
-        let at = |b: &[u8], i: usize| b.get(i).copied().unwrap_or(0);
-        // C's `atoi` on a run of digits.
-        let atoi = |b: &[u8], i: usize| {
-            b[i..]
-                .iter()
-                .take_while(|c| c.is_ascii_digit())
-                .fold(0_i64, |v, c| v * 10 + i64::from(c - b'0'))
-        };
-        let (mut p1, mut p2) = (0, 0);
-        let (mut f1, mut f2): (Option<usize>, Option<usize>) = (None, None);
-        let (mut nc1, mut nc2) = (0, 0);
-        let mut first_differing = None;
-        // The number of leading fields that are the same.
-        let mut nfld = 0;
-        loop {
-            for (b, p, f, nc) in [
-                (b1, &mut p1, &mut f1, &mut nc1),
-                (b2, &mut p2, &mut f2, &mut nc2),
-            ] {
-                if *nc == 0 {
-                    let c = at(b, *p);
-                    match *f {
-                        None if c.is_ascii_digit() => *f = Some(*p),
-                        Some(start) if !c.is_ascii_digit() => *nc = *p - start,
-                        _ => {}
+        let early = self.format(1, value - gap.abs())?;
+        let late = self.format(1, value + gap.abs())?;
+        let runs = |s: &str| -> Vec<(usize, usize)> {
+            let b = s.as_bytes();
+            let mut out = Vec::new();
+            let mut i = 0;
+            while i < b.len() {
+                if b[i].is_ascii_digit() {
+                    let start = i;
+                    while i < b.len() && b[i].is_ascii_digit() {
+                        i += 1;
                     }
-                    *p += 1;
+                    out.push((start, i));
+                } else {
+                    i += 1;
                 }
             }
-            if nc1 > 0 && nc2 > 0 {
-                let (s1, s2) = (f1.unwrap_or_default(), f2.unwrap_or_default());
-                if atoi(b1, s1) != atoi(b2, s2) {
-                    first_differing = Some(s1);
-                    break;
-                }
-                nfld += 1;
-                (nc1, nc2) = (0, 0);
-                (f1, f2) = (None, None);
-                if p1 >= b1.len() || p2 >= b2.len() {
-                    break;
-                }
-            }
-            // C runs on past the end of a string that has no further
-            // numeric field; the port stops.
-            if (nc1 == 0 && p1 > b1.len()) || (nc2 == 0 && p2 > b2.len()) {
-                break;
-            }
-        }
-        let Some(start) = first_differing else {
+            out
+        };
+        // The integer a run of digits gives, compared without its leading
+        // zeros so that no run is too long to read.
+        let int = |s: &str, (start, end): (usize, usize)| {
+            s[start..end].trim_start_matches('0').to_owned()
+        };
+        let (runs1, runs2) = (runs(&early), runs(&late));
+        let Some(first) = runs1
+            .iter()
+            .zip(&runs2)
+            .position(|(&r1, &r2)| int(&early, r1) != int(&late, r2))
+        else {
             return Ok(value);
         };
-        // C (from 20-NOV-2026) ends a zeroed month or day, the second and
-        // third fields, with a 1, so that the date is a valid one.
-        let mut fres = b1.to_vec();
-        let mut ifld = nfld;
-        let mut infld = false;
-        #[allow(clippy::needless_range_loop)]
-        for i in start..fres.len() {
-            if fres[i].is_ascii_digit() {
-                fres[i] = b'0';
-                infld = true;
-                if (ifld == 1 || ifld == 2) && !at(b1, i + 1).is_ascii_digit() {
-                    fres[i] = b'1';
-                }
-            } else if infld {
-                infld = false;
-                ifld += 1;
+        // The year and month are the first two fields. Each field from
+        // `from` on is set to its lowest value; the month and day, the
+        // second and third fields, start at 1.
+        let (base, base_runs, from) = if first >= 2 {
+            (&early, &runs1, first)
+        } else {
+            (&late, &runs2, first + 1)
+        };
+        let mut fres = base.clone().into_bytes();
+        for (ifld, &(start, end)) in base_runs.iter().enumerate().skip(from) {
+            fres[start..end].fill(b'0');
+            if ifld == 1 || ifld == 2 {
+                fres[end - 1] = b'1';
             }
         }
-        let fres = String::from_utf8(fres).expect("an ASCII date");
+        let fres = String::from_utf8(fres).expect("digits replaced by digits");
+        // Text that cannot be read in full is no date; C then uses the Frame
+        // centre.
         let (result, nread) = self.unformat(1, &fres)?;
         if nread != fres.len() {
-            return Err(AstError::new(
-                ErrorCode::Inter,
-                format!(
-                    "astCentre(TimeFrame): Error unformatting the central time axis value \
-                     '{fres}' (internal AST programming error)."
-                ),
-            ));
+            return self.axis_centre(axis, value, gap);
         }
         Ok(result)
     }
@@ -2201,8 +2191,15 @@ impl Frame for TimeFrame {
             mjd = mjd.round();
         }
 
-        // An unconvertible date leaves C's outputs as the zeros they start as.
-        let (iy, im, id, fd) = crate::pal::djcl(mjd).unwrap_or((0, 0, 0, 0.0));
+        // A time outside the calendar has no date, and is formatted as a bad
+        // value is.
+        let Some((iy, im, id, fd)) = mjd
+            .is_finite()
+            .then(|| crate::pal::djcl(mjd).ok())
+            .flatten()
+        else {
+            return Ok("<bad>".to_string());
+        };
         // "%4d-%2.2d-%2.2d" — the year is space-padded to width 4.
         let mut out = format!("{iy:4}-{im:02}-{id:02}");
 
@@ -2287,7 +2284,7 @@ impl Frame for TimeFrame {
         let va = a[0];
         let vb = b[0];
         let vc = c[0];
-        if is_bad(va) || is_bad(vb) || is_bad(vc) {
+        if is_c_bad(va) || is_c_bad(vb) || is_c_bad(vc) {
             return Ok(BAD_VALUE);
         }
         let ab = va - vb;
@@ -2370,10 +2367,12 @@ impl Frame for TimeFrame {
         Ok(())
     }
 
+    // object.c `Cast`: a copy into its own class, and into the class it is
+    // derived from, a plain Frame, a copy of the Frame it is.
     fn cast(&self, other: &dyn Frame) -> AstResult<Option<DynFrame>> {
-        // A specialized leaf frame can only be cast down to a plain
-        // Frame (BasicFrame). Same-class is handled by the direct Match
-        // (no cast needed), so only the BasicFrame target matters here.
+        if other.as_any().is::<TimeFrame>() {
+            return Ok(Some(self.snapshot()));
+        }
         if other
             .as_any()
             .downcast_ref::<crate::frames::BasicFrame>()
@@ -2646,6 +2645,10 @@ impl Serializable for TimeFrame {
         // C's loaders read them through astReadClassData (channel.c).
         let whole = node;
         let frame = &whole.section("Frame");
+        // astLoadFrame's checks of the axes, then the class's own that it
+        // has one (frame.c `astCheckLoadedNaxes`).
+        let (naxes, _) = super::frame_attrs::load_frame_axes(frame, &whole.class)?;
+        super::frame_attrs::check_loaded_naxes(&whole.class, naxes, 1)?;
         let node = &whole.section("TimeFrame");
         // Read System. The unset default is MJD (timeframe.c:2911), so an
         // absent `System=` line decodes to an MJD frame with system_set

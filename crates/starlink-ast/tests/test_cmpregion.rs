@@ -801,12 +801,10 @@ fn and_mesh_follows_closed_after_first_use() {
     assert_eq!(warmed.base_mesh().unwrap().npoint(), fresh_open.npoint());
 }
 
-/// An AND of two unbounded Regions, one inside the other, is reported as
-/// bounded, though it is the inner Region and contains points arbitrarily
-/// far away. `astGetBounded` reports the same for these two Intervals
-/// (C-oracle probe); see docs/issues/c-library-quirks.md.
+/// An AND of two unbounded Regions, one inside the other, is the inner
+/// Region, and is not bounded.
 #[test]
-fn and_of_nested_unbounded_regions_reports_bounded_as_c_does() {
+fn and_of_nested_unbounded_regions_is_unbounded() {
     let frame = BasicFrameBuilder::new(2).build().unwrap();
     let interval = |lower: f64| {
         IntervalBuilder::new(frame.clone(), vec![lower, BAD_VALUE], vec![BAD_VALUE; 2])
@@ -821,6 +819,6 @@ fn and_of_nested_unbounded_regions_reports_bounded_as_c_does() {
         .unwrap()
         .build()
         .unwrap();
-    assert!(and.is_bounded().unwrap());
+    assert!(!and.is_bounded().unwrap());
     assert!(and.point_in_region(&[1.0e30, 1.0e30]).unwrap());
 }

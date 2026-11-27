@@ -213,7 +213,11 @@ fn fset_to_store_impl(
     // this, the bounds returned by astMapBox over the spec axis
     // can differ from C by O(1e-2 m/s) for typical millimeter-wave
     // velocity systems.
-    let mut owned_fs = make_fits_frameset(fs, encoding)?;
+    // C's AddVersion writes nothing for a FrameSet MakeFitsFrameSet
+    // cannot make (fitschan.c AddVersion).
+    let Some(mut owned_fs) = make_fits_frameset(fs, encoding)? else {
+        return Ok((FitsStore::new(fs.base().naxes()), false));
+    };
     let fs = &mut owned_fs;
 
     // Step 1: pixel→WCS Mapping from base to current frame.
@@ -436,7 +440,7 @@ fn fset_to_store_impl(
 /// non-SkyFrame celestial axes from radians to degrees — are
 /// out-of-scope for the current fixture coverage and tracked in
 /// docs/issues/fset_to_store-port-gaps.md.
-pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult<FrameSet> {
+pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult<Option<FrameSet>> {
     use crate::fitschan::fset_to_store::celestial_axes;
     use crate::frames::{SkySystem, SpecFrame};
 
@@ -458,6 +462,9 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     let mut spec_axis: Option<usize> = None;
     let mut sky_lon: Option<usize> = None;
     let mut sky_lat: Option<usize> = None;
+    // The first SkyFrame found, by address: a second, different one means C's
+    // MakeFitsFrameSet gives no FrameSet.
+    let mut sky_frame: Option<*const ()> = None;
     for iax in 0..nwcs {
         let (pframe, paxis) = owned.current().primary_frame(iax);
         if pframe.as_any().downcast_ref::<SpecFrame>().is_some()
@@ -467,16 +474,17 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
                 .is_some()
         {
             if spec_axis.is_some() {
-                // C aborts MakeFitsFrameSet on duplicate spec axes;
-                // for now just return the original FrameSet unchanged.
-                return Ok(owned);
+                // C's MakeFitsFrameSet gives no FrameSet for a second
+                // SpecFrame, so this description is not written.
+                return Ok(None);
             }
             spec_axis = Some(iax);
-        } else if pframe
-            .as_any()
-            .downcast_ref::<crate::frames::SkyFrame>()
-            .is_some()
-        {
+        } else if celestial_axes::is_a_sky_frame(pframe) {
+            let this = std::ptr::from_ref(pframe).cast::<()>();
+            if sky_frame.is_some_and(|first| first != this) {
+                return Ok(None);
+            }
+            sky_frame = Some(this);
             if paxis == 0 {
                 sky_lon = Some(iax);
             } else {
@@ -491,7 +499,7 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     // which for our wcsconv fixtures is always the case when a
     // DSBSpecFrame is present in the .ast).
     let (Some(_spec_iax), Some(ilon), Some(ilat)) = (spec_axis, sky_lon, sky_lat) else {
-        return Ok(owned);
+        return Ok(Some(owned));
     };
 
     // C gate at fitschan.c:21455-21462: only proceed into the
@@ -506,7 +514,7 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
         .map(|s| s.test_ref_ra() && s.test_ref_dec())
         .unwrap_or(false);
     if !has_ref_radec {
-        return Ok(owned);
+        return Ok(Some(owned));
     }
 
     // Save the SkyFrame's System / Equinox is-set state plus the
@@ -526,7 +534,7 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
     let (orig_sys_set, orig_sys, orig_eqn_set, orig_equinox) = {
         let cur = owned.current();
         let Some(sky) = peek_sky(cur) else {
-            return Ok(owned);
+            return Ok(Some(owned));
         };
         (
             sky.test_system(),
@@ -584,13 +592,13 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
         // the SkyFrame's original system/equinox first so we don't
         // leak the FK5/J2000 override.
         owned.with_integrity(restore_sky)?;
-        return Ok(owned);
+        return Ok(Some(owned));
     };
 
     let fid = fiducial::get_fiducial_wcs(&wcsmap, map3.as_ref(), ilon, ilat)?;
+    // With no fiducial point C's MakeFitsFrameSet gives no FrameSet.
     let Some((reflon, reflat)) = fid else {
-        owned.with_integrity(restore_sky)?;
-        return Ok(owned);
+        return Ok(None);
     };
 
     // Step 3: set RefRA/RefDec on the SpecFrame via FrameSet
@@ -635,7 +643,7 @@ pub(crate) fn make_fits_frameset(fs: &FrameSet, encoding: Encoding) -> AstResult
         add_encoding_frame_class(&mut owned)?;
     }
 
-    Ok(owned)
+    Ok(Some(owned))
 }
 
 /// Mirrors the unit-remap pass of C `MakeFitsFrameSet`
@@ -678,13 +686,13 @@ fn apply_unit_remap(fs: &FrameSet) -> AstResult<FrameSet> {
             && crate::frames::Frame::domain(pframe) == "SKY";
 
         let axmap: DynMapping = if is_spec || is_sky_domain {
-            Box::new(UnitMap::new(1))
+            Box::new(UnitMap::new(1)?)
         } else {
             let extunit = pframe.unit(paxis_1)?;
             let intunit = pframe.internal_unit(paxis_1)?;
             if intunit == extunit {
-                Box::new(UnitMap::new(1))
-            } else if let Some(umap) = crate::units::unit_mapper(&intunit, &extunit) {
+                Box::new(UnitMap::new(1)?)
+            } else if let Some(umap) = crate::units::unit_mapper(&intunit, &extunit)? {
                 any_remap = true;
                 umap
             } else if intunit == "rad" {
@@ -694,7 +702,7 @@ fn apply_unit_remap(fs: &FrameSet) -> AstResult<FrameSet> {
                 any_remap = true;
                 Box::new(ZoomMap::new(1, DR2D)?)
             } else {
-                Box::new(UnitMap::new(1))
+                Box::new(UnitMap::new(1)?)
             }
         };
 
@@ -777,6 +785,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
             }
         }
         if matched_sky.is_none()
+            && celestial_axes::is_a_sky_frame(pframe)
             && let Some(sky) = pframe.as_any().downcast_ref::<SkyFrame>()
         {
             matched_sky = Some(sky.clone());
@@ -830,7 +839,7 @@ fn add_encoding_frame_class(fs: &mut FrameSet) -> AstResult<()> {
     // canonical CmpFrame with the spectral axis first. Mirrors C
     // `astCmpFrame( specfrm, skyfrm, "" )` (fitschan.c:2550).
     let cmpfrm: crate::frames::DynFrame =
-        Box::new(CmpFrame::new(source_spec_frame, Box::new(target_sky)));
+        Box::new(CmpFrame::new(source_spec_frame, Box::new(target_sky))?);
 
     // Convert the current Frame to the canonical template via the
     // generic frame-conversion machinery. Mirrors C `astConvert( cfrm,
@@ -1104,7 +1113,7 @@ fn class_adjust_spatial_crval(
 
     let lonval_rad = xout[lon_world_idx];
     let latval_rad = xout[lat_world_idx];
-    if !lonval_rad.is_finite() || !latval_rad.is_finite() {
+    if lonval_rad == crate::constants::BAD_VALUE || latval_rad == crate::constants::BAD_VALUE {
         return Ok(());
     }
     const D2R: f64 = std::f64::consts::PI / 180.0;
@@ -1198,8 +1207,9 @@ fn fits_axis_order(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::BAD_VALUE;
     use crate::frames::{BasicFrameBuilder, FrameSet};
-    use crate::mappings::{ShiftMap, UnitMap};
+    use crate::mappings::{PermMap, ShiftMap, UnitMap};
 
     /// Smoke test: a 2-axis BasicFrame → BasicFrame chain with no
     /// celestial / spectral axes, using a per-axis ShiftMap. Expect
@@ -1225,7 +1235,7 @@ mod tests {
         let mut fs = FrameSet::new(Box::new(pixel));
         fs.add_frame(
             FrameRef::Base,
-            Box::new(ShiftMap::new(vec![10.0, 20.0])),
+            Box::new(ShiftMap::within_limit(vec![10.0, 20.0])),
             Box::new(world),
         )
         .unwrap();
@@ -1262,8 +1272,12 @@ mod tests {
             .build()
             .unwrap();
         let mut fs = FrameSet::new(Box::new(pixel));
-        fs.add_frame(FrameRef::Base, Box::new(UnitMap::new(2)), Box::new(world))
-            .unwrap();
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(UnitMap::within_limit(2)),
+            Box::new(world),
+        )
+        .unwrap();
 
         let dim = vec![Some(100.0), Some(100.0)];
         let (store, ok) =
@@ -1277,5 +1291,36 @@ mod tests {
         // dim=100 ⇒ g0 = floor(0.5*(1+100)) = 50.
         assert!((crpix0 - 50.0).abs() < 1e-6, "CRPIX1 = {crpix0}");
         assert!((crpix1 - 50.0).abs() < 1e-6, "CRPIX2 = {crpix1}");
+    }
+
+    /// A spatial pixel that has no sky position leaves the reference
+    /// point of a FITS-CLASS store alone, as C's test for bad values does.
+    #[test]
+    fn class_spatial_crval_ignores_a_bad_sky_position() {
+        let pixel = BasicFrameBuilder::new(3).build().unwrap();
+        let world = BasicFrameBuilder::new(3).build().unwrap();
+        let mut fs = FrameSet::new(Box::new(pixel));
+        fs.add_frame(
+            FrameRef::Base,
+            Box::new(PermMap::new(&[1, 2, 3], &[1, -1, -1], &[BAD_VALUE]).unwrap()),
+            Box::new(world),
+        )
+        .unwrap();
+
+        let mut store = FitsStore::new(3);
+        store.ctype[0] = Some("FREQ".to_string());
+        store.ctype[1] = Some("RA---SIN".to_string());
+        store.ctype[2] = Some("DEC--SIN".to_string());
+        store.crval[1] = Some(10.0);
+        store.crval[2] = Some(20.0);
+        store.crpix[1] = Some(1000.0);
+        store.crpix[2] = Some(1000.0);
+        let dim = vec![Some(10.0), Some(1.0), Some(1.0)];
+
+        class_adjust_spatial_crval(&fs, &mut store, &dim, &[0, 1, 2]).unwrap();
+        assert_eq!(store.crval[1], Some(10.0));
+        assert_eq!(store.crval[2], Some(20.0));
+        assert_eq!(store.crpix[1], Some(1000.0));
+        assert_eq!(store.crpix[2], Some(1000.0));
     }
 }

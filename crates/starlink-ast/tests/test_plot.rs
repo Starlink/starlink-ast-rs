@@ -60,10 +60,13 @@ fn frame(id: &str) -> Box<dyn Frame> {
             Box::new(f)
         }
         "sky" => Box::new(SkyFrame::unset_system()),
-        "sky_spec" => Box::new(CmpFrame::new(
-            Box::new(SkyFrame::unset_system()),
-            Box::new(SpecFrame::unset_system()),
-        )),
+        "sky_spec" => Box::new(
+            CmpFrame::new(
+                Box::new(SkyFrame::unset_system()),
+                Box::new(SpecFrame::unset_system()),
+            )
+            .unwrap(),
+        ),
         "fs_cube" => {
             let mut fs = FrameSet::new(Box::new(
                 BasicFrameBuilder::new(3).domain("CUBE").build().unwrap(),
@@ -77,13 +80,16 @@ fn frame(id: &str) -> Box<dyn Frame> {
             Box::new(fs)
         }
         "fs_sky_spec" => {
-            let mut fs = FrameSet::new(Box::new(CmpFrame::new(
-                Box::new(SkyFrame::unset_system()),
-                Box::new(SpecFrame::unset_system()),
-            )));
+            let mut fs = FrameSet::new(Box::new(
+                CmpFrame::new(
+                    Box::new(SkyFrame::unset_system()),
+                    Box::new(SpecFrame::unset_system()),
+                )
+                .unwrap(),
+            ));
             fs.add_frame(
                 FrameRef::Base,
-                Box::new(UnitMap::new(3)),
+                Box::new(UnitMap::new(3).unwrap()),
                 Box::new(BasicFrameBuilder::new(3).domain("WORLD").build().unwrap()),
             )
             .unwrap();
@@ -310,7 +316,8 @@ fn attrs_plot(id: &str) -> Plot {
             &CmpFrame::new(
                 Box::new(SpecFrame::unset_system()),
                 Box::new(SkyFrame::unset_system()),
-            ),
+            )
+            .unwrap(),
             g,
             [1.0, 1.0, 2.0, 2.0],
         ),
@@ -774,7 +781,7 @@ fn frames_are_added_and_selected_through_the_plot() {
     extra.set_domain("EXTRA");
     plot.add_frame(
         FrameRef::Current,
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         Box::new(extra),
     )
     .unwrap();
@@ -811,7 +818,7 @@ fn a_plot_is_named_as_a_plot_in_messages() {
 #[test]
 fn label_units_finds_a_sky_axis_inside_a_frameset() {
     let inner = FrameSet::new(Box::new(SkyFrame::unset_system()));
-    let frame = CmpFrame::new(Box::new(inner), Box::new(SpecFrame::unset_system()));
+    let frame = CmpFrame::new(Box::new(inner), Box::new(SpecFrame::unset_system())).unwrap();
     let plot = Plot::new(&frame, [0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 1.0, 1.0]).unwrap();
     assert!(!plot.label_units(1).unwrap());
     assert!(!plot.label_units(2).unwrap());
@@ -833,36 +840,38 @@ fn a_loaded_log_plot_keeps_its_value() {
     assert!(plot_dump(&plot).contains("    LgPlt1 = 5 \t"));
 }
 
-/// A clipping Frame given in a dump as AST__CURRENT (-1) or AST__BASE (0)
-/// means the current or base Frame when the Plot clips, as in C.
+/// A clipping Frame given in a dump as AST__CURRENT (-1) or AST__BASE (0),
+/// which `astClip` never stores, is refused, as the C library's loader
+/// refuses any index that is not one of the Plot's Frames.
 #[test]
-fn a_clipping_frame_of_current_or_base_is_resolved_when_clipping() {
-    for (what, from, to) in [
+fn a_clipping_frame_of_current_or_base_is_refused() {
+    for (what, from, to, index) in [
         (
             "sky clipped in the current Frame",
             "ClpFrm = 2 \t",
             "ClpFrm = -1 \t",
+            -1,
         ),
         (
             "basic2 clipped in the base Frame",
             "ClpFrm = 1 \t",
             "ClpFrm = 0 \t",
+            0,
         ),
     ] {
         let case = native::LOAD_CASES.iter().find(|c| c.what == what).unwrap();
         assert!(case.dump.contains(from), "{what}");
-        let plot = read_plot(&case.dump.replace(from, to));
-        assert!(plot_dump(&plot).contains(to), "{what}");
-        for (k, g) in [[0.15, 0.2], [0.5, 0.5], [0.85, 0.8]].iter().enumerate() {
-            let out = plot
-                .transform(&starlink_ast::coords::PointSet::from_rows([g]), true)
-                .unwrap();
-            let out = out.point(0).to_vec();
-            assert!(
-                crate::common::c_values_eq(&out, case.forward[k]),
-                "{what}: point {k} goes to {out:?}, C gives {:?}",
-                case.forward[k]
-            );
-        }
+        let err = starlink_ast::from_native_string(&case.dump.replace(from, to))
+            .err()
+            .unwrap_or_else(|| panic!("{what}: the Plot was read"));
+        assert_eq!(err.code(), starlink_ast::error::ErrorCode::Lderr, "{what}");
+        assert_eq!(
+            err.message(),
+            format!(
+                "astLoadPlot(Plot): Invalid clipping Frame index ({index}) read for a Plot \
+                 containing 2 Frames."
+            ),
+            "{what}"
+        );
     }
 }

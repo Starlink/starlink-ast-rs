@@ -22,15 +22,15 @@ pub const STEPS: &[(&str, [Axis; 2])] = &[
     (
         "loaded",
         [
-            ("%1.3G", "", "1.23", (1.5, 3)),
-            ("%1.7G", "", "1.2345", (1.5, 3)),
+            ("hm", "hh:mm", "4:43", (0.39269908169872414, 3)),
+            ("dms", "ddd:mm:ss", "70:43:54", (0.026179938779914945, 3)),
         ],
     ),
     (
         "as_time_set",
         [
             ("hm", "hh:mm", "4:43", (0.39269908169872414, 3)),
-            ("%1.7G", "", "1.2345", (1.5, 3)),
+            ("dms", "ddd:mm:ss", "70:43:54", (0.026179938779914945, 3)),
         ],
     ),
 ];
@@ -47,6 +47,7 @@ pub const DUMP: &[&str] = &[
     "#   Lbl2 = \"Declination\" 	# Label for axis 2",
     "#   System = \"ICRS\" 	# Coordinate system type",
     "#   Uni1 = \"hh:mm\" 	# Units for axis 1",
+    "#   Uni2 = \"ddd:mm:ss\" 	# Units for axis 2",
     "#   Dig1 = 3 	# Individual precision for axis 1",
     "#   Digits = 7 	# Default formatting precision",
     "#   Fmt1 = \"hm\" 	# Format specifier for axis 1",
@@ -61,8 +62,8 @@ pub const DUMP: &[&str] = &[
     "          AsTime = 1 	# Display values as times (not angles)",
     "       End SkyAxis",
     "    Ax2 = 	# Axis number 2",
-    "       Begin Axis 	# Coordinate axis",
-    "       End Axis",
+    "       Begin SkyAxis 	# Celestial coordinate axis",
+    "       End SkyAxis",
     " IsA Frame 	# Coordinate system description",
     "#   SkyTol = 0.001 	# Smallest significant separation [arc-sec]",
     " End SkyFrame",

@@ -39,20 +39,29 @@ impl Serializable for FitsTable {
         let mut table = Table::from_node(node)?;
         table.set_class("FitsTable");
 
-        // C's Dump always writes the header, and a FitsTable read without
-        // it would fail when first used.
-        let missing = || {
-            AstError::new(
-                ErrorCode::Badin,
-                "astLoadFitsTable(FitsTable): No Header FitsChan found whilst reading a \
-                 FitsTable.",
-            )
-        };
+        // The FitsChan holding the headers, which must be there (fitstable.c
+        // `astLoadFitsTable`, with astCheckLoaded).
         let part = node.section("FitsTable");
-        let object = part.get_object("Header").ok_or_else(missing)?;
+        let object = crate::serial::check_loaded(
+            part.get_object("Header"),
+            "FitsChan",
+            true,
+            &node.class,
+            "FitsChan holding the headers",
+        )?
+        .expect("a needed component is there");
         let header = match any_object_from_node(object)? {
             AnyObject::FitsChan(fc) => *fc,
-            _ => return Err(missing()),
+            other => {
+                return Err(AstError::new(
+                    ErrorCode::Lderr,
+                    format!(
+                        "astLoad({}): The header read is a {}.",
+                        node.class,
+                        other.class_name()
+                    ),
+                ));
+            }
         };
         Ok(FitsTable { table, header })
     }

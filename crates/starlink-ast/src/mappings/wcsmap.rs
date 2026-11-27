@@ -225,32 +225,19 @@ impl WcsMap {
     /// - `ErrorCode::Wcsnc` if `ncoord` is less than 2.
     /// - `ErrorCode::Wcsax` if `lonax` or `latax` is not in `1..=ncoord`, or
     ///   they are equal.
+    ///
+    /// Neither is checked for `WcsProjection::Unknown`, which copies its
+    /// inputs to its outputs.
     #[doc(alias = "astWcsMap")]
     pub fn new(ncoord: usize, proj: WcsProjection, lonax: usize, latax: usize) -> AstResult<Self> {
-        if ncoord < 2 {
-            return Err(AstError::new(
-                ErrorCode::Wcsnc,
-                format!("WcsMap ncoord must be >= 2, got {ncoord}"),
-            ));
-        }
-        if lonax == 0 || lonax > ncoord {
-            return Err(AstError::new(
-                ErrorCode::Wcsax,
-                format!("WcsMap lonax {lonax} out of range 1..={ncoord}"),
-            ));
-        }
-        if latax == 0 || latax > ncoord {
-            return Err(AstError::new(
-                ErrorCode::Wcsax,
-                format!("WcsMap latax {latax} out of range 1..={ncoord}"),
-            ));
-        }
-        if lonax == latax {
-            return Err(AstError::new(
-                ErrorCode::Wcsax,
-                format!("WcsMap lonax and latax must differ, both are {lonax}"),
-            ));
-        }
+        check_axes(
+            "astInitWcsMap",
+            "WcsMap",
+            proj,
+            ncoord,
+            lonax as i64 - 1,
+            latax as i64 - 1,
+        )?;
 
         // Initialize empty parameter arrays for 2 axes (lat=0, lon=1).
         let params = vec![Vec::new(), Vec::new()];
@@ -260,10 +247,12 @@ impl WcsMap {
         // the identity, holds an inert placeholder (see `build_prj`).
         let prj = Box::new(build_prj(proj, &params, true));
 
+        // A WcsMap of unknown type keeps axis indices the checks would refuse,
+        // as C does; an index of 0, C's -1, wraps to one no axis matches.
         Ok(Self {
             proj,
-            lonax: lonax - 1,
-            latax: latax - 1,
+            lonax: lonax.wrapping_sub(1),
+            latax: latax.wrapping_sub(1),
             ncoord,
             params,
             prj,
@@ -728,11 +717,19 @@ impl WcsMap {
         }
 
         // See if the projection is cyclic: transform sky positions
-        // [90,bb] and [450,bb] into Cartesian and compare them.
-        crate::call_counts::hit_n("wcs_fwd", 2);
-        let (_s0, x0, y0) = self.prj.fwd_raw(90.0, bb);
-        let (_s1, x1, y1) = self.prj.fwd_raw(450.0, bb);
-        let cyclic = (x0 - x1).abs() < 1.0e-10 && (y0 - y1).abs() < 1.0e-10;
+        // [90,bb] and [450,bb] into Cartesian and compare them. The
+        // projection is not cyclic if either cannot be transformed, and the
+        // second is not tried if the first fails (wcsmap.c:2808-2815).
+        crate::call_counts::hit("wcs_fwd");
+        let (s0, x0, y0) = self.prj.fwd_raw(90.0, bb);
+        let mut cyclic = false;
+        if s0 == Status::Ok {
+            crate::call_counts::hit("wcs_fwd");
+            let (s1, x1, y1) = self.prj.fwd_raw(450.0, bb);
+            if s1 == Status::Ok {
+                cyclic = (x0 - x1).abs() < 1.0e-10 && (y0 - y1).abs() < 1.0e-10;
+            }
+        }
 
         (cyclic, high, low)
     }
@@ -846,7 +843,7 @@ impl WcsMap {
     /// [`latax`](WcsMap::latax) gives the latitude axis.
     #[doc(alias = "WcsAxis")]
     pub fn lonax(&self) -> usize {
-        self.lonax + 1
+        self.lonax.wrapping_add(1)
     }
 
     /// The 1-based index of the latitude axis of the projection within the
@@ -856,7 +853,7 @@ impl WcsMap {
     /// [`lonax`](WcsMap::lonax) gives the longitude axis.
     #[doc(alias = "WcsAxis")]
     pub fn latax(&self) -> usize {
-        self.latax + 1
+        self.latax.wrapping_add(1)
     }
 
     /// The longitude of the reference point of the projection, in radians in
@@ -1010,6 +1007,16 @@ impl WcsMap {
     /// 0-based latitude axis index (crate-internal).
     pub(crate) fn latax_0based(&self) -> usize {
         self.latax
+    }
+
+    /// Whether each axis holds as many projection parameters as `other`'s:
+    /// C's `np`, which setting a parameter grows and clearing one leaves.
+    /// Two WcsMaps merge only if it does (wcsmap.c CanMerge), though their
+    /// equality pads the shorter list with bad values.
+    fn param_counts_equal(&self, other: &WcsMap) -> bool {
+        (0..2).all(|axis| {
+            self.params.get(axis).map_or(0, Vec::len) == other.params.get(axis).map_or(0, Vec::len)
+        })
     }
 
     /// Whether each projection parameter is unset in both WcsMaps or set in
@@ -1210,7 +1217,7 @@ impl Mapping for WcsMap {
             }
             // Neither celestial axis selected: returned mapping is a UnitMap
             // over the kept pass-through axes. Mirrors C's astUnitMap branch.
-            (None, None) => Ok(Some((result, Box::new(UnitMap::new(nin))))),
+            (None, None) => Ok(Some((result, Box::new(UnitMap::new(nin)?)))),
             // Only one celestial axis selected: drop it. The C code treats
             // this as nin > 1 only — for nin == 1 (the lone kept input is
             // the celestial), it frees the result and returns NULL.
@@ -1272,10 +1279,11 @@ impl Mapping for WcsMap {
             && self.lonax == other_wcs.lonax
             && self.latax == other_wcs.latax
             && self.ncoord == other_wcs.ncoord
+            && self.param_counts_equal(other_wcs)
             && self.params_equal(other_wcs)
         {
             // WcsMap always has nin == nout == ncoord.
-            Some(Box::new(UnitMap::new(self.ncoord)))
+            Some(Box::new(UnitMap::within_limit(self.ncoord)))
         } else {
             None
         }
@@ -1476,14 +1484,14 @@ impl Serializable for WcsMap {
             "WcsAx1",
             self.lonax != 0,
             false,
-            (self.lonax + 1) as i64,
+            self.lonax.wrapping_add(1) as i64,
             "Index of celestial longitude axis",
         );
         node.write_int(
             "WcsAx2",
             self.latax != 1,
             false,
-            (self.latax + 1) as i64,
+            self.latax.wrapping_add(1) as i64,
             "Index of celestial latitude axis",
         );
 
@@ -1503,11 +1511,32 @@ impl Serializable for WcsMap {
         let type_str = node.get_string("Type", "");
         let proj = WcsProjection::from_code(type_str.trim()).unwrap_or(WcsProjection::Unknown);
 
-        // Read axis indices (1-based, defaults 1 and 2).
-        let wcsax1 = node.get_int("WcsAx1", 1) as usize;
-        let wcsax2 = node.get_int("WcsAx2", 2) as usize;
+        // A WcsMap has as many outputs as inputs, and its axis indices
+        // (1-based, 1 and 2 by default; one of zero or less is invalid) must
+        // pass the constructor's checks (wcsmap.c `astLoadWcsMap`).
+        let class = &whole.class;
+        if base.nin != base.nout {
+            let (nin, nout) = if base.inverted {
+                (base.nout, base.nin)
+            } else {
+                (base.nin, base.nout)
+            };
+            return Err(AstError::new(
+                ErrorCode::Lderr,
+                format!(
+                    "astLoadWcsMap({class}): The number of inputs ({nin}) and outputs ({nout}) \
+                     read for a {class} differ."
+                ),
+            ));
+        }
+        let axis = |key: &str, default: i64| {
+            let i = node.get_int(key, default);
+            if i > 0 { i - 1 } else { -1 }
+        };
+        let (lonax, latax) = (axis("WcsAx1", 1), axis("WcsAx2", 2));
+        check_axes("astLoadWcsMap", class, proj, base.nin, lonax, latax)?;
 
-        let mut wcs = WcsMap::new(base.nin, proj, wcsax1, wcsax2)?;
+        let mut wcs = WcsMap::new(base.nin, proj, (lonax + 1) as usize, (latax + 1) as usize)?;
 
         // `astLoadMapping` installs the record from the `IsSimp` card before any
         // class attribute is read (mapping.c:24137), so the setters below -- which
@@ -1676,6 +1705,61 @@ fn inverse_finish(
     }
 }
 
+/// C's `CheckAxes` (wcsmap.c), shared by the constructor and the loader:
+/// a WcsMap of `ncoord` axes needs two, and distinct longitude and latitude
+/// axes `lonax` and `latax` (0-based, -1 for one that is not valid) among
+/// them. Nothing is checked for `WcsProjection::Unknown`. `method` and
+/// `class` name the C function and the class, as C's messages do.
+pub(crate) fn check_axes(
+    method: &str,
+    class: &str,
+    proj: WcsProjection,
+    ncoord: usize,
+    lonax: i64,
+    latax: i64,
+) -> AstResult<()> {
+    if proj == WcsProjection::Unknown {
+        return Ok(());
+    }
+    let in_range = |axis: i64| usize::try_from(axis).is_ok_and(|a| a < ncoord);
+    let (code, message) = if ncoord < 2 {
+        (
+            ErrorCode::Wcsnc,
+            format!("Too few axes ({ncoord}) specified. Must be at least 2."),
+        )
+    } else if !in_range(lonax) {
+        (
+            ErrorCode::Wcsax,
+            format!(
+                "Specified longitude axis ({}) does not exist within a {ncoord} dimensional \
+                 coordinate system. ",
+                lonax + 1
+            ),
+        )
+    } else if !in_range(latax) {
+        (
+            ErrorCode::Wcsax,
+            format!(
+                "Specified latitude axis ({}) does not exist within a {ncoord} dimensional \
+                 coordinate system. ",
+                latax + 1
+            ),
+        )
+    } else if lonax == latax {
+        (
+            ErrorCode::Wcsax,
+            format!(
+                "The same axis ({}) has been given for both the longitude and the latitude \
+                 axis.",
+                lonax + 1
+            ),
+        )
+    } else {
+        return Ok(());
+    };
+    Err(AstError::new(code, format!("{method}({class}): {message}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1688,6 +1772,35 @@ mod tests {
             map.set_pv(2, m, v).unwrap();
         }
         map
+    }
+
+    #[test]
+    fn long_range_is_not_cyclic_when_projection_fails() {
+        // AZP with mu = -1 has unusable parameters, so neither test position
+        // of the cyclic check projects, and only the first is tried.
+        let map = wcsmap(WcsProjection::Azp, &[0.0, -1.0]);
+        #[cfg(feature = "call-counts")]
+        crate::call_counts::reset();
+        assert!(!map.long_range().0);
+        #[cfg(feature = "call-counts")]
+        assert_eq!(
+            crate::call_counts::snapshot().get("wcs_fwd").copied(),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn long_range_of_usable_azp_is_cyclic() {
+        // The same projection with usable parameters projects both test
+        // positions, and a zenithal projection repeats every 360 degrees.
+        assert!(wcsmap(WcsProjection::Azp, &[0.0, 0.0]).long_range().0);
+    }
+
+    #[test]
+    fn long_range_of_car_is_not_cyclic() {
+        // CAR projects both test positions, but its x grows with longitude,
+        // so the two differ.
+        assert!(!wcsmap(WcsProjection::Car, &[]).long_range().0);
     }
 
     /// Projected (x, y), in the WcsMap's input units, of native longitudes

@@ -43,7 +43,7 @@ fn zoommap_kernel() {
 
 #[test]
 fn shiftmap_kernel() {
-    let m = ShiftMap::new(vec![1.0, -1.0]);
+    let m = ShiftMap::new(vec![1.0, -1.0]).unwrap();
     let [a, b] = run(&m, true);
     assert_bad_then(&a, 3.0);
     assert_bad_then(&b, 1.0);
@@ -51,7 +51,7 @@ fn shiftmap_kernel() {
 
 #[test]
 fn unitmap_kernel() {
-    let m = UnitMap::new(2);
+    let m = UnitMap::new(2).unwrap();
     let [a, _] = run(&m, true);
     // UnitMap replaces only NaN; it passes infinities through.
     assert_eq!(
@@ -157,7 +157,7 @@ fn a_parallel_cmpmap_splits_its_output_at_the_first_childs_output_count() {
 fn a_series_cmpmap_handles_a_partial_last_batch() {
     let m = CmpMap::new(
         Box::new(ZoomMap::new(1, 2.0).unwrap()),
-        Box::new(ShiftMap::new(vec![1.0])),
+        Box::new(ShiftMap::new(vec![1.0]).unwrap()),
         Composition::Series,
     )
     .unwrap();
@@ -179,7 +179,7 @@ fn a_series_cmpmap_of_no_points_still_checks_its_direction() {
     let first = MatrixMap::new(ndarray::array![[1.0], [2.0]]).unwrap();
     let m = CmpMap::new(
         Box::new(first),
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         Composition::Series,
     )
     .unwrap();
@@ -201,7 +201,7 @@ fn a_series_cmpmap_of_no_points_checks_each_component_on_the_nan_path() {
     let first = MatrixMap::new(ndarray::array![[1.0], [2.0]]).unwrap();
     let m = CmpMap::new(
         Box::new(first),
-        Box::new(UnitMap::new(2)),
+        Box::new(UnitMap::new(2).unwrap()),
         Composition::Series,
     )
     .unwrap();
