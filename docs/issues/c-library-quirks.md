@@ -835,8 +835,9 @@ which restores the suppression.  So the leak is real, unfixed, and currently
 invisible by design.
 
 **Rust side: nothing mirrors this.** A leak is not observable behavior, and
-`XphMap` is not ported — its fixtures sit in the port's deferred list.  This entry
-is here to be fixed upstream, not matched.
+`XphMap` is ported (`test_xphmap.rs`) with no counterpart to the leak, since the
+loader owns the projection-type string.  This entry is here to be fixed upstream,
+not matched.
 
 **Fix.** Free it as `astLoadWcsMap` does, guarding for the error path where
 `new` is deleted:
