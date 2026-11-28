@@ -12,13 +12,26 @@
 //! - `Xphs`: an XPH projection centered on the south pole.
 //!
 //! The forward transformation goes from grid coordinates within the
-//! nominated projection to grid coordinates within an HPX12 projection; a
-//! position outside the projection's used area is bad. The HPX projection is
-//! described by Calabretta and Roukema (A&A, 2005) and the XPH projection by
-//! Calabretta and Lowe (PASA, 2018).
+//! nominated projection to grid coordinates within an HPX12 projection. The
+//! HPX projection is described by Calabretta and Roukema (A&A, 2005) and the
+//! XPH projection by Calabretta and Lowe (PASA, 2018).
 //!
-//! C has no public constructor: XphMaps are made by the Moc class, which is
-//! not ported, and otherwise read from a dump, as here.
+//! Each grid is divided into cells one pixel across, of which only some are
+//! used, each cell of the sky being one used cell of each grid.
+//! A position is on the sky if it is in a used cell or on its boundary, and
+//! is transformed by that cell; a position within the HPX projection's
+//! rounding margin of the boundary is on it.
+//! A position on the boundary of several used cells is transformed by one of
+//! them; a pole, which is four positions in an HPX grid, transforms to a
+//! position of the same pole.
+//! An HPX grid holds an unused copy of each cell of the facet split between
+//! its bottom left and top right corners, and a position in the unused copy
+//! is moved to the used copy, in both directions.
+//! A position that is not on the sky, including every position outside the
+//! grid, gives bad values.
+//!
+//! An XphMap has no public constructor: the Moc class makes them, and
+//! otherwise they are read from a dump.
 
 use crate::constants::BAD_VALUE;
 use crate::coords::{Points, PointsMut};
@@ -121,185 +134,336 @@ impl XphMap {
         self.projection
     }
 
-    /// Transform one position, transcribing xphmap.c `Transform`. Grid and
-    /// facet indices, their sums and differences are whole numbers held in
-    /// doubles, as in C: a position may be any distance from the grid, and
-    /// they are exact until far outside it. A facet index is truncated
-    /// toward zero.
+    /// Transform one position.
+    ///
+    /// Each grid is divided into square cells, one pixel across, of which
+    /// only some are used, and a position is transformed by the used cell
+    /// that holds it, within the cell or on its boundary; a position that no
+    /// used cell holds is not on the sky and gives bad values.
+    /// A position within the HPX projection's rounding margin of the edge of
+    /// a cell is on the edge, and a position in the unused copy of a cell of
+    /// an HPX grid is moved to the used copy.
+    /// Cell and facet indices are whole numbers held in doubles, since a
+    /// position may be any distance from the grid.
+    // C: xphmap.c Transform
     fn transform_point(&self, forward: bool, x: f64, y: f64) -> (f64, f64) {
         const BAD: (f64, f64) = (BAD_VALUE, BAD_VALUE);
         // C tests for AST__BAD only; NaN and infinity are bad here too, as
-        // for every Mapping, rather than truncated into a grid index.
+        // for every Mapping, rather than taken as a position in a cell.
         if is_bad(x) || is_bad(y) {
             return BAD;
         }
         let nppf = f64::from(1u32 << self.order);
-        let (n2, n3, n4, n5, n6, n7, n9) = (
+        let (n2, n3, n4, n5, n6, n7) = (
             2.0 * nppf,
             3.0 * nppf,
             4.0 * nppf,
             5.0 * nppf,
             6.0 * nppf,
             7.0 * nppf,
-            9.0 * nppf,
         );
-        let f = |n: f64| n;
 
-        // The cell holding a position, with the low RA edges in the cell
-        // and the high RA edges in the neighboring one, and its facet;
-        // `None` when the facet is not one of the HPX layout's.
-        let hpx_cell = || -> Option<f64> {
-            let ix = (x - 1.5).ceil();
-            let iy = (y - 1.5).ceil();
-            let (fx, fy) = ((ix / nppf).trunc(), (iy / nppf).trunc());
-            if (0.0..5.0).contains(&fx) && (0.0..5.0).contains(&fy) && (fx - fy).abs() <= 1.0 {
-                Some(ix + iy + 1.0)
-            } else {
-                None
-            }
-        };
+        // A step of one pixel along either axis changes each coordinate in
+        // the plane of the projection by 45/nppf degrees, so the HPX
+        // projection's rounding margin in grid units is this.
+        let tol = HPXTOL * nppf / 45.0;
 
+        let (mut x, mut y) = (x, y);
         if forward {
             match self.projection {
-                // HPX12 to HPX12 copies positions in the used area.
-                XphProjection::Hpx12 => match hpx_cell() {
-                    Some(s) if s > nppf && s <= n9 => (x, y),
-                    _ => BAD,
-                },
-                // HPX0 to HPX12 swaps the bottom left and top right halves.
-                XphProjection::Hpx0 => match hpx_cell() {
-                    Some(s) if s <= nppf || s > n9 => BAD,
-                    Some(s) if s <= n5 => (x + f(n2), y + f(n2)),
-                    Some(_) => (x - f(n2), y - f(n2)),
-                    None => BAD,
-                },
-                // XPHN to HPX12, by the gore holding the position; a gore
-                // holds its low RA boundaries but not its high RA ones.
-                XphProjection::Xphn => {
-                    let edge = f(n2) + 0.5;
-                    if x < edge && y >= edge {
-                        let ix = (x - 0.5).floor();
-                        let iy = (y - 0.5).floor();
-                        let s = ix + iy + 1.0;
-                        if s < n5 && s >= n3 {
-                            (f(n4) + 1.0 - x, f(n6) + 1.0 - y)
+                // HPX12 to HPX12 is a unit transformation of the positions on
+                // the sky; HPX0 to HPX12 also swaps the bottom left and top
+                // right halves of the grid.
+                XphProjection::Hpx12 | XphProjection::Hpx0 => {
+                    let Some(s) = find_hpx_cell(&mut x, &mut y, nppf, tol, true) else {
+                        return BAD;
+                    };
+                    if self.projection == XphProjection::Hpx0 {
+                        if s <= n5 {
+                            x += n2;
+                            y += n2;
                         } else {
-                            BAD
-                        }
-                    } else if x >= edge && y > edge {
-                        let ix = (x - 0.5).floor();
-                        let iy = (y - 1.5).ceil();
-                        let d = ix - iy;
-                        if d >= -nppf && d < nppf {
-                            (y - f(nppf), f(n5) + 1.0 - x)
-                        } else {
-                            BAD
-                        }
-                    } else if x > edge && y <= edge {
-                        let ix = (x - 1.5).ceil();
-                        let iy = (y - 1.5).ceil();
-                        let s = ix + iy + 1.0;
-                        if s > n3 && s <= n5 {
-                            (x - f(n2), y)
-                        } else {
-                            BAD
-                        }
-                    } else {
-                        let ix = (x - 1.5).ceil();
-                        let iy = (y - 0.5).floor();
-                        let d = ix - iy;
-                        if d > -nppf && d <= nppf {
-                            (f(n5) + 1.0 - y, f(n3) + x)
-                        } else {
-                            BAD
+                            x -= n2;
+                            y -= n2;
                         }
                     }
+                    (x, y)
                 }
-                XphProjection::Xphs => {
-                    let edge = f(n2) + 0.5;
-                    if x < edge && y <= edge {
-                        let ix = (x - 0.5).floor();
-                        let iy = (y - 1.5).ceil();
-                        let d = ix - iy;
-                        if d >= -nppf && d < nppf {
-                            (f(n2) + y, f(n4) + 1.0 - x)
-                        } else {
-                            BAD
-                        }
-                    } else if x >= edge && y < edge {
-                        let ix = (x - 0.5).floor();
-                        let iy = (y - 0.5).floor();
-                        let s = ix + iy + 1.0;
-                        if s >= n3 && s < n5 {
-                            (f(n5) + 1.0 - x, f(n3) + 1.0 - y)
-                        } else {
-                            BAD
-                        }
-                    } else if x > edge && y >= edge {
-                        let ix = (x - 1.5).ceil();
-                        let iy = (y - 0.5).floor();
-                        let d = ix - iy;
-                        if d <= nppf && d > -nppf {
-                            (f(n4) + 1.0 - y, x - f(n2))
-                        } else {
-                            BAD
+                // XPHN or XPHS to HPX12, by the gore of the used cell that
+                // holds the position.
+                XphProjection::Xphn | XphProjection::Xphs => {
+                    let Some(gore) = find_xph_cell(self.projection, &mut x, &mut y, nppf, tol)
+                    else {
+                        return BAD;
+                    };
+                    let (xin, yin) = (x, y);
+                    if self.projection == XphProjection::Xphn {
+                        match gore {
+                            0 => (n4 + 1.0 - xin, n6 + 1.0 - yin),
+                            3 => (yin - nppf, n5 + 1.0 - xin),
+                            2 => (xin - n2, yin),
+                            _ => (n5 + 1.0 - yin, n3 + xin),
                         }
                     } else {
-                        let ix = (x - 1.5).ceil();
-                        let iy = (y - 1.5).ceil();
-                        let s = ix + iy + 1.0;
-                        if s <= n5 && s > n3 {
-                            (f(n3) + x, f(nppf) + y)
-                        } else {
-                            BAD
+                        match gore {
+                            0 => (n2 + yin, n4 + 1.0 - xin),
+                            3 => (n5 + 1.0 - xin, n3 + 1.0 - yin),
+                            2 => (n4 + 1.0 - yin, xin - n2),
+                            _ => (n3 + xin, nppf + yin),
                         }
                     }
                 }
             }
         } else {
-            // Inverse: from HPX12 to the projection, for positions in the
-            // used area of the HPX12 layout, by the half or quarter of the
-            // sky they lie in.
-            let Some(s) = hpx_cell() else {
+            // HPX12 to the projection, by the sum of the indices of the used
+            // cell that holds the position.
+            let Some(s) = find_hpx_cell(&mut x, &mut y, nppf, tol, true) else {
                 return BAD;
             };
-            if s <= nppf || s > n9 {
-                return BAD;
-            }
+            let (xin, yin) = (x, y);
             match self.projection {
-                XphProjection::Hpx12 => (x, y),
+                XphProjection::Hpx12 => (xin, yin),
                 XphProjection::Hpx0 => {
                     if s <= n5 {
-                        (x + f(n2), y + f(n2))
+                        (xin + n2, yin + n2)
                     } else {
-                        (x - f(n2), y - f(n2))
+                        (xin - n2, yin - n2)
                     }
                 }
                 XphProjection::Xphn => {
                     if s <= n3 {
-                        (f(n2) + x, y)
+                        (n2 + xin, yin)
                     } else if s <= n5 {
-                        (f(n5) + 1.0 - y, f(nppf) + x)
+                        (n5 + 1.0 - yin, nppf + xin)
                     } else if s <= n7 {
-                        (f(n4) + 1.0 - x, f(n6) + 1.0 - y)
+                        (n4 + 1.0 - xin, n6 + 1.0 - yin)
                     } else {
-                        (y - f(n3), f(n5) + 1.0 - x)
+                        (yin - n3, n5 + 1.0 - xin)
                     }
                 }
                 XphProjection::Xphs => {
                     if s <= n3 {
-                        (f(n2) + y, f(n4) + 1.0 - x)
+                        (n2 + yin, n4 + 1.0 - xin)
                     } else if s <= n5 {
-                        (f(n5) + 1.0 - x, f(n3) + 1.0 - y)
+                        (n5 + 1.0 - xin, n3 + 1.0 - yin)
                     } else if s <= n7 {
-                        (f(n4) + 1.0 - y, x - f(n2))
+                        (n4 + 1.0 - yin, xin - n2)
                     } else {
-                        (x - f(n3), y - f(nppf))
+                        (xin - n3, yin - nppf)
                     }
                 }
             }
         }
     }
+}
+
+/// The margin, in degrees, that the HPX projection allows for rounding.
+// C: xphmap.h AST__HPXTOL
+pub(crate) const HPXTOL: f64 = 1.0e-12;
+
+/// The cells that hold a position on one axis of a grid.
+///
+/// `v` is the grid coordinate, with the center of the first cell at 1.0 and
+/// its lower edge at 0.5; a cell owns its upper edge if `upper`, and its
+/// lower edge otherwise.
+/// Returns the number of cells, two if `v` is within `tol` of a cell edge
+/// and one otherwise, their zero-based indices with the owner first, and the
+/// coordinate to use with each: `v`, then the edge, which lies in the second
+/// cell.
+/// The second elements are 0.0 when there is one cell.
+// C: xphmap.c EdgeCells
+fn edge_cells(v: f64, tol: f64, upper: bool) -> (usize, [f64; 2], [f64; 2]) {
+    let owner = if upper {
+        (v - 1.5).ceil()
+    } else {
+        (v - 0.5).floor()
+    };
+
+    // The edges are at half-integer coordinates; the cells either side of
+    // the nearest one have zero-based indices `edge - 1.5` and `edge - 0.5`.
+    let edge = v.floor() + 0.5;
+    if (v - edge).abs() <= tol {
+        let other = if owner < edge - 1.0 {
+            edge - 0.5
+        } else {
+            edge - 1.5
+        };
+        return (2, [owner, other], [v, edge]);
+    }
+    (1, [owner, 0.0], [v, 0.0])
+}
+
+/// Whether the cell with zero-based indices `ix`, `iy` of an HPX grid is
+/// used.
+///
+/// The grid holds five facets along each axis, and those on its diagonal and
+/// either side of it cover the sky.
+/// The bottom left and top right facets are the same facet, and only one
+/// copy of each of its cells is used: the copy in the top right half of the
+/// bottom left facet or in the bottom left half of the top right facet, with
+/// the cells on the diagonal between the halves used in the top right facet.
+/// Returns `Some(shift)` if the cell is used, or is an unused copy and
+/// `wrap`; adding `shift` to both grid coordinates of a position in the cell
+/// gives the position in the used copy, and it is 0.0 unless an unused copy
+/// was accepted.
+// C: xphmap.c HpxCellUsed
+fn hpx_cell_used(ix: f64, iy: f64, nppf: f64, wrap: bool) -> Option<f64> {
+    // The facet indices, counted from the bottom left facet.
+    let fx = (ix / nppf).floor();
+    let fy = (iy / nppf).floor();
+    if (0.0..5.0).contains(&fx) && (0.0..5.0).contains(&fy) && (fx - fy).abs() <= 1.0 {
+        // The sum of the cell indices, plus one.
+        let s = ix + iy + 1.0;
+
+        // The unused copies are in the bottom left half of the bottom left
+        // facet and the top right half of the top right facet, four facets
+        // from the used copies on both axes.
+        if s > nppf && s <= 9.0 * nppf {
+            return Some(0.0);
+        } else if wrap {
+            return Some(if s <= nppf { 4.0 * nppf } else { -4.0 * nppf });
+        }
+    }
+    None
+}
+
+/// The used cell of an HPX grid that holds the position `x`, `y`.
+///
+/// A cell owns its low RA edges, its upper edges on both axes; if the owner
+/// of the position is not used, the cells on the other side of any edge
+/// within `tol` of the position are tried.
+/// Returns the sum of the zero-based indices of the used cell plus one, with
+/// `x`, `y` moved onto the edge of the used cell if it is not the owner, and
+/// to the used copy of the cell if `wrap` accepted an unused copy.
+/// `None` leaves `x`, `y` unchanged.
+// C: xphmap.c FindHpxCell
+fn find_hpx_cell(x: &mut f64, y: &mut f64, nppf: f64, tol: f64, wrap: bool) -> Option<f64> {
+    let (nx, ix, xs) = edge_cells(*x, tol, true);
+    let (ny, iy, ys) = edge_cells(*y, tol, true);
+
+    // The cell that owns the position first.
+    for j in 0..ny {
+        for i in 0..nx {
+            if let Some(shift) = hpx_cell_used(ix[i], iy[j], nppf, wrap) {
+                *x = xs[i] + shift;
+                *y = ys[j] + shift;
+                return Some(ix[i] + iy[j] + 1.0 + 2.0 * shift);
+            }
+        }
+    }
+    None
+}
+
+/// The gore, 0 to 3, that holds the cell with zero-based indices `ix`, `iy`
+/// of an XPH grid, if the cell is used.
+///
+/// The grid holds four facets along each axis and has a gore in each
+/// quadrant.
+/// The used cells of a gore form a band two facets wide along the diagonal
+/// of the quadrant, from the center of the grid to its corner, and the cells
+/// on each edge of the band, cut in half by the boundary between two gores,
+/// are used in the gore on their low RA side.
+// C: xphmap.c XphCellGore
+fn xph_cell_gore(projection: XphProjection, ix: f64, iy: f64, nppf: f64) -> Option<usize> {
+    if !(ix >= 0.0 && ix < 4.0 * nppf && iy >= 0.0 && iy < 4.0 * nppf) {
+        return None;
+    }
+
+    // The quadrant that holds the cell.
+    let left = ix < 2.0 * nppf;
+    let bottom = iy < 2.0 * nppf;
+
+    // The band runs along a diagonal of constant index sum in the top left
+    // and bottom right quadrants, and of constant index difference in the
+    // other two.
+    let n3 = 3.0 * nppf;
+    let n5 = 5.0 * nppf;
+    let s = ix + iy + 1.0;
+    let d = ix - iy;
+
+    let (gore, used) = if projection == XphProjection::Xphn {
+        if left && !bottom {
+            (0, s >= n3 && s < n5)
+        } else if !left && !bottom {
+            (3, d >= -nppf && d < nppf)
+        } else if !left && bottom {
+            (2, s > n3 && s <= n5)
+        } else {
+            (1, d > -nppf && d <= nppf)
+        }
+    } else if left && bottom {
+        (0, d >= -nppf && d < nppf)
+    } else if !left && bottom {
+        (3, s >= n3 && s < n5)
+    } else if !left && !bottom {
+        (2, d > -nppf && d <= nppf)
+    } else {
+        (1, s > n3 && s <= n5)
+    };
+    used.then_some(gore)
+}
+
+/// The gore, 0 to 3, of the used cell of an XPH grid that holds the position
+/// `x`, `y`.
+///
+/// The grid's four quadrants meet at the pole at its center and each holds
+/// one gore; a gore contains its low RA boundaries but not its high RA ones,
+/// and a cell owns its low RA edges, which depend on the gore.
+/// If the owner of the position is not a used cell of the gore, the cells on
+/// the other side of any edge within `tol` of the position are tried, a cell
+/// in the same gore before a cell in another.
+/// `x`, `y` are moved onto the edge of the used cell if it is not the owner;
+/// `None` leaves them unchanged.
+// C: xphmap.c FindXphCell
+fn find_xph_cell(
+    projection: XphProjection,
+    x: &mut f64,
+    y: &mut f64,
+    nppf: f64,
+    tol: f64,
+) -> Option<usize> {
+    // The gore that holds the position, and which cell edges are its low RA
+    // edges; the pole at the center of the grid is in gore 1.
+    let mid = 2.0 * nppf + 0.5;
+    let (gore, upx, upy) = if projection == XphProjection::Xphn {
+        if *x < mid && *y >= mid {
+            (0, false, false)
+        } else if *x >= mid && *y > mid {
+            (3, false, true)
+        } else if *x > mid && *y <= mid {
+            (2, true, true)
+        } else {
+            (1, true, false)
+        }
+    } else if *x < mid && *y <= mid {
+        (0, false, true)
+    } else if *x >= mid && *y < mid {
+        (3, false, false)
+    } else if *x > mid && *y >= mid {
+        (2, true, false)
+    } else {
+        (1, true, true)
+    };
+
+    let (nx, ix, xs) = edge_cells(*x, tol, upx);
+    let (ny, iy, ys) = edge_cells(*y, tol, upy);
+
+    // The cell that owns the position first; the first pass accepts only a
+    // cell in the gore found above, and the second a cell in any gore.
+    for pass in 0..2 {
+        for j in 0..ny {
+            for i in 0..nx {
+                if let Some(g) = xph_cell_gore(projection, ix[i], iy[j], nppf)
+                    && (pass == 1 || g == gore)
+                {
+                    *x = xs[i];
+                    *y = ys[j];
+                    return Some(g);
+                }
+            }
+        }
+    }
+    None
 }
 
 impl Mapping for XphMap {
