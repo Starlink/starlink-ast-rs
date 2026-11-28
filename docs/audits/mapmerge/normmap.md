@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/normmap.c
 Rust: crates/starlink-ast/src/mappings/normmap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin fe26cc9b
+Citations: verified against pin 4029b011
 Extension points: classified
 
 Uncited C steps:
@@ -73,7 +73,7 @@ reduces, so C rebuilds rather than reaching row 6.
 
 Row 5 needs a Frame-level `astSimplify`, which C has because `Simplify` is a
 Mapping slot every Frame inherits (`mapping.c:16979 (fn Simplify)`) and `CmpFrame`
-(`cmpframe.c:9148 (fn Simplify)`), `FrameSet` and every Region override. `Frame::simplify_frame`
+(`cmpframe.c:9258 (fn Simplify)`), `FrameSet` and every Region override. `Frame::simplify_frame`
 (`frames/mod.rs:740 (fn simplify_frame)`) is the port of that slot, and `None` is what C signals by
 handing back the pointer it was given, which is the `smap != map->frame` test at
 `normmap.c:631 (fn MapMerge)`.

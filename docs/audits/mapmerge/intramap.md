@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/intramap.c
 Rust: crates/starlink-ast/src/mappings/intramap.rs
 Audited: 2026-10-08 against pin 3b9dc639
-Citations: verified against pin fe26cc9b
+Citations: verified against pin 4029b011
 Extension points: classified
 
 Uncited C steps:

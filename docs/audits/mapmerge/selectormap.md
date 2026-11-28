@@ -3,7 +3,7 @@
 C source: reference/starlink-ast/src/selectormap.c
 Rust: crates/starlink-ast/src/mappings/selectormap.rs
 Audited: 2026-08-21 against pin 3cf4bc5c
-Citations: verified against pin fe26cc9b
+Citations: verified against pin 4029b011
 Extension points: classified
 
 Uncited C steps:
