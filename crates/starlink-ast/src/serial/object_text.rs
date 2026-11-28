@@ -380,7 +380,7 @@ mod tests {
         assert_eq!(
             plot3d.len(),
             plot3d_dumps,
-            "unread Plot3D dumps: {plot3d:?}"
+            "unread Plot3D dumps: {plot3d:?}; when a Plot3D dump becomes readable, remove the expected-unread partition for plot3d/expected/"
         );
         // A Frame in a Mapping slot is refused by decision
         // (docs/issues/frame-in-a-mapping-slot.md); any other dump must read.

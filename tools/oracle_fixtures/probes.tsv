@@ -51,7 +51,7 @@ fitschan_tables_probe	make	tools	-	-	crates/starlink-ast/tests/fitschan_tables_o
 fitschanerrors_table	plain	build	-	-	crates/starlink-ast/tests/fitschanerrors_oracle/cases.rs	-
 fitstable_probe	make	tools	-	-	crates/starlink-ast/tests/fitstable_oracle/cases.rs	-
 fixture_full_dump_probe	make	fixtures	-	fixtures-list	crates/starlink-ast/tests/fixture_full_dump_oracle/cases.rs	-
-fixture_read_warnings_probe	make	fixtures	-	fixtures-list	crates/starlink-ast/tests/fixture_read_warnings_oracle/cases.rs	rows follow the directory order of the platform that captured them
+fixture_read_warnings_probe	make	fixtures	-	fixtures-list	crates/starlink-ast/tests/fixture_read_warnings_oracle/cases.rs	-
 flux_badun_probe	make	tools	-	-	crates/starlink-ast/tests/flux_badun_oracle/cases.rs	-
 flux_unit_system_probe	make	tools	-	-	crates/starlink-ast/tests/flux_unit_system_oracle/cases.rs	-
 frame_api_probe	make	tools	-	-	crates/starlink-ast/tests/frame_api_oracle/cases.rs	prints the current time

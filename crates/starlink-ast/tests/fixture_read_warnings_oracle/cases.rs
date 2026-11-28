@@ -5,8 +5,8 @@ pub type Read = (i32, &'static [&'static str]);
 
 /// `(fixture, each read up to the end or an error)`.
 pub const CASES: &[(&str, &[Read])] = &[
-    ("./simplify/intra_invfwd_cancel_tail.map", &[(233933834, &[]), ]),
     ("./simplify/intra_invfwd_cancel.map", &[(233933834, &[]), ]),
+    ("./simplify/intra_invfwd_cancel_tail.map", &[(233933834, &[]), ]),
     ("./simplify/intramap_inverse_cancel.map", &[(233933834, &[]), ]),
     ("./simplify/neg_intra_diff_flag.map", &[(233933834, &[]), ]),
     ("./simplify/neg_intra_diff_func.map", &[(233933834, &[]), ]),

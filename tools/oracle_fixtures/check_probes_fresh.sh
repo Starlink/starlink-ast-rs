@@ -104,8 +104,9 @@ build_probe() {
 }
 
 fixture_list() {
+    # The C locale keeps the table order the same on every host.
     (cd "$fixtures" && find . -type f \( -name '*.map' -o -name '*.simp' -o -name '*.ast' \
-        -o -name '*.native' \) | sort)
+        -o -name '*.native' \) | LC_ALL=C sort)
 }
 
 status=0

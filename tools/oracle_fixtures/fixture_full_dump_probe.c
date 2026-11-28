@@ -14,8 +14,10 @@
  * without error the FNV-1a 64-bit hash of the text written (each line
  * followed by a newline, the Objects one after another):
  *
+ * (LC_ALL=C keeps the table order the same on every host.)
+ *
  *   find . -type f \( -name '*.map' -o -name '*.simp' -o -name '*.ast' \
- *        -o -name '*.native' \) | sort | \
+ *        -o -name '*.native' \) | LC_ALL=C sort | \
  *     ../../../../tools/oracle_fixtures/fixture_full_dump_probe 2>/dev/null \
  *     > ../fixture_full_dump_oracle/cases.rs
  *
