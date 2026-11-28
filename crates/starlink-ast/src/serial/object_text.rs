@@ -364,6 +364,24 @@ mod tests {
                 Err(_) => unread.push(path.strip_prefix(&root).unwrap().display().to_string()),
             }
         }
+        // The expected dumps of the Plot3D fixtures are Native dumps of
+        // Plot3D, which is not ported; the Plot3D port's stage 1 reads them.
+        // Every one of them is expected to be unread, so one that becomes
+        // readable fails here.
+        let (plot3d, unread): (Vec<_>, Vec<_>) = unread
+            .into_iter()
+            .partition(|f| f.starts_with("plot3d/expected/"));
+        let plot3d_dumps = std::fs::read_dir(root.join("plot3d/expected"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".dump"))
+            .count();
+        assert!(plot3d_dumps > 0);
+        assert_eq!(
+            plot3d.len(),
+            plot3d_dumps,
+            "unread Plot3D dumps: {plot3d:?}; when a Plot3D dump becomes readable, remove the expected-unread partition for plot3d/expected/"
+        );
         // A Frame in a Mapping slot is refused by decision
         // (docs/issues/frame-in-a-mapping-slot.md); any other dump must read.
         assert_eq!(unread, ["serialisation/frame_in_map_slot.ast"]);

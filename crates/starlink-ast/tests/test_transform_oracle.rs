@@ -368,7 +368,7 @@ mod parse_tests {
             let text = std::fs::read_to_string(format!("{dir}/{name}")).unwrap();
             total += parse_oracle(&text).expect("committed oracle parses").len();
         }
-        assert_eq!(total, 2261);
+        assert_eq!(total, 2265);
     }
 }
 
@@ -1870,14 +1870,14 @@ fn head_sections_match_oracle() {
 const SIMPLIFY_ORACLE_EXCLUDED: &[(&str, bool, &str)] = &[];
 
 /// Simplify-corpus sections the gate compares, exactly, so that a rename,
-/// deletion or addition of a fixture fails it. Of the 2261 sections, 277 are
-/// `.head` and 136 are SlaMap, leaving 1848; the gate leaves out the 2
+/// deletion or addition of a fixture fails it. Of the 2265 sections, 277 are
+/// `.head` and 136 are SlaMap, leaving 1852; the gate leaves out the 2
 /// sections of the one `DEFERRED_LOAD` fixture and the 22 of the
 /// `UNTRANSFORMABLE` ones. The round-trip and equivalence counts after it are
 /// the checks those sections run, which depend on the oracle's section order.
-const SIMPLIFY_SECTION_FLOOR: usize = 1824;
+const SIMPLIFY_SECTION_FLOOR: usize = 1828;
 const SIMPLIFY_RTRIP_CHECKS: usize = 162;
-const SIMPLIFY_EQUIV_CHECKS: usize = 304;
+const SIMPLIFY_EQUIV_CHECKS: usize = 305;
 
 /// Is this oracle section part of the simplify corpus (a `simplify/`
 /// relpath or a top-level `.ast`/`.map`/`.simp` fixture)? This is everything
@@ -1933,7 +1933,7 @@ fn deferred_fixtures_still_fail_to_load() {
 }
 
 /// Regression gate over every oracle section the `.head` and SlaMap gates do
-/// not cover — the simplify corpus, which is the bulk of the 2261 sections.
+/// not cover — the simplify corpus, which is the bulk of the 2265 sections.
 ///
 /// Without this the majority of the corpus was read only by
 /// `transform_oracle_report`, which is `#[ignore]` and does not assert, so a
@@ -2057,7 +2057,7 @@ fn every_oracle_section_is_gated() {
         ungated.is_empty(),
         "oracle sections covered by no gate:\n{ungated:?}",
     );
-    assert_eq!(total, 2261, "gates must span every section");
+    assert_eq!(total, 2265, "gates must span every section");
 }
 
 /// The set of rows where C's own recorded inverse does not recover the pixel is
@@ -2180,7 +2180,7 @@ fn transform_oracle_report() {
         let text = std::fs::read_to_string(format!("{dir}/{name}")).expect("oracle present");
         reports.extend(run_oracle(&text, &ov));
     }
-    assert_eq!(reports.len(), 2261, "harness must cover every section");
+    assert_eq!(reports.len(), 2265, "harness must cover every section");
     let out = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../target/transform_oracle_report.json"

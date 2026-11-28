@@ -12,8 +12,10 @@
  * crates/starlink-ast/tests/fixture_read_warnings_oracle/cases.rs, run from
  * crates/starlink-ast/tests/fixtures:
  *
+ * (LC_ALL=C keeps the table order the same on every host.)
+ *
  *   find . -type f \( -name '*.map' -o -name '*.simp' -o -name '*.ast' \
- *        -o -name '*.native' \) | sort | \
+ *        -o -name '*.native' \) | LC_ALL=C sort | \
  *     ../../../../tools/oracle_fixtures/fixture_read_warnings_probe 2>/dev/null \
  *     > ../fixture_read_warnings_oracle/cases.rs
  */

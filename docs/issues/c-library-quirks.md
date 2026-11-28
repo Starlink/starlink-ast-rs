@@ -60,7 +60,7 @@ An entry that the port mirrors and upstream then fixes turns the mirror into a b
 - [The `astMathMap` precedence list puts unary operators above `**`](#the-astmathmap-precedence-list-puts-unary-operators-above-)
 - [`astInitMathMap` reports AST__BADNI for a bad output count](#astinitmathmap-reports-ast__badni-for-a-bad-output-count)
 - [A Region's default uncertainty is not reset when the Region moves](#a-regions-default-uncertainty-is-not-reset-when-the-region-moves)
-- [`astLoadXphMap` leaks the projection-type string it reads](#astloadxphmap-leaks-the-projection-type-string-it-reads)
+- [RESOLVED (upstream 69f4a702): `astLoadXphMap` leaks the projection-type string it reads](#resolved-upstream-69f4a702-astloadxphmap-leaks-the-projection-type-string-it-reads)
 - [Table's `Equal` compares only class names, and discards its column comparison](#tables-equal-compares-only-class-names-and-discards-its-column-comparison)
 - [Table's read-only column attributes are not recognized in `astSet`, `astClear` or `astTest`](#tables-read-only-column-attributes-are-not-recognized-in-astset-astclear-or-asttest)
 - [Two simplify references were captured with `Comment` and `Indent` off](#two-simplify-references-were-captured-with-comment-and-indent-off)
@@ -797,56 +797,20 @@ Each matches the column attributes with a pattern such as `"columntype(%*s)%n"`,
 `Nrow`, `Ncolumn` and `Nparameter` are recognized.
 The port's Table has no string attribute access; this is for `starlink-ast-capi`.
 
-### `astLoadXphMap` leaks the projection-type string it reads
+### RESOLVED (upstream 69f4a702): `astLoadXphMap` leaks the projection-type string it reads
 
-`xphmap.c:1666` reads the `Type` component with `astReadString`, which returns
-newly allocated memory, and never frees it:
+The `astLoadXphMap` loader read the `Type` component with `astReadString`, which returns newly allocated memory, and never freed it.
+The string was used to look the projection up and to phrase an error, then went out of scope.
+`astLoadWcsMap` reads the same component the same way and ends with `text = astFree( text );`.
+Upstream now frees the string in the XphMap loader the same way.
 
-```c
-      new->order = astReadInt( channel, "order", 19 );
-      text = astReadString( channel, "type", proj_name[AST__HPX12] );
-```
+The leak was 31 bytes per XphMap read.
+Nothing observable in output depended on it, so no test caught it by value; it showed up only under LeakSanitizer, for a test that read a dump containing an XphMap.
+Three fixtures reached it: `cap_xphmap_01.map`, `cap_xphmap_02.map` and `neg_xph_not_opposite.map`, each nesting the XphMap inside CmpMaps, so a single read leaked once per XphMap in the tree.
+Every fixture-driven ctest family in `ast_tester` runs with `ASAN_OPTIONS=detect_leaks=0`, which had suppressed it.
 
-`text` is used to look the projection up and to phrase an error, then goes out of
-scope.  `astFree` appears nowhere in that loader.  Compare `astLoadWcsMap`
-(`wcsmap.c:6096`), which reads the same component the same way and ends with
-`text = astFree( text );`.
-
-**Consequence.** 31 bytes leak per XphMap read.  Nothing observable in output, so
-no test catches it by value; it shows up only under LeakSanitizer, and only for a
-test that reads a dump containing an XphMap.  Reproduced with:
-
-```sh
-cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DAST_ENABLE_SANITIZERS=ON
-ASAN_OPTIONS=detect_leaks=1 ./build-asan/ast_tester/roundtrip \
-    ast_tester/fixtures/simplify/cap_xphmap_01.map /tmp/out
-```
-
-Three fixtures reach it: `cap_xphmap_01.map`, `cap_xphmap_02.map` and
-`neg_xph_not_opposite.map`, each nesting the XphMap inside CmpMaps, so a single
-read leaks once per XphMap in the tree.
-
-**Why nothing was failing.** Every fixture-driven ctest family in `ast_tester`
-runs with `ASAN_OPTIONS=detect_leaks=0`, so the leak is suppressed wherever it
-would otherwise appear.  The upstream `roundtrip` family added in
-`u/timj/more-fixtures-2` was briefly registered without that property and the
-sanitizer job failed on this leak; the property was added to match its siblings,
-which restores the suppression.  So the leak is real, unfixed, and currently
-invisible by design.
-
-**Rust side: nothing mirrors this.** A leak is not observable behavior, and
-`XphMap` is not ported — its fixtures sit in the port's deferred list.  This entry
-is here to be fixed upstream, not matched.
-
-**Fix.** Free it as `astLoadWcsMap` does, guarding for the error path where
-`new` is deleted:
-
-```c
-      text = astFree( text );
-```
-
-placed after the projection lookup and the error report, before the
-`if ( !astOK )` cleanup.
+**Rust behavior:** nothing mirrors this.
+A leak is not observable behavior, and `XphMap` is ported (`test_xphmap.rs`) with no counterpart to the leak, since the loader owns the projection-type string.
 
 ### Two simplify references were captured with `Comment` and `Indent` off
 
